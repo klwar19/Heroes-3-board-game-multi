@@ -22,6 +22,8 @@ import { armyUnitRankInfo } from "../unit-experience";
 import { combatUnitLimit } from "../adventure-reducer";
 import { commandersModuleEnabled, makeCommanderCombatUnit } from "../commanders";
 import { NEUTRAL_PLAYER_ID } from "../state";
+import { unitAbilities } from "@/data/units/abilities";
+import { ATTACK_DIE_FACES } from "../battlefield";
 import type {
   ArmyUnitState,
   BankSize,
@@ -72,17 +74,15 @@ export function playerArmyStrength(
 
 /**
  * How close the attacker's army must be to the defender's before the computer
- * is willing to start the fight. Below 1 deliberately: a game opponent that only
- * attacks when overwhelmingly ahead never fights, so it engages on a roughly
- * even — or even slightly unfavourable — matchup and lets the dice decide,
- * rather than hoarding units it never risks.
+ * is willing to start the fight. Equal armies can still engage, but a known
+ * unit-strength deficit must not itself qualify as a favourable attack.
+ * This remains a heuristic: cards, formations and dice can change the outcome.
  */
-export const ENEMY_ENGAGE_RATIO = 0.85;
+export const ENEMY_ENGAGE_RATIO = 1;
 
 /** Extra strength margin per additional hostile side still able to punish the
- * winner of a PvP fight. A three-player free-for-all therefore asks for 1.05x
- * the target's strength, while a duel keeps the intentionally aggressive 0.85
- * threshold. Hostile allies count as one side, not several seats. */
+ * winner of a PvP fight, capped by MAX_ENEMY_ENGAGE_RATIO. A duel permits
+ * equal armies. Hostile allies count as one side, not several seats. */
 export const MULTIPLAYER_ENGAGE_MARGIN = 0.2;
 export const MAX_ENEMY_ENGAGE_RATIO = 1.15;
 
@@ -95,7 +95,7 @@ export const MAX_ENEMY_ENGAGE_RATIO = 1.15;
  * attacker lost (damage 39–62, 38–62, 20–25), then gave up. A higher-level hero
  * brings more specialty / expert cards, more crowns and a bigger hand into the
  * fight, none of which the unit stats can see. One level of deficit still
- * allows the even trade (0.85 + 0.12 < 1); two demand a clearly superior army.
+ * demands an army advantage; two demand a larger margin.
  */
 export const HERO_LEVEL_ENGAGE_MARGIN = 0.12;
 /** Ceiling after the level margin — deliberately above MAX_ENEMY_ENGAGE_RATIO. */
@@ -201,7 +201,45 @@ export function deployedArmyStrength(state: GameState, playerId: PlayerId): numb
     .reduce((sum, strength) => sum + strength, commanderStrength(state, playerId));
 }
 
-/** PvP risk is contextual: trade aggressively in a duel, demand a survivor's
+/** Matchup adjustment isolated to PvP. Average the printed die faces instead
+ * of assuming every hit rolls zero, and price actual defense-ignoring riders.
+ * The correction is capped: formations, cards and conditional attacks remain
+ * uncertain, so this cannot replace the army/level/fortification safeguards. */
+export function pvpArmyStrength(state: GameState, playerId: PlayerId, enemyId: PlayerId): number {
+  const deployed = (id: PlayerId) => [...(state.players[id]?.army ?? [])]
+    .sort((a, b) => unitSideStrength(b) - unitSideStrength(a)).slice(0, combatUnitLimit(state));
+  const enemies = deployed(enemyId).map(unit => ({ unit, side: getUnitSide(unit.unitDefId, unit.side) }))
+    .filter(entry => entry.side);
+  const base = deployedArmyStrength(state, playerId);
+  if (!enemies.length) return base;
+  let adjustment = 0;
+  for (const unit of deployed(playerId)) {
+    const side = getUnitSide(unit.unitDefId, unit.side);
+    if (!side) continue;
+    const rank = armyUnitRankInfo(unit)?.bonus;
+    const attack = side.attack + (unit.permanentAttackBonus ?? 0) + (rank?.attack ?? 0) +
+      ((unit.side === "pack" || unit.side === "neutral") && (unit.stacks ?? 0) > 0 ? 1 : 0);
+    const type = side.type ?? coreUnitDefinitions[unit.unitDefId]?.type;
+    const effects = side.abilities.map(id => unitAbilities[id]).filter(ability => ability?.implementationStatus === "implemented")
+      .map(ability => ability.effect);
+    const ignores = effects.some(effect => effect?.type === "IGNORE_TARGET_CARD_DEFENSE" ||
+      (effect?.type === "DEALS_ELEMENTAL_DAMAGE" && (!effect.rangedOnly || type === "ranged")));
+    const pierce = Math.max(0, ...effects.map(effect => effect?.type === "DEFENSE_REDUCTION_ON_ATTACK" ? effect.amount : 0));
+    const damage = enemies.reduce((sum, enemy) => {
+      const defense = ignores ? 0 : Math.max(0, enemy.side!.defense + (armyUnitRankInfo(enemy.unit)?.bonus.defense ?? 0) - pierce);
+      const cap = Math.min(Infinity, ...enemy.side!.abilities.map(id => {
+        const ability = unitAbilities[id];
+        return ability?.implementationStatus === "implemented" && ability.effect?.type === "CAP_DAMAGE_PER_ATTACK"
+          ? ability.effect.amount : Infinity;
+      }));
+      return sum + ATTACK_DIE_FACES.reduce((total, die) => total + Math.min(cap, Math.max(0, attack + die - defense)), 0) / ATTACK_DIE_FACES.length;
+    }, 0) / enemies.length;
+    adjustment += (damage - attack) * 3 + (type === "ranged" ? 3 : type === "flying" ? 1 : 0);
+  }
+  return base + Math.max(-base * 0.2, Math.min(base * 0.2, adjustment));
+}
+
+/** PvP risk is contextual: accept parity in a duel, demand a survivor's
  * cushion when one or more third parties remain. */
 export function enemyEngagementRatio(
   state: GameState,
@@ -233,7 +271,7 @@ export function shouldEngageEnemy(
   /** `ignoreHeroLevel`: the fight has no enemy hero in it (heroless garrison). */
   options: { ignoreHeroLevel?: boolean; field?: MapFieldState } = {},
 ): boolean {
-  const enemyStrength = deployedArmyStrength(state, enemyPlayerId);
+  const enemyStrength = pvpArmyStrength(state, enemyPlayerId, playerId);
   if (enemyStrength <= 0) {
     return true;
   }
@@ -253,7 +291,7 @@ export function shouldEngageEnemy(
     MAX_HERO_LEVEL_ENGAGE_RATIO + (fortified ? 0.2 : 0),
     enemyEngagementRatio(state, playerId) + levelMargin + (fortified ? 0.2 : 0),
   );
-  return deployedArmyStrength(state, playerId) >= enemyStrength * ratio;
+  return pvpArmyStrength(state, playerId, enemyPlayerId) >= enemyStrength * ratio;
 }
 
 /**

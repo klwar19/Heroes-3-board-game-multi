@@ -229,6 +229,73 @@ describe("the Ballista discard is playable before the counter-attack", () => {
     expect(fired.players.p1.permanents ?? []).not.toContain("war_machine.ballista");
   });
 
+  // -------------------------------------------------------------------------
+  // Torosar VI ("For this Combat, gain an additional Ballista. You can activate
+  // all your Ballistas now.") is a full Instant: it must be playable in the
+  // pre-retaliation window, fire its Ballistas there, and — if that kills the
+  // retaliator — cancel its counter (the "no attack from beyond the grave"
+  // guard in resolveAttackStackItem). USER ASK 2026-09-15.
+  // -------------------------------------------------------------------------
+  it("Torosar VI fires its Ballistas in the pre-retaliation window and its kill cancels the counter", () => {
+    // Mutation A: remove specialty.torosar.6 from combatAnytimeInstantWindowJoins'
+    //   reach (e.g. its combatAnytime option) and it is never offered — the play
+    //   below is absent. Mutation B: strip the dead-attacker drop in
+    //   resolveAttackStackItem and the cancelled counter (Marksmen damage 0) lands.
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.torosar.6"], {
+        permanents: ["war_machine.ballista"], // owns 1; VI grants a 2nd for the fight
+        skeletonHealth: 3
+      })
+    );
+    expect(retaliationWindow(declared), "retaliation is parked before its damage").toBeTruthy();
+    const skeleton = declared.combat!.units.unit_p2_skeletons;
+    expect(skeleton.damage, "the Marksmen's own blow dealt 1").toBe(1);
+
+    const offer = cardPlay(declared, "p1", "specialty.torosar.6");
+    expect(offer, "Torosar VI is offered in the pre-retaliation window").toBeTruthy();
+    const fired = applyOk(declared, offer!.action);
+
+    // Two Ballistas (owned + granted) both fire at the slowest enemy (the
+    // Skeletons, initiative 1); 1 (blow) + 2 (shots) removes them.
+    const hits = fired.eventLog.filter((event) => event.type === "WAR_MACHINE_TRIGGERED");
+    expect(hits, "owned + granted Ballista both fire the 'activate all' volley").toHaveLength(2);
+    expect(fired.combat!.units.unit_p2_skeletons.damage, "1 + 2 removed the retaliator").toBe(3);
+    expect(fired.combat!.units.unit_p1_marksmen.damage, "the dead retaliator's counter is cancelled").toBe(0);
+    expect(fired.stack, "the parked retaliation was dropped, not left stuck").toEqual([]);
+    // "For this Combat" — a combat-scoped grant, and the card stays in play.
+    expect(
+      fired.activeEffects.filter((effect) =>
+        effect.modifiers.some((modifier) => modifier.type === "EXTRA_BALLISTA")
+      )
+    ).toHaveLength(1);
+  });
+
+  it("CONTROL: a Torosar VI volley that leaves the retaliator alive still eats the counter — and the shots landed first", () => {
+    // The discriminating twin of the kill case: same play, a fat retaliator. The
+    // shots fire (2 hits) but the Skeletons survive, so the counter-attack lands.
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.torosar.6"], {
+        permanents: ["war_machine.ballista"],
+        skeletonHealth: 30
+      })
+    );
+    const fired = applyOk(declared, cardPlay(declared, "p1", "specialty.torosar.6")!.action);
+
+    const hits = fired.eventLog.filter((event) => event.type === "WAR_MACHINE_TRIGGERED");
+    expect(hits, "both Ballistas still fired").toHaveLength(2);
+    expect(fired.combat!.units.unit_p2_skeletons.damage, "1 blow + 2 shots, still alive").toBe(3);
+    expect(fired.combat!.units.unit_p1_marksmen.damage, "the surviving retaliator's counter lands").toBe(6);
+
+    const lastShotIdx = fired.eventLog.map((event) => event.type).lastIndexOf("WAR_MACHINE_TRIGGERED");
+    const counterIdx = fired.eventLog.findIndex(
+      (event) =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.target.type === "unit" &&
+        event.target.unitId === "unit_p1_marksmen"
+    );
+    expect(counterIdx, "the counter resolved after the Ballista volley").toBeGreaterThan(lastShotIdx);
+  });
+
   it.each([
     ["specialty.glacius.1", "space"],
     ["specialty.deemer.1", "unit"],

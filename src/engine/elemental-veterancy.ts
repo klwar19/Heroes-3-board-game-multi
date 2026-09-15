@@ -514,8 +514,18 @@ export function openElementalChoice(
             !isAdjacent(anchor.position, target.position)
           )
             continue;
-          picks.push({ targetId: target.id });
-          labels.push(target.cardName);
+          if (request.runeScaling) {
+            // Jotunn Rune Bolt: 1 Rune → 1 damage, or (if affordable) 2 Runes → 2 damage.
+            picks.push({ targetId: target.id, amount: 1, runeCost: 1 });
+            labels.push(`${target.cardName} — 1 damage (1 Rune)`);
+            if ((combat.runes?.[unit.controllerId]?.count ?? 0) >= 2) {
+              picks.push({ targetId: target.id, amount: 2, runeCost: 2 });
+              labels.push(`${target.cardName} — 2 damage (2 Runes)`);
+            }
+          } else {
+            picks.push({ targetId: target.id });
+            labels.push(target.cardName);
+          }
         }
     } else if (request.kind === "debuff-attack") {
       for (const target of enemies(state, unit)) if ((!request.adjacent || isAdjacent(unit.position, target.position))) {
@@ -563,7 +573,7 @@ export function openElementalChoice(
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId: chooser,
-      prompt: `${unit.cardName}: ${unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" ? ` — choose a target for ${request.amount} damage` : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost ? ` (spend ${request.runeCost} Rune)` : ""}`,
+      prompt: `${unit.cardName}: ${unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
       options: labels.map((label) => ({ label })),
       context: "elemental-veterancy",
       elementalChoice: { request, picks },
@@ -587,6 +597,8 @@ function executeElementalPick(
     target?: TargetRef;
     optionIndex?: number;
     saveEcho?: boolean;
+    amount?: number;
+    runeCost?: number;
   },
   hooks: ElementalHooks,
 ): void {
@@ -621,8 +633,16 @@ function executeElementalPick(
   }
   if ((request.kind === "move-one" || request.kind === "return-origin" || request.kind === "veteran-teleport") && townBound(state, unit)) throw new Error("This unit is bound and cannot move.");
   if ((request.kind === "veteran-teleport" || request.kind === "move-one" || request.kind === "return-origin") && neutralTownDeepRooted(state, unit)) throw new Error("Deep Roots prevents bonus movement and teleportation.");
-  if (request.runeCost && !spendRunes(state, unit.controllerId, request.runeCost)) {
-    throw new Error(`That ability needs ${request.runeCost} Rune.`);
+  const runeScaled = request.runeScaling
+    ? (pick.amount === 1 && pick.runeCost === 1) ||
+      (pick.amount === 2 && pick.runeCost === 2)
+    : false;
+  if (request.runeScaling && !runeScaled) {
+    throw new Error("Choose a listed Rune Bolt amount.");
+  }
+  const runeCost = request.runeScaling ? pick.runeCost : request.runeCost;
+  if (runeCost && !spendRunes(state, unit.controllerId, runeCost)) {
+    throw new Error(`That ability needs ${runeCost} Rune${runeCost === 1 ? "" : "s"}.`);
   }
   if (request.kind === "town-recover") {
     const owner = state.players[unit.controllerId];
@@ -744,7 +764,7 @@ function executeElementalPick(
       unit,
       pick.targetId!,
       request.abilityId,
-      request.amount!,
+      request.runeScaling ? pick.amount! : request.amount!,
     );
     return;
   }

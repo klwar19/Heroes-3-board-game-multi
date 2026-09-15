@@ -3217,6 +3217,15 @@ export type EffectDefinition =
        * cube the instant Bloodlust sides place via ADD_COMBAT_STAT.placeBlackCube.
        */
       placeBlackCube?: boolean;
+      /**
+       * Polish Balance Pack Intelligence: "Refresh 1 Spell, then Cast a Spell."
+       * After the free-cast window (this CREATE_ACTIVE_EFFECT) is created, open a
+       * standalone "Refresh 1 Spell in your Spell Book" pick so it resolves BEFORE
+       * the free cast (the printed order — the refreshed Spell can be that cast).
+       * Book-gated (`openPolishBookRefreshPick`): with no Polish Spell Book there
+       * is nothing to refresh and the card keeps its printed one-shot free cast.
+       */
+      polishRefreshSpellFirst?: boolean;
     }
   | {
       type: "CREATE_ATTACK_BUFF";
@@ -10129,6 +10138,8 @@ export type CombatUnitState = {
     positiveEffectsBlocked?: boolean;
     allowedPositiveEffectIds?: string[];
     attackAfterMoveUsed?: boolean;
+    /** Bulwark Shaman R4 (Runecharged Step): +1 Attack per teleport this combat, capped at +2. */
+    teleportCharges?: number;
     /** Elves' rank-4 Spell Sunder: round of the last tax and total taxes this combat. */
     elfSpellSunderRound?: number;
     elfSpellSunderUses?: number;
@@ -10668,6 +10679,8 @@ export type CombatState = {
     valuablesCost?: number;
     runeCost?: number;
     optional?: boolean;
+    /** Jotunn Rune Bolt R3: offer a per-target tier — 1 Rune → 1 damage, or 2 Runes → 2 damage. */
+    runeScaling?: boolean;
     cardId?: string;
     attack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   }>;
@@ -11066,6 +11079,17 @@ export type CombatState = {
     empoweredAdded: CardId[];
   } | null;
   /**
+   * Phantom combat cards (computer/combat-boost.ts): the un-Empowered Power +
+   * Magic Arrow granted to EACH computer seat at combat start — in every combat
+   * kind, including PvP and human-controlled-neutral, for the attacker and/or
+   * defender. One entry per granted seat; each entry's `cardIds` copies are
+   * removed from the game at combat end (never kept), exactly like computerBoost.
+   */
+  computerPhantomCards?: {
+    playerId: PlayerId;
+    cardIds: CardId[];
+  }[] | null;
+  /**
    * PvE ENEMY FORCE hand (raid-boss lair / Dungeon-floor fights only — never a
    * wave assault). The monster side "holds cards like a single-player opponent"
    * and spends at most one per combat round at its boss unit's own activation
@@ -11191,9 +11215,10 @@ export type MapTileState = {
    * A Monolith/Whirlpool/colored-Gate Location Token the map designer attached
    * to this still-face-down tile. When the tile is discovered, the discovering
    * player places the token on a legal field. `preferredSpaceId` is the exact
-   * physical board hex pinned by the map designer: it is used automatically
-   * when legal after the tile is revealed/rotated, with the ordinary legal-field
-   * choice as a fallback when random printed content makes that hex incompatible.
+   * physical board hex pinned by the map designer: when two or more fields are
+   * legal after reveal/rotation, it is offered first as the suggested default
+   * but the discovering player may choose any legal field. A lone legal field is
+   * forced automatically; an incompatible preferred hex is omitted from the offer.
    * Public info — the physical Scenario Map Layout shows token positions up
    * front. `number` is a Whirlpool's pre-assigned die face; `pair` (gate only,
    * 1-4) is the colored pair the carved Gate joins.
@@ -17272,6 +17297,8 @@ export type PendingChoice =
        */
       balanceSpellChoice?: {
         cardId: CardId;
+        /** Destination after the chosen Ray effect ends; preserves cast-window recall. */
+        disruptingRayReturnTo?: "discard" | "hand" | "spellBook";
         unitId?: UnitId;
         /** Sacrifice amount pick: the other unit receiving transferred wounds. */
         sacrificeUnitId?: UnitId;
@@ -17333,7 +17360,7 @@ export type PendingChoice =
       };
       elementalChoice?: {
         request: NonNullable<CombatState["elementalChoices"]>[number];
-        picks: Array<{ targetId?: string; position?: number; obstacle?: number; skip?: boolean; target?: TargetRef; optionIndex?: number; saveEcho?: boolean }>;
+        picks: Array<{ targetId?: string; position?: number; obstacle?: number; skip?: boolean; target?: TargetRef; optionIndex?: number; saveEcho?: boolean; amount?: number; runeCost?: number }>;
       };
       /** Kei reaction, with enough data to resume or cancel the triggering ability. */
       keyAuthority?: {
@@ -18302,7 +18329,10 @@ export type ComputerPolicyMemoryState = {
   withdrawalCombatId?: string;
   /** The opening Vampire Pack milestone survives casualties and saves. */
   necromancyVampirePackEarned?: boolean;
-  failedFields?: Array<{ fieldId: string; round: number; readiness: string; armyStrength?: number; heroLevel?: number; hadArrow?: boolean }>;
+  goldArmyEstablished?: boolean;
+  silverArmyEstablished?: boolean;
+  scoutedWithdrawalCombatId?: string;
+  failedFields?: Array<{ fieldId: string; round: number; readiness: string; armyStrength?: number; heroLevel?: number; hadArrow?: boolean; hadPremiumBody?: boolean; scoutedRetreat?: boolean }>;
   developmentPlan?: {
     goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
     sinceRound: number;

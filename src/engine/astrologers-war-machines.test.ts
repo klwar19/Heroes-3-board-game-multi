@@ -351,7 +351,12 @@ describe("Astrologers — Ammo Cart: Ballista +1 damage", () => {
     expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(0);
   });
 
-  it("combines with the Ogre Leader's target choice, but stops when that commander falls", () => {
+  it("buffs the Ogre Leader's extra Ballista too, until that commander falls", () => {
+    // Ogre Leader's "Extra Ballista" specialty adds one more combat Ballista on
+    // top of the owned one. With Ammo Cart each shot deals 2, and both aim at
+    // the uniquely slowest enemy (the dread knights). Mutation: drop the
+    // ogreLeaderFightingFor term from countExtraBallistas and the second shot
+    // disappears (4 → 2).
     const setup = (commanderDamage: number) => {
       const state = ballistaSetup("astrologers.ammo_cart");
       state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
@@ -365,26 +370,17 @@ describe("Astrologers — Ammo Cart: Ballista +1 damage", () => {
       return state;
     };
 
-    let aimed = endRound(setup(0), "p1");
-    expect(aimed.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
-    expect(
-      aimed.pendingChoice?.type === "ABILITY_TARGET_CHOICE"
-        ? aimed.pendingChoice.candidateUnitIds
-        : []
-    ).toContain("unit_p2_vampires");
-    aimed = applyOk(aimed, {
-      type: "CHOOSE_ABILITY_TARGET",
-      playerId: "p1",
-      choiceId: aimed.pendingChoice!.id,
-      targetUnitId: "unit_p2_vampires"
-    });
-    expect(aimed.combat!.units.unit_p2_vampires.damage).toBe(2);
+    // Commander alive: the owned Ballista + the specialty's extra, 2 damage each,
+    // both onto the unique slowest — no aim prompt (the old free-target choice is
+    // gone), both auto-fire.
+    const withExtra = endRound(setup(0), "p1");
+    expect(withExtra.pendingChoice).toBeNull();
+    expect(withExtra.combat!.units.unit_p2_dread_knights.damage).toBe(4);
 
-    const fallenSetup = setup(999);
-    const fallen = endRound(fallenSetup, "p1");
+    // Commander down: only the owned Ballista fires.
+    const fallen = endRound(setup(999), "p1");
     expect(fallen.pendingChoice).toBeNull();
     expect(fallen.combat!.units.unit_p2_dread_knights.damage).toBe(2);
-    expect(fallen.combat!.units.unit_p2_vampires.damage).toBe(0);
   });
 });
 

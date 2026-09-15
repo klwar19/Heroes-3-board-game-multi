@@ -274,7 +274,7 @@ export const extraAbilityCards: CardLibrary = {
       "magic",
       "spell-timing",
       "Instant (Combat): Until the end of the Combat you may cast a Spell at any time — even off-turn, without one of your units being active (still one Spell per Combat round). Expert: your Spell casts no longer count toward that limit.",
-      'Balance pack: the free cast is scoped to the START of a Combat — the card is playable, and the freedom it grants only lasts, while no unit has activated yet (the shared combatStartWindowOpen read). Under polish-spell-book the cast needs no "Cast a Spell" card. Expert keeps its no-limit rider, likewise only inside that window.',
+      'Balance pack: the free cast is scoped to the START of a combat round — the card is playable, and the freedom it grants only lasts, while no unit has activated in that round. Under polish-spell-book the cast needs no "Cast a Spell" card. Empowered keeps its no-limit rider, likewise only inside that window.',
     ],
     effect: {
       type: "CREATE_ACTIVE_EFFECT",

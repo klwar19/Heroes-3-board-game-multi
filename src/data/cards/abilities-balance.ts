@@ -19,16 +19,18 @@ import { extraAbilityCards } from "./abilities-extra";
  * `initiative-specialty-draw` precedent) stating exactly what runs.
  *
  * --- INTELLIGENCE ---
- * Printed: "At the start of a Combat, before any unit activates, you can Cast a
- * Spell. (you don't need to play Cast a Spell card.)" Expert adds: "This spell
- * does not count toward your spell limit per Combat round."
+ * Reprint (the committed face): "At the start of a combat round, Refresh 1
+ * Spell, then Cast a Spell. (you don't need to play Cast a Spell card.)"
+ * Empowered adds: "This spell does not count toward your spell limit per Combat
+ * round."
  *
  * The classic card grants a COMBAT-LONG timing freedom (an ongoing
  * `SPELL_CAST_ANYTIME` effect that stays in the "Permanents & Ongoing" tray and
  * lets its expert side lift the per-round limit for the whole fight). The
- * reprint makes it a ONE-SHOT enabler, so:
- *   1. the freedom is scoped to the start-of-combat window (the shared
- *      `combatStartWindowOpen` read via `balanceIntelligenceWindowClosed`);
+ * reprint makes it a ONE-SHOT enabler that ALSO refreshes a Spell first, so:
+ *   1. the freedom is scoped to the start of the CURRENT combat round (the
+ *      shared round-start read via `balanceIntelligenceWindowClosed`), so a
+ *      held card can be saved for round 2 or later;
  *   2. it grants EXACTLY ONE free Spell cast — `modifiers[].oneShot` makes
  *      `noteSpellCast` consume the effect the moment the holder casts a Spell,
  *      so a second Spell needs the ordinary "Cast a Spell" allowance again;
@@ -37,7 +39,16 @@ import { extraAbilityCards } from "./abilities-extra";
  *      `holdLiveOngoingCardsFromDiscard` never lifts it into the pile;
  *   4. the EXPERT rider (`ignoreSpellLimit`) is likewise one-shot: that ONE free
  *      cast does not count toward the per-round limit, and later Spells face the
- *      ordinary limit again.
+ *      ordinary limit again;
+ *   5. the boost (2026-09-15): `polishRefreshSpellFirst` opens a standalone
+ *      "Refresh 1 Spell in your Spell Book" pick the instant Intelligence is
+ *      played — BEFORE the free cast (`openPolishBookRefreshPick`, the shared
+ *      once-per-round refresh gate) — so a Spell already spent this round can be
+ *      the free cast (a Might hero's lone Magic Arrow, or a second Chain
+ *      Lightning in a two-Combat round). Refresh-then-cast, never cast-then-
+ *      refresh, so it is not an easy in-window double cast. Book-gated: with no
+ *      `polish-spell-book` there is nothing to refresh and the printed one-shot
+ *      free cast stands.
  * Under `polish-spell-book` the free cast needs no "Cast a Spell" card and
  * consumes none (the freedom stands in for the enabler); the Intelligence card
  * itself is the thing that is spent.
@@ -114,11 +125,12 @@ export const polishBalanceAbilityCards: CardLibrary = {
       "ability",
       "magic",
       "spell-timing",
-      "Instant (Combat): At the start of a Combat, before any unit activates, you may Cast ONE Spell (no Cast a Spell card needed). Expert: that one Spell does not count toward your per-round Spell limit.",
-      "Balance pack: a ONE-SHOT free cast — playable only at the start of the Combat (the shared combatStartWindowOpen read), spent the instant you cast a Spell, and never parked in the Permanents & Ongoing tray. Under polish-spell-book the free cast consumes no Cast a Spell card; the Intelligence card is what is spent. A SECOND Spell in the same window needs the ordinary allowance. Expert's no-limit rider covers only that one free cast."
+      "Instant (Combat): At the start of a combat round, Refresh 1 Spell, then Cast ONE Spell (no Cast a Spell card needed). Empowered: that one Spell does not count toward your per-round Spell limit.",
+      "Balance pack: Refresh 1 Spell in your Spell Book FIRST, then take a ONE-SHOT free cast. Intelligence may be played before any unit acts in the current combat round, including round 2 and later; it is spent the instant you cast and never parks in the Permanents & Ongoing tray. The refresh is book-gated: without polish-spell-book the card keeps its printed one-shot cast. Under polish-spell-book the cast consumes no Cast a Spell card. A SECOND Spell needs the ordinary allowance. The Empowered no-limit rider covers only the Intelligence cast."
     ],
     effect: {
       type: "CREATE_ACTIVE_EFFECT",
+      polishRefreshSpellFirst: true,
       effect: {
         name: "Intelligence",
         scope: "player",

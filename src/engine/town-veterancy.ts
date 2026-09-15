@@ -72,7 +72,8 @@ export function townAttackBonus(
       : 0) +
     (townVeterancy(attacker, "mammoth-hunter") && ["ground", "ranged"].includes(defender.type)
       ? 1
-      : 0) -
+      : 0) +
+    (townVeterancy(attacker, "kobold-armored-prey") && currentDefense >= 2 ? 2 : 0) -
     (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0)
   );
 }
@@ -369,13 +370,32 @@ export function townMovement(
     gainRunes(state, unit.controllerId, 1);
     veteranTrigger(state, unit, "town-kobold-rune-step");
   }
+  if (townVeterancy(unit, "ram-trample")) {
+    queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-ram-trample", amount: 1, adjacent: true });
+  }
+  // Runecharged Step replaces this unit's regular movement with teleportation,
+  // including short teleports. Each movement therefore banks the bonus once.
+  if (from !== to && getUnitAbilityDefinitions(unit).some((a) => a.id === "town-shaman-teleport-charge")) {
+    const mem = (unit.townVeterancy ??= {});
+    if ((mem.teleportCharges ?? 0) < 2) {
+      mem.teleportCharges = (mem.teleportCharges ?? 0) + 1;
+      mem.attack = (mem.attack ?? 0) + 1;
+      veteranTrigger(state, unit, "town-shaman-teleport-charge");
+    }
+  }
 }
 
 export function townActivation(state: GameState, unit: CombatUnitState): void {
+  // Mammoth Rune Mend heals 1 HP FREE on activation, then (below, if Runes remain)
+  // offers 1 more HP for 1 Rune.
+  if (townVeterancy(unit, "mammoth-rune-mend") && unit.damage > 0) {
+    veteranHeal(state, unit, 1, "town-mammoth-rune-mend");
+  }
   const runes = state.combat?.runes?.[unit.controllerId]?.count ?? 0;
   if (runes <= 0) return;
   if (townVeterancy(unit, "jotunn-rune-bolt")) {
-    queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-jotunn-rune-bolt", amount: 1, runeCost: 1, optional: true });
+    // Rune Bolt R3: spend 1 Rune for 1 damage, or 2 Runes for 2 damage (per-target tiers).
+    queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-jotunn-rune-bolt", amount: 1, runeCost: 1, optional: true, runeScaling: true });
   }
   if (townVeterancy(unit, "mammoth-rune-mend") && unit.damage > 0) {
     queueElementalChoice(state, { kind: "heal-self", unitId: unit.id, abilityId: "town-mammoth-rune-mend", amount: 1, runeCost: 1, optional: true });

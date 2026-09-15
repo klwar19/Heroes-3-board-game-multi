@@ -12,6 +12,7 @@ import {
   incomeBuildingBeforeDwelling,
   nextGoldLadderStep,
   openingCorePackTarget,
+  preferredOpeningPacks,
   rankedGoldUnits,
   shouldLaunchBronzeRush,
 } from "./development";
@@ -218,7 +219,11 @@ describe("computer long-horizon development plan", () => {
     );
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
     town.buildings = [citadel, bronze];
-    const unit = state.players.p2.army[0];
+    // Reinforce the Pack the opening actually wants first (the level-3 bronze
+    // under the lv3-first order; a Necromancy hero keeps its Skeleton-first
+    // earned plan). A Few-first core reinforce must still beat an ordinary march.
+    const firstPack = preferredOpeningPacks(state, "p2")[0];
+    const unit = state.players.p2.army.find((u) => u.unitDefId === firstPack) ?? state.players.p2.army[0];
     const score = scoreMapAction(observation(state), {
       type: "POPULATION_ACTION",
       playerId: "p2",

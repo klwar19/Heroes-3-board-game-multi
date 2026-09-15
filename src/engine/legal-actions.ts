@@ -2781,8 +2781,9 @@ export function continueNeutralFreeOption(
 
 /**
  * Polish Balance Pack — the reprinted INTELLIGENCE may only be PLAYED at the
- * start of a Combat, before any unit activates. Read by the combat card offer AND
- * by `playCard`'s backstop, so a stale client cannot slip it in mid-fight.
+ * start of the current combat round, before any unit activates. Read by the
+ * combat card offer AND by `playCard`'s backstop, so a stale client cannot slip
+ * it in after the round has begun.
  */
 export function balanceIntelligencePlayBlocked(
   state: GameState,

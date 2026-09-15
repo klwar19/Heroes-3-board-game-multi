@@ -217,6 +217,29 @@ describe("unit combat voices", () => {
     expect(unitSoundKey("neutral.marksmen", "shoot")).toBe("units/archer-shoot");
   });
 
+  it("routes every Bulwark line to its dedicated HotA sound set", () => {
+    const expected = {
+      kobolds: "kobold",
+      mountain_rams: "mountain-ram",
+      snow_elves: "snow-elf",
+      yetis: "yeti",
+      shamans: "shaman",
+      mammoths: "mammoth",
+      jotunns: "jotunn"
+    } as const;
+
+    for (const [unit, voice] of Object.entries(expected)) {
+      expect(unitSoundKey(`bulwark.${unit}`, "attack")).toBe(`units/${voice}-attack`);
+      expect(unitSoundKey(`bulwark.${unit}`, "move")).toBe(`units/${voice}-move`);
+    }
+    expect(unitSoundKey("bulwark.snow_elves", "shoot")).toBe("units/snow-elf-shoot");
+    expect(unitSoundKey("bulwark.shamans", "shoot")).toBe("units/shaman-shoot");
+    expect(unitSoundKey("bulwark.jotunns", "shoot")).toBe("units/jotunn-shoot");
+    expect(unitSoundKey("bulwark.snow_elves", "shoot", "pack")).toBe("units/steel-elf-shoot");
+    expect(unitSoundKey("bulwark.mammoths", "attack", "pack")).toBe("units/war-mammoth-attack");
+    expect(unitSoundKey("bulwark.jotunns", "death", "pack")).toBe("units/jotunn-warlord-death");
+  });
+
   it("lets melee-voiced creatures cover a missing strike variant", () => {
     // Griffins have no ranged clip: a (hypothetical) shoot falls back to attack.
     expect(unitSoundKey("castle.griffins", "shoot")).toBe("units/griffin-attack");

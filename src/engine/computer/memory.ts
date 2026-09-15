@@ -1,6 +1,6 @@
 import type { GameAction, GameState, MapSpaceId, PlayerId } from "../state";
 import { updateDevelopmentPlan, type DevelopmentPlan } from "./development-plan";
-import { bronzeArmyNeedsWithdrawal } from "./necropolis-combat";
+import { bronzeArmyNeedsWithdrawal, openingGuardCommitment } from "./necropolis-combat";
 import { playerArmyStrength } from "./army-strength";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
@@ -26,12 +26,15 @@ export type ResourceTrailEntry = {
 
 export type ComputerPolicyMemory = {
   withdrawalCombatId?: string;
+  scoutedWithdrawalCombatId?: string;
   /** The opening Vampire Pack milestone survives casualties and saves. */
   necromancyVampirePackEarned?: boolean;
+  goldArmyEstablished?: boolean;
+  silverArmyEstablished?: boolean;
   settlementLossStreak?: number;
   settlementLossRound?: number;
   lastSettlementCombatId?: string;
-  failedFields?: Array<{ fieldId: string; round: number; readiness: string; armyStrength?: number; heroLevel?: number; hadArrow?: boolean }>;
+  failedFields?: Array<{ fieldId: string; round: number; readiness: string; armyStrength?: number; heroLevel?: number; hadArrow?: boolean; hadPremiumBody?: boolean; scoutedRetreat?: boolean }>;
   developmentPlan?: DevelopmentPlan;
   routeHistory?: Array<{ heroId: string; to: string; progress: string; round?: number }>;
   /** This seat's round/completion key — other seats cannot clear its visit list. */
@@ -237,29 +240,52 @@ export function noteComputerAction(
   state: GameState,
   playerId: PlayerId,
   action: GameAction,
+  previousState?: GameState,
 ): GameState {
   let mem = getComputerMemory(state, playerId);
   const round = state.round ?? 0;
+  if ([state, previousState].some(view => (view?.players[playerId]?.army ?? []).some(unit =>
+    unit.side !== "bank" && ["gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier)))) {
+    mem.goldArmyEstablished = true;
+  }
+  if ([state, previousState].some(view => (view?.players[playerId]?.army ?? []).some(unit =>
+    unit.side !== "bank" && coreUnitDefinitions[unit.unitDefId]?.tier === "silver"))) {
+    mem.silverArmyEstablished = true;
+  }
   if (state.players[playerId]?.factionId === "necropolis" && state.players[playerId].army.some(unit =>
       unit.unitDefId === "necropolis.vampires" && unit.side === "pack")) mem.necromancyVampirePackEarned = true;
-  const combat = state.combat;
+  // Retreat can remove combat in the reducer before this post-action hook.
+  // Preserve that defeated field so a new hand cannot cause an immediate retry.
+  const retreated = action.type === "RETREAT_FROM_COMBAT";
+  const combat = state.combat ?? (retreated || previousState?.combat?.outcome ? previousState?.combat : undefined);
+  if (combat && !combat.outcome && combat.round === 1 &&
+      Object.values(combat.units).every(unit => !unit.activatedThisRound && unit.damage === 0) &&
+      openingGuardCommitment(state, playerId, combat) === "retreat") mem.scoutedWithdrawalCombatId = combat.id;
+  // Neutral retreat is legal only at the round boundary. Remember the scouting
+  // decision made before activations; requiring unactivated units HERE would
+  // make the next-round retry path impossible to reach.
+  const scoutedRetreat = Boolean((retreated || combat?.outcome?.reason === "retreat") && combat && combat.round === 1 &&
+    mem.scoutedWithdrawalCombatId === combat.id && Object.values(combat.units).every(unit =>
+      unit.controllerId !== playerId || unit.damage < unit.maxHealth));
   if (combat && !combat.outcome && bronzeArmyNeedsWithdrawal(state, playerId, combat)) mem.withdrawalCombatId = combat.id;
   // Outcome windows can span several actions. Count each settlement battle
   // exactly once, and keep the streak across turns, unrelated fights and saves.
   if (combat?.context.kind === "neutral" && combat.attackerPlayerId === playerId &&
-      combat.outcome && mem.lastSettlementCombatId !== combat.id &&
+      (combat.outcome || retreated) && !scoutedRetreat && mem.lastSettlementCombatId !== combat.id &&
       state.adventure?.fields[combat.context.fieldId]?.location === "settlement") {
     mem.lastSettlementCombatId = combat.id;
-    if (combat.outcome.winnerPlayerId !== playerId) mem.settlementLossRound = round;
-    mem.settlementLossStreak = combat.outcome.winnerPlayerId === playerId
+    if (combat.outcome?.winnerPlayerId !== playerId) mem.settlementLossRound = round;
+    mem.settlementLossStreak = combat.outcome?.winnerPlayerId === playerId
       ? 0 : Math.min(2, (mem.settlementLossStreak ?? 0) + 1);
   }
   if (combat?.context.kind === "neutral" && combat.attackerPlayerId === playerId &&
-      combat.outcome && combat.outcome.winnerPlayerId !== playerId) {
+      (retreated || combat.outcome && combat.outcome.winnerPlayerId !== playerId)) {
     const fieldId = combat.context.fieldId;
     mem.failedFields = [...(mem.failedFields ?? []).filter(entry => entry.fieldId !== fieldId),
-      { fieldId, round, readiness: fightReadinessKey(state, playerId),
+      { fieldId, round, readiness: fightReadinessKey(state, playerId), scoutedRetreat,
         armyStrength: playerArmyStrength(state, playerId),
+        hadPremiumBody: (state.players[playerId]?.army ?? []).some(unit => unit.side !== "bank" &&
+          ["silver", "gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier)),
         // Main-hero level: repeatsFailedFight compares against the CURRENT
         // main hero, so a secondary's defeat must not skew the release rule.
         heroLevel: Object.values(state.heroes).find(hero =>
@@ -363,6 +389,11 @@ function fightReadinessKey(state: GameState, playerId: PlayerId): string {
 }
 
 export function repeatsFailedFight(state: GameState, playerId: PlayerId, fieldId: string): boolean {
+  const scouted = state.computerMemory?.[playerId]?.failedFields?.find(entry => entry.fieldId === fieldId);
+  // A pristine withdrawal from the mandatory armored-guard rule is scouting,
+  // not a failed attack. New guards next turn justify a retry; same-turn loops
+  // remain blocked so remaining movement can collect resources instead.
+  if (scouted?.scoutedRetreat) return state.round <= scouted.round;
   // A different hand alone is no longer a reason for a third bronze-only
   // settlement attempt. Let the normal map planner find income elsewhere
   // until a Silver (or higher) body is actually in the army.
@@ -380,8 +411,23 @@ export function repeatsFailedFight(state: GameState, playerId: PlayerId, fieldId
       const addedArrow = !failed.hadArrow &&
         (state.players[playerId].hand.includes("spell.magic_arrow") ||
           state.players[playerId].spellBook?.includes("spell.magic_arrow"));
-      if (playerArmyStrength(state,playerId) <= failed.armyStrength * 1.1 &&
-          level <= (failed.heroLevel ?? 0) && !addedArrow) return true;
+      const field = state.adventure?.fields[fieldId];
+      const premiumEconomy = Boolean(field && (field.location === "settlement" ||
+        (field.location === "mine" && (field.resource === "gold" || field.resource === "valuables"))));
+      const hasStrongBody = (state.players[playerId].army ?? []).some(unit => unit.side !== "bank" &&
+        ["silver","gold","azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier));
+      // A bronze-only strength tick or a fresh hand does NOT make a lost PREMIUM
+      // fight (settlement / gold+valuables mine) winnable — recruiting chaff must
+      // not unlock a grind against a mine we just lost four times. Require a real
+      // upgrade (a silver+ body or a newly-added Magic Arrow); otherwise keep it
+      // blocked so the planner routes to a beatable lower goods tile instead.
+      // Non-premium fields keep the original bronze-strength/level release.
+      const meaningfullyStronger = premiumEconomy
+        ? (hasStrongBody && (failed.hadPremiumBody === false ||
+            playerArmyStrength(state, playerId) > failed.armyStrength * 1.1)) || addedArrow
+        : playerArmyStrength(state,playerId) > failed.armyStrength * 1.1 ||
+          level > (failed.heroLevel ?? 0) || addedArrow;
+      if (!meaningfullyStronger) return true;
     }
   }
   return (state.computerMemory?.[playerId]?.failedFields ?? []).some(entry =>

@@ -204,6 +204,7 @@ import {
   TILE_BACK_IMAGES,
   whirlpoolTokenImage,
 } from "@/data/assets/homm-assets";
+import { fixedObjectMarkerSrc } from "@/data/map/fixed-object-markers";
 import {
   fieldOverrideGlyph,
   fieldOverrideImage,
@@ -340,6 +341,44 @@ import {
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
+
+// Fixed-object map markers: a small legend icon drawn at the top of a REVEALED
+// hex so a player who never opens the map editor can still read what the map
+// holds at a glance — which mines are gold / valuables / materials, where the
+// Settlements, Obelisks, Subterranean Gates, Whirlpools and the Ⅶ objectives
+// (Random Town, Dragon Utopia, Grail, Temple of the Sea) sit. These are the
+// public, ship-with-the-app token icons under /game-tokens/markers. Returns the
+// asset path for a field's object, or null for a hex that carries no marked
+// object. A mine with no decided resource yet falls back to the gold-or-valuables
+// icon (the "player picks the resource" case, before it resolves on reveal).
+/** The <image> legend marker for a fixed object, or null. Drawn at the hex top. */
+function fixedObjectMarkerNode(
+  field: Pick<MapFieldState, "location" | "resource">,
+  spaceId: string,
+  x: number,
+  y: number,
+): ReactNode {
+  const src = fixedObjectMarkerSrc(field);
+  if (!src) {
+    return null;
+  }
+  const size = HEX_WIDTH * 0.52;
+  return (
+    <image
+      className="fixedObjectMarker"
+      data-space-id={spaceId}
+      height={size}
+      href={assetUrl(src)}
+      key={`${spaceId}-marker`}
+      preserveAspectRatio="xMidYMid meet"
+      // Legend art only — never intercept the hex's move click.
+      style={{ pointerEvents: "none" }}
+      width={size}
+      x={x - size / 2}
+      y={y - HEX_SIZE * 0.86}
+    />
+  );
+}
 
 const TERRAIN_COLORS: Record<string, string> = {
   grass: "#3c7a39",
@@ -2595,7 +2634,11 @@ export function HexMapBoard({
               ? "⛩ monolith here"
               : tokenPlacementChoice.kind === "gate"
                 ? "⛩ gate here"
-                : "🌀 whirlpool here"}
+                : tokenPlacementChoice.kind === "oneway_entrance"
+                  ? "⛩ entrance here"
+                  : tokenPlacementChoice.kind === "oneway_exit"
+                    ? "⛩ exit here"
+                    : "🌀 whirlpool here"}
           </text>,
         );
       }
@@ -2716,6 +2759,12 @@ export function HexMapBoard({
             />,
           );
         }
+      }
+      // Fixed-object legend marker (mine resource / settlement / obelisk / gate /
+      // whirlpool / Ⅶ objective) at the top of the revealed hex.
+      const fixedMarker = fixedObjectMarkerNode(field, spaceId, x, y);
+      if (fixedMarker) {
+        overlays.push(fixedMarker);
       }
       if (field.location === "dungeon_gate") {
         const floor = Math.max(
@@ -3246,6 +3295,11 @@ export function HexMapBoard({
         </title>
       </polygon>,
     );
+    // Fixed-object legend marker on a standalone object hex too.
+    const standaloneMarker = fixedObjectMarkerNode(field, spaceId, x, y);
+    if (standaloneMarker) {
+      overlays.push(standaloneMarker);
+    }
     if (isTeleportMarkLocation(field.location)) {
       // Teleport objects (Gate / Monolith / one-way halves): the unified
       // designer-parity mark — same undistorted art + ring + pair badge the
@@ -4172,7 +4226,21 @@ export function HexMapBoard({
     }
   }
 
-  if (pendingTileChoice && rotatingTile) {
+  // Polish bank flow: the reveal opens the rolled-bank choice (see the banks +
+  // their sizes, pick one or leave the host) BEFORE the rotation float. The
+  // engine arms `awaitingRotation` at the same instant it opens that choice, so
+  // gate the rotate float on the choice being gone — otherwise it covers the
+  // bank cards and the player rotates before deciding. Once the bank choice
+  // resolves, `pendingChoice` clears and the float appears, so the order is:
+  // know the banks → choose → rotate.
+  const preRotationBankChoiceOpen =
+    state.pendingChoice?.type === "OPTION_CHOICE" &&
+    state.pendingChoice.context === "place-creature-bank" &&
+    state.pendingChoice.creatureBank?.preRotation === true &&
+    (state.pendingChoice.creatureBank.tileInstanceId ?? state.pendingChoice.creatureBank.fieldId) ===
+      rotatingTile?.id;
+
+  if (pendingTileChoice && rotatingTile && !preRotationBankChoiceOpen) {
     mapFloats.push({
       key: "rotate-float",
       mapPoint: hexToPixel(

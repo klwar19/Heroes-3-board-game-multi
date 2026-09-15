@@ -42,13 +42,16 @@ function observation(
 ): ComputerObservation {
   const unitMap: Record<string, CombatUnitState> = {};
   for (const u of units) unitMap[u.id] = u;
-  const combat = { id: "c1", units: unitMap } as unknown as CombatState;
+  const combat = { id: "c1", units: unitMap, obstacles: [],
+    attackerPlayerId: "p2", defenderPlayerId: "p1", context: { kind: "neutral", heroId: "main" } } as unknown as CombatState;
   const state = {
     seed: "combat-policy-test",
     round: 1,
     eventCounter: 0,
     combat,
     players: {},
+    heroes: {},
+    activeEffects: [],
   } as unknown as PlayerVisibleState;
   return { playerId, state, legalActions };
 }
@@ -426,8 +429,8 @@ describe("combat policy — defend the high-value threatened unit", () => {
     });
     const decision = chooseComputerAction(
       observation(
-        [highValue(), distantExecutioner],
-        [moveTo("A", 9), defend("A")],
+        [{ ...highValue(), position: 16 }, distantExecutioner],
+        [moveTo("A", 12), defend("A")],
       ),
     );
     expect(decision?.action.type).toBe("MOVE_UNIT");
@@ -531,11 +534,11 @@ describe("combat policy — focus fire", () => {
 });
 
 describe("combat policy — value-adjusted march", () => {
-  it("walks toward the reachable gold target over a nearer, more-wounded low body", () => {
+  it("compares the landing attack instead of blindly marching at gold", () => {
     // Mover M(9). E_HIGH(12, gold) and E_LOW(1, bronze) are both distance 2. Both
     // candidate steps close the nearest-enemy distance equally (2→1), so the
-    // focus march decides: it converges on the gold body (value primary) even
-    // though the bronze is slightly more wounded.
+    // Both landings attack, so the larger damage fraction on the wounded body
+    // wins. Printed tier alone must not override the actual strike.
     const mover = unit({ id: "M", controllerId: "p2", position: 9 });
     const high = unit({
       id: "HI", grade: "gold", attack: 6, defense: 0, maxHealth: 6, damage: 0,
@@ -549,18 +552,17 @@ describe("combat policy — value-adjusted march", () => {
       observation([mover, high, low], [moveTo("M", 8), moveTo("M", 5)]),
     );
     expect(decision?.action.type).toBe("MOVE_UNIT");
-    expect((decision?.action as { destination: number }).destination).toBe(8);
+    expect((decision?.action as { destination: number }).destination).toBe(5);
 
-    // CONTROL: neutralize the value layer — make HI bronze too. Now the wounded
-    // LO is the higher-priority focus, so the march flips toward it (step to 5).
-    const highAsBronze = unit({
-      id: "HI", grade: "bronze", attack: 6, defense: 0, maxHealth: 6, damage: 0,
+    // CONTROL: a kill on the gold body is now the better landing attack.
+    const woundedGold = unit({
+      id: "HI", grade: "gold", attack: 6, defense: 0, maxHealth: 6, damage: 4,
       initiative: 4, position: 12,
     });
     const control = chooseComputerAction(
-      observation([mover, highAsBronze, low], [moveTo("M", 8), moveTo("M", 5)]),
+      observation([mover, woundedGold, low], [moveTo("M", 8), moveTo("M", 5)]),
     );
-    expect((control?.action as { destination: number }).destination).toBe(5);
+    expect((control?.action as { destination: number }).destination).toBe(8);
   });
 });
 

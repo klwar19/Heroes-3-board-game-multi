@@ -2,9 +2,10 @@ import { secondaryHeroPlacementFields } from "../adventure";
 import type { GameState, HeroState } from "../state";
 import {
   armyReadyForContestedFight,
-  developmentResourceTargets,
   hasGoldArmy,
 } from "./development";
+import { isMarketLocation } from "@/data/map/locations";
+import { GOLD_RESERVE, wantsMarketVisit } from "./market-trades";
 import {
   collectMapObjectives,
   objectiveDistanceField,
@@ -19,12 +20,11 @@ export function secondaryHeroOpportunity(
   fieldId?: string,
 ): { worthwhile: boolean; jobs: number; target?: string } {
   const player = state.players[playerId];
-  const reserve = developmentResourceTargets(state, playerId);
   if (
     !player ||
     !hasGoldArmy(state, playerId) ||
     !armyReadyForContestedFight(state, playerId) ||
-    player.resources.gold < reserve.gold + 10
+    player.resources.gold < GOLD_RESERVE + 10
   )
     return { worthwhile: false, jobs: 0 };
   const main = Object.values(state.heroes ?? {}).find(
@@ -67,7 +67,9 @@ export function secondaryHeroOpportunity(
           // "town" passes isFreeSeizeObjective but means an enemy town — a
           // siege is not a collection job for the fresh scout.
           o.kind !== "town" &&
-          isFreeSeizeObjective(o, state) &&
+          (isFreeSeizeObjective(o, state) ||
+            (isMarketLocation(state.adventure?.fields[o.spaceId]?.location ?? "") &&
+              wantsMarketVisit(state, playerId, state.adventure?.fields[o.spaceId]?.location))) &&
           o.spaceId !== mainGoal?.spaceId,
       )
       .filter((o) => {

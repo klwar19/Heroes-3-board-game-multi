@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { pvpReach } from "./pvp-reach";
 import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
 import { openingBronzeCoreReady, committedGoldInvestment, nextGoldLadderStep } from "./development";
 import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
@@ -68,6 +69,7 @@ import {
   assessDwellingRush,
   developmentResourceTargets,
   hasGoldArmy,
+  hasReachedGoldArmy,
   hasOpenedFarEconomy,
   shouldLaunchBronzeRush,
 } from "./development";
@@ -117,6 +119,8 @@ export type MapObjective = {
    * well above generic exploration so the premium rush can find its target.
    */
   opensFarTile?: boolean;
+  /** Public tile band includes guards that can still award this hero XP. */
+  opensGrowthTile?: boolean;
 };
 
 /** Broad objective importance retained for callers and deterministic tooling. */
@@ -347,7 +351,11 @@ export function premiumEconomyResourceBonus(
   const needVals = (target.valuables ?? 0) - vals;
   const needGold = Math.max(0, (target.gold ?? 0) - gold);
   if (field.resource === "valuables") {
-    if (needVals > 0) return 55; // hunt valuables first when the dwelling needs them
+    // Deficit-scaled so a NEEDED valuables mine decisively outranks a nearer gold
+    // mine (gold-mine bonus below is only 18 while valuables are short). needVals
+    // up to 4 for the gold dwelling => up to 55+60=115, which survives ~5 hexes of
+    // the 18/step distance decay and wins the march.
+    if (needVals > 0) return 55 + Math.min(60, needVals * 20); // hunt valuables first when the dwelling needs them
     if (vals >= (target.valuables ?? 0) + 2) return 8; // surplus — still income, low priority
     return 30;
   }
@@ -357,6 +365,54 @@ export function premiumEconomyResourceBonus(
     return 32;
   }
   return 0;
+}
+
+/** Whether the seat already OWNS a recurring valuables source — a flagged
+ * valuables mine, or a far settlement it flagged and set to pay valuables. Used
+ * to decide whether the hero should keep hunting the map for one. */
+function securedValuablesSource(state: GameState, playerId: PlayerId): boolean {
+  return Object.values(state.adventure?.fields ?? {}).some(field =>
+    field.flagOwnerId === playerId &&
+    ((field.location === "mine" && field.resource === "valuables") ||
+      (field.location === "settlement" && field.settlementResource === "valuables")));
+}
+
+/** Whether the seat still needs to FIND a valuables source: it has no gold body,
+ * is short of the gold-dwelling valuables target, and does not already own a
+ * valuables mine/settlement. Drives the "keep opening far tiles" push so a
+ * valuables mine on a still-face-down far tile gets revealed before R9. */
+export function needsFarValuablesReveal(state: GameState, playerId: PlayerId): boolean {
+  if (hasGoldArmy(state, playerId)) return false;
+  const targets = developmentResourceTargets(state, playerId);
+  const held = state.players[playerId]?.resources.valuables ?? 0;
+  return held < (targets.valuables ?? 0) && !securedValuablesSource(state, playerId);
+}
+
+/** Whether a location interaction can yield `resource`, recursing through the
+ * SEQUENCE / CHOOSE_ONE / ATTACK_DIE_TABLE wrappers the engine uses. Treasure
+ * dice pay valuables; a resource die pays a random one of the three (counted for
+ * any). Lets the funding planner see one-shot pickups (treasure symbols, resource
+ * rolls, gold chests) that a top-level GAIN_RESOURCES-only check missed. */
+function interactionCanYield(interaction: unknown, resource: string, depth = 0): boolean {
+  if (!interaction || typeof interaction !== "object" || depth > 6) return false;
+  const it = interaction as { type?: string; interactions?: unknown[]; options?: { interaction?: unknown }[];
+    plus?: unknown; zero?: unknown; minus?: unknown; [key: string]: unknown };
+  switch (it.type) {
+    case "GAIN_RESOURCES":
+      return ((it[resource] as number) ?? 0) > 0;
+    case "ROLL_TREASURE_DICE":
+      return resource === "valuables";
+    case "ROLL_RESOURCE_DICE":
+      return true; // random gold / materials / valuables — can supply any
+    case "SEQUENCE":
+      return (it.interactions ?? []).some(step => interactionCanYield(step, resource, depth + 1));
+    case "CHOOSE_ONE":
+      return (it.options ?? []).some(option => interactionCanYield(option?.interaction, resource, depth + 1));
+    case "ATTACK_DIE_TABLE":
+      return [it.plus, it.zero, it.minus].some(branch => interactionCanYield(branch, resource, depth + 1));
+    default:
+      return false;
+  }
 }
 
 /**
@@ -493,13 +549,21 @@ export function canBeatGuardedField(
       field.tileInstanceId && state.adventure?.tiles[field.tileInstanceId]?.group === "far") {
     const army = state.players[hero.controllerId].army;
     const silver = army.some(u=>u.side!=="bank" && ["silver","gold","azure"].includes(coreUnitDefinitions[u.unitDefId]?.tier));
-    if (!silver && !necropolisFarArmyReady(state, hero.controllerId)) return false;
+    if (!silver && !necropolisFarArmyReady(state, hero.controllerId) &&
+        !(state.round <= 5 && fieldDifficulty === 2 && rushProfile.bronzePacks >= 3)) return false;
     const otherFarIncome = Object.values(state.adventure.fields).some(f=> f.tileInstanceId &&
       f.tileInstanceId !== field.tileInstanceId && state.adventure!.tiles[f.tileInstanceId]?.group === "far" &&
       f.flagOwnerId === hero.controllerId && (f.location === "settlement" || f.location === "mine"));
     if (fieldDifficulty >= 3 && otherFarIncome && !silver) return false;
   }
   if (repeatsFailedFight(state, hero.controllerId, field.spaceId)) return false;
+  // An opening full Bronze core can earn income/XP from ordinary level II
+  // guards instead of waiting exclusively for the much harder Far III.
+  if (hero.kind === "main" && state.round <= 5 && fieldDifficulty === 2 &&
+      !field.flagOwnerId && !fieldCreatureBankId(field) && !field.customGuardUnits?.length &&
+      !isBankStyleGuardLocation(field.location) && !isTeleportObjectGuardLocation(field.location) &&
+      !field.unlimitedCombatRounds && neutralBattleLevel(state, hero) >= 2 &&
+      rushProfile.bronzePacks >= 3 && humanNeutralFormationReady) return true;
   // Easy neutrals the hero level already covers (difficulty ≤ 1): ALWAYS take.
   // Older gates parked the army for several turns "waiting for its core / Far
   // economy" before walking into a free/equal difficulty-1 fight — that felt
@@ -929,6 +993,7 @@ function collectExploreObjectives(
     const probe: HeroState = { ...hero, spaceId: field.spaceId };
     let useful = false;
     let opensFarTile = false;
+    let opensGrowthTile = false;
     for (const tile of faceDown) {
       if (shouldDeferExpansionTile(state, probe, tile)) continue;
       // AI gate: geometric adjacency plus an open doorway now. Every yellow arc
@@ -940,8 +1005,8 @@ function collectExploreObjectives(
         useful = true;
         if (tile.group === "far") {
           opensFarTile = true;
-          break;
         }
+        if (tileBandOffersGrowth(hero, tile.group)) opensGrowthTile = true;
       }
     }
     // A field where the hero could DROP a Ⅱ–Ⅲ tile is an expand objective even
@@ -960,6 +1025,7 @@ function collectExploreObjectives(
         spaceId: field.spaceId,
         kind: "explore",
         ...(opensFarTile ? { opensFarTile: true } : {}),
+        ...(opensGrowthTile ? { opensGrowthTile: true } : {}),
       });
     }
   }
@@ -1458,6 +1524,24 @@ export function objectiveStrategicValue(
           : easyLevelCovered
             ? 560
             : 410;
+      // A survivable LOWER-level (difficulty-2) tile that carries GOODS — a
+      // materials mine or a resource-yielding guarded pickup (treasure symbol,
+      // resource roll, gold chest) — is worth taking for its loot on the way to
+      // an L3, the user's "flexibly fight a beatable lower tile for goods" rule.
+      // Rank it near a flaggable (625-658) but below a premium L3 (920+). This is
+      // OBJECTIVE PRIORITY only: entry stays gated by canBeatGuardedField and the
+      // retreat rule still decides at combat time, so no unbeatable fight opens
+      // (golden rule 3 — the guard-difficulty band — is untouched).
+      if (
+        !guaranteedQuickWin && !ready && difficulty === 2 && field &&
+        (field.location === "mine" ||
+          interactionCanYield(locationDefinitions[field.location]?.interaction, "valuables") ||
+          interactionCanYield(locationDefinitions[field.location]?.interaction, "gold") ||
+          interactionCanYield(locationDefinitions[field.location]?.interaction, "buildingMaterials")) &&
+        canBeatGuardedField(state, hero, field)
+      ) {
+        value = Math.max(value, 640);
+      }
       // Premium Far economy (settlement / gold / valuables): hit ASAP once the
       // army can cover it for this scenario difficulty. Worth multi-turn
       // marches and unit losses — before round 6 a 3-turn prep path must
@@ -1569,7 +1653,11 @@ export function objectiveStrategicValue(
       if (
         hero.kind === "main" &&
         objective.opensFarTile &&
-        !hasOpenedFarEconomy(state, hero.controllerId)
+        (!hasOpenedFarEconomy(state, hero.controllerId) ||
+          // Keep flipping far tiles AFTER the first far capture while the seat
+          // still lacks a valuables source — the valuables mine that unblocks the
+          // gold dwelling may sit on a still-face-down 3rd/4th far tile.
+          needsFarValuablesReveal(state, hero.controllerId))
       ) {
         value = Math.max(value, 655);
       }
@@ -1775,6 +1863,18 @@ export function minPrintedGuardDifficultyForBand(
     }
   }
   return Number.isFinite(min) ? min : 0;
+}
+
+/** Public bands, never the identity or rewards of a hidden tile. */
+export function tileBandOffersGrowth(hero: HeroState, group: string | undefined): boolean {
+  const minimum = minPrintedGuardDifficultyForBand(group);
+  return minimum > 0 && minimum <= hero.level && minimum + 1 >= hero.level;
+}
+
+export function heroReadyForGrowth(state: GameState, hero: HeroState): boolean {
+  return hero.kind === "main" && hero.level >= 3 && hero.level < 7 &&
+    (hasGoldArmy(state, hero.controllerId) ||
+      (hero.level >= 4 && securedFarTileIds(state, hero.controllerId).size >= 2));
 }
 
 /**
@@ -2054,12 +2154,35 @@ export function primaryMapObjective(
   );
   // Staging is only a fallback. Do not camp at a fight we cannot start while
   // reachable pickups or expansion doorways can still improve the position.
-  const actionable = reachable.filter((objective) => {
+  let actionable = reachable.filter((objective) => {
     const field = state.adventure?.fields[objective.spaceId];
     return !field ||
       (!isFieldGuarded(field) && field.location !== "creature_bank") ||
       canBeatGuardedField(state, hero, field);
   });
+  // Only an immediate, unfavourable player encounter can change the normal
+  // route. Prefer an existing productive objective outside that opponent's
+  // next movement reach; if none exists, retain the normal plan rather than
+  // inventing an idle retreat or a new exploration requirement.
+  if (hero.spaceId && hero.kind === "main") {
+    const incoming = Object.values(state.heroes ?? {}).filter(enemy =>
+      enemy.spaceId && enemy.controllerId !== "neutrals" &&
+      !state.players[enemy.controllerId]?.eliminated &&
+      !playersAreAllied(state, hero.controllerId, enemy.controllerId) &&
+      (pvpReach(state, enemy, true).has(hero.spaceId!) || pvpReach(state, hero).has(enemy.spaceId)) &&
+      !shouldEngageEnemy(state, hero.controllerId, enemy.controllerId));
+    if (incoming.length) {
+      const safe = actionable.filter(objective => pvpReach(state, hero).has(objective.spaceId) &&
+        (locationDefinitions[state.adventure?.fields[objective.spaceId]?.location ?? ""]?.passive?.protectsFromAttack ||
+          incoming.every(enemy => !pvpReach(state, enemy, true).has(objective.spaceId))));
+      if (safe.length) {
+        actionable = safe;
+        // Income overrides below also read this pool. Keep the detour finite:
+        // a currently reachable payoff, not a march across the map to hide.
+        objectives = safe;
+      }
+    }
+  }
   const available = actionable.length > 0 ? actionable : reachable;
   // During rounds 1–2, sweep reachable home rewards before expanding. Later
   // returns retain normal reward value without restarting the opening.
@@ -2074,6 +2197,88 @@ export function primaryMapObjective(
     ? bestHomeOpeningObjective(state, hero, openingRemaining)
     : null;
 
+  // Early information is worth a short legal approach when held Far supply
+  // remains. No supply means this branch does nothing; normal income/pickups
+  // and attainable exploration continue below.
+  if (hero.kind === "main" && homeRemaining.length === 0 && state.round >= 2 && state.round <= 3 &&
+      seatHoldsFarSupplyTile(state, hero.controllerId) &&
+      (state.adventure?.farTilesOpenedByPlayer?.[hero.controllerId] ?? 0) < 2) {
+    const doorways = actionable.filter(objective => objective.kind === "explore" && objective.opensFarTile &&
+      (distanceFromHeroTo(state, hero, objective.spaceId) ?? Infinity) < heroMovementMax(state, hero));
+    const doorway = bestObjectiveOf(state, hero, doorways, false);
+    if (doorway) return doorway;
+  }
+
+  // A difficult Far III is not the only route to income and experience.
+  // Before committing a Bronze army without its spell hand, take a nearby
+  // beatable II first. Revealed public difficulty only; no guard-deck peeking.
+  if (hero.kind === "main" && homeRemaining.length === 0 && state.round <= 5) {
+    const player = state.players[hero.controllerId];
+    const bronzeOnly = player.army.every(unit => coreUnitDefinitions[unit.unitDefId]?.tier === "bronze");
+    // Computer combat start grants a plain Arrow and Power in every battle.
+    // Knowledge is not required to cast that spell; missing a natural duplicate
+    // must not force a ready army away from a beatable Far objective.
+    const spellReady = isComputerPlayer(state, hero.controllerId) ||
+      ([...player.hand, ...(player.spellBook ?? [])].includes("spell.magic_arrow") &&
+        player.hand.includes("stat.power"));
+    if (bronzeOnly && !spellReady) {
+      const easier = actionable.filter(objective => {
+        const field = state.adventure?.fields[objective.spaceId];
+        return field && (field.difficulty ?? 0) === 2 &&
+          (objective.kind === "guard" || objective.kind === "flaggable") &&
+          (distanceFromHeroTo(state, hero, objective.spaceId, true) ?? Infinity) <= heroMovementMax(state, hero) &&
+          (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field));
+      });
+      const income = easier.filter(objective => {
+        const field = state.adventure!.fields[objective.spaceId];
+        return field.location === "mine" || field.location === "settlement";
+      });
+      const preferred = income.length ? income : easier;
+      if (preferred.length) return preferred.find(objective => objective.spaceId === stickySpaceId) ??
+        bestObjectiveOf(state, hero, preferred, true, true);
+    }
+  }
+
+  // Far guards below our level no longer pay XP. Once the opening economy
+  // supports expansion, stop letting endless income/funding overrides preempt
+  // the main hero's growth. Only choose reachable, currently beatable fights;
+  // discoveries use the same public band/access gates as ordinary navigation.
+  // Do NOT pivot to XP growth while the seat is still saving resources for its
+  // gold-ladder milestone (the gold dwelling wants 10 gold / 9 materials / 4
+  // valuables, then the gold body ~19-22 gold + 1 valuable). Growth preempts the
+  // resource-funding (below) and far-economy capture blocks, so the hero would
+  // march for XP the moment ~2 far tiles are secured and never gather the
+  // valuables the gold dwelling needs. Keep gathering until the targets are met
+  // (or a gold body already stands); the growth march resumes unchanged then.
+  // Gate at the CALL SITE only — heroReadyForGrowth itself is unchanged so its
+  // other users (growth-tile band) keep their behaviour.
+  const goldEconomyTargets = developmentResourceTargets(state, hero.controllerId);
+  const goldEconomyRes = state.players[hero.controllerId]?.resources;
+  const savingForGoldEconomy = !hasGoldArmy(state, hero.controllerId) && goldEconomyRes !== undefined &&
+    ((goldEconomyRes.valuables ?? 0) < (goldEconomyTargets.valuables ?? 0) ||
+      (goldEconomyRes.buildingMaterials ?? 0) < (goldEconomyTargets.buildingMaterials ?? 0) ||
+      (goldEconomyRes.gold ?? 0) < (goldEconomyTargets.gold ?? 0));
+  if (heroReadyForGrowth(state, hero) && homeRemaining.length === 0 && !savingForGoldEconomy) {
+    const progression = actionable.filter(objective => {
+      const field = state.adventure?.fields[objective.spaceId];
+      if (!field || field.noExperience) return false;
+      if (objective.kind === "guard") return !fieldCreatureBankId(field) &&
+        !isBankStyleGuardLocation(field.location) && !isTeleportObjectGuardLocation(field.location) &&
+        (field.difficulty ?? 0) >= hero.level;
+      return objective.kind === "visitable" &&
+        ["learning_stone", "tree_of_knowledge"].includes(field.location);
+    });
+    // Do not march across the map for XP while a nearby frontier can offer it.
+    const nearby = progression.filter(objective =>
+      (distanceFromHeroTo(state, hero, objective.spaceId) ?? Infinity) <= heroMovementMax(state, hero) * 2);
+    const doorways = actionable.filter(objective => objective.kind === "explore");
+    const growthDoorways = doorways.filter(objective => objective.opensGrowthTile);
+    const expansion = growthDoorways.length > 0 ? growthDoorways : doorways.filter(objective => !objective.opensFarTile);
+    const growth = nearby.length > 0 ? nearby : expansion.length > 0 ? expansion : progression;
+    if (growth.length > 0) return growth.find(objective => objective.spaceId === stickySpaceId) ??
+      bestObjectiveOf(state, hero, growth, nearby.length > 0);
+  }
+
   // Fund the next army milestone with attainable resources: Silver after
   // the first Far capture, then the Gold dwelling/recruit/upgrade ladder.
   // Gate on STICKY-INDEPENDENT facts only: needsPremiumSilverBreakthrough's
@@ -2085,24 +2290,34 @@ export function primaryMapObjective(
         securedFarTileIds(state, hero.controllerId).size > 0)) {
     const targets = developmentResourceTargets(state, hero.controllerId);
     const resources = state.players[hero.controllerId].resources;
-    for (const resource of ["valuables", "buildingMaterials", "gold"] as const) {
-      if (resources[resource] >= targets[resource]) continue;
-      const sources = actionable.filter(objective => {
+    const fundingCandidates = actionable.flatMap(objective => {
         const field = state.adventure?.fields[objective.spaceId];
-        if (!field || objective.kind === "explore" || field.location === "settlement") return false;
-        if (field.location === "mine") return field.resource === resource && field.flagOwnerId !== hero.controllerId;
-        const interaction = locationDefinitions[field.location]?.interaction;
-        return interaction?.type === "GAIN_RESOURCES" && (interaction[resource] ?? 0) > 0;
-      });
-      if (sources.length > 0) {
-        // bestObjectiveOf re-resolves distances with peaceful visits and can
-        // come back empty; fall through to the capture blocks instead of
-        // returning null (which would leave the hero with no objective).
-        const funding = sources.find(objective => objective.spaceId === stickySpaceId) ??
-          bestObjectiveOf(state, hero, sources, true, true);
-        if (funding) return funding;
-      }
-    }
+        if (!field || objective.kind === "explore") return [];
+        const distance = distanceFromHeroTo(state, hero, objective.spaceId, true);
+        if (distance === undefined) return [];
+        let benefit = 0;
+        for (const resource of ["valuables", "buildingMaterials", "gold"] as const) {
+          const deficit = targets[resource] - resources[resource];
+          if (deficit <= 0) continue;
+          const supplies = field.location === "settlement" ? field.flagOwnerId !== hero.controllerId :
+            field.location === "mine" ? field.resource === resource && field.flagOwnerId !== hero.controllerId :
+            interactionCanYield(locationDefinitions[field.location]?.interaction, resource);
+          if (supplies) benefit = Math.max(benefit, Math.min(12,
+            deficit * (resource === "valuables" ? 6 : resource === "buildingMaterials" ? 2 : 1)));
+        }
+        if (benefit === 0) return [];
+        const travel = distance + premiumCombatMovementReserve(state, hero, field);
+        const turns = Math.max(0, Math.ceil((travel - hero.movementPoints) / Math.max(1, heroMovementMax(state, hero))));
+        // Compare all shortages together. A distant valuables source must not
+        // preempt reachable gold/materials every turn just because it is first
+        // in an array. Captures also add recurring income to the same budget.
+        const income = field.location === "mine" || field.location === "settlement";
+        const score = (benefit + (income ? 8 : 0)) / (1 + turns) - travel * 0.25 +
+          (objective.spaceId === stickySpaceId ? 1 : 0);
+        return [{ objective, score }];
+    });
+    fundingCandidates.sort((a, b) => b.score - a.score || a.objective.spaceId.localeCompare(b.objective.spaceId));
+    if (fundingCandidates.length > 0) return fundingCandidates[0].objective;
   }
 
   // FAR II–III income is the opening objective, starting as soon as the army
@@ -2131,8 +2346,12 @@ export function primaryMapObjective(
         hero.movementPoints) / Math.max(1, heroMovementMax(state, hero))));
     };
     const earliest = Math.min(...captures.map(attackRound));
-    const timely = captures.filter(objective => attackRound(objective) <= Math.max(4, earliest));
-    const remaining = timely.length > 0 ? timely : sweep;
+    // A round-2 capture beats waiting until round 4 for an equal-quality
+    // holding. Allow one turn for a better income type, within the deadline.
+    const timely = captures.filter(objective => attackRound(objective) <= Math.min(Math.max(4, earliest), earliest + 1));
+    const premium = timely.filter(objective => isPremiumEconomyField(state.adventure!.fields[objective.spaceId]));
+    const settlements = premium.filter(objective => state.adventure!.fields[objective.spaceId].location === "settlement");
+    const remaining = settlements.length > 0 ? settlements : premium.length > 0 ? premium : timely.length > 0 ? timely : sweep;
     if (remaining.length > 0) return remaining.find(objective => objective.spaceId === stickySpaceId) ??
       bestObjectiveOf(state, hero, remaining, true, true);
   }
@@ -2181,19 +2400,14 @@ export function primaryMapObjective(
     };
     const schedule = farEconomy.map(objective => ({ objective, round: attackRound(objective) }));
     const earliest = Math.min(...schedule.map(candidate => candidate.round));
-    const timely = schedule.filter(candidate => candidate.round <= Math.max(4, earliest))
+    const timely = schedule.filter(candidate => candidate.round <= Math.min(Math.max(4, earliest), earliest + 1))
       .map(candidate => candidate.objective);
-    // Timely settlements keep the round-4 deadline preference; the pre-Gold
-    // two-settlement plan may still fall back to a distant one, but never
-    // while a timely settlement (or the earliest capture) is a settlement.
+    // Prefer settlements only inside the early-capture schedule. A distant
+    // second settlement must not displace reachable premium income.
     const timelySettlements = timely.filter(objective =>
       state.adventure?.fields[objective.spaceId]?.location === "settlement",
     );
-    const settlements = timelySettlements.length > 0 || settlementTarget !== 2
-      ? timelySettlements
-      : farEconomy.filter(objective =>
-          state.adventure?.fields[objective.spaceId]?.location === "settlement",
-        );
+    const settlements = timelySettlements;
     const newMines = timely.filter(objective => {
       const field = state.adventure!.fields[objective.spaceId];
       return field.location === "mine" && field.resource && !secured.has(field.resource);
@@ -2210,13 +2424,15 @@ export function primaryMapObjective(
 
   // The post-Gold collector consumes existing leftovers before opening more
   // land. It must not chase the main hero's current objective.
-  if (hero.kind === "secondary" && hasGoldArmy(state, hero.controllerId)) {
+  if (hero.kind === "secondary" && hasReachedGoldArmy(state, hero.controllerId)) {
     const mainTarget = state.computerMemory?.[hero.controllerId]?.stickyObjectiveSpaceId;
     // "town" passes isFreeSeizeObjective but is an enemy town — a siege, not a
     // leftover pickup for the fresh collector.
     const leftovers = actionable.filter(objective =>
       objective.spaceId !== mainTarget && objective.kind !== "town" &&
-      isFreeSeizeObjective(objective, state));
+      (isFreeSeizeObjective(objective, state) ||
+        (isMarketLocation(state.adventure?.fields[objective.spaceId]?.location ?? "") &&
+          wantsMarketVisit(state, hero.controllerId, state.adventure?.fields[objective.spaceId]?.location))));
     if (leftovers.length > 0) return bestObjectiveOf(state, hero, leftovers, false);
   }
 

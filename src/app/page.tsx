@@ -1174,6 +1174,7 @@ export default function Home() {
   // Unit id -> definition id, kept across snapshots: the death that ends a
   // combat arrives in the snapshot where the combat is already gone.
   const unitDefIdsRef = useRef<Map<string, string>>(new Map());
+  const unitVariantsRef = useRef<Map<string, "few" | "pack" | "neutral">>(new Map());
   const hiddenHandTimerRef = useRef<number | null>(null);
   const combatPresentTimerRef = useRef<number | null>(null);
   /** Pending timers that reveal each unit's real health once its blow lands. */
@@ -1556,6 +1557,7 @@ export default function Home() {
     if (!seenRollIdsRef.current) {
       // Fresh room connection: forget the previous room's units.
       unitDefIdsRef.current = new Map();
+      unitVariantsRef.current = new Map();
     }
     if (nextState.combat) {
       for (const unit of Object.values(nextState.combat.units)) {
@@ -1566,6 +1568,7 @@ export default function Home() {
           : unit.heroDefId ?? unit.unitDefId;
         if (voiceId) {
           unitDefIdsRef.current.set(unit.id, voiceId);
+          unitVariantsRef.current.set(unit.id, unit.variant);
         }
       }
     }
@@ -2671,6 +2674,8 @@ export default function Home() {
             : unit?.heroDefId ?? unit?.unitDefId;
           return voiceId ?? unitDefIdsRef.current.get(unitId);
         };
+        const unitVariant = (unitId: string) =>
+          nextState.combat?.units[unitId]?.variant ?? unitVariantsRef.current.get(unitId);
 
         // Leading activation-spell preamble: present the cast(s) FIRST — at the
         // very front of the timeline — so a neutral Faerie Dragon's Ice Bolt
@@ -2760,7 +2765,7 @@ export default function Home() {
             flip: false,
             delayMs: moveDelay
           });
-          playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+          playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
         });
 
         // How long the slide-in takes (the last approach ghost reaching its
@@ -2843,7 +2848,7 @@ export default function Home() {
               : undefined;
           const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
           const phasedShot = Boolean(shotPlan?.projectile && getFxSheet(shotPlan.projectile)?.projectilePhases);
-          playUnitSound(attackerVoice, usesProjectilePresentation ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0));
+          playUnitSound(attackerVoice, usesProjectilePresentation ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0), unitVariant(roll.attackerId));
           // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
           // Bolt) flies the real projectile + burst + spell sound below; its
           // spell sound then carries the shot, so the extra flourish is skipped
@@ -2947,7 +2952,7 @@ export default function Home() {
           // the same round trip home, so it does not speak a second time. Other
           // after-attack steps keep their move sound.
           if (!isHarpyReturn) {
-            playUnitSound(unitVoice(event.unitId), "move", moveDelay);
+            playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
           }
           combatPresentationEnd = Math.max(combatPresentationEnd, moveDelay + COMBAT_MOVE_MS);
         });
@@ -3556,7 +3561,7 @@ export default function Home() {
                     combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                   }
                 }
-                playUnitSound(unitVoice(targetId), "hurt", at);
+                playUnitSound(unitVoice(targetId), "hurt", at, unitVariant(targetId));
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
@@ -3709,7 +3714,7 @@ export default function Home() {
                 const shooterPlan = unitShotFxPlan(shooterId);
                 const extraShotPlan = shooterPlan ?? plan;
                 if (shooterPlan) {
-                  playUnitSound(shooterId, "shoot", timeline + RANGED_RELEASE_MS);
+                  playUnitSound(shooterId, "shoot", timeline + RANGED_RELEASE_MS, unitVariant(event.unitId));
                 }
                 queueBoardFx(extraShotPlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
                 extraShotDamageAt.set(targetUnitId, timeline);
@@ -3759,7 +3764,7 @@ export default function Home() {
                     delayMs: start + (entry.delayMs ?? 0)
                   });
                 });
-                playUnitSound(unitVoice(event.unitId), "defend", start);
+                playUnitSound(unitVoice(event.unitId), "defend", start, unitVariant(event.unitId));
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, start + spellPresentationMs(plan) + 400);
                 break;
@@ -3777,7 +3782,7 @@ export default function Home() {
             // same timeline so an exchange reads "strike -> wince -> death
             // cry -> retaliation".
             case "COMBAT_UNIT_PLACED": {
-              playUnitSound(unitVoice(event.unitId), "move", timeline);
+              playUnitSound(unitVoice(event.unitId), "move", timeline, unitVariant(event.unitId));
               break;
             }
             case "UNIT_ATTACK_DECLARED": {
@@ -3793,7 +3798,7 @@ export default function Home() {
               break;
             }
             case "UNIT_DEFENDED": {
-              playUnitSound(unitVoice(event.unitId), "defend", timeline);
+              playUnitSound(unitVoice(event.unitId), "defend", timeline, unitVariant(event.unitId));
               break;
             }
             case "UNIT_REMOVED": {
@@ -3804,12 +3809,12 @@ export default function Home() {
               const impactAt = impactByTarget.get(event.unitId);
               const spellFallAt = spellRevealAt.get(event.unitId);
               if (impactAt !== undefined) {
-                playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS);
+                playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS, unitVariant(event.unitId));
               } else if (spellFallAt !== undefined) {
-                playUnitSound(unitVoice(event.unitId), "death", spellFallAt);
+                playUnitSound(unitVoice(event.unitId), "death", spellFallAt, unitVariant(event.unitId));
                 combatPresentationEnd = Math.max(combatPresentationEnd, spellFallAt + 1200);
               } else {
-                playUnitSound(unitVoice(event.unitId), "death", timeline);
+                playUnitSound(unitVoice(event.unitId), "death", timeline, unitVariant(event.unitId));
                 timeline += 650;
               }
               break;

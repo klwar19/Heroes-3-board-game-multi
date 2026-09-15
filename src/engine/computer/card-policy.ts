@@ -1,4 +1,5 @@
 import { reinforceCostFor } from "../adventure";
+import { previewSpellDamage, unitMatchesSpecialtyName } from "../reducer";
 import { cardLibrary } from "@/data/cards/library";
 import { unitAbilities } from "@/data/units/abilities";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -8,11 +9,11 @@ import {
 } from "../battlefield";
 import { cancelSpellAllowsSchoolAndLevel, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
-import { getDamageCapPerSpell, unitImmuneToSpellSchools } from "../unit-abilities";
+import { unitImmuneToSpellSchools } from "../unit-abilities";
 import { dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
 import { balanceCardLibrary } from "../community-balance-cards";
-import { resolvedSpellPowerForStackItem } from "../legal-actions";
+import { resolvedSpellPowerForStackItem, standingSpellPower } from "../legal-actions";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   CardDefinition,
@@ -34,10 +35,13 @@ import {
   developmentResourceTargets,
 } from "./development";
 import { collectMapObjectives } from "./map-navigation";
-import { legionPurchaseSavings, readySpells, saveLegionForAfterFight, upcomingFight } from "./card-planning";
+import { legionPurchaseSavings, nearbyPlayerFight, readySpells, saveLegionForAfterFight, upcomingFight } from "./card-planning";
+import { coordinatedReplyDamage } from "./opponent-reply";
 import { getPermanentCardIds, permanentLimitFor } from "../permanents";
 import {
   expectedAttackDamage,
+  hasThreatAbility,
+  hasOutputAbility,
   livingEnemyUnits,
   pendingIncomingDamage,
   unitRemainingHealth,
@@ -234,6 +238,16 @@ export function cardHandValue(cardId: string, observation: ComputerObservation):
   const fight = upcomingFight(observation);
   let value = cardKeepValue(cardId, observation);
   const effect = card.effect;
+  // Build a usable opening hand before the Far tile is revealed. Keep the
+  // first Power/Knowledge while searching for Arrow, not repeated orphan fuel.
+  const opening = !state.combat && state.round <= 5 && Boolean(state.adventure);
+  if (opening && (cardId === "stat.power" || cardId === "stat.knowledge")) return Math.max(value, 72);
+  if (card.statisticType === "attack" && (fight || opening)) return Math.max(value, 78);
+  // Statistic cards have no community tier and otherwise score only 32,
+  // below the fight-refresh discard threshold (50). Keep the attack/defense
+  // reactions that make a PvP hand useful, including while finishing a guard.
+  if ((card.statisticType === "attack" || card.statisticType === "defense") &&
+      (fight?.kind === "pvp" || nearbyPlayerFight(observation))) return Math.max(value, 70);
   if (cardId === "spell.magic_arrow") {
     // Inside a fight whose every living enemy is Arrow-immune (Elementals,
     // spell-immune guards) the Arrow is dead weight: refresh it away.
@@ -252,6 +266,7 @@ export function cardHandValue(cardId: string, observation: ComputerObservation):
   const school = card.permanentEffect?.schoolBonus?.school;
   if (school && !spells.some(spell => spell.spellSchools?.includes(school) || spell.spellSchools?.includes("any"))) value = 20;
   if (card.id === "ability.resistance") {
+    if (nearbyPlayerFight(observation)) return Math.max(value, 80);
     if (fight?.kind === "neutral") return 8;
     if (fight?.kind === "pvp") return Math.max(value, 80);
   }
@@ -294,6 +309,22 @@ export type CardKeepView = {
  * Necropolis matchup, Mage-Guild access); without a view the printed tier
  * applies as-is, and an unmapped card keeps the pure kind/family heuristic.
  */
+/**
+ * A hero-specialty whose (chosen) effect grants +Attack/+Defense — the "might"
+ * specialties. The AI conserves these as combat tempo rather than discard fuel.
+ */
+function specialtyBoostsAttackOrDefense(card: CardDefinition): boolean {
+  const effects =
+    card.effect.type === "CHOOSE_ONE"
+      ? card.effect.options.map((option) => option.effect)
+      : [card.effect];
+  return effects.some(
+    (effect) =>
+      effect?.type === "ADD_COMBAT_STAT" &&
+      (effect.stat === "attack" || effect.stat === "defense"),
+  );
+}
+
 export function cardKeepValue(
   cardId: string,
   view?: CardKeepView | null,
@@ -321,6 +352,11 @@ export function cardKeepValue(
       break;
     case "hero-specialty":
       value += 40;
+      // Attack/Defense-boosting specialties are a recurring combat-tempo
+      // resource: hold them for the fight rather than burning them as fuel for
+      // other plays. Raising the keep value lifts the discard-cost penalty and
+      // every keep/discard ranking that reads it.
+      if (specialtyBoostsAttackOrDefense(card)) value += 25;
       break;
     case "war-machine":
       value += 25;
@@ -461,7 +497,15 @@ function scoreDamageEffect(
       const threat = unitThreatValue(unit);
       const lethal = damage >= remaining;
       if (unit.controllerId === observation.playerId) {
-        return total - (55 + Math.min(35, threat) + (lethal ? 55 : 0));
+        // User ruling (2026-09-15): an AoE damage spell (Fireball / Frost Ring /
+        // Meteor Shower) must AVOID catching our OWN gold lvl-7 bodies — never hit
+        // the enemy gold if the same blast also lands on ours. Our own gold/azure
+        // in the splash costs far more than any enemy body the centre gains, so the
+        // AI shifts the centre to spare it (or declines the cast when no centre can).
+        const ownPremium = unit.grade === "gold" || unit.grade === "azure";
+        return total - (ownPremium
+          ? 220 + (lethal ? 140 : 0)
+          : 55 + Math.min(35, threat) + (lethal ? 55 : 0));
       }
       enemyHits += 1;
       return (
@@ -504,9 +548,25 @@ function scoreDamageEffect(
   // with the card's PRINTED base-Power damage. The old attack-style
   // `attack − defense` guess made armoured high-value units look unhittable and
   // steered every cast at the cheapest chaff instead of the real threat.
-  const printed = getSpellDamageAmount(card, card.power ?? 0);
-  const damage = Math.max(1, printed);
+  const owner = observation.state.players[observation.playerId];
+  const heldPower = (owner?.hand ?? []).filter(id => id === "stat.power").length;
+  // Plain Power is legal fuel for any spell. Preview that finite hand budget,
+  // while still respecting the target's actual wards and immunity.
+  const powerBudget = heldPower + Math.min(heldPower, Math.max(0, crownsAvailable(observation)));
+  // Include the active unit, school, artifact, and other standing bonuses
+  // when choosing a target. The pending-cast evaluator still decides exact
+  // marginal Power spending through the authoritative stack calculation.
+  const standingPower = standingSpellPower(observation.state as unknown as GameState, observation.playerId, card);
+  const printed = getSpellDamageAmount(card, Math.max(0, (card.power ?? 0) + standingPower + powerBudget));
+  const damage = card.kind === "spell"
+    ? previewSpellDamage(observation.state as unknown as GameState, defender, card, printed)
+    : Math.max(1, printed);
+  if (damage <= 0) return 200;
   const combat = observation.state.combat;
+  if (card.id === "spell.magic_arrow" && combat?.context.kind === "neutral" && defender.defense >= 2 &&
+      damage >= unitRemovalHealth(defender) && livingEnemyUnits(combat, observation.playerId).some(dealsElementalStrike)) {
+    return 1_180;
+  }
   const bestPhysicalDamage = combat
     ? Object.values(combat.units).reduce(
         (best, unit) =>
@@ -517,13 +577,46 @@ function scoreDamageEffect(
         0,
       )
     : 0;
+  // A defender that nullifies the attacker's die (Mummies force it to "-1") or
+  // is otherwise beyond our melee reach is a job for the spell — melee wastes an
+  // activation on it. Treat those like a zero-physical wall so the Arrow focuses
+  // the units our bodies genuinely cannot kill.
+  const meleeNullified =
+    (defender.abilities ?? []).includes("mummy-force-attacker-die") ||
+    (defender.abilities ?? []).includes("mummy-ignore-own-die");
   const armorLeverage =
-    Math.min(30, defender.defense * 3) + (bestPhysicalDamage === 0 ? 28 : 0);
+    Math.min(30, defender.defense * 3) +
+    (bestPhysicalDamage === 0 || meleeNullified ? 28 : 0);
   let quality =
     Math.min(60, threat) +
     Math.round((Math.min(damage, remaining) / Math.max(1, remaining)) * 40) +
     armorLeverage;
-  if (damage >= remaining) quality += 50;
+  if (damage >= unitRemovalHealth(defender)) quality += 50 +
+    (!defender.activatedThisRound ? 30 : 0) + (defender.defense >= 2 ? 25 : 0);
+  // PvP (user ruling 2026-09-15): a damage spell exists to punch the enemy's GOLD
+  // lvl-7 body (2-3 Defense) — Defense-ignoring damage is the ONLY tool that hurts
+  // an armoured gold stack our melee bounces off. Order targets STRICTLY by tier so
+  // a gold/azure body always outranks silver, and ANY non-bronze body outranks a
+  // bronze — even a lethal bronze kill (the +50/+30/+25 lethal terms above are
+  // exactly what let a bronze kill jump the gold chip). NEVER spend the spell on a
+  // bronze, not even a bronze shooter; a dangerous shooter is still an acceptable
+  // silver-band target via the within-tier threat term. The tier bands are spaced
+  // wider than the within-tier range, so a gold body present is always the target;
+  // when only bronze remains it is still cast at (this orders WITHIN the offered
+  // targets, it does not forbid the sole option). Neutral fights keep the
+  // lethal/armour logic above — guard parties are scripted and the Def-2 Power-pour
+  // ruling owns them.
+  if (combat?.context.kind === "player") {
+    const tierBand =
+      defender.grade === "gold" || defender.grade === "azure" ? 150
+        : defender.grade === "silver" ? 90
+          : 30;
+    const withinTier =
+      Math.min(30, Math.round(threat / 3)) +
+      Math.round((Math.min(damage, remaining) / Math.max(1, remaining)) * 15) +
+      (damage >= unitRemovalHealth(defender) ? 10 : 0);
+    return Math.min(860, base + tierBand + withinTier);
+  }
   return Math.min(860, base + quality);
 }
 
@@ -542,6 +635,29 @@ function scoreBuffTarget(
   return base + Math.min(35, Math.round(unitThreatValue(unit) / 4));
 }
 
+export function knowledgeExtraCastUseful(observation: ComputerObservation): boolean {
+  const state = observation.state as unknown as GameState;
+  const combat = state.combat;
+  const player = state.players[observation.playerId];
+  const cast = state.stack?.at(-1)?.action;
+  if (!combat || !player || cast?.type !== "CAST_SPELL") return false;
+  const enemies = livingEnemyUnits(combat, observation.playerId);
+  const spells = readySpells(state, observation.playerId).filter(card =>
+    card.effect.type === "DEAL_DAMAGE" && enemies.some(enemy =>
+      previewSpellDamage(state, enemy, card, getSpellDamageAmount(card, (card.power ?? 0) +
+        Math.min(2, player.hand.filter(id => id === "stat.power").length))) > 0));
+  // The casting card is returned by Knowledge, unless a spell-book rule
+  // recalls only the enabler. In either case require a real remaining spell.
+  const current = balanceCardLibrary(state, cardLibrary)[cast.cardId];
+  const recurring = current?.effect.type === "DEAL_DAMAGE" && enemies.some(enemy =>
+    (enemy.id !== (cast.target?.type === "unit" ? cast.target.unitId : undefined) ||
+      previewSpellDamage(state, enemy, current, getSpellDamageAmount(current, (current.power ?? 0) +
+        player.hand.filter(id => id === "stat.power").length)) < unitRemovalHealth(enemy)) &&
+    previewSpellDamage(state, enemy, current, getSpellDamageAmount(current, current.power ?? 0)) > 0);
+  const remainingSlots = Math.max(0, spellLimitFor(state, player) - player.combatStats.spellsCastThisRound);
+  return enemies.length >= 2 && spells.length + Number(Boolean(recurring)) > remainingSlots;
+}
+
 function scoreStatReaction(
   observation: ComputerObservation,
   card: CardDefinition,
@@ -550,11 +666,35 @@ function scoreStatReaction(
 ): number {
   // Attack/Defense statistic cards and similar combat-stat reactions. High
   // value because they only appear when legal (an attack window is open).
-  const amount =
+  let amount =
     mode === "expert"
       ? ("expertAmount" in effect ? (effect.expertAmount as number | undefined) : undefined) ??
         ("amount" in effect ? (effect.amount as number) : 1)
       : ("amount" in effect ? (effect.amount as number) : 1);
+
+  // Hero-specialty tactical awareness: a "might" specialty (ADD_COMBAT_STAT with
+  // `doubleForUnitName`) grants DOUBLE the stat to the hero's signature unit —
+  // the attacker for its attack option, the unit under attack for its defense
+  // option (mirrors the reducer's doubleAmountForUnitName). Reflect that here so
+  // the AI values the boost at its true size on that unit: it plays the attack
+  // card more readily behind the signature attacker, and recognises that the
+  // doubled defense can save the signature unit from an otherwise lethal hit.
+  if (effect.type === "ADD_COMBAT_STAT" && effect.doubleForUnitName) {
+    const combat = observation.state.combat;
+    const pending = observation.state.stack?.at(-1)?.action;
+    if (
+      combat &&
+      (pending?.type === "ATTACK_UNIT" || pending?.type === "MOVE_AND_ATTACK_UNIT")
+    ) {
+      const signatureUnit =
+        effect.stat === "attack"
+          ? combat.units[pending.attackerId]
+          : combat.units[pending.defenderId];
+      if (unitMatchesSpecialtyName(signatureUnit?.name, effect.doubleForUnitName)) {
+        amount *= 2;
+      }
+    }
+  }
 
   if (effect.type === "ADD_SPELL_POWER" || card.statisticType === "power") {
     if (pendingViewAirGold(observation)) return 180;
@@ -563,6 +703,10 @@ function scoreStatReaction(
     return 1_100 + amount * 10 + modeBonus(mode);
   }
   if (effect.type === "RECALL_SPELL") {
+    const recalled = observation.state.stack?.at(-1)?.modifiers.recallSpell;
+    if (card.id === "stat.knowledge" && recalled && mode !== "expert" &&
+        !effect.basicSpellLimitBonus && !effect.basicRecallPlayedCards) return 1_020;
+    if (mode === "expert" && effect.expertSpellLimitBonus && knowledgeExtraCastUseful(observation)) return 1_145;
     return 1_080 + modeBonus(mode);
   }
   if (effect.type === "ADD_COMBAT_STAT") {
@@ -600,7 +744,7 @@ function scoreStatReaction(
           // stacked onto Hydras even though Nix's Hardened Shell already capped
           // the hit at 4. Preserve every extra Attack card once the current hit
           // has reached the target's per-attack cap.
-          if (Number.isFinite(cap) && currentDamage >= cap) {
+          if (Number.isFinite(cap) && currentDamage - 1 >= cap) {
             return 1_020;
           }
           // Do not spend another Attack card when even the low (-1) printed
@@ -642,6 +786,29 @@ function scoreStatReaction(
           }
           if (beforeDamage >= remaining && afterDamage < remaining) {
             return 1_150 + Math.min(25, Math.round(unitThreatValue(defender) / 3)) + modeBonus(mode);
+          }
+          if (card.statisticType === "defense" && beforeDamage > 0 && afterDamage < beforeDamage) {
+            const ownLiving = Object.values(combat.units).filter(unit =>
+              unit.controllerId === observation.playerId && unitRemainingHealth(unit) > 0);
+            // The Marksman gets the Defense card specifically when an enemy
+            // SHOOTER attacks it — a ranged duel the card can actually win.
+            // (Melee threats to the back row fall through to normal valuation.)
+            if (defender.unitDefId === "castle.marksmen" && attacker.type === "ranged") {
+              return 1_150 + Math.min(25, Math.round(unitThreatValue(defender) / 3)) + modeBonus(mode);
+            }
+            const griffin = ownLiving.find(unit => unit.unitDefId === "castle.griffins");
+            // Early game — the first few rounds, before any gold-grade unit is
+            // fielded — the scarce Defense card is conserved for the Griffin (a
+            // key fast body) rather than spent on a lesser unit. Once a gold unit
+            // is in play, or past the opening, this hold drops and the card is
+            // valued normally below.
+            const beforeGoldUnit = !ownLiving.some(unit =>
+              unit.grade === "gold" || unit.grade === "azure");
+            const earlyRounds = (observation.state.round ?? 1) <= 3;
+            if (griffin && beforeGoldUnit && earlyRounds) {
+              if (defender.id !== griffin.id) return 1_020;
+              return 1_145 + modeBonus(mode);
+            }
           }
         }
       }
@@ -1178,9 +1345,8 @@ function pendingSpellBoostImpact(
   // The scalar helper does not model chains, splashes or secondary effects.
   // Unknown marginal value is not evidence that their Power is worthless.
   if (spell.effect.type !== "DEAL_DAMAGE") return null;
-  const cap = getDamageCapPerSpell(defender)?.amount ?? Number.POSITIVE_INFINITY;
-  const now = Math.min(cap, getSpellDamageAmount(spell, power));
-  const boosted = Math.min(cap, getSpellDamageAmount(spell, boostedPower));
+  const now = previewSpellDamage(publicState, defender, spell, getSpellDamageAmount(spell, power));
+  const boosted = previewSpellDamage(publicState, defender, spell, getSpellDamageAmount(spell, boostedPower));
   const remaining = unitRemovalHealth(defender);
   if (now > 0 && now >= remaining) return "lethal-already";
   if (boosted <= now) return "no-ladder-step";
@@ -1201,7 +1367,7 @@ function pendingSpellBoostImpact(
  * point. User ruling (2026-09-14): a damage spell is THE answer to these, so
  * Power is poured into it up to the kill ("not over the limit"), not rationed.
  */
-const ARMOURED_NEUTRAL_GUARDS = new Set(["ogres", "gorgons", "dendroids", "minotaurs", "crusaders"]);
+const ARMOURED_NEUTRAL_GUARDS = new Set(["ogres", "gorgons", "dendroids", "minotaurs", "crusaders", "mummies"]);
 function armouredNeutralTarget(observation: ComputerObservation): boolean {
   const combat = observation.state.combat;
   const top = observation.state.stack?.at(-1);
@@ -1216,6 +1382,30 @@ function armouredNeutralTarget(observation: ComputerObservation): boolean {
     unit.controllerId === observation.playerId && unitRemainingHealth(unit) > 0
       ? Math.max(best, expectedAttackDamage(unit, defender)) : best, 0);
   return defender.defense >= 2 && bestPhysical <= 1;
+}
+
+/** Reserve cards only with a clear surplus and no endangered body, including
+ * the next activation cycle. A +1 enemy die is a risk bound, not an RNG peek.
+ * Unknown caster output, stacked guards and wounded allies disable this extra
+ * conservation; the established neutral spending policy then decides. */
+function neutralFightAllowsCardReserve(observation: ComputerObservation): boolean {
+  const combat = observation.state.combat;
+  if (!combat || combat.context.kind !== "neutral") return false;
+  const living = Object.values(combat.units).filter(unit => unit.position >= 0 && unitRemainingHealth(unit) > 0);
+  const own = living.filter(unit => unit.controllerId === observation.playerId);
+  const enemies = living.filter(unit => unit.controllerId !== observation.playerId);
+  if (!own.length || !enemies.length || own.some(unit => unit.damage > 0) ||
+      enemies.some(unit => unit.stackToken || hasThreatAbility(unit) || hasOutputAbility(unit))) return false;
+  if (own.reduce((sum, unit) => sum + unitThreatValue(unit), 0) <
+      enemies.reduce((sum, unit) => sum + unitThreatValue(unit), 0) * 1.5) return false;
+  const nextRound = { ...combat, units: { ...combat.units } };
+  for (const enemy of enemies) nextRound.units[enemy.id] = {
+    ...enemy, attack: enemy.attack + 1, activatedThisRound: false,
+    attackedThisActivation: false, movedThisActivation: false,
+    tokens: (enemy.tokens ?? []).filter(token => token.kind !== "paralysis"),
+  };
+  return own.every(unit => coordinatedReplyDamage(nextRound, unit, unit.position, undefined,
+    observation.state as unknown as GameState) + 1 < unitRemainingHealth(unit));
 }
 
 function asPowerBoostScore(
@@ -1236,6 +1426,12 @@ function asPowerBoostScore(
     return 320;
   }
   const keep = cardKeepValue(cardId, observation);
+  // An approaching player still matters while clearing a neutral guard.
+  // Keep valuable combat tools for that fight instead of burning them for
+  // incremental neutral damage. Cheap fuel and immediate removals still pay.
+  if (impact === "chips" && neutralFightAllowsCardReserve(observation) &&
+      nearbyPlayerFight(observation) && card.timing !== "map" &&
+      (keep >= 55 || card.statisticType === "attack" || card.statisticType === "defense")) return 940;
   if (impact === "chips" && armouredNeutralTarget(observation)) {
     // Every Power point that still moves the ladder goes in against an
     // armoured guard. Only another real damage spell stays for its own cast.
@@ -1506,6 +1702,7 @@ export function scoreCardAction(
         if (recall?.type === "RECALL_SPELL" && recall.expertSpellLimitBonus && !recall.expertRecallPlayedCards &&
             player && !abilityExpertIsCrownFree(player, action.cardId) &&
             player.combatStats.spellsCastThisRound < spellLimitFor(state, player) &&
+            !knowledgeExtraCastUseful(observation) &&
             observation.legalActions.some(({ action: candidate }) => candidate.type === "PLAY_REACTION" &&
               candidate.cardId === action.cardId && candidate.mode !== "expert" && !candidate.asPowerBoost)) {
           return { score: 1_020, policy: "card.recall-preserve-crown" };
@@ -1578,11 +1775,14 @@ export function scoreCardAction(
       );
       const inReactionWindow = Boolean(observation.state.reactionWindow);
 
-      // Danger: damage the enemies still to act this round could land on this
-      // unit (adjacent melee + any ranged). A wounded body under a LETHAL threat
+      // Danger includes legal move-and-attacks, blocked shooters and paralysis.
+      // A wounded body under a LETHAL threat
       // is the whole point of the Tent — save it; one merely under some threat
       // is worth mending; a safe unit is not urgent.
-      const incoming = pendingIncomingDamage(combat, observation.playerId, target);
+      const incoming = combat.context.kind === "player"
+        ? coordinatedReplyDamage(combat, target, target.position, undefined,
+          observation.state as unknown as GameState)
+        : pendingIncomingDamage(combat, observation.playerId, target);
 
       // Efficiency (the First Aid Tent's once-per-round heal is a scarce charge):
       // a safe, barely-scratched, low-value body is NOT worth spending it on.

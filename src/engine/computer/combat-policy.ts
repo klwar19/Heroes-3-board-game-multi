@@ -1,10 +1,10 @@
-import { bronzeArmyNeedsWithdrawal } from "./necropolis-combat";
+import { bronzeArmyNeedsWithdrawal, openingGuardCommitment } from "./necropolis-combat";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
 import { getUnitSide } from "../adventure";
 import { commanderAdjacentAllies, commanderCastOf } from "../commanders";
-import { commanderApSkillOf } from "@/data/commanders";
+import { commanderApSkillOf, commanderValuesMagicGrade } from "@/data/commanders";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -21,6 +21,7 @@ import type { ComputerActionScore } from "./map-policy";
 import {
   distanceToNearestEnemy,
   expectedAttackDamage,
+  hasOutputAbility,
   hasThreatAbility,
   isParalyzed,
   livingEnemyUnits,
@@ -33,9 +34,11 @@ import {
 } from "./score";
 import type { ComputerObservation } from "./types";
 import { coordinatedReplyDamage } from "./opponent-reply";
-import { estimatedStrikeDamage } from "./strike-value";
+import { estimatedStrikeDamage, dealsElementalStrike } from "./strike-value";
+import { houseRuleEnabled } from "../house-rules";
 import { unitSideStrength } from "./army-strength";
 import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations } from "../legal-actions";
+import { effectiveInitiative } from "../active-effects";
 
 /**
  * True when our side is clearly losing a neutral fight: no living unit can
@@ -46,6 +49,7 @@ function combatIsHopeless(
   observation: ComputerObservation,
   combat: CombatState,
 ): boolean {
+  if (openingGuardCommitment(observation.state as unknown as GameState, observation.playerId, combat) === "fight") return false;
   if (bronzeArmyNeedsWithdrawal(observation.state as unknown as GameState, observation.playerId, combat)) return true;
   const own = Object.values(combat.units).filter(
     (unit) =>
@@ -139,6 +143,25 @@ const FOCUS_FINISH_BONUS = 24;
 // Removing a unit before it takes this round's activation is a larger tempo
 // swing than finishing an otherwise-identical unit that already acted.
 const UNACTED_FINISH_BONUS = 6;
+// Kill-the-Behemoth premium (user ruling 2026-09-15): a hit that REMOVES an
+// output-ability threat (Crushing Blow / Defense shred / double attack), or one
+// the army can finish this round, outranks an equal removal of an ordinary body —
+// and doubly so when the threat has not yet acted, denying its swing entirely.
+// Sized to order WITHIN the attack band (below a plain lethal's 160+threat jump)
+// without letting a Behemoth kill swamp a same-round lethal on another key body.
+const OUTPUT_THREAT_KILL_BONUS = 18;
+const OUTPUT_THREAT_UNACTED_BONUS = 16;
+// Deployment penalties for parking our gold/azure lvl-7 in a Behemoth-class
+// threat's round-1 reach (user ruling 2026-09-15 — "VERY DANGEROUS"). REACH = the
+// threat acts BEFORE our body and crushes it where it stands: sized to OUTWEIGH the
+// front-vs-back formation-fit swing (~55) so the gold deploys OUT of reach even
+// though the front is its "nicer" cell — it walks up and strikes on its own turn
+// instead of eating the round-1 crush. MOVER = our body acts first, so it can
+// strike then step clear — a mild nudge only. When the threat reaches EVERY cell
+// the penalty is uniform (no distortion); it only pulls the gold to a genuinely
+// safer cell when one exists.
+const OUTPUT_THREAT_GOLD_REACH_PENALTY = 72;
+const OUTPUT_THREAT_GOLD_MOVER_PENALTY = 12;
 // A non-lethal poke that the army cannot finish this round, thrown at a
 // safely-skippable PARALYZED enemy, would only wake it (any damage removes the
 // Paralysis token, cancelling the activation it was going to skip). Score it
@@ -299,8 +322,18 @@ function attackScore(
   const remaining = unitRemainingHealth(defender);
   const threat = unitThreatValue(defender);
   const damage = estimatedStrikeDamage(attacker, defender, attackFromPosition);
+  const griffinShooterAttack = attacker.unitDefId === "castle.griffins" && defender.type === "ranged";
+  if (["castle.marksmen", "stronghold.wolf_raiders"].includes(attacker.unitDefId ?? "") &&
+      defender.defense >= 2 && livingEnemyUnits(combat, playerId).some(enemy =>
+        enemy.id !== defender.id && enemy.defense < 2 &&
+        canUnitAttack({ ...combat, units: { ...combat.units, [attacker.id]: { ...attacker, position: attackFromPosition } } },
+          { ...attacker, position: attackFromPosition }, enemy, state.activeEffects ?? []))) return 200;
   const damageFraction = remaining > 0 ? damage / remaining : 0;
-  const lethal = damage > 0 && damage >= unitRemovalHealth(defender);
+  // Do not erase retaliation/reply risk on a kill that needs a neutral die.
+  // Deterministic elemental damage keeps its printed value under that rule.
+  const lowDamage = estimatedStrikeDamage(attacker, defender, attackFromPosition, false,
+    dealsElementalStrike(attacker) && houseRuleEnabled(state, "elemental-damage-no-die") ? 0 : -1);
+  const lethal = lowDamage > 0 && lowDamage >= unitRemovalHealth(defender);
   const ownRemaining = unitRemainingHealth(attacker);
   let retaliationDamage = 0;
 
@@ -319,13 +352,10 @@ function attackScore(
       !isParalyzed(unit) &&
       canUnitAttack(attackBoard, unit, defender, state.activeEffects ?? []),
   );
-  const allyFollowUpDamage = reachingAllies.reduce(
-    (sum, unit) => sum + estimatedStrikeDamage(unit, defender),
-    0,
-  );
   // Breaking a Pack's first health bar is a flip, not a removal. Do not use
   // that false finish to justify waking paralysis or exposing a valuable unit.
-  const armyCanFinish = damage + allyFollowUpDamage >= unitRemovalHealth(defender);
+  const armyCanFinish = lowDamage + reachingAllies.reduce((sum, unit) => sum + estimatedStrikeDamage(unit, defender,
+    unit.position, false, dealsElementalStrike(unit) && houseRuleEnabled(state, "elemental-damage-no-die") ? 0 : -1), 0) >= unitRemovalHealth(defender);
 
   // Don't wake a safely-skippable paralyzed enemy for chip: any damage removes
   // its Paralysis token, cancelling the activation it would have skipped. Only a
@@ -340,17 +370,25 @@ function attackScore(
     return PARALYSIS_WAKE_POKE_SCORE;
   }
 
+  // Does this strike draw a retaliation? A Vampire or Hydra (ignores-retaliation)
+  // or a ranged unit shooting from range does NOT — so its hit is FREE value and
+  // the bad-trade / overextension bails below must never suppress it (user ruling
+  // 2026-09-15: a no-retaliation attacker always attacks; chipping is never a bad
+  // trade when nothing hits back — Hydra Pack in particular wants to be surrounded
+  // and swing at everyone, rewarded by surroundOpportunityBonus).
+  const drawsRetaliation = provokesRetaliation(attacker, defender, attackFromPosition);
   let quality: number;
   if (lethal) {
     quality = 160 + Math.min(80, threat);
   } else {
     quality = Math.round(damageFraction * 80) + Math.min(40, Math.round(threat / 4));
+    if (griffinShooterAttack && damage > 0) quality += 65;
     // Physical attackers should work through low-Defense targets and leave a
     // heavily armoured body to Defense-ignoring spells when available.
     quality += Math.min(18, damage * 3);
     if (damage === 0) quality -= 35;
     else quality -= Math.min(18, Math.max(0, defender.defense - attacker.attack) * 3);
-    if (provokesRetaliation(attacker, defender, attackFromPosition)) {
+    if (drawsRetaliation) {
       const retaliation = estimatedStrikeDamage(defender, attacker, defender.position, true);
       retaliationDamage = retaliation;
       if (
@@ -419,6 +457,16 @@ function attackScore(
   if (!defender.activatedThisRound && (lethal || armyCanFinish)) {
     quality += UNACTED_FINISH_BONUS;
   }
+  // User ruling (2026-09-15): a Behemoth-class OUTPUT threat (Crushing Blow /
+  // Defense shred / double attack — the `hasOutputAbility` set) must be KILLED at
+  // all cost, not trade-hit. When this hit removes it (lethal) or the army can
+  // finish it this round, add a premium so the army converges to DELETE it — and a
+  // larger one when it has NOT yet acted (killing it denies its crush entirely).
+  // A mere chip that cannot finish it gets nothing here (chip-trading a Behemoth is
+  // exactly what the ruling forbids); the overextension guard below still applies.
+  if (hasOutputAbility(defender) && (lethal || armyCanFinish)) {
+    quality += defender.activatedThisRound ? OUTPUT_THREAT_KILL_BONUS : OUTPUT_THREAT_KILL_BONUS + OUTPUT_THREAT_UNACTED_BONUS;
+  }
   const multiHeadOpportunity = surroundOpportunityBonus(
     combat,
     playerId,
@@ -430,6 +478,23 @@ function attackScore(
   // removals rather than spread across fresh stacks.
   const missing = Math.max(0, defender.maxHealth - remaining);
   quality += Math.min(18, missing * 4);
+
+  // User ruling (2026-09-15): be decisive — if we cannot REMOVE the stack, at
+  // least flip a PACK down to Few when that cuts its damage output. Depleting a
+  // Pack's current bar flips it to its weaker Few side; reward that as the real
+  // damage reduction it is, scaled by how much Attack the flip strips. This is a
+  // value nudge ONLY: `lethal` / `armyCanFinish` still key on FULL removal, so a
+  // flip never counts as a finish and never justifies waking a paralyzed sleeper
+  // or an overextension (those guards above are unchanged).
+  // Does this hit flip the defender's Pack down to its weaker Few side?
+  const flipsDefenderToFew = defender.variant === "pack" && Boolean(defender.unitDefId) &&
+    lowDamage >= unitRemainingHealth(defender);
+  if (!lethal && flipsDefenderToFew && defender.unitDefId) {
+    const fewSide = getUnitSide(defender.unitDefId, "few");
+    if (fewSide && fewSide.attack < defender.attack) {
+      quality += Math.min(30, 10 + (defender.attack - fewSide.attack) * 8);
+    }
+  }
 
   // Do not step into an unsupported surround for a marginal strike. A lethal
   // attack discounts the body it removes before measuring the resulting line.
@@ -453,16 +518,26 @@ function attackScore(
     lethal ? defender.id : undefined,
     state,
   );
+  // User ruling (2026-09-15) on trading hits — think the whole exchange through,
+  // and be FLEXIBLE. Hold/Defend instead of attacking ONLY when we cannot bring the
+  // target down (neither kill NOR flip its Pack→Few) AND the retaliation plus the
+  // enemy's own-turn follow-up would remove or flip OUR body (`ownRemaining` is our
+  // current bar, so `>=` already means kill-or-flip). The classic bad gold-vs-gold
+  // trade: our faster gold hits first, the enemy gold retaliates and then swings
+  // back, and we could not dent it — turtle the gold instead. But if THIS hit flips
+  // or kills them, the trade is worth it and we take it (flipsDefenderToFew / lethal
+  // exempt below); lethals, focus finishes and multi-head attacks also stay
+  // aggressive.
   if (
     !lethal &&
+    !flipsDefenderToFew &&
     !armyCanFinish &&
+    drawsRetaliation &&
     multiHeadOpportunity === 0 &&
     (combat.context?.kind === "player" ||
-      livingEnemyUnits(combat, playerId).some((enemy) =>
-        enemy.id !== defender.id && enemy.controllerId === "neutrals" && !enemy.activatedThisRound,
-      )) &&
+      livingEnemyUnits(combat, playerId).filter(enemy => !enemy.activatedThisRound).length > 1) &&
     retaliationDamage + followUpIncoming >= ownRemaining &&
-    damageFraction < 0.5 &&
+    damage / Math.max(1, unitRemovalHealth(defender)) < 0.5 &&
     unitThreatValue(attacker) >= threat * 0.8
   ) {
     return PVP_OVEREXTENSION_ATTACK_SCORE;
@@ -507,6 +582,35 @@ function livingFriendlies(
   );
 }
 
+/** A destination's effect on the remaining ground allies' legal attacks. */
+function friendlyLaneChange(combat: CombatState, mover: CombatUnitState, position: number, state: GameState): number {
+  if (position === mover.position) return 0;
+  const side = mover.controllerId;
+  const projected = { ...combat, units: { ...combat.units, [mover.id]: { ...mover, position } } };
+  const attackAccess = (board: CombatState, ally: CombatUnitState): number => {
+    const projectedState = { ...state, combat: board, activeEffects: state.activeEffects ?? [] };
+    const destinations = getLegalMoveDestinations(board, ally, projectedState);
+    return Math.max(0, ...livingEnemyUnits(board, side).map(enemy => {
+      let damage = canUnitAttack(board, ally, enemy, projectedState.activeEffects)
+        ? estimatedStrikeDamage(ally, enemy) : 0;
+      for (const destination of destinations) {
+        if (canUnitMoveAndAttack(board, ally, destination, enemy, projectedState)) {
+          damage = Math.max(damage, estimatedStrikeDamage(ally, enemy, destination));
+        }
+      }
+      return Math.min(unitRemovalHealth(enemy), damage);
+    }));
+  };
+  let laneGain = 0;
+  for (const ally of livingFriendlies(combat, side)) {
+    if (ally.id === mover.id || unitRole(ally) !== "melee" || ally.position < 0 ||
+        ally.activatedThisRound || ally.attackedThisActivation || isParalyzed(ally)) continue;
+    const gain = attackAccess(projected, ally) - attackAccess(combat, ally);
+    laneGain += Math.max(-180, Math.min(180, gain * 35));
+  }
+  return laneGain;
+}
+
 /**
  * How well a unit of the given role sits on `position` given already-placed
  * friendlies. Higher is better. Used for placement AND tactics swaps.
@@ -523,10 +627,20 @@ export function formationFitScore(
   /** Printed combat value: premium shooters deserve the safest screened cell. */
   priority = 0,
   reserve = false,
+  unitDefId?: string,
 ): number {
   let score = 0;
   const front = isFrontlineCell(combat, playerId, position);
   const back = isBacklineCell(combat, playerId, position);
+  const self = selfId ? combat.units[selfId] : undefined;
+  const definitionId = unitDefId ?? self?.unitDefId;
+  if (self?.unitDefId === "stronghold.orcs" && self.attack >= 3) role = "melee";
+  // User ruling: Castle's Griffins hold the FRONT line as a fast body (with a
+  // Halberdier standing directly above them), not the screened back row. Score
+  // them like a front-line melee body for placement; the generic flyer branch
+  // that keeps OTHER flyers in reserve is left untouched.
+  const castleGriffin = definitionId === "castle.griffins";
+  if (castleGriffin) role = "melee";
 
   if (role === "ranged") {
     score += back ? 30 : front ? -20 : -5;
@@ -548,9 +662,8 @@ export function formationFitScore(
     // Flyers counter from the second row; melee bodies hold the first.
     score += front ? -12 : back ? 26 : 8;
   }
-  // An expensive melee/flying damage dealer can counter from behind a cheaper
-  // screen. Do not treat every high-health Gold card as disposable frontage.
-  if (reserve && role !== "ranged") score += back ? 55 : front ? -45 : 10;
+  // Flyers can counter through a screen; ground units need an open front.
+  if (reserve && role === "flying") score += back ? 55 : front ? -45 : 10;
 
   // Prefer central columns (1,2) for reach / less edge waste. Ranged units get
   // a larger protected-corner bonus above and therefore still choose corners.
@@ -560,6 +673,17 @@ export function formationFitScore(
   const friends = livingFriendlies(combat, playerId).filter(
     (unit) => unit.id !== selfId,
   );
+  // Castle opening formation (user ruling): Griffins hold the front line and a
+  // Halberdier stands on the front line directly ABOVE its Griffin — the cell
+  // one row up in the same visual file, which is one lower engine column (`col`
+  // is `position % 4`). Reward that pairing so the two group up front together
+  // while the Marksmen keep the protected back row.
+  if (castleGriffin && front && friends.some(unit =>
+      unit.unitDefId === "castle.halberdiers" && isFrontlineCell(combat, playerId, unit.position) &&
+      cellColumn(unit.position) === col - 1)) score += 60;
+  if (definitionId === "castle.halberdiers" && front && friends.some(unit =>
+      unit.unitDefId === "castle.griffins" && isFrontlineCell(combat, playerId, unit.position) &&
+      cellColumn(unit.position) === col + 1)) score += 60;
 
   // Column diversity: avoid stacking 3+ bodies in one file.
   const sameCol = friends.filter((unit) => cellColumn(unit.position) === col).length;
@@ -590,6 +714,9 @@ export function formationFitScore(
 }
 
 function reserveCombatUnit(combat: CombatState, unit: CombatUnitState): boolean {
+  if (unit.unitDefId === "castle.griffins" && livingEnemyUnits(combat, unit.controllerId).some(enemy => enemy.type === "ranged")) return false;
+  // Ground damage dealers need an open front: they cannot counter through a screen.
+  if (unitRole(unit) === "melee") return false;
   if (unit.type === "flying" && livingFriendlies(combat, unit.controllerId).some(ally =>
       ally.id !== unit.id && unitRole(ally) === "melee" && !ally.commanderSlug)) return true;
   return (unit.grade === "gold" || unit.grade === "azure" || hasThreatAbility(unit)) &&
@@ -598,15 +725,58 @@ function reserveCombatUnit(combat: CombatState, unit: CombatUnitState): boolean 
       !ally.commanderSlug && unitThreatValue(ally) < unitThreatValue(unit) * 0.65);
 }
 
+/**
+ * Deployment risk of parking our GOLD/azure lvl-7 at `position` in front of a
+ * Behemoth-class OUTPUT threat (Crushing Blow / Defense shred / double attack).
+ * The ruling (2026-09-15): the gold body must avoid that threat's hit while still
+ * being able to move and strike — so this is turn-order + reach aware, NOT a flat
+ * "in reach = bad" penalty.
+ *
+ * Reach is `canUnitMoveAndAttack`, which already accounts for the threat's real
+ * SPEED (move range), whether it FLIES (ignores blockers) or is ground (blocked by
+ * our SCREEN), and flying landing rules — so screening the gold naturally removes
+ * the risk. Turn order uses effectiveInitiative (highest acts first; ties lead to
+ * the attacker side): if the threat acts BEFORE our body it crushes it where it
+ * stands (heavy risk); if our body acts first it can strike and STEP AWAY, so the
+ * deploy square matters far less (mild nudge — the move scorer keeps it ending
+ * clear). Only gold/azure bodies pay this, so the extra reach scan stays cheap.
+ */
+function outputThreatDeploymentRisk(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  position: number,
+): number {
+  if (!(unit.grade === "gold" || unit.grade === "azure") || unit.commanderSlug) return 0;
+  const activeEffects = state.activeEffects ?? [];
+  const projected = { ...combat, units: { ...combat.units, [unit.id]: { ...unit, position } } };
+  const body = projected.units[unit.id];
+  const bodyInitiative = effectiveInitiative(body, activeEffects, projected);
+  let risk = 0;
+  for (const enemy of livingEnemyUnits(projected, unit.controllerId)) {
+    if (enemy.position < 0 || enemy.activatedThisRound || isParalyzed(enemy) || !hasOutputAbility(enemy)) continue;
+    const reaches = canUnitAttack(projected, enemy, body, activeEffects) ||
+      getLegalMoveDestinations(projected, enemy, state).some((destination) =>
+        canUnitMoveAndAttack(projected, enemy, destination, body, state));
+    if (!reaches) continue;
+    const enemyInitiative = effectiveInitiative(enemy, activeEffects, projected);
+    const threatActsFirst = enemyInitiative > bodyInitiative ||
+      (enemyInitiative === bodyInitiative && enemy.controllerId === projected.attackerPlayerId);
+    risk = Math.max(risk, threatActsFirst ? OUTPUT_THREAT_GOLD_REACH_PENALTY : OUTPUT_THREAT_GOLD_MOVER_PENALTY);
+  }
+  return risk;
+}
+
 /** All reposition/swap callers use the same whole-board objective, so changing
  * one screen cannot create a swap cycle. Reach checks include flying landings
  * and blockers; no projected attack is executed. */
 function placedUnitFit(state: GameState, combat: CombatState, unit: CombatUnitState): number {
+  const premium = unit.grade === "gold" || unit.grade === "azure";
   const fit = formationFitScore(combat, unit.controllerId, unitRole(unit), unit.position,
     unit.id, unit.maxHealth + unit.defense, unitThreatValue(unit), reserveCombatUnit(combat, unit));
   const incoming = coordinatedReplyDamage(combat, unit, unit.position, undefined, state);
-  const exposure = Math.min(55, incoming * (unit.grade === "gold" || unit.grade === "azure" ? 7 : 3));
-  return fit - exposure;
+  const exposure = Math.min(55, incoming * (premium ? 7 : 3));
+  return fit - exposure - outputThreatDeploymentRisk(state, combat, unit, unit.position);
 }
 
 /**
@@ -633,7 +803,8 @@ function placeScore(
     : undefined;
   // Unit TYPE lives on the definition root (Few/Pack sides rarely re-declare it).
   const sideType = existing?.type ?? side?.type ?? def?.type;
-  const role = unitRole({ type: sideType });
+  const role = armyUnit?.unitDefId === "stronghold.orcs" && (side?.attack ?? existing?.attack ?? 0) >= 3
+    ? "melee" : unitRole({ type: sideType });
   const bulk =
     (side?.health ?? existing?.maxHealth ?? 0) +
     (side?.defense ?? existing?.defense ?? 0);
@@ -682,6 +853,7 @@ function placeScore(
           return ally.id !== armyUnit?.id && (allyDef?.tier === "bronze" || allyDef?.tier === "silver") &&
             (allySide?.type ?? allyDef?.type) !== "ranged";
         })),
+      armyUnit?.unitDefId,
     );
 
   if (armyUnit) {
@@ -690,6 +862,13 @@ function placeScore(
   // Prefer deploying higher-threat units first (better cells claimed early).
   if (side) {
     score += Math.min(8, Math.round((side.attack * 3 + side.health) / 8));
+  }
+  // Keep our gold/azure lvl-7 out of a Behemoth-class threat's round-1 reach at
+  // INITIAL deploy too (the reposition/swap path already carries this via
+  // placedUnitFit). Uses the undeployed combat unit's real stats when present; if
+  // the unit is not on the board yet the reposition pass corrects it after deploy.
+  if (existing && (existing.grade === "gold" || existing.grade === "azure")) {
+    score -= outputThreatDeploymentRisk(observation.state as unknown as GameState, combat, existing, action.position);
   }
   // An awkward remaining square still beats leaving a deployment slot empty.
   return Math.max(901, score);
@@ -837,14 +1016,9 @@ function moveUnitScore(
   if (current === null || next === null) return null;
 
   const role = unitRole(mover);
-  const state = observation.state as unknown as GameState;
-  const evaluateReplies = combat.context?.kind === "player" ||
-    (combat.context?.kind === "neutral" && side === combat.attackerPlayerId &&
-      (state.players[side]?.factionId === "necropolis" || mover.type === "flying"));
-  const incomingNow = evaluateReplies
-    ? coordinatedReplyDamage(combat, mover, mover.position, undefined, state) : 0;
-  const incomingNext = evaluateReplies
-    ? coordinatedReplyDamage(combat, mover, action.destination, undefined, state) : 0;
+  const state = { ...observation.state, activeEffects: observation.state.activeEffects ?? [] } as unknown as GameState;
+  const incomingNow = coordinatedReplyDamage(combat, mover, mover.position, undefined, state);
+  const incomingNext = coordinatedReplyDamage(combat, mover, action.destination, undefined, state);
   const remaining = unitRemainingHealth(mover);
   const escapesLethalReply = incomingNow >= remaining && incomingNext < remaining;
   const entersLethalReply = incomingNext >= remaining && incomingNext > incomingNow;
@@ -871,12 +1045,25 @@ function moveUnitScore(
     score = 260;
   }
 
-  if (state.players[observation.playerId]?.factionId === "necropolis" && combat.context.kind === "neutral" &&
-      side === observation.playerId && !mover.attackedThisActivation) {
+  let landingAttack = 0;
+  if (!mover.attackedThisActivation && mover.type !== "ranged") {
     const attacks = livingEnemyUnits(combat, side).filter(enemy=>
       canUnitMoveAndAttack(combat, mover, action.destination, enemy, state));
-    const best = Math.max(0,...attacks.map(enemy=>attackScore(combat,side,mover,enemy,action.destination,state)));
-    if (best >= ATTACK_FLOOR) score += 110 + Math.min(60,best - ATTACK_FLOOR);
+    const canBait = pendingIncomingDamage(combat, side, mover) === 0 && observation.legalActions.some(legal =>
+      legal.action.type === "WAIT_UNIT" && legal.action.unitId === mover.id);
+    const best = Math.max(0,...attacks.map(enemy => {
+      const damage = estimatedStrikeDamage(mover, enemy, action.destination);
+      // When Wait is actually offered, do not spend a safe initiative lead on
+      // an even chip trade. A kill, favorable hit or exhausted enemy still goes.
+      if (canBait && !enemy.activatedThisRound && damage < unitRemovalHealth(enemy) &&
+          provokesRetaliation(mover, enemy, action.destination) &&
+          damage <= estimatedStrikeDamage(enemy, mover, enemy.position, true)) return 0;
+      return attackScore(combat,side,mover,enemy,action.destination,state);
+    }));
+    landingAttack = best;
+    // Compare the actual strike, including retaliation and replies, rather than
+    // marching at the highest-tier enemy even when a softer target is reachable.
+    if (best >= ATTACK_FLOOR) score = Math.max(score, best - 1);
   }
 
   // Ranged: strong penalty for walking adjacent to an enemy (melee range).
@@ -949,7 +1136,8 @@ function moveUnitScore(
   // ties. Stepping toward it is rewarded; stepping away is mildly penalised.
   const enemies = livingEnemyUnits(combat, side);
   if (enemies.length > 0) {
-    const focus = [...enemies].sort(
+    const shooters = mover.unitDefId === "castle.griffins" ? enemies.filter(enemy => enemy.type === "ranged") : [];
+    const focus = [...(shooters.length ? shooters : enemies)].sort(
       (a, b) =>
         fuyukiFocusPriority(b) - fuyukiFocusPriority(a) ||
         targetPriority(b) - targetPriority(a) ||
@@ -958,6 +1146,7 @@ function moveUnitScore(
     const before = getBattlefieldDistance(mover.position, focus.position);
     const after = getBattlefieldDistance(action.destination, focus.position);
     if (after < before) score += FOCUS_MARCH_BONUS;
+    if (shooters.length && after < before && !mover.attackedThisActivation) score += 65;
     else if (after > before) score -= FOCUS_MARCH_AWAY_PENALTY;
   }
 
@@ -965,11 +1154,17 @@ function moveUnitScore(
 
   score -= positionalExposurePenalty(combat, side, mover, action.destination);
 
-  // PvP movement accounts for enemy move-and-attacks, not only bodies already
+  // A friendly body changes ground reach. Charge lanes belong to the whole
+  // army: penalize closing an ally's attack route and reward opening it.
+  const laneGain = friendlyLaneChange(combat, mover, action.destination, state);
+  score += laneGain;
+  if (laneGain > 0 && incomingNext <= incomingNow) score = Math.max(score, 520 + laneGain);
+
+  // Movement accounts for enemy move-and-attacks, not only bodies already
   // adjacent. A screen or a safe retreat can preserve the next shot.
   if (escapesLethalReply) return { score: Math.max(570, score), policy: "combat.escape-focus" };
-  if (entersLethalReply) return { score: Math.min(350, score), policy: "combat.avoid-focus" };
-  if (reserveCombatUnit(combat, mover) && incomingNext > incomingNow && !mover.attackedThisActivation) {
+  if (entersLethalReply && landingAttack < ATTACK_FLOOR) return { score: Math.min(350, score), policy: "combat.avoid-focus" };
+  if (reserveCombatUnit(combat, mover) && incomingNext > incomingNow && !mover.attackedThisActivation && landingAttack < ATTACK_FLOOR) {
     return { score: Math.min(450, score), policy: "combat.preserve-counter-position" };
   }
 
@@ -1067,9 +1262,30 @@ function commanderCastScore(
     default:
       base = 550;
   }
-  // Movement lock: a marginal cast that costs a NEEDED walk loses to a real
-  // strike / move-and-attack (620+). A swing cast still fires.
-  if (strandsFromTarget && !swing) {
+  // Caster commanders (Necropolis Soul Eater / Animate Dead, Tower Temple
+  // Guardian / Precision, Conflux Astral Spirit / Counterstrike) grade Magic
+  // specifically to power their once-per-round Command cast, and they are
+  // back-line support that never wanted a melee walk. Ranked humans cast exactly
+  // these almost every round a target exists (soul_eater 15, temple 5, astral 4
+  // across 16 commander games) while the AI, scoring the cast below a routine
+  // ~700 attack, cast them ~0 (self-play: astral 11 legal/0, temple 9/0). The
+  // cast is only OFFERED when a valid target exists (commanderCastAvailable →
+  // commanderCastCandidates > 0), so lifting a caster's beneficial cast above a
+  // routine attack never produces a no-op; a clearly better attack (lethal on a
+  // gold body, ~780+) still outscores it. A big SWING heal is worth casting for
+  // ANY commander (Paladin's Cure on a badly-wounded ally). Hierophant's Shield
+  // and Ogre's Stone Skin are instant reactions handled off-turn, never here.
+  const isCaster = commanderValuesMagicGrade(unit.commanderSlug);
+  const bigHeal = swing && (cast.effect.kind === "heal" || cast.effect.kind === "heal-cleanse");
+  if (isCaster && base > 0) {
+    base = Math.max(base, 715);
+  } else if (bigHeal) {
+    base = Math.max(base, 710);
+  }
+  // Movement lock: a marginal MELEE-rush commander that would forfeit a NEEDED
+  // walk loses to a real strike / move-and-attack (620+). Casters pay no such
+  // price (support, not rushers); a swing cast still fires.
+  if (strandsFromTarget && !swing && !isCaster) {
     base -= 130;
   }
   return base;
@@ -1146,7 +1362,8 @@ export function scoreCombatAction(
           defender,
           attackFrom,
           observation.state as unknown as GameState,
-        ),
+        ) + (action.type === "MOVE_AND_ATTACK_UNIT"
+          ? Math.min(0, friendlyLaneChange(combat, attacker, attackFrom, observation.state as unknown as GameState)) : 0),
         policy: "combat.attack-target",
       };
     }

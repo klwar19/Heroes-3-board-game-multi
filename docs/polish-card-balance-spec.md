@@ -57,13 +57,14 @@ Tactics.png→ability.tactics · Wisdom.png→ability.wisdom
 
 Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed):
 
-- **Intelligence** — Basic: "At the start of a Combat, before any unit
-  activates, you can Cast a Spell. (you don't need to play Cast a Spell card)."
-  Expert: same + "This spell does not count toward your spell limit per Combat
+- **Intelligence** — Basic: "At the start of a combat round, Refresh 1 Spell,
+  then Cast a Spell. (you don't need to play Cast a Spell card)."
+  Empowered: same + "This spell does not count toward your spell limit per Combat
   round." OLD: Basic "During Combat, before any unit activates, play a Spell
   card. You can still only play a Spell card during a Combat round." / Expert
-  same + no-limit rider. CHANGES: the play is scoped to the START of combat
-  (before any unit activates), and it is a ONE-SHOT free cast — the reprint
+  same + no-limit rider. CHANGES: the play is scoped to the START of the current
+  combat round (before any unit activates in that round), and it is a ONE-SHOT
+  free cast — the reprint
   (`src/data/cards/abilities-balance.ts`) grants EXACTLY ONE Spell. The effect's
   `SPELL_CAST_ANYTIME` modifier carries `oneShot`, so `noteSpellCast` consumes
   it the instant the holder casts a Spell; a SECOND Spell in the same window
@@ -74,7 +75,7 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   it). Under the Polish Book the free cast needs NO "Cast a Spell" enabler and
   consumes none — the Intelligence card is the thing spent (the classic combat's
   `consumePolishSpellBookCast` freedom branch applies for exactly that one cast).
-  The EXPERT rider is likewise one-shot: only that single free cast is off-limit
+  The EMPOWERED rider is likewise one-shot: only that single free cast is off-limit
   (it does not increment `spellsCastThisRound`), so the player's ordinary
   one-Spell allowance stays intact for a later Spell. The classic card
   (rule OFF) keeps its whole-combat freedom byte-identically. Non-book game: the

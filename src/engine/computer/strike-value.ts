@@ -30,6 +30,7 @@ export function estimatedStrikeDamage(
   defender: CombatUnitState,
   position = attacker.position,
   retaliation = false,
+  attackDie = 0,
 ): number {
   const moved = attacker.movedThisActivation || position !== attacker.position;
   const pierce = getAttackDefenseReductionAbility(attacker, moved, retaliation)?.amount ?? 0;
@@ -39,5 +40,5 @@ export function estimatedStrikeDamage(
   // An elemental strike cannot be defended against at all.
   const defense = dealsElementalStrike(attacker) ? 0 : Math.max(0, defender.defense - printedDefense - pierce);
   const cap = getDamageCapPerAttack(defender)?.amount ?? Number.POSITIVE_INFINITY;
-  return Math.min(cap, Math.max(0, attacker.attack - defense));
+  return Math.min(cap, Math.max(0, attacker.attack + attackDie - defense));
 }

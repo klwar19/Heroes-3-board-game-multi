@@ -24,8 +24,12 @@ import { startNeutralEncounter } from "../adventure-reducer";
 import { driveComputerPlayers } from "@/server/computer-runner";
 import {
   COMPUTER_COMBAT_BOOST_CARDS,
+  COMPUTER_PHANTOM_COMBAT_CARDS,
+  applyComputerCombatBoost,
+  applyComputerPhantomCards,
   combatQualifiesForComputerBoost,
   removeComputerCombatBoost,
+  removeComputerPhantomCards,
 } from "./combat-boost";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -239,5 +243,57 @@ describe("computer combat boost (temp Empowered Attack/Defense cards)", () => {
       attackerPlayerId: "p1",
     } as unknown as CombatState;
     expect(combatQualifiesForComputerBoost(state, sandbox)).toBe(false);
+  });
+});
+
+describe("computer phantom combat cards (always-on Power + Magic Arrow)", () => {
+  it("injects the un-Empowered Power + Magic Arrow at a real fight and removes them after", () => {
+    let state = setup();
+    const before = Object.fromEntries(
+      COMPUTER_PHANTOM_COMBAT_CARDS.map((id) => [id, totalCopies(setup(), id)]),
+    );
+    state = beginGuardFight(state);
+    state = deployAndReveal(state);
+    expect(state.combat?.computerPhantomCards).toBeTruthy();
+    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      expect(countIn(state.players.p1.hand, cardId)).toBeGreaterThanOrEqual(1);
+      expect(totalCopies(state, cardId)).toBe(before[cardId] + 1);
+      // Phantom cards are NEVER Empowered (Power stat + a plain spell).
+      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(cardId);
+    }
+    // Fought out — every phantom copy is gone from the game again.
+    state = driveComputerPlayers(state).state;
+    expect(state.combat).toBeNull();
+    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      expect(totalCopies(state, cardId)).toBe(before[cardId]);
+    }
+  });
+
+  it("grants phantom cards even in PvP — where the Attack/Defense boost is withheld", () => {
+    const state = setup();
+    state.combat = {
+      context: { kind: "player" },
+      outcome: null,
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+    } as unknown as CombatState;
+    // CONTROL: the Attack/Defense smoothing boost never enters a PvP fight.
+    expect(combatQualifiesForComputerBoost(state, state.combat!)).toBe(false);
+    applyComputerCombatBoost(state);
+    expect(state.combat!.computerBoost ?? null).toBeNull();
+
+    // The phantom Power + Magic Arrow ARE granted to the computer seat in PvP.
+    const before = Object.fromEntries(
+      COMPUTER_PHANTOM_COMBAT_CARDS.map((id) => [id, countIn(state.players.p1.hand, id)]),
+    );
+    applyComputerPhantomCards(state);
+    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      expect(countIn(state.players.p1.hand, cardId)).toBe(before[cardId] + 1);
+      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(cardId);
+    }
+    removeComputerPhantomCards(state);
+    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      expect(countIn(state.players.p1.hand, cardId)).toBe(before[cardId]);
+    }
   });
 });

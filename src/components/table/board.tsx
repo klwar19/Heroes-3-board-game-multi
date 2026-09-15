@@ -1596,7 +1596,10 @@ export function BattlefieldBoard({
                 <small>{isGate ? "Gate" : "Wall"}</small>
               </span>
             );
-            if (fortAction) {
+            // The defender's legal gate move takes precedence over demolition.
+            // Keep fortification targeting available when movement is not selected.
+            const canMoveOntoGate = isGate && moveAction && !selectedCardAction && !planning;
+            if (fortAction && !canMoveOntoGate) {
               return (
                 <button
                   aria-label={fortAction.label}

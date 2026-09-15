@@ -1337,7 +1337,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   "choice"); AI reads elemental strikes as undefendable, drops Magic Arrow
 //   against Arrow-immune guards, pours Power into damage spells vs armoured
 //   neutrals (Ogres/Gorgons/Dendroids/Minotaurs/Crusaders).
-export const ENGINE_PROTOCOL_VERSION = 147;
+// v148 (2026-09-15): Round-9 computer development/combat planning, persistent
+//   Silver/Gold milestones and phantom Power + Magic Arrow combat cards; Ogre
+//   Leader's extra Ballista and Torosar VI combat-start ordering; updated
+//   Bulwark veterancy; Polish Intelligence's round-start refresh/cast; designated
+//   Break whole-tile gating; selectable Monolith/Exit reveal placement; ongoing
+//   Disrupting Ray cleanup; defender gate-move priority. These alter reducer,
+//   legality and persisted-state semantics, so frontend and PartyKit must match.
+export const ENGINE_PROTOCOL_VERSION = 148;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

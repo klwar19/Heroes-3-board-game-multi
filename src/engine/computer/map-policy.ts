@@ -1,4 +1,5 @@
-import { isOpeningFarSweepField } from "./far-sweep";
+import { isOpeningFarSweepField, securedFarTileIds } from "./far-sweep";
+import { heroReadyForGrowth, tileBandOffersGrowth } from "./map-navigation";
 import { preferredOpeningPacks, committedGoldInvestment } from "./development";
 import {
   GOLD_RESERVE,
@@ -83,12 +84,15 @@ import {
   developmentResourceTargets,
   goldPurchaseReachable,
   hasGoldArmy,
+  hasReachedGoldArmy,
+  hasReachedSilverArmy,
   goldArmyAllowsBronzePurchase,
   hasOpenedFarEconomy,
   INCOME_NEVER_FROM_ROUND,
   factionBuildingForEffect,
   incomeBuildingBeforeDwelling,
   nextGoldLadderStep,
+  nextPlannedSilver,
   rankedGoldUnits,
   spendDelaysSavedCost,
   unitDevelopmentSideStrength,
@@ -105,6 +109,7 @@ import {
   lowerExpansionBandImmediatelyAvailable,
   homeTileInstanceId,
   objectiveDistanceField,
+  needsFarValuablesReveal,
   premiumEconomyResourceBonus,
   primaryMapObjective,
   seatHoldsFarSupplyTile,
@@ -247,8 +252,9 @@ function buildingScore(
       const preferred = preferredOpeningPacks(state, playerId);
       if (preferred.length > 0 && !preferred.includes(unit.unitDefId)) return sum;
       const waitForNecromancy = hasNecromancyPlan(state, playerId) &&
-        (unit.unitDefId === "necropolis.zombies" ||
-          (unit.unitDefId === "necropolis.wraiths" && !neutralsArePlayerControlled(state, playerId)));
+        (unit.unitDefId === "necropolis.wraiths" || unit.unitDefId === "necropolis.zombies" &&
+          state.players[playerId].army.some(u => u.unitDefId === "necropolis.wraiths" && u.side === "pack") &&
+          state.players[playerId].hand.some(id => cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE"));
       return sum + (reinforceCostFor(state, playerId, unit.id, false, waitForNecromancy, waitForNecromancy)?.gold ?? 0);
     }, 0);
     if (gold - (cost?.gold ?? 0) < Math.max(GOLD_RESERVE, remainingBronzeGold)) return 240;
@@ -562,8 +568,6 @@ function buildingScore(
   return score;
 }
 
-const premiumPopulationAvailable = new WeakMap<ComputerObservation, boolean>();
-
 function populationScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
@@ -573,13 +577,35 @@ function populationScore(
   const player = state.players[observation.playerId];
   const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
+  if (action.purchases.some(purchase => !goldArmyAllowsBronzePurchase(
+    state, observation.playerId, purchase.unitDefId, purchase.kind))) return 180;
+  if (hasReachedSilverArmy(state, observation.playerId) && action.purchases.filter(purchase =>
+    purchase.kind === "recruit" && coreUnitDefinitions[purchase.unitDefId]?.tier === "bronze").length > 1) return 180;
 
-  // Necromancy supplies these Packs without a Population token. Only the
-  // skeleton opening (and Wraiths against human guards) pays full price.
-  if (hasNecromancyPlan(state, observation.playerId) && !hasGoldArmy(state, observation.playerId)) {
+  // Earn Wraiths with Necromancy; buy Skeletons and keep paid Zombies legal
+  // unless Wraiths are complete and a held Necromancy can supply Zombies.
+  if (hasNecromancyPlan(state, observation.playerId) && !hasReachedGoldArmy(state, observation.playerId)) {
+    const main = Object.values(state.heroes).find(hero =>
+      hero.controllerId === observation.playerId && hero.kind === "main");
+    const earnedUpgradeAvailable = player.hand.some(id =>
+      cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE") && main &&
+      collectMapObjectives(state, main).some(objective => {
+        const field = state.adventure?.fields[objective.spaceId];
+        const distance = distanceFromHeroTo(state, main, objective.spaceId, true);
+        return objective.kind === "guard" && field && distance !== undefined &&
+          distance + premiumCombatMovementReserve(state, main, field) <= Math.max(main.movementPoints, heroMovementMax(state, main)) &&
+          canBeatGuardedField(state, main, field);
+      });
+    const fallbackUpgrade = action.purchases.length === 1 && action.purchases[0].kind === "reinforce" &&
+      ["necropolis.wraiths", "necropolis.vampires"].includes(action.purchases[0].unitDefId) &&
+      player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "pack");
+    // A held ability without a reachable fight cannot pay for an upgrade.
+    // Use the legal paid offer to break that deadlock, including Vampire Pack.
+    if (fallbackUpgrade && !earnedUpgradeAvailable) return 976;
     if (action.purchases.some(purchase => purchase.kind !== "recruit" &&
-        (purchase.unitDefId === "necropolis.vampires" || purchase.unitDefId === "necropolis.zombies" ||
-          (purchase.unitDefId === "necropolis.wraiths" && !neutralsArePlayerControlled(state, observation.playerId))))) return 180;
+        (purchase.unitDefId === "necropolis.vampires" || purchase.unitDefId === "necropolis.wraiths" ||
+          (purchase.unitDefId === "necropolis.zombies" && player.army.some(u => u.unitDefId === "necropolis.wraiths" && u.side === "pack") && player.hand.some(id =>
+            cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE"))))) return 180;
     const skeletonNeedsPack = player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "few");
     if (skeletonNeedsPack && action.purchases.some(purchase => purchase.kind === "reinforce" &&
         purchase.unitDefId === "necropolis.wraiths")) return 180;
@@ -594,9 +620,9 @@ function populationScore(
     }
   }
 
-  const goldArmy = hasGoldArmy(state, observation.playerId);
+  const goldArmy = hasReachedGoldArmy(state, observation.playerId);
   const preferred = preferredOpeningPacks(state, observation.playerId);
-  if (!goldArmy && development.silverUnits === 0 && preferred.length > 0) {
+  if (!hasReachedSilverArmy(state, observation.playerId) && preferred.length > 0) {
     const next = preferred.find(id => !player?.army.some(unit => unit.unitDefId === id && unit.side === "pack"));
     if (action.purchases.some(purchase => purchase.kind === "reinforce" &&
         coreUnitDefinitions[purchase.unitDefId]?.tier === "bronze" && purchase.unitDefId !== next)) return 240;
@@ -606,24 +632,22 @@ function populationScore(
   }
   const bronzePurchases = action.purchases.filter((purchase) =>
     coreUnitDefinitions[purchase.unitDefId]?.tier === "bronze");
-  if (goldArmy && bronzePurchases.length > 0) {
-    // Reject the entire bundle, including bronze hidden alongside a Gold buy.
-    // 180 also stays below the PvP preparation exit (225).
-    if (bronzePurchases.some((purchase) => !goldArmyAllowsBronzePurchase(
-      state, observation.playerId, purchase.unitDefId, purchase.kind,
-    )) || action.purchases.length !== bronzePurchases.length ||
-      development.totalUnits + bronzePurchases.length > 5 ||
-      (player?.army.filter((unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "bronze").length ?? 0) + bronzePurchases.length > 2) return 180;
-    // A useful affordable premium purchase gets the Population opportunity first.
-    let premiumAvailable = premiumPopulationAvailable.get(observation);
-    if (premiumAvailable === undefined) {
-      premiumAvailable = observation.legalActions.some(({ action: candidate }) =>
-        candidate.type === "POPULATION_ACTION" && candidate.purchases.length > 0 &&
-        candidate.purchases.every((purchase) => coreUnitDefinitions[purchase.unitDefId]?.tier !== "bronze") &&
-        populationScore(observation, candidate) > 300);
-      premiumPopulationAvailable.set(observation, premiumAvailable);
-    }
-    if (premiumAvailable) return 180;
+  // Inferno's two surviving opening Packs have already won the first Far.
+  // Replace a lost Magog with the first Silver, not another Bronze screen:
+  // the three gold screen otherwise delays the Silver dwelling/recruit pair
+  // through the next Resource Round. If either Pack is lost, rebuild normally.
+  if (player.factionId === "inferno" && !hasReachedSilverArmy(state, observation.playerId) &&
+      securedFarTileIds(state, observation.playerId).size > 0 &&
+      preferred.every(id => player.army.some(unit => unit.unitDefId === id && unit.side === "pack")) &&
+      bronzePurchases.length > 0) return 180;
+  if (!goldArmy && !hasNecromancyPlan(state, observation.playerId) &&
+      (development.silverUnits > 0 || hasOpenedFarEconomy(state, observation.playerId))) {
+    // After the first premium capture, keep only the level-3 Bronze Pack
+    // investment; other surviving Few cards are screens. Conflux's explicitly
+    // permitted Sprites Pack remains available before Gold.
+    if (bronzePurchases.some(purchase => purchase.kind !== "recruit" &&
+        purchase.unitDefId !== preferred[0] &&
+        !(player.factionId === "conflux" && purchase.unitDefId === "conflux.sprites"))) return 180;
   }
 
   // Polish Unit Stacks are durability investments, not fresh bodies. Buy one
@@ -660,6 +684,12 @@ function populationScore(
     player?.army.find((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
   const goldLadder = rankedGoldUnits(state, observation.playerId);
   const goldFewMissing = goldLadder.some((unitDefId) => !ownsUnit(unitDefId));
+  // The Silver this seat should recruit NEXT (per its faction plan: Dungeon
+  // Minotaur→Medusa, Rampart Dendroid). User ruling: buy the planned body FIRST
+  // AT ALL COST — an OFF-plan Silver (Medusa/Pegasi) is deferred until the
+  // planned one is owned, even if that means saving for several rounds with no
+  // Silver at all. developmentResourceTargets saves for the planned body's cost.
+  const plannedSilver = nextPlannedSilver(state, observation.playerId);
   const buysSilverPack = action.purchases.some(
     (purchase) =>
       purchase.kind === "reinforce" &&
@@ -729,9 +759,12 @@ function populationScore(
     // Once the core is ready, higher-tier bodies and their upgrades are the
     // efficient way to scale. While saving for the next dwelling, buying stray
     // Bronze cards must not consume that treasury.
+    // An off-plan Silver defers to the planned one while that is reachable soon.
+    const offPlanSilver = definition?.tier === "silver" && purchase.kind !== "reinforce" &&
+      plannedSilver !== null && purchase.unitDefId !== plannedSilver;
     if (development.phase === "unlock-silver" || development.phase === "unlock-gold") {
       if (definition?.tier === "gold") score = Math.max(score, 940);
-      else if (definition?.tier === "silver") score = Math.max(score, 915);
+      else if (definition?.tier === "silver") score = offPlanSilver ? Math.min(score, 820) : Math.max(score, 915);
       else score = Math.min(score, 820);
     } else if (definition?.tier === "gold") {
       // Gold ladder bases (see nextGoldLadderStep): top Few, lower Few, top
@@ -745,7 +778,7 @@ function populationScore(
         score = Math.max(score, rank === 0 ? 950 : 945);
       }
     } else if (definition?.tier === "silver") {
-      score = Math.max(score, purchase.kind === "reinforce" ? 935 : 940);
+      score = offPlanSilver ? Math.min(score, 820) : Math.max(score, purchase.kind === "reinforce" ? 935 : 940);
     } else if (purchase.kind === "reinforce") {
       score = Math.max(score, 900);
     }
@@ -756,13 +789,16 @@ function populationScore(
   if (gold >= GOLD_RESERVE + 10) score += 5;
   score += economyFocusBias(memory, "recruit");
   // Only the first Silver recruit for a premium commitment can spend this
-  // reserve. Mixed baskets and Gold actions retain their existing scores.
+  // reserve — and only the seat's PLANNED first Silver (Dungeon Minotaur,
+  // Rampart Dendroid), never a cheaper off-plan body that would satisfy the tier
+  // gate with a unit too weak to win the fight it is being bought for.
   if (needsPremiumSilverBreakthrough(state, observation.playerId) &&
       action.purchases.length === 1 && action.purchases[0].kind === "recruit" &&
-      coreUnitDefinitions[action.purchases[0].unitDefId]?.tier === "silver") {
+      coreUnitDefinitions[action.purchases[0].unitDefId]?.tier === "silver" &&
+      (plannedSilver === null || action.purchases[0].unitDefId === plannedSilver)) {
     return 976 + Math.min(1, efficiency / 100);
   }
-  // Silver is an optional surplus purchase. Never spend the Bronze opening /
+  // Other Silver is an optional surplus purchase. Never spend the Bronze opening /
   // next dwelling or Gold-recruit fund merely to satisfy a tier gate.
   if (!goldArmy && action.purchases.some(
     purchase => coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
@@ -1256,7 +1292,12 @@ function expansionPriorityScore(
   const hasSettlement = Boolean(
     state.adventure?.farSettlementOpenedByPlayer?.[observation.playerId],
   );
-  const bonus = opened < 2 && !hasSettlement ? 80 : 45;
+  // Keep the far-discovery bonus HIGH past the first settlement while the seat
+  // still needs a valuables source — the valuables mine that unblocks the gold
+  // dwelling may sit on a still-face-down 3rd/4th far tile, so "keep pushing" for
+  // more tiles instead of cutting discovery tempo the moment 2 tiles are open.
+  const keepPushingForValuables = needsFarValuablesReveal(state, observation.playerId);
+  const bonus = (opened < 2 && !hasSettlement) || keepPushingForValuables ? 80 : 45;
   return Math.min(930, score + bonus);
 }
 
@@ -2131,8 +2172,63 @@ function resourceIncomeOptionScore(
   state: GameState,
   playerId: PlayerId,
   optionIndex: number,
+  isSettlement = false,
 ): number {
   const deficit = resourceDeficits(state, playerId);
+  const player = state.players[playerId];
+  // Sandro's paid opening needs cash for the Silver dwelling and Vampire.
+  // If existing stock plus the next printed income covers their non-gold
+  // inputs, fund that breakthrough with this settlement's Gold income. Later
+  // settlements still evaluate the missing valuables for the Gold dwelling.
+  if (isSettlement && player?.heroDefId === "sandro" && !hasNecromancyPlan(state, playerId) &&
+      !hasReachedSilverArmy(state, playerId)) {
+    const profile = armyDevelopmentProfile(state, playerId);
+    const dwelling = profile.silverUnlocked ? undefined : factionBuildingForEffect(state, playerId,
+      effect => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver");
+    const dwellingCost = dwelling ? effectiveTownBuildingCost(state, dwelling) : {};
+    const recruit = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId: "necropolis.vampires" },
+      coreUnitDefinitions["necropolis.vampires"].few!.cost);
+    const stocked = (["buildingMaterials", "valuables"] as const).every(key =>
+      player.resources[key] + (player.production?.[key] ?? 0) >= (dwellingCost[key] ?? 0) + (recruit[key] ?? 0));
+    if (stocked && player.resources.gold < (dwellingCost.gold ?? 0) + (recruit.gold ?? 0) && optionIndex === 0) return 1_290;
+  }
+  // User ruling 2026-09-15: the far-tile SETTLEMENT bonus is a CHOSEN resource
+  // (gold / materials / valuables), and valuables are the Gold-dwelling
+  // bottleneck (4 valuables) that otherwise only come from an RNG valuables mine.
+  //  - If a valuables MINE is revealed anywhere the seat can take it, that mine
+  //    supplies the valuables, so the settlement takes GOLD early (first far,
+  //    developing toward the Gold dwelling) — "the first far tile settlement,
+  //    still choose gold".
+  //  - If NO valuables mine is revealed, the settlement bonus is the only
+  //    valuables the seat will get, so take VALUABLES even on the first far —
+  //    "if you open both far tiles and see no valuable, choose valuable anyway".
+  //    Placing both far tiles first (see place-far-tile) makes this reliable.
+  if (isSettlement) {
+    const main = Object.values(state.heroes).find(hero =>
+      hero.controllerId === playerId && hero.kind === "main");
+    const valuablesMineAvailable = Object.values(state.adventure?.fields ?? {}).some(
+      (field) => {
+        if (field.location !== "mine" || field.resource !== "valuables") return false;
+        if (field.flagOwnerId === playerId) return true;
+        if (field.flagOwnerId || !main) return false;
+        const distance = distanceFromHeroTo(state, main, field.spaceId, true);
+        return distance !== undefined && distance + premiumCombatMovementReserve(state, main, field) <=
+          heroMovementMax(state, main) * 2 && (!isFieldGuarded(field) || canBeatGuardedField(state, main, field));
+      },
+    );
+    // "See no valuable" is only trustworthy once BOTH far tiles are down: while
+    // the seat still HOLDS a placeable far tile, an unrevealed tile could carry
+    // the valuables mine, so do NOT jump to valuables early and starve the
+    // opening gold — take gold and finish placing/scouting first. Only when all
+    // far supply is placed AND no valuables mine exists anywhere does the
+    // settlement become the seat's valuables source.
+    const allFarTilesPlaced = !seatHoldsFarSupplyTile(state, playerId);
+    if (!valuablesMineAvailable && allFarTilesPlaced && deficit.valuables > 0) {
+      if (optionIndex === 2) return 1_280;
+    } else if (!armyDevelopmentProfile(state, playerId).goldUnlocked) {
+      if (optionIndex === 0) return 1_260;
+    }
+  }
   // Engine order: 0 gold, 1 materials, 2 valuables (then reinforce indices).
   if (optionIndex === 0) {
     return 1_100 + Math.max(0, deficit.gold) * 2 + (deficit.gold > 0 ? 20 : 5);
@@ -2383,7 +2479,7 @@ function resolveVisitStepScore(
 
   // --- Settlement / mine income levels --------------------------------------
   if (step.type === "SETTLEMENT_CHOICE" || step.type === "RESOURCE_GAIN_LEVEL") {
-    return resourceIncomeOptionScore(state, playerId, optionIndex);
+    return resourceIncomeOptionScore(state, playerId, optionIndex, step.type === "SETTLEMENT_CHOICE");
   }
 
   // --- Magic Spring: return highest-value discard card ----------------------
@@ -2434,7 +2530,9 @@ function resolveVisitStepScore(
 
   // --- Tavern: take secondary hero when gold allows (legal set only) --------
   if (step.type === "TAVERN") {
-    return 1_120 - Math.min(10, optionIndex);
+    // The seven-gold visit is the same strategic purchase as the town's hire.
+    // It must not bypass the Gold-army and concrete-work gate.
+    return secondaryHeroOpportunity(state, playerId).worthwhile ? 1_120 - Math.min(10, optionIndex) : 180;
   }
 
   // --- Observatory: prefer discovering over skip ----------------------------
@@ -2583,6 +2681,7 @@ export function scoreMapAction(
       if (
         hero?.spaceId &&
         (state.round ?? 0) <= 3 &&
+        tile?.group !== "far" &&
         state.adventure?.fields[hero.spaceId]?.tileInstanceId ===
           homeTileInstanceId(state, hero.controllerId) &&
         latestPlacedTileId(state, observation.playerId) !== null
@@ -2612,6 +2711,10 @@ export function scoreMapAction(
       }
       const farGroup =
         tile?.group === "far";
+      if (hero && tile && heroReadyForGrowth(state, hero) && tileBandOffersGrowth(hero, tile.group) &&
+          primaryMapObjective(state, hero)?.kind === "explore") {
+        return { score: 915, policy: "map.discover-experience-band" };
+      }
       // Normal expansion ladder: when two public tile backs are reachable at
       // once, open the lower band first (II-III before IV-V, IV-V before
       // VI-VII). This is a preference, not a hard refusal: 650 remains above
@@ -2670,6 +2773,14 @@ export function scoreMapAction(
         return { score: 100, policy: "map.finish-home-before-place" };
       }
       const objectives = hero ? collectMapObjectives(state, hero) : [];
+      // Spend the opening's held supply by rounds 2–3 so settlement income
+      // can be chosen with both Far rewards visible. This is a legal placement
+      // only: empty supply and sealed geometry never invent an exploration job.
+      if (hero?.kind === "main" && state.round >= 2 && state.round <= 3 &&
+          seatHoldsFarSupplyTile(state, observation.playerId) &&
+          (state.adventure?.farTilesOpenedByPlayer?.[observation.playerId] ?? 0) < 2) {
+        return { score: 945, policy: "map.reveal-opening-far-supply" };
+      }
       const hasFight = objectives.some(
         (objective) =>
           objective.kind === "guard" ||
@@ -2980,9 +3091,16 @@ export function scoreMapAction(
       );
       const cost = 2 + 2 * (hero?.level ?? 1);
       const gold = playerGold(state, observation.playerId);
+      // User ruling (2026-09-15): reviving the commander is a MUST — it is the
+      // army's 5th body and, for casters, its once-per-round Command cast. Bring
+      // it back as soon as the gold is there, ahead of ordinary map plays (moves
+      // and recruits sit ~590-900); only defer when it is genuinely unaffordable.
+      if (gold < cost) {
+        return { score: 40, policy: "commander.revive-unaffordable" };
+      }
       return {
-        score: gold - cost >= GOLD_RESERVE ? 740 : 290,
-        policy: "commander.revive-with-reserve",
+        score: gold - cost >= GOLD_RESERVE ? 985 : 900,
+        policy: "commander.revive-must",
       };
     }
     case "COMMANDER_SET_STANCE":
@@ -3008,7 +3126,7 @@ export function scoreMapAction(
         houseRuleEnabled(state, "wisdom-expert-discount")) : 0;
       const cost = action.rollSpell ? 3 : Math.max(0, baseCost - discount);
       const needsArrow =
-        ![...state.players[observation.playerId].hand, ...state.players[observation.playerId].discard,
+        ![...state.players[observation.playerId].hand,
           ...(state.players[observation.playerId].spellBook ?? [])].includes("spell.magic_arrow");
       const arrowFunded = needsArrow && phase !== "establish-core" && playerGold(state, observation.playerId) - cost >= target.gold;
       const funded = cost === 0 || arrowFunded || (phase === "improve-army" &&

@@ -1,4 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
+import { commanderValuesMagicGrade } from "@/data/commanders";
+import { farTileChoiceValue } from "./far-tile-policy";
 import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
 import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { GameAction, GameState, PendingChoice } from "../state";
@@ -13,6 +15,7 @@ import {
 } from "./army-strength";
 import {
   collectMapObjectives,
+  canBeatGuardedField,
   objectiveDistanceField,
   primaryMapObjective,
 } from "./map-navigation";
@@ -67,6 +70,8 @@ function developmentGainValue(
 function acquisitionValue(cardId: string, observation: ComputerObservation): number {
   const base = upcomingFight(observation) ? cardHandValue(cardId, observation) : cardKeepValue(cardId, observation);
   const card = cardLibrary[cardId];
+  if (observation.state.round <= 5 && (cardId === "stat.power" || cardId === "stat.knowledge") &&
+      !observation.state.players[observation.playerId]?.hand.includes(cardId)) return Math.max(base, 105);
   if (cardId === "spell.magic_arrow" && observation.state.players[observation.playerId] &&
       !observation.state.players[observation.playerId].hand.includes(cardId) &&
       !observation.state.players[observation.playerId].spellBook?.includes(cardId)) return base + 35;
@@ -582,6 +587,26 @@ function scorePositionOption(
     return CHOICE_BASE + Math.min(30, dist * 3);
   }
 
+  if (context === "combat-reposition" && choice.reposition) {
+    const combat = observation.state.combat;
+    const unit = combat?.units[choice.reposition.unitId];
+    // Harpy fly-back choice only (option 0 = fly back to origin, option 1 = stay
+    // at the attack landing). User ruling: if the enemy has a ranged unit and
+    // staying PINS it (adjacent to the landing), STAY to deny its shots; else fly
+    // back behind the screen. Other repositions keep the default scoring.
+    if (combat && unit && (unit.abilities ?? []).includes("harpy-return")) {
+      const pinsShooter = Object.values(combat.units).some(
+        (enemy) =>
+          enemy.controllerId !== unit.controllerId &&
+          enemy.type === "ranged" &&
+          (enemy.maxHealth ?? 0) - (enemy.damage ?? 0) > 0 &&
+          isAdjacent(enemy.position, unit.position),
+      );
+      if (pinsShooter) return optionIndex === 1 ? CHOICE_BASE + 45 : CHOICE_BASE + 5;
+      return optionIndex === 0 ? CHOICE_BASE + 30 : CHOICE_BASE + 10;
+    }
+  }
+
   if (context === "diplomacy-skip" && choice.diplomacySkip) {
     // Option 0 uses diplomacy (claim free); option 1 fights. Prefer free claim.
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
@@ -594,10 +619,16 @@ function scorePositionOption(
   }
 
   if (context === "polish-quick-combat" && choice.polishQuickCombat) {
-    // Polish strength-based Quick Combat: option 0 is the certain unfought win
-    // (no XP), option 1 the real dice fight for XP. Prefer the certain win —
-    // the AI cannot judge the dice risk here, and the guaranteed claim keeps
-    // its march moving.
+    const state = observation.state as unknown as GameState;
+    const hero = state.heroes?.[choice.polishQuickCombat.heroId];
+    const field = state.adventure?.fields[choice.polishQuickCombat.fieldId];
+    // A covered field still offers a real fight when XP is available. Use the
+    // same army-readiness gate as navigation; never throw away growth merely
+    // because the no-XP shortcut is certain.
+    if (hero?.kind === "main" && hero.level < 7 && field && !field.noExperience &&
+        choice.polishQuickCombat.difficulty >= hero.level && canBeatGuardedField(state, hero, field)) {
+      return optionIndex === 1 ? CHOICE_BASE + 55 : CHOICE_BASE + 10;
+    }
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
@@ -789,6 +820,8 @@ function scorePositionOption(
   }
 
   if (context === "far-tile-flip") {
+    const value = farTileChoiceValue(observation, optionIndex);
+    if (value !== null) return CHOICE_BASE + value;
     // Prefer tiles that mention Settlement / Ore Mine in the option label
     // (engine builds those tags into the keep/reroll menu). Keep over reroll
     // when the candidate already looks good; otherwise take the reroll offer.
@@ -926,18 +959,24 @@ export function scoreChoiceAction(
       return { score: CHOICE_BASE + 35, policy: "choice.commander-first-aid" };
     }
     case "COMMANDER_GRADE_UP": {
-      // Prefer Attack then Damage then Health — offense wins fights.
-      const order: Record<string, number> = {
-        attack: 40,
-        damage: 35,
-        health: 30,
-        defense: 25,
-        magic: 22,
-        speed: 20,
-      };
+      // Priority mirrors ranked human play (16 commander games, 197 grade-ups):
+      // ATTACK is the first and most-picked stat (38/39 first picks, 89 total)
+      // for EVERY commander, and DAMAGE is never picked by anyone (0/197) — the
+      // extra attack dice are worth less than a flat +1 Attack or survivability,
+      // so it sits below everything as a last-resort filler. What differs by
+      // commander is MAGIC: caster commanders (Animate Dead / Precision /
+      // Counterstrike / Shield) pour into it to power their once-per-round cast,
+      // while melee/utility commanders never grade it and instead bank Defense /
+      // Health / Speed. Speed is left ADAPTIVE (never a forced first pick — it
+      // only unlocks manual sorting; the commander is auto-placed without it).
+      const slug = observation.state.players[observation.playerId]?.commander?.slug;
+      const caster = commanderValuesMagicGrade(slug);
+      const order: Record<string, number> = caster
+        ? { attack: 40, magic: 38, speed: 26, defense: 22, health: 20, damage: 6 }
+        : { attack: 40, defense: 26, health: 24, speed: 22, magic: 12, damage: 6 };
       return {
         score: CHOICE_BASE + (order[action.stat] ?? 15),
-        policy: "choice.commander-grade",
+        policy: caster ? "choice.commander-grade-caster" : "choice.commander-grade-martial",
       };
     }
     case "SKIP_NECROMANCY":

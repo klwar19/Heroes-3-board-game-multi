@@ -454,7 +454,9 @@ import {
 import { applyComputerGuaranteedWin } from "./computer/guaranteed-wins";
 import {
   applyComputerCombatBoost,
+  applyComputerPhantomCards,
   removeComputerCombatBoost,
+  removeComputerPhantomCards,
 } from "./computer/combat-boost";
 import { neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import {
@@ -3749,11 +3751,14 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
 
 /**
  * Places or offers a Monolith/Whirlpool/Gate token attached to this just-revealed
- * tile. A designer-pinned physical hex places automatically when it is legal;
- * when random printed content makes that hex incompatible, the original legal-
- * field choice remains the safe fallback. A single legal hex also places
- * automatically, while zero legal hexes drop the token (and fizzle any travel
- * aimed at it). No-op while the tile is face-down or still awaiting rotation.
+ * tile. With 2+ legal hexes the placing player ALWAYS picks where the token lands
+ * (user rule 2026-09-15); a designer-pinned hex is only surfaced first as the
+ * suggested default, never auto-placed. Only a forced case skips the prompt: a
+ * single legal hex places automatically, while zero legal hexes drop the token
+ * (and fizzle any travel aimed at it). No-op while the tile is face-down or still
+ * awaiting rotation. (The non-interactive drain for an eliminated seat — see
+ * {@link autoResolvePendingMapTokens} — still honours the pinned hex, since
+ * nobody can be prompted there.)
  */
 function offerPendingTokenPlacement(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
@@ -3761,17 +3766,24 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
     return;
   }
 
-  // Multi-token tiles queue on `pendingTokens`; drain auto-resolvable heads
-  // (drop / preferred hex / lone candidate) until one genuinely needs a player
-  // pick. The CHOOSE_OPTION resolution re-enters here to drain the rest.
+  // Multi-token tiles queue on `pendingTokens`; drain only the heads that are
+  // genuinely forced (no legal hex → drop; a single legal hex → nothing to
+  // decide) until one that offers a real choice. The CHOOSE_OPTION resolution
+  // re-enters here to drain the rest.
+  //
+  // A designer-pinned hex is NO LONGER a silent auto-placement — it is only
+  // surfaced first as the suggested default below (user rule 2026-09-15).
+  // Silently dropping the token onto its pinned hex whenever that hex happened
+  // to be legal is exactly what stole the pick: a Monolith the player could
+  // freely place before rotating "locked" once a rotation made the pinned hex
+  // legal again, and an Exit whose pinned hex is always legal never prompted at
+  // all. With 2+ legal hexes the placing player always chooses.
   let pendingToken = tilePendingTokens(tile)[0];
   let candidates: MapSpaceId[] = [];
   while (pendingToken) {
     candidates = tokenPlacementCandidates(state, tile, pendingToken.kind);
     if (candidates.length === 0) {
       dropPendingMapToken(state, tile, playerId);
-    } else if (pendingToken.preferredSpaceId && candidates.includes(pendingToken.preferredSpaceId)) {
-      placeMapToken(state, tile, pendingToken.preferredSpaceId, playerId);
     } else if (candidates.length === 1) {
       // Mirrors the gate's single-candidate auto-carve: no zero-information prompt.
       placeMapToken(state, tile, candidates[0], playerId);
@@ -3784,18 +3796,28 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
     return;
   }
 
+  // Surface the designer's preferred hex FIRST so it reads as the suggested
+  // default (and the AI, which takes the lowest index, keeps landing on it),
+  // while the human player stays free to pick any glowing legal field.
+  const preferredSpaceId =
+    pendingToken.preferredSpaceId && candidates.includes(pendingToken.preferredSpaceId)
+      ? pendingToken.preferredSpaceId
+      : undefined;
+  const orderedCandidates = preferredSpaceId
+    ? [preferredSpaceId, ...candidates.filter((spaceId) => spaceId !== preferredSpaceId)]
+    : candidates;
+
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: pendingToken.preferredSpaceId
-      ? `${placementTokenLabel(pendingToken)} token — its reserved hex cannot host it after reveal. Choose a glowing legal fallback field.`
-      : `${placementTokenLabel(pendingToken)} token — choose which glowing field of the revealed tile it overwrites.`,
-    options: candidates.map((spaceId) => {
+    prompt: `${placementTokenLabel(pendingToken)} token — choose which glowing field of the revealed tile it overwrites.`,
+    options: orderedCandidates.map((spaceId) => {
       const field = adventure.fields[spaceId];
       const edge = field ? ringEdgeDirection(tile, spaceId) : "";
       const location = field ? locationDefinitions[field.location]?.name ?? field.location : "field";
-      return { label: `${edge ? `${edge} edge — ` : "Centre — "}${location}` };
+      const suggested = spaceId === preferredSpaceId ? " · suggested" : "";
+      return { label: `${edge ? `${edge} edge — ` : "Centre — "}${location}${suggested}` };
     }),
     context: "place-map-token",
     mapToken: {
@@ -3803,7 +3825,7 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
       kind: pendingToken.kind,
       ...(pendingToken.number !== undefined ? { number: pendingToken.number } : {}),
       ...(pendingToken.pair !== undefined ? { pair: pendingToken.pair } : {}),
-      candidates
+      candidates: orderedCandidates
     },
     returnPhase: choiceReturnPhase(state)
   };
@@ -12484,6 +12506,10 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // removed from the game again at combat end (finalizeAdventureCombat).
   // Idempotent across finalizeCombatStart re-entries; see combat-boost.ts.
   applyComputerCombatBoost(state);
+  // User ruling 2026-09-15: the always-on phantom Power + Magic Arrow cards for
+  // every computer seat (attacker and/or defender), in EVERY combat kind incl.
+  // PvP — removed again at combat end (finalizeAdventureCombat). See combat-boost.ts.
+  applyComputerPhantomCards(state);
   // FO redesign wave 2 — Đài Luyện Khí "Temper the body": a fighting player who
   // banked `pendingCombatAttackBoost` on the map spends it HERE. Idempotent across
   // finalizeCombatStart re-entries because the flag is consumed.
@@ -14464,6 +14490,9 @@ export function finalizeAdventureCombat(state: GameState): void {
   // Attack/Defense cards are removed from the game before ANY outcome branch
   // (win, retreat, surrender) — they are never kept past the battle.
   removeComputerCombatBoost(state);
+  // Phantom Power + Magic Arrow cards are likewise removed before any outcome
+  // branch — never kept past the battle, in any combat kind.
+  removeComputerPhantomCards(state);
 
   // Pirates (Astrologers): reward the winner one Resource die (both the neutral
   // and PvP branches below share this one hook). A no-op unless Pirates is up.

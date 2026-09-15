@@ -24,6 +24,7 @@ export function learnedActionBias(
   observation: ComputerObservation,
   action: GameAction,
   models: LearnedModelSelection = "all",
+  candidateModel?: ReplayPolicyModel,
 ): number {
   if (models === "none") return 0;
   const choice = observation.state.pendingChoice;
@@ -67,6 +68,6 @@ export function learnedActionBias(
   };
   const ranked = replayPolicyBias(model, context, described);
   if (models === "ranked") return ranked;
-  const selfPlay = replayPolicyBias(selfPlayModel as ReplayPolicyModel, context, described) * SELF_PLAY_MODEL_WEIGHT;
+  const selfPlay = replayPolicyBias(candidateModel ?? selfPlayModel as ReplayPolicyModel, context, described) * SELF_PLAY_MODEL_WEIGHT;
   return Math.max(-LEARNED_BIAS_LIMIT, Math.min(LEARNED_BIAS_LIMIT, ranked + selfPlay));
 }

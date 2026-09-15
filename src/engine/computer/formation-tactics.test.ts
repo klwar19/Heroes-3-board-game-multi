@@ -46,6 +46,8 @@ function observation(
     id: "c1",
     attackerPlayerId: "p2",
     defenderPlayerId: "p1",
+    context: { kind: "player" },
+    obstacles: [],
     units: unitMap,
     ...extras,
   } as unknown as CombatState;
@@ -53,6 +55,8 @@ function observation(
     seed: "formation-test",
     round: 1,
     eventCounter: 0,
+    heroes: {},
+    activeEffects: [],
     combat,
     players: {
       p2: {
@@ -129,6 +133,46 @@ describe("formationFitScore", () => {
     } as unknown as CombatState;
     const alone = formationFitScore(emptyCombat, "p2", "melee", 13, "M", 10);
     expect(withScreen).toBeGreaterThanOrEqual(alone);
+  });
+});
+
+describe("Castle opening formation (user ruling)", () => {
+  const emptyCombat = () =>
+    ({
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      units: {},
+    }) as unknown as CombatState;
+
+  it("puts Castle Griffins on the front line, not the screened back row", () => {
+    const combat = emptyCombat();
+    const griffinFront = formationFitScore(combat, "p2", "flying", 13, undefined, 0, 0, false, "castle.griffins");
+    const griffinBack = formationFitScore(combat, "p2", "flying", 17, undefined, 0, 0, false, "castle.griffins");
+    expect(griffinFront).toBeGreaterThan(griffinBack);
+    // CONTROL: a generic flyer still keeps its back-row reserve (untouched).
+    expect(formationFitScore(combat, "p2", "flying", 17)).toBeGreaterThan(
+      formationFitScore(combat, "p2", "flying", 13),
+    );
+  });
+
+  it("stands a Halberdier on the front line directly above its Griffin", () => {
+    const griffin = unit({
+      id: "G",
+      controllerId: "p2",
+      type: "flying",
+      unitDefId: "castle.griffins",
+      position: 13,
+    });
+    const combat = {
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      units: { G: griffin },
+    } as unknown as CombatState;
+    // 12 is the front cell directly above the Griffin's 13 (one lower engine
+    // column); 14 is the front cell below it.
+    const above = formationFitScore(combat, "p2", "melee", 12, undefined, 6, 0, false, "castle.halberdiers");
+    const below = formationFitScore(combat, "p2", "melee", 14, undefined, 6, 0, false, "castle.halberdiers");
+    expect(above).toBeGreaterThan(below);
   });
 });
 
@@ -322,6 +366,7 @@ describe("focus fire", () => {
     // E1: wounded, adjacent to ally, dies to 4-atck vs def 0 (remaining 3).
     const e1 = unit({
       id: "E1",
+      controllerId: "p1",
       attack: 3,
       defense: 0,
       maxHealth: 5,
@@ -331,6 +376,7 @@ describe("focus fire", () => {
     // E2: full health, higher bulk, not threatened by ally.
     const e2 = unit({
       id: "E2",
+      controllerId: "p1",
       attack: 5,
       defense: 1,
       maxHealth: 8,

@@ -176,28 +176,28 @@ ask the cloud session to add an upscale script, or use any image upscaler.
 ## The 14 cards (verified from src/data/factions/units.ts)
 
 ### 1. Kobolds — bronze
-- **Few** `units-bulwark-bronze-kobolds-few` · Title **Kobolds** · ATK 2 DEF 0 HP 2 INIT 4
+- **Few** `units-bulwark-bronze-kobolds-few` · Title **Kobolds** · ATK 2 DEF 0 HP 3 INIT 4
   · recruit **0 gold** · upgrade **2 gold** · ability banner **empty**
-- **Pack** `units-bulwark-bronze-kobolds-pack` · Title **Kobolds** · ATK 2 DEF 1 HP 3 INIT 5
+- **Pack** `units-bulwark-bronze-kobolds-pack` · Title **Kobolds** · ATK 2 DEF 1 HP 4 INIT 5
   · ability: *"Map: at the beginning of each Resource round, gain 1 gold (Kobold Foreman)."*
 
 ### 2. Mountain Rams — bronze
-- **Few** `units-bulwark-bronze-mountain_rams-few` · Title **Mountain Rams** · ATK 2 DEF 1 HP 3 INIT 6
+- **Few** `units-bulwark-bronze-mountain_rams-few` · Title **Mountain Rams** · ATK 2 DEF 1 HP 4 INIT 8
   · recruit **2 gold** · upgrade **4 gold** · ability banner **empty**
-- **Pack** `units-bulwark-bronze-mountain_rams-pack` · Title **Mountain Rams** · ATK 2 DEF 1 HP 4 INIT 8
+- **Pack** `units-bulwark-bronze-mountain_rams-pack` · Title **Mountain Rams** · ATK 2 DEF 1 HP 5 INIT 10
   · ability: *"Reduce any damage from spells by 1 (Argali)."*
 
 ### 3. Snow Elves — bronze
-- **Few** `units-bulwark-bronze-snow_elves-few` · Title **Snow Elves** · ATK 3 DEF 0 HP 3 INIT 4
+- **Few** `units-bulwark-bronze-snow_elves-few` · Title **Snow Elves** · ATK 3 DEF 0 HP 4 INIT 4
   · recruit **3 gold** · upgrade **5 gold**
   · ability: *"No combat penalty for attacking an adjacent unit."*
-- **Pack** `units-bulwark-bronze-snow_elves-pack` · Title **Snow Elves** · ATK 3 DEF 1 HP 3 INIT 5
+- **Pack** `units-bulwark-bronze-snow_elves-pack` · Title **Snow Elves** · ATK 3 DEF 1 HP 4 INIT 5
   · ability: *"No combat penalty for attacking an adjacent unit. This unit's attacks provoke no Retaliation (Steel Elf)."*
 
 ### 4. Yetis — silver
-- **Few** `units-bulwark-silver-yetis-few` · Title **Yetis** · ATK 3 DEF 2 HP 4 INIT 5
+- **Few** `units-bulwark-silver-yetis-few` · Title **Yetis** · ATK 3 DEF 2 HP 4 INIT 6
   · recruit **6 gold** · upgrade **10 gold** · ability banner **empty**
-- **Pack** `units-bulwark-silver-yetis-pack` · Title **Yetis** · ATK 3 DEF 2 HP 5 INIT 7
+- **Pack** `units-bulwark-silver-yetis-pack` · Title **Yetis** · ATK 3 DEF 2 HP 5 INIT 8
   · ability: *"At the start of its activation, this unit recovers from all negative effects."*
 
 ### 5. Shamans — silver
@@ -214,9 +214,9 @@ ask the cloud session to add an upscale script, or use any image upscaler.
   · ability: *"+1 Defense while this unit is defending (War Mammoth)."*
 
 ### 7. Jotunns — gold (golden frame)
-- **Few** `units-bulwark-golden-jotunns-few` · Title **Jotunns** · ATK 5 DEF 3 HP 8 INIT 6
+- **Few** `units-bulwark-golden-jotunns-few` · Title **Jotunns** · ATK 5 DEF 3 HP 8 INIT 7
   · recruit **18 gold + 1 gem** · upgrade **32 gold + 2 gems** · ability banner **empty**
-- **Pack** `units-bulwark-golden-jotunns-pack` · Title **Jotunns** · ATK 6 DEF 3 HP 9 INIT 8
+- **Pack** `units-bulwark-golden-jotunns-pack` · Title **Jotunns** · ATK 6 DEF 3 HP 9 INIT 9
   · ability: *"At the start of its activation, this unit may teleport any one unit on the battlefield to an empty space, then act as normal (Teleport)."*
 
 ---

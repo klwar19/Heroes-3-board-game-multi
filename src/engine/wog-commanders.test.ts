@@ -47,8 +47,8 @@ import {
   latchCommanderFrontLineAttack
 } from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
-import { warMachinesForSale } from "./permanents";
-import { hasBallistaChooseTarget, effectiveInitiative } from "./active-effects";
+import { countBallistas, startWarMachineRound, warMachinesForSale } from "./permanents";
+import { countExtraBallistas, effectiveInitiative } from "./active-effects";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
@@ -1032,12 +1032,57 @@ describe("WOG commanders — specialties", () => {
     }
   });
 
-  it("Ballista Master (Ogre Leader): the Ballista shot becomes a free target choice", () => {
-    const state = adventureWithCommanders("cmd-ballista", "stronghold", undefined);
-    expect(hasBallistaChooseTarget(state, "p1")).toBe(true);
-    expect(hasBallistaChooseTarget(state, "p2")).toBe(false);
-    state.players.p1.commander!.dead = true;
-    expect(hasBallistaChooseTarget(state, "p1")).toBe(false);
+  it("Ballista Master (Ogre Leader): fields one extra combat Ballista, a second if it already owns one", () => {
+    // Mutation: drop the `ogreLeaderFightingFor` term from countExtraBallistas
+    // in active-effects.ts and every count below falls by one — the specialty
+    // grants nothing.
+    const fight = intoNeutralFight(adventureWithCommanders("cmd-extra-ballista", "stronghold", undefined));
+    const commanderUnit = fight.combat!.units[commanderUnitId("p1")];
+    expect(commanderUnit?.commanderSlug, "the Ogre Leader stands in the fight").toBe("ogre_leader");
+
+    // Owning no permanent Ballista, the specialty alone fields exactly one.
+    expect(fight.players.p1.permanents ?? []).not.toContain("war_machine.ballista");
+    expect(countExtraBallistas(fight, "p1")).toBe(1);
+    expect(countBallistas(fight, "p1")).toBe(1);
+
+    // Already owning a permanent Ballista, the extra stacks on top → two.
+    fight.players.p1.permanents = ["war_machine.ballista"];
+    expect(countBallistas(fight, "p1")).toBe(2);
+
+    // Battlefield-body effect: the opponent (no Ogre Leader) never gets it, and
+    // a commander defeated in this combat stops fielding it at once.
+    expect(countExtraBallistas(fight, "p2")).toBe(0);
+    commanderUnit.damage = commanderUnit.maxHealth;
+    expect(countExtraBallistas(fight, "p1")).toBe(0);
+  });
+
+  it("Ballista Master (Ogre Leader): the granted Ballista fires its round-start shot at the slowest enemy", () => {
+    // Mutation: drop the `ogreLeaderFightingFor` term from countExtraBallistas
+    // and startWarMachineRound queues no granted shot — warMachineHits is 0.
+    const state = sandboxWithCommander("ogre_leader");
+    state.players.p1.permanents = []; // the specialty alone supplies the Ballista
+    // A unique slowest, high-HP enemy so the single granted shot lands with no tie.
+    state.combat!.units.unit_p2_skeletons.initiative = 1;
+    state.combat!.units.unit_p2_skeletons.maxHealth = 50;
+    state.combat!.units.unit_p2_vampires.initiative = 5;
+    state.combat!.units.unit_p2_dread_knights.initiative = 5;
+
+    startWarMachineRound(state);
+
+    const hits = state.eventLog.filter((event) => event.type === "WAR_MACHINE_TRIGGERED");
+    expect(hits, "the specialty's granted Ballista fired once").toHaveLength(1);
+    expect(hits[0]).toMatchObject({ playerId: "p1", cardId: "war_machine.ballista" });
+    expect(state.combat!.units.unit_p2_skeletons.damage, "1 damage to the slowest enemy").toBe(1);
+
+    // CONTROL: a defeated Ogre Leader queues no granted shot.
+    const dead = sandboxWithCommander("ogre_leader");
+    dead.players.p1.permanents = [];
+    dead.combat!.units[commanderUnitId("p1")].damage = dead.combat!.units[commanderUnitId("p1")].maxHealth;
+    startWarMachineRound(dead);
+    expect(
+      dead.eventLog.filter((event) => event.type === "WAR_MACHINE_TRIGGERED"),
+      "no shot when the commander is down",
+    ).toHaveLength(0);
   });
 
   it("Undead (Soul Eater): a petrifying attack can never Paralyze the commander", () => {

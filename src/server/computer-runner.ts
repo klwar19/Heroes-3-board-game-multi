@@ -323,12 +323,13 @@ export function driveComputerPlayers(
     // Persist the departed state's hash for the cross-tick cycle guard FIRST,
     // then the action notes — an END_TURN note clears the whole per-turn
     // memory (visit list + hash trail), and the order keeps that wipe final.
+    const previousState = state;
     state = noteRecentStateHash(
       result.state,
       playerId,
       fingerprintHash(fingerprint),
     );
-    state = noteComputerAction(state, playerId, decision.action);
+    state = noteComputerAction(state, playerId, decision.action, previousState);
     decisions.push(decision);
   }
 

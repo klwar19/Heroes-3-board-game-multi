@@ -1659,7 +1659,14 @@ export function processWarMachineRound(state: GameState): void {
       const openingBallistaSpecialty =
         combatStartWindowOpen(combat) &&
         (state.players[playerId]?.hand ?? []).some((id) =>
-          id === "specialty.gerwulf.6" || id === "specialty.tarnum_castle.4",
+          id === "specialty.gerwulf.6" ||
+          id === "specialty.tarnum_castle.4" ||
+          // Torosar VI is a start-of-combat instant too: the owner must be asked
+          // to play it BEFORE the owned Ballista's round-start shot commits, the
+          // same as Tarnum IV / Gerwulf VI. Its "activate all your Ballistas now"
+          // is a SEPARATE activation from the round-start volley, so this only
+          // opens the ordering pause — it never suppresses the intended multi-fire.
+          id === "specialty.torosar.6",
         );
       if (!handLocked && (polishBallistaTiming(state) || openingBallistaSpecialty) && (state.players[playerId]?.hand ?? []).some((id) => {
         const specialty = balanceCard(state, id);

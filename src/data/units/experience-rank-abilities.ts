@@ -1,6 +1,6 @@
 /**
- * Unit Experience rank rewards — each of the 4 ranks is EITHER stats OR one
- * ability (a signature rank may be a hybrid of both).
+ * Unit Experience rank rewards — each of the 4 ranks is normally stats OR one
+ * ability (a signature rank may be a hybrid or explicitly add another grant).
  *
  * RESOLUTION (the whole design, `rankScheduleFor` below): per rank,
  *   (i)  an explicit per-unit OVERRIDE (the signature ranks), else
@@ -22,8 +22,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 
 export type RankStep =
   | { kind: "stats"; stats?: UnitRankStatBonus }
-  | { kind: "ability"; choices: readonly string[] }
-  | { kind: "hybrid"; stats: UnitRankStatBonus; choices: readonly string[] };
+  | { kind: "ability"; choices: readonly string[]; grants?: readonly string[] }
+  | { kind: "hybrid"; stats: UnitRankStatBonus; choices: readonly string[]; grants?: readonly string[] };
 
 export type RankSchedule = {
   readonly 1: RankStep;
@@ -74,11 +74,15 @@ function A(...choices: string[]): RankStep {
 function H(stats: UnitRankStatBonus, ...choices: string[]): RankStep {
   return { kind: "hybrid", stats, choices };
 }
+function G(choices: readonly string[], ...grants: string[]): RankStep {
+  return { kind: "ability", choices, grants };
+}
 
 export function scheduleAbilityCount(schedule: RankSchedule): number {
   let n = 0;
   for (const r of [1, 2, 3, 4] as const) {
-    if (schedule[r].kind === "ability" || schedule[r].kind === "hybrid") n += 1;
+    const step = schedule[r];
+    if (step.kind === "ability" || step.kind === "hybrid") n += 1 + (step.grants?.length ?? 0);
   }
   return n;
 }
@@ -394,6 +398,8 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "bulwark.mountain_rams") return A("town-ram-spell-draw");
   if (unitDefId === "bulwark.jotunns") return A("town-jotunn-rune-hide");
   if (unitDefId === "bulwark.mammoths") return A("town-mammoth-rune-mend");
+  // Kobolds keep their generated R1 Health step and gain +1 more Health (net +2 HP).
+  if (unitDefId === "bulwark.kobolds") return S({ ...Z, health: 2 });
   if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
   // Move the former generated R3 reward forward: veteran Sharpshooters begin
   // with the same low-roll extra shot that their old schedule granted at R3.
@@ -446,6 +452,9 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   // unchanged, then fold it into a hybrid that always adds the Health step.
   if (unitDefId === "cove.sea_dogs") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
   if (unitDefId === "bulwark.snow_elves") return A("town-snow-elf-rune-strike");
+  // Mountain Rams keep their generated R2 ability CHOICE and ALSO gain +1 Health
+  // (same hybrid pattern as cove.sea_dogs above).
+  if (unitDefId === "bulwark.mountain_rams") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
   if (unitDefId === "bulwark.yetis") return A("town-yeti-specialty-aura");
   if (unitDefId === "castle.marksmen") return A("town-marksman-mark");
   if (unitDefId === "castle.crusaders") return A("town-crusader-undead");
@@ -585,7 +594,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "tower.gargoyles") return A("veteran-defense-pierce-2");
   if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-rising-nest-heal");
   if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-overflow");
-  if (unitDefId === "bulwark.shamans") return A("teleport-move", "veteran-magma-attack-after-move");
+  if (unitDefId === "bulwark.shamans") return A("town-shaman-teleport-charge", "veteran-magma-attack-after-move");
   if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-last-stand");
   if (unitDefId === "necropolis.skeletons") return A("veteran-skeleton-last-stand");
   const neutralTownR4: Record<string, string> = {
@@ -610,7 +619,12 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "cove.ayssids") return H({ ...Z, initiative: 2 }, "town-ayssid-slow");
   if (unitDefId === "cove.haspids") return A("town-haspid-unstoppable-counter");
   if (unitDefId === "cove.nix") return A("town-nix-intercept");
-  if (unitDefId === "bulwark.kobolds") return A("town-kobold-rune-step");
+  // Requested additions: keep the old R4 reward and grant the new rule too.
+  if (unitDefId === "bulwark.kobolds") return G(["town-kobold-rune-step"], "town-kobold-armored-prey");
+  if (unitDefId === "bulwark.mountain_rams") return G(
+    rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[inferFlavour(unitDefId)]),
+    "town-ram-trample"
+  );
   if (unitDefId === "bulwark.mammoths") return A("town-mammoth-last-stand");
   if (unitDefId === "castle.griffins") return A("town-griffin-counter");
   if (unitDefId === "castle.marksmen") return A("town-marksman-survival");
@@ -789,6 +803,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-lizard-spell-draw": "/game-tokens/rank-ability/town-revisions/lizard-spell-draw.webp",
   "town-gorgon-stare-reroll": "/game-tokens/rank-ability/town-revisions/gorgon-stare-reroll.webp",
   "town-gorgon-armored-prey": "/game-tokens/rank-ability/town-revisions/gorgon-armored-prey.webp",
+  "town-kobold-armored-prey": "/game-tokens/rank-ability/town-revisions/gorgon-armored-prey.webp",
   "town-wyvern-potent-poison": "/game-tokens/rank-ability/town-revisions/wyvern-potent-poison.webp",
   "town-sea-dog-ranged-retaliation": "/game-tokens/rank-ability/town-revisions/sea-dog-ranged-retaliation.webp",
   "town-seaman-survival-gold": "/game-tokens/rank-ability/town-revisions/seaman-survival-gold.webp",
@@ -797,6 +812,8 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-haspid-toxic-hide": "/game-tokens/rank-ability/town-revisions/haspid-toxic-hide.webp",
   "town-nix-intercept": "/game-tokens/rank-ability/town-revisions/nix-intercept.webp",
   "town-yeti-specialty-aura": "/game-tokens/rank-ability/town-revisions/yeti-specialty-aura.webp",
+  "town-ram-trample": "/assets/ui/rank-ability/charge.webp",
+  "town-shaman-teleport-charge": "/game-tokens/rank-ability/veterancy/veteran-magma-teleport-strike.webp",
   "town-jotunn-rune-bolt": "/game-tokens/rank-ability/town-revisions/jotunn-rune-bolt.webp",
   "town-mammoth-rune-mend": "/game-tokens/rank-ability/town-revisions/mammoth-rune-mend.webp",
   "town-marksman-mark": "/assets/ui/rank-ability/precision.webp",

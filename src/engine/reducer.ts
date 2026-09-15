@@ -174,6 +174,7 @@ import {
   endTurnAdventure,
   maybeOpenMidFightBankAutoCombatChoice,
   offerMapSpellKnowledgeRecall,
+  openPolishBookRefreshPick,
 } from "./adventure-reducer";
 import {
   banHero,
@@ -2907,7 +2908,7 @@ function noteSpellCast(
 ): void {
   if (elementalSpellCardId) noteElementalSpellCast(state, player.id, elementalSpellCardId, allowElementalCopy, fromHand);
   // Polish Balance Pack Intelligence (one-shot): the reprinted card grants
-  // EXACTLY ONE free cast at the start of the Combat. Consume the effect on the
+  // EXACTLY ONE free cast at the start of the current combat round. Consume the effect on the
   // first Spell the holder casts, so a second Spell needs the ordinary
   // allowance. The EXPERT rider (`ignoreSpellLimit`) waives the per-round limit
   // for ONLY that one free cast — so this cast must not itself count toward the
@@ -3525,6 +3526,23 @@ function totalSpellDamageReduction(
     }
   }
   return total;
+}
+
+/** Read-only deterministic damage preview. Shares the resolution wards and
+ * immunities without consuming caps, rolling resistance, or emitting events. */
+export function previewSpellDamage(
+  state: GameState,
+  target: CombatUnitState,
+  card: CardDefinition,
+  amount: number,
+): number {
+  // Policy fixtures and older public snapshots may omit empty collections.
+  // Normalize only this read-only preview; authoritative resolution is intact.
+  state = { ...state, activeEffects: state.activeEffects ?? [], stack: state.stack ?? [] };
+  if (unitIgnoresCardDamage(state, target, card)) return 0;
+  const reduced = Math.max(0, amount - totalSpellDamageReduction(state, target) -
+    getSpellSchoolDamageReduction(target, card.spellSchools ?? []));
+  return Math.min(reduced, availableDamageCap(state, target, true)?.amount ?? Infinity);
 }
 
 function reducedSpellDamage(
@@ -7343,6 +7361,7 @@ function resolveBalanceSpellChoice(
     card
   ) {
     const target = { type: "unit" as const, unitId: payload.unitId };
+    const effectCountBefore = state.activeEffects.length;
     createActiveEffect(
       state,
       {
@@ -7359,6 +7378,10 @@ function resolveBalanceSpellChoice(
       { type: "card", cardId: card.id, controllerId: choice.playerId },
       choice.playerId,
       target,
+    );
+    holdOngoingCardIfEffectCreated(
+      state, choice.playerId, card.id, effectCountBefore,
+      payload.disruptingRayReturnTo ?? "discard",
     );
     return;
   }
@@ -17252,7 +17275,19 @@ function finalizeSpellCardDestination(
   // A recalled Spell cast from the Spell Book returns to the Book, not the hand.
   const recallZone = recall?.toSpellBook ? "spellBook" : "hand";
 
-  const held = holdOngoingCardIfEffectCreated(
+  // Balance Ray creates its ongoing effect only after the caster picks a mode.
+  // Carry the recall destination through that choice rather than returning the
+  // card now or letting the generic holding pass forget the recall.
+  const choice = state.pendingChoice;
+  const pendingRay = cardId === "spell.disrupting_ray" &&
+    choice?.type === "OPTION_CHOICE" && choice.context === "disrupting-ray-mode" &&
+    choice.playerId === playerId && choice.balanceSpellChoice?.cardId === cardId
+      ? choice.balanceSpellChoice : undefined;
+  if (pendingRay) {
+    pendingRay.disruptingRayReturnTo = recall?.toHand ? recallZone : crazyWizardReturn ? "hand" : "discard";
+  }
+
+  const held = Boolean(pendingRay) || holdOngoingCardIfEffectCreated(
     state,
     playerId,
     cardId,
@@ -26114,11 +26149,11 @@ function playCard(
       "Cast a Spell enables a refreshed Spell Book card; its only direct play is the printed +1 Power reaction.",
     );
   }
-  // Polish Balance Pack: the reprinted Intelligence is a start-of-combat play.
+  // Polish Balance Pack: the reprinted Intelligence is a combat-round-start play.
   // PLAY_CARD is offer-validated, so this is the backstop for a stale client.
   if (balanceIntelligencePlayBlocked(state, action.cardId)) {
     throw new Error(
-      "Intelligence is played at the start of a Combat, before any unit activates.",
+      "Intelligence is played at the start of a combat round, before any unit activates.",
     );
   }
   if (
@@ -29047,6 +29082,22 @@ function playCard(
       effectCountBeforePlay,
       "discard",
     );
+  }
+
+  // Polish Balance Pack Intelligence: "Refresh 1 Spell, then Cast a Spell." The
+  // free-cast window (the CREATE_ACTIVE_EFFECT above) is now live and the card is
+  // already in the discard pile; open the standalone "Refresh 1 Spell in your
+  // Spell Book" pick so it resolves BEFORE that free cast (the printed order — a
+  // refreshed Spell can be the one you cast, e.g. a second Chain Lightning across
+  // two Combats). Book-gated: with no Polish Spell Book there is nothing to
+  // refresh and the card keeps its printed one-shot free cast. The pendingChoice
+  // it opens is honoured by the `if (state.pendingChoice) return` guard below.
+  if (
+    effect.type === "CREATE_ACTIVE_EFFECT" &&
+    effect.polishRefreshSpellFirst &&
+    !state.pendingChoice
+  ) {
+    openPolishBookRefreshPick(state, action.playerId);
   }
 
   // Use the same recall offer as interactive map casts: include every held

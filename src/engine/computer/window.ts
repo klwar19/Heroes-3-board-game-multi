@@ -63,7 +63,15 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
   return computerDecisionOwnerInContext(state);
 }
 
-function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
+/** Offline lab: retain human identity and its actual guard-control rules. */
+export function policyLabDecisionOwner(state: GameState): PlayerId | null {
+  return computerDecisionOwnerInContext(state, liveSeat);
+}
+
+function computerDecisionOwnerInContext(
+  state: GameState,
+  eligible: typeof computer = computer,
+): PlayerId | null {
   // A combat that just ended ALSO parks the game in the "game-over" phase until
   // a participant acknowledges the end-of-combat notice — only then does the
   // engine finalize XP / unit flips / the field visit and return to the map. A
@@ -91,10 +99,10 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
   }
 
   if (state.pendingChoice) {
-    return computer(state, state.pendingChoice.playerId);
+    return eligible(state, state.pendingChoice.playerId);
   }
   if (state.reactionWindow) {
-    return computer(state, state.reactionWindow.priorityPlayerId);
+    return eligible(state, state.reactionWindow.priorityPlayerId);
   }
   // Round-start Event/Astrologers barrier: while a RESOLVER is named, that
   // seat is the only one who may act at the whole table. When the resolver
@@ -102,12 +110,12 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
   // interaction the read does not cover (a wave winner's Necromancy window, a
   // tile-rotation choice) — getLegalActions lets play fall through to its
   // normal window gates, so this function MUST fall through too. The old
-  // unconditional `return computer(state, resolver)` turned every such state
+  // unconditional `return eligible(state, resolver)` turned every such state
   // into "nobody owes a decision" and froze the table.
   if (isRoundStartEventBarrierActive(state)) {
     const resolver = roundStartEventResolver(state);
     if (resolver) {
-      return computer(state, resolver);
+      return eligible(state, resolver);
     }
   }
 
@@ -123,8 +131,8 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
       !combat.endAcknowledged
     ) {
       return (
-        computer(state, combat.attackerPlayerId) ??
-        computer(state, combat.defenderPlayerId)
+        eligible(state, combat.attackerPlayerId) ??
+        eligible(state, combat.defenderPlayerId)
       );
     }
 
@@ -141,11 +149,11 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
       // actions (a logged stall on every tick until the human resolves).
       const prepVisitOwner = state.adventure?.pendingVisit?.playerId;
       if (prepVisitOwner) {
-        return computer(state, prepVisitOwner);
+        return eligible(state, prepVisitOwner);
       }
       for (const owner of [combat.attackerPlayerId, combat.defenderPlayerId]) {
         if (combat.prep.accepted.includes(owner)) continue;
-        const result = computer(state, owner);
+        const result = eligible(state, owner);
         if (result) return result;
       }
       return null;
@@ -154,11 +162,11 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     // Cover of Darkness / Shackles owners resolve through their paired
     // pendingChoice (handled above); these queues track who still owes one.
     for (const owner of combat.pendingCoverOfDarkness ?? []) {
-      const result = computer(state, owner);
+      const result = eligible(state, owner);
       if (result) return result;
     }
     for (const owner of combat.pendingShackles ?? []) {
-      const result = computer(state, owner);
+      const result = eligible(state, owner);
       if (result) return result;
     }
 
@@ -166,13 +174,13 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     // controllerId=NEUTRAL_PLAYER_ID, so the active-unit lookup below cannot
     // see that a computer controller owns the window.
     if (combat.pendingNeutralPlacement) {
-      return computer(state, combat.pendingNeutralPlacement);
+      return eligible(state, combat.pendingNeutralPlacement);
     }
 
     // 4. Start-of-combat Tactics window: the queue head acts, everyone else
     // waits (legal-actions returns early for the whole table).
     if (combat.pendingTacticsSwaps && combat.pendingTacticsSwaps.length > 0) {
-      return computer(state, combat.pendingTacticsSwaps[0]);
+      return eligible(state, combat.pendingTacticsSwaps[0]);
     }
 
     // 5. WOG Commanders pre-combat SORT window. Today the window opener skips
@@ -181,7 +189,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     // must exist (and wait on the human head) or a future computer head would
     // freeze the table unseen.
     if (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) {
-      return computer(state, combat.pendingCommanderPlacement[0]);
+      return eligible(state, combat.pendingCommanderPlacement[0]);
     }
 
     // 6. Deployment placement: the placement head acts, everyone else waits.
@@ -189,7 +197,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     // fall through to the fight (real states null `setup` out then; some
     // legacy snapshots/fixtures keep the empty shell).
     if (combat.setup && combat.setup.pendingPlayerIds.length > 0) {
-      return computer(state, combat.setup.pendingPlayerIds[0]);
+      return eligible(state, combat.setup.pendingPlayerIds[0]);
     }
 
     // 7. Pre-activation reaction pause / guard-walk pause: the reactor (the
@@ -202,7 +210,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     // the COMPUTER: falling through claimed the computer owed a move it could
     // not make, so the paced pump stalled.
     if (combat.pendingNeutralStep) {
-      return computer(
+      return eligible(
         state,
         combat.pendingNeutralStep.reactingPlayerId ?? combat.attackerPlayerId,
       );
@@ -215,7 +223,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
       if (combat.context.kind !== "neutral") {
         return null;
       }
-      return computer(state, state.heroes[combat.context.heroId]?.controllerId ?? null);
+      return eligible(state, state.heroes[combat.context.heroId]?.controllerId ?? null);
     }
 
     // 9. The active fight: the active unit's controller (or, for a Neutral
@@ -224,7 +232,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     const activeController = activeUnit
       ? combatUnitDecisionOwnerId(state, combat, activeUnit)
       : null;
-    const activeOwner = computer(state, activeController);
+    const activeOwner = eligible(state, activeController);
     if (activeOwner) return activeOwner;
 
     // An open combat is an exclusive interaction: while no computer-owned slot
@@ -251,7 +259,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
       // legal-actions (its gate serves only the owner, who is gone) — do not
       // let it freeze the whole table here either.
       if (!liveSeat(state, owner)) continue;
-      return computer(state, owner);
+      return eligible(state, owner);
     }
     // Windows that always ride a paired pendingChoice/tile choice (handled
     // above) but may momentarily stand alone between pumps: same rule.
@@ -262,14 +270,14 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
     ];
     for (const owner of pairedWindows) {
       if (!owner || !liveSeat(state, owner)) continue;
-      return computer(state, owner);
+      return eligible(state, owner);
     }
   }
 
   const lobby = state.setupLobby;
   if (state.phase === "setup" && lobby) {
     const phase = getDraftPhase(lobby);
-    const banner = computer(state, phase.currentBannerPlayerId);
+    const banner = eligible(state, phase.currentBannerPlayerId);
     if (banner) return banner;
     // Faction/town picks are contended (a taken faction is gone): the human
     // gets first dibs, so a bot never snipes the faction the human wanted.
@@ -298,7 +306,7 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
       if (phase.format === "draft" && seat.factionId && !phase.pickPhaseOpen) {
         continue;
       }
-      const result = computer(state, seat.playerId);
+      const result = eligible(state, seat.playerId);
       if (result) return result;
     }
     return null;
@@ -310,11 +318,11 @@ function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
       // A bystander blocked by another seat's exclusive interaction has only
       // optional quiet actions — nothing a policy is required to take.
       if (parallelInteractionBlocker(state, playerId)) continue;
-      const result = computer(state, playerId);
+      const result = eligible(state, playerId);
       if (result) return result;
     }
   } else {
-    const activeOwner = computer(state, state.activePlayerId);
+    const activeOwner = eligible(state, state.activePlayerId);
     if (activeOwner) return activeOwner;
   }
 

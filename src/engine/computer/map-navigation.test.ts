@@ -4418,6 +4418,58 @@ describe("computer opening: tile Ⅰ rotation and Ⅱ–Ⅲ-first discovery", ()
     expect(unblocked.score).toBeGreaterThan(300);
   });
 
+  it("post-Far growth keeps a mixed doorway and reveals the XP band before another Far tile", () => {
+    const { state, hero, highBand, farTile } = bothBandsDiscoverable(game());
+    highBand.group = "near";
+    hero.level = 4;
+    state.players.p2.army.push({ id: "growth-gold", unitDefId: "castle.archangels", side: "pack" });
+    const doorway = collectMapObjectives(state, hero).find(objective =>
+      objective.kind === "explore" && objective.spaceId === hero.spaceId)!;
+    expect(doorway).toBeDefined();
+    const alternate = Object.keys(state.adventure!.fields).find(spaceId =>
+      spaceId !== hero.spaceId && distanceFromHeroTo(state, hero, spaceId) !== undefined)!;
+    expect(alternate).toBeDefined();
+    expect(primaryMapObjective(state, hero, [doorway, { kind: "explore", spaceId: alternate }])?.spaceId).toBe(hero.spaceId);
+    const actions: GameAction[] = [highBand, farTile].map(tile => ({ type: "DISCOVER_TILE",
+      playerId: "p2", heroId: hero.id, tileInstanceId: tile.id }));
+    const observation = { ...observe(state), legalActions: actions.map(action => ({ action, label: action.type })) };
+    expect(chooseComputerAction(observation)?.action).toEqual(actions[0]);
+    // CONTROL: level two still needs the Far band; Gold does not grant hero XP.
+    hero.level = 2;
+    expect(chooseComputerAction(observation)?.action).toEqual(actions[1]);
+  });
+
+  it("post-Far growth reuses a travelled corridor when it leads to an unopened frontier", () => {
+    const fixture = bothBandsDiscoverable(game());
+    let state = fixture.state;
+    const hero = fixture.hero;
+    hero.level = 4;
+    fixture.highBand.group = "near";
+    state.players.p2.army.push({ id: "growth-gold", unitDefId: "castle.archangels", side: "pack" });
+    let progress: GameAction | undefined;
+    for (const field of Object.values(state.adventure!.fields)) {
+      if (field.difficulty || field.location !== "empty_field") continue;
+      hero.spaceId = field.spaceId;
+      const primary = primaryMapObjective(state, hero);
+      if (primary?.kind !== "explore") continue;
+      const distances = objectiveDistanceField(state, hero, [primary]);
+      const here = distances.get(field.spaceId);
+      if (!here || !Number.isFinite(here)) continue;
+      const to = getAdjacentSpaceIds(field.spaceId).find(id => (distances.get(id) ?? Infinity) < here);
+      if (to) { progress = { type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to }; break; }
+    }
+    expect(progress).toBeDefined();
+    const origin = hero.spaceId;
+    hero.spaceId = (progress as Extract<GameAction, { type: "MOVE_HERO" }>).to;
+    state = noteComputerAction(state, "p2", progress!);
+    state.heroes[hero.id].spaceId = origin;
+    const memory = getComputerMemory(state, "p2");
+    expect(repeatsUnproductiveRoute(state, "p2", progress!, memory)).toBe(true);
+    const actions: GameAction[] = [progress!, { type: "END_TURN", playerId: "p2" }];
+    expect(chooseComputerAction({ ...observe(state), memory,
+      legalActions: actions.map(action => ({ action, label: action.type })) })?.action).toEqual(progress);
+  });
+
   it("CONTROL: a Ⅱ–Ⅲ tile is NEVER deferred by the band rule", () => {
     const { state, hero, farTile } = bothBandsDiscoverable(game());
     hero.level = 1; // below the Ⅱ–Ⅲ band's own printed guard (2) as well

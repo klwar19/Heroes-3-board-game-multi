@@ -6,7 +6,7 @@ import type {
   LegalAction,
   PlayerVisibleState,
 } from "../state";
-import { scoreCardAction } from "./card-policy";
+import { cardKeepValue, scoreCardAction } from "./card-policy";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
 
@@ -43,7 +43,7 @@ function observation(
 ): ComputerObservation {
   const unitMap: Record<string, CombatUnitState> = {};
   for (const u of units) unitMap[u.id] = u;
-  const combat = { id: "c1", units: unitMap } as unknown as CombatState;
+  const combat = { id: "c1", units: unitMap, context: { kind: "sandbox" }, round: 1 } as unknown as CombatState;
   const state = {
     seed: "card-policy-test",
     round: 1,
@@ -481,13 +481,15 @@ describe("card policy — combat reactions", () => {
       action: {
         type: "CAST_SPELL",
         playerId: "p2",
-        cardId: "spell.implosion",
+        cardId: "spell.magic_arrow",
         target: { type: "unit", unitId: "E" },
       } as GameAction,
-      label: "Implosion",
+      label: "Magic Arrow",
     };
     const decision = chooseComputerAction(
-      observation([attacker, enemy], [cast, defend], "p2", ["spell.implosion"]),
+      // Implosion's zero-Power rung deals zero; Arrow is a real damaging cast
+      // in this fixture, which has no Power sources.
+      observation([attacker, enemy], [cast, defend], "p2", ["spell.magic_arrow"]),
     );
     expect(decision?.action.type).toBe("CAST_SPELL");
     expect(decision?.policy).toBe("card.cast-spell");
@@ -1234,5 +1236,97 @@ describe("card policy — no cheating", () => {
 
     expect(a?.action).toEqual(b?.action);
     expect(a?.score).toBe(b?.score);
+  });
+});
+
+describe("Defense card conservation for Castle key units", () => {
+  const playDefense: LegalAction = {
+    label: "Defense +1",
+    action: {
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "stat.defense",
+      mode: "basic",
+    } as GameAction,
+  };
+  const attackStack = (attackerId: string, defenderId: string) => [
+    {
+      action: { type: "ATTACK_UNIT", playerId: "p1", attackerId, defenderId },
+      modifiers: { spellPowerBonus: 0, attackBonus: 0, defenseBonus: 0 },
+    },
+  ];
+
+  it("holds the Defense card early for the Griffin, then spends it past the opening", () => {
+    const attacker = unit({ id: "A", controllerId: "p1", attack: 6, position: 8 });
+    const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 10, position: 9 });
+    const griffin = unit({ id: "G", controllerId: "p2", unitDefId: "castle.griffins", position: 13 });
+    const observed = observation([attacker, defender, griffin], [pass, playDefense], "p2", ["stat.defense"]);
+    (observed.state as unknown as { stack: unknown[] }).stack = attackStack("A", "D");
+    // Round <= 3, no gold unit, Griffin alive: conserve the card for the Griffin.
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+    // CONTROL: past the opening rounds — the hold drops and the card is played.
+    (observed.state as unknown as { round: number }).round = 4;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+  });
+
+  it("drops the early Griffin hold once a gold-grade unit is fielded", () => {
+    const attacker = unit({ id: "A", controllerId: "p1", attack: 6, position: 8 });
+    const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 10, position: 9 });
+    const griffin = unit({ id: "G", controllerId: "p2", unitDefId: "castle.griffins", position: 13 });
+    const observed = observation([attacker, defender, griffin], [pass, playDefense], "p2", ["stat.defense"]);
+    (observed.state as unknown as { stack: unknown[] }).stack = attackStack("A", "D");
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+    // CONTROL: a gold-grade unit is now in play — conserve-for-Griffin ends.
+    griffin.grade = "gold";
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+  });
+
+  it("spends the Defense card to protect the Marksman from an enemy shooter", () => {
+    const shooter = unit({ id: "A", controllerId: "p1", attack: 6, type: "ranged", position: 4 });
+    const marksman = unit({ id: "D", controllerId: "p2", unitDefId: "castle.marksmen", defense: 2, maxHealth: 10, position: 17 });
+    const griffin = unit({ id: "G", controllerId: "p2", unitDefId: "castle.griffins", position: 13 });
+    const observed = observation([shooter, marksman, griffin], [pass, playDefense], "p2", ["stat.defense"]);
+    (observed.state as unknown as { stack: unknown[] }).stack = attackStack("A", "D");
+    // Enemy shooter on the Marksman — spend it even with a Griffin alive.
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+    // CONTROL: a MELEE attacker on the Marksman early game — held for the Griffin.
+    shooter.type = "ground";
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+  });
+});
+
+describe("hero-specialty tactical awareness", () => {
+  it("values a might-specialty Attack card higher on the hero's signature unit", () => {
+    const attacker = unit({ id: "A", controllerId: "p2", name: "Crusaders", attack: 3, position: 8 });
+    const enemy = unit({ id: "D", controllerId: "p1", defense: 2, maxHealth: 12, position: 9 });
+    const observed = observation([attacker, enemy], [pass], "p2", ["specialty.catherine.1"]);
+    (observed.state as unknown as { stack: unknown[] }).stack = [
+      {
+        action: { type: "ATTACK_UNIT", playerId: "p2", attackerId: "A", defenderId: "D" },
+        modifiers: { attackBonus: 0, defenseBonus: 0 },
+      },
+    ];
+    // Catherine I doubles for "Crusaders"; option 0 is the +Attack half.
+    const play: GameAction = {
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "specialty.catherine.1",
+      mode: "basic",
+      optionIndex: 0,
+    } as GameAction;
+    const onSignature = scoreCardAction(observed, play)!.score;
+    // CONTROL: identical board, attacker is NOT Catherine's signature unit.
+    attacker.name = "Halberdiers";
+    const offSignature = scoreCardAction(observed, play)!.score;
+    expect(onSignature).toBeGreaterThan(offSignature);
+  });
+
+  it("keeps Attack/Defense specialties out of the discard fuel pile", () => {
+    const observed = observation([], [], "p2");
+    // Catherine I (+Attack/+Defense) is worth holding more than a same-kind
+    // specialty that does not boost Attack/Defense (Catherine IV — +Health).
+    expect(cardKeepValue("specialty.catherine.1", observed)).toBeGreaterThan(
+      cardKeepValue("specialty.catherine.4", observed),
+    );
   });
 });

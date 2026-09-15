@@ -5,6 +5,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { Layers, Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
+import { fixedObjectMarkerSrc } from "@/data/map/fixed-object-markers";
 import {
   creatureBankFieldImage,
   DESIGNER_UI_ICONS,
@@ -3853,6 +3854,46 @@ export function MapDesigner({
           y={centerPixel.y - height / 2}
         />
       );
+    }
+
+    // Face-up tile previews show the same fixed-object markers as the live map.
+    // Resolve each printed slot through the plan rotation so the icon stays on
+    // its actual board hex while the underlying tile scan rotates. Hidden tiles
+    // deliberately reveal no object information in the player-facing preview.
+    const visibleTileDef = !plan.faceDown && plan.tileDefId
+      ? allTileDefinitions[plan.tileDefId]
+      : undefined;
+    if (visibleTileDef) {
+      const footprint = tileFootprint(center, plan.rotation ?? 0);
+      visibleTileDef.fields.forEach((field, slot) => {
+        // A designer-forced single VII objective replaces the printed centre
+        // field at setup, so preview that selected object rather than the scan's
+        // original centre. Multi-choice VII fields stay undisclosed until picked.
+        const visibleField = slot === 0 && plan.viiField
+          ? { ...field, location: plan.viiField }
+          : field;
+        const markerSrc = fixedObjectMarkerSrc(visibleField);
+        const cell = footprint[slot];
+        if (!markerSrc || !cell) return;
+        const pixel = hexToPixel(cell, size);
+        const markerSize = hexWidth * 0.52;
+        labelLayer.push(
+          <image
+            className="fixedObjectMarker designerFixedObjectMarker"
+            data-designer-fixed-object={visibleField.location}
+            height={markerSize}
+            href={assetUrl(markerSrc)}
+            key={`plan-fixed-object-${index}-${slot}`}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ pointerEvents: "none" }}
+            width={markerSize}
+            x={pixel.x - markerSize / 2}
+            y={pixel.y - size * 0.86}
+          >
+            <title>{locationDefinitions[visibleField.location]?.name ?? visibleField.location}</title>
+          </image>
+        );
+      });
     }
 
     const onPointerDown = (event: React.PointerEvent) => {

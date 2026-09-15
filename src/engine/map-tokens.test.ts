@@ -519,7 +519,7 @@ describe("Whirlpool travel", () => {
 // --- Placement on discovery (face-down tiles) --------------------------------
 
 describe("token placement on discovery", () => {
-  it("automatically uses the designer's exact physical hex when it is legal after reveal", () => {
+  it("still offers the placement pick when the designer's hex is legal, surfacing it FIRST as the suggested default (user rule 2026-09-15)", () => {
     let state = makeGame("token-place-reserved-hex");
     const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
     const preferredSlot = legalTokenSlotsForTileDef(allTileDefinitions.N1, "monolith")[0];
@@ -528,12 +528,25 @@ describe("token placement on discovery", () => {
 
     state = revealTile(state, tile.id);
 
-    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "place-map-token").toBe(false);
+    // A legal designer hex NO LONGER auto-places — the placing player is always
+    // asked when 2+ hexes are legal; the designer's hex is merely first & marked.
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no token placement choice");
+    }
+    expect(choice.mapToken.candidates[0]).toBe(preferredSpaceId);
+    expect(choice.options[0]?.label).toMatch(/suggested/i);
+    // No other option carries the suggested marker.
+    expect(choice.options.slice(1).some((option) => /suggested/i.test(option.label))).toBe(false);
+    expect(adv(state).fields[preferredSpaceId]?.location).not.toBe("monolith");
+
+    // Taking the suggested default lands the token exactly on the designer's hex.
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
     expect(adv(state).fields[preferredSpaceId]?.location).toBe("monolith");
     expect(adv(state).tiles[tile.id].pendingToken).toBeUndefined();
   });
 
-  it("falls back to the legal-field choice when random content blocks the reserved hex", () => {
+  it("offers every legal field (the reserved hex illegal after reveal is simply not among them, no suggested marker)", () => {
     let state = makeGame("token-place-reserved-fallback");
     const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
     const legalSlots = new Set(legalTokenSlotsForTileDef(allTileDefinitions.N1, "monolith"));
@@ -546,10 +559,13 @@ describe("token placement on discovery", () => {
 
     const choice = state.pendingChoice;
     expect(choice?.type === "OPTION_CHOICE" && choice.context === "place-map-token").toBe(true);
-    if (choice?.type !== "OPTION_CHOICE") {
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
       throw new Error("no fallback token choice");
     }
-    expect(choice.prompt).toMatch(/reserved hex cannot host/i);
+    // The illegal reserved hex is not offered, so nothing is marked "suggested".
+    expect(choice.mapToken.candidates).not.toContain(preferredSpaceId);
+    expect(choice.options.some((option) => /suggested/i.test(option.label))).toBe(false);
+    expect(choice.prompt).toMatch(/choose which glowing field/i);
   });
 
   it("discovering a tile that carries a token lets the discoverer choose its field (terrain/blocked/town excluded)", () => {
@@ -617,7 +633,7 @@ describe("token placement on discovery", () => {
     expect(placed?.terrain).toBe("water");
   });
 
-  it("travelling to a reserved token on a face-down tile reveals it and arrives on the exact designed hex", () => {
+  it("travelling to a reserved token on a face-down tile reveals it, offers the placement pick (designer hex suggested first), and arrives on the chosen hex", () => {
     let state = makeGame("token-travel-reveal");
     const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
     state = afterA;
@@ -640,9 +656,18 @@ describe("token placement on discovery", () => {
     expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
     state = revealTile(state, hidden.id);
 
-    // Rotation locked → the traveller places the destination token.
-    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "place-map-token").toBe(false);
-    // The travel completed automatically on the exact reserved hex.
+    // Rotation locked → the traveller is ASKED where the destination token lands
+    // (user rule 2026-09-15); the designer's hex is offered first as suggested,
+    // and travel waits behind the pick rather than auto-completing.
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no destination token placement choice");
+    }
+    expect(choice.mapToken.candidates[0]).toBe(preferredHex);
+    expect(adv(state).pendingTokenTeleport?.destTileInstanceId).toBe(hidden.id);
+
+    // Taking the suggested default carves the destination and lands the hero on it.
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
     expect(adv(state).fields[preferredHex]?.location).toBe("monolith");
     expect(state.heroes.hero_p1.spaceId).toBe(preferredHex);
     expect(adv(state).pendingTokenTeleport ?? null).toBeNull();
@@ -1013,18 +1038,30 @@ describe("multi-token tiles (pendingTokens queue)", () => {
     expect(after.tiles[tile.id].pendingToken).toBeUndefined();
   });
 
-  it("CONTROL: a single-token tile still places exactly one and stays clean", () => {
-    const state = makeGame("multi-token-single");
+  it("CONTROL: a single-token tile places exactly one (via the pick) and stays clean", () => {
+    let state = makeGame("multi-token-single");
     const tile = instantiateTile(adv(state), "F1", { row: 24, col: 12 }, 0, true);
     const footprint = getTileFootprintSpaceIds(tile);
     tile.pendingTokens = [{ kind: "monolith", preferredSpaceId: footprint[1] }];
     tile.pendingToken = tile.pendingTokens[0];
 
-    const revealed = revealTile(state, tile.id);
-    const after = adv(revealed);
+    state = revealTile(state, tile.id);
+    // The single token now opens ONE placement pick (user rule 2026-09-15); the
+    // designer's hex is surfaced first as the suggested default.
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no token placement choice");
+    }
+    expect(choice.mapToken.candidates[0]).toBe(footprint[1]);
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+
+    const after = adv(state);
     const monoliths = footprint.filter((spaceId) => after.fields[spaceId]?.location === "monolith");
-    expect(monoliths.length).toBeLessThanOrEqual(1);
+    // Exactly one placed, and the queue drained clean (no lingering pending token).
+    expect(monoliths).toEqual([footprint[1]]);
     expect(after.tiles[tile.id].pendingTokens).toBeUndefined();
+    expect(after.tiles[tile.id].pendingToken).toBeUndefined();
+    expect(state.pendingChoice).toBeNull();
   });
 });
 

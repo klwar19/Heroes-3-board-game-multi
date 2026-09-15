@@ -36,7 +36,8 @@ const VARIANTS = {
   default: {},
   xp: { unitExperience: true },
   commanders: { unitExperience: true, wog: { enabled: true, commanders: true } },
-  guards: { manualGuardControl: true },
+  guards: { pvpNeutralControl: true, pvpNeutralControlMustAttack: true },
+  "guards-free": { pvpNeutralControl: true, pvpNeutralControlMustAttack: false },
 };
 
 // ---------------------------------------------------------------- CLI ----
@@ -74,7 +75,7 @@ function rng(seedText) {
 let engine;
 async function loadEngine() {
   if (engine) return engine;
-  const [setup, runner, replay, adventure, factions, soak, reducer, facts, model, policyModule] = await Promise.all([
+  const [setup, runner, replay, adventure, factions, soak, reducer, facts, model, policyModule, window, observation, memory, navigation] = await Promise.all([
     import(src("engine/adventure-setup.ts")),
     import(src("server/computer-runner.ts")),
     import(src("server/ranked-replay.ts")),
@@ -85,6 +86,10 @@ async function loadEngine() {
     import(src("engine/computer/replay-context.ts")),
     import(src("engine/computer/replay-model.ts")),
     import(src("engine/computer/policy.ts")),
+    import(src("engine/computer/window.ts")),
+    import(src("engine/computer/observation.ts")),
+    import(src("engine/computer/memory.ts")),
+    import(src("engine/computer/map-navigation.ts")),
   ]);
   engine = {
     createAdventureGameState: setup.createAdventureGameState,
@@ -99,6 +104,23 @@ async function loadEngine() {
     replayDecisionFacts: facts.replayDecisionFacts,
     describeReplayAction: model.describeReplayAction,
     canonicalActionKey: policyModule.canonicalActionKey,
+    noteComputerAction: memory.noteComputerAction,
+    drivePolicyLab: (state, apply, options) => {
+      if (!state.adventure?.pvpNeutralControl) return runner.driveComputerPlayers(state, apply, options);
+      const playerId = window.policyLabDecisionOwner(state);
+      if (!playerId) return { state, decisions: [], stalled: false };
+      state = memory.refreshComputerMemory(state, playerId);
+      const hero = Object.values(state.heroes).find(h => h.controllerId === playerId && h.kind === "main");
+      if (hero && !state.combat) {
+        const objective = navigation.primaryMapObjective(state, hero, undefined, state.computerMemory?.[playerId]?.stickyObjectiveSpaceId);
+        state = memory.setStickyObjective(state, playerId, objective?.spaceId ?? null);
+      }
+      const decision = policyModule.chooseComputerAction(observation.observeForComputer(state, playerId), options.policy?.(playerId));
+      if (!decision) return { state, decisions: [], stalled: true, reason: `human-control policy has no action for ${playerId}` };
+      const result = apply(state, decision.action, playerId);
+      if (result.errors.length) return { state, decisions: [], stalled: true, reason: JSON.stringify({ action: decision.action, errors: result.errors }) };
+      return { state: memory.noteComputerAction(result.state, playerId, decision.action, state), decisions: [decision], stalled: false };
+    },
   };
   return engine;
 }
@@ -160,22 +182,26 @@ async function playGame(job, settings) {
     difficulty: job.difficulty,
     events: false,
     rollFirstPlayer: false,
-    sessionMode: "single-player",
-    controllers: Object.fromEntries(players.map((p) => [p.id, { kind: "computer", difficulty: "standard", policyVersion: 1 }])),
+    sessionMode: "multiplayer",
+    controllers: Object.fromEntries(players.map((p) => [p.id, job.extraOptions?.pvpNeutralControl
+      ? { kind: "human" } : { kind: "computer", difficulty: "standard", policyVersion: 1 }])),
     players,
     ...(job.extraOptions ?? {}),
   });
   const seatOptions = {};
   const rolloutOptions = {};
   const lastClose = {};
+  const lastTactical = {};
   for (const player of players) {
     const seat = job.seats[player.id] ?? {};
     const random = rng(`${job.seed}|${player.id}|explore`);
-    rolloutOptions[player.id] = { learned: seat.learned ?? "all" };
+    rolloutOptions[player.id] = { learned: seat.learned ?? "all",
+      ...(settings.candidateModel && seat.learned === "all" ? { candidateModel: settings.candidateModel } : {}) };
     seatOptions[player.id] = {
       ...rolloutOptions[player.id],
       ...(seat.explore > 0 ? { explore: { rate: seat.explore, random } } : {}),
       onClose: (close) => { lastClose[player.id] = close; },
+      onTacticalCandidates: (candidates) => { lastTactical[player.id] = candidates; },
     };
   }
   const policy = (playerId) => seatOptions[playerId];
@@ -189,10 +215,16 @@ async function playGame(job, settings) {
   let state = initial;
   let decisions = 0;
   let explored = 0;
+  let searched = 0;
+  let searchAttempts = 0;
+  let searchChanges = 0;
   let stalled = null;
   const firstGoldRound = {};
   const firstGoldPackRound = {};
   const firstFarRound = {};
+  const firstPremiumFarRound = {};
+  const cardPlays = {};
+  const guardActions = {};
   const fights = { neutral: {}, pvp: {} };
   const seenCombats = new Set();
   const note = () => {
@@ -201,6 +233,9 @@ async function playGame(job, settings) {
       if (firstGoldRound[player.id] == null && seat.goldBodies > 0) firstGoldRound[player.id] = state.round;
       if (firstGoldPackRound[player.id] == null && seat.goldPacks > 0) firstGoldPackRound[player.id] = state.round;
       if (firstFarRound[player.id] == null && seat.farCaptures > 0) firstFarRound[player.id] = state.round;
+      if (firstPremiumFarRound[player.id] == null && Object.values(state.adventure?.fields ?? {}).some(f =>
+        f.flagOwnerId === player.id && state.adventure?.tiles[f.tileInstanceId]?.group === "far" &&
+        (f.location === "settlement" || (f.location === "mine" && ["gold", "valuables"].includes(f.resource))))) firstPremiumFarRound[player.id] = state.round;
     }
     const combat = state.combat;
     if (combat?.outcome && !seenCombats.has(combat.id)) {
@@ -220,13 +255,42 @@ async function playGame(job, settings) {
     now += 1000;
     const calls = [];
     const apply = (s, action, playerId) => {
-      const result = api.applyAction(s, action, { computerActorPlayerId: playerId });
+      const result = api.applyAction(s, action, s.controllers?.[playerId]?.kind === "computer" ? { computerActorPlayerId: playerId } : {});
       calls.push(result);
       return result;
     };
     const before = state;
-    for (const player of players) lastClose[player.id] = null;
-    const run = api.driveComputerPlayers(before, apply, { maxSteps: 1, policy });
+    for (const player of players) { lastClose[player.id] = null; lastTactical[player.id] = null; }
+    let run = api.drivePolicyLab(before, apply, { maxSteps: 1, policy });
+    const proposed = run.decisions[0];
+    // Bounded chess-style analysis in the offline lab: branch on real legal
+    // moves/cards and let the actual engine finish the fight under each reply.
+    // Only fighters produce labels here; a human guard controller is a
+    // different side from its player id and must never receive reversed labels.
+    if (settings.searchWidth > 1 && before.round >= settings.searchMinRound && searchAttempts < settings.searchMax && proposed && before.combat && !before.combat.outcome &&
+        [before.combat.attackerPlayerId, before.combat.defenderPlayerId].includes(proposed.playerId)) {
+      const candidates = lastTactical[proposed.playerId]?.slice(0, settings.searchWidth) ?? [];
+      if (candidates.length > 1) {
+        searchAttempts++;
+        const rows = candidates.map((action, index) => ({ action, score: rolloutFightMean(api, before, proposed.playerId, action, rolloutPolicy, settings, job.seed, decisions, index) }));
+        // Incomplete alternatives are uncertainty, not losses. Keep the
+        // ordinary policy unless every compared line reached a real outcome.
+        if (rows.every(row => row.score !== null)) {
+          searched++;
+          counterfactuals.push(...labelFightAlternatives(api, before, proposed.playerId, rows,
+            settings, job.seed, decisions));
+          const best = rows.reduce((a, b) => b.score > a.score ? b : a);
+          if (best.score > rows[0].score + settings.counterfactualMargin) {
+            const result = apply(before, best.action, proposed.playerId);
+            if (!result.errors.length) {
+              searchChanges++;
+              const decision = { ...proposed, action: best.action, policy: "search.engine-fight", score: best.score };
+              run = { state: api.noteComputerAction(result.state, proposed.playerId, best.action, before), decisions: [decision], stalled: false };
+            }
+          }
+        }
+      }
+    }
     if (run.decisions.length === 1) {
       const decision = run.decisions[0];
       // Counterfactual fight rollout: at a combat decision with close
@@ -234,13 +298,18 @@ async function playGame(job, settings) {
       // real engine and label the better/worse one. This is the discriminating
       // evidence a plain win/loss label cannot give when every fight is won.
       const close = lastClose[decision.playerId];
-      if (before.combat && !before.combat.outcome && close && close.length > 1 &&
+      if (before.combat && !before.combat.outcome && [before.combat.attackerPlayerId, before.combat.defenderPlayerId].includes(decision.playerId) && close && close.length > 1 &&
           counterfactuals.length < settings.counterfactualMax && cfRandom() < settings.counterfactual) {
         const t0 = Date.now();
         counterfactuals.push(...counterfactualSamples(api, before, decision, close.slice(0, settings.counterfactualWidth), rolloutPolicy, settings, job.seed, decisions));
         counterfactualMs += Date.now() - t0;
       }
       const accepted = calls.filter((r) => r.errors.length === 0).at(-1);
+      for (const event of accepted?.events ?? []) {
+        if (event.type === "CARD_PLAYED") cardPlays[event.playerId] = (cardPlays[event.playerId] ?? 0) + 1;
+      }
+      const actingUnitId = decision.action.unitId ?? decision.action.attackerId;
+      if (before.combat?.units[actingUnitId]?.controllerId === "neutrals") guardActions[decision.playerId] = (guardActions[decision.playerId] ?? 0) + 1;
       replay = api.appendRankedReplayEntry(replay, before, decision.action, { state: run.state, events: accepted?.events ?? [] }, { now });
       state = run.state;
       decisions += 1;
@@ -265,10 +334,15 @@ async function playGame(job, settings) {
     firstGoldRound: firstGoldRound[p.id] ?? null,
     firstGoldPackRound: firstGoldPackRound[p.id] ?? null,
     firstFarRound: firstFarRound[p.id] ?? null,
+    firstPremiumFarRound: firstPremiumFarRound[p.id] ?? null,
+    cardPlays: cardPlays[p.id] ?? 0,
+    humanControlGuardActions: guardActions[p.id] ?? 0,
     neutralFights: fights.neutral[p.id] ?? { won: 0, lost: 0 },
     pvpFights: fights.pvp[p.id] ?? { won: 0, lost: 0 },
   }]));
-  const race = winner ? null : developmentRaceWinner(seatsSummary);
+  const termination = winner ? "engine-win" : stalled ? "stalled" :
+    state.round > settings.maxRound ? "round-limit" : "step-limit";
+  const race = termination === "round-limit" ? developmentRaceWinner(seatsSummary) : null;
   // The engine winner is the match label. A round-capped game is labelled by
   // the development race (first Gold pack, then fights) — the user's chosen
   // criterion, recorded as such on the replay so a trainer can tell it apart.
@@ -278,9 +352,12 @@ async function playGame(job, settings) {
     seed: job.seed,
     difficulty: job.difficulty,
     variant: job.variant ?? "default",
+    sessionMode: initial.sessionMode,
+    controllerKinds: Object.fromEntries(players.map(p => [p.id, initial.controllers?.[p.id]?.kind])),
     heroes: Object.fromEntries(players.map((p) => [p.id, p.heroDefId ?? null])),
     seats: job.seats,
     winner,
+    termination,
     winReason: winner ? (state.eventLog ?? []).findLast?.((e) => e.type === "GAME_WON")?.reason ?? null : null,
     developmentWinner: race?.winner ?? null,
     developmentReason: race?.reason ?? null,
@@ -289,6 +366,9 @@ async function playGame(job, settings) {
     stalled,
     decisions,
     explored,
+    searched,
+    searchAttempts,
+    searchChanges,
     replayEntries: replay.entries.length,
     counterfactuals: counterfactuals.length,
     counterfactualMs,
@@ -324,7 +404,7 @@ function rolloutFight(api, start, playerId, action, policy, maxSteps, entropy) {
   // label needs the alternative to hold up across rolls, not on one lucky die.
   let rolls = 0;
   const apply = (s, a, p) => api.applyAction(s, a, {
-    computerActorPlayerId: p,
+    ...(s.controllers?.[p]?.kind === "computer" ? { computerActorPlayerId: p } : {}),
     ...(entropy ? { entropy: `${entropy}|${rolls++}` } : {}),
   });
   const opened = apply(start, action, playerId);
@@ -335,7 +415,7 @@ function rolloutFight(api, start, playerId, action, policy, maxSteps, entropy) {
     if (!state.combat || state.combat.id !== combatId) break;
     last = state;
     if (state.combat.outcome) break;
-    const run = api.driveComputerPlayers(state, apply, { maxSteps: 1, policy });
+    const run = api.drivePolicyLab(state, apply, { maxSteps: 1, policy });
     if (run.decisions.length === 1) { state = run.state; continue; }
     if (run.stalled) return null;
     const fallback = api.pickHumanAction(state, state.activePlayerId ?? "p1");
@@ -344,7 +424,7 @@ function rolloutFight(api, start, playerId, action, policy, maxSteps, entropy) {
     if (result.errors.length) return null;
     state = result.state;
   }
-  if (!last.combat || last.combat.id !== combatId) return null;
+  if (!last.combat || last.combat.id !== combatId || !last.combat.outcome) return null;
   return fightScore(start.combat, last, playerId);
 }
 
@@ -352,7 +432,9 @@ function rolloutFight(api, start, playerId, action, policy, maxSteps, entropy) {
 function rolloutFightMean(api, start, playerId, action, policy, settings, seed, sequence, index) {
   const scores = [];
   for (let k = 0; k < settings.counterfactualSamples; k += 1) {
-    const entropy = settings.counterfactualSamples > 1 ? `${seed}|cf${sequence}|alt${index}|k${k}` : undefined;
+    // Alternatives share each sample's dice stream. A different alternative
+    // must not win a training label merely because it received luckier dice.
+    const entropy = `${seed}|cf${sequence}|k${k}`;
     const score = rolloutFight(api, start, playerId, action, policy, settings.rolloutSteps, entropy);
     if (score === null) return null;
     scores.push(score);
@@ -364,6 +446,10 @@ function counterfactualSamples(api, before, decision, close, policy, settings, s
   const playerId = decision.playerId;
   const scored = close.map((action, index) => ({ action, score: rolloutFightMean(api, before, playerId, action, policy, settings, seed, sequence, index) }))
     .filter((row) => row.score !== null);
+  return labelFightAlternatives(api, before, playerId, scored, settings, seed, sequence);
+}
+
+function labelFightAlternatives(api, before, playerId, scored, settings, seed, sequence) {
   if (scored.length < 2) return [];
   const best = Math.max(...scored.map((row) => row.score));
   const worst = Math.min(...scored.map((row) => row.score));
@@ -378,7 +464,9 @@ function counterfactualSamples(api, before, decision, close, policy, settings, s
     if (!outcome) continue;
     const facts = api.replayDecisionFacts(before, playerId, row.action);
     samples.push({
-      matchId: `${seed}#cf${sequence}`,
+      // Several decisions from one game are correlated, not independent
+      // matches. Keep the seed as the independence unit for training support.
+      matchId: seed,
       basis: "counterfactual-fight",
       sequence,
       score: row.score,
@@ -467,7 +555,11 @@ async function runParallel(jobs, settings, dir, workers) {
 function settingsFromFlags() {
   return {
     maxRound: num("rounds", 16),
+    candidateModel: flag("candidate-file", null) ? JSON.parse(fs.readFileSync(flag("candidate-file"), "utf8")) : undefined,
     maxSteps: num("max-steps", 6000),
+    searchWidth: num("search-width", 0),
+    searchMax: num("search-max", 8),
+    searchMinRound: num("search-min-round", 1),
     keepReplays: !has("no-replays"),
     /** Share of close combat decisions that get a counterfactual rollout. */
     counterfactual: num("counterfactual", 0.2),
@@ -556,7 +648,7 @@ async function commandTrain() {
     for (const file of fs.readdirSync(cfDir).filter((f) => f.endsWith(".json.gz")).sort()) {
       const rows = JSON.parse(gunzipSync(fs.readFileSync(path.join(cfDir, file))).toString("utf8"));
       counterfactualSampleCount += rows.length;
-      samples.push(...rows);
+      samples.push(...rows.map(row => ({ ...row, matchId: row.matchId.replace(/#cf\d+$/, "") })));
     }
   }
   const minimumMatches = num("min-matches", 6);

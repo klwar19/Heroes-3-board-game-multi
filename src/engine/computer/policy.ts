@@ -1,4 +1,5 @@
 import { hasNecromancyPlan } from "./development";
+import { openingGuardCommitment } from "./necropolis-combat";
 import { cardLibrary } from "@/data/cards/library";
 import { effectiveHandLimit, explorersHandStepActive, isFieldGuarded } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
@@ -10,6 +11,7 @@ import { scoreCombatAction } from "./combat-policy";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
 import { learnedActionBias, type LearnedModelSelection } from "./learned-policy";
+import type { ReplayPolicyModel } from "./replay-model";
 import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
 import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective } from "./map-navigation";
@@ -23,7 +25,7 @@ function returnsTowardPayoff(observation: ComputerObservation, action: GameActio
   const destination = action.type === "MOVE_HERO" ? action.to : action.path.at(-1);
   if (!hero?.spaceId || !destination) return false;
   const primary = primaryMapObjective(state, hero, undefined, observation.memory?.stickyObjectiveSpaceId);
-  if (!primary || primary.kind === "explore") return false;
+  if (!primary) return false;
   const field = state.adventure?.fields[primary.spaceId];
   if (!field || (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field))) return false;
   const distance = objectiveDistanceField(state, hero, [primary], isPremiumEconomyField(field));
@@ -218,7 +220,7 @@ function wantsOpeningNecromancy(observation: ComputerObservation): boolean {
   const held = player.hand.filter(id => cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE").length;
   // Keep the first copy and dig for the second: two opening victories can
   // pay for both remaining Bronze Packs, not just the Wraith.
-  return held < Math.max(1, Math.min(2, upgrades));
+  return upgrades > 0 && held < Math.min(2, upgrades);
 }
 
 function voluntaryCycleThreshold(observation: ComputerObservation): number {
@@ -262,15 +264,28 @@ function withRefreshDiscards(
   // Respect draw-before-discard Explorers and the separate full opening mulligan.
   if (action.type === "REFRESH_HAND" && !player.needsHandRefresh &&
       (explorersHandStepActive(state) || (state.round === 1 && player.hand.length >= limit))) return action;
-  const openingNecromancyHunt = wantsOpeningNecromancy(observation);
+  // A nearby opponent makes keeping a battle hand more urgent than an
+  // opening full-hand search for Necromancy.
+  const openingNecromancyHunt = upcomingFight(observation)?.kind !== "pvp" && wantsOpeningNecromancy(observation);
   const necromancyHunt = hasNecromancyPlan(state, observation.playerId) && !holdsPlayableNecromancy(observation) &&
     player.army.some(unit=>unit.side==="few" && unit.unitDefId.startsWith("necropolis."));
-  const prepareFight = !explorersHandStepActive(state) && Boolean(upcomingFight(observation));
+  const openingArrowHunt = state.round <= 4 && Boolean(state.adventure) &&
+    !player.hand.includes("spell.magic_arrow") && !player.spellBook?.includes("spell.magic_arrow");
+  const prepareFight = !explorersHandStepActive(state) && (Boolean(upcomingFight(observation)) || openingArrowHunt);
+  // Sandro needs his Skeleton overlay before the first Far fight. Keep one
+  // natural Arrow, but cycle duplicate copies when they crowd out that card.
+  // Never apply this opening search to an imminent player battle.
+  const sandroSpecialtyHunt = player.heroDefId === "sandro" && state.round <= 5 &&
+    upcomingFight(observation)?.kind !== "pvp" && !player.hand.includes("specialty.sandro.1") &&
+    player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "pack");
+  const redundantSandroArrow = (cardId: string, index: number) => sandroSpecialtyHunt &&
+    cardId === "spell.magic_arrow" && player.hand.indexOf(cardId) !== index;
   const ranked = player.hand
     .map((cardId, index) => ({
       cardId,
       index,
-      value: cardHandValue(cardId, observation),
+      value: redundantSandroArrow(cardId, index) || openingArrowHunt && cardId === "stat.knowledge" && player.hand.indexOf(cardId) !== index
+        ? 30 : cardHandValue(cardId, observation),
     }))
     .sort((a, b) => a.value - b.value || a.index - b.index);
   const discards = ranked.slice(0, overflow);
@@ -280,14 +295,15 @@ function withRefreshDiscards(
   // The Necromancy hunt must stay below cardHandValue's explicit keep floors
   // (Learning / First Aid Tent / Diplomacy at 70) or it dumps exactly the
   // cards the fight-preparation valuation just protected.
-  const threshold = openingNecromancyHunt ? Infinity : necromancyHunt ? 70 : prepareFight ? 50 : voluntaryCycleThreshold(observation);
+  const threshold = openingNecromancyHunt ? Infinity : necromancyHunt || openingArrowHunt ? 70 : prepareFight ? 50 : voluntaryCycleThreshold(observation);
   // Underfilled hands already consume replacement cards before any cycling.
   const supply = Math.max(0, (player.deckCount ?? 0) + player.discard.length -
     (action.type === "REFRESH_HAND" ? Math.max(0, limit - player.hand.length) : 0));
   for (const entry of ranked.slice(overflow)) {
     const voluntary = discards.length - overflow;
     if (voluntary >= (openingNecromancyHunt || prepareFight || orphanedMagic ? limit : VOLUNTARY_CYCLE_MAX) || voluntary >= supply) break;
-    if (entry.cardId === "spell.magic_arrow" || cardLibrary[entry.cardId]?.effect.type === "NECROMANCY_REINFORCE") continue;
+    if ((entry.cardId === "spell.magic_arrow" && !redundantSandroArrow(entry.cardId, entry.index)) ||
+        cardLibrary[entry.cardId]?.effect.type === "NECROMANCY_REINFORCE") continue;
     if (entry.value >= threshold) break;
     discards.push(entry);
   }
@@ -307,6 +323,8 @@ function withRefreshDiscards(
 export type ChooseComputerActionOptions = {
   /** Which committed learned models bias close choices (default "all"). */
   learned?: LearnedModelSelection;
+  /** Offline A/B candidate; omitted in live games to use the shipped model. */
+  candidateModel?: ReplayPolicyModel;
   /**
    * Self-play exploration: with probability `rate` pick uniformly among the
    * CLOSE candidates (same action type, within the learned-bias band, above
@@ -321,6 +339,8 @@ export type ChooseComputerActionOptions = {
    * offline lab roll each alternative out; never changes the decision.
    */
   onClose?: (close: ReadonlyArray<GameAction>) => void;
+  /** Offline engine search: compare a real card play with a board action. */
+  onTacticalCandidates?: (candidates: ReadonlyArray<GameAction>) => void;
 };
 
 /**
@@ -338,6 +358,8 @@ export function chooseComputerAction(
     return null;
   }
   const tieSeed = `${observation.state.seed}|${observation.state.round}|${observation.state.eventCounter ?? 0}|${observation.playerId}`;
+  const withdraw = observation.state.combat && openingGuardCommitment(observation.state as unknown as GameState,
+    observation.playerId, observation.state.combat) === "retreat";
   const vouchers = observation.state.players[observation.playerId]?.recruitDiscounts ?? [];
   const ranked = candidates
     .map((legal) => {
@@ -352,6 +374,14 @@ export function chooseComputerAction(
       const planBias = base.score > 300 && base.score < 900
         ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
       const scored = { ...base, score: base.score + planBias };
+      if (withdraw && legal.action.type === "RETREAT_FROM_COMBAT") {
+        scored.score = 2_000;
+        scored.policy = "combat.leave-two-armored-guards";
+      }
+      if (withdraw && ["PLAY_CARD", "PLAY_REACTION", "CAST_SPELL"].includes(legal.action.type)) {
+        scored.score = 100;
+        scored.policy = "combat.preserve-hand-for-next-guard";
+      }
       if (base.score > 300 && legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some(purchase =>
         vouchers.some(({ target }) => target.kind === purchase.kind && (target.kind === "recruit"
           ? target.unitDefId === purchase.unitDefId
@@ -370,7 +400,8 @@ export function chooseComputerAction(
         scored.policy = "card.opening-necromancy-hunt";
       }
       // Preserve returns toward a concrete payoff and forced unblocking, but
-      // exploration's high score cannot exempt an empty repeated route.
+      // A real remaining discovery doorway is productive too; its distance
+      // must decrease just like a pickup's. A score alone never exempts a loop.
       if (repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory) &&
           base.policy !== "map.clear-shared-space" &&
           !(base.score > 300 && returnsTowardPayoff(observation, legal.action))) {
@@ -430,7 +461,7 @@ export function chooseComputerAction(
   const close = ranked.filter(candidate => candidate.legal.action.type === selected.legal.action.type && selected.score - candidate.score <= 12 && candidate.score > 300);
   const learnedModels = options.learned ?? "all";
   if (learnedModels !== "none") {
-    for (const candidate of close) candidate.score += learnedActionBias(observation, candidate.legal.action, learnedModels);
+    for (const candidate of close) candidate.score += learnedActionBias(observation, candidate.legal.action, learnedModels, options.candidateModel);
   }
   close.sort((a, b) => b.score - a.score || b.tie - a.tie);
   let learnedSelected = close[0] ?? selected;
@@ -444,6 +475,29 @@ export function chooseComputerAction(
     learnedSelected.legal.action.type === "REFRESH_HAND" || learnedSelected.legal.action.type === "OPENING_HAND_MULLIGAN"
       ? withRefreshDiscards(observation, learnedSelected.legal.action)
       : learnedSelected.legal.action;
+  const tacticalTypes = new Set<GameAction["type"]>([
+    "ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT", "MOVE_UNIT", "DEFEND_UNIT",
+    "PLAY_CARD", "CAST_SPELL", "PLAY_REACTION", "PASS_REACTION",
+  ]);
+  if (options.onTacticalCandidates && observation.state.combat && tacticalTypes.has(action.type)) {
+    // Keep the chosen move first, then one contender of each kind (a card
+    // must not disappear behind dozens of near-identical movement squares).
+    const choices = ranked.filter(candidate => tacticalTypes.has(candidate.legal.action.type) && candidate.score > 300);
+    const alternatives: GameAction[] = [action];
+    const chosenKey = canonicalActionKey(action);
+    const cardTypes = new Set<GameAction["type"]>(["PLAY_CARD", "CAST_SPELL", "PLAY_REACTION"]);
+    const crossKind = choices.find(candidate => canonicalActionKey(candidate.legal.action) !== chosenKey &&
+      cardTypes.has(candidate.legal.action.type) !== cardTypes.has(action.type));
+    if (crossKind) alternatives.push(crossKind.legal.action);
+    const sameKind = choices.find(candidate => candidate.legal.action.type === action.type &&
+      canonicalActionKey(candidate.legal.action) !== chosenKey);
+    if (sameKind) alternatives.push(sameKind.legal.action);
+    for (const type of tacticalTypes) {
+      const candidate = choices.find(candidate => candidate.legal.action.type === type);
+      if (candidate && !alternatives.some(action => canonicalActionKey(action) === canonicalActionKey(candidate.legal.action))) alternatives.push(candidate.legal.action);
+    }
+    options.onTacticalCandidates(alternatives);
+  }
   return {
     playerId: observation.playerId,
     action,

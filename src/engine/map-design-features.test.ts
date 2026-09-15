@@ -321,6 +321,65 @@ describe("map-design-features — break field + persistent army", () => {
     expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
   });
 
+  it("a designated Break field seals its WHOLE tile — guarded side-fields included — with the map-wide gate OFF, and opens once the break falls", () => {
+    // USER REPORT (TEST MAP): an Obelisk marked "Break field" (via the per-object
+    // / centerHex Break toggles) must gate its whole tile so a hero cannot slip
+    // around it to fight the tile's GUARDED Pandora or step onto its open
+    // Fountain — until the break guard is beaten, after which the tile opens.
+    // This fires from the `breakField` designation ALONE: `mapPreset.breaks`
+    // (the map-wide tile gate) is UNSET here, exactly as on the reported map.
+    const state = makeGame("designated-break-tile-seal");
+    state.adventure!.mapPreset = {}; // no map-wide Break-configuration gate
+    state.adventure!.tiles["ntile"] = {
+      id: "ntile",
+      tileDefId: "N1",
+      centerRow: 90,
+      centerCol: 90,
+      rotation: 0,
+      faceDown: false,
+      group: "near"
+    } as never;
+    const brk = injectField(state, "obelisk", "90,90", {
+      tileInstanceId: "ntile",
+      difficulty: 6,
+      designedGuard: true,
+      breakField: true
+    });
+    const sideGuard = injectField(state, "pandoras_box", "90,91", {
+      tileInstanceId: "ntile",
+      difficulty: 6,
+      designedGuard: true
+    });
+    const open = injectField(state, "fountain_of_youth", "91,90", { tileInstanceId: "ntile" });
+    injectField(state, "empty_field", "89,90", { tileInstanceId: "othertile" });
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "89,90";
+
+    // The break guard itself is the ONE fightable entrance.
+    expect(classifyHeroStep(state, hero, brk.spaceId)).toBe("stop");
+    // Its GUARDED side-field (a Pandora) is walled — not offered as a fight
+    // until the break falls. This is the "Pandora always movable" fix.
+    expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("block");
+    // Its open hex (a Fountain / "waterfall") is walled too.
+    expect(classifyHeroStep(state, hero, open.spaceId)).toBe("block");
+
+    // CONTROL: strip the Break designation — with no designated break and the
+    // map-wide gate off, the side-guard is directly fightable and the open hex
+    // freely enterable (the seal comes from `breakField`, nothing else).
+    delete brk.breakField;
+    expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("stop");
+    expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
+
+    // Restore the break, then beat it: the whole tile opens — "no more break
+    // means you can go", the Fountain / waterfall included.
+    brk.breakField = true;
+    expect(classifyHeroStep(state, hero, open.spaceId)).toBe("block");
+    brk.flagOwnerId = "p1";
+    brk.everFlagged = true; // break guard beaten -> no longer guarded
+    expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("stop");
+    expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
+  });
+
   it("a designer 'no experience' field withholds hero XP on a REAL win (CONTROL: it pays without the flag)", () => {
     // Difficulty VI vs a level-1 hero normally pays experience for a fought win;
     // the designer opt-out (`field.noExperience`) suppresses ONLY the XP — the

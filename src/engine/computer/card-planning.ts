@@ -8,9 +8,11 @@ import { balanceCardLibrary } from "../community-balance-cards";
 import { spellBookRuleEnabled } from "../ruleset";
 import type { CardDefinition, GameState, RecruitDiscountVoucher, ResourceCost } from "../state";
 import { armyDevelopmentProfile, goldArmyAllowsBronzePurchase } from "./development";
-import { canBeatGuardedField, distanceFromHeroTo, primaryMapObjective } from "./map-navigation";
+import { canBeatGuardedField, distanceFromHeroTo, primaryMapObjective, seatHoldsFarSupplyTile } from "./map-navigation";
 import type { ComputerObservation } from "./types";
 import { isOpeningFarSweepField } from "./far-sweep";
+import { playersAreAllied } from "./control";
+import { pvpReach } from "./pvp-reach";
 
 /** Own ready cards only: discarded spells cannot support the hand's Power. */
 export function readySpells(state: GameState, playerId: string): CardDefinition[] {
@@ -23,6 +25,36 @@ export function readySpells(state: GameState, playerId: string): CardDefinition[
 
 export type FightPreparation = { kind: "neutral" | "pvp"; spaceId?: string };
 const preparationCache = new WeakMap<ComputerObservation, FightPreparation | null>();
+const nearbyEnemyCache = new WeakMap<ComputerObservation, FightPreparation | null>();
+
+/** Prepare for contact in our remaining movement or the enemy's next move.
+ * Each side uses its own keys and movement abilities, without a two-turn radius
+ * overriding development just because a distant enemy exists. */
+export function nearbyPlayerFight(observation: ComputerObservation): FightPreparation | null {
+  if (nearbyEnemyCache.has(observation)) return nearbyEnemyCache.get(observation)!;
+  const state = observation.state as unknown as GameState;
+  let result: FightPreparation | null = null;
+  const heroes = Object.values(state.heroes ?? {});
+  const ownHeroes = heroes.filter(hero => hero.controllerId === observation.playerId && hero.spaceId);
+  let nearest = Infinity;
+  if (state.adventure) for (const enemy of heroes) {
+    if (!enemy.spaceId || enemy.controllerId === "neutrals" ||
+        state.players[enemy.controllerId]?.eliminated ||
+        playersAreAllied(state, observation.playerId, enemy.controllerId)) continue;
+    for (const own of ownHeroes) {
+      if (!own.spaceId) continue;
+      const approach = pvpReach(state, own).get(enemy.spaceId) ?? Infinity;
+      const incoming = pvpReach(state, enemy, true).get(own.spaceId) ?? Infinity;
+      const distance = Math.min(approach, incoming);
+      if (distance < nearest) {
+        nearest = distance;
+        result = { kind: "pvp", spaceId: enemy.spaceId };
+      }
+    }
+  }
+  nearbyEnemyCache.set(observation, result);
+  return result;
+}
 
 /** Follow the actual march objective, including late-game and player fights. */
 export function upcomingFight(observation: ComputerObservation): FightPreparation | null {
@@ -34,13 +66,19 @@ export function upcomingFight(observation: ComputerObservation): FightPreparatio
       [combat.attackerPlayerId, combat.defenderPlayerId].includes(observation.playerId)) {
     result = { kind: combat.attackerPlayerId === "neutrals" || combat.defenderPlayerId === "neutrals" ? "neutral" : "pvp" };
   } else if (state.adventure) {
+    result = nearbyPlayerFight(observation);
+    if (result) {
+      preparationCache.set(observation, result);
+      return result;
+    }
     const hero = Object.values(state.heroes ?? {}).find(h => h.controllerId === observation.playerId && h.kind === "main");
     const objective = hero ? primaryMapObjective(state, hero, undefined, observation.memory?.stickyObjectiveSpaceId) : null;
     const field = objective && state.adventure.fields[objective.spaceId];
-    if (hero && objective && field &&
+    if (!result && hero && objective && field &&
         (distanceFromHeroTo(state, hero, field.spaceId, true) ?? Infinity) <= heroMovementMax(state, hero) * 2) {
-      if (objective.kind === "enemy-hero") result = { kind: "pvp", spaceId: field.spaceId };
-      else if (isFieldGuarded(field) && canBeatGuardedField(state, hero, field)) {
+      // Distant PvP objectives do not start early hand cycling. Actual contact
+      // was already checked above with current movement and coastline stops.
+      if (objective.kind !== "enemy-hero" && isFieldGuarded(field) && canBeatGuardedField(state, hero, field)) {
         result = { kind: "neutral", spaceId: field.spaceId };
       }
     }
@@ -58,6 +96,10 @@ export function upcomingFight(observation: ComputerObservation): FightPreparatio
         (distanceFromHeroTo(state, hero, b.spaceId, true) ?? Infinity) || a.spaceId.localeCompare(b.spaceId));
       if (planned[0]) result = { kind: "neutral", spaceId: planned[0].spaceId };
     }
+    // Prepare while spending held Far supply; the guard identity is still
+    // hidden, so conserve a general combat hand without inventing a target.
+    if (!result && hero && state.round >= 2 && state.round <= 3 &&
+        seatHoldsFarSupplyTile(state, observation.playerId)) result = { kind: "neutral" };
   }
   preparationCache.set(observation, result);
   return result;

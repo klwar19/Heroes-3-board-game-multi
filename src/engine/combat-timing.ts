@@ -50,11 +50,21 @@ export function combatStartWindowOpen(combat: CombatState): boolean {
 }
 
 /**
- * Polish Balance Pack — the reprinted INTELLIGENCE: "At the start of a Combat,
- * BEFORE ANY UNIT ACTIVATES, you can Cast a Spell." The classic card grants a
- * combat-long timing freedom; the reprint scopes it to the same
- * `combatStartWindowOpen` moment the Set-Artifact "beginning of the combat" tiers
- * use. TRUE means the freedom (and its expert no-limit rider) is CLOSED right now.
+ * The printed "at the start of a combat round" window: the current round is
+ * unresolved and no unit has acted in it yet. Unlike `combatStartWindowOpen`,
+ * this deliberately reopens after the round counters and unit activation flags
+ * reset for round 2 and later.
+ */
+export function combatRoundStartWindowOpen(combat: CombatState): boolean {
+  return !combat.outcome && !combatFightingHasBegun(combat);
+}
+
+/**
+ * Polish Balance Pack — the reprinted INTELLIGENCE: "At the start of a combat
+ * round, Refresh 1 Spell, then Cast a Spell." The classic card grants a
+ * combat-long timing freedom; the reprint scopes its one-shot cast to the start
+ * of whichever combat round the card is played. TRUE means the freedom (and its
+ * expert no-limit rider) is CLOSED right now.
  *
  * Outside combat there is no window to close, so this is false — the card is a
  * combat play and the freedom is only ever read mid-fight.
@@ -63,7 +73,7 @@ export function balanceIntelligenceWindowClosed(state: GameState): boolean {
   if (!polishIntelligenceHandReadingActive(state)) {
     return false;
   }
-  return Boolean(state.combat) && !combatStartWindowOpen(state.combat!);
+  return Boolean(state.combat) && !combatRoundStartWindowOpen(state.combat!);
 }
 
 /**
@@ -73,7 +83,7 @@ export function balanceIntelligenceWindowClosed(state: GameState): boolean {
  * both are on (`balanceCardLibrary` applies community last). The community card
  * is not an active-effect play at all — it is a cast-from-your-discard enabler —
  * so every seam that reads "Intelligence sitting in hand" for the POLISH reading
- * (its start-of-combat timing freedom and the Polish-Book "Cast a Spell" waiver)
+ * (its combat-round-start timing freedom and the Polish-Book "Cast a Spell" waiver)
  * must go dark while the community pack is on, or a holder would get BOTH cards.
  *
  * ONE shared read, so `balanceIntelligenceWindowClosed` and the hand-reading

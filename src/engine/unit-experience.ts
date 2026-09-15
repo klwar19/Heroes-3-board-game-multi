@@ -263,6 +263,13 @@ export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob
       already.add(abilityId);
       break;
     }
+    // Additional grants are cumulative; unlike `choices`, they are not
+    // alternatives in the rank's normal fallback chain.
+    for (const abilityId of step.grants ?? []) {
+      if (already.has(abilityId) || grantWouldBeStrictNoOp(abilityId, already)) continue;
+      granted.push(abilityId);
+      already.add(abilityId);
+    }
   }
   return granted;
 }

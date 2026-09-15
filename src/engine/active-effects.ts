@@ -141,8 +141,8 @@ export function makeActiveEffect(
  */
 export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId): boolean {
   // Polish Balance Pack: the reprinted Intelligence scopes the free cast to the
-  // START of the combat, so the freedom (and the Polish-Book enabler waiver that
-  // reads it) closes the moment a unit acts.
+  // START of the current combat round, so the freedom (and the Polish-Book
+  // enabler waiver that reads it) closes the moment a unit acts that round.
   if (balanceIntelligenceWindowClosed(state)) {
     return false;
   }
@@ -158,7 +158,7 @@ export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId
  * one-Spell-per-combat-round limit (`spellLimitFor` returns Infinity for them).
  */
 export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId): boolean {
-  // Balance Pack: the reprint's no-limit rider is likewise start-of-combat only.
+  // Balance Pack: the reprint's no-limit rider is likewise round-start only.
   if (balanceIntelligenceWindowClosed(state)) {
     return false;
   }
@@ -983,41 +983,56 @@ export function getAttackerTypeDefenseBonus(
   }, 0);
 }
 
-/** Torosar's temporary Ballistas: number of EXTRA_BALLISTA grants a player holds. */
+/**
+ * Whether the Ogre Leader (Stronghold) commander is currently fighting for
+ * `playerId` — its battlefield body is present, controlled by that player, and
+ * still alive. Its "Ballista Master" specialty grants one temporary combat
+ * Ballista only while that body stands: a commander defeated earlier in this
+ * combat stops fielding it immediately (before death is persisted at combat
+ * end), and secondary-hero/garrison fights that never field the commander get
+ * nothing. Checked inline off PlayerState + the combat unit so this module
+ * never imports the commanders engine layer.
+ */
+function ogreLeaderFightingFor(state: GameState, playerId: PlayerId): boolean {
+  const commander = state.players[playerId]?.commander;
+  if (!commander || commander.dead || commander.slug !== "ogre_leader" || !state.combat) {
+    return false;
+  }
+  const commanderUnit = state.combat.units[`unit_${playerId}_commander`];
+  return Boolean(
+    commanderUnit &&
+      commanderUnit.commanderSlug === "ogre_leader" &&
+      commanderUnit.controllerId === playerId &&
+      commanderUnit.damage < commanderUnit.maxHealth
+  );
+}
+
+/**
+ * Temporary combat Ballistas a player fields: Torosar's EXTRA_BALLISTA grants,
+ * plus the Ogre Leader (Stronghold) commander's "Ballista Master" specialty —
+ * one additional Ballista while its battlefield body stands (so a player owning
+ * no permanent Ballista fields 1, and one already owning a Ballista fields 2).
+ * Each such Ballista is queued as a `granted` round-start shot in
+ * `startWarMachineRound`: it fires at the start of every round at the slowest
+ * enemy (the owner breaks a tie) and can be turned into an Artillery volley,
+ * exactly like a physical Ballista.
+ */
 export function countExtraBallistas(state: GameState, playerId: PlayerId): number {
-  return state.activeEffects.reduce((total, effect) => {
+  const fromEffects = state.activeEffects.reduce((total, effect) => {
     if (effect.controllerId !== playerId) {
       return total;
     }
     return total + effect.modifiers.filter((modifier) => modifier.type === "EXTRA_BALLISTA").length;
   }, 0);
+  return fromEffects + (ogreLeaderFightingFor(state, playerId) ? 1 : 0);
 }
 
 /**
  * Gerwulf's Ballista VI (ongoing): whether `playerId` currently holds a
  * BALLISTA_CHOOSE_TARGET effect, letting their Ballista's round-start shot pick
  * any enemy unit instead of being forced onto the lowest-initiative enemy.
- * The Ogre Leader commander's "Ballista Master" specialty grants the same
- * freedom passively while the commander lives (checked inline off PlayerState
- * so this module never imports the commanders engine layer).
  */
 export function hasBallistaChooseTarget(state: GameState, playerId: PlayerId): boolean {
-  const commander = state.players[playerId]?.commander;
-  if (commander && !commander.dead && commander.slug === "ogre_leader") {
-    // A commander's specialty exists on its battlefield body, not merely on
-    // the persistent player record. Secondary-hero/garrison fights do not field
-    // that commander, and a commander defeated earlier in this combat stops
-    // aiming the Ballista immediately (before death is persisted at combat end).
-    const commanderUnit = state.combat?.units[`unit_${playerId}_commander`];
-    if (
-      !state.combat ||
-      (commanderUnit?.commanderSlug === "ogre_leader" &&
-        commanderUnit.controllerId === playerId &&
-        commanderUnit.damage < commanderUnit.maxHealth)
-    ) {
-      return true;
-    }
-  }
   return state.activeEffects.some(
     (effect) =>
       effect.controllerId === playerId &&
@@ -1354,6 +1369,20 @@ export function expireEffectsForCombatEnd(state: GameState): ActiveEffectState[]
  * covered without each of them knowing about held cards.
  */
 export function releaseEndedOngoingCards(state: GameState): void {
+  // Ray ends with its target. Do not leave its combat-duration effect holding
+  // the physical card after the unit dies or leaves the battlefield.
+  const removeEndedRays = (effects: ActiveEffectState[], combat: CombatState | null): ActiveEffectState[] =>
+    effects.filter((effect) => {
+      if (effect.source.type !== "card" || effect.source.cardId !== "spell.disrupting_ray" ||
+          effect.target?.type !== "unit" || !combat) return true;
+      const target = combat.units[effect.target.unitId];
+      return !combat.outcome && Boolean(target && target.damage < target.maxHealth);
+    });
+  state.activeEffects = removeEndedRays(state.activeEffects, state.combat);
+  for (const context of Object.values(state.parallelCombats ?? {})) {
+    context.effects = removeEndedRays(context.effects, context.combat);
+  }
+
   // A Polish Book turn-scoped Spell may still carry its engine effect object
   // during the round-wrap ordering even though every seat's turn has ended.
   // Treat that logical expiry as real before deciding whether the held card can

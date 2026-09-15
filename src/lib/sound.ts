@@ -2,7 +2,7 @@
 
 import soundManifest from "../../public/sounds/manifest.json";
 import { assetUrl } from "@/lib/asset-url";
-import { unitSoundKey, type UnitSoundAction } from "@/data/unit-sounds";
+import { unitSoundKey, type UnitSoundAction, type UnitSoundVariant } from "@/data/unit-sounds";
 
 /**
  * Table audio. Two sources:
@@ -226,12 +226,13 @@ export function playTableUiClickSound(event: { target: EventTarget | null }): vo
 export function playUnitSound(
   unitDefId: string | undefined,
   action: UnitSoundAction,
-  delayMs = 0
+  delayMs = 0,
+  variant?: UnitSoundVariant
 ): void {
   if (!unitDefId || typeof window === "undefined") {
     return;
   }
-  const key = unitSoundKey(unitDefId, action);
+  const key = unitSoundKey(unitDefId, action, variant);
   if (!key) {
     return;
   }

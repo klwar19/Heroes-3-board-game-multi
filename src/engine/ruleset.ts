@@ -885,8 +885,9 @@ export function spellLimitFor(state: GameState, player: PlayerState): number {
   // longer applies to that player, so every limit check (which all derive from
   // this value) passes for as long as the effect is held.
   // Polish Balance Pack: the reprinted Intelligence's no-limit rider is scoped to
-  // the start-of-combat window (the same shared read `playerHasSpellTimingFreedom`
-  // takes), so once a unit has acted the limit is the ordinary one again.
+  // the current round-start window (the same shared read
+  // `playerHasSpellTimingFreedom` takes), so once a unit has acted the limit is
+  // the ordinary one again.
   const ignoresLimit =
     !balanceIntelligenceWindowClosed(state) &&
     state.activeEffects.some(

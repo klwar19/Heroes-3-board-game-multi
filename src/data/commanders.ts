@@ -162,6 +162,32 @@ export function commanderStatValue(key: CommanderStatKey, grade: CommanderGrade)
   return COMMANDER_GRADE_VALUES[key][grade];
 }
 
+/**
+ * Commanders whose Command cast is their primary value and rewards Magic Power
+ * (Necropolis Animate Dead heal 1→3, Tower Precision +Atk/no-penalty, Conflux
+ * Counterstrike tier-by-Power, Rampart Shield +Def). In ranked human play (16
+ * commander games, 197 grade-ups) MAGIC was graded on EXACTLY these four
+ * commanders (soul_eater 9, astral_spirit 5, temple_guardian 4, hierophant 2
+ * total magic grades) and on NONE of the melee/utility commanders (paladin,
+ * succubus, shaman, corsair/Sea Marshal, brute, ogre_leader, bulwark, factory —
+ * 0 magic grades between them). Cast Power itself only climbs at Magic grade 2+
+ * (COMMANDER_GRADE_VALUES.magic = [0,0,1,2]), so only a commander that actually
+ * uses its cast is worth the investment. The computer AI's grade-up priority
+ * (choice-policy) reads this so casters pour into Magic while everyone else
+ * takes Attack + survivability. Single source of truth.
+ */
+export const COMMANDER_MAGIC_GRADE_SLUGS: ReadonlySet<CommanderSlug> = new Set<CommanderSlug>([
+  "soul_eater",
+  "temple_guardian",
+  "astral_spirit",
+  "hierophant",
+]);
+
+/** Does grading Magic meaningfully help this commander (see COMMANDER_MAGIC_GRADE_SLUGS)? */
+export function commanderValuesMagicGrade(slug: string | undefined | null): boolean {
+  return !!slug && COMMANDER_MAGIC_GRADE_SLUGS.has(slug as CommanderSlug);
+}
+
 /** Command-ability Power (0..3) at the given Magic grade. */
 export function commanderPower(grades: Pick<CommanderGrades, "magic">): number {
   return commanderStatValue("magic", grades.magic);
@@ -837,7 +863,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "ballista-master",
       name: "Ballista Master",
-      text: "Your Ballista's round-start shot targets an enemy unit of YOUR choice (instead of the lowest-initiative enemy)."
+      text: "In combat you field an extra Ballista: one if you own no Ballista, a second if you already own one. It fires at the start of each round like any Ballista and works with the Artillery card."
     },
     cardImage: "/assets/units-commander-ogre_leader.webp"
   },

@@ -9,6 +9,7 @@ import soundManifest from "../../public/sounds/manifest.json";
  */
 
 export type UnitSoundAction = "attack" | "shoot" | "defend" | "hurt" | "death" | "move";
+export type UnitSoundVariant = "few" | "pack" | "neutral";
 
 const soundLibrary = soundManifest as Record<string, { src?: string }>;
 
@@ -158,15 +159,16 @@ const creatureVoices: Record<string, string> = {
   sorceresses: "sea-witch",
   nix: "nix",
   haspids: "sea-serpent",
-  // Bulwark (fan faction): the board-game creatures reuse base-game voice sets
-  // until dedicated audio is converted (heroes.thelazy.net/Bulwark, placeholder).
-  kobolds: "goblin",
-  mountain_rams: "boar",
-  snow_elves: "wood-elf",
-  yetis: "ogre",
-  shamans: "mage",
-  mammoths: "behemoth",
-  jotunns: "titan",
+  // Bulwark: dedicated HotA creature sets converted from the source archive.
+  // Upgrades that share a source set (Kobold Foreman, Argali, Yeti Runemaster,
+  // Great Shaman) intentionally resolve through the corresponding base key.
+  kobolds: "kobold",
+  mountain_rams: "mountain-ram",
+  snow_elves: "snow-elf",
+  yetis: "yeti",
+  shamans: "shaman",
+  mammoths: "mammoth",
+  jotunns: "jotunn",
   // Factory (HotA fan faction): reuse base-game voice sets until dedicated
   // audio is converted. halflings already maps above (neutral creature).
   mechanics: "gremlin",
@@ -263,6 +265,13 @@ const creatureVoices: Record<string, string> = {
   gorynych: "hydra",
   santa_gremlin: "gremlin",
   dracolich: "ghost-dragon"
+};
+
+/** Bulwark upgrades with a genuinely separate HotA sound set. */
+const bulwarkPackVoices: Record<string, string> = {
+  snow_elves: "steel-elf",
+  mammoths: "war-mammoth",
+  jotunns: "jotunn-warlord"
 };
 
 /**
@@ -715,7 +724,11 @@ export function commanderSoundKey(slug: string, action: UnitSoundAction): string
  * commander voice map. Undefined when the unit or clip is unknown so
  * callers degrade to silence instead of requesting a missing file.
  */
-export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string | undefined {
+export function unitSoundKey(
+  unitDefId: string,
+  action: UnitSoundAction,
+  variant?: UnitSoundVariant
+): string | undefined {
   if (unitDefId.startsWith(COMMANDER_VOICE_PREFIX)) {
     return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
   }
@@ -750,7 +763,9 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
   // Raid/Dungeon bosses (unitDefId `boss.<id>`) borrow a converted H3 voice.
   const voice = unitDefId.startsWith("boss.")
     ? bossVoices[bareName]
-    : creatureVoices[bareName];
+    : unitDefId.startsWith("bulwark.") && variant === "pack" && bulwarkPackVoices[bareName]
+      ? bulwarkPackVoices[bareName]
+      : creatureVoices[bareName];
   if (!voice) {
     return undefined;
   }

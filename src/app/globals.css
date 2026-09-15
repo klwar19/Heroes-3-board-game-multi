@@ -6265,6 +6265,14 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   pointer-events: none;
 }
 
+/* Fixed-object legend markers (mine / settlement / obelisk / gate / whirlpool /
+   Ⅶ objective) drawn at the top of a revealed hex. A crisp dark drop-shadow
+   keeps the icon legible over any tile art; it never eats the hex click. */
+.fixedObjectMarker {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+
 .hexGateCue {
   fill: #ffe9bd;
   font-size: 9px;

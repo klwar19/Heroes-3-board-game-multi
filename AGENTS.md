@@ -6,6 +6,7 @@
 - Keep displayed rules, ability definitions, and implementation status consistent with actual behavior. Mark unfinished behavior honestly.
 - Follow each rule through action legality, resolution, targeting, damage/healing, timing, cleanup, and multiplayer state where applicable.
 - Preserve existing gameplay, optional-rule behavior, saves, and unrelated user changes. Fix the cause of a bug, not just its symptom.
+- AI plans must account for each hero's implemented specialties, starting cards and stats as well as faction. Use observed mistakes to improve exploration, economy, building, combat preparation, fighting and recovery while preserving the user's golden rules.
 - Isolate ability- or rule-specific changes to their own branch/path. Never tighten shared legality, movement, targeting, or resolution for a special case unless every consumer is audited and the broader behavior is explicitly requested.
 
 ## Verification restrictions

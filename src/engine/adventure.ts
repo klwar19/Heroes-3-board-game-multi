@@ -2947,6 +2947,54 @@ function tileGroupBreakSealsEntry(state: GameState, hero: HeroState, field: MapF
   return tileHasDesignatedBreak ? designatedUncleared : anyUncleared;
 }
 
+/**
+ * A DESIGNATED Break field (`field.breakField === true` — e.g. a Break Obelisk,
+ * a Break Ⅶ objective, a Break sea Temple) is the tile's ONE fightable entrance:
+ * while its guard still stands FOR THIS PLAYER, every OTHER hex of the same tile
+ * is walled off from entry — the tile's open hexes AND its side-guard fields
+ * alike (a guarded Pandora, a mine, a bank). You cannot slip around the break to
+ * loot the tile's other fields; you must beat the break first, after which the
+ * whole tile opens.
+ *
+ * This fires from the `breakField` designation ALONE — it needs neither the
+ * map-wide Break-configuration tile gate (`mapPreset.breaks.enter*`) nor a
+ * particular tile group, so ticking "Break field" on an object seals its tile on
+ * any map. Tiles with NO designated break are untouched here (they keep the
+ * map-wide `tileGroupBreakSealsEntry` fallback, which only walls open hexes), so
+ * ordinary guarded fields on non-break tiles stay directly fightable as before.
+ *
+ * Exceptions that stay open: the break guard hex ITSELF (the entrance — handled
+ * by the caller's guarded branch as a normal Break fight), the hero's own hex,
+ * and a hex this player already flagged (a conquered mine / their own cube).
+ * Checked BEFORE the caller's guarded branch so a walled SIDE-GUARD is blocked
+ * rather than offered as a fight. Fliers (pass-any / move-through) still pass.
+ */
+function designatedBreakGateSealsField(state: GameState, hero: HeroState, field: MapFieldState): boolean {
+  const adventure = state.adventure;
+  if (!adventure) return false;
+  const tile = adventure.tiles[field.tileInstanceId];
+  if (!tile) return false;
+  const playerId = hero.controllerId;
+  // The hex the hero already stands on, and a hex this player already flagged,
+  // are theirs to re-enter — never freshly walled.
+  if (hero.spaceId === field.spaceId) return false;
+  if (field.flagOwnerId === playerId || field.extraFlagOwnerIds?.includes(playerId)) return false;
+  const breakGuardUncleared = (other: MapFieldState): boolean =>
+    other.breakField === true &&
+    isFieldGuarded(other) &&
+    other.flagOwnerId !== playerId &&
+    !breakClearedByTeam(state, playerId, other);
+  // This field is itself the uncleared break guard → it is THE entrance, never
+  // walled (the guarded branch fights it as a Break).
+  if (breakGuardUncleared(field)) return false;
+  // Any uncleared designated break elsewhere on this tile walls this hex.
+  for (const other of Object.values(adventure.fields)) {
+    if (other.tileInstanceId !== field.tileInstanceId) continue;
+    if (breakGuardUncleared(other)) return true;
+  }
+  return false;
+}
+
 export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
@@ -3007,6 +3055,15 @@ export function classifyHeroStep(
     // Pathfinding walks through an enemy Hero's field; Combat only if you END
     // here. Angel Wings' pass-any-field covers this case too.
     return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
+  }
+
+  // Designated Break gate: a tile with an uncleared `breakField` guard is walled
+  // shut except for that break hex — its side-guard fields (a guarded Pandora, a
+  // mine) AND its open hexes alike may not be entered until the break falls, so
+  // the break cannot be side-stepped to loot the tile. Checked BEFORE the guarded
+  // branch so a walled SIDE-GUARD is blocked, not offered as a fight. Fliers pass.
+  if (designatedBreakGateSealsField(state, hero, field)) {
+    return passAnyField(movement) || movement.moveThrough ? "pass-only" : "block";
   }
 
   // Route-planning corridors: Sanctuary has no arrival interaction of its own,
@@ -6257,7 +6314,7 @@ function fireDesignerWinCondition(state: GameState, playerId: PlayerId, field: M
 // eslint-disable-next-line no-var
 var hexEventEncounterHook:
   | ((state: GameState, hero: HeroState, field: MapFieldState) => void)
-  | null = null;
+  | null;
 export function setHexEventEncounterHook(
   hook: ((state: GameState, hero: HeroState, field: MapFieldState) => void) | null
 ): void {
@@ -6271,8 +6328,7 @@ export function setHexEventEncounterHook(
  * visit step is a safe no-op (the lair simply stays; the next visit retries).
  */
 // eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
-var raidBossEncounterHook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null =
-  null;
+var raidBossEncounterHook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null;
 export function setRaidBossEncounterHook(
   hook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null
 ): void {
@@ -6281,7 +6337,7 @@ export function setRaidBossEncounterHook(
 
 /** The Dungeon (§6.7.3): the floor fight's reducer-side opener (same pattern). */
 // eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
-var dungeonEncounterHook: ((state: GameState, heroId: HeroId, floor: number) => void) | null = null;
+var dungeonEncounterHook: ((state: GameState, heroId: HeroId, floor: number) => void) | null;
 export function setDungeonEncounterHook(
   hook: ((state: GameState, heroId: HeroId, floor: number) => void) | null
 ): void {
@@ -6307,7 +6363,7 @@ var teleportArrivalHook:
       originSpaceId: MapSpaceId,
       bypassGuard: boolean
     ) => void)
-  | null = null;
+  | null;
 export function setTeleportArrivalHook(
   hook:
     | ((
@@ -13103,7 +13159,7 @@ export type OnMapTileRevealSource = "ordinary" | "subterranean-gate";
 // eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
 var onMapTileRevealHook:
   | ((state: GameState, playerId: PlayerId, tile: MapTileState, source: OnMapTileRevealSource) => void)
-  | null = null;
+  | null;
 export function setOnMapTileRevealHook(
   hook:
     | ((state: GameState, playerId: PlayerId, tile: MapTileState, source: OnMapTileRevealSource) => void)
