@@ -1344,7 +1344,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   Break whole-tile gating; selectable Monolith/Exit reveal placement; ongoing
 //   Disrupting Ray cleanup; defender gate-move priority. These alter reducer,
 //   legality and persisted-state semantics, so frontend and PartyKit must match.
-export const ENGINE_PROTOCOL_VERSION = 148;
+// v149 (2026-09-15): Dungeon Brute Bloodlust (and its themed commander aliases)
+//   now lasts the casting round plus the next combat round, and designed hidden
+//   map tiles persist public advance-warning badges for guaranteed landmarks and
+//   reveal-time choices. The reducer semantics and MapTileState schema both
+//   changed, so the frontend and authoritative PartyKit worker must match.
+export const ENGINE_PROTOCOL_VERSION = 149;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

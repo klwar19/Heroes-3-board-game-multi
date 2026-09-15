@@ -31866,7 +31866,10 @@ function resolveCommanderCast(
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
-          duration: { type: "current-combat-round" },
+          duration:
+            effect.duration === "two-rounds"
+              ? { type: "combat-rounds", rounds: 2 }
+              : { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
           modifiers: [

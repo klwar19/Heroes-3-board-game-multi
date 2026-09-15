@@ -462,7 +462,12 @@ export type CommanderCastEffect =
   | { kind: "heal-cleanse"; healByPower: readonly [number, number, number]; cleanseFromPower: number }
   | { kind: "defense-buff"; amountByPower: readonly [number, number, number]; vs: "melee" | "all" }
   | { kind: "precision"; amountByPower: readonly [number, number, number] }
-  | { kind: "attack-buff"; amountByPower: readonly [number, number, number] }
+  | {
+      kind: "attack-buff";
+      amountByPower: readonly [number, number, number];
+      /** How long this commander's buff lasts; kept per cast because other commanders reuse this effect kind. */
+      duration: "round" | "two-rounds";
+    }
   | {
       kind: "fire-shield";
       damageByPower: readonly [number, number, number];
@@ -798,14 +803,14 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Bloodlust",
       icon: "/assets/spell-icons/bloodlust.png",
       // Power ladder (user spec): Pow 0 = +1 but the melee unit must be adjacent
-      // to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere. Always for
-      // THIS round only.
+      // to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere. Cast on the
+      // Brute's activation and lasting for this combat round and the next.
       targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "attack-buff", amountByPower: [1, 1, 2] },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
       tierText: [
-        "A friendly melee unit ADJACENT to the commander gains +1 Attack this round.",
-        "A friendly melee unit anywhere gains +1 Attack this round.",
-        "A friendly melee unit anywhere gains +2 Attack this round."
+        "On the commander's activation, a friendly melee unit ADJACENT to the commander gains +1 Attack for 2 combat rounds.",
+        "On the commander's activation, a friendly melee unit anywhere gains +1 Attack for 2 combat rounds.",
+        "On the commander's activation, a friendly melee unit anywhere gains +2 Attack for 2 combat rounds."
       ]
     },
     specialty: {
@@ -999,11 +1004,11 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Command Seal",
       icon: "/assets/spell-icons/bloodlust.png",
       targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "attack-buff", amountByPower: [1, 1, 2] },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
       tierText: [
-        "A nearby allied melee Servant gains +1 Attack this round.",
-        "An allied melee Servant anywhere gains +1 Attack this round.",
-        "An allied melee Servant anywhere gains +2 Attack this round."
+        "A nearby allied melee Servant gains +1 Attack for 2 combat rounds.",
+        "An allied melee Servant anywhere gains +1 Attack for 2 combat rounds.",
+        "An allied melee Servant anywhere gains +2 Attack for 2 combat rounds."
       ]
     },
     specialty: {
@@ -1104,11 +1109,11 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Blood Frenzy",
       icon: "/assets/spell-icons/bloodlust.png",
       targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "attack-buff", amountByPower: [1, 1, 2] },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
       tierText: [
-        "A nearby allied melee demon-cultivator gains +1 Attack this round.",
-        "An allied melee demon-cultivator anywhere gains +1 Attack this round.",
-        "An allied melee demon-cultivator anywhere gains +2 Attack this round."
+        "A nearby allied melee demon-cultivator gains +1 Attack for 2 combat rounds.",
+        "An allied melee demon-cultivator anywhere gains +1 Attack for 2 combat rounds.",
+        "An allied melee demon-cultivator anywhere gains +2 Attack for 2 combat rounds."
       ]
     },
     // Specialty: REUSE `undead` (Paralysis-token immunity) — the SAME id the

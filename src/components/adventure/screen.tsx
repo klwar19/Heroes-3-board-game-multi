@@ -204,7 +204,10 @@ import {
   TILE_BACK_IMAGES,
   whirlpoolTokenImage,
 } from "@/data/assets/homm-assets";
-import { fixedObjectMarkerSrc } from "@/data/map/fixed-object-markers";
+import {
+  faceDownTileHintLabel,
+  faceDownTileHintMarkerSrc,
+} from "@/data/map/fixed-object-markers";
 import {
   fieldOverrideGlyph,
   fieldOverrideImage,
@@ -341,44 +344,6 @@ import {
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
-
-// Fixed-object map markers: a small legend icon drawn at the top of a REVEALED
-// hex so a player who never opens the map editor can still read what the map
-// holds at a glance — which mines are gold / valuables / materials, where the
-// Settlements, Obelisks, Subterranean Gates, Whirlpools and the Ⅶ objectives
-// (Random Town, Dragon Utopia, Grail, Temple of the Sea) sit. These are the
-// public, ship-with-the-app token icons under /game-tokens/markers. Returns the
-// asset path for a field's object, or null for a hex that carries no marked
-// object. A mine with no decided resource yet falls back to the gold-or-valuables
-// icon (the "player picks the resource" case, before it resolves on reveal).
-/** The <image> legend marker for a fixed object, or null. Drawn at the hex top. */
-function fixedObjectMarkerNode(
-  field: Pick<MapFieldState, "location" | "resource">,
-  spaceId: string,
-  x: number,
-  y: number,
-): ReactNode {
-  const src = fixedObjectMarkerSrc(field);
-  if (!src) {
-    return null;
-  }
-  const size = HEX_WIDTH * 0.52;
-  return (
-    <image
-      className="fixedObjectMarker"
-      data-space-id={spaceId}
-      height={size}
-      href={assetUrl(src)}
-      key={`${spaceId}-marker`}
-      preserveAspectRatio="xMidYMid meet"
-      // Legend art only — never intercept the hex's move click.
-      style={{ pointerEvents: "none" }}
-      width={size}
-      x={x - size / 2}
-      y={y - HEX_SIZE * 0.86}
-    />
-  );
-}
 
 const TERRAIN_COLORS: Record<string, string> = {
   grass: "#3c7a39",
@@ -1672,6 +1637,59 @@ export function HexMapBoard({
           y={centerPixel.y - backHeight / 2}
         />,
       );
+      // Scenario hints belong on the BACK, where they warn the player before
+      // discovery. Once the tile is revealed its printed scan is sufficient and
+      // these badges disappear with the back. Choice hints wear a small "?".
+      // Legacy saves predate `faceDownHints`, but already carry the two public
+      // choice flags; derive those badges so an in-progress game is not left
+      // without the warning after upgrading.
+      const faceDownHints =
+        tile.faceDownHints ??
+        [
+          ...(tile.playerResourcePick ? (["mine_choice"] as const) : []),
+          ...(tile.playerViiPick ? (["objective_choice"] as const) : []),
+        ];
+      const hintSize = HEX_WIDTH * 0.54;
+      const hintGap = hintSize * 1.08;
+      for (const [hintIndex, hint] of faceDownHints.entries()) {
+        const row = Math.floor(hintIndex / 4);
+        const column = hintIndex % 4;
+        const rowCount = Math.min(4, faceDownHints.length - row * 4);
+        const hintX = centerPixel.x + (column - (rowCount - 1) / 2) * hintGap;
+        const hintY = centerPixel.y - HEX_SIZE * 1.72 + row * hintSize * 0.92;
+        const choiceHint = hint === "mine_choice" || hint === "objective_choice";
+        artLayer.push(
+          <g
+            aria-label={faceDownTileHintLabel(hint)}
+            className="tileBackFeatureHint"
+            data-face-down-hint={hint}
+            key={`back-hint-${tile.id}-${hintIndex}-${hint}`}
+            role="img"
+            style={{ pointerEvents: "none" }}
+          >
+            <circle cx={hintX} cy={hintY} r={hintSize * 0.53} />
+            <image
+              height={hintSize}
+              href={assetUrl(faceDownTileHintMarkerSrc(hint))}
+              preserveAspectRatio="xMidYMid meet"
+              width={hintSize}
+              x={hintX - hintSize / 2}
+              y={hintY - hintSize / 2}
+            />
+            {choiceHint ? (
+              <text
+                className="tileBackFeatureChoiceBadge"
+                textAnchor="middle"
+                x={hintX + hintSize * 0.38}
+                y={hintY + hintSize * 0.45}
+              >
+                ?
+              </text>
+            ) : null}
+            <title>{faceDownTileHintLabel(hint)}</title>
+          </g>,
+        );
+      }
       // Designed Monolith/Whirlpool/colored-Gate tokens riding this face-down
       // tile are public info — including Whirlpools BEFORE the tile is revealed.
       // Render EVERY pending token (multi-token tiles), not only the legacy
@@ -2760,12 +2778,6 @@ export function HexMapBoard({
           );
         }
       }
-      // Fixed-object legend marker (mine resource / settlement / obelisk / gate /
-      // whirlpool / Ⅶ objective) at the top of the revealed hex.
-      const fixedMarker = fixedObjectMarkerNode(field, spaceId, x, y);
-      if (fixedMarker) {
-        overlays.push(fixedMarker);
-      }
       if (field.location === "dungeon_gate") {
         const floor = Math.max(
           1,
@@ -3295,11 +3307,6 @@ export function HexMapBoard({
         </title>
       </polygon>,
     );
-    // Fixed-object legend marker on a standalone object hex too.
-    const standaloneMarker = fixedObjectMarkerNode(field, spaceId, x, y);
-    if (standaloneMarker) {
-      overlays.push(standaloneMarker);
-    }
     if (isTeleportMarkLocation(field.location)) {
       // Teleport objects (Gate / Monolith / one-way halves): the unified
       // designer-parity mark — same undistorted art + ring + pair badge the

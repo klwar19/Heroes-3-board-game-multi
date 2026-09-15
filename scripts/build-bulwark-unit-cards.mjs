@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const RAW = path.join(ROOT, "scripts/card-art/raw/bulwark");
+// Raw masters live in the source-media family so a fresh checkout can restore
+// them with `npm run media:pull -- --sources` before rebuilding the cards.
+const RAW = path.join(ROOT, "generated-session-art/bulwark/cards/raw");
 const OUT = path.join(ROOT, "public/assets");
 const REVIEW = path.join(ROOT, "generated-session-art/bulwark/cards");
 const W = 743;
@@ -19,7 +21,7 @@ const valuableIcon = `data:image/png;base64,${(
 ).toString("base64")}`;
 
 const cards = [
-  { slug: "kobolds", name: "Kobolds", tier: "bronze", type: "GROUND", art: { few: "kobolds.png", pack: "kobolds.png" },
+  { slug: "kobolds", name: "Kobolds", tier: "bronze", type: "GROUND", art: { few: "kobolds-few.png", pack: "kobolds-pack.png" },
     few: { stats: [2, 0, 3, 4], cost: { gold: 0 }, text: "" },
     pack: { stats: [2, 1, 4, 5], cost: { gold: 2 }, text: "At the beginning of each Resource round, gain 1 gold (Kobold Foreman)." } },
   { slug: "mountain_rams", name: "Mountain Rams", tier: "bronze", type: "GROUND", art: { few: "mountain_rams-few.png", pack: "mountain_rams-pack.png" },

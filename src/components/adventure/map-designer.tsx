@@ -5,7 +5,10 @@ import { assetUrl } from "@/lib/asset-url";
 import { Layers, Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
-import { fixedObjectMarkerSrc } from "@/data/map/fixed-object-markers";
+import {
+  faceDownTileHintLabel,
+  faceDownTileHintMarkerSrc,
+} from "@/data/map/fixed-object-markers";
 import {
   creatureBankFieldImage,
   DESIGNER_UI_ICONS,
@@ -3856,45 +3859,57 @@ export function MapDesigner({
       );
     }
 
-    // Face-up tile previews show the same fixed-object markers as the live map.
-    // Resolve each printed slot through the plan rotation so the icon stays on
-    // its actual board hex while the underlying tile scan rotates. Hidden tiles
-    // deliberately reveal no object information in the player-facing preview.
-    const visibleTileDef = !plan.faceDown && plan.tileDefId
-      ? allTileDefinitions[plan.tileDefId]
-      : undefined;
-    if (visibleTileDef) {
-      const footprint = tileFootprint(center, plan.rotation ?? 0);
-      visibleTileDef.fields.forEach((field, slot) => {
-        // A designer-forced single VII objective replaces the printed centre
-        // field at setup, so preview that selected object rather than the scan's
-        // original centre. Multi-choice VII fields stay undisclosed until picked.
-        const visibleField = slot === 0 && plan.viiField
-          ? { ...field, location: plan.viiField }
-          : field;
-        const markerSrc = fixedObjectMarkerSrc(visibleField);
-        const cell = footprint[slot];
-        if (!markerSrc || !cell) return;
-        const pixel = hexToPixel(cell, size);
-        const markerSize = hexWidth * 0.52;
-        labelLayer.push(
+    // Advance-warning badges belong on a face-DOWN tile, not on a revealed
+    // scan. They describe the authored promise/choice without exposing which
+    // exact tile was drawn. The live map reads the same hints from MapTileState.
+    const faceDownHints = plan.faceDown
+      ? [
+          ...planAllowedSecretFeatures(plan),
+          ...(plan.playerResourcePick ? (["mine_choice"] as const) : []),
+          ...(plan.playerViiPick ? (["objective_choice"] as const) : []),
+        ]
+      : [];
+    const markerSize = hexWidth * 0.54;
+    const markerGap = markerSize * 1.08;
+    faceDownHints.forEach((hint, hintIndex) => {
+      const row = Math.floor(hintIndex / 4);
+      const column = hintIndex % 4;
+      const rowCount = Math.min(4, faceDownHints.length - row * 4);
+      const markerX = centerPixel.x + (column - (rowCount - 1) / 2) * markerGap;
+      const markerY = centerPixel.y - size * 1.72 + row * markerSize * 0.92;
+      const choiceHint = hint === "mine_choice" || hint === "objective_choice";
+      labelLayer.push(
+        <g
+          aria-label={faceDownTileHintLabel(hint)}
+          className="tileBackFeatureHint designerTileBackFeatureHint"
+          data-designer-face-down-hint={hint}
+          key={`plan-face-down-hint-${index}-${hintIndex}-${hint}`}
+          role="img"
+          style={{ pointerEvents: "none" }}
+        >
+          <circle cx={markerX} cy={markerY} r={markerSize * 0.53} />
           <image
-            className="fixedObjectMarker designerFixedObjectMarker"
-            data-designer-fixed-object={visibleField.location}
             height={markerSize}
-            href={assetUrl(markerSrc)}
-            key={`plan-fixed-object-${index}-${slot}`}
+            href={assetUrl(faceDownTileHintMarkerSrc(hint))}
             preserveAspectRatio="xMidYMid meet"
-            style={{ pointerEvents: "none" }}
             width={markerSize}
-            x={pixel.x - markerSize / 2}
-            y={pixel.y - size * 0.86}
-          >
-            <title>{locationDefinitions[visibleField.location]?.name ?? visibleField.location}</title>
-          </image>
-        );
-      });
-    }
+            x={markerX - markerSize / 2}
+            y={markerY - markerSize / 2}
+          />
+          {choiceHint ? (
+            <text
+              className="tileBackFeatureChoiceBadge"
+              textAnchor="middle"
+              x={markerX + markerSize * 0.38}
+              y={markerY + markerSize * 0.45}
+            >
+              ?
+            </text>
+          ) : null}
+          <title>{faceDownTileHintLabel(hint)}</title>
+        </g>,
+      );
+    });
 
     const onPointerDown = (event: React.PointerEvent) => {
       if (event.button !== 0) {

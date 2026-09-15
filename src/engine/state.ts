@@ -11177,6 +11177,12 @@ export type ReservedBankOption = {
   size: BankSize;
 };
 
+/** Public advance-warning badges shown on a tile while its face is hidden. */
+export type FaceDownTileHint =
+  | SecretTileFeature
+  | "mine_choice"
+  | "objective_choice";
+
 export type MapTileState = {
   id: string;
   tileDefId: string;
@@ -11195,6 +11201,13 @@ export type MapTileState = {
   backLabel?: string;
   /** Tile group (public info — the printed back gives it away). */
   group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
+  /**
+   * Public scenario information shown ONLY on the tile back: guaranteed
+   * landmark filters and player-on-reveal choices. This deliberately carries
+   * the authored expectation, not the hidden `tileDefId`, so multiplayer views
+   * can warn players what kind of reveal is coming without exposing the face.
+   */
+  faceDownHints?: FaceDownTileHint[];
   /**
    * Per-tile UNDERGROUND layer override carried from
    * {@link CustomMapTilePlan.underground} onto the placed instance: a

@@ -6265,12 +6265,27 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   pointer-events: none;
 }
 
-/* Fixed-object legend markers (mine / settlement / obelisk / gate / whirlpool /
-   Ⅶ objective) drawn at the top of a revealed hex. A crisp dark drop-shadow
-   keeps the icon legible over any tile art; it never eats the hex click. */
-.fixedObjectMarker {
+/* Public scenario hints sit on a FACE-DOWN tile back only. They announce a
+   guaranteed landmark or an on-reveal player choice, then disappear with the
+   back so the revealed scan stays clean. */
+.tileBackFeatureHint {
   pointer-events: none;
-  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.95));
+}
+
+.tileBackFeatureHint > circle {
+  fill: rgba(12, 9, 28, 0.88);
+  stroke: rgba(244, 214, 132, 0.92);
+  stroke-width: 1.25px;
+}
+
+.tileBackFeatureChoiceBadge {
+  fill: #fff6c9;
+  font-size: 13px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #211326;
+  stroke-width: 3px;
 }
 
 .hexGateCue {

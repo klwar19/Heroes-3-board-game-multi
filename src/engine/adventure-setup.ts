@@ -4268,6 +4268,23 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           applyDesignedBorders(tile, plan);
           applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, effectiveViiPlan(plan));
+          // These badges are the public promise attached to the FACE-DOWN
+          // slot. They warn every player what to expect before discovery while
+          // leaving the drawn tile identity hidden. A failed landmark-filter
+          // fallback must not advertise a guarantee the placed tile cannot keep.
+          const fulfilledFeatureHints =
+            allowedFeatures.length > 0 &&
+            tileMatchesAnySecretFeature(allTileDefinitions[tileDefId], allowedFeatures)
+              ? allowedFeatures
+              : [];
+          const faceDownHints = [
+            ...fulfilledFeatureHints,
+            ...(plan.playerResourcePick ? (["mine_choice"] as const) : []),
+            ...(plan.playerViiPick ? (["objective_choice"] as const) : [])
+          ];
+          if (faceDownHints.length > 0) {
+            tile.faceDownHints = [...new Set(faceDownHints)];
+          }
           applyDesignedSettlement(adventure, tile, plan);
           if (excludedFeatures.length > 0) {
             tile.excludeFeatures = [...excludedFeatures];

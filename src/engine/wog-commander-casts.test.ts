@@ -580,7 +580,8 @@ describe("commander casts — Temple Guardian's Precision", () => {
 
 describe("commander casts — Brute's Bloodlust", () => {
   // Power ladder (user spec): Pow 0 = +1 but ADJACENT; Pow 1 = +1 anywhere;
-  // Pow 2 = +2 anywhere. Always this round only.
+  // Pow 2 = +2 anywhere. Cast on the Brute's activation and lasts this round
+  // plus the next combat round.
   it("targets MELEE friendlies only; Pow 0 needs adjacency, Pow 1+ reaches anywhere", () => {
     function gate(magic: number): string[] {
       const state = castState("brute", magic ? { magic } : {});
@@ -627,6 +628,19 @@ describe("commander casts — Brute's Bloodlust", () => {
     expect(strike(castOn(castState("brute", { magic: 2 }), "brute", "unit_p1_crusaders"))).toBe(3);
     // Pow 2 (magic grade 3): +2 → 4.
     expect(strike(castOn(castState("brute", { magic: 3 }), "brute", "unit_p1_crusaders"))).toBe(4);
+  });
+
+  it("is cast on the Brute's activation and lasts for 2 combat rounds", () => {
+    const state = castOn(castState("brute", { magic: 2 }), "brute", "unit_p1_griffins");
+    const bloodlust = state.activeEffects.find(
+      (effect) =>
+        effect.name.startsWith("Bloodlust") &&
+        effect.target?.type === "unit" &&
+        effect.target.unitId === "unit_p1_griffins"
+    );
+
+    expect(bloodlust?.duration).toEqual({ type: "combat-rounds", rounds: 2 });
+    expect(bloodlust?.expiresAtCombatRoundEnd).toBe(state.combat!.round + 1);
   });
 });
 

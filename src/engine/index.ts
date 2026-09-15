@@ -1142,6 +1142,7 @@ export type {
   CustomMapGateLink,
   CustomStartingUnit,
   CustomWinCondition,
+  FaceDownTileHint,
   SecretTileFeature,
   VictoryMode,
   DamageKind,

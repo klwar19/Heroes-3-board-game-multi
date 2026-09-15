@@ -4434,7 +4434,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-brute": {
     id: "commander-cast-brute",
     name: "Bloodlust",
-    text: "[activation] Once per combat round: a friendly melee unit anywhere gains +1/+2/+3 Attack (Power 0/1/2) this round. Does not end the activation.",
+    text: "[activation] Once per combat round, on the commander's turn: a friendly melee unit gains +1/+1/+2 Attack (Power 0/1/2) for 2 combat rounds. At Power 0 the target must be adjacent; from Power 1 it may be anywhere. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

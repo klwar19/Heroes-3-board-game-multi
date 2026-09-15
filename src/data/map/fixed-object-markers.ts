@@ -1,43 +1,43 @@
-/**
- * Small, compressed legend art for fixed map objects. The map designer and the
- * live adventure board share this mapping so a known object is represented by
- * the same icon before and during play.
- */
+/** Small, compressed legend art used as advance warnings on hidden tiles. */
 const FIXED_OBJECT_MARKER_BASE = "/game-tokens/markers/";
 
-export function fixedObjectMarkerSrc(field: {
-  location: string;
-  resource?: string;
-}): string | null {
-  const file = (() => {
-    switch (field.location) {
-      case "mine":
-        return field.resource === "gold"
-          ? "mine-gold.webp"
-          : field.resource === "valuables"
-            ? "mine-valuable.webp"
-            : field.resource === "buildingMaterials"
-              ? "mine-materials.webp"
-              : "mine-valuable-or-gold.webp";
-      case "settlement":
-        return "settlement.webp";
-      case "obelisk":
-        return "obelisk.webp";
-      case "subterranean_gate":
-        return "underground-gate.webp";
-      case "whirlpool":
-        return "whirlpool.webp";
-      case "random_town":
-        return "vii-random-town.webp";
-      case "dragon_utopia":
-        return "vii-dragon-utopia.webp";
-      case "grail":
-        return "vii-grail.webp";
-      case "temple_of_the_sea":
-        return "vii-temple-of-seas.webp";
-      default:
-        return null;
-    }
-  })();
-  return file ? FIXED_OBJECT_MARKER_BASE + file : null;
+/** Marker art for public information printed over a still-face-down tile. */
+export function faceDownTileHintMarkerSrc(hint: string): string {
+  switch (hint) {
+    case "gold_mine":
+      return FIXED_OBJECT_MARKER_BASE + "mine-gold.webp";
+    case "valuables_mine":
+      return FIXED_OBJECT_MARKER_BASE + "mine-valuable.webp";
+    case "materials_mine":
+      return FIXED_OBJECT_MARKER_BASE + "mine-materials.webp";
+    case "any_mine":
+    case "mine_choice":
+      return FIXED_OBJECT_MARKER_BASE + "mine-valuable-or-gold.webp";
+    case "obelisk":
+      return FIXED_OBJECT_MARKER_BASE + "obelisk.webp";
+    case "settlement":
+      return FIXED_OBJECT_MARKER_BASE + "settlement.webp";
+    case "town":
+      return FIXED_OBJECT_MARKER_BASE + "vii-random-town.webp";
+    case "objective":
+    case "objective_choice":
+    default:
+      return FIXED_OBJECT_MARKER_BASE + "vii-grail.webp";
+  }
+}
+
+export function faceDownTileHintLabel(hint: string): string {
+  switch (hint) {
+    case "gold_mine": return "Contains a Gold Mine";
+    case "valuables_mine": return "Contains a Valuables Mine";
+    case "materials_mine": return "Contains a Building Materials Mine";
+    case "any_mine": return "Contains a Mine";
+    case "obelisk": return "Contains an Obelisk";
+    case "settlement": return "Contains a Settlement";
+    case "town": return "Contains a Town";
+    case "objective": return "Contains a Grail or Dragon objective";
+    case "mine_choice": return "On reveal: choose Gold or Valuables Mine";
+    case "objective_choice": return "On reveal: choose the objective";
+    default: return "Special reveal";
+  }
 }
