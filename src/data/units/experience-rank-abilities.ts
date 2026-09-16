@@ -686,7 +686,23 @@ function explicitRankFour(unitDefId: string): RankStep | null {
  * flavour generator fills it (diversified small R1, themed R2/R3, capstone R4).
  * There is NO third tier — see the deletion note above.
  */
+const RANK_SCHEDULE_CACHE = new Map<string, RankSchedule>();
+
+/**
+ * Memoized: the schedule is a pure function of the unit definition and the
+ * static override tables, yet it was recomputed (flavour inference included)
+ * for every unit on every army-strength read — measured at ~50% of all AI
+ * CPU on a live table. Callers treat the schedule as read-only data.
+ */
 export function rankScheduleFor(unitDefId: string): RankSchedule {
+  const cached = RANK_SCHEDULE_CACHE.get(unitDefId);
+  if (cached) return cached;
+  const schedule = computeRankSchedule(unitDefId);
+  RANK_SCHEDULE_CACHE.set(unitDefId, schedule);
+  return schedule;
+}
+
+function computeRankSchedule(unitDefId: string): RankSchedule {
   const flavour = inferFlavour(unitDefId);
   const customRankThree = customVeterancyStep(unitDefId, 3);
   const rankThree = customRankThree ?? explicitRankThree(unitDefId) ??

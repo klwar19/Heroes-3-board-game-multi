@@ -1374,7 +1374,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   REPORT 2026-09-16); server and client must agree on classifyHeroStep.
 //   Display-only alongside: face-down tiles in a gate link wear an
 //   Underground-Gate pairing badge (faceDownGateHintsByTile).
-export const ENGINE_PROTOCOL_VERSION = 152;
+// v153 (2026-09-16): Bulwark Rune Level 3 moves from 10 to 12 Runes and the
+//   pool banks up to 3 surplus Runes past the top rung (RUNE_MAX 15) as fuel
+//   for Rune-priced skills; Dhuin IV becomes the +1 max-Health specialty
+//   (doubled on Snow Elves) instead of a duplicate of Dhuin I. Both change
+//   reducer semantics the clients and the authoritative PartyKit worker must
+//   share. Alongside (state-schema addition, display-only): a designer-drawn
+//   Subterranean-Gate link carries displayGateHex/displayEntranceHex so the
+//   face-down badge sits on the field the scenario editor drew it on, and the
+//   Basic X Magic pick shows the two found Spells' card faces. Server-side in
+//   the same release: the R9-Gold AI economy pass (City Hall ≤R4/never ≥R7
+//   with payout-aware exception, Gold-ladder valuables reserve, Trading-Post
+//   Gold-step trade plans, valuables-starved exploration, visit-passing route
+//   fallback, PvP-prep purchase priority), commander grade-up/revive/cast
+//   usage, AI CPU memoization (veterancy tables, tile geometry, per-scoring-
+//   pass map cache) and a wall-clock tick budget in the room's computer pump.
+export const ENGINE_PROTOCOL_VERSION = 153;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

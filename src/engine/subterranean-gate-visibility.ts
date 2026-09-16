@@ -58,6 +58,14 @@ type Link = {
   surfaceTileId: string;
   undergroundTileId: string;
   halves: Half[];
+  /**
+   * Designer DISPLAY hexes (from a `designed` plan's `displayGateHex` /
+   * `displayEntranceHex`): where the face-down badge should sit for the Surface
+   * ("gate") half and the cavern ("entrance") half. Never a player pick — those
+   * only exist once the tile is revealed, so no hidden position is leaked.
+   */
+  displaySurfaceHex?: MapSpaceId;
+  displayUndergroundHex?: MapSpaceId;
 };
 
 /**
@@ -77,6 +85,13 @@ export type FaceDownGateHint = {
   direction: "down" | "up";
   /** The tile on the other layer this one bridges to. */
   partnerTileId: string;
+  /**
+   * The exact face-down hex the badge should sit on — ONLY for a DESIGNER-pinned
+   * gate (printed map structure, already public), so the badge lands on the same
+   * field the scenario editor drew it on. Absent for a player pick-on-reveal
+   * plan, whose field is not decided (and must not be leaked) until reveal.
+   */
+  spaceId?: MapSpaceId;
   tooltip: string;
 };
 
@@ -181,6 +196,16 @@ function collectGateLinks(adventure: AdventureState | undefined | null): Link[] 
     if (!links.has(key)) {
       links.set(key, { key, surfaceTileId: plan.surfaceTileId, undergroundTileId: plan.undergroundTileId, halves: [] });
     }
+    // Designer DISPLAY hexes ride the link so a still-face-down half's badge can
+    // sit on the field the editor drew it on (carve pins are deliberately left
+    // unset for a designed plan, so this is the only per-field position it has).
+    const planLink = links.get(key)!;
+    if (plan.displayGateHex) {
+      planLink.displaySurfaceHex = plan.displayGateHex;
+    }
+    if (plan.displayEntranceHex) {
+      planLink.displayUndergroundHex = plan.displayEntranceHex;
+    }
     for (const [hex, role] of [
       [plan.gateHex, "gate"] as const,
       [plan.entranceHex, "entrance"] as const
@@ -223,6 +248,9 @@ export function faceDownGateHintsByTile(
       const down = role === "gate";
       const partnerTileId = down ? link.undergroundTileId : link.surfaceTileId;
       const partnerRevealed = adventure.tiles?.[partnerTileId]?.faceDown === false;
+      // Designer-pinned field for THIS half (Surface "gate" / cavern "entrance"),
+      // if any — the badge sits there; a player pick-on-reveal link has none.
+      const displayHex = down ? link.displaySurfaceHex : link.displayUndergroundHex;
       const list = hints.get(tileId) ?? [];
       list.push({
         tileId,
@@ -230,6 +258,7 @@ export function faceDownGateHintsByTile(
         role,
         direction: down ? "down" : "up",
         partnerTileId,
+        ...(displayHex ? { spaceId: displayHex } : {}),
         tooltip: `Subterranean Gate ${label} — this tile ${
           down ? "hosts the path DOWN into the Underground" : "hosts the path UP to the Surface"
         }; its twin half is on the ${down ? "Underground" : "Surface"} tile wearing the same letter${

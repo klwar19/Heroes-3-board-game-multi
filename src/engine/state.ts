@@ -11841,6 +11841,19 @@ export type SubterraneanGatePlan = {
   gateHex?: MapSpaceId;
   entranceHex?: MapSpaceId;
   /**
+   * Editor-drawn hexes copied from a designer {@link CustomMapGateLink} for
+   * DISPLAY ONLY: they position the face-down tile's gate badge on the exact
+   * field the designer drew it on (user request: "same field as the scenario
+   * editor"). They are NEVER read by the carve — the actual gate/entrance field
+   * is still chosen on reveal (the "a designed link connects TILES, not fixed
+   * FIELDS" rule), so `gateHex`/`entranceHex` above stay unset for a designed
+   * plan. A field set is rotation-invariant (a tile's footprint is the same six
+   * ring hexes at every rotation), so a designer hex is always inside the
+   * face-down flower whatever rotation the tile later takes.
+   */
+  displayGateHex?: MapSpaceId;
+  displayEntranceHex?: MapSpaceId;
+  /**
    * A map DESIGNER-committed link (from a cavern's {@link CustomMapGateLink}),
    * as opposed to a player's pick-on-reveal plan. A designed plan BYPASSES the
    * one-gate-per-tile guard (so one cavern may host several designer gates), and

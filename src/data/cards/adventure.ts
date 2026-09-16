@@ -4253,10 +4253,11 @@ export const adventureCards: CardLibrary = {
   },
 
   // ---- Bulwark heroes (expansion; fan faction, placeholder art) ----------
-  // Dhuin (Chieftain): Snow Elves specialist. I/IV are identical instant
-  // attack reactions that also draw a card; their shared draw rider remains a
-  // legal draw-only play on the map or during Dhuin's own activation. VI is a
-  // combat-long +Attack effect on one friendly unit, doubled for Snow Elves.
+  // Dhuin (Chieftain): Snow Elves specialist. I is an instant attack reaction
+  // that also draws a card; its draw rider remains a legal draw-only play on the
+  // map or during Dhuin's own activation. IV grants one friendly unit +1 maximum
+  // Health for the combat, doubled (+2) for Snow Elves. VI is a combat-long
+  // +Attack effect on one friendly unit, doubled for Snow Elves.
   "specialty.dhuin.1": withoutArt({
     id: "specialty.dhuin.1",
     name: "Snow Elves I",
@@ -4267,7 +4268,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "dhuin",
-      "Instant: your attacking unit gains +1 Attack for this attack, then draw 1 card. You may play this card just to draw 1 card.",
+      "Instant: your attacking unit gains +1 Attack for this attack, then draw 1 card. You may play this card just to draw 1 card. (Dhuin's Snow Elves specialty.)",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     target: { type: "none" },
@@ -4275,24 +4276,9 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("dhuin"),
   }),
-  "specialty.dhuin.4": withoutArt({
-    id: "specialty.dhuin.4",
-    name: "Snow Elves IV",
-    kind: "hero-specialty",
-    timing: "instant",
-    phaseLimit: ["reaction", "combat"],
-    tags: [
-      "hero-specialty",
-      "instant",
-      "dhuin",
-      "Instant: your attacking unit gains +1 Attack for this attack, then draw 1 card. You may play this card just to draw 1 card.",
-    ],
-    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-    target: { type: "none" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, drawCards: 1 },
-    implementationStatus: "implemented",
-    source: heroSource("dhuin"),
-  }),
+  "specialty.dhuin.4": withoutArt(
+    unitHealthSpecialty("dhuin", "Snow Elves", 4, 1, "Snow Elves"),
+  ),
   "specialty.dhuin.6": withoutArt({
     id: "specialty.dhuin.6",
     name: "Snow Elves VI",

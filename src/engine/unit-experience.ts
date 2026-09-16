@@ -510,6 +510,9 @@ export type ArmyUnitRankInfo = {
 };
 
 /** UI summary of a card's veteran progression (badge + tooltip + board window). */
+const RANK_INFO_CACHE = new Map<string, ArmyUnitRankInfo>();
+const RANK_INFO_CACHE_CAP = 4096;
+
 export function armyUnitRankInfo(
   armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience" | "job" | "companion">
 ): ArmyUnitRankInfo | null {
@@ -519,8 +522,30 @@ export function armyUnitRankInfo(
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   if (!def) return null;
   const experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
-  const rank = unitRankForExperience(def.tier, experience);
   const job = mgqEffectiveJob(armyUnit);
+  // Memoized on the only inputs the summary depends on (definition, XP, MGQ
+  // job). The computer's army-strength read calls this for every card on every
+  // fight/objective evaluation — thousands of times per decision — and the
+  // uncached build (four ranks of ability-chain resolution) dominated AI CPU.
+  // The summary is read-only data for the UI and the policy alike.
+  const cacheKey = `${armyUnit.unitDefId}|${experience}|${job ?? ""}`;
+  const cached = RANK_INFO_CACHE.get(cacheKey);
+  if (cached) return cached;
+  const info = buildArmyUnitRankInfo(armyUnit.unitDefId, def.tier, experience, job);
+  if (RANK_INFO_CACHE.size >= RANK_INFO_CACHE_CAP) RANK_INFO_CACHE.clear();
+  RANK_INFO_CACHE.set(cacheKey, info);
+  return info;
+}
+
+function buildArmyUnitRankInfo(
+  unitDefId: string,
+  tier: UnitTier,
+  experience: number,
+  job: MgqJob | undefined
+): ArmyUnitRankInfo {
+  const armyUnit = { unitDefId };
+  const def = { tier };
+  const rank = unitRankForExperience(def.tier, experience);
   const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
   const schedule = rankScheduleFor(armyUnit.unitDefId);
   const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank, job);

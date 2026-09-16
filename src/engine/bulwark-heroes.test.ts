@@ -170,10 +170,12 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
     state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
     state.combat!.dice.rollCount = 0;
 
-    // Earn p1 up to 9 Runes (Level 2 with the Altar: +1 Attack, +3 Initiative — no
-    // Defense yet). The reaction banks the 10th, crossing into Level 3 (+1 Defense).
-    gainRunes(state, "p1", 9);
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 9, level: 2 });
+    // Earn p1 up to 11 Runes (Level 2 with the Altar: +1 Attack, +3 Initiative — no
+    // Defense yet, since Level 3 now sits at 12). The reaction banks the 12th BEFORE
+    // the strike resolves, crossing into Level 3 (+1 Defense); the defender's
+    // retaliation then banks a 13th afterwards.
+    gainRunes(state, "p1", 11);
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 11, level: 2 });
 
     state.activePlayerId = "p2";
     state.combat!.activeUnitId = "unit_p2_skeletons";
@@ -190,15 +192,15 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
       expect(play, "Kriv I should be offered as a reaction to the enemy attack").toBeTruthy();
       current = applyOk(current, play!.action);
       // The buff is live the instant the reaction resolves — before the strike does.
-      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 10, level: 3 });
+      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 13, level: 3 });
     }
     current = settleReactions(current);
     return current.combat!.units.unit_p1_crusaders.damage;
   }
 
   it("the threshold Rune banked in reaction softens the very attack that triggered it (4 → 3)", () => {
-    expect(defenderDamage(false), "control: no reaction → 9 Runes → full 6 − 2 = 4").toBe(4);
-    expect(defenderDamage(true), "react → 10 Runes → Level 3 +1 Defense → 6 − 3 = 3").toBe(3);
+    expect(defenderDamage(false), "control: no reaction → 11 Runes → Level 2 → full 6 − 2 = 4").toBe(4);
+    expect(defenderDamage(true), "react → 12 Runes at the strike → Level 3 +1 Defense → 6 − 3 = 3").toBe(3);
   });
 
   it("the rune-gain reaction is offered ONLY to a Bulwark reactor (control: castle defender)", () => {
@@ -398,15 +400,18 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     }
   });
 
-  it("Dhuin I/IV attack and draw; VI doubles its ongoing Attack on Snow Elves", () => {
-    for (const id of ["specialty.dhuin.1", "specialty.dhuin.4"] as const) {
-      expect(adventureCards[id].effect).toMatchObject({
-        type: "ADD_COMBAT_STAT",
-        stat: "attack",
-        amount: 1,
-        drawCards: 1
-      });
-    }
+  it("Dhuin I attacks and draws; IV gives +1 Health (doubled on Snow Elves); VI doubles its ongoing Attack on Snow Elves", () => {
+    expect(adventureCards["specialty.dhuin.1"].effect).toMatchObject({
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 1,
+      drawCards: 1
+    });
+    expect(adventureCards["specialty.dhuin.4"].effect).toMatchObject({
+      type: "ADD_UNIT_MAX_HEALTH",
+      amount: 1,
+      doubleForUnitName: "Snow Elves"
+    });
     expect(adventureCards["specialty.dhuin.6"].effect).toMatchObject({
       type: "CREATE_ATTACK_BUFF",
       amount: 1,

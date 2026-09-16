@@ -20,7 +20,7 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *    BEGINS each battle with RUNE_STARTING_BASE Runes (0) and GRADUALLY earns
  *    more by acting; the army gets a level's buff the moment its Rune total
  *    REACHES that level's threshold (the user spec: "each battle gradually get
- *    rune, and get buff when reach threshold (4, 7, 10)").
+ *    rune, and get buff when reach threshold (4, 7, 12)").
  *  - The Sieidi/Altar buildings do NOT pre-charge Runes; they raise the MAX
  *    LEVEL only (Sieidi -> Level 2, Altar -> Level 3 — "building will raise the
  *    max level"). Without a rune building a Bulwark army can still earn up to
@@ -31,7 +31,7 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  *    combat — a decorative mechanic. They are load-bearing now.
  *
  * What the dev note leaves open (designed here, tunable in ONE place):
- *  - the per-level Rune THRESHOLDS (4 / 7 / 10 — first rung at 4, then +3, +3)
+ *  - the per-level Rune THRESHOLDS (4 / 7 / 12 — first rung at 4, then +3, then +5)
  *    and the starting-rune amount (RUNE_STARTING_BASE = 0; you earn the runes).
  *    The Sieidi/Altar buildings carry startingRunes: 0 (max-level raisers, not
  *    pre-chargers); the City Hall flag is the head-start path (see core.ts
@@ -50,14 +50,21 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
  */
 
 /**
- * Rune totals required to reach Rune Levels 1, 2 and 3. Per the user spec the
- * first rung is at 4 and each further level is +3 Runes away (4 / 7 / 10): a
- * Bulwark army begins at 0 and earns its way up, getting each level's buff when
- * its Rune total reaches that threshold, as far as the Sieidi/Altar max level.
+ * Rune totals required to reach Rune Levels 1, 2 and 3. The first rung is at 4,
+ * the second at 7 and the top rung (Level 3, the Altar level) at 12: a Bulwark
+ * army begins at 0 and earns its way up, getting each level's buff when its Rune
+ * total reaches that threshold, as far as the Sieidi/Altar max level. Level 3 was
+ * nerfed from 10 to 12 — two more Runes are needed to reach the top buff.
  */
-export const RUNE_LEVEL_THRESHOLDS = [4, 7, 10] as const;
-/** No point banking past Level 3 — Runes cap at the top threshold. */
-export const RUNE_MAX = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1];
+export const RUNE_LEVEL_THRESHOLDS = [4, 7, 12] as const;
+/**
+ * Runes may bank a few points PAST the top level as surplus fuel for
+ * Rune-spending skills (the WOG Rune Keeper's Rune Mend and future rune-priced
+ * reactions). Surplus Runes grant NO further passive level — they only exist to
+ * be spent — so the pool caps at the top threshold plus this surplus.
+ */
+export const RUNE_SURPLUS_MAX = 3;
+export const RUNE_MAX = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1] + RUNE_SURPLUS_MAX;
 
 /** House-rule Runes a Bulwark unit's action earns its controller. */
 export const RUNE_GAIN_ATTACK = 1;
@@ -348,6 +355,11 @@ export type RuneTrackView = {
   levelCap: number;
   max: number;
   nextThreshold: number | null;
+  /**
+   * Runes banked PAST the top threshold — spendable fuel for Rune-priced skills
+   * that grant no further passive level. 0 until the top rung is reached.
+   */
+  surplus: number;
   levels: { level: number; threshold: number; bonusLabel: string; status: RuneLevelStatus }[];
 };
 
@@ -364,5 +376,7 @@ export function getRuneTrack(state: GameState, playerId: PlayerId): RuneTrackVie
       rung > levelCap ? "locked" : level >= rung ? "active" : "pending";
     return { level: rung, threshold, bonusLabel: RUNE_LEVEL_LABELS[index], status };
   });
-  return { count, level, levelCap, max: RUNE_MAX, nextThreshold, levels };
+  const topThreshold = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1];
+  const surplus = Math.max(0, count - topThreshold);
+  return { count, level, levelCap, max: RUNE_MAX, nextThreshold, surplus, levels };
 }

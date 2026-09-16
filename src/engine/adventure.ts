@@ -3462,11 +3462,70 @@ export function canPlaceTileAt(
     return false;
   }
 
-  const existingCenters = Object.values(adventure.tiles).map((tile) => ({
+  const existingCenters = laidTileCenters(adventure);
+  if (!tilePlacementGeometryAllows(existingCenters, laidTileCentersKey(existingCenters), center)) {
+    return false;
+  }
+  return placedTileTouchesHero(hero, center, rotation);
+}
+
+/** Centres of every laid tile, in `adventure.tiles` order. */
+function laidTileCenters(adventure: NonNullable<GameState["adventure"]>): HexCoord[] {
+  return Object.values(adventure.tiles).map((tile) => ({
     row: tile.centerRow,
     col: tile.centerCol
   }));
+}
 
+/** Content key of the laid centres (order-independent), for the geometry memo. */
+function laidTileCentersKey(existingCenters: HexCoord[]): string {
+  return existingCenters.map((center) => `${center.row}:${center.col}`).sort().join(",");
+}
+
+/** The new tile must be adjacent to the hero placing it (rotation-aware footprint). */
+function placedTileTouchesHero(hero: HeroState, center: HexCoord, rotation: number): boolean {
+  if (!hero.spaceId) {
+    return false;
+  }
+  const heroCoord = parseHexSpaceId(hero.spaceId);
+  if (!heroCoord) {
+    return false;
+  }
+  const footprintIds = new Set(tileFootprint(center, rotation).map(hexSpaceId));
+  return hexNeighbors(heroCoord).some((neighbor) => footprintIds.has(hexSpaceId(neighbor)));
+}
+
+const TILE_GEOMETRY_CACHE = new Map<string, boolean>();
+const TILE_GEOMETRY_CACHE_CAP = 20_000;
+
+/**
+ * Hero-independent half of {@link canPlaceTileAt}: no overlap with a laid
+ * tile, touching at least two of them, and the sublattice interlock / seam
+ * rule. A pure function of the laid centres and the candidate, so it is
+ * memoized on their CONTENT (never on object identity — the reducer mutates
+ * its working clone in place). The computer probes every field of the map as
+ * a placement vantage, and re-deriving this per probe was the single largest
+ * AI cost after the veterancy tables.
+ */
+function tilePlacementGeometryAllows(
+  existingCenters: HexCoord[],
+  existingKey: string,
+  center: HexCoord
+): boolean {
+  const key = `${existingKey}|${center.row}:${center.col}`;
+  const cached = TILE_GEOMETRY_CACHE.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const allowed = computeTilePlacementGeometry(existingCenters, center);
+  if (TILE_GEOMETRY_CACHE.size >= TILE_GEOMETRY_CACHE_CAP) {
+    TILE_GEOMETRY_CACHE.clear();
+  }
+  TILE_GEOMETRY_CACHE.set(key, allowed);
+  return allowed;
+}
+
+function computeTilePlacementGeometry(existingCenters: HexCoord[], center: HexCoord): boolean {
   if (existingCenters.some((existing) => tileCentersOverlap(existing, center))) {
     return false;
   }
@@ -3497,16 +3556,7 @@ export function canPlaceTileAt(
       return false;
     }
   }
-
-  // The new tile must be adjacent to the hero placing it.
-  const heroCoord = parseHexSpaceId(hero.spaceId);
-  if (!heroCoord) {
-    return false;
-  }
-
-  const footprintIds = new Set(tileFootprint(center, rotation).map(hexSpaceId));
-  const nextToHero = hexNeighbors(heroCoord).some((neighbor) => footprintIds.has(hexSpaceId(neighbor)));
-  return nextToHero;
+  return true;
 }
 
 /**
@@ -3687,25 +3737,24 @@ export function farTilePlacementCenters(
   if (!heroCoord) {
     return [];
   }
-  const existing = Object.values(adventure.tiles).map((tile) => ({
-    row: tile.centerRow,
-    col: tile.centerCol,
-  }));
+  const existing = laidTileCenters(adventure);
+  const existingKey = laidTileCentersKey(existing);
   const seen = new Map<string, HexCoord>();
   const centers: HexCoord[] = [];
   for (const center of existing) {
     // Every touching position (interlocking AND the cross-sublattice seam
-    // offsets) is a candidate; canPlaceTileAt owns which of them is legal.
+    // offsets) is a candidate; the canPlaceTileAt geometry (memoized) plus the
+    // hero-adjacency check own which of them is legal.
     for (const candidate of tileTouchNeighbors(center)) {
       const key = `${candidate.row}:${candidate.col}`;
       if (seen.has(key)) {
         continue;
       }
       seen.set(key, candidate);
-      if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
+      if (!tilePlacementGeometryAllows(existing, existingKey, candidate)) {
         continue;
       }
-      if (!canPlaceTileAt(state, hero, candidate, 0)) {
+      if (!placedTileTouchesHero(hero, candidate, 0)) {
         continue;
       }
       // Known def → full rotation-aware doorway check; unopened supply → hero

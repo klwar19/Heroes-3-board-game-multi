@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { pvpReach } from "./pvp-reach";
 import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
-import { openingBronzeCoreReady, committedGoldInvestment } from "./development";
+import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan } from "./development";
 import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
@@ -72,7 +72,9 @@ import {
   hasGoldArmy,
   hasReachedGoldArmy,
   hasOpenedFarEconomy,
+  resourceUrgency,
   shouldLaunchBronzeRush,
+  valuablesStarved,
 } from "./development";
 
 /**
@@ -109,6 +111,48 @@ export type MapObjectiveKind =
   | "flaggable"
   | "visitable"
   | "explore";
+
+/**
+ * Per-scoring-pass memo for the expensive map reads below (objective
+ * collection, distance fields, guard-beat checks, the primary objective).
+ * `chooseComputerAction` scores every legal action against ONE immutable
+ * state, and each scorer re-derived these from scratch — measured at several
+ * seconds per decision on a live table (the AI "taking longer every turn").
+ * The cache is active only inside `withMapScoringCache` and only for that
+ * exact state object; any other state (a reducer clone, a probe) computes
+ * uncached, so nothing can observe a stale value.
+ */
+type MapScoringCache = { state: GameState; entries: Map<string, unknown> };
+let mapScoringCache: MapScoringCache | null = null;
+
+export function withMapScoringCache<T>(state: GameState, run: () => T): T {
+  if (mapScoringCache && mapScoringCache.state === state) return run();
+  const previous = mapScoringCache;
+  mapScoringCache = { state, entries: new Map() };
+  try {
+    return run();
+  } finally {
+    mapScoringCache = previous;
+  }
+}
+
+function mapScoringCached<T>(state: GameState, key: string, compute: () => T): T {
+  const cache = mapScoringCache;
+  if (!cache || cache.state !== state) return compute();
+  if (cache.entries.has(key)) return cache.entries.get(key) as T;
+  const value = compute();
+  cache.entries.set(key, value);
+  return value;
+}
+
+/** Probe heroes (`{ ...hero, spaceId }`) differ by field, so key on the whole small record. */
+function heroCacheKey(hero: HeroState): string {
+  return JSON.stringify(hero);
+}
+
+function objectivesCacheKey(objectives: ReadonlyArray<MapObjective>): string {
+  return JSON.stringify(objectives);
+}
 
 export type MapObjective = {
   spaceId: MapSpaceId;
@@ -389,6 +433,27 @@ export function needsFarValuablesReveal(state: GameState, playerId: PlayerId): b
   return held < (targets.valuables ?? 0) && !securedValuablesSource(state, playerId);
 }
 
+/**
+ * Whether taking / winning `field` can put `resource` in the seat's hands: an
+ * unowned settlement (any resource), a matching unowned mine, a creature bank
+ * whose floor reward pays it, or a one-shot pickup interaction that can.
+ */
+export function fieldSuppliesResource(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState,
+  resource: "gold" | "buildingMaterials" | "valuables",
+): boolean {
+  if (field.location === "settlement") return field.flagOwnerId !== playerId;
+  if (field.location === "mine") return field.resource === resource && field.flagOwnerId !== playerId;
+  const bankId = fieldCreatureBankId(field);
+  if (bankId) {
+    if (field.flagOwnerId) return false;
+    return interactionCanYield(CREATURE_BANKS[bankId]?.buildReward(0), resource);
+  }
+  return interactionCanYield(locationDefinitions[field.location]?.interaction, resource);
+}
+
 /** Whether a location interaction can yield `resource`, recursing through the
  * SEQUENCE / CHOOSE_ONE / ATTACK_DIE_TABLE wrappers the engine uses. Treasure
  * dice pay valuables; a resource die pays a random one of the three (counted for
@@ -463,6 +528,19 @@ export function hasAttainableGoldFunding(state: GameState, playerId: string): bo
 export const HUMAN_MUST_ATTACK_DEPTH_DIFFICULTY = 4;
 
 export function canBeatGuardedField(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+): boolean {
+  // Cache only the state's own field record; a caller-built field computes fresh.
+  if (state.adventure?.fields[field.spaceId] !== field) {
+    return canBeatGuardedFieldUncached(state, hero, field);
+  }
+  return mapScoringCached(state, `beat|${field.spaceId}|${heroCacheKey(hero)}`, () =>
+    canBeatGuardedFieldUncached(state, hero, field));
+}
+
+function canBeatGuardedFieldUncached(
   state: GameState,
   hero: HeroState,
   field: MapFieldState,
@@ -1094,6 +1172,14 @@ export function collectMapObjectives(
   state: GameState,
   hero: HeroState,
 ): MapObjective[] {
+  return mapScoringCached(state, `objectives|${heroCacheKey(hero)}`, () =>
+    collectMapObjectivesUncached(state, hero));
+}
+
+function collectMapObjectivesUncached(
+  state: GameState,
+  hero: HeroState,
+): MapObjective[] {
   const fields = state.adventure?.fields ?? {};
   const objectives: MapObjective[] = [];
   const claimed = new Set<MapSpaceId>();
@@ -1167,6 +1253,17 @@ export function objectiveDistanceField(
   hero: HeroState,
   objectives: ReadonlyArray<MapObjective>,
   resolvePeacefulVisits = false,
+): Map<MapSpaceId, number> {
+  return mapScoringCached(state,
+    `distance|${resolvePeacefulVisits ? 1 : 0}|${heroCacheKey(hero)}|${objectivesCacheKey(objectives)}`,
+    () => objectiveDistanceFieldUncached(state, hero, objectives, resolvePeacefulVisits));
+}
+
+function objectiveDistanceFieldUncached(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective>,
+  resolvePeacefulVisits: boolean,
 ): Map<MapSpaceId, number> {
   const distance = new Map<MapSpaceId, number>();
   const fields = state.adventure?.fields ?? {};
@@ -1628,7 +1725,7 @@ export function objectiveStrategicValue(
       break;
     case "visitable":
       value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
-      if (field && isMarketLocation(field.location) &&
+      if (field?.location === "trading_post" &&
           assessDwellingRush(state, hero.controllerId)?.feasible) value = 940;
       // Equipment shops: extra pull when surplus + empty slot (else the base
       // value alone rarely wins over economy flaggables — intentional).
@@ -1969,6 +2066,12 @@ export function shouldDeferExpansionTile(
   hero: HeroState,
   tile: MapTileState,
 ): boolean {
+  // A valuables-starved seat reveals deeper bands regardless: their unguarded
+  // pickups and beatable banks/mines are the only valuables in sight (USER
+  // RULING 2026-09-16 — "check underground and sea tiles too, or even grab
+  // something from the center tile but not fight the neutral"). Guarded
+  // fields it cannot beat stay off the objective list as before.
+  if (valuablesStarved(state, hero.controllerId)) return false;
   return tile.group !== "far" && tile.group !== "starting" &&
     heroCanBeatNoGuardInBand(state, hero, tile.group) &&
     farExpansionRouteRemains(state, hero.controllerId, hero);
@@ -2168,12 +2271,30 @@ export function primaryMapObjective(
   objectives: ReadonlyArray<MapObjective> = collectMapObjectives(state, hero),
   stickySpaceId?: MapSpaceId | null,
 ): MapObjective | null {
+  return mapScoringCached(state,
+    `primary|${stickySpaceId ?? ""}|${heroCacheKey(hero)}|${objectivesCacheKey(objectives)}`,
+    () => primaryMapObjectiveUncached(state, hero, objectives, stickySpaceId));
+}
+
+function primaryMapObjectiveUncached(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective>,
+  stickySpaceId: MapSpaceId | null | undefined,
+): MapObjective | null {
   if (objectives.length === 0) {
     return null;
   }
   // A sealed home reward must not hide every reachable target elsewhere.
+  // Peaceful one-use visits (temple, shrine, learning stone …) are passable
+  // stops — the hero resolves the visit and keeps walking with its remaining
+  // movement (engine behaviour, see MOVE → RESOLVE_VISIT_STEP → MOVE in the
+  // traces) — so reachability reads the visit-passing graph. Measured
+  // (Dungeon seed eval-22, R7): the only Trading Post, four cells away behind
+  // a shrine, was "unreachable" under the strict graph, so the funded
+  // dwelling rush never marched and the Gold dwelling waited for income to R9.
   const reachable = objectives.filter((objective) =>
-    distanceFromHeroTo(state, hero, objective.spaceId) !== undefined,
+    distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined,
   );
   // Staging is only a fallback. Do not camp at a fight we cannot start while
   // reachable pickups or expansion doorways can still improve the position.
@@ -2303,6 +2424,30 @@ export function primaryMapObjective(
       bestObjectiveOf(state, hero, growth, nearby.length > 0);
   }
 
+  // A Trading Post that completes the saved Gold recruit (or a feasible
+  // dwelling rush) on THIS visit outranks gathering more resources: the trade
+  // finishes the milestone now. Measured (impossible, 4 seats): a seat parked
+  // on 24 gold for two Resource Rounds, one valuable short of its level-7
+  // body, while a Trading Post stood two fields away. Reach = this turn's
+  // movement plus one refresh, so a far-off post never hijacks the march.
+  if (hero.kind === "main" && homeRemaining.length === 0 &&
+      (goldStepMarketPlan(state, hero.controllerId) || assessDwellingRush(state, hero.controllerId)?.feasible)) {
+    const posts = actionable
+      .filter((objective) => {
+        const field = state.adventure?.fields[objective.spaceId];
+        // Only the Trading Post trades resources; a War Machine Factory is a
+        // market that cannot close any resource gap (measured re-visit loop).
+        return Boolean(field && objective.kind === "visitable" && field.location === "trading_post");
+      })
+      .map((objective) => ({
+        objective,
+        distance: distanceFromHeroTo(state, hero, objective.spaceId, true) ?? Infinity,
+      }))
+      .filter((entry) => entry.distance <= hero.movementPoints + heroMovementMax(state, hero))
+      .sort((a, b) => a.distance - b.distance);
+    if (posts.length > 0) return posts[0].objective;
+  }
+
   // Fund the next army milestone with attainable resources: Silver after
   // the first Far capture, then the Gold dwelling/recruit/upgrade ladder.
   // Gate on STICKY-INDEPENDENT facts only: needsPremiumSilverBreakthrough's
@@ -2314,6 +2459,13 @@ export function primaryMapObjective(
         securedFarTileIds(state, hero.controllerId).size > 0)) {
     const targets = developmentResourceTargets(state, hero.controllerId);
     const resources = state.players[hero.controllerId].resources;
+    // Weigh each shortage by the Resource Rounds of income it still needs, not
+    // by raw units: on 15 gold / 1 valuable income a 16-gold gap closes next
+    // round while a 3-valuable gap takes three, so the valuables source must
+    // win (measured: gold sources tied valuables at the 12 cap, and seats
+    // parked on 39–52 gold waiting for valuables — USER RULING 2026-09-16).
+    const urgency = resourceUrgency(state, hero.controllerId);
+    let valuablesSupplierFound = false;
     const fundingCandidates = actionable.flatMap(objective => {
         const field = state.adventure?.fields[objective.spaceId];
         if (!field || objective.kind === "explore") return [];
@@ -2323,11 +2475,10 @@ export function primaryMapObjective(
         for (const resource of ["valuables", "buildingMaterials", "gold"] as const) {
           const deficit = targets[resource] - resources[resource];
           if (deficit <= 0) continue;
-          const supplies = field.location === "settlement" ? field.flagOwnerId !== hero.controllerId :
-            field.location === "mine" ? field.resource === resource && field.flagOwnerId !== hero.controllerId :
-            interactionCanYield(locationDefinitions[field.location]?.interaction, resource);
-          if (supplies) benefit = Math.max(benefit, Math.min(12,
-            deficit * (resource === "valuables" ? 6 : resource === "buildingMaterials" ? 2 : 1)));
+          if (!fieldSuppliesResource(state, hero.controllerId, field, resource)) continue;
+          if (resource === "valuables") valuablesSupplierFound = true;
+          benefit = Math.max(benefit, Math.min(12, Math.round(urgency[resource] * 4) +
+            Math.min(4, deficit * (resource === "valuables" ? 2 : 1))));
         }
         if (benefit === 0) return [];
         const travel = distance + premiumCombatMovementReserve(state, hero, field);
@@ -2341,6 +2492,29 @@ export function primaryMapObjective(
         return [{ objective, score }];
     });
     fundingCandidates.sort((a, b) => b.score - a.score || a.objective.spaceId.localeCompare(b.objective.spaceId));
+    // Valuables-starved with no known valuables source: the productive move
+    // is to REVEAL one — near/deeper tiles, their creature banks and mines
+    // (USER RULING 2026-09-16: "explore more, near tiles or other, fight
+    // creature banks"). shouldDeferExpansionTile lifts the band deferral for
+    // this seat, so the explore objectives here include those bands.
+    // A Trading Post that can close the gap from the gold surplus (rush plan /
+    // Gold-step plan, handled by the market branch below) beats revealing land:
+    // measured (Dungeon seed eval-22, R7, 31 gold, 2 of 4 valuables, post four
+    // cells away) the explore push fired first and the dwelling waited to R9.
+    const marketCanClose = (goldStepMarketPlan(state, hero.controllerId) ||
+        assessDwellingRush(state, hero.controllerId)?.feasible) &&
+      actionable.some(objective => {
+        const field = state.adventure?.fields[objective.spaceId];
+        return Boolean(field && objective.kind === "visitable" && field.location === "trading_post") &&
+          (distanceFromHeroTo(state, hero, objective.spaceId, true) ?? Infinity) <=
+            hero.movementPoints + heroMovementMax(state, hero);
+      });
+    if (!valuablesSupplierFound && !marketCanClose && valuablesStarved(state, hero.controllerId)) {
+      const doorways = actionable.filter(objective => objective.kind === "explore");
+      const doorway = doorways.find(objective => objective.spaceId === stickySpaceId) ??
+        bestObjectiveOf(state, hero, doorways, false);
+      if (doorway) return doorway;
+    }
     if (fundingCandidates.length > 0) return fundingCandidates[0].objective;
   }
 

@@ -12,6 +12,7 @@ import {
   RUNE_GAIN_DEFEND,
   RUNE_GAIN_RETALIATION,
   RUNE_LEVEL_THRESHOLDS,
+  RUNE_MAX,
   RUNE_STARTING_BASE,
   effectiveRuneLevel,
   gainRunes,
@@ -156,28 +157,28 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
   });
 
   it("Rune Level 3 (+1 Defense) needs the Altar", () => {
-    // Sieidi only: 10 Runes caps at Level 2 — Initiative is on, but no Defense buff.
+    // Sieidi only: 12 Runes caps at Level 2 — Initiative is on, but no Defense buff.
     const sieidi = bulwarkState();
     sieidi.towns.town_p1.buildings.push("bulwark.sieidi");
-    gainRunes(sieidi, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 10
+    gainRunes(sieidi, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 12
     expect(effectiveRuneLevel(sieidi, "p1")).toBe(2);
     const capped = sieidi.combat!.units.unit_p1_marksmen;
     expect(getActiveDefenseBonus(sieidi, capped)).toBe(0);
     expect(effectiveInitiative(capped, sieidi.activeEffects)).toBe(capped.initiative + 3); // L2 Initiative is live
 
-    // Altar built → 10 Runes reaches Level 3: +1 Defense on top of L1+L2.
+    // Altar built → 12 Runes reaches Level 3: +1 Defense on top of L1+L2.
     const altar = bulwarkState();
     altar.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar");
-    gainRunes(altar, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 10
+    gainRunes(altar, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 12
     expect(effectiveRuneLevel(altar, "p1")).toBe(3);
     const unit = altar.combat!.units.unit_p1_marksmen;
     expect(getActiveDefenseBonus(altar, unit)).toBe(1);
     expect(effectiveInitiative(unit, altar.activeEffects)).toBe(unit.initiative + 3);
   });
 
-  it("runeLevelForCount maps totals to levels at the 4/7/10 thresholds", () => {
-    // First rung at 4, then +3 (7), then +3 (10).
-    expect([0, 3, 4, 6, 7, 9, 10, 13].map(runeLevelForCount)).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
+  it("runeLevelForCount maps totals to levels at the 4/7/12 thresholds", () => {
+    // First rung at 4, then +3 (7), then +5 (12); surplus past 12 stays Level 3.
+    expect([0, 3, 4, 6, 7, 11, 12, 15].map(runeLevelForCount)).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
   });
 });
 
@@ -200,7 +201,7 @@ describe("Bulwark Runes — RUNE_LEVEL_REACHED cue (drives the rune sound)", () 
     state.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar"); // cap 3
     state.combat!.attackerPlayerId = "p1";
     state.combat!.defenderPlayerId = "p2";
-    state.players.p1.runeEmpoweredNextCombats = RUNE_LEVEL_THRESHOLDS[2]; // 10 → opens at Level 3
+    state.players.p1.runeEmpoweredNextCombats = RUNE_LEVEL_THRESHOLDS[2]; // 12 → opens at Level 3
     seedRunesForCombat(state);
     const levels = state.eventLog
       .filter((event) => event.type === "RUNE_LEVEL_REACHED")
@@ -561,13 +562,13 @@ describe("Bulwark Runes — PvP / multiplayer", () => {
     state.combat!.attackerPlayerId = "p1";
     state.combat!.defenderPlayerId = "p2";
     seedRunesForCombat(state);
-    gainRunes(state, "p1", 10); // 0 → 10 = Level 3 with the Altar
+    gainRunes(state, "p1", 12); // 0 → 12 = Level 3 with the Altar
 
     // p2 (the opponent) sees p1's Rune count AND p1's town buildings in their
     // redacted view — the two inputs getRuneTrack needs — so the HUD draws p1's
     // track on p2's client. (Runes/buildings are public; only hands etc. redact.)
     const p2View = getPlayerView(state, "p2");
-    expect(p2View.combat?.runes?.p1?.count).toBe(10);
+    expect(p2View.combat?.runes?.p1?.count).toBe(12);
     expect(p2View.towns.town_p1.buildings).toEqual(
       expect.arrayContaining(["bulwark.sieidi", "bulwark.altar"])
     );
@@ -580,9 +581,9 @@ describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
     const base = bulwarkState();
     gainRunes(base, "p1", RUNE_LEVEL_THRESHOLDS[0]); // 4
     const baseTrack = getRuneTrack(base, "p1");
-    expect(baseTrack).toMatchObject({ count: 4, level: 1, levelCap: 1, max: 10, nextThreshold: null });
+    expect(baseTrack).toMatchObject({ count: 4, level: 1, levelCap: 1, max: RUNE_MAX, nextThreshold: null });
     expect(baseTrack.levels.map((l) => l.status)).toEqual(["active", "locked", "locked"]);
-    expect(baseTrack.levels.map((l) => l.threshold)).toEqual([4, 7, 10]);
+    expect(baseTrack.levels.map((l) => l.threshold)).toEqual([4, 7, 12]);
     expect(baseTrack.levels.map((l) => l.bonusLabel)).toEqual(["+1 Attack", "+3 Initiative", "+1 Defense"]);
 
     // Sieidi built, only 4 Runes earned: L2 is PENDING (unlocked, not yet earned).
@@ -593,12 +594,12 @@ describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
     expect(sieidiTrack).toMatchObject({ level: 1, levelCap: 2, nextThreshold: 7 });
     expect(sieidiTrack.levels.map((l) => l.status)).toEqual(["active", "pending", "locked"]);
 
-    // Altar built and 10 Runes earned: all three levels active.
+    // Altar built and 12 Runes earned: all three levels active.
     const altar = bulwarkState();
     altar.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar");
-    gainRunes(altar, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 10
+    gainRunes(altar, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 12
     const altarTrack = getRuneTrack(altar, "p1");
-    expect(altarTrack).toMatchObject({ count: 10, level: 3, levelCap: 3, nextThreshold: null });
+    expect(altarTrack).toMatchObject({ count: 12, level: 3, levelCap: 3, nextThreshold: null });
     expect(altarTrack.levels.map((l) => l.status)).toEqual(["active", "active", "active"]);
   });
 });

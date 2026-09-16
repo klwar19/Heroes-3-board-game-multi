@@ -4402,8 +4402,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           surfaceTileId: surfaceId,
           undergroundTileId: cavernId,
           designed: true,
-          // Decorative editor position → NOT copied (see comment above); the
-          // player fixes the field on reveal. Guards stay: they belong to the gate.
+          // Decorative editor position → NOT copied into the CARVE pins
+          // (`gateHex`/`entranceHex`); the player fixes the field on reveal.
+          // It IS copied into DISPLAY-only hexes so the face-down badge sits on
+          // the field the designer drew it on (user request), which stays honest
+          // because a tile's footprint hexes are rotation-invariant.
+          ...(link.gateHex ? { displayGateHex: link.gateHex } : {}),
+          ...(link.entranceHex ? { displayEntranceHex: link.entranceHex } : {}),
+          // Guards stay: they belong to the gate.
           ...(gateGuard ? { gateGuard } : {}),
           ...(entranceGuard ? { entranceGuard } : {})
         });

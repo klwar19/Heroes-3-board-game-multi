@@ -2,7 +2,7 @@ import { bronzeArmyNeedsWithdrawal, openingGuardCommitment } from "./necropolis-
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
-import { getUnitSide } from "../adventure";
+import { adventurePvpTroopLoss, getUnitSide } from "../adventure";
 import { commanderAdjacentAllies, commanderCastOf } from "../commanders";
 import { commanderApSkillOf, commanderValuesMagicGrade } from "@/data/commanders";
 import {
@@ -1622,6 +1622,14 @@ export function scoreCombatAction(
       const fighter = combat.context.kind === "neutral" ? observation.state.heroes[combat.context.heroId] : undefined;
       if (fighter?.kind === "secondary" && livingFriendlies(combat, observation.playerId).length > 0) {
         return { score: -900, policy: "combat.retreat-refuse-secondary" };
+      }
+      // Keep-troops PvP (lobby casualty mode "none"): a lost battle costs no
+      // unit, so leaving early only forfeits the chance to win — and a Give up
+      // even discards the whole hand. USER RULE: in this mode the AI never runs
+      // from a player battle; it fights to the last unit.
+      if (combat.context.kind === "player" &&
+          adventurePvpTroopLoss(observation.state as unknown as GameState) === "none") {
+        return { score: -900, policy: "combat.keep-troops-never-retreat" };
       }
       if (combatIsHopeless(observation, combat)) {
         const lostAUnit = Object.values(combat.units).some(

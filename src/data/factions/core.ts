@@ -1135,7 +1135,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     source: townSource("bulwark")
   },
   // Altar of the Runes (Gamefound Update #3): the same-tile upgrade of the Sieidi.
-  // Raises the max one more step to Level 3 (the third threshold, at 10 Runes);
+  // Raises the max one more step to Level 3 (the third threshold, at 12 Runes);
   // again no pre-charge — every Rune up to that threshold is earned in battle.
   "bulwark.altar": {
     id: "bulwark.altar",

@@ -4,6 +4,8 @@ import {
   armyDevelopmentProfile,
   assessDwellingRush,
   developmentResourceTargets,
+  goldLadderValuablesReserve,
+  goldStepMarketPlan,
   shouldPrioritizeFirstAidTent,
   shouldSeekLateWarMachineShop,
 } from "./development";
@@ -94,15 +96,48 @@ export function tradeUtility(
   // The margin also breaks the churn pair: after a v→m conversion the bought
   // side sits at/above its target, so the reverse trade buys "nothing wanted"
   // and scores below zero.
-  if (!armyDevelopmentProfile(state, playerId).goldUnlocked) {
-    const target = developmentResourceTargets(state, playerId);
-    const cushion = { buildingMaterials: 3, valuables: 2 } as const;
-    for (const key of ["buildingMaterials", "valuables"] as const) {
-      const sold = rate.sell[key] ?? 0;
-      if (sold > 0 && res[key] - sold < (target[key] ?? 0) + cushion[key]) {
-        return -99;
-      }
+  // USER RULING (2026-09-16): valuables are never sold below what the whole
+  // remaining Gold ladder still needs (dwelling, each missing Few and Pack —
+  // goldLadderValuablesReserve); a sale fetches 3 gold, the buy-back costs 6,
+  // and they trickle in at 1–2 per Resource Round. Surplus above it may go.
+  const soldValuables = rate.sell.valuables ?? 0;
+  if (soldValuables > 0 &&
+      res.valuables - soldValuables < goldLadderValuablesReserve(state, playerId)) {
+    return -99;
+  }
+  const target = developmentResourceTargets(state, playerId);
+  // Even surplus valuables are sold only for a REAL gold shortfall on the
+  // saved purchase (the target minus its five-gold cushion), never to pad the
+  // cushion: measured, two valuables went for 6 gold right after the Black
+  // Dragon was already affordable, 12 gold to buy back for its Pack.
+  if (soldValuables > 0 && (rate.buy.gold ?? 0) > 0 &&
+      res.gold >= target.gold - GOLD_RESERVE) {
+    return -99;
+  }
+  const goldUnlocked = armyDevelopmentProfile(state, playerId).goldUnlocked;
+  const cushion = goldUnlocked
+    ? { buildingMaterials: 0, valuables: 0 }
+    : { buildingMaterials: 3, valuables: 2 };
+  for (const key of ["buildingMaterials", "valuables"] as const) {
+    const sold = rate.sell[key] ?? 0;
+    if (sold > 0 && res[key] - sold < (target[key] ?? 0) + cushion[key]) {
+      return -99;
     }
+  }
+  // GOLD-LADDER FLOOR (after the Gold dwelling): the development target is now
+  // the saved Gold recruit (its cost plus the five-gold cushion). A generic
+  // exchange must never sell a valuable/material that recruit needs, nor spend
+  // the gold saved for it. Measured before this floor (Dungeon, impossible,
+  // R9, 11g/9m/5v, Black Dragons 19g+1v saved): the recruit plan sold three
+  // spare valuables to reach 20g, then THIS heuristic — whose old floor only
+  // ran before Gold — kept selling the last valuables as "not wanted", the
+  // plan bought one back at 6g, the heuristic sold it again for 3g, and the
+  // seat left the market 22 trades later with 23g/0m/0v and no dragon. A
+  // planned exchange (dwelling rush / Gold-step plan) is scored before this
+  // function, so the floor only governs surplus conversion.
+  const soldGold = rate.sell.gold ?? 0;
+  if (soldGold > 0 && res.gold - soldGold < target.gold) {
+    return -99;
   }
   const deficit = resourceDeficits(state, playerId);
   let utility = 0;
@@ -143,7 +178,20 @@ export function wantsMarketVisit(
   ) {
     return true;
   }
-  if (assessDwellingRush(state, playerId)?.feasible) return true;
+  // Resource exchanges exist only at the Trading Post. A War Machine Factory
+  // is a "market" too but sells no resources: measured (Rampart seed eval-0,
+  // R9–R11) the saved-recruit plan pulled the hero to a Factory on its Far
+  // tile every turn, it opened the shop, found no trade, left and came back.
+  const tradesResources = location === undefined || location === "trading_post";
+  if (tradesResources && assessDwellingRush(state, playerId)?.feasible) return true;
+  // The post can complete the saved Gold recruit this visit (buy the missing
+  // valuable, sell stock the body does not need). The generic utility below
+  // would refuse it: it reads the gold as "scarce" against its own +5 cushion.
+  if (tradesResources && goldStepMarketPlan(state, playerId)) return true;
+  if (!tradesResources) {
+    const shop: string | undefined = location;
+    return shop === "war_machine_factory" && shouldSeekLateWarMachineShop(state, playerId);
+  }
   if ((state.round ?? 0) < MARKET_MIN_ROUND) return false;
   if (
     TRADE_RATES.some(
@@ -152,10 +200,6 @@ export function wantsMarketVisit(
   ) {
     return true;
   }
-  // War-machine detours are specific to the Factory and use the shared
-  // late-development/surplus gate.
-  return (
-    location === "war_machine_factory" &&
-    shouldSeekLateWarMachineShop(state, playerId)
-  );
+  // War-machine detours (Factory only) were answered above.
+  return false;
 }

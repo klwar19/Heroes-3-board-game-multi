@@ -2842,6 +2842,18 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   font-weight: 800;
 }
 
+.runeSurplus {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 205 120 / 55%);
+  background: rgb(255 190 90 / 20%);
+  color: #ffe0a6;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+}
+
 .runeLevels {
   display: flex;
   gap: 4px;

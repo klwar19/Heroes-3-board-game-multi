@@ -1324,6 +1324,14 @@ export function RuneTrack({
           {track.count}
           <small>/{track.max}</small>
         </span>
+        {track.surplus > 0 ? (
+          <span
+            className="runeSurplus"
+            title={`${track.surplus} surplus Rune${track.surplus === 1 ? "" : "s"} past the top level — spendable fuel for Rune-priced skills`}
+          >
+            +{track.surplus}
+          </span>
+        ) : null}
         <span className="runeLevelTag" title={`Rune Level ${track.level} (cap ${track.levelCap})`}>
           Lv&nbsp;{track.level}
         </span>

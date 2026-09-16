@@ -6,7 +6,7 @@ import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { GameAction, GameState, PendingChoice } from "../state";
 import { isAdjacent } from "../battlefield";
 import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
-import { developmentResourceTargets } from "./development";
+import { developmentResourceTargets, valuablesStarved } from "./development";
 import { inlineLegionSavings, upcomingFight } from "./card-planning";
 import {
   BANK_ENGAGE_RATIO,
@@ -169,7 +169,13 @@ function scoreCityHallOption(
     if (gold < 10) score += 15;
   }
   if (option.buildingMaterials) score += option.buildingMaterials * 3;
-  if (option.valuables) score += option.valuables * 6;
+  if (option.valuables) {
+    score += option.valuables * 6;
+    // Dungeon's hall pays 1 valuable instead of 5 gold: when valuables are
+    // the Gold ladder's bottleneck (gold covered, valuables rounds away) the
+    // valuable is worth far more than the gold (USER RULING 2026-09-16).
+    if (valuablesStarved(observation.state as unknown as GameState, observation.playerId)) score += 30;
+  }
   score += developmentGainValue(observation, option);
   if (option.drawCards) score += option.drawCards * 8;
   if (option.movement) score += option.movement * 5;

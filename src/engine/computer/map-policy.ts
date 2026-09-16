@@ -1,6 +1,6 @@
 import { isOpeningFarSweepField, securedFarTileIds } from "./far-sweep";
 import { heroReadyForGrowth, tileBandOffersGrowth } from "./map-navigation";
-import { preferredOpeningPacks, committedGoldInvestment } from "./development";
+import { preferredOpeningPacks, committedGoldInvestment, goldStepMarketPlan, goldLadderValuablesReserve } from "./development";
 import {
   GOLD_RESERVE,
   MARKET_MIN_ROUND,
@@ -83,11 +83,13 @@ import {
   assessDwellingRush,
   developmentResourceTargets,
   goldPurchaseReachable,
+  purchaseLandingRounds,
   hasGoldArmy,
   hasReachedGoldArmy,
   hasReachedSilverArmy,
   goldArmyAllowsBronzePurchase,
   hasOpenedFarEconomy,
+  INCOME_FIRST_LAST_ROUND,
   INCOME_NEVER_FROM_ROUND,
   factionBuildingForEffect,
   incomeBuildingBeforeDwelling,
@@ -104,6 +106,7 @@ import {
   collectMapObjectives,
   hasAttainableGoldFunding,
   distanceFromHeroTo,
+  fieldSuppliesResource,
   freeSeizuresWithinReach,
   shouldDeferExpansionTile,
   isHomeTileOpeningObjective,
@@ -240,6 +243,17 @@ function buildingScore(
 ): number {
   const effect = coreBuildingDefinitions[buildingId]?.effect;
   const development = armyDevelopmentProfile(state, playerId);
+  // PvP pre-battle preparation: a town building adds nothing to the fight
+  // that is about to start, so every non-dwelling build sits BELOW the
+  // accept floor (225). Measured (Dungeon seed eval-10, R9): with the
+  // enemy hero at the gate the "never before the Gold dwelling" 280 band
+  // still beat ACCEPT and the seat bought a Portal of Summoning — 7 gold,
+  // 3 materials and the Gold dwelling's own valuable — instead of readying.
+  // A dwelling keeps its score: it can still unlock a preparation recruit.
+  if (state.combat?.prep && !state.combat.prep.accepted.includes(playerId) &&
+      effect?.type !== "UNLOCK_RECRUIT_TIER") {
+    return 200;
+  }
   if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold" &&
       needsPremiumSilverBreakthrough(state, playerId)) return 240;
   const armySize = state.players[playerId]?.army.length ?? 0;
@@ -531,8 +545,17 @@ function buildingScore(
   // Cove's Pub and Stronghold's Freelancer's Guild — stay buyable at
   // rock-bottom priority (just above END_TURN 300), everything else waits in
   // the 280 "do not do this" band until the Gold Dwelling is built.
+  // USER RULING (2026-09-16): the City Hall is marginal in R5–R6 — still
+  // allowed from genuine surplus (the dwelling-fund guard above already ran),
+  // never ahead of a dwelling (its 820 band sits below the 950/955 milestone
+  // scores), and off limits from INCOME_NEVER_FROM_ROUND (returned 280 above).
+  const soSoIncomeWindow =
+    effect?.type === "RESOURCE_ROUND_CHOICE" &&
+    (state.round ?? 0) > INCOME_FIRST_LAST_ROUND &&
+    (state.round ?? 0) < INCOME_NEVER_FROM_ROUND;
   if (
     !development.goldUnlocked &&
+    !soSoIncomeWindow &&
     effect?.type !== "UNLOCK_RECRUIT_TIER" &&
     effect?.type !== "UNLOCK_REINFORCE" &&
     factionBuildingForEffect(
@@ -568,6 +591,72 @@ function buildingScore(
   return score;
 }
 
+/** A Trading Post the main hero can reach this turn or the next (walk only). */
+function tradingPostInReach(state: GameState, playerId: PlayerId): boolean {
+  const hero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === playerId && candidate.kind === "main" && candidate.spaceId,
+  );
+  if (!hero) return false;
+  const reach = hero.movementPoints + heroMovementMax(state, hero);
+  return Object.values(state.adventure?.fields ?? {}).some((field) =>
+    field.location === "trading_post" && !isFieldGuarded(field) &&
+    (distanceFromHeroTo(state, hero, field.spaceId, true) ?? Infinity) <= reach);
+}
+
+/**
+ * Whether spending `spend` (the lower Gold Few) pushes the top Gold step's
+ * landing to a later Resource Round. Trading counts only with a post in reach.
+ */
+function lowerFewDelaysTopGold(
+  state: GameState,
+  playerId: PlayerId,
+  topCost: ResourceCost,
+  spend: ResourceCost,
+): boolean {
+  const player = state.players[playerId];
+  if (!player) return true;
+  const production = player.production ?? {};
+  const allowTrade = tradingPostInReach(state, playerId);
+  const before = purchaseLandingRounds(player.resources, production, topCost, allowTrade);
+  const after = purchaseLandingRounds({
+    gold: (player.resources.gold ?? 0) - (spend.gold ?? 0),
+    buildingMaterials: (player.resources.buildingMaterials ?? 0) - (spend.buildingMaterials ?? 0),
+    valuables: (player.resources.valuables ?? 0) - (spend.valuables ?? 0),
+  }, production, topCost, allowTrade);
+  if (before === null) return false;
+  return after === null || after > before;
+}
+
+/**
+ * Whether the army WITH this extra Few body can beat a reachable guarded
+ * field that pays resources (creature bank, mine, settlement, guarded pickup)
+ * — the fight the ruling buys it for. Two turns of walking count as reach.
+ */
+function lowerFewHelpsResourceFight(state: GameState, playerId: PlayerId, unitDefId: string): boolean {
+  const player = state.players[playerId];
+  const hero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === playerId && candidate.kind === "main" && candidate.spaceId,
+  );
+  if (!player || !hero) return false;
+  const probe: GameState = {
+    ...state,
+    players: {
+      ...state.players,
+      [playerId]: { ...player, army: [...player.army, { id: `${playerId}_probe_few`, unitDefId, side: "few" }] },
+    },
+  };
+  const reach = hero.movementPoints + 2 * heroMovementMax(state, hero);
+  return collectMapObjectives(probe, hero).some((objective) => {
+    if (objective.kind !== "guard") return false;
+    const field = probe.adventure?.fields[objective.spaceId];
+    if (!field || !(isFieldGuarded(field) || field.location === "creature_bank")) return false;
+    if (!(["gold", "buildingMaterials", "valuables"] as const).some((resource) =>
+      fieldSuppliesResource(probe, playerId, field, resource))) return false;
+    const distance = distanceFromHeroTo(probe, hero, objective.spaceId, true);
+    return distance !== undefined && distance <= reach && canBeatGuardedField(probe, hero, field);
+  });
+}
+
 function populationScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
@@ -577,6 +666,22 @@ function populationScore(
   const player = state.players[observation.playerId];
   const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
+  // PvP pre-battle preparation: the fight is NOW, so every saving plan below
+  // yields to the largest combat gain this Population token can still buy (a
+  // missing Gold body first, else the best Pack upgrade or body). Measured: the
+  // AI readied up with gold in hand and units unbought because the ladder guards
+  // (240 "save for the Gold step") sat below ACCEPT's 225 prep floor.
+  if (state.combat?.prep && !state.combat.prep.accepted.includes(observation.playerId)) {
+    let gain = 0;
+    for (const purchase of action.purchases) {
+      if (purchase.kind === "stack") continue;
+      const side = purchase.kind === "reinforce" ? "pack"
+        : coreUnitDefinitions[purchase.unitDefId]?.few ? "few" : "neutral";
+      gain += unitDevelopmentSideStrength(purchase.unitDefId, side) -
+        (purchase.kind === "reinforce" ? unitDevelopmentSideStrength(purchase.unitDefId, "few") : 0);
+    }
+    if (gain > 0) return 940 + Math.min(35, Math.round(gain));
+  }
   if (action.purchases.some(purchase => !goldArmyAllowsBronzePurchase(
     state, observation.playerId, purchase.unitDefId, purchase.kind))) return 180;
   if (hasReachedSilverArmy(state, observation.playerId) && action.purchases.filter(purchase =>
@@ -875,6 +980,23 @@ function populationScore(
             coreUnitDefinitions[purchase.unitDefId]?.tier === "gold",
         );
       if (buysLowerGoldFew) {
+        // USER RULING (2026-09-16): the lower Gold Few goes through when it
+        // cannot delay the level-7 anyway AND it helps win a reachable
+        // resource fight (creature bank, guarded mine / settlement / pickup).
+        // Landing rounds are read WITHOUT trading unless a Trading Post is in
+        // reach: "reachable by trade" with no post in sight was a fiction that
+        // held the body back (measured: 18 gold, level-7 at 19, income only
+        // on odd rounds — the level-7 lands R11 either way, the level-6 was
+        // held for nothing).
+        const lowerFew = action.purchases.find(
+          (purchase) => purchase.kind === "recruit" &&
+            coreUnitDefinitions[purchase.unitDefId]?.tier === "gold",
+        );
+        if (lowerFew && !lowerFewDelaysTopGold(state, observation.playerId, step.cost,
+              { gold: spentGold, buildingMaterials: spentMaterials, valuables: spentValuables }) &&
+            lowerFewHelpsResourceFight(state, observation.playerId, lowerFew.unitDefId)) {
+          return score;
+        }
         // Elapsed time does not make spending the level-7 fund sensible.
         // Visible, reachable pickups can finish the fund even when printed
         // production alone cannot. Reconsider after each actual collection.
@@ -1063,10 +1185,22 @@ function moveScore(
     }
   }
   const primaryEconomy = primary && state.adventure?.fields[primary.spaceId];
-  const distance = objectiveDistanceField(state, hero, marchTargets,
-    Boolean(primaryEconomy && (isPremiumEconomyField(primaryEconomy) ||
-      isOpeningFarSweepField(state, observation.playerId, primaryEconomy))));
-  const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
+  const walkThroughVisits = Boolean(primaryEconomy && (isPremiumEconomyField(primaryEconomy) ||
+    isOpeningFarSweepField(state, observation.playerId, primaryEconomy)));
+  let distance = objectiveDistanceField(state, hero, marchTargets, walkThroughVisits);
+  let here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
+  // ROUTE FALLBACK: the primary objective is chosen with peaceful one-use
+  // visits (temple, witch hut, shrine …) treated as passable stops, but the
+  // strict march graph above treats them as walls. When that graph has NO
+  // route at all from the hero, every step read as "no progress" (260, below
+  // END_TURN) and the seat parked. Measured (Necropolis, impossible, seed
+  // eval-14): the hero sat still from R7 to R11 with a beatable learning
+  // stone four cells away behind a witch hut. Walking onto the visit is the
+  // real route — the visit resolves (or is declined) and the march continues.
+  if (here === Infinity && !walkThroughVisits && hero.spaceId) {
+    distance = objectiveDistanceField(state, hero, marchTargets, true);
+    here = distance.get(hero.spaceId) ?? Infinity;
+  }
   const to = distance.get(action.to) ?? Infinity;
 
   // A funded dwelling conversion is a concrete development step. Its march
@@ -1074,8 +1208,9 @@ function moveScore(
   // A known FAR capture is selected ahead of this market by the primary plan.
   const primaryField = primary && state.adventure?.fields[primary.spaceId];
   const dwellingMarketMarch = Boolean(primaryField &&
-    isMarketLocation(primaryField.location) && primary?.kind === "visitable" &&
-    assessDwellingRush(state, observation.playerId)?.feasible);
+    primaryField.location === "trading_post" && primary?.kind === "visitable" &&
+    (assessDwellingRush(state, observation.playerId)?.feasible ||
+      goldStepMarketPlan(state, observation.playerId)));
 
   // The free hop between the two linked halves of a Subterranean Gate SLIPS
   // PAST a live guard on the far half (engine rule 2026-08-07): this step can
@@ -1190,6 +1325,21 @@ function moveScore(
   if (to < here) {
     if (dwellingMarketMarch) return 935;
     return OBJECTIVE_PROGRESS_BASE + Math.max(0, 10 - to);
+  }
+  // Progress toward the PRIMARY through peaceful visit stops. The
+  // multi-source field above can be dominated by a free pickup one step away
+  // (a temple beside the hero) that another rule then refuses to enter, so
+  // every other step read as "no progress" while the primary itself sat a
+  // few cells away behind a witch hut — the seat parked for five rounds
+  // (Necropolis, impossible, seed eval-14, R7–R11). A step that strictly
+  // shortens the visit-passing route to the primary IS a march step.
+  if (primary && hero.spaceId && action.to !== primary.spaceId) {
+    const towardPrimaryPeaceful = objectiveDistanceField(state, hero, [primary], true);
+    const hereP = towardPrimaryPeaceful.get(hero.spaceId) ?? Infinity;
+    const toP = towardPrimaryPeaceful.get(action.to) ?? Infinity;
+    if (toP < hereP) {
+      return OBJECTIVE_PROGRESS_BASE + Math.max(0, 10 - toP);
+    }
   }
 
   // SLIP-PAST RE-ENTRY SETUP: the hero stands ON a live guard it can beat —
@@ -1703,6 +1853,15 @@ function tradeResourceScore(
   const rush = assessDwellingRush(state, observation.playerId);
   if (rush && rush.inputRateIndices.includes(action.rateIndex)) {
     return rush.feasible ? DWELLING_RUSH_TRADE_SCORE : DWELLING_RUSH_SUPPRESS_SCORE;
+  }
+  // Gold-recruit completion: the exchanges that make the saved Gold body
+  // payable this visit (buy its missing valuable, sell stock it does not need)
+  // are decisive, like a feasible dwelling rush. The plan re-evaluates after
+  // every trade and disappears once the body is affordable, so this can never
+  // over-trade past the purchase.
+  const goldStep = goldStepMarketPlan(state, observation.playerId);
+  if (goldStep && goldStep.rateIndices.includes(action.rateIndex)) {
+    return DWELLING_RUSH_TRADE_SCORE;
   }
   if ((state.round ?? 0) < MARKET_MIN_ROUND) return 180;
   const utility = tradeUtility(state, observation.playerId, action.rateIndex);
@@ -2484,8 +2643,26 @@ function resolveVisitStepScore(
     if (gold - goldCost < GOLD_RESERVE && goldCost > 0) {
       return 1_020;
     }
+    // A paid visit never spends the dwelling / Gold-ladder inputs. Measured
+    // (Necropolis, impossible, seed eval-6): the Tree of Knowledge offered +2
+    // experience for 3 valuables OR 10 gold; the flat cost penalty (5 per
+    // valuable, 2 per gold) picked the valuables at R5, and the Gold dwelling
+    // slipped from R7 to R9 waiting for them. Materials and valuables below
+    // the plan's target (and the whole remaining Gold-ladder valuables need)
+    // decline; gold is only pushed toward the other option, since it refills
+    // every Resource Round and the reserve floor above still holds.
+    const resources = playerResources(state, playerId);
+    const planTarget = developmentResourceTargets(state, playerId);
+    if (
+      (valsCost > 0 && resources.valuables - valsCost <
+        Math.max(planTarget.valuables, goldLadderValuablesReserve(state, playerId))) ||
+      (matsCost > 0 && resources.buildingMaterials - matsCost < planTarget.buildingMaterials)
+    ) {
+      return 1_020;
+    }
     const followUp = visitStepsUtility(state, playerId, step.steps);
-    const costPenalty = goldCost * 2 + matsCost * 3 + valsCost * 5;
+    const costPenalty = goldCost * 2 + matsCost * 3 + valsCost * 5 +
+      (goldCost > 0 && gold - goldCost < planTarget.gold ? 12 : 0);
     return 1_100 + Math.max(-30, Math.min(60, Math.round(followUp - costPenalty)));
   }
 
@@ -2929,7 +3106,10 @@ export function scoreMapAction(
       const earlyTentVisit =
         marketLocation === "war_machine_factory" &&
         shouldPrioritizeFirstAidTent(state, observation.playerId);
-      const dwellingRush = assessDwellingRush(state, observation.playerId)?.feasible;
+      // Resource conversion happens only at the Trading Post; a Factory shop
+      // cannot serve a dwelling rush (measured open/leave/return loop).
+      const dwellingRush = marketLocation === "trading_post" &&
+        assessDwellingRush(state, observation.playerId)?.feasible;
       if ((state.round ?? 0) < MARKET_MIN_ROUND && !earlyTentVisit && !dwellingRush) {
         return { score: 180, policy: "map.market-wait-until-round-five" };
       }

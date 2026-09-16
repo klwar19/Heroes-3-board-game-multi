@@ -40,6 +40,13 @@ export const COMPUTER_MAP_STEP_MS = 900;
 export const COMPUTER_COMBAT_STEP_MS = 450;
 /** Lobby/setup picks can be snappy; nobody wants to watch draft micro-steps. */
 export const COMPUTER_SETUP_STEP_MS = 80;
+/**
+ * Maximum wall-clock time one visible-step tick may spend bulk-resolving
+ * before it yields to the room (see settleComputerVisibleStep).
+ */
+export const COMPUTER_TICK_BUDGET_MS = 2_000;
+/** Re-arm pace for an off-screen AI-only fight split across ticks. */
+export const COMPUTER_BULK_RESUME_MS = 50;
 
 export type ComputerApply = (
   state: GameState,
@@ -456,6 +463,13 @@ export function computerStepDelayMs(state: GameState): number {
   ) {
     return COMPUTER_COMBAT_STEP_MS;
   }
+  // An AI-only fight that outlived one tick's wall-clock budget (or the bulk
+  // cap) is still off-screen for the human: resume it at once rather than at
+  // the watchable map pace, so the hidden fight finishes as fast as the room
+  // allows.
+  if (state.combat && !state.combat.endAcknowledged) {
+    return COMPUTER_BULK_RESUME_MS;
+  }
   return COMPUTER_MAP_STEP_MS;
 }
 
@@ -475,11 +489,21 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
 
   const decisions: ComputerDecision[] = [];
   let current = state;
+  const startedAt = Date.now();
   // AI-only combat gets a larger, FINITE budget. The server persists the
   // returned progress and schedules another tick if computer work is owed.
   let bulkCap = 96;
   for (let i = 0; i < bulkCap; i += 1) {
     if (!computerDecisionOwner(current)) {
+      return { state: current, decisions, stalled: false };
+    }
+    // WALL-CLOCK BUDGET: one tick runs inside the room's single-threaded
+    // Durable Object, where every human message waits behind it. A long bulk
+    // stretch (a big AI-only fight, a chain of choices) must yield after this
+    // budget with the progress so far; the server re-arms the pump because
+    // work is still owed, so nothing is lost — the fight simply continues on
+    // the next tick instead of freezing every socket in the room.
+    if (decisions.length > 0 && Date.now() - startedAt >= COMPUTER_TICK_BUDGET_MS) {
       return { state: current, decisions, stalled: false };
     }
     let peek = driveComputerPlayers(current, liveApply, { maxSteps: 1 });

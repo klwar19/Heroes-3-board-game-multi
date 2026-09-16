@@ -239,11 +239,31 @@ export function tileCentersAdjacent(left: HexCoord, right: HexCoord): boolean {
  * abuts a Surface tile (but lands on one of those 12 non-interlocking offsets)
  * would never receive a gate and stay forever unreachable.
  */
+const FOOTPRINT_TOUCH_CACHE = new Map<string, boolean>();
+const FOOTPRINT_TOUCH_CACHE_CAP = 50_000;
+
 export function tileFootprintsTouch(left: HexCoord, right: HexCoord): boolean {
   // Far-apart centres can't touch; cheap reject before the footprint scan.
   if (hexDistance(left, right) > 5) {
     return false;
   }
+  // Pure geometry of two centres — memoized. The computer's tile-placement
+  // probes asked this for every (laid tile × candidate slot) pair on every
+  // field of the map, and the footprint scan alone was ~28% of AI CPU.
+  const key = `${left.row},${left.col},${right.row},${right.col}`;
+  const cached = FOOTPRINT_TOUCH_CACHE.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const touches = computeFootprintsTouch(left, right);
+  if (FOOTPRINT_TOUCH_CACHE.size >= FOOTPRINT_TOUCH_CACHE_CAP) {
+    FOOTPRINT_TOUCH_CACHE.clear();
+  }
+  FOOTPRINT_TOUCH_CACHE.set(key, touches);
+  return touches;
+}
+
+function computeFootprintsTouch(left: HexCoord, right: HexCoord): boolean {
   const rightHexes = new Set(tileFootprint(right, 0).map(hexSpaceId));
   for (const cell of tileFootprint(left, 0)) {
     for (const neighbor of hexNeighbors(cell)) {

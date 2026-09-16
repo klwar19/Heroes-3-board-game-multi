@@ -11,6 +11,7 @@ import { unitExperienceActive } from "../unit-experience";
 import { playersAreAllied } from "./control";
 import { isFieldGuarded, reinforceCostFor, applyRecruitGoldDiscount } from "../adventure";
 import { isOpeningFarMaterialMine, securedFarTileIds } from "./far-sweep";
+import { effectiveTownBuildingCost } from "../house-rules";
 
 /** The faction's bronze units in roster (unit-level) order: [level-1, level-2,
  * level-3]. Falls back to the seat's actual bronze cards for custom armies. */
@@ -347,6 +348,38 @@ export function hasGoldArmy(state: GameState, playerId: PlayerId): boolean {
   });
 }
 
+/**
+ * Valuables the seat must still HOLD for the whole Gold ladder: the Gold
+ * dwelling while it is unbuilt, then for every ranked Gold unit its missing
+ * Few and Pack inputs (Few + Pack when unowned, the Pack upgrade when at Few,
+ * nothing once a Pack stands). USER RULING (2026-09-16): valuables are never
+ * sold below this — e.g. a ladder needing 4 keeps 4 after the dwelling, 3
+ * once the level-7 Few is bought, 1 with the level-7 Pack, 0 with every Pack
+ * done; a Gold casualty reopens its steps and the reserve rises again. Only
+ * the surplus above it may be sold.
+ */
+export function goldLadderValuablesReserve(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  if (!player) return 0;
+  let reserve = 0;
+  if (!armyDevelopmentProfile(state, playerId).goldUnlocked) {
+    const dwelling = factionBuildingForEffect(state, playerId,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold");
+    reserve += dwelling ? effectiveTownBuildingCost(state, dwelling).valuables ?? 0 : 0;
+  }
+  for (const unitDefId of rankedGoldUnits(state, playerId)) {
+    const owned = player.army.find((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+    const definition = coreUnitDefinitions[unitDefId];
+    if (!owned) {
+      reserve += (definition?.few?.cost.valuables ?? 0) + (definition?.pack?.cost.valuables ?? 0);
+    } else if (owned.side === "few") {
+      reserve += (reinforceCostFor(state, playerId, owned.id, false, false, false) ??
+        definition?.pack?.cost)?.valuables ?? 0;
+    }
+  }
+  return reserve;
+}
+
 /** A Gold casualty reopens its recruit step, never the Bronze opening. */
 export function hasReachedGoldArmy(state: GameState, playerId: PlayerId): boolean {
   return hasGoldArmy(state, playerId) || Boolean(state.computerMemory?.[playerId]?.goldArmyEstablished);
@@ -511,8 +544,14 @@ export function factionIncomeBuilding(state: GameState, playerId: PlayerId) {
   );
 }
 
-/** Last round in which the hall may go BEFORE the next dwelling (winners: R2–R6). */
-export const INCOME_FIRST_LAST_ROUND = 6;
+/**
+ * Last round in which the hall may go BEFORE the next dwelling. USER RULING
+ * (2026-09-16): the City Hall is situational — ideal on R4 or before,
+ * marginal on R5–R6 (surplus only, never ahead of a dwelling), OFF LIMITS
+ * from R7. Ranked (36 replays, 60 human seats ≥8 rounds): 40 seats built it,
+ * median R4.
+ */
+export const INCOME_FIRST_LAST_ROUND = 4;
 /**
  * Same window when the bronze-only stretch the hall implies is SLOW or HARD:
  * no unit experience and no commanders (Packs never grow, so Silver is the only
@@ -522,8 +561,8 @@ export const INCOME_FIRST_LAST_ROUND = 6;
  * experience on and the scripted Neutral AI.
  */
 export const INCOME_FIRST_LAST_ROUND_SLOW = 4;
-/** No ranked seat built a City Hall from R8 on; from here its +5/round never pays back. */
-export const INCOME_NEVER_FROM_ROUND = 9;
+/** USER RULING: the City Hall is off limits from round 7 — its +5/round cannot pay back. */
+export const INCOME_NEVER_FROM_ROUND = 7;
 /** A hostile main hero this many levels (or more) ahead = "behind": army first, no hall-first. */
 export const INCOME_FIRST_LEVEL_DEFICIT = 2;
 
@@ -636,15 +675,32 @@ export function incomeBuildingBeforeDwelling(
 ) {
   if (!bronzeCoreHasWork || needsNecromancyVampire(state, playerId) ||
       needsPremiumSilverBreakthrough(state, playerId) || securedFarTileIds(state, playerId).size >= 2) return null;
-  // Until the first FAR income is captured, fund Silver/Gold and its fighting
-  // army. A revealed settlement is still a battle to win, not an income base.
-  if (!hasOpenedFarEconomy(state, playerId)) return null;
+  // No "first FAR income captured" precondition: the ranked seats build the
+  // hall on R2–R4, before their first Far fight (median first fight R3–R4),
+  // and the eval seats that waited for the Far capture never built it at all
+  // (0 halls in 60 impossible seeds) — the Silver dwelling was always "in
+  // reach next round" by then. The tempo guard below protects that dwelling.
   const profile = armyDevelopmentProfile(state, playerId);
-  if (profile.phase !== "unlock-silver" && profile.phase !== "unlock-gold") {
-    return null;
-  }
   const building = factionIncomeBuilding(state, playerId);
   if (!building) return null;
+  // FACTION-SPECIFIC payout: Rampart's hall pays 7 gold, Inferno's 6, most
+  // others 4–5. A high-payout hall repays itself within two Resource Rounds
+  // and is what every ranked Rampart seat built by R3 (5 of 6, R2–R3); the
+  // Rampart eval seeds that missed R9 were pure gold starvation (10 income,
+  // Gold Dragons 22 gold). Such a hall may go during the Pack-core opening
+  // and without the cushion below — the tempo guard on the dwelling still
+  // applies. A low-payout hall (Tower +4) measured as harm when bought on R3
+  // with the last gold (seeds eval-11/12: Silver dwelling slipped to R6–R8),
+  // so it keeps waiting for the finished core and the five-gold cushion.
+  const payout = building.effect?.type === "RESOURCE_ROUND_CHOICE"
+    ? Math.max(0, ...building.effect.options.map((option) => option.gold ?? 0))
+    : 0;
+  const highPayout = payout >= 6;
+  const duringPackCore = highPayout && profile.phase === "establish-core" &&
+    profile.reinforceUnlocked && profile.bronzeUnlocked;
+  if (!duringPackCore && profile.phase !== "unlock-silver" && profile.phase !== "unlock-gold") {
+    return null;
+  }
   const built = Object.values(state.towns ?? {}).some(
     (town) =>
       town.controllerId === playerId && town.buildings.includes(building.id),
@@ -668,10 +724,31 @@ export function incomeBuildingBeforeDwelling(
       effect.tier === (profile.silverUnlocked ? "gold" : "silver"),
   );
   const player = state.players[playerId];
-  if (dwelling?.cost && player) {
+  if (!player) return null;
+  // The hall must be payable NOW (the build token is otherwise idle this
+  // round) ...
+  const hallCost = effectiveTownBuildingCost(state, building);
+  if (!purchaseReachable(player.resources, {}, hallCost, 0)) return null;
+  const afterHall: ResourceCost = {
+    gold: (player.resources.gold ?? 0) - (hallCost.gold ?? 0),
+    buildingMaterials:
+      (player.resources.buildingMaterials ?? 0) - (hallCost.buildingMaterials ?? 0),
+    valuables: (player.resources.valuables ?? 0) - (hallCost.valuables ?? 0),
+  };
+  // ... and it keeps the five-gold cushion. Measured (Tower, impossible,
+  // seeds eval-11/12): a R3 hall bought with exactly 10 gold left 0; the
+  // next fight's casualties then ate the R5 income for re-recruits and the
+  // Silver dwelling slipped to R6–R8 (Gold body R11 / never).
+  if (!highPayout && (afterHall.gold ?? 0) < 5) return null;
+  if (dwelling?.cost) {
+    // ... and never ahead of a dwelling the seat can build this round, nor at
+    // the cost of pushing a next-Resource-Round dwelling out: the hall is only
+    // ever a use of a round the dwelling could not have taken anyway.
     if (purchaseReachable(player.resources, {}, dwelling.cost, 0)) return null;
+    const production = player.production ?? {};
     if (
-      purchaseReachable(player.resources, player.production ?? {}, dwelling.cost, 1)
+      purchaseReachable(player.resources, production, dwelling.cost, 1) &&
+      !purchaseReachable(afterHall, production, dwelling.cost, 1)
     ) {
       return null;
     }
@@ -851,6 +928,67 @@ export function nextGoldLadderStep(
       return { unitDefId, kind: "reinforce", cost: reinforceCostFor(state, playerId,
         owned(unitDefId)!.id, false, false, false) ?? coreUnitDefinitions[unitDefId]!.pack!.cost, rank };
     }
+  }
+  return null;
+}
+
+export type ResourceUrgency = Record<"gold" | "buildingMaterials" | "valuables", number>;
+
+/**
+ * Resource Rounds of printed production each development-target deficit
+ * still needs (0 = already covered). Gold and valuables deficits are NOT
+ * interchangeable: 16 gold short on 15 income is one Resource Round, 3
+ * valuables short on 1 per round is three — the market/objective planners
+ * read this instead of raw deficits so the true bottleneck wins.
+ */
+export function resourceUrgency(state: GameState, playerId: PlayerId): ResourceUrgency {
+  const player = state.players[playerId];
+  const target = developmentResourceTargets(state, playerId);
+  const urgency: ResourceUrgency = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  if (!player) return urgency;
+  for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
+    const deficit = target[key] - (player.resources[key] ?? 0);
+    if (deficit <= 0) continue;
+    urgency[key] = deficit / Math.max(1, player.production?.[key] ?? 0);
+  }
+  return urgency;
+}
+
+/**
+ * USER RULING (2026-09-16, "valuables-starved maps"): gold is covered within a
+ * Resource Round but valuables are two or more away. Measured (Necropolis,
+ * impossible, seeds eval-10/29): 39–52 gold idle at R9 on 1 valuable per
+ * round, body at R11. Such a seat must go and GET valuables — explore near /
+ * deeper tiles, fight creature banks that pay them, take a valuables hall
+ * option — instead of waiting on the trickle.
+ */
+export function valuablesStarved(state: GameState, playerId: PlayerId): boolean {
+  const urgency = resourceUrgency(state, playerId);
+  return urgency.valuables >= 2 && urgency.gold <= 1;
+}
+
+/**
+ * Resource Rounds until `cost` is payable (0 = now), or null beyond
+ * `maxRounds`. With `allowTrade` the materials/valuables gap may be bought
+ * from gold at Trading Post rates ({@link purchaseReachable}); without it only
+ * printed production counts — the read for a seat with no Trading Post in
+ * reach, where "reachable by trade" was a fiction that held purchases back.
+ */
+export function purchaseLandingRounds(
+  resources: ResourceCost,
+  production: ResourceCost,
+  cost: ResourceCost,
+  allowTrade: boolean,
+  maxRounds = 4,
+): number | null {
+  for (let rounds = 0; rounds <= maxRounds; rounds += 1) {
+    if (allowTrade) {
+      if (purchaseReachable(resources, production, cost, rounds)) return rounds;
+      continue;
+    }
+    const enough = (["gold", "buildingMaterials", "valuables"] as const).every((key) =>
+      (resources[key] ?? 0) + rounds * (production[key] ?? 0) >= (cost[key] ?? 0));
+    if (enough) return rounds;
   }
   return null;
 }
@@ -1042,6 +1180,126 @@ function goldPurchaseRate(
     }
   }
   return null;
+}
+
+/** The TRADE_RATES entry that SELLS exactly 1 of `resource` for gold ("1 building
+ * materials -> 1 gold" / "1 valuables -> 3 gold"), looked up by shape like
+ * {@link goldPurchaseRate}. Null when the post has no such direct sale. */
+function goldSaleRate(
+  resource: "buildingMaterials" | "valuables",
+): { rateIndex: number; goldPerUnit: number } | null {
+  for (let index = 0; index < TRADE_RATES.length; index += 1) {
+    const rate = TRADE_RATES[index];
+    const sellKeys = Object.keys(rate.sell);
+    const buyKeys = Object.keys(rate.buy);
+    if (
+      sellKeys.length === 1 &&
+      sellKeys[0] === resource &&
+      (rate.sell[resource] ?? 0) === 1 &&
+      buyKeys.length === 1 &&
+      buyKeys[0] === "gold" &&
+      (rate.buy.gold ?? 0) > 0
+    ) {
+      return { rateIndex: index, goldPerUnit: rate.buy.gold ?? 0 };
+    }
+  }
+  return null;
+}
+
+export type GoldStepMarketPlan = {
+  /** TRADE_RATES indices that together make the saved Gold recruit payable. */
+  rateIndices: number[];
+};
+
+/**
+ * Trades at a Trading Post that make the saved Gold-ladder RECRUIT (the missing
+ * level-7 / level-6 body, see nextGoldLadderStep) payable on THIS visit: buy the
+ * missing valuables / materials from gold, and if gold itself is short, sell
+ * the stock the step does not need (materials first, then valuables) at the
+ * printed rates. Null when no recruit step is saved, when it is already
+ * affordable (the buy fires directly), or when the post cannot close the gap.
+ *
+ * Measured before this plan (impossible, 4 seats): a seat held 24 gold and no
+ * valuable for two Resource Rounds, one 6-gold trade short of its Hydra, with
+ * a Trading Post two fields away — the generic trade heuristic called that
+ * gold "scarce" and refused the very exchange that completes the purchase.
+ * Public resources and printed costs only.
+ */
+export function goldStepMarketPlan(
+  state: GameState,
+  playerId: PlayerId,
+): GoldStepMarketPlan | null {
+  if (!state.players[playerId]) return null;
+  // Every ladder step qualifies — a missing body AND a Pack upgrade (USER
+  // RULING 2026-09-16: surplus valuables are sold "to upgrade others").
+  const step = nextGoldLadderStep(state, playerId);
+  // Before the Gold ladder opens, the saved purchase is the next DWELLING.
+  // Only its GOLD gap is closed here, from surplus stock (buying missing
+  // inputs from gold is the dwelling-rush planner's job). Measured
+  // (Necropolis, impossible, seed eval-14): a seat sat on 5 gold with 16
+  // materials and 8 valuables for two Resource Rounds, its Silver dwelling
+  // 3 gold short, a Trading Post one field away.
+  let savedCost: ResourceCost | null = step?.cost ?? null;
+  if (!step) {
+    const dwelling = nextDevelopmentBuildingCost(state, playerId);
+    const hall = factionIncomeBuilding(state, playerId)?.cost;
+    if (!dwelling || dwelling === hall) return null;
+    savedCost = dwelling;
+  }
+  if (!savedCost) return null;
+  const res = playerResourceRecord(state, playerId);
+  const need: Required<ResourceCost> = {
+    gold: savedCost.gold ?? 0,
+    buildingMaterials: savedCost.buildingMaterials ?? 0,
+    valuables: savedCost.valuables ?? 0,
+  };
+  if (
+    res.gold >= need.gold &&
+    res.buildingMaterials >= need.buildingMaterials &&
+    res.valuables >= need.valuables
+  ) {
+    return null;
+  }
+  const rateIndices: number[] = [];
+  let goldShort = need.gold - res.gold;
+  for (const key of ["valuables", "buildingMaterials"] as const) {
+    const missing = Math.max(0, need[key] - res[key]);
+    if (missing === 0) continue;
+    // A dwelling's missing inputs belong to the rush planner, never here.
+    if (!step) return null;
+    const rate = goldPurchaseRate(key);
+    if (!rate) return null;
+    goldShort += missing * rate.goldPerUnit;
+    rateIndices.push(rate.rateIndex);
+  }
+  if (goldShort > 0) {
+    // Spare materials first (1 gold each, cheap to lose), then ONLY the
+    // valuables above the whole remaining ladder's reserve (USER RULING
+    // 2026-09-16, see goldLadderValuablesReserve): a valuable fetches 3 gold
+    // and costs 6 to buy back, and every missing Gold Few/Pack still needs its
+    // own. The reserve already contains this step's valuables.
+    let raised = 0;
+    const materialRate = goldSaleRate("buildingMaterials");
+    // For a dwelling keep the same +3 materials cushion the generic trade
+    // floor keeps before Gold (the NEXT dwelling's rebuild starts from it).
+    const materialSurplus = Math.max(0,
+      res.buildingMaterials - need.buildingMaterials - (step ? 0 : 3));
+    if (materialRate && materialSurplus > 0) {
+      raised += materialSurplus * materialRate.goldPerUnit;
+      rateIndices.push(materialRate.rateIndex);
+    }
+    if (raised < goldShort) {
+      const valuableRate = goldSaleRate("valuables");
+      const valuableSurplus = Math.max(0,
+        res.valuables - Math.max(need.valuables, goldLadderValuablesReserve(state, playerId)));
+      if (valuableRate && valuableSurplus > 0) {
+        raised += valuableSurplus * valuableRate.goldPerUnit;
+        rateIndices.push(valuableRate.rateIndex);
+      }
+    }
+    if (raised < goldShort) return null;
+  }
+  return rateIndices.length > 0 ? { rateIndices } : null;
 }
 
 export type DwellingRushAssessment = {

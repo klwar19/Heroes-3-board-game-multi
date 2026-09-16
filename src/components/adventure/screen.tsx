@@ -1700,9 +1700,27 @@ export function HexMapBoard({
       const gateHintSize = HEX_WIDTH * 0.54;
       const gateHintGap = gateHintSize * 1.3;
       for (const [gateIndex, gateHint] of gateHints.entries()) {
-        const hintX =
-          centerPixel.x + (gateIndex - (gateHints.length - 1) / 2) * gateHintGap;
-        const hintY = centerPixel.y + HEX_SIZE * 1.72;
+        // A designer-pinned gate carries the exact field it was drawn on in the
+        // scenario editor: sit the badge ON that hex (footprint hexes are the
+        // same set at every rotation, so the pin is always inside this face-down
+        // flower). Player pick-on-reveal hints carry no hex — those keep the
+        // legacy row spread below the tile.
+        const gateHintCoord = gateHint.spaceId
+          ? parseHexSpaceId(gateHint.spaceId)
+          : null;
+        const gateHintOnField =
+          gateHintCoord != null &&
+          footprint.some(
+            (cell) => cell.row === gateHintCoord.row && cell.col === gateHintCoord.col,
+          )
+            ? hexToPixel(gateHintCoord, HEX_SIZE)
+            : null;
+        const hintX = gateHintOnField
+          ? gateHintOnField.x
+          : centerPixel.x + (gateIndex - (gateHints.length - 1) / 2) * gateHintGap;
+        const hintY = gateHintOnField
+          ? gateHintOnField.y
+          : centerPixel.y + HEX_SIZE * 1.72;
         artLayer.push(
           <g
             aria-label={gateHint.tooltip}
@@ -8570,6 +8588,16 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
       ? (choice.ownDeckPick?.cardIds ?? null)
       : null;
+  // Polish Balance "Basic X Magic": the two found Spells are named on the buttons
+  // ("Take Fire Shield" / "Take Bloodlust"), but the decision is which SPELL to
+  // keep — so each option shows that spell's card face, index-aligned with the
+  // choice's candidates (author: the pick was text-only, "WRONG", show pictures).
+  const basicMagicPickCards =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "basic-magic-pick" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.basicMagicPick?.candidates.map((candidate) => candidate.cardId) ?? null)
+      : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
   // give each kind a representative glyph (artifact / resource die) — scoped to
   // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
@@ -8828,6 +8856,29 @@ export function PromptTray({
                           : null,
                       };
                     })
+                  : basicMagicPickCards
+                    ? body.map((legal) => {
+                        const optionIndex =
+                          legal.action.type === "CHOOSE_OPTION" &&
+                          legal.action.optionIndex !== undefined
+                            ? legal.action.optionIndex
+                            : undefined;
+                        const cardId =
+                          optionIndex !== undefined &&
+                          optionIndex < basicMagicPickCards.length
+                            ? basicMagicPickCards[optionIndex]
+                            : undefined;
+                        const card = cardId ? cardLibrary[cardId] : undefined;
+                        const art: VisitRewardArt | null = cardId
+                          ? {
+                              name: card?.name ?? cardId,
+                              image: card?.assets?.cardImage,
+                              caption: legal.label,
+                              cardId,
+                            }
+                          : null;
+                        return { legal, art };
+                      })
                   : ownDeckPickCards
                     ? body.map((legal) => {
                         const optionIndex =

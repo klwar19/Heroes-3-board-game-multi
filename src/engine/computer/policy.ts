@@ -14,7 +14,7 @@ import { learnedActionBias, type LearnedModelSelection } from "./learned-policy"
 import type { ReplayPolicyModel } from "./replay-model";
 import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
-import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective } from "./map-navigation";
+import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective, withMapScoringCache } from "./map-navigation";
 import { isPremiumEconomyField } from "./army-strength";
 
 /** A scored move alone is not evidence that retracing a route pays off. */
@@ -350,6 +350,17 @@ export type ChooseComputerActionOptions = {
 export function chooseComputerAction(
   observation: ComputerObservation,
   options: ChooseComputerActionOptions = {},
+): ComputerDecision | null {
+  // Every scorer below reads the same immutable seat view; share the expensive
+  // map derivations (objectives, distance fields, guard checks) across all
+  // candidate actions of this one decision instead of rebuilding them per action.
+  return withMapScoringCache(observation.state as unknown as GameState, () =>
+    chooseComputerActionUncached(observation, options));
+}
+
+function chooseComputerActionUncached(
+  observation: ComputerObservation,
+  options: ChooseComputerActionOptions,
 ): ComputerDecision | null {
   const candidates = observation.legalActions.filter(
     (legal) => !NEVER_AUTOMATE.has(legal.action.type),
