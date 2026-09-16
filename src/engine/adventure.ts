@@ -485,6 +485,7 @@ export function clearCustomGuard(field: MapFieldState): void {
   delete field.customGuardPackFaction;
   delete field.designedGuard;
   delete field.breakField;
+  delete field.breakTileGate;
   delete field.persistentGuard;
   delete field.unlimitedCombatRounds;
 }
@@ -1223,6 +1224,9 @@ export function materializeTileFields(
       applyCustomGuardToField(field, centerHex?.guard);
       applyBreakFieldOptions(field, {
         ...(centerHex ?? {}),
+        // Whole-tile Break gating only from THIS tile's own centerHex tick; a
+        // map-wide centerHexes.breakField stays a per-field Break.
+        breakTileGate: tile.centerHex?.breakField === true,
         combatRoundLimit: centerHex?.combatRoundLimit ?? randomTownDefaults?.combatRoundLimit
       });
       if (field.location === "dragon_utopia" && centerHex?.flaggableDragonUtopia) {
@@ -1252,7 +1256,7 @@ export function materializeTileFields(
       const obelisks = adventure.mapPreset?.obelisks;
       const perTile = tile.objectPlans?.obelisk;
       applyCustomGuardToField(field, perTile?.guard ?? obelisks?.guard);
-      applyBreakFieldOptions(field, mergeObjectBreakFlags(perTile, obelisks));
+      applyBreakFieldOptions(field, withPerTileBreakGate(mergeObjectBreakFlags(perTile, obelisks), perTile));
       stampDesignerFieldReward(field, perTile?.reward ?? obelisks?.reward, perTile?.vp ?? obelisks?.vp);
       if (perTile?.winCondition) {
         field.designerWinCondition = true;
@@ -1265,7 +1269,7 @@ export function materializeTileFields(
       if (guard) {
         applyCustomGuardToField(field, guard);
       }
-      applyBreakFieldOptions(field, mergeObjectBreakFlags(perTile, mines));
+      applyBreakFieldOptions(field, withPerTileBreakGate(mergeObjectBreakFlags(perTile, mines), perTile));
       stampDesignerFieldReward(field, perTile?.reward ?? mines?.reward, perTile?.vp ?? mines?.vp);
       if (perTile?.winCondition) {
         field.designerWinCondition = true;
@@ -1286,6 +1290,8 @@ export function materializeTileFields(
       const settlements = adventure.mapPreset?.settlements;
       applyBreakFieldOptions(field, {
         breakField: centerHex?.breakField ?? globalCenter?.breakField,
+        // Whole-tile gating only from the tile's OWN centerHex tick.
+        breakTileGate: centerHex?.breakField === true,
         persistentGuard: centerHex?.persistentGuard ?? globalCenter?.persistentGuard,
         unlimitedRounds: centerHex?.unlimitedRounds ?? globalCenter?.unlimitedRounds,
         combatRoundLimit: centerHex?.combatRoundLimit ?? perTile?.combatRoundLimit ?? settlements?.combatRoundLimit ?? globalCenter?.combatRoundLimit,
@@ -1378,6 +1384,23 @@ export function materializeTileFields(
  * verbatim. A per-tile plan that exists but leaves a flag unset falls back to
  * the global flag (same per-field fallback its guard uses).
  */
+/**
+ * Marks the merged mine/obelisk break flags as a PER-TILE tile gate only when
+ * the tile's OWN object plan ticked "Break field". A break inherited from the
+ * map-wide config keeps its per-field meaning alone (`breakField` without
+ * `breakTileGate`), so global Break mines/obelisks never wall whole Ⅳ–Ⅴ /
+ * underground tiles a map's Break options do not cover.
+ */
+function withPerTileBreakGate(
+  merged: ReturnType<typeof mergeObjectBreakFlags>,
+  perTile: { breakField?: boolean } | undefined
+): (NonNullable<ReturnType<typeof mergeObjectBreakFlags>> & { breakTileGate?: boolean }) | undefined {
+  if (!merged) {
+    return undefined;
+  }
+  return { ...merged, breakTileGate: perTile?.breakField === true };
+}
+
 function mergeObjectBreakFlags(
   perTile:
     | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited"; noExperience?: boolean }
@@ -2956,11 +2979,17 @@ function tileGroupBreakSealsEntry(state: GameState, hero: HeroState, field: MapF
  * loot the tile's other fields; you must beat the break first, after which the
  * whole tile opens.
  *
- * This fires from the `breakField` designation ALONE — it needs neither the
- * map-wide Break-configuration tile gate (`mapPreset.breaks.enter*`) nor a
- * particular tile group, so ticking "Break field" on an object seals its tile on
- * any map. Tiles with NO designated break are untouched here (they keep the
- * map-wide `tileGroupBreakSealsEntry` fallback, which only walls open hexes), so
+ * This fires from the PER-TILE `breakTileGate` designation ALONE — it needs
+ * neither the map-wide Break-configuration tile gate (`mapPreset.breaks.enter*`)
+ * nor a particular tile group, so ticking "Break field" on a SPECIFIC tile's
+ * object seals that tile on any map. A break stamped only by the MAP-WIDE
+ * mines/obelisks/centerHexes flag (`breakField` without `breakTileGate`)
+ * deliberately does NOT seal here: it keeps its documented per-field meaning
+ * (fight to enter, no Pathfinding pass), so a map whose Break options say
+ * "tiles Ⅵ–Ⅶ" never walls off Ⅳ–Ⅴ / underground tiles just because their
+ * printed mine wears the global Break (USER REPORT 2026-09-16). Tiles with NO
+ * designated break are untouched here (they keep the map-wide
+ * `tileGroupBreakSealsEntry` fallback, which only walls open hexes), so
  * ordinary guarded fields on non-break tiles stay directly fightable as before.
  *
  * Exceptions that stay open: the break guard hex ITSELF (the entrance — handled
@@ -2980,7 +3009,7 @@ function designatedBreakGateSealsField(state: GameState, hero: HeroState, field:
   if (hero.spaceId === field.spaceId) return false;
   if (field.flagOwnerId === playerId || field.extraFlagOwnerIds?.includes(playerId)) return false;
   const breakGuardUncleared = (other: MapFieldState): boolean =>
-    other.breakField === true &&
+    other.breakTileGate === true &&
     isFieldGuarded(other) &&
     other.flagOwnerId !== playerId &&
     !breakClearedByTeam(state, playerId, other);

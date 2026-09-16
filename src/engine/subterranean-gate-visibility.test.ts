@@ -16,6 +16,7 @@ import {
   tileLatticeNeighbors,
   subterraneanGateMarkers,
   subterraneanGateMarkersBySpace,
+  faceDownGateHintsByTile,
   type CustomMapTilePlan,
   type GameState,
   type HexCoord
@@ -173,5 +174,38 @@ describe("Subterranean Gate map markers", () => {
     const halfMarked = subterraneanGateMarkers(adventure);
     expect(halfMarked).toHaveLength(1);
     expect(halfMarked[0]!.spaceId).toBe(plain[0]!.spaceId);
+  });
+
+  it("a FACE-DOWN linked tile wears a tile-level gate badge with the SAME letter as its revealed twin — no hex leaked", () => {
+    // USER REQUEST 2026-09-16: show WHERE the Underground gates connect while
+    // tiles are still face down.
+    const state = gameWithDesignedGate(true);
+    const adventure = adv(state);
+
+    // The revealed Surface half is a normal hex marker.
+    const markers = subterraneanGateMarkers(adventure);
+    const down = markers.find((marker) => marker.direction === "down");
+    expect(down, "the revealed Surface anchor half is marked").toBeTruthy();
+
+    // The face-down cavern gets a TILE badge with the same pairing letter.
+    const hints = faceDownGateHintsByTile(adventure);
+    const cavernHints = hints.get(down!.undergroundTileId);
+    expect(cavernHints, "the hidden cavern tile wears the gate badge").toHaveLength(1);
+    const hint = cavernHints![0]!;
+    expect(hint.label, "badge letter matches the revealed half's marker").toBe(down!.label);
+    expect(hint.direction).toBe("up");
+    expect(hint.role).toBe("entrance");
+    expect(hint.partnerTileId).toBe(down!.surfaceTileId);
+    expect(hint.tooltip).toContain(`Gate ${down!.label}`);
+    // Tile-level info only — the hint type carries no hex/space field at all.
+    expect("spaceId" in hint).toBe(false);
+
+    // The REVEALED surface tile gets no face-down badge (its hex marker covers it).
+    expect(hints.get(down!.surfaceTileId)).toBeUndefined();
+
+    // MUTATION CONTROL: flipping the cavern face up removes its tile badge —
+    // the derivation reads `faceDown`, not mere link membership.
+    adventure.tiles[down!.undergroundTileId]!.faceDown = false;
+    expect(faceDownGateHintsByTile(adventure).get(down!.undergroundTileId)).toBeUndefined();
   });
 });

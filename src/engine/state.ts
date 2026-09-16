@@ -4017,6 +4017,13 @@ export type CardOptionDefinition = {
   /** Polish Balance: this option closes as soon as any unit has activated. */
   combatStartOnly?: boolean;
   /**
+   * Polish Balance (Ballistics reprint): "at the beginning of a combat ROUND".
+   * Like `combatStartOnly` the option closes the moment a unit acts, but unlike
+   * it the window REOPENS at the start of every later combat round
+   * (`combatRoundStartWindowOpen`), so it is not limited to round 1.
+   */
+  combatRoundStartOnly?: boolean;
+  /**
    * "Instant" combat timing in the board-game sense: this option may be played
    * at ANY time during a Combat — on your own turn AND off-turn while an enemy
    * unit is active (its turn starting, mid-move, or just finished). Used by the
@@ -10938,6 +10945,15 @@ export type CombatState = {
       cardId: CardId;
       granted?: boolean;
       openingBallistics?: boolean;
+      /**
+       * Polish Balance Ballistics reprint: the holder is ASKED, at the start of
+       * every combat round, whether to play the card from HAND for its paid
+       * two-adjacent-target bombard. Not a war machine at all — the entry only
+       * rides this queue so its ordering against the Catapult / Ballista offers
+       * is deterministic (each owner's machines first, then their offer).
+       * Accepting rewrites the entry into an `openingBallistics` one.
+       */
+      handBallistics?: boolean;
     }[];
     firstTargetUnitId?: UnitId | null;
     /**
@@ -11695,6 +11711,20 @@ export type MapFieldState = {
    * obelisk / center-hex break options. Absent = classic Pathfinding pass-through.
    */
   breakField?: boolean;
+  /**
+   * PER-TILE designated Break gate: the designer ticked "Break field" on THIS
+   * tile's object plan / center hex (never from a map-wide mines/obelisks/
+   * centerHexes flag). While its guard stands, the WHOLE tile is sealed — its
+   * open hexes AND its side-guard fields — with the break hex as the one
+   * fightable entrance (USER RULING 2026-09-13). A map-wide breakField stamp
+   * deliberately does NOT set this: it keeps the documented per-field meaning
+   * only, so a map whose Break options say "tiles Ⅵ–Ⅶ" never walls off Ⅳ–Ⅴ /
+   * underground tiles just because their printed mine wears the global Break
+   * (USER REPORT 2026-09-16: "can't enter IV-V field with break even [though]
+   * in options it is already said properly: for VI-VII"). Always set alongside
+   * `breakField`.
+   */
+  breakTileGate?: boolean;
   /** Designer-opted capturable Dragon Utopia with an Astrologers-round recruit benefit. */
   flaggableDragonUtopia?: boolean;
   /**
@@ -17151,6 +17181,7 @@ export type PendingChoice =
         | "war-machine"
         | "deck-pick"
         | "deck-search-mode"
+        | "basic-magic-pick"
         | "scouting-prompt"
         | "discard-pick"
         | "hand-discard"
@@ -17647,6 +17678,30 @@ export type PendingChoice =
        * the Pendant and re-runs the same Search; the gained card is KEPT).
        */
       pendantRepeatSearch?: { deckId: DeckId; count: number };
+      /**
+       * basic-magic-pick — Polish Balance Pack "Basic X Magic" reprint: "find the
+       * first TWO <School> Magic spells in the deck, choose one and take it into
+       * your hand. Then reshuffle the deck." The two candidates are index-aligned
+       * with the options and still SIT IN their decks (already reshuffled); the
+       * chosen one is removed and gained, the other simply stays.
+       *
+       * `followUp` carries the Search tail the fetch interposed on, so the
+       * DECK_SEARCH_RESOLVED event and the Pendant-of-Courage repeat offer still
+       * fire — in that order — once the pick resolves.
+       */
+      basicMagicPick?: {
+        school: SpellSchool;
+        candidates: { deckId: DeckId; cardId: CardId }[];
+        followUp: {
+          deckId: DeckId;
+          /** Deck the Pendant-of-Courage repeat re-runs (defaults to `deckId`). */
+          pendantDeckId?: DeckId;
+          choiceId: string;
+          count: number;
+          returnPhase: GamePhase;
+          clearArtifactAccess?: boolean;
+        };
+      };
       /**
        * wayfarer-paralysis: Ring of the Wayfarer's start-of-combat decision in a
        * Neutral combat. `unitIds` are the offer's non-Azure targets (index-aligned

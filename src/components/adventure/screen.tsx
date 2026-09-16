@@ -155,6 +155,7 @@ import {
   startingBonusDescription,
   tileFootprint,
   subterraneanGateMarkersBySpace,
+  faceDownGateHintsByTile,
   tileLayer,
   tierOfLevel,
   UNIT_LEVELS,
@@ -1529,6 +1530,7 @@ export function HexMapBoard({
   // pairing badge (the same letter on both halves) plus a direction tooltip,
   // instead of only cueing while a hero happens to stand within reach.
   const gateMarkers = subterraneanGateMarkersBySpace(adventure);
+  const faceDownGateHints = faceDownGateHintsByTile(adventure);
 
   const artLayer: ReactNode[] = [];
   const cells: ReactNode[] = [];
@@ -1687,6 +1689,47 @@ export function HexMapBoard({
               </text>
             ) : null}
             <title>{faceDownTileHintLabel(hint)}</title>
+          </g>,
+        );
+      }
+      // Underground-Gate pairing badges: a face-down tile that a gate plan (or
+      // an already-carved half on the other layer) connects wears the gate icon
+      // plus the SAME letter its revealed markers will use, so players read
+      // WHERE the Underground connects before either tile is opened.
+      const gateHints = faceDownGateHints.get(tile.id) ?? [];
+      const gateHintSize = HEX_WIDTH * 0.54;
+      const gateHintGap = gateHintSize * 1.3;
+      for (const [gateIndex, gateHint] of gateHints.entries()) {
+        const hintX =
+          centerPixel.x + (gateIndex - (gateHints.length - 1) / 2) * gateHintGap;
+        const hintY = centerPixel.y + HEX_SIZE * 1.72;
+        artLayer.push(
+          <g
+            aria-label={gateHint.tooltip}
+            className="tileBackFeatureHint tileBackGateHint"
+            data-face-down-gate-hint={gateHint.label}
+            key={`back-gate-hint-${tile.id}-${gateIndex}`}
+            role="img"
+            style={{ pointerEvents: "none" }}
+          >
+            <circle cx={hintX} cy={hintY} r={gateHintSize * 0.53} />
+            <image
+              height={gateHintSize}
+              href={assetUrl("/game-tokens/markers/underground-gate.webp")}
+              preserveAspectRatio="xMidYMid meet"
+              width={gateHintSize}
+              x={hintX - gateHintSize / 2}
+              y={hintY - gateHintSize / 2}
+            />
+            <text
+              className="tileBackGateHintLabel"
+              textAnchor="middle"
+              x={hintX + gateHintSize * 0.42}
+              y={hintY + gateHintSize * 0.5}
+            >
+              {`${gateHint.direction === "down" ? "↧" : "↥"}${gateHint.label}`}
+            </text>
+            <title>{gateHint.tooltip}</title>
           </g>,
         );
       }

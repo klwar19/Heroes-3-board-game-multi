@@ -84,11 +84,14 @@ describe("Ballistics card definition (house-rule buff)", () => {
     });
     expect(card.effect.options[4].requiresHouseRule).toBe("polish-card-balance");
     expect(card.effect.options[4].expertOnly).toBe(true);
+    // The reprint's basic bombard recurs: its window is the start of a combat
+    // ROUND (reopening every round), NOT the once-per-fight start of combat.
     expect(card.effect.options[5]).toMatchObject({
       requiresHouseRule: "polish-card-balance",
-      combatStartOnly: true,
+      combatRoundStartOnly: true,
       effect: { type: "BALLISTICS_OPENING_BOMBARD", amount: 1 }
     });
+    expect(card.effect.options[5].combatStartOnly).toBeFalsy();
     expect(wallGate.forbidsHouseRule).toBe("polish-card-balance");
     expect(arrowTower.forbidsHouseRule).toBe("polish-card-balance");
     expect(bombard.forbidsHouseRule).toBe("polish-card-balance");

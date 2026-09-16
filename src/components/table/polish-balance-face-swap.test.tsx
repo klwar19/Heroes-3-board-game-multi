@@ -70,8 +70,9 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
       const classicEmpowered = empoweredCardImage(cardId) ?? cardLibrary[cardId]?.assets?.cardImage;
       expect(faceSrc(cardId, { balance: false, empowered: true })).toBe(classicEmpowered);
     }
-    // Non-vacuity: exactly the 12 abilities carry an empowered balance face.
-    expect(empoweredCovered).toBe(13);
+    // Non-vacuity: exactly the 17 abilities (13 classic reprints + the four
+    // Basic X Magic ones) carry an empowered balance face.
+    expect(empoweredCovered).toBe(17);
     // The Knowledge statistic has no empowered balance variant → plain face even Empowered.
     expect(faceSrc("stat.knowledge", { balance: true, empowered: true })).toBe(
       "/assets/polish-balance/stat-knowledge.webp"

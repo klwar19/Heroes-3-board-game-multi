@@ -301,3 +301,207 @@ describe("One-step spells deck-pick — discard, search or School of Magic, up f
     expect(draw, "the legacy second step still offers the fetch").toBeTruthy();
   });
 });
+
+/**
+ * Polish Balance Pack reprint — "Instead of Searching the Spell deck, find the
+ * first TWO <School> Magic spells in it, choose one and take it into your hand.
+ * Then, reshuffle the deck."
+ *
+ * Every case pins the OBSERVABLE divergence from the classic fetch: which card
+ * ended up in hand and which one stayed in the deck. The rule-OFF CONTROL runs
+ * the SAME deck, so a passing case proves the reprint moved the card — reverting
+ * the two-candidate logic makes the ON cases fail (no choice opens at all).
+ */
+describe("Balance Pack — Basic X Magic finds the first TWO spells and the owner picks", () => {
+  /**
+   * The deck-search-mode form: a plain Search on the "spells" deck with an Air
+   * fetch in play. The draw pile's LAST entry is the TOP of the deck, so the scan
+   * meets Precision first and Haste second.
+   */
+  function airFetchSearch(seed: string, balance: boolean): GameState {
+    const state = createInitialGameState(seed);
+    // `houseRuleEnabled` reads `state.adventure?.houseRules`; a sandbox has no
+    // adventure, so stamp the minimal stub (the polish ability tests' pattern).
+    state.adventure = {
+      houseRules: { "polish-card-balance": balance }
+    } as unknown as GameState["adventure"];
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    pushFetch(state, "p1", "air");
+    state.decks["spells"].drawPile = ["spell.haste", "spell.slow", "spell.slow", "spell.precision"];
+    state.decks["spells"].discardPile = [];
+    return state;
+  }
+
+  /** Opens the Search and takes the "draw from a School of Magic" option. */
+  function takeSchoolDraw(state: GameState): GameState {
+    const searched = applyOk(state, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    const draw = getLegalActions(searched, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_OPTION" && /Air Magic/i.test(legal.label)
+    );
+    expect(draw, "the Air Magic draw option must be offered").toBeTruthy();
+    return applyOk(searched, draw!.action);
+  }
+
+  it("opens a two-card pick, and choosing the SECOND takes exactly that spell (CONTROL: rule off takes the first, silently)", () => {
+    const on = takeSchoolDraw(airFetchSearch("balance-fetch-two", true));
+    const pick = on.pendingChoice;
+    expect(pick?.type).toBe("OPTION_CHOICE");
+    if (pick?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the two-candidate pick");
+    }
+    expect(pick.context).toBe("basic-magic-pick");
+    expect(pick.options).toHaveLength(2);
+    expect(pick.basicMagicPick?.candidates.map((entry) => entry.cardId)).toEqual([
+      "spell.precision",
+      "spell.haste"
+    ]);
+    // Nothing is gained, and nothing has left the deck, until the pick resolves.
+    expect(on.players.p1.hand).toEqual([]);
+    const beforeCount = deckCount(on, "spells");
+
+    const picked = applyOk(on, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: pick.id,
+      optionIndex: 1
+    });
+    expect(picked.players.p1.hand, "the SECOND candidate was taken").toEqual(["spell.haste"]);
+    expect(picked.decks["spells"].drawPile, "and the first one stayed in the deck").toContain(
+      "spell.precision"
+    );
+    expect(picked.decks["spells"].drawPile).not.toContain("spell.haste");
+    expect(deckCount(picked, "spells"), "exactly one card left the deck").toBe(beforeCount - 1);
+    expect(picked.pendingChoice).toBeNull();
+    // The Search tail the pick interposed on still ran.
+    expect(picked.eventLog.some((event) => event.type === "DECK_SEARCH_RESOLVED")).toBe(true);
+
+    // CONTROL: with the rule OFF the same deck gives the classic silent single
+    // fetch — the FIRST match, no choice at all.
+    const off = takeSchoolDraw(airFetchSearch("balance-fetch-two-off", false));
+    expect(off.pendingChoice, "no pick is opened with the rule off").toBeNull();
+    expect(off.players.p1.hand).toEqual(["spell.precision"]);
+    expect(off.decks["spells"].drawPile).toContain("spell.haste");
+  });
+
+  it("choosing the FIRST option takes that spell instead (the pick really decides)", () => {
+    const on = takeSchoolDraw(airFetchSearch("balance-fetch-first", true));
+    const pick = on.pendingChoice;
+    if (pick?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the two-candidate pick");
+    }
+    const picked = applyOk(on, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: pick.id,
+      optionIndex: 0
+    });
+    expect(picked.players.p1.hand).toEqual(["spell.precision"]);
+    expect(picked.decks["spells"].drawPile).toContain("spell.haste");
+  });
+
+  it("a single match is still taken outright — no dead one-button pick", () => {
+    const state = airFetchSearch("balance-fetch-one", true);
+    // Only ONE Air spell in the whole deck.
+    state.decks["spells"].drawPile = ["spell.slow", "spell.slow", "spell.haste"];
+    const drawn = takeSchoolDraw(state);
+    expect(drawn.pendingChoice, "nothing to decide").toBeNull();
+    expect(drawn.players.p1.hand).toEqual(["spell.haste"]);
+    expect(drawn.decks["spells"].drawPile).not.toContain("spell.haste");
+  });
+
+  it("no match keeps the existing 'found no takeable spell' note", () => {
+    const state = airFetchSearch("balance-fetch-none", true);
+    state.decks["spells"].drawPile = ["spell.slow", "spell.slow", "spell.slow"];
+    const drawn = takeSchoolDraw(state);
+    expect(drawn.pendingChoice).toBeNull();
+    expect(drawn.players.p1.hand).toEqual([]);
+    expect(
+      drawn.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /found no takeable Air Magic spell/i.test(event.message)
+      )
+    ).toBe(true);
+  });
+
+  it("the offer label names the two-spell draw (CONTROL: the classic label stays single)", () => {
+    const on = applyOk(airFetchSearch("balance-fetch-label", true), {
+      type: "SEARCH_DECK",
+      playerId: "p1",
+      deckId: "spells",
+      count: 2
+    });
+    const onLabels = getLegalActions(on, "p1").map((legal) => legal.label);
+    expect(onLabels.some((label) => /Draw the first two Air Magic spells — choose one/i.test(label))).toBe(
+      true
+    );
+
+    const off = applyOk(airFetchSearch("balance-fetch-label-off", false), {
+      type: "SEARCH_DECK",
+      playerId: "p1",
+      deckId: "spells",
+      count: 2
+    });
+    const offLabels = getLegalActions(off, "p1").map((legal) => legal.label);
+    expect(offLabels.some((label) => /Draw the first Air Magic spell/i.test(label))).toBe(true);
+    expect(offLabels.some((label) => /first two/i.test(label))).toBe(false);
+  });
+
+  /**
+   * The OTHER call site: the one-step spells deck-pick (both Spell decks offered
+   * together). Its tail — DECK_SEARCH_RESOLVED and the Pendant repeat offer —
+   * must still run after the pick, in that order.
+   */
+  it("the one-step spells deck-pick form opens the same pick and still runs its tail", () => {
+    let state = createAdventureGameState({
+      seed: "balance-fetch-deck-pick",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "polish-card-balance": true }
+    });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      state.activePlayerId = "p1";
+    }
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    const heroField = state.adventure!.fields[state.heroes.hero_p1.spaceId as string]!;
+    state.adventure!.tiles[heroField.tileInstanceId]!.backLabel = "Ⅳ–Ⅴ";
+    // Two Fire spells in the BASIC deck: the scan finds both there and never
+    // reaches the expert deck. Top of the pile is the last entry.
+    state.decks["spells"].drawPile = ["spell.inferno", "spell.slow", "spell.slayer"];
+    state.decks["spells"].discardPile = [];
+
+    state.adventure!.rewardQueue.push({ playerId: "p1", kind: "shared-deck-search", deckId: "spells", count: 3 });
+    pumpAdventureQueues(state);
+
+    const draw = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_OPTION" && /Fire Magic/i.test(legal.label)
+    );
+    expect(draw, "the one-step pick must offer the Fire draw").toBeTruthy();
+    const opened = applyOk(state, draw!.action);
+    const pick = opened.pendingChoice;
+    if (pick?.type !== "OPTION_CHOICE") {
+      throw new Error(`expected the two-candidate pick, got ${opened.pendingChoice?.type ?? "nothing"}`);
+    }
+    expect(pick.context).toBe("basic-magic-pick");
+    expect(pick.basicMagicPick?.candidates.map((entry) => entry.cardId)).toEqual([
+      "spell.slayer",
+      "spell.inferno"
+    ]);
+
+    const picked = applyOk(opened, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: pick.id,
+      optionIndex: 1
+    });
+    expect(picked.players.p1.hand).toContain("spell.inferno");
+    expect(picked.decks["spells"].drawPile).toContain("spell.slayer");
+    expect(picked.eventLog.some((event) => event.type === "DECK_SEARCH_RESOLVED")).toBe(true);
+  });
+});

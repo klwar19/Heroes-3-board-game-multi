@@ -456,7 +456,8 @@ describe("Community pack — Artillery hits ANY enemy", () => {
 // ===========================================================================
 
 describe("Community pack — Ballistics", () => {
-  /** A sandbox whose combat has already begun (so `combatStartOnly` is closed). */
+  /** A sandbox whose combat has already begun (so the Polish reprint's
+   * round-start window — `combatRoundStartOnly` — is closed). */
   function fightingSandbox(seed: string, rules: Rules): GameState {
     const state = sandbox(seed, rules, ["ability.ballistics"], 2);
     state.players.p1.resources.buildingMaterials = 2;
@@ -465,7 +466,7 @@ describe("Community pack — Ballistics", () => {
     return state;
   }
 
-  it("the paid 2-adjacent-target bombard is playable AFTER the fight has begun (CONTROL: the Polish reprint is start-of-combat only)", () => {
+  it("the paid 2-adjacent-target bombard is playable AFTER the fight has begun (CONTROL: the Polish reprint is round-start only)", () => {
     const community = fightingSandbox("ballistics-mid-community", { community: true });
     const communityPlays = playsOf(community, "p1", "ability.ballistics").filter(
       (legal) =>
@@ -476,7 +477,7 @@ describe("Community pack — Ballistics", () => {
 
     const polish = fightingSandbox("ballistics-mid-polish", { polish: true });
     const polishBombard = playsOf(polish, "p1", "ability.ballistics", 5);
-    expect(polishBombard, "the Polish bombard is combatStartOnly").toEqual([]);
+    expect(polishBombard, "the Polish bombard is combatRoundStartOnly").toEqual([]);
   });
 
   it("really pays 1 building material and opens the two-adjacent-target picker", () => {

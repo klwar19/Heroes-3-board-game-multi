@@ -595,6 +595,8 @@ export function applyBreakFieldOptions(
   options:
     | {
         breakField?: boolean;
+        /** PER-TILE designation only (tile objectPlans / tile.centerHex) — see MapFieldState.breakTileGate. */
+        breakTileGate?: boolean;
         persistentGuard?: boolean;
         unlimitedRounds?: boolean;
         combatRoundLimit?: 1 | 2 | 3 | "unlimited";
@@ -605,6 +607,8 @@ export function applyBreakFieldOptions(
   if (!options) return;
   if (options.breakField) field.breakField = true;
   else delete field.breakField;
+  if (options.breakField && options.breakTileGate) field.breakTileGate = true;
+  else delete field.breakTileGate;
   if (options.persistentGuard) field.persistentGuard = true;
   else delete field.persistentGuard;
   if (options.combatRoundLimit !== undefined) field.combatRoundLimit = options.combatRoundLimit;

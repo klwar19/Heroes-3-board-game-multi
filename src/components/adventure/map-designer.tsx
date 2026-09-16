@@ -6358,7 +6358,7 @@ export function MapDesigner({
                     <div className="popoverGuardRow" role="group" aria-label="Center VII break options">
                       {(
                         [
-                          { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through this guarded Ⅶ field." },
+                          { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through this guarded Ⅶ field. Also gates its whole tile: no other hex of the tile can be entered until this Break falls." },
                           { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves living guards for a re-fight." },
                           { key: "noExperience", label: "No experience", hint: "Winning grants the hero no experience — the fight is still real and pays its other rewards." }
                         ] as const
@@ -6771,7 +6771,7 @@ export function MapDesigner({
                       <div className="popoverGuardRow" role="group" aria-label={`${objectKind} break options`}>
                         {(
                           [
-                            { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through — must fight to enter." },
+                            { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through — must fight to enter. Ticked HERE (per tile) it also gates the whole tile: no other hex of it can be entered until this Break falls. The map-wide Mine/Obelisk Break flag stays per-field only." },
                             { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves the living guards for a re-fight." }
                           ] as const
                         ).map((flag) => (

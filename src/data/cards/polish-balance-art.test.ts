@@ -77,7 +77,8 @@ describe("Polish Balance Pack art", () => {
   });
 
   it("ships a real 743×1040 EMPOWERED balance face for every empowered ability id", () => {
-    expect(POLISH_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(13);
+    // 13 classic Ability reprints + the four Basic X Magic reprints.
+    expect(POLISH_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(17);
     for (const cardId of POLISH_BALANCE_EMPOWERED_ABILITY_IDS) {
       // Every empowered id must also have a wired plain reprint (the empowered
       // face is the same card's empowered display state).
@@ -147,6 +148,11 @@ describe("Polish Balance Pack registries", () => {
     const PACK_ABILITIES = [
       "ability.artillery",
       "ability.ballistics",
+      // The four Basic X Magic reprints ("find the first TWO … choose one").
+      "ability.basic_air_magic",
+      "ability.basic_earth_magic",
+      "ability.basic_fire_magic",
+      "ability.basic_water_magic",
       "ability.diplomacy",
       "ability.eagle_eye",
       "ability.first_aid",

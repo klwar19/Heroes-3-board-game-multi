@@ -61,6 +61,26 @@ type Link = {
 };
 
 /**
+ * One Underground-Gate pairing badge for a still-FACE-DOWN tile: "this tile is
+ * (or will be) connected through Subterranean Gate <label>". Tile-level public
+ * info only — a face-down tile has no materialized hexes, so no position leaks;
+ * the pairing itself is already public (a designer gate link is printed map
+ * structure, and a player's pick-on-reveal plan was made in the open).
+ */
+export type FaceDownGateHint = {
+  tileId: string;
+  /** Shared pairing label ("A", "B", …) — the SAME letter the revealed halves' markers wear. */
+  label: string;
+  /** The half this tile hosts once revealed. */
+  role: SubterraneanGateMarkerRole;
+  /** "down" on the Surface tile, "up" on the cavern tile. */
+  direction: "down" | "up";
+  /** The tile on the other layer this one bridges to. */
+  partnerTileId: string;
+  tooltip: string;
+};
+
+/**
  * Every Subterranean Gate half a player is entitled to see, paired.
  *
  * Two sources, deliberately no more:
@@ -78,6 +98,49 @@ type Link = {
 export function subterraneanGateMarkers(
   adventure: AdventureState | undefined | null
 ): SubterraneanGateMarker[] {
+  const ordered = collectGateLinks(adventure);
+  const markers: SubterraneanGateMarker[] = [];
+  ordered.forEach((link, index) => {
+    const label = gateLabel(index);
+    for (const half of link.halves) {
+      const partner = link.halves.find((other) => other.spaceId !== half.spaceId);
+      const down = half.role === "gate";
+      const partnerTileId = down ? link.undergroundTileId : link.surfaceTileId;
+      const where = down
+        ? "path DOWN into the Underground"
+        : "path UP to the Surface";
+      const pairing = partner
+        ? `its twin (Gate ${label}) is the linked half on the other layer`
+        : "the linked tile is still face down, so its twin half is not placed yet";
+      markers.push({
+        spaceId: half.spaceId,
+        label,
+        role: half.role,
+        direction: down ? "down" : "up",
+        carved: half.carved,
+        surfaceTileId: link.surfaceTileId,
+        undergroundTileId: link.undergroundTileId,
+        partnerTileId,
+        ...(partner ? { partnerSpaceId: partner.spaceId } : {}),
+        tooltip: `Subterranean Gate ${label} — ${where}; ${pairing}${
+          half.carved ? "" : " (opens once this tile's gate is carved)"
+        }`
+      });
+    }
+  });
+  return markers;
+}
+
+/**
+ * Every gate LINK the map knows about, sorted by its deterministic key and
+ * therefore label-stable: carved gate fields, pinned-but-uncarved plan hexes
+ * (both exactly as {@link subterraneanGateMarkers} always collected them), PLUS
+ * every {@link AdventureState.gatePlans} pairing whose halves are not placed
+ * yet — a link between still-face-down tiles carries zero halves but still
+ * claims its letter, so the badge a hidden tile wears before reveal matches the
+ * marker its carved gate wears after.
+ */
+function collectGateLinks(adventure: AdventureState | undefined | null): Link[] {
   if (!adventure) {
     return [];
   }
@@ -110,8 +173,14 @@ export function subterraneanGateMarkers(
     }
   }
 
-  // 2. Planned-but-uncarved halves whose hex is already pinned on a revealed tile.
+  // 2. Planned-but-uncarved halves whose hex is already pinned on a revealed
+  //    tile — and the LINK itself even when neither hex is pinned yet, so the
+  //    pairing has a stable letter while both tiles are still face down.
   for (const plan of adventure.gatePlans ?? []) {
+    const key = `${plan.surfaceTileId}|${plan.undergroundTileId}`;
+    if (!links.has(key)) {
+      links.set(key, { key, surfaceTileId: plan.surfaceTileId, undergroundTileId: plan.undergroundTileId, halves: [] });
+    }
     for (const [hex, role] of [
       [plan.gateHex, "gate"] as const,
       [plan.entranceHex, "entrance"] as const
@@ -123,37 +192,54 @@ export function subterraneanGateMarkers(
     }
   }
 
-  const ordered = [...links.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const markers: SubterraneanGateMarker[] = [];
+  return [...links.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+/**
+ * Underground-Gate pairing badges for FACE-DOWN tiles, keyed by tile id: every
+ * gate link one of whose ends is a still-face-down tile contributes a badge on
+ * that hidden end, labelled with the SAME letter its revealed markers use. This
+ * is what shows, before a tile is opened, WHERE the Underground connects — the
+ * user-requested "where are the Underground gates when the tile is face down".
+ */
+export function faceDownGateHintsByTile(
+  adventure: AdventureState | undefined | null
+): Map<string, FaceDownGateHint[]> {
+  const hints = new Map<string, FaceDownGateHint[]>();
+  if (!adventure) {
+    return hints;
+  }
+  const ordered = collectGateLinks(adventure);
   ordered.forEach((link, index) => {
     const label = gateLabel(index);
-    for (const half of link.halves) {
-      const partner = link.halves.find((other) => other.spaceId !== half.spaceId);
-      const down = half.role === "gate";
+    for (const [tileId, role] of [
+      [link.surfaceTileId, "gate"] as const,
+      [link.undergroundTileId, "entrance"] as const
+    ]) {
+      const tile = adventure.tiles?.[tileId];
+      if (!tile || !tile.faceDown) {
+        continue;
+      }
+      const down = role === "gate";
       const partnerTileId = down ? link.undergroundTileId : link.surfaceTileId;
-      const where = down
-        ? "path DOWN into the Underground"
-        : "path UP to the Surface";
-      const pairing = partner
-        ? `its twin (Gate ${label}) is the linked half on the other layer`
-        : "the linked tile is still face down, so its twin half is not placed yet";
-      markers.push({
-        spaceId: half.spaceId,
+      const partnerRevealed = adventure.tiles?.[partnerTileId]?.faceDown === false;
+      const list = hints.get(tileId) ?? [];
+      list.push({
+        tileId,
         label,
-        role: half.role,
+        role,
         direction: down ? "down" : "up",
-        carved: half.carved,
-        surfaceTileId: link.surfaceTileId,
-        undergroundTileId: link.undergroundTileId,
         partnerTileId,
-        ...(partner ? { partnerSpaceId: partner.spaceId } : {}),
-        tooltip: `Subterranean Gate ${label} — ${where}; ${pairing}${
-          half.carved ? "" : " (opens once this tile's gate is carved)"
-        }`
+        tooltip: `Subterranean Gate ${label} — this tile ${
+          down ? "hosts the path DOWN into the Underground" : "hosts the path UP to the Surface"
+        }; its twin half is on the ${down ? "Underground" : "Surface"} tile wearing the same letter${
+          partnerRevealed ? "" : " (also still face down)"
+        }.`
       });
+      hints.set(tileId, list);
     }
   });
-  return markers;
+  return hints;
 }
 
 /** {@link subterraneanGateMarkers} keyed by hex, for a per-field render lookup. */

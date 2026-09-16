@@ -331,6 +331,7 @@ import {
 } from "./house-rules";
 import {
   balanceIntelligenceWindowClosed,
+  combatRoundStartWindowOpen,
   combatStartWindowOpen,
   polishIntelligenceHandReadingActive,
 } from "./combat-timing";
@@ -422,6 +423,8 @@ type CardPlayVariant = {
   combatOnly?: boolean;
   /** Option only playable before any unit activates. */
   combatStartOnly?: boolean;
+  /** Option only playable in a combat ROUND's start window (reopens each round). */
+  combatRoundStartOnly?: boolean;
   /**
    * Community Balance Change Centaur's Axe: "Use this AFTER the Attack die
    * roll." Never offered in a PRE-roll window; the post-roll ATTACK_DIE_SETTLED
@@ -460,6 +463,7 @@ export function getCardPlayVariants(card: CardDefinition, state?: GameState): Ca
         mapOnly: option.mapOnly,
         combatOnly: option.combatOnly,
         combatStartOnly: option.combatStartOnly,
+        combatRoundStartOnly: option.combatRoundStartOnly,
         afterAttackRoll: option.afterAttackRoll,
         expertOnly: option.expertOnly,
       };
@@ -5206,6 +5210,16 @@ function addOptionPlays(
     if (
       option.combatStartOnly &&
       (!state.combat || !combatStartWindowOpen(state.combat))
+    ) {
+      continue;
+    }
+    // "At the beginning of a combat ROUND" (the Polish Ballistics reprint): the
+    // window reopens with every new round and closes the instant a unit acts in
+    // it. Deliberately a SEPARATE flag from `combatStartOnly` — widening that one
+    // would move every other start-of-combat card's window too.
+    if (
+      option.combatRoundStartOnly &&
+      (!state.combat || !combatRoundStartWindowOpen(state.combat))
     ) {
       continue;
     }

@@ -1161,6 +1161,132 @@ describe("Balance Pack — Ballistics", () => {
     ).toBe(false);
   });
 
+  // -------------------------------------------------------------------------
+  // The reprint's BASIC bombard is "at the beginning of a combat ROUND", and the
+  // holder must be ASKED at every round start — round 1 included (USER RULE).
+  // -------------------------------------------------------------------------
+
+  /** A sandbox where p1 holds Ballistics and can pay for the bombard. */
+  function holdingBallistics(seed: string, balance: boolean, materials = 1): GameState {
+    const state = sandbox(seed, balance, ["ability.ballistics"], 0);
+    state.players.p1.resources.buildingMaterials = materials;
+    return state;
+  }
+
+  /** The round-start offer p1 is looking at, or null. */
+  function roundStartOffer(state: GameState) {
+    const choice = state.pendingChoice;
+    return choice?.type === "OPTION_CHOICE" && choice.playerId === "p1" ? choice : null;
+  }
+
+  it("ASKS the holder at the start of EVERY combat round — round 1 and round 2 (CONTROL: rule off never asks)", () => {
+    const first = holdingBallistics("balance-ballistics-ask-r1", true);
+    startWarMachineRound(first);
+    const opening = roundStartOffer(first);
+    expect(opening, "round 1 must open the ask, with no war machine in play").toBeTruthy();
+    expect(opening!.options).toHaveLength(2);
+    expect(opening!.options[0].label).toContain("Ballistics");
+    expect(opening!.options[1].label).toBe("Skip");
+
+    // Round 2: a fresh round start (the flags reset) asks again — the window is
+    // NOT the once-per-fight start-of-combat one.
+    const later = holdingBallistics("balance-ballistics-ask-r2", true);
+    later.combat!.round = 2;
+    startWarMachineRound(later);
+    expect(roundStartOffer(later), "round 2 must ask again").toBeTruthy();
+
+    // CONTROL: the same setup with the rule OFF queues nothing at all.
+    const off = holdingBallistics("balance-ballistics-ask-off", false);
+    startWarMachineRound(off);
+    expect(off.pendingChoice, "the classic Ballistics has no round-start ask").toBeNull();
+
+    // CONTROL: a holder who cannot pay is not asked either.
+    const broke = holdingBallistics("balance-ballistics-ask-broke", true, 0);
+    startWarMachineRound(broke);
+    expect(broke.pendingChoice).toBeNull();
+  });
+
+  it("accepting really pays 1 building material, spends the card and lands 1 damage on 2 adjacent targets", () => {
+    const state = holdingBallistics("balance-ballistics-accept", true);
+    startWarMachineRound(state);
+    const offer = roundStartOffer(state);
+    expect(offer).toBeTruthy();
+
+    const fired = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: offer!.id,
+      optionIndex: 0
+    });
+    expect(fired.players.p1.resources.buildingMaterials, "the material was paid").toBe(0);
+    expect(fired.players.p1.hand, "the card left hand").not.toContain("ability.ballistics");
+    expect(fired.players.p1.discard, "and went to the discard").toContain("ability.ballistics");
+    expect(crownsSpent(fired), "the BASIC side costs no crown").toBe(0);
+
+    const aim = fired.pendingChoice;
+    if (aim?.type !== "ABILITY_TARGET_CHOICE") {
+      throw new Error(`expected the first-target pick, got ${aim?.type ?? "nothing"}`);
+    }
+    const firstId = aim.candidateUnitIds[0];
+    const pickFirst = getLegalActions(fired, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === firstId
+    );
+    expect(pickFirst, "the first target must be offered").toBeTruthy();
+    const hitOne = applyOk(fired, pickFirst!.action);
+    expect(hitOne.combat!.units[firstId]?.damage, "1 damage on the first target").toBe(1);
+
+    // The second, adjacent target takes its own 1 damage (auto when there is one
+    // neighbour, otherwise through the follow-up pick).
+    const second = hitOne.pendingChoice;
+    if (second?.type === "ABILITY_TARGET_CHOICE") {
+      const secondId = second.candidateUnitIds[0];
+      const pickSecond = getLegalActions(hitOne, "p1").find(
+        (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === secondId
+      );
+      const done = applyOk(hitOne, pickSecond!.action);
+      expect(done.combat!.units[secondId]?.damage, "1 damage on the adjacent target").toBe(1);
+    }
+  });
+
+  it("declining costs nothing and keeps the card", () => {
+    const state = holdingBallistics("balance-ballistics-decline", true);
+    startWarMachineRound(state);
+    const offer = roundStartOffer(state)!;
+    const skipped = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: offer.id,
+      optionIndex: 1
+    });
+    expect(skipped.players.p1.resources.buildingMaterials).toBe(1);
+    expect(skipped.players.p1.hand).toContain("ability.ballistics");
+    expect(skipped.pendingChoice, "the queue is done").toBeNull();
+  });
+
+  it("the from-hand bombard is legal in a LATER round's start window and closes once a unit acts", () => {
+    const later = holdingBallistics("balance-ballistics-window-r2", true);
+    later.combat!.round = 2;
+    expect(
+      playsOf(later, "p1", "ability.ballistics").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.optionIndex === 5
+      ),
+      "round 2's start window must offer the bombard (it is not start-of-COMBAT only)"
+    ).toBe(true);
+
+    // CONTROL: the same round, but a unit has already acted — the window is shut.
+    const acted = holdingBallistics("balance-ballistics-window-acted", true);
+    acted.combat!.round = 2;
+    Object.values(acted.combat!.units)[0]!.movedThisActivation = true;
+    expect(
+      playsOf(acted, "p1", "ability.ballistics").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.optionIndex === 5
+      )
+    ).toBe(false);
+    // …and the round-start ask does not open mid-round either.
+    startWarMachineRound(acted);
+    expect(acted.pendingChoice).toBeNull();
+  });
+
   it("EXPERT (Catapult): fires it TWICE on the same targets and pays no building material", () => {
     /** A sandbox round-start Catapult offer with Ballistics in hand. */
     function catapultRound(balance: boolean, materials: number): GameState {

@@ -103,6 +103,16 @@ scripts/anime-art/**/*.ogg
 scripts/anime-art/**/*.mp4
 scripts/anime-art/**/*.mov
 scripts/anime-art/**/*.bik
+scripts/card-art/**/*.png
+scripts/card-art/**/*.jpg
+scripts/card-art/**/*.jpeg
+scripts/card-art/**/*.webp
+scripts/card-art/**/*.gif
+scripts/card-art/**/*.psd
+scripts/card-art/**/*.tif
+scripts/card-art/**/*.tiff
+scripts/card-art/**/*.bmp
+scripts/card-art/**/*.avif
 scripts/commander-art/**/*.png
 scripts/commander-art/**/*.jpg
 scripts/commander-art/**/*.jpeg

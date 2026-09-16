@@ -343,7 +343,11 @@ describe("map-design-features — break field + persistent army", () => {
       tileInstanceId: "ntile",
       difficulty: 6,
       designedGuard: true,
-      breakField: true
+      breakField: true,
+      // The PER-TILE "Break field" tick (tile objectPlans / centerHex) — the
+      // map-wide mines/obelisks flag stamps breakField WITHOUT this, and only
+      // this gate seals the whole tile (see the global-stamp test below).
+      breakTileGate: true
     });
     const sideGuard = injectField(state, "pandoras_box", "90,91", {
       tileInstanceId: "ntile",
@@ -365,19 +369,73 @@ describe("map-design-features — break field + persistent army", () => {
 
     // CONTROL: strip the Break designation — with no designated break and the
     // map-wide gate off, the side-guard is directly fightable and the open hex
-    // freely enterable (the seal comes from `breakField`, nothing else).
+    // freely enterable (the seal comes from the designation, nothing else).
     delete brk.breakField;
+    delete brk.breakTileGate;
     expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("stop");
     expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
 
     // Restore the break, then beat it: the whole tile opens — "no more break
     // means you can go", the Fountain / waterfall included.
     brk.breakField = true;
+    brk.breakTileGate = true;
     expect(classifyHeroStep(state, hero, open.spaceId)).toBe("block");
     brk.flagOwnerId = "p1";
     brk.everFlagged = true; // break guard beaten -> no longer guarded
     expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("stop");
     expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
+  });
+
+  it("a MAP-WIDE Break stamp never seals a Ⅳ–Ⅴ tile the Break options do not cover", () => {
+    // USER REPORT 2026-09-16: "can't enter IV-V field with break even [though]
+    // in options it is already said properly: for VI-VII field". The map-wide
+    // mines/obelisks Break flag stamps `breakField` on EVERY mine — Ⅳ–Ⅴ and
+    // underground tiles included — and the whole-tile seal must NOT fire from
+    // that: only the per-tile designation (`breakTileGate`) seals a tile.
+    const state = makeGame("global-break-no-tile-seal");
+    state.adventure!.mapPreset = { breaks: { enterCenterTiles: true }, mines: { breakField: true } };
+    state.adventure!.tiles["ntile"] = {
+      id: "ntile",
+      tileDefId: "N1",
+      centerRow: 90,
+      centerCol: 90,
+      rotation: 0,
+      faceDown: false,
+      group: "near"
+    } as never;
+    // The global stamp: breakField WITHOUT breakTileGate (what
+    // materializeTileFields writes for a map-wide mines/obelisks flag).
+    const mine = injectField(state, "mine", "90,90", {
+      tileInstanceId: "ntile",
+      difficulty: 3,
+      breakField: true
+    });
+    const sideGuard = injectField(state, "pandoras_box", "90,91", {
+      tileInstanceId: "ntile",
+      difficulty: 5,
+      designedGuard: true
+    });
+    const open = injectField(state, "mystical_garden", "91,90", { tileInstanceId: "ntile" });
+    injectField(state, "empty_field", "89,90", { tileInstanceId: "othertile" });
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "89,90";
+
+    // The mine keeps its documented PER-FIELD Break meaning: fight to enter,
+    // Pathfinding may not pass through.
+    expect(
+      classifyHeroStep(state, hero, mine.spaceId, { passEncounters: true, moveThrough: false } as never)
+    ).toBe("stop");
+    // But the REST of the Ⅳ–Ⅴ tile is not walled off by it: the side guard is
+    // directly fightable and the open hex freely enterable.
+    expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("stop");
+    expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
+
+    // MUTATION CONTROL (old vs new rules diverge): promoting the same stamp to
+    // the per-tile gate seals the tile again — proving the seal reads
+    // `breakTileGate`, not `breakField`.
+    mine.breakTileGate = true;
+    expect(classifyHeroStep(state, hero, sideGuard.spaceId)).toBe("block");
+    expect(classifyHeroStep(state, hero, open.spaceId)).toBe("block");
   });
 
   it("a designer 'no experience' field withholds hero XP on a REAL win (CONTROL: it pays without the flag)", () => {

@@ -334,6 +334,8 @@ export {
 export {
   subterraneanGateMarkers,
   subterraneanGateMarkersBySpace,
+  faceDownGateHintsByTile,
+  type FaceDownGateHint,
   type SubterraneanGateMarker,
   type SubterraneanGateMarkerRole
 } from "./subterranean-gate-visibility";

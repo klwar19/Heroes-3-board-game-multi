@@ -45,6 +45,7 @@ export const MEDIA_ROOTS = ["assets", "sounds"];
 /** Repo-relative art-master trees whose binaries live in the bucket under sources/, not in git. */
 export const SOURCE_ROOTS = [
   "scripts/anime-art",
+  "scripts/card-art",
   "scripts/commander-art",
   "scripts/neutral-unit-art",
   "scripts/doom-art",

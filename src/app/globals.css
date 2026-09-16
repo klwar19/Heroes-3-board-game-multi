@@ -6288,6 +6288,17 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   stroke-width: 3px;
 }
 
+/* Underground-Gate pairing letter on a face-down tile's gate badge — same
+   gold-on-dark treatment as the revealed halves' .hexGateLink letters. */
+.tileBackGateHintLabel {
+  fill: #ffe9a8;
+  font-size: 14px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #211326;
+  stroke-width: 3px;
+}
+
 .hexGateCue {
   fill: #ffe9bd;
   font-size: 9px;

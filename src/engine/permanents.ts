@@ -11,7 +11,7 @@ import {
   spendResources
 } from "./adventure";
 import { isAdjacent } from "./battlefield";
-import { combatStartWindowOpen } from "./combat-timing";
+import { combatRoundStartWindowOpen, combatStartWindowOpen } from "./combat-timing";
 import { isHandLockedInCombat } from "./legal-actions";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
@@ -29,6 +29,7 @@ import type {
   GameAction,
   GameState,
   PlayerId,
+  ResourceCost,
   SpellSchool,
   UnitId,
   WarMachineRoundStartDefinition
@@ -1078,7 +1079,15 @@ export function startWarMachineRound(state: GameState): void {
       playerId,
       cardId: "war_machine.ballista" as CardId,
       granted: true
-    }))
+    })),
+    // Polish Balance Ballistics (reprint, BASIC side): the holder is asked at the
+    // start of EVERY combat round — round 1 included — whether to pay 1 building
+    // material for the two-adjacent-target bombard. Queued AFTER this owner's own
+    // machines so the ordering is deterministic (and re-checked when it reaches
+    // the head, so a card played meanwhile simply drops out).
+    ...(playerCanUseBallisticsRoundStartBombard(state, playerId)
+      ? [{ playerId, cardId: BALLISTICS_ABILITY_ID, handBallistics: true }]
+      : [])
   ]);
   combat.warMachineRound = pending.length > 0 ? { pending, firstTargetUnitId: null } : null;
   processWarMachineRound(state);
@@ -1248,6 +1257,49 @@ export function playerCanUseBallisticsCatapultDouble(state: GameState, playerId:
       player &&
       player.hand.includes(BALLISTICS_ABILITY_ID) &&
       canPlayExpertMode(player, BALLISTICS_ABILITY_ID)
+  );
+}
+
+const BALLISTICS_ROUND_START_COST: ResourceCost = { buildingMaterials: 1 };
+const BALLISTICS_ROUND_START_LABEL =
+  "Play Ballistics: pay 1 building material — 1 damage to each of 2 adjacent targets";
+
+/**
+ * Polish Balance Pack — the reprinted BALLISTICS BASIC: "At the beginning of a
+ * combat round, you may pay 1 building material to choose 2 adjacent targets
+ * (any combination of units, Walls and the Gate) and deal 1 damage to each."
+ *
+ * USER RULE: the holder must be ASKED at the start of EVERY combat round, round 1
+ * included — so this is not merely a legality window, it is an explicit offer
+ * queued by `startWarMachineRound`. No crown is involved (it is the BASIC side),
+ * so an Empowered copy changes nothing here.
+ *
+ * The Community pack reprints Ballistics too and its basic side is NOT
+ * round-start scoped (it is playable on the owner's activation), so the recurring
+ * ask belongs to the Polish printing alone — the same precedence
+ * `polishBallistaTiming` / `polishIntelligenceHandReadingActive` use.
+ */
+export function playerCanUseBallisticsRoundStartBombard(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  if (!polishBallistaTiming(state) || !player || !state.combat || state.combat.outcome) {
+    return false;
+  }
+  if (!player.hand.includes(BALLISTICS_ABILITY_ID)) {
+    return false;
+  }
+  // The printed window: "at the BEGINNING of a combat round". The same read the
+  // from-hand play's `combatRoundStartOnly` gate uses, so the ask and the manual
+  // play can never disagree — once a unit has acted, neither is available.
+  if (!combatRoundStartWindowOpen(state.combat)) {
+    return false;
+  }
+  // A hand-locked fight (secondary hero / heroless garrison) may play no cards:
+  // offering this would be a dead prompt, exactly as the war-machine offers skip.
+  if (isHandLockedInCombat(state, playerId)) {
+    return false;
+  }
+  return (
+    hasResources(player, BALLISTICS_ROUND_START_COST) && splashFirstTargets(state).length > 0
   );
 }
 
@@ -1593,6 +1645,26 @@ export function processWarMachineRound(state: GameState): void {
     }
 
     const playerId = head.playerId;
+
+    // Polish Balance Ballistics (basic): not a machine — an explicit ASK to play
+    // the card from hand this round start. Re-checked here, so a Ballistics
+    // already played (or a payment spent) this round quietly drops out instead of
+    // opening a dead prompt.
+    if (head.handBallistics) {
+      if (!playerCanUseBallisticsRoundStartBombard(state, playerId)) {
+        queue.pending.shift();
+        continue;
+      }
+      openWarMachineOffer(
+        state,
+        playerId,
+        "Ballistics: pay 1 building material to hit 2 adjacent targets for 1 damage each?",
+        BALLISTICS_ROUND_START_LABEL,
+        "Skip"
+      );
+      return;
+    }
+
     const entry = activeWarMachineEntry(state, playerId);
     if (!entry) {
       queue.pending.shift();
@@ -1755,6 +1827,48 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
   const queue = combat?.warMachineRound;
   if (!combat || !queue || queue.pending[0]?.playerId !== playerId) {
     throw new Error("No war machine is waiting for that player.");
+  }
+
+  // Polish Balance Ballistics (basic), the round-start ASK: option 0 plays the
+  // card from hand (pay 1 building material, card to the discard — exactly what
+  // the from-hand play does), anything else declines and the queue moves on.
+  if (queue.pending[0]?.handBallistics) {
+    if (optionIndex !== 0) {
+      queue.pending.shift();
+      processWarMachineRound(state);
+      return;
+    }
+    if (!playerCanUseBallisticsRoundStartBombard(state, playerId)) {
+      throw new Error("Ballistics cannot be played for its bombard right now.");
+    }
+    const player = state.players[playerId]!;
+    spendResources(state, playerId, BALLISTICS_ROUND_START_COST, "Ballistics bombard");
+    const handIndex = player.hand.indexOf(BALLISTICS_ABILITY_ID);
+    if (handIndex !== -1) {
+      player.hand.splice(handIndex, 1);
+      player.discard.push(BALLISTICS_ABILITY_ID);
+    }
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: BALLISTICS_ABILITY_ID,
+      timing: cardLibrary[BALLISTICS_ABILITY_ID]?.timing ?? "instant",
+      mode: "basic",
+      optionLabel: BALLISTICS_ROUND_START_LABEL
+    });
+    // Become the opening-bombard entry IN PLACE, so the machines still queued
+    // behind this offer resolve afterwards (openBallisticsOpeningBombard replaces
+    // the whole queue, which is right for a from-hand play but would drop them).
+    queue.pending[0] = { playerId, cardId: BALLISTICS_ABILITY_ID, openingBallistics: true };
+    queue.firstTargetUnitId = null;
+    openWarMachineTargetChoice(
+      state,
+      playerId,
+      "Ballistics: choose the first of two adjacent targets — a unit, Wall or the Gate.",
+      splashFirstTargets(state).map((target) => target.id),
+      1
+    );
+    return;
   }
 
   const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;

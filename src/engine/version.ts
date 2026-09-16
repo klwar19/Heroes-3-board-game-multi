@@ -1356,7 +1356,25 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v151 (2026-09-16): Dhuin and Eikthurn use their bespoke Bulwark specialty
 //   cards. Eikthurn's attack reactions can gain or spend the combat Rune pool,
 //   so clients and the authoritative room worker must share these semantics.
-export const ENGINE_PROTOCOL_VERSION = 151;
+// v152 (2026-09-16): Polish Balance Pack reprints change two OFFER shapes.
+//   (1) Ballistics: its basic bombard is now "at the beginning of a combat
+//   ROUND" — a new `combatRoundStartOnly` option flag gates the from-hand play,
+//   and the round-start war-machine queue carries a new `handBallistics` entry
+//   that ASKS the holder (fire / skip) at the start of every combat round,
+//   round 1 included. (2) Basic Air/Earth/Fire/Water Magic: the school fetch
+//   finds the first TWO matching Spells and opens a new `basic-magic-pick`
+//   OPTION_CHOICE. Both add pendingChoice / combat-state shapes and change
+//   which actions are legal, so the frontend and the authoritative PartyKit
+//   worker must share them.
+//   Same release, movement-legality change (no new action shape): a designated
+//   Break seals its whole tile only via the new PER-TILE `breakTileGate` field
+//   flag (tile objectPlans / centerHex ticks). A break stamped by the MAP-WIDE
+//   mines/obelisks/centerHexes flag is per-field only again, so Ⅳ–Ⅴ /
+//   underground tiles outside the map's Break options are enterable (USER
+//   REPORT 2026-09-16); server and client must agree on classifyHeroStep.
+//   Display-only alongside: face-down tiles in a gate link wear an
+//   Underground-Gate pairing badge (faceDownGateHintsByTile).
+export const ENGINE_PROTOCOL_VERSION = 152;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

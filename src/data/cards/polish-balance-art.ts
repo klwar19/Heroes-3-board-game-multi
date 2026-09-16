@@ -24,13 +24,17 @@ import { cardLibrary } from "@/data/cards/library";
 /**
  * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts,
  * Specialties, plus Knowledge, its distinct Empowered library card, and the
- * user-supplied corrections — 87 ids — see
+ * user-supplied corrections — 91 ids — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
 export const POLISH_BALANCE_CARD_IDS = [
   "ability.artillery",
   "ability.ballistics",
+  "ability.basic_air_magic",
+  "ability.basic_earth_magic",
+  "ability.basic_fire_magic",
+  "ability.basic_water_magic",
   "ability.diplomacy",
   "ability.eagle_eye",
   "ability.first_aid",
@@ -125,8 +129,9 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY: all 13 Abilities, Knowledge (regular + Empowered), 28 Spells,
- * 33 Artifacts and 11 Specialties are wired (87 ids).
+ * EMPTY: all 17 Abilities (the 13 classic ones plus the four Basic X Magic
+ * reprints), Knowledge (regular + Empowered), 28 Spells,
+ * 33 Artifacts and 11 Specialties are wired (91 ids).
  * A FUTURE unwireable reprint belongs
  * here, never silently in the classic-face fallback.
  */
@@ -169,6 +174,10 @@ export function polishBalanceCardImage(
 export const POLISH_BALANCE_EMPOWERED_ABILITY_IDS = [
   "ability.artillery",
   "ability.ballistics",
+  "ability.basic_air_magic",
+  "ability.basic_earth_magic",
+  "ability.basic_fire_magic",
+  "ability.basic_water_magic",
   "ability.diplomacy",
   "ability.eagle_eye",
   "ability.first_aid",

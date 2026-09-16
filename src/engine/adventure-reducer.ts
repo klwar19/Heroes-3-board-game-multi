@@ -6354,10 +6354,12 @@ function persistLivingGuardsOnField(
   }
   // Keep break/persistent/unlimited flags; re-stamp the certain army.
   const breakField = field.breakField;
+  const breakTileGate = field.breakTileGate;
   const persistentGuard = field.persistentGuard;
   const unlimited = field.unlimitedCombatRounds;
   applyCustomGuardToField(field, { units: survivors });
   if (breakField) field.breakField = true;
+  if (breakTileGate) field.breakTileGate = true;
   if (persistentGuard) field.persistentGuard = true;
   if (unlimited) field.unlimitedCombatRounds = true;
   // Do NOT set everFlagged — the field stays guarded for a second attempt.
@@ -18213,7 +18215,19 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.priorityPlayerId = null;
     if (school) {
       // Basic X Magic: find the first matching Spell, take it, then reshuffle.
-      performSchoolFetchFromDecks(state, action.playerId, pick.deckIds, school);
+      // The Polish reprint finds TWO and opens a pick instead — its resolver then
+      // runs this tail (DECK_SEARCH_RESOLVED, then the Pendant repeat offer), so
+      // the offer can never overwrite the pick's own pendingChoice.
+      const picking = performSchoolFetchFromDecks(state, action.playerId, pick.deckIds, school, {
+        deckId: pick.deckIds[0]!,
+        pendantDeckId: "spells",
+        choiceId: choice.id,
+        count: pick.count,
+        returnPhase: choice.returnPhase
+      });
+      if (picking) {
+        return;
+      }
     } else {
       spendMagicUniversityUse(state, action.playerId);
       performMagicUniversityFetchFromDecks(state, action.playerId, pick.deckIds, universitySchool!);
@@ -18405,6 +18419,50 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  // Polish Balance "Basic X Magic": the owner picks one of the first two matching
+  // Spells. The loser stays in its (already reshuffled) deck, and the Search tail
+  // the fetch interposed on runs HERE, in its printed order — the resolved event,
+  // the Polish-Artifact access latch, then the Pendant of Courage repeat offer
+  // (which opens its own pendingChoice and so must always come last).
+  if (choice.context === "basic-magic-pick") {
+    const pick = choice.basicMagicPick;
+    const candidate = pick?.candidates[action.optionIndex];
+    if (!pick || !candidate) {
+      throw new Error("Pick one of the two found Spells.");
+    }
+    const deck = state.decks[candidate.deckId];
+    const index = deck ? deck.drawPile.indexOf(candidate.cardId) : -1;
+    if (!deck || index === -1) {
+      throw new Error("That Spell is no longer in the deck.");
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    deck.drawPile.splice(index, 1);
+    gainOwnedCard(state, action.playerId, candidate.cardId);
+
+    const followUp = pick.followUp;
+    appendEvent(state, {
+      type: "DECK_SEARCH_RESOLVED",
+      playerId: action.playerId,
+      deckId: followUp.deckId,
+      choiceId: followUp.choiceId,
+      pick: "revealed",
+      discardedCardIds: []
+    });
+    if (followUp.clearArtifactAccess) {
+      clearPolishArtifactAccess(state);
+    }
+    maybeOpenPendantRepeatOffer(
+      state,
+      action.playerId,
+      followUp.pendantDeckId ?? followUp.deckId,
+      followUp.count,
+      followUp.returnPhase
+    );
+    return;
+  }
+
   if (choice.context === "deck-search-mode") {
     const mode = choice.deckSearchMode;
     const player = state.players[action.playerId];
@@ -18461,8 +18519,21 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         throw new Error("That search option is not available.");
       }
       if (school) {
-        // Basic X Magic finds the first matching Spell and then reshuffles.
-        performSchoolFetch(state, action.playerId, mode.deckId, school);
+        // Basic X Magic finds the first matching Spell and then reshuffles. The
+        // Polish reprint finds TWO and opens a pick: its resolver owns the tail
+        // below (the resolved event, the artifact latch and the Pendant offer),
+        // so nothing here may run — including the phase/priority reset, which
+        // would close the pick's own choice phase.
+        const picking = performSchoolFetch(state, action.playerId, mode.deckId, school, {
+          deckId: mode.deckId,
+          choiceId: choice.id,
+          count: mode.count,
+          returnPhase: choice.returnPhase,
+          clearArtifactAccess: isArtifactSharedDeckId(mode.deckId)
+        });
+        if (picking) {
+          return;
+        }
       } else {
         // Magic University discards from the shared Spell deck until the first
         // matching Spell, takes that Spell, and spends its once-per-round use.
@@ -19973,11 +20044,7 @@ export function beginSharedDeckSearchNow(
       ...discardTops.map((top) => ({
         label: `Take the top discard (${cardLibrary[top.cardId]?.name ?? top.cardId}) — ${deckDisplayName(state, top.deckId)}`
       })),
-      ...fetchSchools.map((school) => {
-        const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
-        const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
-        return { label: `Basic ${schoolName} Magic: Draw the first ${schoolName} Magic spell — take it into ${dest}` };
-      }),
+      ...fetchSchools.map((school) => ({ label: basicSchoolMagicOptionLabel(state, school) })),
       ...magicUniversitySchools.map((school) => {
         const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
         return { label: `Magic University: discard from the Spell deck until finding ${schoolArticle(schoolName)} ${schoolName} Magic spell` };
@@ -20224,9 +20291,7 @@ export function openSharedDeckSearch(
       options.push({ label: `Take the top discard (${cardLibrary[discardTopId]?.name ?? discardTopId})` });
     }
     for (const school of schoolFetch) {
-      const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
-      const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
-      options.push({ label: `Basic ${schoolName} Magic: Draw the first ${schoolName} Magic spell — take it into ${dest}` });
+      options.push({ label: basicSchoolMagicOptionLabel(state, school) });
     }
     for (const school of magicUniversitySchools) {
       const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
@@ -20263,14 +20328,75 @@ export function openSharedDeckSearch(
   revealSharedDeckSearch(state, playerId, deckId, baseCount, allowRemove);
 }
 
+/** The tail a school fetch interposes on: the Search's own resolution events. */
+type SchoolFetchFollowUp = {
+  /** Deck named by the DECK_SEARCH_RESOLVED event. */
+  deckId: DeckId;
+  /** Deck the Pendant-of-Courage repeat re-runs (the whole Spell family at the
+   * one-step deck pick, the searched deck at the deck-search-mode pick). */
+  pendantDeckId?: DeckId;
+  choiceId: string;
+  count: number;
+  returnPhase: GamePhase;
+  clearArtifactAccess?: boolean;
+};
+
+/**
+ * Polish Balance Pack — the reprinted "Basic X Magic": "Instead of Searching the
+ * Spell deck, find the first TWO <School> Magic spells in it, choose one and take
+ * it into your hand. Then, reshuffle the deck."
+ *
+ * The Community Balance Change does NOT reprint these four cards (checked:
+ * `community-abilities-balance.ts` carries no `basic_*_magic` entry), so unlike
+ * Intelligence / Ballistics there is no precedence question — the Polish reading
+ * simply applies whenever its rule is on, even alongside the community pack.
+ */
+function polishBasicMagicTwoCandidates(state: GameState): boolean {
+  return houseRuleEnabled(state, "polish-card-balance");
+}
+
+/**
+ * The Basic X Magic replacement offered instead of a Spell Search. The Polish
+ * reprint takes the first TWO matching Spells and lets the owner choose, so the
+ * button must say so; with the rule off the classic single-draw wording stands.
+ */
+function basicSchoolMagicOptionLabel(state: GameState, school: SpellSchool): string {
+  const schoolName = schoolDisplayName(school);
+  const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
+  return polishBasicMagicTwoCandidates(state)
+    ? `Basic ${schoolName} Magic: Draw the first two ${schoolName} Magic spells — choose one for your ${dest}`
+    : `Basic ${schoolName} Magic: Draw the first ${schoolName} Magic spell — take it into ${dest}`;
+}
+
+/** "Air" from "air" — the printed school name used in prompts and notes. */
+function schoolDisplayName(school: SpellSchool): string {
+  return `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+}
+
+function noteSchoolFetchFoundNothing(state: GameState, playerId: PlayerId, school: SpellSchool): void {
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `${state.players[playerId]?.name ?? playerId} found no takeable ${schoolDisplayName(school)} Magic spell — the Spell deck was reshuffled.`
+  });
+}
+
 /**
  * Basic X Magic, the up-front "draw instead of Searching": take the deck's first
  * spell of `school` (Magic Arrow's "any" counts) straight into hand, then
- * reshuffle the deck. Returns the taken card id, or null when the deck holds no
- * matching spell. No cards are revealed — this replaces the Search entirely.
+ * reshuffle the deck. No cards are revealed — this replaces the Search entirely.
+ *
+ * Returns TRUE when the Polish two-candidate pick was opened instead, in which
+ * case the caller must NOT run the Search tail (the pick's resolver does).
  */
-function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string, school: SpellSchool): CardId | null {
-  return performSchoolFetchFromDecks(state, playerId, [deckId], school);
+function performSchoolFetch(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+  school: SpellSchool,
+  followUp: SchoolFetchFollowUp
+): boolean {
+  return performSchoolFetchFromDecks(state, playerId, [deckId], school, followUp);
 }
 
 /**
@@ -20279,16 +20405,26 @@ function performSchoolFetch(state: GameState, playerId: PlayerId, deckId: string
  * found; every scanned deck reshuffles (looking through it is the scan). One
  * feed note when NOTHING matched anywhere — a silent no-op reads as "the basic
  * effect did not work" (the user bug report).
+ *
+ * With `polish-card-balance` on, the scan collects the first TWO matches instead
+ * and the owner picks one (`basic-magic-pick`); the classic single-take path
+ * below is untouched, splice-before-reshuffle included, so deck order with the
+ * rule OFF is byte-identical.
  */
 function performSchoolFetchFromDecks(
   state: GameState,
   playerId: PlayerId,
   deckIds: string[],
-  school: SpellSchool
-): CardId | null {
+  school: SpellSchool,
+  followUp: SchoolFetchFollowUp
+): boolean {
   const player = state.players[playerId];
   if (!player) {
-    return null;
+    return false;
+  }
+
+  if (polishBasicMagicTwoCandidates(state)) {
+    return performPolishSchoolFetchFromDecks(state, playerId, deckIds, school, followUp);
   }
 
   let fetchedCardId: CardId | null = null;
@@ -20320,14 +20456,90 @@ function performSchoolFetchFromDecks(
   if (fetchedCardId) {
     gainOwnedCard(state, playerId, fetchedCardId);
   } else {
-    const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
-    appendEvent(state, {
-      type: "EVENT_NOTE",
-      playerId,
-      message: `${state.players[playerId]?.name ?? playerId} found no takeable ${schoolName} Magic spell — the Spell deck was reshuffled.`
-    });
+    noteSchoolFetchFoundNothing(state, playerId, school);
   }
-  return fetchedCardId;
+  return false;
+}
+
+/**
+ * The Polish reprint's fetch: collect the first TWO takeable matching spells in
+ * scan order (both may come from the same deck), reshuffle every scanned deck,
+ * then let the owner choose. One match is taken outright (nothing to decide) and
+ * no match keeps the existing "found nothing" note.
+ *
+ * The candidates stay IN their decks while the choice is open — the chosen one is
+ * pulled out by id when it resolves, so the loser is never quietly removed.
+ */
+function performPolishSchoolFetchFromDecks(
+  state: GameState,
+  playerId: PlayerId,
+  deckIds: string[],
+  school: SpellSchool,
+  followUp: SchoolFetchFollowUp
+): boolean {
+  const candidates: { deckId: DeckId; cardId: CardId }[] = [];
+  for (const deckId of deckIds) {
+    const deck = state.decks[deckId];
+    if (!deck) {
+      continue;
+    }
+    for (let index = deck.drawPile.length - 1; index >= 0 && candidates.length < 2; index -= 1) {
+      const candidateId = deck.drawPile[index];
+      if (!canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+        continue;
+      }
+      const schools = cardLibrary[candidateId]?.spellSchools ?? [];
+      if (schools.includes(school) || schools.includes("any")) {
+        candidates.push({ deckId, cardId: candidateId });
+      }
+    }
+    // Looking through the deck IS the scan, so it reshuffles whether or not it
+    // held a match — the same rule (and seeding) the classic fetch uses.
+    deck.drawPile = shuffleCards(deck.drawPile, `${state.seed}#school-fetch#${eventSeedNumber(state)}`);
+    if (candidates.length >= 2) {
+      break;
+    }
+  }
+
+  if (candidates.length === 0) {
+    noteSchoolFetchFoundNothing(state, playerId, school);
+    return false;
+  }
+
+  if (candidates.length === 1) {
+    // Only one match in the whole scan: no decision to make, take it. The deck is
+    // already reshuffled, so the card is pulled out by id.
+    const only = candidates[0]!;
+    const deck = state.decks[only.deckId];
+    const index = deck ? deck.drawPile.indexOf(only.cardId) : -1;
+    if (deck && index !== -1) {
+      deck.drawPile.splice(index, 1);
+      gainOwnedCard(state, playerId, only.cardId);
+    }
+    return false;
+  }
+
+  const schoolName = schoolDisplayName(school);
+  const firstName = cardLibrary[candidates[0]!.cardId]?.name ?? candidates[0]!.cardId;
+  const secondName = cardLibrary[candidates[1]!.cardId]?.name ?? candidates[1]!.cardId;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Basic ${schoolName} Magic: take which of the first two ${schoolName} Magic spells?`,
+    options: [
+      { label: `Take ${firstName}` },
+      // Two copies of the same spell can both be found — name the second one so
+      // the two buttons are never indistinguishable.
+      { label: secondName === firstName ? `Take ${secondName} (second copy)` : `Take ${secondName}` }
+    ],
+    context: "basic-magic-pick",
+    basicMagicPick: { school, candidates, followUp },
+    returnPhase: followUp.returnPhase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
 }
 
 function spendMagicUniversityUse(state: GameState, playerId: PlayerId): void {

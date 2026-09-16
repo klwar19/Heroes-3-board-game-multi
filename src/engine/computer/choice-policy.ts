@@ -641,6 +641,15 @@ function scorePositionOption(
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
+  // Polish Balance "Basic X Magic": pick the better of the two found Spells.
+  // Explicit rather than relying on an unknown-context fallback, so the pick can
+  // never stall or resolve arbitrarily.
+  if (context === "basic-magic-pick" && choice.basicMagicPick) {
+    const cardId = choice.basicMagicPick.candidates[optionIndex]?.cardId;
+    if (!cardId) return CHOICE_BASE;
+    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
+  }
+
   if (context === "deck-search-mode" && choice.deckSearchMode) {
     // Prefer searching the deck (more options) over a single discard-top when
     // count > 1; otherwise take discard-top as a free known card.

@@ -43,6 +43,9 @@ function basicSchoolMagic(
       "magic-school",
       "permanent",
       `Permanent: Instead of Searching the Spell deck, find the first ${schoolName} Magic spell in it and take it into your hand. Then, reshuffle the deck. Expert: +3 Power for ${article} ${schoolName} Magic spell.`,
+      // The reprint changes only the BASIC fetch: two candidates instead of one,
+      // with the owner choosing. The Expert side (+3 Power) is unchanged.
+      `Balance pack: instead of Searching the Spell deck, find the first TWO ${schoolName} Magic spells in it, choose one and take it into your hand. Then, reshuffle the deck. Expert unchanged: +3 Power for ${article} ${schoolName} Magic spell.`,
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -623,7 +626,7 @@ export const extraAbilityCards: CardLibrary = {
       "instant",
       "siege",
       "wiki-reference",
-      "Balance pack: the reprint WINS over the ballistics-buff house rule. BASIC: at the beginning of Combat, pay 1 building material to deal 1 damage to two adjacent targets (units, Walls, or Gate) — OR during a siege destroy 2 Walls or 1 Wall and the Gate. EXPERT: when using the Catapult, resolve it twice on the same targets without paying its cost — OR during a siege destroy 3 Walls and the Gate.",
+      "Balance pack: the reprint WINS over the ballistics-buff house rule. BASIC: at the beginning of a combat round, pay 1 building material to deal 1 damage to two adjacent targets (units, Walls, or Gate) — the holder is ASKED at the start of every combat round, round 1 included — OR during a siege destroy 2 Walls or 1 Wall and the Gate. EXPERT: when using the Catapult, resolve it twice on the same targets without paying its cost — OR during a siege destroy 3 Walls and the Gate.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -683,11 +686,16 @@ export const extraAbilityCards: CardLibrary = {
           effect: { type: "SIEGE_DEMOLISH", target: "three-walls-and-gate" },
         },
         {
+          // The reprint recurs: the window is the start of EVERY combat round
+          // (round 1 included), not only the opening of the fight. The holder is
+          // also ASKED outright each round-start by the war-machine queue
+          // (`startWarMachineRound` → the hand-Ballistics offer), so this
+          // from-hand play is the same decision taken manually.
           label:
-            "Balance: at the beginning of Combat pay 1 building material to hit 2 adjacent targets",
+            "Balance: at the beginning of a combat round pay 1 building material to hit 2 adjacent targets",
           requiresHouseRule: "polish-card-balance",
           combatOnly: true,
-          combatStartOnly: true,
+          combatRoundStartOnly: true,
           cost: { resources: { buildingMaterials: 1 } },
           effect: { type: "BALLISTICS_OPENING_BOMBARD", amount: 1 },
         },
