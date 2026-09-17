@@ -27,7 +27,29 @@ import {
  * shell. Records survive hibernation in Durable Object storage.
  */
 
-const STORAGE_KEY = "maps";
+/**
+ * Storage layout. Each map is persisted under its OWN key (`map:<id>`), NOT in
+ * one combined array. A single Durable Object storage value is size-capped, so a
+ * whole-catalog blob eventually grows past the ceiling and every `put` then
+ * throws mid-request — the connection resets with no response and the client
+ * reports "Could not reach the map library". Per-key storage keeps each written
+ * value tiny (~a few KB) no matter how large the library gets.
+ *
+ * `LEGACY_STORAGE_KEY` is the old combined array. It is read once, split into
+ * per-key records, and then left UNTOUCHED as a backup (a one-time marker records
+ * that the migration ran, so later starts read only the per-key records and
+ * deletes stick). Keeping the old blob means the migration can never lose a map.
+ */
+const LEGACY_STORAGE_KEY = "maps";
+const MIGRATED_MARKER_KEY = "mapsMigratedV2";
+const MAP_KEY_PREFIX = "map:";
+/** The Durable Object per-call batch ceiling for `storage.put(entries)`. */
+const STORAGE_PUT_BATCH = 128;
+
+/** The storage key for one map record. */
+function mapKey(id: string): string {
+  return `${MAP_KEY_PREFIX}${id}`;
+}
 
 /** The acting user for a mutation, read from the request body (edge casual gate). */
 function actorFromBody(body: unknown): MapActor {
@@ -47,12 +69,47 @@ export default class MapsServer implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   async onStart(): Promise<void> {
-    const stored = (await this.room.storage.get<SharedMapRecord[]>(STORAGE_KEY)) ?? [];
-    this.registry = new MapRegistry(stored);
+    // Load every per-key map record.
+    const perMap = await this.room.storage.list<SharedMapRecord>({ prefix: MAP_KEY_PREFIX });
+    const merged = new Map<string, SharedMapRecord>();
+    for (const record of perMap.values()) {
+      if (record && typeof record.id === "string" && record.id.length > 0) {
+        merged.set(record.id, record);
+      }
+    }
+    // One-time migration from the old combined-array key. Records not already
+    // present as per-key entries are written out; the marker stops this ever
+    // running again, and the legacy blob is left in place as a backup.
+    const migrated = await this.room.storage.get<boolean>(MIGRATED_MARKER_KEY);
+    if (!migrated) {
+      const legacy = await this.room.storage.get<SharedMapRecord[]>(LEGACY_STORAGE_KEY);
+      const toWrite: Record<string, SharedMapRecord> = {};
+      if (Array.isArray(legacy)) {
+        for (const record of legacy) {
+          if (record && typeof record.id === "string" && record.id.length > 0 && !merged.has(record.id)) {
+            merged.set(record.id, record);
+            toWrite[mapKey(record.id)] = record;
+          }
+        }
+      }
+      await this.putBatched(toWrite);
+      await this.room.storage.put(MIGRATED_MARKER_KEY, true);
+    }
+    this.registry = new MapRegistry(merged.values());
   }
 
-  private async persist(): Promise<void> {
-    await this.room.storage.put(STORAGE_KEY, this.registry.records());
+  /** Batched `put`, chunked to the Durable Object per-call key ceiling. */
+  private async putBatched(entries: Record<string, SharedMapRecord>): Promise<void> {
+    const keys = Object.keys(entries);
+    for (let i = 0; i < keys.length; i += STORAGE_PUT_BATCH) {
+      const chunk: Record<string, SharedMapRecord> = {};
+      for (const key of keys.slice(i, i + STORAGE_PUT_BATCH)) {
+        chunk[key] = entries[key];
+      }
+      if (Object.keys(chunk).length > 0) {
+        await this.room.storage.put(chunk);
+      }
+    }
   }
 
   /**
@@ -87,8 +144,16 @@ export default class MapsServer implements Party.Server {
       // Preserve the original owner + creation stamp on an edit; stamp the actor
       // as owner on a fresh create.
       stampSavedMapOwnership(record, existing, actorFromBody(body));
+      const before = new Set(this.registry.records().map((map) => map.id));
       this.registry.upsert(record);
-      await this.persist();
+      // Persist only what changed: write the upserted map's own key, and delete
+      // the keys of any maps the cap evicted. No whole-catalog rewrite.
+      await this.room.storage.put(mapKey(record.id), record);
+      const after = new Set(this.registry.records().map((map) => map.id));
+      const evicted = [...before].filter((id) => !after.has(id));
+      if (evicted.length > 0) {
+        await this.room.storage.delete(evicted.map(mapKey));
+      }
       return jsonWithCors({ ok: true, map: record, maps: this.registry.list() });
     }
 
@@ -103,7 +168,7 @@ export default class MapsServer implements Party.Server {
         );
       }
       if (id && this.registry.remove(id)) {
-        await this.persist();
+        await this.room.storage.delete(mapKey(id));
       }
       return jsonWithCors({ ok: true, maps: this.registry.list() });
     }
