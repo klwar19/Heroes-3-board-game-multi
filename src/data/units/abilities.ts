@@ -1417,6 +1417,13 @@ export type UnitAbilityEffectDefinition =
       minRoll?: number;
       maxRoll?: number;
       amount: number;
+      /**
+       * Adversity's Insight nerf: when set, the draw fires at most ONCE per
+       * combat round and at most `maxPerCombat` times in the whole combat
+       * (tracked per unit in attackDieDrawRound / attackDieDraws). Omit for
+       * the uncapped behavior (Minotaurs' Bull Resolve draws on every "-1").
+       */
+      maxPerCombat?: number;
     }
   | {
       /**
@@ -4143,8 +4150,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-low-roll-insight": {
     id: "veteran-low-roll-insight",
     name: "Adversity's Insight",
-    text: "[unit_attack] After this unit's own Attack die resolves −1 or 0, draw 1 card.",
-    effect: { type: "ON_ATTACK_DIE_DRAW", minRoll: -1, maxRoll: 0, amount: 1 },
+    text: "[unit_attack] Once per combat round, at most twice per combat: after this unit's own Attack die resolves −1 or 0, draw 1 card.",
+    effect: { type: "ON_ATTACK_DIE_DRAW", minRoll: -1, maxRoll: 0, amount: 1, maxPerCombat: 2 },
     implementationStatus: "implemented"
   },
   "veteran-defense-pierce": {

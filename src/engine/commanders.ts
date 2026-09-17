@@ -40,6 +40,7 @@ import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import { isMechanicalUnit } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
+  ActiveEffectModifier,
   CombatState,
   CombatUnitState,
   CommanderPlayerState,
@@ -890,6 +891,24 @@ export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitSta
     if (commanderCastPower(state, unit) <= 0) return uses >= 1;
     return uses >= 2 || unit.commanderCastRound === state.combat?.round;
   }
+  // Tower Precision (instant reaction): once per combat round, at most two uses
+  // in the whole combat (the second use grants only +1 — resolved in
+  // resolveCommanderCast). Same budget shape as the Rampart Shield's Power 1+.
+  if (unit.commanderSlug === "temple_guardian") {
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    return uses >= 2 || unit.commanderCastRound === state.combat?.round;
+  }
+  // Stronghold Stone Skin (nerf): Power 0 is once per combat; Power 1 is once per
+  // round with a maximum of two uses in the combat; Power 2 is once per round with
+  // no per-combat cap (its amount decays after round 1 instead — see the
+  // defense-buff resolution in reducer.ts).
+  if (unit.commanderSlug === "ogre_leader") {
+    const power = commanderCastPower(state, unit);
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    if (power <= 0) return uses >= 1;
+    if (power === 1) return uses >= 2 || unit.commanderCastRound === state.combat?.round;
+    return unit.commanderCastRound === state.combat?.round;
+  }
   return unit.commanderCastRound !== undefined && unit.commanderCastRound === state.combat?.round;
 }
 
@@ -916,7 +935,10 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
   const ongoingCast =
     cast.effect.kind !== "heal" &&
     cast.effect.kind !== "heal-cleanse" &&
-    cast.effect.kind !== "enemy-damage";
+    cast.effect.kind !== "enemy-damage" &&
+    // Tower Precision buffs a single pending attack (no lingering effect), so it
+    // is INSTANT — ongoing-effect immunity never makes an ally a dead target.
+    cast.effect.kind !== "precision-instant";
 
   return Object.values(combat.units).filter((target) => {
     if (target.damage >= target.maxHealth || target.position < 0) {
@@ -1066,7 +1088,10 @@ export function commanderDefenseReactionUnit(
     return null;
   }
   const cast = commanderCastOf(commander);
-  if (!cast || !commanderCastIsInstantReaction(cast) || commanderCastUsedThisRound(state, commander)) {
+  // Defender-side reactions are only the defend buffs (Hierophant Shield, Ogre
+  // Stone Skin). Tower Precision is instant too, but attacker-side only — it
+  // must never be offered on the defender's attack window.
+  if (!cast || cast.effect.kind !== "defense-buff" || commanderCastUsedThisRound(state, commander)) {
     return null;
   }
   const runeCost = commanderCastRuneCost(state, commander);
@@ -1084,6 +1109,231 @@ export function commanderDefenseReactionUnit(
     return null;
   }
   return commander;
+}
+
+/**
+ * INSTANT-REACTION offensive buff (Tower Temple Guardian's Precision): the living
+ * commander that may react to `attackerUnit` — one of its OWNER's ranged units —
+ * declaring an attack, or null when no reaction is available. Mirrors
+ * commanderDefenseReactionUnit but on the ATTACKING side: offered off-turn when
+ *  - the attacker's controller owns a living commander whose command is a
+ *    `precision-instant` cast, its budget not yet exhausted this round, and
+ *  - the attacking unit is a legal target of that cast (friendly ranged, via
+ *    commanderCastCandidates — which excludes the commander itself: canTargetSelf
+ *    is false, so a Sharpshooter commander never self-buffs).
+ * The buff modifies THAT attack only (resolveCommanderCast's precision-instant
+ * branch), so it is only meaningful while the attack is still pending.
+ */
+export function commanderPrecisionReactionUnit(
+  state: GameState,
+  attackerUnit: CombatUnitState
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (!combat || attackerUnit.type !== "ranged" || attackerUnit.damage >= attackerUnit.maxHealth) {
+    return null;
+  }
+  const commander = findCommanderUnit(state, attackerUnit.controllerId);
+  if (!commander || commander.damage >= commander.maxHealth) {
+    return null;
+  }
+  const cast = commanderCastOf(commander);
+  if (
+    !cast ||
+    cast.effect.kind !== "precision-instant" ||
+    commanderCastUsedThisRound(state, commander)
+  ) {
+    return null;
+  }
+  const runeCost = commanderCastRuneCost(state, commander);
+  if (runeCost > 0 && commanderRunePool(state, commander.controllerId) < runeCost) {
+    return null;
+  }
+  if (!commanderCastCandidates(state, commander).some((candidate) => candidate.id === attackerUnit.id)) {
+    return null;
+  }
+  return commander;
+}
+
+/**
+ * The Attack the Tower Precision reaction grants right now: `amountByPower[tier]`
+ * on the FIRST cast of the combat, `secondCastAmount` on every later cast (all
+ * Powers). Reads the commander's pre-resolution cast count, so the offer label
+ * and the resolution agree. 0 for any non-precision-instant cast.
+ */
+export function commanderPrecisionReactionAmount(state: GameState, commander: CombatUnitState): number {
+  const cast = commanderCastOf(commander);
+  if (!cast || cast.effect.kind !== "precision-instant") {
+    return 0;
+  }
+  const priorCasts = commander.commanderCastCount ?? (commander.commanderCastRound !== undefined ? 1 : 0);
+  const tier = commanderCastTierIndex(commanderCastPower(state, commander));
+  if (priorCasts >= 1) {
+    return cast.effect.secondCastAmountByPower[tier];
+  }
+  return cast.effect.amountByPower[tier];
+}
+
+/** The Magic Arrow spell card the Tower's combat-start fetch pulls. */
+export const COMMANDER_MAGIC_ARROW_CARD_ID = "spell.magic_arrow";
+
+/**
+ * Tower Temple Guardian combat-start fetch eligibility for `playerId`: the
+ * living Temple Guardian must stand in the current combat, the player must hold
+ * at least one NON-Magic-Arrow hand card to discard, and a Magic Arrow must sit
+ * in the deck or discard pile. Returns the pile to pull from (deck first, then
+ * discard) and the discardable hand cards, or null when unavailable.
+ */
+export function commanderMagicArrowFetchOption(
+  state: GameState,
+  playerId: PlayerId
+): { source: "deck" | "discard"; handCardIds: string[] } | null {
+  if (!commandersModuleEnabled(state)) {
+    return null;
+  }
+  const commander = findCommanderUnit(state, playerId);
+  if (commander?.commanderSlug !== "temple_guardian" || commander.damage >= commander.maxHealth) {
+    return null;
+  }
+  const player = state.players[playerId];
+  if (!player) {
+    return null;
+  }
+  const handCardIds = player.hand.filter((cardId) => cardId !== COMMANDER_MAGIC_ARROW_CARD_ID);
+  if (handCardIds.length === 0) {
+    return null;
+  }
+  const source: "deck" | "discard" | null = player.deck.includes(COMMANDER_MAGIC_ARROW_CARD_ID)
+    ? "deck"
+    : player.discard.includes(COMMANDER_MAGIC_ARROW_CARD_ID)
+      ? "discard"
+      : null;
+  if (!source) {
+    return null;
+  }
+  return { source, handCardIds };
+}
+
+/**
+ * Fortress Shaman begin-of-match Haste eligibility for `playerId`: only in combat
+ * round 1, only a living Shaman standing in this combat, and only with at least
+ * one legal Haste target. Returns the commander unit and the legal target ids, or
+ * null. (Gated to the Shaman slug — the might_guy / sonya Haste reuses do NOT get
+ * the begin-of-match option.)
+ */
+export function commanderBeginCastOption(
+  state: GameState,
+  playerId: PlayerId
+): { commander: CombatUnitState; targetUnitIds: string[] } | null {
+  const combat = state.combat;
+  if (!combat || combat.round !== 1 || !commandersModuleEnabled(state)) {
+    return null;
+  }
+  const commander = findCommanderUnit(state, playerId);
+  if (commander?.commanderSlug !== "shaman" || commander.damage >= commander.maxHealth) {
+    return null;
+  }
+  const targets = commanderCastCandidates(state, commander);
+  if (targets.length === 0) {
+    return null;
+  }
+  return {
+    commander,
+    targetUnitIds: targets.map((unit) => unit.id).sort((a, b) => a.localeCompare(b))
+  };
+}
+
+/**
+ * Resolve the Fortress Shaman's begin-of-match Haste on `target`: lay the SAME
+ * Haste active effect the normal activation cast lays (resolveCommanderCast's
+ * `initiative-shift` branch — kept in sync with it; both read the effect data),
+ * stamp the once-per-round budget, and — per the user spec — mark the commander
+ * as already-activated so it forgoes its own round-1 turn. Uses makeActiveEffect
+ * directly (this import-safe module never touches reducer-private helpers); the
+ * Pendant power-3 overflow deliberately does not fire on this pre-combat cast.
+ */
+export function applyCommanderBeginCastHaste(
+  state: GameState,
+  commander: CombatUnitState,
+  target: CombatUnitState
+): void {
+  const cast = commanderCastOf(commander);
+  if (!cast || cast.effect.kind !== "initiative-shift") {
+    return;
+  }
+  const effect = cast.effect;
+  const power = commanderCastPower(state, commander);
+  const tier = commanderCastTierIndex(power);
+  const effectName = `${cast.name} (${commander.cardName})`;
+  const source = { type: "unit" as const, unitId: commander.id, controllerId: commander.controllerId };
+  const targetRef = { type: "unit" as const, unitId: target.id };
+  if (effect.refresh) {
+    state.activeEffects = state.activeEffects.filter(
+      (activeEffect) =>
+        !(
+          activeEffect.name === effectName &&
+          activeEffect.source.type === "unit" &&
+          activeEffect.source.unitId === commander.id &&
+          activeEffect.target?.type === "unit" &&
+          activeEffect.target.unitId === target.id
+        )
+    );
+  }
+  const amount = effect.amountByPower[tier];
+  const modifiers: ActiveEffectModifier[] = [
+    { type: "INITIATIVE_BONUS", amount },
+    effect.attackVs
+      ? { type: "ATTACK_BONUS_VS_INITIATIVE", comparison: effect.attackVs, amount: effect.attackAmount }
+      : { type: "ATTACK_BONUS", amount: effect.attackAmount }
+  ];
+  const moveBonus = effect.moveByPower?.[tier] ?? 0;
+  if (moveBonus > 0) {
+    modifiers.push({ type: "COMMANDER_MOVEMENT_BONUS", amount: moveBonus });
+  }
+  const vsSlower = effect.bonusVsSlowerByPower?.[tier] ?? 0;
+  if (vsSlower > 0) {
+    modifiers.push({ type: "ATTACK_BONUS_VS_INITIATIVE", comparison: "slower", amount: vsSlower });
+  }
+  // User spec: the begin-of-match Haste lasts only 1 combat round when cast on a
+  // GOLD unit (the normal in-turn activation cast keeps its full duration for
+  // every grade — this override lives only on the begin-of-match helper).
+  const beginCastRounds =
+    target.grade === "gold" ? 1 : effect.durationRounds;
+  const duration =
+    beginCastRounds !== undefined
+      ? { type: "combat-rounds" as const, rounds: beginCastRounds }
+      : effect.durationByPower?.[tier] === "combat"
+        ? { type: "combat" as const }
+        : { type: "current-combat-round" as const };
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: effectName,
+        scope: "unit",
+        duration,
+        polarity: amount >= 0 ? "positive" : "negative",
+        removable: true,
+        modifiers
+      },
+      source,
+      commander.controllerId,
+      targetRef
+    )
+  );
+  commander.commanderCastRound = state.combat?.round;
+  commander.commanderCastCount = (commander.commanderCastCount ?? 0) + 1;
+  // User spec: casting at the start of the battle skips the commander's round-1
+  // turn — mark it already-activated so the round-1 activation order passes it.
+  commander.activatedThisRound = true;
+  appendEvent(state, {
+    type: "COMMANDER_CAST_USED",
+    playerId: commander.controllerId,
+    commanderSlug: commander.commanderSlug ?? "",
+    castName: cast.name,
+    power,
+    targetUnitId: target.id,
+    message: `${commander.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName} at the start of combat — it forgoes its round-1 turn.`
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -55,8 +55,10 @@ import {
   objectiveDistanceField,
   objectiveStrategicValue,
   primaryMapObjective,
+  VISITABLE_LOCATION_VALUE,
   seatHoldsFarSupplyTile,
   startTileRotationOpensFarExpansion,
+  type MapObjective,
 } from "./map-navigation";
 import {
   armyEngagementTier,
@@ -67,7 +69,7 @@ import {
 import type { UnitTier } from "@/data/factions/types";
 import { scoreMapAction } from "./map-policy";
 import { chooseComputerAction } from "./policy";
-import { emptyComputerMemory, noteComputerAction, getComputerMemory, repeatsUnproductiveRoute } from "./memory";
+import { emptyComputerMemory, noteComputerAction, getComputerMemory, repeatsUnproductiveRoute, routeProgressKey } from "./memory";
 import type { ComputerObservation } from "./types";
 
 /**
@@ -188,14 +190,26 @@ describe("productive movement regressions", () => {
     ], MINE)?.spaceId).toBe(EMPTY);
   });
 
-  it("rejects the first repeated empty circuit but allows returning after a pickup", () => {
+  it("rejects the first repeated empty circuit but allows returning after real progress", () => {
     let state = game();
     const hero = p2Hero(state);
     const move = (to: MapSpaceId): GameAction => ({ type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to });
+    // The route history records the AUTHORITATIVE hero.spaceId after the move
+    // (path movement can stop early), so the hero has to actually stand there.
+    const land = (space: MapSpaceId) => {
+      state.heroes[hero.id] = { ...state.heroes[hero.id], spaceId: space };
+    };
+    land(EMPTY);
     state = noteComputerAction(state, "p2", move(EMPTY));
+    land(TOWN);
     state = noteComputerAction(state, "p2", move(TOWN));
     expect(repeatsUnproductiveRoute(state, "p2", move(EMPTY), getComputerMemory(state, "p2"))).toBe(true);
+    // Progress is CAPTURED value / army development — loose gold alone is not
+    // enough to justify walking the same empty circuit again.
     state.players.p2.resources.gold += 3;
+    expect(repeatsUnproductiveRoute(state, "p2", move(EMPTY), getComputerMemory(state, "p2"))).toBe(true);
+    // CONTROL: flagging the mine really does change the position.
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
     expect(repeatsUnproductiveRoute(state, "p2", move(EMPTY), getComputerMemory(state, "p2"))).toBe(false);
   });
 });
@@ -625,21 +639,46 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
 
     state.round = 3;
     const rush = scoreMapAction(observe(state), discover)!;
-    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
-    expect(primaryMapObjective(state, hero)?.kind).toBe("victory");
     // The FAR-TILE HUNT outranks even the rush commit as an ACTION while the
-    // seat has no Far economy (the guaranteed settlement funds everything) —
-    // but the win itself stays the march target (primary above), and entering
-    // it (980) still beats the flip.
+    // seat has no Far economy (the guaranteed settlement funds everything);
+    // entering the win itself (980) still beats the flip.
     expect(rush.policy).toBe("map.discover-far-economy");
     expect(rush.score).toBeLessThan(950);
-    // CONTROL: with the seat's own Far economy open, the hunt is over — the
-    // flip loses its dedicated policy and drops well below the hunt score.
-    state.adventure!.farSettlementOpenedByPlayer = { p2: true };
+    // The reachable enemy town is the seat's conquest commit: far and away the
+    // most valuable objective on the board. (Which target this turn's march
+    // actually takes is a separate question — the round-2/3 Far-supply doorway
+    // hunt above legitimately preempts it while the seat's Far tiles are shut.)
+    const objectives = collectMapObjectives(state, hero);
+    const win = objectives.find((objective) => objective.spaceId === EMPTY)!;
+    expect(win?.kind).toBe("victory");
+    // CONTROL: every non-conquest objective on the board ranks below it.
+    const others = objectives
+      .filter((objective) => objective.kind !== "victory")
+      .map((objective) => objectiveStrategicValue(state, hero, objective, 1));
+    expect(others.length).toBeGreaterThan(0);
+    expect(objectiveStrategicValue(state, hero, win, 1)).toBeGreaterThan(Math.max(...others));
+    // CONTROL: with the seat's own Far economy open — a FLAGGED, face-up Far
+    // gold mine, not merely a settlement flag — the flip loses its dedicated
+    // policy and drops well below the hunt score.
+    state.adventure!.tiles["conquest-far"] = {
+      ...tile,
+      id: "conquest-far",
+      group: "far",
+      faceDown: false,
+    };
+    state.adventure!.fields["h:99:99"] = {
+      ...state.adventure!.fields[MINE],
+      spaceId: "h:99:99",
+      tileInstanceId: "conquest-far",
+      location: "mine",
+      resource: "gold",
+      difficulty: undefined,
+      flagOwnerId: "p2",
+    };
     const afterEconomy = scoreMapAction(observe(state), discover)!;
     expect(afterEconomy.policy).toBe("map.discover-tile");
     expect(afterEconomy.score).toBeLessThan(rush.score);
-    state.adventure!.farSettlementOpenedByPlayer = undefined;
+    delete state.adventure!.fields["h:99:99"];
   });
 
   it("does not bleed the three-Pack rush into a hard side neutral (diff ≥ 2)", () => {
@@ -1170,6 +1209,10 @@ describe("collectMapObjectives", () => {
       side: "few",
     });
     state.adventure!.fields[MINE].difficulty = 1;
+    // Flush treasury: mines are now priced by the seat's DEVELOPMENT DEFICIT, so
+    // a starving seat would rank the mine top for both heroes and hide the
+    // experience discount this test is about.
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
     // Keep this assertion about XP-aware strategic scoring. Friendly towns are
     // now valid transit corridors, so block through-routing across the town;
     // otherwise the separate opening-route optimizer deliberately runs first.
@@ -1540,15 +1583,17 @@ describe("sticky primary + explore objectives", () => {
     expect(battleReady?.spaceId).toBe(RESOURCE);
   });
 
-  it("home tile drains all three items even under conquest bronze-rush pressure", () => {
+  it("home tile drains all three items even under conquest pressure", () => {
     // User: get all 3 items on tile 1 EVERY game before expanding. Conquest
     // victory scoring used to yank the hero off mid-sweep — the pool restriction
     // keeps primary inside tile Ⅰ until MINE, TREASURE, and RESOURCE are gone.
+    // The sweep window is rounds 1–2 (commits e940332d / 4019226e): from round 3
+    // a FAR doorway legitimately outranks whatever is left at home.
     const state = game();
     const hero = p2Hero(state);
     establishP2PackCore(state);
     hero.level = 1;
-    state.round = 3;
+    state.round = 2;
     state.adventure!.victoryMode = "conquest";
     // Plant a juicy enemy-town victory one step away.
     state.adventure!.fields[EMPTY].location = state.adventure!.fields[TOWN].location;
@@ -1570,26 +1615,39 @@ describe("sticky primary + explore objectives", () => {
     delete state.adventure!.fields[TREASURE].difficulty;
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(RESOURCE);
 
-    // Only once the home tile is empty may conquest / Far become primary.
+    // Only once the home tile is empty may conquest become primary. The seat's
+    // own Far tiles are marked open first: the round-2/3 Far-supply doorway hunt
+    // is a separate rule from the home-tile pool restriction under test.
     state.adventure!.fields[RESOURCE].blackCube = true;
-    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
-    expect(primaryMapObjective(state, hero)?.kind).toBe("victory");
+    state.adventure!.farTilesOpenedByPlayer = { p2: 2 };
+    const released = primaryMapObjective({ ...state } as GameState, hero);
+    expect(released?.spaceId).toBe(EMPTY);
+    expect(released?.kind).toBe("victory");
   });
 
-  it("still drains all three home-tile items even past the old round-3 window", () => {
-    // Home-tile drain is no longer round-capped: while the hero stands on tile Ⅰ
-    // with remaining local payoffs, it finishes them (all three, every game)
-    // before expanding — even on round 4+ with a still-developing army.
+  it("drains the home-tile items through round 2, then releases the hero", () => {
+    // The home-tile drain window is rounds 1–2 (commits e940332d / 4019226e):
+    // while the hero stands on tile Ⅰ inside that window it finishes the local
+    // payoffs before expanding; from round 3 the FAR doorway outranks them.
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt";
-    state.round = 4;
+    state.round = 2;
     const developing = primaryMapObjective(state, hero);
     expect(developing?.kind).toBe("visitable");
     expect(developing?.spaceId).toBe(RESOURCE);
     const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
+
+    // CONTROL: past the window the same board no longer forces the sweep — the
+    // home leftovers stay objectives, they just stop owning the primary pick.
+    state.round = 3;
+    const released = primaryMapObjective({ ...state } as GameState, hero);
+    expect(released?.spaceId).not.toBe(RESOURCE);
+    expect(collectMapObjectives(state, hero).map((o) => o.spaceId)).toEqual(
+      expect.arrayContaining([MINE, TREASURE, RESOURCE]),
+    );
   });
 
   it("commits to one primary objective (no multi-source thrash)", () => {
@@ -1749,13 +1807,15 @@ describe("sticky primary + explore objectives", () => {
     delete fields[EMPTY].difficulty;
     fields[EMPTY].flagOwnerId = null;
 
-    // Broke with materials → market is an objective.
+    // Broke with a genuinely SELLABLE materials surplus (above the next
+    // dwelling's own input need and the gold-ladder floor) → market is an
+    // objective.
     state.players.p2.resources = {
       gold: 2,
-      buildingMaterials: 7,
+      buildingMaterials: 16,
       valuables: 0,
     };
-    const needy = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    const needy = collectMapObjectives({ ...state } as GameState, hero).map((o) => o.spaceId);
     expect(needy).toContain(EMPTY);
 
     // CONTROL: treasury already covers the next dwelling AND the recruit
@@ -1767,7 +1827,7 @@ describe("sticky primary + explore objectives", () => {
       buildingMaterials: 12,
       valuables: 6,
     };
-    const flush = collectMapObjectives(state, hero).map((o) => o.spaceId);
+    const flush = collectMapObjectives({ ...state } as GameState, hero).map((o) => o.spaceId);
     expect(flush).not.toContain(EMPTY);
   });
 
@@ -2021,12 +2081,20 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     fields[EMPTY].location = "mine";
     fields[EMPTY].flagOwnerId = null;
     delete fields[EMPTY].difficulty;
-    expect(primaryMapObjective(state, hero)?.spaceId).toBe(RESOURCE);
+    // Read the premium at its seam: which target the march actually takes is
+    // decided by separate rules (the Far doorway hunt owns this board's pick).
+    const valueAt = (spaceId: MapSpaceId) => {
+      const objective = collectMapObjectives({ ...state } as GameState, hero).find(
+        (candidate) => candidate.spaceId === spaceId,
+      )!;
+      return objectiveStrategicValue({ ...state } as GameState, hero, objective, 1);
+    };
+    expect(valueAt(RESOURCE)).toBeGreaterThan(valueAt(EMPTY));
 
     // CONTROL: the premium follows the Settlement LOCATION, not the field id.
     fields[RESOURCE].location = "mine";
     fields[EMPTY].location = "settlement";
-    expect(primaryMapObjective(state, hero)?.spaceId).toBe(EMPTY);
+    expect(valueAt(EMPTY)).toBeGreaterThan(valueAt(RESOURCE));
   });
 
   it("marches 3 turns toward a lv3 gold mine / settlement before round 6 with 3 Packs + 1 silver", () => {
@@ -3841,8 +3909,20 @@ describe("fallback staging — the hero never just stands still when outmatched"
 
   it("CONTROL: one beatable guard suppresses staging entirely", () => {
     const { state, hero } = exhaustedMap();
+    // exhaustedMap strips the army, and the army-coverage gate means a hero
+    // with no bodies beats nothing — give it one bronze Pack so the
+    // difficulty-1 guard below is genuinely beatable.
+    const bronze = coreFactionDefinitions[state.players.p2.factionId!].units.filter(
+      (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === "bronze",
+    );
+    state.players.p2.army = bronze.map((unitDefId, index) => ({
+      id: `stage-bronze-${index}`,
+      unitDefId,
+      side: "pack" as const,
+    }));
     const mine = state.adventure!.fields[MINE];
     mine.difficulty = 1; // level-1 hero covers it again
+    expect(canBeatGuardedField(state, hero, mine)).toBe(true);
     const objectives = collectMapObjectives(state, hero);
     expect(objectives.some((objective) => objective.spaceId === MINE)).toBe(true);
     expect(objectives.some((objective) => objective.spaceId === TREASURE)).toBe(false);
@@ -4562,3 +4642,232 @@ describe("computer opening: tile Ⅰ rotation and Ⅱ–Ⅲ-first discovery", ()
     expect(seatHoldsFarSupplyTile(spentView, "p2")).toBe(false);
   });
 });
+
+/**
+ * ROUTE WASTE (traced on the Impossible decision traces in artifacts/):
+ * heroes re-walked cells they had already left in the same turn and ended turns
+ * beside free value. The three rules below each pin one cause; every case is
+ * paired with a CONTROL where the old and new behaviour agree, so removing the
+ * rule flips exactly one expectation.
+ */
+describe("route waste — repeated steps and unspent movement", () => {
+  /** Observation carrying this seat's policy memory (scoreMapAction reads it). */
+  function observeWith(
+    state: GameState,
+    memory: ReturnType<typeof emptyComputerMemory>,
+  ): ComputerObservation {
+    return { ...observe(state), memory };
+  }
+
+  function scoreMove(
+    state: GameState,
+    memory: ReturnType<typeof emptyComputerMemory>,
+    hero: HeroState,
+    to: MapSpaceId,
+  ): { score: number; policy: string } {
+    const scored = scoreMapAction(observeWith(state, memory), {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: hero.id,
+      to,
+    });
+    if (!scored) throw new Error("expected MOVE_HERO to be scored");
+    return scored;
+  }
+
+  /** Strip the home tile down to ONE objective: the free resource symbol. */
+  function loneResourceObjective(state: GameState): void {
+    state.adventure!.victoryMode = "dragon-hunt";
+    for (const tile of Object.values(state.adventure!.tiles)) tile.faceDown = false;
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    // The mine is ours (a flaggable we hold is no objective) and the treasure
+    // is spent (a visitable keeps its value until its black cube is placed).
+    const mine = state.adventure!.fields[MINE];
+    mine.flagOwnerId = "p2";
+    mine.everFlagged = true;
+    delete mine.difficulty;
+    const treasure = state.adventure!.fields[TREASURE];
+    treasure.blackCube = true;
+    delete treasure.difficulty;
+  }
+
+  it("refuses a return step that has collected nothing since the hero stood there (CONTROL: a pickup in between keeps the return a march step)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.round = 4;
+    loneResourceObjective(state);
+
+    // Derive a real two-step approach from the map itself: corridor cell one
+    // step from the symbol, stand-off cell one step further out.
+    const toResource = objectiveDistanceField(
+      state,
+      hero,
+      [{ spaceId: RESOURCE, kind: "visitable" }],
+      true,
+    );
+    const plain = (id: MapSpaceId) =>
+      Boolean(state.adventure!.fields[id]) &&
+      !state.adventure!.fields[id].difficulty &&
+      id !== RESOURCE;
+    const corridor = [...toResource.entries()].find(
+      ([id, distance]) => distance === 1 && plain(id),
+    )?.[0];
+    const standOff = corridor
+      ? [...toResource.entries()].find(
+          ([id, distance]) =>
+            distance === 2 && plain(id) && getAdjacentSpaceIds(id).includes(corridor),
+        )?.[0]
+      : undefined;
+    if (!corridor || !standOff) {
+      throw new Error("expected a two-step plain approach to the resource symbol");
+    }
+    hero.spaceId = standOff;
+    expect(distanceFromHeroTo(state, hero, RESOURCE)).toBe(2);
+
+    // The hero already walked the corridor cell this turn and has collected
+    // NOTHING since (same route-progress fingerprint) — walking back is a null
+    // round trip, even though it still reads as "closer to the objective".
+    const stalled = emptyComputerMemory(state.round);
+    stalled.visitedThisTurn = [corridor];
+    stalled.routeHistory = [
+      {
+        heroId: hero.id,
+        to: corridor,
+        progress: routeProgressKey(state, "p2"),
+        round: state.round,
+      },
+    ];
+    expect(scoreMove(state, stalled, hero, corridor).score).toBeLessThan(300);
+
+    // CONTROL: something WAS collected since that arrival (a different
+    // fingerprint) — the ordinary dead-end pickup return is untouched.
+    const collected = emptyComputerMemory(state.round);
+    collected.visitedThisTurn = [corridor];
+    collected.routeHistory = [
+      {
+        heroId: hero.id,
+        to: corridor,
+        progress: "progress-before-the-pickup",
+        round: state.round,
+      },
+    ];
+    const resumed = scoreMove(state, collected, hero, corridor).score;
+    expect(resumed).toBeGreaterThan(300);
+    expect(scoreMove(state, stalled, hero, corridor).score).toBeLessThan(resumed);
+  });
+
+  it("spends the last movement on an adjacent free pickup instead of banking it (CONTROL: a pickup that recedes from the premium target is refused)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    establishP2PackCore(state);
+    state.round = 4;
+    // Plenty of movement left: the premium approach's own budgeted pickup
+    // (`map.premium-pickup-before-next-turn`, which only fires when the capture
+    // can NOT be paid for this turn) stays out of the way, so the case under
+    // test is purely "leftover movement beside free value".
+    hero.movementPoints = 12;
+    state.players.p2.resources = {
+      ...state.players.p2.resources,
+      gold: 99,
+      buildingMaterials: 99,
+      valuables: 99,
+    };
+    state.adventure!.victoryMode = "dragon-hunt";
+    for (const tile of Object.values(state.adventure!.tiles)) tile.faceDown = false;
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    // Premium income commitment one step away: the march target whose combat
+    // reserve the commitment clamp protects.
+    const mine = state.adventure!.fields[MINE];
+    mine.location = "mine";
+    mine.resource = "gold";
+    mine.difficulty = 1;
+    mine.flagOwnerId = null;
+
+    const neighbours = getAdjacentSpaceIds(TOWN).filter(
+      (id) => state.adventure!.fields[id] && id !== MINE,
+    );
+    const alongside = neighbours.find((id) => getAdjacentSpaceIds(MINE).includes(id));
+    const away = neighbours.find((id) => !getAdjacentSpaceIds(MINE).includes(id));
+    if (!alongside || !away) {
+      throw new Error("expected one cell beside the mine and one away from it");
+    }
+    for (const id of [alongside, away]) {
+      const field = state.adventure!.fields[id];
+      field.location = "resource_symbol";
+      field.blackCube = false;
+      delete field.difficulty;
+      field.flagOwnerId = null;
+    }
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(MINE);
+
+    const memory = emptyComputerMemory(state.round);
+    // The free symbol beside the mine costs the route nothing — take it.
+    const scooped = scoreMove(state, memory, hero, alongside);
+    expect(scooped.score).toBeGreaterThan(300);
+    expect(scooped.policy).toBe("map.free-pickup-last-step");
+
+    // CONTROL: the symbol on the far side recedes from the premium target, so
+    // the commitment hold still wins and the hero keeps its approach.
+    expect(scoreMove(state, memory, hero, away).score).toBeLessThan(300);
+  });
+});
+
+/**
+ * THE POST IS THE MARCH TARGET (2026-09-16). objectiveStrategicValue promoted a
+ * Trading Post to 940 only for a feasible DWELLING rush. A seat whose saved
+ * Gold-ladder recruit is completable at the post (sell the stock the body does
+ * not need, buy its missing valuable) left it in the 600 trinket band and
+ * wandered. Measured (Necropolis seed eval-14, R9, 30-seed impossible eval):
+ * 12 gold / 5 materials / 7 valuables with Ghost Dragons 7 gold short and the
+ * plan ready — the hero arrived a Resource Round later and bought on R10.
+ */
+describe("Trading Post that completes the saved Gold recruit is a march target", () => {
+  function goldLadderSeat(gold: number, valuables: number): GameState {
+    const state = game();
+    state.round = 7;
+    state.players.p2.factionId = "rampart";
+    state.players.p2.army = [
+      { id: "g-0", unitDefId: "rampart.centaurs", side: "pack" },
+      { id: "g-1", unitDefId: "rampart.dwarves", side: "pack" },
+      { id: "g-2", unitDefId: "rampart.elves", side: "pack" },
+      { id: "g-3", unitDefId: "rampart.dendroids", side: "few" },
+    ];
+    const town = Object.values(state.towns).find((t) => t.controllerId === "p2")!;
+    town.buildings = [
+      "rampart.citadel",
+      "rampart.dwelling_bronze",
+      "rampart.dwelling_silver",
+      "rampart.dwelling_gold",
+    ];
+    state.players.p2.resources = { gold, buildingMaterials: 5, valuables };
+    state.players.p2.production = { gold: 10, buildingMaterials: 4, valuables: 1 };
+    state.adventure!.fields[RESOURCE].location = "trading_post";
+    state.adventure!.fields[RESOURCE].difficulty = undefined;
+    return state;
+  }
+  const post = { spaceId: RESOURCE, kind: "visitable" } as const;
+
+  it("values the post as a milestone while the plan can complete the body; CONTROL: an affordable body leaves it an ordinary visit", () => {
+    // Gold Dragons Few (22 gold + 1 valuable) is 10 gold short; the surplus
+    // materials and the valuables ABOVE the ladder reserve cover it.
+    const short = goldLadderSeat(12, 7);
+    const milestone = objectiveStrategicValue(short, p2Hero(short), post, 0);
+    // CONTROL: the same seat with the body already payable — no plan, no pull.
+    const flush = goldLadderSeat(30, 3);
+    const ordinary = objectiveStrategicValue(flush, p2Hero(flush), post, 0);
+    expect(milestone).toBeGreaterThanOrEqual(940);
+    expect(ordinary).toBeLessThan(940);
+    // Both boards share the same same-tile sweep bonus, so the gap IS the
+    // milestone promotion (940) over the trinket band.
+    expect(milestone - ordinary).toBe(940 - 600 - (VISITABLE_LOCATION_VALUE.trading_post ?? 0));
+  });
+});
+

@@ -1,6 +1,6 @@
 import { isOpeningFarSweepField, securedFarTileIds } from "./far-sweep";
 import { heroReadyForGrowth, tileBandOffersGrowth } from "./map-navigation";
-import { preferredOpeningPacks, committedGoldInvestment, goldStepMarketPlan, goldLadderValuablesReserve } from "./development";
+import { preferredOpeningPacks, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan, goldLadderValuablesReserve } from "./development";
 import {
   GOLD_RESERVE,
   MARKET_MIN_ROUND,
@@ -46,6 +46,9 @@ import {
   heroMovementMax,
   neutralBattleLevel,
   wanderingMerchantAvailable,
+  wanderingMerchantOffers,
+  neutralRecruitCost,
+  getActiveAstrologersCard,
 } from "../adventure";
 import {
   canHeroDiscoverAdjacentTile,
@@ -67,6 +70,13 @@ import type {
 import { cardKeepValue } from "./card-policy";
 import { playersAreAllied } from "./control";
 import { cardTier } from "./card-values";
+import {
+  neutralRecruitUtility,
+  ownsAnyWarMachine,
+  statisticEmpowerPreference,
+  statisticEmpowerUtility,
+  warMachineGrantUtility,
+} from "./recruit-value";
 import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
 import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
 import { effectiveTownBuildingCost, houseRuleEnabled } from "../house-rules";
@@ -108,6 +118,7 @@ import {
   distanceFromHeroTo,
   fieldSuppliesResource,
   freeSeizuresWithinReach,
+  isFreeSeizeObjective,
   shouldDeferExpansionTile,
   isHomeTileOpeningObjective,
   lowerExpansionBandImmediatelyAvailable,
@@ -124,6 +135,7 @@ import {
 import {
   economyFocusBias,
   emptyComputerMemory,
+  routeProgressKey,
   visitedThisTurn,
   type ComputerPolicyMemory,
 } from "./memory";
@@ -718,8 +730,11 @@ function populationScore(
     const skeletonNeedsPack = player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "few");
     if (skeletonNeedsPack && action.purchases.some(purchase => purchase.kind === "reinforce" &&
         purchase.unitDefId === "necropolis.wraiths")) return 180;
+    // Like the fallback branch above, the paid Skeleton Pack must not jump the
+    // Necromancy-tempo cap while a beatable neutral could still earn the
+    // upgrade for free.
     if (action.purchases.length === 1 && action.purchases[0].kind === "reinforce" &&
-        action.purchases[0].unitDefId === "necropolis.skeletons") return 976;
+        action.purchases[0].unitDefId === "necropolis.skeletons" && !earnedUpgradeAvailable) return 976;
     if (needsNecromancyVampire(state, observation.playerId)) {
       if (action.purchases.some(purchase => coreUnitDefinitions[purchase.unitDefId]?.tier === "gold" ||
           purchase.unitDefId === "necropolis.liches")) return 180;
@@ -1108,6 +1123,11 @@ const ALLY_UNBLOCK_SCORE = 620;
 // and walking back on. Above END_TURN so the setup step happens, below a real
 // march/enter step so it never outranks live progress elsewhere.
 const GUARD_REENTRY_SETUP_SCORE = 640;
+// LAST MOVEMENT POINT: a FREE pickup one step away is worth more than ending
+// the turn with the movement unspent, but less than any real march/entry step.
+// Just above END_TURN (300) so it only ever wins when nothing else moves the
+// plan forward.
+const FREE_PICKUP_LAST_STEP_SCORE = 320;
 // Home (Ⅰ) rotation bonus for leaving a Ⅱ–Ⅲ expansion doorway open — larger
 // than the whole band-blind doorway-count spread (3*9 + 3*6 = 45) so a
 // qualifying rotation always wins, per the user rule. See
@@ -1321,6 +1341,32 @@ function moveScore(
     return NO_PROGRESS_SCORE;
   }
 
+  // NULL ROUND TRIP. The guard above only catches a re-tread that also fails
+  // the CURRENT march reading — and the reading itself is what moves: when the
+  // primary objective flips mid-turn (the cascade is keyed on remaining
+  // movement and resources) the step back reads as fresh progress and the hero
+  // shuffles between two cells. Under a FIXED target a BFS march never needs to
+  // re-enter a cell it already left: the distance falls monotonically. So a
+  // return is productive only when the hero actually COLLECTED something since
+  // it stood there — which is exactly the ordinary dead-end pickup return, and
+  // is exactly what `routeProgressKey` (army, buildings, hero levels, own
+  // flags, spent fields) records against each recorded step.
+  // Measured: Rampart impossible R8 (7:8→8:8→8:7→8:8→7:8 — four steps, zero
+  // displacement, nothing gained) and R5 (4:9→5:9→4:9).
+  // Exempt: a march to an UNOPENED FRONTIER (explore primary). Re-treading a
+  // corridor out of a revealed dead end toward the next doorway is the normal
+  // expansion walk (a discovery never moves the progress key, so it would read
+  // as gain-less); the frontier is a fixed target, not a flip.
+  // (`visitedThisTurn` is the cheap precondition: no walked cell, no history
+  // entry to compare, and the fingerprint is never rebuilt for a fresh step.)
+  if (
+    visitedThisTurn(memory, action.to) &&
+    primary?.kind !== "explore" &&
+    returnsWithoutGain(state, observation.playerId, memory, action)
+  ) {
+    return NO_PROGRESS_SCORE;
+  }
+
   // Progress toward the sticky objective: prefer the biggest step in.
   if (to < here) {
     if (dwellingMarketMarch) return 935;
@@ -1357,7 +1403,61 @@ function moveScore(
     return GUARD_REENTRY_SETUP_SCORE;
   }
 
+  // LAST MOVEMENT POINT — take a free pickup instead of banking the movement.
+  // The march above only routes to pickups that lie ALONG the route (the
+  // `scoopable` filter, and a premium primary drops them entirely to protect
+  // its combat reserve), so an adjacent unguarded mine / symbol / settlement
+  // that is merely NOT on the way read as "no progress" (260, below END_TURN)
+  // and the hero stopped one step short of free value. Strictly bounded: the
+  // step may never move the hero AWAY from its primary — that would spend the
+  // approach/staging turn a deliberate hold is reserving — and at 320 it loses
+  // to every real march, entry, unblock and re-entry step above.
+  if (
+    hero.spaceId &&
+    !visitedThisTurn(memory, action.to) &&
+    getAdjacentSpaceIds(hero.spaceId).includes(action.to) &&
+    objectives.some(
+      (objective) =>
+        objective.spaceId === action.to && isFreeSeizeObjective(objective, state),
+    )
+  ) {
+    const towardPrimary = primary
+      ? objectiveDistanceField(state, hero, [primary], true)
+      : null;
+    const primaryHere = towardPrimary?.get(hero.spaceId) ?? Infinity;
+    const primaryTo = towardPrimary?.get(action.to) ?? Infinity;
+    if (!towardPrimary || primaryTo <= primaryHere) {
+      return FREE_PICKUP_LAST_STEP_SCORE;
+    }
+  }
+
   return NO_PROGRESS_SCORE;
+}
+
+/**
+ * True when `action.to` is a cell this hero already moved onto earlier in the
+ * SAME round and the seat's captured-value fingerprint has not changed since
+ * that arrival: walking back there collects nothing it did not already collect.
+ * `routeProgressKey` covers army, buildings, hero levels, own flags and spent
+ * (black-cube) fields, so any real pickup, capture, visit or battle in between
+ * releases the guard and the ordinary dead-end return still scores as a march.
+ */
+function returnsWithoutGain(
+  state: GameState,
+  playerId: string,
+  memory: ComputerPolicyMemory,
+  action: Extract<GameAction, { type: "MOVE_HERO" }>,
+): boolean {
+  const history = memory.routeHistory;
+  if (!history?.length) return false;
+  const round = state.round ?? 0;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const step = history[index];
+    if (step.heroId !== action.heroId || step.to !== action.to) continue;
+    if ((step.round ?? round) !== round) continue;
+    return step.progress === routeProgressKey(state, playerId);
+  }
+  return false;
 }
 
 /**
@@ -1863,6 +1963,14 @@ function tradeResourceScore(
   if (goldStep && goldStep.rateIndices.includes(action.rateIndex)) {
     return DWELLING_RUSH_TRADE_SCORE;
   }
+  // Same-visit Gold dwelling + level-7 body: buy the input the RECRUIT still
+  // misses while the seat is already at the post for its dwelling, so the body
+  // lands the round the dwelling does (see goldBodyComboTradePlan). Scored
+  // after the rush so a suppressed, unaffordable dwelling rush still wins.
+  const goldCombo = goldBodyComboTradePlan(state, observation.playerId);
+  if (goldCombo && goldCombo.rateIndices.includes(action.rateIndex)) {
+    return DWELLING_RUSH_TRADE_SCORE;
+  }
   if ((state.round ?? 0) < MARKET_MIN_ROUND) return 180;
   const utility = tradeUtility(state, observation.playerId, action.rateIndex);
   if (utility <= 0) {
@@ -1872,6 +1980,17 @@ function tradeResourceScore(
   // Band above Done (520) and below recruit/build so economy plays first, then
   // a single useful trade, then leave.
   return Math.min(700, 540 + Math.round(utility * 8));
+}
+
+/**
+ * Wandering Merchant: worth opening only when some affordable machine passes the
+ * shared War Machine rules (no machine owned yet, price clears the reserve and
+ * the next Gold body's gold) — otherwise the reminder stays a human-only cue.
+ */
+function wantsWanderingMerchantBuy(state: GameState, playerId: PlayerId): boolean {
+  return wanderingMerchantOffers(state, playerId).some(
+    (offer) => offer.affordable && warMachineGrantUtility(state, playerId, offer.cardId, offer.cost) > 0,
+  );
 }
 
 /** Buy a war machine when gold is healthy and the seat does not already own it. */
@@ -1891,6 +2010,11 @@ function buyWarMachineScore(
     action.cardId.includes("first_aid") ||
     Boolean(card?.name?.toLowerCase().includes("first aid"));
   if (owned.includes(action.cardId)) {
+    return 200;
+  }
+  // User ruling: one machine per seat — a Ballista / Tent / Cannon already in
+  // play (or waiting in hand) rules out buying another.
+  if (ownsAnyWarMachine(state, observation.playerId)) {
     return 200;
   }
   if (
@@ -1997,21 +2121,11 @@ function eventNeutralUnitUtility(
   state: GameState,
   playerId: PlayerId,
   unitDefId: string,
+  cost?: ResourceCost,
 ): number {
-  const def = coreUnitDefinitions[unitDefId];
-  const side = def?.neutral;
-  if (!def || !side) return 0;
-  if (!goldArmyAllowsBronzePurchase(state, playerId, unitDefId, "recruit")) return -100;
-  const tierBonus =
-    def.tier === "azure" ? 48 : def.tier === "gold" ? 34 : def.tier === "silver" ? 20 : 8;
-  const combatValue =
-    side.attack * 3 +
-    side.health * 2 +
-    side.defense +
-    Math.round(side.initiative / 2);
-  const cost = eventResourceCostValue(side.cost);
-  const thinArmyBonus = (state.players[playerId]?.army.length ?? 0) < 5 ? 18 : 0;
-  return tierBonus + combatValue + thinArmyBonus - Math.round(cost * 1.5);
+  // Shared golden-rule pricing (recruit-value.ts): Bronze rule, Gold-ladder
+  // fund, gold reserve, body cap; `cost` is the real priced cost when known.
+  return neutralRecruitUtility(state, playerId, unitDefId, { cost });
 }
 
 function visitStepsUtility(
@@ -2191,17 +2305,29 @@ function visitStepsUtility(
         utility += eventCardAcquisitionUtility(state, playerId, step.cardId, step.cost);
         break;
       case "GRANT_WAR_MACHINE":
-        // Free grant is excellent; paid only when gold is healthy (cost checked
-        // by legal-actions, but still prefer free / cheap).
-        utility += step.cost ? (res.gold >= GOLD_RESERVE + (step.cost.gold ?? 0) + 5 ? 22 : 8) : 32;
+        // McGiver's free grant / the Wandering Merchant's discounted buy: the
+        // First Aid Tent leads, and a seat that already owns any machine takes
+        // nothing (refused in rejectsPaidBronzeSteps so Skip wins outright).
+        utility += warMachineGrantUtility(state, playerId, step.cardId, step.cost);
         break;
       case "RECRUIT_DRAWN_NEUTRAL":
-        utility += hasGoldArmy(state, playerId)
-          ? step.recruit ? eventNeutralUnitUtility(state, playerId, step.recruit.unitDefId) : 0
-          : army < 6 ? 28 : 12;
+        // Charlie / Utopia draw: price the REAL recruit cost (vouchers applied)
+        // through the shared golden rules; "Recruit none" carries 0.
+        utility += step.recruit
+          ? eventNeutralUnitUtility(state, playerId, step.recruit.unitDefId,
+              neutralRecruitCost(state, playerId, step.recruit.unitDefId))
+          : 0;
         break;
       case "RECRUIT_FACTION_UNIT":
-        utility += army < 6 ? 28 : 12;
+        // Unexpected Reinforcements: free — take the strongest offered body.
+        utility += neutralRecruitUtility(state, playerId, step.unitDefId, { free: true });
+        break;
+      case "RECRUIT_RANDOM_NEUTRAL":
+        utility += army < 6 ? 30 : army < 8 ? 16 : -100;
+        break;
+      case "EMPOWER_STATISTIC":
+        // Dancing Imp / Explorers / Hero: Knowledge first, then Attack / Power.
+        utility += statisticEmpowerUtility(state, playerId, step.cardId, step.source, step.costGold ?? 0);
         break;
       case "USE_LEGION_RECRUIT_DISCOUNT":
         {
@@ -2533,9 +2659,19 @@ function spendsMissingGoldRecruitFund(state: GameState, playerId: PlayerId, cost
 
 function rejectsPaidBronzeSteps(state: GameState, playerId: PlayerId, steps: ReadonlyArray<VisitStep>): boolean {
   return steps.some((step) => {
-    if (step.type === "EVENT_NEUTRAL_BUY") return hasGoldArmy(state, playerId) && !goldArmyAllowsBronzePurchase(state, playerId, step.unitDefId, "recruit");
-    if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(hasGoldArmy(state, playerId) && step.recruit &&
-      !goldArmyAllowsBronzePurchase(state, playerId, step.recruit.unitDefId, "recruit"));
+    // Paid Neutral recruits: the shared valuation folds in the Bronze rule, the
+    // Gold-ladder fund, the reserve and the body cap — a non-positive worth
+    // means "Recruit none" must win (utility alone can never drop below Done).
+    if (step.type === "EVENT_NEUTRAL_BUY") return eventNeutralUnitUtility(state, playerId, step.unitDefId) <= 0;
+    if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(step.recruit) &&
+      eventNeutralUnitUtility(state, playerId, step.recruit!.unitDefId,
+        neutralRecruitCost(state, playerId, step.recruit!.unitDefId)) <= 0;
+    // War Machine grant / discounted buy: never a second machine, never from
+    // the reserve or the next Gold body's gold.
+    if (step.type === "GRANT_WAR_MACHINE") return warMachineGrantUtility(state, playerId, step.cardId, step.cost) <= 0;
+    // Hero's paid Statistic swap must leave the reserve and Gold fund intact.
+    if (step.type === "EMPOWER_STATISTIC") return (step.costGold ?? 0) > 0 &&
+      statisticEmpowerUtility(state, playerId, step.cardId, step.source, step.costGold ?? 0) <= 0;
     if (step.type === "REINFORCE_ARMY_UNIT") {
       const unit = state.players[playerId]?.army.find((candidate) => candidate.id === step.armyUnitId);
       const cost = reinforceCostFor(state, playerId, step.armyUnitId, step.halfCost, false, step.roundDown ?? false);
@@ -3023,7 +3159,16 @@ export function scoreMapAction(
         return { score: 250, policy: "map.save-guard-continuation" };
       }
       const premium = scorePremiumApproach(state, action, memory);
-      if (premium && (premium.score <= 300 || ordinaryMoveScore > 300 ||
+      // The premium commitment clamp (`map.premium-keep-commitment`, 200) stops
+      // the hero WANDERING off a committed income route — it must not also bank
+      // the leftover movement next to free value. A pickup step that does not
+      // recede from the premium target (checked in moveScore) keeps its score;
+      // every other clamp and approach reading is untouched.
+      const freePickupOverClamp =
+        ordinaryMoveScore === FREE_PICKUP_LAST_STEP_SCORE &&
+        premium?.policy === "map.premium-keep-commitment";
+      if (premium && !freePickupOverClamp &&
+          (premium.score <= 300 || ordinaryMoveScore > 300 ||
           premium.policy === "map.premium-pickup-before-next-turn")) {
         const destination = state.adventure?.fields[action.to];
         const enemy = Object.values(state.heroes).some(other =>
@@ -3087,6 +3232,9 @@ export function scoreMapAction(
             return { score: 929, policy: "map.approach-first-opened-tile" };
           }
         }
+      }
+      if (ordinaryMoveScore === FREE_PICKUP_LAST_STEP_SCORE) {
+        return { score: ordinaryMoveScore, policy: "map.free-pickup-last-step" };
       }
       return { score: ordinaryMoveScore, policy: "map.move-to-objective" };
     }
@@ -3158,12 +3306,23 @@ export function scoreMapAction(
       // Open it before ending the turn; the choice policy selects
       // the actual machine (and the purchase then removes this action).
       return {
-        score: wanderingMerchantAvailable(state, observation.playerId, true)
+        score: wanderingMerchantAvailable(state, observation.playerId, true) &&
+          wantsWanderingMerchantBuy(state, observation.playerId)
           ? 710 + economyFocusBias(memory, "market") : 0,
         policy: "map.open-wandering-merchant",
       };
-    case "BUY_WANDERING_MERCHANT":
-      return { score: 710 + economyFocusBias(memory, "market"), policy: "map.buy-wandering-merchant" };
+    case "BUY_WANDERING_MERCHANT": {
+      // Discounted machine: Tent > Ballista > Ammo Cart > Cannon, never a second
+      // machine, never from the reserve or the next Gold body's gold.
+      const offer = wanderingMerchantOffers(state, observation.playerId).find(
+        (entry) => entry.cardId === action.cardId,
+      );
+      const worth = warMachineGrantUtility(state, observation.playerId, action.cardId, offer?.cost ?? { gold: 0 });
+      if (worth <= 0) {
+        return { score: 150, policy: "map.skip-wandering-merchant" };
+      }
+      return { score: 700 + Math.round(worth / 2) + economyFocusBias(memory, "market"), policy: "map.buy-wandering-merchant" };
+    }
     case "TRADE_RESOURCES":
       return {
         score: tradeResourceScore(observation, action),
@@ -3229,8 +3388,18 @@ export function scoreMapAction(
         policy: crowded ? "card.store-spell-free-hand-slot" : "card.keep-spell-ready",
       };
     }
-    case "ASTROLOGERS_HERO_EMPOWER":
-      return { score: 735, policy: "card.empower-statistic" };
+    case "ASTROLOGERS_HERO_EMPOWER": {
+      // Hero (paid Statistic swap, up to two per chosen turn): Knowledge first,
+      // then Attack / Power; only from gold the reserve and the next Gold body
+      // do not need — the swap must never delay the round-9 Gold recruit.
+      const effect = getActiveAstrologersCard(state)?.effect;
+      const costGold = effect?.type === "PAID_EMPOWER_PER_TURN" ? effect.costGold : 4;
+      const worth = statisticEmpowerUtility(state, observation.playerId, action.cardId, "hand", costGold);
+      if (worth <= 0) {
+        return { score: 220, policy: "card.keep-gold-over-hero-empower" };
+      }
+      return { score: 700 + statisticEmpowerPreference(action.cardId), policy: "card.empower-statistic" };
+    }
     case "CRACK_PERMANENT": {
       const card = cardLibrary[action.cardId];
       const option = card?.effect.type === "CHOOSE_ONE"

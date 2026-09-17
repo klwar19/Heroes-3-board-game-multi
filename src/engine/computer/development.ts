@@ -94,6 +94,25 @@ export function needsNecromancyVampire(state: GameState, playerId: PlayerId): bo
     !state.players[playerId].army.some(unit => unit.unitDefId === "necropolis.vampires" && unit.side === "pack");
 }
 
+/** Whether the faction's Gold dwelling is payable from stock this instant
+ * WITHOUT eating the planned Silver body's price. The stalled-opening
+ * exemption below only steps aside for a genuinely flush seat that does both
+ * the same turn — a seat that could pay the dwelling but would then sit at
+ * less than the Silver Few's cost is exactly the R4–R7 stall the exemption
+ * exists for, so it stays open for them. */
+function goldDwellingPayableNow(state: GameState, playerId: PlayerId): boolean {
+  const dwelling = factionBuildingForEffect(state, playerId,
+    (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold");
+  if (!dwelling) return false;
+  const cost = effectiveTownBuildingCost(state, dwelling);
+  const res = state.players[playerId]?.resources;
+  if (!res) return false;
+  const silverCost = premiumSilverCost(state, playerId);
+  return (res.gold ?? 0) >= (cost.gold ?? 0) + (silverCost?.gold ?? 0) &&
+    (res.buildingMaterials ?? 0) >= (cost.buildingMaterials ?? 0) + (silverCost?.buildingMaterials ?? 0) &&
+    (res.valuables ?? 0) >= (cost.valuables ?? 0) + (silverCost?.valuables ?? 0);
+}
+
 /** Fund the first Silver breakthrough and Dungeon's ordered second Silver
  * before opening Gold. Combat and movement legality remain separate. */
 export function needsPremiumSilverBreakthrough(state: GameState, playerId: PlayerId): boolean {
@@ -107,6 +126,23 @@ export function needsPremiumSilverBreakthrough(state: GameState, playerId: Playe
   if (profile.silverUnits > 0) return state.players[playerId]?.factionId === "dungeon" &&
     nextPlannedSilver(state, playerId) !== null;
   if (!hasNecromancyPlan(state, playerId) && securedFarTileIds(state, playerId).size > 0) return true;
+  // STALLED OPENING: the Silver dwelling stands, the opening Pack core is
+  // complete and NOT ONE Far tile has been secured. That seat is exactly the
+  // one whose planned Silver body is the difference between winning the Far III
+  // fight its whole economy hangs on and refusing/retreating from it again.
+  // Measured (Rampart seed eval-19, R4-R7): the Dendroid Few (8 gold) sat
+  // unbought at 13 gold for three straight rounds because the treasury target
+  // had already jumped to the Gold dwelling PLUS its Gold recruit (37 gold), so
+  // the generic Silver guard called the body "surplus"; the first Far landed
+  // R10 and the Gold body R11. USER RULING (2026-09-15): buy the PLANNED body
+  // first at all cost. Seats that already hold a Far tile took the branch above.
+  // Only while the seat is genuinely STALLED: a Gold dwelling it can pay for
+  // RIGHT NOW is the bigger milestone and goes up first (the Build and
+  // Population tokens are separate, so a flush seat does both the same turn).
+  if (!hasNecromancyPlan(state, playerId) && profile.silverUnlocked &&
+      openingBronzeCoreReady(state, playerId) &&
+      nextPlannedSilver(state, playerId) !== null &&
+      !goldDwellingPayableNow(state, playerId)) return true;
   const memory = state.computerMemory?.[playerId];
   if ((memory?.settlementLossStreak ?? 0) >= 2) return true;
   const target = memory?.stickyObjectiveSpaceId;
@@ -130,6 +166,15 @@ export function committedGoldInvestment(state: GameState, playerId: PlayerId): b
 const SILVER_RECRUIT_PLAN: Record<string, string[]> = {
   dungeon: ["dungeon.minotaurs", "dungeon.medusas"],
   rampart: ["rampart.dendroids"],
+  // Inferno by the same reading as Rampart's Dendroid ruling: the BREAKTHROUGH
+  // body, not the cheapest one. Pit Lords (8 gold, Attack 4 / Health 6, Pack
+  // Attack 5 + summon-demons) are the body that can actually carry the Far III
+  // fight; Demons (6 gold, Attack 3 / Health 4) are the weakest Silver Few in
+  // the game and the cheapest-first fallback bought them first. Measured
+  // (Inferno seeds eval-20 and eval-27, R4-R9): every premium level-3 attempt
+  // with the Demons/Bronze army was lost or retreated, no Far income ever
+  // landed and the Gold body never arrived.
+  inferno: ["inferno.pit_lords"],
 };
 
 export function silverRecruitPlan(state: GameState, playerId: PlayerId): string[] {
@@ -1300,6 +1345,66 @@ export function goldStepMarketPlan(
     if (raised < goldShort) return null;
   }
   return rateIndices.length > 0 ? { rateIndices } : null;
+}
+
+/**
+ * Trades that make the GOLD DWELLING **and** the top Gold Few payable on ONE
+ * Trading Post visit, so the level-7 body lands the SAME round its dwelling is
+ * built instead of a whole Resource Round later.
+ *
+ * Measured (Dungeon seed eval-4, R9): 53 gold / 14 materials / 4 valuables. The
+ * dwelling-rush planner found no missing DWELLING input and returned null, the
+ * dwelling was built for exactly those 4 valuables, and the Black Dragon Few
+ * (19 gold + 1 valuable) was then left one 6-gold trade short with 38 gold in
+ * hand — the body landed R10. The generic heuristic cannot close that gap
+ * either: its gold floor is the target that already contains the dwelling AND
+ * the recruit, so spending 6 gold on the valuable always reads as "scarce".
+ *
+ * Only fires while the next development building IS the Gold dwelling, and only
+ * when the gold left after the trades still pays BOTH the dwelling and the
+ * recruit — so it can never strip a fund it cannot complete. Materials and
+ * valuables are only ever BOUGHT here, never sold. Public printed costs and
+ * resource counts only.
+ */
+export function goldBodyComboTradePlan(
+  state: GameState,
+  playerId: PlayerId,
+): GoldStepMarketPlan | null {
+  const profile = armyDevelopmentProfile(state, playerId);
+  if (profile.phase !== "unlock-gold" || profile.goldUnlocked) return null;
+  if (needsPremiumSilverBreakthrough(state, playerId) ||
+      needsNecromancyVampire(state, playerId)) return null;
+  const goldDwelling = factionBuildingForEffect(state, playerId,
+    (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold");
+  const nextBuilding = nextDevelopmentBuildingCost(state, playerId);
+  if (!goldDwelling || !nextBuilding || goldDwelling.cost !== nextBuilding) return null;
+  const topGold = rankedGoldUnits(state, playerId)[0];
+  const few = topGold ? coreUnitDefinitions[topGold]?.few : undefined;
+  if (!topGold || !few) return null;
+  const recruit = applyRecruitGoldDiscount(state, playerId,
+    { kind: "recruit", unitDefId: topGold }, few.cost);
+  const dwelling = effectiveTownBuildingCost(state, goldDwelling);
+  const need: Required<ResourceCost> = {
+    gold: (dwelling.gold ?? 0) + (recruit.gold ?? 0),
+    buildingMaterials: (dwelling.buildingMaterials ?? 0) + (recruit.buildingMaterials ?? 0),
+    valuables: (dwelling.valuables ?? 0) + (recruit.valuables ?? 0),
+  };
+  const res = playerResourceRecord(state, playerId);
+  const rateIndices: number[] = [];
+  let goldForTrades = 0;
+  for (const key of ["buildingMaterials", "valuables"] as const) {
+    const missing = Math.max(0, need[key] - res[key]);
+    if (missing === 0) continue;
+    const rate = goldPurchaseRate(key);
+    if (!rate) return null;
+    goldForTrades += missing * rate.goldPerUnit;
+    rateIndices.push(rate.rateIndex);
+  }
+  if (rateIndices.length === 0) return null;
+  // Both purchases must still be payable after the trades, or this is just the
+  // ordinary dwelling rush and the recruit waits for its own Resource Round.
+  if (res.gold - goldForTrades < need.gold) return null;
+  return { rateIndices };
 }
 
 export type DwellingRushAssessment = {

@@ -8,7 +8,7 @@ import {
   commanderUnitId
 } from "./index";
 import { effectiveInitiative, expireEffectsForActivationEnd, getActiveDefenseBonus, getDisplayAttackBonus } from "./active-effects";
-import { applyCommanderCombatStart, applyLionRoundStartBarrage } from "./commanders";
+import { applyCommanderBeginCastHaste, applyCommanderCombatStart, applyLionRoundStartBarrage } from "./commanders";
 import type { GameAction, GameState } from "./state";
 
 /**
@@ -484,64 +484,83 @@ describe("commander casts — Hierophant Shield / Ogre Stone Skin are INSTANT RE
   });
 });
 
-describe("commander casts — Temple Guardian's Precision", () => {
-  // Power ladder (user spec): Pow 0 = +1 but ADJACENT; Pow 1 = +1 anywhere; Pow 2
-  // = +2 anywhere. Always this round only; the ignore-ranged-penalties rider stays.
-  it("targets RANGED friendlies only; Pow 0 needs adjacency, Pow 1+ reaches anywhere", () => {
-    function gate(magic: number): string[] {
-      const state = castState("temple_guardian", magic ? { magic } : {});
-      state.combat!.units.unit_p1_marksmen.position = 13; // ranged, adjacent to the commander at 9
-      const griffins = state.combat!.units.unit_p1_griffins;
-      griffins.type = "ranged";
-      griffins.position = 1; // ranged, FAR from the commander
-      return castCandidateIds(state, "temple_guardian");
-    }
-    // Pow 0: only the ADJACENT ranged marksmen; the distant ranged griffins and
-    // the ground crusaders are NOT offered.
-    const low = gate(0);
-    expect(low).toContain("unit_p1_marksmen");
-    expect(low).not.toContain("unit_p1_griffins");
-    expect(low).not.toContain("unit_p1_crusaders");
-    // Pow 1 (magic grade 2): the distant ranged griffins joins; crusaders never do.
-    const mid = gate(2);
-    expect(mid).toContain("unit_p1_marksmen");
-    expect(mid).toContain("unit_p1_griffins");
-    expect(mid).not.toContain("unit_p1_crusaders");
+describe("commander casts — Temple Guardian's Precision (instant reaction)", () => {
+  // Redesigned (user spec): an INSTANT-WINDOW reaction on a friendly RANGED unit's
+  // attack — +1/+2/+3 Attack by Power for THAT attack, ignore all ranged penalties,
+  // once per round / twice per combat, the second cast scaling (+1, or +2 at Pow 2).
+
+  // p1's ranged marksmen (Attack 3) declares an attack on the skeletons, leaving
+  // the attack-declared reaction window open so Precision can be played on it.
+  function declareMarksmenShot(state: GameState): GameState {
+    const marksmen = state.combat!.units.unit_p1_marksmen;
+    marksmen.abilities = [];
+    marksmen.attack = 3;
+    marksmen.activatedThisRound = false;
+    marksmen.attackedThisActivation = undefined;
+    marksmen.movedThisActivation = false;
+    marksmen.retaliatedThisRound = false;
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    return apply(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    });
+  }
+
+  // Declare the shot, play Precision on the marksmen, and settle → the new state.
+  function shootWithPrecision(state: GameState): GameState {
+    const declared = declareMarksmenShot(state);
+    const offer = commanderReactionOffer(declared);
+    expect(offer, "Precision reaction offered to the attacker").toBeTruthy();
+    return settle(apply(declared, offer!.action));
+  }
+
+  it("is offered on a friendly RANGED unit's attack, not a ground unit's", () => {
+    // Ranged marksmen: the attacker-side Precision reaction opens the window.
+    expect(commanderReactionOffer(declareMarksmenShot(castState("temple_guardian")))).toBeTruthy();
+
+    // Ground crusaders making a legal adjacent attack: no Precision offer.
+    const state = castState("temple_guardian");
+    const crusaders = state.combat!.units.unit_p1_crusaders;
+    crusaders.abilities = [];
+    crusaders.attack = 3;
+    crusaders.position = 11; // adjacent to the skeletons at 10
+    state.combat!.units.unit_p2_skeletons.position = 10;
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    const declared = apply(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(commanderReactionOffer(declared)).toBeFalsy();
   });
 
-  it("adds +1 Attack at Pow 1 and +2 at Pow 2 to the buffed unit's shot", () => {
-    function shoot(state: GameState): number {
+  it("adds +1/+2/+3 Attack by Power to that shot (first cast of the combat)", () => {
+    // CONTROL: marksmen 3 + die 0, Precision passed = 3.
+    expect(settle(declareMarksmenShot(castState("temple_guardian"))).combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Pow 0: +1 → 4.
+    expect(shootWithPrecision(castState("temple_guardian")).combat!.units.unit_p2_skeletons.damage).toBe(4);
+    // Pow 1 (magic grade 2): +2 → 5.
+    expect(shootWithPrecision(castState("temple_guardian", { magic: 2 })).combat!.units.unit_p2_skeletons.damage).toBe(5);
+    // Pow 2 (magic grade 3): +3 → 6.
+    expect(shootWithPrecision(castState("temple_guardian", { magic: 3 })).combat!.units.unit_p2_skeletons.damage).toBe(6);
+  });
+
+  it("waives the ranged penalty on the buffed shot", () => {
+    function pointBlank(withPrecision: boolean): number {
+      const state = castState("temple_guardian");
       const marksmen = state.combat!.units.unit_p1_marksmen;
       marksmen.abilities = [];
       marksmen.attack = 3;
-      state.combat!.activeUnitId = "unit_p1_marksmen";
-      state.activePlayerId = "p1";
-      state.combat!.dice.scriptedRolls = [0, 0];
-      state.combat!.dice.rollCount = 0;
-      const next = settle(
-        apply(state, {
-          type: "ATTACK_UNIT",
-          playerId: "p1",
-          attackerId: "unit_p1_marksmen",
-          defenderId: "unit_p2_skeletons"
-        })
-      );
-      return next.combat!.units.unit_p2_skeletons.damage;
-    }
-
-    // CONTROL: marksmen attack 3 + die 0 = 3.
-    expect(shoot(castState("temple_guardian"))).toBe(3);
-    // Pow 1 (magic grade 2), reaches anywhere: +1 → 4.
-    expect(shoot(castOn(castState("temple_guardian", { magic: 2 }), "temple_guardian", "unit_p1_marksmen"))).toBe(4);
-    // Pow 2 (magic grade 3): +2 → 5.
-    expect(shoot(castOn(castState("temple_guardian", { magic: 3 }), "temple_guardian", "unit_p1_marksmen"))).toBe(5);
-  });
-
-  it("lifts the adjacent-shot penalty (Pow 1): a point-blank shot rolls one straight die", () => {
-    function pointBlank(state: GameState): number {
-      const marksmen = state.combat!.units.unit_p1_marksmen;
-      marksmen.abilities = [];
-      marksmen.attack = 3;
+      marksmen.position = 1;
       const skeletons = state.combat!.units.unit_p2_skeletons;
       skeletons.position = 5; // adjacent to the marksmen at 1 → penalty shot
       state.combat!.units.unit_p1_griffins.position = 6; // clear cell 5's owner
@@ -551,30 +570,65 @@ describe("commander casts — Temple Guardian's Precision", () => {
       // With the penalty waived only the first die is rolled: +1.
       state.combat!.dice.scriptedRolls = [1, -1];
       state.combat!.dice.rollCount = 0;
-      const next = settle(
-        apply(state, {
-          type: "ATTACK_UNIT",
-          playerId: "p1",
-          attackerId: "unit_p1_marksmen",
-          defenderId: "unit_p2_skeletons"
-        })
-      );
-      return next.combat!.units.unit_p2_skeletons.damage;
+      const declared = apply(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_marksmen",
+        defenderId: "unit_p2_skeletons"
+      });
+      if (withPrecision) {
+        const offer = commanderReactionOffer(declared);
+        expect(offer, "Precision offered").toBeTruthy();
+        return settle(apply(declared, offer!.action)).combat!.units.unit_p2_skeletons.damage;
+      }
+      return settle(declared).combat!.units.unit_p2_skeletons.damage;
     }
 
     // CONTROL: penalty keeps the -1 → 3 - 1 = 2 damage.
-    const penalized = castState("temple_guardian");
-    penalized.combat!.units.unit_p2_skeletons.position = 5;
-    expect(pointBlank(penalized)).toBe(2);
+    expect(pointBlank(false)).toBe(2);
+    // Pow 0 Precision: penalty waived (single die +1) AND +1 Attack → 3 + 1 + 1 = 5.
+    expect(pointBlank(true)).toBe(5);
+  });
 
-    // Precision at Pow 1 (magic grade 2, reaches anywhere) waives every ranged
-    // penalty → the +1 stands: 3 + 1(buff) + 1(die) = 5.
-    let waived = castState("temple_guardian", { magic: 2 });
-    waived.combat!.units.unit_p2_skeletons.position = 5;
-    waived.combat!.activeUnitId = commanderUnitId("p1");
-    waived.activePlayerId = "p1";
-    waived = castOn(waived, "temple_guardian", "unit_p1_marksmen");
-    expect(pointBlank(waived)).toBe(5);
+  it("is once per round and twice per combat; the second cast scales (+2 at Power 2)", () => {
+    function resetMarksmen(state: GameState): void {
+      const marksmen = state.combat!.units.unit_p1_marksmen;
+      marksmen.activatedThisRound = false;
+      marksmen.attackedThisActivation = undefined;
+      marksmen.movedThisActivation = false;
+      marksmen.retaliatedThisRound = false;
+    }
+
+    // Power 2: the first cast of the combat grants +3.
+    let state = castState("temple_guardian", { magic: 3 });
+    let declared = declareMarksmenShot(state);
+    let offer = commanderReactionOffer(declared);
+    expect(offer, "first Precision offered").toBeTruthy();
+    state = settle(apply(declared, offer!.action));
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(6); // 3 + 3
+
+    // Same round: the once-per-round budget is spent → no second offer.
+    resetMarksmen(state);
+    declared = declareMarksmenShot(state);
+    expect(commanderReactionOffer(declared)).toBeFalsy();
+    state = declared; // no window opened → the plain shot already resolved (+3 → 9)
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(9);
+
+    // Next round: offered again; the SECOND cast grants +2 at Power 2.
+    state.combat!.round += 1;
+    resetMarksmen(state);
+    declared = declareMarksmenShot(state);
+    offer = commanderReactionOffer(declared);
+    expect(offer, "second Precision offered next round").toBeTruthy();
+    const before = declared.combat!.units.unit_p2_skeletons.damage;
+    state = settle(apply(declared, offer!.action));
+    expect(state.combat!.units.unit_p2_skeletons.damage - before).toBe(3 + 2); // attack 3 + second-cast +2
+
+    // A third use is beyond the two-per-combat cap → no more offers, even later.
+    state.combat!.round += 1;
+    resetMarksmen(state);
+    declared = declareMarksmenShot(state);
+    expect(commanderReactionOffer(declared)).toBeFalsy();
   });
 });
 
@@ -730,11 +784,11 @@ describe("commander casts — Soul Eater's Animate Dead", () => {
 });
 
 describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
-  it("Haste: Power 0/1/2 grants +2/+6/+9 Initiative and +1 Attack; Power 2 lasts all combat", () => {
-    // Initiative shift.
-    const state = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
-    const crusaders = state.combat!.units.unit_p1_crusaders;
-    expect(effectiveInitiative(crusaders, state.activeEffects)).toBe(crusaders.initiative + 2);
+  it("Haste (redesigned): Power 0/1/2 grants +3/+6/+9 Initiative and +1 Attack for 2 rounds", () => {
+    // Initiative shift by Power.
+    const low = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
+    const lowUnit = low.combat!.units.unit_p1_crusaders;
+    expect(effectiveInitiative(lowUnit, low.activeEffects)).toBe(lowUnit.initiative + 3);
     const middle = castOn(castState("shaman", { magic: 2 }), "shaman", "unit_p1_crusaders");
     expect(effectiveInitiative(middle.combat!.units.unit_p1_crusaders, middle.activeEffects)).toBe(
       middle.combat!.units.unit_p1_crusaders.initiative + 6
@@ -743,7 +797,11 @@ describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
     expect(effectiveInitiative(high.combat!.units.unit_p1_crusaders, high.activeEffects)).toBe(
       high.combat!.units.unit_p1_crusaders.initiative + 9
     );
-    expect(high.activeEffects.find((effect) => effect.name.startsWith("Haste"))?.duration.type).toBe("combat");
+    // Every tier now lasts 2 combat rounds (no per-Power "whole combat" tier).
+    expect(high.activeEffects.find((effect) => effect.name.startsWith("Haste"))?.duration).toEqual({
+      type: "combat-rounds",
+      rounds: 2
+    });
 
     function strike(state: GameState, defenderInitiative: number): number {
       const attacker = state.combat!.units.unit_p1_crusaders;
@@ -768,14 +826,52 @@ describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
       return next.combat!.units.unit_p2_skeletons.damage;
     }
 
-    // Hasted crusaders get +1 Attack against any target (2 + 1 = 3).
-    const hasted = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
-    expect(strike(hasted, 1)).toBe(3);
-    // The same buff remains +1 Attack against a faster skeleton.
-    const vsFaster = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
-    expect(strike(vsFaster, 30)).toBe(3);
-    // CONTROL: unhasted vs slower: 2.
+    // Pow 0: +1 Attack unconditionally (no slower-rider), against slow or fast targets.
+    expect(strike(castOn(castState("shaman"), "shaman", "unit_p1_crusaders"), 1)).toBe(3);
+    expect(strike(castOn(castState("shaman"), "shaman", "unit_p1_crusaders"), 30)).toBe(3);
+    // CONTROL: unhasted = 2.
     expect(strike(castState("shaman"), 1)).toBe(2);
+    // Pow 2 vs a SLOWER target: +1 base +1 vs-slower = 2 + 2 = 4.
+    expect(strike(castOn(castState("shaman", { magic: 3 }), "shaman", "unit_p1_crusaders"), 0)).toBe(4);
+    // Pow 2 vs a clearly FASTER target: only the +1 base = 3.
+    expect(strike(castOn(castState("shaman", { magic: 3 }), "shaman", "unit_p1_crusaders"), 99)).toBe(3);
+  });
+
+  it("begin-of-match Haste: 2 rounds on a non-gold unit, 1 round on a gold unit, and skips the commander's turn", () => {
+    // Non-gold target (bronze crusaders): 2 combat rounds, +1 Movement (Pow 2).
+    const nonGold = castState("shaman", { magic: 3 });
+    const commanderA = nonGold.combat!.units[commanderUnitId("p1")];
+    const crusaders = nonGold.combat!.units.unit_p1_crusaders;
+    crusaders.grade = "bronze";
+    applyCommanderBeginCastHaste(nonGold, commanderA, crusaders);
+    const buffA = nonGold.activeEffects.find(
+      (effect) =>
+        effect.name.startsWith("Haste") &&
+        effect.target?.type === "unit" &&
+        effect.target.unitId === crusaders.id
+    );
+    expect(buffA?.duration).toEqual({ type: "combat-rounds", rounds: 2 });
+    // The commander forgoes its round-1 turn.
+    expect(commanderA.activatedThisRound).toBe(true);
+    // +1 Movement rider applies unconditionally (Power 2).
+    expect(buffA?.modifiers.find((modifier) => modifier.type === "COMMANDER_MOVEMENT_BONUS")).toEqual({
+      type: "COMMANDER_MOVEMENT_BONUS",
+      amount: 1
+    });
+
+    // Gold target: the begin-of-match Haste lasts only 1 combat round.
+    const goldState = castState("shaman", { magic: 3 });
+    const commanderB = goldState.combat!.units[commanderUnitId("p1")];
+    const goldUnit = goldState.combat!.units.unit_p1_crusaders;
+    goldUnit.grade = "gold";
+    applyCommanderBeginCastHaste(goldState, commanderB, goldUnit);
+    const buffB = goldState.activeEffects.find(
+      (effect) =>
+        effect.name.startsWith("Haste") &&
+        effect.target?.type === "unit" &&
+        effect.target.unitId === goldUnit.id
+    );
+    expect(buffB?.duration).toEqual({ type: "combat-rounds", rounds: 1 });
   });
 
   it("Slow: enemies only, -2/-4 Initiative and -1 Attack against FASTER targets", () => {

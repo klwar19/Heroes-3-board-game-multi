@@ -38,6 +38,7 @@ import { estimatedStrikeDamage, dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
 import { unitSideStrength } from "./army-strength";
 import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations } from "../legal-actions";
+import { getPermanentCardIds } from "../permanents";
 import { effectiveInitiative } from "../active-effects";
 
 /**
@@ -129,6 +130,21 @@ const CASTER_TARGET_BONUS = 14;
 // below the flat shooter bonus, so the AI opened on the shooter instead.
 // Neutral fights keep the shooter hunt: guard parties are scripted.
 const PVP_TIER_TARGET_CAP = 24;
+// Reach-aware target value (siege observation 2026-09-16): the defending Arrow
+// Tower shot a Centaur Pack parked OUTSIDE the intact walls instead of the
+// Elves shooting the garrison every round. The Centaur could not touch anyone
+// for rounds; the Elves were the only damage coming in. An enemy's threat is
+// therefore discounted by its STRIKE HORIZON — how many of its own activations
+// it needs before it can hit ANY of our units, read off the real move engine
+// (speed, blockers, walls/gate, flying): 0 = it strikes on its next activation
+// (full value), 1 = it must spend a whole activation walking first, 2+ = it
+// cannot reach us for at least two activations (a body behind intact
+// fortifications, a slow stack across the board). Only the threat-derived
+// terms are discounted (chip threat slice, PvP tier prize, Pack→Few flip value,
+// and half of a kill's threat premium); the raw chip/kill value, the shooter and
+// caster bonuses (a shooter always reaches, an activation ability needs no
+// reach) and the Behemoth ruling premium are untouched, so a kill stays a kill.
+const STRIKE_HORIZON_REACH = [1, 0.75, 0.45] as const;
 // A hopeless PvP fight after a real casualty: the in-fight Retreat (5 gold,
 // −1 morale, fall back home; survivors kept in losing-troop mode). Two of the
 // 14 decided ranked PvP fights ended exactly so, with stacks still standing.
@@ -140,6 +156,17 @@ const PVP_CONCEDE_SCORE = 760;
 // signal, and a larger bonus when this hit plus those allies can FINISH it now.
 const FOCUS_PRESSURE_CAP = 24;
 const FOCUS_FINISH_BONUS = 24;
+// Heal race (user doctrine 2026-09-15: counter an enemy heal with TIMING +
+// FOCUS, never by avoiding the chip). When the PvP enemy heals EVERY round — a
+// First Aid Tent in play, a healer unit (Enchanter-class activation heal) or a
+// commander whose cast heals — a stack left alive-but-chipped is topped back up,
+// while a REMOVED stack cannot be healed. Ranked replay dc1o0g R14: five
+// Archangels healed +1 (tent) +1/+2/+1 (specialty) in one round while the
+// other seat's damage was spread thin across the wall. Extra premium on this
+// hit being a kill, or one the army can finish this round; orders WITHIN the
+// attack band (below a plain lethal's 160+threat jump).
+const HEAL_RACE_FINISH_BONUS = 14;
+const FIRST_AID_TENT_CARD_ID = "war_machine.first_aid_tent";
 // Removing a unit before it takes this round's activation is a larger tempo
 // swing than finishing an otherwise-identical unit that already acted.
 const UNACTED_FINISH_BONUS = 6;
@@ -173,6 +200,19 @@ const PARALYSIS_WAKE_POKE_SCORE = 360;
 // projected to remove the attacker. Below Defend / useful movement, but above
 // END_ACTIVATION so the unit still trades when no safer action exists.
 const PVP_OVEREXTENSION_ATTACK_SCORE = 495;
+// User ruling (2026-09-16): in PvP, poking UP the tier ladder — a bronze 2-Attack
+// body into a gold lvl-7 (Defense 2–3) — for 0–1 damage while the gold's
+// retaliation is still live is a wasted activation AND a wounded/dead bronze.
+// It is only worth doing when the poke REMOVES the retaliation for someone: the
+// gold already retaliated this round (the SPENT_RETALIATION_BONUS branch), or a
+// stronger un-acted ally can hit the same body this round and our chaff eats
+// the counter-hit for it (`retaliationSoakFollowUp`). Otherwise the poke drops
+// below Defend (500+) and every closing / screening march (520+) but stays
+// above END_ACTIVATION (400) so the unit still trades when nothing else exists.
+const TIER_DOWN_POKE_SCORE = 490;
+// The poke is a soak only when the ally it protects would otherwise eat a
+// counter-hit that matters — at least this much retaliation damage on it.
+const SOAK_FOLLOW_UP_MIN_RETALIATION = 2;
 // Focus march: how strongly a MOVE toward the highest value-adjusted target is
 // preferred (and the mild penalty for stepping away from it).
 const FOCUS_MARCH_BONUS = 14;
@@ -300,6 +340,166 @@ function provokesRetaliation(
 }
 
 /**
+ * Board signature for the strike-horizon cache: tests and some helpers mutate
+ * a combat in place, so identity alone could serve a stale horizon.
+ */
+function strikeHorizonSignature(combat: CombatState, state: GameState): string {
+  const units = Object.values(combat.units)
+    .map((unit) => `${unit.id}@${unit.position}:${unit.damage}:${unit.activatedThisRound ? 1 : 0}${unit.type[0]}${isParalyzed(unit) ? "P" : ""}`)
+    .join("|");
+  const siege = combat.siege
+    ? `#${combat.siege.walls.join(",")}/${combat.siege.gatePosition ?? "x"}`
+    : "";
+  // The horizon reads movement/attack legality through the live activeEffects
+  // (Haste, Slow, Blind, Forgetfulness …), so an effect added or expiring with
+  // no position/damage change must also invalidate the cached horizons.
+  const effects = (state.activeEffects ?? []).map((effect) => effect.id).join(",");
+  return `${combat.round}${siege}|${units}|${effects}`;
+}
+
+const strikeHorizonCache = new WeakMap<CombatState, { signature: string; horizons: Map<string, number> }>();
+
+/**
+ * How many of its own activations `enemy` needs before it can strike ANY living
+ * unit of `playerId` (see STRIKE_HORIZON_REACH). The enemy is projected FRESH
+ * (as at the start of its next activation) and its reach is read from the real
+ * legal-move engine: 0 when it can attack or move-and-attack one of ours, 1 when
+ * some first-move landing lets a second move end adjacent to one of ours, else
+ * 2. Adjacency approximates the second-activation melee strike, so this only
+ * ORDERS targets — it never makes a move legal or illegal. A shooter that
+ * cannot shoot anyone right now (Forgetfulness-style) counts as 1: it recovers.
+ * Cached per board so the extra reach scans cost one pass per decision.
+ */
+function enemyStrikeHorizon(
+  combat: CombatState,
+  playerId: string,
+  enemy: CombatUnitState,
+  state: GameState,
+): number {
+  const signature = strikeHorizonSignature(combat, state);
+  let cache = strikeHorizonCache.get(combat);
+  if (!cache || cache.signature !== signature) {
+    cache = { signature, horizons: new Map() };
+    strikeHorizonCache.set(combat, cache);
+  }
+  const key = `${playerId}>${enemy.id}`;
+  const cached = cache.horizons.get(key);
+  if (cached !== undefined) return cached;
+
+  const ours = livingFriendlies(combat, playerId).filter((unit) => unit.id !== enemy.id);
+  let horizon = 2;
+  if (ours.length === 0) {
+    horizon = 0;
+  } else {
+    const activeEffects = state.activeEffects ?? [];
+    const fresh: CombatUnitState = {
+      ...enemy,
+      activatedThisRound: false,
+      movedThisActivation: false,
+      attackedThisActivation: false,
+      waitPending: false,
+    };
+    const board: CombatState = { ...combat, waitPhase: false, units: { ...combat.units, [enemy.id]: fresh } };
+    if (ours.some((unit) => canUnitAttack(board, fresh, unit, activeEffects))) {
+      horizon = 0;
+    } else if (fresh.type === "ranged") {
+      horizon = 1;
+    } else {
+      const landings = getLegalMoveDestinations(board, fresh, state);
+      // Adjacency prefilter keeps the (BFS-backed) move-and-attack check to the
+      // few landing/target pairs that could possibly strike.
+      if (landings.some((landing) => ours.some((unit) =>
+        isAdjacent(landing, unit.position) && canUnitMoveAndAttack(board, fresh, landing, unit, state)))) {
+        horizon = 0;
+      } else {
+        for (const landing of landings) {
+          const moved: CombatUnitState = { ...fresh, position: landing };
+          const movedBoard: CombatState = { ...board, units: { ...board.units, [enemy.id]: moved } };
+          if (getLegalMoveDestinations(movedBoard, moved, state).some((cell) =>
+            ours.some((unit) => isAdjacent(cell, unit.position)))) {
+            horizon = 1;
+            break;
+          }
+        }
+      }
+    }
+  }
+  cache.horizons.set(key, horizon);
+  return horizon;
+}
+
+/**
+ * Whether the PvP opponents of `playerId` heal every round: a First Aid Tent
+ * permanent, a living healer unit (activation heal ability) or a commander whose
+ * cast is a heal. Hidden hand cards are not read — only public state.
+ */
+function enemyHealsEachRound(combat: CombatState, playerId: string, state: GameState): boolean {
+  if (combat.context?.kind !== "player") return false;
+  const enemies = livingEnemyUnits(combat, playerId);
+  const enemySeats = new Set(enemies.map((unit) => unit.controllerId));
+  for (const seat of enemySeats) {
+    if (getPermanentCardIds(state, seat).includes(FIRST_AID_TENT_CARD_ID)) return true;
+  }
+  return enemies.some((unit) => {
+    if (unit.position < 0) return false;
+    if ((unit.abilities ?? []).some((abilityId) =>
+      unitAbilities[abilityId]?.effect?.type === "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF")) return true;
+    const cast = unit.commanderSlug ? commanderCastOf(unit) : null;
+    return cast?.effect.kind === "heal" || cast?.effect.kind === "heal-cleanse";
+  });
+}
+
+/**
+ * Whether a cheap poke at `defender` this activation serves as a RETALIATION
+ * SOAK: a more valuable, un-acted ally can strike the same body later this
+ * round with a real hit (≥2 damage), would itself draw the retaliation (melee
+ * contact, no ignores-retaliation), and that counter-hit would matter
+ * (≥ SOAK_FOLLOW_UP_MIN_RETALIATION on the ally). Reach is read off the real
+ * legal-move engine on the board AFTER the poker has landed (its body may open
+ * or block a landing cell), so this only orders actions and never legalises one.
+ */
+function retaliationSoakFollowUp(
+  combat: CombatState,
+  playerId: string,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackFromPosition: number,
+  state: GameState,
+): boolean {
+  const activeEffects = state.activeEffects ?? [];
+  const board: CombatState = {
+    ...combat,
+    units: { ...combat.units, [attacker.id]: { ...attacker, position: attackFromPosition } },
+  };
+  const attackerValue = unitThreatValue(attacker);
+  return Object.values(combat.units).some((ally) => {
+    if (
+      ally.controllerId !== playerId ||
+      ally.id === attacker.id ||
+      ally.position < 0 ||
+      ally.activatedThisRound ||
+      ally.attackedThisActivation ||
+      isParalyzed(ally) ||
+      unitRemainingHealth(ally) <= 0 ||
+      ally.abilities?.includes("ignores-retaliation") ||
+      unitThreatValue(ally) <= attackerValue
+    ) {
+      return false;
+    }
+    // A shooter at range draws no retaliation, so nothing is soaked for it.
+    if (ally.type === "ranged" && !isAdjacent(ally.position, defender.position)) return false;
+    if (estimatedStrikeDamage(defender, ally, defender.position, true) < SOAK_FOLLOW_UP_MIN_RETALIATION) return false;
+    if (estimatedStrikeDamage(ally, defender, ally.position) < 2) return false;
+    if (canUnitAttack(board, ally, defender, activeEffects)) return true;
+    if (ally.type === "ranged") return false;
+    return getLegalMoveDestinations(board, ally, state).some((landing) =>
+      isAdjacent(landing, defender.position) &&
+      estimatedStrikeDamage(ally, defender, landing) >= 2 &&
+      canUnitMoveAndAttack(board, ally, landing, defender, state));
+  });
+}
+
+/**
  * Rank one of the active unit's legal attacks. A lethal removal is always
  * preferred (it deletes the enemy AND avoids their retaliation), scaled by how
  * dangerous the removed unit was; otherwise reward damage as a fraction of the
@@ -328,7 +528,13 @@ function attackScore(
         enemy.id !== defender.id && enemy.defense < 2 &&
         canUnitAttack({ ...combat, units: { ...combat.units, [attacker.id]: { ...attacker, position: attackFromPosition } } },
           { ...attacker, position: attackFromPosition }, enemy, state.activeEffects ?? []))) return 200;
-  const damageFraction = remaining > 0 ? damage / remaining : 0;
+  // Overkill past the current bar is not extra value: a Pack flip carries the
+  // excess onto the Few side (rewarded below as the flip), a stack token absorbs
+  // it. Uncapped, a 10-Attack hit on a 3-Health bar scored 3.3 bars and outbid a
+  // real kill elsewhere.
+  const damageFraction = remaining > 0 ? Math.min(1, damage / remaining) : 0;
+  // Reach discount for every threat-derived term (see STRIKE_HORIZON_REACH).
+  const reach = STRIKE_HORIZON_REACH[Math.min(2, enemyStrikeHorizon(combat, playerId, defender, state))];
   // Do not erase retaliation/reply risk on a kill that needs a neutral die.
   // Deterministic elemental damage keeps its printed value under that rule.
   const lowDamage = estimatedStrikeDamage(attacker, defender, attackFromPosition, false,
@@ -336,6 +542,10 @@ function attackScore(
   const lethal = lowDamage > 0 && lowDamage >= unitRemovalHealth(defender);
   const ownRemaining = unitRemainingHealth(attacker);
   let retaliationDamage = 0;
+  // Does this hit flip the defender's Pack down to its weaker Few side? (Valued
+  // below; also exempts the tier-down poke rule — a flip IS bringing it down.)
+  const flipsDefenderToFew = defender.variant === "pack" && Boolean(defender.unitDefId) &&
+    lowDamage >= unitRemainingHealth(defender);
 
   // Project the attacker's landing before measuring immediate follow-ups.
   // Engaged/disabled shooters and paralyzed allies cannot supply a free shot.
@@ -379,9 +589,12 @@ function attackScore(
   const drawsRetaliation = provokesRetaliation(attacker, defender, attackFromPosition);
   let quality: number;
   if (lethal) {
-    quality = 160 + Math.min(80, threat);
+    // A kill is permanent, so only half of its threat premium follows the reach
+    // discount: deleting the active shooter still outranks deleting an equal
+    // body that cannot reach us yet, but that body's removal stays a real kill.
+    quality = 160 + Math.round(Math.min(80, threat) * (0.5 + 0.5 * reach));
   } else {
-    quality = Math.round(damageFraction * 80) + Math.min(40, Math.round(threat / 4));
+    quality = Math.round(damageFraction * 80) + Math.min(40, Math.round((threat * reach) / 4));
     if (griffinShooterAttack && damage > 0) quality += 65;
     // Physical attackers should work through low-Defense targets and leave a
     // heavily armoured body to Defense-ignoring spells when available.
@@ -397,6 +610,29 @@ function attackScore(
         !lethal
       ) {
         return COMMANDER_RETALIATION_DEATH_SCORE;
+      }
+      // Tier-down poke (user ruling 2026-09-16, PvP only): a lower-tier body
+      // chipping a higher-tier one for ≤1 damage while eating a live counter-hit
+      // neither brings the target down (no kill, no finish, no Pack→Few flip —
+      // a die-0 hit that empties its current bar is a PROBABLE flip/removal and
+      // is exempt too) nor removes its retaliation for anyone — unless a
+      // stronger ally follows up on that body this round, in which case the poke
+      // is the soak that buys the ally a free hit and keeps its attack-band score.
+      if (
+        combat.context?.kind === "player" &&
+        !armyCanFinish &&
+        !flipsDefenderToFew &&
+        damage < remaining &&
+        retaliation > 0 &&
+        damage <= 1 &&
+        tierWeight(defender.grade) > tierWeight(attacker.grade) &&
+        // The anti-Fuyuki front-line doctrine below (+1200 / +900) is a user
+        // order that every body swings at the Pack; it keeps precedence.
+        !(defender.variant === "pack" &&
+          (defender.unitDefId === "fuyuki.berserkers" || defender.unitDefId === "fuyuki.sabers")) &&
+        !retaliationSoakFollowUp(combat, playerId, attacker, defender, attackFromPosition, state)
+      ) {
+        return TIER_DOWN_POKE_SCORE;
       }
       quality -= Math.min(50, retaliation * 4);
       if (damage === 0 && retaliation >= ownRemaining) {
@@ -439,7 +675,7 @@ function attackScore(
     quality += CASTER_TARGET_BONUS;
   }
   if (combat.context?.kind === "player") {
-    quality += Math.min(PVP_TIER_TARGET_CAP, tierWeight(defender.grade));
+    quality += Math.round(Math.min(PVP_TIER_TARGET_CAP, tierWeight(defender.grade)) * reach);
   }
   // User-directed anti-Fuyuki doctrine: break the durable front line before
   // wasting actions on Medea's fixed-damage backliner.
@@ -456,6 +692,10 @@ function attackScore(
   }
   if (!defender.activatedThisRound && (lethal || armyCanFinish)) {
     quality += UNACTED_FINISH_BONUS;
+  }
+  // Heal race: against a per-round healer, removals beat spread chips harder.
+  if ((lethal || armyCanFinish) && enemyHealsEachRound(combat, playerId, state)) {
+    quality += HEAL_RACE_FINISH_BONUS;
   }
   // User ruling (2026-09-15): a Behemoth-class OUTPUT threat (Crushing Blow /
   // Defense shred / double attack — the `hasOutputAbility` set) must be KILLED at
@@ -486,13 +726,10 @@ function attackScore(
   // value nudge ONLY: `lethal` / `armyCanFinish` still key on FULL removal, so a
   // flip never counts as a finish and never justifies waking a paralyzed sleeper
   // or an overextension (those guards above are unchanged).
-  // Does this hit flip the defender's Pack down to its weaker Few side?
-  const flipsDefenderToFew = defender.variant === "pack" && Boolean(defender.unitDefId) &&
-    lowDamage >= unitRemainingHealth(defender);
   if (!lethal && flipsDefenderToFew && defender.unitDefId) {
     const fewSide = getUnitSide(defender.unitDefId, "few");
     if (fewSide && fewSide.attack < defender.attack) {
-      quality += Math.min(30, 10 + (defender.attack - fewSide.attack) * 8);
+      quality += Math.round(Math.min(30, 10 + (defender.attack - fewSide.attack) * 8) * reach);
     }
   }
 

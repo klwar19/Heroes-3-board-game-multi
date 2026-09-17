@@ -289,10 +289,14 @@ import {
 } from "@/data/commanders";
 import {
   applyLionRoundStartBarrage,
+  applyCommanderBeginCastHaste,
   applyCommanderCombatStart,
   collectFirstAidCandidates,
+  commanderBeginCastOption,
   commanderFirstAidGoldCost,
   commanderGradesOf,
+  commanderMagicArrowFetchOption,
+  COMMANDER_MAGIC_ARROW_CARD_ID,
   commanderIntegratedDeploymentSortAvailable,
   commanderMarchesWithHero,
   commanderPreCombatSortAvailable,
@@ -455,6 +459,7 @@ import { applyComputerGuaranteedWin } from "./computer/guaranteed-wins";
 import {
   applyComputerCombatBoost,
   applyComputerPhantomCards,
+  COMPUTER_PHANTOM_COMBAT_CARDS,
   removeComputerCombatBoost,
   removeComputerPhantomCards,
 } from "./computer/combat-boost";
@@ -12481,6 +12486,14 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
     return;
   }
 
+  // WOG Commanders' optional combat-start decisions (Fortress Shaman begin-of-
+  // match Haste, Tower Temple Guardian Magic Arrow fetch). Computer seats resolve
+  // inline; each human seat with a decision gets a window. Resolving re-enters
+  // here (commanderCombatStartResolved guards against re-offering).
+  if (maybeOpenCommanderCombatStartDecision(state)) {
+    return;
+  }
+
   // Monster Girl Quest Four Spirits: summon the selected basic/advanced unit
   // for the fighting main hero, based on hero level.
   seedMgqSpiritsForCombat(state);
@@ -12956,6 +12969,253 @@ function resolveBountyHunterMarkStartChoice(
   }
   combat.bountyHunterMarkStartResolved = true;
   resumeCombatStartAfterCommanderPlacement(state);
+}
+
+// ---------------------------------------------------------------------------
+// WOG Commanders — optional combat-start decisions.
+// ---------------------------------------------------------------------------
+
+/**
+ * Move the Magic Arrow the Tower Temple Guardian's owner fetches: discard the
+ * chosen hand card, pull `spell.magic_arrow` from `source` (deck or discard) into
+ * hand. Returns true on success (both cards were where expected).
+ */
+function performCommanderMagicArrowFetch(
+  state: GameState,
+  playerId: PlayerId,
+  discardCardId: CardId,
+  source: "deck" | "discard"
+): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  const handIndex = player.hand.indexOf(discardCardId);
+  const pile = source === "deck" ? player.deck : player.discard;
+  const arrowIndex = pile.indexOf(COMMANDER_MAGIC_ARROW_CARD_ID);
+  if (handIndex < 0 || arrowIndex < 0) {
+    return false;
+  }
+  const [discarded] = player.hand.splice(handIndex, 1);
+  player.discard.push(discarded);
+  const [arrow] = pile.splice(arrowIndex, 1);
+  player.hand.push(arrow);
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `${player.name} discards ${cardLibrary[discarded]?.name ?? discarded} to fetch a Magic Arrow from the ${source} (Temple Guardian).`
+  });
+  return true;
+}
+
+/**
+ * A computer seat resolves its combat-start commander decision inline (never a
+ * window). Tower: fetch a Magic Arrow when the AI can spare a card — the user
+ * rule "takes it when it has a spare card and no Magic Arrow in hand" (the option
+ * already excludes a hand that holds one). "Spare" = at least one other hand card
+ * survives the discard. Fortress: skip the begin-of-match cast (the AI still
+ * casts Haste normally during the Shaman's own activation).
+ */
+function applyComputerCommanderCombatStart(state: GameState, playerId: PlayerId): void {
+  // Computer seats are handed a phantom Magic Arrow every combat
+  // (COMPUTER_PHANTOM_COMBAT_CARDS, granted after this gate runs) — discarding a
+  // real card to fetch a duplicate would be a pure loss.
+  if (COMPUTER_PHANTOM_COMBAT_CARDS.includes("spell.magic_arrow")) {
+    return;
+  }
+  const fetch = commanderMagicArrowFetchOption(state, playerId);
+  if (fetch && fetch.handCardIds.length >= 2) {
+    performCommanderMagicArrowFetch(state, playerId, fetch.handCardIds[0], fetch.source);
+  }
+}
+
+/**
+ * Open the combat-start commander decision window for `playerId` (a human seat),
+ * chaining the rest of the queue through `remainingPlayerIds`. A player owns one
+ * commander, so at most one decision applies — Tower fetch or Fortress begin-cast.
+ * Returns true when a window opened, false when the player had no decision.
+ */
+function openCommanderCombatStartChoice(
+  state: GameState,
+  playerId: PlayerId,
+  remainingPlayerIds: PlayerId[]
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const fetch = commanderMagicArrowFetchOption(state, playerId);
+  if (fetch) {
+    const options = fetch.handCardIds.map((cardId) => ({
+      label: `Discard ${cardLibrary[cardId]?.name ?? cardId} to fetch a Magic Arrow into your hand`
+    }));
+    options.push({ label: "Skip — keep your hand as it is" });
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: "Temple Guardian: discard 1 card to fetch a Magic Arrow into your hand?",
+      options,
+      context: "commander-magic-arrow-fetch",
+      commanderMagicArrowFetch: {
+        commanderPlayerId: playerId,
+        source: fetch.source,
+        handCardIds: fetch.handCardIds,
+        remainingPlayerIds
+      },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return true;
+  }
+  const begin = commanderBeginCastOption(state, playerId);
+  if (begin) {
+    const options = begin.targetUnitIds.map((unitId) => {
+      const unit = combat.units[unitId];
+      return {
+        label: `Cast Haste on ${unit?.cardName ?? "unit"} (${getBattlefieldLabel(unit?.position ?? -1)}) now — the commander skips its round-1 turn`
+      };
+    });
+    options.push({ label: "Skip — save the commander's turn" });
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: "Shaman: cast Haste before combat begins? The commander then forgoes its round-1 turn.",
+      options,
+      context: "commander-begin-cast",
+      commanderBeginCast: {
+        commanderUnitId: begin.commander.id,
+        targetUnitIds: begin.targetUnitIds,
+        remainingPlayerIds
+      },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * The combat-start commander-decision gate (mirrors the Bounty-Hunter gate):
+ * resolve every computer seat inline, then open a window for the first human seat
+ * that has a decision, chaining the rest. Idempotent via commanderCombatStartResolved.
+ */
+export function maybeOpenCommanderCombatStartDecision(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.commanderCombatStartResolved || !commandersModuleEnabled(state)) {
+    if (combat) {
+      combat.commanderCombatStartResolved = true;
+    }
+    return false;
+  }
+  const owners: PlayerId[] = [];
+  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (playerId === NEUTRAL_PLAYER_ID || owners.includes(playerId)) {
+      continue;
+    }
+    owners.push(playerId);
+  }
+  for (const playerId of owners) {
+    if (isComputerPlayer(state, playerId)) {
+      applyComputerCommanderCombatStart(state, playerId);
+    }
+  }
+  const humanQueue = owners.filter(
+    (playerId) =>
+      !isComputerPlayer(state, playerId) &&
+      (commanderMagicArrowFetchOption(state, playerId) !== null ||
+        commanderBeginCastOption(state, playerId) !== null)
+  );
+  const [first, ...rest] = humanQueue;
+  if (!first || !openCommanderCombatStartChoice(state, first, rest)) {
+    combat.commanderCombatStartResolved = true;
+    return false;
+  }
+  return true;
+}
+
+/** Continue (or finish) the combat-start commander-decision chain after one resolves. */
+function advanceCommanderCombatStartChain(state: GameState, remainingPlayerIds: PlayerId[]): void {
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  let queue = remainingPlayerIds;
+  while (queue.length > 0) {
+    const [next, ...rest] = queue;
+    if (openCommanderCombatStartChoice(state, next, rest)) {
+      return;
+    }
+    queue = rest;
+  }
+  if (state.combat) {
+    state.combat.commanderCombatStartResolved = true;
+  }
+  resumeCombatStartAfterCommanderPlacement(state);
+}
+
+function resolveCommanderMagicArrowFetchChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number
+): void {
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.commanderMagicArrowFetch : undefined;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "commander-magic-arrow-fetch" ||
+    choice.playerId !== playerId ||
+    !data ||
+    data.commanderPlayerId !== playerId
+  ) {
+    throw new Error("There is no Magic Arrow fetch choice to resolve.");
+  }
+  // The trailing option is Skip; each earlier index is the hand card to discard.
+  if (optionIndex >= 0 && optionIndex < data.handCardIds.length) {
+    performCommanderMagicArrowFetch(state, playerId, data.handCardIds[optionIndex], data.source);
+  }
+  advanceCommanderCombatStartChain(state, data.remainingPlayerIds);
+}
+
+function resolveCommanderBeginCastChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number
+): void {
+  const combat = state.combat;
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.commanderBeginCast : undefined;
+  if (
+    !combat ||
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "commander-begin-cast" ||
+    choice.playerId !== playerId ||
+    !data
+  ) {
+    throw new Error("There is no begin-of-match Haste choice to resolve.");
+  }
+  // The trailing option is Skip; each earlier index is a legal Haste target.
+  if (optionIndex >= 0 && optionIndex < data.targetUnitIds.length) {
+    const commander = combat.units[data.commanderUnitId];
+    const target = combat.units[data.targetUnitIds[optionIndex]];
+    if (
+      !commander ||
+      commander.commanderSlug !== "shaman" ||
+      commander.damage >= commander.maxHealth ||
+      !target ||
+      target.damage >= target.maxHealth ||
+      target.controllerId !== playerId
+    ) {
+      throw new Error("Choose one of your living units to Haste.");
+    }
+    applyCommanderBeginCastHaste(state, commander, target);
+  }
+  advanceCommanderCombatStartChain(state, data.remainingPlayerIds);
 }
 
 /**
@@ -17682,6 +17942,16 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "bounty-hunter-mark-start") {
     resolveBountyHunterMarkStartChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "commander-magic-arrow-fetch") {
+    resolveCommanderMagicArrowFetchChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "commander-begin-cast") {
+    resolveCommanderBeginCastChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

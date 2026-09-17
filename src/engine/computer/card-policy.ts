@@ -12,6 +12,7 @@ import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
 import { dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
+import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { resolvedSpellPowerForStackItem, standingSpellPower } from "../legal-actions";
 import { NEUTRAL_PLAYER_ID } from "../state";
@@ -34,6 +35,7 @@ import {
   armyDevelopmentProfile,
   developmentResourceTargets,
 } from "./development";
+import { GOLD_RESERVE } from "./market-trades";
 import { collectMapObjectives } from "./map-navigation";
 import { legionPurchaseSavings, nearbyPlayerFight, readySpells, saveLegionForAfterFight, upcomingFight } from "./card-planning";
 import { coordinatedReplyDamage } from "./opponent-reply";
@@ -238,6 +240,17 @@ export function cardHandValue(cardId: string, observation: ComputerObservation):
   const fight = upcomingFight(observation);
   let value = cardKeepValue(cardId, observation);
   const effect = card.effect;
+  // Polish Spell Book: the generic Cast-a-Spell enabler has no printed tier, so
+  // it scored like junk and every hand cycle threw it away — yet it is the ONLY
+  // way to cast an owned Book Spell. Keep it whenever the Book holds a Spell
+  // (one enabler per Spell is plenty; surplus copies stay ordinary filler).
+  if (isCastASpellCard(cardId) && polishSpellBookEnabled(state)) {
+    const player = state.players[observation.playerId];
+    const ownedSpells = (player?.spellBook?.length ?? 0) + (player?.spellBookUsed?.length ?? 0);
+    const enablersHeld = (player?.hand ?? []).filter((held) => isCastASpellCard(held)).length;
+    if (ownedSpells > 0 && enablersHeld <= ownedSpells) return Math.max(value, fight ? 85 : 70);
+    return Math.max(value, ownedSpells > 0 ? 40 : 25);
+  }
   // Build a usable opening hand before the Far tile is revealed. Keep the
   // first Power/Knowledge while searching for Arrow, not repeated orphan fuel.
   const opening = !state.combat && state.round <= 5 && Boolean(state.adventure);
@@ -323,6 +336,32 @@ function specialtyBoostsAttackOrDefense(card: CardDefinition): boolean {
       effect?.type === "ADD_COMBAT_STAT" &&
       (effect.stat === "attack" || effect.stat === "defense"),
   );
+}
+
+/** Below this hand value a card is junk the morale redraw may swap out. */
+const MORALE_REDRAW_JUNK_THRESHOLD = 30;
+
+/**
+ * Morale token / Positive Morale "redraw": the junk this seat would discard to
+ * draw as many fresh cards — lowest cardHandValue first, below the same junk
+ * line the start-of-turn voluntary cycle uses, never Magic Arrow or the
+ * Necromancy engine, and never more than the deck + discard can replace (at
+ * most four). Empty = the swap is not worth a token; the handler rejects an
+ * empty discard list, so the scorer keeps the redraw unchosen in that case.
+ */
+export function moraleRedrawDiscards(observation: ComputerObservation): string[] {
+  const player = observation.state.players[observation.playerId];
+  if (!player) return [];
+  const supply = (player.deckCount ?? 0) + player.discard.length;
+  const ranked = player.hand
+    .map((cardId, index) => ({ cardId, index, value: cardHandValue(cardId, observation) }))
+    .filter((entry) =>
+      entry.value < MORALE_REDRAW_JUNK_THRESHOLD &&
+      entry.cardId !== "spell.magic_arrow" &&
+      !isCastASpellCard(entry.cardId) &&
+      cardLibrary[entry.cardId]?.effect.type !== "NECROMANCY_REINFORCE")
+    .sort((a, b) => a.value - b.value || a.index - b.index);
+  return ranked.slice(0, Math.max(0, Math.min(ranked.length, supply, 4))).map((entry) => entry.cardId);
 }
 
 export function cardKeepValue(
@@ -1127,7 +1166,17 @@ function scoreEffect(
     if (card.id === "ability.leadership") {
       return state.combat && !state.combat.prep ? mode === "expert" ? 810 : 660 : 180;
     }
-    if (card.id === "ability.diplomacy" && effect.type === "DIPLOMACY_RECRUIT" && upcomingFight(observation)?.kind === "neutral") return 180;
+    if (card.id === "ability.diplomacy" && effect.type === "DIPLOMACY_RECRUIT") {
+      // User ruling: Diplomacy's draw is a LATE-game neutral shop — play it once
+      // two Gold Packs stand and gold is spare beyond the reserve; before that
+      // the card is held for its Expert side (skip / ease the next Neutral fight).
+      if (upcomingFight(observation)?.kind === "neutral") return 180;
+      const player = state.players[observation.playerId];
+      const goldPacks = (player?.army ?? []).filter((unit) => unit.side === "pack" &&
+        ["gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier ?? "")).length;
+      if (goldPacks >= 2 && (player?.resources.gold ?? 0) >= GOLD_RESERVE + 6) return 1_075;
+      return 180;
+    }
     if (card.id === "spell.view_air" && effect.type === "GAIN_RESOURCES") {
       return effect.gain.gold ? 1_060 + effect.gain.gold : 500;
     }
@@ -1873,15 +1922,43 @@ export function scoreCardAction(
           policy: "card.spend-morale-combat-bonus",
         };
       }
-      if (action.benefit === "redraw") {
-        return { score: 560, policy: "card.spend-morale-redraw" };
-      }
       if (action.benefit === "repeat-search") {
         // Discard a junk Search reveal and re-run — strong when offered.
         return { score: 1_150, policy: "card.spend-morale-repeat-search" };
       }
-      // "draw" — free card, good on map.
-      return { score: 600, policy: "card.spend-morale-draw" };
+      // Token / Positive-Morale-card "draw" and "redraw" (user rulings):
+      //  - an overflow token must go now: swap junk if any, else draw;
+      //  - inside the seat's own fight: draw a fresh card (or swap junk) — a
+      //    live option beats a banked token;
+      //  - on the map with no fight coming: swap junk when the hand is crowded
+      //    (more than 4 cards) or holds 2+ junk cards, otherwise draw;
+      //  - on the map with a fight coming: hold the token for the battle draw.
+      // The redraw's discard list is filled by the runner (policy.ts) from
+      // moraleRedrawDiscards; with nothing worth swapping it is never chosen.
+      {
+        const state = observation.state as unknown as GameState;
+        const player = state.players[observation.playerId];
+        const redraw = action.benefit === "redraw";
+        const junk = moraleRedrawDiscards(observation);
+        if (redraw && junk.length === 0) {
+          return { score: 100, policy: "card.morale-redraw-nothing-to-swap" };
+        }
+        const forced = (player?.moraleOverflow ?? 0) > 0;
+        const combat = state.combat;
+        const inOwnCombat = Boolean(combat && !combat.outcome &&
+          [combat.attackerPlayerId, combat.defenderPlayerId].includes(observation.playerId));
+        if (forced || inOwnCombat) {
+          return { score: redraw ? 1_118 : 1_115, policy: redraw ? "card.spend-morale-redraw" : "card.spend-morale-draw" };
+        }
+        if (upcomingFight(observation)) {
+          return { score: redraw ? 240 : 250, policy: "card.hold-morale-for-combat" };
+        }
+        const handSize = player?.hand.length ?? 0;
+        if (redraw) {
+          return { score: handSize > 4 || junk.length >= 2 ? 640 : 560, policy: "card.spend-morale-redraw" };
+        }
+        return { score: 600, policy: "card.spend-morale-draw" };
+      }
     }
     case "USE_ABILITY_EMPOWER_TOKEN":
       // Permanent free Expert on a hand Ability — always worth taking.

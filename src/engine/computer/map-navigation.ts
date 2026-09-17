@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { pvpReach } from "./pvp-reach";
 import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
-import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan } from "./development";
+import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan } from "./development";
 import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
@@ -31,7 +31,10 @@ import {
   neutralArmyDifficultyForField,
   playerHoldsTentFlag,
   pvpAttacksBanned,
+  obeliskPresetRole,
 } from "../adventure";
+import { houseRuleEnabled } from "../house-rules";
+import { DEFAULT_OBELISK_BONUS, type CustomMapObeliskBonus } from "../state";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { hexDistance, hexSpaceId, parseHexSpaceId, tileFootprint } from "../hex";
 import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
@@ -830,6 +833,65 @@ export function guardedGateHalfHasFightApproach(
  * read says we can take the owner's unit deck. A field an enemy hero we CANNOT
  * beat stands on is never a stop.
  */
+/** Rough visit worth of one designer Obelisk award (Event-menu weights). */
+function obeliskBonusValue(bonus: CustomMapObeliskBonus): number {
+  switch (bonus.kind) {
+    case "morale":
+      return 8;
+    case "search":
+      return 10 + bonus.count * 3;
+    case "ability_token":
+      return 14;
+    case "resources":
+      return (bonus.gold ?? 0) * 2 + (bonus.buildingMaterials ?? 0) * 3 + (bonus.valuables ?? 0) * 6;
+    case "movement":
+      return bonus.amount * 3;
+    case "experience":
+      return 10 + bonus.amount * 4;
+    case "dice":
+      return bonus.treasure * 9 + bonus.resource * 7;
+    case "resource_roll":
+      return 9;
+  }
+}
+
+/**
+ * Worth of visiting an Obelisk this seat has not flagged, or null when the
+ * visit grants nothing the AI can use — the reward changes with the map
+ * setting, so the AI reads it instead of treating every Obelisk alike:
+ *  - designer role "monolith": a teleport connector, not a visit target;
+ *  - role "victory-only": only Holy-Grail progress (handled as a victory
+ *    objective while the dig is locked), no reward otherwise;
+ *  - role "bonus": the designer awards (a "choose" menu counts its best one);
+ *  - classic: the `obelisk-rewards` house rule's locked Attack-die face — the
+ *    face is PUBLIC once any hero rolled it (+1 Treasure+Resource dice beats a
+ *    0 Artifact Search beats a -1 morale token; unknown = the average).
+ */
+export function obeliskVisitValue(state: GameState, field: MapFieldState): number | null {
+  if (field.location !== "obelisk") return null;
+  const role = obeliskPresetRole(state);
+  if (role === "monolith" || role === "victory-only") return null;
+  if (role === "bonus") {
+    const config = state.adventure?.mapPreset?.obelisks;
+    const list = config?.bonuses && config.bonuses.length > 0 ? config.bonuses : [config?.bonus ?? DEFAULT_OBELISK_BONUS];
+    const values = list.map(obeliskBonusValue);
+    return config?.bonusMode === "choose" && values.length > 1
+      ? Math.max(...values)
+      : values.reduce((sum, value) => sum + value, 0);
+  }
+  if (!houseRuleEnabled(state, "obelisk-rewards")) return null;
+  switch (field.obeliskRoll) {
+    case 1:
+      return 16;
+    case 0:
+      return 13;
+    case -1:
+      return 8;
+    default:
+      return 11;
+  }
+}
+
 function objectiveKind(
   state: GameState,
   hero: HeroState,
@@ -903,6 +965,14 @@ function objectiveKind(
     field.flagOwnerId === playerId ||
     Boolean(field.extraFlagOwnerIds?.includes(playerId)) ||
     fieldFlaggedByAlly(state, playerId, field);
+
+  // Obelisks flag for every visitor (an enemy cube never blocks ours), but the
+  // reward depends on the map setting — designer role, house rule, locked die
+  // face. No reward, no detour; otherwise the normal enemy-flag / guard /
+  // flaggable gates below decide exactly as for any other flaggable field.
+  if (field.location === "obelisk" && !ownedByUs && obeliskVisitValue(state, field) === null) {
+    return null;
+  }
 
   // PvE module sites are revisitable by design, so the generic category path
   // below does not claim them. Once the same strength gate used by the visit
@@ -1577,6 +1647,19 @@ export function coopHumanHuntBonus(state: GameState, playerId: PlayerId): number
  * reached level 6–7 and won the PvP. Sized so a ready bank (710) drops below a
  * ready experience-paying guard field but stays above a bare flaggable (658).
  */
+/**
+ * Whether a Trading Post visit would COMPLETE the purchase this seat is saving
+ * for: the Gold-ladder recruit plan (buy its missing valuable, sell the stock it
+ * does not need) or the same-visit Gold dwelling + level-7 body combo. Both
+ * planners return null the moment the purchase is affordable, so the pull
+ * disappears by itself. Memoised per scoring pass — `objectiveStrategicValue`
+ * runs once per objective per candidate action.
+ */
+function savedPurchaseNeedsMarket(state: GameState, playerId: PlayerId): boolean {
+  return mapScoringCached(state, `marketCompletes|${playerId}`, () =>
+    Boolean(goldStepMarketPlan(state, playerId) ?? goldBodyComboTradePlan(state, playerId)));
+}
+
 export const BANK_LEVEL_DEFICIT_PENALTY = 40;
 
 /** Exported for tests only — the ranking seam behind primaryMapObjective. */
@@ -1706,7 +1789,11 @@ export function objectiveStrategicValue(
       // Gold/valuables mines (already flagged free / unguarded) also beat
       // generic materials mines once the home tile is drained.
       if (field?.location === "settlement") value = 658;
-      else if (
+      else if (field?.location === "obelisk") {
+        // Reward-scaled: a +1 die face / rich designer award edges past a bare
+        // materials mine (625); a -1 morale token sits well below it.
+        value = 590 + Math.min(50, (obeliskVisitValue(state, field) ?? 0) * 2);
+      } else if (
         field?.location === "mine" &&
         (field.resource === "gold" || field.resource === "valuables")
       ) {
@@ -1725,8 +1812,16 @@ export function objectiveStrategicValue(
       break;
     case "visitable":
       value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
+      // A Trading Post that completes the saved purchase is the march target,
+      // not a trinket: a feasible dwelling rush, the Gold-ladder recruit plan
+      // (sell the stock the body does not need / buy its missing valuable) or
+      // the same-visit Gold dwelling + level-7 combo. Measured (Necropolis seed
+      // eval-14, R9): 12 gold, 5 materials and 7 valuables with the Ghost
+      // Dragons 7 gold short and their plan ready — the post kept its 600-band
+      // trinket value, the hero wandered, arrived R10 and bought there.
       if (field?.location === "trading_post" &&
-          assessDwellingRush(state, hero.controllerId)?.feasible) value = 940;
+          (savedPurchaseNeedsMarket(state, hero.controllerId) ||
+            assessDwellingRush(state, hero.controllerId)?.feasible)) value = 940;
       // Equipment shops: extra pull when surplus + empty slot (else the base
       // value alone rarely wins over economy flaggables — intentional).
       if (
@@ -2265,6 +2360,73 @@ function bestHomeOpeningObjective(
   return best?.[0] ?? null;
 }
 
+/**
+ * Keep the committed march target when it is still worth marching to.
+ *
+ * `stickySpaceId` survives only while it remains an objective in `pool`, stays
+ * reachable, and no other reachable objective is MATERIALLY better: small value
+ * fluctuations (a resource just picked up, one step of travel decay) must not
+ * re-point the route. A premium economy fight before round 6 and a free seizure
+ * already inside this turn's walking reach break it on a lower bar — scooping
+ * free value and hitting the economy window are the standing golden rules.
+ *
+ * Extracted so every sticky read in the cascade shares one answer to "is this
+ * commitment still the plan?" — two different readings would alternate and the
+ * hero would shuffle.
+ */
+function stickyObjectiveIfStillBest(
+  state: GameState,
+  hero: HeroState,
+  pool: ReadonlyArray<MapObjective>,
+  stickySpaceId: MapSpaceId,
+  fightAvailable: boolean,
+): MapObjective | null {
+  const sticky = pool.find((objective) => objective.spaceId === stickySpaceId);
+  if (!sticky) return null;
+  const stickyField = state.adventure?.fields[sticky.spaceId];
+  const stickyDistance = distanceFromHeroTo(state, hero, sticky.spaceId);
+  const stickyValue = stickyDistance === undefined
+    ? Number.NEGATIVE_INFINITY
+    : objectiveStrategicValue(state, hero, sticky, stickyDistance, fightAvailable);
+  const higher = pool.find((objective) => {
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+    if (distance === undefined) return false;
+    const value = objectiveStrategicValue(
+      state,
+      hero,
+      objective,
+      distance,
+      fightAvailable,
+    );
+    const objectiveField = state.adventure?.fields[objective.spaceId];
+    const premiumBreak =
+      objectiveField &&
+      isPremiumEconomyField(objectiveField) &&
+      objective.kind === "guard" &&
+      (state.round ?? 0) < 6 &&
+      !(
+        stickyField &&
+        isPremiumEconomyField(stickyField) &&
+        sticky.kind === "guard"
+      );
+    const freeSeizeBreak =
+      isFreeSeizeObjective(objective, state) &&
+      (sticky.kind === "guard" ||
+        sticky.kind === "enemy-hero" ||
+        sticky.kind === "explore") &&
+      distance <= Math.max(0, hero.movementPoints ?? 0);
+    return (
+      value > stickyValue + (premiumBreak || freeSeizeBreak ? 40 : 90)
+    );
+  });
+  // Unreachable sticky (e.g. explore doorway sealed behind a yellow border
+  // the hero cannot cross without Pathfinding, or a fight we can no longer
+  // reach) must drop — otherwise the AI parks forever on an END_TURN with a
+  // dead commit. Reachability uses the same walk graph as the march BFS.
+  const stickyReachable = stickyDistance !== undefined;
+  return !higher && stickyReachable ? sticky : null;
+}
+
 export function primaryMapObjective(
   state: GameState,
   hero: HeroState,
@@ -2340,6 +2502,14 @@ function primaryMapObjectiveUncached(
   const openingObjective = openingRemaining.length === homeRemaining.length
     ? bestHomeOpeningObjective(state, hero, openingRemaining)
     : null;
+
+  // "Can we fight anything at all?" — when no beatable guard / enemy hero is
+  // listed, explore objectives get a boost so the hero opens new land instead
+  // of idling (see objectiveStrategicValue). Derived from `pool`, which does
+  // not change below.
+  const fightAvailable = pool.some(
+    (objective) => objective.kind === "guard" || objective.kind === "enemy-hero",
+  );
 
   // Early information is worth a short legal approach when held Far supply
   // remains. No supply means this branch does nothing; normal income/pickups
@@ -2431,7 +2601,7 @@ function primaryMapObjectiveUncached(
   // body, while a Trading Post stood two fields away. Reach = this turn's
   // movement plus one refresh, so a far-off post never hijacks the march.
   if (hero.kind === "main" && homeRemaining.length === 0 &&
-      (goldStepMarketPlan(state, hero.controllerId) || assessDwellingRush(state, hero.controllerId)?.feasible)) {
+      (savedPurchaseNeedsMarket(state, hero.controllerId) || assessDwellingRush(state, hero.controllerId)?.feasible)) {
     const posts = actionable
       .filter((objective) => {
         const field = state.adventure?.fields[objective.spaceId];
@@ -2501,7 +2671,7 @@ function primaryMapObjectiveUncached(
     // Gold-step plan, handled by the market branch below) beats revealing land:
     // measured (Dungeon seed eval-22, R7, 31 gold, 2 of 4 valuables, post four
     // cells away) the explore push fired first and the dwelling waited to R9.
-    const marketCanClose = (goldStepMarketPlan(state, hero.controllerId) ||
+    const marketCanClose = (savedPurchaseNeedsMarket(state, hero.controllerId) ||
         assessDwellingRush(state, hero.controllerId)?.feasible) &&
       actionable.some(objective => {
         const field = state.adventure?.fields[objective.spaceId];
@@ -2644,13 +2814,6 @@ function primaryMapObjectiveUncached(
     }
   }
 
-  // "Can we fight anything at all?" — when no beatable guard / enemy hero is
-  // listed, explore objectives get a boost so the hero opens new land instead
-  // of idling (see objectiveStrategicValue).
-  const fightAvailable = pool.some(
-    (objective) => objective.kind === "guard" || objective.kind === "enemy-hero",
-  );
-
   // FREE SEIZE THIS TURN: scoop unguarded mines / symbols / settlements before
   // locking a fight sticky or trekking to a fair battle. Map is full of free
   // paths — taking them is the intelligent play, not "wait then fight".
@@ -2683,58 +2846,20 @@ function primaryMapObjectiveUncached(
   // Sticky only applies once the home tile is drained — a sticky Far/victory
   // target must not yank the hero off tile Ⅰ mid-sweep.
   if (stickySpaceId && homeRemaining.length === 0) {
-    const sticky = pool.find((objective) => objective.spaceId === stickySpaceId);
+    // Change plans only for a materially better reachable objective; small
+    // value fluctuations keep the existing march stable across turns.
+    // Premium economy fights break sticky early (unit-loss trades are fine;
+    // missing the pre-round-6 window is not). Free seizures within reach
+    // also break a fight sticky (low bar — scoop free value on the way).
+    const sticky = stickyObjectiveIfStillBest(
+      state,
+      hero,
+      pool,
+      stickySpaceId,
+      fightAvailable,
+    );
     if (sticky) {
-      // Change plans only for a materially better reachable objective; small
-      // value fluctuations keep the existing march stable across turns.
-      // Premium economy fights break sticky early (unit-loss trades are fine;
-      // missing the pre-round-6 window is not). Free seizures within reach
-      // also break a fight sticky (low bar — scoop free value on the way).
-      const stickyField = state.adventure?.fields[sticky.spaceId];
-      const stickyDistance = distanceFromHeroTo(state, hero, sticky.spaceId);
-      const stickyValue = stickyDistance === undefined
-        ? Number.NEGATIVE_INFINITY
-        : objectiveStrategicValue(state, hero, sticky, stickyDistance, fightAvailable);
-      const higher = pool.find((objective) => {
-        const distance = distanceFromHeroTo(state, hero, objective.spaceId);
-        if (distance === undefined) return false;
-        const value = objectiveStrategicValue(
-          state,
-          hero,
-          objective,
-          distance,
-          fightAvailable,
-        );
-        const objectiveField = state.adventure?.fields[objective.spaceId];
-        const premiumBreak =
-          objectiveField &&
-          isPremiumEconomyField(objectiveField) &&
-          objective.kind === "guard" &&
-          (state.round ?? 0) < 6 &&
-          !(
-            stickyField &&
-            isPremiumEconomyField(stickyField) &&
-            sticky.kind === "guard"
-          );
-        const freeSeizeBreak =
-          isFreeSeizeObjective(objective, state) &&
-          (sticky.kind === "guard" ||
-            sticky.kind === "enemy-hero" ||
-            sticky.kind === "explore") &&
-          distance <= Math.max(0, hero.movementPoints ?? 0);
-        return (
-          value > stickyValue + (premiumBreak || freeSeizeBreak ? 40 : 90)
-        );
-      });
-      // Unreachable sticky (e.g. explore doorway sealed behind a yellow border
-      // the hero cannot cross without Pathfinding, or a fight we can no longer
-      // reach) must drop — otherwise the AI parks forever on an END_TURN with a
-      // dead commit. Reachability uses the same walk graph as the march BFS.
-      const stickyReachable =
-        distanceFromHeroTo(state, hero, sticky.spaceId) !== undefined;
-      if (!higher && stickyReachable) {
-        return sticky;
-      }
+      return sticky;
     }
   }
 

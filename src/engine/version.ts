@@ -1389,7 +1389,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   fallback, PvP-prep purchase priority), commander grade-up/revive/cast
 //   usage, AI CPU memoization (veterancy tables, tile geometry, per-scoring-
 //   pass map cache) and a wall-clock tick budget in the room's computer pump.
-export const ENGINE_PROTOCOL_VERSION = 153;
+// v154 (2026-09-17): Tower Temple Guardian "Precision" becomes an instant
+//   attacker-side reaction (+1/+2/+3 for that attack only, keeps the full
+//   ranged-penalty waiver incl. the behind-Wall −1 damage, 1/round 2/combat,
+//   second use +1, +2 at Power 2) plus a combat-start discard-to-fetch-Magic-
+//   Arrow; Fortress Shaman "Haste" becomes an always-on +3/6/9 Initiative,
+//   +1 Attack, +1 movement kit (top tier +1 Attack vs slower, 2-round
+//   no-restack) plus a begin-of-match cast that spends the commander's
+//   round-1 turn (1 round on a Gold target). New CombatState/CombatUnitState/
+//   PendingChoice fields (commanderCombatStartResolved, attackDieDraws,
+//   commanderBeginCast, commanderMagicArrowFetch) and the COMMANDER_MOVEMENT_
+//   BONUS active-effect modifier ride along, so clients and the PartyKit
+//   worker must agree. Server-side in the same release: commander grade-up/
+//   revive AI, the PvP tier-down poke + heal-race combat reads, neutral-buy
+//   golden rules, one-war-machine seats, Knowledge-first empower and the
+//   round-trip/last-MP routing guards.
+export const ENGINE_PROTOCOL_VERSION = 154;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

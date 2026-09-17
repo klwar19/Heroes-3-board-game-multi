@@ -10,11 +10,14 @@ import {
   developmentResourceTargets,
   hasOpenedFarEconomy,
   incomeBuildingBeforeDwelling,
+  needsPremiumSilverBreakthrough,
   nextGoldLadderStep,
+  nextPlannedSilver,
   openingCorePackTarget,
   preferredOpeningPacks,
   rankedGoldUnits,
   shouldLaunchBronzeRush,
+  silverRecruitPlan,
 } from "./development";
 import { resourceDeficits, scoreMapAction } from "./map-policy";
 import { observeForComputer } from "./observation";
@@ -61,6 +64,9 @@ describe("computer long-horizon development plan", () => {
   it("requires both Elves and Dwarves Packs before the Rampart Silver pivot", () => {
     const state = game();
     state.players.p2.factionId = "rampart";
+    // The seat's hero steers preferredOpeningPacks (a Necromancy hero plans a
+    // Skeleton-first core instead), so pin Rampart's own hero for this fixture.
+    state.players.p2.heroDefId = "gelu";
     state.players.p2.army = ["rampart.centaurs", "rampart.dwarves", "rampart.elves"].map(
       (unitDefId, index) => ({ id: `rampart-${index}`, unitDefId, side: "few" as const }),
     );
@@ -282,11 +288,33 @@ describe("computer long-horizon development plan", () => {
     const starved = scoreMapAction(observation(state), buildSide);
     expect(starved!.score).toBeLessThanOrEqual(280);
 
-    // CONTROL: genuine surplus (fund + the side cost) keeps the build allowed.
+    // Genuine surplus alone is NOT enough any more: the 2026-09-16 user rule
+    // holds every side building in the 280 band until the faction's Gold
+    // dwelling stands, surplus included.
     state.players.p2.resources = {
       gold: target.gold + (sideCost.gold ?? 0),
       buildingMaterials: target.buildingMaterials + (sideCost.buildingMaterials ?? 0),
       valuables: target.valuables + (sideCost.valuables ?? 0),
+    };
+    expect(scoreMapAction(observation(state), buildSide)!.score).toBeLessThanOrEqual(280);
+
+    // CONTROL: with the Gold dwelling built AND genuine surplus (its remaining
+    // recruit fund plus the side cost) the same build is allowed again.
+    town.buildings.push(
+      buildingWith(
+        state,
+        (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
+      ),
+      buildingWith(
+        state,
+        (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold",
+      ),
+    );
+    const goldTarget = developmentResourceTargets(state, "p2");
+    state.players.p2.resources = {
+      gold: goldTarget.gold + (sideCost.gold ?? 0),
+      buildingMaterials: goldTarget.buildingMaterials + (sideCost.buildingMaterials ?? 0),
+      valuables: goldTarget.valuables + (sideCost.valuables ?? 0),
     };
     const flush = scoreMapAction(observation(state), buildSide);
     expect(flush!.score).toBeGreaterThan(700);
@@ -379,6 +407,10 @@ describe("computer long-horizon development plan", () => {
       playerId: "p2",
     } as GameAction;
 
+    // Magic Arrow already owned, so the separate "seek the Arrow" fund does not
+    // apply and the buy is priced as an ordinary Book purchase (5 gold).
+    state.players.p2.spellBook = ["spell.magic_arrow"];
+
     // Gold at the development target, no Wisdom — the purchase waits.
     state.players.p2.resources = {
       gold: target.gold,
@@ -390,17 +422,25 @@ describe("computer long-horizon development plan", () => {
     expect(tight?.policy).toBe("town.skip-spell-buy-fund-army");
     expect(tight!.score).toBeLessThan(300);
 
-    // CONTROL: surplus gold funds the Spell Book.
-    state.players.p2.resources.gold = target.gold + 4;
+    // CONTROL: surplus gold (the whole 5-gold price on top of the fund) funds
+    // the Spell Book.
+    state.players.p2.resources.gold = target.gold + 5;
     const flush = scoreMapAction(observation(state), buySpells);
     expect(flush?.policy).toBe("town.buy-spells-after-army-core");
     expect(flush!.score).toBe(620);
 
-    // CONTROL: Wisdom rides along (cheaper buy, bigger Search) — worth it even
-    // on a tight budget.
-    state.players.p2.resources.gold = target.gold;
+    // CONTROL: two gold over the fund is NOT enough on its own...
+    state.players.p2.resources.gold = target.gold + 2;
+    const short = scoreMapAction(observation(state), buySpells);
+    expect(short?.policy).toBe("town.skip-spell-buy-fund-army");
+
+    // ...but Wisdom rides along (cheaper buy, bigger Search) — worth it even on
+    // that tight budget.
     state.players.p2.hand = ["ability.wisdom"];
-    const wise = scoreMapAction(observation(state), buySpells);
+    const wise = scoreMapAction(observation(state), {
+      ...buySpells,
+      wisdom: { cardId: "ability.wisdom", mode: "expert" },
+    } as GameAction);
     expect(wise?.policy).toBe("town.buy-spells-after-army-core");
     expect(wise!.score).toBe(620);
   });
@@ -524,6 +564,8 @@ describe("computer long-horizon development plan", () => {
     );
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
     town.buildings = [citadel, bronze];
+    // Fund the plan: an unaffordable dwelling drops to the affordability floor.
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
 
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-silver");
     const silverScore = scoreMapAction(observation(state), {
@@ -700,31 +742,45 @@ describe("computer development — income-first City Hall and the Gold ladder (r
         flagOwnerId: owner,
       };
     };
-    flagFarGoldMine("p2");
     const income = buildingWith(state, (effect) => effect.type === "RESOURCE_ROUND_CHOICE");
     const silver = buildingWith(
       state,
       (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
     );
     const hallCost = coreBuildingDefinitions[income].cost ?? {};
-    const hallOnly = () => {
+    // Necropolis' hall pays 4 gold a round (a LOW-payout hall), so it must also
+    // leave the five-gold cushion behind — its price alone is not enough.
+    const hallAffordable = () => {
       state.players.p2.resources = {
-        gold: hallCost.gold ?? 0,
+        gold: (hallCost.gold ?? 0) + 5,
         buildingMaterials: hallCost.buildingMaterials ?? 0,
         valuables: 0,
       };
     };
     state.round = 3;
-    state.players.p2.production = { gold: 5, buildingMaterials: 2, valuables: 1 };
+    state.players.p2.production = { gold: 5, buildingMaterials: 2, valuables: 0 };
     // Silver dwelling out of reach, hall affordable: hall first, exempt from
     // the dwelling-fund guard, below a scenario-winning step.
-    hallOnly();
+    hallAffordable();
     expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
-    // CONTROL: without a captured FAR income (a rival's flag does not count)
-    // every coin funds the dwelling and its army — no hall first.
-    flagFarGoldMine("p1");
+    // CONTROL: the hall's bare price with nothing left over is NOT enough for a
+    // low-payout hall — the next fight's re-recruits would eat the dwelling.
+    state.players.p2.resources = {
+      gold: hallCost.gold ?? 0,
+      buildingMaterials: hallCost.buildingMaterials ?? 0,
+      valuables: 0,
+    };
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    hallAffordable();
+    // CONTROL: once THIS seat has secured a Far tile the premium Silver
+    // breakthrough body owns the purse instead — no hall first.
     flagFarGoldMine("p2");
+    expect(needsPremiumSilverBreakthrough(state, "p2")).toBe(true);
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    // CONTROL: the SAME Far mine flagged by the OPPONENT is not p2's economy,
+    // so the situational hall-first step is back on.
+    flagFarGoldMine("p1");
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
     const hall = score(state, build(state, income));
     expect(hall).toBeGreaterThanOrEqual(970);
     expect(hall).toBeLessThan(980);
@@ -735,17 +791,17 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
     expect(score(state, build(state, silver))).toBe(955);
     expect(score(state, build(state, income))).toBeLessThan(900);
-    // From R4 a dwelling landing next Resource Round is not pushed out either.
+    // From R4 a dwelling landing next Resource Round is not pushed out either:
+    // the same purse, but a valuables income that brings the Silver dwelling
+    // within one Resource Round — which paying for the hall would undo.
     state.round = 4;
-    const silverCost = coreBuildingDefinitions[silver].cost ?? {};
-    state.players.p2.resources = {
-      gold: (silverCost.gold ?? 0) - 1,
-      buildingMaterials: silverCost.buildingMaterials ?? 0,
-      valuables: silverCost.valuables ?? 0,
-    };
+    state.players.p2.production = { gold: 5, buildingMaterials: 2, valuables: 1 };
+    hallAffordable();
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
-    // Too late: no hall-first after R6; from R9 the hall is never built.
-    hallOnly();
+    state.players.p2.production = { gold: 5, buildingMaterials: 2, valuables: 0 };
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    // Too late: no hall-first after R4; from R9 the hall is never built.
+    hallAffordable();
     state.round = 7;
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
     state.round = 9;
@@ -765,26 +821,29 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
     // Bronze core with nothing it can win: the dwelling is the plan instead.
     expect(incomeBuildingBeforeDwelling(state, "p2", false)).toBeNull();
-    // Slow bronze stretch (no unit experience, no commanders) or player-
-    // controlled neutrals: the hall-first window closes after R4.
+    // USER RULING (2026-09-16): the hall-first window closes after R4 for every
+    // seat — a slow bronze stretch (no unit experience, no commanders) no
+    // longer buys extra rounds.
+    state.round = 4;
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
     state.round = 5;
     state.adventure!.unitExperience = true;
-    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
     state.adventure!.unitExperience = false;
     if (state.wog) state.wog.enabled = false;
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
     state.round = 3;
     expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
-    state.round = 5;
-    state.adventure!.unitExperience = true;
+    // Player-controlled neutrals (PvP Neutral Control with a live human rival)
+    // halve the "behind already" tolerance: ONE hostile level is enough.
     state.adventure!.pvpNeutralControl = true;
     state.controllers = { ...(state.controllers ?? {}), p1: { kind: "human" } };
-    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
-    state.round = 3;
     enemyMain.level = ownMain.level + 1;
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
-    enemyMain.level = ownMain.level;
     state.adventure!.pvpNeutralControl = false;
+    // CONTROL: with the scripted Neutral AI the same one-level gap is tolerated.
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    enemyMain.level = ownMain.level;
     // CONTROL: with the hall standing the Silver dwelling is the milestone again.
     town.buildings.push(income);
     state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
@@ -792,7 +851,7 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     expect(score(state, build(state, silver))).toBe(955);
     // The opening never waits for the hall: Pack reinforces come first.
     town.buildings.pop();
-    hallOnly();
+    hallAffordable();
     for (const unit of state.players.p2.army) unit.side = "few";
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
   });
@@ -826,12 +885,25 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     const topScore = score(state, recruit(top));
     expect(topScore).toBeGreaterThanOrEqual(968);
     expect(topScore).toBeLessThan(980);
-    expect(score(state, recruit(lower))).toBeLessThanOrEqual(240);
+    // USER RULING (2026-09-16): from a flush purse the lower Gold Few cannot
+    // delay the level-7 landing, so it is released — but still behind the top
+    // body's saved ladder step.
+    const lowerFlush = score(state, recruit(lower));
+    expect(lowerFlush).toBeGreaterThan(900);
+    expect(lowerFlush).toBeLessThan(topScore);
     // The treasury target now saves for the TOP body, not the cheapest one.
     const target = developmentResourceTargets(state, "p2");
     const topCost = coreUnitDefinitions[top].few!.cost;
     expect(target.gold).toBe((topCost.gold ?? 0) + 5);
     expect(target.valuables).toBe(topCost.valuables ?? 0);
+    // CONTROL: a purse that exactly covers the TOP body — spending it on the
+    // lower Few would push the level-7 landing out, so the lower Few waits.
+    state.players.p2.resources = {
+      gold: topCost.gold ?? 0,
+      buildingMaterials: 0,
+      valuables: topCost.valuables ?? 0,
+    };
+    expect(score(state, recruit(lower))).toBeLessThanOrEqual(240);
     // CONTROL: the top body out of reach for two Resource Rounds → the lower
     // Few is bought now instead of idling the token.
     const lowerCost = coreUnitDefinitions[lower].few!.cost;
@@ -863,7 +935,7 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     expect(score(state, reinforce(state, lower))).toBeLessThanOrEqual(240);
   });
 
-  it("skips the first Silver body when it would delay a Gold dwelling that lands next round", () => {
+  it("skips the first Silver body when it would eat a Gold dwelling the seat can build now", () => {
     const state = game();
     establishPacks(state);
     coreTown(state, [
@@ -880,19 +952,25 @@ describe("computer development — income-first City Hall and the Gold ladder (r
       (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold",
     );
     const cost = coreBuildingDefinitions[gold].cost ?? {};
-    // Inputs secured, one gold short: the dwelling lands next Resource Round
-    // unless the Silver body spends that gold first.
+    // The Gold dwelling is payable RIGHT NOW: it is the bigger milestone (the
+    // Build and Population tokens are separate, so a flush seat does both the
+    // same turn), so the premium-Silver breakthrough exemption closes and the
+    // body must not spend the dwelling's fund.
     state.players.p2.production = { gold: 5, buildingMaterials: 4, valuables: 1 };
+    const bodyCost = coreUnitDefinitions[silverUnit].few!.cost;
     state.players.p2.resources = {
-      gold: (cost.gold ?? 0) - 1,
-      buildingMaterials: cost.buildingMaterials ?? 0,
-      valuables: cost.valuables ?? 0,
+      gold: (cost.gold ?? 0) + (bodyCost.gold ?? 0),
+      buildingMaterials: (cost.buildingMaterials ?? 0) + (bodyCost.buildingMaterials ?? 0),
+      valuables: (cost.valuables ?? 0) + (bodyCost.valuables ?? 0),
     };
+    expect(needsPremiumSilverBreakthrough(state, "p2")).toBe(false);
     expect(score(state, recruit(silverUnit))).toBeLessThanOrEqual(240);
-    // CONTROL: with the dwelling far off, the first Silver body keeps its
-    // exemption — it is what takes the lv3 premium guards.
+    // CONTROL: with the dwelling out of reach the seat is STALLED, so the
+    // planned Silver breakthrough body keeps its exemption — it is what takes
+    // the lv3 premium guards (user ruling 2026-09-16).
     state.players.p2.resources = { gold: 8, buildingMaterials: 0, valuables: 0 };
-    expect(score(state, recruit(silverUnit))).toBe(945);
+    expect(needsPremiumSilverBreakthrough(state, "p2")).toBe(true);
+    expect(score(state, recruit(silverUnit))).toBeGreaterThanOrEqual(976);
   });
 
   it("keeps Silver at Few (one Pack at most) until the top Gold body is owned", () => {
@@ -907,8 +985,134 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     addUnit(state, silvers[1], "few");
     state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
     expect(score(state, reinforce(state, silvers[1]))).toBeLessThanOrEqual(240);
-    // CONTROL: the top Gold Few in the army re-opens Silver Packs.
-    addUnit(state, rankedGoldUnits(state, "p2")[0], "few");
+    // A Gold Few alone no longer re-opens paid Silver Packs: they wait for the
+    // WHOLE Gold ladder (both Few bodies AND both Packs).
+    const [topGold, lowerGold] = rankedGoldUnits(state, "p2");
+    addUnit(state, topGold, "few");
+    expect(score(state, reinforce(state, silvers[1]))).toBeLessThanOrEqual(240);
+    // CONTROL: the finished Gold ladder re-opens Silver Packs.
+    state.players.p2.army.find((unit) => unit.unitDefId === topGold)!.side = "pack";
+    addUnit(state, lowerGold, "pack");
+    expect(nextGoldLadderStep(state, "p2")).toBeNull();
     expect(score(state, reinforce(state, silvers[1]))).toBeGreaterThan(900);
+  });
+});
+
+/**
+ * THE STALLED OPENING (2026-09-16). A seat whose Silver dwelling stands and
+ * whose opening Pack core is complete, but which has not secured ONE Far tile,
+ * is exactly the seat that cannot win the Far III fight its whole economy hangs
+ * on. Measured (Rampart seed eval-19, R4-R7, 30-seed impossible eval): the
+ * Dendroid Few (8 gold) sat unbought at 13 gold for three straight Resource
+ * Rounds because the treasury target had already jumped to the Gold dwelling
+ * PLUS its Gold recruit (10 + 22 + 5 = 37 gold), so the shared "other Silver is
+ * a surplus purchase" guard scored the body 240. The first Far landed R10 and
+ * the Gold body R11.
+ */
+describe("stalled opening — the planned Silver body outranks the Gold fund", () => {
+  function stalledRampart(): GameState {
+    const state = game();
+    state.round = 5;
+    state.players.p2.factionId = "rampart";
+    state.players.p2.army = [
+      // Rampart's ordered opening Packs are Elves (level-3) then Centaurs.
+      { id: "r-0", unitDefId: "rampart.dwarves", side: "few" as const },
+      { id: "r-1", unitDefId: "rampart.centaurs", side: "pack" as const },
+      { id: "r-2", unitDefId: "rampart.elves", side: "pack" as const },
+    ];
+    const town = Object.values(state.towns).find((t) => t.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (e) => e.type === "UNLOCK_RECRUIT_TIER" && e.tier === "bronze"),
+      buildingWith(state, (e) => e.type === "UNLOCK_RECRUIT_TIER" && e.tier === "silver"),
+    ];
+    state.players.p2.resources = { gold: 13, buildingMaterials: 6, valuables: 0 };
+    state.players.p2.production = { gold: 10, buildingMaterials: 4, valuables: 1 };
+    return state;
+  }
+  const recruitOne = (unitDefId: string): GameAction => ({
+    type: "POPULATION_ACTION",
+    playerId: "p2",
+    purchases: [{ kind: "recruit", unitDefId }],
+  });
+  const scoreOf = (state: GameState, action: GameAction) =>
+    scoreMapAction(observation(state), action)!.score;
+
+  it("buys the PLANNED Silver (Dendroids) at 13 gold although the Gold fund wants 37", () => {
+    const state = stalledRampart();
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-gold");
+    expect(hasOpenedFarEconomy(state, "p2")).toBe(false);
+    expect(needsPremiumSilverBreakthrough(state, "p2")).toBe(true);
+    // The breakthrough body is funded first: its own cost plus the cushion,
+    // NOT the Gold dwelling + Gold recruit fund that stalled the seat.
+    expect(developmentResourceTargets(state, "p2").gold).toBeLessThanOrEqual(13);
+    expect(scoreOf(state, recruitOne("rampart.dendroids"))).toBeGreaterThanOrEqual(976);
+  });
+
+  it("CONTROL: an OFF-plan Silver in the same position is still held back", () => {
+    const state = stalledRampart();
+    expect(scoreOf(state, recruitOne("rampart.pegasi"))).toBeLessThanOrEqual(240);
+  });
+
+  it("CONTROL: once the planned body stands the exemption closes", () => {
+    const state = stalledRampart();
+    state.players.p2.army.push({ id: "r-3", unitDefId: "rampart.dendroids", side: "few" });
+    expect(needsPremiumSilverBreakthrough(state, "p2")).toBe(false);
+    // Back to the Gold-dwelling fund: a second Silver body cannot spend it.
+    expect(developmentResourceTargets(state, "p2").gold).toBeGreaterThan(20);
+    expect(scoreOf(state, recruitOne("rampart.pegasi"))).toBeLessThanOrEqual(240);
+  });
+});
+
+/**
+ * INFERNO's breakthrough Silver (2026-09-16), read like Rampart's Dendroid
+ * ruling: the planned body is the one that can CARRY the Far III fight, not the
+ * cheapest. Pit Lords (8 gold, Attack 4 / Health 6; Pack Attack 5 + summon) vs
+ * Demons (6 gold, Attack 3 / Health 4 — the weakest Silver Few in the game).
+ * Measured (Inferno seeds eval-20 / eval-27): every premium level-3 attempt
+ * behind the cheapest-first Demons was lost or retreated, no Far income ever
+ * landed, and Inferno finished the 30-seed eval at 22/30 Gold bodies by R9.
+ */
+describe("Inferno's planned Silver is the breakthrough body", () => {
+  function infernoSeat(): GameState {
+    const state = game();
+    state.round = 5;
+    state.players.p2.factionId = "inferno";
+    state.players.p2.army = [
+      { id: "i-0", unitDefId: "inferno.magogs", side: "few" as const },
+      { id: "i-1", unitDefId: "inferno.familiars", side: "pack" as const },
+      { id: "i-2", unitDefId: "inferno.cerberi", side: "pack" as const },
+    ];
+    const town = Object.values(state.towns).find((t) => t.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (e) => e.type === "UNLOCK_RECRUIT_TIER" && e.tier === "bronze"),
+      buildingWith(state, (e) => e.type === "UNLOCK_RECRUIT_TIER" && e.tier === "silver"),
+    ];
+    state.players.p2.resources = { gold: 12, buildingMaterials: 6, valuables: 0 };
+    state.players.p2.production = { gold: 10, buildingMaterials: 4, valuables: 1 };
+    return state;
+  }
+  const recruitOne = (unitDefId: string): GameAction => ({
+    type: "POPULATION_ACTION",
+    playerId: "p2",
+    purchases: [{ kind: "recruit", unitDefId }],
+  });
+  const scoreOf = (state: GameState, action: GameAction) =>
+    scoreMapAction(observation(state), action)!.score;
+
+  it("plans Pit Lords, not the cheaper Demons", () => {
+    const state = infernoSeat();
+    expect(silverRecruitPlan(state, "p2")[0]).toBe("inferno.pit_lords");
+    expect(nextPlannedSilver(state, "p2")).toBe("inferno.pit_lords");
+  });
+
+  it("buys Pit Lords first; CONTROL: the cheaper Demons are deferred", () => {
+    const state = infernoSeat();
+    const pitLords = scoreOf(state, recruitOne("inferno.pit_lords"));
+    const demons = scoreOf(state, recruitOne("inferno.demons"));
+    expect(pitLords).toBeGreaterThanOrEqual(976);
+    expect(demons).toBeLessThan(pitLords);
+    expect(demons).toBeLessThanOrEqual(240);
   });
 });

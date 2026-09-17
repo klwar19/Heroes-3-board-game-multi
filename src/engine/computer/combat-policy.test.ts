@@ -8,6 +8,7 @@ import type {
 } from "../state";
 import { chooseComputerAction } from "./policy";
 import { scoreCombatAction } from "./combat-policy";
+import { unitAbilities } from "@/data/units/abilities";
 import type { ComputerObservation } from "./types";
 
 /** Minimal combat unit; only the fields the policy reads matter, the rest are
@@ -224,9 +225,13 @@ describe("combat policy — attack target selection", () => {
     expect(decision?.action.type).toBe("END_ACTIVATION");
 
     // CONTROL: if the same commander attack removes the target, there is no
-    // retaliation and the AI correctly takes the winning hit.
+    // retaliation and the AI correctly takes the winning hit. Lethality is read
+    // pessimistically (commit 2ae9a06d): the kill must land even on the −1 die
+    // face, so the target's defense drops to 2 (4 attack − 2 defense − 1 = 1,
+    // exactly its remaining Health).
     const fragileHaspid = unit({
       ...haspid,
+      defense: 2,
       maxHealth: 6,
       damage: 5,
     });
@@ -617,9 +622,11 @@ describe("combat policy — do not wake a skippable paralyzed enemy", () => {
     expect(decision?.action.type).toBe("DEFEND_UNIT");
 
     // CONTROL: a LETHAL hit removes the unit entirely — the wake-up is moot, so
-    // the kill is taken.
+    // the kill is taken. Lethality is read pessimistically (commit 2ae9a06d):
+    // the kill must land on the −1 die face too, so 13 − 2 defense − 1 = 10 is
+    // the smallest attack that qualifies against this 10-Health target.
     const executioner = unit({
-      id: "A", controllerId: "p2", attack: 12, defense: 3, maxHealth: 8, position: 8,
+      id: "A", controllerId: "p2", attack: 13, defense: 3, maxHealth: 8, position: 8,
     });
     const lethal = chooseComputerAction(
       observation([executioner, paralyzed(true)], [attackOn("A", "E"), defend("A")]),
@@ -846,10 +853,6 @@ describe("combat policy — WOG commander activation cast (gap 4)", () => {
     expect(heal?.policy).toBe("combat.commander-cast");
     expect(heal!.score).toBeGreaterThan(640); // a real heal — swings the fight
 
-    // CONTROL: same board, HEALTHY ally. The cast now heals nothing, and the
-    // melee commander with no adjacent enemy is stranded from its walk, so the
-    // movement-lock penalty drops the cast far below — proving the heal size +
-    // swing gate, not the cast itself, drove the first score.
     const healthyAlly = unit({
       id: "ALLY",
       controllerId: "p2",
@@ -857,12 +860,36 @@ describe("combat policy — WOG commander activation cast (gap 4)", () => {
       damage: 0,
       position: 5,
     });
-    const marginal = scoreCombatAction(
+    // soul_eater is a CASTER commander (ranked grade-up meta): its once-per-round
+    // Command cast is its whole job, so it never drops below the caster floor —
+    // even with nothing to heal it still outranks a stranded walk.
+    const casterIdle = scoreCombatAction(
       observation([cmdr, healthyAlly, farEnemy], []),
       commanderCast("C", "commander-cast-soul_eater"),
     );
+    expect(casterIdle!.score).toBe(715);
+
+    // CONTROL: the same board for a MELEE heal commander (paladin's Cure). With
+    // a wounded ally the cast swings the fight; with a healthy one it heals
+    // nothing and the movement-lock penalty drops it far below — proving the
+    // heal size + swing gate, not the cast itself, drives the score.
+    const paladin = unit({
+      id: "C",
+      controllerId: "p2",
+      commanderSlug: "paladin",
+      position: 8,
+      type: "ground",
+    } as Partial<CombatUnitState> & { id: string });
+    const paladinHeal = scoreCombatAction(
+      observation([paladin, woundedAlly, farEnemy], []),
+      commanderCast("C", "commander-cast-paladin"),
+    );
+    const marginal = scoreCombatAction(
+      observation([paladin, healthyAlly, farEnemy], []),
+      commanderCast("C", "commander-cast-paladin"),
+    );
     expect(marginal!.score).toBeLessThan(500);
-    expect(marginal!.score).toBeLessThan(heal!.score - 100);
+    expect(marginal!.score).toBeLessThan(paladinHeal!.score - 100);
   });
 
   it("buffs before an in-place strike, but not when the buff would strand a needed walk", () => {
@@ -1141,5 +1168,213 @@ describe("combat policy — PvP lessons from the ranked replays (2026-09-10/11)"
       pvp(observation([survivor, fallen, brute, almostDead], [attackOn("A", "E2"), giveUp])),
     );
     expect(kill?.action.type).toBe("ATTACK_UNIT");
+  });
+});
+
+describe("combat policy — reach-aware target value (siege Arrow Tower, 2026-09-16)", () => {
+  // The observed blunder: p2's town (Citadel) is besieged by p1's Rampart. The
+  // defending Arrow Tower shot the Centaur Pack standing OUTSIDE the intact
+  // walls instead of the Elves that shoot the garrison every round. Fixture
+  // facts are printed Rampart stats (Centaur Pack 3/0/3, Elves Pack 3/1/3) with
+  // the Centaurs carrying a +1 Attack buff — a bigger Pack→Few flip prize than
+  // printed, so the wall-blind scorer (pre-fix) clearly preferred them.
+  const tower = () =>
+    unit({
+      id: "T", controllerId: "p2", type: "ranged", grade: "silver", attack: 4, defense: 2,
+      maxHealth: 3, initiative: 9, position: -1, abilities: ["siege-arrow-tower"],
+    });
+  const garrison = () => unit({ id: "G", controllerId: "p2", attack: 3, defense: 2, maxHealth: 5, position: 6 });
+  const centaurs = (position: number) =>
+    unit({
+      id: "C", controllerId: "p1", unitDefId: "rampart.centaurs", variant: "pack", attack: 4,
+      defense: 0, maxHealth: 3, initiative: 8, position,
+    });
+  const elves = () =>
+    unit({
+      id: "E", controllerId: "p1", unitDefId: "rampart.elves", variant: "pack", type: "ranged",
+      attack: 3, defense: 1, maxHealth: 3, initiative: 7, position: 17,
+      abilities: ["double-attack-low-roll"],
+    });
+  const legal = [attackOn("T", "C"), attackOn("T", "E")];
+  /** p2 defends its town against p1 (the fixture default has p2 attacking). */
+  const siegedTown = (units: CombatUnitState[], walls: number[], gatePosition: number | null) => {
+    const obs = siegeObservation(units, legal, "p2");
+    const combat = obs.state.combat as unknown as CombatState;
+    combat.attackerPlayerId = "p1";
+    combat.defenderPlayerId = "p2";
+    combat.siege = { ...combat.siege!, walls, gatePosition };
+    combat.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2" } as CombatState["context"];
+    (obs.state as unknown as { heroes: Record<string, unknown> }).heroes = {};
+    return obs;
+  };
+  const scoreOf = (obs: ComputerObservation, defenderId: string) =>
+    scoreCombatAction(obs, attackOn("T", defenderId).action)!.score;
+
+  it("shoots the Elves that can hit us, not the Centaurs stuck behind intact walls", () => {
+    const walled = siegedTown([tower(), garrison(), centaurs(13), elves()], [8, 10, 11], 9);
+    const decision = chooseComputerAction(walled);
+    expect(decision?.policy).toBe("combat.attack-target");
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("E");
+
+    // CONTROL: the SAME Centaurs with the fortifications down and a step from
+    // the garrison are in reach again — their target value climbs back above
+    // the walled value. Discriminating: a wall-blind scorer prices both boards
+    // the same (and, on the walled board, above the Elves).
+    const breached = siegedTown([tower(), garrison(), centaurs(10), elves()], [], null);
+    expect(scoreOf(breached, "C")).toBeGreaterThan(scoreOf(walled, "C"));
+    expect(scoreOf(walled, "E")).toBeGreaterThan(scoreOf(walled, "C"));
+  });
+
+  it("caps a chip at the bar it depletes: overkill on a small Pack never outbids a real kill", () => {
+    // A 10-Attack brute can flip a 3-Health Centaur bar (excess carries to the
+    // Few side, not a removal) or REMOVE a 5-Health enemy outright. Uncapped, the
+    // 10/3 = 3.3-bar chip scored ~266 quality and beat the lethal (160 + threat).
+    const brute = unit({ id: "B", controllerId: "p2", attack: 10, position: 8 });
+    const pack = unit({
+      id: "C", unitDefId: "rampart.centaurs", variant: "pack", attack: 3, defense: 0,
+      maxHealth: 3, position: 9,
+    });
+    // A bank-guard Stack token absorbs the lethal blow, so the hit is a chip on
+    // a 3-Health bar (removal health unknown), not a removal.
+    pack.stackToken = "health";
+    const victim = unit({ id: "V", attack: 3, defense: 0, maxHealth: 5, position: 12 });
+    const decision = chooseComputerAction(
+      observation([brute, pack, victim], [attackOn("B", "C"), attackOn("B", "V")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("V");
+  });
+});
+
+describe("combat policy — PvP tier-down poke (user ruling 2026-09-16)", () => {
+  // A bronze 2-Attack body next to an enemy GOLD lvl-7 (Defense 3): the poke
+  // deals 0 (die 0) while the gold's live retaliation (7 − 2 = 5) wounds it,
+  // and nobody is around to profit from the spent retaliation.
+  const pvp = (obs: ComputerObservation) => {
+    (obs.state.combat as unknown as { context: unknown }).context =
+      { kind: "player", attackerHeroId: "hero_p2", defenderHeroId: "hero_p1" };
+    (obs.state as unknown as { heroes: Record<string, unknown> }).heroes = {};
+    return obs;
+  };
+  const bronze = (overrides: Partial<CombatUnitState> = {}) =>
+    unit({ id: "A", controllerId: "p2", grade: "bronze", attack: 2, defense: 2, maxHealth: 6, position: 8, ...overrides });
+  const gold = (overrides: Partial<CombatUnitState> = {}) =>
+    unit({ id: "G", grade: "gold", attack: 7, defense: 3, maxHealth: 12, position: 9, ...overrides });
+  const legal = [attackOn("A", "G"), defend("A")];
+
+  it("defends instead of poking the gold body for nothing into a live retaliation", () => {
+    const decision = chooseComputerAction(pvp(observation([bronze(), gold()], legal)));
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+    // Direct score: the poke sits below plain Defend (500) but above END_ACTIVATION.
+    const score = scoreCombatAction(pvp(observation([bronze(), gold()], legal)), legal[0].action);
+    expect(score?.score).toBeLessThan(500);
+    expect(score?.score).toBeGreaterThan(400);
+  });
+
+  it("a 1-damage chip up the ladder is the same wasted poke", () => {
+    // Attack 4 vs Defense 3 lands 1 on a 12-Health bar — no kill, no flip.
+    const decision = chooseComputerAction(pvp(observation([bronze({ attack: 4 }), gold()], legal)));
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("CONTROL: the poke is taken once the gold has already retaliated this round", () => {
+    const decision = chooseComputerAction(
+      pvp(observation([bronze(), gold({ retaliatedThisRound: true })], legal)),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+
+  it("CONTROL: the poke is taken as a retaliation SOAK for a stronger un-acted ally", () => {
+    // Our gold (Attack 6 → 3 damage on G, would eat a 7 − 2 = 5 counter-hit)
+    // stands adjacent to G and has not acted: the bronze eats the retaliation so
+    // the gold hits free.
+    const ally = unit({ id: "S", controllerId: "p2", grade: "gold", attack: 6, defense: 2, maxHealth: 10, position: 10 });
+    const decision = chooseComputerAction(pvp(observation([bronze(), gold(), ally], legal)));
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+    // Mutation check on the soak: the same ally that already ACTED cannot follow
+    // up, so the poke is wasted again and the bronze defends.
+    const spentAlly = { ...ally, activatedThisRound: true };
+    const spent = chooseComputerAction(pvp(observation([bronze(), gold(), spentAlly], legal)));
+    expect(spent?.action.type).toBe("DEFEND_UNIT");
+    // A Vampire-style ally (ignores retaliation) gains nothing from a soak.
+    const vampire = { ...ally, abilities: ["ignores-retaliation"] };
+    const noSoak = chooseComputerAction(pvp(observation([bronze(), gold(), vampire], legal)));
+    expect(noSoak?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("CONTROL: a probable flip/kill of the gold, or a hit the army can finish, still lands", () => {
+    // Attack 4 lands 1 (die 0) on the Pack's last Health point: a probable
+    // Pack→Few flip empties the bar — that IS bringing the body down.
+    const flipping = gold({ unitDefId: "castle.angels", variant: "pack", maxHealth: 12, damage: 11 });
+    const flip = chooseComputerAction(pvp(observation([bronze({ attack: 4 }), flipping], legal)));
+    expect(flip?.action.type).toBe("ATTACK_UNIT");
+    // A gold on 2 Health that an un-acted shooter (at range: no soak, 6 − 1 − 3
+    // = 2 even on a low die) can finish this round after the chip.
+    const shooter = unit({ id: "F", controllerId: "p2", type: "ranged", attack: 6, defense: 1, maxHealth: 4, position: 14 });
+    const nearlyDead = gold({ damage: 10 });
+    const finish = chooseComputerAction(pvp(observation([bronze({ attack: 4 }), nearlyDead, shooter], legal)));
+    expect(finish?.action.type).toBe("ATTACK_UNIT");
+    // Mutation check: the same shooter already spent its activation → no finish,
+    // no soak → the chip is wasted again.
+    const spentShooter = { ...shooter, activatedThisRound: true };
+    const noFinish = chooseComputerAction(pvp(observation([bronze({ attack: 4 }), nearlyDead, spentShooter], legal)));
+    expect(noFinish?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("CONTROL: same-tier chips and neutral fights keep the old trading behaviour", () => {
+    // Same numbers, but the defender is bronze too — not a tier-down poke.
+    const sameTier = chooseComputerAction(pvp(observation([bronze(), gold({ grade: "bronze" })], legal)));
+    expect(sameTier?.action.type).toBe("ATTACK_UNIT");
+    // Neutral guard fight: the ruling is PvP-only; the chaff keeps trading.
+    const neutral = chooseComputerAction(observation([bronze(), gold()], legal));
+    expect(neutral?.action.type).toBe("ATTACK_UNIT");
+  });
+});
+
+describe("combat policy — heal race: finish stacks against a per-round healer (PvP)", () => {
+  const pvp = (obs: ComputerObservation, tent: boolean) => {
+    (obs.state.combat as unknown as { context: unknown }).context =
+      { kind: "player", attackerHeroId: "hero_p2", defenderHeroId: "hero_p1" };
+    (obs.state as unknown as { heroes: Record<string, unknown> }).heroes = {};
+    (obs.state as unknown as { players: Record<string, unknown> }).players = tent
+      ? { p1: { permanents: ["war_machine.first_aid_tent"] } }
+      : { p1: { permanents: [] } };
+    return obs;
+  };
+  const attacker = () => unit({ id: "A", controllerId: "p2", attack: 6, defense: 2, maxHealth: 10, position: 8 });
+  // E1: a wounded body on 3 Health — this hit REMOVES it. E2: a fresh body the hit
+  // only chips. Bronze on purpose: a gold kill sits at the attack CEILING (880),
+  // where the premium would be clipped and the delta unreadable.
+  const wounded = () => unit({ id: "E1", attack: 3, defense: 2, maxHealth: 12, damage: 9, position: 9 });
+  const fresh = () => unit({ id: "E2", attack: 3, defense: 2, maxHealth: 12, position: 12 });
+  const kill = attackOn("A", "E1");
+  const chip = attackOn("A", "E2");
+
+  it("adds the heal-race premium to a removal when the enemy fields a First Aid Tent", () => {
+    const withTent = scoreCombatAction(pvp(observation([attacker(), wounded(), fresh()], [kill, chip]), true), kill.action);
+    const noTent = scoreCombatAction(pvp(observation([attacker(), wounded(), fresh()], [kill, chip]), false), kill.action);
+    expect(withTent!.score - noTent!.score).toBe(14);
+    // The chip on the fresh body gains nothing from the healer: focus, not spread.
+    const chipTent = scoreCombatAction(pvp(observation([attacker(), wounded(), fresh()], [kill, chip]), true), chip.action);
+    const chipNoTent = scoreCombatAction(pvp(observation([attacker(), wounded(), fresh()], [kill, chip]), false), chip.action);
+    expect(chipTent!.score).toBe(chipNoTent!.score);
+  });
+
+  it("CONTROL: a neutral fight reads no enemy healer even with the tent recorded", () => {
+    const neutralTent = observation([attacker(), wounded(), fresh()], [kill, chip]);
+    (neutralTent.state as unknown as { players: Record<string, unknown> }).players =
+      { p1: { permanents: ["war_machine.first_aid_tent"] } };
+    const neutralNone = observation([attacker(), wounded(), fresh()], [kill, chip]);
+    expect(scoreCombatAction(neutralTent, kill.action)!.score).toBe(scoreCombatAction(neutralNone, kill.action)!.score);
+  });
+
+  it("a living enemy healer unit counts as the per-round heal", () => {
+    const healerId = Object.keys(unitAbilities).find((id) =>
+      unitAbilities[id]?.effect?.type === "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF");
+    if (!healerId) throw new Error("expected an activation-heal ability in the catalog");
+    const healer = unit({ id: "H", attack: 2, defense: 1, maxHealth: 5, position: 3, abilities: [healerId] });
+    const withHealer = scoreCombatAction(pvp(observation([attacker(), wounded(), fresh(), healer], [kill, chip]), false), kill.action);
+    const deadHealer = scoreCombatAction(
+      pvp(observation([attacker(), wounded(), fresh(), { ...healer, damage: 5 }], [kill, chip]), false), kill.action);
+    expect(withHealer!.score - deadHealer!.score).toBe(14);
   });
 });

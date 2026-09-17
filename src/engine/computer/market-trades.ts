@@ -4,6 +4,7 @@ import {
   armyDevelopmentProfile,
   assessDwellingRush,
   developmentResourceTargets,
+  goldBodyComboTradePlan,
   goldLadderValuablesReserve,
   goldStepMarketPlan,
   shouldPrioritizeFirstAidTent,
@@ -188,6 +189,10 @@ export function wantsMarketVisit(
   // valuable, sell stock the body does not need). The generic utility below
   // would refuse it: it reads the gold as "scarce" against its own +5 cushion.
   if (tradesResources && goldStepMarketPlan(state, playerId)) return true;
+  // The post can complete the Gold dwelling AND its level-7 body on this one
+  // visit (see goldBodyComboTradePlan) — worth opening even when the dwelling
+  // alone needs no trade at all.
+  if (tradesResources && goldBodyComboTradePlan(state, playerId)) return true;
   if (!tradesResources) {
     const shop: string | undefined = location;
     return shop === "war_machine_factory" && shouldSeekLateWarMachineShop(state, playerId);

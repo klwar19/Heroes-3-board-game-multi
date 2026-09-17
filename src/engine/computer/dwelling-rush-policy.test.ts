@@ -14,6 +14,7 @@ import {
   armyDevelopmentProfile,
   assessDwellingRush,
   developmentResourceTargets,
+  goldBodyComboTradePlan,
 } from "./development";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerObservation } from "./types";
@@ -168,7 +169,7 @@ describe("assessDwellingRush — feasibility & reserve preservation", () => {
 
 describe("dwelling-rush scoring — OPEN_MARKET decisiveness", () => {
   it("opens the market decisively for a feasible rush; CONTROL: a thin surplus does not", () => {
-    const { state } = marketRushState({
+    const { state, heroId } = marketRushState({
       seed: "rush-open",
       prereqTiers: ["bronze"],
       gold: 34,
@@ -176,10 +177,12 @@ describe("dwelling-rush scoring — OPEN_MARKET decisiveness", () => {
       valuables: 0,
     });
     if (state.adventure) state.adventure.pendingVisit = null;
+    // v153 scoped the rush to the hero standing on the post, so the action must
+    // carry that hero's real id.
     const feasible = scoreMapAction(observe(state), {
       type: "OPEN_MARKET",
       playerId: "p2",
-      heroId: "h",
+      heroId,
     });
     expect(feasible?.policy).toBe("map.open-market-dwelling-rush");
     // Above the unlock-phase recruit ceiling (940) so it is never out-competed
@@ -192,7 +195,7 @@ describe("dwelling-rush scoring — OPEN_MARKET decisiveness", () => {
     const thin = scoreMapAction(observe(state), {
       type: "OPEN_MARKET",
       playerId: "p2",
-      heroId: "h",
+      heroId,
     });
     expect(thin?.policy).not.toBe("map.open-market-dwelling-rush");
     expect(thin!.score).toBeLessThan(940);
@@ -230,13 +233,15 @@ describe("dwelling-rush scoring — potential preservation (deliverable test 2)"
 
 describe("dwelling-rush e2e — trade then build the same turn", () => {
   it("trades gold for the missing valuables, then BUILDS the Silver dwelling (deliverable test 1)", () => {
-    const { state, town } = marketRushState({
+    const { state, town, heroId } = marketRushState({
       seed: "rush-silver-e2e",
       prereqTiers: ["bronze"],
       gold: 34,
       buildingMaterials: 6,
       valuables: 0,
     });
+    // Reopening a Trading Post costs a movement point, so the hero needs one.
+    state.heroes[heroId].movementPoints = 1;
     const silver = dwellingId(state, "silver");
     expect(town.buildings).not.toContain(silver);
 
@@ -288,13 +293,31 @@ describe("dwelling-rush e2e — trade then build the same turn", () => {
   });
 
   it("gold-dwelling variant: trades then BUILDS the Gold dwelling the same turn (deliverable test 3)", () => {
-    const { state, town } = marketRushState({
+    const { state, town, heroId } = marketRushState({
       seed: "rush-gold-e2e",
       prereqTiers: ["bronze", "silver"],
       gold: 80,
       buildingMaterials: 5, // Gold dwelling needs 9 → short by 4
       valuables: 0, // Gold dwelling needs 4 → short by 4
     });
+    // Reopening a Trading Post costs a movement point, so the hero needs one.
+    state.heroes[heroId].movementPoints = 1;
+    // Pin the seat like the sibling combo fixture: a Rampart core whose planned
+    // Silver body already stands, so the Gold dwelling is genuinely the next
+    // milestone rather than a premium Silver breakthrough.
+    state.players.p2.factionId = "rampart";
+    town.factionId = "rampart";
+    state.players.p2.army = [
+      { id: "g-0", unitDefId: "rampart.centaurs", side: "pack" },
+      { id: "g-1", unitDefId: "rampart.dwarves", side: "pack" },
+      { id: "g-2", unitDefId: "rampart.elves", side: "pack" },
+      { id: "g-3", unitDefId: "rampart.dendroids", side: "few" },
+    ];
+    town.buildings = [
+      "rampart.citadel",
+      "rampart.dwelling_bronze",
+      "rampart.dwelling_silver",
+    ];
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-gold");
     const gold = dwellingId(state, "gold");
     expect(town.buildings).not.toContain(gold);
@@ -313,5 +336,69 @@ describe("dwelling-rush e2e — trade then build the same turn", () => {
     expect(buildGold).toBeGreaterThanOrEqual(0);
     expect(firstTrade).toBeLessThan(buildGold);
     expect(run.state.towns[town.id].buildings).toContain(gold);
+  });
+});
+
+/**
+ * SAME-VISIT GOLD BODY (2026-09-16). The dwelling-rush planner only ever buys
+ * what the DWELLING misses, so a seat whose Gold dwelling is already payable
+ * left the post, built, and then found the level-7 Few one 6-gold valuable
+ * short — with the generic heuristic refusing that trade because its gold floor
+ * is the target that already contains the dwelling AND the recruit.
+ *
+ * Measured (Dungeon seed eval-4, R9, 30-seed impossible eval): 53 gold / 14
+ * materials / 4 valuables, dwelling built R9, Black Dragons bought R10.
+ */
+describe("goldBodyComboTradePlan — the level-7 body lands with its dwelling", () => {
+  const GOLD_DWELLING_COST = { gold: 10, buildingMaterials: 9, valuables: 4 };
+
+  function comboState(gold: number) {
+    const { state, town } = marketRushState({
+      seed: "gold-combo",
+      prereqTiers: ["bronze", "silver"],
+      gold,
+      buildingMaterials: 14,
+      valuables: 4,
+    });
+    state.players.p2.factionId = "rampart";
+    town.factionId = "rampart";
+    state.players.p2.army = [
+      { id: "c-0", unitDefId: "rampart.centaurs", side: "pack" },
+      { id: "c-1", unitDefId: "rampart.dwarves", side: "pack" },
+      { id: "c-2", unitDefId: "rampart.elves", side: "pack" },
+      // The planned Silver already stands, so this seat is saving for Gold.
+      { id: "c-3", unitDefId: "rampart.dendroids", side: "few" },
+    ];
+    town.buildings = [
+      "rampart.citadel",
+      "rampart.dwelling_bronze",
+      "rampart.dwelling_silver",
+    ];
+    state.players.p2.townTokens = { build: true, population: true, spellBook: false };
+    state.players.p2.production = { gold: 10, buildingMaterials: 4, valuables: 1 };
+    return { state, town };
+  }
+
+  it("buys the RECRUIT's missing valuable on the dwelling visit; CONTROL: never when the gold cannot pay both", () => {
+    const { state } = comboState(53);
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-gold");
+    // The dwelling ALONE is already payable, so the ordinary rush planner has
+    // nothing to do — this is exactly the gap the combo plan closes.
+    expect(assessDwellingRush(state, "p2")).toBeNull();
+    expect(goldBodyComboTradePlan(state, "p2")?.rateIndices).toContain(VALS_RATE_INDEX);
+
+    const buyValuable = {
+      type: "TRADE_RESOURCES" as const,
+      playerId: "p2",
+      rateIndex: VALS_RATE_INDEX,
+    };
+    expect(scoreMapAction(observe(state), buyValuable)!.score).toBe(720);
+
+    // CONTROL: one gold short of dwelling (10) + Gold Dragons (22) + the 6-gold
+    // trade. Buying the valuable would strip the dwelling, so no plan fires and
+    // the generic floor refuses the exchange.
+    const short = comboState(GOLD_DWELLING_COST.gold + 22 + 5).state;
+    expect(goldBodyComboTradePlan(short, "p2")).toBeNull();
+    expect(scoreMapAction(observe(short), buyValuable)!.score).toBeLessThanOrEqual(280);
   });
 });

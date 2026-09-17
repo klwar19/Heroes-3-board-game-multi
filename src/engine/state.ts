@@ -1123,6 +1123,16 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Fortress Shaman "Haste" (redesigned): extra Combat movement spaces that
+       * apply UNCONDITIONALLY — read in getUnitMoveRange regardless of the
+       * movement house rules (unlike MOVEMENT_BONUS, which is gated). Floored so a
+       * unit always moves at least 1 and capped by any town/neutral move limit.
+       */
+      type: "COMMANDER_MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
       /** Unit-experience movement shift independent of optional Haste movement rules. */
       type: "NEUTRAL_MOVEMENT_BONUS";
       amount: number;
@@ -10102,6 +10112,13 @@ export type CombatUnitState = {
   teaPartyOrderUsedThisCombat?: boolean;
   /** Round in which this unit spent an Abyssal Shield virtual Defense token. */
   abyssalShieldUsedRound?: number;
+  /**
+   * Budget of a capped ON_ATTACK_DIE_DRAW (Adversity's Insight): the combat
+   * round of the last capped draw and the total capped draws this combat.
+   * Absent for uncapped draws (Minotaurs' Bull Resolve never records here).
+   */
+  attackDieDrawRound?: number;
+  attackDieDraws?: number;
   /** Wakamo: the first enemy she damaged this combat. */
   wakamoMarkedTargetId?: UnitId;
   /** Foxfire's +Attack is armed only after the marking blow has been calculated. */
@@ -11079,6 +11096,12 @@ export type CombatState = {
   disciplinaryCommitteeStartResolved?: boolean;
   /** Factory Bounty Hunters' mandatory combat-start Mark choices are done. */
   bountyHunterMarkStartResolved?: boolean;
+  /**
+   * WOG Commanders' optional combat-start decisions (Fortress Shaman begin-of-
+   * match Haste, Tower Temple Guardian Magic Arrow fetch) are done. Idempotent
+   * guard across finalizeCombatStart re-entries.
+   */
+  commanderCombatStartResolved?: boolean;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
@@ -17277,11 +17300,36 @@ export type PendingChoice =
         | "combat-remove-then-search"
         | "combat-remove-another"
         | "commander-artifact-offer"
+        | "commander-begin-cast"
+        | "commander-magic-arrow-fetch"
         | "polish-spell-or-cast";
       commanderArtifactOffer?: {
         cardIds: CardId[];
         cost: number;
         source: string;
+      };
+      /**
+       * Fortress Shaman begin-of-match Haste (round 1 only): each option except
+       * the trailing Skip is a legal ally target; casting Haste on it now skips
+       * the commander's own round-1 activation. `remainingPlayerIds` chains the
+       * decision to the other seat when both have a combat-start commander choice.
+       */
+      commanderBeginCast?: {
+        commanderUnitId: UnitId;
+        targetUnitIds: UnitId[];
+        remainingPlayerIds: PlayerId[];
+      };
+      /**
+       * Tower Temple Guardian combat-start fetch: discard the chosen hand card
+       * (each option except the trailing Skip) to pull a Magic Arrow from
+       * `source` (deck or discard) into hand. `remainingPlayerIds` chains to the
+       * other seat's combat-start commander choice.
+       */
+      commanderMagicArrowFetch?: {
+        commanderPlayerId: PlayerId;
+        source: "deck" | "discard";
+        handCardIds: CardId[];
+        remainingPlayerIds: PlayerId[];
       };
       /** Groovy Satyr: the public old/new cards shown before combat continues. */
       satyrSwapResult?: {

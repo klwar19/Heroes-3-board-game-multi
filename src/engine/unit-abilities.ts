@@ -1691,7 +1691,7 @@ export function getSpellDamageReductionAura(unit: CombatUnitState): number {
 /** Dungeon Minotaurs: cards the attacker draws when its attack die shows `onRoll`. */
 export function getOnAttackDieDraw(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; minRoll: number; maxRoll: number; amount: number }[] {
+): { abilityId: string; abilityName: string; minRoll: number; maxRoll: number; amount: number; maxPerCombat?: number }[] {
   return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_DRAW").flatMap((ability) =>
     ability.effect?.type === "ON_ATTACK_DIE_DRAW"
       ? [{
@@ -1699,7 +1699,8 @@ export function getOnAttackDieDraw(
           abilityName: ability.name,
           minRoll: ability.effect.minRoll ?? ability.effect.onRoll ?? -1,
           maxRoll: ability.effect.maxRoll ?? ability.effect.onRoll ?? -1,
-          amount: ability.effect.amount
+          amount: ability.effect.amount,
+          maxPerCombat: ability.effect.maxPerCombat
         }]
       : []
   );

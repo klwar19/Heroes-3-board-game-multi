@@ -6,7 +6,16 @@ import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { GameAction, GameState, PendingChoice } from "../state";
 import { isAdjacent } from "../battlefield";
 import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
-import { developmentResourceTargets, valuablesStarved } from "./development";
+import {
+  armyReadyForContestedFight,
+  developmentResourceTargets,
+  goldLadderValuablesReserve,
+  resourceUrgency,
+  valuablesStarved,
+} from "./development";
+import { adventureVictoryMode, neutralRecruitCost } from "../adventure";
+import { isCastASpellCard } from "../polish-spell-book";
+import { neutralRecruitUtility, neutralTierMeanStrength, neutralUnitStrength } from "./recruit-value";
 import { inlineLegionSavings, upcomingFight } from "./card-planning";
 import {
   BANK_ENGAGE_RATIO,
@@ -16,6 +25,7 @@ import {
 import {
   collectMapObjectives,
   canBeatGuardedField,
+  fieldSuppliesResource,
   objectiveDistanceField,
   primaryMapObjective,
 } from "./map-navigation";
@@ -614,8 +624,22 @@ function scorePositionOption(
   }
 
   if (context === "diplomacy-skip" && choice.diplomacySkip) {
-    // Option 0 uses diplomacy (claim free); option 1 fights. Prefer free claim.
-    return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+    // Option 0 skips the fight (claims the field, no Experience), option 1
+    // fights. User ruling: the skip is for GETTING THE RESOURCE when the fight
+    // is not a clear win or the hero no longer needs the Experience — a hero
+    // still levelling who can plainly beat the guard fights for the XP, unless
+    // the field feeds a resource the development plan is short of while the
+    // army is not yet ready for a contested fight.
+    const state = observation.state as unknown as GameState;
+    const hero = state.heroes?.[choice.diplomacySkip.heroId];
+    const field = state.adventure?.fields[choice.diplomacySkip.fieldId];
+    const urgency = resourceUrgency(state, observation.playerId);
+    const skip = !hero || !field || hero.level >= 7 || Boolean(field.noExperience) ||
+      !canBeatGuardedField(state, hero, field) ||
+      (!armyReadyForContestedFight(state, observation.playerId) &&
+        (["gold", "buildingMaterials", "valuables"] as const).some((resource) =>
+          urgency[resource] > 0 && fieldSuppliesResource(state, observation.playerId, field, resource)));
+    return (optionIndex === 0) === skip ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
   if (context === "diplomacy-battle-ease" && choice.diplomacyBattleEase) {
@@ -887,7 +911,19 @@ function scorePositionOption(
         offer.unitDefId, offer.amount, choice.diplomacyRecruit?.goldReduction) : 0;
       return CHOICE_BASE + (savings > 0 ? 50 + Math.min(20, savings) : 2);
     }
-    // Free / cheap neutral recruit — take it.
+    // Recruit options are index-aligned with `recruitable` (the decline follows
+    // them). Price each drawn body through the shared golden rules — a recruit
+    // that would eat the reserve or the next Gold body's gold, or pile a surplus
+    // body onto a full army, loses to "Recruit none".
+    const recruit = choice?.type === "OPTION_CHOICE" ? choice.diplomacyRecruit : undefined;
+    const draw = recruit?.recruitable?.[optionIndex];
+    if (draw) {
+      const state = observation.state as unknown as GameState;
+      const worth = neutralRecruitUtility(state, observation.playerId, draw.unitDefId, {
+        cost: neutralRecruitCost(state, observation.playerId, draw.unitDefId, recruit?.goldReduction ?? 0),
+      });
+      return worth > 0 ? CHOICE_BASE + 20 + Math.min(50, Math.round(worth / 2)) : CHOICE_BASE + 2;
+    }
     if (looksLikeDecline(optionLabel(choice, optionIndex))) {
       return CHOICE_BASE + 8;
     }
@@ -905,6 +941,108 @@ function scorePositionOption(
     return (
       CHOICE_BASE + (optionIndex < bulkCount ? 30 : 15) - Math.min(10, optionIndex)
     );
+  }
+
+  // Astrologers Judge Dread: keep the drawn guard army or redraw the same
+  // tiers. Redraw only when the draw runs ABOVE its tiers' deck average — a
+  // below-average army is the fight to keep.
+  if (context === "judge-dread") {
+    const draws = (observation.state as unknown as GameState).combat?.pendingNeutralDraws ?? [];
+    const excess = draws.reduce(
+      (sum, draw) => sum + neutralUnitStrength(draw.unitDefId) - neutralTierMeanStrength(draw.tier),
+      0,
+    );
+    return (optionIndex === 1) === excess > 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
+  // Groovy Satyr: option 0 keeps every drawn guard; option i+1 discards draw i
+  // and draws a new card of the same tier. Swap the single guard that runs
+  // furthest above its tier's average (never a bank guard); keep when none does.
+  if (context === "satyr-swap") {
+    const draws = (observation.state as unknown as GameState).combat?.pendingNeutralDraws ?? [];
+    let bestIndex = -1;
+    let bestExcess = 0;
+    draws.forEach((draw, index) => {
+      if (draw.bankGuard) return;
+      const excess = neutralUnitStrength(draw.unitDefId) - neutralTierMeanStrength(draw.tier);
+      if (excess > bestExcess) {
+        bestExcess = excess;
+        bestIndex = index;
+      }
+    });
+    if (optionIndex === 0) return CHOICE_BASE + (bestIndex < 0 ? 40 : 12);
+    return optionIndex - 1 === bestIndex ? CHOICE_BASE + 40 : CHOICE_BASE + 4;
+  }
+
+  // Polish Rule 111 (once per game, home-tile difficulty-I fight): option 0
+  // keeps the draw; the rest replace one bronze guard (in draw order) with the
+  // next random bronze. Spend the once-only swap on a bronze above average.
+  if (context === "rule-111") {
+    const draws = (observation.state as unknown as GameState).combat?.pendingNeutralDraws ?? [];
+    const bronze = draws.filter((draw) => draw.tier === "bronze" && !draw.bankGuard);
+    let bestIndex = -1;
+    let bestExcess = 0;
+    bronze.forEach((draw, index) => {
+      const excess = neutralUnitStrength(draw.unitDefId) - neutralTierMeanStrength("bronze");
+      if (excess > bestExcess) {
+        bestExcess = excess;
+        bestIndex = index;
+      }
+    });
+    if (optionIndex === 0) return CHOICE_BASE + (bestIndex < 0 ? 40 : 12);
+    return optionIndex - 1 === bestIndex ? CHOICE_BASE + 40 : CHOICE_BASE + 4;
+  }
+
+  // Polish Spell Book Mage Guild: Search for a Spell, or take another Cast a
+  // Spell enabler. An enabler only when the Book already outgrows the supply
+  // (same rule the SPELL_BOOK_ACTION purchase uses).
+  if (context === "polish-spell-or-cast") {
+    const player = (observation.state as unknown as GameState).players[observation.playerId];
+    // The observation is the seat's REDACTED view: `deck` is always [] (only
+    // deckCount survives), so enablers cycling through the draw pile cannot be
+    // counted — hand + discard is the whole readable supply.
+    const castSupply = [...(player?.hand ?? []), ...(player?.discard ?? [])]
+      .filter((cardId) => isCastASpellCard(cardId)).length;
+    const ownedSpells = (player?.spellBook?.length ?? 0) + (player?.spellBookUsed?.length ?? 0);
+    const wantCast = castSupply < Math.max(1, ownedSpells);
+    return (optionIndex === 1) === wantCast ? CHOICE_BASE + 40 : CHOICE_BASE + 15;
+  }
+
+  // Designer "choose the mine type" reveal: gold / valuables / random. Take the
+  // scarcer ladder input — valuables when the Gold ladder still owes them or
+  // they are the slower resource to earn, otherwise gold.
+  if (context === "player-resource-pick") {
+    const state = observation.state as unknown as GameState;
+    const urgency = resourceUrgency(state, observation.playerId);
+    const valuablesShort = urgency.valuables > urgency.gold ||
+      goldLadderValuablesReserve(state, observation.playerId) > (state.players[observation.playerId]?.resources.valuables ?? 0);
+    if (optionIndex === 0) return CHOICE_BASE + (valuablesShort ? 20 : 40);
+    if (optionIndex === 1) return CHOICE_BASE + (valuablesShort ? 40 : 20);
+    return CHOICE_BASE + 5;
+  }
+
+  // Designer "choose this tile's Ⅶ objective": follow the win condition (Grail
+  // in a Grail game, a Utopia in the dragon modes, a Town under conquest);
+  // otherwise a Settlement's steady income beats a fresh Town, Utopia, Grail.
+  if (context === "player-vii-pick") {
+    const fields = choice?.type === "OPTION_CHOICE" ? choice.playerTilePick?.viiFields ?? [] : [];
+    const pick = fields[optionIndex];
+    if (!pick) return CHOICE_BASE + 5;
+    const mode = adventureVictoryMode(observation.state as unknown as GameState);
+    const wanted = mode === "grail" ? "grail"
+      : mode === "dragon-hunt" || mode === "dragon-conqueror" ? "dragon_utopia"
+      : mode === "conquest" || mode === "conquer" ? "town"
+      : null;
+    if (wanted && pick === wanted) return CHOICE_BASE + 45;
+    const order: Record<string, number> = { settlement: 36, town: 30, dragon_utopia: 22, grail: 16 };
+    return CHOICE_BASE + (order[pick] ?? 10);
+  }
+
+  // Pandora's Bargain (Power) upkeep: keep the card while a positive morale
+  // token can absorb the Negative Morale; otherwise let the card go.
+  if (context === "pandora-upkeep") {
+    const morale = observation.state.players[observation.playerId]?.morale ?? 0;
+    return (optionIndex === 1) === morale > 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
   // Generic OPTION_CHOICE: slight preference for non-decline, first options.

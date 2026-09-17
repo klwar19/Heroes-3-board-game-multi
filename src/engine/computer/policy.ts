@@ -3,7 +3,7 @@ import { openingGuardCommitment } from "./necropolis-combat";
 import { cardLibrary } from "@/data/cards/library";
 import { effectiveHandLimit, explorersHandStepActive, isFieldGuarded } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
-import { cardHandValue, scoreCardAction } from "./card-policy";
+import { cardHandValue, moraleRedrawDiscards, scoreCardAction } from "./card-policy";
 import { upcomingFight } from "./card-planning";
 import { heroPickBias } from "./card-values";
 import { scoreChoiceAction } from "./choice-policy";
@@ -58,7 +58,26 @@ export function legalityMatchKey(action: GameAction): string {
   if (action.type === "REFRESH_HAND" || action.type === "OPENING_HAND_MULLIGAN") {
     return canonicalActionKey({ ...action, discardCardIds: [] });
   }
+  // The morale redraw is offered as a bare template too (discard any cards,
+  // draw that many) — the runner fills the junk list, see withMoraleRedrawDiscards.
+  if (action.type === "SPEND_MORALE" && action.benefit === "redraw") {
+    return canonicalActionKey({ ...action, discardCardIds: [] });
+  }
   return canonicalActionKey(action);
+}
+
+/**
+ * SPEND_MORALE "redraw" template: discard the junk moraleRedrawDiscards names
+ * and draw as many. The scorer already keeps the redraw unchosen when that
+ * list is empty (the handler rejects an empty discard list).
+ */
+function withMoraleRedrawDiscards(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "SPEND_MORALE" }>,
+): GameAction {
+  if (action.benefit !== "redraw") return action;
+  const discards = moraleRedrawDiscards(observation);
+  return discards.length > 0 ? { ...action, discardCardIds: discards } : action;
 }
 
 const NEVER_AUTOMATE = new Set<GameAction["type"]>([
@@ -363,7 +382,15 @@ function chooseComputerActionUncached(
   options: ChooseComputerActionOptions,
 ): ComputerDecision | null {
   const candidates = observation.legalActions.filter(
-    (legal) => !NEVER_AUTOMATE.has(legal.action.type),
+    (legal) =>
+      !NEVER_AUTOMATE.has(legal.action.type) &&
+      // The bare morale-redraw template needs a non-empty discard list — the
+      // reducer rejects an empty one, so with no junk to swap the action must
+      // be structurally off the table (a score floor is only relative and the
+      // redraw can be the window's ONLY morale option).
+      !(legal.action.type === "SPEND_MORALE" &&
+        legal.action.benefit === "redraw" &&
+        moraleRedrawDiscards(observation).length === 0),
   );
   if (candidates.length === 0) {
     return null;
@@ -485,7 +512,9 @@ function chooseComputerActionUncached(
   const action =
     learnedSelected.legal.action.type === "REFRESH_HAND" || learnedSelected.legal.action.type === "OPENING_HAND_MULLIGAN"
       ? withRefreshDiscards(observation, learnedSelected.legal.action)
-      : learnedSelected.legal.action;
+      : learnedSelected.legal.action.type === "SPEND_MORALE"
+        ? withMoraleRedrawDiscards(observation, learnedSelected.legal.action)
+        : learnedSelected.legal.action;
   const tacticalTypes = new Set<GameAction["type"]>([
     "ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT", "MOVE_UNIT", "DEFEND_UNIT",
     "PLAY_CARD", "CAST_SPELL", "PLAY_REACTION", "PASS_REACTION",

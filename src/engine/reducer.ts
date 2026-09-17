@@ -548,6 +548,8 @@ import {
   commanderCastRuneCost,
   commanderCastUsedThisRound,
   commanderDefenseReactionUnit,
+  commanderPrecisionReactionUnit,
+  commanderPrecisionReactionAmount,
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
   commanderActionPoints,
@@ -6004,14 +6006,18 @@ function getAttackStackDetails(
     // controller played in this retaliation's window soaks `amount` less damage
     // off the strike (the ×2 for his Dread Knights is folded in when played).
     damageReduction:
-      siegeRangedDamageReduction(
-        combat,
-        attacker,
-        defender,
-        attackKind,
-        state,
-        isRetaliation,
-      ) +
+      // Precision ("ignores all ranged penalties") waives the behind-Wall −1
+      // damage for this attack, matching the RANGED_IGNORE_ALL_PENALTIES path.
+      (stackItem.modifiers.ignoreRangedPenalty
+        ? 0
+        : siegeRangedDamageReduction(
+            combat,
+            attacker,
+            defender,
+            attackKind,
+            state,
+            isRetaliation,
+          )) +
       (isRetaliation
         ? (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) +
           getUnitAbilityDefinitions(defender).reduce(
@@ -10069,6 +10075,20 @@ function applyOnAttackDieDraw(
       (attackRoll < draw.minRoll || attackRoll > draw.maxRoll)
     ) {
       continue;
+    }
+    // Adversity's Insight budget (maxPerCombat): the draw fires at most once
+    // per combat round and at most `maxPerCombat` times in the whole combat —
+    // a forced roll (Tarnum) spends the same budget. Uncapped draws
+    // (Minotaurs' Bull Resolve) never touch the counters.
+    if (draw.maxPerCombat !== undefined) {
+      if (
+        (attacker.attackDieDraws ?? 0) >= draw.maxPerCombat ||
+        attacker.attackDieDrawRound === state.combat?.round
+      ) {
+        continue;
+      }
+      attacker.attackDieDraws = (attacker.attackDieDraws ?? 0) + 1;
+      attacker.attackDieDrawRound = state.combat?.round;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount, {
       inFlightCardIds: stackInFlightCardIds(
@@ -24517,16 +24537,35 @@ function applyCommanderCastReaction(
   ) {
     throw new Error("That commander reaction cannot be used now.");
   }
-  // Re-validate against the actual trigger: the target must BE the attacked unit
-  // and the offered commander must still be the legal reactor for this hit.
-  const attackerUnit = combat.units[window.triggerEvent.attackerId];
-  const legal = commanderDefenseReactionUnit(state, target, attackerUnit);
-  if (
-    !legal ||
-    legal.id !== commander.id ||
-    target.id !== window.triggerEvent.defenderId
-  ) {
+  // Re-validate against the actual trigger and the commander's cast kind:
+  //  - Tower Precision (precision-instant) buffs the ATTACKING unit, so the
+  //    target must be this window's attacker and the offered commander must be the
+  //    legal precision reactor (attacker's controller);
+  //  - the defend buffs (Shield / Stone Skin) buff the ATTACKED unit, so the
+  //    target must be the defender and the commander the legal defense reactor.
+  const reactingCast = commanderCastOf(commander);
+  if (!reactingCast) {
     throw new Error("That commander reaction cannot be used now.");
+  }
+  if (reactingCast.effect.kind === "precision-instant") {
+    const legal = commanderPrecisionReactionUnit(state, target);
+    if (
+      !legal ||
+      legal.id !== commander.id ||
+      target.id !== window.triggerEvent.attackerId
+    ) {
+      throw new Error("That commander reaction cannot be used now.");
+    }
+  } else {
+    const attackerUnit = combat.units[window.triggerEvent.attackerId];
+    const legal = commanderDefenseReactionUnit(state, target, attackerUnit);
+    if (
+      !legal ||
+      legal.id !== commander.id ||
+      target.id !== window.triggerEvent.defenderId
+    ) {
+      throw new Error("That commander reaction cannot be used now.");
+    }
   }
   resolveCommanderCast(state, commander, target);
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
@@ -31832,7 +31871,14 @@ function resolveCommanderCast(
       }
       break;
     }
-    case "defense-buff":
+    case "defense-buff": {
+      // Stronghold Stone Skin decays after round 1: from combat round 2 on it uses
+      // decayedAmountByPower (top tier +2 → +1). Casts without that array (the
+      // Rampart Shield) keep amountByPower every round.
+      const buffAmount =
+        combat.round >= 2 && effect.decayedAmountByPower
+          ? effect.decayedAmountByPower[tier]
+          : effect.amountByPower[tier];
       createActiveEffect(
         state,
         {
@@ -31847,16 +31893,17 @@ function resolveCommanderCast(
                   {
                     type: "DEFENSE_VS_ATTACKER_TYPE",
                     attackerType: "ground-or-flying",
-                    amount: effect.amountByPower[tier],
+                    amount: buffAmount,
                   },
                 ]
-              : [{ type: "DEFENSE_BONUS", amount: effect.amountByPower[tier] }],
+              : [{ type: "DEFENSE_BONUS", amount: buffAmount }],
         },
         source,
         caster.controllerId,
         targetRef,
       );
       break;
+    }
     case "precision":
       createActiveEffect(
         state,
@@ -31876,6 +31923,26 @@ function resolveCommanderCast(
         targetRef,
       );
       break;
+    // Tower Precision (instant reaction): buff the PENDING attack of the chosen
+    // ranged unit (`target`) — +Attack and ignore all ranged penalties, for that
+    // attack only. The +Attack scales by Power on the first cast of the combat and
+    // drops to a flat `secondCastAmount` on later casts (commanderPrecisionReaction-
+    // Amount reads the count BEFORE this cast is stamped at the end of the switch).
+    case "precision-instant": {
+      const pendingAttack = state.stack.find(
+        (item) =>
+          (item.action.type === "ATTACK_UNIT" ||
+            item.action.type === "MOVE_AND_ATTACK_UNIT") &&
+          item.action.attackerId === target.id,
+      );
+      if (!pendingAttack) {
+        throw new Error("That commander cast is no longer possible.");
+      }
+      const bonus = commanderPrecisionReactionAmount(state, caster);
+      pendingAttack.modifiers.attackBonus += bonus;
+      pendingAttack.modifiers.ignoreRangedPenalty = true;
+      break;
+    }
     case "attack-buff":
       createActiveEffect(
         state,
@@ -31924,25 +31991,63 @@ function resolveCommanderCast(
     }
     case "initiative-shift": {
       const amount = effect.amountByPower[tier];
-      const attackModifier = effect.attackVs
+      const effectName = `${cast.name} (${caster.cardName})`;
+      // Fortress Shaman "Haste" does not stack: a recast on the same unit replaces
+      // this cast's own effect rather than laying a second copy (other
+      // initiative-shift users omit `refresh` and keep the old stacking behaviour).
+      if (effect.refresh) {
+        state.activeEffects = state.activeEffects.filter(
+          (activeEffect) =>
+            !(
+              activeEffect.name === effectName &&
+              activeEffect.source.type === "unit" &&
+              activeEffect.source.unitId === caster.id &&
+              activeEffect.target?.type === "unit" &&
+              activeEffect.target.unitId === target.id
+            ),
+        );
+      }
+      const attackModifier: ActiveEffectModifier = effect.attackVs
         ? {
-            type: "ATTACK_BONUS_VS_INITIATIVE" as const,
+            type: "ATTACK_BONUS_VS_INITIATIVE",
             comparison: effect.attackVs,
             amount: effect.attackAmount,
           }
-        : { type: "ATTACK_BONUS" as const, amount: effect.attackAmount };
+        : { type: "ATTACK_BONUS", amount: effect.attackAmount };
+      const modifiers: ActiveEffectModifier[] = [
+        { type: "INITIATIVE_BONUS", amount },
+        attackModifier,
+      ];
+      // Fortress Shaman riders (optional; unset for every other user). Extra
+      // Movement applies unconditionally (COMMANDER_MOVEMENT_BONUS, read in
+      // getUnitMoveRange regardless of the movement house rules).
+      const moveBonus = effect.moveByPower?.[tier] ?? 0;
+      if (moveBonus > 0) {
+        modifiers.push({ type: "COMMANDER_MOVEMENT_BONUS", amount: moveBonus });
+      }
+      const vsSlower = effect.bonusVsSlowerByPower?.[tier] ?? 0;
+      if (vsSlower > 0) {
+        modifiers.push({
+          type: "ATTACK_BONUS_VS_INITIATIVE",
+          comparison: "slower",
+          amount: vsSlower,
+        });
+      }
+      const duration =
+        effect.durationRounds !== undefined
+          ? { type: "combat-rounds" as const, rounds: effect.durationRounds }
+          : effect.durationByPower?.[tier] === "combat"
+            ? { type: "combat" as const }
+            : { type: "current-combat-round" as const };
       createActiveEffect(
         state,
         {
-          name: `${cast.name} (${caster.cardName})`,
+          name: effectName,
           scope: "unit",
-          duration:
-            effect.durationByPower?.[tier] === "combat"
-              ? { type: "combat" }
-              : { type: "current-combat-round" },
+          duration,
           polarity: amount >= 0 ? "positive" : "negative",
           removable: true,
-          modifiers: [{ type: "INITIATIVE_BONUS", amount }, attackModifier],
+          modifiers,
         },
         source,
         caster.controllerId,

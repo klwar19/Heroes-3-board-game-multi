@@ -460,8 +460,36 @@ export interface CommanderCastTargeting {
 
 export type CommanderCastEffect =
   | { kind: "heal-cleanse"; healByPower: readonly [number, number, number]; cleanseFromPower: number }
-  | { kind: "defense-buff"; amountByPower: readonly [number, number, number]; vs: "melee" | "all" }
+  | {
+      kind: "defense-buff";
+      amountByPower: readonly [number, number, number];
+      vs: "melee" | "all";
+      /**
+       * Stronghold Stone Skin only: the Defense amount FROM combat round 2 onward
+       * (the top tier grants +2 in round 1 but decays to +1 from round 2). Omit to
+       * keep `amountByPower` every round (the Rampart Shield does). At the lower
+       * tiers this array simply repeats `amountByPower`, so the decay is a top-tier
+       * effect. Applied in resolveCommanderCast's defense-buff branch.
+       */
+      decayedAmountByPower?: readonly [number, number, number];
+    }
   | { kind: "precision"; amountByPower: readonly [number, number, number] }
+  | {
+      /**
+       * Tower Temple Guardian "Precision" (redesigned): an INSTANT-REACTION
+       * offensive buff played through the attack window when a FRIENDLY RANGED
+       * unit declares an attack. It boosts THAT ATTACK ONLY (a per-attack
+       * `stackItem.modifiers.attackBonus`) and lifts every ranged penalty for it
+       * (`ignoreRangedPenalty`). Free, once per combat round, at most twice per
+       * combat: the first cast of the combat grants `amountByPower[tier]` Attack,
+       * every later cast grants `secondCastAmountByPower[tier]`. Resolved in
+       * resolveCommanderCast's `precision-instant` branch, offered by
+       * commanderPrecisionReactionUnit and gated by commanderCastUsedThisRound.
+       */
+      kind: "precision-instant";
+      amountByPower: readonly [number, number, number];
+      secondCastAmountByPower: readonly [number, number, number];
+    }
   | {
       kind: "attack-buff";
       amountByPower: readonly [number, number, number];
@@ -481,6 +509,26 @@ export type CommanderCastEffect =
       /** Omit to make the Attack modifier unconditional. */
       attackVs?: "slower" | "faster";
       attackAmount: number;
+      /**
+       * Fortress Shaman "Haste" (redesigned) riders — all OPTIONAL so the shared
+       * `initiative-shift` kind stays backward-compatible for every other user
+       * (Sea Marshal's Slow, and the might_guy / sonya Haste reuses, which set
+       * none of these and behave exactly as before):
+       *  - `moveByPower`: extra COMBAT MOVEMENT spaces per Power tier, applied
+       *    UNCONDITIONALLY (a COMMANDER_MOVEMENT_BONUS read in getUnitMoveRange
+       *    regardless of the movement house rules).
+       *  - `bonusVsSlowerByPower`: ADDITIONAL Attack vs strictly-slower targets
+       *    per tier, laid ON TOP of the unconditional `attackAmount`
+       *    (ATTACK_BONUS_VS_INITIATIVE "slower").
+       *  - `durationRounds`: buff lasts this many combat rounds at EVERY tier
+       *    (overrides `durationByPower`).
+       *  - `refresh`: recasting on the same target REPLACES this cast's own
+       *    effect instead of stacking a second copy.
+       */
+      moveByPower?: readonly [number, number, number];
+      bonusVsSlowerByPower?: readonly [number, number, number];
+      durationRounds?: number;
+      refresh?: boolean;
     }
   | { kind: "unlimited-retaliation"; duration?: "round" | "combat" }
   | { kind: "reactivate" }
@@ -753,15 +801,18 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       abilityId: "commander-cast-temple_guardian",
       name: "Precision",
       icon: "/assets/spell-icons/precision.png",
-      // Power ladder (user spec): Pow 0 = +1 but the ranged unit must be
-      // adjacent to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere.
-      // The Attack and ranged-penalty buff lasts for this round and the next.
-      targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "precision", amountByPower: [1, 1, 2] },
+      // Redesigned (user spec): an INSTANT-REACTION buff played through the attack
+      // window when one of your RANGED units declares an attack. It boosts THAT
+      // ATTACK ONLY — Pow 0/1/2 = +1/+2/+3 Attack — and lifts every ranged penalty
+      // for that shot. Free, once per combat round, at most TWICE per combat; the
+      // SECOND (and any later) cast of a combat grants only +1 Attack at every
+      // Power. Not an activation cast (commanderCastIsInstantReaction is true).
+      targeting: { side: "friendly", unitType: "ranged", canTargetSelf: false },
+      effect: { kind: "precision-instant", amountByPower: [1, 2, 3], secondCastAmountByPower: [1, 1, 2] },
       tierText: [
-        "A friendly ranged unit ADJACENT to the commander gains +1 Attack and ignores all ranged penalties for 2 combat rounds.",
-        "A friendly ranged unit anywhere gains +1 Attack and ignores all ranged penalties for 2 combat rounds.",
-        "A friendly ranged unit anywhere gains +2 Attack and ignores all ranged penalties for 2 combat rounds."
+        "Instant, when your ranged unit attacks (once per round, twice per combat): +1 Attack and ignore all ranged penalties for that attack. The second use each combat gives +1.",
+        "Instant, when your ranged unit attacks (once per round, twice per combat): +2 Attack and ignore all ranged penalties for that attack. The second use each combat gives +1.",
+        "Instant, when your ranged unit attacks (once per round, twice per combat): +3 Attack and ignore all ranged penalties for that attack. The second use each combat gives +2."
       ]
     },
     specialty: {
@@ -856,13 +907,26 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Stone Skin",
       icon: "/assets/spell-icons/stone_skin.png",
       targeting: { side: "friendly", canTargetSelf: false },
-      effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "all" },
+      // Nerfed defend buff (user spec). The +Defense amounts shrink to +1/+1/+2
+      // and the reaction gains a per-combat budget that tightens the low tiers
+      // while letting the top tier react every round with a decaying amount:
+      //  - Power 0: +1 Defense, only ONCE per combat.
+      //  - Power 1: +1 Defense, once per round and at most TWICE per combat.
+      //  - Power 2: +2 Defense in combat round 1, then +1 from round 2 on, once
+      //    per round with no per-combat cap (decayedAmountByPower supplies the
+      //    round-2+ amount; the budget lives in commanderCastUsedThisRound).
+      effect: {
+        kind: "defense-buff",
+        amountByPower: [1, 1, 2],
+        decayedAmountByPower: [1, 1, 1],
+        vs: "all"
+      },
       // INSTANT REACTION (not an activation cast): play when one of your units is
       // attacked (melee OR ranged), before damage — the attacked unit gains the Defense.
       tierText: [
-        "Instant reaction: when your unit is attacked, it gains +1 Defense vs all attacks this round.",
-        "Instant reaction: when your unit is attacked, it gains +2 Defense vs all attacks this round.",
-        "Instant reaction: when your unit is attacked, it gains +3 Defense vs all attacks this round."
+        "Instant reaction, once per combat: when your unit is attacked, it gains +1 Defense vs all attacks this round.",
+        "Instant reaction, once per combat round and at most twice per combat: when your unit is attacked, it gains +1 Defense vs all attacks this round.",
+        "Instant reaction, once per combat round: when your unit is attacked, it gains +2 Defense vs all attacks this round in round 1, then +1 from round 2 on."
       ]
     },
     specialty: {
@@ -879,16 +943,26 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Haste",
       icon: "/assets/spell-icons/haste.png",
       targeting: { side: "friendly", canTargetSelf: false },
+      // Redesigned (user spec). The buff lasts 2 combat rounds at every Power and
+      // does NOT stack (a recast on the same unit refreshes it). Pow 0 = +3
+      // Initiative & +1 Attack; Pow 1 = +6 Initiative, +1 Attack & +1 Movement;
+      // Pow 2 = +9 Initiative, +1 Attack (+1 MORE vs strictly-slower targets) & +1
+      // Movement. In combat round 1 the Shaman may instead cast this at the very
+      // start of the battle (before turn order) — see the begin-of-match option in
+      // adventure-reducer — but then its own round-1 activation is skipped.
       effect: {
         kind: "initiative-shift",
-        amountByPower: [2, 6, 9],
-        durationByPower: ["round", "round", "combat"],
-        attackAmount: 1
+        amountByPower: [3, 6, 9],
+        attackAmount: 1,
+        moveByPower: [0, 1, 1],
+        bonusVsSlowerByPower: [0, 0, 1],
+        durationRounds: 2,
+        refresh: true
       },
       tierText: [
-        "A friendly unit gains +2 Initiative and +1 Attack this round.",
-        "A friendly unit gains +6 Initiative and +1 Attack this round.",
-        "A friendly unit gains +9 Initiative and +1 Attack for the whole combat."
+        "A friendly unit gains +3 Initiative and +1 Attack for 2 combat rounds.",
+        "A friendly unit gains +6 Initiative, +1 Attack and +1 Movement for 2 combat rounds.",
+        "A friendly unit gains +9 Initiative, +1 Attack (+1 more vs slower units) and +1 Movement for 2 combat rounds."
       ]
     },
     specialty: {
@@ -1330,5 +1404,8 @@ export function commanderApCommandTableRows(
 export const IBUKI_COMMAND_SKILLS = commanderApCommandTableRows("ibuki");
 
 export function commanderCastIsInstantReaction(cast: CommanderCastDefinition): boolean {
-  return cast.effect.kind === "defense-buff";
+  // The DEFENDER-side defend buffs (Hierophant Shield, Ogre Stone Skin) and the
+  // ATTACKER-side Tower Precision are all played through the attack window, never
+  // as an activation cast.
+  return cast.effect.kind === "defense-buff" || cast.effect.kind === "precision-instant";
 }

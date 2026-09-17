@@ -165,6 +165,8 @@ import {
   commanderCastPower,
   commanderCastRuneCost,
   commanderDefenseReactionUnit,
+  commanderPrecisionReactionUnit,
+  commanderPrecisionReactionAmount,
   commanderGradeUpChoices,
   commanderIntegratedDeploymentSortAvailable,
   commanderActionPoints,
@@ -1472,6 +1474,18 @@ export function getUnitMoveRange(
       ability.effect.mechanic === "werewolf-astral-hunt"
     ) ? 1 : 0;
 
+  // Fortress Shaman "Haste" grants extra Combat movement UNCONDITIONALLY (a
+  // COMMANDER_MOVEMENT_BONUS), independent of the movement house rules below.
+  // Rooted (deep-rooted neutral-town) units never gain movement, mirroring how
+  // the positive neutral bonus is clamped to 0 while rooted.
+  const commanderMoveBonus = rooted
+    ? 0
+    : (state?.activeEffects.reduce((total, effect) => {
+        if (!effectAppliesToUnit(effect, unit)) return total;
+        return total + effect.modifiers.reduce((sum, modifier) =>
+          modifier.type === "COMMANDER_MOVEMENT_BONUS" ? sum + modifier.amount : sum, 0);
+      }, 0) ?? 0);
+
   // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
   // (MOVEMENT_BONUS), the Battlefield-Expansion reading. When the rule is off the
@@ -1499,7 +1513,7 @@ export function getUnitMoveRange(
     state && houseRuleEnabled(state, "community-card-balance"),
   );
   if (!state || (!classicRider && !balancePrinted && !communityPrinted)) {
-    return Math.min(Math.max(1, base + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)), moveCap);
+    return Math.min(Math.max(1, base + commanderMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)), moveCap);
   }
   let bonus = 0;
   for (const effect of state.activeEffects) {
@@ -1527,7 +1541,7 @@ export function getUnitMoveRange(
       }
     }
   }
-  return Math.min(moveCap, Math.max(1, base + bonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)));
+  return Math.min(moveCap, Math.max(1, base + bonus + commanderMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)));
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -12198,6 +12212,40 @@ function getLegalReactionsForTriggerCore(
               playerId: owner,
               commanderUnitId: commander.id,
               targetUnitId: defenderUnit.id,
+            },
+          },
+        ];
+      }
+    }
+
+    // WOG Commanders: the Tower Temple Guardian's Precision is the ATTACKER-side
+    // instant reaction — offered to the controller of the attacking RANGED unit,
+    // buffing THAT attack (+Attack, ignore ranged penalties). Like the Hero-Grade
+    // Battle Focus it is NOT `windowJoinOnly`, so it can OPEN the window on the
+    // attacker's own shot even in a neutral fight. Once per round, twice per combat.
+    const precisionPendingAttack = attackerUnit
+      ? state.stack.find(
+          (item) =>
+            (item.action.type === "ATTACK_UNIT" ||
+              item.action.type === "MOVE_AND_ATTACK_UNIT") &&
+            item.action.attackerId === attackerUnit.id,
+        )
+      : undefined;
+    if (attackerUnit && precisionPendingAttack) {
+      const precisionCommander = commanderPrecisionReactionUnit(state, attackerUnit);
+      if (precisionCommander) {
+        const owner = attackerUnit.controllerId;
+        const amount = commanderPrecisionReactionAmount(state, precisionCommander);
+        const precisionCast = commanderCastOf(precisionCommander);
+        result[owner] = [
+          ...(result[owner] ?? []),
+          {
+            label: `${precisionCommander.cardName}: cast ${precisionCast?.name ?? "Precision"} — ${attackerUnit.cardName} gets +${amount} Attack and ignores ranged penalties this attack`,
+            action: {
+              type: "USE_COMMANDER_CAST_REACTION",
+              playerId: owner,
+              commanderUnitId: precisionCommander.id,
+              targetUnitId: attackerUnit.id,
             },
           },
         ];
