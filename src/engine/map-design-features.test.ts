@@ -26,6 +26,7 @@ import {
   isCustomGuardUnitEntry,
   isPackGuardSlot,
   isRandomGuardSlot,
+  neutralUnitPoolForTier,
   resolveCustomGuardDraws,
   survivorsToCustomGuardUnits,
   grailDigMovementCost,
@@ -139,6 +140,19 @@ describe("map-design-features — certain army slots", () => {
     expect(draws[1].tier).toBe("silver");
     expect(coreUnitDefinitions[draws[0].unitDefId]?.neutral).toBeTruthy();
     expect(draws[0].bankGuard).toBe(true);
+  });
+
+  it("random:<tier> pools are CORE neutrals only — never a Doom / WOG mod creature the player did not enable", () => {
+    // Reported bug: Doom monsters appeared in a Dragon Utopia (a Black Dragon +
+    // 2 random:azure default guard) even with the Doom mod OFF, because the
+    // random pool spanned the whole catalog. `random:<tier>` must match the deck
+    // builder (`neutralUnitIdsByTier`) and exclude the doom./wog. rosters.
+    for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+      const pool = neutralUnitPoolForTier(tier);
+      expect(pool.length).toBeGreaterThan(0);
+      expect(pool.some((id) => id.startsWith("doom.") || id.startsWith("wog."))).toBe(false);
+      expect(pool.every((id) => coreUnitDefinitions[id]?.tier === tier && coreUnitDefinitions[id]?.neutral)).toBe(true);
+    }
   });
 
   it("draws repeated random silver slots without replacement", () => {

@@ -11,6 +11,7 @@ import {
   objectiveDistanceField,
   primaryMapObjective,
   isFreeSeizeObjective,
+  premiumRecruitMarketVisit,
 } from "./map-navigation";
 /** Hire for a concrete short route, not merely because the treasury can pay.
  * Two jobs or a premium income capture must be reachable within two turns. */
@@ -69,7 +70,8 @@ export function secondaryHeroOpportunity(
           o.kind !== "town" &&
           (isFreeSeizeObjective(o, state) ||
             (isMarketLocation(state.adventure?.fields[o.spaceId]?.location ?? "") &&
-              wantsMarketVisit(state, playerId, state.adventure?.fields[o.spaceId]?.location))) &&
+              (wantsMarketVisit(state, playerId, state.adventure?.fields[o.spaceId]?.location) ||
+                premiumRecruitMarketVisit(state, playerId, state.adventure?.fields[o.spaceId]?.location)))) &&
           o.spaceId !== mainGoal?.spaceId,
       )
       .filter((o) => {

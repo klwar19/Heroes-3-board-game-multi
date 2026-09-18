@@ -32,6 +32,7 @@ export {
   AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
   AFK_REASK_MS,
+  awaitedIdleMillis,
   getAfkState,
   idleMillis,
   seatIsAwaitedInOrderedPlay,

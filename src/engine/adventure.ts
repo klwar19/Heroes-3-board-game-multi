@@ -468,11 +468,35 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
   }
 }
 
+/**
+ * A Dragon Utopia that is the Dragon Hunt / Dragon Conqueror WIN objective. Its
+ * guard is governed by the selected `dragonUtopiaGuards` mode
+ * (drawDragonUtopiaArmy) — never the Grail & Dragon Utopia field-rules default
+ * party (Black Dragon + 2 Azure). Those field rules AUTO-ACTIVATE on any
+ * designer map that PLACES a Utopia (createAdventureGameState), so without this
+ * suppression the win-objective Utopia would silently ignore the chosen guard
+ * mode and always fight the fixed 2 Azure + 1 Black Dragon party at EVERY game
+ * difficulty (e.g. Impossible would draw 2 azure + 1 gold instead of the
+ * table's 2 azure + 2 gold). The round-limit / VP / field-rules of the Utopia
+ * are untouched — only the drawn guard army defers to `dragonUtopiaGuards`.
+ */
+function isDragonScenarioUtopiaField(
+  victoryMode: VictoryMode | undefined,
+  field: Pick<MapFieldState, "location"> | undefined
+): boolean {
+  return (
+    field?.location === "dragon_utopia" &&
+    (victoryMode === "dragon-hunt" || victoryMode === "dragon-conqueror")
+  );
+}
+
 /** Apply mode rules at encounter entry, including fields from older saves. */
 export function applyGrailUtopiaEncounterRules(state: GameState, field: MapFieldState): void {
   if (!isGrailUtopiaModeField(state, field)) return;
-  applyCustomGuardToField(field,
-    state.adventure?.mapPreset?.objectives?.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+  if (!isDragonScenarioUtopiaField(adventureVictoryMode(state), field)) {
+    applyCustomGuardToField(field,
+      state.adventure?.mapPreset?.objectives?.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+  }
   field.combatRoundLimit = "unlimited";
 }
 
@@ -1371,7 +1395,12 @@ export function materializeTileFields(
     }
     if (adventure.mapPreset?.objectives?.hiddenGrailUtopia &&
         (field.location === "grail" || field.location === "dragon_utopia")) {
-      applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+      // The Dragon Hunt / Dragon Conqueror win-objective Utopia keeps its chosen
+      // `dragonUtopiaGuards` army (drawn at fight time); only a grail-field
+      // Utopia takes the fixed default party here.
+      if (!isDragonScenarioUtopiaField(adventure.victoryMode, field)) {
+        applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+      }
       field.combatRoundLimit = "unlimited";
     }
     adventure.fields[spaceId] = field;

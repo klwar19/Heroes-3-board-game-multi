@@ -236,6 +236,79 @@ describe("card policy — combat reactions", () => {
     expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
   });
 
+  it("conserves Defense on a tanky unit that survives the hit anyway (Zombie read)", () => {
+    const attacker = unit({ id: "A", controllerId: "p1", attack: 2, position: 8, type: "ranged" });
+    const defender = unit({
+      id: "D",
+      controllerId: "p2",
+      defense: 1,
+      maxHealth: 3,
+      damage: 0,
+      position: 9,
+      grade: "bronze",
+      unitDefId: "necropolis.zombies",
+    });
+    const playDefense: LegalAction = {
+      label: "Defense +1",
+      action: { type: "PLAY_REACTION", playerId: "p2", cardId: "stat.defense", mode: "basic" } as GameAction,
+    };
+    const observed = observation([attacker, defender], [pass, playDefense], "p2", ["stat.defense"]);
+    (observed.state as unknown as { stack: unknown[] }).stack = [{
+      action: { type: "ATTACK_UNIT", playerId: "p1", attackerId: "A", defenderId: "D" },
+      modifiers: { spellPowerBonus: 0, attackBonus: 0, defenseBonus: 0 },
+    }];
+    // Zombie hp3 takes 1 (atk2 - def1) and survives with 2 to spare — keep the card.
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+    // CONTROL: a fragile survivor (margin 1, could die to the next hit) still gets it.
+    defender.maxHealth = 2;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+  });
+
+  it("holds an Attack boost when a plain kill is likely and a reserve unit can finish (card economy)", () => {
+    // User 2026-09-18 (live tutoring): a Skeleton (atk2) attacks an already-acted
+    // Rogue (hp1, def1). Plain damage is 1 — it kills on the median/high die and
+    // only the worst -1 whiffs (~2/3 free kill). A reserve Zombie that has not yet
+    // acted can finish the Rogue this round with the same +1 held for it, so the
+    // target dies regardless. Do NOT burn the boost now — hold it.
+    const attacker = unit({
+      id: "A", controllerId: "p2", attack: 2, defense: 1, maxHealth: 2, damage: 0, position: 9,
+    });
+    const defender = unit({
+      id: "D", controllerId: "p1", attack: 2, defense: 1, maxHealth: 3, damage: 2, position: 8,
+      activatedThisRound: true, retaliatedThisRound: false,
+    });
+    const reserve = unit({
+      id: "R", controllerId: "p2", attack: 2, maxHealth: 3, damage: 0, position: 12,
+      activatedThisRound: false,
+    });
+    const playAttack: LegalAction = {
+      label: "Attack +1",
+      action: { type: "PLAY_REACTION", playerId: "p2", cardId: "stat.attack", mode: "basic" } as GameAction,
+    };
+    // Hand holds a Defense card too: a whiff's retaliation (2) would drop the atk2/def1/hp2
+    // attacker, but the held Defense keeps it alive — so conserving never trades the unit away.
+    const observed = observation(
+      [attacker, defender, reserve], [pass, playAttack], "p2", ["stat.attack", "stat.defense"],
+    );
+    (observed.state as unknown as { stack: unknown[] }).stack = [{
+      action: { type: "ATTACK_UNIT", playerId: "p2", attackerId: "A", defenderId: "D" },
+      modifiers: { spellPowerBonus: 0, attackBonus: 0, defenseBonus: 0 },
+    }];
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+
+    // CONTROL 1: no reserve finisher (the Zombie already acted) — nothing else can
+    // finish the Rogue this round, so spend the boost now to make the kill certain.
+    reserve.activatedThisRound = true;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+
+    // CONTROL 2: the target has NOT taken its turn yet — leaving it alive lets it act,
+    // so kill it now rather than deferring to the reserve.
+    reserve.activatedThisRound = false;
+    defender.activatedThisRound = false;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+  });
+
+
   it("uses a First Aid active effect before passing and heals the best target", () => {
     const scratched = unit({
       id: "A",
@@ -1269,15 +1342,23 @@ describe("Defense card conservation for Castle key units", () => {
     expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
   });
 
-  it("drops the early Griffin hold once a gold-grade unit is fielded", () => {
+  it("conserves Defense for a THREATENED gold ally, but spends it when the gold is safe", () => {
+    // User ruling 2026-09-18 (gold-priority): once a gold/azure body is fielded and
+    // actually threatened this fight, hoard the scarce Defense for it and let a
+    // cheaper wall eat a survivable hit. When the gold is safe, the card is free to
+    // spend. (Supersedes the old "drop the Griffin hold once gold is fielded → play
+    // normally" — the hold still drops, but the gold-priority conservation replaces it.)
     const attacker = unit({ id: "A", controllerId: "p1", attack: 6, position: 8 });
     const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 10, position: 9 });
-    const griffin = unit({ id: "G", controllerId: "p2", unitDefId: "castle.griffins", position: 13 });
-    const observed = observation([attacker, defender, griffin], [pass, playDefense], "p2", ["stat.defense"]);
+    // A gold body the atk-6 enemy can meaningfully hurt (def 2, hp 5): threatened.
+    const gold = unit({ id: "G", controllerId: "p2", grade: "gold", defense: 2, maxHealth: 5, position: 13, unitDefId: "castle.angels" });
+    const observed = observation([attacker, defender, gold], [pass, playDefense], "p2", ["stat.defense"]);
     (observed.state as unknown as { stack: unknown[] }).stack = attackStack("A", "D");
+    // D survives the atk6 hit (4 vs hp10) — save the Defense for the threatened gold body.
     expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
-    // CONTROL: a gold-grade unit is now in play — conserve-for-Griffin ends.
-    griffin.grade = "gold";
+    // CONTROL: make the gold safe (durable, the atk6 enemy can't dent it) -> spend on D.
+    gold.defense = 8;
+    gold.maxHealth = 30;
     expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
   });
 
@@ -1328,5 +1409,83 @@ describe("hero-specialty tactical awareness", () => {
     expect(cardKeepValue("specialty.catherine.1", observed)).toBeGreaterThan(
       cardKeepValue("specialty.catherine.4", observed),
     );
+  });
+});
+
+describe("card policy — neutral damage spell prioritizes the recurring shooter", () => {
+  // Build a NEUTRAL fight the caller controls (context.kind === "neutral"), with
+  // one of our own melee bodies present so bestPhysicalDamage is realistic.
+  function neutralObservation(enemies: CombatUnitState[], ownMelee: CombatUnitState): ComputerObservation {
+    const unitMap: Record<string, CombatUnitState> = {};
+    for (const u of [...enemies, ownMelee]) unitMap[u.id] = u;
+    const combat = {
+      id: "c1",
+      units: unitMap,
+      context: { kind: "neutral" },
+      round: 1,
+      prep: false,
+    } as unknown as CombatState;
+    const state = {
+      seed: "neutral-shooter-test",
+      round: 1,
+      eventCounter: 0,
+      combat,
+      players: {
+        p2: {
+          id: "p2",
+          hand: ["stat.power", "stat.power"], // Power 2 → Magic Arrow deals 3, ignores Defense
+          resources: { gold: 0, buildingMaterials: 0, valuables: 0 },
+          army: [],
+          discard: [],
+          limits: { expertUses: 0 },
+          combatStats: {
+            spellsCastThisTurn: 0,
+            spellsCastThisRound: 0,
+            expertUseBonusThisRound: 0,
+            expertUsesSpentThisRound: 0,
+          },
+        },
+      },
+      activeEffects: [],
+      stack: [],
+      artifacts: {},
+    } as unknown as PlayerVisibleState;
+    return { playerId: "p2", state, legalActions: [] };
+  }
+
+  const arrowAt = (unitId: string): GameAction => ({
+    type: "CAST_SPELL",
+    playerId: "p2",
+    cardId: "spell.magic_arrow",
+    target: { type: "unit", unitId },
+  } as GameAction);
+
+  it("prefers a lethal enemy SHOOTER (even one that already fired) over unacted ground chaff our melee can kill", () => {
+    // Elves: ranged, hp3, def1, ALREADY fired this round (no unacted bonus) — a
+    //   recurring threat we cannot defend against; Magic Arrow (3 dmg) kills it.
+    // Gnolls: ground, hp2, def1, UNACTED — but our own melee (atk3 vs def1 = 2)
+    //   already lethally reaches it, so the +30 "unacted" pre-kill term is bait,
+    //   not a reason to spend the spell.
+    const elves = unit({ id: "ELVES", controllerId: "neutral", type: "ranged", attack: 2, defense: 1, maxHealth: 3, initiative: 5, activatedThisRound: true, position: 1 });
+    const gnolls = unit({ id: "GNOLLS", controllerId: "neutral", type: "ground", attack: 2, defense: 1, maxHealth: 2, initiative: 3, activatedThisRound: false, position: 3 });
+    const ours = unit({ id: "WRAITHS", controllerId: "p2", type: "flying", attack: 3, defense: 2, maxHealth: 6, initiative: 6, position: 20 });
+    const observed = neutralObservation([elves, gnolls], ours);
+    const onShooter = scoreCardAction(observed, arrowAt("ELVES"))!.score;
+    const onChaff = scoreCardAction(observed, arrowAt("GNOLLS"))!.score;
+    // Before the fix the unacted ground chaff outscored the acted shooter.
+    expect(onShooter).toBeGreaterThan(onChaff);
+  });
+
+  it("does NOT let a NON-lethal hit on a tankier shooter outrank the LETHAL hit on a killable shooter", () => {
+    // Orcs: ranged, hp4, def1 — the arrow's 3 damage does NOT kill it (that is the
+    // flyer's job with stacked Attack). Lethality stays dominant, so the killable
+    // shooter (Elves) still outranks the un-killable one.
+    const elves = unit({ id: "ELVES", controllerId: "neutral", type: "ranged", attack: 2, defense: 1, maxHealth: 3, initiative: 5, activatedThisRound: true, position: 1 });
+    const orcs = unit({ id: "ORCS", controllerId: "neutral", type: "ranged", attack: 3, defense: 1, maxHealth: 4, initiative: 4, activatedThisRound: false, position: 2 });
+    const ours = unit({ id: "WRAITHS", controllerId: "p2", type: "flying", attack: 3, defense: 2, maxHealth: 6, initiative: 6, position: 20 });
+    const observed = neutralObservation([elves, orcs], ours);
+    const onKillable = scoreCardAction(observed, arrowAt("ELVES"))!.score;
+    const onTanky = scoreCardAction(observed, arrowAt("ORCS"))!.score;
+    expect(onKillable).toBeGreaterThan(onTanky);
   });
 });

@@ -35,10 +35,15 @@ export const AFK_IDLE_MS = 10 * 60_000;
 /** After a vote ends in "wait", the next vote may start this much later (ms). */
 export const AFK_REASK_MS = 10 * 60_000;
 /**
- * A seat idle this long (ms) is CERTAINLY kicked — no vote needed. Any live
- * seat's client fires `FORCE_AFK_KICK` once the target has been away this long
- * ("after 30 minutes the AFK player is certainly kicked"). CLOSED tables only
- * (see `timeControlsActive`).
+ * A seat idle this long (ms) WHILE AWAITED is CERTAINLY kicked — no vote needed.
+ * Any live seat's client fires `FORCE_AFK_KICK` once the target has burned this
+ * much AWAITED-idle time ("after 30 minutes the AFK player is certainly
+ * kicked"). Only time the table is actually waiting on the seat counts (see
+ * `awaitedIdleMillis` / `applyAfkIdleClockBookkeeping`): a player who sat out
+ * another seat's long battle or a run of other players' turns never accrues it,
+ * so they are not kicked the instant their own turn finally opens. It resets on
+ * the seat's own action, so the 30 minutes is 30 minutes of THEIR own,
+ * actionable idle time. CLOSED tables only (see `timeControlsActive`).
  */
 export const AFK_AUTO_KICK_MS = 30 * 60_000;
 /**
@@ -132,8 +137,10 @@ export function seatIsAwaitedInOrderedPlay(state: GameState, playerId: PlayerId)
   if (state.turn?.mode === "parallel") {
     // ...except a seat that already ENDED its parallel turn: it cannot act at
     // all until the round wraps, so it is idle BY DESIGN like a seat waiting
-    // for its ordered turn. (The 30-minute FORCE_AFK_KICK ignores this gate,
-    // so a truly gone seat is still removable.)
+    // for its ordered turn. (The 30-minute FORCE_AFK_KICK now counts only
+    // awaited-idle time, which this gate stops from accruing here — a truly
+    // gone seat still becomes removable because it is awaited again from the
+    // next round's own turn, banking ~10 forced-timeout minutes per turn.)
     return !state.turn.completedPlayerIds.includes(playerId);
   }
   if (state.activePlayerId === playerId) {
@@ -182,6 +189,23 @@ export function idleMillis(state: GameState, playerId: PlayerId, now: number): n
   const last = state.afk?.lastActionAt?.[playerId];
   // A paused table freezes every clock: read the time as of the pause.
   return last === undefined ? 0 : Math.max(0, pauseClockNow(state, now) - last);
+}
+
+/**
+ * How long (ms) a seat has been idle WHILE AWAITED at `now` — the clock the
+ * 30-minute certain auto-kick reads (`forceAfkKick`). It is the banked
+ * awaited-idle of earlier stretches plus the stretch accruing right now, and it
+ * only grows while the table is actually waiting on the seat: waiting out
+ * another player's turn or long battle contributes nothing. 0 for a seat that
+ * has never been awaited-idle (no stamps, e.g. legacy snapshots or open tables).
+ */
+export function awaitedIdleMillis(state: GameState, playerId: PlayerId, now: number): number {
+  const afk = state.afk;
+  const banked = afk?.awaitedIdleMs?.[playerId] ?? 0;
+  const since = afk?.awaitedIdleSince?.[playerId];
+  // A paused table freezes every clock: read the live stretch as of the pause.
+  const live = since === undefined ? 0 : Math.max(0, pauseClockNow(state, now) - since);
+  return banked + live;
 }
 
 /**
@@ -239,6 +263,15 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
     }
   }
   afk.lastActionAt[actorId] = stamp;
+  // A real action by the seat clears the awaited-idle the 30-minute auto-kick
+  // reads: they are demonstrably present. applyAfkIdleClockBookkeeping (run
+  // next) restarts the live stretch from zero if the seat is still awaited.
+  if (afk.awaitedIdleMs) {
+    afk.awaitedIdleMs[actorId] = 0;
+  }
+  if (afk.awaitedIdleSince) {
+    delete afk.awaitedIdleSince[actorId];
+  }
 
   // The accused seat took a real action: the vote is moot — cancel it.
   if (afk.vote && afk.vote.targetPlayerId === actorId) {
@@ -250,6 +283,75 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
       outcome: "cancelled",
       message: `${playerName(state, target)} is back — the AFK vote was cancelled.`
     });
+  }
+}
+
+/**
+ * Post-action bookkeeping for the AWAITED-idle clock the 30-minute auto-kick
+ * reads (`awaitedIdleMillis`). Like `applyTurnClockBookkeeping` it must run on
+ * EVERY stamped action (turns open/close and battles start/end through other
+ * players' and the driver's actions), so it lives outside the actor-scoped
+ * guards of `applyAfkBookkeeping`. For each live human seat it advances the
+ * awaited-idle clock only while the table is waiting on that seat
+ * (`seatIsAwaitedInOrderedPlay`):
+ *  - a seat that just became awaited starts a fresh live stretch;
+ *  - a seat that stopped being awaited banks what its stretch accrued and stops;
+ *  - a still-awaited seat banks the elapsed span and re-stamps, so a table-pause
+ *    stretch (its `now` is clamped to `pausedAt`) never accrues.
+ * The actor's own reset happens in `applyAfkBookkeeping`, which runs first;
+ * here the actor simply restarts a fresh stretch if it is still awaited. CLOSED
+ * (hosted) tables with two or more live human seats only — the auto-kick that
+ * reads this clock runs nowhere else; elsewhere any banked stamps are dropped.
+ */
+export function applyAfkIdleClockBookkeeping(state: GameState, now: number | undefined): void {
+  if (state.mode !== "adventure" || now === undefined) {
+    return;
+  }
+  const afk = state.afk;
+  const seats =
+    !state.setupLobby && !gameIsOver(state) && timeControlsActive(state) ? liveSeats(state) : [];
+  if (seats.length < 2) {
+    // No awaited-idle clock here (solo/open table, setup, game over): drop any
+    // banked stamps without creating the slice on tables that never needed it.
+    if (afk?.awaitedIdleSince && Object.keys(afk.awaitedIdleSince).length > 0) {
+      afk.awaitedIdleSince = {};
+    }
+    if (afk?.awaitedIdleMs && Object.keys(afk.awaitedIdleMs).length > 0) {
+      afk.awaitedIdleMs = {};
+    }
+    return;
+  }
+  const slice = getAfkState(state);
+  // Frozen while the table is paused (see pauseClockNow), so no awaited-idle
+  // accrues during a pause even before RESUME shifts the stamps.
+  const stamp = pauseClockNow(state, now);
+  const since = (slice.awaitedIdleSince ??= {});
+  const banked = (slice.awaitedIdleMs ??= {});
+  const liveSet = new Set(seats);
+  for (const seat of Object.keys(since)) {
+    if (!liveSet.has(seat)) {
+      delete since[seat];
+    }
+  }
+  for (const seat of Object.keys(banked)) {
+    if (!liveSet.has(seat)) {
+      delete banked[seat];
+    }
+  }
+  for (const seat of seats) {
+    const startedAt = since[seat];
+    // Bank the span the live stretch (if any) has run up to this action.
+    if (startedAt !== undefined) {
+      banked[seat] = (banked[seat] ?? 0) + Math.max(0, stamp - startedAt);
+    }
+    if (seatIsAwaitedInOrderedPlay(state, seat)) {
+      // Awaited now: (re-)stamp so the live clock runs from this action — a
+      // paused stretch (stamp clamped to pausedAt) therefore accrues nothing.
+      since[seat] = stamp;
+    } else if (startedAt !== undefined) {
+      // No longer awaited: the banked total above is final; stop the clock.
+      delete since[seat];
+    }
   }
 }
 
@@ -403,14 +505,19 @@ function maybeResolveAfkVote(state: GameState, now: number | undefined): void {
 }
 
 /**
- * FORCE_AFK_KICK: certain auto-kick of a seat idle past AFK_AUTO_KICK_MS (30
- * minutes) — no vote. Unlike the vote, this is NOT restricted to the awaited
- * seat: a seat gone 30 minutes has abandoned the game and is removed whatever
- * the turn state. Any live seat's client fires it; the server re-checks the
- * idle time against its own clock, then begins the shared force-drop
- * (`afk.droppingPlayerId`) the passed vote uses, so the drop runs through the
- * exact same tested pipeline (pending choices default-resolved, open combat
- * conceded, elimination + turn/round machinery).
+ * FORCE_AFK_KICK: certain auto-kick of a seat that has burned AFK_AUTO_KICK_MS
+ * (30 minutes) of AWAITED idle — no vote. Like the vote (and unlike the raw
+ * wall clock), only time the table was actually waiting on the seat counts (see
+ * `awaitedIdleMillis`): a seat that sat out another player's long battle or a
+ * run of other seats' turns has abandoned nothing and is not kicked the moment
+ * its own turn opens — but a seat that has left 30 minutes of its OWN turns
+ * unplayed certainly is. The awaited-idle clock keeps its total across the
+ * turn-timer force-shifts (the driver's actions never reset it), so the kick is
+ * not tied to any single open turn. Any live seat's client fires it; the server
+ * re-checks the awaited-idle against its own clock, then begins the shared
+ * force-drop (`afk.droppingPlayerId`) the passed vote uses, so the drop runs
+ * through the exact same tested pipeline (pending choices default-resolved, open
+ * combat conceded, elimination + turn/round machinery).
  */
 export function forceAfkKick(
   state: GameState,
@@ -438,7 +545,7 @@ export function forceAfkKick(
   if (now === undefined) {
     throw new Error("AFK timing is unavailable on this table.");
   }
-  if (idleMillis(state, action.targetPlayerId, now) < AFK_AUTO_KICK_MS) {
+  if (awaitedIdleMillis(state, action.targetPlayerId, now) < AFK_AUTO_KICK_MS) {
     throw new Error(`${playerName(state, action.targetPlayerId)} has not been away for 30 minutes yet.`);
   }
 

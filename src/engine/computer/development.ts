@@ -1,4 +1,4 @@
-import { coreBuildingDefinitions, coreFactionDefinitions, factoryGoldUnitConflict } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, factoryGoldUnitConflict } from "@/data/factions/core";
 import { cardLibrary } from "@/data/cards/library";
 import { hasNecromancyPlan } from "./necromancy-plan";
 export { hasNecromancyPlan } from "./necromancy-plan";
@@ -9,7 +9,7 @@ import { NEUTRAL_PLAYER_ID } from "../state";
 import type { GameState, PlayerId, ResourceCost } from "../state";
 import { unitExperienceActive } from "../unit-experience";
 import { playersAreAllied } from "./control";
-import { isFieldGuarded, reinforceCostFor, applyRecruitGoldDiscount } from "../adventure";
+import { isFieldGuarded, reinforceCostFor, applyRecruitGoldDiscount, playerCanRecruitFewNow } from "../adventure";
 import { isOpeningFarMaterialMine, securedFarTileIds } from "./far-sweep";
 import { effectiveTownBuildingCost } from "../house-rules";
 
@@ -45,6 +45,34 @@ const TWO_PACK_FACTIONS = new Set(["inferno", "dungeon", "rampart"]);
  * (Inferno, Dungeon's evil_eyes + harpies). Necromancy keeps its own earned
  * upgrade plan. Anything not upgraded here stays a Few meat-shield screen.
  */
+/**
+ * The Silver dwelling is here or buildable RIGHT NOW — the trigger for the user's
+ * 2026-09-18 doctrine: once you can get Silver, stop upgrading the bronze level-1 and
+ * level-2 bodies to Packs (they stay Few meatshields); only the level-3 bronze Pack is
+ * worth fighting, and gold flows to the Silver body and the higher ladder instead. True
+ * when Silver (or Gold) is already unlocked, or the Silver dwelling's prerequisites stand
+ * and the seat can afford it now.
+ */
+export function silverAccessible(state: GameState, playerId: PlayerId): boolean {
+  const town = Object.values(state.towns ?? {}).find((candidate) => candidate.controllerId === playerId);
+  if (!town) return false;
+  if (town.buildings.some((id) => {
+    const effect = coreBuildingDefinitions[id]?.effect;
+    return effect?.type === "UNLOCK_RECRUIT_TIER" && (effect.tier === "silver" || effect.tier === "gold");
+  })) return true;
+  const building = factionBuildingForEffect(state, playerId,
+    (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver");
+  if (!building) return false;
+  const requires = (building as { requires?: readonly string[] }).requires ?? [];
+  if (requires.some((id) => !town.buildings.includes(id))) return false;
+  const cost = building.cost;
+  const res = state.players[playerId]?.resources;
+  return Boolean(cost && res &&
+    (res.gold ?? 0) >= (cost.gold ?? 0) &&
+    (res.buildingMaterials ?? 0) >= (cost.buildingMaterials ?? 0) &&
+    (res.valuables ?? 0) >= (cost.valuables ?? 0));
+}
+
 export function preferredOpeningPacks(state: GameState, playerId: PlayerId): readonly string[] {
   const factionId = state.players[playerId]?.factionId ?? "";
   // Only a hero actually running the earned-upgrade Necromancy plan skips this
@@ -54,6 +82,14 @@ export function preferredOpeningPacks(state: GameState, playerId: PlayerId): rea
   if (hasNecromancyPlan(state, playerId)) return [];
   const bronze = bronzeUnitsByLevel(state, playerId);
   const [levelOne, levelTwo, levelThree] = [bronze[0], bronze[1], bronze[2]];
+  // User ruling 2026-09-18 (live tutoring): once Silver is accessible (built, or
+  // buildable now), the lv1/lv2 bronze bodies stay Few meatshields — ONLY the lv3
+  // bronze Pack is worth completing. Drop the lower Packs from the opening plan so
+  // gold flows to the Silver body and the higher ladder, not bronze upgrades.
+  if (silverAccessible(state, playerId)) {
+    const top = levelThree ?? levelTwo ?? levelOne;
+    return top ? [top] : [];
+  }
   const order: string[] = [];
   // 1st Pack: always the level-3 bronze (fall back to the strongest available).
   const first = levelThree ?? levelTwo ?? levelOne;
@@ -91,7 +127,69 @@ export function necromancyUpgradePriority(unitDefId: string): number {
 export function needsNecromancyVampire(state: GameState, playerId: PlayerId): boolean {
   return hasNecromancyPlan(state, playerId) && !hasReachedGoldArmy(state, playerId) &&
     !state.computerMemory?.[playerId]?.necromancyVampirePackEarned &&
-    !state.players[playerId].army.some(unit => unit.unitDefId === "necropolis.vampires" && unit.side === "pack");
+    !state.players[playerId].army.some(unit => unit.unitDefId === "necropolis.vampires" && unit.side === "pack") &&
+    !goldDwellingFlushDespiteVampirePlan(state, playerId);
+}
+
+/** Gold kept aside for the paid Vampire Pack upgrade while the flush seat builds Gold. */
+const VAMPIRE_UPGRADE_GOLD_CUSHION = 9;
+
+/**
+ * A FLUSH Necropolis seat builds its Gold dwelling instead of holding the
+ * whole economy for the earned Vampire Pack. Measured (Necropolis eval-16,
+ * impossible): the seat rushed its Gold dwelling for eight rounds, then the
+ * round-9 hand refresh drew Necromancy — the plan flipped on, the dwelling
+ * stopped being the saved purchase (no rush, no market), and the seat sat on
+ * 53 → 73 gold with 3 valuables through R11, no Gold body ever. The Vampire
+ * plan is about not SPENDING the Silver-era purse twice; once the Gold
+ * dwelling is payable right now — stock, or gold covering its missing inputs
+ * at Trading Post rates — with the Vampire upgrade's gold still left over,
+ * the dwelling goes up and the earned Pack keeps coming from the fights.
+ * Silver dwelling must stand. Once the Gold dwelling stands the same test
+ * applies to the next Gold-ladder body (measured next: the R9 dwelling went
+ * up, then every Gold recruit scored 180 for two rounds on 32 gold / 1
+ * valuable with Ghost Dragons at 19 gold + 1 valuable).
+ *
+ * Scope: only a plan that exists because of DRAWN cards (hand / discard). A
+ * hero-born Necromancer (Vidomina: Necromancy is her own card) keeps the
+ * committed design — earned Vampire Pack before the Gold body — which the
+ * Necropolis game tests pin.
+ */
+function goldDwellingFlushDespiteVampirePlan(state: GameState, playerId: PlayerId): boolean {
+  const hero = coreHeroDefinitions[state.players[playerId]?.heroDefId ?? ""];
+  const heroBorn = [hero?.startingAbilityCardId, hero?.specialtyCardIds?.[1]].some(
+    (id) => Boolean(id && cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE"));
+  if (heroBorn) return false;
+  const effects = Object.values(state.towns ?? {})
+    .filter((town) => town.controllerId === playerId)
+    .flatMap((town) => town.buildings)
+    .map((id) => coreBuildingDefinitions[id]?.effect);
+  const tierBuilt = (tier: string) => effects.some(
+    (effect) => effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === tier);
+  if (!tierBuilt("silver")) return false;
+  const res = state.players[playerId]?.resources;
+  if (!res) return false;
+  let cost: ResourceCost;
+  if (tierBuilt("gold")) {
+    const step = nextGoldLadderStep(state, playerId);
+    if (!step?.cost) return false;
+    cost = step.cost;
+  } else {
+    const dwelling = factionBuildingForEffect(state, playerId,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold");
+    if (!dwelling) return false;
+    cost = effectiveTownBuildingCost(state, dwelling);
+  }
+  const missingValuables = Math.max(0, (cost.valuables ?? 0) - (res.valuables ?? 0));
+  const missingMaterials = Math.max(0, (cost.buildingMaterials ?? 0) - (res.buildingMaterials ?? 0));
+  const valuableRate = goldPurchaseRate("valuables");
+  const materialRate = goldPurchaseRate("buildingMaterials");
+  if ((missingValuables > 0 && !valuableRate) || (missingMaterials > 0 && !materialRate)) return false;
+  const goldNeeded = (cost.gold ?? 0) +
+    missingValuables * (valuableRate?.goldPerUnit ?? 0) +
+    missingMaterials * (materialRate?.goldPerUnit ?? 0) +
+    VAMPIRE_UPGRADE_GOLD_CUSHION;
+  return (res.gold ?? 0) >= goldNeeded;
 }
 
 /** Whether the faction's Gold dwelling is payable from stock this instant
@@ -469,7 +567,13 @@ export function armyReadyForContestedFight(
   const profile = armyDevelopmentProfile(state, playerId);
   return (
     profile.totalUnits >= CORE_BODY_TARGET &&
-    (profile.packUnits >= profile.corePackTarget || hasGoldArmy(state, playerId))
+    // 3 core packs, OR a Silver/Gold body: a Silver unit (e.g. Crusaders) carries a
+    // contested lv3 guard fight even with only two bronze packs behind it (user ruling
+    // 2026-09-18, live tutoring: "with silver, certainly doable"). Field-specific
+    // winnability is still checked by canBeatGuardedField at the objective.
+    (profile.packUnits >= profile.corePackTarget ||
+      hasGoldArmy(state, playerId) ||
+      hasReachedSilverArmy(state, playerId))
   );
 }
 
@@ -608,6 +712,15 @@ export const INCOME_FIRST_LAST_ROUND = 4;
 export const INCOME_FIRST_LAST_ROUND_SLOW = 4;
 /** USER RULING: the City Hall is off limits from round 7 — its +5/round cannot pay back. */
 export const INCOME_NEVER_FROM_ROUND = 7;
+/**
+ * USER RULING (2026-09-17): Necropolis and Stronghold never build their City
+ * Hall — Necromancy grows the army for free and Stronghold's cheap bodies
+ * make the +4/round income a wasted build token. Faction (town) ids.
+ */
+export const NO_INCOME_HALL_FACTIONS: ReadonlySet<string> = new Set(["necropolis", "stronghold"]);
+export function factionSkipsIncomeHall(state: GameState, playerId: PlayerId): boolean {
+  return NO_INCOME_HALL_FACTIONS.has(state.players[playerId]?.factionId ?? "");
+}
 /** A hostile main hero this many levels (or more) ahead = "behind": army first, no hall-first. */
 export const INCOME_FIRST_LEVEL_DEFICIT = 2;
 
@@ -718,7 +831,7 @@ export function incomeBuildingBeforeDwelling(
   playerId: PlayerId,
   bronzeCoreHasWork = true,
 ) {
-  if (!bronzeCoreHasWork || needsNecromancyVampire(state, playerId) ||
+  if (!bronzeCoreHasWork || factionSkipsIncomeHall(state, playerId) || needsNecromancyVampire(state, playerId) ||
       needsPremiumSilverBreakthrough(state, playerId) || securedFarTileIds(state, playerId).size >= 2) return null;
   // No "first FAR income captured" precondition: the ranked seats build the
   // hall on R2–R4, before their first Far fight (median first fight R3–R4),
@@ -1251,6 +1364,28 @@ function goldSaleRate(
   return null;
 }
 
+/** The TRADE_RATES entry that turns exactly 3 building materials into 1 valuable
+ * ("3 building materials -> 1 valuables"), looked up by shape like
+ * {@link goldPurchaseRate}. Null when the post has no such conversion. */
+function materialsForValuableRate(): { rateIndex: number; materialsPerValuable: number } | null {
+  for (let index = 0; index < TRADE_RATES.length; index += 1) {
+    const rate = TRADE_RATES[index];
+    const sellKeys = Object.keys(rate.sell);
+    const buyKeys = Object.keys(rate.buy);
+    if (
+      sellKeys.length === 1 &&
+      sellKeys[0] === "buildingMaterials" &&
+      (rate.sell.buildingMaterials ?? 0) > 0 &&
+      buyKeys.length === 1 &&
+      buyKeys[0] === "valuables" &&
+      (rate.buy.valuables ?? 0) === 1
+    ) {
+      return { rateIndex: index, materialsPerValuable: rate.sell.buildingMaterials ?? 0 };
+    }
+  }
+  return null;
+}
+
 export type GoldStepMarketPlan = {
   /** TRADE_RATES indices that together make the saved Gold recruit payable. */
   rateIndices: number[];
@@ -1347,6 +1482,105 @@ export function goldStepMarketPlan(
   return rateIndices.length > 0 ? { rateIndices } : null;
 }
 
+export type PremiumRecruitTradePlan = {
+  /** The planned Silver body the trades make payable (nextPlannedSilver). */
+  unitDefId: string;
+  /** TRADE_RATES indices that together make that recruit payable now. */
+  rateIndices: number[];
+};
+
+/**
+ * Trades at a Trading Post that make the seat's PLANNED Silver body (the
+ * premium breakthrough recruit, see needsPremiumSilverBreakthrough) payable on
+ * THIS visit, with the Population token still unspent so the recruit follows
+ * at once: buy its missing valuables / materials from gold, and if gold is
+ * short sell stock the body does not need — spare materials first, then only
+ * valuables above the whole remaining Gold ladder's reserve (HARD RULING
+ * 2026-09-16, goldLadderValuablesReserve). Null when the Gold ladder is open
+ * (goldStepMarketPlan owns those trades), the Silver dwelling is missing,
+ * no planned body remains, the recruit is already affordable (buy it
+ * directly) or the post cannot close the gap.
+ *
+ * USER RULING (2026-09-17): from MARKET_MIN_ROUND a generic resource
+ * exchange is "terrible" unless it gets the Silver unit NEXT — this plan is
+ * the only trade the round-5+ market still offers; its two timing gates
+ * (the body joins a fight this round, no income lands next round) live in
+ * premiumRecruitMarketVisit. Public printed costs and resource counts only.
+ */
+export function premiumRecruitTradePlan(
+  state: GameState,
+  playerId: PlayerId,
+): PremiumRecruitTradePlan | null {
+  const player = state.players[playerId];
+  if (!player || !player.townTokens?.population) return null;
+  const profile = armyDevelopmentProfile(state, playerId);
+  if (profile.goldUnlocked || !profile.silverUnlocked) return null;
+  // The recruit must be the one populationScore pays 976 for after the trade;
+  // an off-plan / surplus Silver would be refused at 240 and the trade wasted.
+  if (!needsPremiumSilverBreakthrough(state, playerId)) return null;
+  const unitDefId = nextPlannedSilver(state, playerId);
+  if (!unitDefId || !playerCanRecruitFewNow(state, playerId, unitDefId)) return null;
+  const printed = coreUnitDefinitions[unitDefId]?.few?.cost;
+  if (!printed) return null;
+  const cost = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId }, printed);
+  const res = playerResourceRecord(state, playerId);
+  const need: Required<ResourceCost> = {
+    gold: cost.gold ?? 0,
+    buildingMaterials: cost.buildingMaterials ?? 0,
+    valuables: cost.valuables ?? 0,
+  };
+  if (
+    res.gold >= need.gold &&
+    res.buildingMaterials >= need.buildingMaterials &&
+    res.valuables >= need.valuables
+  ) {
+    return null;
+  }
+  const rateIndices: number[] = [];
+  let goldShort = need.gold - res.gold;
+  for (const key of ["valuables", "buildingMaterials"] as const) {
+    const missing = Math.max(0, need[key] - res[key]);
+    if (missing === 0) continue;
+    const rate = goldPurchaseRate(key);
+    if (!rate) return null;
+    goldShort += missing * rate.goldPerUnit;
+    rateIndices.push(rate.rateIndex);
+  }
+  if (goldShort > 0) {
+    let raised = 0;
+    // Keep the next dwelling's own inputs (never the hall's — it is not a
+    // dwelling) so the body does not eat the Gold dwelling's materials.
+    const saved = nextDevelopmentBuildingCost(state, playerId);
+    const hall = factionIncomeBuilding(state, playerId)?.cost;
+    const dwelling: ResourceCost = saved && saved !== hall ? saved : {};
+    const materialRate = goldSaleRate("buildingMaterials");
+    const materialSurplus = Math.max(
+      0,
+      res.buildingMaterials - need.buildingMaterials - (dwelling.buildingMaterials ?? 0),
+    );
+    if (materialRate && materialSurplus > 0) {
+      raised += materialSurplus * materialRate.goldPerUnit;
+      rateIndices.push(materialRate.rateIndex);
+    }
+    if (raised < goldShort) {
+      const valuableRate = goldSaleRate("valuables");
+      const valuableSurplus = Math.max(
+        0,
+        res.valuables - Math.max(
+          need.valuables + (dwelling.valuables ?? 0),
+          goldLadderValuablesReserve(state, playerId),
+        ),
+      );
+      if (valuableRate && valuableSurplus > 0) {
+        raised += valuableSurplus * valuableRate.goldPerUnit;
+        rateIndices.push(valuableRate.rateIndex);
+      }
+    }
+    if (raised < goldShort) return null;
+  }
+  return rateIndices.length > 0 ? { unitDefId, rateIndices } : null;
+}
+
 /**
  * Trades that make the GOLD DWELLING **and** the top Gold Few payable on ONE
  * Trading Post visit, so the level-7 body lands the SAME round its dwelling is
@@ -1362,9 +1596,14 @@ export function goldStepMarketPlan(
  *
  * Only fires while the next development building IS the Gold dwelling, and only
  * when the gold left after the trades still pays BOTH the dwelling and the
- * recruit — so it can never strip a fund it cannot complete. Materials and
- * valuables are only ever BOUGHT here, never sold. Public printed costs and
- * resource counts only.
+ * recruit — so it can never strip a fund it cannot complete. Valuables are
+ * never sold. Materials ABOVE what the dwelling and the body need are spare
+ * (USER RULING 2026-09-17: a trade is worth it exactly when it gets the body
+ * NOW): they turn into a missing valuable at the printed 3→1 rate before gold
+ * is spent on it, and they sell 1:1 to close a remaining gold gap. Measured
+ * (Dungeon eval-10, R9, 39g/16m/3v): the dwelling landed but the Black
+ * Dragons waited a round because the generic exchange that used to sell the
+ * spare materials is gone. Public printed costs and resource counts only.
  */
 export function goldBodyComboTradePlan(
   state: GameState,
@@ -1392,18 +1631,43 @@ export function goldBodyComboTradePlan(
   const res = playerResourceRecord(state, playerId);
   const rateIndices: number[] = [];
   let goldForTrades = 0;
-  for (const key of ["buildingMaterials", "valuables"] as const) {
-    const missing = Math.max(0, need[key] - res[key]);
-    if (missing === 0) continue;
-    const rate = goldPurchaseRate(key);
+  let spareMaterials = Math.max(0, res.buildingMaterials - need.buildingMaterials);
+  const missingMaterials = Math.max(0, need.buildingMaterials - res.buildingMaterials);
+  if (missingMaterials > 0) {
+    const rate = goldPurchaseRate("buildingMaterials");
     if (!rate) return null;
-    goldForTrades += missing * rate.goldPerUnit;
+    goldForTrades += missingMaterials * rate.goldPerUnit;
     rateIndices.push(rate.rateIndex);
   }
-  if (rateIndices.length === 0) return null;
-  // Both purchases must still be payable after the trades, or this is just the
+  let missingValuables = Math.max(0, need.valuables - res.valuables);
+  if (missingValuables > 0) {
+    // Spare materials first (3 → 1 valuable, no gold), then gold.
+    const convert = materialsForValuableRate();
+    const byMaterials = convert
+      ? Math.min(missingValuables, Math.floor(spareMaterials / convert.materialsPerValuable))
+      : 0;
+    if (convert && byMaterials > 0) {
+      spareMaterials -= byMaterials * convert.materialsPerValuable;
+      missingValuables -= byMaterials;
+      rateIndices.push(convert.rateIndex);
+    }
+    if (missingValuables > 0) {
+      const rate = goldPurchaseRate("valuables");
+      if (!rate) return null;
+      goldForTrades += missingValuables * rate.goldPerUnit;
+      rateIndices.push(rate.rateIndex);
+    }
+  }
+  // Both purchases must still be payable after the trades — a remaining gold
+  // gap may be closed by selling the spare materials 1:1 — or this is just the
   // ordinary dwelling rush and the recruit waits for its own Resource Round.
-  if (res.gold - goldForTrades < need.gold) return null;
+  const goldShort = need.gold + goldForTrades - res.gold;
+  if (goldShort > 0) {
+    const sale = goldSaleRate("buildingMaterials");
+    if (!sale || spareMaterials * sale.goldPerUnit < goldShort) return null;
+    rateIndices.push(sale.rateIndex);
+  }
+  if (rateIndices.length === 0) return null;
   return { rateIndices };
 }
 

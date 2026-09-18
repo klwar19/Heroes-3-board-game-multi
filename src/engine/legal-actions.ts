@@ -14169,11 +14169,12 @@ function addVisitStepActions(
       }
     }
     // The other two printed options ("choose one") stay open only until the
-    // first resource trade: sell one card from hand for 1 gold (Specialty,
+    // first resource trade: sell hand cards for 1 gold each (Specialty,
     // Statistic, starting Ability and the `MARKET_UNSELLABLE_CARD_IDS`
-    // starting-only Spells — Magic Arrow, Cast a Spell — excluded), or buy a war
-    // machine at the higher price. The Marketplace Event's "Trade resources
-    // using Trading Post rules" is the exchange alone — tradesOnly hides both.
+    // starting-only Spells — Magic Arrow, Cast a Spell — excluded; a sale keeps
+    // the visit open, USER RULING 2026-09-17), or buy a war machine at the
+    // higher price. The Marketplace Event's "Trade resources using Trading
+    // Post rules" is the exchange alone — tradesOnly hides both.
     if (!step.traded && !step.tradesOnly) {
       for (const { index, cardId } of removableHandCards(
         state,

@@ -197,14 +197,10 @@ export function wantsMarketVisit(
     const shop: string | undefined = location;
     return shop === "war_machine_factory" && shouldSeekLateWarMachineShop(state, playerId);
   }
-  if ((state.round ?? 0) < MARKET_MIN_ROUND) return false;
-  if (
-    TRADE_RATES.some(
-      (_, index) => tradeUtility(state, playerId, index) >= 4,
-    )
-  ) {
-    return true;
-  }
-  // War-machine detours (Factory only) were answered above.
+  // USER RULING (2026-09-17): no generic "useful exchange" visits any more —
+  // from MARKET_MIN_ROUND the only remaining trade is the one that buys the
+  // planned Silver body for a fight this round (premiumRecruitMarketVisit in
+  // map-navigation, which also knows the hero's reach). tradeUtility still
+  // ranks/blocks individual rates once a market is open.
   return false;
 }

@@ -200,6 +200,41 @@ it("easier guards start this turn while Impossible saves the extra combat moveme
   expect(starts).toEqual([true, true, true, false]);
 });
 
+it("USER RULING 2026-09-17: the two-point attack cap scales with neutral difficulty and the army's top body", () => {
+  const silver = coreFactionDefinitions.castle.units.find(id => coreUnitDefinitions[id]?.tier === "silver")!;
+  const gold = coreFactionDefinitions.castle.units.find(id => coreUnitDefinitions[id]?.tier === "gold")!;
+  const reserveAt = (difficulty: typeof difficulties[number], level: number, army: { unitDefId: string; side: "few" | "pack" }[]) => {
+    const f = fixture(difficulty);
+    f.hero.spaceId = f.first.spaceId; f.hero.movementPoints = 2;
+    f.second.difficulty = level;
+    for (const [i, unit] of army.entries()) f.state.players.p2.army.push({ id: `extra-${i}`, ...unit });
+    return premiumCombatMovementReserve(f.state, f.hero, f.second);
+  };
+  // Impossible: Silver covers lv3 (fights on 2 MP), not lv4; Gold Few lv4, not lv5; Gold Pack lv5, not lv6.
+  expect(reserveAt("impossible", 3, [{ unitDefId: silver, side: "few" }])).toBe(1);
+  expect(reserveAt("impossible", 4, [{ unitDefId: silver, side: "few" }])).toBe(2);
+  expect(reserveAt("impossible", 4, [{ unitDefId: gold, side: "few" }])).toBe(1);
+  expect(reserveAt("impossible", 5, [{ unitDefId: gold, side: "few" }])).toBe(2);
+  expect(reserveAt("impossible", 5, [{ unitDefId: gold, side: "pack" }])).toBe(1);
+  expect(reserveAt("impossible", 6, [{ unitDefId: gold, side: "pack" }])).toBe(2);
+  // CONTROL: the bronze core on Impossible still saves the third point for lv3 (and lv2 is fine).
+  expect(reserveAt("impossible", 3, [])).toBe(2);
+  expect(reserveAt("impossible", 2, [])).toBe(1);
+  // Hard: lv3 opens on 2 MP even with bronze only; lv4 does not; a Silver lifts it to lv4.
+  expect(reserveAt("hard", 3, [])).toBe(1);
+  expect(reserveAt("hard", 4, [])).toBe(2);
+  expect(reserveAt("hard", 4, [{ unitDefId: silver, side: "few" }])).toBe(1);
+  // Easy is one level more generous than Normal for the same army.
+  expect(reserveAt("normal", 4, [])).toBe(2);
+  expect(reserveAt("easy", 4, [])).toBe(1);
+  // The 2-MP hero actually starts the covered fight on Impossible with the Silver.
+  const f = fixture("impossible");
+  f.hero.spaceId = f.first.spaceId; f.hero.movementPoints = 2;
+  f.state.players.p2.army.push({ id: "silver-body", unitDefId: silver, side: "few" });
+  const decision = chooseComputerAction(f.observe([f.move(f.second.spaceId), { type: "END_TURN", playerId: "p2" }]))!;
+  expect(decision.action.type).toBe("MOVE_HERO");
+});
+
 it.each(factions)("%s plays the same two-Far capture route through actual battles at every difficulty", faction => {
   const results: Array<{ difficulty: string; round: number; actions: number; captures: number }> = [];
   for (const difficulty of difficulties) {

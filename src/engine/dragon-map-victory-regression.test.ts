@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createAdventureLobbyState, createAdventureGameState } from "./index";
 import { beginFieldVisit, checkDragonConquerorHold, drawGuardArmy, getMainHero, materializeTileFields } from "./adventure";
 import { finalizeAdventureCombat, startNeutralEncounter, pumpAdventureQueues } from "./adventure-reducer";
@@ -66,7 +67,17 @@ describe("Dragon victories on designed VI–VII maps", () => {
             const units = Object.values(state.combat!.units).filter(u => u.controllerId === NEUTRAL_PLAYER_ID);
             expect(units.length).toBeGreaterThan(0);
             for (const unit of units) {
-              expect(unit.unitRank ?? 0).toBe(round === 14 ? 3 : enabled && mode === "dragon-hunt" ? 1 : 0);
+              // Neutral Rank-Up field-guard thresholds: gold 6/10/14 (Elite by
+              // round 14), azure 8/12/16 (only Veteran there). The Hunt floor
+              // never pushes a guard DOWN from its rounds rank.
+              const tier = coreUnitDefinitions[unit.unitDefId!]?.tier;
+              expect(unit.unitRank ?? 0).toBe(round === 14
+                ? (tier === "azure" ? 2 : 3)
+                : enabled && mode === "dragon-hunt" ? 1 : 0);
+            }
+            if (round === 14 && guards !== "four") {
+              // The Elite (3) branch is genuinely exercised: these mixes field gold guards.
+              expect(units.some(u => coreUnitDefinitions[u.unitDefId!]?.tier === "gold" && (u.unitRank ?? 0) === 3)).toBe(true);
             }
           }
         }
@@ -89,6 +100,45 @@ describe("Dragon victories on designed VI–VII maps", () => {
       customMap: [...starts, centers[0]], customMapPreset: preset });
     expect(state.adventure!.victoryMode).toBe("dragon-hunt");
     expect(state.adventure!.dragonUtopiaGuards).toBe("two-azure-two-gold");
+  });
+
+  it("the chosen Utopia guards survive the auto-activated hidden Grail/Utopia field rules on Impossible", () => {
+    // Reported bug: in Dragon Hunt / Dragon Conqueror a designer map that places
+    // a Utopia auto-activates the hidden Grail/Utopia field rules, which stamped
+    // the fixed grail-field party (1 Black Dragon + 2 Azure = 3 units) and
+    // silently overrode EVERY `dragonUtopiaGuards` choice — by-difficulty drew 2
+    // azure + 1 gold on Impossible (should be 2 gold + 2 azure) and even "four"
+    // fielded only those 3 units instead of the four dragons.
+    const expected = {
+      "by-difficulty": ["azure", "azure", "gold", "gold"],
+      "two-azure-two-gold": ["azure", "azure", "gold", "gold"],
+      four: [
+        "neutral.azure_dragons", "neutral.crystal_dragons",
+        "neutral.faerie_dragons", "neutral.rust_dragons",
+      ],
+    } as const;
+    for (const mode of ["dragon-hunt", "dragon-conqueror"] as const) {
+      for (const guards of ["by-difficulty", "two-azure-two-gold", "four"] as const) {
+        const state = createAdventureGameState({
+          seed: `dragon-impossible-${mode}-${guards}`,
+          rollFirstPlayer: false,
+          difficulty: "impossible",
+          victoryMode: mode,
+          dragonUtopiaGuards: guards,
+          customMap: [...starts, centers[0]],
+          customMapPreset: { objectives: { hiddenGrailUtopia: true } },
+        });
+        for (const tile of Object.values(state.adventure!.tiles)) {
+          if (tile.faceDown) { tile.faceDown = false; materializeTileFields(state.adventure!, tile); }
+        }
+        const field = Object.values(state.adventure!.fields).find(f => f.location === "dragon_utopia")!;
+        expect(field.difficulty).toBe(7);
+        const draws = drawGuardArmy(state, field, 7);
+        expect(draws).toHaveLength(4);
+        expect((guards === "four" ? draws.map(d => d.unitDefId) : draws.map(d => d.tier)).sort())
+          .toEqual(expected[guards]);
+      }
+    }
   });
 
   for (const mode of ["dragon-hunt", "dragon-conqueror"] as const) {
@@ -129,6 +179,17 @@ describe("Dragon victories on designed VI–VII maps", () => {
             expect(state.adventure!.winnerPlayerId).toBeNull();
             expect(field.flagOwnerId).toBe("p1");
             expect(field.blackCube).toBe(false);
+            // Hold timing: the capture round is marked, and the holder only wins
+            // once the round FOLLOWING capture has ended (the round counter has
+            // passed captureRound + 1 — see checkDragonConquerorHold).
+            const captureRound = field.dragonConquerorHold!.captureRound;
+            expect(captureRound).toBe(state.round);
+            checkDragonConquerorHold(state, "p1");
+            expect(state.adventure!.winnerPlayerId).toBeNull();
+            state.round = captureRound + 1; // the following round begins: still not held through it
+            checkDragonConquerorHold(state, "p1");
+            expect(state.adventure!.winnerPlayerId).toBeNull();
+            state.round = captureRound + 2; // that round ended with the flag intact
             // A rival's turn cannot award the holder a premature victory.
             checkDragonConquerorHold(state, "p2");
             expect(state.adventure!.winnerPlayerId).toBeNull();
@@ -185,9 +246,22 @@ describe("Dragon victories on designed VI–VII maps", () => {
     for (const player of Object.values(state.players)) {
       player.canMulligan = false; player.needsHandRefresh = false;
     }
+    const captureRound = field.dragonConquerorHold!.captureRound;
+    expect(captureRound).toBe(state.round);
     state = ok(state, { type: "END_TURN", playerId: "p1" });
     expect(state.adventure!.winnerPlayerId).toBeNull();
     state = ok(state, { type: "END_TURN", playerId: "p2" });
+    // The round following capture has only just begun — no win yet.
+    expect(state.round).toBe(captureRound + 1);
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false; player.needsHandRefresh = false;
+    }
+    state = ok(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+    state = ok(state, { type: "END_TURN", playerId: "p2" });
+    // Held through the end of that round: the hold check fires on the new round.
+    expect(state.round).toBe(captureRound + 2);
     expect(state.adventure!.winnerPlayerId).toBe("p1");
     expect(state.phase).toBe("game-over");
   });

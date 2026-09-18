@@ -5029,8 +5029,10 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
     case "TRADING_POST": {
       // Trades happen through TRADE_RESOURCES, war machines through
       // BUY_WAR_MACHINE. Picking a hand card here resolves the third printed
-      // option — remove one card from the game to gain 1 gold — and ends the
-      // visit. The three options exclude each other within one visit.
+      // option — remove one card from the game to gain 1 gold. USER RULING
+      // (2026-09-17): a sale does NOT end the visit — the market stays open so
+      // more cards can be sold (or a machine bought) until "Done trading".
+      // A resource trade still locks the visit to trading (`traded`).
       if (!action.decline && action.optionIndex !== undefined) {
         if (step.tradesOnly) {
           throw new Error("The Marketplace trades resources only — cards cannot be sold here.");
@@ -5049,6 +5051,8 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
         player.hand.splice(chosen.index, 1);
         player.removed.push(chosen.cardId);
         gainResources(state, action.playerId, { gold: 1 }, "sold a card at the Trading Post");
+        step.sold = (step.sold ?? 0) + 1;
+        break;
       }
       visit.steps.shift();
       break;
@@ -5826,7 +5830,7 @@ export const SCROLL_SPELL_SELL_GOLD = 2;
 /**
  * Sell one Spell Scroll spell at an open Trading Post for 2 gold. The spell
  * leaves the scroll (and the game); an emptied scroll is removed. Like card
- * selling, this is the visit's one non-trade action.
+ * selling, it keeps the visit open (repeatable until "Done trading").
  */
 export function sellScrollSpell(state: GameState, action: Extract<GameAction, { type: "SELL_SCROLL_SPELL" }>): void {
   const adventure = requireAdventure(state);

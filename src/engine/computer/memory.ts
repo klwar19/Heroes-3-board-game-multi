@@ -2,6 +2,7 @@ import type { GameAction, GameState, MapSpaceId, PlayerId } from "../state";
 import { updateDevelopmentPlan, type DevelopmentPlan } from "./development-plan";
 import { bronzeArmyNeedsWithdrawal, openingGuardCommitment } from "./necropolis-combat";
 import { playerArmyStrength } from "./army-strength";
+import { baseCardId } from "../phantom-cards";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
 /**
@@ -290,7 +291,7 @@ export function noteComputerAction(
         // main hero, so a secondary's defeat must not skew the release rule.
         heroLevel: Object.values(state.heroes).find(hero =>
           hero.controllerId === playerId && hero.kind === "main")?.level ?? 0,
-        hadArrow: state.players[playerId]?.hand.includes("spell.magic_arrow") ||
+        hadArrow: state.players[playerId]?.hand.some((id) => baseCardId(id) === "spell.magic_arrow") ||
           state.players[playerId]?.spellBook?.includes("spell.magic_arrow") }].slice(-8);
   }
 
@@ -409,7 +410,7 @@ export function repeatsFailedFight(state: GameState, playerId: PlayerId, fieldId
     if (failed?.armyStrength !== undefined && state.round - failed.round <= 3) {
       const level = Object.values(state.heroes).find(h=>h.controllerId===playerId && h.kind==="main")?.level ?? 0;
       const addedArrow = !failed.hadArrow &&
-        (state.players[playerId].hand.includes("spell.magic_arrow") ||
+        (state.players[playerId].hand.some((id) => baseCardId(id) === "spell.magic_arrow") ||
           state.players[playerId].spellBook?.includes("spell.magic_arrow"));
       const field = state.adventure?.fields[fieldId];
       const premiumEconomy = Boolean(field && (field.location === "settlement" ||

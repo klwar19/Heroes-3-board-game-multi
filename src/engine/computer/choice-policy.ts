@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { coreFactionDefinitions } from "@/data/factions/core";
 import { commanderValuesMagicGrade } from "@/data/commanders";
 import { farTileChoiceValue } from "./far-tile-policy";
 import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
@@ -13,7 +14,7 @@ import {
   resourceUrgency,
   valuablesStarved,
 } from "./development";
-import { adventureVictoryMode, neutralRecruitCost } from "../adventure";
+import { adventureVictoryMode, isFieldGuarded, neutralRecruitCost } from "../adventure";
 import { isCastASpellCard } from "../polish-spell-book";
 import { neutralRecruitUtility, neutralTierMeanStrength, neutralUnitStrength } from "./recruit-value";
 import { inlineLegionSavings, upcomingFight } from "./card-planning";
@@ -25,6 +26,7 @@ import {
 import {
   collectMapObjectives,
   canBeatGuardedField,
+  distanceFromHeroTo,
   fieldSuppliesResource,
   objectiveDistanceField,
   primaryMapObjective,
@@ -89,6 +91,37 @@ function acquisitionValue(cardId: string, observation: ComputerObservation): num
   const effects = card.effect.type === "CHOOSE_ONE"
     ? card.effect.options.map((option) => option.effect)
     : [card.effect];
+  // Undead read (user 2026-09-18, live tutoring): a morale ability (Leadership)
+  // is dead weight for a faction that IGNORES morale entirely — the engine's
+  // changeMorale short-circuits on faction.ignoresMorale (Necropolis), so the
+  // whole player never moves the token no matter the army. Don't grab/keep a
+  // morale card over a genuinely useful one (Scouting) for such a seat. Only
+  // penalise a PURELY-morale ability; a CHOOSE_ONE with a non-morale side keeps
+  // its value through that side. The expert draw-2 rider is a wash here (it needs
+  // the basic morale gain to have fired), so it does not rescue the pick.
+  const factionId = observation.state.players[observation.playerId]?.factionId;
+  const ignoresMorale = Boolean(factionId && coreFactionDefinitions[factionId]?.ignoresMorale);
+  if (ignoresMorale && effects.length > 0 && effects.every((effect) => effect.type === "GAIN_MORALE")) {
+    return Math.min(base, 8);
+  }
+  // Resource-income artifact read (user 2026-09-18, live tutoring): a MATERIAL or
+  // valuables income permanent (Inexhaustible Cart of Ore = +1 building materials
+  // each Resources round) is only worth grabbing while you still NEED that resource
+  // to build — when it is already plentiful (e.g. you can buy the silver dwelling
+  // easily), the recurring income is dead value and a combat artifact is the better
+  // keep. GOLD is EXEMPT: gold is always useful, so a gold-income permanent keeps its
+  // full value. Recurring income can fill up to ~3 rounds of the current shortfall.
+  const income = card.permanentEffect?.resourceRoundGain;
+  if (income && income.resource !== "gold") {
+    const gain: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
+    gain[income.resource] = income.amount * 3;
+    const need = developmentGainValue(observation, gain);
+    // Credit a one-shot "crack for resources" side too (Cart of Ore: remove for +3).
+    const crack = Math.max(0, ...effects.map((effect) =>
+      effect.type === "GAIN_RESOURCES" && !("goldCost" in effect && effect.goldCost)
+        ? developmentGainValue(observation, effect.gain ?? {}) : 0));
+    return need > 0 ? base + need + 8 : Math.min(base, 40 + crack);
+  }
   const bonus = Math.max(0, ...effects.map((effect) =>
     effect.type === "GAIN_RESOURCES" && !("goldCost" in effect && effect.goldCost)
       ? developmentGainValue(observation, effect.gain ?? {}) : 0,
@@ -202,6 +235,46 @@ function scoreCityHallOption(
  * Deck search keep: highest cardKeepValue wins. Tarnum remove is only preferred
  * when the card is weak (not usually).
  */
+/**
+ * True when no combat can happen for this seat THIS turn — no active fight, and
+ * no guarded field or enemy hero the hero could reach and engage with its CURRENT
+ * movement. Crowns (expert uses) are a per-round budget that refreshes next turn,
+ * so a crown held past a turn where nothing can spend it is simply lost. This uses
+ * current movement (not the 2-turn preparation horizon of `upcomingFight`): a fight
+ * next turn arrives with its OWN fresh crown, so it is no reason to hoard this one.
+ * (User 2026-09-18, live tutoring: "look at the hand and the board — statistic cards
+ * only pay off in a battle; if no battle can happen this turn even with a move left,
+ * don't save the crown, spend it on the search.")
+ */
+function noCombatReachableThisTurn(observation: ComputerObservation): boolean {
+  const state = observation.state as unknown as GameState;
+  if (state.combat && !state.combat.outcome) return false;
+  if (!state.adventure) return true;
+  const ownHeroes = Object.values(state.heroes ?? {}).filter(
+    (hero) => hero.controllerId === observation.playerId && hero.spaceId);
+  for (const hero of ownHeroes) {
+    const mp = hero.movementPoints ?? 0;
+    if (mp <= 0) continue; // cannot move to any fight this turn
+    // A guarded neutral field the hero can reach and beat this turn.
+    for (const field of Object.values(state.adventure.fields)) {
+      if (!isFieldGuarded(field) || field.flagOwnerId === observation.playerId) continue;
+      if ((distanceFromHeroTo(state, hero, field.spaceId, true) ?? Infinity) <= mp &&
+          canBeatGuardedField(state, hero, field)) {
+        return false;
+      }
+    }
+    // An enemy hero within reach this turn (PvP contact).
+    for (const other of Object.values(state.heroes ?? {})) {
+      if (!other.spaceId || other.controllerId === observation.playerId ||
+          other.controllerId === "neutrals") continue;
+      if ((distanceFromHeroTo(state, hero, other.spaceId, true) ?? Infinity) <= mp) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function scoreDeckSearchKeep(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>,
@@ -698,7 +771,17 @@ function scorePositionOption(
       return CHOICE_BASE + 30;
     }
     if (choice.scoutingPrompt.offerExpert) {
-      return CHOICE_BASE + 22;
+      // Expert Search(5) spends a crown. Crowns are a per-ROUND budget that refreshes
+      // next turn (expertUsesSpentThisRound resets each round), so a crown left unspent
+      // this turn is simply LOST. When NO combat can happen this turn — no active fight
+      // and none reachable with current movement — the crown has nothing better to buy
+      // (statistic/spell cards only pay off in a battle), so take the wider search for
+      // the better pick rather than hoard a crown that refreshes anyway (user 2026-09-18:
+      // "crown recovers next turn, nothing threatens even with a move left — use expert,
+      // gain the advantage to select"). Otherwise keep it: a fight this turn wants the
+      // crown more, and the basic boost is free.
+      const crownWastedIfHeld = noCombatReachableThisTurn(observation);
+      return CHOICE_BASE + (crownWastedIfHeld ? 35 : 22);
     }
     return CHOICE_BASE + 10;
   }
@@ -830,14 +913,19 @@ function scorePositionOption(
       );
       const candidate = candidates[optionIndex];
       if (candidate) {
-        // Among banks the army can beat, take the larger size for its larger
-        // expected reward. Unbeatable candidates stay below the leave option.
+        // User ruling (2026-09-18): ALWAYS place a Creature Bank. Placing is
+        // pure future-reward optionality and never a real liability — a placed
+        // bank stays a reward to claim once the army grows, whereas leaving the
+        // hex blocked forfeits it forever. So a bank the army can beat NOW ranks
+        // highest (bigger size = more reward, claimable immediately), and a bank
+        // it cannot beat yet still ranks ABOVE the Leave option.
         return beatable[optionIndex]
           ? CHOICE_BASE + 40 + candidate.size
-          : CHOICE_BASE + 5;
+          : CHOICE_BASE + 30;
       }
       if (optionIndex === candidates.length) {
-        return beatable.some(Boolean) ? CHOICE_BASE + 10 : CHOICE_BASE + 48;
+        // Leave-it-blocked is now always the last resort (see ruling above).
+        return CHOICE_BASE + 10;
       }
     }
     // Rule-off / legacy payload: option 0 places the known bank, option 1

@@ -69,6 +69,70 @@ function observation(
   return { playerId, state, legalActions };
 }
 
+describe("choice policy — always place creature banks", () => {
+  function bankChoice(): PendingChoice {
+    return {
+      id: "bank1",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Place the Dragon Fly Hive Creature Bank?",
+      options: [{ label: "Place the Dragon Fly Hive Creature Bank" }, { label: "Leave it blocked" }],
+      context: "place-creature-bank",
+      creatureBank: {
+        fieldId: "tile_x",
+        tier: "near",
+        candidates: [{ bankId: "dragon_fly_hive", size: 1 }],
+        tileInstanceId: "tile_x",
+        preRotation: true,
+      },
+      returnPhase: "map",
+    } as unknown as PendingChoice;
+  }
+  const place: LegalAction = { label: "place", action: { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "bank1", optionIndex: 0 } as GameAction };
+  const leave: LegalAction = { label: "leave", action: { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "bank1", optionIndex: 1 } as GameAction };
+
+  it("places a bank the army CANNOT beat yet (future reward) above leaving it blocked", () => {
+    const obs = observation(bankChoice(), [place, leave]);
+    obs.state.players.p2.army = []; // no army -> dragon_fly_hive is unbeatable now
+    const placeScore = scoreChoiceAction(obs, place.action)!.score;
+    const leaveScore = scoreChoiceAction(obs, leave.action)!.score;
+    expect(placeScore).toBeGreaterThan(leaveScore);
+    expect(chooseComputerAction(obs)?.action).toEqual(place.action);
+  });
+});
+
+describe("choice policy — crown economy (scouting prompt)", () => {
+  function scoutingChoice(): PendingChoice {
+    return {
+      id: "sc", type: "OPTION_CHOICE", playerId: "p2", context: "scouting-prompt",
+      prompt: "Use a Search boost?",
+      options: [{ label: "decline" }, { label: "basic" }, { label: "expert" }],
+      scoutingPrompt: { offerBasic: true, offerExpert: true },
+      returnPhase: "player-turn",
+    } as unknown as PendingChoice;
+  }
+  const opt = (index: number, label: string): LegalAction => ({
+    label,
+    action: { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "sc", optionIndex: index } as GameAction,
+  });
+
+  it("spends a crown (expert search) when no combat can happen this turn, holds it otherwise", () => {
+    // User 2026-09-18 (live tutoring): a crown refreshes next turn, so an unspent
+    // crown at turn's end is lost. With no fight reachable this turn, the crown has
+    // nothing better to buy — take the wider expert search.
+    const basic = opt(1, "basic");
+    const expert = opt(2, "expert");
+    const obs = observation(scoutingChoice(), [opt(0, "decline"), basic, expert]);
+    expect(scoreChoiceAction(obs, expert.action)!.score).toBeGreaterThan(
+      scoreChoiceAction(obs, basic.action)!.score);
+
+    // CONTROL: a fight is happening this turn — keep the crown for it, take free basic.
+    (obs.state as unknown as { combat: unknown }).combat = { outcome: null };
+    expect(scoreChoiceAction(obs, basic.action)!.score).toBeGreaterThan(
+      scoreChoiceAction(obs, expert.action)!.score);
+  });
+});
+
 describe("choice policy — deck search keep", () => {
   it("distinguishes premium cards above the old clipping ceiling", () => {
     const choice: PendingChoice = { id: "premium", type: "DECK_SEARCH", playerId: "p2", deckId: "artifacts-minor", revealedCardIds: ["artifact.torso_of_legion", "artifact.mystic_orb_of_mana"], returnPhase: "map" };
@@ -93,6 +157,65 @@ describe("choice policy — deck search keep", () => {
     expect(shortage).toBeGreaterThan(scoreChoiceAction(obs, offer.action)!.score);
     expect(chooseComputerAction(obs)?.action).toEqual(alternative.action);
   });
+  it("devalues a morale ability for an undead (morale-ignoring) faction, keeps it otherwise", () => {
+    // User 2026-09-18 (live tutoring): Necropolis is all-undead and IGNORES morale
+    // (the engine's changeMorale short-circuits on faction.ignoresMorale), so a
+    // Leadership (GAIN_MORALE) pick is dead weight — take the useful Scouting.
+    const choice: PendingChoice = {
+      id: "morale", type: "DECK_SEARCH", playerId: "p2", deckId: "abilities",
+      revealedCardIds: ["ability.scouting", "ability.leadership"], returnPhase: "player-turn",
+    };
+    const scouting: LegalAction = {
+      label: "Scouting",
+      action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: "morale", pick: { kind: "revealed", index: 0 } } as GameAction,
+    };
+    const leadership: LegalAction = {
+      label: "Leadership",
+      action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: "morale", pick: { kind: "revealed", index: 1 } } as GameAction,
+    };
+    const obs = observation(choice, [scouting, leadership]);
+
+    obs.state.players.p2.factionId = "necropolis";
+    expect(scoreChoiceAction(obs, scouting.action)!.score).toBeGreaterThan(
+      scoreChoiceAction(obs, leadership.action)!.score);
+    expect(chooseComputerAction(obs)?.action).toEqual(scouting.action);
+
+    // CONTROL: a faction that USES morale keeps Leadership's edge and picks it.
+    obs.state.players.p2.factionId = "castle";
+    expect(scoreChoiceAction(obs, leadership.action)!.score).toBeGreaterThan(
+      scoreChoiceAction(obs, scouting.action)!.score);
+    expect(chooseComputerAction(obs)?.action).toEqual(leadership.action);
+  });
+
+  it("values a materials-income artifact by need — high when short, low when plentiful", () => {
+    // User 2026-09-18 (live tutoring): a materials income permanent (Cart of Ore, +1
+    // building materials each Resources round) is worth grabbing while you still need
+    // mats to build, but is dead value once mats are plentiful — then a combat artifact
+    // (Quiet Eye, +attack all combat) is the better keep. (Gold is exempt: always useful.)
+    const choice: PendingChoice = {
+      id: "art", type: "DECK_SEARCH", playerId: "p2", deckId: "artifacts-minor",
+      revealedCardIds: ["artifact.inexhaustible_cart_of_ore", "artifact.quiet_eye_of_the_dragon"],
+      returnPhase: "map",
+    };
+    const cart: LegalAction = {
+      label: "cart",
+      action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: "art", pick: { kind: "revealed", index: 0 } } as GameAction,
+    };
+    const quietEye: LegalAction = {
+      label: "quiet",
+      action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: "art", pick: { kind: "revealed", index: 1 } } as GameAction,
+    };
+    const obs = observation(choice, [cart, quietEye]);
+
+    obs.state.players.p2.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    expect(scoreChoiceAction(obs, cart.action)!.score).toBeGreaterThan(
+      scoreChoiceAction(obs, quietEye.action)!.score);
+
+    obs.state.players.p2.resources = { gold: 0, buildingMaterials: 30, valuables: 30 };
+    expect(scoreChoiceAction(obs, quietEye.action)!.score).toBeGreaterThan(
+      scoreChoiceAction(obs, cart.action)!.score);
+  });
+
   it("keeps the highest-value revealed card", () => {
     const choice: PendingChoice = {
       id: "ds1",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { GameState, HeroState, MapFieldState } from "./state";
+import type { GameAction, GameState, HeroState, MapFieldState } from "./state";
 import { getMainHero } from "./adventure";
-import { openMarket } from "./adventure-reducer";
+import { openMarket, resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState, getLegalActions } from "./index";
 
 function makeGame(): GameState {
@@ -107,5 +107,46 @@ describe("Market access (Trading Post / War Machine Factory)", () => {
     openMarket(state, { type: "OPEN_MARKET", playerId: "p1", heroId: hero.id });
     expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("WAR_MACHINE_SHOP");
     expect(state.heroes[hero.id].movementPoints).toBe(0);
+  });
+});
+
+describe("Trading Post card sales (USER RULING 2026-09-17: a sale never closes the market)", () => {
+  it("keeps the visit open after selling a card, allows a second sale, and only Done closes it", () => {
+    const state = makeGame();
+    injectField(state, "trading_post");
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "50,50";
+    state.players.p1.hand.push("spell.bless", "spell.blind");
+    openMarket(state, { type: "OPEN_MARKET", playerId: "p1", heroId: hero.id });
+    const sellOf = (cardId: string) => {
+      const index = state.players.p1.hand.indexOf(cardId);
+      const legal = getLegalActions(state, "p1").find(
+        (candidate) =>
+          candidate.action.type === "RESOLVE_VISIT_STEP" &&
+          candidate.label.startsWith("Sell ") &&
+          candidate.action.optionIndex === index,
+      );
+      expect(legal, `a sell action for ${cardId}`).toBeDefined();
+      return legal!.action as Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>;
+    };
+    const goldBefore = state.players.p1.resources.gold;
+
+    resolveVisitStep(state, sellOf("spell.bless"));
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 1);
+    expect(state.players.p1.hand).not.toContain("spell.bless");
+    expect(state.players.p1.removed).toContain("spell.bless");
+    // Still the same open Trading Post visit — not closed by the sale.
+    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("TRADING_POST");
+    expect(state.adventure!.pendingVisit?.steps[0]).toMatchObject({ sold: 1 });
+
+    // A second card sells on the same visit.
+    resolveVisitStep(state, sellOf("spell.blind"));
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 2);
+    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("TRADING_POST");
+    expect(state.adventure!.pendingVisit?.steps[0]).toMatchObject({ sold: 2 });
+
+    // CONTROL: "Done trading" is what ends the visit.
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", decline: true });
+    expect(state.adventure!.pendingVisit).toBeFalsy();
   });
 });

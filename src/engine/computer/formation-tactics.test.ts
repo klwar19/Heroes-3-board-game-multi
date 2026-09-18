@@ -143,15 +143,35 @@ describe("Castle opening formation (user ruling)", () => {
       defenderPlayerId: "p1",
       units: {},
     }) as unknown as CombatState;
+  const emptyPvpCombat = () =>
+    ({
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      context: { kind: "player" },
+      units: {},
+    }) as unknown as CombatState;
 
   it("puts Castle Griffins on the front line, not the screened back row", () => {
-    const combat = emptyCombat();
-    const griffinFront = formationFitScore(combat, "p2", "flying", 13, undefined, 0, 0, false, "castle.griffins");
-    const griffinBack = formationFitScore(combat, "p2", "flying", 17, undefined, 0, 0, false, "castle.griffins");
-    expect(griffinFront).toBeGreaterThan(griffinBack);
-    // CONTROL: a generic flyer still keeps its back-row reserve (untouched).
-    expect(formationFitScore(combat, "p2", "flying", 17)).toBeGreaterThan(
-      formationFitScore(combat, "p2", "flying", 13),
+    // Holds in BOTH contexts — the Griffin ruling makes it a front-line body,
+    // it is not riding the neutral-fight flyer nudge.
+    for (const combat of [emptyCombat(), emptyPvpCombat()]) {
+      const griffinFront = formationFitScore(combat, "p2", "flying", 13, undefined, 0, 0, false, "castle.griffins");
+      const griffinBack = formationFitScore(combat, "p2", "flying", 17, undefined, 0, 0, false, "castle.griffins");
+      expect(griffinFront).toBeGreaterThan(griffinBack);
+    }
+    // CONTROL: a generic PvP flyer still keeps its back-row reserve (untouched
+    // by the Griffin ruling).
+    const pvp = emptyPvpCombat();
+    expect(formationFitScore(pvp, "p2", "flying", 17)).toBeGreaterThan(
+      formationFitScore(pvp, "p2", "flying", 13),
+    );
+    // In a NEUTRAL fight the generic flyer deploys FORWARD instead (user ruling
+    // 2026-09-18: the flyer must reach the guard party's shooters) — so the
+    // Griffin ruling is checked against the PvP control above, which still
+    // discriminates.
+    const neutral = emptyCombat();
+    expect(formationFitScore(neutral, "p2", "flying", 13)).toBeGreaterThan(
+      formationFitScore(neutral, "p2", "flying", 17),
     );
   });
 
@@ -173,6 +193,51 @@ describe("Castle opening formation (user ruling)", () => {
     const above = formationFitScore(combat, "p2", "melee", 12, undefined, 6, 0, false, "castle.halberdiers");
     const below = formationFitScore(combat, "p2", "melee", 14, undefined, 6, 0, false, "castle.halberdiers");
     expect(above).toBeGreaterThan(below);
+  });
+});
+
+describe("neutral focus-tank (user ruling 2026-09-18)", () => {
+  // A neutral guard party of the same tier focus-fires the player's BEST body,
+  // so a Silver ground unit is the designated TANK: it anchors the FRONT CORNER
+  // cell (the screen square ahead of the back-row shooter) and soaks the focus,
+  // rather than drifting to the central column.
+  const neutralCombat = () =>
+    ({
+      attackerPlayerId: "p2",
+      defenderPlayerId: "neutrals",
+      context: { kind: "neutral", difficulty: 3 },
+      units: {},
+    }) as unknown as CombatState;
+  const pvpCombat = () =>
+    ({
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      context: { kind: "player" },
+      units: {},
+    }) as unknown as CombatState;
+  // crusaders: bulk = hp4 + def2 = 6; 12 = A4 (front corner), 14 = C4 (front central).
+  const corner = 12;
+  const central = 14;
+
+  it("stands a Silver body in the front CORNER, not the central column", () => {
+    const combat = neutralCombat();
+    const atCorner = formationFitScore(combat, "p2", "melee", corner, undefined, 6, 0, false, "castle.crusaders");
+    const atCentral = formationFitScore(combat, "p2", "melee", central, undefined, 6, 0, false, "castle.crusaders");
+    expect(atCorner).toBeGreaterThan(atCentral);
+  });
+
+  it("CONTROL: a Bronze body keeps the generic central-column preference", () => {
+    const combat = neutralCombat();
+    const atCorner = formationFitScore(combat, "p2", "melee", corner, undefined, 3, 0, false, "castle.halberdiers");
+    const atCentral = formationFitScore(combat, "p2", "melee", central, undefined, 3, 0, false, "castle.halberdiers");
+    expect(atCentral).toBeGreaterThan(atCorner);
+  });
+
+  it("CONTROL: in a PvP fight the Silver body does not chase the focus corner", () => {
+    const combat = pvpCombat();
+    const atCorner = formationFitScore(combat, "p2", "melee", corner, undefined, 6, 0, false, "castle.crusaders");
+    const atCentral = formationFitScore(combat, "p2", "melee", central, undefined, 6, 0, false, "castle.crusaders");
+    expect(atCentral).toBeGreaterThan(atCorner);
   });
 });
 

@@ -1404,7 +1404,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   revive AI, the PvP tier-down poke + heal-race combat reads, neutral-buy
 //   golden rules, one-war-machine seats, Knowledge-first empower and the
 //   round-trip/last-MP routing guards.
-export const ENGINE_PROTOCOL_VERSION = 154;
+// v155 (2026-09-19): Three shared-shape changes clients and the PartyKit
+//   worker must agree on. (1) AFK awaited-idle clock: `AfkState` gains
+//   optional `awaitedIdleMs`/`awaitedIdleSince` books — the 30-minute certain
+//   auto-kick now counts only wall-clock time a seat is idle WHILE AWAITED
+//   (its turn, its battle, its open choice), so waiting out another player's
+//   long turn never makes a waiting seat auto-kickable; legacy snapshots read
+//   as 0. (2) Phantom card identity: the commander-fetched phantom Power/
+//   Magic Arrow copies now carry a distinct `#phantom` cardLibrary alias id
+//   (behaves as the base card) so they are guaranteed to evaporate after
+//   combat and can never corrupt the real cards. (3) TRADING_POST: a hand-
+//   card sale no longer closes the visit (repeatable, tracked in the new
+//   `sold` counter on the VisitStep); a war-machine purchase still closes it.
+//   Server-side in the same release: the AI improvement pass across the
+//   computer policies (PvP tier-down poke + heal-race combat reads, routing
+//   and economy refinements, march-scoop pickups, market sell usage).
+export const ENGINE_PROTOCOL_VERSION = 155;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

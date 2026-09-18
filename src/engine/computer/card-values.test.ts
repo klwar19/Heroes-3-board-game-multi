@@ -193,12 +193,25 @@ describe("card-values — tier ordering in cardKeepValue", () => {
   });
 
   it("CONTROL: an unmapped same-class pair stays exactly tied (old heuristic)", () => {
-    // Neither minor artifact appears on the list — kind/class fallback only.
+    // Neither minor artifact appears on the list — kind/class fallback only. Both
+    // are genuinely PLAIN (no persistent combat-stat buff): Quiet Eye is no longer a
+    // valid example here since it now carries the +attack-all-combat premium.
     expect(cardTier("artifact.skull_helmet")).toBeUndefined();
-    expect(cardTier("artifact.quiet_eye_of_the_dragon")).toBeUndefined();
+    expect(cardTier("artifact.necklace_of_swiftness")).toBeUndefined();
     expect(cardKeepValue("artifact.skull_helmet")).toBe(
-      cardKeepValue("artifact.quiet_eye_of_the_dragon"),
+      cardKeepValue("artifact.necklace_of_swiftness"),
     );
+  });
+
+  it("values a combat-long stat buff (Quiet Eye) above a plain artifact and one-shot tricks", () => {
+    // User 2026-09-18 (live tutoring): +attack for the WHOLE combat (Quiet Eye of the
+    // Dragon) hits every attack all fight — worth more than a plain minor artifact or a
+    // single-die trick (Centaur's Axe triples ONE die). An initiative buff (Ring of the
+    // Wayfarer) is a smaller tempo gain, so it ranks below the attack buff.
+    const quietEye = cardKeepValue("artifact.quiet_eye_of_the_dragon");
+    expect(quietEye).toBeGreaterThan(cardKeepValue("artifact.skull_helmet"));
+    expect(quietEye).toBeGreaterThan(cardKeepValue("artifact.centaurs_axe"));
+    expect(quietEye).toBeGreaterThan(cardKeepValue("artifact.ring_of_the_wayfarer"));
   });
 });
 
@@ -753,7 +766,7 @@ describe("card-values — cost payment prefers D-tier fuel", () => {
     );
     const b = scoreCardAction(
       obs,
-      playWithCost(["artifact.quiet_eye_of_the_dragon"]),
+      playWithCost(["artifact.necklace_of_swiftness"]),
     );
     expect(a?.score).toBe(b?.score);
   });

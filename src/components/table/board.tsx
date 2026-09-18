@@ -10,6 +10,7 @@ import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
 import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
 import { cardLibrary } from "@/data/cards/library";
+import { isPhantomCardId } from "@/engine/phantom-cards";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { factionGradeRegister, HERO_GRADE_REGISTERS } from "@/data/anime/hero-grades";
 import { getFxSheet } from "@/data/fx";
@@ -2793,8 +2794,10 @@ function commandLabel(legal: LegalAction): string {
 // Combat test mode: every implemented hand-playable card, for the "Add card"
 // picker. Mirrors SANDBOX_ADDABLE_KINDS in the reducer.
 const SANDBOX_PICKER_KINDS = new Set(["spell", "ability", "artifact", "statistic", "hero-specialty", "war-machine"]);
-const SANDBOX_PICKER_CARDS = Object.values(cardLibrary)
-  .filter((card) => card.implementationStatus === "implemented" && SANDBOX_PICKER_KINDS.has(card.kind))
+const SANDBOX_PICKER_CARDS = Object.entries(cardLibrary)
+  // Skip phantom combat-card aliases (combat-only disposables; see phantom-cards).
+  .filter(([id, card]) => !isPhantomCardId(id) && card.implementationStatus === "implemented" && SANDBOX_PICKER_KINDS.has(card.kind))
+  .map(([, card]) => card)
   .sort((left, right) => left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name));
 
 /**

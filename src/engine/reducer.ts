@@ -12,6 +12,7 @@ import { neutralVeterancy, neutralActivation, neutralAfterAttack, neutralAttackB
 import { resolveManaTurbulence, neutralTownDelayedDamageAtActivation, neutralTownRunicBacklash, neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { neutralTownVeterancy, neutralTownAttackBonus, neutralTownDefenseBonus, neutralTownAttackDamagePreview, neutralTownCommitAttackReduction, neutralTownMovement, neutralTownActivation, neutralTownAfterAttack, neutralTownFailedParalysis, neutralTownFinishActivation } from "./neutral-town-veterancy";
 import { getTargetsForCard } from "./legal-actions";
+import { baseCardId } from "./phantom-cards";
 import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
@@ -480,6 +481,7 @@ import {
 } from "./active-effects";
 import {
   applyAfkBookkeeping,
+  applyAfkIdleClockBookkeeping,
   applyTurnClockBookkeeping,
   castAfkVote,
   forceAfkKick,
@@ -24280,7 +24282,7 @@ function applySchoolPermanentExpert(
       action.playerId,
     );
     if (
-      currentCast.action.cardId === "spell.magic_arrow" &&
+      baseCardId(currentCast.action.cardId) === "spell.magic_arrow" &&
       school.school !== "any"
     ) {
       currentCast.modifiers.selectedSpellSchool = school.school;
@@ -37099,6 +37101,7 @@ function applyActionInContext(
     // choices. Its handler already validates the buyer, price and round limit.
     if (action.type === "BUY_WANDERING_MERCHANT") {
       applyAfkBookkeeping(nextState, action, options.now);
+      applyAfkIdleClockBookkeeping(nextState, options.now);
       applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);
       return ok(nextState, startEventNumber);
     }
@@ -37266,6 +37269,10 @@ function applyActionInContext(
     // last-action clock from the server wall time and cancel an open kick vote
     // the moment its target acts (see src/engine/afk.ts).
     applyAfkBookkeeping(nextState, action, options.now);
+    // Awaited-idle clock (30-minute certain auto-kick): advance each seat's
+    // awaited-idle only while the table is waiting on it (see src/engine/afk.ts),
+    // so waiting out other seats' turns/battles never makes a seat auto-kickable.
+    applyAfkIdleClockBookkeeping(nextState, options.now);
     // Per-turn clock (10-minute budget): stamp/re-stamp/drop each seat's
     // turn-open clock from the post-action turn state (see src/engine/afk.ts).
     applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);

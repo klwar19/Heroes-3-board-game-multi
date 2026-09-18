@@ -1,5 +1,6 @@
 import { bronzeArmyNeedsWithdrawal, openingGuardCommitment } from "./necropolis-combat";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { cardLibrary } from "@/data/cards/library";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
 import { adventurePvpTroopLoss, getUnitSide } from "../adventure";
@@ -107,6 +108,19 @@ const SUICIDAL_ATTACK_SCORE = 545;
 // save (550) so a threatened key unit turtles instead, while plain-defend
 // chaff (≤530) still takes the trade.
 const BAD_TRADE_ATTACK_SCORE = 548;
+// User lesson #7/#10 (2026-09-18, live tutoring): do NOT throw a fragile unit
+// into a non-certain attack that a lethal retaliation punishes WHEN a strictly
+// better line exists — a durable friendly body that will absorb this same
+// enemy's attack and KILL it on the retaliation (the "bait the guard onto the
+// Wraith, protect it, kill on the boosted counter" line). Then the fragile unit
+// holds (Defend) and lets the enemy come to the body we can punish it with.
+// This is NOT rigid passivity: it fires ONLY when such a bait body exists — with
+// no better line the unit still trades or gambles (flexible, RNG-aware, per the
+// certain-kill doctrine, since not every game rolls the same). Sits BELOW plain
+// Defend (500) so the fragile unit turtles instead of gambling, while still
+// beating END_ACTIVATION (400) as a last resort. Neutral fights only (PvP tier
+// logic owns its own trades).
+const NONCERTAIN_LETHAL_RETALIATION_SCORE = 470;
 // Ranked replay room-room-nciy4l (Absolution vs VuHy, 2026-08-29) exposed a
 // terminal version of the same mistake: a 4-Health Shaman chipped a Haspid for
 // 1, invited a 4-damage retaliation, and died, immediately losing the PvP
@@ -217,6 +231,37 @@ const SOAK_FOLLOW_UP_MIN_RETALIATION = 2;
 // preferred (and the mild penalty for stepping away from it).
 const FOCUS_MARCH_BONUS = 14;
 const FOCUS_MARCH_AWAY_PENALTY = 6;
+// User lesson (2026-09-17, live tutoring): a FLYER cannot be screened away from
+// a shooter, and you cannot defend against ranged — so a flyer landing that lets
+// it reach and strike an enemy SHOOTER endangering our own ranged unit is worth
+// more than generic close-distance positioning OR setting up a same-round kill on
+// a lesser non-shooter body. The shooter's own retaliation-priced attackScore is
+// the base; this lifts a real shooter hit one clear tier above such a kill so the
+// flyer converges to neutralize the shooter. A probable-but-not-die-guaranteed
+// shooter kill (scored a non-lethal chip by attackScore, because the removal
+// needs a good roll) is exactly the case this rescues. Tightly gated: only a
+// flyer, only when we actually have a friendly ranged unit to protect, only a
+// landing whose shooter strike is a genuine hit, and never when the shooter is
+// already reachable from the current cell (that is a direct ATTACK_UNIT).
+const FLYER_SHOOTER_HUNT_BONUS = 96;
+// Neutral-fight priority floor for a flyer that reaches+strikes an enemy shooter.
+// User ruling (2026-09-18, live tutoring): in a neutral fight the flyer's job is
+// to fly out and KILL the enemy ranged unit (it shoots every round and cannot be
+// defended against; only the flyer reaches the backline turn 1). That must beat
+// an easy chaff kill — the shooter chip is FINISHED this turn with a boost card
+// / another unit, while the chaff is handled by melee (and baited onto a
+// retaliation later). This floor sits just above the physical-kill band (chaff
+// lethals cap near ATTACK_CEIL 880) but below the mandatory stage tier (≥900).
+const NEUTRAL_FLYER_SHOOTER_FLOOR = 890;
+// Flyer JAMS the shooter while striking a bigger body (user ruling refinement
+// 2026-09-18, live tutoring): a ranged unit with an adjacent enemy CANNOT shoot —
+// it may only strike that adjacent unit (legal-actions ranged gate). So a flyer
+// does NOT have to spend its strike KILLING the shooter; landing adjacent already
+// neutralises it for free. When the SAME landing lets the flyer strike a different
+// (more dangerous) enemy body AND sit adjacent to the shooter, that double duty —
+// jam + remove another threat — beats simply killing the shooter. Sits one nudge
+// above the plain shooter floor, still below the ≥900 mandatory stage tier.
+const NEUTRAL_FLYER_JAM_BIGGER_FLOOR = 896;
 // Polish Wait. The old scoring gave a healthy unit 560..580 — ABOVE the attack
 // FLOOR (560) and above every closing march (≤ ~554) — so the computer waited
 // with almost every unit almost every round instead of striking or advancing.
@@ -499,6 +544,60 @@ function retaliationSoakFollowUp(
   });
 }
 
+// A shooter whose THREAT survives being jammed: it carries an ability that fires
+// on ITS OWN attack and harms us regardless of range, so pinning it in melee does
+// NOT neutralise it — it still swings (in melee) and triggers the effect. Such a
+// shooter must be KILLED, never merely blocked. Power Drain (Magi) discards one of
+// our cards on every attack (a random one if we hold no Power card), so a jammed
+// Magi can still strip a key card (e.g. Learning) — kill it. User ruling
+// (2026-09-18, live tutoring).
+const SHOOTER_MUST_KILL_ON_ATTACK_EFFECTS = new Set<string>([
+  "ENEMY_DISCARDS_POWER_OR_RANDOM",
+]);
+function shooterThreatSurvivesJam(unit: CombatUnitState): boolean {
+  return (unit.abilities ?? []).some((abilityId) => {
+    const effect = unitAbilities[abilityId]?.effect?.type;
+    return Boolean(effect && SHOOTER_MUST_KILL_ON_ATTACK_EFFECTS.has(effect));
+  });
+}
+
+// Neutral must-kill floor: attacking a defense-ignoring ONE-SHOTTER we can boost
+// to a guaranteed lethal outranks an easy chaff kill (below the ≥900 mandatory tier).
+const NEUTRAL_MUST_KILL_ONESHOTTER_FLOOR = 895;
+
+// Total ATTACK boost the player could stack on THIS attacker's strike from cards in
+// hand (direct stat cards and the attack option of a CHOOSE_ONE specialty), doubling
+// a might-specialty bonus that lands on its signature unit. Used only to tell whether
+// a def-ignoring one-shotter is a REACHABLE guaranteed kill — a chip is worthless
+// against it (its retaliation ignores our defense), so we commit only a lethal.
+function handAttackBoostFor(
+  state: GameState,
+  playerId: string,
+  attacker: CombatUnitState,
+): number {
+  const hand = state.players[playerId]?.hand ?? [];
+  const signature = (attacker.unitDefId ?? "").toLowerCase();
+  let total = 0;
+  for (const cardId of hand) {
+    const card = cardLibrary[cardId];
+    if (!card) continue;
+    const effects = card.effect?.type === "CHOOSE_ONE"
+      ? card.effect.options.map((option) => option.effect)
+      : [card.effect];
+    let best = 0;
+    for (const effect of effects) {
+      if (effect?.type === "ADD_COMBAT_STAT" && effect.stat === "attack") {
+        let amount = effect.amount ?? 1;
+        const doubleName = (effect as { doubleForUnitName?: string }).doubleForUnitName;
+        if (doubleName && signature.includes(doubleName.toLowerCase())) amount *= 2;
+        best = Math.max(best, amount);
+      }
+    }
+    total += best;
+  }
+  return total;
+}
+
 /**
  * Rank one of the active unit's legal attacks. A lethal removal is always
  * preferred (it deletes the enemy AND avoids their retaliation), scaled by how
@@ -637,6 +736,33 @@ function attackScore(
       quality -= Math.min(50, retaliation * 4);
       if (damage === 0 && retaliation >= ownRemaining) {
         return SUICIDAL_ATTACK_SCORE;
+      }
+      // Bait-and-retaliate (user lesson #7/#10 — see
+      // NONCERTAIN_LETHAL_RETALIATION_SCORE). Our chip cannot kill (so the target
+      // lives to retaliate), we survive the median counter but the target's +1
+      // die counter KILLS us — AND we have a strictly better line: a durable
+      // friendly body that survives this enemy's own attack and whose retaliation
+      // reliably removes it. Hold the fragile unit and let the enemy be baited
+      // onto the body we punish it with, rather than trading ourselves away. With
+      // no such bait body this never fires, so a lone unit still trades/gambles.
+      if (
+        combat.context?.kind !== "player" &&
+        !armyCanFinish &&
+        damage > 0 &&
+        damage < remaining &&
+        retaliation < ownRemaining &&
+        estimatedStrikeDamage(defender, attacker, defender.position, true, 1) >= ownRemaining &&
+        Object.values(combat.units).some((bait) =>
+          bait.controllerId === playerId &&
+          bait.id !== attacker.id &&
+          unitRemainingHealth(bait) > 0 &&
+          // Survives THIS enemy's median attack (we hold Defense for the +1 case).
+          estimatedStrikeDamage(defender, bait, defender.position) < unitRemovalHealth(bait) &&
+          // Its retaliation reliably removes the enemy — baiting the enemy onto it
+          // kills the enemy for free, a strictly better line than our chip.
+          estimatedStrikeDamage(bait, defender, bait.position, true) >= unitRemovalHealth(defender))
+      ) {
+        return NONCERTAIN_LETHAL_RETALIATION_SCORE;
       }
       // Expected-value trade: refuse ONLY when the counter-hit KILLS our
       // attacker (we lose its whole value), we would be trading DOWN (our unit
@@ -780,7 +906,82 @@ function attackScore(
     return PVP_OVEREXTENSION_ATTACK_SCORE;
   }
 
-  return Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE + quality));
+  const result = Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE + quality));
+  // Must-kill a defense-ignoring ONE-SHOTTER (user ruling 2026-09-18, live tutoring):
+  // an enemy that deals elemental (defense-ignoring) damage AND can remove one of our
+  // bodies cannot be tanked or safely traded with — its retaliation ignores our
+  // defense, so a chip only feeds it. It must be KILLED before it acts. When our HAND
+  // can boost THIS strike to a guaranteed lethal (worst die still removes it), rank it
+  // above an easy chaff kill so the AI commits the boost here — a kill draws no
+  // retaliation, so the body is removed for free. If we cannot reach a guaranteed kill
+  // we deliberately do NOT lift it (chipping it is a trap).
+  if (
+    combat.context?.kind !== "player" &&
+    dealsElementalStrike(defender) &&
+    livingFriendlies(combat, playerId).some(
+      (ally) => ally.id !== attacker.id && defender.attack + 1 >= unitRemovalHealth(ally),
+    )
+  ) {
+    const boostedLow = attacker.attack + handAttackBoostFor(state, playerId, attacker) - 1;
+    const guaranteedKill =
+      boostedLow - (dealsElementalStrike(attacker) ? 0 : defender.defense) >=
+      unitRemovalHealth(defender);
+    if (guaranteedKill) {
+      // Prefer the landing that ALSO blocks an enemy shooter: adjacency denies its
+      // ranged shot at our backline (a Power-Drain Magi still melees us, but it can no
+      // longer freely shoot the fragile Marksman). User ruling 2026-09-18, live tutoring.
+      const blocksShooter = livingEnemyUnits(combat, playerId).some(
+        (enemy) =>
+          enemy.type === "ranged" &&
+          enemy.position >= 0 &&
+          enemy.id !== defender.id &&
+          isAdjacent(attackFromPosition, enemy.position),
+      );
+      return Math.max(
+        result,
+        blocksShooter ? NEUTRAL_FLYER_JAM_BIGGER_FLOOR : NEUTRAL_MUST_KILL_ONESHOTTER_FLOOR,
+      );
+    }
+  }
+  // Flyer hunts the enemy SHOOTER (user ruling 2026-09-18, live tutoring): in a
+  // NEUTRAL fight a flyer's strike on an enemy ranged unit is THE priority and
+  // must outrank an easy chaff kill that happens to be reachable from the same
+  // landing (the shooter chip is finished this turn with a boost card / another
+  // unit; only the flyer reaches the backline). Lift above the physical-kill band
+  // (chaff lethals cap near ATTACK_CEIL) but below the mandatory stage tier. Any
+  // real hit (damage > 0); the suicide/bad-trade bails above already returned, so
+  // this never rewards throwing the flyer away. PvP keeps ordinary target value.
+  if (
+    combat.context?.kind !== "player" &&
+    attacker.type === "flying" &&
+    defender.type === "ranged" &&
+    damage > 0
+  ) {
+    return Math.max(result, NEUTRAL_FLYER_SHOOTER_FLOOR);
+  }
+  // Jam-and-hit-bigger: this flyer strike lands adjacent to an enemy SHOOTER (a
+  // different unit from the target), so it neutralises that shooter by blocking
+  // while removing a more dangerous body. Prefer it over spending the strike on
+  // the shooter itself — but ONLY for a shooter that is safe to leave jammed. A
+  // shooter whose threat survives a jam (Power Drain and the like) must be killed,
+  // so blocking it earns no premium. See NEUTRAL_FLYER_JAM_BIGGER_FLOOR.
+  if (
+    combat.context?.kind !== "player" &&
+    attacker.type === "flying" &&
+    defender.type !== "ranged" &&
+    damage > 0 &&
+    livingEnemyUnits(combat, playerId).some(
+      (enemy) =>
+        enemy.type === "ranged" &&
+        enemy.position >= 0 &&
+        enemy.id !== defender.id &&
+        isAdjacent(attackFromPosition, enemy.position) &&
+        !shooterThreatSurvivesJam(enemy),
+    )
+  ) {
+    return Math.max(result, NEUTRAL_FLYER_JAM_BIGGER_FLOOR);
+  }
+  return result;
 }
 
 function isBacklineCell(combat: CombatState, playerId: string, position: number): boolean {
@@ -895,12 +1096,42 @@ export function formationFitScore(
     if (front && (bulk ?? 0) > 0) {
       score += Math.min(12, bulk ?? 0);
     }
+    // Neutral focus-tank (user ruling, 2026-09-18 live tutoring): a neutral guard
+    // party of the same tier focus-fires your BEST body, so your Silver/Gold ground
+    // unit is the designated TANK. It should anchor the FRONT CORNER cell (the screen
+    // square in front of a back-row shooter) and soak that focus, rather than drift
+    // to the central column. This outranks the central-column nudge below and, by
+    // claiming the corner first (it deploys first as the highest-threat body), leaves
+    // the bronze Griffin/Halberdier pairing to form beside it. Pure-bronze armies
+    // never trigger this, so their generic front pairing is unchanged.
+    const tankTier = definitionId ? coreUnitDefinitions[definitionId]?.tier : undefined;
+    if (front && combat.context?.kind !== "player" &&
+        (tankTier === "silver" || tankTier === "gold" || tankTier === "azure")) {
+      score += 8;
+      const tankCol = cellColumn(position);
+      if (tankCol === 0 || tankCol === 3) score += 12;
+    }
   } else {
-    // Flyers counter from the second row; melee bodies hold the first.
-    score += front ? -12 : back ? 26 : 8;
+    // Flyer deployment. In a NEUTRAL fight the guard party routinely fields
+    // shooters the flyer must fly out and neutralise (you cannot defend against
+    // ranged), so it deploys FORWARD to threaten the backline on turn 1 (user
+    // ruling 2026-09-18, live tutoring: "for neutral fight, need flier to reach
+    // ranged"). In PvP the classic second-row counter-position holds — the
+    // opponent chooses the engagement and a premature forward flyer is exposed.
+    if (combat.context?.kind !== "player") {
+      score += front ? 22 : back ? -8 : 10;
+    } else {
+      score += front ? -12 : back ? 26 : 8;
+    }
   }
-  // Flyers can counter through a screen; ground units need an open front.
-  if (reserve && role === "flying") score += back ? 55 : front ? -45 : 10;
+  // Flyers can counter through a screen; ground units need an open front. A
+  // reserve flyer normally sits behind the screen (PvP), but in a neutral fight
+  // it still wants the forward cell so it can reach the enemy shooters.
+  if (reserve && role === "flying") {
+    score += combat.context?.kind !== "player"
+      ? (front ? 40 : back ? -30 : 10)
+      : (back ? 55 : front ? -45 : 10);
+  }
 
   // Prefer central columns (1,2) for reach / less edge waste. Ranged units get
   // a larger protected-corner bonus above and therefore still choose corners.
@@ -1396,6 +1627,51 @@ function moveUnitScore(
   const laneGain = friendlyLaneChange(combat, mover, action.destination, state);
   score += laneGain;
   if (laneGain > 0 && incomingNext <= incomingNow) score = Math.max(score, 520 + laneGain);
+
+  // Flyer shooter-hunt: a flyer that MOVES to a landing from which it can strike
+  // an enemy SHOOTER prefers that landing over generic close-distance AND over an
+  // easy chaff kill. An enemy ranged unit fires every round and cannot be
+  // defended against — removing it is the flyer's job (only the flyer reaches the
+  // backline turn 1). User ruling (2026-09-18): fire whenever an enemy shooter is
+  // reachable — a friendly ranged ally is NOT required, because the enemy shooter
+  // threatens the WHOLE army (the old gate wrongly demanded we own a shooter, so
+  // a shooter-less army never hunted). In a NEUTRAL fight the strike is lifted
+  // above the physical-kill band (the chip is finished with a boost card / other
+  // units this turn); in PvP it keeps the modest bonus and the tighter
+  // protect-our-ranged framing (the opponent chooses the engagement).
+  const neutralFight = combat.context?.kind !== "player";
+  if (
+    mover.type === "flying" &&
+    !mover.attackedThisActivation &&
+    (neutralFight ||
+      livingFriendlies(combat, side).some(
+        (ally) => ally.id !== mover.id && unitRole(ally) === "ranged",
+      ))
+  ) {
+    const shooterHunt = Math.max(
+      0,
+      ...livingEnemyUnits(combat, side)
+        .filter(
+          (enemy) =>
+            enemy.type === "ranged" &&
+            estimatedStrikeDamage(mover, enemy, action.destination) > 0 &&
+            // Only reward MOVING to reach the shooter; a shot available from the
+            // current cell is an ATTACK_UNIT and must not be out-bid by a move.
+            !canUnitAttack(combat, mover, enemy, state.activeEffects ?? []) &&
+            canUnitMoveAndAttack(combat, mover, action.destination, enemy, state),
+        )
+        .map((enemy) =>
+          attackScore(combat, side, mover, enemy, action.destination, state),
+        ),
+    );
+    // A real hit only (≥ ATTACK_FLOOR): a suppressed suicide / bad-trade poke
+    // (SUICIDAL/BAD_TRADE/overextension scores < FLOOR) never triggers the hunt.
+    if (shooterHunt >= ATTACK_FLOOR) {
+      score = neutralFight
+        ? Math.max(score, Math.max(shooterHunt, NEUTRAL_FLYER_SHOOTER_FLOOR))
+        : Math.max(score, shooterHunt + FLYER_SHOOTER_HUNT_BONUS);
+    }
+  }
 
   // Movement accounts for enemy move-and-attacks, not only bodies already
   // adjacent. A screen or a safe retreat can preserve the next shot.

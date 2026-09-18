@@ -232,6 +232,9 @@ describe("co-op step 2 — time controls never target a computer seat", () => {
 
     const control = mpGame("coop2-autokick-control");
     stampIdleClocks(control, T0);
+    // The 30-minute kick reads AWAITED idle (time the table waited on the seat),
+    // not raw wall-clock, so seed p2's banked awaited-idle to the threshold.
+    (getAfkState(control).awaitedIdleMs ??= {}).p2 = AFK_AUTO_KICK_MS;
     const kicked = applyOk(
       control,
       { type: "FORCE_AFK_KICK", playerId: "p1", targetPlayerId: "p2" },

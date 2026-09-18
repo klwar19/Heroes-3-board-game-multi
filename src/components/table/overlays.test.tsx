@@ -3323,21 +3323,26 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     expect(onAction2).not.toHaveBeenCalledWith(expect.objectContaining({ type: "FORCE_TURN_TIMEOUT" }));
   });
 
-  it("auto-fires the certain 30-minute kick against a seat idle that long", () => {
+  it("auto-fires the certain 30-minute kick against a seat with that much AWAITED idle", () => {
     const state = adventureGame();
     const afk = getAfkState(state);
-    afk.lastActionAt.p1 = Date.now() - AFK_AUTO_KICK_MS - 1_000; // 30 min+ gone
+    afk.lastActionAt.p1 = Date.now() - AFK_AUTO_KICK_MS - 1_000;
     afk.lastActionAt.p2 = Date.now();
+    // The 30-minute kick reads AWAITED idle (time the table waited on the seat),
+    // not raw wall-clock: p1 has banked past the threshold on its own turns.
+    afk.awaitedIdleMs = { p1: AFK_AUTO_KICK_MS + 1_000 };
     const onAction = vi.fn();
     render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
     expect(onAction).toHaveBeenCalledWith({ type: "FORCE_AFK_KICK", playerId: "p2", targetPlayerId: "p1" });
     cleanup();
 
-    // CONTROL: idle only ~10 min (past the vote window, short of the 30-min hard
-    // kick) fires no auto-kick.
+    // CONTROL (the fix): p1 has been idle 30 min+ of WALL time (old lastActionAt)
+    // but its AWAITED idle is short of the threshold — a player who sat out other
+    // seats' long turns is NOT auto-kicked.
     const shorter = adventureGame();
     const afk2 = getAfkState(shorter);
-    afk2.lastActionAt = { p1: Date.now() - AFK_IDLE_MS - 1_000, p2: Date.now() };
+    afk2.lastActionAt = { p1: Date.now() - AFK_AUTO_KICK_MS - 60_000, p2: Date.now() };
+    afk2.awaitedIdleMs = { p1: AFK_IDLE_MS };
     const onAction2 = vi.fn();
     render(<AfkVotePanel onAction={onAction2} state={shorter} viewerPlayerId={"p2" as PlayerId} />);
     expect(onAction2).not.toHaveBeenCalledWith(

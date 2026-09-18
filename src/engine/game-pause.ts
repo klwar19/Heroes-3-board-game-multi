@@ -414,6 +414,13 @@ function shiftTimeControlStamps(state: GameState, deltaMs: number): void {
       afk.turnOpenSince[seat] += deltaMs;
     }
   }
+  // `awaitedIdleSince` is a live-stretch START stamp (shift it); `awaitedIdleMs`
+  // is banked DURATION, not a clock, so it is left untouched.
+  if (afk.awaitedIdleSince) {
+    for (const seat of Object.keys(afk.awaitedIdleSince)) {
+      afk.awaitedIdleSince[seat] += deltaMs;
+    }
+  }
   if (afk.lastVoteEndedAt) {
     for (const seat of Object.keys(afk.lastVoteEndedAt)) {
       afk.lastVoteEndedAt[seat] += deltaMs;

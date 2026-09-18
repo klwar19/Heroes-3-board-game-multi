@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cardLibrary } from "@/data/cards/library";
+import { isPhantomCardId } from "@/engine/phantom-cards";
 import {
   coreFactionDefinitions,
   coreHeroDefinitions,
@@ -38,8 +39,10 @@ const HAND_CARD_KINDS = new Set([
   "war-machine"
 ]);
 
-const PICKABLE_CARDS = Object.values(cardLibrary)
-  .filter((card) => card.implementationStatus === "implemented" && HAND_CARD_KINDS.has(card.kind))
+const PICKABLE_CARDS = Object.entries(cardLibrary)
+  // Skip phantom combat-card aliases (combat-only disposables; see phantom-cards).
+  .filter(([id, card]) => !isPhantomCardId(id) && card.implementationStatus === "implemented" && HAND_CARD_KINDS.has(card.kind))
+  .map(([, card]) => card)
   .sort((a, b) => a.name.localeCompare(b.name));
 
 // Only offer morale cards the engine actually runs in a regular/Battle Test game:

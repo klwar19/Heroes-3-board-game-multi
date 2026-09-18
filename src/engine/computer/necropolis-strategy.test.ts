@@ -312,10 +312,20 @@ describe("Necropolis hard guard battles", () => {
       placements.find((t) => t.action.armyUnitId === "army_p2_2")?.action
         .position,
     ).toBeLessThan(16);
-    expect(
-      placements.find((t) => t.action.armyUnitId === "army_p2_3")?.action
+    // army_p2_3 is the Wraith (a FLYER). User ruling 2026-09-18: in a NEUTRAL
+    // fight the flyer deploys FORWARD so it can reach the guard party's
+    // shooters on turn 1 (you cannot defend against ranged) — it no longer
+    // holds the screened back row, which is the PvP counter-position.
+    const wraithCell = placements.find(
+      (t) => t.action.armyUnitId === "army_p2_3",
+    )?.action.position;
+    expect(wraithCell).toBeGreaterThanOrEqual(12);
+    expect(wraithCell).toBeLessThan(16);
+    // ...and it takes its OWN front cell, not the ground body's.
+    expect(wraithCell).not.toBe(
+      placements.find((t) => t.action.armyUnitId === "army_p2_2")?.action
         .position,
-    ).toBeGreaterThanOrEqual(16);
+    );
     expect(result.state.players.p2.army.some((u) => u.id === "army_p2_3")).toBe(
       true,
     );
@@ -698,6 +708,57 @@ it("opening keeps its first Necromancy while discarding for a second paid upgrad
   expect(earned.state.players.p2.resources.gold).toBe(5);
 });
 
+it("a flush seat builds the Gold dwelling even when a freshly drawn Necromancy flips the Vampire plan on (CONTROL: a poor seat still holds for the earned Pack; a hero-born Necromancer keeps the Pack-first design)", async () => {
+  const dev = await import("./development");
+  const mt = await import("./market-trades");
+  const setup = (gold: number, heroDefId = "sandro") => {
+    const state = game("necro-flush-gold", "impossible");
+    // Sandro carries no Necromancy of his own: the plan exists only because
+    // the card was drawn (the eval-16 shape); Vidomina is hero-born.
+    state.players.p2.heroDefId = heroDefId;
+    state.activePlayerId = "p2";
+    state.round = 9;
+    state.adventure!.pendingTileChoice = null;
+    state.adventure!.pendingVisit = null;
+    state.players.p2.army.forEach((u) => (u.side = "pack"));
+    state.players.p2.army.push({ id: "vampire", unitDefId: "necropolis.vampires", side: "few" });
+    state.towns.town_p2.buildings.push("necropolis.dwelling_silver");
+    // The plan is live: Necromancy sits in hand (drawn at the refresh).
+    state.players.p2.hand = ["spell.magic_arrow", "ability.necromancy"];
+    // Gold dwelling: 3 of its 4 valuables — one 6-gold trade short.
+    state.players.p2.resources = { gold, buildingMaterials: 18, valuables: 3 };
+    return state;
+  };
+  const flush = setup(53);
+  expect(dev.hasNecromancyPlan({ ...flush, players: { ...flush.players, p2: { ...flush.players.p2, hand: [] } } } as GameState, "p2")).toBe(false);
+  expect(dev.hasNecromancyPlan(flush, "p2")).toBe(true);
+  expect(dev.needsNecromancyVampire(flush, "p2")).toBe(false);
+  expect(dev.nextDevelopmentBuildingCost(flush, "p2")).toEqual(
+    expect.objectContaining({ gold: 10, valuables: 4 }),
+  );
+  expect(dev.assessDwellingRush(flush, "p2")?.feasible).toBe(true);
+  expect(mt.wantsMarketVisit(flush, "p2", "trading_post")).toBe(true);
+  // CONTROL: without the gold to buy the missing valuable AND keep the
+  // Vampire upgrade's 9 gold, the earned-Pack plan still owns the purse.
+  const poor = setup(20);
+  expect(dev.needsNecromancyVampire(poor, "p2")).toBe(true);
+  expect(dev.nextDevelopmentBuildingCost(poor, "p2")).toBeNull();
+  // Once the Gold dwelling stands the same rule frees the Gold body: Ghost
+  // Dragons (19 gold + 1 valuable) on 32 gold / 1 valuable, cushion kept.
+  const built = setup(32);
+  built.towns.town_p2.buildings.push("necropolis.dwelling_gold");
+  built.players.p2.resources = { gold: 32, buildingMaterials: 6, valuables: 1 };
+  expect(dev.nextGoldLadderStep(built, "p2")?.unitDefId).toBe("necropolis.ghost_dragons");
+  expect(dev.needsNecromancyVampire(built, "p2")).toBe(false);
+  // CONTROL: 20 gold cannot pay the dragons AND keep the upgrade cushion.
+  built.players.p2.resources.gold = 20;
+  expect(dev.needsNecromancyVampire(built, "p2")).toBe(true);
+  // CONTROL: a hero-born Necromancer on the same flush purse keeps the
+  // earned-Pack-first design.
+  const born = setup(53, "vidomina");
+  expect(dev.needsNecromancyVampire(born, "p2")).toBe(true);
+});
+
 it("Gold development remembers an earned Vampire Pack after casualties", () => {
   let state = game("necro-progression-memory", "hard");
   state.activePlayerId = "p2";
@@ -739,8 +800,12 @@ it("Gold development remembers an earned Vampire Pack after casualties", () => {
             action.buildingId === "necropolis.dwelling_gold"),
       ),
     });
+  // CONTROL: without the remembered Pack the dwelling waits — on a purse that
+  // pays the dwelling but is NOT flush (flush seats build regardless, see
+  // goldDwellingFlushDespiteVampirePlan).
   const control = structuredClone(state);
   delete control.computerMemory!.p2.necromancyVampirePackEarned;
+  control.players.p2.resources = { gold: 15, buildingMaterials: 20, valuables: 10 };
   expect(choose(control)?.action.type).toBe("END_TURN");
   const decision = choose(state)!;
   expect(decision.action.type).toBe("BUILD_STRUCTURE");

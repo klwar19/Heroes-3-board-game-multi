@@ -31,6 +31,7 @@ import {
   removeComputerCombatBoost,
   removeComputerPhantomCards,
 } from "./combat-boost";
+import { toPhantomCardId } from "../phantom-cards";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -128,11 +129,22 @@ describe("computer combat boost (temp Empowered Attack/Defense cards)", () => {
 
     expect(state.combat?.outcome).toBeNull(); // a REAL fight, not a free win
     expect(state.combat?.computerBoost).toMatchObject({ playerId: "p1" });
+    const baseBefore = {
+      "stat.attack": totalCopies(setup(), "stat.attack"),
+      "stat.defense": totalCopies(setup(), "stat.defense"),
+    };
     for (const cardId of COMPUTER_COMBAT_BOOST_CARDS) {
       expect(countIn(state.players.p1.hand, cardId)).toBeGreaterThanOrEqual(1);
       expect(totalCopies(state, cardId)).toBe(before[cardId] + 1);
-      expect(state.players.p1.empoweredAbilities ?? []).toContain(cardId);
+      // The boost hands the game's OWN distinct Empowered cards, so no
+      // by-card-id Empower mark is added (it would wrongly empower the seat's
+      // real Attack/Defense copies too).
+      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(cardId);
     }
+    expect(state.players.p1.empoweredAbilities ?? []).toEqual([]);
+    // CONTROL: the seat's REAL plain statistics are untouched by the boost.
+    expect(totalCopies(state, "stat.attack")).toBe(baseBefore["stat.attack"]);
+    expect(totalCopies(state, "stat.defense")).toBe(baseBefore["stat.defense"]);
   });
 
   it("the AI ABUSES them: plays an injected card at crown-free Expert, and the cleanup removes both from the game", () => {
@@ -159,11 +171,23 @@ describe("computer combat boost (temp Empowered Attack/Defense cards)", () => {
         ),
     );
     expect(boostPlays.length).toBeGreaterThan(0);
+    // The Empowered statistics have a SINGLE printed side already worth the
+    // plain card's EXPERT value (+2), so they are played with no "expert"
+    // mode and no crown — that is exactly the crown-free expert-grade abuse.
     expect(
-      boostPlays.some(
-        (decision) => (decision.action as { mode?: string }).mode === "expert",
+      boostPlays.every(
+        (decision) => (decision.action as { mode?: string }).mode !== "expert",
       ),
     ).toBe(true);
+    // CONTROL: with zero crowns the seat could not play ANY expert reaction,
+    // so the value really came from the Empowered cards.
+    expect(
+      run.decisions.filter(
+        (decision) =>
+          decision.action.type === "PLAY_REACTION" &&
+          (decision.action as { mode?: string }).mode === "expert",
+      ),
+    ).toEqual([]);
 
     // Never kept: after the fight both injected copies are gone from EVERY
     // pile (hand, discard, deck, removed) and the temp Empower marks with them.
@@ -178,23 +202,29 @@ describe("computer combat boost (temp Empowered Attack/Defense cards)", () => {
     // (The finalize wiring itself is mutation-checked by the fought-out test
     // above — here the module-level cleanup semantics are pinned.)
     let state = setup();
-    // A genuinely owned twin in the discard and a legitimate Empower mark
-    // (e.g. a Creature-Bank reward) must BOTH survive the cleanup.
+    // A genuinely owned EMPOWERED twin in the discard (same id the boost
+    // injects), a plain statistic, and a legitimate Empower mark (e.g. a
+    // Creature-Bank reward) must ALL survive the cleanup.
+    state.players.p1.discard.push("stat.attack.empowered");
     state.players.p1.discard.push("stat.attack");
     state.players.p1.empoweredAbilities = ["stat.defense"];
-    const ownedAttack = totalCopies(state, "stat.attack");
-    const ownedDefense = totalCopies(state, "stat.defense");
+    const ownedAttack = totalCopies(state, "stat.attack.empowered");
+    const ownedDefense = totalCopies(state, "stat.defense.empowered");
+    const ownedPlainAttack = totalCopies(state, "stat.attack");
     state = beginGuardFight(state);
     state = deployAndReveal(state);
     expect(state.combat?.computerBoost).toBeTruthy();
     // Both injected copies present on top of the owned ones.
-    expect(totalCopies(state, "stat.attack")).toBe(ownedAttack + 1);
-    expect(totalCopies(state, "stat.defense")).toBe(ownedDefense + 1);
+    expect(totalCopies(state, "stat.attack.empowered")).toBe(ownedAttack + 1);
+    expect(totalCopies(state, "stat.defense.empowered")).toBe(ownedDefense + 1);
+    // The plain statistic is never touched by the boost.
+    expect(totalCopies(state, "stat.attack")).toBe(ownedPlainAttack);
 
     removeComputerCombatBoost(state);
     expect(state.combat?.computerBoost).toBeNull();
-    expect(totalCopies(state, "stat.attack")).toBe(ownedAttack);
-    expect(totalCopies(state, "stat.defense")).toBe(ownedDefense);
+    expect(totalCopies(state, "stat.attack.empowered")).toBe(ownedAttack);
+    expect(totalCopies(state, "stat.defense.empowered")).toBe(ownedDefense);
+    expect(totalCopies(state, "stat.attack")).toBe(ownedPlainAttack);
     expect(state.players.p1.empoweredAbilities).toEqual(["stat.defense"]);
   });
 
@@ -247,7 +277,7 @@ describe("computer combat boost (temp Empowered Attack/Defense cards)", () => {
 });
 
 describe("computer phantom combat cards (always-on Power + Magic Arrow)", () => {
-  it("injects the un-Empowered Power + Magic Arrow at a real fight and removes them after", () => {
+  it("injects DISTINCT phantom Power + Magic Arrow (real cards untouched) and removes every copy after", () => {
     let state = setup();
     const before = Object.fromEntries(
       COMPUTER_PHANTOM_COMBAT_CARDS.map((id) => [id, totalCopies(setup(), id)]),
@@ -255,17 +285,21 @@ describe("computer phantom combat cards (always-on Power + Magic Arrow)", () => 
     state = beginGuardFight(state);
     state = deployAndReveal(state);
     expect(state.combat?.computerPhantomCards).toBeTruthy();
-    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
-      expect(countIn(state.players.p1.hand, cardId)).toBeGreaterThanOrEqual(1);
-      expect(totalCopies(state, cardId)).toBe(before[cardId] + 1);
+    for (const baseId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      const phantomId = toPhantomCardId(baseId);
+      // The DISTINCT phantom copy is in hand; the REAL base card count is
+      // UNTOUCHED (the phantom no longer shares the real id).
+      expect(countIn(state.players.p1.hand, phantomId)).toBeGreaterThanOrEqual(1);
+      expect(totalCopies(state, baseId)).toBe(before[baseId]);
       // Phantom cards are NEVER Empowered (Power stat + a plain spell).
-      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(cardId);
+      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(phantomId);
     }
-    // Fought out — every phantom copy is gone from the game again.
+    // Fought out — every phantom copy is gone from the game, real cards remain.
     state = driveComputerPlayers(state).state;
     expect(state.combat).toBeNull();
-    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
-      expect(totalCopies(state, cardId)).toBe(before[cardId]);
+    for (const baseId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      expect(totalCopies(state, baseId)).toBe(before[baseId]);
+      expect(totalCopies(state, toPhantomCardId(baseId))).toBe(0);
     }
   });
 
@@ -287,13 +321,17 @@ describe("computer phantom combat cards (always-on Power + Magic Arrow)", () => 
       COMPUTER_PHANTOM_COMBAT_CARDS.map((id) => [id, countIn(state.players.p1.hand, id)]),
     );
     applyComputerPhantomCards(state);
-    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
-      expect(countIn(state.players.p1.hand, cardId)).toBe(before[cardId] + 1);
-      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(cardId);
+    for (const baseId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      const phantomId = toPhantomCardId(baseId);
+      expect(countIn(state.players.p1.hand, phantomId)).toBe(1);
+      // Real base card count untouched by the phantom grant.
+      expect(countIn(state.players.p1.hand, baseId)).toBe(before[baseId]);
+      expect(state.players.p1.empoweredAbilities ?? []).not.toContain(phantomId);
     }
     removeComputerPhantomCards(state);
-    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) {
-      expect(countIn(state.players.p1.hand, cardId)).toBe(before[cardId]);
+    for (const baseId of COMPUTER_PHANTOM_COMBAT_CARDS) {
+      expect(countIn(state.players.p1.hand, toPhantomCardId(baseId))).toBe(0);
+      expect(countIn(state.players.p1.hand, baseId)).toBe(before[baseId]);
     }
   });
 });

@@ -1,7 +1,7 @@
 import { hasNecromancyPlan } from "./development";
 import { openingGuardCommitment } from "./necropolis-combat";
 import { cardLibrary } from "@/data/cards/library";
-import { effectiveHandLimit, explorersHandStepActive, isFieldGuarded } from "../adventure";
+import { effectiveHandLimit, explorersHandStepActive, getUnitSide, isFieldGuarded } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
 import { cardHandValue, moraleRedrawDiscards, scoreCardAction } from "./card-policy";
 import { upcomingFight } from "./card-planning";
@@ -309,6 +309,19 @@ function withRefreshDiscards(
     .sort((a, b) => a.value - b.value || a.index - b.index);
   const discards = ranked.slice(0, overflow);
 
+  // Keep ONE Defense card before a fight when a fragile army unit will need the
+  // protection (user lesson 2026-09-18, live tutoring: don't dump Defense with a
+  // fragile Wraith going into combat — a Defense card can turn an otherwise-lethal
+  // hit into survival on such a body). Mirrors the magic_arrow keep below; only
+  // the FIRST Defense is spared, so duplicates still cycle, and only when a fight
+  // is being prepared and the army holds a unit a Defense card meaningfully saves
+  // (low health AND low printed defense). Never blocks a forced over-limit discard.
+  const fragileAllyNeedsDefense = prepareFight && player.army.some((armyUnit) => {
+    const stats = getUnitSide(armyUnit.unitDefId, armyUnit.side);
+    return Boolean(stats) && stats!.health <= 4 && stats!.defense <= 1;
+  });
+  let defenseKept = false;
+
   const orphanedMagic = ranked.some(entry => entry.value <= 12 &&
     ["ADD_SPELL_POWER", "RECALL_SPELL", "SET_SPELL_POWER_MAX"].includes(cardLibrary[entry.cardId]?.effect.type));
   // The Necromancy hunt must stay below cardHandValue's explicit keep floors
@@ -323,6 +336,11 @@ function withRefreshDiscards(
     if (voluntary >= (openingNecromancyHunt || prepareFight || orphanedMagic ? limit : VOLUNTARY_CYCLE_MAX) || voluntary >= supply) break;
     if ((entry.cardId === "spell.magic_arrow" && !redundantSandroArrow(entry.cardId, entry.index)) ||
         cardLibrary[entry.cardId]?.effect.type === "NECROMANCY_REINFORCE") continue;
+    if (fragileAllyNeedsDefense && !defenseKept &&
+        cardLibrary[entry.cardId]?.statisticType === "defense") {
+      defenseKept = true;
+      continue;
+    }
     if (entry.value >= threshold) break;
     discards.push(entry);
   }

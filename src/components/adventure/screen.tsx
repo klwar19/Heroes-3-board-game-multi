@@ -10052,8 +10052,9 @@ export function LearningOfferModal({
  * Trading Post or War Machine Factory visit. It can be minimized to a corner
  * chip and pops back open on the next visit. The Trading Post offers the
  * printed choose-one menu: resource trades (repeatable, shown with the
- * rulebook's trade table), selling one card for 1 gold, or buying a war
- * machine at its higher price; the Factory only sells machines, cheaper.
+ * rulebook's trade table), selling cards for 1 gold each (the visit stays
+ * open after a sale), or buying a war machine at its higher price; the
+ * Factory only sells machines, cheaper.
  */
 export function MarketPanel({
   state,
@@ -10277,11 +10278,13 @@ export function MarketPanel({
 
       {isTradingPost && !traded ? (
         <section className="marketSell" aria-label="Sell a card">
-          <h4>Sell one card from hand → 1 gold</h4>
+          <h4>Sell cards from hand → 1 gold each</h4>
           <small>
             The card is removed from the game. Specialty, Statistic, your
-            starting Ability and Magic Arrow cannot be sold. Selling (or buying
-            a war machine) is this visit&apos;s one action.
+            starting Ability and Magic Arrow cannot be sold. The market stays
+            open after a sale — keep selling, buy a war machine, or close it
+            with Done. Once you trade resources, selling waits for another
+            visit.
           </small>
           <div className="marketSellCards">
             {sellActions.length === 0 ? (

@@ -4,6 +4,7 @@ import {
   AFK_IDLE_MS,
   AFK_REASK_MS,
   applyAction,
+  awaitedIdleMillis,
   createAdventureGameState,
   driveAfkDrop,
   getAfkState,
@@ -81,6 +82,16 @@ function stampClocks(state: GameState, at: number): void {
   for (const playerId of state.turnOrder) {
     afk.lastActionAt[playerId] = at;
   }
+}
+
+/**
+ * Seed a seat's BANKED awaited-idle (ms) — what it would have accumulated
+ * across its OWN idle turns (see applyAfkIdleClockBookkeeping). This is the only
+ * clock the 30-minute certain auto-kick reads.
+ */
+function stampAwaitedIdle(state: GameState, playerId: PlayerId, ms: number): void {
+  const afk = getAfkState(state);
+  (afk.awaitedIdleMs ??= {})[playerId] = ms;
 }
 
 const IDLE = T0 + AFK_IDLE_MS;
@@ -377,23 +388,58 @@ describe("AFK drop — the game continues as intended", () => {
 describe("AFK certain auto-kick (30 minutes) — no vote", () => {
   const AUTO = T0 + AFK_AUTO_KICK_MS;
 
-  it("removes a seat idle 30 minutes with no vote (younger idle is the CONTROL)", () => {
+  it("counts only AWAITED idle — waiting out other seats' turns never accrues (the fix)", () => {
+    const state = makeGame("afk-awaited-idle", { players: 3 });
+    // p1's END_TURN at T0 is the first stamped action: clocks bootstrap and p2
+    // becomes the awaited seat.
+    let s = applyOk(state, { type: "END_TURN", playerId: "p1" }, T0);
+    expect(s.activePlayerId).toBe("p2");
+
+    // Eleven minutes pass with nobody acting. p2 (on turn) is piling up
+    // awaited-idle; p3 and p1 are merely WAITING, so they accrue nothing — the
+    // whole point: two players fighting/thinking for ages never spends a waiting
+    // player's AFK clock.
+    const t1 = T0 + 11 * 60_000;
+    expect(awaitedIdleMillis(s, "p2", t1)).toBe(11 * 60_000);
+    expect(awaitedIdleMillis(s, "p3", t1)).toBe(0);
+    expect(awaitedIdleMillis(s, "p1", t1)).toBe(0);
+
+    // p2 finally ends its turn 11 minutes in → p3 becomes awaited and starts its
+    // OWN clock from zero, even though 11 minutes of real time already elapsed.
+    s = applyOk(s, { type: "END_TURN", playerId: "p2" }, t1);
+    expect(s.activePlayerId).toBe("p3");
+    expect(awaitedIdleMillis(s, "p3", t1)).toBe(0);
+    // p2 just acted, so its banked awaited-idle is cleared.
+    expect(awaitedIdleMillis(s, "p2", t1)).toBe(0);
+  });
+
+  it("removes a seat with 30 minutes of AWAITED idle — no vote (a waiting bystander is the CONTROL)", () => {
     const state = makeGame("afk-auto", { players: 3 });
     stampClocks(state, T0);
-    // p3 is NOT the seat on turn — the vote could not target it, but the hard
-    // 30-minute timeout certainly can.
     expect(state.activePlayerId).toBe("p1");
 
-    // CONTROL: one second short of 30 minutes is refused.
+    // CONTROL (the fix): p3 has been idle 30 minutes of WALL time but only as a
+    // bystander — its AWAITED-idle is zero, so the certain auto-kick refuses it.
+    // A player who sat out other seats' long turns is NOT kicked.
     expect(
-      expectRejected(state, { type: "FORCE_AFK_KICK", playerId: "p1", targetPlayerId: "p3" }, AUTO - 1)
+      expectRejected(state, { type: "FORCE_AFK_KICK", playerId: "p1", targetPlayerId: "p3" }, AUTO)
     ).toContain("has not been away for 30 minutes");
 
-    const dropping = applyOk(state, { type: "FORCE_AFK_KICK", playerId: "p1", targetPlayerId: "p3" }, AUTO);
+    // p3 has instead left 30 minutes of its OWN turns unplayed (banked
+    // awaited-idle). CONTROL: one second short is still refused…
+    stampAwaitedIdle(state, "p3", AFK_AUTO_KICK_MS - 1);
+    expect(
+      expectRejected(state, { type: "FORCE_AFK_KICK", playerId: "p1", targetPlayerId: "p3" }, T0)
+    ).toContain("has not been away for 30 minutes");
+
+    // …at the full 30 minutes of awaited-idle it certainly kicks, even though it
+    // is not p3's turn right now (banked awaited-idle is not tied to one turn).
+    stampAwaitedIdle(state, "p3", AFK_AUTO_KICK_MS);
+    const dropping = applyOk(state, { type: "FORCE_AFK_KICK", playerId: "p1", targetPlayerId: "p3" }, T0);
     expect(dropping.afk?.droppingPlayerId).toBe("p3");
     expect(dropping.eventLog.some((event) => event.type === "AFK_AUTO_KICKED")).toBe(true);
 
-    const done = driveAfkDrop(dropping, () => ({ now: AUTO + 1_000 }));
+    const done = driveAfkDrop(dropping, () => ({ now: T0 + 1_000 }));
     expect(done.players.p3.eliminated).toBe(true);
     expect(done.players.p3.kickedByVote).toBe(true);
     expect(done.turnOrder).not.toContain("p3");
@@ -403,6 +449,7 @@ describe("AFK certain auto-kick (30 minutes) — no vote", () => {
   it("2 players: the survivor wins once the 30-minute-AFK opponent is auto-kicked", () => {
     const state = makeGame("afk-auto-2p");
     stampClocks(state, T0);
+    stampAwaitedIdle(state, "p1", AFK_AUTO_KICK_MS);
     const dropping = applyOk(state, { type: "FORCE_AFK_KICK", playerId: "p2", targetPlayerId: "p1" }, AUTO);
     const done = driveAfkDrop(dropping, () => ({ now: AUTO + 1_000 }));
     expect(done.players.p1.eliminated).toBe(true);
@@ -413,6 +460,7 @@ describe("AFK certain auto-kick (30 minutes) — no vote", () => {
   it("an open vote about the target is superseded by the hard timeout", () => {
     const state = makeGame("afk-auto-vote", { players: 3 });
     stampClocks(state, T0);
+    stampAwaitedIdle(state, "p1", AFK_AUTO_KICK_MS);
     // Vote about the on-turn seat p1 opens first…
     let current = applyOk(state, { type: "START_AFK_VOTE", playerId: "p2", targetPlayerId: "p1" }, IDLE);
     expect(current.afk?.vote?.targetPlayerId).toBe("p1");

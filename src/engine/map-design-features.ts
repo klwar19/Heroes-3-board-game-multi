@@ -350,10 +350,20 @@ export function fewUnitPoolForTier(
   });
 }
 
-/** Unit def ids with a Neutral side of the given tier. */
+/**
+ * Unit def ids with a Neutral side of the given tier. CORE neutrals only — the
+ * `doom.` / `wog.` mod rosters are EXCLUDED (mirroring `neutralUnitIdsByTier`,
+ * the deck builder), so a `random:<tier>` designer / level guard never mints a
+ * Doom or WOG creature the player did not opt into. A designer who wants a mod
+ * creature names its exact id, which resolves as a literal (not via this pool).
+ */
 export function neutralUnitPoolForTier(tier: RandomGuardTier): string[] {
   return Object.keys(coreUnitDefinitions).filter(
-    (id) => coreUnitDefinitions[id]?.tier === tier && coreUnitDefinitions[id]?.neutral
+    (id) =>
+      !id.startsWith("doom.") &&
+      !id.startsWith("wog.") &&
+      coreUnitDefinitions[id]?.tier === tier &&
+      coreUnitDefinitions[id]?.neutral
   );
 }
 

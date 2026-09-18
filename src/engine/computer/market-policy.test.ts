@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
+import { coreFactionDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { TRADE_RATES } from "@/data/map/locations";
 import { getMainHero } from "../adventure";
 import { createAdventureGameState } from "../adventure-setup";
 import { applyAction, getLegalActions } from "../index";
-import type { GameAction, GameState, LegalAction, MapFieldState, PlayerVisibleState } from "../state";
+import { getPlayerView } from "../player-view";
+import type { GameAction, GameState, LegalAction, MapFieldState, MapTileState, PlayerVisibleState } from "../state";
 import {
   hasUsefulMarketTrade,
   resourceDeficits,
   scoreMapAction,
   tradeUtility,
 } from "./map-policy";
+import { canBeatGuardedField, premiumRecruitMarketVisit } from "./map-navigation";
+import { nextPlannedSilver, premiumRecruitTradePlan } from "./development";
+import { emptyComputerMemory, getComputerMemory } from "./memory";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
 import { observeForComputer } from "./observation";
@@ -148,19 +155,20 @@ describe("resource deficits and trade utility", () => {
 });
 
 describe("scoreMapAction — market open / trade / done", () => {
-  it("opens the market when a useful trade exists (above END_TURN)", () => {
+  it("USER RULING 2026-09-17: a bare deficit no longer opens the market from round 5 (CONTROL: the Silver-recruit plan does, see below)", () => {
     const state = stateWithResources(2, 8, 0);
     // Not inside a visit — OPEN_MARKET is a map action while parked on market.
     if (state.adventure) {
       state.adventure.pendingVisit = null;
     }
+    expect(hasUsefulMarketTrade(state, "p2")).toBe(true);
     const open = scoreMapAction(observe(state), {
       type: "OPEN_MARKET",
       playerId: "p2",
       heroId: "h2",
     });
-    expect(open?.score).toBeGreaterThan(300);
-    expect(open?.policy).toBe("map.open-market");
+    expect(open?.score).toBeLessThan(300);
+    expect(open?.policy).toBe("map.market-skip-balanced");
   });
 
   it("CONTROL: does not open the market when resources are balanced", () => {
@@ -182,9 +190,11 @@ describe("scoreMapAction — market open / trade / done", () => {
     expect(open?.policy).toBe("map.market-skip-balanced");
   });
 
-  it("ranks a useful trade above Done, and a wasteful trade below Done", () => {
-    // Broke with a TRUE materials surplus: selling one for gold is useful.
+  it("ranks every unplanned exchange below Done (USER RULING 2026-09-17), wasteful ones included", () => {
+    // Broke with a TRUE materials surplus: the old heuristic sold one for gold;
+    // without a Silver body to buy NEXT that exchange is "terrible".
     const state = stateWithResources(1, 7, 0);
+    expect(tradeUtility(state, "p2", 4)).toBeGreaterThan(0);
     const useful = scoreMapAction(observe(state), {
       type: "TRADE_RESOURCES",
       playerId: "p2",
@@ -195,7 +205,7 @@ describe("scoreMapAction — market open / trade / done", () => {
       playerId: "p2",
       decline: true,
     });
-    expect(useful?.score).toBeGreaterThan(done?.score ?? 0);
+    expect(useful?.score).toBeLessThan(done?.score ?? 0);
     expect(done?.score).toBeGreaterThan(300);
 
     // Flush gold, zero need for more valuables: 6 gold → 1 valuables is waste.
@@ -236,7 +246,7 @@ describe("scoreMapAction — market open / trade / done", () => {
     expect((decision?.action as { decline?: boolean }).decline).toBe(true);
   });
 
-  it("chooseComputerAction takes a useful gold trade over Done", () => {
+  it("chooseComputerAction leaves an unplanned gold trade on the table and exits (USER RULING 2026-09-17)", () => {
     const state = stateWithResources(1, 7, 0);
     const trade: LegalAction = {
       action: {
@@ -244,7 +254,7 @@ describe("scoreMapAction — market open / trade / done", () => {
         playerId: "p2",
         rateIndex: 4,
       } as GameAction,
-      label: "1 valuables for 3 gold",
+      label: "1 building materials for 1 gold",
     };
     const done: LegalAction = {
       action: {
@@ -255,8 +265,29 @@ describe("scoreMapAction — market open / trade / done", () => {
       label: "Done trading",
     };
     const decision = chooseComputerAction(observe(state, [trade, done]));
-    expect(decision?.action.type).toBe("TRADE_RESOURCES");
-    expect((decision?.action as { rateIndex: number }).rateIndex).toBe(4);
+    expect(decision?.action.type).toBe("RESOLVE_VISIT_STEP");
+    expect((decision?.action as { decline?: boolean }).decline).toBe(true);
+  });
+
+  it("USER RULING 2026-09-17: the AI dumps at most ONE junk card per visit now that a sale keeps the market open", () => {
+    const state = stateWithResources(1, 0, 0, {
+      players: {
+        p2: {
+          id: "p2",
+          hand: ["spell.bless"],
+          resources: { gold: 1, buildingMaterials: 0, valuables: 0 },
+          army: [{ id: "a1", unitDefId: "castle.pikemen", side: "few" }],
+          permanents: [],
+        },
+      },
+    } as unknown as Partial<GameState>);
+    const sell: GameAction = { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 0 } as GameAction;
+    const done = scoreMapAction(observe(state), { type: "RESOLVE_VISIT_STEP", playerId: "p2", decline: true });
+    // Broke: the first junk sale outranks Done …
+    expect(scoreMapAction(observe(state), sell)?.score).toBeGreaterThan(done?.score ?? 0);
+    // … but once a card was sold on this visit the next one ranks below Done.
+    (state.adventure!.pendingVisit!.steps[0] as { sold?: number }).sold = 1;
+    expect(scoreMapAction(observe(state), sell)?.score).toBeLessThan(done?.score ?? 0);
   });
 
   it("refuses every marketplace action before round 5", () => {
@@ -352,73 +383,167 @@ describe("scoreMapAction — market open / trade / done", () => {
   });
 });
 
+/**
+ * USER RULING (2026-09-17) fixture: a Castle seat on a Resource Round (odd,
+ * income just landed) standing on a Trading Post, its Silver dwelling built,
+ * its first Far settlement secured (so the planned Silver body is the
+ * breakthrough purchase), the Population token unspent, ONE gold short of that
+ * body with two spare materials — and a beatable level-1 guard one step away
+ * for the body to fight this same turn (the lv3 mine on the second Far tile
+ * is deliberately NOT such a fight: the far-sweep rule wants a Silver there).
+ */
+function silverRecruitFixture(round = 5) {
+  const state = createAdventureGameState({
+    seed: "market-silver-recruit",
+    difficulty: "normal",
+    events: false,
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Control", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Computer", factionId: "castle", heroDefId: "catherine" },
+    ],
+  });
+  const hero = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
+  state.round = round;
+  state.activePlayerId = "p2";
+  state.priorityPlayerId = "p2";
+  state.controllers = { p1: { kind: "human" }, p2: { kind: "computer", difficulty: "standard", policyVersion: 1 } };
+  state.players.p2.army = coreFactionDefinitions.castle.units
+    .filter((id) => coreUnitDefinitions[id]?.tier === "bronze")
+    .slice(0, 3)
+    .map((unitDefId, i) => ({ id: `core-${i}`, unitDefId, side: "pack" as const }));
+  for (const pl of Object.values(state.players)) {
+    pl.canMulligan = false;
+    pl.needsHandRefresh = false;
+  }
+  state.adventure!.pendingTileChoice = null;
+  state.adventure!.pendingVisit = null;
+  state.adventure!.houseRules = {
+    ...state.adventure!.houseRules,
+    "free-neutral-combat-extend": false,
+    "polish-quick-combat": false,
+  };
+  hero.spaceId = "h:10:7"; hero.level = 2; hero.movementPoints = 3; hero.movementPointsMax = 3;
+  const template = Object.values(state.adventure!.fields)[0];
+  state.adventure!.fields = {};
+  state.adventure!.tiles = {};
+  state.adventure!.playerFarTiles.p2 = [];
+  state.adventure!.farTilePool = [];
+  for (const [id, col, group] of [["home", 9, "starting"], ["far1", 6, "far"], ["far2", 5, "far"]] as const) {
+    state.adventure!.tiles[id] = {
+      id, tileDefId: "test-corridor", centerRow: 10, centerCol: col, group, faceDown: false, rotation: 0,
+    } as MapTileState;
+  }
+  for (let col = 4; col <= 10; col += 1) {
+    const spaceId = `h:10:${col}`;
+    state.adventure!.fields[spaceId] = {
+      ...template, spaceId, tileInstanceId: col <= 5 ? "far2" : col <= 7 ? "far1" : "home",
+      location: "empty_field", flagOwnerId: null, everFlagged: false, blackCube: false, difficulty: undefined,
+    };
+  }
+  const townField = state.adventure!.fields["h:10:9"];
+  townField.location = "town"; townField.flagOwnerId = "p2";
+  const ownTown = Object.values(state.towns).find((t) => t.controllerId === "p2")!;
+  ownTown.fieldId = townField.spaceId;
+  if (!ownTown.buildings.includes("castle.dwelling_silver")) ownTown.buildings.push("castle.dwelling_silver");
+  const rivalTown = Object.values(state.towns).find((t) => t.controllerId === "p1")!;
+  state.adventure!.fields[rivalTown.fieldId!] = {
+    ...template, spaceId: rivalTown.fieldId!, location: "town", flagOwnerId: "p1", difficulty: undefined,
+  };
+  for (const other of Object.values(state.heroes)) {
+    if (other.id !== hero.id) other.spaceId = other.controllerId === "p1" ? rivalTown.fieldId! : null;
+  }
+  const first = state.adventure!.fields["h:10:6"];
+  first.location = "settlement"; first.flagOwnerId = "p2"; first.everFlagged = true;
+  const second = state.adventure!.fields["h:10:5"];
+  second.location = "mine"; second.resource = "buildingMaterials"; second.difficulty = 3;
+  const guard = state.adventure!.fields["h:10:8"];
+  guard.location = "resource_symbol"; guard.difficulty = 1;
+  const post = state.adventure!.fields["h:10:7"];
+  post.location = "trading_post";
+  state.computerMemory = { p2: emptyComputerMemory(round) };
+  state.players.p2.townTokens = { build: true, population: true, spellBook: true };
+  const silver = nextPlannedSilver(state, "p2")!;
+  const cost = coreUnitDefinitions[silver].few!.cost;
+  state.players.p2.resources = {
+    gold: (cost.gold ?? 0) - 1,
+    buildingMaterials: (cost.buildingMaterials ?? 0) + 2,
+    valuables: cost.valuables ?? 0,
+  };
+  const sale = TRADE_RATES.findIndex((rate) => rate.sell.buildingMaterials === 1 && (rate.buy.gold ?? 0) > 0);
+  const observe = (): ComputerObservation => ({
+    playerId: "p2",
+    state: getPlayerView(state, "p2"),
+    memory: getComputerMemory(state, "p2"),
+    legalActions: getLegalActions(state, "p2"),
+  });
+  return { state, hero, silver, cost, second, guard, sale, observe };
+}
+
 describe("market e2e — real engine + computer runner", () => {
-  it("opens the Trading Post, sells valuables for gold, and exits Done (no loop)", () => {
-    // Full engine path: park the computer hero on a trading_post, give it
-    // convertible stock, drive the runner. Observable: gold rises, visit closes.
-    const state = createAdventureGameState({ startingBuildings: [],
-      seed: "market-e2e",
-      difficulty: "normal",
-      rollFirstPlayer: false,
-      events: false,
-      sessionMode: "single-player",
-      playerCount: 2,
-    });
-    // Computer seat is p2 on single-player adventure builds.
-    state.activePlayerId = "p2";
-    state.priorityPlayerId = "p2";
-    state.round = 5;
-    for (const pl of Object.values(state.players)) {
-      pl.canMulligan = false;
-      pl.needsHandRefresh = false;
-    }
-    const hero = getMainHero(state, "p2");
-    expect(hero).toBeTruthy();
-    const field: MapFieldState = {
-      spaceId: "market-e2e-hex",
-      tileInstanceId: "market-tile",
-      slot: 0,
-      location: "trading_post",
-      difficulty: undefined,
-      blackCube: false,
-      flagOwnerId: null,
-      everFlagged: false,
-      settlementResource: null,
-    };
-    state.adventure!.fields[field.spaceId] = field;
-    hero!.spaceId = field.spaceId;
-    hero!.movementPoints = 0;
-    // Broke with valuables → must trade 1 valuables for 3 gold.
-    state.players.p2.resources = {
-      gold: 1,
-      buildingMaterials: 0,
-      valuables: 2,
-    };
-    Object.values(state.towns).find(
-      (town) => town.controllerId === "p2",
-    )!.buildings.push("castle.dwelling_gold");
-    const goldBefore = state.players.p2.resources.gold;
-
+  it("USER RULING 2026-09-17: opens the Trading Post to make the planned Silver body payable, sells exactly the spare materials, recruits it and leaves (no loop)", () => {
+    const f = silverRecruitFixture(5);
+    expect(f.state.players.p2.townTokens.population).toBe(true);
+    expect(canBeatGuardedField(f.state, f.hero, f.guard)).toBe(true);
+    expect(premiumRecruitTradePlan(f.state, "p2")).toEqual({ unitDefId: f.silver, rateIndices: [f.sale] });
+    expect(premiumRecruitMarketVisit(f.state, "p2", "trading_post", f.hero.spaceId!)).toBe(true);
+    const open = scoreMapAction(f.observe(), { type: "OPEN_MARKET", playerId: "p2", heroId: f.hero.id });
+    expect(open?.policy).toBe("map.open-market-premium-recruit");
+    expect(open?.score).toBeGreaterThan(900);
     // Legal OPEN_MARKET must exist for the computer.
-    const openOffer = getLegalActions(state, "p2").find(
-      (legal) => legal.action.type === "OPEN_MARKET",
-    );
-    expect(openOffer, "OPEN_MARKET must be legal on the trading post").toBeDefined();
+    expect(getLegalActions(f.state, "p2").some((legal) => legal.action.type === "OPEN_MARKET")).toBe(true);
 
-    // Drive: open → useful trade(s) → Done. Cap keeps a bug from spinning.
-    const run = driveComputerPlayers(state, undefined, { maxSteps: 12 });
-    expect(run.stalled, run.reason).toBe(false);
-
+    const run = driveComputerPlayers(f.state, undefined, { maxSteps: 8 });
     const types = run.decisions.map((d) => d.action.type);
-    expect(types).toContain("OPEN_MARKET");
-    expect(types).toContain("TRADE_RESOURCES");
-    expect(types).toContain("RESOLVE_VISIT_STEP");
-
-    // Gold increased (valuables sold) and the visit is closed.
-    expect(run.state.players.p2.resources.gold).toBeGreaterThan(goldBefore);
-    expect(run.state.adventure?.pendingVisit).toBeFalsy();
-    // Did not open the market a second time in a loop after Done.
+    const openAt = types.indexOf("OPEN_MARKET");
+    const tradeAt = types.indexOf("TRADE_RESOURCES");
+    const recruitAt = types.findIndex((type, index) => type === "POPULATION_ACTION" &&
+      (run.decisions[index].action as { purchases?: { unitDefId: string }[] }).purchases?.[0]?.unitDefId === f.silver);
+    expect(openAt, types.join(",")).toBeGreaterThanOrEqual(0);
+    expect(tradeAt, types.join(",")).toBeGreaterThan(openAt);
+    expect(recruitAt, types.join(",")).toBeGreaterThan(tradeAt);
+    // Exactly the one-gold gap was closed: one material sold, never a loop.
+    expect(run.decisions.filter((d) => d.action.type === "TRADE_RESOURCES")).toHaveLength(1);
     expect(types.filter((t) => t === "OPEN_MARKET")).toHaveLength(1);
+    expect(run.state.players.p2.army.some((unit) => unit.unitDefId === f.silver && unit.side !== "bank")).toBe(true);
+    expect(run.state.players.p2.resources.buildingMaterials).toBe(1);
+  });
+
+  it("CONTROL: the same seat on an Astrologers round (income lands next round) does not trade, nor without a fight in reach, a Population token, or a gap to close", () => {
+    // Even round: wait for the Resource Round instead of selling stock.
+    const even = silverRecruitFixture(6);
+    expect(premiumRecruitTradePlan(even.state, "p2")).not.toBeNull();
+    expect(premiumRecruitMarketVisit(even.state, "p2", "trading_post", even.hero.spaceId!)).toBe(false);
+    const open = scoreMapAction(even.observe(), { type: "OPEN_MARKET", playerId: "p2", heroId: even.hero.id });
+    expect(open?.policy).not.toBe("map.open-market-premium-recruit");
+    expect(open?.score).toBeLessThan(300);
+    // Inside a forced-open visit the sale ranks below Done on the even round …
+    even.state.adventure!.pendingVisit = { heroId: even.hero.id, playerId: "p2", fieldId: "h:10:7", steps: [{ type: "TRADING_POST" }] };
+    const evenSale = scoreMapAction(even.observe(), { type: "TRADE_RESOURCES", playerId: "p2", rateIndex: even.sale });
+    const evenDone = scoreMapAction(even.observe(), { type: "RESOLVE_VISIT_STEP", playerId: "p2", decline: true });
+    expect(evenSale?.score).toBeLessThan(evenDone?.score ?? 0);
+    // … and above it on the odd round, while an off-plan rate stays below.
+    const odd = silverRecruitFixture(5);
+    odd.state.adventure!.pendingVisit = { heroId: odd.hero.id, playerId: "p2", fieldId: "h:10:7", steps: [{ type: "TRADING_POST" }] };
+    const oddSale = scoreMapAction(odd.observe(), { type: "TRADE_RESOURCES", playerId: "p2", rateIndex: odd.sale });
+    const oddDone = scoreMapAction(odd.observe(), { type: "RESOLVE_VISIT_STEP", playerId: "p2", decline: true });
+    const offPlan = scoreMapAction(odd.observe(), { type: "TRADE_RESOURCES", playerId: "p2", rateIndex: 0 });
+    expect(oddSale?.score).toBeGreaterThan(oddDone?.score ?? 0);
+    expect(offPlan?.score).toBeLessThan(oddDone?.score ?? 0);
+
+    // No fight the body can join this turn: no movement left.
+    const parked = silverRecruitFixture(5);
+    parked.hero.movementPoints = 0;
+    expect(premiumRecruitMarketVisit(parked.state, "p2", "trading_post", parked.hero.spaceId!)).toBe(false);
+    // Population token already spent: the body could not follow the trade.
+    const spent = silverRecruitFixture(5);
+    spent.state.players.p2.townTokens.population = false;
+    expect(premiumRecruitTradePlan(spent.state, "p2")).toBeNull();
+    // Already affordable: no trade needed, the recruit fires directly.
+    const flush = silverRecruitFixture(5);
+    flush.state.players.p2.resources.gold = flush.cost.gold ?? 0;
+    expect(premiumRecruitTradePlan(flush.state, "p2")).toBeNull();
+    expect(premiumRecruitMarketVisit(flush.state, "p2", "trading_post", flush.hero.spaceId!)).toBe(false);
   });
 
   it("CONTROL: balanced resources on a market never opens a trade loop", () => {

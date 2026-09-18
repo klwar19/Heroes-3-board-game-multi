@@ -381,6 +381,9 @@ describe("goldBodyComboTradePlan — the level-7 body lands with its dwelling", 
 
   it("buys the RECRUIT's missing valuable on the dwelling visit; CONTROL: never when the gold cannot pay both", () => {
     const { state } = comboState(53);
+    // No spare materials here: the valuable must be BOUGHT from gold (the
+    // spare-material 3→1 route has its own case below).
+    state.players.p2.resources.buildingMaterials = GOLD_DWELLING_COST.buildingMaterials;
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-gold");
     // The dwelling ALONE is already payable, so the ordinary rush planner has
     // nothing to do — this is exactly the gap the combo plan closes.
@@ -395,10 +398,31 @@ describe("goldBodyComboTradePlan — the level-7 body lands with its dwelling", 
     expect(scoreMapAction(observe(state), buyValuable)!.score).toBe(720);
 
     // CONTROL: one gold short of dwelling (10) + Gold Dragons (22) + the 6-gold
-    // trade. Buying the valuable would strip the dwelling, so no plan fires and
-    // the generic floor refuses the exchange.
+    // trade, and no spare materials to convert or sell. Buying the valuable
+    // would strip the dwelling, so no plan fires and the floor refuses it.
     const short = comboState(GOLD_DWELLING_COST.gold + 22 + 5).state;
+    short.players.p2.resources.buildingMaterials = GOLD_DWELLING_COST.buildingMaterials;
     expect(goldBodyComboTradePlan(short, "p2")).toBeNull();
     expect(scoreMapAction(observe(short), buyValuable)!.score).toBeLessThanOrEqual(280);
+  });
+
+  it("USER RULING 2026-09-17: spare materials pay the body's gap — 3→1 for the missing valuable, then 1:1 for gold (CONTROL: the fixture's default purse still buys it from gold)", () => {
+    const MATS_TO_VALS = TRADE_RATES.findIndex(
+      (rate) => rate.sell.buildingMaterials === 3 && rate.buy.valuables === 1,
+    );
+    const MATS_SALE = TRADE_RATES.findIndex(
+      (rate) => rate.sell.buildingMaterials === 1 && (rate.buy.gold ?? 0) > 0,
+    );
+    // Gold pays the dwelling + dragons only after the spare materials (14 - 9
+    // = 5) cover the missing valuable at 3→1: no 6-gold purchase needed.
+    const convert = comboState(GOLD_DWELLING_COST.gold + 22).state;
+    expect(goldBodyComboTradePlan(convert, "p2")?.rateIndices).toEqual([MATS_TO_VALS]);
+    // Two gold short on top of that: the two materials left sell 1:1.
+    const sell = comboState(GOLD_DWELLING_COST.gold + 22 - 2).state;
+    expect(goldBodyComboTradePlan(sell, "p2")?.rateIndices).toEqual([MATS_TO_VALS, MATS_SALE]);
+    expect(scoreMapAction(observe(sell), { type: "TRADE_RESOURCES", playerId: "p2", rateIndex: MATS_SALE })!.score).toBe(720);
+    // Three gold short: the spare materials cannot close it — no plan.
+    const tooShort = comboState(GOLD_DWELLING_COST.gold + 22 - 3).state;
+    expect(goldBodyComboTradePlan(tooShort, "p2")).toBeNull();
   });
 });

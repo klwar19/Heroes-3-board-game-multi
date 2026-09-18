@@ -5,6 +5,7 @@ import { unitAbilities } from "@/data/units/abilities";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   getBattlefieldCoordinates,
+  getBattlefieldDistance,
   getOrthogonalNeighbors,
 } from "../battlefield";
 import { cancelSpellAllowsSchoolAndLevel, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
@@ -15,6 +16,7 @@ import { houseRuleEnabled } from "../house-rules";
 import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { resolvedSpellPowerForStackItem, standingSpellPower } from "../legal-actions";
+import { baseCardId } from "../phantom-cards";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   CardDefinition,
@@ -75,6 +77,18 @@ import type { ComputerObservation } from "./types";
 // below END_ACTIVATION (400) / DEFEND (500) / PASS_REACTION (1_050) so the AI
 // does something real (or PASSes) and keeps the charge for a unit worth saving.
 const HOLD_FIRST_AID_SCORE = 360;
+
+// NEUTRAL fights only. A damage spell ignores Defense and is our ONLY reliable
+// tool against the back line, so it should prefer an enemy SHOOTER (or caster) —
+// a RECURRING, undefendable threat that fires every future round and that our
+// bodies struggle to reach — over a comparable ground unit. Sized > the +30
+// "unacted this round" lethal term so a shooter that has ALREADY fired this round
+// still outranks unacted ground chaff, but kept well under the lethal terms so it
+// only breaks ties/orders shooters above ground — it never lifts a NON-lethal hit
+// on a tankier shooter above a LETHAL hit on a killable one (both shooters gain it
+// equally, so lethality stays dominant). PvP is deliberately excluded — the tier
+// doctrine (pvp-spell-focus-doctrine.md) owns that branch and never chips bronze.
+const RANGED_SPELL_TARGET_BONUS = 40;
 
 // --- effect family tables ----------------------------------------------------
 
@@ -261,7 +275,7 @@ export function cardHandValue(cardId: string, observation: ComputerObservation):
   // reactions that make a PvP hand useful, including while finishing a guard.
   if ((card.statisticType === "attack" || card.statisticType === "defense") &&
       (fight?.kind === "pvp" || nearbyPlayerFight(observation))) return Math.max(value, 70);
-  if (cardId === "spell.magic_arrow") {
+  if (baseCardId(cardId) === "spell.magic_arrow") {
     // Inside a fight whose every living enemy is Arrow-immune (Elementals,
     // spell-immune guards) the Arrow is dead weight: refresh it away.
     const enemies = state.combat ? Object.values(state.combat.units).filter(unit =>
@@ -357,7 +371,7 @@ export function moraleRedrawDiscards(observation: ComputerObservation): string[]
     .map((cardId, index) => ({ cardId, index, value: cardHandValue(cardId, observation) }))
     .filter((entry) =>
       entry.value < MORALE_REDRAW_JUNK_THRESHOLD &&
-      entry.cardId !== "spell.magic_arrow" &&
+      baseCardId(entry.cardId) !== "spell.magic_arrow" &&
       !isCastASpellCard(entry.cardId) &&
       cardLibrary[entry.cardId]?.effect.type !== "NECROMANCY_REINFORCE")
     .sort((a, b) => a.value - b.value || a.index - b.index);
@@ -408,6 +422,24 @@ export function cardKeepValue(
   if (SAVE_EFFECTS.has(card.effect.type)) value += 20;
   if (COMBAT_DAMAGE_EFFECTS.has(card.effect.type)) value += 10;
   if (MAP_ECONOMY_EFFECTS.has(card.effect.type)) value += 8;
+  // Persistent combat stat buff (user 2026-09-18, live tutoring): an artifact that
+  // grants +attack/+defense for the WHOLE combat (Quiet Eye of the Dragon: +1 attack
+  // all fight) applies to EVERY attack every round — far more total value than a
+  // one-shot trick (Centaur's Axe triples a single die) or a lone reaction stat.
+  // Value attack/defense buffs highest; an initiative buff (Ring of the Wayfarer) is
+  // a smaller tempo gain. Artifact-scoped so combat spells (Bloodlust/Slow) are
+  // untouched; reads CHOOSE_ONE option effects since these cards are a menu.
+  if (card.kind === "artifact") {
+    const buffEffects = card.effect.type === "CHOOSE_ONE"
+      ? card.effect.options.map((option) => option.effect)
+      : [card.effect];
+    if (buffEffects.some((effect) =>
+      effect.type === "CREATE_ATTACK_BUFF" || effect.type === "CREATE_DEFENSE_BUFF")) {
+      value += 22;
+    } else if (buffEffects.some((effect) => effect.type === "CREATE_INITIATIVE_BUFF")) {
+      value += 6;
+    }
+  }
   value += cardTierValue(
     cardId,
     view ? cardValueContext(view.state, view.playerId) : null,
@@ -592,7 +624,7 @@ function scoreDamageEffect(
   // `attack − defense` guess made armoured high-value units look unhittable and
   // steered every cast at the cheapest chaff instead of the real threat.
   const owner = observation.state.players[observation.playerId];
-  const heldPower = (owner?.hand ?? []).filter(id => id === "stat.power").length;
+  const heldPower = (owner?.hand ?? []).filter(id => baseCardId(id) === "stat.power").length;
   // Plain Power is legal fuel for any spell. Preview that finite hand budget,
   // while still respecting the target's actual wards and immunity.
   const powerBudget = heldPower + Math.min(heldPower, Math.max(0, crownsAvailable(observation)));
@@ -630,12 +662,26 @@ function scoreDamageEffect(
   const armorLeverage =
     Math.min(30, defender.defense * 3) +
     (bestPhysicalDamage === 0 || meleeNullified ? 28 : 0);
+  // A shooter or caster is a RECURRING threat our bodies cannot reliably reach or
+  // defend against, so the spell (the one Defense-ignoring tool) prioritizes it.
+  const recurringThreat = defender.type === "ranged" || hasThreatAbility(defender);
+  // Our own melee can already lethally reach this body this turn.
+  const meleeCanKill = bestPhysicalDamage >= unitRemovalHealth(defender);
   let quality =
     Math.min(60, threat) +
     Math.round((Math.min(damage, remaining) / Math.max(1, remaining)) * 40) +
-    armorLeverage;
-  if (damage >= unitRemovalHealth(defender)) quality += 50 +
-    (!defender.activatedThisRound ? 30 : 0) + (defender.defense >= 2 ? 25 : 0);
+    armorLeverage +
+    (recurringThreat ? RANGED_SPELL_TARGET_BONUS : 0);
+  if (damage >= unitRemovalHealth(defender)) {
+    // The +30 "not yet activated" term rewards pre-killing a body before it acts.
+    // That is BACKWARDS for a low-threat ground melee our OWN melee can already
+    // kill: leaving it unacted is bait to exploit (it dies for free on our
+    // retaliation), not a reason to spend a premium spell on it. Drop the bonus
+    // for that case; keep it for shooters/casters, where killing the recurring
+    // threat (before OR after it acts) is always worth it.
+    const preemptUnacted = !defender.activatedThisRound && !(meleeCanKill && !recurringThreat);
+    quality += 50 + (preemptUnacted ? 30 : 0) + (defender.defense >= 2 ? 25 : 0);
+  }
   // PvP (user ruling 2026-09-15): a damage spell exists to punch the enemy's GOLD
   // lvl-7 body (2-3 Defense) — Defense-ignoring damage is the ONLY tool that hurts
   // an armoured gold stack our melee bounces off. Order targets STRICTLY by tier so
@@ -688,17 +734,83 @@ export function knowledgeExtraCastUseful(observation: ComputerObservation): bool
   const spells = readySpells(state, observation.playerId).filter(card =>
     card.effect.type === "DEAL_DAMAGE" && enemies.some(enemy =>
       previewSpellDamage(state, enemy, card, getSpellDamageAmount(card, (card.power ?? 0) +
-        Math.min(2, player.hand.filter(id => id === "stat.power").length))) > 0));
+        Math.min(2, player.hand.filter(id => baseCardId(id) === "stat.power").length))) > 0));
   // The casting card is returned by Knowledge, unless a spell-book rule
   // recalls only the enabler. In either case require a real remaining spell.
   const current = balanceCardLibrary(state, cardLibrary)[cast.cardId];
   const recurring = current?.effect.type === "DEAL_DAMAGE" && enemies.some(enemy =>
     (enemy.id !== (cast.target?.type === "unit" ? cast.target.unitId : undefined) ||
       previewSpellDamage(state, enemy, current, getSpellDamageAmount(current, (current.power ?? 0) +
-        player.hand.filter(id => id === "stat.power").length)) < unitRemovalHealth(enemy)) &&
+        player.hand.filter(id => baseCardId(id) === "stat.power").length)) < unitRemovalHealth(enemy)) &&
     previewSpellDamage(state, enemy, current, getSpellDamageAmount(current, current.power ?? 0)) > 0);
   const remainingSlots = Math.max(0, spellLimitFor(state, player) - player.combatStats.spellsCastThisRound);
   return enemies.length >= 2 && spells.length + Number(Boolean(recurring)) > remainingSlots;
+}
+
+// A ground melee body ~2 activations from a target (orthogonal board distance)
+// can realistically walk into range over the fight; shooters/flyers ignore this.
+const MELEE_REACH_HORIZON = 5;
+
+/**
+ * "Calculate ahead": is a gold/azure ally genuinely threatened over the rest of
+ * THIS combat, for the purpose of deciding whether to hoard a scarce Defense card
+ * for it? (User ruling 2026-09-18 — don't just look at one unit; weigh reach,
+ * unit type, position and the whole enemy set.) A threat only counts when a
+ * Defense card could actually mitigate it, so:
+ *  - ELEMENTAL / defense-ignoring attackers are excluded (the card changes nothing).
+ *  - REACH is required: shooters and flyers always reach; a ground melee only if
+ *    it can walk into striking range within ~2 activations (board distance).
+ *  - MAGNITUDE gates it: a single reachable hit worth >= a third of the ally's
+ *    remaining health is a real threat, OR the reachable attackers together can
+ *    remove it over the fight (ganging). Weak neutral guards that chip a durable
+ *    gold body for nothing never trip this — so in such a fight the card is free
+ *    to spend saving cheaper units, exactly as intended.
+ */
+function goldAllyThreatened(
+  observation: ComputerObservation,
+  gold: CombatUnitState,
+): boolean {
+  const combat = observation.state.combat;
+  if (!combat) return false;
+  const goldHealth = unitRemainingHealth(gold);
+  if (goldHealth <= 0) return false;
+  let aggregate = 0;
+  for (const enemy of livingEnemyUnits(combat, observation.playerId)) {
+    if (dealsElementalStrike(enemy)) continue; // a Defense card cannot blunt elemental
+    const damage = expectedAttackDamage(enemy, gold);
+    if (damage <= 0) continue;
+    const reaches =
+      enemy.type === "ranged" ||
+      enemy.type === "flying" ||
+      getBattlefieldDistance(enemy.position, gold.position) <= MELEE_REACH_HORIZON;
+    if (!reaches) continue;
+    if (damage * 3 >= goldHealth) return true; // one meaningful hit is enough to hoard for
+    aggregate += damage;
+  }
+  return aggregate >= goldHealth; // ganged down across the fight
+}
+
+/**
+ * The largest Defense boost the acting player currently holds in hand (0 if
+ * none). Used by the attack-boost card-economy hold: a whiffed attacker that
+ * would otherwise die to the target's retaliation can be kept alive behind a
+ * Defense reaction we actually hold, so conserving the Attack boost never
+ * trades our own unit away. Phantom-safe via `baseCardId`.
+ */
+function bestDefenseBoostInHand(observation: ComputerObservation): number {
+  const state = observation.state as unknown as GameState;
+  const player = state.players?.[observation.playerId];
+  if (!player?.hand?.length) return 0;
+  const cards = balanceCardLibrary(state, cardLibrary);
+  let best = 0;
+  for (const id of player.hand) {
+    const card = cards[id] ?? cards[baseCardId(id)];
+    if (!card || card.statisticType !== "defense") continue;
+    const effect = primaryEffect(card);
+    const amt = effect && "amount" in effect ? (effect.amount as number) : 1;
+    if (amt > best) best = amt;
+  }
+  return best;
 }
 
 function scoreStatReaction(
@@ -766,6 +878,25 @@ function scoreStatReaction(
         const attacker = combat.units[attack.attackerId];
         const defender = combat.units[attack.defenderId];
         if (attacker?.controllerId === observation.playerId && defender) {
+          // Card economy (user 2026-09-18, live tutoring): do NOT spend a scarce
+          // Attack boost on a RETALIATION against a NON-priority body while an
+          // enemy shooter/caster is still alive — reserve the boost for the
+          // undefendable priority target (the flyer's certain kill on the
+          // shooter). A minor free retaliation deals 0-1 and can wait; there is
+          // plenty of room to act later, so the card is worth far more elsewhere.
+          const isRetaliation = Boolean(
+            (observation.state.reactionWindow?.triggerEvent as { isRetaliation?: boolean } | undefined)
+              ?.isRetaliation,
+          );
+          const defenderIsPriorityTarget =
+            defender.type === "ranged" || hasThreatAbility(defender);
+          const priorityTargetAlive = Object.values(combat.units).some((enemy) =>
+            enemy.controllerId !== observation.playerId &&
+            unitRemainingHealth(enemy) > 0 &&
+            (enemy.type === "ranged" || hasThreatAbility(enemy)));
+          if (isRetaliation && !defenderIsPriorityTarget && priorityTargetAlive) {
+            return 1_020;
+          }
           const cap = (defender.abilities ?? []).reduce((lowest, abilityId) => {
             const abilityEffect = unitAbilities[abilityId]?.effect;
             return abilityEffect?.type === "CAP_DAMAGE_PER_ATTACK"
@@ -794,6 +925,84 @@ function scoreStatReaction(
           // die already removes the target. Keep it for a subsequent attack.
           if (Math.min(cap, Math.max(0, currentDamage - 1)) >= unitRemovalHealth(defender)) {
             return 1_020;
+          }
+          // Card economy (user 2026-09-18, live tutoring — "risk the 2/3 plain
+          // kill but keep a fallback"): do NOT burn a real Attack boost to force
+          // certainty NOW when the plain attack already kills on a normal roll
+          // (only the worst -1 die whiffs) AND a friendly unit that has not yet
+          // acted this round could still finish this SAME target — with this very
+          // boost held in reserve for that guaranteed kill. Holding strictly
+          // dominates: the target, which has ALREADY taken its turn (so leaving it
+          // alive one beat costs nothing), dies this round either way, and ~2/3 of
+          // the time the lucky first roll kills for free and BOTH cards are saved.
+          // Guarded so the hold never trades our own attacker away — it must
+          // survive a whiff's retaliation outright, or behind a Defense boost we
+          // actually hold. Neutral fights only; a priority target (shooter/threat)
+          // that hasn't acted is killed on sight elsewhere, not deferred.
+          const removal = unitRemovalHealth(defender);
+          const medianKills = Math.min(cap, currentDamage) >= removal;
+          const worstWhiffs = Math.min(cap, Math.max(0, currentDamage - 1)) < removal;
+          if (
+            !isRetaliation &&
+            combat.context?.kind !== "player" &&
+            medianKills &&
+            worstWhiffs &&
+            defender.activatedThisRound
+          ) {
+            const reserveFinisher = Object.values(combat.units).some((mate) =>
+              mate.controllerId === observation.playerId &&
+              mate.id !== attacker.id &&
+              !mate.activatedThisRound &&
+              unitRemainingHealth(mate) > 0 &&
+              Math.max(0, mate.attack + amount - defender.defense - 1) >= removal);
+            if (reserveFinisher) {
+              const worstRetaliation = defender.retaliatedThisRound
+                ? 0
+                : Math.max(0, defender.attack + 1 - attacker.defense);
+              const survivesWhiff =
+                unitRemainingHealth(attacker) > worstRetaliation ||
+                unitRemainingHealth(attacker) + bestDefenseBoostInHand(observation) >
+                  worstRetaliation;
+              if (survivesWhiff) {
+                return 1_020;
+              }
+            }
+          }
+          // Reserve a BIG attack boost (>=2, the Empowered) for an un-acted ally
+          // that needs it to kill a DEFENSE-IGNORING one-shotter before that enemy
+          // acts (user ruling 2026-09-18, live tutoring: don't blow the Empowered on
+          // the Magi — a held Magic Arrow finishes the softened shooter, so SAVE the
+          // Empowered for the Crusader's certain Elemental kill). The elemental body
+          // ignores defense (can't be tanked) and one-shots our body, so it must be
+          // removed by a guaranteed strike, not chipped — that strike needs this card.
+          if (
+            amount >= 2 &&
+            combat.context?.kind !== "player" &&
+            !isRetaliation &&
+            defender.type === "ranged"
+          ) {
+            const allies = Object.values(combat.units).filter((mate) =>
+              mate.controllerId === observation.playerId && unitRemainingHealth(mate) > 0);
+            const oneShotter = Object.values(combat.units).find((enemy) =>
+              enemy.controllerId !== observation.playerId &&
+              unitRemainingHealth(enemy) > 0 &&
+              !enemy.activatedThisRound &&
+              dealsElementalStrike(enemy) &&
+              allies.some((mate) => enemy.attack + 1 >= unitRemovalHealth(mate)));
+            const holdsFinisherSpell =
+              (observation.state.players[observation.playerId]?.hand ?? [])
+                .some((id) => baseCardId(id) === "spell.magic_arrow");
+            if (oneShotter && holdsFinisherSpell && defender.id !== oneShotter.id) {
+              const reservingAlly = allies.some((mate) =>
+                mate.id !== attacker.id &&
+                !mate.activatedThisRound &&
+                mate.type !== "ranged" &&
+                mate.attack + amount - oneShotter.defense >= unitRemovalHealth(oneShotter) &&
+                mate.attack + 1 - oneShotter.defense < unitRemovalHealth(oneShotter));
+              if (reservingAlly) {
+                return 1_020;
+              }
+            }
           }
         }
       }
@@ -829,6 +1038,44 @@ function scoreStatReaction(
           }
           if (beforeDamage >= remaining && afterDamage < remaining) {
             return 1_150 + Math.min(25, Math.round(unitThreatValue(defender) / 3)) + modeBonus(mode);
+          }
+          // Tanky-unit read (user 2026-09-18): if the unit shrugs off a NEGLIGIBLE
+          // chip — the hit is at most a third of its remaining health, e.g. Zombies
+          // eating a 1-damage Elf shot at 3 HP — conserve the scarce Defense rather
+          // than burn it to shave trivial damage. A meaningful hit (a big chunk of
+          // HP) or a unit that could die soon still gets the card, and the
+          // lethal-save branches above always play it to PREVENT a death. The
+          // Marksman-vs-shooter and Griffin holds below own those specific units.
+          if (
+            beforeDamage > 0 &&
+            beforeDamage * 3 <= remaining &&
+            defender.unitDefId !== "castle.marksmen" &&
+            defender.unitDefId !== "castle.griffins"
+          ) {
+            return 1_020;
+          }
+          // Gold-priority (user ruling 2026-09-18): with a gold/azure ally that is
+          // actually threatened this fight (goldAllyThreatened calculates reach +
+          // magnitude ahead, not just one unit), save the scarce Defense for that
+          // premium body and let a cheaper "meat-wall" eat a hit it SURVIVES. Only
+          // for a non-premium defender that lives through this hit; skips the
+          // Marksman/Griffin holds below. In a neutral fight whose guards cannot
+          // meaningfully threaten the gold, goldAllyThreatened is false — so the
+          // card stays free to spend saving units, as intended.
+          const defenderIsPremium =
+            defender.grade === "gold" || defender.grade === "azure";
+          if (
+            !defenderIsPremium &&
+            beforeDamage < remaining &&
+            defender.unitDefId !== "castle.marksmen" &&
+            defender.unitDefId !== "castle.griffins" &&
+            Object.values(combat.units).some((ally) =>
+              ally.controllerId === observation.playerId &&
+              ally.id !== defender.id &&
+              (ally.grade === "gold" || ally.grade === "azure") &&
+              goldAllyThreatened(observation, ally))
+          ) {
+            return 1_020;
           }
           if (card.statisticType === "defense" && beforeDamage > 0 && afterDamage < beforeDamage) {
             const ownLiving = Object.values(combat.units).filter(unit =>
@@ -1545,6 +1792,15 @@ function discardCostPenalty(
 /** Crowns (expert uses) this seat still has this round — own-seat fields only. */
 export function crownsAvailable(observation: ComputerObservation): number {
   const player = observation.state.players[observation.playerId];
+  // Reserve the crown for a pending high-value expert play (user ruling 2026-09-18,
+  // live tutoring): during a NEUTRAL fight while holding ability.learning, treat the
+  // crown as unavailable so it is NOT burned on an in-combat expert stat play — it is
+  // worth far more spent on Learning at EXPERT on the level-up this fight will trigger.
+  const combat = observation.state.combat;
+  if (combat && combat.context?.kind === "neutral" &&
+      (player?.hand ?? []).includes("ability.learning")) {
+    return 0;
+  }
   if (!player?.limits) return 2;
   return (
     player.limits.expertUses +

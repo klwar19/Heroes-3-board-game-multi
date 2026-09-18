@@ -6,7 +6,6 @@ import {
   MARKET_MIN_ROUND,
   playerResources,
   resourceDeficits,
-  tradeUtility,
   wantsMarketVisit,
   type ResourceKey,
 } from "./market-trades";
@@ -101,8 +100,12 @@ import {
   hasOpenedFarEconomy,
   INCOME_FIRST_LAST_ROUND,
   INCOME_NEVER_FROM_ROUND,
+  factionSkipsIncomeHall,
   factionBuildingForEffect,
   incomeBuildingBeforeDwelling,
+  premiumRecruitTradePlan,
+  nextDevelopmentBuildingCost,
+  silverAccessible,
   nextGoldLadderStep,
   nextPlannedSilver,
   rankedGoldUnits,
@@ -117,15 +120,18 @@ import {
   hasAttainableGoldFunding,
   distanceFromHeroTo,
   fieldSuppliesResource,
-  freeSeizuresWithinReach,
+  freeSeizuresAlongMarch,
   isFreeSeizeObjective,
+  MARCH_SCOOP_DETOUR_SLACK,
   shouldDeferExpansionTile,
   isHomeTileOpeningObjective,
+  isHomeTileSweepObjective,
   lowerExpansionBandImmediatelyAvailable,
   homeTileInstanceId,
   objectiveDistanceField,
   needsFarValuablesReveal,
   premiumEconomyResourceBonus,
+  premiumRecruitMarketVisit,
   primaryMapObjective,
   seatHoldsFarSupplyTile,
   startTileRotationOpensFarExpansion,
@@ -247,6 +253,31 @@ function bronzeCoreHasWork(state: GameState, playerId: PlayerId): boolean {
   });
 }
 
+/**
+ * Free gold the main hero can physically grab THIS turn — unflagged, unguarded
+ * gold resource fields within current movement (water wheels, gold mines with no
+ * guard). Lets the build planner "see the map": an on-map gold pickup can refund
+ * a treasury that a build would otherwise leave thin (user 2026-09-18, live
+ * tutoring — the Castle water wheel funds the Silver recruit after Holy Grounds).
+ */
+function reachableMapGoldThisTurn(state: GameState, playerId: PlayerId): number {
+  const hero = Object.values(state.heroes ?? {}).find(
+    (candidate) => candidate.controllerId === playerId && candidate.kind === "main");
+  if (!hero?.spaceId || !state.adventure) return 0;
+  const mp = Math.max(0, hero.movementPoints ?? 0);
+  if (mp <= 0) return 0;
+  let gold = 0;
+  for (const field of Object.values(state.adventure.fields)) {
+    if (field.resource !== "gold" || !field.amount) continue;
+    if (field.flagOwnerId === playerId) continue;   // already ours
+    if ((field.difficulty ?? 0) > 0) continue;        // guarded — not a free grab this turn
+    if ((distanceFromHeroTo(state, hero, field.spaceId, true) ?? Infinity) <= mp) {
+      gold += field.amount;
+    }
+  }
+  return gold;
+}
+
 function buildingScore(
   state: GameState,
   playerId: PlayerId,
@@ -270,6 +301,35 @@ function buildingScore(
       needsPremiumSilverBreakthrough(state, playerId)) return 240;
   const armySize = state.players[playerId]?.army.length ?? 0;
   const gold = playerGold(state, playerId);
+  // EARLY SILVER BREAKTHROUGH (user 2026-09-18, live tutoring): when the Silver
+  // dwelling is AFFORDABLE RIGHT NOW — the seat already holds the scarce valuables
+  // that gate it — AND there is free gold the hero can grab on the map THIS turn to
+  // fund the follow-up Silver recruit, a level-4 Silver body is a bigger power/tempo
+  // jump than finishing a third bronze Pack. Take it now instead of deferring to the
+  // bronze core. The reachable-map-gold requirement is the distinguisher the user named
+  // ("SEE THE MAP, SEE THE RESOURCES IT CAN GAIN"): without on-map gold to fund the
+  // body, keep the eval-tuned packs-first ladder; with it, the Silver pivot is funded.
+  if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver" &&
+      !development.silverUnlocked && !hasReachedGoldArmy(state, playerId)) {
+    const cost = effectiveTownBuildingCost(state, coreBuildingDefinitions[buildingId]);
+    const res = state.players[playerId]?.resources;
+    const affordableNow = Boolean(cost && res &&
+      (res.gold ?? 0) >= (cost.gold ?? 0) &&
+      (res.buildingMaterials ?? 0) >= (cost.buildingMaterials ?? 0) &&
+      (res.valuables ?? 0) >= (cost.valuables ?? 0));
+    const mapGold = reachableMapGoldThisTurn(state, playerId);
+    const goldLeft = gold - (cost?.gold ?? 0) + mapGold;
+    // The gate is affording the Silver BODY itself (its Few gold cost), not an
+    // arbitrary reserve: THIS TURN build the dwelling, grab the on-map gold, and the
+    // treasury reaches the Silver recruit's price so the body is bought the same turn
+    // (user 2026-09-18: "get the 3-gold water wheel and have enough gold for the
+    // Crusader" — 11 gold −8 build +3 wheel = 6 = the Crusader's cost, all this round).
+    const silverId = nextPlannedSilver(state, playerId);
+    const silverGold = silverId ? (coreUnitDefinitions[silverId]?.few?.cost?.gold ?? 0) : 0;
+    if (affordableNow && mapGold > 0 && silverId && goldLeft >= silverGold) {
+      return 984;
+    }
+  }
   if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver" &&
       !hasOpenedFarEconomy(state, playerId)) {
     const cost = effectiveTownBuildingCost(state, coreBuildingDefinitions[buildingId]);
@@ -477,9 +537,11 @@ function buildingScore(
   }
   // Too late for income: no ranked seat built a City Hall from R8 on — the
   // +5/round cannot repay its cost before the game is decided. Never build it.
+  // USER RULING (2026-09-17): Necropolis and Stronghold never build it at all.
   if (
     effect?.type === "RESOURCE_ROUND_CHOICE" &&
-    (state.round ?? 0) >= INCOME_NEVER_FROM_ROUND
+    ((state.round ?? 0) >= INCOME_NEVER_FROM_ROUND ||
+      factionSkipsIncomeHall(state, playerId))
   ) {
     return 280;
   }
@@ -732,9 +794,14 @@ function populationScore(
         purchase.unitDefId === "necropolis.wraiths")) return 180;
     // Like the fallback branch above, the paid Skeleton Pack must not jump the
     // Necromancy-tempo cap while a beatable neutral could still earn the
-    // upgrade for free.
+    // upgrade for free. User lesson (2026-09-18, live tutoring): when that earned
+    // half-cost upgrade IS reachable, GO FIGHT and keep the gold for the upgrade —
+    // do NOT fritter it on a chaff Skeleton reinforce. Score the reinforce below
+    // the move-to-objective band (760+) so the hero marches to the fight instead;
+    // with no reachable fight, Skeletons stay a fine fallback development (976).
     if (action.purchases.length === 1 && action.purchases[0].kind === "reinforce" &&
-        action.purchases[0].unitDefId === "necropolis.skeletons" && !earnedUpgradeAvailable) return 976;
+        action.purchases[0].unitDefId === "necropolis.skeletons")
+      return earnedUpgradeAvailable ? 640 : 976;
     if (needsNecromancyVampire(state, observation.playerId)) {
       if (action.purchases.some(purchase => coreUnitDefinitions[purchase.unitDefId]?.tier === "gold" ||
           purchase.unitDefId === "necropolis.liches")) return 180;
@@ -1107,6 +1174,14 @@ const OBJECTIVE_ENTER_SCORE: Record<MapObjectiveKind, number> = {
   visitable: 810,
   explore: 720,
 };
+// A step LANDING on a home-tile sweep payoff that is not the marched primary
+// this turn (rounds 1-2 opening). Ranked above exploration (720) and END_TURN
+// (300) so an offered home object is always taken over opening more map, yet
+// below every real objective ENTER (visitable 810+) so it never re-aims the
+// hero off the fights-first primary ordering that saves the doorway object for
+// round 2. Only the terminal step onto the object earns it (it is not a march
+// distance-field source), so the route direction is unchanged.
+const HOME_SWEEP_PAYOFF_SCORE = 760;
 // A step that shrinks the distance to the sticky primary objective without
 // arriving yet: above END_TURN so the march continues, below entering.
 const OBJECTIVE_PROGRESS_BASE = 700;
@@ -1128,6 +1203,11 @@ const GUARD_REENTRY_SETUP_SCORE = 640;
 // Just above END_TURN (300) so it only ever wins when nothing else moves the
 // plan forward.
 const FREE_PICKUP_LAST_STEP_SCORE = 320;
+// Distinct sentinel: a step onto the FREE gold that funds the Silver body a premium
+// fight needs. The MOVE_HERO case honours it ahead of the premium-approach override so
+// the hero fetches the gold FIRST (then recruits, then attacks) instead of marching at
+// the fight and stalling bronze-only (user 2026-09-18, live tutoring).
+const FETCH_ENABLING_GOLD_SCORE = 965;
 // Home (Ⅰ) rotation bonus for leaving a Ⅱ–Ⅲ expansion doorway open — larger
 // than the whole band-blind doorway-count spread (3*9 + 3*6 = 45) so a
 // qualifying rotation always wins, per the user rule. See
@@ -1163,39 +1243,40 @@ function moveScore(
     objectives,
     memory.stickyObjectiveSpaceId,
   );
-  // March toward the sticky primary, but ALSO free seizures still in this
-  // turn's walking reach (unguarded mines / symbols / settlements) that lie
-  // ALONG the march: a pickup no farther from the primary than the hero is
-  // now. Multi-source BFS then scoops free objects on the way without letting
-  // a nearer pickup in the OPPOSITE direction reverse a committed march
+  // March toward the sticky primary, but ALSO free seizures (unguarded mines /
+  // symbols / settlements) that lie ALONG the march: in this turn's walking
+  // reach and no farther from the primary than the hero is now, OR — USER
+  // RULING (2026-09-17) — on/beside the route however many turns away, so the
+  // strict march graph (which walks AROUND every uncollected stop) can no
+  // longer skip a resource field the hero passes and "come back later". The
+  // multi-source BFS then scoops those objects on the way without letting a
+  // nearer pickup in the OPPOSITE direction reverse a committed march
   // (measured on the Impossible premium-rush seeds: an unfiltered scoop pulled
   // the hero west off the eastern settlement commit, and the premium fight
-  // never happened).
-  const freeThisTurn = freeSeizuresWithinReach(state, hero, objectives);
+  // never happened). A premium primary keeps its combat movement reserve
+  // (budgeted by scorePremiumApproach): only pickups ON a shortest path — zero
+  // extra steps — join its march.
   const marchTargets: MapObjective[] = [];
   const seen = new Set<string>();
   if (primary) {
     marchTargets.push(primary);
     seen.add(primary.spaceId);
     const primaryField = state.adventure?.fields[primary.spaceId];
-    // Premium detours are budgeted by scorePremiumApproach. A second,
-    // unbudgeted multi-source pickup route can consume its combat reserve.
-    const scoopable = primaryField && isPremiumEconomyField(primaryField)
-      ? []
-      : freeThisTurn.filter((objective) => !seen.has(objective.spaceId));
-    if (scoopable.length > 0) {
-      const towardPrimary = objectiveDistanceField(state, hero, [primary]);
-      const heroToPrimary = hero.spaceId
-        ? towardPrimary.get(hero.spaceId) ?? Infinity
-        : Infinity;
-      for (const objective of scoopable) {
-        const freeToPrimary =
-          towardPrimary.get(objective.spaceId) ?? Infinity;
-        if (freeToPrimary <= heroToPrimary) {
-          seen.add(objective.spaceId);
-          marchTargets.push(objective);
-        }
-      }
+    const premiumPrimary = Boolean(primaryField && isPremiumEconomyField(primaryField));
+    const towardPrimary = objectiveDistanceField(state, hero, [primary]);
+    const scoopable = freeSeizuresAlongMarch(
+      state,
+      hero,
+      objectives,
+      primary,
+      towardPrimary,
+      premiumPrimary ? 0 : MARCH_SCOOP_DETOUR_SLACK,
+      !premiumPrimary,
+    );
+    for (const objective of scoopable) {
+      if (seen.has(objective.spaceId)) continue;
+      seen.add(objective.spaceId);
+      marchTargets.push(objective);
     }
   } else {
     for (const objective of objectives) {
@@ -1238,6 +1319,39 @@ function moveScore(
   // (measured: the hero slipped on, believed the fight resolved, and parked on
   // the guarded half for the rest of the game) — but it IS a legal, free,
   // combat-less corridor step, so it keeps the ordinary march-progress scoring.
+  // FETCH THE ENABLING GOLD FIRST (user 2026-09-18, live tutoring): when the premium
+  // fight objective needs a Silver body the seat cannot yet afford, a step onto a FREE
+  // (unguarded, unflagged) gold source that funds that recruit comes FIRST — grab the
+  // gold, buy the Silver unit, THEN attack. Otherwise the hero marches at the fight and
+  // stalls bronze-only (the readiness gate refuses the attack) or wanders to a shrine.
+  // Deterministic score above the equal-progress march step so the gold is taken first.
+  if (primaryField && isPremiumEconomyField(primaryField) &&
+      (primaryField.difficulty ?? 0) > 0 &&
+      field.flagOwnerId !== observation.playerId && (field.difficulty ?? 0) === 0 &&
+      fieldSuppliesResource(state, observation.playerId, field, "gold") &&
+      silverAccessible(state, observation.playerId)) {
+    const plannedSilver = nextPlannedSilver(state, observation.playerId);
+    const silverGold = plannedSilver ? (coreUnitDefinitions[plannedSilver]?.few?.cost?.gold ?? 0) : 0;
+    const ownsSilver = plannedSilver
+      ? Boolean(state.players[observation.playerId]?.army.some(
+          (unit) => unit.side !== "bank" && unit.unitDefId === plannedSilver))
+      : true;
+    const needGoldForSilver = Boolean(plannedSilver) && !ownsSilver &&
+      (state.players[observation.playerId]?.resources.gold ?? 0) < silverGold;
+    const reachSource = distanceFromHeroTo(state, hero, action.to, true) ?? Infinity;
+    const reachThisTurn = reachSource <= hero.movementPoints;
+    // The gold source must keep the premium mine REACHABLE this turn after fetching —
+    // otherwise the hero strands itself on a detour source (or a shrine) and never gets
+    // to the fight. Prefer the on-route source (the water wheel next to the mine) over
+    // one that eats all the movement (user ruling 2026-09-18, live tutoring).
+    const heroAtSource = { ...hero, spaceId: action.to };
+    const sourceToMine = distanceFromHeroTo(state, heroAtSource, primary.spaceId, true) ?? Infinity;
+    const mineStillReachableAfterFetch = reachSource + sourceToMine <= hero.movementPoints;
+    if (needGoldForSilver && reachThisTurn && mineStillReachableAfterFetch) {
+      return FETCH_ENABLING_GOLD_SCORE;
+    }
+  }
+
   const hereField = hero.spaceId ? state.adventure?.fields[hero.spaceId] : undefined;
   const gateSlipHop =
     gateFieldsLinked(hereField, field) &&
@@ -1260,6 +1374,31 @@ function moveScore(
     }
     return dwellingMarketMarch && arriving.spaceId === primary?.spaceId
       ? 935 : OBJECTIVE_ENTER_SCORE[arriving.kind];
+  }
+
+  // ROUNDS 1-2 HOME SWEEP: a step LANDING on a home-tile payoff that is not the
+  // marched target this turn still collects real value — the two-turn opening
+  // banks every home object, and the fights-first ordering deliberately leaves
+  // the third (often the doorway) for round 2. Rank such an arrival above
+  // exploration / END_TURN so an offered home object is never passed over to
+  // open more map, but below a real ENTER so it never re-aims the hero off the
+  // sticky primary. Kept as a terminal-step bonus (not a march source) so the
+  // route direction is untouched. Beatable-guard gate mirrors the block above.
+  if (action.to !== primary?.spaceId && !gateSlipHop && hero.spaceId) {
+    const homePayoff = objectives.find(
+      (objective) =>
+        objective.spaceId === action.to &&
+        isHomeTileSweepObjective(state, hero, objective),
+    );
+    if (
+      homePayoff &&
+      !(
+        (isFieldGuarded(field) || field.location === "creature_bank") &&
+        !canBeatGuardedField(state, hero, field)
+      )
+    ) {
+      return HOME_SWEEP_PAYOFF_SCORE;
+    }
   }
 
   // Not a chosen objective: keep clear of a fight we did not calculate for — an
@@ -1972,14 +2111,19 @@ function tradeResourceScore(
     return DWELLING_RUSH_TRADE_SCORE;
   }
   if ((state.round ?? 0) < MARKET_MIN_ROUND) return 180;
-  const utility = tradeUtility(state, observation.playerId, action.rateIndex);
-  if (utility <= 0) {
-    // Below "Done trading" (520) so a useless exchange never loops.
-    return 280;
+  // USER RULING (2026-09-17): the round-5+ exchange exists only to get the
+  // planned Silver body NEXT, for a fight THIS round, on a Resource Round.
+  // The plan re-evaluates after every trade and disappears once the body is
+  // affordable, so it can never over-trade past the purchase.
+  if (premiumRecruitMarketVisit(state, observation.playerId, "trading_post")) {
+    const recruit = premiumRecruitTradePlan(state, observation.playerId);
+    if (recruit && recruit.rateIndices.includes(action.rateIndex)) {
+      return DWELLING_RUSH_TRADE_SCORE;
+    }
   }
-  // Band above Done (520) and below recruit/build so economy plays first, then
-  // a single useful trade, then leave.
-  return Math.min(700, 540 + Math.round(utility * 8));
+  // Every other exchange is "terrible" — below "Done trading" (520) so it
+  // never fires and never loops.
+  return 280;
 }
 
 /**
@@ -2729,6 +2873,26 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    // Necromancy Amplifier turn-start (user lesson 2026-09-18, live tutoring):
+    // the Amplifier's NECROMANCY_FETCH is the whole point of the build — it
+    // fetches the Necromancer ability to UPGRADE a Few-side body at half cost
+    // (the Wraith line: fetch it, bank the gold, upgrade). The AI otherwise TIES
+    // this against a generic "take a Specialty from discard" grab and flips a
+    // coin. Prefer the fetch whenever the army holds a unit worth upgrading, so
+    // the Amplifier's turn-start is not frittered away. Scaled by the best
+    // upgrade target and lifted clear of the ordinary utility band [.., 1_180]
+    // and the specialty tie; a small extra when gold is on hand to spend now.
+    if (option.steps.some((inner) => inner.type === "NECROMANCY_FETCH")) {
+      const bestUpgrade = Math.max(
+        0,
+        ...(state.players[playerId]?.army ?? [])
+          .filter((armyUnit) => armyUnit.side === "few")
+          .map((armyUnit) => necromancyUpgradePriority(armyUnit.unitDefId)),
+      );
+      if (bestUpgrade > 0) {
+        return 1_185 + bestUpgrade * 5 + (playerGold(state, playerId) >= 3 ? 10 : 0);
+      }
+    }
     if (state.adventure?.pendingNecromancy?.playerId === playerId) {
       const reinforce = option.steps.find(inner => inner.type === "REINFORCE_HALF_GOLD");
       if (reinforce?.type === "REINFORCE_HALF_GOLD") {
@@ -2866,10 +3030,12 @@ function resolveVisitStepScore(
     return 1_130 - Math.min(10, optionIndex);
   }
 
-  // Sell a hand card at the Trading Post for 1 gold: only dump junk.
+  // Sell a hand card at the Trading Post for 1 gold: only dump junk, and at
+  // most ONE card per visit — a sale keeps the visit open (USER RULING
+  // 2026-09-17), so without this cap a broke seat would empty its hand.
   if (step.type === "TRADING_POST") {
     const gold = playerGold(state, playerId);
-    if (gold < GOLD_RESERVE) {
+    if (gold < GOLD_RESERVE && !(step.sold ?? 0)) {
       return 560;
     }
     return 480;
@@ -3145,6 +3311,11 @@ export function scoreMapAction(
       if (ordinaryMoveScore >= 1_000) {
         return { score: ordinaryMoveScore, policy: "map.clear-shared-space" };
       }
+      // Fetch the Silver body's enabling gold FIRST — honour this ahead of the
+      // premium-approach override so the hero grabs the gold, not marches at the fight.
+      if (ordinaryMoveScore === FETCH_ENABLING_GOLD_SCORE) {
+        return { score: ordinaryMoveScore, policy: "map.fetch-enabling-gold" };
+      }
       const enterHero = state.heroes[action.heroId];
       const enterField = state.adventure?.fields[action.to];
       const combatReserve = enterHero && enterField
@@ -3258,6 +3429,11 @@ export function scoreMapAction(
       // cannot serve a dwelling rush (measured open/leave/return loop).
       const dwellingRush = marketLocation === "trading_post" &&
         assessDwellingRush(state, observation.playerId)?.feasible;
+      // The planned Silver body, payable through this post and fighting this
+      // round (USER RULING 2026-09-17, see premiumRecruitMarketVisit).
+      const premiumRecruit = marketLocation === "trading_post" &&
+        premiumRecruitMarketVisit(state, observation.playerId, marketLocation,
+          state.heroes[action.heroId]?.spaceId ?? undefined);
       if ((state.round ?? 0) < MARKET_MIN_ROUND && !earlyTentVisit && !dwellingRush) {
         return { score: 180, policy: "map.market-wait-until-round-five" };
       }
@@ -3276,6 +3452,15 @@ export function scoreMapAction(
         return {
           score: DWELLING_RUSH_OPEN_MARKET_SCORE,
           policy: "map.open-market-dwelling-rush",
+        };
+      }
+      // Decisive like the rush: the trades, the recruit and the fight all
+      // happen this turn, so "reachable map work" must not pull the hero away
+      // before the body that fight is bought for exists.
+      if (premiumRecruit) {
+        return {
+          score: DWELLING_RUSH_OPEN_MARKET_SCORE,
+          policy: "map.open-market-premium-recruit",
         };
       }
       // Ranked lesson (latest four through 2026-09-12): the losing Tower seat
@@ -3420,9 +3605,37 @@ export function scoreMapAction(
           gain.buildingMaterials ?? 0,
         ) * 15 +
         Math.min(Math.max(0, deficit.valuables), gain.valuables ?? 0) * 25;
+      // Only crack an income permanent to fund a plan when the gain actually LETS a
+      // purchase happen — otherwise the resource just sits unspendable and the
+      // recurring income was worth more (user 2026-09-18, live tutoring: cracking a
+      // materials Cart with 0 gold gives mats no build can use, and throws away the
+      // per-round income). Gold is universally spendable, so a gold gain keeps the old
+      // behaviour; a NON-gold gain must turn the next development building from
+      // unaffordable into affordable this turn to count as funding a plan.
+      const gainIsGold = (gain.gold ?? 0) > 0;
+      const resources = state.players[observation.playerId]?.resources;
+      const nextCost = nextDevelopmentBuildingCost(state, observation.playerId);
+      const canAfford = (
+        cost: typeof nextCost,
+        r: { gold?: number; buildingMaterials?: number; valuables?: number } | undefined,
+      ): boolean =>
+        Boolean(cost) && Boolean(r) &&
+        (r!.gold ?? 0) >= (cost!.gold ?? 0) &&
+        (r!.buildingMaterials ?? 0) >= (cost!.buildingMaterials ?? 0) &&
+        (r!.valuables ?? 0) >= (cost!.valuables ?? 0);
+      const afterGain = resources
+        ? {
+            gold: (resources.gold ?? 0) + (gain.gold ?? 0),
+            buildingMaterials: (resources.buildingMaterials ?? 0) + (gain.buildingMaterials ?? 0),
+            valuables: (resources.valuables ?? 0) + (gain.valuables ?? 0),
+          }
+        : undefined;
+      const fundsAPurchase = gainIsGold ||
+        (nextCost != null && !canAfford(nextCost, resources) && canAfford(nextCost, afterGain));
+      const effectiveUseful = fundsAPurchase ? useful : 0;
       return {
-        score: useful > 0 ? 650 + Math.min(120, useful) : 220,
-        policy: useful > 0
+        score: effectiveUseful > 0 ? 650 + Math.min(120, effectiveUseful) : 220,
+        policy: effectiveUseful > 0
           ? "card.crack-income-to-fund-plan"
           : "card.keep-income-permanent",
       };

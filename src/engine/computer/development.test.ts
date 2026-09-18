@@ -60,6 +60,25 @@ function establishPacks(state: GameState): void {
   for (const unit of state.players.p2.army) unit.side = "pack";
 }
 
+/** Re-seat p2 as another core faction: hero, a three-unit bronze core and the
+ * town's parallel building ids (every core town names them alike). */
+function asFaction(
+  state: GameState,
+  factionId: "castle" | "necropolis" | "stronghold",
+  heroDefId: string,
+): void {
+  state.players.p2.factionId = factionId;
+  state.players.p2.heroDefId = heroDefId;
+  state.players.p2.army = coreFactionDefinitions[factionId].units
+    .filter((id) => coreUnitDefinitions[id]?.tier === "bronze")
+    .slice(0, 3)
+    .map((unitDefId, index) => ({ id: `${factionId}-${index}`, unitDefId, side: "few" as const }));
+  const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+  town.buildings = town.buildings
+    .map((id) => id.replace(/^[a-z_]+\./, `${factionId}.`))
+    .filter((id) => Boolean(coreBuildingDefinitions[id]));
+}
+
 describe("computer long-horizon development plan", () => {
   it("requires both Elves and Dwarves Packs before the Rampart Silver pivot", () => {
     const state = game();
@@ -357,7 +376,11 @@ describe("computer long-horizon development plan", () => {
       buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
       buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
     ];
-    const target = state.players.p2.army[0];
+    // Under the 2026-09-18 silver-accessible doctrine only the lv3 bronze Pack is worth
+    // paying for (lv1/lv2 stay Few meatshields), so the "pay full price for a Pack" the
+    // fight substitutes for is the lv3 body (Wraiths), not a lv1 chaff Pack.
+    const target = state.players.p2.army.find((unit) => unit.unitDefId === "necropolis.wraiths")
+      ?? state.players.p2.army[0];
     target.side = "few";
     state.players.p2.hand = ["ability.necromancy"];
     state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
@@ -587,6 +610,43 @@ describe("computer long-horizon development plan", () => {
     expect(goldScore?.score).toBe(950);
   });
 
+  it("takes an affordable Silver dwelling over a bronze Pack when on-map gold funds it (situational)", () => {
+    // User 2026-09-18 (live tutoring): with early valuables the Silver dwelling is
+    // affordable in establish-core, and if there is FREE gold the hero can grab this
+    // turn to fund the Silver body, a level-4 Silver beats finishing a third bronze
+    // Pack. Situational and flexible — it hinges on reachable map gold (RNG), so the
+    // eval-tuned packs-first ladder still holds when no such gold is in reach.
+    const state = game();
+    asFaction(state, "castle", "catherine");
+    const citadel = buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE");
+    const bronze = buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze");
+    const silver = buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver");
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [citadel, bronze]; // establish-core: packs not yet finished
+    const cost = coreBuildingDefinitions[silver]!.cost!;
+    // Live math: build the dwelling, grab the 3-gold water wheel, and the treasury
+    // reaches the Crusader's 6-gold price (leftover 3 + 3 wheel). Hold the scarce
+    // valuables (the early-silver enabler).
+    state.players.p2.resources = {
+      gold: (cost.gold ?? 0) + 3,
+      buildingMaterials: cost.buildingMaterials ?? 0,
+      valuables: cost.valuables ?? 0,
+    };
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
+    // Inject a free, unguarded gold field one step from the hero (the situational RNG).
+    const near = state.adventure!.fields["h:9:7"]!;
+    Object.assign(near, { location: "water_wheel", resource: "gold", amount: 3, flagOwnerId: null, difficulty: undefined });
+    hero.movementPoints = 3;
+    const build = (id: string) => scoreMapAction(observation(state), {
+      type: "BUILD_STRUCTURE", playerId: "p2", townId: town.id, buildingId: id,
+    })?.score;
+    expect(build(silver)).toBe(984); // early-silver breakthrough fires
+
+    // CONTROL: no reachable map gold (hero cannot move) — keep the packs-first ladder.
+    hero.movementPoints = 0;
+    expect(build(silver)).toBeLessThan(984);
+  });
+
   it("saves the exact materials and valuables required by the next dwelling", () => {
     const state = game();
     establishPacks(state);
@@ -726,6 +786,9 @@ describe("computer development — income-first City Hall and the Gold ladder (r
 
   it("puts City Hall first only when it is situational: dwelling out of reach, early, not behind", () => {
     const state = game();
+    // USER RULING (2026-09-17): the seed's Necropolis never builds its hall —
+    // the situational rules are exercised on Castle (same low 5-gold payout).
+    asFaction(state, "castle", "catherine");
     establishPacks(state);
     const town = coreTown(state);
     const farTile = Object.values(state.adventure!.tiles)[0];
@@ -748,7 +811,7 @@ describe("computer development — income-first City Hall and the Gold ladder (r
       (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
     );
     const hallCost = coreBuildingDefinitions[income].cost ?? {};
-    // Necropolis' hall pays 4 gold a round (a LOW-payout hall), so it must also
+    // Castle's hall pays 5 gold a round (a LOW-payout hall), so it must also
     // leave the five-gold cushion behind — its price alone is not enough.
     const hallAffordable = () => {
       state.players.p2.resources = {
@@ -854,6 +917,38 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     hallAffordable();
     for (const unit of state.players.p2.army) unit.side = "few";
     expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+  });
+
+  it("USER RULING 2026-09-17: Necropolis and Stronghold never build the City Hall (CONTROL: Castle still does)", () => {
+    const setup = (factionId: "castle" | "necropolis" | "stronghold", heroDefId: string) => {
+      const state = game();
+      asFaction(state, factionId, heroDefId);
+      establishPacks(state);
+      coreTown(state);
+      const income = buildingWith(state, (effect) => effect.type === "RESOURCE_ROUND_CHOICE");
+      const hallCost = coreBuildingDefinitions[income].cost ?? {};
+      state.round = 3;
+      state.players.p2.production = { gold: 5, buildingMaterials: 2, valuables: 0 };
+      state.players.p2.resources = {
+        gold: (hallCost.gold ?? 0) + 5,
+        buildingMaterials: hallCost.buildingMaterials ?? 0,
+        valuables: 0,
+      };
+      return { state, income };
+    };
+    for (const [factionId, heroDefId] of [["necropolis", "vidomina"], ["stronghold", "crag_hack"]] as const) {
+      const { state, income } = setup(factionId, heroDefId);
+      expect(incomeBuildingBeforeDwelling(state, "p2"), factionId).toBeNull();
+      expect(score(state, build(state, income)), factionId).toBeLessThanOrEqual(280);
+      // Not even from genuine surplus inside the R5–R6 "marginal" window.
+      state.round = 5;
+      state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+      expect(score(state, build(state, income)), factionId).toBeLessThanOrEqual(280);
+    }
+    // CONTROL: the same board and purse on Castle keeps the situational hall-first step.
+    const { state, income } = setup("castle", "catherine");
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    expect(score(state, build(state, income))).toBeGreaterThanOrEqual(970);
   });
 
   it("walks the Gold ladder: top Few, lower Few, top Pack, lower Pack", () => {

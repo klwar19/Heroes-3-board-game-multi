@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { pvpReach } from "./pvp-reach";
 import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
-import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan } from "./development";
+import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan, premiumRecruitTradePlan } from "./development";
 import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
@@ -20,6 +20,7 @@ import {
   gateFieldsLinked,
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
+  getMainHero,
   heroAtSpace,
   heroMovementMax,
   isFieldGuarded,
@@ -43,7 +44,7 @@ import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import { isComputerPlayer, playersAreAllied } from "./control";
 import { repeatsFailedFight } from "./memory";
 import { isOpeningFarMaterialMine, isOpeningFarSweepField } from "./far-sweep";
-import { wantsMarketVisit } from "./market-trades";
+import { MARKET_MIN_ROUND, wantsMarketVisit } from "./market-trades";
 import { premiumCombatMovementReserve } from "./combat-movement";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type {
@@ -1050,7 +1051,8 @@ function objectiveKind(
     isMarketLocation(field.location) &&
     field.spaceId !== hero.spaceId &&
     state.computerMemory?.[playerId]?.lastMarketRound !== state.round &&
-    wantsMarketVisit(state, playerId, field.location)
+    (wantsMarketVisit(state, playerId, field.location) ||
+      premiumRecruitMarketVisit(state, playerId, field.location, field.spaceId))
   ) {
     return "visitable";
   }
@@ -1754,7 +1756,13 @@ export function objectiveStrategicValue(
           guaranteedQuickWin ||
           neutralBattleLevel(state, hero) >= difficulty ||
           armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty, field) ||
-          armyTierCoversGuardField(state, hero.controllerId, difficulty, field);
+          armyTierCoversGuardField(state, hero.controllerId, difficulty, field) ||
+          // Direct combat proof (user 2026-09-18, live tutoring): if the army can
+          // actually BEAT this guarded premium mine, commit the march to it — a
+          // reachable, winnable valuables/gold mine outranks opening yet another far
+          // tile and then backtracking to it. The coarse army-cover heuristics above
+          // can miss a fresh Silver body (Crusader) that makes an L3 mine winnable.
+          canBeatGuardedField(state, hero, field);
         if (canCover) {
           value = Math.max(value, ready ? 920 : 860);
           if ((state.round ?? 0) < 6) value += 90;
@@ -1963,6 +1971,113 @@ export function freeSeizuresWithinReach(
   });
 }
 
+/** Extra steps a march may spend to scoop a free pickup beside its route. */
+export const MARCH_SCOOP_DETOUR_SLACK = 2;
+
+/**
+ * Free pickups that lie ALONG the march to `primary`, however many turns the
+ * march takes — USER RULING (2026-09-17): the hero must not walk past a
+ * resource field it could have taken on the way and come back for it later.
+ * A pickup qualifies when it is no farther from the primary than the hero is
+ * (never a step BACK — a pickup behind the hero would reverse a committed
+ * march) and either sits in this turn's walking reach (the original scoop) or
+ * costs at most `detourSlack` extra steps over the strict route:
+ * hero→pickup + pickup→primary ≤ hero→primary + slack. Slack 0 keeps only
+ * pickups on a shortest path (used for premium marches whose combat movement
+ * reserve is budgeted separately). `towardPrimary` is the distance field
+ * sourced at the primary. Public-state reachability only.
+ */
+export function freeSeizuresAlongMarch(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective>,
+  primary: MapObjective,
+  towardPrimary: ReadonlyMap<MapSpaceId, number>,
+  detourSlack = MARCH_SCOOP_DETOUR_SLACK,
+  includeTurnReach = true,
+): MapObjective[] {
+  if (!hero.spaceId) return [];
+  const heroToPrimary = towardPrimary.get(hero.spaceId);
+  if (heroToPrimary === undefined || !Number.isFinite(heroToPrimary)) return [];
+  const mp = Math.max(0, hero.movementPoints ?? 0);
+  return objectives.filter((objective) => {
+    if (objective.spaceId === primary.spaceId || !isFreeSeizeObjective(objective, state)) return false;
+    const toPrimary = towardPrimary.get(objective.spaceId);
+    if (toPrimary === undefined || toPrimary > heroToPrimary) return false;
+    const walk = distanceFromHeroTo(state, hero, objective.spaceId);
+    if (walk === undefined) return false;
+    return (includeTurnReach && walk <= mp) || walk + toPrimary <= heroToPrimary + detourSlack;
+  });
+}
+
+/**
+ * A fight the seat's MAIN hero can still open THIS turn — an unflagged
+ * neutral guard the army covers (or a premium field worth staging for the
+ * very Silver body being bought), or a Creature Bank the army covers — within
+ * the movement left after walking to `fromSpaceId` (the market being visited;
+ * omitted = the hero's own position and full remaining movement). Scans the
+ * fields directly rather than through collectMapObjectives: objectiveKind
+ * classifies market fields with premiumRecruitMarketVisit, so going through
+ * the objective list from here would recurse on a map with two posts.
+ */
+export function premiumRecruitFightInReach(
+  state: GameState,
+  playerId: PlayerId,
+  fromSpaceId?: MapSpaceId,
+): boolean {
+  const main = getMainHero(state, playerId);
+  if (!main?.spaceId) return false;
+  let budget = main.movementPoints ?? 0;
+  let probe: HeroState = main;
+  if (fromSpaceId && fromSpaceId !== main.spaceId) {
+    const walk = distanceFromHeroTo(state, main, fromSpaceId);
+    if (walk === undefined) return false;
+    budget -= walk;
+    probe = { ...main, spaceId: fromSpaceId, movementPoints: Math.max(0, budget) };
+  }
+  if (budget <= 0) return false;
+  for (const field of Object.values(state.adventure?.fields ?? {})) {
+    // Neutral guards and banks only: no flagged holding (a garrison is not a
+    // neutral fight), no hex with another hero on it.
+    if (field.spaceId === probe.spaceId || field.flagOwnerId || heroAtSpace(state, field.spaceId, probe.id)) continue;
+    const guard =
+      isFieldGuarded(field) &&
+      field.location !== "creature_bank" &&
+      (canBeatGuardedField(state, probe, field) || premiumEconomyWorthStaging(state, playerId, field));
+    const bank = field.location === "creature_bank" && canBeatCreatureBank(state, playerId, field);
+    if (!guard && !bank) continue;
+    const distance = distanceFromHeroTo(state, probe, field.spaceId);
+    if (distance !== undefined && distance > 0 && distance <= budget) return true;
+  }
+  return false;
+}
+
+/**
+ * USER RULING (2026-09-17): from MARKET_MIN_ROUND the Trading Post is worth a
+ * visit for a resource exchange ONLY when
+ *  1. the trades get the planned Silver body NEXT (premiumRecruitTradePlan —
+ *     payable this visit, Population token unspent),
+ *  2. that body joins a fight THIS round — a Creature Bank or neutral guard the
+ *     main hero can still reach after the visit, and
+ *  3. no income lands next round: odd rounds are Resource Rounds (income just
+ *     arrived), even rounds are Astrologers rounds — trading DURING an
+ *     Astrologers round throws away stock the next Resource Round would fund.
+ * Anything else is "terrible": wait, fight with what stands, or let the
+ * dwelling-rush / Gold-step planners (their own rulings) act.
+ */
+export function premiumRecruitMarketVisit(
+  state: GameState,
+  playerId: PlayerId,
+  location?: string,
+  marketSpaceId?: MapSpaceId,
+): boolean {
+  if (location !== undefined && location !== "trading_post") return false;
+  const round = state.round ?? 0;
+  if (round < MARKET_MIN_ROUND || round % 2 === 0) return false;
+  if (!premiumRecruitTradePlan(state, playerId)) return false;
+  return premiumRecruitFightInReach(state, playerId, marketSpaceId);
+}
+
 /**
  * Whether a fight keeps primary over a free seizure THIS turn.
  * - Premium Far economy commits multi-turn (free pickups on the walk are still
@@ -1990,9 +2105,16 @@ function fightOutranksFreeSeize(
   // Premium settlement / gold / valuables: keep the multi-turn economy commit.
   if (isPremiumEconomyField(field)) return true;
   const difficulty = field.difficulty ?? 0;
-  // Strictly closer Quick Combat (level > difficulty) may divert.
+  // Strictly closer Quick Combat (level > difficulty) may divert — but only a
+  // difficulty-2+ fight. User ruling (2026-09-18, live tutoring): a difficulty-1
+  // guard is a 1-turn finish you can take whenever, so it must NOT preempt a free
+  // resource seize on the way — scoop the free value FIRST and take the easy
+  // fight after, ending the turn on the object nearest the next far-tile doorway
+  // instead of backtracking (resource → treasure → far tile, not treasure →
+  // back for resource → back for the tile). A tougher (difficulty-2+) fight is a
+  // real commitment and still diverts when it is strictly closer.
   if (
-    difficulty > 0 &&
+    difficulty >= 2 &&
     neutralBattleLevel(state, hero) > difficulty &&
     fightDistance < freeDistance
   ) {
@@ -2284,7 +2406,7 @@ export function startTileRotationOpensFarExpansion(
 }
 
 /** Whether a payoff field itself is an open doorway into revealed/new land. */
-function isImmediateExpansionDoorway(
+export function isImmediateExpansionDoorway(
   state: GameState,
   hero: HeroState,
   spaceId: MapSpaceId,
@@ -2304,10 +2426,60 @@ function isImmediateExpansionDoorway(
 }
 
 /**
- * Opening route on tile I. With three objects, choose a two-object first-turn
- * path whose second stop is closest to the final object, and make that final
- * object an open expansion doorway whenever the rotation permits it. Re-run
- * after the first pickup so the same planned order survives each visit/combat.
+ * How many objects of `order` the hero can actually WALK ONTO and resolve with
+ * the movement it has right now. Two movement facts of the stock tile-Ⅰ opening
+ * are modelled exactly, because they decide whether a route banks one or two:
+ *
+ *  - ENTRY needs `distance + reserve` movement: a live guard is only enterable
+ *    with the combat movement reserve still in hand (`premiumCombatMovementReserve`
+ *    — the same gate the reducer and move scoring apply). A free symbol needs no
+ *    reserve.
+ *  - RESOLVING it spends only the `distance`: the difficulty-1 home guards are
+ *    fights the opening army wins inside combat round 1 (or takes as a flawless
+ *    guaranteed win), so the reserved continuation movement is not actually
+ *    spent and the walk continues to the next stop with just the travel gone.
+ *
+ * The old abstract distance sum ignored the entry reserve, so a free-symbol-first
+ * order scored as "banks two" although its second stop was a guard the leftover
+ * point could never open: the hero grabbed the symbol, walked back toward the
+ * guard, and ended round 1 one field short with a single capture (the observed
+ * Castle / Necropolis / Cove opening). Walking the order with the real entry
+ * gate makes the fight-first pair — the one that truly banks two — win the
+ * `banked * 20_000` term.
+ */
+function bankableHomeObjectives(
+  state: GameState,
+  hero: HeroState,
+  order: ReadonlyArray<MapObjective>,
+  movement: number,
+): number {
+  let mp = movement;
+  let from = hero.spaceId;
+  if (!from) return 0;
+  let banked = 0;
+  for (const objective of order) {
+    const leg = from === hero.spaceId
+      ? distanceFromHeroTo(state, hero, objective.spaceId)
+      : distanceBetweenHomeFields(state, hero, from, objective.spaceId);
+    if (leg === undefined) break;
+    const field = state.adventure?.fields[objective.spaceId];
+    const reserve = field ? premiumCombatMovementReserve(state, hero, field) : 0;
+    if (mp < leg + reserve) break;
+    mp -= leg;
+    from = objective.spaceId;
+    banked += 1;
+  }
+  return banked;
+}
+
+/**
+ * Opening route on tile I. With three objects, choose a first-turn path that
+ * BANKS as many objects as the movement really allows (reserve-aware, see
+ * `bankableHomeObjectives`) — for the stock two-guards-plus-free-symbol layouts
+ * that is the fight-first pair the user's traditional opening asks for. Among
+ * equally banking orders, leave the expansion-doorway object LAST so round 2
+ * finishes the third object and opens new land, and keep the two-turn route
+ * short. Re-run after each pickup so the plan survives each visit/combat.
  */
 function bestHomeOpeningObjective(
   state: GameState,
@@ -2315,8 +2487,10 @@ function bestHomeOpeningObjective(
   remaining: ReadonlyArray<MapObjective>,
 ): MapObjective | null {
   if (remaining.length < 2 || remaining.length > 3 || !hero.spaceId) return null;
+  const movement = Math.max(0, hero.movementPoints ?? 0);
   let best: MapObjective[] | null = null;
   let bestScore = Number.NEGATIVE_INFINITY;
+  let bestBanked = 0;
   for (const order of objectiveOrders(remaining)) {
     const firstDistance = distanceFromHeroTo(state, hero, order[0].spaceId);
     if (firstDistance === undefined) continue;
@@ -2327,13 +2501,6 @@ function bestHomeOpeningObjective(
       order[1].spaceId,
     );
     if (secondDistance === undefined) continue;
-    // The three-object opening must be able to bank the first two this turn.
-    if (
-      remaining.length === 3 &&
-      firstDistance + secondDistance > Math.max(0, hero.movementPoints ?? 0)
-    ) {
-      continue;
-    }
     const final = order[order.length - 1];
     const finalIsDoorway = isImmediateExpansionDoorway(
       state,
@@ -2344,7 +2511,11 @@ function bestHomeOpeningObjective(
       ? distanceBetweenHomeFields(state, hero, order[1].spaceId, final.spaceId)
       : secondDistance;
     if (futureDistance === undefined) continue;
+    // Objects this order walks onto with the CURRENT movement points, honouring
+    // each guarded stop's combat movement reserve (reserve-aware count).
+    const banked = bankableHomeObjectives(state, hero, order, movement);
     const score =
+      banked * 20_000 +
       (finalIsDoorway ? 10_000 : 0) -
       futureDistance * 100 -
       (firstDistance + secondDistance) * 5;
@@ -2355,9 +2526,13 @@ function bestHomeOpeningObjective(
     ) {
       best = order;
       bestScore = score;
+      bestBanked = banked;
     }
   }
-  return best?.[0] ?? null;
+  // The three-object opening must be able to bank the first two this turn;
+  // otherwise the general planner picks (unchanged fallback).
+  if (!best || (remaining.length === 3 && bestBanked < 2)) return null;
+  return best[0];
 }
 
 /**
@@ -2514,7 +2689,19 @@ function primaryMapObjectiveUncached(
   // Early information is worth a short legal approach when held Far supply
   // remains. No supply means this branch does nothing; normal income/pickups
   // and attainable exploration continue below.
+  // BUT (user 2026-09-18, live tutoring): do NOT open a fresh Far tile when a
+  // reachable, BEATABLE premium-economy mine (gold/valuables) is already on the
+  // board — marching to it now beats opening new land and then backtracking to
+  // the mine (terrible routing). The premium capture / general ranking below take it.
+  const beatablePremiumGuardReachable = actionable.some((objective) => {
+    if (objective.kind !== "guard") return false;
+    const guardField = state.adventure?.fields[objective.spaceId];
+    return Boolean(guardField && isPremiumEconomyField(guardField) &&
+      (guardField.difficulty ?? 0) > 0 &&
+      canBeatGuardedField(state, hero, guardField));
+  });
   if (hero.kind === "main" && homeRemaining.length === 0 && state.round >= 2 && state.round <= 3 &&
+      !beatablePremiumGuardReachable &&
       seatHoldsFarSupplyTile(state, hero.controllerId) &&
       (state.adventure?.farTilesOpenedByPlayer?.[hero.controllerId] ?? 0) < 2) {
     const doorways = actionable.filter(objective => objective.kind === "explore" && objective.opensFarTile &&
@@ -2800,7 +2987,9 @@ function primaryMapObjectiveUncached(
       objective.spaceId !== mainTarget && objective.kind !== "town" &&
       (isFreeSeizeObjective(objective, state) ||
         (isMarketLocation(state.adventure?.fields[objective.spaceId]?.location ?? "") &&
-          wantsMarketVisit(state, hero.controllerId, state.adventure?.fields[objective.spaceId]?.location))));
+          (wantsMarketVisit(state, hero.controllerId, state.adventure?.fields[objective.spaceId]?.location) ||
+            premiumRecruitMarketVisit(state, hero.controllerId,
+              state.adventure?.fields[objective.spaceId]?.location, objective.spaceId)))));
     if (leftovers.length > 0) return bestObjectiveOf(state, hero, leftovers, false);
   }
 

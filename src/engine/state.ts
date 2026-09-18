@@ -12791,12 +12791,15 @@ export type VisitStep =
     }
   | {
       /**
-       * Choose one: trade resources (repeatable within the visit), sell one
-       * hand card for 1 gold, or buy a war machine at the higher price.
+       * Choose one: trade resources (repeatable within the visit), sell hand
+       * cards for 1 gold each (repeatable — USER RULING 2026-09-17: a sale
+       * never closes the visit), or buy a war machine at the higher price.
        * `traded` locks the visit to resource trading once a trade happened.
        */
       type: "TRADING_POST";
       traded?: boolean;
+      /** Hand cards sold during this visit (the AI dumps at most one). */
+      sold?: number;
       /**
        * Marketplace (Event): "Trade resources using Trading Post rules" — the
        * resource exchange only; the sell-a-card and war-machine options are
@@ -18707,6 +18710,20 @@ export type AfkState = {
    * who never acts still becomes kickable once the idle window passes.
    */
   lastActionAt: Record<PlayerId, number>;
+  /**
+   * Server wall-clock ms each seat has spent idle WHILE AWAITED — the only time
+   * that counts toward the 30-minute certain auto-kick (`AFK_AUTO_KICK_MS`).
+   * `awaitedIdleMs` banks the awaited-idle from earlier stretches;
+   * `awaitedIdleSince` stamps the stretch accruing right now (absent while the
+   * seat is not awaited). It advances ONLY while the table is actually waiting
+   * on the seat (`seatIsAwaitedInOrderedPlay`: its turn, its battle, its open
+   * choice) and resets to 0 on the seat's own action, so time spent waiting out
+   * another player's turn or long battle never makes a waiting player
+   * auto-kickable. Maintained by `applyAfkIdleClockBookkeeping` on every stamped
+   * action; both absent on solo/open tables and legacy snapshots (read as 0).
+   */
+  awaitedIdleMs?: Record<PlayerId, number>;
+  awaitedIdleSince?: Record<PlayerId, number>;
   /** The open kick-or-wait vote, if any. */
   vote: AfkVoteState | null;
   /**

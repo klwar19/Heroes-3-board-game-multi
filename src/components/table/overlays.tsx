@@ -14,6 +14,7 @@ import {
   AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
   AFK_REASK_MS,
+  awaitedIdleMillis,
   gamePaused,
   pauseClockNow,
   pausedMillis,
@@ -4436,11 +4437,13 @@ export function AfkVotePanel({
   );
   const viewerLive = liveSeats.includes(viewerPlayerId);
 
-  // Certain 30-minute auto-kick: once ANY seat has been idle past the hard
-  // threshold, a live seat's client fires FORCE_AFK_KICK (the server re-checks
-  // the idle time). Fired from an effect so render stays pure; guarded to once
-  // per target and skipped while a drop is already in progress. The whole
-  // vote/timer system is CLOSED-table only (open games carry no time pressure).
+  // Certain 30-minute auto-kick: once ANY seat has burned the hard threshold of
+  // AWAITED idle (time the table was waiting on THEM — not time they spent
+  // waiting out another seat's turn or long battle), a live seat's client fires
+  // FORCE_AFK_KICK (the server re-checks the awaited-idle). Fired from an effect
+  // so render stays pure; guarded to once per target and skipped while a drop is
+  // already in progress. The whole vote/timer system is CLOSED-table only (open
+  // games carry no time pressure).
   const afkActive =
     state.mode === "adventure" &&
     !state.setupLobby &&
@@ -4452,8 +4455,7 @@ export function AfkVotePanel({
       ? (liveSeats.find(
           (seat) =>
             seat !== viewerPlayerId &&
-            afk.lastActionAt?.[seat] !== undefined &&
-            nowTick - (afk.lastActionAt?.[seat] ?? nowTick) >= AFK_AUTO_KICK_MS
+            awaitedIdleMillis(state, seat, nowTick) >= AFK_AUTO_KICK_MS
         ) ?? null)
       : null;
   useEffect(() => {

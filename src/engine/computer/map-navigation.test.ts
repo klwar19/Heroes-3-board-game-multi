@@ -51,6 +51,7 @@ import {
   distanceFromHeroTo,
   farExpansionRouteRemains,
   freeSeizuresWithinReach,
+  isImmediateExpansionDoorway,
   minPrintedGuardDifficultyForBand,
   objectiveDistanceField,
   objectiveStrategicValue,
@@ -1561,26 +1562,71 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
 });
 
 describe("sticky primary + explore objectives", () => {
-  it("opening home-tile sweep starts the route at the free resource", () => {
-    // The route begins Resource → Treasure, leaving the open-edge Mine for
-    // turn two so the hero can take it, open land, and enter the new tile.
+  it("opening home-tile sweep fights the near guard first, leaving the doorway object for round 2", () => {
+    // USER RULING (traditional opening, supersedes the 2026-09-17 resource-first
+    // ruling): round 1 banks the two ADJACENT home objects, fighting a guard
+    // first; the object that sits on the expansion doorway (here the Mine) is
+    // left for round 2 so the hero finishes it and opens new land. On this tile
+    // the near pair is Treasure + Resource, so the route starts on the Treasure
+    // guard, not the free symbol.
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt"; // drop the distant conquest-town override
 
     const developing = primaryMapObjective(state, hero);
-    expect(developing?.kind).toBe("visitable");
-    expect(developing?.spaceId).toBe(RESOURCE);
+    expect(developing?.kind).toBe("guard");
+    expect(developing?.spaceId).toBe(TREASURE);
+    // The Mine is the expansion doorway and is the one left for round 2.
+    expect(isImmediateExpansionDoorway(state, hero, MINE)).toBe(true);
     // All three home payoffs remain objectives, including both guarded fields.
     const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
 
-    // A ready army keeps the same tempo route.
+    // A ready army keeps the same fights-first route.
     establishP2PackCore(state);
     const battleReady = primaryMapObjective(state, hero);
-    expect(battleReady?.kind).toBe("visitable");
-    expect(battleReady?.spaceId).toBe(RESOURCE);
+    expect(battleReady?.kind).toBe("guard");
+    expect(battleReady?.spaceId).toBe(TREASURE);
+  });
+
+  it("after the first pickup the home re-plan saves the doorway object for round 2 unless both remaining objects fit this turn", () => {
+    // Traditional opening: after banking the first object the hero stands on the
+    // visited Treasure with the expansion-doorway Mine one step away (its combat
+    // reserve makes it a two-point entry) and the free Resource two steps back
+    // through the town. Leaving the Mine for round 2 is what opens new land, so
+    // the re-plan takes the non-doorway Resource whenever it cannot bank BOTH
+    // remaining objects this turn; only when the movement covers the whole
+    // remaining tour (three points: Mine entry 1+reserve, then Resource) does it
+    // fight the Mine now and clear the tile in one turn.
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.adventure!.victoryMode = "dragon-hunt";
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    hero.spaceId = TREASURE;
+    const board = { ...state } as GameState;
+    expect(distanceFromHeroTo(board, hero, MINE)).toBe(1);
+    expect(distanceFromHeroTo(board, hero, RESOURCE)).toBe(2);
+    expect(isImmediateExpansionDoorway(board, hero, MINE)).toBe(true);
+    expect(isImmediateExpansionDoorway(board, hero, RESOURCE)).toBe(false);
+    expect(collectMapObjectives(board, hero).map((o) => o.spaceId)).toEqual(
+      expect.arrayContaining([MINE, RESOURCE]),
+    );
+
+    // One point: cannot complete either fight/pickup tour, so it heads for the
+    // non-doorway Resource and keeps the Mine doorway for the round-2 open.
+    hero.movementPoints = 1;
+    expect(primaryMapObjective({ ...board } as GameState, hero)?.spaceId).toBe(RESOURCE);
+    // Two points: banks exactly the Resource this turn and still leaves the Mine
+    // doorway for round 2.
+    hero.movementPoints = 2;
+    expect(primaryMapObjective({ ...board } as GameState, hero)?.spaceId).toBe(RESOURCE);
+    // Three points: enough to fight the Mine (1 + reserve) AND take the Resource
+    // in the same turn, so it clears the whole tile now, Mine first.
+    hero.movementPoints = 3;
+    expect(primaryMapObjective({ ...board } as GameState, hero)?.spaceId).toBe(MINE);
   });
 
   it("home tile drains all three items even under conquest pressure", () => {
@@ -1628,15 +1674,16 @@ describe("sticky primary + explore objectives", () => {
   it("drains the home-tile items through round 2, then releases the hero", () => {
     // The home-tile drain window is rounds 1–2 (commits e940332d / 4019226e):
     // while the hero stands on tile Ⅰ inside that window it finishes the local
-    // payoffs before expanding; from round 3 the FAR doorway outranks them.
+    // payoffs before expanding; from round 3 the FAR doorway outranks them. The
+    // traditional opening still fights the near guard first inside the window.
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt";
     state.round = 2;
     const developing = primaryMapObjective(state, hero);
-    expect(developing?.kind).toBe("visitable");
-    expect(developing?.spaceId).toBe(RESOURCE);
+    expect(developing?.kind).toBe("guard");
+    expect(developing?.spaceId).toBe(TREASURE);
     const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
 
@@ -1780,7 +1827,7 @@ describe("sticky primary + explore objectives", () => {
     expect(placeOffers).toHaveLength(0);
   });
 
-  it("marches to a Trading Post only when resources need rebalance", () => {
+  it("USER RULING 2026-09-17: a bare rebalance need no longer makes a Trading Post an objective (the Silver-recruit plan is the only round-5+ trade — see market-policy.test.ts)", () => {
     const state = game();
     state.round = 5;
     const hero = p2Hero(state);
@@ -1807,21 +1854,21 @@ describe("sticky primary + explore objectives", () => {
     delete fields[EMPTY].difficulty;
     fields[EMPTY].flagOwnerId = null;
 
-    // Broke with a genuinely SELLABLE materials surplus (above the next
-    // dwelling's own input need and the gold-ladder floor) → market is an
-    // objective.
+    // Broke with a genuinely SELLABLE materials surplus used to make the post
+    // an objective; without a Silver body to buy NEXT that exchange is
+    // "terrible" (USER RULING 2026-09-17), so the post is no detour.
     state.players.p2.resources = {
       gold: 2,
       buildingMaterials: 16,
       valuables: 0,
     };
     const needy = collectMapObjectives({ ...state } as GameState, hero).map((o) => o.spaceId);
-    expect(needy).toContain(EMPTY);
+    expect(needy).not.toContain(EMPTY);
 
     // CONTROL: treasury already covers the next dwelling AND the recruit
-    // cushion — no rebalance, so the market is not a detour. (A mid-tier
-    // "looks balanced" pile can still trip assessDwellingRush.feasible and
-    // wrongly keep the market as an objective.)
+    // cushion — no rebalance either way, so the market is not a detour. (A
+    // mid-tier "looks balanced" pile can still trip assessDwellingRush.feasible
+    // and wrongly keep the market as an objective.)
     state.players.p2.resources = {
       gold: 40,
       buildingMaterials: 12,

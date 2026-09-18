@@ -1,6 +1,7 @@
 import { neutralCombatControllerId } from "../neutral-control";
-import type { CardId, CombatState, GameState } from "../state";
+import type { CardId, CombatState, GameState, PlayerState } from "../state";
 import { isComputerPlayer, sessionModeOf } from "./control";
+import { toPhantomCardId } from "../phantom-cards";
 
 /**
  * Single-player smoothing (house rule #2, sibling of guaranteed-wins.ts): at
@@ -31,8 +32,8 @@ import { isComputerPlayer, sessionModeOf } from "./control";
  * surrendered combat cleans up through finalizeAdventureCombat.
  */
 export const COMPUTER_COMBAT_BOOST_CARDS: readonly CardId[] = [
-  "stat.attack",
-  "stat.defense",
+  "stat.attack.empowered",
+  "stat.defense.empowered",
 ];
 
 /**
@@ -95,19 +96,18 @@ export function applyComputerCombatBoost(state: GameState): void {
   if (!player) {
     return;
   }
-  const empoweredAdded: CardId[] = [];
+  // The boost hands the game's own distinct Empowered Attack/Defense cards
+  // (stat.*.empowered — intrinsically empowered, one each), NOT a by-card-id
+  // mark on the plain statistic, which would wrongly empower the seat's real
+  // Attack/Defense copies too (user ruling 2026-09-17: only the bonus is
+  // empowered). Nothing is added to empoweredAbilities.
   for (const cardId of COMPUTER_COMBAT_BOOST_CARDS) {
     player.hand.push(cardId);
-    player.empoweredAbilities ??= [];
-    if (!player.empoweredAbilities.includes(cardId)) {
-      player.empoweredAbilities.push(cardId);
-      empoweredAdded.push(cardId);
-    }
   }
   combat.computerBoost = {
     playerId,
     cardIds: [...COMPUTER_COMBAT_BOOST_CARDS],
-    empoweredAdded,
+    empoweredAdded: [],
   };
 }
 
@@ -126,16 +126,36 @@ export function applyComputerPhantomCards(state: GameState): void {
   for (const playerId of seats) {
     const player = state.players[playerId];
     if (!player || !isComputerPlayer(state, playerId)) continue;
-    for (const cardId of COMPUTER_PHANTOM_COMBAT_CARDS) player.hand.push(cardId);
-    granted.push({ playerId, cardIds: [...COMPUTER_PHANTOM_COMBAT_CARDS] });
+    // Grant DISTINCT phantom ids (base + marker), not the shared base ids: the
+    // phantom behaves like the base everywhere (cardLibrary alias) but is
+    // trackable, so cleanup removes exactly the granted copies and never a real
+    // Power / Magic Arrow. See phantom-cards.ts.
+    const phantomIds = COMPUTER_PHANTOM_COMBAT_CARDS.map(toPhantomCardId);
+    for (const cardId of phantomIds) player.hand.push(cardId);
+    granted.push({ playerId, cardIds: phantomIds });
   }
   combat.computerPhantomCards = granted.length > 0 ? granted : null;
 }
 
+/** Every card-holding pile a phantom could reach during a combat. */
+function phantomHoldingPiles(player: PlayerState): CardId[][] {
+  const piles: CardId[][] = [player.hand, player.discard, player.deck];
+  if (player.spellBook) piles.push(player.spellBook);
+  if (player.spellBookUsed) piles.push(player.spellBookUsed);
+  return piles;
+}
+
 /**
  * Combat-end teardown for the phantom cards: remove ONE instance of each
- * injected id from each granted seat's piles (hand → discard → deck), exactly
- * like removeComputerCombatBoost. A genuinely owned twin survives.
+ * injected id from each granted seat's piles. Consume a PLAYED copy first
+ * (discard → deck) and only then a copy still in HAND — so when the seat played
+ * the free phantom and KEPT its genuinely-owned twin in hand, the owned card
+ * survives IN HAND (available next turn), not shoved into the discard. User
+ * ruling (2026-09-18, live tutoring): spending the disposable bonus must NOT cost
+ * a real card its hand slot — the whole point of using the bonus is to keep the
+ * real one in hand. (The old hand-first order deleted the kept hand copy and left
+ * the played one in discard, so a correct "spend the bonus" play still lost the
+ * card from hand.) A genuinely owned twin still survives with the correct count.
  */
 export function removeComputerPhantomCards(state: GameState): void {
   const combat = state.combat;
@@ -144,13 +164,15 @@ export function removeComputerPhantomCards(state: GameState): void {
   for (const { playerId, cardIds } of granted) {
     const player = state.players[playerId];
     if (!player) continue;
-    for (const cardId of cardIds) {
-      for (const pile of [player.hand, player.discard, player.deck]) {
-        const index = pile.indexOf(cardId);
-        if (index >= 0) {
-          pile.splice(index, 1);
-          break;
-        }
+    const phantomIds = new Set(cardIds);
+    // A phantom disappears after combat NO MATTER WHAT it did in the fight. Its id
+    // is distinct, so scrub EVERY granted copy from EVERY pile it could have
+    // reached — hand (unused / Knowledge-recalled), discard (played), deck (a
+    // reshuffle), spell book (a stash) — without ever touching a genuinely-owned
+    // Power or Magic Arrow (those keep the plain base id).
+    for (const pile of phantomHoldingPiles(player)) {
+      for (let index = pile.length - 1; index >= 0; index -= 1) {
+        if (phantomIds.has(pile[index])) pile.splice(index, 1);
       }
     }
   }
@@ -160,9 +182,10 @@ export function removeComputerPhantomCards(state: GameState): void {
 /**
  * Combat-end teardown: remove ONE instance of each injected card id from the
  * seat's piles (hand → discard → deck, wherever it landed) and strip the
- * temporary Empower marks. Card ids are indistinguishable between a real and
- * an injected copy, so exactly one instance per injected id is removed — a
- * genuinely owned twin survives with the correct count.
+ * temporary Empower marks. The boost cards are the game's OWN distinct Empowered
+ * ids (stat.*.empowered), not shared with the plain statistic, so removing one
+ * instance can only hit an injected copy unless the seat genuinely owns an
+ * Empowered twin — in which case exactly one is removed and the twin survives.
  */
 export function removeComputerCombatBoost(state: GameState): void {
   const combat = state.combat;

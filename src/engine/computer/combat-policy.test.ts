@@ -338,6 +338,65 @@ describe("combat policy — kill enemy shooters first", () => {
     );
     expect((decision?.action as { defenderId: string }).defenderId).toBe("E2");
   });
+
+  it("a FLYER jams the shooter (adjacency) and spends its strike on the bigger body", () => {
+    // User ruling (2026-09-18, live tutoring): a shooter with an adjacent enemy
+    // cannot shoot, so a flyer does NOT need to KILL it — landing next to it jams
+    // it for free. Attacker A (flying) at B2 is adjacent to BOTH the shooter E2
+    // (B1) and the bigger body E1 (C2). It should strike E1 and jam E2, not kill
+    // the shooter.
+    const attacker = unit({ id: "A", controllerId: "p2", type: "flying", attack: 4, position: 5 });
+    const bigger = unit({ id: "E1", attack: 6, defense: 2, maxHealth: 8, position: 6 });
+    const shooter = unit({ id: "E2", type: "ranged", attack: 4, defense: 0, maxHealth: 3, position: 1 });
+
+    const decision = chooseComputerAction(
+      observation([attacker, bigger, shooter], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("E1");
+
+    // CONTROL: when the flyer's cell is NOT adjacent to the shooter (E2 moved to
+    // D1), striking E1 no longer jams it, so the shooter-first rule takes E2.
+    const farShooter = unit({ ...shooter, position: 3 });
+    const control = chooseComputerAction(
+      observation([attacker, bigger, farShooter], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((control?.action as { defenderId: string }).defenderId).toBe("E2");
+
+    // CONTROL: a shooter whose threat survives a jam (Power Drain discards our
+    // cards on every attack) must be KILLED, not blocked — even adjacent, the
+    // flyer spends its strike on the shooter, not the bigger body.
+    const drainShooter = unit({ ...shooter, abilities: ["magi-power-drain"] });
+    const mustKill = chooseComputerAction(
+      observation([attacker, bigger, drainShooter], [attackOn("A", "E1"), attackOn("A", "E2")]),
+    );
+    expect((mustKill?.action as { defenderId: string }).defenderId).toBe("E2");
+  });
+
+  it("commits to a defense-ignoring one-shotter it can guarantee-kill (with hand boost), over easy chaff", () => {
+    // User ruling (2026-09-18, live tutoring): an enemy that deals elemental
+    // (defense-ignoring) damage AND can one-shot one of our bodies must be KILLED —
+    // chipping only feeds its def-ignoring retaliation. When our HAND boosts the strike
+    // to a guaranteed lethal, take it over an easy chaff kill; otherwise it is a trap.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 3, defense: 2, maxHealth: 4, position: 5 });
+    const oneShotter = unit({ id: "E", attack: 4, defense: 1, maxHealth: 4, position: 6, abilities: ["elemental-damage"] });
+    const chaff = unit({ id: "K", attack: 2, defense: 0, maxHealth: 1, position: 1 });
+    const victim = unit({ id: "C", controllerId: "p2", attack: 3, defense: 2, maxHealth: 4, position: 9 });
+
+    const withBoost = observation([attacker, oneShotter, chaff, victim], [attackOn("A", "E"), attackOn("A", "K")]);
+    (withBoost.state.players as Record<string, unknown>).p2 = { id: "p2", hand: ["stat.attack", "stat.attack.empowered"] };
+    expect(
+      (chooseComputerAction(withBoost)?.action as { defenderId: string }).defenderId,
+    ).toBe("E");
+
+    // CONTROL: with NO boost in hand the strike can't guarantee the kill, so the
+    // one-shotter is a trap (its retaliation ignores our defense) — take the chaff.
+    const noBoost = observation([attacker, oneShotter, chaff, victim], [attackOn("A", "E"), attackOn("A", "K")]);
+    (noBoost.state.players as Record<string, unknown>).p2 = { id: "p2", hand: [] };
+    expect(
+      (chooseComputerAction(noBoost)?.action as { defenderId: string }).defenderId,
+    ).toBe("K");
+  });
+
 });
 
 describe("combat policy — refuse a value-losing trade", () => {
@@ -382,6 +441,36 @@ describe("combat policy — refuse a value-losing trade", () => {
     });
     const decision = chooseComputerAction(
       observation([chaff, wall()], [attackOn("A", "E"), defend("A")]),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+});
+
+describe("combat policy — bait-and-retaliate (hold when a durable ally punishes the enemy)", () => {
+  // User lesson (2026-09-18, live tutoring). Skeleton (att2, hp2) chipping the
+  // Gnoll (def1, hp2) cannot kill on the low die, and the Gnoll's +1 retaliation
+  // (att2 → 2) kills the Skeleton (hp2). The intelligent line is to HOLD the
+  // Skeleton and bait the Gnoll onto the Wraith — but ONLY because a Wraith
+  // exists that both survives the Gnoll's hit and kills it on the retaliation.
+  const skeleton = () =>
+    unit({ id: "SK", controllerId: "p2", attack: 2, defense: 1, maxHealth: 2, position: 5 });
+  const gnoll = () =>
+    unit({ id: "GN", attack: 2, defense: 1, maxHealth: 2, position: 1 });
+  // Wraith: def0 hp3 survives the Gnoll's median hit (2 < 3); its retaliation
+  // (att3 − def1 = 2) removes the Gnoll (hp2).
+  const wraith = () =>
+    unit({ id: "WR", controllerId: "p2", type: "flying", attack: 3, defense: 0, maxHealth: 3, position: 6 });
+
+  it("holds the fragile unit when a durable ally will absorb and kill the enemy", () => {
+    const decision = chooseComputerAction(
+      observation([skeleton(), gnoll(), wraith()], [attackOn("SK", "GN"), defend("SK")]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+  });
+
+  it("CONTROL: with no bait body the fragile unit still trades (not rigid passivity)", () => {
+    const decision = chooseComputerAction(
+      observation([skeleton(), gnoll()], [attackOn("SK", "GN"), defend("SK")]),
     );
     expect(decision?.action.type).toBe("ATTACK_UNIT");
   });

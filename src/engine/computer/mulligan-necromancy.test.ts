@@ -23,6 +23,7 @@ type PlayerOverrides = {
   deckCount?: number;
   discard?: string[];
   deckDrawnAbilityCardIds?: string[];
+  army?: Array<{ id: string; unitDefId: string; side: string }>;
 };
 
 function makeState(
@@ -42,7 +43,7 @@ function makeState(
       limits: { hand: over.handLimit ?? 5 },
       permanents: [],
       resources: { gold: 10, buildingMaterials: 2, valuables: 1 },
-      army: [],
+      army: over.army ?? [],
     };
   }
   return {
@@ -169,6 +170,28 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
       deckCount: 6,
     });
     expect(discards).toEqual([]);
+  });
+
+  it("keeps ONE Defense card before a fight when a fragile army unit needs it (user 2026-09-18)", () => {
+    // Two Defense cards + junk, cycling before a fight. With a fragile Wraith
+    // (h3/d0) in the army a Defense card can turn a lethal hit into survival, so
+    // ONE is spared while the duplicate still cycles.
+    const fragile = refreshDiscards({
+      factionId: "necropolis",
+      hand: ["stat.defense", "stat.defense", "stat.attack", "ability.eagle_eye", "artifact.dragon_scale_armor"],
+      deckCount: 8,
+      army: [{ id: "a1", unitDefId: "necropolis.wraiths", side: "few" }],
+    });
+    expect(fragile.filter((id) => id === "stat.defense")).toHaveLength(1);
+    // CONTROL: with only a sturdy body (Dread Knights h7/d2) the Defense keep does
+    // not apply — both Defense copies cycle as ordinary mid-value junk.
+    const sturdy = refreshDiscards({
+      factionId: "necropolis",
+      hand: ["stat.defense", "stat.defense", "stat.attack", "ability.eagle_eye", "artifact.dragon_scale_armor"],
+      deckCount: 8,
+      army: [{ id: "a1", unitDefId: "necropolis.dread_knights", side: "few" }],
+    });
+    expect(sturdy.filter((id) => id === "stat.defense")).toHaveLength(2);
   });
 
   it("caps the voluntary cycle at 3 cards", () => {

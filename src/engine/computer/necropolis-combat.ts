@@ -1,4 +1,5 @@
 import type { CombatState, GameState } from "../state";
+import { baseCardId } from "../phantom-cards";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { estimatedStrikeDamage } from "./strike-value";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
@@ -96,7 +97,7 @@ export function bronzeArmyNeedsWithdrawal(
   // Damage-dealing spells are an actual way through armor. Do not credit a
   // spent spell or an Arrow against a wholly Arrow-immune elemental army.
   const arrow =
-    state.players[playerId].hand.includes("spell.magic_arrow") &&
+    state.players[playerId].hand.some((id) => baseCardId(id) === "spell.magic_arrow") &&
     guards.some((g) => !unitImmuneToSpellSchools(g, ["any"]));
   const spellDamage = arrow ? 3 : 0;
   const roundsToWin =
