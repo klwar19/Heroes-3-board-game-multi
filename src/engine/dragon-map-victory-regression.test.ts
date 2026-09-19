@@ -95,7 +95,7 @@ describe("Dragon victories on designed VI–VII maps", () => {
     lobby = ok(lobby, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { dragonUtopiaGuards: "four" } });
     expect(lobby.setupLobby!.options.dragonUtopiaGuards).toBe("four");
     lobby = ok(lobby, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { customMap: null } });
-    expect(lobby.setupLobby!.options.dragonUtopiaGuards).toBe("by-difficulty");
+    expect(lobby.setupLobby!.options.dragonUtopiaGuards).toBe("default");
     const state = createAdventureGameState({ seed: "dragon-direct-default", rollFirstPlayer: false,
       customMap: [...starts, centers[0]], customMapPreset: preset });
     expect(state.adventure!.victoryMode).toBe("dragon-hunt");
@@ -138,6 +138,82 @@ describe("Dragon victories on designed VI–VII maps", () => {
         expect((guards === "four" ? draws.map(d => d.unitDefId) : draws.map(d => d.tier)).sort())
           .toEqual(expected[guards]);
       }
+    }
+  });
+
+  it("Default keeps a designer army, while explicit modes replace it in the actual guard deployment", () => {
+    const authored = ["neutral.cyclopes", "neutral.troglodytes"];
+    for (const mode of ["dragon-hunt", "dragon-conqueror"] as const) {
+      for (const guards of ["default", "two-azure-two-gold", "four", "by-difficulty"] as const) {
+        for (const withDesignerGuard of [false, true]) {
+          let state = createAdventureGameState({
+            seed: `utopia-choice-${mode}-${guards}-${withDesignerGuard}`,
+            rollFirstPlayer: false,
+            difficulty: "impossible",
+            victoryMode: mode,
+            dragonUtopiaGuards: guards,
+            customMap: [...starts, {
+              row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C2",
+              viiField: "dragon_utopia",
+              ...(withDesignerGuard ? { centerHex: { guard: { units: authored } } } : {})
+            }],
+            customMapPreset: { objectives: { hiddenGrailUtopia: true } }
+          });
+          const field = Object.values(state.adventure!.fields).find(f => f.location === "dragon_utopia")!;
+          const usesDesignerGuard = withDesignerGuard && guards === "default";
+          expect(Boolean(field.designedGuard)).toBe(withDesignerGuard);
+          const hero = getMainHero(state, "p1")!;
+          hero.spaceId = field.spaceId;
+          for (const player of Object.values(state.players)) {
+            player.canMulligan = false; player.needsHandRefresh = false; player.hand = [];
+          }
+          state.activePlayerId = "p1";
+          state.phase = "player-turn";
+          startNeutralEncounter(state, hero, field);
+          state = ok(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1",
+            armyUnitId: state.players.p1.army[0].id, position: 13 });
+          state = ok(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+          const defenders = Object.values(state.combat!.units)
+            .filter(unit => unit.controllerId === NEUTRAL_PLAYER_ID);
+          if (usesDesignerGuard) {
+            expect(defenders.map(unit => unit.unitDefId)).toEqual(authored);
+          } else if (guards === "four") {
+            expect(defenders.map(unit => unit.unitDefId).sort()).toEqual([
+              "neutral.azure_dragons", "neutral.crystal_dragons",
+              "neutral.faerie_dragons", "neutral.rust_dragons"
+            ]);
+          } else {
+            expect(defenders.map(unit => coreUnitDefinitions[unit.unitDefId!]?.tier).sort())
+              .toEqual(["azure", "azure", "gold", "gold"]);
+          }
+          const context = state.combat?.context;
+          expect(context?.kind).toBe("neutral");
+          if (context?.kind !== "neutral") throw new Error("Expected a Neutral encounter");
+          expect(context.difficulty).toBe(usesDesignerGuard ? field.difficulty : 7);
+        }
+      }
+    }
+  });
+
+  it("Default honors the map-wide authored Utopia guard; a forced choice overrides it", () => {
+    for (const guards of ["default", "four"] as const) {
+      const state = createAdventureGameState({
+        seed: `utopia-map-wide-${guards}`,
+        rollFirstPlayer: false,
+        difficulty: "impossible",
+        victoryMode: "dragon-hunt",
+        dragonUtopiaGuards: guards,
+        customMap: [...starts, { row: 9, col: 4, group: "center", faceDown: false,
+          tileDefId: "C2", viiField: "dragon_utopia" }],
+        customMapPreset: { objectives: { hiddenGrailUtopia: true,
+          grailUtopiaGuard: { units: ["neutral.cyclopes", "neutral.troglodytes"] } } }
+      });
+      const field = Object.values(state.adventure!.fields).find(f => f.location === "dragon_utopia")!;
+      const draws = drawGuardArmy(state, field, field.difficulty ?? 7);
+      expect(draws.map(draw => draw.unitDefId).sort()).toEqual(guards === "default"
+        ? ["neutral.cyclopes", "neutral.troglodytes"]
+        : ["neutral.azure_dragons", "neutral.crystal_dragons",
+          "neutral.faerie_dragons", "neutral.rust_dragons"]);
     }
   });
 

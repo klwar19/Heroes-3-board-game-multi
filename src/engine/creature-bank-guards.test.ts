@@ -30,7 +30,7 @@ function fieldWith(location: string, difficulty = 7): MapFieldState {
 
 describe("Dragon Utopia guards", () => {
   // Difficulty-7 Neutral-army totals (NEUTRAL_ARMY_TABLE) — the counts the
-  // Utopia scales to when its guards are "by-difficulty" (the default).
+  // Utopia scales to when its guards are explicitly "by-difficulty".
   const COUNT_BY_DIFFICULTY: Record<GameDifficulty, number> = {
     easy: 1,
     normal: 2,
@@ -46,12 +46,13 @@ describe("Dragon Utopia guards", () => {
 
   function utopiaDraws(seed: string, difficulty: GameDifficulty, mutate?: (state: ReturnType<typeof createAdventureGameState>) => void) {
     const state = createAdventureGameState({ seed, difficulty, rollFirstPlayer: false });
+    state.adventure!.dragonUtopiaGuards = "by-difficulty";
     mutate?.(state);
     const draws = drawGuardArmy(state, fieldWith("dragon_utopia"), 7);
     return { state, draws };
   }
 
-  it("uses the full difficulty-table tier composition in the default mode", () => {
+  it("uses the full difficulty-table tier composition in by-difficulty mode", () => {
     const { draws } = utopiaDraws("utopia-hard-table", "hard");
     expect(draws.map((draw) => draw.tier).sort()).toEqual(["azure", "azure", "gold"]);
     expect(draws.every((draw) => !draw.bankGuard)).toBe(true);
@@ -79,6 +80,7 @@ describe("Dragon Utopia guards", () => {
     // "by-difficulty" draws real cards: hard Ⅶ takes 2 azure + 1 gold OUT of
     // the piles, and nothing is flagged, so the recycle hands them back.
     const drawn = createAdventureGameState({ seed: "utopia-conserve", difficulty: "hard", rollFirstPlayer: false });
+    drawn.adventure!.dragonUtopiaGuards = "by-difficulty";
     const azureBefore = drawn.decks[NEUTRAL_DECK_IDS.azure]!.drawPile.length;
     const goldBefore = drawn.decks[NEUTRAL_DECK_IDS.gold]!.drawPile.length;
     const draws = drawGuardArmy(drawn, fieldWith("dragon_utopia"), 7);

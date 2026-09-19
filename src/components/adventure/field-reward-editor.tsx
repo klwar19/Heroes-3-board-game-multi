@@ -72,7 +72,7 @@ export function nextFieldReward(
 /** Set or clear a boolean special arm (Ability Empower token / Statistic empower). */
 export function nextFieldRewardFlag(
   current: CustomFieldReward | undefined,
-  key: "abilityEmpowerToken" | "empowerStatistic",
+  key: "abilityEmpowerToken" | "moraleOrAbilityEmpowerToken" | "empowerStatistic",
   on: boolean
 ): CustomFieldReward | undefined {
   const next: CustomFieldReward = { ...(current ?? {}) };
@@ -260,6 +260,18 @@ export function FieldRewardEditor({
               Ability Empower token
               <small>Stackable · spend one anytime on a hand Ability</small>
             </span>
+          </label>
+
+          <label className="fieldRewardSpecialToggle">
+            <input
+              aria-label={`${ariaLabel} Morale or Ability Empower choice`}
+              checked={Boolean(reward?.moraleOrAbilityEmpowerToken)}
+              onChange={(event) =>
+                onChange(nextFieldRewardFlag(reward, "moraleOrAbilityEmpowerToken", event.target.checked))
+              }
+              type="checkbox"
+            />
+            <span>Choose +1 Morale or Ability Empower token</span>
           </label>
 
           <label className="fieldRewardSpecialToggle">

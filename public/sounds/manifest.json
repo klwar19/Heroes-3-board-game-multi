@@ -1,4 +1,8 @@
 {
+  "custom-ability/kud-impact": { "src": "/fx/ability-sounds/kud-impact.mp3", "note": "Compressed user-supplied distorted explosion for Kud's Rocket Launcher impact" },
+  "custom-ability/fear-aura": { "src": "/fx/ability-sounds/fear-aura.mp3", "note": "Compressed user-supplied cinematic fear glitch for successful unit-experience Fear Aura" },
+  "custom-ability/fire-impact": { "src": "/fx/ability-sounds/fire-impact.mp3", "note": "Compressed user-supplied fire spell impact for Phoenix Scorch and Energy Elemental Feed on Fire" },
+  "custom-ability/electric-impact": { "src": "/fx/ability-sounds/electric-impact.mp3", "note": "Compressed user-supplied electric impact for Storm Elemental R4 and Energy Elemental R1" },
   "custom-veterancy/break-cover": { "src": "/fx/custom-town/break-cover.mp3", "note": "Original synthesized hammer impact and falling rubble" },
   "custom-veterancy/clear-mind": { "src": "/fx/custom-town/clear-mind.mp3", "note": "Original synthesized ascending cleansing chimes" },
   "custom-veterancy/rescue-step": { "src": "/fx/custom-town/rescue-step.mp3", "note": "Original synthesized escape sweep and signal" },

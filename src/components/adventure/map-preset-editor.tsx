@@ -1781,6 +1781,15 @@ export function MapPresetEditor({
                 title="Use the lobby / game default."
                 type="button"
               >
+                Use lobby
+              </button>
+              <button
+                aria-pressed={objectives.utopiaGuards === "default"}
+                className={`mapPresetChip${objectives.utopiaGuards === "default" ? " active" : ""}`}
+                onClick={() => setUtopiaGuards("default")}
+                title="Keep a designer Utopia guard if present; otherwise draw 2 Azure and 2 Gold."
+                type="button"
+              >
                 Default
               </button>
               <button

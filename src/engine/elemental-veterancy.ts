@@ -671,7 +671,7 @@ function executeElementalPick(
     if (blocked) throw new Error("That movement space is not available.");
     const from = unit.position; unit.position = position;
     veteranTrigger(state, unit, request.abilityId);
-    appendEvent(state, { type: "UNIT_MOVED", playerId: unit.controllerId, unitId: unit.id, from, to: position });
+    appendEvent(state, { type: "UNIT_MOVED", playerId: unit.controllerId, unitId: unit.id, from, to: position, sourceAbilityId: request.abilityId });
     return;
   }
   if (request.kind === "move-ally-one") {
@@ -833,6 +833,7 @@ function executeElementalPick(
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: unit.id,
       targetUnitId: pick.targetId ?? unit.id,
+      ...(request.kind === "link" ? { linkFromUnitId: request.targetId! } : {}),
       abilityId: request.abilityId,
       message: `${unit.cardName} uses ${request.kind}.`,
     });

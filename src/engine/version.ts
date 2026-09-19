@@ -1419,7 +1419,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   Server-side in the same release: the AI improvement pass across the
 //   computer policies (PvP tier-down poke + heal-race combat reads, routing
 //   and economy refinements, march-scoop pickups, market sell usage).
-export const ENGINE_PROTOCOL_VERSION = 155;
+// v156 (2026-09-19): designed Temple of the Sea guard/award state and the
+// Morale-or-Ability-Empower visit choice travel in multiplayer snapshots.
+export const ENGINE_PROTOCOL_VERSION = 156;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

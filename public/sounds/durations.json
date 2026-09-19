@@ -2600,5 +2600,9 @@
   "units/zombie-lord-death": 1306,
   "units/zombie-lord-defend": 784,
   "units/zombie-lord-hurt": 601,
-  "units/zombie-lord-move": 1149
+  "units/zombie-lord-move": 1149,
+  "custom-ability/electric-impact": 3936,
+  "custom-ability/fear-aura": 1664,
+  "custom-ability/fire-impact": 2054,
+  "custom-ability/kud-impact": 2176
 }

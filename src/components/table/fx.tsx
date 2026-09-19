@@ -56,6 +56,7 @@ export type FxCue =
       from: string;
       to: string;
       cardImage?: string;
+      teleport?: boolean;
       /** The card reads upside-down on the board (p1 / flipped view). */
       flip?: boolean;
       delayMs?: number;
@@ -100,6 +101,7 @@ export type FxCue =
       /** Recoil the matching in-play war-machine card as the shot launches. */
       recoil?: "ballista" | "catapult" | "cannon";
     }
+  | { kind: "line"; id: string; fxKey: string; from: string; to: string; delayMs?: number; sound?: string }
   | { kind: "floater"; id: string; at: string; text: string; tone: "damage" | "heal" | "info"; delayMs?: number }
   | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number }
   | {
@@ -131,6 +133,7 @@ export type FxCue =
       fxKey: string;
       from: string;
       at: string;
+      sound?: string;
       delayMs?: number;
     }
   | {
@@ -446,7 +449,58 @@ async function runFlight(stage: HTMLElement, cue: Extract<FxCue, { kind: "flight
  * fading trail of after-images behind it. A missing card (combat ended, unit
  * removed) consumes the cue silently.
  */
+async function runTeleport(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>): Promise<void> {
+  const fromRect = resolveAnchorRect(cue.from);
+  const toRect = resolveAnchorRect(cue.to);
+  const realCard = boardCardFor(cue.unitId);
+  if (!fromRect || !toRect) return;
+  const origin = centerOf(fromRect);
+  const width = realCard?.getBoundingClientRect().width ?? toRect.width;
+  const height = realCard?.getBoundingClientRect().height ?? toRect.height;
+  const ghost = document.createElement("div");
+  ghost.className = "fxMoveGhost";
+  ghost.style.width = `${width}px`;
+  ghost.style.height = `${height}px`;
+  ghost.style.left = `${origin.x - width / 2}px`;
+  ghost.style.top = `${origin.y - height / 2}px`;
+  if (cue.cardImage) {
+    const card = document.createElement("img");
+    card.src = assetUrl(cue.cardImage);
+    card.alt = "";
+    card.className = "fxMoveGhostCard";
+    ghost.appendChild(card);
+  }
+  stage.appendChild(ghost);
+  const previousOpacity = realCard?.style.opacity;
+  if (realCard) realCard.style.opacity = "0";
+  try {
+    playLibrarySound("spells/teleport");
+    await Promise.all([
+      runSprite(stage, "magma-teleport-animated", cue.from, undefined, 300),
+      animate(ghost, [
+        { transform: "scale(1)", opacity: 1 },
+        { transform: "scale(0.08)", opacity: 0 },
+      ], { duration: 300, easing: "ease-in", fill: "forwards" }),
+    ]);
+    ghost.remove();
+    const arrival = runSprite(stage, "magma-teleport-animated", cue.to, undefined, 340);
+    if (realCard) {
+      realCard.style.opacity = previousOpacity ?? "";
+      await Promise.all([arrival, animate(realCard, [
+          { transform: "scale(0.08)", opacity: 0 },
+          { transform: "scale(1)", opacity: 1 },
+        ], { duration: 340, easing: "ease-out", composite: "add" })]);
+    } else {
+      await arrival;
+    }
+  } finally {
+    ghost.remove();
+    if (realCard) realCard.style.opacity = previousOpacity ?? "";
+  }
+}
+
 async function runMove(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>): Promise<void> {
+  if (cue.teleport) return runTeleport(stage, cue);
   const fromRect = resolveAnchorRect(cue.from);
   // Size and land on the real card so the ghost lines up exactly when it stops.
   const realCard = document.querySelector(`[data-fx-unit="${cue.unitId}"] .boardCard`);
@@ -648,8 +702,55 @@ async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
   );
 }
 
+/** The long thrust grows from the attacking unit and ends at the defender. */
+async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string; at: string; sound?: string }): Promise<void> {
+  const sheet = getFxSheet(cue.fxKey);
+  const fromRect = resolveAnchorRect(cue.from);
+  const toRect = resolveAnchorRect(cue.at);
+  if (!sheet || !fromRect || !toRect) return;
+  const from = centerOf(fromRect);
+  const to = centerOf(toRect);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const width = Math.hypot(dx, dy);
+  if (width < 1) return;
+  const height = Math.min(fromRect.height, toRect.height) * 0.88;
+  const sprite = document.createElement("div");
+  sprite.className = "fxSprite fxMeleeImpact";
+  sprite.style.width = `${width}px`;
+  sprite.style.height = `${height}px`;
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
+  sprite.style.backgroundSize = `${width * sheet.cols}px ${height * sheet.rows}px`;
+  sprite.style.left = `${(from.x + to.x) / 2 - width / 2}px`;
+  sprite.style.top = `${(from.y + to.y) / 2 - height / 2}px`;
+  sprite.style.transformOrigin = "center";
+  sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+  stage.appendChild(sprite);
+  if (cue.sound) playLibrarySound(cue.sound);
+  else playMeleeImpact();
+  const started = performance.now();
+  const playbackMs = (sheet.frames / sheet.fps) * 1000;
+  try {
+    await new Promise<void>((resolve) => {
+      const tick = (now: number) => {
+        if (!stage.isConnected) { resolve(); return; }
+        const elapsed = now - started;
+        if (elapsed >= playbackMs) { resolve(); return; }
+        const frame = Math.min(sheet.frames - 1, Math.floor(elapsed / playbackMs * sheet.frames));
+        sprite.style.backgroundPosition = `-${frame % sheet.cols * width}px -${Math.floor(frame / sheet.cols) * height}px`;
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
+  } finally { sprite.remove(); }
+}
+
 /** Plays the unit-appropriate melee-contact atlas over the defender. */
 async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
+  if ([
+    "melee-thrust-impact", "phoenix-flame-flow-animated", "dragon-fire-breath-animated",
+    "azure-ice-breath-animated", "crystal-red-strike-animated", "rust-acid-breath-animated",
+  ].includes(cue.fxKey)) return runThrust(stage, cue);
   const sheet = getFxSheet(cue.fxKey);
   const fromRect = resolveAnchorRect(cue.from);
   const rect = resolveAnchorRect(cue.at);
@@ -658,12 +759,15 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
   }
   const attacker = centerOf(fromRect);
   const target = centerOf(rect);
+  const dx = target.x - attacker.x;
+  const dy = target.y - attacker.y;
   const scale = Math.min(
     (rect.width * 1.45) / sheet.frameWidth,
     (rect.height * 1.45) / sheet.frameHeight,
   );
-  const firesLeft = target.x < attacker.x;
-  const horizontalReach = cue.fxKey === "melee-thrust-impact" ? 1.7 : 1;
+  const firesLeft = dx < 0;
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const forwardAngle = firesLeft ? angle - Math.sign(angle || 1) * 180 : angle;
   const frameOrder = sheet.frameOrder ?? Array.from({ length: sheet.frames }, (_, frame) => frame);
 
   const sprite = document.createElement("div");
@@ -673,7 +777,7 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
   sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
   sprite.style.left = `${target.x - sheet.frameWidth / 2}px`;
   sprite.style.top = `${target.y - sheet.frameHeight / 2}px`;
-  sprite.style.transform = `scale(${(firesLeft ? -scale : scale) * horizontalReach}, ${scale})`;
+  sprite.style.transform = `rotate(${forwardAngle}deg) scale(${firesLeft ? -scale : scale}, ${scale})`;
   sprite.style.transformOrigin = "center";
   stage.appendChild(sprite);
   playMeleeImpact();
@@ -696,6 +800,11 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
           Math.floor((elapsed / MELEE_SLASH_MS) * frameOrder.length),
         );
         const frame = frameOrder[sequenceIndex];
+        // The leading frames travel from the attacker's edge into the target.
+        // The impact frames stay on the struck card while the sparks dissipate.
+        const advance = Math.min(1, elapsed / (MELEE_SLASH_MS * 0.56));
+        sprite.style.left = `${attacker.x + dx * advance - sheet.frameWidth / 2}px`;
+        sprite.style.top = `${attacker.y + dy * advance - sheet.frameHeight / 2}px`;
         const col = frame % sheet.cols;
         const row = Math.floor(frame / sheet.cols);
         sprite.style.backgroundPosition = `-${col * sheet.frameWidth}px -${row * sheet.frameHeight}px`;
@@ -706,6 +815,71 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
   } finally {
     sprite.remove();
   }
+}
+
+/** Full-length animated ray: frames extend, pulse, and burst at the live target. */
+async function runBeamProjectile(
+  stage: HTMLElement,
+  cue: Extract<FxCue, { kind: "projectile" }>,
+  sheet: NonNullable<ReturnType<typeof getFxSheet>>,
+  fromRect: DOMRect,
+  toRect: DOMRect,
+): Promise<void> {
+  const from = centerOf(fromRect);
+  const to = centerOf(toRect);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return;
+  const ux = dx / distance;
+  const uy = dy / distance;
+  const sourceInset = Math.min(distance * 0.2, Math.min(fromRect.width, fromRect.height) * 0.25);
+  const targetInset = Math.min(distance * 0.2, Math.min(toRect.width, toRect.height) * 0.2);
+  const start = { x: from.x + ux * sourceInset, y: from.y + uy * sourceInset };
+  const end = { x: to.x - ux * targetInset, y: to.y - uy * targetInset };
+  const width = Math.hypot(end.x - start.x, end.y - start.y);
+  const height = Math.min(fromRect.height, toRect.height) * 0.92;
+  const flightMs = cue.flightMs ?? BOLT_FLIGHT_MS;
+  const launchMs = RANGED_RELEASE_MS;
+  const fadeMs = 220;
+  const sprite = document.createElement("div");
+  sprite.className = "fxSprite fxProjectile fxBeam";
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
+  sprite.style.width = `${width}px`;
+  sprite.style.height = `${height}px`;
+  sprite.style.backgroundSize = `${width * sheet.cols}px ${height * sheet.rows}px`;
+  sprite.style.left = `${(start.x + end.x) / 2 - width / 2}px`;
+  sprite.style.top = `${(start.y + end.y) / 2 - height / 2}px`;
+  sprite.style.transformOrigin = "center";
+  sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+  stage.appendChild(sprite);
+  const started = performance.now();
+  let playedShot = false;
+  let playedImpact = false;
+  try {
+    await new Promise<void>((resolve) => {
+      const tick = (now: number) => {
+        if (!stage.isConnected) { resolve(); return; }
+        const elapsed = now - started;
+        let frame: number;
+        if (elapsed < launchMs) {
+          frame = Math.min(3, Math.floor(elapsed / launchMs * 4));
+        } else if (elapsed < launchMs + flightMs) {
+          if (!playedShot) { playedShot = true; if (cue.sound) playLibrarySound(cue.sound); }
+          frame = 4 + Math.min(6, Math.floor((elapsed - launchMs) / flightMs * 7));
+        } else if (elapsed < launchMs + flightMs + fadeMs) {
+          if (!playedImpact) {
+            playedImpact = true;
+            if (cue.hitSound && !cue.hitFxKey) playLibrarySound(cue.hitSound);
+          }
+          frame = 11 + Math.min(4, Math.floor((elapsed - launchMs - flightMs) / fadeMs * 5));
+        } else { resolve(); return; }
+        sprite.style.backgroundPosition = `-${(frame % sheet.cols) * width}px -${Math.floor(frame / sheet.cols) * height}px`;
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
+  } finally { sprite.remove(); }
 }
 
 /** The little burst of light where a projectile lands. */
@@ -775,7 +949,7 @@ async function runBolt(stage: HTMLElement, cue: Extract<FxCue, { kind: "bolt" }>
 }
 
 /** Steps a converted .def sheet frame by frame over the anchored cell. */
-async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey?: string): Promise<void> {
+async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey?: string, playbackMs?: number): Promise<void> {
   const sheet = getFxSheet(fxKey);
   const rect = resolveAnchorRect(at);
   if (!sheet || !rect) {
@@ -786,6 +960,7 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
   // the authored proportions. Oversized effects are capped at ~2.4 cells.
   let scale = rect.width / 90;
   scale = Math.min(scale, (rect.height * 2.4) / sheet.frameHeight, (rect.width * 2.4) / sheet.frameWidth);
+  scale *= sheet.scaleMultiplier ?? 1;
 
   const sprite = document.createElement("div");
   sprite.className = "fxSprite";
@@ -828,14 +1003,14 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
     }
     await new Promise<void>((resolve) => {
       const startTime = performance.now();
-      const totalMs = (sheet.frames / sheet.fps) * 1000;
+      const totalMs = playbackMs ?? (sheet.frames / sheet.fps) * 1000;
       const step = (now: number) => {
         const elapsed = now - startTime;
         if (elapsed >= totalMs) {
           resolve();
           return;
         }
-        const frame = Math.min(sheet.frames - 1, Math.floor((elapsed / 1000) * sheet.fps));
+        const frame = Math.min(sheet.frames - 1, Math.floor((elapsed / totalMs) * sheet.frames));
         const col = frame % sheet.cols;
         const row = Math.floor(frame / sheet.cols);
         sprite.style.backgroundPosition = `-${col * sheet.frameWidth}px -${row * sheet.frameHeight}px`;
@@ -952,6 +1127,11 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
     // A layout change can remove a visual anchor while a delayed cue waits.
     // Missing geometry must not also swallow the spell's sound.
     if (cue.sound) playLibrarySound(cue.sound);
+    return;
+  }
+  if (sheet.beamFrames) {
+    await runBeamProjectile(stage, cue, sheet, fromRect, toRect);
+    if (cue.hitFxKey) await runSprite(stage, cue.hitFxKey, cue.to, cue.hitSound);
     return;
   }
   if (sheet.projectilePhases) {
@@ -1231,6 +1411,10 @@ async function runBurst(stage: HTMLElement, cue: Extract<FxCue, { kind: "burst" 
   }
 }
 
+// A battle can emit the same effect many times. Keep one decoded browser-cache
+// warmup per asset instead of allocating a new Image object for every cue.
+const preloadedFxSources = new Set<string>();
+
 export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) => void }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef<Set<string>>(new Set());
@@ -1253,9 +1437,11 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
 
       // Start fetching phase art while the dice/card presentation is still
       // running, rather than waiting until its first launch frame is due.
-      if (cue.kind === "projectile") {
-        const sheet = getFxSheet(cue.fxKey);
-        if (sheet?.projectilePhases) {
+      if (["projectile", "line", "slash", "sprite"].includes(cue.kind)) {
+        const fxKey = "fxKey" in cue ? cue.fxKey : undefined;
+        const sheet = fxKey ? getFxSheet(fxKey) : undefined;
+        if (sheet && !preloadedFxSources.has(sheet.src)) {
+          preloadedFxSources.add(sheet.src);
           const preload = new Image();
           preload.src = assetUrl(sheet.src);
         }
@@ -1271,6 +1457,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runSprite(stage, cue.fxKey, cue.at, cue.sound);
           case "projectile":
             return runProjectile(stage, cue);
+          case "line":
+            return runThrust(stage, { fxKey: cue.fxKey, from: cue.from, at: cue.to, sound: cue.sound });
           case "floater":
             return runFloater(stage, cue);
           case "pulse":

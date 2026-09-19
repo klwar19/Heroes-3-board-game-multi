@@ -490,12 +490,21 @@ function isDragonScenarioUtopiaField(
   );
 }
 
+/** Whether the chosen scenario mode replaces this field's authored guard. */
+export function usesDragonScenarioUtopiaGuards(state: GameState, field: MapFieldState | undefined): boolean {
+  return isDragonScenarioUtopiaField(adventureVictoryMode(state), field) &&
+    !field?.grailConverted &&
+    (adventureDragonUtopiaGuards(state) !== "default" || !field?.designedGuard);
+}
+
 /** Apply mode rules at encounter entry, including fields from older saves. */
 export function applyGrailUtopiaEncounterRules(state: GameState, field: MapFieldState): void {
   if (!isGrailUtopiaModeField(state, field)) return;
   if (!isDragonScenarioUtopiaField(adventureVictoryMode(state), field)) {
     applyCustomGuardToField(field,
       state.adventure?.mapPreset?.objectives?.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+  } else if (adventureDragonUtopiaGuards(state) === "default" && !field.designedGuard) {
+    applyCustomGuardToField(field, state.adventure?.mapPreset?.objectives?.grailUtopiaGuard);
   }
   field.combatRoundLimit = "unlimited";
 }
@@ -530,8 +539,11 @@ export type DesignedGuardPreview = {
   units: string[];
 };
 
-export function designedGuardPreview(field: MapFieldState | undefined): DesignedGuardPreview | null {
+export function designedGuardPreview(field: MapFieldState | undefined, state?: GameState): DesignedGuardPreview | null {
   if (!field || !field.designedGuard) {
+    return null;
+  }
+  if (state && usesDragonScenarioUtopiaGuards(state, field)) {
     return null;
   }
   // Grouped labels (e.g. "3× Random gold") so the map tooltip matches the
@@ -1298,6 +1310,21 @@ export function materializeTileFields(
       if (perTile?.winCondition) {
         field.designerWinCondition = true;
       }
+    } else if (field.location === "temple_of_the_sea") {
+      const perTile = tile.objectPlans?.temple_of_the_sea;
+      if (perTile) {
+        if (perTile.guard) applyCustomGuardToField(field, perTile.guard);
+        applyBreakFieldOptions(field, withPerTileBreakGate(mergeObjectBreakFlags(perTile, undefined), perTile));
+        // A custom Temple award replaces its printed 10 gold + two Search(2).
+        // Guard-only plans leave the printed award untouched.
+        if (perTile.reward) {
+          stampDesignerFieldReward(field, perTile.reward, perTile.vp);
+          field.templeCustomAward = true;
+        } else if (perTile.vp) {
+          stampDesignerFieldReward(field, undefined, perTile.vp);
+        }
+        if (perTile.winCondition) field.designerWinCondition = true;
+      }
     } else if (field.location === "settlement") {
       const perTile = tile.settlement;
       const centerHex = fieldDef.difficulty === 7 ? tile.centerHex : undefined;
@@ -1400,6 +1427,8 @@ export function materializeTileFields(
       // Utopia takes the fixed default party here.
       if (!isDragonScenarioUtopiaField(adventure.victoryMode, field)) {
         applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+      } else if (adventure.dragonUtopiaGuards === "default" && !field.designedGuard) {
+        applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard);
       }
       field.combatRoundLimit = "unlimited";
     }
@@ -4386,7 +4415,8 @@ export function polishQuickCombatFieldInfo(
   if (!polishQuickCombatEnabled(state)) {
     return null;
   }
-  const difficulty = field.difficulty ?? 0;
+  const scenarioUtopia = usesDragonScenarioUtopiaGuards(state, field);
+  const difficulty = scenarioUtopia ? 7 : field.difficulty ?? 0;
   if (difficulty <= 0 || !isFieldGuarded(field)) {
     return null;
   }
@@ -5030,11 +5060,10 @@ export function adventureVictoryMode(state: GameState): VictoryMode {
 }
 
 /**
- * How the Dragon Utopia objective is guarded this game. The map-designer preset
- * (`objectives.utopiaGuards`) wins when set — the designer's choice for THIS map
- * — else the lobby-level `dragonUtopiaGuards`, else "by-difficulty" (the default
- * and old-snapshot value). Both stored values are the EXISTING
- * {@link DragonUtopiaGuards} modes; the preset surfaces them, it invents nothing.
+ * How the Dragon Utopia objective is guarded this game. The lobby choice wins
+ * in Dragon Hunt / Conqueror (including an explicit override of a map preset);
+ * other modes prefer the map preset. Missing values on old saves use the
+ * former "by-difficulty" behavior.
  */
 export function adventureDragonUtopiaGuards(state: GameState): DragonUtopiaGuards {
   if (adventureVictoryMode(state) === "dragon-hunt" || adventureVictoryMode(state) === "dragon-conqueror") {
@@ -6346,6 +6375,16 @@ function payDesignerFieldReward(
     // force: designer always grants the token (bank house rule is bank-only).
     steps.push({ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true });
   }
+  if (reward.moraleOrAbilityEmpowerToken) {
+    steps.push({
+      type: "CHOOSE_ONE",
+      prompt: "Choose the reward token",
+      options: [
+        { label: "Gain 1 positive Morale", steps: [{ type: "GAIN_MORALE", amount: 1 }] },
+        { label: "Gain 1 Ability Empower token", steps: [{ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true }] }
+      ]
+    });
+  }
   if (reward.empowerStatistic) {
     steps.push({
       type: "STAT_EMPOWER_OFFER",
@@ -6984,7 +7023,7 @@ function captureFlaggableDragonUtopia(state: GameState, playerId: PlayerId, fiel
  *
  * Every Ⅶ-FIELD mode that pays the Utopia pays the same 20 gold and two Search
  * (3) rewards ({@link queueDragonUtopiaArtifactSearches}). The guard
- * mode (`utopiaGuards` four vs by-difficulty) only picks the guard army and never
+ * mode (`utopiaGuards`) only picks the guard army and never
  * changes the reward. The Creature Bank `dragon_utopia` TOKEN never comes through
  * here — it keeps its own fixed IV–V bank reward (40 gold + Search (3), (5),
  * (5) — see creature-banks.ts), deliberately RICHER than this field's bundle.
@@ -9632,6 +9671,9 @@ export function beginFieldVisit(
     location.implementationStatus === "implemented"
       ? interactionToSteps(location.interaction, locationDiceBonus)
       : [];
+  if (location.id === "temple_of_the_sea" && field.templeCustomAward) {
+    steps = [];
+  }
 
   // Polish Pandora rule: the Pandora-card reward replaces the field's printed
   // dice menu; it is not an additional optional arm. Enter the Search directly
@@ -16814,16 +16856,18 @@ export function dragonUtopiaGuardIds(state: GameState, difficulty: number): stri
 /**
  * Draws the scenario Dragon Utopia guard army.
  *
- * "by-difficulty" uses the complete Field Difficulty Level Table row, including
- * its tiers (Hard VII = 1 golden + 2 azure). "four" is the explicit scenario
- * variant and retains the fixed four-dragon party.
+ * "default" (without a designer guard) and "two-azure-two-gold" draw two
+ * cards from each tier. "by-difficulty" uses the complete Field Difficulty
+ * Level Table row (Hard VII = 1 golden + 2 azure). "four" mints the fixed
+ * four-dragon party.
  */
 function drawDragonUtopiaArmy(
   state: GameState,
   difficulty: number,
   diplomacyTierReduction = false
 ): NeutralDraw[] {
-  if (adventureDragonUtopiaGuards(state) === "two-azure-two-gold") {
+  if (adventureDragonUtopiaGuards(state) === "two-azure-two-gold" ||
+      adventureDragonUtopiaGuards(state) === "default") {
     return (["azure", "azure", "gold", "gold"] as const).flatMap(tier => {
       const unitDefId = drawFromNeutralDeck(state, tier);
       return unitDefId ? [{ unitDefId, tier }] : [];
@@ -17582,6 +17626,11 @@ export function diplomacyGuardReductionTier(
   field: MapFieldState | undefined,
   difficulty: number
 ): keyof NeutralTierCounts | null {
+  if (usesDragonScenarioUtopiaGuards(state, field)) {
+    if (adventureDragonUtopiaGuards(state) !== "by-difficulty") return null;
+    const counts = NEUTRAL_ARMY_TABLE[baseNeutralArmyDifficulty(state)][7];
+    return counts ? lowestDiplomacyPairTier(counts) : null;
+  }
   if (!field || field.customGuardUnits?.length || field.customGuardLevelArmy === "packs" || field.location === "random_town") {
     return null;
   }
@@ -17879,9 +17928,11 @@ function drawGuardArmyBase(
   options?: { diplomacyTierReduction?: boolean }
 ): NeutralDraw[] {
   const diplomacyTierReduction = Boolean(options?.diplomacyTierReduction);
-  if (!isGrailUtopiaModeField(state, field) && field?.location === "dragon_utopia" && !field.grailConverted &&
-      (adventureVictoryMode(state) === "dragon-hunt" || adventureVictoryMode(state) === "dragon-conqueror")) {
-    return drawDragonUtopiaArmy(state, difficulty, diplomacyTierReduction);
+  // The lobby's Dragon Hunt / Conqueror guard choice owns the original
+  // objective even when Grail/Utopia field rules or a designer center guard
+  // are active. Converted Grail sites keep their authored field guards.
+  if (usesDragonScenarioUtopiaGuards(state, field)) {
+    return drawDragonUtopiaArmy(state, 7, diplomacyTierReduction);
   }
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every

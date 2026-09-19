@@ -12569,6 +12569,7 @@ function resolveTeleportChoice(
     unitId: unit.id,
     from,
     to: destination,
+    ...(choice.teleport.abilityId ? { sourceAbilityId: choice.teleport.abilityId } : {}),
   });
   appendEvent(state, {
     type: "PENDING_CHOICE_RESOLVED",
@@ -33436,6 +33437,9 @@ function moveAndAttackUnit(
     unitId: attacker.id,
     from,
     to: finalPosition,
+    ...(getUnitAbilityDefinitions(attacker).some((ability) => ability.id === "veteran-magma-teleport-strike")
+      ? { sourceAbilityId: "veteran-magma-teleport-strike" }
+      : {}),
   });
   gainSectQiAfterMove(state, attacker, from, finalPosition);
   elementalMovement(state, attacker, elementalHooks);

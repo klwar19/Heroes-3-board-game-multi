@@ -251,7 +251,9 @@ import {
   getFxSheet,
   spellFxPlans,
   spellPresentationMs,
+  spriteDurationMs,
   unitMeleeFxKey,
+  unitExtraShotFxPlan,
   unitShotFxPlan,
   unitUsesProjectilePresentation,
   warMachineFxPlans,
@@ -2760,12 +2762,15 @@ export default function Home() {
             from: `cell:${event.from}`,
             to: `unit:${event.unitId}`,
             cardImage: unit?.assets?.cardImage,
+            teleport: event.sourceAbilityId === "veteran-magma-teleport-strike",
             // Cards always stand upright now (the seat flip only mirrors cell
             // positions), so the ghost never turns.
             flip: false,
             delayMs: moveDelay
           });
-          playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
+          if (event.sourceAbilityId !== "veteran-magma-teleport-strike") {
+            playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
+          }
         });
 
         // How long the slide-in takes (the last approach ghost reaching its
@@ -2847,7 +2852,8 @@ export default function Home() {
               ? unitShotFxPlan(attackerVoice)
               : undefined;
           const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
-          const phasedShot = Boolean(shotPlan?.projectile && getFxSheet(shotPlan.projectile)?.projectilePhases);
+          const projectileSheet = shotPlan?.projectile ? getFxSheet(shotPlan.projectile) : undefined;
+          const phasedShot = Boolean(projectileSheet?.projectilePhases || projectileSheet?.beamFrames);
           playUnitSound(attackerVoice, usesProjectilePresentation ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0), unitVariant(roll.attackerId));
           // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
           // Bolt) flies the real projectile + burst + spell sound below; its
@@ -2906,13 +2912,15 @@ export default function Home() {
               });
             }
           } else {
+            const meleeFxKey = unitMeleeFxKey(attackerVoice);
             cues.push({
               kind: "slash",
               id: `${roll.id}-slash`,
-              fxKey: unitMeleeFxKey(attackerVoice),
+              fxKey: meleeFxKey,
               from: attackerCell,
               at: defenderCell,
-              delayMs: impactAt
+              // The forward frames arrive as the damage lands at impactAt.
+              delayMs: strikeAt + (meleeFxKey === "melee-thrust-impact" ? 250 : 276)
             });
           }
           // The struck unit recoils at the moment of impact.
@@ -3711,15 +3719,57 @@ export default function Home() {
                   delayMs: timeline
                 });
                 const shooterId = unitVoice(event.unitId);
-                const shooterPlan = unitShotFxPlan(shooterId);
-                const extraShotPlan = shooterPlan ?? plan;
-                if (shooterPlan) {
+                const extraShotPlan = unitExtraShotFxPlan(shooterId);
+                if (shooterId) {
                   playUnitSound(shooterId, "shoot", timeline + RANGED_RELEASE_MS, unitVariant(event.unitId));
                 }
                 queueBoardFx(extraShotPlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
                 extraShotDamageAt.set(targetUnitId, timeline);
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                break;
+              }
+              if (["veteran-storm-link", "veteran-storm-link-2"].includes(event.abilityId) && event.targetUnitId) {
+                cues.push({
+                  kind: "line",
+                  id: `${event.id}-storm-link`,
+                  fxKey: "storm-link-animated",
+                  from: `unit:${event.linkFromUnitId ?? event.unitId}`,
+                  to: `unit:${event.targetUnitId}`,
+                  sound: plan.sound,
+                  delayMs: timeline,
+                });
+                timeline += spriteDurationMs("storm-link-animated");
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
+                break;
+              }
+              if (["veteran-fear-aura", "veteran-azure-fear-aura", "veteran-dracolich-fear-aura"].includes(event.abilityId)) {
+                cues.push({
+                  kind: "sprite",
+                  id: `${event.id}-fear-aura`,
+                  fxKey: "fear-aura-animated",
+                  at: `unit:${event.unitId}`,
+                  sound: plan.sound,
+                  delayMs: timeline,
+                });
+                timeline += spellPresentationMs({ affect: [{ key: "fear-aura-animated" }], sound: plan.sound });
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
+                break;
+              }
+              if (event.abilityId === "veteran-phoenix-activation") {
+                cues.push({
+                  kind: "sprite",
+                  id: `${event.id}-phoenix-scorch`,
+                  fxKey: "phoenix-scorch-animated",
+                  at: `unit:${event.unitId}`,
+                  sound: plan.sound,
+                  delayMs: timeline,
+                });
+                timeline += spellPresentationMs(plan);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
                 break;
               }
               if (event.abilityId === "fire-shield") {

@@ -2386,7 +2386,7 @@ export function HexMapBoard({
       // surface what the player will face in the hex tooltip so an altered fight
       // reads clearly on the map (the pre-attack confirm float warns again).
       const alteredGuardPreview =
-        guarded && field.designedGuard ? designedGuardPreview(field) : null;
+        guarded && field.designedGuard ? designedGuardPreview(field, state) : null;
       const alteredGuardTip = alteredGuardPreview
         ? alteredGuardPreview.units.length > 0
           ? ` — ALTERED by the map designer: ${alteredGuardPreview.units.join(", ")}`
@@ -3903,7 +3903,7 @@ export function HexMapBoard({
     const overrideInspect = field
       ? mapObjectPresentation(field.location, adventure?.pveTheme)
       : null;
-    const preview = designedGuardPreview(field);
+    const preview = designedGuardPreview(field, state);
     const inspectGuarded = Boolean(field && isFieldGuarded(field));
     const inspectQuickCombat =
       field && myHero ? polishQuickCombatFieldInfo(state, myHero, field) : null;
@@ -4044,7 +4044,7 @@ export function HexMapBoard({
         destField &&
         isFieldGuarded(destField) &&
         destField.flagOwnerId !== viewerPlayerId
-          ? designedGuardPreview(destField)
+          ? designedGuardPreview(destField, state)
           : null;
       const quickCombat = destField
         ? polishQuickCombatFieldInfo(state, myHero, destField)
@@ -15276,8 +15276,7 @@ function GameOptionsPanel({
           })()}
 
           {(() => {
-            // The Dragon Utopia guards: either the explicit four-dragon scenario
-            // party or the complete Field Difficulty table composition.
+            // The Dragon Utopia guard choice for both dragon victory modes.
             const victoryMode = options.victoryMode ?? "conquest";
             if (
               victoryMode !== "dragon-hunt" &&
@@ -15285,13 +15284,22 @@ function GameOptionsPanel({
             ) {
               return null;
             }
-            const guards = options.dragonUtopiaGuards ?? "by-difficulty";
+            const guards = options.dragonUtopiaGuards ?? "default";
             return (
               <div className="optionRow">
                 <small title="How the Dragon Utopia objective is guarded">
                   Dragon Utopia guards
                 </small>
                 <div className="optionButtons">
+                  <button
+                    aria-pressed={guards === "default"}
+                    className={guards === "default" ? "selected" : ""}
+                    onClick={() => send({ dragonUtopiaGuards: "default" })}
+                    title="Keep a designer Utopia guard if present; otherwise draw 2 Azure and 2 Gold."
+                    type="button"
+                  >
+                    Default
+                  </button>
                   <button
                     aria-pressed={guards === "four"}
                     className={guards === "four" ? "selected" : ""}
@@ -15324,6 +15332,7 @@ function GameOptionsPanel({
                   {guards === "four"
                     ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
                     : guards === "two-azure-two-gold" ? "Exactly 2 azure-tier + 2 gold-tier Neutral Units guard the Utopia, regardless of difficulty."
+                    : guards === "default" ? "A designer guard stays if present; otherwise 2 azure-tier + 2 gold-tier Neutral Units guard the Utopia."
                     : "The complete difficulty row is used, including tiers (Hard VII: 1 golden + 2 azure)."}
                 </small>
               </div>

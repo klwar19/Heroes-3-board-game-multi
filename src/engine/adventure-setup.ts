@@ -571,7 +571,7 @@ export type AdventureSetupOptions = {
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
-  /** Dragon Utopia guards: "four" (full party) or "by-difficulty" (scaled count). */
+  /** Dragon Utopia guard choice; "default" keeps a designer guard or draws 2 azure + 2 gold. */
   dragonUtopiaGuards?: DragonUtopiaGuards;
   /** Naval Battles Creature Banks (default on): offer bank placement on Far/Near tile discovery. */
   creatureBanks?: boolean;
@@ -883,7 +883,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     wog: { ...DEFAULT_WOG_OPTIONS },
     victoryMode: "conquest",
     pvpTroopLoss: "normal",
-    dragonUtopiaGuards: "by-difficulty",
+    dragonUtopiaGuards: "default",
     spellBook: true,
     moraleCards: false,
     tournamentMode: false,
@@ -3225,7 +3225,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   let victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const polishGrailUtopiaOn = houseRules["polish-grail-utopia"];
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
-  const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
+  const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "default";
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
@@ -5448,13 +5448,13 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.dragonUtopiaGuards !== undefined) {
-    if (next.dragonUtopiaGuards !== "four" && next.dragonUtopiaGuards !== "by-difficulty" && next.dragonUtopiaGuards !== "two-azure-two-gold") {
+    if (next.dragonUtopiaGuards !== "default" && next.dragonUtopiaGuards !== "four" && next.dragonUtopiaGuards !== "by-difficulty" && next.dragonUtopiaGuards !== "two-azure-two-gold") {
       throw new Error("Unknown Dragon Utopia guards option.");
     }
     lobby.options.dragonUtopiaGuards = next.dragonUtopiaGuards;
     changes.push(
       `Dragon Utopia guards ${
-        next.dragonUtopiaGuards === "four" ? "all four dragons" : next.dragonUtopiaGuards === "two-azure-two-gold" ? "2 azure + 2 golden units" : "the Field Difficulty table"
+        next.dragonUtopiaGuards === "default" ? "designer army, or 2 azure + 2 golden units" : next.dragonUtopiaGuards === "four" ? "all four dragons" : next.dragonUtopiaGuards === "two-azure-two-gold" ? "2 azure + 2 golden units" : "the Field Difficulty table"
       }`
     );
   }

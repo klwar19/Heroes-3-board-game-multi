@@ -453,7 +453,7 @@ function nextObjectPlan(
 /** Fold one kind's plan into a tile's objectPlans record (empty → undefined). */
 function nextObjectPlans(
   current: CustomMapTilePlan["objectPlans"],
-  kind: "obelisk" | "mine",
+  kind: "obelisk" | "mine" | "temple_of_the_sea",
   plan: CustomObjectFieldPlan | undefined
 ): CustomMapTilePlan["objectPlans"] {
   const next = { ...(current ?? {}) };
@@ -4058,6 +4058,14 @@ export function MapDesigner({
           specificBits.push(`${kind}: ${bits.join(", ") || "custom"}`);
         }
       }
+      const templePlan = plan.objectPlans?.temple_of_the_sea;
+      if (templePlan) {
+        const bits: string[] = [];
+        if (templePlan.guard) bits.push("custom guard");
+        if (templePlan.reward) bits.push("custom award");
+        if (templePlan.vp) bits.push(`+${templePlan.vp} VP`);
+        specificBits.push(`Temple of the Sea: ${bits.join(", ") || "custom"}`);
+      }
       if (plan.settlement) {
         const bits: string[] = [];
         if (plan.settlement.guard) bits.push("guard");
@@ -6832,6 +6840,47 @@ export function MapDesigner({
                     </div>
                   ) : null
                 )}
+                  </PopoverGroup>
+                ) : null}
+
+                {selected.group === "sea" ? (
+                  <PopoverGroup title="Temple of the Sea (this tile)" active={Boolean(selected.objectPlans?.temple_of_the_sea)}>
+                    <div className="popoverObjectPlan popoverSection" aria-label="Temple of the Sea settings">
+                      <small className="popoverHint">
+                        Applies only if this sea tile reveals a Temple of the Sea. A custom award replaces
+                        its printed 10 gold and two Artifact Search (2) rewards. A custom guard alone keeps
+                        the printed award. For a Dragon Utopia style award, set Gold to 20, Artifacts
+                        Search size to 3, Times to 2, and tick the Morale or Ability Empower choice.
+                      </small>
+                      <div className="popoverSubLabel">Custom guards</div>
+                      <GuardSpecEditor
+                        guard={selected.objectPlans?.temple_of_the_sea?.guard}
+                        noneLabel="Printed"
+                        onChange={(guard) => updateTile(selectedIndex as number, {
+                          objectPlans: nextObjectPlans(selected.objectPlans, "temple_of_the_sea",
+                            nextObjectPlan(selected.objectPlans?.temple_of_the_sea, { guard }))
+                        })}
+                      />
+                      <div className="popoverSubLabel">Custom award</div>
+                      <FieldRewardEditor
+                        ariaLabel="Temple of the Sea custom award"
+                        reward={selected.objectPlans?.temple_of_the_sea?.reward}
+                        onChange={(reward) => updateTile(selectedIndex as number, {
+                          objectPlans: nextObjectPlans(selected.objectPlans, "temple_of_the_sea",
+                            nextObjectPlan(selected.objectPlans?.temple_of_the_sea, { reward }))
+                        })}
+                        vp={selected.objectPlans?.temple_of_the_sea?.vp}
+                        onVpChange={(vp) => updateTile(selectedIndex as number, {
+                          objectPlans: nextObjectPlans(selected.objectPlans, "temple_of_the_sea",
+                            nextObjectPlan(selected.objectPlans?.temple_of_the_sea, { vp }))
+                        })}
+                      />
+                      {selected.objectPlans?.temple_of_the_sea ? (
+                        <button className="popoverIconButton" type="button" onClick={() => updateTile(selectedIndex as number, {
+                          objectPlans: nextObjectPlans(selected.objectPlans, "temple_of_the_sea", undefined)
+                        })}>Clear Temple customization</button>
+                      ) : null}
+                    </div>
                   </PopoverGroup>
                 ) : null}
 

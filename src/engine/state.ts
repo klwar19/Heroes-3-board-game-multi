@@ -659,7 +659,9 @@ export type PvpTroopLoss = "normal" | "none";
 /**
  * How the Dragon Utopia (the Dragon Hunt / Dragon Conqueror win-condition
  * objective) is guarded.
- *  - "by-difficulty" (the DEFAULT): the Utopia is guarded like any other Field
+ *  - "default": keep a designer guard when present; otherwise draw 2 azure
+ *    and 2 gold Neutral cards.
+ *  - "by-difficulty": the Utopia is guarded like any other Field
  *    Difficulty Ⅶ field — the COMPLETE table row for the game difficulty, tiers
  *    included (Easy 1 azure / Normal 2 azure / Hard 1 gold + 2 azure /
  *    Impossible 2 gold + 2 azure), DRAWN from the Neutral tier decks and
@@ -676,7 +678,7 @@ export type PvpTroopLoss = "normal" | "none";
  *    Gold Neutral decks, regardless of the selected game difficulty.
  * Absent on older snapshots; treated as "by-difficulty".
  */
-export type DragonUtopiaGuards = "four" | "by-difficulty" | "two-azure-two-gold";
+export type DragonUtopiaGuards = "default" | "four" | "by-difficulty" | "two-azure-two-gold";
 export type FactionId =
   | "castle"
   | "rampart"
@@ -6285,6 +6287,7 @@ type GameEventPayload =
       unitId: UnitId;
       from: number;
       to: number;
+      sourceAbilityId?: string;
     }
   | {
       /** A Spell placed an Obstacle / Effect / face-down trap on a board space. */
@@ -6495,6 +6498,8 @@ type GameEventPayload =
       unitId: UnitId;
       abilityId: string;
       targetUnitId?: UnitId;
+      /** First linked target when this ability connects two units. */
+      linkFromUnitId?: UnitId;
       message: string;
       /**
        * Structured dice for an ability's OWN roll (Death Stare, the
@@ -11429,6 +11434,7 @@ export type MapTileState = {
   objectPlans?: {
     obelisk?: CustomObjectFieldPlan;
     mine?: CustomObjectFieldPlan;
+    temple_of_the_sea?: CustomObjectFieldPlan;
   };
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldReward?: ViiFieldReward;
@@ -11560,6 +11566,8 @@ export type MapFieldState = {
   designerRewardVp?: number;
   /** Shared once-only latch for any designer field reward (aliases centerHexClaimed). */
   designerRewardClaimed?: boolean;
+  /** A designed Temple of the Sea award replaces its printed visit award. */
+  templeCustomAward?: boolean;
   /**
    * Designer "first clear wins" stamp (a SPECIFIC object plan / settlement /
    * center-hex `winCondition`): the first player to successfully clear / flag
@@ -14777,8 +14785,8 @@ export type GameSetupOptions = {
   pvpTroopLoss?: PvpTroopLoss;
   /**
    * How the Dragon Utopia objective is guarded (Dragon Hunt / Dragon Conqueror
-   * modes): "four" (the full four-dragon party) or "by-difficulty" (guard count
-   * scales with difficulty). Default "by-difficulty".
+   * modes). "default" keeps a designer guard or draws 2 azure + 2 gold;
+   * explicit modes replace the designer guard. New games default to "default".
    */
   dragonUtopiaGuards?: DragonUtopiaGuards;
   /**
@@ -15510,9 +15518,9 @@ export type CustomMapPreset = {
    *   - `grailObelisksRequired`: how many visited Obelisks unlock the Holy-Grail
    *     dig (default {@link GRAIL_OBELISKS_REQUIRED}). The engine reads this via
    *     `grailObelisksRequired(state)` with the constant as fallback.
-   *   - `utopiaGuards`: the EXISTING {@link DragonUtopiaGuards} modes ("four" =
-   *     the full four-dragon party always; "by-difficulty" = trim to the
-   *     difficulty-scaled count). Absent falls back to the lobby / default.
+   *   - `utopiaGuards`: the {@link DragonUtopiaGuards} modes. Absent inherits
+   *     the lobby choice; "default" keeps a designer guard or draws 2 azure
+   *     and 2 gold.
    *   - `utopiaBonusSearch`: an EXTRA Artifact-deck Search(N) granted to the
    *     Utopia's defeater ON TOP of the printed reward (1-3). Not granted in
    *     Dragon Hunt (defeating the Utopia wins outright).
@@ -16369,6 +16377,7 @@ export type CustomMapTilePlan = {
   objectPlans?: {
     obelisk?: CustomObjectFieldPlan;
     mine?: CustomObjectFieldPlan;
+    temple_of_the_sea?: CustomObjectFieldPlan;
   };
 };
 
@@ -16553,6 +16562,8 @@ export type CustomFieldReward = {
    * house rule.
    */
   abilityEmpowerToken?: true;
+  /** Offer the Dragon Utopia choice: +1 Morale or one Ability Empower token. */
+  moraleOrAbilityEmpowerToken?: true;
   /**
    * Open a free Statistic-empower menu once (hand + discard): remove a plain
    * Statistic, gain its Empowered form into hand (Astrologers Dancing Imp arm).

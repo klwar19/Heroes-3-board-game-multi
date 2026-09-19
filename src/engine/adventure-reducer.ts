@@ -78,6 +78,7 @@ import {
   applyAstrologersHeroEmpower,
   adventurePvpTroopLoss,
   adventureVictoryMode,
+  usesDragonScenarioUtopiaGuards,
   armyHasMapEffect,
   beginFieldVisit,
   breakClearedByTeam,
@@ -5981,11 +5982,12 @@ export function startNeutralEncounter(
   requireAdventure(state);
   applyGrailUtopiaEncounterRules(state, field);
   const playerId = hero.controllerId;
+  const scenarioUtopia = usesDragonScenarioUtopiaGuards(state, field);
   // A Random Town is always the printed VII field. A designer may replace its
   // guard army, but may not accidentally downgrade the fight's rules: winning
   // still fills a main Hero to level VII and the combat never offers the
   // spend-MP-to-continue window.
-  const difficulty = field.location === "random_town" ? 7 : field.difficulty ?? 1;
+  const difficulty = field.location === "random_town" || scenarioUtopia ? 7 : field.difficulty ?? 1;
   // A Secondary Hero earns no Experience but fights Neutral Units AS the Main
   // Hero's level (neutralBattleLevel), so it skips / Quick-Combat-wins the same
   // low-level guards instead of being forced to fight at level 1.
@@ -6081,7 +6083,7 @@ export function startNeutralEncounter(
   // exact designed army — a high-level hero cannot auto-win past units it has
   // never seen. The fight is always real; the field's (tier-derived) difficulty
   // still drives the experience reward as usual.
-  if (field.customGuardUnits && field.customGuardUnits.length > 0) {
+  if (field.customGuardUnits && field.customGuardUnits.length > 0 && !scenarioUtopia) {
     beginNeutralCombatPlacement(state, hero, field, difficulty, {
       unlimitedRounds: Boolean(field.unlimitedCombatRounds)
     });

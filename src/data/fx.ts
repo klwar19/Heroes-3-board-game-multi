@@ -30,6 +30,9 @@ export type FxSheet = {
     widthInCells: number;
     impactWidthInCells: number;
   };
+  /** A 4x4 atlas whose full ray is stretched between live combat anchors. */
+  beamFrames?: boolean;
+  scaleMultiplier?: number;
   /** Luminous artwork authored on black uses screen blending. */
   blendMode?: "screen";
   /** "bottom": the sprite stands on the cell floor (columns of light, bolts). */
@@ -94,15 +97,14 @@ sheets["melee-starry-strike"] = {
   anchor: "center", sourceDef: "imagegen-melee-starry-strike", sequentialFrames: true,
 };
 sheets["melee-thrust-impact"] = {
-  src: "/fx/melee-thrust-impact.webp", label: "Melee thrust impact", group: "melee-attacks", role: "hit",
-  frames: 16, cols: 4, rows: 4, frameWidth: 314, frameHeight: 314, fps: 40,
-  anchor: "center", sourceDef: "imagegen-melee-thrust-impact", sequentialFrames: true,
-  // Frames 10–12 redraw the jab from the contact point backwards. Skip them so
-  // the motion remains drive-in → puncture → sparks instead of visibly rewinding.
-  frameOrder: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15],
+  src: "/fx/melee-thrust-forward.webp", label: "Forward melee thrust", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 384, frameHeight: 256, fps: 40,
+  anchor: "center", sourceDef: "imagegen-melee-thrust-forward", sequentialFrames: true,
 };
 
-export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact";
+export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact"
+  | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "azure-ice-breath-animated"
+  | "crystal-red-strike-animated" | "rust-acid-breath-animated";
 
 // Only unmistakable blade users receive the crescent. Point-first weapons,
 // horns and charges use the close-range thrust; claws, fists, bites, clubs,
@@ -122,7 +124,16 @@ const thrustUnits = new Set([
 ]);
 
 export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
-  const slug = unitDefId?.split(/[.:]/).at(-1);
+  const slug = unitDefId?.split(/[.:]/).at(-1)?.replaceAll("-", "_");
+  if (["phoenix", "phoenixes"].includes(slug ?? "")) return "phoenix-flame-flow-animated";
+  if (["azure_dragon", "azure_dragons"].includes(slug ?? "")) return "azure-ice-breath-animated";
+  if (["crystal_dragon", "crystal_dragons"].includes(slug ?? "")) return "crystal-red-strike-animated";
+  if (["rust_dragon", "rust_dragons"].includes(slug ?? "")) return "rust-acid-breath-animated";
+  if ([
+    "black_dragon", "black_dragons", "gold_dragon", "gold_dragons",
+    "green_dragon", "green_dragons", "red_dragon", "red_dragons",
+    "hell_steed", "hell_steeds", "nightmare", "nightmares",
+  ].includes(slug ?? "")) return "dragon-fire-breath-animated";
   if (slug && crescentSlashUnits.has(slug)) return "melee-crescent-slash";
   if (slug && thrustUnits.has(slug)) return "melee-thrust-impact";
   return "melee-starry-strike";
@@ -164,6 +175,60 @@ for (const [name, [widthInCells, impactWidthInCells]] of Object.entries(rangedPh
     },
   };
 }
+
+// These authored frames depict a growing, pulsing, then dissipating full ray.
+// They are played across the whole shooter-to-target segment, not flown as an orb.
+for (const name of ["evil-eye", "magi"] as const) {
+  sheets[`${name}-shot-phases`] = {
+    src: `/fx/${name}-beam-animated.webp`, label: `${name} animated beam`,
+    group: "ranged-attacks", role: "projectile", frames: 16, cols: 4, rows: 4,
+    frameWidth: name === "evil-eye" ? 444 : 384,
+    frameHeight: name === "evil-eye" ? 222 : 256,
+    fps: 24, anchor: "center", sequentialFrames: true, beamFrames: true,
+    sourceDef: `imagegen-${name}-beam-animated`,
+  };
+}
+sheets["sea-dog-gunshot"] = {
+  src: "/fx/sea-dog-gunshot-animated.webp", label: "Sea Dog animated gunshot",
+  group: "ranged-attacks", role: "projectile", frames: 16, cols: 4, rows: 4,
+  frameWidth: 362, frameHeight: 272, fps: 24, anchor: "center", sequentialFrames: true,
+  sourceDef: "imagegen-sea-dog-gunshot-animated",
+  projectilePhases: { launch: [0, 4], flight: [4, 8], impact: [12, 4], widthInCells: 0.95, impactWidthInCells: 1.2 },
+};
+
+const animatedAbilityAtlases: Record<string, [number, number, number, number]> = {
+  // The dramatic sheets stay visible through the audible attack body. Long
+  // reverberation tails may continue after the final sprite frame.
+  "fear-aura-animated": [314, 314, 2, 10],
+  "phoenix-scorch-animated": [314, 314, 1.5, 12],
+  "energy-damage-delay-animated": [314, 314, 1.35, 10],
+  "energy-feed-on-fire-animated": [314, 314, 1.5, 10],
+  "magma-teleport-animated": [314, 314, 1.25, 24],
+};
+for (const [key, [frameWidth, frameHeight, scaleMultiplier, fps]] of Object.entries(animatedAbilityAtlases)) {
+  sheets[key] = {
+    src: `/fx/${key}.webp`, label: key.replaceAll("-", " "), group: "animated-abilities", role: "affect",
+    frames: 16, cols: 4, rows: 4, frameWidth, frameHeight, fps,
+    anchor: "center", sourceDef: `imagegen-${key}`, sequentialFrames: true, scaleMultiplier,
+  };
+}
+const animatedLineAtlases: Record<string, [number, number, number]> = {
+  "bonus-extra-shot-animated": [384, 256, 32],
+  "storm-link-animated": [362, 272, 12],
+  "phoenix-flame-flow-animated": [496, 199, 32],
+  "dragon-fire-breath-animated": [444, 222, 32],
+  "azure-ice-breath-animated": [496, 199, 32],
+  "crystal-red-strike-animated": [496, 199, 32],
+  "rust-acid-breath-animated": [542, 182, 32],
+};
+for (const [key, [frameWidth, frameHeight, fps]] of Object.entries(animatedLineAtlases)) {
+  sheets[key] = {
+    src: `/fx/${key}.webp`, label: key.replaceAll("-", " "), group: "animated-attacks", role: "projectile",
+    frames: 16, cols: 4, rows: 4, frameWidth, frameHeight, fps,
+    anchor: "center", sourceDef: `imagegen-${key}`, sequentialFrames: true,
+  };
+}
+sheets["bonus-extra-shot-animated"].beamFrames = true;
 
 // Original compact commander atlases. They use 256px cells so the two new
 // WebP files stay materially smaller than the generator outputs.
@@ -413,11 +478,11 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // a launcher shot.
   "specialty.kudryavka_noumi.1": {
     projectile: "anime-rocket-shot-phases", hit: "inferno",
-    sound: "doom/dsrlaunc", hitSound: "little-busters/effects/bazooka"
+    sound: "doom/dsrlaunc", hitSound: "custom-ability/kud-impact"
   },
   "specialty.kudryavka_noumi.6": {
     projectile: "anime-rocket-shot-phases", hit: "inferno",
-    sound: "doom/dsrlaunc", hitSound: "little-busters/effects/bazooka"
+    sound: "doom/dsrlaunc", hitSound: "custom-ability/kud-impact"
   },
   "specialty.alice.1": { affect: [{ key: "fear" }], sound: "effects/fear" },
   // Septienna's Death Ripple sweep (every level's damage side), Melodia's Fortune
@@ -572,9 +637,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "town-goblin-save": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   ...blueArchiveAbilityVoicePlans,
   "ranged-extra-shot-on-low-roll": {
-    projectile: "low-roll-extra-shot-projectile",
-    hit: "sniper-shot-hit",
-    sound: "units/wood-elf-shoot"
+    projectile: "bonus-extra-shot-animated"
   },
   // Mutsuki's mines use her own playful bomb silhouette before the damage
   // number lands. These override the voice-only defaults above.
@@ -645,15 +708,16 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-ice-bolt": { projectile: "ice-bolt-projectile-0", hit: "ice-bolt-hit", sound: "spells/ice-bolt", hitSound: "spells/ice-bolt-hit" },
   "veteran-magic-splash": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   "veteran-energy-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
-  "veteran-energy-fire-heal": { affect: [{ key: "cure" }], sound: "spells/cure" },
-  "veteran-energy-delay": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "veteran-energy-fire-heal": { affect: [{ key: "energy-feed-on-fire-animated" }], sound: "custom-ability/fire-impact" },
+  "veteran-energy-delay": { affect: [{ key: "energy-damage-delay-animated" }], sound: "custom-ability/electric-impact" },
   "veteran-magic-dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
   "veteran-sprite-obstacle": { affect: [{ key: "stone-skin" }], sound: "spells/earthquake" },
   "veteran-magma-solidify": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
   "veteran-sprite-spell-block": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
   "veteran-arcane-echo": { hit: "death-cloud", hitSound: "spells/death-cloud" },
-  "veteran-storm-link": { affect: [{ key: "lightning-bolt" }], sound: "spells/lightning-bolt" },
-  "veteran-storm-link-2": { affect: [{ key: "lightning-bolt" }], sound: "spells/lightning-bolt" },
+  "veteran-storm-link": { sound: "spells/lightning-bolt" },
+  "veteran-storm-link-2": { sound: "custom-ability/electric-impact" },
+  "veteran-phoenix-activation": { affect: [{ key: "phoenix-scorch-animated" }], sound: "custom-ability/fire-impact" },
   "veteran-phoenix-nest": { sound: "spells/teleport" },
   // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
   // Archangels' once-per-combat cancel) all emit the "resurrection" ability
@@ -703,8 +767,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // (bare id on land, `${id}-roll` on a miss — left unmapped below). The
   // Stacked Medusa Stores bank guard fires on its melee attack.
   "azure-dragon-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
-  "veteran-azure-fear-aura": { affect: [{ key: "fear" }, { key: "paralyze", delayMs: 240 }], sound: "effects/fear" },
-  "veteran-dracolich-fear-aura": { affect: [{ key: "fear" }, { key: "paralyze", delayMs: 240 }], sound: "effects/fear" },
+  "veteran-azure-fear-aura": { sound: "custom-ability/fear-aura" },
+  "veteran-dracolich-fear-aura": { sound: "custom-ability/fear-aura" },
+  "veteran-fear-aura": { sound: "custom-ability/fear-aura" },
   "veteran-crystal-burst": { projectile: "magic-arrow-projectile-0", hit: "magic-arrow-hit", sound: "spells/magic-arrow", hitSound: "spells/lightning-bolt" },
   "veteran-adjacent-pulse": { hit: "fireball", sound: "spells/fireball-hit" },
   "veteran-cyber-splash": { hit: "fireball", sound: "spells/fireball-hit" },
@@ -916,7 +981,7 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   shamans: { projectile: "ice-shot-phases" },
   sorceresses: { projectile: "magi-shot-phases" },
   enchanters: { projectile: "magi-shot-phases" },
-  sea_dogs: { projectile: "blue-archive-shot-phases" },
+  sea_dogs: { projectile: "sea-dog-gunshot" },
   gunslingers: { projectile: "blue-archive-shot-phases" },
   titans: { projectile: "titan-shot-phases" },
   titan: { projectile: "titan-shot-phases" },
@@ -1056,6 +1121,27 @@ export function unitShotFxPlan(unitDefId: string | undefined): SpellFxPlan | und
   return unitShotFxPlans[normalizedBareName]
     ?? unitShotFxPlans[normalizedBareName.replace(/^wog_/, "")]
     ?? { projectile: "arrow-shot-phases" };
+}
+
+/** Low Roll Extra Shot keeps a known unit's actual weapon; unknown shooters use the neutral bonus tracer. */
+export function unitExtraShotFxPlan(unitDefId: string | undefined): SpellFxPlan {
+  if (!unitDefId) return abilityFxPlans["ranged-extra-shot-on-low-roll"];
+  const bareName = unitDefId.split(/[.:]/).at(-1) ?? unitDefId;
+  const normalizedBareName = bareName.replace(/-/g, "_");
+  const hasSpecificWeapon = Boolean(
+    commanderShotFxPlans[unitDefId]
+    || factionShotProjectiles[unitDefId]
+    || unitDefId === "azur_lane.akagi"
+    || unitDefId.startsWith("azur_lane.")
+    || unitDefId.startsWith("blue_archive.")
+    || unitDefId === "guardian:stockpile-cyclopes"
+    || unitDefId.startsWith("reward:cyclopes:")
+    || unitShotFxPlans[normalizedBareName]
+    || unitShotFxPlans[normalizedBareName.replace(/^wog_/, "")]
+  );
+  return hasSpecificWeapon
+    ? (unitShotFxPlan(unitDefId) ?? abilityFxPlans["ranged-extra-shot-on-low-roll"])
+    : abilityFxPlans["ranged-extra-shot-on-low-roll"];
 }
 
 /**

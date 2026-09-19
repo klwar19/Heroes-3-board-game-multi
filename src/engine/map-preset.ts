@@ -359,6 +359,9 @@ export function sanitizeFieldReward(input: unknown): CustomFieldReward | undefin
   if (raw.abilityEmpowerToken === true) {
     reward.abilityEmpowerToken = true;
   }
+  if (raw.moraleOrAbilityEmpowerToken === true) {
+    reward.moraleOrAbilityEmpowerToken = true;
+  }
   if (raw.empowerStatistic === true) {
     reward.empowerStatistic = true;
   }
@@ -407,6 +410,7 @@ export function describeFieldReward(reward: CustomFieldReward | undefined | null
   if (reward.morale === 1) parts.push("+1 morale");
   if (reward.morale === -1) parts.push("−1 morale");
   if (reward.abilityEmpowerToken) parts.push("Ability Empower token");
+  if (reward.moraleOrAbilityEmpowerToken) parts.push("Morale / Ability Empower choice");
   if (reward.empowerStatistic) parts.push("Empower a Statistic");
   if ((reward.experience ?? 0) > 0) {
     parts.push(reward.experience === 1 ? "+1 experience" : `+${reward.experience} experience`);
@@ -1397,7 +1401,7 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
 }
 
 /** The object kinds a per-tile SPECIFIC plan may target. */
-export const OBJECT_PLAN_KINDS = ["obelisk", "mine"] as const;
+export const OBJECT_PLAN_KINDS = ["obelisk", "mine", "temple_of_the_sea"] as const;
 export type ObjectPlanKind = (typeof OBJECT_PLAN_KINDS)[number];
 
 /**
@@ -1671,7 +1675,7 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
   if (raw.grailObelisksRequired === 1 || raw.grailObelisksRequired === 2 || raw.grailObelisksRequired === 3 || raw.grailObelisksRequired === 4) {
     config.grailObelisksRequired = raw.grailObelisksRequired;
   }
-  if (raw.utopiaGuards === "four" || raw.utopiaGuards === "by-difficulty" || raw.utopiaGuards === "two-azure-two-gold") {
+  if (raw.utopiaGuards === "default" || raw.utopiaGuards === "four" || raw.utopiaGuards === "by-difficulty" || raw.utopiaGuards === "two-azure-two-gold") {
     config.utopiaGuards = raw.utopiaGuards as DragonUtopiaGuards;
   }
   if (raw.utopiaBonusSearch === 1 || raw.utopiaBonusSearch === 2 || raw.utopiaBonusSearch === 3) {
@@ -2953,7 +2957,7 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
  * field.
  */
 export function describeUtopiaGuards(guards: DragonUtopiaGuards): string {
-  return guards === "four" ? "always four dragons" : guards === "two-azure-two-gold" ? "2 azure + 2 golden units" : "the Field Difficulty table";
+  return guards === "default" ? "designer guard, or 2 azure + 2 golden units" : guards === "four" ? "always four dragons" : guards === "two-azure-two-gold" ? "2 azure + 2 golden units" : "the Field Difficulty table";
 }
 
 /**
