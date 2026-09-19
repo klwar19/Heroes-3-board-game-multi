@@ -3,7 +3,7 @@
   "family": "sources",
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["scripts/anime-art","scripts/card-art","scripts/commander-art","scripts/neutral-unit-art","scripts/doom-art","generated-session-art","assets-to-translate"],
-  "count": 893,
+  "count": 894,
   "files": {
     "assets-to-translate/conflux-drive/english/_ALL_MODIFIED/artifacts_major-orb_of_tempestuous_fire.webp": { "md5": "52f9b3ad757049ba5cbad587c75c26ba", "bytes": 226028, "width": 743, "height": 1040 },
     "assets-to-translate/conflux-drive/english/_ALL_MODIFIED/artifacts_major-orb_of_the_firmament.webp": { "md5": "24a77adb78762c2d3ecfe3af603244dc", "bytes": 144598, "width": 743, "height": 1040 },
@@ -806,6 +806,7 @@
     "scripts/anime-art/raw/mgq/units/tama-pack-master.png": { "md5": "783c7cfe82ac8fc7854d1bec8c25a525", "bytes": 2076060, "width": 1024, "height": 1536 },
     "scripts/anime-art/raw/mgq/units/undine-few-master.png": { "md5": "77b9836490146f3b1a7813dc8fc6234a", "bytes": 209360, "width": 640, "height": 480 },
     "scripts/anime-art/raw/mgq/units/undine-pack-master.png": { "md5": "77b9836490146f3b1a7813dc8fc6234a", "bytes": 209360, "width": 640, "height": 480 },
+    "scripts/anime-art/raw/phoenix-flame-breath-v2.png": { "md5": "bf853efbd6b40d6b32e0e5cd2243d059", "bytes": 1494706, "width": 1672, "height": 941 },
     "scripts/anime-art/raw/ui/commander-forge-master.png": { "md5": "b22dd7ee390984c6c8eb2ba800834ac6", "bytes": 1854075, "width": 1254, "height": 1254 },
     "scripts/anime-art/raw/ui/monster-wave-warning.png": { "md5": "4b0d5b5c0e1b0e1844b16143d40d0384", "bytes": 1688261, "width": 1086, "height": 1448 },
     "scripts/card-art/raw/bulwark/jotunns-few.png": { "md5": "4d95aab000ac119eea7936083e862d4d", "bytes": 2963149, "width": 1145, "height": 1374 },

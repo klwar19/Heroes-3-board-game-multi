@@ -1,5 +1,6 @@
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { effectiveTownBuildingCost } from "../house-rules";
 import type { GameState, GameAction, ResourceCost } from "../state";
 import {
   armyDevelopmentProfile,
@@ -11,6 +12,7 @@ import {
   committedGoldInvestment,
   nextGoldLadderStep,
 } from "./development";
+import { economyHorizonBias } from "./planning-horizon";
 export type DevelopmentPlan = {
   goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
   sinceRound: number;
@@ -85,9 +87,11 @@ export function developmentPlanBias(
   plan?: DevelopmentPlan,
 ): number {
   if (!plan || state.combat) return 0;
+  const horizonBias = economyHorizonBias(state, playerId, action);
   if (action.type === "BUILD_STRUCTURE") {
-    if (action.buildingId === plan.buildingId) return 30;
-    const cost = coreBuildingDefinitions[action.buildingId]?.cost;
+    if (action.buildingId === plan.buildingId) return 30 + horizonBias;
+    const definition = coreBuildingDefinitions[action.buildingId];
+    const cost = definition ? effectiveTownBuildingCost(state, definition) : undefined;
     const resources = state.players[playerId]?.resources;
     if (
       cost &&
@@ -109,7 +113,8 @@ export function developmentPlanBias(
       )
         return -30;
     }
+    return horizonBias;
   }
   if (action.type === "POPULATION_ACTION" && plan.goal === "rebuild") return 25;
-  return 0;
+  return horizonBias;
 }

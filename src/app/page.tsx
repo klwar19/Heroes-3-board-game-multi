@@ -2625,6 +2625,33 @@ export default function Home() {
         let viewerDraws = 0;
         // defender unitId -> when its blow lands (its die's dismiss + the strike).
         const impactByTarget = new Map<string, number>();
+        // Attack-roll event id -> its exact impact beat. Target-only lookup is
+        // ambiguous when a multi-hit exchange attacks the same unit twice in one
+        // snapshot; reactions such as Fire Shield must follow the blow that
+        // actually caused them, not whichever hit happened to be recorded last.
+        const impactByRollId = new Map<string, number>();
+        const attackImpactBeforeEvent = (eventId: string, defenderId: string): number | undefined => {
+          const eventIndex = nextState.eventLog.findIndex((candidate) => candidate.id === eventId);
+          for (let index = eventIndex - 1; index >= 0; index -= 1) {
+            const candidate = nextState.eventLog[index];
+            if (candidate.type === "ATTACK_ROLLED" && candidate.defenderId === defenderId) {
+              const impact = impactByRollId.get(candidate.id);
+              if (impact !== undefined) return impact;
+            }
+          }
+          return undefined;
+        };
+        const attackImpactAfterEvent = (eventId: string, defenderId: string): number | undefined => {
+          const eventIndex = nextState.eventLog.findIndex((candidate) => candidate.id === eventId);
+          for (let index = eventIndex + 1; index < nextState.eventLog.length; index += 1) {
+            const candidate = nextState.eventLog[index];
+            if (candidate.type === "ATTACK_ROLLED" && candidate.defenderId === defenderId) {
+              const impact = impactByRollId.get(candidate.id);
+              if (impact !== undefined) return impact;
+            }
+          }
+          return undefined;
+        };
         // defender unitId -> the pre-hit health the board shows until it lands.
         // Populated for attacks here, and for spell/ability damage & heals in the
         // event loop below so a struck/healed unit holds its old health on the
@@ -2800,6 +2827,7 @@ export default function Home() {
         fresh.forEach((roll, index) => {
           const strikeAt = diceDismissAt[index];
           const impactAt = strikeAt + ATTACK_IMPACT_MS;
+          impactByRollId.set(roll.id, impactAt);
           impactByTarget.set(roll.defenderId, impactAt);
           const strikeEnd = impactAt + 1200;
           combatPresentationEnd = Math.max(combatPresentationEnd, strikeEnd);
@@ -2847,8 +2875,14 @@ export default function Home() {
           // still need their authored gun presentation (Shotgun Guy, Spider
           // Mastermind, and ground-class Blue Archive students). This lookup is
           // visual only and never changes the engine's attack kind or legality.
+          // Ground-class firearm units use their authored shot on their OWN
+          // nominally-melee attacks. A retaliation still obeys its declaration:
+          // a melee retaliation must show the unit's melee profile, while a
+          // genuinely ranged retaliation continues through `ranged` above.
+          const visualProjectileOverride =
+            !roll.isRetaliation && unitUsesProjectilePresentation(attackerVoice);
           const shotPlan =
-            ranged || unitUsesProjectilePresentation(attackerVoice)
+            ranged || visualProjectileOverride
               ? unitShotFxPlan(attackerVoice)
               : undefined;
           const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
@@ -3514,9 +3548,13 @@ export default function Home() {
                 // Attack damage lands on its strike beat; spell/ability damage
                 // lands only once its sprite + sound have finished (the timeline
                 // was just advanced past them by queueBoardFx / the ability cue).
+                const exactAttackBeat =
+                  event.damageKind === "attack"
+                    ? attackImpactBeforeEvent(event.id, targetId)
+                    : undefined;
                 const attackBeat =
                   leadAt === undefined && burnAt === undefined && tokenMoveAt === undefined
-                    ? impactByTarget.get(targetId)
+                    ? exactAttackBeat ?? impactByTarget.get(targetId)
                     : undefined;
                 let at = leadAt ?? burnAt ?? tokenMoveAt ?? attackBeat ?? timeline;
                 if (burnAt !== undefined) {
@@ -3778,7 +3816,8 @@ export default function Home() {
                 // (targetUnitId) right after that strike lands — on the strike's
                 // beat, NOT the main timeline — so the SFX + animation always run
                 // before the burn number/health, which is held back to match.
-                const strikeBeat = impactByTarget.get(event.unitId);
+                const strikeBeat =
+                  attackImpactBeforeEvent(event.id, event.unitId) ?? impactByTarget.get(event.unitId);
                 const start = (strikeBeat ?? timeline) + DAMAGE_REVEAL_DELAY_MS;
                 plan.affect?.forEach((entry, index) => {
                   cues.push({
@@ -3803,7 +3842,8 @@ export default function Home() {
                 // beat is impactByTarget). Anchored on event.unitId, never queued on
                 // the main timeline — where it would flash before the sword lands
                 // (the armor event is logged just BEFORE the attack's roll).
-                const strikeBeat = impactByTarget.get(event.unitId);
+                const strikeBeat =
+                  attackImpactAfterEvent(event.id, event.unitId) ?? impactByTarget.get(event.unitId);
                 const start = (strikeBeat ?? timeline) + DAMAGE_REVEAL_DELAY_MS;
                 plan.affect?.forEach((entry, index) => {
                   cues.push({
@@ -3856,7 +3896,8 @@ export default function Home() {
               // by a spell/ability cries out as it falls — the beat its frozen
               // health is revealed, just after its damage number, never during
               // the spell. Other removals follow the timeline.
-              const impactAt = impactByTarget.get(event.unitId);
+              const impactAt =
+                attackImpactBeforeEvent(event.id, event.unitId) ?? impactByTarget.get(event.unitId);
               const spellFallAt = spellRevealAt.get(event.unitId);
               if (impactAt !== undefined) {
                 playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS, unitVariant(event.unitId));

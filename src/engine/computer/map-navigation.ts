@@ -80,6 +80,7 @@ import {
   shouldLaunchBronzeRush,
   valuablesStarved,
 } from "./development";
+import { objectiveHorizonAdjustment } from "./planning-horizon";
 
 /**
  * Map navigation for the computer opponent. The stock policy scored each
@@ -1929,6 +1930,13 @@ export function objectiveStrategicValue(
     }
     if (field.location === "settlement" && !hasOpenedFarEconomy(state, hero.controllerId)) value += 45;
   }
+  // Four-round public-board forecast: recurring income pays once per future
+  // Resource round, contested targets account for the enemy's arrival window,
+  // and dense regions retain option value for the next objective. This stays a
+  // bounded adjustment on top of the rule-specific priorities above.
+  value += mapScoringCached(state,
+    `horizon:${heroCacheKey(hero)}:${objective.kind}:${objective.spaceId}:${distance}`,
+    () => objectiveHorizonAdjustment(state, hero, objective, distance));
   return value - distance * 18;
 }
 

@@ -95,8 +95,8 @@ function combatIsHopeless(
 // band. Kept below the mandatory stage scores (FINISH/PLACE ≥ 900) which belong
 // to other combat stages.
 const ATTACK_BASE = 620;
-const ATTACK_FLOOR = 560;
-const ATTACK_CEIL = 880;
+export const ATTACK_FLOOR = 560;
+export const ATTACK_CEIL = 880;
 const SPENT_RETALIATION_BONUS = 18;
 // A pure suicide — zero expected damage AND a lethal retaliation invited —
 // drops below the high-value Defend band (550+) so the unit is not thrown
@@ -1864,20 +1864,22 @@ export function scoreCombatAction(
         action.type === "MOVE_AND_ATTACK_UNIT"
           ? action.destination
           : attacker.position;
+      const baseScore = attackScore(
+        combat,
+        // A player directing neutral guards is not the attacking unit's side.
+        attacker.controllerId,
+        attacker,
+        defender,
+        attackFrom,
+        observation.state as unknown as GameState,
+      );
       return {
-        score: attackScore(
-          combat,
-          // In player-controlled-neutrals mode the decision owner is a player,
-          // but the acting guard remains controlled by the neutral side.
-          // Score allies, enemies and retaliation from the unit's actual side.
-          attacker.controllerId,
-          attacker,
-          defender,
-          attackFrom,
-          observation.state as unknown as GameState,
-        ) + (action.type === "MOVE_AND_ATTACK_UNIT"
+        score: baseScore + (action.type === "MOVE_AND_ATTACK_UNIT"
           ? Math.min(0, friendlyLaneChange(combat, attacker, attackFrom, observation.state as unknown as GameState)) : 0),
-        policy: "combat.attack-target",
+        // Preserve special priority/safety decisions even if the lane penalty
+        // moves their final number back into the ordinary attack band.
+        policy: baseScore > ATTACK_CEIL || baseScore < ATTACK_FLOOR
+          ? "combat.attack-rule-priority" : "combat.attack-target",
       };
     }
     case "MOVE_UNIT":

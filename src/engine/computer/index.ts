@@ -97,6 +97,13 @@ export {
   type ArmyDevelopmentProfile,
 } from "./development";
 export {
+  COMBAT_HORIZON_PLIES,
+  STRATEGIC_HORIZON_ROUNDS,
+  combatHorizonAdjustment,
+  economyHorizonBias,
+  objectiveHorizonAdjustment,
+} from "./planning-horizon";
+export {
   canonicalActionKey,
   chooseComputerAction,
   legalityMatchKey,

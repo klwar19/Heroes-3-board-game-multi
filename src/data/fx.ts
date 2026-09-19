@@ -215,7 +215,7 @@ for (const [key, [frameWidth, frameHeight, scaleMultiplier, fps]] of Object.entr
 const animatedLineAtlases: Record<string, [number, number, number]> = {
   "bonus-extra-shot-animated": [384, 256, 32],
   "storm-link-animated": [362, 272, 12],
-  "phoenix-flame-flow-animated": [496, 199, 32],
+  "phoenix-flame-flow-animated": [418, 168, 32],
   "dragon-fire-breath-animated": [444, 222, 32],
   "azure-ice-breath-animated": [496, 199, 32],
   "crystal-red-strike-animated": [496, 199, 32],

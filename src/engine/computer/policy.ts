@@ -16,6 +16,7 @@ import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
 import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective, withMapScoringCache } from "./map-navigation";
 import { isPremiumEconomyField } from "./army-strength";
+import { deferDiscretionarySpending, refineCombatShortlist } from "./decision-planning";
 
 /** A scored move alone is not evidence that retracing a route pays off. */
 function returnsTowardPayoff(observation: ComputerObservation, action: GameAction): boolean {
@@ -427,7 +428,8 @@ function chooseComputerActionUncached(
         scoreCombatAction(observation, legal.action) ??
         scoreMapAction(observation, legal.action);
       const base = strategic ?? foundationScore(legal.action);
-      const planBias = base.score > 300 && base.score < 900
+      const planBias = base.score > 300 &&
+        (base.score < 900 || legal.action.type === "BUILD_STRUCTURE")
         ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
       const scored = { ...base, score: base.score + planBias };
       if (withdraw && legal.action.type === "RETREAT_FROM_COMBAT") {
@@ -503,6 +505,8 @@ function chooseComputerActionUncached(
       }
     }
   }
+  deferDiscretionarySpending(observation, ranked);
+  refineCombatShortlist(observation, ranked);
   ranked.sort(
       (a, b) =>
         b.score - a.score ||
