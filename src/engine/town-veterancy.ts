@@ -275,7 +275,11 @@ export function townAfterAttack(
       !retaliation &&
       !dieCancelled &&
       (roll === -1 || roll === 0) &&
-      townVeterancy(attacker, "magi-recover")
+      townVeterancy(attacker, "magi-recover") &&
+      (attacker.townVeterancy?.magiRecoveryUses ?? 0) +
+        (state.combat?.elementalChoices ?? []).filter((choice) =>
+          choice.kind === "town-recover" && choice.unitId === attacker.id && choice.abilityId === "town-magi-recover"
+        ).length < 2
     )
       queueElementalChoice(state, {
         kind: "town-recover",

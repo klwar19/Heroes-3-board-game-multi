@@ -1428,7 +1428,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v158 (2026-09-19): the multiplayer turn timeout is now ten minutes of
 // inactivity, refreshed by successful player actions. Stale and duplicate
 // automatic timeout requests are idempotent no-ops instead of rules errors.
-export const ENGINE_PROTOCOL_VERSION = 158;
+// v159 (2026-09-20): Tower Magi rank-3 Arcane Recovery and rank-4 Spell
+// Sunder each have a separate twice-per-combat budget in authoritative state.
+export const ENGINE_PROTOCOL_VERSION = 159;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

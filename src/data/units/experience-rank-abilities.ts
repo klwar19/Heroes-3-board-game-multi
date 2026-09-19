@@ -673,6 +673,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "necropolis.dread_knights") return A("reduce-spell-and-specialty-damage-2");
   if (unitDefId === "conflux.sprites") return A("veteran-sprite-landing");
   if (unitDefId.endsWith(".skeletons")) return A("veteran-rebirth");
+  if (unitDefId === "tower.magi") return A("veteran-magi-spell-sunder");
   if (unitDefId.endsWith(".magi")) return A("veteran-spell-sunder");
   if (unitDefId.endsWith(".unicorns")) return A("veteran-low-roll-insight");
   if (unitDefId.endsWith(".zealots")) return A("veteran-defense-pierce");
@@ -1018,6 +1019,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-steady-aim": "/assets/ui/rank-ability/steady-aim.webp",
   "veteran-rebirth": "/assets/ui/rank-ability/rebirth.webp",
   "veteran-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
+  "veteran-magi-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
   "veteran-elf-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
   "veteran-low-roll-insight": "/assets/ui/rank-ability/low-roll-insight.webp",
   "veteran-defense-pierce": "/assets/ui/rank-ability/defense-pierce.webp",

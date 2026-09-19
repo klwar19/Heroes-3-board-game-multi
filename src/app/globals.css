@@ -2356,6 +2356,158 @@ button.battleCell {
   font-size: 15px;
 }
 
+.inspectCommanderEquipmentButton {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #aa8548;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #45341d, #241e17);
+  color: #f5dfaa;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inspectCommanderEquipmentButton:hover,
+.inspectCommanderEquipmentButton:focus-visible {
+  border-color: #f4d774;
+  background: #584124;
+  outline: 2px solid transparent;
+}
+
+.commanderBattleEquipmentBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 290;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(5 5 7 / 78%);
+  backdrop-filter: blur(3px);
+}
+
+.commanderBattleEquipmentDialog {
+  width: min(620px, 100%);
+  max-height: min(90dvh, 720px);
+  overflow-y: auto;
+  padding: clamp(16px, 3vw, 26px);
+  border: 1px solid #b69259;
+  border-radius: 14px;
+  background: linear-gradient(155deg, #30281d, #141414 72%);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 70%);
+  color: #ece0c9;
+}
+
+.commanderBattleEquipmentDialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.commanderBattleEquipmentDialog > header small {
+  color: #c8a86b;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.commanderBattleEquipmentDialog h2 {
+  margin: 2px 0 0;
+  color: #f4d774;
+}
+
+.commanderBattleEquipmentDialog > p {
+  margin: 10px 0 18px;
+  color: #c9bda6;
+  font-size: 13px;
+}
+
+.commanderBattleEquipmentDialog button {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border: 1px solid #93774e;
+  border-radius: 7px;
+  background: #3a3022;
+  color: #f5dfaa;
+  cursor: pointer;
+}
+
+.commanderBattleEquipmentDialog button:hover,
+.commanderBattleEquipmentDialog button:focus-visible {
+  border-color: #f4d774;
+  background: #5c4426;
+}
+
+.commanderBattleEquipmentSlots {
+  display: grid;
+  gap: 10px;
+}
+
+.commanderBattleEquipmentSlots article {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 78px;
+  padding: 10px;
+  border: 1px solid #775e3b;
+  border-radius: 9px;
+  background: #292219;
+}
+
+.commanderBattleEquipmentSlots article.empty {
+  border-style: dashed;
+  opacity: .7;
+}
+
+.commanderBattleEquipmentIcon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 7px;
+  background: #18130d;
+  font-size: 28px;
+}
+
+.commanderBattleEquipmentIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.commanderBattleEquipmentSlots article > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.commanderBattleEquipmentSlots small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #b99b68;
+  text-transform: uppercase;
+}
+
+.commanderBattleEquipmentSlots strong {
+  color: #f3dfb4;
+}
+
+.commanderBattleEquipmentSlots span {
+  color: #d1c7b5;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+@media (max-width: 560px) {
+  .commanderBattleEquipmentSlots article { grid-template-columns: 44px minmax(0, 1fr); }
+  .commanderBattleEquipmentIcon { width: 44px; height: 44px; }
+  .commanderBattleEquipmentSlots article > button { grid-column: 2; justify-self: start; }
+}
+
 .inspectKind {
   color: var(--muted);
   font-size: 12px;

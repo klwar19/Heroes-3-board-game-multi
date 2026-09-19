@@ -74,6 +74,11 @@ sheets["neutral-sandstorm"] = {
   frames: 24, cols: 6, rows: 4, frameWidth: 256, frameHeight: 256, fps: 18,
   anchor: "center", coverage: 1.8, sourceDef: "imagegen-neutral-sandstorm", sequentialFrames: true,
 };
+sheets["town-ram-earth-spike"] = {
+  src: "/fx/town-ram-earth-spike.webp", label: "Mountain Ram earth spike", group: "town-veterancy", role: "affect",
+  frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 28,
+  anchor: "bottom", scaleMultiplier: 0.72, sourceDef: "imagegen-town-ram-earth-spike", sequentialFrames: true,
+};
 // Purpose-built, transparent physical projectiles for the three damaging war
 // machines. These are code-shipped under /public/fx (rather than CDN media), so
 // a combat snapshot can always render them even when the larger art pack is not
@@ -113,14 +118,14 @@ sheets["melee-thrust-impact"] = {
   anchor: "center", sourceDef: "imagegen-melee-thrust-forward", sequentialFrames: true,
 };
 sheets["melee-claw-rake-animated"] = {
-  src: "/fx/melee-claw-rake-animated.webp", label: "Anchored creature claw swipe", group: "melee-attacks", role: "hit",
+  src: "/fx/melee-claw-marks-animated.webp", label: "Creature claw marks", group: "melee-attacks", role: "hit",
   frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 32,
-  anchor: "center", sourceDef: "imagegen-melee-claw-contact-v3", sequentialFrames: true,
+  anchor: "center", sourceDef: "imagegen-melee-claw-marks", sequentialFrames: true,
 };
 
 export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact"
   | "melee-claw-rake-animated" | "melee-bite-snap-animated" | "thunderbird-trident-zap-animated"
-  | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "azure-ice-breath-animated"
+  | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "dragon-fierce-breath-animated" | "azure-ice-breath-animated"
   | "crystal-red-strike-animated" | "rust-acid-breath-animated";
 
 // Only unmistakable blade users receive the crescent. Point-first weapons,
@@ -155,8 +160,8 @@ export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
   if (["azure_dragon", "azure_dragons"].includes(slug ?? "")) return "azure-ice-breath-animated";
   if (["crystal_dragon", "crystal_dragons"].includes(slug ?? "")) return "crystal-red-strike-animated";
   if (["rust_dragon", "rust_dragons"].includes(slug ?? "")) return "rust-acid-breath-animated";
+  if (["black_dragon", "black_dragons", "gold_dragon", "gold_dragons"].includes(slug ?? "")) return "dragon-fierce-breath-animated";
   if ([
-    "black_dragon", "black_dragons", "gold_dragon", "gold_dragons",
     "green_dragon", "green_dragons", "red_dragon", "red_dragons",
     "hell_steed", "hell_steeds", "nightmare", "nightmares",
   ].includes(slug ?? "")) return "dragon-fire-breath-animated";
@@ -251,6 +256,7 @@ const animatedLineAtlases: Record<string, [number, number, number]> = {
   "storm-link-animated": [362, 272, 12],
   "phoenix-flame-flow-animated": [418, 168, 32],
   "dragon-fire-breath-animated": [444, 222, 32],
+  "dragon-fierce-breath-animated": [444, 222, 32],
   "azure-ice-breath-animated": [496, 199, 32],
   "crystal-red-strike-animated": [496, 199, 32],
   "rust-acid-breath-animated": [542, 182, 32],
@@ -262,6 +268,7 @@ for (const [key, [frameWidth, frameHeight, fps]] of Object.entries(animatedLineA
     anchor: "center", sourceDef: `imagegen-${key}`, sequentialFrames: true,
   };
 }
+sheets["dragon-fierce-breath-animated"].sourceDef = "imagegen-dragon-fierce-breath";
 sheets["bonus-extra-shot-animated"].beamFrames = true;
 
 // Original compact commander atlases. They use 256px cells so the two new
@@ -649,6 +656,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   "veteran-low-roll-insight": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "veteran-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "veteran-magi-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
   "veteran-elf-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
   "veteran-zealot-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
   "wog-no-negative-attack-roll": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
@@ -1012,7 +1020,7 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   marksmen: { projectile: "crossbow-shot-phases" },
   elves: { projectile: "arrow-shot-phases" },
   medusas: { projectile: "arrow-shot-phases" },
-  snow_elves: { projectile: "arrow-shot-phases" },
+  snow_elves: { projectile: "spear-shot-phases" },
   sharpshooters: { projectile: "arrow-shot-phases" },
   arctic_sharpshooter: { projectile: "arrow-shot-phases" },
   lava_sharpshooter: { projectile: "arrow-shot-phases" },

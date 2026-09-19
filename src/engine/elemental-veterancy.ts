@@ -661,6 +661,11 @@ function executeElementalPick(
     const cardId = pick.targetId!;
     const index = owner?.discard.indexOf(cardId) ?? -1;
     if (!owner || index < 0 || (request.abilityId === "town-gremlin-recover" && balanceCardLibrary(state, cardLibrary)[cardId]?.kind !== "spell")) throw new Error("Choose an eligible card from your discard pile.");
+    if (request.abilityId === "town-magi-recover") {
+      const memory = (unit.townVeterancy ??= {});
+      if ((memory.magiRecoveryUses ?? 0) >= 2) throw new Error("Arcane Recovery has reached its twice-per-combat limit.");
+      memory.magiRecoveryUses = (memory.magiRecoveryUses ?? 0) + 1;
+    }
     owner.discard.splice(index, 1); owner.hand.push(cardId);
     veteranTrigger(state, unit, request.abilityId);
     return;

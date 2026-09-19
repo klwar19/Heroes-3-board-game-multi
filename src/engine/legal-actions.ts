@@ -3153,6 +3153,10 @@ export function combatEnemySpellSunderUnit(
       return false;
     }
     const abilityIds = getUnitAbilityDefinitions(unit).map((ability) => ability.id);
+    if (abilityIds.includes("veteran-magi-spell-sunder") ||
+        (unit.unitDefId === "tower.magi" && abilityIds.includes("veteran-spell-sunder"))) {
+      return (unit.townVeterancy?.magiSpellSunderUses ?? 0) < 2;
+    }
     // unitDefId keeps an in-progress legacy save (which stores the former generic
     // ability id) on the new Elves-only budget as soon as it is loaded.
     if (abilityIds.includes("veteran-elf-spell-sunder") ||

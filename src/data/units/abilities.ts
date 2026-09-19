@@ -4038,7 +4038,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-gremlin-recover": { id: "town-gremlin-recover", name: "Salvaged Magic", text: "At the start of combat, you may take one Spell from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "gremlin-recover" }, implementationStatus: "implemented" },
   "town-golem-cap": { id: "town-golem-cap", name: "Tempered Iron", text: "In the first combat round, take at most 1 damage from each attack.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-cap" }, implementationStatus: "implemented" },
   "town-golem-shield": { id: "town-golem-shield", name: "Iron Guard", text: "Always treated as having a Defense token. Its Defense roll grants +1 Defense on 0 or +1.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-shield" }, implementationStatus: "implemented" },
-  "town-magi-recover": { id: "town-magi-recover", name: "Arcane Recovery", text: "After this unit's own Attack die resolves -1 or 0, take one card from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "magi-recover" }, implementationStatus: "implemented" },
+  "town-magi-recover": { id: "town-magi-recover", name: "Arcane Recovery", text: "After this unit's own Attack die resolves -1 or 0, take one card from your discard pile into your hand, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "magi-recover" }, implementationStatus: "implemented" },
   "town-naga-mend": { id: "town-naga-mend", name: "Renewing Coils", text: "After being attacked or damaged by a Spell, heal 1 HP if still alive.", effect: { type: "TOWN_VETERANCY", mechanic: "naga-mend" }, implementationStatus: "implemented" },
   "town-titan-bolt": { id: "town-titan-bolt", name: "Thunderbolt", text: "After attacking or retaliating against an adjacent unit, roll an extra die: on -1 or 0, deal 2 additional damage.", effect: { type: "TOWN_VETERANCY", mechanic: "titan-bolt" }, implementationStatus: "implemented" },
   "town-goblin-save": { id: "town-goblin-save", name: "Defiant Survivor", text: "Once per combat when an attack would defeat this unit, survive at 1 HP and you may give a unit +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "goblin-save" }, implementationStatus: "implemented" },
@@ -4130,6 +4130,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "veteran-spell-sunder",
     name: "Spell Sunder",
     text: "[unit_passive] Whenever an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
+    effect: { type: "SPELL_CAST_HAND_TAX" },
+    implementationStatus: "implemented"
+  },
+  "veteran-magi-spell-sunder": {
+    id: "veteran-magi-spell-sunder",
+    name: "Spell Sunder",
+    text: "[unit_passive] At most twice per combat, when an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
     effect: { type: "SPELL_CAST_HAND_TAX" },
     implementationStatus: "implemented"
   },

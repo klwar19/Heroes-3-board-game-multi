@@ -750,7 +750,7 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   } finally { sprite.remove(); }
 }
 
-/** A physical claw pivots in place over the defender; it never flies like a projectile. */
+/** Compact claw marks flash over the defender; they never fly like a projectile. */
 async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
   const fromRect = resolveAnchorRect(cue.from);
@@ -764,8 +764,8 @@ async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "sla
   const angle = Math.atan2(dy, dx) * 180 / Math.PI;
   const forwardAngle = firesLeft ? angle - Math.sign(angle || 1) * 180 : angle;
   const scale = Math.min(
-    (toRect.width * 1.5) / sheet.frameWidth,
-    (toRect.height * 1.5) / sheet.frameHeight,
+    (toRect.width * 1.05) / sheet.frameWidth,
+    (toRect.height * 1.05) / sheet.frameHeight,
   );
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxMeleeImpact";
@@ -801,7 +801,7 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
   if ([
     "melee-thrust-impact", "melee-bite-snap-animated",
     "thunderbird-trident-zap-animated",
-    "phoenix-flame-flow-animated", "dragon-fire-breath-animated",
+    "phoenix-flame-flow-animated", "dragon-fire-breath-animated", "dragon-fierce-breath-animated",
     "azure-ice-breath-animated", "crystal-red-strike-animated", "rust-acid-breath-animated",
   ].includes(cue.fxKey)) return runThrust(stage, cue);
   const sheet = getFxSheet(cue.fxKey);

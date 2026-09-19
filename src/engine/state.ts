@@ -10182,6 +10182,10 @@ export type CombatUnitState = {
     /** Elves' rank-4 Spell Sunder: round of the last tax and total taxes this combat. */
     elfSpellSunderRound?: number;
     elfSpellSunderUses?: number;
+    /** Tower Magi R3 recoveries completed this combat. */
+    magiRecoveryUses?: number;
+    /** Tower Magi R4 extra hand discards triggered this combat. */
+    magiSpellSunderUses?: number;
   };
   factionVeterancy?: {
     marked?: boolean;

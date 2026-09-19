@@ -19452,8 +19452,11 @@ function spellActionFromDeferred(
  * casts. The physical hand Spell being cast is reserved and cannot be selected
  * unless another copy of the same card remains.
  */
-function spellSunderAbilityId(unit: CombatUnitState): "veteran-spell-sunder" | "veteran-elf-spell-sunder" | "veteran-zealot-spell-sunder" {
+function spellSunderAbilityId(unit: CombatUnitState): "veteran-spell-sunder" | "veteran-magi-spell-sunder" | "veteran-elf-spell-sunder" | "veteran-zealot-spell-sunder" {
   const abilityIds = getUnitAbilityDefinitions(unit).map((ability) => ability.id);
+  if (abilityIds.includes("veteran-magi-spell-sunder") || unit.unitDefId === "tower.magi") {
+    return "veteran-magi-spell-sunder";
+  }
   if (abilityIds.includes("veteran-zealot-spell-sunder") || unit.unitDefId === "castle.zealots") {
     return "veteran-zealot-spell-sunder";
   }
@@ -19465,8 +19468,14 @@ function spellSunderAbilityId(unit: CombatUnitState): "veteran-spell-sunder" | "
 
 /** Spend a limited once-per-round / twice-per-combat Spell Sunder budget. */
 function noteSpellSunderTriggered(state: GameState, unit: CombatUnitState): void {
-  if (!state.combat || spellSunderAbilityId(unit) === "veteran-spell-sunder") return;
+  if (!state.combat) return;
+  const abilityId = spellSunderAbilityId(unit);
+  if (abilityId === "veteran-spell-sunder") return;
   const memory = (unit.townVeterancy ??= {});
+  if (abilityId === "veteran-magi-spell-sunder") {
+    memory.magiSpellSunderUses = (memory.magiSpellSunderUses ?? 0) + 1;
+    return;
+  }
   memory.elfSpellSunderRound = state.combat.round;
   memory.elfSpellSunderUses = (memory.elfSpellSunderUses ?? 0) + 1;
 }

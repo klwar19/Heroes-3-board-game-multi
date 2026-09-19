@@ -378,9 +378,11 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "RUNE_LEVEL_REACHED",
   // PvE ENEMY FORCE: a boss's held-card play has no dice and no window, so its
   // reused H3 spell sprite + sound is the only thing that animates it. MUST be
-  // listed here — the FX switch only ever sees events in this set (the
-  // `COMMANDER_CAST_USED` case below is dead precisely because it is not).
-  "ENEMY_FORCE_CARD_PLAYED"
+  // listed here — the FX switch only ever sees events in this set.
+  "ENEMY_FORCE_CARD_PLAYED",
+  // Includes the Hierophant's off-turn Shield: the reducer emits this only
+  // after the instant command resolves, with the protected unit as target.
+  "COMMANDER_CAST_USED"
 ]);
 
 const MAX_PRESENTATION_MS = DEFAULT_MAX_PRESENTATION_MS;
@@ -2801,6 +2803,14 @@ export default function Home() {
           });
           if (event.sourceAbilityId !== "veteran-magma-teleport-strike") {
             playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
+          }
+          if (unit?.unitDefId === "bulwark.mountain_rams" && unit.abilities.includes("town-ram-trample")) {
+            const arrivalAt = moveDelay + COMBAT_MOVE_MS;
+            cues.push({
+              kind: "sprite", id: `${event.id}-earth-spike`, fxKey: "town-ram-earth-spike",
+              at: `cell:${event.to}`, delayMs: arrivalAt,
+            });
+            combatPresentationEnd = Math.max(combatPresentationEnd, arrivalAt + spriteDurationMs("town-ram-earth-spike"));
           }
         });
 
