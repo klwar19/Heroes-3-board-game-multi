@@ -47,10 +47,10 @@ export const AFK_REASK_MS = 10 * 60_000;
  */
 export const AFK_AUTO_KICK_MS = 30 * 60_000;
 /**
- * Hard per-TURN budget (multiplayer adventure, CLOSED tables only — see
- * `timeControlsActive`): a player — even one actively clicking, so never "idle"
- * for the AFK vote — gets at most this long per open turn before any live seat's
- * client may fire `FORCE_TURN_TIMEOUT` and the server force-ends the turn
+ * Maximum ACTIONABLE INACTIVITY during an open turn (multiplayer adventure,
+ * CLOSED tables only — see `timeControlsActive`). Every successful action by
+ * the seat refreshes this clock; only a seat that leaves its turn unattended
+ * for the whole window may be force-ended by `FORCE_TURN_TIMEOUT`
  * (pending inputs default-resolved, an open fight retreated, then a normal
  * END_TURN — the player is NOT eliminated; play simply shifts to the others).
  * The clock pauses (and thereby RESETS) while the seat is in a battle, blocked by
@@ -263,6 +263,15 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
     }
   }
   afk.lastActionAt[actorId] = stamp;
+  // The turn timeout is an inactivity safeguard, not a total-turn chess clock.
+  // Refresh only an already-open clock: applyTurnClockBookkeeping below owns
+  // opening/closing stamps, while this actor-scoped path proves the seat is
+  // present and successfully doing something. This is especially important in
+  // parallel play, where a long but active turn must never be force-completed
+  // with movement points still available.
+  if (afk.turnOpenSince?.[actorId] !== undefined) {
+    afk.turnOpenSince[actorId] = stamp;
+  }
   // A real action by the seat clears the awaited-idle the 30-minute auto-kick
   // reads: they are demonstrably present. applyAfkIdleClockBookkeeping (run
   // next) restarts the live stretch from zero if the seat is still awaited.
@@ -564,8 +573,8 @@ export function forceAfkKick(
 }
 
 // ---------------------------------------------------------------------------
-// Per-turn time budget (TURN_TIME_LIMIT_MS): even an ACTIVE player's turn ends
-// after 10 minutes — force-shifted to the others, never eliminated.
+// Open-turn inactivity timeout (TURN_TIME_LIMIT_MS): successful player actions
+// refresh it; only an unattended turn is force-shifted, never eliminated.
 // ---------------------------------------------------------------------------
 
 /**
@@ -669,7 +678,7 @@ export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolea
 }
 
 /**
- * How long (ms) `playerId`'s open turn has been burning its budget at `now`.
+ * How long (ms) `playerId`'s open turn has gone without a successful action.
  * 0 when their clock is not running (no open turn / stamps not bootstrapped).
  */
 export function turnElapsedMillis(state: GameState, playerId: PlayerId, now: number): number {
@@ -684,8 +693,9 @@ export function turnElapsedMillis(state: GameState, playerId: PlayerId, now: num
  * other players' and driver actions too — those are exactly what opens/closes
  * turns). Stamps a seat's clock when its turn opens, RE-stamps it while the
  * seat is paused (so paused time never accrues — see turnClockPausedFor), and
- * drops the stamp when the turn closes. Also clears a stale timeout flag once
- * the timed-out seat's turn is gone.
+ * drops the stamp when the turn closes. The acting seat's successful actions
+ * refresh the same stamp in applyAfkBookkeeping. Also clears a stale timeout
+ * flag once the timed-out seat's turn is gone.
  *
  * `pausedBefore` lists the seats whose clock was paused in the PRE-action
  * state: the action that LIFTS a pause (the blocker resolving their choice)
@@ -736,8 +746,8 @@ export function applyTurnClockBookkeeping(
 
 /**
  * FORCE_TURN_TIMEOUT: any live seat's client fires this once `targetPlayerId`'s
- * open turn has burned its full TURN_TIME_LIMIT_MS budget (the server re-checks
- * everything against its own clock). It only ARMS the force-shift
+ * open turn has received no successful action for TURN_TIME_LIMIT_MS (the
+ * server re-checks everything against its own clock). It only ARMS the force-shift
  * (`afk.turnTimeoutPlayerId`); the server-side driver (src/engine/afk-drop.ts)
  * then default-resolves the seat's pending inputs, retreats it from an open
  * neutral fight and ends the turn through the normal END_TURN machinery.
@@ -762,6 +772,11 @@ export function forceTurnTimeout(
   if (afk.droppingPlayerId) {
     throw new Error("A player is already being removed.");
   }
+  if (afk.turnTimeoutPlayerId === action.targetPlayerId) {
+    // Every live client may notice the same expiry. The first request arms the
+    // driver; duplicates are an expected race and must not become red UI errors.
+    return;
+  }
   if (afk.turnTimeoutPlayerId) {
     throw new Error("A turn is already being timed out.");
   }
@@ -769,13 +784,18 @@ export function forceTurnTimeout(
     throw new Error("Turn timing is unavailable on this table.");
   }
   if (!turnClockRunningSeats(state).includes(action.targetPlayerId)) {
-    throw new Error(`${playerName(state, action.targetPlayerId)} has no open turn to time out.`);
+    // The player ended between the observer's render and this server action.
+    // The desired outcome already happened, so this automatic request is a
+    // successful no-op rather than a scary rules error.
+    return;
   }
   if (turnClockPausedFor(state, action.targetPlayerId)) {
-    throw new Error(`${playerName(state, action.targetPlayerId)}'s turn clock is paused right now.`);
+    return;
   }
   if (turnElapsedMillis(state, action.targetPlayerId, now) < TURN_TIME_LIMIT_MS) {
-    throw new Error(`${playerName(state, action.targetPlayerId)} still has turn time left.`);
+    // Most commonly, the target acted and refreshed its inactivity clock while
+    // this request was in flight. Never punish that activity.
+    return;
   }
 
   afk.turnTimeoutPlayerId = action.targetPlayerId;
@@ -783,6 +803,6 @@ export function forceTurnTimeout(
     type: "TURN_TIME_EXPIRED",
     targetPlayerId: action.targetPlayerId,
     byPlayerId: action.playerId,
-    message: `${playerName(state, action.targetPlayerId)}'s 10 minutes are up — their turn ends and play shifts on.`
+    message: `${playerName(state, action.targetPlayerId)} was inactive for 10 minutes — their turn ends and play shifts on.`
   });
 }

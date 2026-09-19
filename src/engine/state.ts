@@ -6018,10 +6018,11 @@ type GameActionPayload =
     }
   | {
       /**
-       * Hard 10-minute turn budget (`TURN_TIME_LIMIT_MS`): any live seat's
-       * client fires this once `targetPlayerId`'s open turn has burned its
-       * whole budget (per the server-stamped `afk.turnOpenSince` clock; the
-       * server re-checks). Arms `afk.turnTimeoutPlayerId` — the driver then
+       * Ten-minute open-turn inactivity limit (`TURN_TIME_LIMIT_MS`): any live
+       * seat's client fires this once `targetPlayerId` has taken no successful
+       * action for the full window (per the server-stamped
+       * `afk.turnOpenSince` clock; the server re-checks). Arms
+       * `afk.turnTimeoutPlayerId` — the driver then
        * force-ends the turn. The target is NOT kicked or eliminated.
        */
       type: "FORCE_TURN_TIMEOUT";
@@ -10700,7 +10701,7 @@ export type CombatState = {
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
@@ -18751,18 +18752,18 @@ export type AfkState = {
    */
   droppingPlayerId?: PlayerId | null;
   /**
-   * Server wall-clock ms each seat's OPEN turn started burning its 10-minute
-   * budget (`TURN_TIME_LIMIT_MS`). Stamped when the turn opens and re-stamped
-   * while the seat is paused behind a PvP battle, another player's exclusive
-   * interaction or the round-start event barrier — so only time the player
-   * could actually spend counts. Dropped when the turn closes. Maintained by
-   * `applyTurnClockBookkeeping` on every stamped action; absent on solo tables
-   * and legacy snapshots.
+   * Server wall-clock ms since each seat's last successful action during its
+   * OPEN turn (`TURN_TIME_LIMIT_MS`). Stamped when the turn opens, refreshed
+   * whenever that seat acts, and re-stamped while the seat is paused behind a
+   * PvP battle, another player's exclusive interaction or the round-start event
+   * barrier. Dropped when the turn closes. Maintained by AFK/turn-clock
+   * bookkeeping on every stamped action; absent on solo tables and legacy
+   * snapshots.
    */
   turnOpenSince?: Record<PlayerId, number>;
   /**
-   * Seat whose expired turn is being force-ended right now (the 10-minute
-   * per-turn budget ran out — `FORCE_TURN_TIMEOUT`). While set, the server-side
+   * Seat whose expired turn is being force-ended right now (10 minutes passed
+   * without a successful action — `FORCE_TURN_TIMEOUT`). While set, the server-side
    * driver auto-resolves that seat's pending interactions with default picks,
    * retreats it from an open neutral fight, and ends the turn through the
    * normal END_TURN machinery via RESOLVE_TURN_TIMEOUT. Unlike

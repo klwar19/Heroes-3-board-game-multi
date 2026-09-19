@@ -173,6 +173,17 @@ export function elementalActivation(
   const combat = state.combat;
   if (!combat || !alive(unit)) return;
   const risingNest = getUnitAbilityDefinitions(unit).some(a => ["veteran-phoenix-rising-nest", "veteran-phoenix-rising-nest-heal"].includes(a.id));
+  // Scorch belongs to the start of the Phoenix's activation. Queue it before
+  // Rising Nest moves the Phoenix so its legal targets, event, FX and sound all
+  // come from the square where the activation actually began.
+  if (elementalVeterancy(unit, "activation-burn"))
+    queueElementalChoice(state, {
+      kind: "damage",
+      unitId: unit.id,
+      abilityId: "veteran-phoenix-activation",
+      amount: 1,
+      adjacent: true,
+    });
   for (const nest of Object.values(combat.units)) {
     if (
       nest.elementalVeterancy?.nestOwnerId !== unit.id ||
@@ -182,45 +193,13 @@ export function elementalActivation(
       continue;
     if (!elementalVeterancy(unit, "nest")) continue;
     if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) continue;
-    const from = unit.position;
-    unit.position = nest.position;
-    nest.damage = nest.maxHealth;
-    const healed = Math.min(1, Math.max(0, unit.damage));
-    unit.damage -= healed;
-    if (risingNest) (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
-    appendEvent(state, {
-      type: "UNIT_MOVED",
-      playerId: unit.controllerId,
+    queueElementalChoice(state, {
+      kind: "nest-return",
       unitId: unit.id,
-      from,
-      to: unit.position,
-    });
-    if (healed > 0) appendEvent(state, {
-      type: "DAMAGE_HEALED",
-      source: {
-        type: "unit",
-        unitId: unit.id,
-        controllerId: unit.controllerId,
-      },
-      target: { type: "unit", unitId: unit.id },
-      amount: healed,
-    });
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: unit.id,
-      targetUnitId: unit.id,
       abilityId: risingNest ? "veteran-phoenix-rising-nest-return" : "veteran-phoenix-nest",
-      message: `${unit.cardName} returns to its Nest.`,
+      targetId: nest.id,
     });
   }
-  if (elementalVeterancy(unit, "activation-burn"))
-    queueElementalChoice(state, {
-      kind: "damage",
-      unitId: unit.id,
-      abilityId: "veteran-phoenix-activation",
-      amount: 1,
-      adjacent: true,
-    });
   if (elementalVeterancy(unit, "move-obstacle"))
     queueElementalChoice(state, {
       kind: "obstacle",
@@ -363,6 +342,39 @@ export function openElementalChoice(
     const request = combat.elementalChoices.shift()!;
     const unit = combat.units[request.unitId];
     if (!unit || !alive(unit)) continue;
+    if (request.kind === "nest-return") {
+      const nest = combat.units[request.targetId!];
+      if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) continue;
+      const risingNest = request.abilityId === "veteran-phoenix-rising-nest-return";
+      if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) continue;
+      const from = unit.position;
+      unit.position = nest.position;
+      nest.damage = nest.maxHealth;
+      const healed = Math.min(1, Math.max(0, unit.damage));
+      unit.damage -= healed;
+      if (risingNest) (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
+      appendEvent(state, {
+        type: "UNIT_MOVED",
+        playerId: unit.controllerId,
+        unitId: unit.id,
+        from,
+        to: unit.position,
+      });
+      if (healed > 0) appendEvent(state, {
+        type: "DAMAGE_HEALED",
+        source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        target: { type: "unit", unitId: unit.id },
+        amount: healed,
+      });
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        targetUnitId: unit.id,
+        abilityId: request.abilityId,
+        message: `${unit.cardName} returns to its Nest.`,
+      });
+      continue;
+    }
     if (request.kind === "town-bolt") {
       const target = combat.units[request.targetId!];
       if (target && alive(target) && hooks.townBolt?.(state, unit, target)) return true;

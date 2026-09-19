@@ -633,7 +633,7 @@ export function submitRoomAction(
     };
   }
 
-  // A passed AFK kick vote or an expired 10-minute turn: drive the forced
+  // A passed AFK kick vote or a turn left inactive for 10 minutes: drive the forced
   // resolution through the normal action pipeline until the seat is removed /
   // its turn ends (or the table must wait for an open interaction).
   const afkSettledState = forcedResolutionPending(result.state)

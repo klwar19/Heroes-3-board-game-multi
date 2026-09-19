@@ -15201,17 +15201,6 @@ export function finalizeAdventureCombat(state: GameState): void {
         ) {
           queueSkeletonReinforce(state, playerId);
         }
-      } else if (hero.kind === "secondary" && !context.waveAssault && context.dungeonFloor === undefined) {
-        // A lost Secondary Hero is removed, including retreats (the same reading
-        // as the PvP path). A Calamity Wave or Dungeon floor "deals fair" —
-        // nothing lost but the wounds (§6.7.3) — so those keep the hero.
-        if (field?.persistentGuard) {
-          persistLivingGuardsOnField(state, field, combat);
-        }
-        removeSecondaryHeroFromGame(
-          state, hero,
-          outcome.reason === "retreat" ? "was lost retreating from battle" : "was defeated in battle"
-        );
       } else if (outcome.reason === "retreat") {
         // Persistent break-field army: keep living guards for a later re-fight.
         if (field?.persistentGuard) {
@@ -15219,6 +15208,8 @@ export function finalizeAdventureCombat(state: GameState): void {
         }
         // A wave assault happens WHERE the hero stands and a Dungeon delve on
         // the (revisitable) gate — neither retreat bounces the hero anywhere.
+        // Ordinary Secondary Heroes follow this same retreat path: Neutral
+        // combat never removes them; only a PvP loss does.
         const returnTo =
           context.waveAssault || context.dungeonFloor !== undefined
             ? null
@@ -15241,7 +15232,9 @@ export function finalizeAdventureCombat(state: GameState): void {
           // The assault came TO the hero / the Dungeon deals fair (§6.7.3
           // "nothing lost but the wounds"): the hero stays where they stand.
         } else {
-          // Defeat: the hero falls back to a friendly town or settlement. The
+          // Defeat: the hero falls back to a friendly town or settlement. This
+          // applies to Main and Secondary Heroes alike in Neutral combat; only
+          // the PvP finalization path removes a defeated Secondary Hero. The
           // fighter is always the turn-owner, so offer the town-or-settlement
           // retreat CHOICE (interactive) when they own more than one.
           moveDefeatedHeroHome(state, hero, true);
@@ -15638,8 +15631,8 @@ export function finalizeAdventureCombat(state: GameState): void {
           "bounty for defeating an enemy hero"
         );
       }
-      // Main Heroes retreat. A defeated Secondary Hero is removed from the
-      // game entirely; it must never reappear on the starting field.
+      // Main Heroes retreat. A Secondary Hero defeated in this PvP battle is
+      // removed entirely; Neutral-combat losses use the survival path above.
       if (loserHero.kind === "secondary") {
         removeSecondaryHeroFromGame(state, loserHero, "was defeated in battle");
       } else {
@@ -16457,9 +16450,9 @@ function defeatedHeroRetreatDestinations(
  * single retreat field it auto-homes there; with none the Hero leaves the map.
  *
  * A NON-active loser (a PvP DEFENDER beaten on the attacker's turn) and a
- * companion Secondary Hero that did not fight auto-home to the default (Town
- * preferred). A Secondary Hero that actually loses the fight is removed before
- * this helper is called. We never open
+ * Secondary Hero auto-home to the default (Town preferred). A Secondary Hero
+ * defeated in PvP is removed before this helper is called; one defeated by
+ * Neutrals reaches this helper and survives. We never open
  * a cross-turn prompt — mirroring how the winner's Necromancy window defers to
  * its owner's own turn — so a defender's loss can never stall the attacker's
  * turn, and the AFK/forced/computer resolver (which defaults a mandatory
@@ -16525,10 +16518,11 @@ function forceOtherHeroesHomeFromField(
 }
 
 /**
- * Removes a lost Secondary Hero from the game, whether it surrendered or was
- * defeated. The player keeps their Main Hero and may hire a new Secondary Hero
- * later. Heroes live only in `state.heroes`, so deleting this entry is complete
- * removal and `getSecondaryHero` reports none.
+ * Removes a Secondary Hero lost in PvP, whether it surrendered or was defeated.
+ * Neutral defeats and retreats do not call this helper. The player keeps their
+ * Main Hero and may hire a new Secondary Hero later. Heroes live only in
+ * `state.heroes`, so deleting this entry is complete removal and
+ * `getSecondaryHero` reports none.
  */
 function removeSecondaryHeroFromGame(state: GameState, hero: HeroState, reason: string): void {
   // The Holy Grail never leaves play: a Secondary Hero CAN dig it, and deleting
@@ -20155,8 +20149,8 @@ export function resolveAfkDrop(state: GameState, action: Extract<GameAction, { t
 }
 
 /**
- * RESOLVE_TURN_TIMEOUT: one force-shift step for the seat whose 10-minute turn
- * budget expired (`afk.turnTimeoutPlayerId`). Issued by the server-side driver
+ * RESOLVE_TURN_TIMEOUT: one force-shift step for the seat whose open turn was
+ * inactive for 10 minutes (`afk.turnTimeoutPlayerId`). Issued by the server-side driver
  * (src/engine/afk-drop.ts), never by a client button, and only after the
  * driver has default-resolved every pending interaction the seat owns:
  *

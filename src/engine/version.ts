@@ -1421,7 +1421,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   and economy refinements, march-scoop pickups, market sell usage).
 // v156 (2026-09-19): designed Temple of the Sea guard/award state and the
 // Morale-or-Ability-Empower visit choice travel in multiplayer snapshots.
-export const ENGINE_PROTOCOL_VERSION = 156;
+// v157 (2026-09-19): Neutral combat defeat/retreat no longer removes a
+// Secondary Hero. The hero follows the ordinary Neutral fallback path and is
+// removed only by a PvP loss/sacrifice. This is authoritative reducer behavior,
+// so stale room servers must be rejected instead of silently applying v156.
+// v158 (2026-09-19): the multiplayer turn timeout is now ten minutes of
+// inactivity, refreshed by successful player actions. Stale and duplicate
+// automatic timeout requests are idempotent no-ops instead of rules errors.
+export const ENGINE_PROTOCOL_VERSION = 158;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

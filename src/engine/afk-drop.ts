@@ -33,7 +33,7 @@ export function afkDropPending(state: GameState): PlayerId | null {
   return state.afk?.droppingPlayerId ?? null;
 }
 
-/** The seat whose expired 10-minute turn is being force-ended, or null. */
+/** The seat whose turn was inactive for 10 minutes and is being ended, or null. */
 export function turnTimeoutPending(state: GameState): PlayerId | null {
   return state.afk?.turnTimeoutPlayerId ?? null;
 }

@@ -4388,11 +4388,11 @@ export function NeutralStepOverlay({
  *    spammed. The timestamps come from the SERVER's clock; the engine
  *    re-checks legality on submit, so a skewed local clock can only make the
  *    button appear a little early or late, never force a kick.
- *  - The TURN TIMER chip counts down the open turn's 10-minute budget
+ *  - The TURN TIMER chip counts down 10 minutes of open-turn inactivity
  *    (`afk.turnOpenSince` + TURN_TIME_LIMIT_MS) once under five minutes
  *    remain, and any live client fires FORCE_TURN_TIMEOUT the moment a turn
  *    is over budget — the server re-checks its own clock and then force-ends
- *    that turn (never kicks the player).
+ *    that turn (never kicks the player). A successful action refreshes it.
  *
  * Rendered on the adventure map AND the combat table — a battle is exactly
  * where an AFK opponent hurts most.
@@ -4531,8 +4531,8 @@ export function AfkVotePanel({
       <Hourglass aria-hidden="true" size={13} />
       <span>
         {countdownClock.seat === viewerPlayerId
-          ? "Your turn auto-ends in "
-          : `${state.players[countdownClock.seat]?.name ?? countdownClock.seat}'s turn ends in `}
+          ? "Act before your turn auto-ends: "
+          : `${state.players[countdownClock.seat]?.name ?? countdownClock.seat} is inactive — turn ends in `}
         <strong>{formatCountdown(countdownClock.remaining)}</strong>
       </span>
     </div>
@@ -4541,7 +4541,7 @@ export function AfkVotePanel({
       <Hourglass aria-hidden="true" size={13} />
       <span>
         {(state.players[afk.turnTimeoutPlayerId]?.name ?? afk.turnTimeoutPlayerId) +
-          "'s 10 minutes are up — ending their turn…"}
+          " was inactive for 10 minutes — ending their turn…"}
       </span>
     </div>
   ) : null;

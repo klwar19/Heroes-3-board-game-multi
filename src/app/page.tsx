@@ -385,9 +385,6 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
 
 const MAX_PRESENTATION_MS = DEFAULT_MAX_PRESENTATION_MS;
 
-/** Heals that need the unmistakable green-cross pulse in addition to a sprite. */
-const FIRST_AID_GRAPHIC_CARD_IDS = new Set(["war_machine.first_aid_tent", "ability.first_aid"]);
-
 /**
  * Safety net for the freshly-drawn-card "incoming" hide (visibility:hidden):
  * however a draw flight is presented, the hidden tail MUST clear within this
@@ -2657,9 +2654,10 @@ export default function Home() {
         // event loop below so a struck/healed unit holds its old health on the
         // board until the spell that changed it has finished animating.
         const freezeDamage = new Map<string, number>();
-        // unitId -> when a spell/ability hit/heal it visibly resolves (its number
-        // floats, the bar moves, a slain unit falls). Set after the effect's
-        // sprites + sound finish, never during them.
+        // unitId -> when a spell/ability hit/heal visibly resolves (its number
+        // floats, the bar moves, a slain unit falls). Most effects resolve after
+        // their full presentation; authored midpoint effects such as Regeneration
+        // can resolve at their visible climax while their closing tail continues.
         const spellRevealAt = new Map<string, number>();
         // unitId -> total spell/ability damage seen this batch, so repeated hits
         // freeze back to the health from before the first one.
@@ -2670,6 +2668,12 @@ export default function Home() {
         // number/health land after the animation and never on the unrelated
         // retaliation strike beat the attacker may also carry.
         const fireShieldBurnAt = new Map<string, number>();
+        // Regeneration logs UNIT_ABILITY_TRIGGERED immediately before its
+        // DAMAGE_HEALED. Queue the heal's visible result at SP12_'s authored
+        // midpoint while allowing the closing frames/sound tail to continue.
+        // A queue (rather than one value) keeps stacked regeneration abilities
+        // on the same unit paired in event order.
+        const pendingHealResultAt = new Map<string, number[]>();
         // Leading activation spells (Faerie Dragon Ice Bolt) presented in the
         // preamble below: their UNIT_ABILITY_TRIGGERED ids (skipped in the main
         // loop) and the beat each one's damage lands on (consumed once by that
@@ -3032,8 +3036,9 @@ export default function Home() {
         // current timeline. `fromAnchor` is where a projectile launches from
         // (the caster's hand for spells, the casting unit for abilities). The
         // timeline is advanced by the effect's *full* on-screen + audio length
-        // (spellPresentationMs), so whatever the engine resolved next — a damage
-        // number, a heal, a death — is queued strictly after it finishes.
+        // (spellPresentationMs). The returned resultAt beat lets an authored
+        // effect such as Regeneration reveal its heal at the visual climax while
+        // its closing frames and sound tail continue before the next action.
         const queueBoardFx = (
           plan: SpellFxPlan,
           eventId: string,
@@ -3108,7 +3113,13 @@ export default function Home() {
             const soundKey = plan.sound;
             window.setTimeout(() => playLibrarySound(soundKey), start);
           }
-          timeline = start + spellPresentationMs(plan);
+          const presentationMs = spellPresentationMs(plan);
+          timeline = start + presentationMs;
+          return {
+            start,
+            resultAt: start + Math.min(presentationMs, Math.max(0, plan.resultAtMs ?? presentationMs)),
+            end: timeline,
+          };
         };
 
         /**
@@ -3651,28 +3662,27 @@ export default function Home() {
                 // spell flow, so it carries its own shimmer + chime here. Spell
                 // heals (Cure) already animated through their cast above, so the
                 // registry deliberately omits them — no double cue.
-                const healStartsAt = timeline;
                 const healPlan =
                   event.source.type === "card" ? healFxPlans[event.source.cardId] : undefined;
-                if (healPlan) {
-                  queueBoardFx(healPlan, `${event.id}-heal`, `unit:${targetId}`, targetId);
+                const queuedAbilityResults = pendingHealResultAt.get(targetId);
+                const abilityResultAt = queuedAbilityResults?.shift();
+                if (queuedAbilityResults?.length === 0) {
+                  pendingHealResultAt.delete(targetId);
                 }
-                // The First Aid Tent may fire inside an attack reaction window,
-                // where the board is visually busy. Give it a guaranteed,
-                // sprite-independent cross pulse on the healed card so the
-                // instant never reads as a bare health-number change.
-                if (event.source.type === "card" && FIRST_AID_GRAPHIC_CARD_IDS.has(event.source.cardId)) {
-                  cues.push({
-                    kind: "pulse",
-                    id: `${event.id}-first-aid-cross`,
-                    at: `unit:${targetId}`,
-                    text: "✚",
-                    delayMs: healStartsAt
-                  });
+                let resultAt = abilityResultAt;
+                if (healPlan) {
+                  resultAt = queueBoardFx(
+                    healPlan,
+                    `${event.id}-heal`,
+                    `unit:${targetId}`,
+                    targetId
+                  ).resultAt;
                 }
                 // The "+N" and the bar climbing back up wait for the heal effect
-                // (its own here, or the Cure cast just queued) to finish.
-                const at = timeline;
+                // to reach its authored result beat. Regeneration resolves at
+                // SP12_'s bright midpoint; ordinary heals retain their existing
+                // end-of-presentation timing.
+                const at = resultAt ?? timeline;
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
@@ -3865,7 +3875,12 @@ export default function Home() {
               // effect's full length so the damage it deals waits for it.
               const flies = Boolean(plan.projectile && event.targetUnitId && event.targetUnitId !== event.unitId);
               const effectivePlan = flies ? plan : { ...plan, projectile: undefined };
-              queueBoardFx(effectivePlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
+              const queued = queueBoardFx(effectivePlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
+              if (plan.resultAtMs !== undefined) {
+                const results = pendingHealResultAt.get(targetUnitId) ?? [];
+                results.push(queued.resultAt);
+                pendingHealResultAt.set(targetUnitId, results);
+              }
               break;
             }
             // Creature voices: the unit's own H3 clips, sequenced on the

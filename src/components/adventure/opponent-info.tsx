@@ -63,7 +63,7 @@ function OpponentInfoModal({
     (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
   );
   // A seat's SECONDARY hero (if it has hired one and it is still in the game —
-  // a defeated Secondary Hero is removed from `state.heroes`, and the
+  // a Secondary Hero defeated in PvP is removed from `state.heroes`, and the
   // `no-secondary-heroes` house rule means one is never hired at all). Its
   // movement points are as public as the main hero's: heroes move openly on the
   // map and `redactStateForSeat` never touches `state.heroes`.

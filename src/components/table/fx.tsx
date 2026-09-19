@@ -726,10 +726,15 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   sprite.style.transformOrigin = "center";
   sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
   stage.appendChild(sprite);
-  if (cue.sound) playLibrarySound(cue.sound);
-  else playMeleeImpact();
-  const started = performance.now();
   const playbackMs = (sheet.frames / sheet.fps) * 1000;
+  if (cue.sound) playLibrarySound(cue.sound);
+  else if (cue.fxKey === "melee-bite-snap-animated") playLibrarySound("mgq/effects/bite");
+  else if (cue.fxKey === "thunderbird-trident-zap-animated") playLibrarySound("mgq/effects/thunder4");
+  else if (cue.fxKey.includes("breath") || cue.fxKey === "phoenix-flame-flow-animated") {
+    playWhoosh();
+    playMeleeImpact(Math.round(playbackMs * 0.55));
+  } else playMeleeImpact();
+  const started = performance.now();
   try {
     await new Promise<void>((resolve) => {
       const tick = (now: number) => {
@@ -745,10 +750,58 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   } finally { sprite.remove(); }
 }
 
+/** A physical claw pivots in place over the defender; it never flies like a projectile. */
+async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
+  const sheet = getFxSheet(cue.fxKey);
+  const fromRect = resolveAnchorRect(cue.from);
+  const toRect = resolveAnchorRect(cue.at);
+  if (!sheet || !fromRect || !toRect) return;
+  const attacker = centerOf(fromRect);
+  const target = centerOf(toRect);
+  const dx = target.x - attacker.x;
+  const dy = target.y - attacker.y;
+  const firesLeft = dx < 0;
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const forwardAngle = firesLeft ? angle - Math.sign(angle || 1) * 180 : angle;
+  const scale = Math.min(
+    (toRect.width * 1.5) / sheet.frameWidth,
+    (toRect.height * 1.5) / sheet.frameHeight,
+  );
+  const sprite = document.createElement("div");
+  sprite.className = "fxSprite fxMeleeImpact";
+  sprite.style.width = `${sheet.frameWidth}px`;
+  sprite.style.height = `${sheet.frameHeight}px`;
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
+  sprite.style.left = `${target.x - sheet.frameWidth / 2}px`;
+  sprite.style.top = `${target.y - sheet.frameHeight / 2}px`;
+  sprite.style.transformOrigin = "center";
+  sprite.style.transform = `rotate(${forwardAngle}deg) scale(${firesLeft ? -scale : scale}, ${scale})`;
+  stage.appendChild(sprite);
+  playLibrarySound("mgq/effects/slash6");
+  const playbackMs = (sheet.frames / sheet.fps) * 1000;
+  const started = performance.now();
+  try {
+    await new Promise<void>((resolve) => {
+      const tick = (now: number) => {
+        if (!stage.isConnected) { resolve(); return; }
+        const elapsed = now - started;
+        if (elapsed >= playbackMs) { resolve(); return; }
+        const frame = Math.min(sheet.frames - 1, Math.floor(elapsed / playbackMs * sheet.frames));
+        sprite.style.backgroundPosition = `-${(frame % sheet.cols) * sheet.frameWidth}px -${Math.floor(frame / sheet.cols) * sheet.frameHeight}px`;
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
+  } finally { sprite.remove(); }
+}
+
 /** Plays the unit-appropriate melee-contact atlas over the defender. */
 async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
+  if (cue.fxKey === "melee-claw-rake-animated") return runClawSwipe(stage, cue);
   if ([
-    "melee-thrust-impact", "phoenix-flame-flow-animated", "dragon-fire-breath-animated",
+    "melee-thrust-impact", "melee-bite-snap-animated",
+    "thunderbird-trident-zap-animated",
+    "phoenix-flame-flow-animated", "dragon-fire-breath-animated",
     "azure-ice-breath-animated", "crystal-red-strike-animated", "rust-acid-breath-animated",
   ].includes(cue.fxKey)) return runThrust(stage, cue);
   const sheet = getFxSheet(cue.fxKey);

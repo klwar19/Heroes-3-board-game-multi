@@ -3288,7 +3288,7 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
 
     // The opponent sees the same countdown named after the seat it is about.
     render(<AfkVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p2" as PlayerId} />);
-    expect(screen.getByText(/turn ends in/i)).toBeTruthy();
+    expect(screen.getByText(/inactive.*turn ends in/i)).toBeTruthy();
     cleanup();
 
     // CONTROL: a freshly-opened turn (9+ minutes left) shows no countdown.
@@ -3301,12 +3301,12 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     expect(screen.queryByText(/auto-ends in/i)).toBeNull();
   });
 
-  it("turn timer: auto-fires FORCE_TURN_TIMEOUT once the open turn is over budget (still-in-budget is the CONTROL)", () => {
+  it("turn timer: auto-fires FORCE_TURN_TIMEOUT after open-turn inactivity (recent activity is the CONTROL)", () => {
     const state = adventureGame();
     state.activePlayerId = "p1";
     const afk = getAfkState(state);
-    afk.lastActionAt = { p1: Date.now(), p2: Date.now() }; // actively clicking, never "idle"
-    afk.turnOpenSince = { p1: Date.now() - TURN_TIME_LIMIT_MS - 1_000 }; // budget burned
+    afk.lastActionAt = { p1: Date.now() - TURN_TIME_LIMIT_MS - 1_000, p2: Date.now() };
+    afk.turnOpenSince = { p1: Date.now() - TURN_TIME_LIMIT_MS - 1_000 }; // no successful action in the window
     const onAction = vi.fn();
     render(<AfkVotePanel onAction={onAction} state={state} viewerPlayerId={"p2" as PlayerId} />);
     expect(onAction).toHaveBeenCalledWith({ type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" });

@@ -31686,7 +31686,7 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   justify-content: center;
 }
 
-/* 10-minute turn-timer countdown chip (top-right, clear of the vote banner):
+/* 10-minute open-turn inactivity countdown chip (top-right, clear of the vote banner):
    appears once an open turn is under five minutes, turns red in the last
    minute, and announces the force-end while the server shifts the turn. */
 .turnTimerChip {

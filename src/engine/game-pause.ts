@@ -12,7 +12,7 @@ import type { GameAction, GamePauseState, GameState, PlayerId } from "./state";
  * is PAUSED — the reducer refuses every gameplay action (only chat, reactions,
  * room membership, the new-adventure vote and the pause actions themselves get
  * through), the server-side computer pump stops, and every time control
- * FREEZES: the 10-minute per-turn budget and the AFK idle clocks stop counting
+ * FREEZES: the 10-minute open-turn inactivity clock and AFK idle clocks stop counting
  * for as long as the pause lasts. Only the seat that asked for the pause
  * resumes the game; on RESUME every AFK/turn stamp is shifted forward by the
  * paused stretch, so a player comes back with exactly the time they had left.

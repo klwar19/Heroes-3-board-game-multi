@@ -45,6 +45,17 @@ export type FxSheet = {
 };
 
 const sheets = manifest as Record<string, FxSheet>;
+
+// Heroes III's native Regeneration presentation. SP12_ is the blue/white
+// counterpart to the green SP06_ Vampire Life Drain: the orb stays compact
+// around the healed unit instead of washing across the whole card.
+sheets.regeneration = {
+  ...sheets["sp12_"],
+  label: "Regeneration",
+  group: "ability",
+  looksLike: "blue-white rotating regeneration orb (Wight, Wraith, Troll, First Aid)",
+  scaleMultiplier: 0.86,
+};
 const customVeterancyFxKeys = ["muscle-reversal", "returning-edge", "covering-extraction", "meridian-exchange", "rule-unravel", "field-repair", "break-cover", "clear-mind", "rescue-step", "blood-price"] as const;
 for (const key of customVeterancyFxKeys) {
   sheets[`ctv-${key}`] = {
@@ -101,15 +112,21 @@ sheets["melee-thrust-impact"] = {
   frames: 16, cols: 4, rows: 4, frameWidth: 384, frameHeight: 256, fps: 40,
   anchor: "center", sourceDef: "imagegen-melee-thrust-forward", sequentialFrames: true,
 };
+sheets["melee-claw-rake-animated"] = {
+  src: "/fx/melee-claw-rake-animated.webp", label: "Anchored creature claw swipe", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 32,
+  anchor: "center", sourceDef: "imagegen-melee-claw-contact-v3", sequentialFrames: true,
+};
 
 export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact"
+  | "melee-claw-rake-animated" | "melee-bite-snap-animated" | "thunderbird-trident-zap-animated"
   | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "azure-ice-breath-animated"
   | "crystal-red-strike-animated" | "rust-acid-breath-animated";
 
 // Only unmistakable blade users receive the crescent. Point-first weapons,
-// horns and charges use the close-range thrust; claws, fists, bites, clubs,
-// magic bodies and any custom unit without a specific profile use the compact
-// contact burst, which does not imply a weapon the creature does not possess.
+// horns and charges use the close-range thrust. Explicit anatomy profiles below
+// cover talons and jaws; fists, clubs, magic bodies and any custom unit without
+// a specific profile use the compact contact burst.
 const crescentSlashUnits = new Set([
   "arch_devils", "assassins", "berserkers", "bounty_hunters", "crusaders",
   "dread_knights", "dwarves", "efreet", "genin_squad", "hokage_vanguard",
@@ -118,9 +135,18 @@ const crescentSlashUnits = new Set([
   "skeletons", "space_marines", "true_inheritors", "wolf_raiders",
 ]);
 const thrustUnits = new Set([
-  "ayssids", "basilisks", "boars", "centaurs", "champions", "couatls",
-  "dragon_flies", "gorgons", "halberdiers", "haspids", "kobolds", "lancers",
-  "manticores", "mountain_rams", "pegasi", "troglodytes", "unicorns",
+  "boars", "centaurs", "champions", "dragon_flies", "halberdiers", "kobolds", "lancers",
+  "mountain_rams", "pegasi", "troglodytes", "unicorns",
+]);
+// Creature anatomy profiles. These effects are full source-to-target atlases,
+// so a left-side and right-side army get the same readable rake/snap after the
+// live combat geometry rotates the authored right-facing frames.
+const clawUnits = new Set([
+  "ayssids", "behemoths", "griffins", "harpies", "manticores", "wyverns",
+]);
+const biteUnits = new Set([
+  "basilisk_queen", "basilisks", "cerberi", "couatls", "floor_wyrm", "haspids",
+  "hydras", "sandworms",
 ]);
 
 export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
@@ -134,6 +160,12 @@ export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
     "green_dragon", "green_dragons", "red_dragon", "red_dragons",
     "hell_steed", "hell_steeds", "nightmare", "nightmares",
   ].includes(slug ?? "")) return "dragon-fire-breath-animated";
+  // The Gorgon's attack is presented as the same directed breath stream as a
+  // dragon, while retaining the Gorgon's own attack voice and Death Stare FX.
+  if (["gorgon", "gorgons", "warden_gorgon_matron"].includes(slug ?? "")) return "dragon-fire-breath-animated";
+  if (["thunderbird", "thunderbirds"].includes(slug ?? "")) return "thunderbird-trident-zap-animated";
+  if (slug && clawUnits.has(slug)) return "melee-claw-rake-animated";
+  if (slug && biteUnits.has(slug)) return "melee-bite-snap-animated";
   if (slug && crescentSlashUnits.has(slug)) return "melee-crescent-slash";
   if (slug && thrustUnits.has(slug)) return "melee-thrust-impact";
   return "melee-starry-strike";
@@ -213,6 +245,8 @@ for (const [key, [frameWidth, frameHeight, scaleMultiplier, fps]] of Object.entr
   };
 }
 const animatedLineAtlases: Record<string, [number, number, number]> = {
+  "melee-bite-snap-animated": [296, 148, 32],
+  "thunderbird-trident-zap-animated": [296, 148, 32],
   "bonus-extra-shot-animated": [384, 256, 32],
   "storm-link-animated": [362, 272, 12],
   "phoenix-flame-flow-animated": [418, 168, 32],
@@ -305,8 +339,23 @@ export type SpellFxPlan = {
   /** /public/sounds manifest key, e.g. "spells/fireball". */
   sound?: string;
   hitSound?: string;
+  /**
+   * When the represented result should become visible after this plan starts.
+   * Most effects resolve after their complete presentation. Regeneration heals
+   * at SP12_'s bright midpoint while its closing frames and sound tail fade.
+   */
+  resultAtMs?: number;
   /** Physical launcher whose in-play card recoils when this projectile fires. */
   warMachine?: "ballista" | "catapult" | "cannon";
+};
+
+// SP12_ reaches its full, readable orb on frame 10 of 20 at 15 fps. The heal
+// number and health bar land here; the remaining frames close the circle while
+// REGENER.wav finishes underneath them.
+const regenerationFxPlan: SpellFxPlan = {
+  affect: [{ key: "regeneration" }],
+  sound: "effects/regeneration",
+  resultAtMs: Math.round((10 / 15) * 1000),
 };
 
 export const spellFxPlans: Record<string, SpellFxPlan> = {
@@ -863,13 +912,16 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // UNIT_ABILITY_TRIGGERED("dragon-fly-dispel"); reuse the same dispel shimmer +
   // sound the spell-counter cue uses (cancelFx) so the cleanse is seen and heard.
   "dragon-fly-dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
-  // Wraiths' / Trolls' activation Regeneration: the unit mends itself at the start
-  // of its turn. The engine now emits a UNIT_ABILITY_TRIGGERED under the ability id
-  // (alongside the "+N" heal floater), so the green Cure shimmer + heal chime play
-  // — they previously regenerated in silence.
-  "wraith-heal-1": { affect: [{ key: "cure" }], sound: "spells/cure" },
-  "wraith-heal-2": { affect: [{ key: "cure" }], sound: "spells/cure" },
-  "troll-heal-3": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // Every true start-of-activation Regeneration uses the original Heroes III
+  // SP12_ orb + REGENER cue. These are all implemented ON_ACTIVATION_HEAL_SELF
+  // ability ids: printed Wraith/Troll, commander, MGQ and unit-experience ranks.
+  "wraith-heal-1": regenerationFxPlan,
+  "wraith-heal-2": regenerationFxPlan,
+  "troll-heal-3": regenerationFxPlan,
+  "commander-regeneration": regenerationFxPlan,
+  "veteran-boar-regeneration": regenerationFxPlan,
+  "veteran-regeneration-2": regenerationFxPlan,
+  "mgq-giga-regeneration": regenerationFxPlan,
   // --- Factory (expansion) gold / cube abilities -----------------------------
   // Couatls' activated invulnerability ("Ethereal Coil"): a protective barrier
   // shimmers over the unit — when it goes up (on the couatl, endsActivation), when
@@ -933,9 +985,6 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Enchanters' activation heal. The +Attack fallback announces under
   // `${id}-buff` (unmapped) so this Cure shimmer only plays on a real heal.
   "enchanter-heal-or-buff": { affect: [{ key: "cure" }], sound: "spells/cure" },
-  // WOG commander Regeneration (activation heal-self): same Cure shimmer as
-  // Wraith/Troll Regeneration.
-  "commander-regeneration": { affect: [{ key: "cure" }], sound: "spells/cure" },
   // Archangel lethal-save readiness: the real Resurrection sheet (not Prayer)
   // when the Archangel commits to cancel a killing blow. The cancel itself
   // also fires the shared "resurrection" ability plan with the same sheet.
@@ -1152,15 +1201,13 @@ export function unitExtraShotFxPlan(unitDefId: string | undefined): SpellFxPlan 
  * cast, and adding them here would play the cure twice.
  */
 export const healFxPlans: Record<string, SpellFxPlan> = {
-  // The First Aid Tent mends a stack: the green Cure shimmer + heal chime, the
-  // same cue Heroes III plays when the tent patches a unit up.
-  "war_machine.first_aid_tent": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // The Tent and its First Aid ability use the same original regeneration orb
+  // and REGENER cue as Wights/Wraiths/Trolls — never the Cure spell effect.
+  "war_machine.first_aid_tent": regenerationFxPlan,
   // The First Aid ability card (basic side) removes 1 damage from a chosen
   // unit. It heals outside the spell flow too — its DAMAGE_HEALED carries the
   // card id as the source — so it would otherwise float a bare "+1" in silence.
-  // Reuse the Tent's cure shimmer + chime so the played card actually sounds
-  // like a heal.
-  "ability.first_aid": { affect: [{ key: "cure" }], sound: "spells/cure" }
+  "ability.first_aid": regenerationFxPlan
 };
 
 /**
@@ -1347,9 +1394,9 @@ function tintSegmentMs(plan: SpellFxPlan): number {
 
 /**
  * Total time a spell/ability's board presentation (sprites + the sounds layered
- * under them) takes, from the moment it begins. The damage number, a slain
- * unit's fall and any heal are all held until this elapses, so an effect never
- * resolves on the board before the player has seen and heard it.
+ * under them) takes, from the moment it begins. This gates the following action.
+ * A plan may expose its own earlier `resultAtMs` climax for the represented
+ * result while its closing frames/audio continue inside this full duration.
  */
 export function spellPresentationMs(plan: SpellFxPlan | undefined): number {
   if (!plan) {

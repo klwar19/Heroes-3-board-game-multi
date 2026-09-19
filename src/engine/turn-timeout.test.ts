@@ -20,10 +20,10 @@ function visitOwner(state: GameState): PlayerId | null {
 }
 
 /**
- * 10-minute TURN TIMER (multiplayer house rule, engine-enforced): even a player
- * who keeps clicking — so is never "idle" for the AFK vote — gets at most
- * TURN_TIME_LIMIT_MS per open turn. A battle PAUSES (resets) that clock, so the
- * timer never counts combat time. Any live seat then fires FORCE_TURN_TIMEOUT
+ * 10-minute OPEN-TURN INACTIVITY TIMER (multiplayer house rule,
+ * engine-enforced): every successful action by the player refreshes the clock.
+ * A battle PAUSES (resets) it too, so the timer never counts combat time. Any
+ * live seat then fires FORCE_TURN_TIMEOUT
  * (the server re-checks its own clock) and the driver force-ends the turn:
  * pending inputs default-resolved, any still-open fight retreated (a safety
  * net — a battle pauses the clock, so a timeout cannot normally arm mid-fight),
@@ -106,11 +106,10 @@ describe("turn clock bookkeeping — stamps ride the real action pipeline", () =
     state.room = { hosted: false, hostClientId: null, members: [] };
     expect(turnClockRunningSeats(state)).toEqual([]);
     const after = applyOk(state, { type: "END_TURN", playerId: "p1" }, T0);
-    // No clock is stamped, and FORCE_TURN_TIMEOUT has nothing to time out.
+    // No clock is stamped, and a stale automatic FORCE_TURN_TIMEOUT is a no-op.
     expect(after.afk?.turnOpenSince ?? {}).toEqual({});
-    expect(
-      expectRejected(after, { type: "FORCE_TURN_TIMEOUT", playerId: "p1", targetPlayerId: "p2" }, LIMIT)
-    ).toContain("no open turn");
+    const stale = applyOk(after, { type: "FORCE_TURN_TIMEOUT", playerId: "p1", targetPlayerId: "p2" }, LIMIT);
+    expect(stale.afk?.turnTimeoutPlayerId ?? null).toBeNull();
   });
 
   it("parallel mode: EVERY open turn's clock runs; ending your own turn drops only your stamp", () => {
@@ -120,6 +119,36 @@ describe("turn clock bookkeeping — stamps ride the real action pipeline", () =
     const after = applyOk(state, { type: "END_TURN", playerId: "p1" }, T0);
     // p1 completed (no clock); p2 and p3 still owe their turns.
     expect(after.afk?.turnOpenSince).toEqual({ p2: T0, p3: T0 });
+  });
+
+  it("a successful action refreshes the acting seat's inactivity clock", () => {
+    const state = makeGame("turn-clock-active-refresh", { players: 3, parallelTurns: 3 });
+    seedTurnClock(state, T0);
+    state.pendingChoice = {
+      id: "choice_active",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Keep playing",
+      options: [{ label: "continue" }]
+    } as GameState["pendingChoice"];
+
+    const actedAt = LIMIT - 1_000;
+    const active = applyOk(
+      state,
+      { type: "CHOOSE_OPTION", playerId: "p1", choiceId: "choice_active", optionIndex: 0 },
+      actedAt
+    );
+    expect(active.afk?.turnOpenSince?.p1).toBe(actedAt);
+
+    // CONTROL: the old turn-open stamp would already be expired here. With the
+    // successful action refresh in place, the stale automatic request is a no-op.
+    const stale = applyOk(
+      active,
+      { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" },
+      LIMIT
+    );
+    expect(stale.afk?.turnTimeoutPlayerId ?? null).toBeNull();
+    expect(stale.turn.completedPlayerIds).not.toContain("p1");
   });
 
   it("the clock PAUSES (re-stamps) while another seat owns the exclusive interaction — own windows keep burning", () => {
@@ -153,29 +182,28 @@ describe("turn clock bookkeeping — stamps ride the real action pipeline", () =
 });
 
 describe("FORCE_TURN_TIMEOUT — arming the force-shift", () => {
-  it("arms only once the full budget is burned (one second short is the CONTROL) and logs the expiry", () => {
+  it("arms only after the full inactivity window (one second short is the CONTROL) and logs the expiry", () => {
     const state = makeGame("turn-force-arm", { players: 3 });
     seedTurnClock(state, T0);
 
-    expect(
-      expectRejected(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT - 1)
-    ).toContain("still has turn time left");
+    const early = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT - 1);
+    expect(early.afk?.turnTimeoutPlayerId ?? null).toBeNull();
+    expect(early.eventLog.some((event) => event.type === "TURN_TIME_EXPIRED")).toBe(false);
 
     const armed = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT);
     expect(armed.afk?.turnTimeoutPlayerId).toBe("p1");
     expect(armed.eventLog.some((event) => event.type === "TURN_TIME_EXPIRED")).toBe(true);
   });
 
-  it("guards: no open turn, an already-armed timeout, and a paused clock are all refused", () => {
+  it("treats stale, duplicate and paused automatic timeout requests as idempotent no-ops", () => {
     const state = makeGame("turn-force-guards", { players: 3 });
     seedTurnClock(state, T0);
 
     // p3 has no open turn in ordered play.
-    expect(
-      expectRejected(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p3" }, LIMIT)
-    ).toContain("no open turn");
+    const noTurn = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p3" }, LIMIT);
+    expect(noTurn.afk?.turnTimeoutPlayerId ?? null).toBeNull();
 
-    // A PvP battle pauses the participants' clocks — the arm is refused.
+    // A PvP battle pauses the participants' clocks — a stale arm is ignored.
     const pvp = makeGame("turn-force-pvp", { players: 3 });
     seedTurnClock(pvp, T0);
     const attacker = getMainHero(pvp, "p1")!;
@@ -183,15 +211,13 @@ describe("FORCE_TURN_TIMEOUT — arming the force-shift", () => {
     startPlayerCombat(pvp, attacker, defender, defender.spaceId ?? "0,0");
     expect(pvp.combat?.context.kind).toBe("player");
     expect(turnClockPausedFor(pvp, "p1")).toBe(true);
-    expect(
-      expectRejected(pvp, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT)
-    ).toContain("paused");
+    const paused = applyOk(pvp, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT);
+    expect(paused.afk?.turnTimeoutPlayerId ?? null).toBeNull();
 
-    // A second arm while one is resolving is refused.
+    // A duplicate from another client while the same timeout resolves is ignored.
     const armed = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT);
-    expect(
-      expectRejected(armed, { type: "FORCE_TURN_TIMEOUT", playerId: "p3", targetPlayerId: "p1" }, LIMIT + 1)
-    ).toContain("already being timed out");
+    const duplicate = applyOk(armed, { type: "FORCE_TURN_TIMEOUT", playerId: "p3", targetPlayerId: "p1" }, LIMIT + 1);
+    expect(duplicate.afk?.turnTimeoutPlayerId).toBe("p1");
   });
 
   it("RESOLVE_TURN_TIMEOUT is driver-only: rejected when no timeout is resolving", () => {

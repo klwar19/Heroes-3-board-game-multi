@@ -2132,12 +2132,6 @@ export function scoreCombatAction(
     case "GIVE_UP_COMBAT": {
       // Foundation scores these −900 (last resort). Promote only when the fight
       // is clearly lost so the AI saves movement / remaining army.
-      // A Secondary Hero that retreats from a neutral fight is REMOVED from the
-      // game (v130), so the AI keeps fighting with it while any unit stands.
-      const fighter = combat.context.kind === "neutral" ? observation.state.heroes[combat.context.heroId] : undefined;
-      if (fighter?.kind === "secondary" && livingFriendlies(combat, observation.playerId).length > 0) {
-        return { score: -900, policy: "combat.retreat-refuse-secondary" };
-      }
       // Keep-troops PvP (lobby casualty mode "none"): a lost battle costs no
       // unit, so leaving early only forfeits the chance to win — and a Give up
       // even discards the whole hand. USER RULE: in this mode the AI never runs
