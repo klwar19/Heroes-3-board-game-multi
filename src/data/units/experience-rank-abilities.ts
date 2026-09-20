@@ -362,10 +362,11 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "castle.halberdiers") return A("town-halberd-hunter");
   if (unitDefId === "tower.gremlins") return S({ ...Z, health: 1 });
   if (unitDefId === "tower.iron_golems") return A("town-golem-cap");
-  if (unitDefId === "tower.titans") return A("attack-roll-advantage-passive");
+  if (unitDefId === "tower.titans") return A("town-titan-storm-cache");
   if (unitDefId === "rampart.dendroids") return A("bulwark-thick-hide");
   if (unitDefId === "rampart.unicorns") return H({ ...Z, initiative: 1 }, "veteran-mobility-1");
   if (unitDefId === "inferno.cerberi") return S({ ...Z, initiative: 2 });
+  if (unitDefId === "inferno.pit_lords") return H({ ...Z, initiative: 1 }, "town-pit-demon-bond");
   if (unitDefId === "inferno.arch_devils") return H({ ...Z, initiative: 1 }, "town-devil-slow");
   if (unitDefId === "dungeon.manticores") return A("veteran-manticore-mend");
   if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-hide");
@@ -444,6 +445,9 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "fortress.gorgons") return A("town-gorgon-armored-prey");
   if (unitDefId === "fortress.hydras") return A("town-hydra-forced-reroll");
   if (unitDefId === "fortress.wyverns") return A("town-wyvern-reroll");
+  if (unitDefId === "cove.nix") return A("town-nix-guarded");
+  if (unitDefId === "cove.haspids") return A("town-haspid-aggressive-drill");
+  if (unitDefId === "inferno.pit_lords") return A("reduce-spell-damage-2");
   if (unitDefId === "cove.oceanids") return S({ ...Z, defense: 1, initiative: 1 });
   if (unitDefId === "cove.seamen") return A("town-seaman-survival-gold");
   if (unitDefId === "cove.sorceresses") return A("town-sorceress-ranged-mend");
@@ -613,6 +617,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "wog.arctic_sharpshooter") return A("veteran-arctic-slow-shot");
   if (unitDefId === "wog.lava_sharpshooter") return A("veteran-lava-burn");
   if (unitDefId === "fortress.dragon_flies") return A("town-dragon-fly-landing");
+  if (unitDefId === "fortress.basilisks") return A("town-basilisk-lower-roll");
   if (unitDefId === "fortress.lizardmen") return A("town-lizard-spell-draw");
   if (unitDefId === "fortress.hydras") return A("town-hydra-round-mend");
   if (unitDefId === "fortress.wyverns") return A("town-wyvern-potent-poison");

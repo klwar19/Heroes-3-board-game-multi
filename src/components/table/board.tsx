@@ -2558,7 +2558,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         ) : null}
         {getAzureDragonSuperCharge(unit) ? (
           <div className="inspectMarked" role="status">
-            Super Charge active · pierce 1 Defense · attack paralysis on 0/+1 · Fear Aura on −1/0
+            Super Charge active · pierce 1 Defense · attack paralysis on 0/+1
           </div>
         ) : null}
         {/* Unit Experience / Neutral Rank-Up (optional rules): one compact

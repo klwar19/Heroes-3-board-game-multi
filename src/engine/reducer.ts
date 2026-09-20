@@ -12,7 +12,7 @@ import { neutralVeterancy, neutralActivation, neutralAfterAttack, neutralAttackB
 import { resolveManaTurbulence, neutralTownDelayedDamageAtActivation, neutralTownRunicBacklash, neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { neutralTownVeterancy, neutralTownAttackBonus, neutralTownDefenseBonus, neutralTownAttackDamagePreview, neutralTownCommitAttackReduction, neutralTownMovement, neutralTownActivation, neutralTownAfterAttack, neutralTownFailedParalysis, neutralTownFinishActivation } from "./neutral-town-veterancy";
 import { getTargetsForCard } from "./legal-actions";
-import { baseCardId } from "./phantom-cards";
+import { baseCardId, toPhantomCardId } from "./phantom-cards";
 import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
@@ -3689,17 +3689,28 @@ function applyHydraForcedReroll(
   if (!state.combat || candidate.hydraRerollApplied || attacker.controllerId === defender.controllerId || !townVeterancy(defender, "hydra-forced-reroll")) return candidate;
   candidate.hydraRerollApplied = true;
   let changed = false;
+  let replacementStillPlusOne = false;
   for (let index = 0; index < candidate.rolls.length; index += 1) {
     if (candidate.rolls[index] !== 1) continue;
     const to = rollAttackDie(state.combat);
     candidate.rolls[index] = to;
     pushRerollBeat(candidate, index, 1, to);
     changed = true;
+    replacementStillPlusOne ||= to === 1;
   }
   if (changed) {
     candidate.roll = aggregateCandidateRoll(candidate.rolls, candidate.sumAllDice ? "sum" : mode);
     pushRollModifierNote(candidate, "Many-Headed Feint", "all +1 results are rerolled once");
     veteranTrigger(state, defender, "town-hydra-forced-reroll", attacker);
+    if (replacementStillPlusOne && isUnitAlive(attacker)) {
+      veteranDamage(
+        state,
+        defender,
+        attacker,
+        1,
+        "town-hydra-forced-reroll-bite",
+      );
+    }
   }
   return candidate;
 }
@@ -5627,6 +5638,11 @@ function getAttackStackDetails(
   ) {
     rollMode = "disadvantage";
   }
+  // Town Basilisks R4: this is a defender-side "when attacked" rule, so it
+  // forces the lower of two dice for ordinary attacks AND retaliation attacks.
+  if (townVeterancy(defender, "basilisk-lower-roll")) {
+    rollMode = "disadvantage";
+  }
   if (!isRetaliation && defender.commanderSlug) {
     const protection = commanderArtifactBonusesForUnit(
       state,
@@ -5957,7 +5973,7 @@ function getAttackStackDetails(
       (stackItem.modifiers.droneSupportAttackBonus ?? 0) +
       getModeChangeAttackBonus(attacker) +
       innateFlatAttackBonus +
-      townAttackBonus(attacker, defender, isRetaliation, currentDefenseValue) +
+      townAttackBonus(state, attacker, defender, isRetaliation, currentDefenseValue) +
       neutralTownAttackBonus(state, attacker, defender, currentDefenseValue) +
       chargeAttackBonus +
       commanderPositionalAttackBonus +
@@ -6187,6 +6203,10 @@ function buildRerollSources(
       ? { drawIfRerollResult: source.drawIfRerollResult }
       : {}),
     ...(source.drawCount !== undefined ? { drawCount: source.drawCount } : {}),
+    ...(source.healIfRerollResult !== undefined
+      ? { healIfRerollResult: source.healIfRerollResult }
+      : {}),
+    ...(source.healCount !== undefined ? { healCount: source.healCount } : {}),
   }));
 
   // Ammo Cart (Astrologers): while the proclamation is face up, an owner of an
@@ -7902,7 +7922,10 @@ function resolveDefendBonus(
         (modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO",
       ),
   );
-  const tokenBonus = ((roll === 1 || (roll === 0 && townVeterancy(details.defender, "golem-shield"))) ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
+  const guardedOnZero =
+    townVeterancy(details.defender, "golem-shield") ||
+    townVeterancy(details.defender, "nix-guarded");
+  const tokenBonus = ((roll === 1 || (roll === 0 && guardedOnZero)) ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
   // Mammoths' Thick Hide: a flat extra Defense the unit gets while it is
   // defending (holding a Defense token), on top of the Defend die.
   const defendAbilityBonus = getDefendBonus(details.defender);
@@ -8222,6 +8245,37 @@ function finishResolvedAttack(
       candidate,
       details.rollMode,
     );
+  }
+  // Tower Titans R1: the advantage dice themselves charge a disposable Chain
+  // Lightning when neither face is +1. The distinct phantom id behaves like the
+  // real Spell but is tracked by the shared combat cleanup and cannot survive
+  // the battle, wherever it is played or moved.
+  if (
+    getUnitAbilityDefinitions(details.attacker).some(
+      (ability) => ability.id === "town-titan-storm-cache",
+    ) &&
+    candidate.rolls.length >= 2 &&
+    !candidate.rolls.includes(1) &&
+    (details.attacker.townVeterancy?.titanPhantomCards ?? 0) < 2
+  ) {
+    const owner = state.players[details.attacker.controllerId];
+    if (owner && state.combat) {
+      const phantomId = toPhantomCardId("spell.chain_lightning");
+      owner.hand.push(phantomId);
+      const memory = (details.attacker.townVeterancy ??= {});
+      memory.titanPhantomCards = (memory.titanPhantomCards ?? 0) + 1;
+      const grants = (state.combat.computerPhantomCards ??= []);
+      const tracked = grants.find((entry) => entry.playerId === owner.id);
+      if (tracked) tracked.cardIds.push(phantomId);
+      else grants.push({ playerId: owner.id, cardIds: [phantomId] });
+      veteranTrigger(
+        state,
+        details.attacker,
+        "town-titan-storm-cache",
+        details.attacker,
+        `${details.attacker.cardName} gains a phantom Chain Lightning (${memory.titanPhantomCards}/2).`,
+      );
+    }
   }
   // Snapshot before damage/healing/reflection so this hit's paralysis and
   // Defense piercing agree about whether the dragon was charged.
@@ -14215,8 +14269,11 @@ function applyActivationStartAbilities(
       // Multilingual Bron: Fear Aura is a unit special ability with its own
       // die, so a player-controlled unit rerolls a miss once. Keep the first
       // throw visible—the client presents this structured event as a dice cue.
+      const fearHasEffect = (roll: number): boolean =>
+        abilityRollSucceeds([roll], window) ||
+        (ability.initiativePenaltyOnPlusOne ?? 0) > 0 && roll === 1;
       if (
-        !abilityRollSucceeds(candidate.rolls, window) &&
+        !fearHasEffect(candidate.roll) &&
         bronRerollsAbilityRoll(state, unit)
       ) {
         appendEvent(state, {
@@ -14247,9 +14304,14 @@ function applyActivationStartAbilities(
         (target) =>
           target.controllerId !== unit.controllerId && isUnitAlive(target),
       );
-      const succeeds =
+      const paralyzes =
         abilityRollSucceeds(candidate.rolls, window) && candidates.length > 0;
-      const target = succeeds
+      const slows =
+        candidate.roll === 1 &&
+        (ability.initiativePenaltyOnPlusOne ?? 0) > 0 &&
+        candidates.length > 0;
+      const succeeds = paralyzes || slows;
+      const target = paralyzes
         ? candidates[
             createSeededRandom(
               `${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`,
@@ -14262,14 +14324,18 @@ function applyActivationStartAbilities(
         abilityId: `${ability.abilityId}-roll`,
         ...(target ? { targetUnitId: target.id } : {}),
         message: succeeds
-          ? `${unit.name} rolls ${candidate.roll} and its Fear Aura finds ${target!.cardName}.`
+          ? target
+            ? `${unit.name} rolls ${candidate.roll} and its Fear Aura finds ${target.cardName}.`
+            : `${unit.name} rolls +1 and its Fear Aura slows every living enemy by ${ability.initiativePenaltyOnPlusOne} Initiative.`
           : `${unit.name} rolls ${candidate.roll} for Fear Aura — no effect.`,
         dice: {
           rolls: [...candidate.rolls],
           success: succeeds,
           label: ability.abilityName,
-          caption: succeeds
-            ? `${target!.cardName} is seized by fear!`
+          caption: target
+            ? `${target.cardName} is seized by fear!`
+            : slows
+              ? `All enemies lose ${ability.initiativePenaltyOnPlusOne} Initiative.`
             : "No effect.",
           ...(candidate.modifierNotes?.length
             ? { modifiers: candidate.modifierNotes }
@@ -14278,6 +14344,25 @@ function applyActivationStartAbilities(
       });
       if (target) {
         applyParalysisToTarget(state, unit, target, ability);
+      }
+      if (slows) {
+        for (const enemy of candidates) {
+          const effect = makeActiveEffect(
+            state,
+            {
+              name: "Fear Aura",
+              scope: "unit",
+              duration: { type: "next-activation" },
+              polarity: "negative",
+              removable: true,
+              modifiers: [{ type: "INITIATIVE_BONUS", amount: -(ability.initiativePenaltyOnPlusOne ?? 0) }],
+            },
+            { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+            unit.controllerId,
+            { type: "unit", unitId: enemy.id },
+          );
+          if (effectAppliesToUnit(effect, enemy, true)) state.activeEffects.push(effect);
+        }
       }
       continue;
     }
@@ -31702,6 +31787,18 @@ function rerollPendingChoice(
       abilityId: source.abilityId,
       message: `${source.name} rerolled the same result, so its controller draws ${source.drawCount} card.`,
     });
+  }
+  if (
+    source.abilityId &&
+    source.sourceUnitId &&
+    source.healIfRerollResult !== undefined &&
+    candidate.roll === source.healIfRerollResult &&
+    (source.healCount ?? 0) > 0
+  ) {
+    const sourceUnit = combat.units[source.sourceUnitId];
+    if (sourceUnit && isUnitAlive(sourceUnit)) {
+      veteranHeal(state, sourceUnit, source.healCount ?? 0, source.abilityId);
+    }
   }
   choice.remainingRerolls = countAvailableRerolls(
     choice.rerollSources,

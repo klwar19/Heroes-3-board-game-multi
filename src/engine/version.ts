@@ -1437,7 +1437,10 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v161 (2026-09-20): six additional/redesigned commander artifacts add
 // serialized combat-start placement/eruption choices, one-shot attack wards,
 // first-attack tracking and a per-round activation shove target choice.
-export const ENGINE_PROTOCOL_VERSION = 161;
+// v162 (2026-09-21): town-unit veterancy adds per-combat Gnoll gold and Titan
+// phantom-card counters plus Fear Aura initiative effects shared by clients and
+// the authoritative PartyKit room server.
+export const ENGINE_PROTOCOL_VERSION = 162;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

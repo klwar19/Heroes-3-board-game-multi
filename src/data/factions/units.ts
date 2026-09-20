@@ -1200,7 +1200,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Pack (Steel Elf) additionally provokes NO enemy Retaliation on its attacks
     // (ignores-retaliation).
     few: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 5 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf_and_Steel_Elf",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",

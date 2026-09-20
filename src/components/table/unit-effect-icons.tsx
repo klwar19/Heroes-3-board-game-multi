@@ -157,7 +157,7 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
       key: charge.abilityId,
       kind: "unit-ability",
       image: unitRankAbilityIcon(charge.abilityId),
-      label: "Super Charge active at 5 HP or lower: attacks pierce 1 Defense and also Paralyze on 0/+1; Fear Aura succeeds on −1/0."
+      label: "Super Charge active at 5 HP or lower: attacks pierce 1 Defense and also Paralyze on 0/+1."
     });
   }
 

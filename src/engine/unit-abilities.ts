@@ -193,7 +193,7 @@ export function getUnitAttackRerollSources(
    * retaliation per the rules legend), so none is offered on a retaliation. */
   isRetaliation = false,
   defender?: CombatUnitState
-): { name: string; abilityId: string; rerolls: number; onlyOnRoll?: number; drawIfRerollResult?: number; drawCount?: number }[] {
+): { name: string; abilityId: string; rerolls: number; onlyOnRoll?: number; drawIfRerollResult?: number; drawCount?: number; healIfRerollResult?: number; healCount?: number }[] {
   if (isRetaliation) {
     return [];
   }
@@ -210,7 +210,11 @@ export function getUnitAttackRerollSources(
           ...(ability.effect.drawIfRerollResult !== undefined
             ? { drawIfRerollResult: ability.effect.drawIfRerollResult }
             : {}),
-          ...(ability.effect.drawCount !== undefined ? { drawCount: ability.effect.drawCount } : {})
+          ...(ability.effect.drawCount !== undefined ? { drawCount: ability.effect.drawCount } : {}),
+          ...(ability.effect.healIfRerollResult !== undefined
+            ? { healIfRerollResult: ability.effect.healIfRerollResult }
+            : {}),
+          ...(ability.effect.healCount !== undefined ? { healCount: ability.effect.healCount } : {})
         }]
       : []
   );
@@ -1168,6 +1172,7 @@ export type ActivationAbility = {
   kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card" | "fear-aura";
   amount: number;
   minRoll?: number;
+  initiativePenaltyOnPlusOne?: number;
 };
 
 /**
@@ -1194,6 +1199,9 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
         abilityName: ability.name,
         kind: "fear-aura",
         amount: ability.effect.onRoll,
+        ...(ability.effect.initiativePenaltyOnPlusOne !== undefined
+          ? { initiativePenaltyOnPlusOne: ability.effect.initiativePenaltyOnPlusOne }
+          : {}),
         ...(charge ? { minRoll: charge.fearMinRoll } : {})
       });
     }

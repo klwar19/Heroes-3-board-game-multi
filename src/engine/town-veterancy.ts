@@ -43,6 +43,7 @@ function sharedDrawCount(
 }
 
 export function townAttackBonus(
+  state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
   retaliation: boolean,
@@ -74,7 +75,19 @@ export function townAttackBonus(
       ? 1
       : 0) +
     (townVeterancy(attacker, "kobold-armored-prey") && currentDefense >= 2 ? 2 : 0) -
-    (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0)
+    (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0) +
+    (!retaliation && townVeterancy(attacker, "haspid-aggressive-drill") ? 1 : 0) +
+    (townVeterancy(attacker, "pit-demon-bond") &&
+    Object.values(state.combat?.units ?? {}).some(
+      (unit) =>
+        alive(unit) &&
+        unit.id !== attacker.id &&
+        unit.controllerId === attacker.controllerId &&
+        isAdjacent(unit.position, attacker.position) &&
+        (unit.unitDefId?.endsWith(".demons") || /^(demons?)$/i.test(unit.name)),
+    )
+      ? 1
+      : 0)
   );
 }
 
@@ -113,6 +126,7 @@ export function townDefenseToken(
 ): boolean {
   return (
     townVeterancy(defender, "golem-shield") ||
+    townVeterancy(defender, "nix-guarded") ||
     Object.values(state.combat?.units ?? {}).some(
       (t) =>
         alive(t) &&
@@ -195,13 +209,18 @@ export function townAfterAttack(
     memory.attack = Math.min(3, (memory.attack ?? 0) + 1);
     veteranTrigger(state, attacker, "veteran-centaur-retaliation", attacker, `${attacker.cardName} gains +1 Attack after retaliating.`);
   }
-  if (townVeterancy(attacker, "gnoll-gold")) {
+  if (townVeterancy(attacker, "gnoll-gold") && (attacker.townVeterancy?.goldEarned ?? 0) < 3) {
     const owner = state.players[attacker.controllerId];
     if (owner) {
+      const memory = (attacker.townVeterancy ??= {});
+      memory.goldEarned = (memory.goldEarned ?? 0) + 1;
       owner.resources.gold += 1;
       appendEvent(state, { type: "RESOURCES_GAINED", playerId: owner.id, gold: 1, buildingMaterials: 0, valuables: 0, reason: "Raiders' Pay" });
       veteranTrigger(state, attacker, "town-gnoll-gold", attacker, `${attacker.cardName} earns 1 Gold.`);
     }
+  }
+  if (!retaliation && townVeterancy(attacker, "haspid-aggressive-drill") && (defender.poisonCubes ?? 0) > 0) {
+    veteranHeal(state, attacker, 1, "town-haspid-aggressive-drill");
   }
   if (!retaliation && townVeterancy(attacker, "snow-elf-rune-strike")) {
     gainRunes(state, attacker.controllerId, 1);

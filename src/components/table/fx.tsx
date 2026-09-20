@@ -142,6 +142,7 @@ export type FxCue =
       fxKey: string;
       from: string;
       at: string;
+      scaleMultiplier?: number;
       sound?: string;
       delayMs?: number;
     }
@@ -744,7 +745,12 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   stage.appendChild(sprite);
   const playbackMs = (sheet.frames / sheet.fps) * 1000;
   if (cue.sound) playLibrarySound(cue.sound);
-  else if (cue.fxKey === "melee-bite-snap-animated") playLibrarySound("mgq/effects/bite");
+  else if (["melee-bite-snap-animated", "hydra-multi-bite", "haspid-poison-bite"].includes(cue.fxKey)) {
+    playLibrarySound("mgq/effects/bite");
+    if (cue.fxKey === "haspid-poison-bite") {
+      window.setTimeout(() => playLibrarySound("spells/poison", 0.45), Math.round(playbackMs * 0.5));
+    }
+  }
   else if (cue.fxKey === "thunderbird-trident-zap-animated") playLibrarySound("mgq/effects/thunder4");
   else if (cue.fxKey.includes("breath") || cue.fxKey === "phoenix-flame-flow-animated") {
     playWhoosh();
@@ -782,7 +788,7 @@ async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "sla
   const scale = Math.min(
     (toRect.width * 1.05) / sheet.frameWidth,
     (toRect.height * 1.05) / sheet.frameHeight,
-  );
+  ) * (cue.scaleMultiplier ?? 1);
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxMeleeImpact";
   sprite.style.width = `${sheet.frameWidth}px`;
@@ -817,6 +823,7 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
   if ([
     "melee-thrust-impact", "melee-bite-snap-animated",
     "thunderbird-trident-zap-animated",
+    "hydra-multi-bite", "haspid-poison-bite",
     "phoenix-flame-flow-animated", "dragon-fire-breath-animated", "dragon-fierce-breath-animated",
     "azure-ice-breath-animated", "crystal-red-strike-animated", "rust-acid-breath-animated",
   ].includes(cue.fxKey)) return runThrust(stage, cue);

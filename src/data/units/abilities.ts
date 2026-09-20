@@ -34,7 +34,8 @@ export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd
   | "seaman-survival-gold" | "ayssid-slow" | "sorceress-ranged-mend" | "sorceress-artifact-tax"
   | "haspid-toxic-hide" | "haspid-unstoppable-counter" | "kobold-rune-step" | "kobold-armored-prey" | "ram-spell-draw" | "ram-trample"
   | "snow-elf-rune-strike" | "jotunn-rune-hide" | "jotunn-rune-bolt" | "mammoth-rune-mend"
-  | "mammoth-hunter" | "mammoth-last-stand" | "centaur-retaliation" | "behemoth-odd-defense" | "minotaur-last-stand" | "skeleton-last-stand";
+  | "mammoth-hunter" | "mammoth-last-stand" | "centaur-retaliation" | "behemoth-odd-defense" | "minotaur-last-stand" | "skeleton-last-stand"
+  | "basilisk-lower-roll" | "nix-guarded" | "pit-demon-bond" | "haspid-aggressive-drill";
 
 export type CustomTownVeterancyMechanic = "muscle-reversal" | "returning-edge" | "covering-extraction" | "meridian-exchange" | "rule-unravel" | "field-repair" | "break-cover" | "clear-mind" | "rescue-step" | "blood-price";
 
@@ -121,7 +122,13 @@ export type UnitAbilityEffectDefinition =
     }
   | { type: "DEFENSE_REDUCTION_AFTER_MOVE"; amount: number }
   | { type: "DRAW_ON_DEFEAT_SIDE_OR_LAYER"; amount: number }
-  | { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY"; onRoll: number; superChargeFear?: boolean }
+  | {
+      type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY";
+      onRoll: number;
+      /** Fear Aura's +1 face slows every living enemy until each one's next activation. */
+      initiativePenaltyOnPlusOne?: number;
+      superChargeFear?: boolean;
+    }
   | { type: "ON_ATTACKED_HEAL_SELF"; amount: number }
   | { type: "AZURE_DRAGON_SUPER_CHARGE"; healthAtMost: number; defenseReduction: number; paralysisRolls: number[]; fearMinRoll: number }
   | {
@@ -662,6 +669,9 @@ export type UnitAbilityEffectDefinition =
       /** Aru Hardboiled Boss: draw when the replacement result matches this face. */
       drawIfRerollResult?: number;
       drawCount?: number;
+      /** Wyverns: heal the source when a replacement die lands on this face. */
+      healIfRerollResult?: number;
+      healCount?: number;
     }
   | {
       /**
@@ -1838,7 +1848,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-cyber-splash": { id: "veteran-cyber-splash", name: "Explosive Salvo", text: "When this unit attacks and rolls -1 or 0, also deal 2 damage to a chosen unit adjacent to this unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "cyber-splash" }, implementationStatus: "implemented" },
   "veteran-adjacent-pulse": { id: "veteran-adjacent-pulse", name: "Close Quarters Strike", text: "When this unit activates, deal 1 damage to a chosen adjacent enemy.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "adjacent-pulse" }, implementationStatus: "implemented" },
   "veteran-blind-dust": { id: "veteran-blind-dust", name: "Blind Dust", text: "When this unit activates, choose an enemy. Until that enemy finishes its next activation, it must always reroll +1 die results.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "blind-dust" }, implementationStatus: "implemented" },
-  "veteran-dracolich-fear-aura": { id: "veteran-dracolich-fear-aura", name: "Fear Aura", text: "When this unit activates, roll 1 Attack die. On 0, Paralyze one random living enemy unit.", effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: 0 }, implementationStatus: "implemented" },
+  "veteran-dracolich-fear-aura": { id: "veteran-dracolich-fear-aura", name: "Fear Aura", text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit. On +1, every living enemy loses 2 Initiative until its next activation.", effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1, initiativePenaltyOnPlusOne: 2 }, implementationStatus: "implemented" },
   "veteran-sandstorm": { id: "veteran-sandstorm", name: "Sandstorm", text: "At the start of combat, deal 1 damage to every enemy unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "sandstorm" }, implementationStatus: "implemented" },
   "veteran-thunder-retaliation": { id: "veteran-thunder-retaliation", name: "Thunderbolt Retaliation", text: "When this unit retaliates and rolls 0 or +1, also deal 1 bonus damage to the enemy.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "thunder-retaliation" }, implementationStatus: "implemented" },
   "veteran-troll-resilience": { id: "veteran-troll-resilience", name: "Troll Resilience", text: "An enemy attacking this unit with a -1 or +1 die result suffers -2 Attack for that attack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "troll-resilience" }, implementationStatus: "implemented" },
@@ -4073,13 +4083,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-devil-draw": { id: "town-devil-draw", name: "Spoils of Death", text: "After defeating an enemy, including Pack to Few or a lost Stack, draw 1 card, at most 3 per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-draw" }, implementationStatus: "implemented" },
   "town-efreet-mend": { id: "town-efreet-mend", name: "Cinder Renewal", text: "Enemy retaliation has -1 Attack. After being retaliated against, heal 1 HP if alive.", effect: { type: "TOWN_VETERANCY", mechanic: "efreet-mend" }, implementationStatus: "implemented" },
   "town-dragon-fly-landing": { id: "town-dragon-fly-landing", name: "Venomous Landing", text: "After moving and landing, deal 1 damage to a chosen adjacent unit.", effect: { type: "TOWN_VETERANCY", mechanic: "dragon-fly-landing" }, implementationStatus: "implemented" },
-  "town-gnoll-gold": { id: "town-gnoll-gold", name: "Raiders' Pay", text: "After each attack or Retaliation Attack this unit resolves, gain 1 Gold.", effect: { type: "TOWN_VETERANCY", mechanic: "gnoll-gold" }, implementationStatus: "implemented" },
+  "town-gnoll-gold": { id: "town-gnoll-gold", name: "Raiders' Pay", text: "After each attack or Retaliation Attack this unit resolves, gain 1 Gold, to a maximum of 3 Gold per battle.", effect: { type: "TOWN_VETERANCY", mechanic: "gnoll-gold" }, implementationStatus: "implemented" },
   "town-lizard-spell-draw": { id: "town-lizard-spell-draw", name: "Spellwatch", text: "Whenever an enemy casts a Spell from hand, draw 1 card, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "lizard-spell-draw" }, implementationStatus: "implemented" },
-  "town-gorgon-stare-reroll": { id: "town-gorgon-stare-reroll", name: "Focused Death Stare", text: "Each time this unit rolls Death Stare, you may reroll one of its dice once.", effect: { type: "TOWN_VETERANCY", mechanic: "gorgon-stare-reroll" }, implementationStatus: "implemented" },
+  "town-gorgon-stare-reroll": { id: "town-gorgon-stare-reroll", name: "Focused Death Stare", text: "Each time this unit rolls Death Stare, you may choose and reroll exactly one Death Stare die once; the other die is unchanged.", effect: { type: "TOWN_VETERANCY", mechanic: "gorgon-stare-reroll" }, implementationStatus: "implemented" },
   "town-gorgon-armored-prey": { id: "town-gorgon-armored-prey", name: "Crush Armor", text: "+1 Attack against units with 2 or more Defense.", effect: { type: "TOWN_VETERANCY", mechanic: "gorgon-armored-prey" }, implementationStatus: "implemented" },
-  "town-hydra-forced-reroll": { id: "town-hydra-forced-reroll", name: "Many-Headed Feint", text: "Once per attack, an enemy attacking this unit must reroll every +1 Attack die result.", effect: { type: "TOWN_VETERANCY", mechanic: "hydra-forced-reroll" }, implementationStatus: "implemented" },
+  "town-hydra-forced-reroll": { id: "town-hydra-forced-reroll", name: "Many-Headed Feint", text: "Once per attack, an enemy attacking this unit must reroll every +1 Attack die result. If any replacement is still +1, that enemy loses 1 HP.", effect: { type: "TOWN_VETERANCY", mechanic: "hydra-forced-reroll" }, implementationStatus: "implemented" },
   "town-hydra-round-mend": { id: "town-hydra-round-mend", name: "Hydra Regrowth", text: "At the start of each combat round, remove up to 2 damage from this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "hydra-round-mend" }, implementationStatus: "implemented" },
-  "town-wyvern-reroll": { id: "town-wyvern-reroll", name: "Predator's Instinct", text: "May reroll a -1 result on this unit's Attack die, up to twice per attack.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 2, onlyOnRoll: -1 }, implementationStatus: "implemented" },
+  "town-wyvern-reroll": { id: "town-wyvern-reroll", name: "Predator's Instinct", text: "May reroll a -1 result on this unit's Attack die, up to twice per attack. Heal 1 HP for each replacement result that is still -1.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 2, onlyOnRoll: -1, healIfRerollResult: -1, healCount: 1 }, implementationStatus: "implemented" },
   "town-wyvern-potent-poison": { id: "town-wyvern-potent-poison", name: "Virulent Venom", text: "Poison cubes placed by this unit deal 2 damage instead of 1.", effect: { type: "TOWN_VETERANCY", mechanic: "wyvern-potent-poison" }, implementationStatus: "implemented" },
   "town-sea-dog-ranged-retaliation": { id: "town-sea-dog-ranged-retaliation", name: "Return Fire", text: "This unit can retaliate against ranged attacks, including non-adjacent attackers.", effect: { type: "TOWN_VETERANCY", mechanic: "sea-dog-ranged-retaliation" }, implementationStatus: "implemented" },
   "town-seaman-survival-gold": { id: "town-seaman-survival-gold", name: "Survivor's Share", text: "After taking part in a battle and surviving it, gain 1 bonus Gold.", effect: { type: "TOWN_VETERANCY", mechanic: "seaman-survival-gold" }, implementationStatus: "implemented" },
@@ -4089,6 +4099,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-haspid-toxic-hide": { id: "town-haspid-toxic-hide", name: "Toxic Hide", text: "After an enemy ground or flying unit attacks this unit, that attacker receives 1 poison cube.", effect: { type: "TOWN_VETERANCY", mechanic: "haspid-toxic-hide" }, implementationStatus: "implemented" },
   "town-haspid-unstoppable-counter": { id: "town-haspid-unstoppable-counter", name: "Unstoppable Vengeance", text: "May retaliate more than once per combat round and can retaliate even against attacks that normally prevent retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "haspid-unstoppable-counter" }, implementationStatus: "implemented" },
   "town-nix-intercept": { id: "town-nix-intercept", name: "Tidewall Guard", text: "Once per combat round, this unit can intercept an attack against an adjacent ally and become its target.", effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE" }, implementationStatus: "implemented" },
+  "town-basilisk-lower-roll": { id: "town-basilisk-lower-roll", name: "Petrifying Guard", text: "When attacked, including by a Retaliation Attack, the enemy rolls 2 Attack dice and resolves the lower result.", effect: { type: "TOWN_VETERANCY", mechanic: "basilisk-lower-roll" }, implementationStatus: "implemented" },
+  "town-nix-guarded": { id: "town-nix-guarded", name: "Guarded", text: "Always treated as having a Defense token and rolls the Defend die when attacked. On 0 or +1, gain +1 Defense for that attack.", effect: { type: "TOWN_VETERANCY", mechanic: "nix-guarded" }, implementationStatus: "implemented" },
+  "town-pit-demon-bond": { id: "town-pit-demon-bond", name: "Demonic Command", text: "+1 Initiative. While adjacent to a living allied Demon unit, gain +1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "pit-demon-bond" }, implementationStatus: "implemented" },
+  "town-titan-storm-cache": { id: "town-titan-storm-cache", name: "Storm Cache", text: "During any attack, roll 2 Attack dice and resolve the higher outcome. If neither die is +1, gain a phantom Chain Lightning card, maximum 2 per combat; phantom cards disappear after combat.", effect: { type: "ATTACK_ROLL_ADVANTAGE" }, implementationStatus: "implemented" },
+  "town-haspid-aggressive-drill": { id: "town-haspid-aggressive-drill", name: "Aggressive Drill", text: "+1 Attack on this unit's own attacks, not Retaliation Attacks. After that attack resolves, if the enemy already has a poison cube, heal 1 HP.", effect: { type: "TOWN_VETERANCY", mechanic: "haspid-aggressive-drill" }, implementationStatus: "implemented" },
   "town-kobold-rune-step": { id: "town-kobold-rune-step", name: "Runic Footfall", text: "Whenever this unit moves, gain 1 Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "kobold-rune-step" }, implementationStatus: "implemented" },
   "town-kobold-armored-prey": { id: "town-kobold-armored-prey", name: "Armored Prey", text: "+2 Attack against units with 2 or more Defense.", effect: { type: "TOWN_VETERANCY", mechanic: "kobold-armored-prey" }, implementationStatus: "implemented" },
   "town-ram-spell-draw": { id: "town-ram-spell-draw", name: "Runic Inspiration", text: "Whenever you cast a Spell from any source, draw 1 card, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "ram-spell-draw" }, implementationStatus: "implemented" },
@@ -4300,15 +4315,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-fear-aura": {
     id: "veteran-fear-aura",
     name: "Fear Aura",
-    text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit.",
-    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1 },
+    text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit. On +1, every living enemy loses 2 Initiative until its next activation.",
+    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1, initiativePenaltyOnPlusOne: 2 },
     implementationStatus: "implemented"
   },
   "veteran-azure-fear-aura": {
     id: "veteran-azure-fear-aura",
     name: "Fear Aura",
-    text: "When this unit activates, roll 1 Attack die. On 0, Paralyze one random living enemy unit. While Super Charge is active, succeeds on −1 or 0 instead.",
-    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: 0, superChargeFear: true },
+    text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit. On +1, every living enemy loses 2 Initiative until its next activation.",
+    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1, initiativePenaltyOnPlusOne: 2 },
     implementationStatus: "implemented"
   },
   "veteran-azure-mending-scales": {
@@ -4328,7 +4343,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-azure-super-charge": {
     id: "veteran-azure-super-charge",
     name: "Super Charge",
-    text: "While at 5 HP or lower, this unit's attacks pierce 1 Defense and also Paralyze on a resolved Attack die of 0 or +1, including Azure Breath and Retaliation Attacks. Its printed −1 paralysis remains unchanged. Fear Aura succeeds on −1 or 0. Ends when HP rises above 5.",
+    text: "While at 5 HP or lower, this unit's attacks pierce 1 Defense and also Paralyze on a resolved Attack die of 0 or +1, including Azure Breath and Retaliation Attacks. Its printed −1 paralysis remains unchanged. Ends when HP rises above 5.",
     effect: { type: "AZURE_DRAGON_SUPER_CHARGE", healthAtMost: 5, defenseReduction: 1, paralysisRolls: [0, 1], fearMinRoll: -1 },
     implementationStatus: "implemented"
   },

@@ -254,6 +254,7 @@ import {
   spriteDurationMs,
   unitMeleeFxKey,
   unitExtraShotFxPlan,
+  unitAlwaysUsesProjectilePresentation,
   unitShotFxPlan,
   unitUsesProjectilePresentation,
   warMachineFxPlans,
@@ -2872,29 +2873,33 @@ export default function Home() {
             return;
           }
 
-          const ranged =
+          const attackDeclaration =
             attackDeclarationForRoll(
               nextState.eventLog,
               roll.attackerId,
               roll.defenderId,
               roll.isRetaliation,
               roll.id
-            )
-              ?.attackKind === "ranged";
+            );
+          const ranged = attackDeclaration?.attackKind === "ranged";
+          const lichDeathCloudFollowUp = attackDeclaration?.abilityAttack?.abilityId === "lich-death-cloud";
           // The attacker's own H3 voice as it strikes (after the die, not on the
           // declaration). A magical striker (the Magic Elemental) layers a magic
           // zap over its voice so its blow reads as raw magic, not a plain thwack.
           const attackerVoice = unitVoice(roll.attackerId);
+          const attackerFxSlug = attackerVoice?.split(/[.:]/).at(-1)?.replaceAll("-", "_");
+          const dracolichMelee = !ranged && attackerFxSlug === "dracolich";
           // Some firearm creatures retain ground movement/attack legality but
           // still need their authored gun presentation (Shotgun Guy, Spider
           // Mastermind, and ground-class Blue Archive students). This lookup is
           // visual only and never changes the engine's attack kind or legality.
           // Ground-class firearm units use their authored shot on their OWN
-          // nominally-melee attacks. A retaliation still obeys its declaration:
-          // a melee retaliation must show the unit's melee profile, while a
-          // genuinely ranged retaliation continues through `ranged` above.
+          // nominally-melee attacks. Their retaliation still obeys its melee
+          // declaration; Kud and Komari are the deliberate exception because a
+          // missile/heart is their battlefield-hero weapon in every attack.
           const visualProjectileOverride =
-            !roll.isRetaliation && unitUsesProjectilePresentation(attackerVoice);
+            unitUsesProjectilePresentation(attackerVoice)
+            && (!roll.isRetaliation || unitAlwaysUsesProjectilePresentation(attackerVoice));
           const shotPlan =
             ranged || visualProjectileOverride
               ? unitShotFxPlan(attackerVoice)
@@ -2902,7 +2907,14 @@ export default function Home() {
           const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
           const projectileSheet = shotPlan?.projectile ? getFxSheet(shotPlan.projectile) : undefined;
           const phasedShot = Boolean(projectileSheet?.projectilePhases || projectileSheet?.beamFrames);
-          playUnitSound(attackerVoice, usesProjectilePresentation ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0), unitVariant(roll.attackerId));
+          if (!lichDeathCloudFollowUp) {
+            playUnitSound(
+              attackerVoice,
+              dracolichMelee ? "attack" : usesProjectilePresentation ? "shoot" : "attack",
+              strikeAt + (phasedShot && !dracolichMelee ? RANGED_RELEASE_MS : 0),
+              unitVariant(roll.attackerId)
+            );
+          }
           // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
           // Bolt) flies the real projectile + burst + spell sound below; its
           // spell sound then carries the shot, so the extra flourish is skipped
@@ -2911,20 +2923,33 @@ export default function Home() {
           if (attackFlourish) {
             window.setTimeout(() => playLibrarySound(attackFlourish, 0.4), strikeAt);
           }
-          cues.push({
-            kind: "lunge",
-            id: `${roll.id}-lunge`,
-            attackerId: roll.attackerId,
-            to: defenderCell,
-            attackKind: usesProjectilePresentation ? "ranged" : "melee",
-            // Cards always stand upright now, so the lunge uses the plain
-            // screen-space direction to the target.
-            flip: false,
-            delayMs: strikeAt
-          });
+          if (!lichDeathCloudFollowUp) {
+            cues.push({
+              kind: "lunge",
+              id: `${roll.id}-lunge`,
+              attackerId: roll.attackerId,
+              to: defenderCell,
+              attackKind: dracolichMelee ? "melee" : usesProjectilePresentation ? "ranged" : "melee",
+              // Cards always stand upright now, so the lunge uses the plain
+              // screen-space direction to the target.
+              flip: false,
+              delayMs: strikeAt
+            });
+          }
           const attackerCell =
             attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
-          if (usesProjectilePresentation) {
+          if (lichDeathCloudFollowUp) {
+            // Death Cloud's second attack is already the cloud itself: no Lich
+            // card attack motion and no duplicate ranged projectile.
+            cues.push({
+              kind: "sprite",
+              id: `${roll.id}-death-cloud`,
+              fxKey: "death-cloud",
+              at: defenderCell,
+              sound: "spells/death-cloud",
+              delayMs: strikeAt
+            });
+          } else if (usesProjectilePresentation) {
             if (shotPlan?.projectile) {
               // Authored launch/flight/impact frames follow the same impact
               // clock as damage. Rapid-fire profiles stagger 3–4 visible rounds
@@ -2950,6 +2975,18 @@ export default function Home() {
                   delayMs: strikeAt + (phasedShot ? 0 : RANGED_RELEASE_MS) + projectileIndex * projectileIntervalMs
                 });
               }
+              if (dracolichMelee) {
+                // The adjacent Dracolich physically bites while its necrotic
+                // Lich-style cloud travels along the same source→target line.
+                cues.push({
+                  kind: "slash",
+                  id: `${roll.id}-dracolich-bite`,
+                  fxKey: "melee-bite-snap-animated",
+                  from: attackerCell,
+                  at: defenderCell,
+                  delayMs: strikeAt + 276
+                });
+              }
             } else {
               cues.push({
                 kind: "bolt",
@@ -2961,15 +2998,26 @@ export default function Home() {
             }
           } else {
             const meleeFxKey = unitMeleeFxKey(attackerVoice);
-            cues.push({
-              kind: "slash",
-              id: `${roll.id}-slash`,
-              fxKey: meleeFxKey,
-              from: attackerCell,
-              at: defenderCell,
-              // The forward frames arrive as the damage lands at impactAt.
-              delayMs: strikeAt + (meleeFxKey === "melee-thrust-impact" ? 250 : 276)
-            });
+            const targetOnly = meleeFxKey === "town-ram-earth-spike";
+            const behemothClaw = meleeFxKey === "melee-claw-rake-animated" && attackerFxSlug === "behemoths";
+            const repeats = behemothClaw ? 3 : 1;
+            for (let repeat = 0; repeat < repeats; repeat += 1) cues.push(targetOnly ? {
+                kind: "sprite",
+                id: `${roll.id}-melee-${repeat}`,
+                fxKey: meleeFxKey,
+                at: defenderCell,
+                delayMs: strikeAt + 180 + repeat * 135
+              } : {
+                kind: "slash",
+                id: `${roll.id}-slash-${repeat}`,
+                fxKey: meleeFxKey,
+                from: attackerCell,
+                at: defenderCell,
+                scaleMultiplier: behemothClaw ? 1.45 : undefined,
+                // Directional atlases are rotated from the live attacker toward
+                // the live target; Hydra's consecutive bites live in one atlas.
+                delayMs: strikeAt + (meleeFxKey === "melee-thrust-impact" ? 250 : 276) + repeat * 135
+              });
           }
           // The struck unit recoils at the moment of impact.
           cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
@@ -3739,6 +3787,11 @@ export default function Home() {
               // presented up front in the preamble; its damage pins to that beat
               // below. Skip it here so the cast is not queued a second time.
               if (leadingSpellEventIds.has(event.id)) {
+                break;
+              }
+              // Its ATTACK_ROLLED cue owns the target-anchored cloud and SFX so
+              // a reaction window cannot play them early or duplicate them.
+              if (event.abilityId === "lich-death-cloud") {
                 break;
               }
               // An ability that physically threw dice (Death Stare, the

@@ -409,6 +409,25 @@ describe("activation-start abilities", () => {
         (unit) => unit.controllerId === "p2" && unitTokens(afterMiss, unit.id).includes("paralysis")
       )
     ).toBe(false);
+
+    const slow = createInitialGameState("hydra-fear-slow");
+    slow.combat!.units.unit_p1_crusaders.abilities = ["veteran-fear-aura"];
+    slow.combat!.dice.scriptedRolls = [1];
+    slow.combat!.dice.rollCount = 0;
+    const afterSlow = activateOnly(slow, "unit_p1_crusaders");
+    const livingEnemies = Object.values(afterSlow.combat!.units).filter(
+      (unit) => unit.controllerId === "p2" && unit.damage < unit.maxHealth
+    );
+    expect(livingEnemies.length).toBeGreaterThan(0);
+    for (const enemy of livingEnemies) {
+      expect(afterSlow.activeEffects).toContainEqual(
+        expect.objectContaining({
+          target: { type: "unit", unitId: enemy.id },
+          duration: { type: "next-activation" },
+          modifiers: [expect.objectContaining({ type: "INITIATIVE_BONUS", amount: -2 })]
+        })
+      );
+    }
   });
 
   it("Ghost Dragons discard the enemy's positive morale token when they activate", () => {

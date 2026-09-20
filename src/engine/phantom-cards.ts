@@ -21,7 +21,11 @@ import type { CardId } from "./state";
 export const PHANTOM_CARD_MARKER = "#phantom";
 
 /** Base ids that may be granted as phantom combat cards (see combat-boost.ts). */
-const PHANTOM_BASE_CARD_IDS: readonly CardId[] = ["stat.power", "spell.magic_arrow"];
+const PHANTOM_BASE_CARD_IDS: readonly CardId[] = [
+  "stat.power",
+  "spell.magic_arrow",
+  "spell.chain_lightning",
+];
 
 export function isPhantomCardId(id: string): boolean {
   return id.endsWith(PHANTOM_CARD_MARKER);

@@ -10187,6 +10187,10 @@ export type CombatUnitState = {
     flipUsed?: boolean;
     lossRecorded?: boolean;
     draws?: number;
+    /** Gnolls' Raiders' Pay earnings in this combat (hard-capped at 3). */
+    goldEarned?: number;
+    /** Titans' phantom Chain Lightning cards granted in this combat (max 2). */
+    titanPhantomCards?: number;
     lastAttackRoll?: number;
     improvisedRound?: number;
     returnFireRound?: number;
@@ -17099,6 +17103,8 @@ export type AttackRerollSource = {
   futureSight?: boolean;
   drawIfRerollResult?: number;
   drawCount?: number;
+  healIfRerollResult?: number;
+  healCount?: number;
   /** Backing active effect; unit-ability rerolls have none. */
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */

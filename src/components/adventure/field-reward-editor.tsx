@@ -212,8 +212,9 @@ export function FieldRewardEditor({
                     );
                     onChange(nextFieldReward(reward, timesKey, amount));
                   }}
+                  placeholder="1"
                   type="number"
-                  value={size > 0 ? times : ""}
+                  value={size > 0 ? (reward?.[timesKey] ?? "") : ""}
                 />
               </label>
               {size > 0 ? (

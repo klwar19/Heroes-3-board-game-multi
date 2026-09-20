@@ -79,6 +79,16 @@ sheets["town-ram-earth-spike"] = {
   frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 28,
   anchor: "bottom", scaleMultiplier: 0.72, sourceDef: "imagegen-town-ram-earth-spike", sequentialFrames: true,
 };
+sheets["town-dragon-fly-venomous-landing"] = {
+  src: "/fx/town-dragon-fly-venomous-landing.webp", label: "Dragon Fly venomous landing", group: "town-veterancy", role: "affect",
+  frames: 16, cols: 4, rows: 4, frameWidth: 313.5, frameHeight: 313.5, fps: 24,
+  anchor: "center", coverage: 1.35, sourceDef: "imagegen-town-dragon-fly-venomous-landing", sequentialFrames: true,
+};
+sheets["town-gnoll-gold-coin"] = {
+  src: "/assets/anime/equipment/lucky_coin.webp", label: "Raiders' Pay gold coin", group: "town-veterancy", role: "affect",
+  frames: 1, cols: 1, rows: 1, frameWidth: 192, frameHeight: 192, fps: 15,
+  anchor: "center", coverage: 0.72, sourceDef: "existing-lucky-coin-art",
+};
 // Purpose-built, transparent physical projectiles for the three damaging war
 // machines. These are code-shipped under /public/fx (rather than CDN media), so
 // a combat snapshot can always render them even when the larger art pack is not
@@ -122,19 +132,68 @@ sheets["melee-claw-rake-animated"] = {
   frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 32,
   anchor: "center", sourceDef: "imagegen-melee-claw-marks", sequentialFrames: true,
 };
+sheets["arch-devil-hellfire-slash"] = {
+  src: "/fx/arch-devil-hellfire-slash.webp", label: "Arch Devil dark hellfire slash", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 313.5, frameHeight: 313.5, fps: 32,
+  anchor: "center", sourceDef: "imagegen-arch-devil-hellfire-slash", sequentialFrames: true,
+};
+sheets["hydra-multi-bite"] = {
+  src: "/fx/hydra-multi-bite.webp", label: "Hydra consecutive multi-bite", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 313.5, frameHeight: 313.5, fps: 24,
+  anchor: "center", sourceDef: "imagegen-hydra-multi-bite", sequentialFrames: true,
+};
+sheets["haspid-poison-bite"] = {
+  src: "/fx/haspid-poison-bite.webp", label: "Haspid poison bite", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 313.5, frameHeight: 313.5, fps: 28,
+  anchor: "center", sourceDef: "imagegen-haspid-poison-bite", sequentialFrames: true,
+};
+
+// Compact original anime-town contact atlases. Every sheet is authored facing
+// right; the renderer rotates and mirrors it from the live attacker anchor to
+// the live target anchor, including opposite-side and flipped boards.
+for (const [key, label] of [
+  ["anime-naval-melee", "Point-blank naval barrage"],
+  ["blue-archive-melee", "Kivotos tactical baton strike"],
+  ["mgq-tentacle-lash", "Monster tentacle lash"],
+  ["little-busters-warning-strike", "Disciplinary warning strike"],
+  ["saya-multi-slash", "Saya multi-slash"],
+  ["softball-melee-strike", "Softball Club bat strike"],
+  ["haruka-marble-strike", "Haruka marble prank strike"],
+  ["masato-muscle-punch", "Masato muscle punch"],
+  ["mio-parasol-thrust", "Mio parasol thrust"],
+  ["rins-cats-pounce", "Rin's Cats triple pounce"],
+  ["sasami-softball-strike", "Sasami captain softball strike"],
+  ["riki-team-heart-strike", "Riki Team Heart charge"],
+  ["rin-catlike-combo", "Rin catlike combo"],
+] as const) {
+  sheets[key] = {
+    src: key === "little-busters-warning-strike"
+      ? "/fx/little-busters-warning-shot.webp"
+      : `/fx/${key}.webp`,
+    label, group: "anime-melee-attacks", role: "hit",
+    frames: 16, cols: 4, rows: 4, frameWidth: 192, frameHeight: 192, fps: 32,
+    anchor: "center", sourceDef: `imagegen-${key}`, sequentialFrames: true,
+  };
+}
 
 export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact"
   | "melee-claw-rake-animated" | "melee-bite-snap-animated" | "thunderbird-trident-zap-animated"
   | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "dragon-fierce-breath-animated" | "azure-ice-breath-animated"
-  | "crystal-red-strike-animated" | "rust-acid-breath-animated";
+  | "crystal-red-strike-animated" | "rust-acid-breath-animated" | "arch-devil-hellfire-slash"
+  | "hydra-multi-bite" | "haspid-poison-bite" | "town-ram-earth-spike"
+  | "anime-naval-melee" | "blue-archive-melee" | "mgq-tentacle-lash"
+  | "little-busters-warning-strike" | "saya-multi-slash" | "softball-melee-strike"
+  | "haruka-marble-strike" | "masato-muscle-punch" | "mio-parasol-thrust"
+  | "rins-cats-pounce" | "sasami-softball-strike" | "riki-team-heart-strike"
+  | "rin-catlike-combo";
 
 // Only unmistakable blade users receive the crescent. Point-first weapons,
 // horns and charges use the close-range thrust. Explicit anatomy profiles below
 // cover talons and jaws; fists, clubs, magic bodies and any custom unit without
 // a specific profile use the compact contact burst.
 const crescentSlashUnits = new Set([
-  "arch_devils", "assassins", "berserkers", "bounty_hunters", "crusaders",
-  "dread_knights", "dwarves", "efreet", "genin_squad", "hokage_vanguard",
+  "assassins", "berserkers", "bounty_hunters", "crusaders",
+  "dread_knights", "dwarves", "genin_squad", "hokage_vanguard",
   "inner_swordsmen", "minotaurs", "nagas", "nix", "nomads", "oceanids",
   "outer_disciples", "pit_lords", "rogues", "sabers", "seamen", "sect_protectors",
   "skeletons", "space_marines", "true_inheritors", "wolf_raiders",
@@ -154,8 +213,76 @@ const biteUnits = new Set([
   "hydras", "sandworms",
 ]);
 
+const animeMeleeFxByUnit: Record<string, MeleeFxKey> = {
+  // Little Busters: every recruit/summon and every melee battlefield hero has
+  // a distinct presentation. Kud and Komari are forced through their ranged
+  // missile/heart plans below even when attacking an adjacent target.
+  "little_busters.haruka": "haruka-marble-strike",
+  "little_busters.rins_cats": "rins-cats-pounce",
+  "little_busters.disciplinary_committee": "little-busters-warning-strike",
+  "little_busters.masato": "masato-muscle-punch",
+  "little_busters.softball_club": "softball-melee-strike",
+  "little_busters.saya": "saya-multi-slash",
+  "little_busters.mio": "mio-parasol-thrust",
+  "little_busters.stray_cat": "melee-bite-snap-animated",
+  "little_busters.alley_cat": "melee-claw-rake-animated",
+  sasami_sasasegawa: "sasami-softball-strike",
+  riki_naoe: "riki-team-heart-strike",
+  rin_natsume: "rin-catlike-combo",
+  yuiko_kurugaya: "melee-crescent-slash",
+
+  // Monster Girl Quest Paradox anatomy/weapon profiles. Ranged cards use the
+  // same profile when adjacency makes their attack melee.
+  "mgq.spirit_sylph": "melee-starry-strike",
+  "mgq.spirit_gnome": "melee-thrust-impact",
+  "mgq.spirit_undine": "mgq-tentacle-lash",
+  "mgq.spirit_salamander": "dragon-fire-breath-animated",
+  "mgq.pochi": "melee-bite-snap-animated",
+  "mgq.shesta": "melee-claw-rake-animated",
+  "mgq.gigi": "melee-bite-snap-animated",
+  "mgq.kamuro_kitsu": "melee-claw-rake-animated",
+  "mgq.fleesia": "mgq-tentacle-lash",
+  "mgq.sofia": "melee-bite-snap-animated",
+  "mgq.miyabi": "mgq-tentacle-lash",
+  "mgq.eater": "melee-bite-snap-animated",
+  "mgq.hild": "melee-starry-strike",
+  "mgq.chrome_frederica": "melee-claw-rake-animated",
+  "mgq.shizuku": "melee-starry-strike",
+  "mgq.regina": "melee-crescent-slash",
+  "mgq.maiden": "melee-thrust-impact",
+  "mgq.seraphy": "melee-bite-snap-animated",
+  "mgq.lisa": "melee-starry-strike",
+  "mgq.tama": "melee-claw-rake-animated",
+  "mgq.maya": "mgq-tentacle-lash",
+  "mgq.matis": "melee-claw-rake-animated",
+  "mgq.ooma": "mgq-tentacle-lash",
+  "mgq.jessie": "melee-thrust-impact",
+  "mgq.aria": "mgq-tentacle-lash",
+  "mgq.carmilla": "melee-bite-snap-animated",
+  "mgq.giga": "dragon-fierce-breath-animated",
+  "mgq.lucretia": "melee-claw-rake-animated",
+  "mgq.cupi": "melee-starry-strike",
+  "mgq.sphinx": "melee-bite-snap-animated",
+  "mgq.lucifina_chan": "melee-starry-strike",
+  "mgq.spider_princess": "melee-bite-snap-animated",
+  "mgq.emily": "mgq-tentacle-lash",
+};
+
 export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
+  if (unitDefId?.startsWith("azur_lane.")) return "anime-naval-melee";
+  if (unitDefId === "blue_archive.mika") return "masato-muscle-punch";
+  if (unitDefId === "blue_archive.seia") return "melee-starry-strike";
+  if (unitDefId === "blue_archive.kei") return "thunderbird-trident-zap-animated";
+  if (unitDefId === "blue_archive.miyo") return "melee-crescent-slash";
+  if (unitDefId?.startsWith("blue_archive.")) return "blue-archive-melee";
+  const animeProfile = unitDefId ? animeMeleeFxByUnit[unitDefId] : undefined;
+  if (animeProfile) return animeProfile;
   const slug = unitDefId?.split(/[.:]/).at(-1)?.replaceAll("-", "_");
+  if (slug === "arch_devils") return "arch-devil-hellfire-slash";
+  if (slug === "hydras") return "hydra-multi-bite";
+  if (slug === "haspids") return "haspid-poison-bite";
+  if (["earth_elementals", "magma_elementals"].includes(slug ?? "")) return "town-ram-earth-spike";
+  if (["efreet", "fire_elementals"].includes(slug ?? "")) return "dragon-fire-breath-animated";
   if (["phoenix", "phoenixes"].includes(slug ?? "")) return "phoenix-flame-flow-animated";
   if (["azure_dragon", "azure_dragons"].includes(slug ?? "")) return "azure-ice-breath-animated";
   if (["crystal_dragon", "crystal_dragons"].includes(slug ?? "")) return "crystal-red-strike-animated";
@@ -168,7 +295,9 @@ export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
   // The Gorgon's attack is presented as the same directed breath stream as a
   // dragon, while retaining the Gorgon's own attack voice and Death Stare FX.
   if (["gorgon", "gorgons", "warden_gorgon_matron"].includes(slug ?? "")) return "dragon-fire-breath-animated";
-  if (["thunderbird", "thunderbirds"].includes(slug ?? "")) return "thunderbird-trident-zap-animated";
+  if (["air_elementals", "storm_elementals", "energy_elementals", "thunderbird", "thunderbirds"].includes(slug ?? "")) {
+    return "thunderbird-trident-zap-animated";
+  }
   if (slug && clawUnits.has(slug)) return "melee-claw-rake-animated";
   if (slug && biteUnits.has(slug)) return "melee-bite-snap-animated";
   if (slug && crescentSlashUnits.has(slug)) return "melee-crescent-slash";
@@ -302,6 +431,22 @@ sheets["anime-rocket-shot-phases"] = {
     widthInCells: 0.85, impactWidthInCells: 1.35,
   },
 };
+
+for (const [key, src, label, widthInCells, impactWidthInCells] of [
+  ["little-busters-warning-shot-phases", "/fx/little-busters-warning-shot.webp", "Flying Japanese warning slips", 0.78, 1.3],
+  ["komari-heart-shot-phases", "/fx/komari-heart-shot.webp", "Komari heart strike", 0.7, 1.35],
+] as const) {
+  sheets[key] = {
+    src, label, group: "ranged-attacks", role: "projectile",
+    frames: 16, cols: 4, rows: 4, frameWidth: 192, frameHeight: 192,
+    fps: 24, anchor: "center", sequentialFrames: true,
+    sourceDef: `imagegen-${key}`,
+    projectilePhases: {
+      launch: [0, 4], flight: [4, 8], impact: [12, 4],
+      widthInCells, impactWidthInCells,
+    },
+  };
+}
 
 // The same tumbling stone needs a substantially larger silhouette for Cyclopes.
 sheets["boulder-shot-phases"] = {
@@ -679,7 +824,15 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-lava-burst": { hit: "fireball", sound: "spells/fireball", hitSound: "spells/fireball-hit" },
   "veteran-lava-burn": { affect: [{ key: "fire-shield" }], sound: "spells/fire-wall" },
   ...neutralTownAbilityFxPlans,
-  "town-dragon-fly-landing": { hit: "acid-breath", hitSound: "effects/acid-breath" },
+  "town-dragon-fly-landing": { affect: [{ key: "town-dragon-fly-venomous-landing" }], sound: "spells/poison" },
+  "town-gnoll-gold": { affect: [{ key: "town-gnoll-gold-coin" }], sound: "ambient/warehouse-gold" },
+  "town-hydra-forced-reroll-bite": { affect: [{ key: "hydra-multi-bite" }], sound: "units/hydra-attack" },
+  "town-titan-storm-cache": { affect: [{ key: "lightning-bolt" }], sound: "spells/chain-lightning" },
+  "town-nix-guarded": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "town-basilisk-lower-roll": { affect: [{ key: "fear" }], sound: "effects/fear" },
+  "town-pit-demon-bond": { affect: [{ key: "frenzy" }], sound: "spells/frenzy" },
+  "town-wyvern-reroll": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "town-haspid-aggressive-drill": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "town-haspid-toxic-hide": { affect: [{ key: "poison" }], sound: "spells/poison" },
   "town-jotunn-rune-bolt": {
     projectile: "magic-arrow-projectile-0",
@@ -1053,7 +1206,10 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   cyclopes: { projectile: "boulder-shot-phases" },
   magogs: { projectile: "fireball-shot-phases" },
   liches: { projectile: "lich-death-cloud-shot-phases" },
-  dracolich: { projectile: "death-cloud-shot-phases" },
+  dracolich: {
+    projectile: "lich-death-cloud-shot-phases",
+    hitSound: "spells/death-cloud",
+  },
   storm_elementals: { projectile: "titan-shot-phases" },
   ice_elementals: { projectile: "ice-shot-phases" },
   shamans: { projectile: "ice-shot-phases" },
@@ -1071,7 +1227,7 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   hild: { projectile: "evil-eye-shot-phases" },
   maya: { projectile: "ice-shot-phases" },
   cupi: { projectile: "arrow-shot-phases" },
-  disciplinary_committee: { projectile: "zealot-shot-phases" },
+  disciplinary_committee: { projectile: "little-busters-warning-shot-phases" },
   mio: { projectile: "magi-shot-phases" },
   spider_overmind: { projectile: "plasma-shot-phases" },
   santa_gremlin: {
@@ -1101,6 +1257,7 @@ const factionShotProjectiles: Record<string, string> = {
   "heavenly_demon.gu_witches": "death-cloud",
   "heavenly_demon.ghost_king": "death-cloud",
   "little_busters.softball_club": "baseball",
+  "little_busters.disciplinary_committee": "little-busters-warning",
 };
 
 const rapidFireShots: Record<string, number> = {
@@ -1147,17 +1304,48 @@ const groundFirearmVisualUnits = new Set([
 
 const blueArchiveFirearmVisualUnits = new Set([
   "blue_archive.nagisa", "blue_archive.aris", "blue_archive.shiroko",
-  "blue_archive.hina", "blue_archive.aru", "blue_archive.toki",
+  "blue_archive.hina", "blue_archive.hoshino", "blue_archive.yuuka",
+  "blue_archive.aru", "blue_archive.toki", "blue_archive.saori",
   "blue_archive.azusa", "blue_archive.wakamo", "blue_archive.iori",
   "blue_archive.mutsuki", "blue_archive.hasumi",
+]);
+
+const blueArchiveShotFxPlans: Record<string, SpellFxPlan> = {
+  "blue_archive.nagisa": { projectile: "anime-rocket-shot-phases", projectileCount: 2, projectileIntervalMs: 80, sound: "units/cannon-shoot" },
+  "blue_archive.aris": { projectile: "plasma-shot-phases", sound: "mgq/effects/laser" },
+  "blue_archive.hoshino": { projectile: "shotgun-shot-phases" },
+  "blue_archive.shiroko": { projectile: "blue-archive-shot-phases", projectileCount: 3, projectileIntervalMs: 58 },
+  "blue_archive.hina": { projectile: "blue-archive-shot-phases", projectileCount: 4, projectileIntervalMs: 48 },
+  "blue_archive.yuuka": { projectile: "blue-archive-shot-phases", projectileCount: 2, projectileIntervalMs: 70 },
+  "blue_archive.aru": { projectile: "rocket-shot-phases", sound: "units/cannon-shoot" },
+  "blue_archive.toki": { projectile: "plasma-shot-phases", projectileCount: 2, projectileIntervalMs: 76, sound: "mgq/effects/laser" },
+  "blue_archive.azusa": { projectile: "blue-archive-shot-phases" },
+  "blue_archive.wakamo": { projectile: "fireball-shot-phases", sound: "mgq/effects/fire8" },
+  "blue_archive.saori": { projectile: "blue-archive-shot-phases", projectileCount: 3, projectileIntervalMs: 62 },
+  "blue_archive.iori": { projectile: "blue-archive-shot-phases" },
+  "blue_archive.mutsuki": { projectile: "rocket-shot-phases", projectileCount: 2, projectileIntervalMs: 90, sound: "units/cannon-shoot" },
+  "blue_archive.hasumi": { projectile: "crossbow-shot-phases" },
+};
+
+const alwaysProjectilePresentationUnits = new Set([
+  "kudryavka_noumi",
+  "komari_kamikita",
+  "wog.dracolich",
 ]);
 
 /** Shooter presentation without changing the unit's engine attack type. */
 export function unitUsesProjectilePresentation(unitDefId: string | undefined): boolean {
   return Boolean(
     unitDefId &&
-    (blueArchiveFirearmVisualUnits.has(unitDefId) || groundFirearmVisualUnits.has(unitDefId))
+    (blueArchiveFirearmVisualUnits.has(unitDefId)
+      || groundFirearmVisualUnits.has(unitDefId)
+      || alwaysProjectilePresentationUnits.has(unitDefId))
   );
+}
+
+/** Ranged battlefield heroes keep their signature weapon even on Retaliation. */
+export function unitAlwaysUsesProjectilePresentation(unitDefId: string | undefined): boolean {
+  return Boolean(unitDefId && alwaysProjectilePresentationUnits.has(unitDefId));
 }
 
 /** Select the weapon before falling back to the phased ordinary arrow. */
@@ -1168,6 +1356,16 @@ export function unitShotFxPlan(unitDefId: string | undefined): SpellFxPlan | und
   const commanderPlan = commanderShotFxPlans[unitDefId];
   if (commanderPlan) {
     return commanderPlan;
+  }
+  if (unitDefId === "kudryavka_noumi") {
+    return { projectile: "anime-rocket-shot-phases" };
+  }
+  if (unitDefId === "komari_kamikita") {
+    return { projectile: "komari-heart-shot-phases" };
+  }
+  const blueArchivePlan = blueArchiveShotFxPlans[unitDefId];
+  if (blueArchivePlan) {
+    return { sound: "mgq/effects/gun2", ...blueArchivePlan };
   }
   const bareName = unitDefId.split(/[.:]/).at(-1) ?? unitDefId;
   const normalizedBareName = bareName.replace(/-/g, "_");
@@ -1208,6 +1406,8 @@ export function unitExtraShotFxPlan(unitDefId: string | undefined): SpellFxPlan 
   const normalizedBareName = bareName.replace(/-/g, "_");
   const hasSpecificWeapon = Boolean(
     commanderShotFxPlans[unitDefId]
+    || blueArchiveShotFxPlans[unitDefId]
+    || alwaysProjectilePresentationUnits.has(unitDefId)
     || factionShotProjectiles[unitDefId]
     || unitDefId === "azur_lane.akagi"
     || unitDefId.startsWith("azur_lane.")
