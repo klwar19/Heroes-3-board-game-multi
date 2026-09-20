@@ -351,7 +351,7 @@ function scoreAbilityTarget(
       return source.controllerId === unit.controllerId || value <= 0 ? CHOICE_BASE - 60
         : CHOICE_BASE + 10 + value * 8 + threatTiebreak;
     }
-    if (source && (choice.kind === "flat-damage" || choice.kind === "commander-overflow-zap")) {
+    if (source && (choice.kind === "flat-damage" || choice.kind === "commander-overflow-zap" || choice.kind === "commander-artifact-activation-damage" || choice.kind === "commander-artifact-recoil")) {
       const value = abilityDamageValue(unit, choice.amount ?? 1);
       return source.controllerId === unit.controllerId ? CHOICE_BASE - 40 - value * 8 :
         value > 0 ? CHOICE_BASE + 10 + value * 8 + threatTiebreak : CHOICE_BASE - 20;
@@ -367,6 +367,8 @@ function scoreAbilityTarget(
       choice.kind === "spell-splash" ||
       choice.kind === "ballistics-splash" ||
       choice.kind === "faerie-damage" ||
+      choice.kind === "commander-artifact-activation-damage" ||
+      choice.kind === "commander-artifact-recoil" ||
       choice.kind === "area-pick" ||
       choice.kind === "chain-lightning" ||
       choice.kind === "dreadnought-splash" ||
@@ -412,6 +414,8 @@ function scoreAbilityTarget(
         ? Math.max(0, (choice.baseAttack ?? 0) - unit.defense)
         : choice.kind === "flat-damage" ||
             choice.kind === "faerie-damage" ||
+            choice.kind === "commander-artifact-activation-damage" ||
+            choice.kind === "commander-artifact-recoil" ||
             choice.kind === "spell-splash" ||
             choice.kind === "ballistics-splash" ||
             choice.kind === "area-pick" ||

@@ -19,5 +19,5 @@
   <text x="371" y="93" class="titleText">Traveler's Salve</text>
   <text x="371" y="630" class="tierText" fill="#6fa8ff">RELIC  ·  COMMANDER TRINKET</text>
   <text x="371" y="664" class="slotText">TRINKET</text>
-  <g><text x="371" y="750" class="ruleText">Commander trinket: after the commander</text><text x="371" y="782" class="ruleText">moves, heal 1 damage from it.</text><line x1="120" y1="820" x2="623" y2="820" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="826" class="ruleText">Bind permanently to your commander. This</text><text x="371" y="858" class="ruleText">card leaves the game. Gain 1 Relic</text><text x="371" y="890" class="ruleText">Artifact.</text></g>
+  <g><text x="371" y="750" class="ruleText">+5 Initiative; move 1 more space; heal 1</text><text x="371" y="782" class="ruleText">after moving.</text><line x1="120" y1="820" x2="623" y2="820" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="826" class="ruleText">Bind permanently to your commander. This</text><text x="371" y="858" class="ruleText">card leaves the game. Gain 1 Relic</text><text x="371" y="890" class="ruleText">Artifact.</text></g>
 </svg>

@@ -37,7 +37,7 @@ const CARDS = [
     tierLabel: "MINOR  ·  COMMANDER WEAPON",
     tierColor: "#c7ccd6",
     rules: [
-      "Commander weapon: +1 Attack.",
+      "Commander weapon: +1 Attack during odd-numbered combat rounds.",
       "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -62,7 +62,7 @@ const CARDS = [
     tierLabel: "RELIC  ·  COMMANDER WEAPON",
     tierColor: "#6fa8ff",
     rules: [
-      "Commander weapon: +2 Attack. Its attacks roll with advantage.",
+      "Round 1: +2 Attack. Later rounds: +1 Attack. Retaliation: +1 more. Attacks roll with advantage.",
       "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -100,7 +100,7 @@ const CARDS = [
   {
     slug: "boots_of_haste", outputSlug: "boots_of_haste_v2", en: "Boots of Haste", tier: "minor",
     tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET", existingFace: true,
-    rules: ["Commander trinket: +2 Initiative.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+    rules: ["Commander trinket: +3 Initiative and move 1 more space.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
   },
   {
     slug: "vitality_ring", en: "Vitality Ring", tier: "minor",
@@ -110,12 +110,12 @@ const CARDS = [
   {
     slug: "duelist_guard", en: "Duelist Guard", tier: "minor",
     tierLabel: "MINOR  ·  COMMANDER ARMOR", tierColor: "#c7ccd6", slotLabel: "ARMOR", rawMaster: "duelist_guard-master.png",
-    rules: ["Commander armor: enemy attacks against it roll with disadvantage during combat round 1.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+    rules: ["Commander armor: enemy attacks against it have disadvantage during odd-numbered combat rounds.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
   },
   {
     slug: "victors_coin", en: "Victor's Coin", tier: "minor",
     tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET", rawMaster: "victors_coin-master.png",
-    rules: ["Commander trinket: +1 gold after every combat won by this commander's main hero.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+    rules: ["+1 gold after each combat its main hero wins and whenever the commander levels up.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
   },
   {
     slug: "veil_of_dread", en: "Veil of Dread", tier: "major",
@@ -135,17 +135,17 @@ const CARDS = [
   {
     slug: "chrono_pike", en: "Chrono Pike", tier: "major",
     tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "chrono_pike-master.png",
-    rules: ["Commander weapon: after its attack, the target gets -3 Initiative for the whole combat.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+    rules: ["Own attacks give the target -3 Initiative and -1 movement space for the combat.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
   },
   {
     slug: "vampiric_fang", en: "Vampiric Fang", tier: "major",
     tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "vampiric_fang-master.png",
-    rules: ["Commander weapon: after its attack deals damage, heal 1 damage from it.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+    rules: ["Commander weapon: heal 2 after an attack or retaliation attack deals damage.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
   },
   {
     slug: "piercing_lance", en: "Piercing Lance", tier: "major",
     tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "piercing_lance-master.png",
-    rules: ["Commander weapon: its attacks ignore 1 Defense. This stacks with other Defense reduction.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+    rules: ["Attacks ignore 1 Defense and gain +1 Attack against an enemy with 1 or less Defense.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
   },
   {
     slug: "barbed_carapace", en: "Barbed Carapace", tier: "major",
@@ -165,7 +165,7 @@ const CARDS = [
   {
     slug: "travelers_salve", en: "Traveler's Salve", tier: "relic",
     tierLabel: "RELIC  ·  COMMANDER TRINKET", tierColor: "#6fa8ff", slotLabel: "TRINKET", rawMaster: "travelers_salve-master.png",
-    rules: ["Commander trinket: after the commander moves, heal 1 damage from it.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+    rules: ["+5 Initiative; move 1 more space; heal 1 after moving.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
   },
   {
     slug: "bastion_heart", en: "Bastion Heart", tier: "relic",
@@ -175,7 +175,77 @@ const CARDS = [
   {
     slug: "stormcleaver", en: "Stormcleaver", tier: "relic",
     tierLabel: "RELIC  ·  COMMANDER WEAPON", tierColor: "#6fa8ff", rawMaster: "stormcleaver-master.png",
-    rules: ["After the commander's attack, deal 1 damage to one enemy adjacent to the target.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+    rules: ["+1 Attack. After attacking, deal 2 damage to an enemy adjacent to the target.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "hunters_quill", en: "Hunter's Quill", tier: "minor", rawMaster: "hunters_quill-master.png",
+    tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET",
+    rules: ["Draw 1 card whenever the commander defeats an enemy side or Stack layer (Pack to Few counts).", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "masons_token", en: "Mason's Token", tier: "minor", rawMaster: "masons_token-master.png",
+    tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET",
+    rules: ["Gain 1 building material whenever the commander defeats an enemy side or Stack layer.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "regenerators_mail", en: "Second-Breath Chrysalis", tier: "minor", rawMaster: "regenerators_mail-master.png",
+    tierLabel: "MINOR  ·  DEFENSE RELIC", tierColor: "#c7ccd6", slotLabel: "RESTORE",
+    rules: ["After the commander is attacked, heal 1 damage from it if it survived.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "aegis_of_warding", en: "The Quiet Orbit", tier: "major", rawMaster: "aegis_of_warding-master.png",
+    tierLabel: "MAJOR  ·  DEFENSE RELIC", tierColor: "#e7b73c", slotLabel: "WARD",
+    rules: ["The commander and every surrounding unit suffer 1 less damage from Spells and Hero Specialties.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "mercenarys_hourglass", en: "Mercenary's Hourglass", tier: "major", rawMaster: "mercenarys_hourglass-master.png",
+    tierLabel: "MAJOR  ·  COMMANDER TRINKET", tierColor: "#e7b73c", slotLabel: "TRINKET",
+    rules: ["Gain 1 gold at the start of every combat round.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "temporal_cuirass", en: "Tomorrow's Grip", tier: "major", rawMaster: "temporal_cuirass-master.png",
+    tierLabel: "MAJOR  ·  DEFENSE RELIC", tierColor: "#e7b73c", slotLabel: "DEFER",
+    rules: ["Once per combat round, shift up to 4 incoming attack damage to the end of that round.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "lanternroot_crook", en: "Lanternroot Crook", tier: "minor", rawMaster: "lanternroot_crook-master.png",
+    tierLabel: "MINOR  ·  ATTACK RELIC", tierColor: "#c7ccd6", slotLabel: "SUMMON",
+    rules: ["Combat start: summon a weak Starwind Familiar on any empty space. It vanishes after round 1.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "widows_courtesy", en: "Widow's Courtesy", tier: "minor", rawMaster: "widows_courtesy-master.png",
+    tierLabel: "MINOR  ·  ATTACK RELIC", tierColor: "#c7ccd6", slotLabel: "REPRISAL",
+    rules: ["First own attack each combat: +1 Attack. After a ranged enemy attacks the commander, it suffers 1 damage.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "counterfeit_cataclysm", en: "Counterfeit Cataclysm", tier: "relic", rawMaster: "counterfeit_cataclysm-master.png",
+    tierLabel: "RELIC  ·  ATTACK RELIC", tierColor: "#6fa8ff", slotLabel: "ERUPT",
+    rules: ["+1 Attack. Combat start: you may deal 1 Fire Spell damage to every unit. Fire resistance and immunity apply.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "ring_of_the_sealed_horizon", en: "Ring of the Sealed Horizon", tier: "major", rawMaster: "ring_of_the_sealed_horizon-master.png",
+    tierLabel: "MAJOR  ·  COMMANDER TRINKET", tierColor: "#e7b73c", slotLabel: "BARRIER",
+    rules: ["Combat start: create a Force Field on any empty space. It lasts through combat round 2.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "amulet_of_recoil", en: "Amulet of Recoil", tier: "relic", rawMaster: "amulet_of_recoil-master.png",
+    tierLabel: "RELIC  ·  COMMANDER TRINKET", tierColor: "#6fa8ff", slotLabel: "RECOIL",
+    rules: ["First attack against commander: resist 2 damage. At activation, deal 2 to an adjacent enemy and push it back.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "executioners_edge", en: "Blood-Comet Seal", tier: "relic", rawMaster: "executioners_edge-master.png",
+    tierLabel: "RELIC  ·  ATTACK RELIC", tierColor: "#6fa8ff", slotLabel: "STRIKE",
+    rules: ["+1 Attack. At activation, deal 1 damage to any enemy unit; then act normally.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "eye_of_misfortune", en: "Eye of Misfortune", tier: "relic", rawMaster: "eye_of_misfortune-master.png",
+    tierLabel: "RELIC  ·  COMMANDER TRINKET", tierColor: "#6fa8ff", slotLabel: "TRINKET",
+    rules: ["Combat start: enemy discards 1 random card; choose an enemy whose attacks have disadvantage this combat.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "chalice_of_renewal", en: "Chalice of Renewal", tier: "relic", rawMaster: "chalice_of_renewal-master.png",
+    tierLabel: "RELIC  ·  COMMANDER TRINKET", tierColor: "#6fa8ff", slotLabel: "TRINKET",
+    rules: ["Once every combat round, heal 1 damage from a chosen allied unit other than the commander.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
   }
 ];
 
@@ -326,8 +396,13 @@ async function main() {
   };
   const frameUri = await dataUri(keyedPath, "image/png");
 
+  const onlyArg = process.argv.find((arg) => arg.startsWith("--only="));
+  const only = onlyArg
+    ? new Set(onlyArg.slice("--only=".length).split(",").filter(Boolean))
+    : null;
   for (const card of CARDS) {
     if (process.argv.includes("--forge-only")) break;
+    if (only && !only.has(card.slug)) continue;
     const outputSlug = card.outputSlug ?? card.slug;
     const masterPng = path.join(EDITABLE, `${card.slug}-master.png`);
     if (card.rawMaster) {
@@ -374,6 +449,10 @@ async function main() {
     const srcPath = path.join(OUT, `${outputSlug}.webp`);
     await copyFile(tmp, srcPath);
     console.log(`face  ${outputSlug}.webp`);
+  }
+  if (only) {
+    console.log("DONE selected commander artifact card faces");
+    return;
   }
   const forgeMaster = path.join(ROOT, "scripts", "anime-art", "raw", "ui", "commander-forge-master.png");
   if (!existsSync(forgeMaster)) throw new Error(`Missing Forge icon master: ${path.relative(ROOT, forgeMaster)}`);

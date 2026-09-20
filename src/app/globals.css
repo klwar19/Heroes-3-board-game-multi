@@ -19953,6 +19953,13 @@ button.setupHubNavItem:hover {
   will-change: transform, background-position;
 }
 
+.fxBattlefieldSpriteClip {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 8px;
+  isolation: isolate;
+}
+
 .fxProjectile {
   filter: drop-shadow(0 0 10px rgb(140 170 255 / 55%));
 }

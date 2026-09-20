@@ -261,8 +261,8 @@ import {
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
 import { openDeckCardPlacementChoice, resolveDeckCardPlacementChoice } from "./deck-card-placement";
-import { ATTACK_DIE_FACES, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
-import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
+import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
+import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   consumesMgqKitchenCharge,
@@ -289,6 +289,7 @@ import {
   type CommanderSlug
 } from "@/data/commanders";
 import {
+  applyCommanderArtifactCombatRoundStart,
   applyLionRoundStartBarrage,
   applyCommanderBeginCastHaste,
   applyCommanderCombatStart,
@@ -316,6 +317,7 @@ import {
   STARWIND_FAMILIAR_ARMY_UNIT_PREFIX,
   applyHeroGradeArmyInitiative,
   applyHeroGradeRoundStartDamage,
+  injectCommanderArtifactSpirit,
   injectHeroGradeFamiliar
 } from "./hero-grade-combat";
 import { hiddenLeafCombatFormationError, hiddenLeafMissionCompletion } from "./anime-town-mechanics";
@@ -331,8 +333,10 @@ import {
   getActiveDefenseBonus,
   getDisplayAttackBonus,
   hasActiveIgnoresDefense,
+  effectAppliesToUnit,
   makeActiveEffect,
   playerCannotSurrenderCombat,
+  unitImmuneToSpellSchoolsByEffect,
   unitDealsElementalDamage
 } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
@@ -381,7 +385,13 @@ import {
   getCombatStartSelfMoveAbility,
   getCombatStartTeleportAbility,
   getAttackBonusOnAttackDie,
+  getSpellAndSpecialtyDamageReductionAura,
+  getSpellDamageReduction,
+  getSpellDamageReductionAura,
+  getSpellSchoolDamageReduction,
   getUnitAbilityDefinitions,
+  isUnitDamageImmune,
+  unitImmuneToSpellSchools,
   moraleLockedForPlayer
 } from "./unit-abilities";
 import {
@@ -450,7 +460,7 @@ import {
   returnHeldMoraleCardToDeckBottom
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
-import { placeCombatToken, removeToken } from "./tokens";
+import { noteUnitDamagedForTokens, placeCombatToken, removeToken } from "./tokens";
 import {
   ARENA_DUEL_WINS_TO_WIN,
   arenaDuelAttackerIndex,
@@ -12554,6 +12564,7 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   if (state.combat?.outcome) {
     return;
   }
+  applyCommanderArtifactCombatRoundStart(state);
   startWarMachineRound(state);
 }
 
@@ -12981,6 +12992,165 @@ function resolveBountyHunterMarkStartChoice(
 // WOG Commanders — optional combat-start decisions.
 // ---------------------------------------------------------------------------
 
+type CommanderArtifactStartKind = "spirit" | "cataclysm" | "barrier";
+
+function commanderArtifactUnitAlive(unit: { damage: number; maxHealth: number }): boolean {
+  return unit.damage < unit.maxHealth;
+}
+
+function commanderArtifactSpaceBlocked(combat: NonNullable<GameState["combat"]>, position: number): boolean {
+  return position < 0 || position >= BATTLEFIELD_CELL_COUNT ||
+    (combat.obstacles ?? []).includes(position) ||
+    (combat.battlefieldTokens ?? []).some((token) => token.position === position) ||
+    Boolean(combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) ||
+    Object.values(combat.units).some(
+      (unit) => commanderArtifactUnitAlive(unit) && unit.position === position,
+    );
+}
+
+function commanderArtifactStartKey(playerId: PlayerId, kind: CommanderArtifactStartKind): string {
+  return `${playerId}:${kind}`;
+}
+
+function unresolvedCommanderArtifactStart(
+  state: GameState,
+  playerId: PlayerId,
+): {
+  commander: NonNullable<GameState["combat"]>["units"][string];
+  kind: CommanderArtifactStartKind;
+  positions: number[];
+  amount: number;
+} | null {
+  const combat = state.combat;
+  if (!combat) return null;
+  const commander = Object.values(combat.units).find(
+    (unit) => unit.commanderSlug && unit.controllerId === playerId && commanderArtifactUnitAlive(unit),
+  );
+  if (!commander) return null;
+  const bonuses = aggregateCommanderArtifactBonuses(state.players[playerId]?.commander?.artifacts);
+  const resolved = combat.commanderArtifactStartResolvedKeys ?? [];
+  const emptyPositions = (): number[] => {
+    const result: number[] = [];
+    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      if (!commanderArtifactSpaceBlocked(combat, position)) result.push(position);
+    }
+    return result;
+  };
+  if (bonuses.summonWeakSpiritAtCombatStart && !resolved.includes(commanderArtifactStartKey(playerId, "spirit"))) {
+    return { commander, kind: "spirit", positions: emptyPositions(), amount: 0 };
+  }
+  if (bonuses.optionalFirePulseAtCombatStart > 0 && !resolved.includes(commanderArtifactStartKey(playerId, "cataclysm"))) {
+    return { commander, kind: "cataclysm", positions: [], amount: bonuses.optionalFirePulseAtCombatStart };
+  }
+  if (bonuses.forceFieldAtCombatStartRounds > 0 && !resolved.includes(commanderArtifactStartKey(playerId, "barrier"))) {
+    return { commander, kind: "barrier", positions: emptyPositions(), amount: bonuses.forceFieldAtCombatStartRounds };
+  }
+  return null;
+}
+
+function markCommanderArtifactStartResolved(
+  state: GameState,
+  playerId: PlayerId,
+  kind: CommanderArtifactStartKind,
+): void {
+  const keys = (state.combat!.commanderArtifactStartResolvedKeys ??= []);
+  const key = commanderArtifactStartKey(playerId, kind);
+  if (!keys.includes(key)) keys.push(key);
+}
+
+function commanderArtifactSpellReduction(state: GameState, target: NonNullable<GameState["combat"]>["units"][string]): number {
+  let reduction = getSpellDamageReduction(target) + getSpellSchoolDamageReduction(target, ["fire"]);
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, target)) continue;
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "SPELL_DAMAGE_REDUCTION") reduction += modifier.amount;
+    }
+  }
+  for (const unit of Object.values(state.combat?.units ?? {})) {
+    if (!commanderArtifactUnitAlive(unit) || (unit.id !== target.id && !getOrthogonalNeighbors(target.position).includes(unit.position))) continue;
+    if (unit.controllerId === target.controllerId) reduction += getSpellDamageReductionAura(unit);
+    reduction += getSpellAndSpecialtyDamageReductionAura(unit);
+  }
+  return reduction;
+}
+
+function applyCounterfeitCataclysm(
+  state: GameState,
+  commanderUnitId: string,
+  amount: number,
+): void {
+  const combat = state.combat;
+  const commander = combat?.units[commanderUnitId];
+  if (!combat || !commander || amount <= 0) return;
+  const spellAbilitiesSuppressed = state.activeEffects.some((effect) =>
+    effect.modifiers.some((modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES"),
+  );
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: commander.id,
+    abilityId: "commander-artifact-counterfeit-cataclysm",
+    message: "Counterfeit Cataclysm erupts across the battlefield.",
+  });
+  const targets = Object.values(combat.units).filter(commanderArtifactUnitAlive);
+  for (const target of targets) {
+    const immune = isUnitDamageImmune(target) ||
+      unitImmuneToSpellSchoolsByEffect(state, target, ["fire"]) ||
+      (!spellAbilitiesSuppressed && unitImmuneToSpellSchools(target, ["fire"]));
+    const dealt = immune || (!spellAbilitiesSuppressed && commanderArtifactSpellReduction(state, target) > 0)
+      ? 0
+      : amount;
+    if (dealt <= 0) continue;
+    target.damage += dealt;
+    noteUnitDamagedForTokens(state, target, dealt);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: commander.id, controllerId: commander.controllerId },
+      target: { type: "unit", unitId: target.id },
+      amount: dealt,
+      damageKind: "spell",
+    });
+  }
+  for (const target of targets) markUnitRemovedIfNeeded(state, target);
+  finishCombatIfNeeded(state);
+}
+
+function placeCommanderArtifactBarrier(
+  state: GameState,
+  commanderUnitId: string,
+  position: number,
+  rounds: number,
+): void {
+  const combat = state.combat;
+  const commander = combat?.units[commanderUnitId];
+  if (!combat || !commander || commanderArtifactSpaceBlocked(combat, position)) {
+    throw new Error("Choose an empty space for the sealed horizon.");
+  }
+  const token = {
+    id: `bftoken_${nextEventNumber(state)}`,
+    kind: "force_field" as const,
+    position,
+    controllerId: commander.controllerId,
+    sourceUnitId: commander.id,
+    sourceAbilityId: "commander-artifact-sealed-horizon",
+    expiresAtCombatRoundEnd: combat.round + Math.max(1, rounds) - 1,
+  };
+  combat.battlefieldTokens = [...(combat.battlefieldTokens ?? []), token];
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_PLACED",
+    playerId: token.controllerId,
+    tokenId: token.id,
+    kind: token.kind,
+    position: token.position,
+    sourceAbilityId: token.sourceAbilityId,
+  });
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: commander.id,
+    abilityId: token.sourceAbilityId,
+    message: `Ring of the Sealed Horizon raises a Force Field at ${getBattlefieldLabel(position)} through round ${token.expiresAtCombatRoundEnd}.`,
+  });
+}
+
 /**
  * Move the Magic Arrow the Tower Temple Guardian's owner fetches: discard the
  * chosen hand card, pull `spell.magic_arrow` from `source` (deck or discard) into
@@ -13014,6 +13184,139 @@ function performCommanderMagicArrowFetch(
   return true;
 }
 
+function commanderArtifactMisfortuneOption(state: GameState, playerId: PlayerId) {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.commanderArtifactStartResolvedPlayerIds?.includes(playerId)
+  ) return null;
+  const commander = Object.values(combat.units).find(
+    (unit) => unit.commanderSlug && unit.controllerId === playerId && unit.damage < unit.maxHealth,
+  );
+  if (!commander) return null;
+  const bonuses = aggregateCommanderArtifactBonuses(state.players[playerId]?.commander?.artifacts);
+  if (!bonuses.markEnemyAttackDisadvantage && bonuses.enemyDiscardAtCombatStart <= 0) return null;
+  const targetUnitIds = Object.values(combat.units)
+    .filter((unit) => unit.controllerId !== playerId && unit.damage < unit.maxHealth)
+    .sort((left, right) => left.position - right.position)
+    .map((unit) => unit.id);
+  return { commander, bonuses, targetUnitIds };
+}
+
+function discardForEyeOfMisfortune(state: GameState, playerId: PlayerId, count: number): void {
+  const combat = state.combat;
+  if (!combat || count <= 0) return;
+  const enemyId = playerId === combat.attackerPlayerId
+    ? combat.defenderPlayerId
+    : combat.attackerPlayerId;
+  const enemy = state.players[enemyId];
+  if (!enemy) return;
+  for (let index = 0; index < count && enemy.hand.length > 0; index += 1) {
+    const random = createSeededRandom(`${state.seed}#eye-of-misfortune#${eventSeedNumber(state)}#${index}`);
+    const cardIndex = random.nextInt(0, enemy.hand.length - 1);
+    const [discarded] = enemy.hand.splice(cardIndex, 1);
+    enemy.discard.push(discarded);
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `Eye of Misfortune makes ${enemy.name} discard ${cardLibrary[discarded]?.name ?? "a random card"} at combat start.`,
+    });
+  }
+}
+
+function resolveCommanderArtifactMisfortune(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number,
+): void {
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.commanderArtifactMisfortune : undefined;
+  const combat = state.combat;
+  if (
+    !combat || !choice || choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "commander-artifact-misfortune" ||
+    choice.playerId !== playerId || !data
+  ) throw new Error("There is no Eye of Misfortune target choice to resolve.");
+  const targetId = data.targetUnitIds[optionIndex];
+  const target = targetId ? combat.units[targetId] : undefined;
+  if (!target || target.controllerId === playerId || target.damage >= target.maxHealth) {
+    throw new Error("That unit is not a legal Eye of Misfortune target.");
+  }
+  target.commanderArtifactAttackDisadvantage = true;
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: "Eye of Misfortune",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: false,
+      modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
+    },
+    { type: "unit", unitId: data.commanderUnitId, controllerId: playerId },
+    playerId,
+    { type: "unit", unitId: target.id },
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: playerId,
+    name: effect.name,
+    duration: effect.duration,
+  });
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: data.commanderUnitId,
+    targetUnitId: target.id,
+    abilityId: "commander-artifact-eye-of-misfortune",
+    message: `Eye of Misfortune curses ${target.cardName}; its attacks roll with disadvantage for the combat.`,
+  });
+  (combat.commanderArtifactStartResolvedPlayerIds ??= []).push(playerId);
+  state.pendingChoice = null;
+  if (openCommanderCombatStartChoice(state, playerId, data.remainingPlayerIds)) return;
+  advanceCommanderCombatStartChain(state, data.remainingPlayerIds);
+}
+
+function resolveCommanderArtifactStartChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number,
+): void {
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.commanderArtifactStart : undefined;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.playerId !== playerId || !data) {
+    throw new Error("There is no commander artifact combat-start choice to resolve.");
+  }
+  if (choice.context === "commander-artifact-spirit") {
+    const position = data.positions?.[optionIndex];
+    if (position === undefined || !injectCommanderArtifactSpirit(state, playerId, position)) {
+      throw new Error("Choose an empty space for the Starwind Familiar.");
+    }
+    markCommanderArtifactStartResolved(state, playerId, "spirit");
+  } else if (choice.context === "commander-artifact-cataclysm") {
+    if (optionIndex !== 0 && optionIndex !== 1) throw new Error("Choose Erupt or Skip.");
+    if (optionIndex === 0) applyCounterfeitCataclysm(state, data.commanderUnitId, data.damage ?? 1);
+    markCommanderArtifactStartResolved(state, playerId, "cataclysm");
+  } else if (choice.context === "commander-artifact-barrier") {
+    const position = data.positions?.[optionIndex];
+    if (position === undefined) throw new Error("Choose an empty space for the Force Field.");
+    placeCommanderArtifactBarrier(state, data.commanderUnitId, position, data.rounds ?? 2);
+    markCommanderArtifactStartResolved(state, playerId, "barrier");
+  } else {
+    throw new Error("That commander artifact combat-start choice is invalid.");
+  }
+  state.pendingChoice = null;
+  // Counterfeit Cataclysm can wipe an entire side at combat start; once combat
+  // has an outcome, leave the finished (game-over) state untouched instead of
+  // reopening the start-decision chain or resetting the phase back to combat.
+  if (state.combat?.outcome) return;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  if (state.combat && openCommanderCombatStartChoice(state, playerId, data.remainingPlayerIds)) return;
+  if (state.combat) advanceCommanderCombatStartChain(state, data.remainingPlayerIds);
+}
+
 /**
  * A computer seat resolves its combat-start commander decision inline (never a
  * window). Tower: fetch a Magic Arrow when the AI can spare a card — the user
@@ -13023,6 +13326,54 @@ function performCommanderMagicArrowFetch(
  * casts Haste normally during the Shaman's own activation).
  */
 function applyComputerCommanderCombatStart(state: GameState, playerId: PlayerId): void {
+  let start = unresolvedCommanderArtifactStart(state, playerId);
+  while (start && state.combat) {
+    if (start.kind === "spirit") {
+      const position = start.positions.sort((left, right) => left - right)[0];
+      if (position !== undefined) injectCommanderArtifactSpirit(state, playerId, position);
+    } else if (start.kind === "cataclysm") {
+      const units = Object.values(state.combat.units).filter(commanderArtifactUnitAlive);
+      const enemyScore = units.filter((unit) => unit.controllerId !== playerId).length;
+      const friendlyScore = units.filter((unit) => unit.controllerId === playerId).length;
+      if (enemyScore > friendlyScore) applyCounterfeitCataclysm(state, start.commander.id, start.amount);
+    } else {
+      const position = start.positions.sort((left, right) =>
+        Math.abs(left - 8) - Math.abs(right - 8) || left - right,
+      )[0];
+      if (position !== undefined) placeCommanderArtifactBarrier(state, start.commander.id, position, start.amount);
+    }
+    markCommanderArtifactStartResolved(state, playerId, start.kind);
+    start = unresolvedCommanderArtifactStart(state, playerId);
+  }
+  const artifact = commanderArtifactMisfortuneOption(state, playerId);
+  if (artifact) {
+    discardForEyeOfMisfortune(state, playerId, artifact.bonuses.enemyDiscardAtCombatStart);
+    const target = artifact.targetUnitIds
+      .map((unitId) => state.combat?.units[unitId])
+      .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
+      .sort((left, right) => right.attack - left.attack || left.position - right.position)[0];
+    if (target) {
+      target.commanderArtifactAttackDisadvantage = true;
+      const effect = makeActiveEffect(
+        state,
+        { name: "Eye of Misfortune", scope: "unit", duration: { type: "combat" }, polarity: "negative", removable: false,
+          modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }] },
+        { type: "unit", unitId: artifact.commander.id, controllerId: playerId },
+        playerId,
+        { type: "unit", unitId: target.id },
+      );
+      state.activeEffects.push(effect);
+      appendEvent(state, { type: "ACTIVE_EFFECT_CREATED", effectId: effect.id, controllerId: playerId, name: effect.name, duration: effect.duration });
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: artifact.commander.id,
+        targetUnitId: target.id,
+        abilityId: "commander-artifact-eye-of-misfortune",
+        message: `Eye of Misfortune curses ${target.cardName}; its attacks roll with disadvantage for the combat.`,
+      });
+    }
+    (state.combat!.commanderArtifactStartResolvedPlayerIds ??= []).push(playerId);
+  }
   // Computer seats are handed a phantom Magic Arrow every combat
   // (COMPUTER_PHANTOM_COMBAT_CARDS, granted after this gate runs) — discarding a
   // real card to fetch a duplicate would be a pure loss.
@@ -13047,8 +13398,75 @@ function openCommanderCombatStartChoice(
   remainingPlayerIds: PlayerId[]
 ): boolean {
   const combat = state.combat;
-  if (!combat) {
+  if (!combat || combat.outcome) {
     return false;
+  }
+  const start = unresolvedCommanderArtifactStart(state, playerId);
+  if (start) {
+    if ((start.kind === "spirit" || start.kind === "barrier") && start.positions.length === 0) {
+      markCommanderArtifactStartResolved(state, playerId, start.kind);
+      return openCommanderCombatStartChoice(state, playerId, remainingPlayerIds);
+    }
+    const context = start.kind === "spirit"
+      ? "commander-artifact-spirit" as const
+      : start.kind === "cataclysm"
+        ? "commander-artifact-cataclysm" as const
+        : "commander-artifact-barrier" as const;
+    const options = start.kind === "cataclysm"
+      ? [{ label: "Erupt — deal 1 Fire Spell damage to every unit" }, { label: "Skip — do not erupt" }]
+      : start.positions.map((position) => ({
+          label: `${start.kind === "spirit" ? "Summon at" : "Raise Force Field at"} ${getBattlefieldLabel(position)}`,
+        }));
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: start.kind === "spirit"
+        ? "Lanternroot Crook: choose any empty space for the one-round Starwind Familiar."
+        : start.kind === "cataclysm"
+          ? "Counterfeit Cataclysm: erupt at combat start? Fire resistance and immunity apply to every unit."
+          : "Ring of the Sealed Horizon: choose any empty space for a Force Field lasting through round 2.",
+      options,
+      context,
+      commanderArtifactStart: {
+        commanderUnitId: start.commander.id,
+        positions: start.positions,
+        damage: start.kind === "cataclysm" ? start.amount : undefined,
+        rounds: start.kind === "barrier" ? start.amount : undefined,
+        remainingPlayerIds,
+      },
+      returnPhase: "combat",
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return true;
+  }
+  const artifact = commanderArtifactMisfortuneOption(state, playerId);
+  if (artifact) {
+    discardForEyeOfMisfortune(state, playerId, artifact.bonuses.enemyDiscardAtCombatStart);
+    if (artifact.bonuses.markEnemyAttackDisadvantage && artifact.targetUnitIds.length > 0) {
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId,
+        prompt: "Eye of Misfortune: choose one enemy unit. Its attacks roll with disadvantage for the whole combat.",
+        options: artifact.targetUnitIds.map((unitId) => {
+          const unit = combat.units[unitId];
+          return { label: `Curse ${unit?.cardName ?? unitId} (${getBattlefieldLabel(unit?.position ?? -1)})` };
+        }),
+        context: "commander-artifact-misfortune",
+        commanderArtifactMisfortune: {
+          commanderUnitId: artifact.commander.id,
+          targetUnitIds: artifact.targetUnitIds,
+          remainingPlayerIds,
+        },
+        returnPhase: "combat",
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = playerId;
+      return true;
+    }
+    (combat.commanderArtifactStartResolvedPlayerIds ??= []).push(playerId);
   }
   const fetch = commanderMagicArrowFetchOption(state, playerId);
   if (fetch) {
@@ -13133,19 +13551,32 @@ export function maybeOpenCommanderCombatStartDecision(state: GameState): boolean
   const humanQueue = owners.filter(
     (playerId) =>
       !isComputerPlayer(state, playerId) &&
-      (commanderMagicArrowFetchOption(state, playerId) !== null ||
+      (unresolvedCommanderArtifactStart(state, playerId) !== null ||
+        commanderArtifactMisfortuneOption(state, playerId) !== null ||
+        commanderMagicArrowFetchOption(state, playerId) !== null ||
         commanderBeginCastOption(state, playerId) !== null)
   );
-  const [first, ...rest] = humanQueue;
-  if (!first || !openCommanderCombatStartChoice(state, first, rest)) {
-    combat.commanderCombatStartResolved = true;
-    return false;
+  // Advance through the queue like advanceCommanderCombatStartChain: a leading
+  // seat whose only artifact start cannot open (e.g. a spirit/barrier with no
+  // legal square on a full battlefield) must not swallow the remaining seats'
+  // decisions.
+  let queue = humanQueue;
+  while (queue.length > 0) {
+    const [next, ...rest] = queue;
+    if (openCommanderCombatStartChoice(state, next, rest)) {
+      return true;
+    }
+    queue = rest;
   }
-  return true;
+  combat.commanderCombatStartResolved = true;
+  return false;
 }
 
 /** Continue (or finish) the combat-start commander-decision chain after one resolves. */
 function advanceCommanderCombatStartChain(state: GameState, remainingPlayerIds: PlayerId[]): void {
+  // A combat-start eruption may already have ended the combat; never reset the
+  // phase away from a decided (game-over) combat or reopen the chain.
+  if (state.combat?.outcome) return;
   state.pendingChoice = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -15040,10 +15471,17 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
-  // Victor's Coin: reward only a win in which the main hero's commander was
-  // actually deployed. Queue behind Necromancy like the other win-gold arms.
+  // Victor's Coin belongs to the commander's main hero. It pays for that hero's
+  // victory even if the commander was killed or could not deploy this combat.
+  const coinWinnerHero = context.kind === "neutral"
+    ? state.heroes[context.heroId]
+    : context.kind === "player"
+      ? [state.heroes[context.attackerHeroId], context.defenderHeroId ? state.heroes[context.defenderHeroId] : null]
+          .find((hero) => hero?.controllerId === outcome.winnerPlayerId)
+      : null;
   const commanderArtifactWinGold =
-    outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && commanderParticipants.has(outcome.winnerPlayerId)
+    outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID &&
+    coinWinnerHero?.controllerId === outcome.winnerPlayerId && coinWinnerHero.kind === "main"
       ? aggregateCommanderArtifactBonuses(state.players[outcome.winnerPlayerId]?.commander?.artifacts).goldAfterWonCombat
       : 0;
   if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && commanderArtifactWinGold > 0) {
@@ -19184,6 +19622,20 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "cover-of-darkness") {
     resolveCoverOfDarknessChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "commander-artifact-misfortune") {
+    resolveCommanderArtifactMisfortune(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (
+    choice.context === "commander-artifact-spirit" ||
+    choice.context === "commander-artifact-cataclysm" ||
+    choice.context === "commander-artifact-barrier"
+  ) {
+    resolveCommanderArtifactStartChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

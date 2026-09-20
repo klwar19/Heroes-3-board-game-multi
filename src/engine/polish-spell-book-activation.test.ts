@@ -42,6 +42,19 @@ function canCastBook(state: GameState): boolean {
 }
 
 describe("Polish Spell Book — cast across successive unit activations", () => {
+  it("also blocks a normal hand Magic Arrow after movement", () => {
+    const state = createInitialGameState("hand-arrow-pre-move");
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const handArrow = () => getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" && !legal.action.fromSpellBook,
+    );
+    expect(handArrow()).toBe(true);
+    state.combat!.units.unit_p1_griffins.movedThisActivation = true;
+    expect(handArrow()).toBe(false);
+  });
+
   it("offers Book cast on first own unit activation AND second", () => {
     const state = polishState("polish-multi-act");
     // First unit
@@ -59,11 +72,14 @@ describe("Polish Spell Book — cast across successive unit activations", () => 
     expect(canCastBook(state), "not castable on enemy unit without Intelligence").toBe(false);
   });
 
-  it("still offers Book cast after the first own unit has moved but not attacked", () => {
+  it("blocks Magic Arrow after the first own unit moves, then offers it before the next unit moves", () => {
     const state = polishState("polish-after-move");
     state.combat!.activeUnitId = "unit_p1_griffins";
     state.combat!.units.unit_p1_griffins.movedThisActivation = true;
-    expect(canCastBook(state), "move does not lock casting").toBe(true);
+    expect(canCastBook(state), "Magic Arrow must precede movement").toBe(false);
+    state.combat!.units.unit_p1_griffins.activatedThisRound = true;
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    expect(canCastBook(state), "fresh ally has a pre-move cast window").toBe(true);
   });
 
   it("blocks after the active unit has attacked, then offers again on next unit", () => {

@@ -1357,6 +1357,25 @@ export function getActivationDamageSpellAbility(
   return null;
 }
 
+/** Commander-artifact activation strike: flat effect damage to any enemy. */
+export function getActivationDamageEnemyAbility(
+  unit: CombatUnitState,
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    if (
+      ability.implementationStatus === "implemented" &&
+      ability.effect?.type === "ON_ACTIVATION_DAMAGE_ENEMY"
+    ) {
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        amount: ability.effect.amount,
+      };
+    }
+  }
+  return null;
+}
+
 /** Harpies: the optional fly-back-to-origin repositioning after attacking. */
 export function getReturnAfterAttackAbility(
   unit: CombatUnitState

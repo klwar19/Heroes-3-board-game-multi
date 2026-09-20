@@ -76,7 +76,7 @@ const SWORD = "wog.artifact.sword_of_sharpness"; // weapon, +1 Might attack die
 const SHIELD = "wog.artifact.hardened_shield"; // armor relic, +1 Defense
 const MAIL = "wog.artifact.mithril_mail"; // armor major, +2 Health
 const HELM = "wog.artifact.helm_of_immortality"; // armor relic, free revive
-const BOOTS = "wog.artifact.boots_of_haste"; // trinket minor, +1 Initiative
+const BOOTS = "wog.artifact.boots_of_haste"; // trinket minor, +3 Initiative and +1 movement
 const PENDANT = "wog.artifact.pendant_of_sorcery"; // trinket major, +1 cast Power
 const RING = "wog.artifact.dragon_eye_ring"; // trinket major, line attack behind
 
@@ -218,8 +218,8 @@ describe("WOG Commander Artifacts — combat stat effects", () => {
     }
     // CONTROL: no ring → no follow-up, the unit behind is untouched.
     expect(behindDamage(undefined)).toBe(0);
-    // Ring bound: the behind unit takes the attack-3 line hit (3 − defense 0 = 3).
-    expect(behindDamage({ trinket: RING })).toBe(3);
+    // Ring bound: the behind unit takes the Attack-4 line hit (4 − defense 0 = 4).
+    expect(behindDamage({ trinket: RING })).toBe(4);
   });
 });
 
@@ -277,7 +277,7 @@ describe("WOG Commander Artifacts — defensive stat effects", () => {
   });
 });
 
-describe("WOG Commander Artifacts — Boots of Haste (+1 Initiative)", () => {
+describe("WOG Commander Artifacts — Boots of Haste (+3 Initiative)", () => {
   it("flips the activation order against a same-speed enemy", () => {
     function firstToAct(artifacts?: Partial<Record<CommanderArtifactSlot, string>>): string | undefined {
       const state = sandboxWithCommander("paladin", {}, 9, artifacts);
@@ -302,8 +302,7 @@ describe("WOG Commander Artifacts — Boots of Haste (+1 Initiative)", () => {
     }
     // CONTROL: Initiative 5 < enemy 6 → the enemy acts first.
     expect(firstToAct(undefined)).toBe("unit_p2_skeletons");
-    // Boots bound: Initiative 6 ties the enemy, and the attacker (the commander)
-    // wins the tie → the commander now acts first.
+    // Boots bound: Initiative 8 beats the enemy, so the commander acts first.
     expect(firstToAct({ trinket: BOOTS })).toBe(commanderUnitId("p1"));
   });
 });

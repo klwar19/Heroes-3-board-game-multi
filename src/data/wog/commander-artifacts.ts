@@ -66,6 +66,17 @@ export interface CommanderArtifactSpec {
   defense?: number;
   health?: number;
   initiative?: number;
+  /** Extra combat spaces for the equipped commander. */
+  moveRangeBonus?: number;
+  /** Additional live Attack in odd-numbered combat rounds. */
+  oddRoundAttack?: number;
+  /** Adjustment to the printed Attack in combat rounds after the first. */
+  laterRoundAttack?: number;
+  /** Extra Attack on retaliation only. */
+  retaliationAttack?: number;
+  /** Extra Attack when the target has at most this effective Defense. */
+  lowDefenseAttack?: number;
+  lowDefenseThreshold?: number;
   /**
    * Unit ability ids appended to the commander's combat unit (like the combos).
    * Sword → `commander-might-1` (rides the Damage-grade Might dice machinery);
@@ -82,12 +93,13 @@ export interface CommanderArtifactSpec {
   /** Number of this artifact's added Might dice whose negative face is treated as 0. */
   nonNegativeMightDice?: number;
   /** Enemy attacks against the commander roll with disadvantage. */
-  incomingAttackDisadvantage?: "round-1" | "combat";
+  incomingAttackDisadvantage?: "round-1" | "odd-rounds" | "combat";
   /** Lasting combat debuffs applied by the commander's own resolved attacks. */
   onAttackDefensePenalty?: number;
   onAttackAttackPenalty?: number;
   onAttackInitiativePenalty?: number;
-  /** Heal the commander after its own attack deals damage. */
+  onAttackMovePenalty?: number;
+  /** Heal the commander after an attack or retaliation deals damage. */
   healAfterDamagingAttack?: number;
   /** Ignore this much effective Defense on the commander's attacks. */
   defensePierce?: number;
@@ -102,8 +114,34 @@ export interface CommanderArtifactSpec {
   reflectDamage?: number;
   /** At activation start, deal this damage to every adjacent unit. */
   activationAdjacentDamage?: number;
+  /** Draw cards whenever this commander's attack defeats a side or Stack layer. */
+  drawAfterDefeatingLayer?: number;
+  /** Gain building materials whenever this commander's attack defeats a side or Stack layer. */
+  materialsAfterDefeatingLayer?: number;
+  /** Heal the commander after an attack against it finishes resolving. */
+  healAfterAttacked?: number;
+  /** Shift up to this much incoming attack damage to the end of the current round, once per round. */
+  delayedAttackDamagePerRound?: number;
+  /** Gold paid at the start of every combat round while the commander is present. */
+  goldPerCombatRound?: number;
+  /** Discard this many random cards from the opposing player's hand at combat start. */
+  enemyDiscardAtCombatStart?: number;
+  /** At combat start choose one enemy whose attacks have disadvantage for the combat. */
+  markEnemyAttackDisadvantage?: boolean;
+  /** A free chosen-ally heal that refreshes every combat round. */
+  healAllyPerCombatRound?: number;
+  /** Combat-start artifact packages. */
+  summonWeakSpiritAtCombatStart?: boolean;
+  optionalFirePulseAtCombatStart?: number;
+  forceFieldAtCombatStartRounds?: number;
+  /** Commander-specific attack/defense reactions. */
+  firstOwnAttackBonus?: number;
+  rangedAttackerDamage?: number;
+  firstIncomingAttackReduction?: number;
+  activationPushAdjacentDamage?: number;
   /** Map reward paid after every combat won by this commander's main hero. */
   goldAfterWonCombat?: number;
+  goldAfterCommanderLevel?: number;
 }
 
 export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
@@ -114,8 +152,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Iron Cudgel",
     slot: "weapon",
     tier: "minor",
-    effectText: "+1 Attack.",
-    attack: 1
+    effectText: "+1 Attack during odd-numbered combat rounds.",
+    oddRoundAttack: 1
   },
   "wog.artifact.axe_of_smashing": {
     cardId: "wog.artifact.axe_of_smashing",
@@ -123,8 +161,9 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Axe of Smashing",
     slot: "weapon",
     tier: "major",
-    effectText: "+2 Attack.",
-    attack: 2
+    effectText: "+2 Attack in round 1; +1 Attack from round 2 onward.",
+    attack: 2,
+    laterRoundAttack: -1
   },
   "wog.artifact.sword_of_sharpness": {
     cardId: "wog.artifact.sword_of_sharpness",
@@ -142,8 +181,10 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Doomsday Blade",
     slot: "weapon",
     tier: "relic",
-    effectText: "+2 Attack and the commander's attacks roll with advantage.",
+    effectText: "+2 Attack in round 1, +1 from round 2 onward, and +1 more when retaliating. Commander attacks roll with advantage.",
     attack: 2,
+    laterRoundAttack: -1,
+    retaliationAttack: 1,
     attackRollAdvantage: true
   },
   // Heavenly Demon Palace bespoke weapon — a flat-Attack fold (the Iron Cudgel /
@@ -183,7 +224,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Helm of Immortality",
     slot: "armor",
     tier: "relic",
-    effectText: "if the commander dies in combat it revives FREE at combat end (death never persists, no gold).",
+    effectText: "+2 Health. If killed in combat, revive free at combat end.",
+    health: 2,
     reviveFree: true
   },
   // ---- Trinket -----------------------------------------------------------
@@ -193,8 +235,9 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Boots of Haste",
     slot: "trinket",
     tier: "minor",
-    effectText: "+2 Initiative.",
-    initiative: 2
+    effectText: "+3 Initiative and move 1 more space.",
+    initiative: 3,
+    moveRangeBonus: 1
   },
   "wog.artifact.pendant_of_sorcery": {
     cardId: "wog.artifact.pendant_of_sorcery",
@@ -211,11 +254,11 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Dragon Eye Ring",
     slot: "trinket",
     tier: "major",
-    // Reuses the Gold-Dragon / Factory-Mechanics SECOND_ATTACK_BEHIND_TARGET arm
-    // (`dragon-line-attack-3`): after the commander's attack a full separate
-    // attack at attack 3 strikes the unit directly behind the target.
-    effectText: "the commander's attacks also strike the space directly behind the target (a separate attack 3 hit that never provokes retaliation).",
-    abilityIds: ["dragon-line-attack-3"]
+    // Reuses the Gold-Dragon / Factory-Mechanics SECOND_ATTACK_BEHIND_TARGET arm:
+    // after the commander's attack a full separate Attack 4 strikes the unit
+    // directly behind the target.
+    effectText: "attacks also strike the space directly behind the target (a separate Attack 4 hit with no retaliation).",
+    abilityIds: ["dragon-line-attack-4"]
   },
   // Heavenly Demon Palace bespoke trinket — a relic COMBINING two flat folds the
   // engine already sums in `aggregateCommanderArtifactBonuses`: the Pendant of
@@ -246,8 +289,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Duelist Guard",
     slot: "armor",
     tier: "minor",
-    effectText: "enemy attacks against the commander roll with disadvantage during combat round 1.",
-    incomingAttackDisadvantage: "round-1"
+    effectText: "enemy attacks against the commander roll with disadvantage during odd-numbered combat rounds.",
+    incomingAttackDisadvantage: "odd-rounds"
   },
   "wog.artifact.victors_coin": {
     cardId: "wog.artifact.victors_coin",
@@ -255,8 +298,9 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Victor's Coin",
     slot: "trinket",
     tier: "minor",
-    effectText: "+1 gold after every combat won by this commander's main hero.",
-    goldAfterWonCombat: 1
+    effectText: "+1 gold after every combat won by the commander's main hero and +1 gold each time the commander levels up.",
+    goldAfterWonCombat: 1,
+    goldAfterCommanderLevel: 1
   },
   "wog.artifact.veil_of_dread": {
     cardId: "wog.artifact.veil_of_dread",
@@ -291,8 +335,9 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Chrono Pike",
     slot: "weapon",
     tier: "major",
-    effectText: "after the commander's own attack, the target gets −3 Initiative for the whole combat.",
-    onAttackInitiativePenalty: 3
+    effectText: "own attacks give the target −3 Initiative for the combat and −1 movement space.",
+    onAttackInitiativePenalty: 3,
+    onAttackMovePenalty: 1
   },
   "wog.artifact.vampiric_fang": {
     cardId: "wog.artifact.vampiric_fang",
@@ -300,8 +345,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Vampiric Fang",
     slot: "weapon",
     tier: "major",
-    effectText: "after the commander's own attack deals damage, heal 1 damage from the commander.",
-    healAfterDamagingAttack: 1
+    effectText: "heal 2 after an attack or retaliation attack deals damage.",
+    healAfterDamagingAttack: 2
   },
   "wog.artifact.piercing_lance": {
     cardId: "wog.artifact.piercing_lance",
@@ -309,8 +354,10 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Piercing Lance",
     slot: "weapon",
     tier: "major",
-    effectText: "the commander's attacks ignore 1 Defense (stacks with other Defense reduction).",
-    defensePierce: 1
+    effectText: "attacks ignore 1 Defense; gain +1 Attack when the enemy has 1 or less Defense.",
+    defensePierce: 1,
+    lowDefenseAttack: 1,
+    lowDefenseThreshold: 1
   },
   "wog.artifact.barbed_carapace": {
     cardId: "wog.artifact.barbed_carapace",
@@ -345,8 +392,9 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Traveler's Salve",
     slot: "trinket",
     tier: "relic",
-    effectText: "+2 Initiative and after the commander moves, heal 1 damage from it.",
-    initiative: 2,
+    effectText: "+5 Initiative, move 1 more space, and heal 1 after moving.",
+    initiative: 5,
+    moveRangeBonus: 1,
     healAfterMove: 1
   },
   "wog.artifact.bastion_heart": {
@@ -364,9 +412,140 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Stormcleaver",
     slot: "weapon",
     tier: "relic",
-    effectText: "+1 Attack and after the commander's own attack, deal 1 damage to one enemy adjacent to the target.",
+    effectText: "+1 Attack and after attacking, deal 2 damage to an enemy adjacent to the target.",
     attack: 1,
-    cleaveDamage: 1
+    cleaveDamage: 2
+  },
+  "wog.artifact.executioners_edge": {
+    cardId: "wog.artifact.executioners_edge",
+    slug: "executioners_edge",
+    name: "Blood-Comet Seal",
+    slot: "weapon",
+    tier: "relic",
+    effectText: "+1 Attack. At activation, choose any enemy unit and deal 1 damage to it; the commander may then act normally.",
+    attack: 1,
+    abilityIds: ["commander-artifact-executioners-edge"]
+  },
+  "wog.artifact.lanternroot_crook": {
+    cardId: "wog.artifact.lanternroot_crook",
+    slug: "lanternroot_crook",
+    name: "Lanternroot Crook",
+    slot: "weapon",
+    tier: "minor",
+    effectText: "at combat start, summon a weak Starwind spirit on any empty space; it vanishes after combat round 1.",
+    summonWeakSpiritAtCombatStart: true
+  },
+  "wog.artifact.widows_courtesy": {
+    cardId: "wog.artifact.widows_courtesy",
+    slug: "widows_courtesy",
+    name: "Widow's Courtesy",
+    slot: "weapon",
+    tier: "minor",
+    effectText: "the commander's first own attack each combat gains +1 Attack; after a ranged enemy attacks the commander, that enemy suffers 1 damage.",
+    firstOwnAttackBonus: 1,
+    rangedAttackerDamage: 1
+  },
+  "wog.artifact.counterfeit_cataclysm": {
+    cardId: "wog.artifact.counterfeit_cataclysm",
+    slug: "counterfeit_cataclysm",
+    name: "Counterfeit Cataclysm",
+    slot: "weapon",
+    tier: "relic",
+    effectText: "+1 Attack. At combat start, you may deal 1 Fire Spell damage to every unit; Fire resistance and immunity apply.",
+    attack: 1,
+    optionalFirePulseAtCombatStart: 1
+  },
+  "wog.artifact.regenerators_mail": {
+    cardId: "wog.artifact.regenerators_mail",
+    slug: "regenerators_mail",
+    name: "Second-Breath Chrysalis",
+    slot: "armor",
+    tier: "minor",
+    effectText: "after the commander is attacked, heal 1 damage from it if it survived.",
+    healAfterAttacked: 1
+  },
+  "wog.artifact.aegis_of_warding": {
+    cardId: "wog.artifact.aegis_of_warding",
+    slug: "aegis_of_warding",
+    name: "The Quiet Orbit",
+    slot: "armor",
+    tier: "major",
+    effectText: "the commander and every surrounding unit suffer 1 less damage from Spells and Hero Specialties.",
+    abilityIds: ["commander-artifact-warding-aura"]
+  },
+  "wog.artifact.temporal_cuirass": {
+    cardId: "wog.artifact.temporal_cuirass",
+    slug: "temporal_cuirass",
+    name: "Tomorrow's Grip",
+    slot: "armor",
+    tier: "major",
+    effectText: "once per combat round, shift up to 4 incoming attack damage to the end of that round.",
+    delayedAttackDamagePerRound: 4
+  },
+  "wog.artifact.hunters_quill": {
+    cardId: "wog.artifact.hunters_quill",
+    slug: "hunters_quill",
+    name: "Hunter's Quill",
+    slot: "trinket",
+    tier: "minor",
+    effectText: "draw 1 card whenever the commander defeats an enemy side or Stack layer (including Pack to Few).",
+    drawAfterDefeatingLayer: 1
+  },
+  "wog.artifact.masons_token": {
+    cardId: "wog.artifact.masons_token",
+    slug: "masons_token",
+    name: "Mason's Token",
+    slot: "trinket",
+    tier: "minor",
+    effectText: "gain 1 building material whenever the commander defeats an enemy side or Stack layer (including Pack to Few).",
+    materialsAfterDefeatingLayer: 1
+  },
+  "wog.artifact.mercenarys_hourglass": {
+    cardId: "wog.artifact.mercenarys_hourglass",
+    slug: "mercenarys_hourglass",
+    name: "Mercenary's Hourglass",
+    slot: "trinket",
+    tier: "major",
+    effectText: "gain 1 gold at the start of every combat round.",
+    goldPerCombatRound: 1
+  },
+  "wog.artifact.eye_of_misfortune": {
+    cardId: "wog.artifact.eye_of_misfortune",
+    slug: "eye_of_misfortune",
+    name: "Eye of Misfortune",
+    slot: "trinket",
+    tier: "relic",
+    effectText: "at combat start, the enemy discards 1 random card; choose an enemy unit whose attacks roll with disadvantage for the whole combat.",
+    enemyDiscardAtCombatStart: 1,
+    markEnemyAttackDisadvantage: true
+  },
+  "wog.artifact.chalice_of_renewal": {
+    cardId: "wog.artifact.chalice_of_renewal",
+    slug: "chalice_of_renewal",
+    name: "Chalice of Renewal",
+    slot: "trinket",
+    tier: "relic",
+    effectText: "once every combat round, heal 1 damage from a chosen allied unit other than the commander.",
+    healAllyPerCombatRound: 1
+  },
+  "wog.artifact.ring_of_the_sealed_horizon": {
+    cardId: "wog.artifact.ring_of_the_sealed_horizon",
+    slug: "ring_of_the_sealed_horizon",
+    name: "Ring of the Sealed Horizon",
+    slot: "trinket",
+    tier: "major",
+    effectText: "at combat start, create a Force Field on any empty space; it lasts through combat round 2.",
+    forceFieldAtCombatStartRounds: 2
+  },
+  "wog.artifact.amulet_of_recoil": {
+    cardId: "wog.artifact.amulet_of_recoil",
+    slug: "amulet_of_recoil",
+    name: "Amulet of Recoil",
+    slot: "trinket",
+    tier: "relic",
+    effectText: "reduce damage from the first attack against the commander each combat by 2. At each activation, choose an adjacent enemy: deal 2 damage and push it back if possible.",
+    firstIncomingAttackReduction: 2,
+    activationPushAdjacentDamage: 2
   }
 };
 
@@ -428,15 +607,22 @@ export interface CommanderArtifactBonuses {
   defense: number;
   health: number;
   initiative: number;
+  moveRangeBonus: number;
+  oddRoundAttack: number;
+  laterRoundAttack: number;
+  retaliationAttack: number;
+  lowDefenseAttack: number;
+  lowDefenseThreshold: number;
   abilityIds: string[];
   castPowerBonus: number;
   reviveFree: boolean;
   attackRollAdvantage: boolean;
   nonNegativeMightDice: number;
-  incomingAttackDisadvantage: "round-1" | "combat" | null;
+  incomingAttackDisadvantage: "round-1" | "odd-rounds" | "combat" | null;
   onAttackDefensePenalty: number;
   onAttackAttackPenalty: number;
   onAttackInitiativePenalty: number;
+  onAttackMovePenalty: number;
   healAfterDamagingAttack: number;
   defensePierce: number;
   combatRebirth: boolean;
@@ -445,7 +631,23 @@ export interface CommanderArtifactBonuses {
   cleaveDamage: number;
   reflectDamage: number;
   activationAdjacentDamage: number;
+  drawAfterDefeatingLayer: number;
+  materialsAfterDefeatingLayer: number;
+  healAfterAttacked: number;
+  delayedAttackDamagePerRound: number;
+  goldPerCombatRound: number;
+  enemyDiscardAtCombatStart: number;
+  markEnemyAttackDisadvantage: boolean;
+  healAllyPerCombatRound: number;
+  summonWeakSpiritAtCombatStart: boolean;
+  optionalFirePulseAtCombatStart: number;
+  forceFieldAtCombatStartRounds: number;
+  firstOwnAttackBonus: number;
+  rangedAttackerDamage: number;
+  firstIncomingAttackReduction: number;
+  activationPushAdjacentDamage: number;
   goldAfterWonCombat: number;
+  goldAfterCommanderLevel: number;
 }
 
 /** Sum the wired bonuses of every artifact bound onto a commander. */
@@ -457,6 +659,12 @@ export function aggregateCommanderArtifactBonuses(
     defense: 0,
     health: 0,
     initiative: 0,
+    moveRangeBonus: 0,
+    oddRoundAttack: 0,
+    laterRoundAttack: 0,
+    retaliationAttack: 0,
+    lowDefenseAttack: 0,
+    lowDefenseThreshold: -1,
     abilityIds: [],
     castPowerBonus: 0,
     reviveFree: false,
@@ -466,6 +674,7 @@ export function aggregateCommanderArtifactBonuses(
     onAttackDefensePenalty: 0,
     onAttackAttackPenalty: 0,
     onAttackInitiativePenalty: 0,
+    onAttackMovePenalty: 0,
     healAfterDamagingAttack: 0,
     defensePierce: 0,
     combatRebirth: false,
@@ -474,7 +683,23 @@ export function aggregateCommanderArtifactBonuses(
     cleaveDamage: 0,
     reflectDamage: 0,
     activationAdjacentDamage: 0,
-    goldAfterWonCombat: 0
+    drawAfterDefeatingLayer: 0,
+    materialsAfterDefeatingLayer: 0,
+    healAfterAttacked: 0,
+    delayedAttackDamagePerRound: 0,
+    goldPerCombatRound: 0,
+    enemyDiscardAtCombatStart: 0,
+    markEnemyAttackDisadvantage: false,
+    healAllyPerCombatRound: 0,
+    summonWeakSpiritAtCombatStart: false,
+    optionalFirePulseAtCombatStart: 0,
+    forceFieldAtCombatStartRounds: 0,
+    firstOwnAttackBonus: 0,
+    rangedAttackerDamage: 0,
+    firstIncomingAttackReduction: 0,
+    activationPushAdjacentDamage: 0,
+    goldAfterWonCombat: 0,
+    goldAfterCommanderLevel: 0
   };
   if (!artifacts) {
     return totals;
@@ -491,6 +716,12 @@ export function aggregateCommanderArtifactBonuses(
     totals.defense += spec.defense ?? 0;
     totals.health += spec.health ?? 0;
     totals.initiative += spec.initiative ?? 0;
+    totals.moveRangeBonus += spec.moveRangeBonus ?? 0;
+    totals.oddRoundAttack += spec.oddRoundAttack ?? 0;
+    totals.laterRoundAttack += spec.laterRoundAttack ?? 0;
+    totals.retaliationAttack += spec.retaliationAttack ?? 0;
+    totals.lowDefenseAttack += spec.lowDefenseAttack ?? 0;
+    if (spec.lowDefenseThreshold !== undefined) totals.lowDefenseThreshold = spec.lowDefenseThreshold;
     totals.castPowerBonus += spec.castPowerBonus ?? 0;
     if (spec.reviveFree) {
       totals.reviveFree = true;
@@ -501,9 +732,13 @@ export function aggregateCommanderArtifactBonuses(
     else if (spec.incomingAttackDisadvantage === "round-1" && !totals.incomingAttackDisadvantage) {
       totals.incomingAttackDisadvantage = "round-1";
     }
+    else if (spec.incomingAttackDisadvantage === "odd-rounds" && !totals.incomingAttackDisadvantage) {
+      totals.incomingAttackDisadvantage = "odd-rounds";
+    }
     totals.onAttackDefensePenalty += spec.onAttackDefensePenalty ?? 0;
     totals.onAttackAttackPenalty += spec.onAttackAttackPenalty ?? 0;
     totals.onAttackInitiativePenalty += spec.onAttackInitiativePenalty ?? 0;
+    totals.onAttackMovePenalty += spec.onAttackMovePenalty ?? 0;
     totals.healAfterDamagingAttack += spec.healAfterDamagingAttack ?? 0;
     totals.defensePierce += spec.defensePierce ?? 0;
     totals.combatRebirth ||= Boolean(spec.combatRebirth);
@@ -512,7 +747,23 @@ export function aggregateCommanderArtifactBonuses(
     totals.cleaveDamage += spec.cleaveDamage ?? 0;
     totals.reflectDamage += spec.reflectDamage ?? 0;
     totals.activationAdjacentDamage += spec.activationAdjacentDamage ?? 0;
+    totals.drawAfterDefeatingLayer += spec.drawAfterDefeatingLayer ?? 0;
+    totals.materialsAfterDefeatingLayer += spec.materialsAfterDefeatingLayer ?? 0;
+    totals.healAfterAttacked += spec.healAfterAttacked ?? 0;
+    totals.delayedAttackDamagePerRound += spec.delayedAttackDamagePerRound ?? 0;
+    totals.goldPerCombatRound += spec.goldPerCombatRound ?? 0;
+    totals.enemyDiscardAtCombatStart += spec.enemyDiscardAtCombatStart ?? 0;
+    totals.markEnemyAttackDisadvantage ||= Boolean(spec.markEnemyAttackDisadvantage);
+    totals.healAllyPerCombatRound += spec.healAllyPerCombatRound ?? 0;
+    totals.summonWeakSpiritAtCombatStart ||= Boolean(spec.summonWeakSpiritAtCombatStart);
+    totals.optionalFirePulseAtCombatStart += spec.optionalFirePulseAtCombatStart ?? 0;
+    totals.forceFieldAtCombatStartRounds = Math.max(totals.forceFieldAtCombatStartRounds, spec.forceFieldAtCombatStartRounds ?? 0);
+    totals.firstOwnAttackBonus += spec.firstOwnAttackBonus ?? 0;
+    totals.rangedAttackerDamage += spec.rangedAttackerDamage ?? 0;
+    totals.firstIncomingAttackReduction += spec.firstIncomingAttackReduction ?? 0;
+    totals.activationPushAdjacentDamage += spec.activationPushAdjacentDamage ?? 0;
     totals.goldAfterWonCombat += spec.goldAfterWonCombat ?? 0;
+    totals.goldAfterCommanderLevel += spec.goldAfterCommanderLevel ?? 0;
     if (spec.abilityIds) {
       totals.abilityIds.push(...spec.abilityIds);
     }

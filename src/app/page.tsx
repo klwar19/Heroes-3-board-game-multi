@@ -3055,7 +3055,7 @@ export default function Home() {
           fromAnchor: string,
           targetUnitId: string
         ) => {
-          const at = `unit:${targetUnitId}`;
+          const at = plan.battlefield ? "battlefield" : `unit:${targetUnitId}`;
           const start = timeline;
           if (plan.projectile) {
             const projectileCount = Math.max(1, plan.projectileCount ?? 1);
@@ -3087,6 +3087,8 @@ export default function Home() {
               fxKey: plan.hit,
               at,
               sound: plan.hitSound ?? plan.sound,
+              fit: plan.battlefield ? "battlefield" : undefined,
+              playbackMs: plan.playbackMs,
               delayMs: start
             });
           }
@@ -3097,6 +3099,8 @@ export default function Home() {
               fxKey: entry.key,
               at,
               sound: index === 0 ? plan.sound : undefined,
+              fit: plan.battlefield ? "battlefield" : undefined,
+              playbackMs: plan.playbackMs,
               delayMs: start + (entry.delayMs ?? 0)
             });
           });

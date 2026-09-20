@@ -1498,10 +1498,10 @@ const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
 
 /**
  * HOME-TILE SWEEP (a strong human's tempo). While the hero still stands on its
- * OWN starting tile (tile Ⅰ), every remaining local payoff — the free resource
- * symbol, the guarded (difficulty 1) treasure, and the guarded (difficulty 1)
- * income MINE — MUST be drained before the hero marches off ("get all 3 items
- * in tile 1 all the time, then move to II–Ⅲ properly"). Measurement of the
+ * OWN starting tile (tile Ⅰ), local payoffs — the free resource symbol, the
+ * guarded (difficulty 1) treasure, and the guarded (difficulty 1) income mine
+ * — drive the first-round route. After two are collected, round 2 can instead
+ * open a reachable Ⅱ–Ⅲ tile from either open corner. Measurement of the
  * stock policy showed the fresh hero grabbing only the unguarded symbol and
  * abandoning the mine + treasure; conquest bronze-rush victory values also used
  * to outrank home payoffs and yank the hero away mid-sweep.
@@ -1509,11 +1509,10 @@ const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
  * Levers (scoped to the home tile while the hero is still on it):
  *  1. the not-ready guard penalty is LIFTED for a level-coverable difficulty-1/2
  *     guard on the home tile (opening play, not a fair fight to postpone),
- *  2. a decisive sweep bonus keeps every home payoff above off-tile prizes, and
- *  3. `primaryMapObjective` RESTRICTS the pool to remaining home payoffs while
- *     any exist — conquest / Far / sticky commits cannot interrupt the drain.
- * Both (1) and (2) switch off the moment the hero leaves the tile; (3) ends
- * once the home tile has nothing left to sweep.
+ *  2. a decisive sweep bonus keeps home payoffs above off-tile prizes until
+ *     the round-2 Far opening is ready, and
+ *  3. `primaryMapObjective` restricts the pool to home payoffs during that sweep.
+ * The bonuses switch off when the hero leaves the tile.
  */
 const HOME_TILE_SWEEP_MAX_DIFFICULTY = 2;
 const HOME_TILE_SWEEP_BONUS = 320;
@@ -1522,6 +1521,33 @@ const HOME_OPENING_LOCATIONS: ReadonlySet<string> = new Set([
   "resource_symbol",
   "treasure_symbol",
 ]);
+
+/** After two tile-I rewards, spend round 2 reaching an actual Far doorway. */
+export function roundTwoFarOpeningReady(state: GameState, hero: HeroState): boolean {
+  return mapScoringCached(state, `round-two-far|${heroCacheKey(hero)}`, () =>
+    roundTwoFarOpeningReadyUncached(state, hero));
+}
+
+function roundTwoFarOpeningReadyUncached(state: GameState, hero: HeroState): boolean {
+  if (state.round !== 2 || hero.kind !== "main" || !hero.spaceId) return false;
+  const adventure = state.adventure;
+  if (!adventure) return false;
+  const homeTile = homeTileInstanceId(state, hero.controllerId);
+  if (!homeTile || adventure.fields[hero.spaceId]?.tileInstanceId !== homeTile) return false;
+  // A Necropolis hero still looking for Necromancy may need the Amplifier's
+  // next search and a home fight before leaving the starting tile.
+  if (state.players[hero.controllerId]?.factionId === "necropolis" &&
+      !hasNecromancyPlan(state, hero.controllerId)) return false;
+  const sites = Object.values(adventure.fields).filter(field =>
+    field.tileInstanceId === homeTile && HOME_OPENING_LOCATIONS.has(field.location));
+  if (sites.length !== 3 || sites.filter(field => objectiveKind(state, hero, field) !== null).length !== 1) {
+    return false;
+  }
+  return collectExploreObjectives(state, hero).some(objective =>
+    objective.opensFarTile &&
+    adventure.fields[objective.spaceId]?.tileInstanceId === homeTile &&
+    distanceFromHeroTo(state, hero, objective.spaceId) !== undefined);
+}
 
 /** The tile instance carrying this player's own faction town, if any. */
 export function homeTileInstanceId(
@@ -1542,8 +1568,8 @@ export function homeTileInstanceId(
 /**
  * Whether this objective qualifies for the home-tile sweep: a sweepable payoff
  * on the hero's OWN starting tile, while the hero still stands on that tile.
- * Only the first two rounds force the opening sweep. Returning home later
- * must not restart the opening and displace an income commitment.
+ * Round 2 releases the sweep after two rewards when an open Far doorway is
+ * reachable. Returning home later must not restart the opening.
  * Pure public-state reads (town flag, tile ids) — never touches the
  * guaranteed-win house rule.
  */
@@ -1555,6 +1581,7 @@ export function isHomeTileSweepObjective(
 ): boolean {
   if (state.round > 2) return false;
   if (!SWEEPABLE_KINDS.has(objective.kind)) return false;
+  if (roundTwoFarOpeningReady(state, hero)) return false;
   const homeTile = homeTileInstanceId(state, hero.controllerId);
   if (!homeTile) return false;
   const heroTile = hero.spaceId
@@ -2685,6 +2712,20 @@ function primaryMapObjectiveUncached(
   const openingObjective = openingRemaining.length === homeRemaining.length
     ? bestHomeOpeningObjective(state, hero, openingRemaining)
     : null;
+
+  if (roundTwoFarOpeningReady(state, hero)) {
+    // A doorway may itself carry the one remaining object, in which case
+    // collectMapObjectives lists the payoff instead of an explore objective.
+    const safeSpaces = new Set(actionable.map(objective => objective.spaceId));
+    const doorways = collectExploreObjectives(state, hero).filter(objective =>
+      objective.opensFarTile &&
+      safeSpaces.has(objective.spaceId) &&
+      state.adventure?.fields[objective.spaceId]?.tileInstanceId ===
+        homeTileInstanceId(state, hero.controllerId) &&
+      distanceFromHeroTo(state, hero, objective.spaceId) !== undefined);
+    const doorway = bestObjectiveOf(state, hero, doorways, false);
+    if (doorway) return doorway;
+  }
 
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
   // listed, explore objectives get a boost so the hero opens new land instead

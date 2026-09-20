@@ -16,7 +16,7 @@ import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
 import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective, withMapScoringCache } from "./map-navigation";
 import { isPremiumEconomyField } from "./army-strength";
-import { deferDiscretionarySpending, refineCombatShortlist } from "./decision-planning";
+import { deferDiscretionarySpending, refineCombatShortlist, refinePvpCombatSpellRound } from "./decision-planning";
 
 /** A scored move alone is not evidence that retracing a route pays off. */
 function returnsTowardPayoff(observation: ComputerObservation, action: GameAction): boolean {
@@ -506,6 +506,7 @@ function chooseComputerActionUncached(
     }
   }
   deferDiscretionarySpending(observation, ranked);
+  refinePvpCombatSpellRound(observation, ranked);
   refineCombatShortlist(observation, ranked);
   ranked.sort(
       (a, b) =>

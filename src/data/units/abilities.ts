@@ -945,6 +945,11 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Commander artifact: choose any enemy and deal flat effect damage, then act normally. */
+      type: "ON_ACTIVATION_DAMAGE_ENEMY";
+      amount: number;
+    }
+  | {
       /** Doom Revenant: damage the chosen target immediately before the attack. */
       type: "ON_ATTACK_PRE_DAMAGE";
       amount: number;
@@ -2600,6 +2605,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 3 },
     implementationStatus: "implemented"
   },
+  "dragon-line-attack-4": {
+    id: "dragon-line-attack-4",
+    name: "Dragon Eye Ring",
+    text: "After this unit attacks, a separate Attack 4 hit strikes the space directly behind the target. The second target cannot retaliate.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 4 },
+    implementationStatus: "implemented"
+  },
   "azure-dragon-paralysis": {
     id: "azure-dragon-paralysis",
     name: "Paralyzing Breath",
@@ -4138,6 +4150,20 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Spell Sunder",
     text: "[unit_passive] At most twice per combat, when an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
     effect: { type: "SPELL_CAST_HAND_TAX" },
+    implementationStatus: "implemented"
+  },
+  "commander-artifact-warding-aura": {
+    id: "commander-artifact-warding-aura",
+    name: "The Quiet Orbit",
+    text: "[unit_passive] This unit and every surrounding unit suffer 1 less damage from Spells or Hero Specialties (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "commander-artifact-executioners-edge": {
+    id: "commander-artifact-executioners-edge",
+    name: "Blood-Comet Seal",
+    text: "[activation] Choose any enemy unit and deal 1 damage to it. This is free; the commander then acts normally.",
+    effect: { type: "ON_ACTIVATION_DAMAGE_ENEMY", amount: 1 },
     implementationStatus: "implemented"
   },
   "veteran-elf-spell-sunder": {

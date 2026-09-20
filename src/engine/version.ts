@@ -1430,7 +1430,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // automatic timeout requests are idempotent no-ops instead of rules errors.
 // v159 (2026-09-20): Tower Magi rank-3 Arcane Recovery and rank-4 Spell
 // Sunder each have a separate twice-per-combat budget in authoritative state.
-export const ENGINE_PROTOCOL_VERSION = 159;
+// v160 (2026-09-20): nine commander artifacts add authoritative combat-start,
+// activation-target, attack-resolution, round-start, deferred-damage and
+// once-per-round heal state. Clients and the PartyKit worker must share these
+// PendingChoice/CombatState/CombatUnitState fields and reducer rules.
+// v161 (2026-09-20): six additional/redesigned commander artifacts add
+// serialized combat-start placement/eruption choices, one-shot attack wards,
+// first-attack tracking and a per-round activation shove target choice.
+export const ENGINE_PROTOCOL_VERSION = 161;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

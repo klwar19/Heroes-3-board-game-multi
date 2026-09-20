@@ -72,7 +72,16 @@ export type FxCue =
        */
       holdMs?: number;
     }
-  | { kind: "sprite"; id: string; fxKey: string; at: string; delayMs?: number; sound?: string }
+  | {
+      kind: "sprite";
+      id: string;
+      fxKey: string;
+      at: string;
+      delayMs?: number;
+      sound?: string;
+      fit?: "battlefield";
+      playbackMs?: number;
+    }
   | {
       /**
        * A sprite-less colored wash (Bloodlust's red battle-rage) flashed over an
@@ -712,17 +721,24 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   const to = centerOf(toRect);
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const width = Math.hypot(dx, dy);
-  if (width < 1) return;
-  const height = Math.min(fromRect.height, toRect.height) * 0.88;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return;
+  const dragonBreath = cue.fxKey === "dragon-fire-breath-animated"
+    || cue.fxKey === "dragon-fierce-breath-animated";
+  // Let the dragon's fire carry past the struck unit instead of ending at its
+  // center. Other thrust effects retain their original anchor geometry.
+  const width = distance + (dragonBreath ? toRect.width * 0.38 : 0);
+  const height = Math.min(fromRect.height, toRect.height) * (dragonBreath ? 1.02 : 0.88);
+  const centerX = from.x + dx / distance * width / 2;
+  const centerY = from.y + dy / distance * width / 2;
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxMeleeImpact";
   sprite.style.width = `${width}px`;
   sprite.style.height = `${height}px`;
   sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
   sprite.style.backgroundSize = `${width * sheet.cols}px ${height * sheet.rows}px`;
-  sprite.style.left = `${(from.x + to.x) / 2 - width / 2}px`;
-  sprite.style.top = `${(from.y + to.y) / 2 - height / 2}px`;
+  sprite.style.left = `${centerX - width / 2}px`;
+  sprite.style.top = `${centerY - height / 2}px`;
   sprite.style.transformOrigin = "center";
   sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
   stage.appendChild(sprite);
@@ -1002,17 +1018,28 @@ async function runBolt(stage: HTMLElement, cue: Extract<FxCue, { kind: "bolt" }>
 }
 
 /** Steps a converted .def sheet frame by frame over the anchored cell. */
-async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey?: string, playbackMs?: number): Promise<void> {
+async function runSprite(
+  stage: HTMLElement,
+  fxKey: string,
+  at: string,
+  soundKey?: string,
+  playbackMs?: number,
+  fit?: "battlefield",
+): Promise<void> {
   const sheet = getFxSheet(fxKey);
   const rect = resolveAnchorRect(at);
   if (!sheet || !rect) {
     return;
   }
 
-  // The original art targets ~90px battle hexes; scaling by cell width keeps
-  // the authored proportions. Oversized effects are capped at ~2.4 cells.
-  let scale = rect.width / 90;
-  scale = Math.min(scale, (rect.height * 2.4) / sheet.frameHeight, (rect.width * 2.4) / sheet.frameWidth);
+  // Unit effects stay compact; battlefield effects cover the complete board
+  // and are clipped to its ornate frame rather than spilling across the HUD.
+  let scale = fit === "battlefield"
+    ? Math.max(rect.width / sheet.frameWidth, rect.height / sheet.frameHeight)
+    : rect.width / 90;
+  if (fit !== "battlefield") {
+    scale = Math.min(scale, (rect.height * 2.4) / sheet.frameHeight, (rect.width * 2.4) / sheet.frameWidth);
+  }
   scale *= sheet.scaleMultiplier ?? 1;
 
   const sprite = document.createElement("div");
@@ -1025,11 +1052,22 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
     sprite.style.opacity = String(sheet.opacity);
   }
 
-  const anchor = centerOf(rect);
+  const clip = fit === "battlefield" ? document.createElement("div") : null;
+  if (clip) {
+    clip.className = "fxBattlefieldSpriteClip";
+    clip.style.left = `${rect.left}px`;
+    clip.style.top = `${rect.top}px`;
+    clip.style.width = `${rect.width}px`;
+    clip.style.height = `${rect.height}px`;
+    stage.appendChild(clip);
+  }
+  const anchor = fit === "battlefield"
+    ? { x: rect.width / 2, y: rect.height / 2 }
+    : centerOf(rect);
   const scaledH = sheet.frameHeight * scale;
   const top =
     sheet.anchor === "bottom"
-      ? rect.bottom - scaledH - rect.height * 0.06
+      ? (fit === "battlefield" ? rect.height : rect.bottom) - scaledH - rect.height * 0.06
       : anchor.y - scaledH / 2;
   sprite.style.left = `${anchor.x - (sheet.frameWidth * scale) / 2}px`;
   sprite.style.top = `${top}px`;
@@ -1037,7 +1075,7 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
   sprite.style.transformOrigin = "top left";
   // transform-origin top left keeps math simple: position pre-scaled.
   sprite.style.left = `${anchor.x - (sheet.frameWidth * scale) / 2}px`;
-  stage.appendChild(sprite);
+  (clip ?? stage).appendChild(sprite);
 
   if (soundKey) {
     playLibrarySound(soundKey);
@@ -1072,7 +1110,7 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
       requestAnimationFrame(step);
     });
   } finally {
-    sprite.remove();
+    (clip ?? sprite).remove();
   }
 }
 
@@ -1507,7 +1545,7 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
           case "move":
             return runMove(stage, cue);
           case "sprite":
-            return runSprite(stage, cue.fxKey, cue.at, cue.sound);
+            return runSprite(stage, cue.fxKey, cue.at, cue.sound, cue.playbackMs, cue.fit);
           case "projectile":
             return runProjectile(stage, cue);
           case "line":

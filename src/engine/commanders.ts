@@ -71,6 +71,76 @@ export function commandersModuleEnabled(state: GameState): boolean {
   return Boolean(state.wog?.enabled && state.wog.commanders);
 }
 
+/**
+ * Applies commander-artifact effects that refresh at the start of each combat
+ * round. The combat ledger makes this safe across reconnect/re-entry paths.
+ */
+export function applyCommanderArtifactCombatRoundStart(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) return;
+  const ledger = (combat.commanderArtifactRoundStartsApplied ??= []);
+  for (const unit of Object.values(combat.units)) {
+    if (!unit.commanderSlug || unit.damage >= unit.maxHealth) continue;
+    const key = `${unit.controllerId}#${combat.round}`;
+    if (ledger.includes(key)) continue;
+    ledger.push(key);
+    const bonuses = aggregateCommanderArtifactBonuses(
+      state.players[unit.controllerId]?.commander?.artifacts,
+    );
+    const player = state.players[unit.controllerId];
+    if (player && bonuses.goldPerCombatRound > 0) {
+      player.resources.gold += bonuses.goldPerCombatRound;
+      appendEvent(state, {
+        type: "RESOURCES_GAINED",
+        playerId: unit.controllerId,
+        gold: bonuses.goldPerCombatRound,
+        buildingMaterials: 0,
+        valuables: 0,
+        reason: `Mercenary's Hourglass — combat round ${combat.round}`,
+      });
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: "commander-artifact-mercenarys-hourglass",
+        targetUnitId: unit.id,
+        message: `Mercenary's Hourglass grants ${bonuses.goldPerCombatRound} gold at the start of combat round ${combat.round}.`,
+      });
+    }
+    if (bonuses.healAllyPerCombatRound > 0) {
+      const exists = state.activeEffects.some(
+        (effect) =>
+          effect.name === "Chalice of Renewal" &&
+          effect.source.type === "unit" &&
+          effect.source.unitId === unit.id,
+      );
+      if (!exists) {
+        state.activeEffects.push(
+          makeActiveEffect(
+            state,
+            {
+              name: "Chalice of Renewal",
+              scope: "player",
+              duration: { type: "combat" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                {
+                  type: "HEAL_ONCE_PER_COMBAT_ROUND",
+                  amount: bonuses.healAllyPerCombatRound,
+                  basicOnly: true,
+                  excludeSourceUnitId: unit.id,
+                },
+              ],
+            },
+            { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+            unit.controllerId,
+          ),
+        );
+      }
+    }
+  }
+}
+
 /** Whether this game runs the WOG New Objects module (`wog.newObjects`). */
 export function wogNewObjectsEnabled(state: Pick<GameState, "wog">): boolean {
   return Boolean(state.wog?.enabled && state.wog.newObjects);
@@ -771,6 +841,10 @@ export function commanderLiveAttackBonus(state: GameState, unit: CombatUnitState
   ) {
     bonus += 1;
   }
+  const artifacts = aggregateCommanderArtifactBonuses(commander.artifacts);
+  const round = state.combat?.round ?? 1;
+  if (round % 2 === 1) bonus += artifacts.oddRoundAttack;
+  if (round >= 2) bonus += artifacts.laterRoundAttack;
   return bonus;
 }
 

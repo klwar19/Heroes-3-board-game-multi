@@ -1000,6 +1000,10 @@ export type ActiveEffectModifier =
       // card — mirroring how the Ballista's 3× volley lives on Artillery.
       type: "HEAL_ONCE_PER_COMBAT_ROUND";
       amount: number;
+      /** Artifact heals stay basic and cannot be upgraded by the First Aid card. */
+      basicOnly?: boolean;
+      /** A chosen-ally heal cannot target the unit that supplies the effect. */
+      excludeSourceUnitId?: UnitId;
     }
   | {
       type: "UNIT_CANNOT_MOVE";
@@ -1137,6 +1141,11 @@ export type ActiveEffectModifier =
   | {
       /** Unit-experience movement shift independent of optional Haste movement rules. */
       type: "NEUTRAL_MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
+      /** Combat artifact movement penalty, independent of optional movement rules. */
+      type: "ARTIFACT_MOVEMENT_BONUS";
       amount: number;
     }
   | {
@@ -10048,6 +10057,14 @@ export type CombatUnitState = {
    */
   waitPending?: boolean;
   attackedThisActivation?: boolean;
+  /** Eye of Misfortune: forced disadvantage on every attack for this combat. */
+  commanderArtifactAttackDisadvantage?: boolean;
+  /** Widow's Courtesy: the commander's first declared own attack spent its +1. */
+  commanderArtifactFirstOwnAttackUsed?: boolean;
+  /** Amulet of Recoil: the first incoming attack spent its 2-point ward. */
+  commanderArtifactFirstIncomingAttackUsed?: boolean;
+  /** Combat round in which Amulet of Recoil's activation shove was used. */
+  commanderArtifactRepulsorUsedRound?: number;
   /** Attacks resolved during this activation (double-attack abilities stop at 2). */
   attacksThisActivation?: number;
   /**
@@ -11112,6 +11129,12 @@ export type CombatState = {
    * guard across finalizeCombatStart re-entries.
    */
   commanderCombatStartResolved?: boolean;
+  /** Players whose Eye of Misfortune combat-start discard/mark has resolved. */
+  commanderArtifactStartResolvedPlayerIds?: PlayerId[];
+  /** Per-player, per-effect idempotency keys for stackable artifact start effects. */
+  commanderArtifactStartResolvedKeys?: string[];
+  /** Idempotency ledger for per-round commander-artifact income/effect seeding. */
+  commanderArtifactRoundStartsApplied?: string[];
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
@@ -17319,6 +17342,10 @@ export type PendingChoice =
         | "combat-remove-then-search"
         | "combat-remove-another"
         | "commander-artifact-offer"
+        | "commander-artifact-misfortune"
+        | "commander-artifact-spirit"
+        | "commander-artifact-cataclysm"
+        | "commander-artifact-barrier"
         | "commander-begin-cast"
         | "commander-magic-arrow-fetch"
         | "polish-spell-or-cast";
@@ -17326,6 +17353,18 @@ export type PendingChoice =
         cardIds: CardId[];
         cost: number;
         source: string;
+      };
+      commanderArtifactMisfortune?: {
+        commanderUnitId: UnitId;
+        targetUnitIds: UnitId[];
+        remainingPlayerIds: PlayerId[];
+      };
+      commanderArtifactStart?: {
+        commanderUnitId: UnitId;
+        positions?: number[];
+        damage?: number;
+        rounds?: number;
+        remainingPlayerIds: PlayerId[];
       };
       /**
        * Fortress Shaman begin-of-match Haste (round 1 only): each option except
@@ -18322,6 +18361,8 @@ export type PendingChoice =
         | "spell-redirect"
         | "enchanter-activation"
         | "faerie-damage"
+        | "commander-artifact-activation-damage"
+        | "commander-artifact-recoil"
         | "jotunn-teleport"
         | "combat-start-teleport"
         | "chain-lightning"

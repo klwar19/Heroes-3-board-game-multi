@@ -1461,6 +1461,13 @@ export function getUnitMoveRange(
   const rooted = neutralTownDeepRooted(state, unit);
   const baseRange = unit.type === "ranged" ? 1 : 3;
   const base = baseRange + (rooted ? Math.min(0, getUnitAbilityMoveRangeBonus(unit)) : getUnitAbilityMoveRangeBonus(unit));
+  const artifactMoveBonus = unit.commanderSlug && state
+    ? commanderArtifactBonusesForUnit(state, unit).moveRangeBonus : 0;
+  const artifactMovePenalty = state?.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) return total;
+    return total + effect.modifiers.reduce((sum, modifier) =>
+      modifier.type === "ARTIFACT_MOVEMENT_BONUS" ? sum + modifier.amount : sum, 0);
+  }, 0) ?? 0;
   const neutralBonus = state?.activeEffects.reduce((total, effect) => {
     if (!effectAppliesToUnit(effect, unit)) return total;
     return total + effect.modifiers.reduce((sum, modifier) =>
@@ -1513,7 +1520,11 @@ export function getUnitMoveRange(
     state && houseRuleEnabled(state, "community-card-balance"),
   );
   if (!state || (!classicRider && !balancePrinted && !communityPrinted)) {
-    return Math.min(Math.max(1, base + commanderMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)), moveCap);
+    const unrestrictedRange = Math.min(
+      Math.max(1, base + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
+      moveCap,
+    );
+    return Math.max(0, unrestrictedRange + artifactMovePenalty);
   }
   let bonus = 0;
   for (const effect of state.activeEffects) {
@@ -1541,7 +1552,11 @@ export function getUnitMoveRange(
       }
     }
   }
-  return Math.min(moveCap, Math.max(1, base + bonus + commanderMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)));
+  const unrestrictedRange = Math.min(
+    moveCap,
+    Math.max(1, base + bonus + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
+  );
+  return Math.max(0, unrestrictedRange + artifactMovePenalty);
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -1985,6 +2000,9 @@ export function getAttackRollMode(
   state?: GameState,
   isRetaliation = false,
 ): AttackRollMode {
+  if (attacker.commanderArtifactAttackDisadvantage) {
+    return "disadvantage";
+  }
   // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
   // Magi / Sharpshooters / Halflings) drops both the adjacent-attack and the
   // long-range penalty. The "ignore the combat penalty against adjacent units"
@@ -2068,7 +2086,8 @@ export function getAttackRollMode(
     ).incomingAttackDisadvantage;
     if (
       protection === "combat" ||
-      (protection === "round-1" && state.combat?.round === 1)
+      (protection === "round-1" && state.combat?.round === 1) ||
+      (protection === "odd-rounds" && (state.combat?.round ?? 1) % 2 === 1)
     ) {
       return "disadvantage";
     }
@@ -3271,8 +3290,8 @@ function cardOffersAnySpellDiscardCast(
 
 /**
  * Whether an ACTIVATION-timing Spell (Magic Arrow, Fireball, Haste…) may be cast
- * by this player right now: one of their own units is active and has not yet
- * attacked — or they hold Intelligence, which lifts the timing gate entirely.
+ * by this player right now: one of their own units is active before its move
+ * and attack — or they hold Intelligence, which lifts the timing gate entirely.
  *
  * The SINGLE read `addSpellActions`' offer gate and the player-facing
  * "no unit of yours is active" notice share, so the warning and the offer can
@@ -3644,6 +3663,15 @@ function addSpellActions(
     // off-turn without one of the caster's own units being active.
     const needsOwnActivation =
       card.timing === "combat" || card.timing === "action";
+    // Magic Arrow alone must be cast before the active unit moves (and stays
+    // pre-move even under an Intelligence-style timing waiver). Every other
+    // activation spell keeps the standard activation window, which still allows
+    // casting after a move, with its printed timing waivers left intact.
+    const activeCaster = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+    if (card.id === "spell.magic_arrow" && activeCaster?.controllerId === playerId &&
+        activeCaster.movedThisActivation) {
+      continue;
+    }
     if (
       needsOwnActivation &&
       !ownActivationOpen &&
@@ -6687,15 +6715,21 @@ export function firstAidHealActions(
     const expertMax = firstAidVolleyHeals();
     const canBasic = !usage;
     const canExpertActivate =
-      !usage && playerCanUseFirstAidVolley(state, playerId);
-    const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
+      !healModifier.basicOnly && !usage && playerCanUseFirstAidVolley(state, playerId);
+    const canExpertContinue = Boolean(!healModifier.basicOnly && usage?.expert && usage.count < expertMax);
     if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
+    }
+
+    if (healModifier.excludeSourceUnitId) {
+      const sourceUnit = combat.units[healModifier.excludeSourceUnitId];
+      if (!sourceUnit || !isUnitAlive(sourceUnit)) continue;
     }
 
     for (const unit of Object.values(combat.units)) {
       if (
         unit.controllerId !== playerId ||
+        unit.id === healModifier.excludeSourceUnitId ||
         !isUnitAlive(unit) ||
         unit.damage <= 0
       ) {
@@ -9209,6 +9243,8 @@ function getLegalActionsCore(
                               choice.kind === "ballistics-splash" ||
                               choice.kind === "area-pick" ||
                               choice.kind === "faerie-damage" ||
+                              choice.kind === "commander-artifact-activation-damage" ||
+                              choice.kind === "commander-artifact-recoil" ||
                               choice.kind === "chain-lightning" ||
                               choice.kind === "war-machine"
                             ? `${choice.abilityName}: hit`

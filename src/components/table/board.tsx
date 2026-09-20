@@ -1387,7 +1387,7 @@ export function BattlefieldBoard({
           )}
         </div>
       ) : null}
-      <div className="battlefieldFrame" data-board-art={boardArt.id} title={boardArt.label}>
+      <div className="battlefieldFrame" data-board-art={boardArt.id} data-fx-anchor="battlefield" title={boardArt.label}>
         {boardArt.id === "pve-calamity-classic" || boardArt.id === "pve-calamity-doom" ? (
           <div className="pveBattlefieldTitle" aria-hidden="true">
             <span>Calamity encounter</span>

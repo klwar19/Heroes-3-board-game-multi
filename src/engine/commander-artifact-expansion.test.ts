@@ -253,7 +253,7 @@ describe("expanded commander artifact behavior", () => {
 
   it("pins all requested grades and numeric folds in the single source of truth", () => {
     expect(COMMANDER_ARTIFACT_SPECS["wog.artifact.hardened_shield"]?.tier).toBe("relic");
-    expect(COMMANDER_ARTIFACT_SPECS["wog.artifact.boots_of_haste"]?.initiative).toBe(2);
+    expect(COMMANDER_ARTIFACT_SPECS["wog.artifact.boots_of_haste"]?.initiative).toBe(3);
     expect(COMMANDER_ARTIFACT_SPECS["wog.artifact.doomsday_blade"]).toMatchObject({ attack: 2, attackRollAdvantage: true });
     expect(COMMANDER_ARTIFACT_SPECS["wog.artifact.blood_patriarch_saber"]).toMatchObject({ attack: 1, attackRollAdvantage: true });
     expect(aggregateCommanderArtifactBonuses({ trinket: "wog.artifact.vitality_ring" }).health).toBe(1);
@@ -332,7 +332,7 @@ describe("expanded commander artifact behavior", () => {
     fang.activePlayerId = "p1";
     fang.combat!.dice.scriptedRolls = [0];
     const healed = settle(apply(fang, { type: "ATTACK_UNIT", playerId: "p1", attackerId: fangCommander.id, defenderId: fangTarget.id }));
-    expect(healed.combat!.units[fangCommander.id].damage).toBe(1);
+    expect(healed.combat!.units[fangCommander.id].damage).toBe(0);
   });
 
   it("Barbed Carapace returns a fixed 2 damage and Stormcleaver hits an adjacent enemy", () => {
@@ -388,7 +388,7 @@ describe("expanded commander artifact behavior", () => {
     cleave.activePlayerId = "p1";
     cleave.combat!.dice.scriptedRolls = [0];
     const split = settle(apply(cleave, { type: "ATTACK_UNIT", playerId: "p1", attackerId: cleaver.id, defenderId: target.id }));
-    expect(split.combat!.units[adjacent.id].damage).toBe(1);
+    expect(split.combat!.units[adjacent.id].damage).toBe(2);
   });
 
   it("Phoenix Plate revives once at 1 Health, while movement heals 1 and Defend heals 2", () => {

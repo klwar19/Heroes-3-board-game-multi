@@ -255,8 +255,8 @@ const animatedLineAtlases: Record<string, [number, number, number]> = {
   "bonus-extra-shot-animated": [384, 256, 32],
   "storm-link-animated": [362, 272, 12],
   "phoenix-flame-flow-animated": [418, 168, 32],
-  "dragon-fire-breath-animated": [444, 222, 32],
-  "dragon-fierce-breath-animated": [444, 222, 32],
+  "dragon-fire-breath-animated": [360, 180, 24],
+  "dragon-fierce-breath-animated": [360, 180, 24],
   "azure-ice-breath-animated": [496, 199, 32],
   "crystal-red-strike-animated": [496, 199, 32],
   "rust-acid-breath-animated": [542, 182, 32],
@@ -342,6 +342,10 @@ export type SpellFxPlan = {
   projectileIntervalMs?: number;
   hit?: string;
   affect?: { key: string; delayMs?: number }[];
+  /** Render affect/hit art clipped across the complete battlefield frame. */
+  battlefield?: boolean;
+  /** Stretch the authored frame sequence to this exact presentation length. */
+  playbackMs?: number;
   tint?: "bloodlust";
   /** /public/sounds manifest key, e.g. "spells/fireball". */
   sound?: string;
@@ -799,6 +803,23 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "commander-artifact-travelers-salve": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "commander-artifact-bastion-heart": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "commander-artifact-stormcleaver": { hit: "death-cloud", hitSound: "spells/death-cloud" },
+  "commander-artifact-regenerators-mail": regenerationFxPlan,
+  "commander-artifact-chalice-renewal": regenerationFxPlan,
+  "commander-artifact-temporal-cuirass": { affect: [{ key: "energy-damage-delay-animated" }], sound: "custom-ability/electric-impact" },
+  "commander-artifact-executioners-edge": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
+  "commander-artifact-eye-of-misfortune": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "commander-artifact-lanternroot-crook": { affect: [{ key: "resurrection" }], sound: "spells/air-elemental" },
+  "commander-artifact-widows-courtesy": { hit: "magic-arrow-hit", hitSound: "spells/magic-arrow" },
+  "commander-artifact-counterfeit-cataclysm": {
+    affect: [{ key: "armageddon" }],
+    sound: "spells/armageddon",
+    battlefield: true,
+    // The authentic clip is 5.590s. Keep its 20 frames visible for that whole
+    // span so the battlefield does not go blank while the firestorm audio runs.
+    playbackMs: 5590,
+  },
+  "commander-artifact-sealed-horizon": { affect: [{ key: "force-field" }], sound: "spells/force-field" },
+  "commander-artifact-amulet-of-recoil": { affect: [{ key: "implosion" }], sound: "spells/implosion" },
   // Jotunn Warlord's start-of-activation Teleport: a sound-only plan, exactly
   // like the Teleport Spell (spell.teleport) — the relocated unit's card-glide
   // (UNIT_MOVED) is the visual, and this carries the same H3 teleport sound,
@@ -1335,7 +1356,7 @@ export const MAX_PROJECTILE_FLIGHT_MS = 560;
  */
 // Long voiced ability lines (notably the sourced Blue Archive EX lines) need
 // enough room to finish before their queued damage/heal presentation lands.
-export const MAX_PRESENTATION_MS = 5500;
+export const MAX_PRESENTATION_MS = 6000;
 
 /** How long a sprite sheet plays on screen, in ms. */
 export function spriteDurationMs(key: string | undefined): number {
@@ -1383,7 +1404,7 @@ function affectSegmentMs(plan: SpellFxPlan): number {
     return 0;
   }
   const spriteEnd = Math.max(
-    ...plan.affect.map((entry) => (entry.delayMs ?? 0) + spriteDurationMs(entry.key))
+    ...plan.affect.map((entry) => (entry.delayMs ?? 0) + (plan.playbackMs ?? spriteDurationMs(entry.key)))
   );
   // The cast sound plays under the first affect sprite.
   const soundEnd = (plan.affect[0].delayMs ?? 0) + soundDurationMs(plan.sound);

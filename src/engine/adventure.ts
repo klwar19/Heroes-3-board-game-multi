@@ -326,6 +326,7 @@ import { ANIME_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/anime/field-overrides"
 import {
   COMMANDER_ARTIFACT_SPEC_LIST,
   COMMANDER_ARTIFACT_SPECS,
+  aggregateCommanderArtifactBonuses,
   wogCommanderArtifactCardIds
 } from "@/data/wog/commander-artifacts";
 import { animeEquipmentCardIds } from "@/data/anime/equipment-cards";
@@ -4217,6 +4218,13 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
 
   for (let level = previousLevel + 1; level <= hero.level; level += 1) {
     const effects: string[] = [];
+    const coinGold = player.commander
+      ? aggregateCommanderArtifactBonuses(player.commander.artifacts).goldAfterCommanderLevel
+      : 0;
+    if (coinGold > 0) {
+      gainResources(state, playerId, { gold: coinGold }, "Victor's Coin commander level-up");
+      effects.push(`Victor's Coin +${coinGold} gold`);
+    }
 
     const handLimit = HAND_LIMIT_BY_LEVEL[level];
     if (handLimit && handLimit !== player.limits.hand) {

@@ -9,28 +9,14 @@ import type { CombatUnitState, GameState, PlayerId } from "./state";
 export const STARWIND_FAMILIAR_CARD_IMAGE = "/assets/anime/units/starwind-familiar-card.webp";
 export const STARWIND_FAMILIAR_ARMY_UNIT_PREFIX = "hero_grade_starwind_familiar_";
 
-/** Add the Tier-1 familiar to setup so its owner can arrange it normally. */
-export function injectHeroGradeFamiliar(
+function createStarwindFamiliar(
   state: GameState,
   playerId: PlayerId,
-  preferredCells: readonly number[]
-): CombatUnitState | null {
-  const combat = state.combat;
-  if (
-    !combat ||
-    combat.round !== 1 ||
-    !playerMainHeroInCombat(state, playerId) ||
-    !heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.spiritCompanion)
-  ) return null;
-  const existing = Object.values(combat.units).find(
-    (unit) => unit.controllerId === playerId && unit.heroGradeExpiresAfterRound === 1
-  );
-  if (existing) return existing;
-  const occupied = new Set(Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position));
-  const position = preferredCells.find((cell) => !occupied.has(cell));
-  if (position === undefined) return null;
+  position: number,
+  source: "hero-grade" | "commander-artifact",
+): CombatUnitState {
   const serial = nextEventNumber(state);
-  const familiar: CombatUnitState = {
+  return {
     id: `unit_${playerId}_starwind_${serial}`,
     controllerId: playerId,
     name: "Starwind Familiar",
@@ -51,18 +37,66 @@ export function injectHeroGradeFamiliar(
     abilities: [],
     summoned: true,
     temporary: true,
-    // Synthetic deployment handle: it is NOT a real army card, but lets the
-    // normal pointer-drag setup UI move it around the owner's formation.
-    armyUnitId: `${STARWIND_FAMILIAR_ARMY_UNIT_PREFIX}${playerId}`,
+    ...(source === "hero-grade"
+      ? { armyUnitId: `${STARWIND_FAMILIAR_ARMY_UNIT_PREFIX}${playerId}` }
+      : {}),
     heroGradeExpiresAfterRound: 1,
     assets: { cardImage: STARWIND_FAMILIAR_CARD_IMAGE, imageAlt: "Starwind Familiar unit card" }
   };
+}
+
+/** Add the Tier-1 familiar to setup so its owner can arrange it normally. */
+export function injectHeroGradeFamiliar(
+  state: GameState,
+  playerId: PlayerId,
+  preferredCells: readonly number[]
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.round !== 1 ||
+    !playerMainHeroInCombat(state, playerId) ||
+    !heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.spiritCompanion)
+  ) return null;
+  const existing = Object.values(combat.units).find(
+    (unit) => unit.controllerId === playerId && unit.heroGradeExpiresAfterRound === 1
+  );
+  if (existing) return existing;
+  const occupied = new Set(Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position));
+  const position = preferredCells.find((cell) => !occupied.has(cell));
+  if (position === undefined) return null;
+  const familiar = createStarwindFamiliar(state, playerId, position, "hero-grade");
   combat.units[familiar.id] = familiar;
   appendEvent(state, {
     type: "HERO_SKILL_USED",
     playerId,
     nodeId: HERO_GRADE_NODE_IDS.spiritCompanion,
     message: "Spirit Companion summons a Starwind Familiar for combat round 1."
+  });
+  return familiar;
+}
+
+/** Lanternroot Crook: place the same weak one-round spirit after deployment. */
+export function injectCommanderArtifactSpirit(
+  state: GameState,
+  playerId: PlayerId,
+  position: number,
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.round !== 1 ||
+    Object.values(combat.units).some(
+      (unit) => unit.damage < unit.maxHealth && unit.position === position,
+    )
+  ) return null;
+  const familiar = createStarwindFamiliar(state, playerId, position, "commander-artifact");
+  combat.units[familiar.id] = familiar;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: familiar.id,
+    abilityId: "commander-artifact-lanternroot-crook",
+    message: `Lanternroot Crook summons a Starwind Familiar at combat start; it lasts through round 1.`,
   });
   return familiar;
 }

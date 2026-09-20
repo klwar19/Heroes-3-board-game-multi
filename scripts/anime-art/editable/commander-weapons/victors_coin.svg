@@ -19,5 +19,5 @@
   <text x="371" y="93" class="titleText">Victor's Coin</text>
   <text x="371" y="630" class="tierText" fill="#c7ccd6">MINOR  ·  COMMANDER TRINKET</text>
   <text x="371" y="664" class="slotText">TRINKET</text>
-  <g><text x="371" y="750" class="ruleText">Commander trinket: +1 gold after every</text><text x="371" y="782" class="ruleText">combat won by this commander's main hero.</text><line x1="120" y1="820" x2="623" y2="820" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="826" class="ruleText">Bind permanently to your commander. This</text><text x="371" y="858" class="ruleText">card leaves the game. Gain 1 Minor</text><text x="371" y="890" class="ruleText">Artifact.</text></g>
+  <g><text x="371" y="750" class="ruleText">+1 gold after each combat its main hero</text><text x="371" y="782" class="ruleText">wins and whenever the commander levels up.</text><line x1="120" y1="820" x2="623" y2="820" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="826" class="ruleText">Bind permanently to your commander. This</text><text x="371" y="858" class="ruleText">card leaves the game. Gain 1 Minor</text><text x="371" y="890" class="ruleText">Artifact.</text></g>
 </svg>

@@ -86,8 +86,8 @@ const HOLD_FIRST_AID_SCORE = 360;
 // still outranks unacted ground chaff, but kept well under the lethal terms so it
 // only breaks ties/orders shooters above ground — it never lifts a NON-lethal hit
 // on a tankier shooter above a LETHAL hit on a killable one (both shooters gain it
-// equally, so lethality stays dominant). PvP is deliberately excluded — the tier
-// doctrine (pvp-spell-focus-doctrine.md) owns that branch and never chips bronze.
+// equally, so lethality stays dominant). PvP single-target damage spells use
+// their own immediate removal and shooter-threat valuation below.
 const RANGED_SPELL_TARGET_BONUS = 40;
 
 // --- effect family tables ----------------------------------------------------
@@ -682,19 +682,22 @@ function scoreDamageEffect(
     const preemptUnacted = !defender.activatedThisRound && !(meleeCanKill && !recurringThreat);
     quality += 50 + (preemptUnacted ? 30 : 0) + (defender.defense >= 2 ? 25 : 0);
   }
-  // PvP (user ruling 2026-09-15): a damage spell exists to punch the enemy's GOLD
-  // lvl-7 body (2-3 Defense) — Defense-ignoring damage is the ONLY tool that hurts
-  // an armoured gold stack our melee bounces off. Order targets STRICTLY by tier so
-  // a gold/azure body always outranks silver, and ANY non-bronze body outranks a
-  // bronze — even a lethal bronze kill (the +50/+30/+25 lethal terms above are
-  // exactly what let a bronze kill jump the gold chip). NEVER spend the spell on a
-  // bronze, not even a bronze shooter; a dangerous shooter is still an acceptable
-  // silver-band target via the within-tier threat term. The tier bands are spaced
-  // wider than the within-tier range, so a gold body present is always the target;
-  // when only bronze remains it is still cast at (this orders WITHIN the offered
-  // targets, it does not forbid the sole option). Neutral fights keep the
-  // lethal/armour logic above — guard parties are scripted and the Def-2 Power-pour
-  // ruling owns them.
+  // PvP single-target damage spells weigh the actual hit. The round planner
+  // then compares the cast with reachable attacks and later cast windows.
+  if (combat?.context.kind === "player" && card.kind === "spell" && effect.type === "DEAL_DAMAGE") {
+    const removes = damage >= unitRemovalHealth(defender);
+    const shooter = defender.type === "ranged";
+    const gradeValue = defender.grade === "azure" ? 26 : defender.grade === "gold" ? 20
+      : defender.grade === "silver" ? 12 : 0;
+    const damageValue = Math.min(24, Math.round(24 * Math.min(damage, remaining) / Math.max(1, remaining)));
+    // The whole-round action planner below ordinary scoring decides when to
+    // attack first and whether this cast should wait for a later activation.
+    return Math.min(860,
+      (removes ? 755 : 565) + gradeValue + damageValue +
+      (shooter ? 55 : hasThreatAbility(defender) ? 25 : 0) +
+      (!defender.activatedThisRound && (shooter || removes) ? 12 : 0) +
+      (bestPhysicalDamage === 0 ? 12 : 0));
+  }
   if (combat?.context.kind === "player") {
     const tierBand =
       defender.grade === "gold" || defender.grade === "azure" ? 150

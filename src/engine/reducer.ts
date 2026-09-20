@@ -539,6 +539,7 @@ import {
   commanderUsesActionPoints,
 } from "@/data/commanders";
 import {
+  applyCommanderArtifactCombatRoundStart,
   applyLionRoundStartBarrage,
   commanderAdjacentAllies,
   applyCommanderRuneOnMove,
@@ -651,6 +652,7 @@ import {
 import { concentratedFireBonus } from "./azur-lane-specialties";
 import {
   getActivationAbilities,
+  getActivationDamageEnemyAbility,
   getActivationDamageSpellAbility,
   availableActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
@@ -4551,9 +4553,20 @@ function adjacentEnemyDamageBonus(
  * combat round. The round it was spent in is remembered, so the next round
  * re-arms it; a preview without combat context treats it as available.
  */
-function delayedImpactAvailable(defender: CombatUnitState, round: number | undefined): boolean {
-  if (!elementalVeterancy(defender, "delay-damage")) return false;
-  return round === undefined || defender.elementalVeterancy?.delayUsedRound !== round;
+function delayedImpactAmount(
+  state: GameState | undefined,
+  defender: CombatUnitState,
+  round: number | undefined,
+): number {
+  const elementalAmount = elementalVeterancy(defender, "delay-damage") ? 2 : 0;
+  const artifactAmount = state
+    ? commanderArtifactBonusesForUnit(state, defender).delayedAttackDamagePerRound
+    : 0;
+  const amount = Math.max(elementalAmount, artifactAmount);
+  if (amount <= 0 || (round !== undefined && defender.elementalVeterancy?.delayUsedRound === round)) {
+    return 0;
+  }
+  return amount;
 }
 
 function getAttackDamagePreview(
@@ -4684,7 +4697,8 @@ function getAttackDamagePreview(
       : Math.min(unitCapped, cardDamageCap);
 
   const damageBeforeDeferral = elementalDamageCeiling(defender, damage);
-  const deferred = attacker.controllerId !== defender.controllerId && delayedImpactAvailable(defender, state?.combat?.round) ? Math.min(2, damageBeforeDeferral) : 0;
+  const delayAmount = delayedImpactAmount(state, defender, state?.combat?.round);
+  const deferred = attacker.controllerId !== defender.controllerId ? Math.min(delayAmount, damageBeforeDeferral) : 0;
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
@@ -4990,10 +5004,29 @@ function applyAttackDamageFromCandidate(
     controllerId: attacker.controllerId,
   });
 
+  const recoilWard = commanderArtifactBonusesForUnit(state, defender).firstIncomingAttackReduction;
+  if (
+    attacker.controllerId !== defender.controllerId &&
+    recoilWard > 0 &&
+    !defender.commanderArtifactFirstIncomingAttackUsed
+  ) {
+    defender.commanderArtifactFirstIncomingAttackUsed = true;
+    const prevented = Math.min(damage, recoilWard);
+    damage = Math.max(0, damage - recoilWard);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      targetUnitId: attacker.id,
+      abilityId: "commander-artifact-amulet-of-recoil",
+      message: `Amulet of Recoil resists ${prevented} damage from the first attack against ${defender.cardName}.`,
+    });
+  }
+
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
   // (handled by the caller) no Retaliation Attack either.
-  const deferred = damage > 0 && attacker.controllerId !== defender.controllerId && delayedImpactAvailable(defender, state.combat.round) ? Math.min(2, damage) : 0;
+  const delayAmount = delayedImpactAmount(state, defender, state.combat.round);
+  const deferred = damage > 0 && attacker.controllerId !== defender.controllerId ? Math.min(delayAmount, damage) : 0;
   damage -= deferred;
   if (
     lethalCancel &&
@@ -5047,7 +5080,14 @@ function applyAttackDamageFromCandidate(
 
   if (deferred > 0) {
     Object.assign(defender.elementalVeterancy ??= {}, { delayUsedRound: state.combat.round, deferredDamage: deferred, deferredRound: state.combat.round });
-    appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: defender.id, targetUnitId: defender.id, abilityId: "veteran-energy-delay", message: `${defender.cardName} shifts ${deferred} damage to round end.` });
+    const artifactDelay = commanderArtifactBonusesForUnit(state, defender).delayedAttackDamagePerRound > 0;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      targetUnitId: defender.id,
+      abilityId: artifactDelay ? "commander-artifact-temporal-cuirass" : "veteran-energy-delay",
+      message: `${artifactDelay ? "Tomorrow's Grip" : defender.cardName} shifts ${deferred} damage to round end.`,
+    });
   }
 
   // Remember whether the defender was on the board before this hit, so Cove
@@ -5169,6 +5209,10 @@ function applyAttackDamageFromCandidate(
         message: `${attacker.cardName} draws ${draw.amount} card after defeating an enemy side or Stack layer.`,
       });
     }
+  }
+
+  if (defeatedSideOrLayer) {
+    applyCommanderDefeatedLayerArtifactRewards(state, attacker, defender);
   }
 
   // MGQ Lisa gains Health when she drives ANY physical side/layer to 0 HP,
@@ -5570,7 +5614,7 @@ function getAttackStackDetails(
   // Shaman's Puppet (option A) forces the attacker to roll two dice and keep the
   // lower. That is not a ranged penalty, so the Precision/Golden Bow waiver above
   // must never lift it — re-assert disadvantage here for a puppeted attacker.
-  if (unitAttackRollDisadvantaged(state, attacker)) {
+  if (attacker.commanderArtifactAttackDisadvantage || unitAttackRollDisadvantaged(state, attacker)) {
     rollMode = "disadvantage";
   }
 
@@ -5590,7 +5634,8 @@ function getAttackStackDetails(
     ).incomingAttackDisadvantage;
     if (
       protection === "combat" ||
-      (protection === "round-1" && combat.round === 1)
+      (protection === "round-1" && combat.round === 1) ||
+      (protection === "odd-rounds" && combat.round % 2 === 1)
     ) {
       rollMode = "disadvantage";
     }
@@ -5797,6 +5842,12 @@ function getAttackStackDetails(
     state,
     attacker,
   );
+  const commanderArtifactAttack = commanderArtifactBonusesForUnit(state, attacker);
+  const commanderArtifactConditionalAttackBonus =
+    (isRetaliation ? commanderArtifactAttack.retaliationAttack : 0) +
+    (commanderArtifactAttack.lowDefenseThreshold >= 0 &&
+    Math.max(0, defender.defense + defenseBonusBeforeAbility) <= commanderArtifactAttack.lowDefenseThreshold
+      ? commanderArtifactAttack.lowDefenseAttack : 0);
 
   // WOG commander Haste/Slow riders: signed Attack shift on the buffed/slowed
   // unit when its target is strictly slower/faster (effective Initiative).
@@ -5910,6 +5961,7 @@ function getAttackStackDetails(
       neutralTownAttackBonus(state, attacker, defender, currentDefenseValue) +
       chargeAttackBonus +
       commanderPositionalAttackBonus +
+      commanderArtifactConditionalAttackBonus +
       targetStatusAttackBonus +
       slowerTargetAttackBonus +
       elementalAttackBonus(state, attacker, defender, isRetaliation) +
@@ -5933,6 +5985,9 @@ function getAttackStackDetails(
       // (not a charge), so every round-1 declared attack benefits.
       equipmentFirstAttackBonus(state, attacker, isRetaliation) +
       heroGradeFirstBloodBonus(state, attacker.controllerId, isRetaliation) +
+      (!isRetaliation && !attacker.commanderArtifactFirstOwnAttackUsed
+        ? commanderArtifactBonusesForUnit(state, attacker).firstOwnAttackBonus
+        : 0) +
       equipmentRound1AttackBonus(state, attacker, isRetaliation) -
       equipmentIncomingAttackPenalty(state, defender, isRetaliation) +
       equipmentActivatedTargetAttackBonus(
@@ -7978,8 +8033,24 @@ function applyCommanderArtifactAfterAttack(
             amount: -artifact.onAttackInitiativePenalty,
           }
         : null,
+      artifact.onAttackMovePenalty > 0
+        ? {
+            id: "commander-artifact-move-slow",
+            name: "Chrono Pike movement",
+            type: "ARTIFACT_MOVEMENT_BONUS" as const,
+            amount: -artifact.onAttackMovePenalty,
+          }
+        : null,
     ].filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
     for (const debuff of debuffs) {
+      if (
+        debuff.name.startsWith("Chrono Pike") &&
+        state.activeEffects.some((effect) =>
+          effect.name === debuff.name &&
+          effect.source.type === "unit" && effect.source.unitId === attacker.id &&
+          effect.target?.type === "unit" && effect.target.unitId === defender.id
+        )
+      ) continue;
       createActiveEffect(
         state,
         {
@@ -8009,7 +8080,6 @@ function applyCommanderArtifactAfterAttack(
   }
 
   if (
-    !isRetaliation &&
     damageDealt > 0 &&
     artifact.healAfterDamagingAttack > 0 &&
     attacker.damage > 0 &&
@@ -8038,6 +8108,20 @@ function applyCommanderArtifactAfterAttack(
 
   const defenderArtifact = commanderArtifactBonusesForUnit(state, defender);
   if (
+    attacker.type === "ranged" &&
+    defenderArtifact.rangedAttackerDamage > 0 &&
+    isUnitAlive(attacker)
+  ) {
+    applyFlatAbilityDamage(
+      state,
+      defender,
+      attacker.id,
+      "commander-artifact-widows-courtesy",
+      "Widow's Courtesy",
+      defenderArtifact.rangedAttackerDamage,
+    );
+  }
+  if (
     damageDealt > 0 &&
     defenderArtifact.reflectDamage > 0 &&
     isUnitAlive(attacker)
@@ -8064,6 +8148,28 @@ function applyCommanderArtifactAfterAttack(
       damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, attacker);
+  }
+
+  if (
+    defenderArtifact.healAfterAttacked > 0 &&
+    defender.damage > 0 &&
+    isUnitAlive(defender)
+  ) {
+    const healed = Math.min(defenderArtifact.healAfterAttacked, defender.damage);
+    defender.damage -= healed;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "commander-artifact-regenerators-mail",
+      targetUnitId: defender.id,
+      message: `Second-Breath Chrysalis heals ${healed} damage from ${defender.cardName} after the attack.`,
+    });
+    appendEvent(state, {
+      type: "DAMAGE_HEALED",
+      source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
+      target: { type: "unit", unitId: defender.id },
+      amount: healed,
+    });
   }
 
   if (!isRetaliation && artifact.cleaveDamage > 0) {
@@ -8557,6 +8663,12 @@ function finishResolvedAttack(
       details.attacker.controllerId,
       details.isRetaliation,
     );
+    if (
+      !details.isRetaliation &&
+      commanderArtifactBonusesForUnit(state, details.attacker).firstOwnAttackBonus > 0
+    ) {
+      details.attacker.commanderArtifactFirstOwnAttackUsed = true;
+    }
     if (details.isRetaliation) {
       details.attacker.retaliatedThisRound = true;
     } else {
@@ -8885,6 +8997,12 @@ function finishResolvedAttack(
     details.attacker.controllerId,
     details.isRetaliation,
   );
+  if (
+    !details.isRetaliation &&
+    commanderArtifactBonusesForUnit(state, details.attacker).firstOwnAttackBonus > 0
+  ) {
+    details.attacker.commanderArtifactFirstOwnAttackUsed = true;
+  }
   markMgqGranberiaAttackResolved(
     state,
     details.attacker,
@@ -10918,6 +11036,45 @@ const elementalHooks = {
   },
 };
 
+/** Apply the commander kill-layer rewards consistently to attacks and effects. */
+function applyCommanderDefeatedLayerArtifactRewards(
+  state: GameState,
+  commander: CombatUnitState,
+  defeatedUnit: CombatUnitState,
+): void {
+  if (!commander.commanderSlug || defeatedUnit.controllerId === commander.controllerId) return;
+  const reward = commanderArtifactBonusesForUnit(state, commander);
+  if (reward.drawAfterDefeatingLayer > 0) {
+    drawCardsForPlayer(state, commander.controllerId, reward.drawAfterDefeatingLayer);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: commander.id,
+      abilityId: "commander-artifact-hunters-quill",
+      targetUnitId: defeatedUnit.id,
+      message: `Hunter's Quill draws ${reward.drawAfterDefeatingLayer} card after ${commander.cardName} defeats an enemy side or Stack layer.`,
+    });
+  }
+  if (reward.materialsAfterDefeatingLayer <= 0) return;
+  const player = state.players[commander.controllerId];
+  if (!player) return;
+  player.resources.buildingMaterials += reward.materialsAfterDefeatingLayer;
+  appendEvent(state, {
+    type: "RESOURCES_GAINED",
+    playerId: commander.controllerId,
+    gold: 0,
+    buildingMaterials: reward.materialsAfterDefeatingLayer,
+    valuables: 0,
+    reason: "Mason's Token — commander defeated an enemy side or Stack layer",
+  });
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: commander.id,
+    abilityId: "commander-artifact-masons-token",
+    targetUnitId: defeatedUnit.id,
+    message: `Mason's Token grants ${reward.materialsAfterDefeatingLayer} building material.`,
+  });
+}
+
 function applyFlatAbilityDamage(
   state: GameState,
   source: CombatUnitState,
@@ -10946,6 +11103,7 @@ function applyFlatAbilityDamage(
     message: `${source.name} hits ${target.cardName} with ${abilityName} for ${amount} damage.`,
   });
 
+  const defeatedSideOrLayer = amount > 0 && target.damage + amount >= target.maxHealth;
   target.damage += amount;
   const assignedDamage = appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
@@ -10960,6 +11118,9 @@ function applyFlatAbilityDamage(
   });
   noteUnitDamagedForTokens(state, target, assignedDamage.amount);
   markUnitRemovedIfNeeded(state, target);
+  if (defeatedSideOrLayer) {
+    applyCommanderDefeatedLayerArtifactRewards(state, source, target);
+  }
 }
 
 /**
@@ -15609,6 +15770,42 @@ export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutr
     return;
   }
 
+  const repulsorDamage = commanderArtifactBonusesForUnit(state, unit).activationPushAdjacentDamage;
+  if (repulsorDamage > 0 && unit.commanderArtifactRepulsorUsedRound !== combat.round) {
+    const targets = getUnitsAdjacentTo(combat, unit).filter(
+      (candidate) => candidate.controllerId !== unit.controllerId && isUnitAlive(candidate),
+    );
+    if (targets.length === 0) {
+      unit.commanderArtifactRepulsorUsedRound = combat.round;
+    } else {
+      const choiceId = `choice_${nextEventNumber(state)}`;
+      state.pendingChoice = {
+        id: choiceId,
+        type: "ABILITY_TARGET_CHOICE",
+        playerId: chooser,
+        kind: "commander-artifact-recoil",
+        abilityId: "commander-artifact-amulet-of-recoil",
+        abilityName: "Amulet of Recoil",
+        prompt: `${unit.cardName}: choose an adjacent enemy to suffer ${repulsorDamage} damage and be pushed back if possible.`,
+        sourceUnitId: unit.id,
+        anchorUnitId: null,
+        candidateUnitIds: targets.map((candidate) => candidate.id),
+        amount: repulsorDamage,
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = chooser;
+      appendEvent(state, {
+        type: "PENDING_CHOICE_CREATED",
+        choiceId,
+        choiceType: "ABILITY_TARGET_CHOICE",
+        playerId: chooser,
+        sourceEffectIds: [],
+        message: `${unit.cardName} chooses a target for Amulet of Recoil.`,
+      });
+      return;
+    }
+  }
+
   // Jotunn Warlord (Bulwark, house rule): at the start of its activation the
   // controller may teleport one of its OTHER OWN units — a friendly unit, never
   // itself and never an enemy — to an empty space, optionally, then act as
@@ -15628,6 +15825,7 @@ export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutr
         "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE",
         "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
         "ON_ACTIVATION_DAMAGE_SPELL",
+        "ON_ACTIVATION_DAMAGE_ENEMY",
         "ON_ACTIVATION_INVULNERABILITY",
         "ON_ACTIVATION_PLACE_FACTION_CUBE",
       ].includes(ability.effect.type),
@@ -15801,6 +15999,43 @@ export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutr
         enchant.attackBonus > 0
           ? `${unit.cardName} chooses: ${targetNoun} or gain +${enchant.attackBonus} Attack.`
           : `${unit.cardName}: ${targetNoun}.`,
+    });
+    return;
+  }
+
+  const artifactStrike = getActivationDamageEnemyAbility(unit);
+  if (artifactStrike) {
+    const targets = Object.values(combat.units).filter(
+      (candidate) =>
+        candidate.controllerId !== unit.controllerId && isUnitAlive(candidate),
+    );
+    if (targets.length === 0) {
+      unit.activationAbilityDone = true;
+      return;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      kind: "commander-artifact-activation-damage",
+      abilityId: artifactStrike.abilityId,
+      abilityName: artifactStrike.abilityName,
+      prompt: `${unit.cardName}: ${artifactStrike.abilityName} — choose any enemy unit to suffer ${artifactStrike.amount} damage.`,
+      sourceUnitId: unit.id,
+      anchorUnitId: null,
+      candidateUnitIds: targets.map((candidate) => candidate.id),
+      amount: artifactStrike.amount,
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = chooser;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      sourceEffectIds: [],
+      message: `${unit.cardName} chooses a target for ${artifactStrike.abilityName}.`,
     });
     return;
   }
@@ -29594,6 +29829,7 @@ function applyActiveEffectAction(
     healModifier.type !== "HEAL_ONCE_PER_COMBAT_ROUND" ||
     !target ||
     target.controllerId !== action.playerId ||
+    target.id === healModifier.excludeSourceUnitId ||
     !isUnitAlive(target) ||
     target.damage <= 0
   ) {
@@ -29610,6 +29846,16 @@ function applyActiveEffectAction(
   const usage =
     effect.healRound?.round === combat.round ? effect.healRound : undefined;
   const mode = action.mode ?? "basic";
+
+  if (healModifier.basicOnly && mode !== "basic") {
+    throw new Error("That artifact heal cannot use First Aid's expert volley.");
+  }
+  if (healModifier.excludeSourceUnitId) {
+    const sourceUnit = combat.units[healModifier.excludeSourceUnitId];
+    if (!sourceUnit || !isUnitAlive(sourceUnit)) {
+      throw new Error("The commander carrying that artifact is not in combat.");
+    }
+  }
 
   if (mode === "expert") {
     if (usage || !playerCanUseFirstAidVolley(state, action.playerId)) {
@@ -29642,7 +29888,18 @@ function applyActiveEffectAction(
     );
   }
 
+  const damageBeforeHeal = target.damage;
   healUnitDamage(state, effect.source, action.target, healModifier.amount);
+
+  if (effect.name === "Chalice of Renewal" && healModifier.excludeSourceUnitId) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: healModifier.excludeSourceUnitId,
+      targetUnitId: target.id,
+      abilityId: "commander-artifact-chalice-renewal",
+      message: `Chalice of Renewal heals ${Math.min(healModifier.amount, damageBeforeHeal)} damage from ${target.cardName}.`,
+    });
+  }
 
   appendEvent(state, {
     type: "ACTIVE_EFFECT_USED",
@@ -32732,6 +32989,60 @@ function chooseAbilityTarget(
     return;
   }
 
+  if (choice.kind === "commander-artifact-activation-damage") {
+    const ability = getActivationDamageEnemyAbility(source);
+    const target = combat.units[action.targetUnitId];
+    if (
+      ability &&
+      target &&
+      isUnitAlive(target) &&
+      target.controllerId !== source.controllerId
+    ) {
+      applyFlatAbilityDamage(
+        state,
+        source,
+        target.id,
+        ability.abilityId,
+        ability.abilityName,
+        ability.amount,
+      );
+      finishCombatIfNeeded(state);
+    }
+    source.activationAbilityDone = true;
+    return;
+  }
+
+  if (choice.kind === "commander-artifact-recoil") {
+    const target = combat.units[action.targetUnitId];
+    if (
+      target &&
+      isUnitAlive(target) &&
+      target.controllerId !== source.controllerId &&
+      isAdjacent(source.position, target.position)
+    ) {
+      applyFlatAbilityDamage(
+        state,
+        source,
+        target.id,
+        "commander-artifact-amulet-of-recoil",
+        "Amulet of Recoil",
+        choice.amount ?? 2,
+      );
+      if (isUnitAlive(target)) {
+        const destination = getKnockbackDestinations(combat, source, target)[0];
+        if (destination !== undefined) {
+          applyKnockback(state, source, target, destination, {
+            abilityId: "commander-artifact-amulet-of-recoil",
+            abilityName: "Amulet of Recoil",
+          });
+        }
+      }
+      finishCombatIfNeeded(state);
+    }
+    source.commanderArtifactRepulsorUsedRound = combat.round;
+    return;
+  }
+
   // Factory Couatls' invulnerability: the decision is made for this activation
   // either way (activationAbilityDone). On "activate" the ward goes up (once per
   // combat); the Few version then ends the turn, the Pack version is free so the
@@ -34419,6 +34730,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   // Permanents played before this combat (or while it ran) keep their presence.
   applyPermanentCombatEffectsForPlayer(state, state.combat.attackerPlayerId);
   applyPermanentCombatEffectsForPlayer(state, state.combat.defenderPlayerId);
+  applyCommanderArtifactCombatRoundStart(state);
   startWarMachineRound(state);
   if (finishCombatIfNeeded(state)) {
     return;

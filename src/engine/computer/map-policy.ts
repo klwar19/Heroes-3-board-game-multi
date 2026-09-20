@@ -133,6 +133,7 @@ import {
   premiumEconomyResourceBonus,
   premiumRecruitMarketVisit,
   primaryMapObjective,
+  roundTwoFarOpeningReady,
   seatHoldsFarSupplyTile,
   startTileRotationOpensFarExpansion,
   type MapObjective,
@@ -1273,7 +1274,11 @@ function moveScore(
       premiumPrimary ? 0 : MARCH_SCOOP_DETOUR_SLACK,
       !premiumPrimary,
     );
+    const openingFar = primary.kind === "explore" && roundTwoFarOpeningReady(state, hero);
     for (const objective of scoopable) {
+      if (openingFar && objective.spaceId !== primary.spaceId &&
+          state.adventure?.fields[objective.spaceId]?.tileInstanceId ===
+            homeTileInstanceId(state, observation.playerId)) continue;
       if (seen.has(objective.spaceId)) continue;
       seen.add(objective.spaceId);
       marchTargets.push(objective);
