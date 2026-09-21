@@ -35,6 +35,7 @@ function maskFaceDownTile(tile: MapTileState): MapTileState {
   // like a pending token: viewers may know a choice will open, not its set).
   delete masked.viiFields;
   delete masked.centerHex;
+  delete masked.fieldGuards;
   delete masked.viiFieldReward;
   delete masked.viiFieldVp;
   return masked;

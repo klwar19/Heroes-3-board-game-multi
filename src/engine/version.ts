@@ -1440,7 +1440,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v162 (2026-09-21): town-unit veterancy adds per-combat Gnoll gold and Titan
 // phantom-card counters plus Fear Aura initiative effects shared by clients and
 // the authoritative PartyKit room server.
-export const ENGINE_PROTOCOL_VERSION = 162;
+// v163 (2026-09-21): exact physical-hex custom-map guards add serialized tile
+// state; ongoing combat-card arms now enforce their owner-activation window;
+// Magma movement carries its FX source; and the WOG/anime replacement objects
+// resolve their revised guards, costs, destinations and rewards. The Vercel
+// client and authoritative PartyKit room server must ship these rules together.
+export const ENGINE_PROTOCOL_VERSION = 163;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

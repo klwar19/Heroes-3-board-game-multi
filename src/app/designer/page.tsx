@@ -61,6 +61,7 @@ export default function MapDesignerPage() {
   const [pickRequest, setPickRequest] = useState<{
     kind: "object-plan";
     objectKind: "obelisk" | "mine" | "settlement" | "center";
+    target?: { row: number; col: number };
   } | null>(null);
   const [name, setName] = useState("My map");
   const [players, setPlayers] = useState(2);
@@ -481,7 +482,9 @@ export default function MapDesignerPage() {
               // Arm the on-map pick and bring the board into view ("jump to
               // the map"); a second press on the same button disarms.
               setPickRequest((current) =>
-                current && current.objectKind === request.objectKind ? null : request
+                !request.target && current && !current.target && current.objectKind === request.objectKind
+                  ? null
+                  : request
               );
               document.querySelector(".designerBoardWrap")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
             }}

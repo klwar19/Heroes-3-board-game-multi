@@ -735,6 +735,35 @@ describe("Balance Pack artifacts — Hourglass of the Evil Hour", () => {
     expect(labels.some((label) => /roll the attack die|gain morale on a 0/i.test(label))).toBe(false);
   });
 
+  it("keeps the ongoing arm on the owner's activation while the instant arm remains available off-turn", () => {
+    const state = combat(true);
+    state.players.p1.hand = ["artifact.hourglass_of_the_evil_hour" as CardId];
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    state.combat!.units.unit_p2_skeletons.attackedThisActivation = false;
+    state.activePlayerId = "p2";
+
+    const offTurn = plays(state, "artifact.hourglass_of_the_evil_hour");
+    expect(offTurn.some((action) => action.optionIndex === 0)).toBe(true);
+    expect(offTurn.some((action) => action.optionIndex === 1)).toBe(false);
+
+    const forgedOngoing = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "artifact.hourglass_of_the_evil_hour",
+      mode: "basic",
+      optionIndex: 1,
+      target: { type: "none" }
+    });
+    expect(forgedOngoing.errors.some((error) => error.code === "ACTION_NOT_LEGAL")).toBe(true);
+
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.combat!.units.unit_p1_griffins.attackedThisActivation = false;
+    state.activePlayerId = "p1";
+    expect(plays(state, "artifact.hourglass_of_the_evil_hour").some((action) => action.optionIndex === 1)).toBe(true);
+  });
+
   it("each enemy '+1' is rerolled once for this combat round (observable damage)", () => {
     const on = playOption(combat(true), "artifact.hourglass_of_the_evil_hour", 1);
     const curse = on.activeEffects.find((effect) => effect.name === "Hourglass of the Evil Hour");

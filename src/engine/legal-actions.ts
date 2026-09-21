@@ -146,6 +146,7 @@ import {
   getEffectAmount,
   getEffectiveCardEffect,
   getEffectiveCardEffectForState,
+  effectCreatesLastingEffect,
   heroMovementGrantOption,
   heroMovementTopUpHeroId,
   spellMinUsefulPower,
@@ -436,6 +437,41 @@ type CardPlayVariant = {
   /** Option is the card's expert side (costs a crown). */
   expertOnly?: boolean;
 };
+
+/**
+ * Directly played ongoing effects use the normal activation window: one of the
+ * player's own units must be active and must not have attacked yet. An option
+ * carrying the explicit `combatAnytime` marker is the deliberate exception.
+ * Start-of-combat/round options keep their own narrower printed windows.
+ */
+export function ongoingCombatPlayWindowOpen(
+  state: GameState,
+  playerId: PlayerId,
+  effect: EffectDefinition,
+  option?: CardOptionDefinition,
+): boolean {
+  if (!state.combat || !effectCreatesLastingEffect(effect)) {
+    return true;
+  }
+  if (option?.combatAnytime) {
+    return true;
+  }
+  if (option?.combatStartOnly) {
+    return combatStartWindowOpen(state.combat);
+  }
+  if (option?.combatRoundStartOnly) {
+    return combatRoundStartWindowOpen(state.combat);
+  }
+  const activeUnit = state.combat.activeUnitId
+    ? state.combat.units[state.combat.activeUnitId]
+    : undefined;
+  return Boolean(
+    activeUnit &&
+      activeUnit.controllerId === playerId &&
+      !activeUnit.activatedThisRound &&
+      !activeUnit.attackedThisActivation,
+  );
+}
 
 export function getCardPlayVariants(card: CardDefinition, state?: GameState): CardPlayVariant[] {
   const adjusted = (effect: ConcreteEffect): ConcreteEffect =>
@@ -4197,6 +4233,14 @@ function addPlayableCardActions(
       continue;
     }
 
+    // A card-wide Instant label does not make a lasting arm an off-turn play.
+    // Hybrid cards such as the Balance Hourglass have an Instant one-shot arm
+    // and an Ongoing arm; only an explicit `combatAnytime` option may bypass the
+    // owner's activation window.
+    if (!ongoingCombatPlayWindowOpen(state, playerId, card.effect)) {
+      continue;
+    }
+
     if (card.effect.type === "TRANSFORM_UNIT") {
       for (const target of getTransformTargets(state, playerId, card.effect)) {
         actions.push({
@@ -5251,6 +5295,12 @@ function addOptionPlays(
       }
     }
     if (option.combatOnly && context !== "combat") {
+      continue;
+    }
+    if (
+      context === "combat" &&
+      !ongoingCombatPlayWindowOpen(state, playerId, option.effect, option)
+    ) {
       continue;
     }
     if (

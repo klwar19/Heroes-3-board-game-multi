@@ -96,9 +96,9 @@ damage exists).
   movement → your units all gain +1 Attack during ROUND 1 of your next combat
   (player flag `pendingCombatAttackBoost`, consumed at `finalizeCombatStart`,
   round-1-scoped active effect; not offered while one is already banked).
-- **thi_luyen_thap** — escalating Ⅰ→Ⅱ→Ⅲ (unchanged machinery). New ladder:
+- **thi_luyen_thap** — escalating Ⅱ→Ⅲ→Ⅳ. Ladder:
   win 1 +2 gold; win 2 — with UE active, a chosen army unit card gains +3 unit
-  XP (UE off ⇒ Search(1) Spell as before); win 3 +2 hero XP, keeping the
+  XP (UE off ⇒ Search(1) Spell as before); win 3 +1 hero XP, keeping the
   cultivation tribulation-relief and commander-artifact riders.
 - **linh_dien** — PLANTED REWARD: pay 2 gold to plant (your marker + round).
   Your visit at ≥ planted+3 rounds: harvest +3 valuables +1 building materials
@@ -150,17 +150,12 @@ damage exists).
   ren_binh_cac).
 
 ### WoG (wog.newObjects)
-- **emerald_tower** — guard Ⅲ unchanged. Arms: commander point (unchanged),
-  2g hero XP (unchanged), NEW with UE active: pay 4 gold → a chosen army unit
+- **emerald_tower** — guard Ⅲ unchanged. Arms: 10g commander point,
+  3g hero XP, with UE active: pay 4 gold → a chosen army unit
   card gains +2 unit XP (the shared `armyUnitXpChoiceStep`, so the arm is absent
   with the rule off OR an empty army).
-- **mirror_home_way** — price by destination band: 1 gold to a Town/Settlement
-  on a starting/far tile, 3 gold to near/center. Same teleport machinery.
-  WAVE-4 AMENDMENTS: the fare cannot ride one PAY_TO, so the menu carries ONE
-  PAY_TO arm PER PRICE TIER reachable, each containing only its own tier's
-  destination CHOOSE_ONE. `subterranean`/`sea` — and a destination whose tile
-  cannot be resolved at all (legacy / hand-built snapshots) — are priced at the
-  DEARER tier: missing data must never hand out a discount.
+- **mirror_home_way** — pay 1 gold to teleport to a controlled Town, Settlement,
+  Mine or Random Town, then gain +1 morale. Same teleport machinery.
 - **junk_merchant** — sells + 4g search unchanged; NEW "trade-in": swap a hand
   Artifact for the TOP card of the Artifact discard + 1 gold (arm absent with
   no hand Artifact or an empty discard); NEW once per player per game (claim
@@ -198,7 +193,7 @@ damage exists).
   `handleEscalatingFightVisit` uses. Nothing re-stamps the guard, so the hex is
   inert for good afterwards; a smashed skull whose spirit nobody fought simply
   stays a guarded hex under normal movement rules.
-- **adventure_cave** — ladder: win 1 +3 gold; win 2 a FIXED Stack Token
+- **adventure_cave** — escalating Ⅱ→Ⅲ→Ⅳ. Ladder: win 1 +3 gold; win 2 a FIXED Stack Token
   (player picks the stat: +1 Attack/Defense/Health or +2 Initiative) onto a
   chosen army unit card without one; win 3 Search(1) Artifact + the
   commander-artifact rider (unchanged).
@@ -207,10 +202,11 @@ damage exists).
   arms are a pure gain and the refusal already happened one level up. With no
   eligible card (empty army, or every card already Stacked) the old Treasure die
   remains the fall-back.
-- **altar_of_gods** — offering menu unchanged, plus a GREATER SACRIFICE arm
+- **altar_of_gods** — pay 3 valuables, then choose +1 morale, +2 hero XP, or
+  +3 unit XP when Unit Experience is enabled; plus a GREATER SACRIFICE arm
   (needs ≥2 army unit cards — never strands an army): permanently remove one
   chosen army unit card → choose: (+1 commander stat point AND +1 morale)
-  [commander arm filtered as today] or +4 hero XP.
+  [commander arm filtered as today] or +3 hero XP.
   WAVE-4 AMENDMENT: removal reuses the Heavenly Tribulation toll's semantics
   (`TRIBULATION_LOSE_UNIT`) — the CARD leaves `player.army` (a Pack does NOT
   flip to Few) and a Neutral-side card recycles to its tier's Neutral discard

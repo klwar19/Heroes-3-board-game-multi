@@ -1134,12 +1134,23 @@ function durationIsLasting(
   return Boolean(duration && LASTING_DURATION_TYPES.has(duration.type));
 }
 
-function effectCreatesLastingEffect(effect: EffectDefinition): boolean {
+/**
+ * Whether resolving this effect leaves rules state in play after the card
+ * finishes resolving. This is the semantic "ongoing" read used by both card
+ * presentation and combat timing; it deliberately follows the effect rather
+ * than the card-wide timing field because hybrid OR cards may have one Instant
+ * arm and one Ongoing arm (Hourglass of the Evil Hour is the canonical case).
+ */
+export function effectCreatesLastingEffect(effect: EffectDefinition): boolean {
   if (effect.type === "CHOOSE_ONE") {
-    return effect.options.some(
-      (option) =>
-        "duration" in option.effect &&
-        durationIsLasting(option.effect.duration),
+    return effect.options.some((option) =>
+      effectCreatesLastingEffect(option.effect),
+    );
+  }
+  if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    return (
+      durationIsLasting(effect.effect.duration) ||
+      durationIsLasting(effect.expertEffect?.duration)
     );
   }
   return "duration" in effect && durationIsLasting(effect.duration);

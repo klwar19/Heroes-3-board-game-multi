@@ -16,6 +16,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   cardCanBoostPower,
   cultivationRealmLabel,
+  effectCreatesLastingEffect,
   heroGradeLabel,
   getBattlefieldLabel,
   hasOpenAdventureTurn,
@@ -262,7 +263,31 @@ export function getCardMetaLabels(card: CardDefinition): string[] {
     labels.push(titleCase(card.abilityClass));
   }
 
-  labels.push(titleCase(card.timing));
+  const optionEffects =
+    card.effect.type === "CHOOSE_ONE"
+      ? card.effect.options.map((option) => ({
+          lasting: effectCreatesLastingEffect(option.effect),
+          anytime: Boolean(option.combatAnytime),
+        }))
+      : [
+          {
+            lasting: effectCreatesLastingEffect(card.effect),
+            anytime: false,
+          },
+        ];
+  const hasTurnOnlyOngoing = optionEffects.some(
+    (option) => option.lasting && !option.anytime,
+  );
+  const hasInstantArm =
+    card.timing === "instant" &&
+    optionEffects.some((option) => !option.lasting || option.anytime);
+  labels.push(
+    card.timing === "instant" && hasTurnOnlyOngoing
+      ? hasInstantArm
+        ? "Instant / Ongoing"
+        : "Ongoing"
+      : titleCase(card.timing),
+  );
   return Array.from(new Set(labels));
 }
 

@@ -122,6 +122,7 @@ import {
   STANDALONE_ONLY_OBJECT_KINDS,
   sanitizeCenterHexPlan,
   sanitizeFieldReward,
+  sanitizeFieldGuardPins,
   sanitizeHexEvents,
   sanitizeObjectPlans,
   sanitizeCoopMapSeat,
@@ -1846,13 +1847,14 @@ export function validateCustomMapPlan(
   // host settlements; we still keep a valid plan (inert if no settlement field).
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
-    if (plan.settlement === undefined && plan.objectPlans === undefined) {
+    if (plan.settlement === undefined && plan.objectPlans === undefined && plan.fieldGuards === undefined) {
       continue;
     }
     const settlement = sanitizeSettlementFieldPlan(plan.settlement);
     // SPECIFIC object plans (obelisk / mine) ride the same defensive re-clamp.
     const objectPlans = sanitizeObjectPlans(plan.objectPlans);
-    if (settlement === plan.settlement && objectPlans === plan.objectPlans) {
+    const fieldGuards = sanitizeFieldGuardPins(plan.fieldGuards);
+    if (settlement === plan.settlement && objectPlans === plan.objectPlans && fieldGuards === plan.fieldGuards) {
       continue;
     }
     const next = { ...plan };
@@ -1866,6 +1868,8 @@ export function validateCustomMapPlan(
     } else {
       delete next.objectPlans;
     }
+    if (fieldGuards) next.fieldGuards = fieldGuards;
+    else delete next.fieldGuards;
     accepted[index] = next;
   }
 
@@ -2486,7 +2490,10 @@ function applyDesignedSettlement(
   } else {
     delete tile.objectPlans;
   }
-  if ((settlement || objectPlans) && !tile.faceDown) {
+  const fieldGuards = sanitizeFieldGuardPins(plan.fieldGuards);
+  if (fieldGuards) tile.fieldGuards = fieldGuards;
+  else delete tile.fieldGuards;
+  if ((settlement || objectPlans || fieldGuards) && !tile.faceDown) {
     materializeTileFields(adventure, tile);
   }
 }

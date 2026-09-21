@@ -9,6 +9,7 @@ import {
   sanitizeCenterHexPlan,
   sanitizeCustomMapPreset,
   sanitizeFieldReward,
+  sanitizeFieldGuardPins,
   sanitizeObjectPlans,
   sanitizeCoopMapSeat,
   sanitizeSinglePlayerMapStart,
@@ -277,6 +278,7 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // SPECIFIC (per-tile) object plans (obelisk / mine) — any group that can host
   // them; a plan on a tile with no such location stays inert (settlement twin).
   const objectPlans = sanitizeObjectPlans(candidate.objectPlans);
+  const fieldGuards = sanitizeFieldGuardPins(candidate.fieldGuards);
   const singlePlayer =
     candidate.group === "starting" ? sanitizeSinglePlayerMapStart(candidate.singlePlayer) : undefined;
   // CO-OP per-position role (step 5) — start-tile-only, independent of the solo
@@ -324,6 +326,7 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(centerHex ? { centerHex } : {}),
     ...(settlement ? { settlement } : {}),
     ...(objectPlans ? { objectPlans } : {}),
+    ...(fieldGuards ? { fieldGuards } : {}),
     ...(candidate.seaBand === "iv-v" || candidate.seaBand === "vi-vii" ? { seaBand: candidate.seaBand } : {}),
     ...(candidate.subBand === "iv-v" || candidate.subBand === "vi-vii" ? { subBand: candidate.subBand } : {}),
     // The UNDERGROUND layer override (far/near/center/sea only), kept as true.

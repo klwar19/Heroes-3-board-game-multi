@@ -66,6 +66,13 @@ import {
   planEligibleForPick,
   type SpecificPickKind
 } from "./map-designer";
+import { planTileArt } from "./map-shape-preview";
+
+type SpecificPickRequest = {
+  kind: "object-plan";
+  objectKind: SpecificPickKind;
+  target?: { row: number; col: number };
+};
 
 /**
  * Map designer panel: mission-book style conditions (resources, army, buildings,
@@ -133,7 +140,7 @@ function SpecificModePanel({
 }: {
   kind: SpecificPickKind;
   tiles: CustomMapTilePlan[];
-  onPickOnMap: (request: { kind: "object-plan"; objectKind: SpecificPickKind }) => void;
+  onPickOnMap: (request: SpecificPickRequest) => void;
   pickArmed: boolean;
   emptyWarning: string;
 }) {
@@ -147,7 +154,27 @@ function SpecificModePanel({
         <ul className="mapPresetEntryList mapPresetSpecificList">
           {withPlans.map(({ plan, summary }) => (
             <li key={`${plan.row},${plan.col}`}>
-              <strong>{specificTileLabel(plan)}</strong> — {summary}
+              <button
+                className="mapPresetSpecificLink"
+                onClick={() => onPickOnMap({
+                  kind: "object-plan",
+                  objectKind: kind,
+                  target: { row: plan.row, col: plan.col }
+                })}
+                title="Jump to this tile on the map and open its options."
+                type="button"
+              >
+                {planTileArt(plan) ? (
+                  <img alt="" aria-hidden="true" src={assetUrl(planTileArt(plan)!)} />
+                ) : (
+                  <span className="mapPresetSpecificFallback" aria-hidden="true">⬡</span>
+                )}
+                <span>
+                  <strong>{specificTileLabel(plan)}</strong>
+                  <small>{summary}</small>
+                </span>
+                <span className="mapPresetSpecificJump" aria-hidden="true">↗</span>
+              </button>
             </li>
           ))}
         </ul>
@@ -227,9 +254,9 @@ export function MapPresetEditor({
    * MapDesigner, which highlights eligible tiles and resolves the pick.
    * Absent = the specific controls hide (editor used standalone).
    */
-  onPickOnMap?: (request: { kind: "object-plan"; objectKind: SpecificPickKind }) => void;
+  onPickOnMap?: (request: SpecificPickRequest) => void;
   /** The currently armed pick, so the arming button shows its active state. */
-  pickArmed?: { kind: "object-plan"; objectKind: SpecificPickKind } | null;
+  pickArmed?: SpecificPickRequest | null;
 }) {
   const value = preset ?? {};
   const soloHumanStarts = (tiles ?? []).filter(

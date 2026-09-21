@@ -1204,7 +1204,12 @@ export function MapDesigner({
    * Hidden hex events have no pick flow — they place from the board's own
    * Objects palette ("Hidden event" button).
    */
-  pickRequest?: { kind: "object-plan"; objectKind: SpecificPickKind } | null;
+  pickRequest?: {
+    kind: "object-plan";
+    objectKind: SpecificPickKind;
+    /** Direct jump from an existing Specific card; opens this tile immediately. */
+    target?: { row: number; col: number };
+  } | null;
   onPickResolved?: () => void;
   /** Designer hex events (invisible in game; markers here only). */
   hexEvents?: CustomHexEvent[];
@@ -1224,6 +1229,8 @@ export function MapDesigner({
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  /** Physical flower slot whose exact guard is open in the tile panel. */
+  const [selectedFieldGuardSlot, setSelectedFieldGuardSlot] = useState<number | null>(null);
   const [popoverAt, setPopoverAt] = useState<{ x: number; y: number } | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   // Wheel-zoom defaults ON here (the designer board is the main surface). The
@@ -1582,6 +1589,7 @@ export function MapDesigner({
 
   const closePopover = useCallback(() => {
     setSelectedIndex(null);
+    setSelectedFieldGuardSlot(null);
     setPopoverAt(null);
     setTilePickFilter("all");
     setGateGuardEditorIndex(null);
@@ -1620,6 +1628,28 @@ export function MapDesigner({
     closeTokenPopover();
     closeHexEventPopover();
   }, [closePopover, closeObjectPopover, closeTokenPopover, closeHexEventPopover]);
+
+  // Existing entries in Global | Specific are map links, not dead summaries.
+  // The page has already scrolled the board into view; select the exact tile
+  // and open its docked editor without asking for a second click.
+  useEffect(() => {
+    const target = pickRequest?.target;
+    if (!target) return;
+    const index = customMap.findIndex((plan) => plan.row === target.row && plan.col === target.col);
+    const plan = index >= 0 ? customMap[index] : undefined;
+    if (!plan || !planEligibleForPick(plan, pickRequest.objectKind)) {
+      onPickResolved?.();
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      closeAllPanels();
+      setSelectedIndex(index);
+      setTilePickFilter("all");
+      setPopoverAt({ x: 0, y: 0 });
+      onPickResolved?.();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pickRequest, customMap, closeAllPanels, onPickResolved]);
 
   const addTile = useCallback(
     (group: DesignGroup, center: HexCoord, seaBand?: SeaBand, subBand?: SubBand) => {
@@ -3989,6 +4019,17 @@ export function MapDesigner({
         }}
       />
     );
+    for (const pin of plan.fieldGuards ?? []) {
+      const cell = tileFootprint(center, 0)[pin.slot];
+      if (!cell) continue;
+      const point = hexToPixel(cell, size);
+      labelLayer.push(
+        <g className="designerExactGuardBadge" key={`exact-guard-${index}-${pin.slot}`} pointerEvents="none">
+          <circle cx={point.x + size * 0.48} cy={point.y - size * 0.43} r={size * 0.22} />
+          <text textAnchor="middle" x={point.x + size * 0.48} y={point.y - size * 0.35}>⚔</text>
+        </g>
+      );
+    }
 
     // Designer-placed per-edge yellow borders — drawn edge-by-edge in the
     // ABSOLUTE board frame (independent of rotation), so the designer sees
@@ -6519,6 +6560,54 @@ export function MapDesigner({
                   </div>
                   </PopoverGroup>
                 ) : null}
+
+                <PopoverGroup title="Exact hex strength" active={Boolean(selected.fieldGuards?.length)}>
+                  <div className="popoverSection designerExactGuardEditor" aria-label="Exact hex guard strength">
+                    <small className="popoverHint">
+                      Pick one physical hex, then set its real Field Difficulty or exact army. It overrides Global
+                      and per-tile rules. On a face-down tile the marker stays on this board hex after reveal and rotation.
+                    </small>
+                    <div className="designerExactGuardGrid" role="group" aria-label="Physical tile hex">
+                      {[0, 1, 2, 3, 4, 5, 6].map((slot) => {
+                        const pin = selected.fieldGuards?.find((entry) => entry.slot === slot);
+                        const active = selectedFieldGuardSlot === slot;
+                        return (
+                          <button
+                            aria-pressed={active}
+                            className={`designerExactGuardHex${active ? " active" : ""}${pin ? " set" : ""}`}
+                            key={slot}
+                            onClick={() => setSelectedFieldGuardSlot(active ? null : slot)}
+                            title={slot === 0 ? "Center physical hex" : `Ring physical hex ${slot}`}
+                            type="button"
+                          >
+                            <span aria-hidden="true">⬢</span>
+                            <small>{slot === 0 ? "Center" : `Hex ${slot}`}</small>
+                            {pin ? <b>{guardBadgeNumeral(pin.guard) ?? "⚔"}</b> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedFieldGuardSlot !== null ? (
+                      <div className="designerExactGuardChoice">
+                        <div className="popoverSubLabel">
+                          {selectedFieldGuardSlot === 0 ? "Center" : `Hex ${selectedFieldGuardSlot}`} guard
+                        </div>
+                        <GuardSpecEditor
+                          guard={selected.fieldGuards?.find((entry) => entry.slot === selectedFieldGuardSlot)?.guard}
+                          noneLabel="Printed / global"
+                          onChange={(guard) => {
+                            const rest = (selected.fieldGuards ?? []).filter((entry) => entry.slot !== selectedFieldGuardSlot);
+                            updateTile(selectedIndex as number, {
+                              fieldGuards: guard
+                                ? [...rest, { slot: selectedFieldGuardSlot, guard }].sort((a, b) => a.slot - b.slot)
+                                : rest.length > 0 ? rest : undefined
+                            });
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </PopoverGroup>
 
                 {/* Per-tile settlement: stronger guard / extra VP / hold-to-win.
                     Complements the map-wide Settlements section in the preset editor.

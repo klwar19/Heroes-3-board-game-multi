@@ -1111,6 +1111,7 @@ export function materializeTileFields(
     ? adventure.grailTakenConversion ?? "dragon_utopia"
     : null;
   const cells = tileFootprint({ row: tile.centerRow, col: tile.centerCol }, tile.rotation);
+  const physicalCells = tileFootprint({ row: tile.centerRow, col: tile.centerCol }, 0);
   for (let slot = options.onlyRing ? 1 : 0; slot < cells.length; slot += 1) {
     let fieldDef = def.fields[slot];
     const spaceId = hexSpaceId(cells[slot]);
@@ -1433,6 +1434,14 @@ export function materializeTileFields(
       }
       field.combatRoundLimit = "unlimited";
     }
+    // Exact-hex override is deliberately LAST: a physical hex selected in the
+    // editor beats global Mine/Town/centre defaults and remains on that board
+    // hex even when a hidden tile is drawn or rotated before materialization.
+    const physicalSlot = physicalCells.findIndex(
+      (cell) => cell.row === cells[slot].row && cell.col === cells[slot].col
+    );
+    const exactGuard = tile.fieldGuards?.find((pin) => pin.slot === physicalSlot)?.guard;
+    if (exactGuard) applyCustomGuardToField(field, exactGuard);
     adventure.fields[spaceId] = field;
   }
 }
@@ -7711,17 +7720,16 @@ export function elementalConfluxCandidates(
  */
 /**
 /**
- * WOG New Objects (`wog.newObjects`): the reachable Town / Settlement teleport
- * destinations for the Mirror of the Home-Way — the visiting hero's own Towns
- * and flagged Settlements, minus the hero's current field and any field already
- * holding another hero (Town-Portal semantics, without the movement-bonus
- * tiers). Empty ⇒ the Mirror's pay arm is absent.
+ * WOG New Objects (`wog.newObjects`): the reachable destinations for the Mirror
+ * of the Home-Way — the visiting hero's controlled Towns, Settlements, Mines and
+ * Random Towns, minus the hero's current field and any field already holding
+ * another hero. Empty ⇒ the Mirror's pay arm is absent.
  */
-function wogMirrorTownDestinations(
+function wogMirrorDestinations(
   state: GameState,
   playerId: PlayerId,
   heroId: HeroId
-): { label: string; spaceId: MapSpaceId; price: number }[] {
+): { label: string; spaceId: MapSpaceId }[] {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
   if (!adventure || !hero) {
@@ -7729,7 +7737,8 @@ function wogMirrorTownDestinations(
   }
   const fieldHasOtherHero = (spaceId: string) =>
     Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
-  const destinations: { label: string; spaceId: MapSpaceId; price: number }[] = [];
+  const destinations: { label: string; spaceId: MapSpaceId }[] = [];
+  const seen = new Set<MapSpaceId>();
   for (const town of Object.values(state.towns)) {
     // Flag-first Town ownership via the shared read — a Town captured from an
     // opponent IS a destination, a Town captured FROM this player is not.
@@ -7741,46 +7750,36 @@ function wogMirrorTownDestinations(
     ) {
       destinations.push({
         label: `Town (${town.factionId ?? town.id})`,
-        spaceId: town.fieldId,
-        price: wogMirrorTravelPrice(state, town.fieldId)
+        spaceId: town.fieldId
       });
+      seen.add(town.fieldId);
     }
   }
   for (const field of Object.values(adventure.fields)) {
     if (
-      field.location === "settlement" &&
-      field.flagOwnerId === playerId &&
+      !seen.has(field.spaceId) &&
+      playerControlsField(state, playerId, field) &&
+      (field.location === "settlement" || field.location === "mine" || field.location === "random_town") &&
       field.spaceId !== hero.spaceId &&
       !fieldHasOtherHero(field.spaceId)
     ) {
       destinations.push({
-        label: "Settlement",
-        spaceId: field.spaceId,
-        price: wogMirrorTravelPrice(state, field.spaceId)
+        label:
+          field.location === "settlement"
+            ? "Settlement"
+            : field.location === "random_town"
+              ? "Random Town"
+              : `${field.resource ? `${field.resource} ` : ""}Mine`,
+        spaceId: field.spaceId
       });
+      seen.add(field.spaceId);
     }
   }
   return destinations;
 }
 
-/** The two Mirror of the Home-Way price tiers (FO redesign wave 4). */
-const WOG_MIRROR_NEAR_PRICE = 1;
-const WOG_MIRROR_FAR_PRICE = 3;
-
-/**
- * FO redesign wave 4 — the Mirror of the Home-Way prices a jump by the
- * DESTINATION's tile band: {@link WOG_MIRROR_NEAR_PRICE} gold to a
- * Town/Settlement standing on a `starting` or `far` (Ⅱ–Ⅲ) tile,
- * {@link WOG_MIRROR_FAR_PRICE} gold to a `near` (Ⅳ–Ⅴ) or `center` (Ⅵ–Ⅶ) one.
- * `subterranean` and `sea` tiles — and a destination whose tile cannot be
- * resolved at all (a legacy or hand-built snapshot) — are priced at the DEARER
- * tier: missing data must never hand out a discount.
- */
-function wogMirrorTravelPrice(state: GameState, spaceId: MapSpaceId): number {
-  const field = state.adventure?.fields[spaceId];
-  const group = field ? state.adventure?.tiles[field.tileInstanceId]?.group : undefined;
-  return group === "starting" || group === "far" ? WOG_MIRROR_NEAR_PRICE : WOG_MIRROR_FAR_PRICE;
-}
+/** Every Mirror of the Home-Way destination costs the same one-gold fare. */
+const WOG_MIRROR_TRAVEL_PRICE = 1;
 
 /**
  * WOG commander-artifact reward (Task 2): the 8 commander-artifact card ids that
@@ -7944,8 +7943,8 @@ export function grantRegularArtifactOfSameGrade(
  * guard is dealt with (a WIN / Quick-Combat win / Diplomacy skip — a retreat
  * never visits). A guard still standing on the field (`field.difficulty` truthy)
  * means it was just beaten, so this counts a win: pay the ladder reward for the
- * new win count and RE-GUARD one difficulty higher (Ⅰ→Ⅱ→Ⅲ) until `maxWins`, after
- * which the object is cleared for good. A peaceful re-entry of a cleared object
+ * new win count and RE-GUARD one difficulty higher from `initialGuardLevel`
+ * until `maxWins`, after which the object is cleared for good. A peaceful re-entry of a cleared object
  * is inert. The per-object win counter is a SEPARATE field prop (`wogCaveWins`
  * vs `animeTrialWins`) so a mid-game snapshot of either keeps its own count —
  * only the escalation/re-guard logic is shared.
@@ -7958,6 +7957,7 @@ function handleEscalatingFightVisit(
   config: {
     winsProp: "wogCaveWins" | "animeTrialWins";
     maxWins: number;
+    initialGuardLevel: number;
     rewardStepsForWin: (wins: number) => VisitStep[];
     /** Extra side effects on the LAST win (commander-artifact bonus, riders). */
     onFinalWin?: (hero: HeroState | undefined) => void;
@@ -7984,8 +7984,8 @@ function handleEscalatingFightVisit(
     clearCustomGuard(field);
     config.onFinalWin?.(state.heroes[heroId]);
   } else {
-    // Re-guard one difficulty higher for the next expedition (Ⅰ→Ⅱ→Ⅲ).
-    applyCustomGuardToField(field, { level: wins + 1 });
+    // Re-guard one difficulty higher for the next expedition.
+    applyCustomGuardToField(field, { level: config.initialGuardLevel + wins });
   }
 
   adventure.pendingVisit = { heroId, playerId, fieldId: field.spaceId, steps };
@@ -8051,6 +8051,7 @@ function handleWogAdventureCaveVisit(
   handleEscalatingFightVisit(state, playerId, heroId, field, {
     winsProp: "wogCaveWins",
     maxWins: 3,
+    initialGuardLevel: 2,
     rewardStepsForWin: (wins) => {
       if (wins === 1) {
         return [{ type: "GAIN_RESOURCES", gold: 3 }];
@@ -8071,7 +8072,7 @@ function handleWogAdventureCaveVisit(
  * The xianxia twin of the Adventure Cave over the SAME machinery, with its own
  * reward ladder (FO redesign wave 2, 2026-08-19): win 1 → +2 gold, win 2 → with
  * Unit Experience ON a chosen army unit card gains +3 unit XP (rule OFF ⇒ the
- * previous Search (1) Spell), win 3 → +2 hero XP. On the 3rd win two cross-object
+ * previous Search (1) Spell), win 3 → +1 hero XP. On the 3rd win two cross-object
  * riders fire: with `anime.cultivation` on, the hero banks "one fewer die" for
  * their NEXT Heavenly Tribulation (`nextTribulationDiceRelief`); and with the WOG
  * Commanders module on, a bindable commander artifact drops into hand (a no-op
@@ -8086,6 +8087,7 @@ function handleAnimeTrialTowerVisit(
   handleEscalatingFightVisit(state, playerId, heroId, field, {
     winsProp: "animeTrialWins",
     maxWins: 3,
+    initialGuardLevel: 2,
     rewardStepsForWin: (wins) => {
       if (wins === 1) {
         return [{ type: "GAIN_RESOURCES", gold: 2 }];
@@ -8099,7 +8101,7 @@ function handleAnimeTrialTowerVisit(
         );
         return teach ? [teach] : [{ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 1 }];
       }
-      return [{ type: "GAIN_EXPERIENCE", amount: 2 }];
+      return [{ type: "GAIN_EXPERIENCE", amount: 1 }];
     },
     onFinalWin: (hero) => {
       // Xianxia cross-object boon: with Cultivation on, the hero's NEXT Heavenly
@@ -8293,12 +8295,12 @@ function buildWogFieldVisitStep(
     // commander to train (context filter). Paid via PAY_TO.
     if (commandersModuleEnabled(state) && player.commander) {
       options.push({
-        label: "Pay 3 gold: your commander gains +1 stat point",
+        label: "Pay 10 gold: your commander gains +1 stat point",
         steps: [
           {
             type: "PAY_TO",
-            prompt: "Train your commander for 3 gold?",
-            costOptions: [{ gold: 3 }],
+            prompt: "Train your commander for 10 gold?",
+            costOptions: [{ gold: 10 }],
             steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }]
           }
         ]
@@ -8306,12 +8308,12 @@ function buildWogFieldVisitStep(
     }
     if (visitingMainHero) {
       options.push({
-        label: "Pay 2 gold: your main Hero gains 1 experience",
+        label: "Pay 3 gold: your main Hero gains 1 experience",
         steps: [
           {
             type: "PAY_TO",
-            prompt: "Train your hero for 2 gold?",
-            costOptions: [{ gold: 2 }],
+            prompt: "Train your hero for 3 gold?",
+            costOptions: [{ gold: 3 }],
             steps: [{ type: "GAIN_EXPERIENCE", amount: 1 }]
           }
         ]
@@ -8345,37 +8347,26 @@ function buildWogFieldVisitStep(
   }
 
   if (locationId === "wog.mirror_home_way") {
-    const destinations = wogMirrorTownDestinations(state, playerId, heroId);
+    const destinations = wogMirrorDestinations(state, playerId, heroId);
     const options: { label: string; steps: VisitStep[] }[] = [];
-    // FO redesign wave 4 — the fare is set by the DESTINATION's tile band, so
-    // there is ONE PAY_TO arm per price tier actually reachable (a flat single
-    // price could not express two fares). Each arm carries the destination
-    // CHOOSE_ONE for its own tier only. Present only when that tier has a
-    // reachable Town/Settlement (never your current field, never onto another
-    // hero) — a tier with no destination has no arm.
-    for (const price of [WOG_MIRROR_NEAR_PRICE, WOG_MIRROR_FAR_PRICE]) {
-      const tierDestinations = destinations.filter((destination) => destination.price === price);
-      if (tierDestinations.length === 0) {
-        continue;
-      }
-      const tierLabel =
-        price === WOG_MIRROR_NEAR_PRICE
-          ? "on a home or Ⅱ–Ⅲ tile"
-          : "deep in the map (Ⅳ+ / centre / underground / sea tile)";
+    if (destinations.length > 0) {
       options.push({
-        label: `Pay ${price} gold: teleport your Hero to one of your Towns ${tierLabel}`,
+        label: `Pay ${WOG_MIRROR_TRAVEL_PRICE} gold: teleport to one of your Towns, Settlements, Mines or Random Towns; then gain +1 morale`,
         steps: [
           {
             type: "PAY_TO",
-            prompt: `Pay ${price} gold to travel the Mirror of the Home-Way?`,
-            costOptions: [{ gold: price }],
+            prompt: `Pay ${WOG_MIRROR_TRAVEL_PRICE} gold to travel the Mirror of the Home-Way?`,
+            costOptions: [{ gold: WOG_MIRROR_TRAVEL_PRICE }],
             steps: [
               {
                 type: "CHOOSE_ONE",
                 prompt: "Mirror of the Home-Way: move your Hero to…",
-                options: tierDestinations.map((destination) => ({
+                options: destinations.map((destination) => ({
                   label: destination.label,
-                  steps: [{ type: "TELEPORT_HERO" as const, heroId, spaceId: destination.spaceId }]
+                  steps: [
+                    { type: "TELEPORT_HERO" as const, heroId, spaceId: destination.spaceId },
+                    { type: "GAIN_MORALE" as const, amount: 1 }
+                  ]
                 }))
               }
             ]
@@ -8533,12 +8524,16 @@ function buildWogFieldVisitStep(
         steps: [{ type: "GAIN_EXPERIENCE", amount: 2 }]
       });
     }
-    // Commander stat-point arm — present ONLY with the Commanders module on AND a
-    // commander to train (context filter), like the Emerald Tower.
-    if (commandersModuleEnabled(state) && player.commander) {
+    const unitExperience = armyUnitXpChoiceStep(
+      state,
+      playerId,
+      ALTAR_BLESSING_UNIT_XP,
+      "Altar of the Gods — choose one army unit card to receive the blessing:"
+    );
+    if (unitExperience) {
       blessings.push({
-        label: "+1 commander stat point",
-        steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }]
+        label: `+${ALTAR_BLESSING_UNIT_XP} unit experience to one army unit card`,
+        steps: [unitExperience]
       });
     }
     const options: { label: string; steps: VisitStep[] }[] = [
@@ -9060,7 +9055,8 @@ const JUNK_CRATE_REFUND_GOLD = 2;
 const WOG_FISHING_GOLD_COST = 1;
 /** FO redesign wave 4 — the guard the smashed Living Skull's spirit leaves behind. */
 const LIVING_SKULL_SPIRIT_GUARD_LEVEL = 2;
-const ALTAR_SACRIFICE_HERO_XP = 4;
+const ALTAR_BLESSING_UNIT_XP = 3;
+const ALTAR_SACRIFICE_HERO_XP = 3;
 
 /**
  * FO redesign wave 4 — the streak this player's NEXT catch at this Fishing Well

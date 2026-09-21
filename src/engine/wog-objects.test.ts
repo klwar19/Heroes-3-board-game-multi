@@ -7,7 +7,7 @@
  * game OUTCOME (gold moved X→Y, a commander point appeared AND is spendable, the
  * hero STANDS on the town hex, a card left the hand to the removed pile, a search
  * was queued, a gambled die's face drives the reward, a smashed skull is inert
- * for the NEXT visitor, a cave re-guards Ⅰ→Ⅱ→Ⅲ) and fails if the wiring is
+ * for the NEXT visitor, a cave re-guards Ⅱ→Ⅲ→Ⅳ) and fails if the wiring is
  * removed. Each has a CONTROL.
  */
 
@@ -312,7 +312,7 @@ describe("WOG New Objects — carve + protection", () => {
 // 4. Emerald Tower — commander training / hero XP (guard cleared on the win)
 // ===========================================================================
 describe("Emerald Tower (wog.emerald_tower)", () => {
-  it("win-then-visit: pay 3 → gold −3 AND a commander point that is SPENDABLE (a stat rises)", () => {
+  it("win-then-visit: pay 10 → gold −10 AND a commander point that is SPENDABLE (a stat rises)", () => {
     const state = wogGame({ seed: "et-cmd", commanders: true, faction: "castle" });
     state.players.p1.resources.gold = 20;
     const field = carveAt(state, "emerald_tower");
@@ -323,9 +323,9 @@ describe("Emerald Tower (wog.emerald_tower)", () => {
 
     chooseByLabel(state, (l) => l.includes("commander"));
     expect(firstStep(state)?.type).toBe("PAY_TO");
-    pay(state); // pay 3 gold
+    pay(state); // pay 10 gold
 
-    expect(state.players.p1.resources.gold).toBe(17);
+    expect(state.players.p1.resources.gold).toBe(10);
     expect(state.players.p1.commander?.gradePoints).toBe(1);
 
     // The point is REAL — spend it via COMMANDER_GRADE_UP and a stat rises.
@@ -350,9 +350,9 @@ describe("Emerald Tower (wog.emerald_tower)", () => {
     hero.level = 1;
     chooseByLabel(state, (l) => l.includes("experience"));
     expect(firstStep(state)?.type).toBe("PAY_TO");
-    pay(state); // pay 2 gold
+    pay(state); // pay 3 gold
 
-    expect(state.players.p1.resources.gold).toBe(18);
+    expect(state.players.p1.resources.gold).toBe(17);
     expect(hero.experience).toBe(2);
     expect(hero.level).toBe(2); // the real gainExperience pipeline levelled the hero up
   });
@@ -417,13 +417,13 @@ describe("Emerald Tower (wog.emerald_tower)", () => {
     beginFieldVisit(state, secondary.id, FIELD_ID, false);
 
     expect(menu(state).options.map((option) => option.label)).not.toContain(
-      "Pay 2 gold: your main Hero gains 1 experience"
+      "Pay 3 gold: your main Hero gains 1 experience"
     );
   });
 });
 
 // ===========================================================================
-// 5. Mirror of the Home-Way — pay-2 Town teleport
+// 5. Mirror of the Home-Way — pay-1 holding teleport + morale
 // ===========================================================================
 describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
   function ownTownField(state: GameState): string {
@@ -434,14 +434,7 @@ describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
     return town.fieldId;
   }
 
-  /**
-   * FO redesign wave 4: the flat 2-gold fare is REPLACED by two fares keyed off
-   * the DESTINATION's tile band — 1 gold to a Town/Settlement on a starting/far
-   * tile, 3 gold to a near/center (or subterranean/sea/unresolvable) one. The old
-   * "pay 2 → the hero stands on the town hex" pin is rewritten as the two cases
-   * below; a flat-2 reading fails BOTH (each asserts an exact gold delta) and the
-   * dedicated CONTROL asserts no 2-gold arm exists at all.
-   */
+  /** Stage a home Town and a controlled Settlement in different tile bands. */
   function stageTwoBandDestinations(state: GameState): { townField: string; deepField: string } {
     const townField = ownTownField(state); // home Town — its tile group is "starting"
     // A second destination in the DEEP band: a flagged Settlement whose tile is a
@@ -470,15 +463,14 @@ describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
     return { townField, deepField: "51,51" };
   }
 
-  it("wave 4 — a HOME-band destination costs exactly 1 gold and the hero stands on it", () => {
+  it("every destination costs exactly 1 gold; teleporting to the home Town also grants +1 morale", () => {
     const state = wogGame({ seed: "mirror-cheap" });
     const { townField } = stageTwoBandDestinations(state);
     const hero = getMainHero(state, "p1")!;
 
     visit(state);
-    // Two fare arms are offered (one per reachable band) + Leave.
     const labels = menu(state).options.map((o) => o.label);
-    expect(labels.filter((l) => l.toLowerCase().includes("teleport"))).toHaveLength(2);
+    expect(labels.filter((l) => l.toLowerCase().includes("teleport"))).toHaveLength(1);
 
     chooseByLabel(state, (l) => l.startsWith("Pay 1 gold"));
     expect(firstStep(state)?.type).toBe("PAY_TO");
@@ -486,43 +478,45 @@ describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
     pay(state);
 
     const picker = menu(state);
-    // The 1-gold arm lists ONLY home-band destinations — the deep Settlement is
-    // not reachable at this fare.
-    expect(picker.options.every((o) => o.label.startsWith("Town"))).toBe(true);
-    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(picker.options.some((o) => o.label.startsWith("Town"))).toBe(true);
+    expect(picker.options.some((o) => o.label.startsWith("Settlement"))).toBe(true);
+    const townIndex = picker.options.findIndex((o) => o.label.startsWith("Town"));
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: townIndex });
 
     expect(state.players.p1.resources.gold).toBe(9); // exactly 1 gold
     expect(hero.spaceId).toBe(townField);
+    expect(state.players.p1.morale).toBe(1);
   });
 
-  it("wave 4 — a NEAR/CENTER-band destination costs exactly 3 gold and the hero stands on it", () => {
+  it("near/center, underground, sea and unresolved destinations still cost exactly 1 gold", () => {
     const state = wogGame({ seed: "mirror-dear" });
     const { deepField } = stageTwoBandDestinations(state);
     const hero = getMainHero(state, "p1")!;
 
     visit(state);
-    chooseByLabel(state, (l) => l.startsWith("Pay 3 gold"));
+    chooseByLabel(state, (l) => l.startsWith("Pay 1 gold"));
     pay(state);
 
     const picker = menu(state);
-    expect(picker.options.every((o) => o.label.startsWith("Settlement"))).toBe(true);
-    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    const settlementIndex = picker.options.findIndex((o) => o.label.startsWith("Settlement"));
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: settlementIndex });
 
-    expect(state.players.p1.resources.gold).toBe(7); // exactly 3 gold
+    expect(state.players.p1.resources.gold).toBe(9); // exactly 1 gold
     expect(hero.spaceId).toBe(deepField);
+    expect(state.players.p1.morale).toBe(1);
   });
 
-  it("CONTROL: the OLD flat 2-gold fare is gone — no arm charges 2, and the two fares differ", () => {
+  it("CONTROL: no old 2- or 3-gold fare remains", () => {
     const state = wogGame({ seed: "mirror-nolegacy" });
     stageTwoBandDestinations(state);
     visit(state);
     const labels = menu(state).options.map((o) => o.label);
     expect(labels.some((l) => l.startsWith("Pay 2 gold"))).toBe(false);
     expect(labels.some((l) => l.startsWith("Pay 1 gold"))).toBe(true);
-    expect(labels.some((l) => l.startsWith("Pay 3 gold"))).toBe(true);
+    expect(labels.some((l) => l.startsWith("Pay 3 gold"))).toBe(false);
   });
 
-  it("CONTROL: an unresolvable destination tile is priced at the DEARER fare (no discount from missing data)", () => {
+  it("an unresolvable destination tile still uses the one-gold fare", () => {
     const state = wogGame({ seed: "mirror-unknown-tile" });
     // A flagged Settlement whose tileInstanceId matches no tile at all.
     state.adventure!.fields["52,52"] = {
@@ -548,11 +542,46 @@ describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
 
     visit(state);
     const labels = menu(state).options.map((o) => o.label);
-    expect(labels.some((l) => l.startsWith("Pay 3 gold"))).toBe(true);
-    expect(labels.some((l) => l.startsWith("Pay 1 gold"))).toBe(false);
+    expect(labels.some((l) => l.startsWith("Pay 1 gold"))).toBe(true);
+    expect(labels.some((l) => l.startsWith("Pay 3 gold"))).toBe(false);
   });
 
-  it("CONTROL: no controlled Town/Settlement → the teleport arm is ABSENT (inert)", () => {
+  it("offers controlled Mines and Random Towns as destinations", () => {
+    const state = wogGame({ seed: "mirror-mine-random-town" });
+    state.adventure!.fields["52,52"] = {
+      spaceId: "52,52",
+      tileInstanceId: "wog-loc-tile",
+      slot: 1,
+      location: "mine",
+      resource: "gold",
+      blackCube: false,
+      flagOwnerId: "p1",
+      everFlagged: true,
+      settlementResource: null
+    };
+    state.adventure!.fields["53,53"] = {
+      spaceId: "53,53",
+      tileInstanceId: "wog-loc-tile",
+      slot: 2,
+      location: "random_town",
+      blackCube: false,
+      flagOwnerId: "p1",
+      everFlagged: true,
+      settlementResource: null
+    };
+    injectField(state, "wog.mirror_home_way");
+    state.players.p1.resources.gold = 10;
+
+    visit(state);
+    chooseByLabel(state, (label) => label.startsWith("Pay 1 gold"));
+    pay(state);
+
+    const labels = menu(state).options.map((option) => option.label);
+    expect(labels).toContain("gold Mine");
+    expect(labels).toContain("Random Town");
+  });
+
+  it("CONTROL: no controlled Town/Settlement/Mine/Random Town → the teleport arm is ABSENT (inert)", () => {
     const state = wogGame({ seed: "mirror-none" });
     // p1 controls no town. Town ownership is FLAG-first (setup already flags
     // each home Town's field for its owner), so taking control away means
@@ -1091,7 +1120,7 @@ describe("Living Skull (wog.living_skull)", () => {
 });
 
 // ===========================================================================
-// 6d. Adventure Cave — escalating Ⅰ→Ⅱ→Ⅲ fight + scaling reward ladder
+// 6d. Adventure Cave — escalating Ⅱ→Ⅲ→Ⅳ fight + scaling reward ladder
 // ===========================================================================
 describe("Adventure Cave (wog.adventure_cave)", () => {
   /**
@@ -1100,8 +1129,8 @@ describe("Adventure Cave (wog.adventure_cave)", () => {
    * card and the stat. The Treasure die survives only as the fall-back when no
    * army card is eligible (pinned separately below).
    */
-  it("escalates Ⅰ→Ⅱ→Ⅲ, pays +3 gold / a chosen Stack Token / Search Artifact, then clears for good", () => {
-    // A cave carve stamps the fresh difficulty-Ⅰ guard. `visit()` stands in for
+  it("escalates Ⅱ→Ⅲ→Ⅳ, pays +3 gold / a chosen Stack Token / Search Artifact, then clears for good", () => {
+    // A cave carve stamps the fresh difficulty-Ⅱ guard. `visit()` stands in for
     // the post-win beginFieldVisit each expedition (the guard was just beaten).
     const state = wogGame({ seed: "cave-escalate" });
     const player = state.players.p1;
@@ -1111,20 +1140,20 @@ describe("Adventure Cave (wog.adventure_cave)", () => {
       { id: "army_1", unitDefId: "castle.marksmen", side: "few" }
     ];
     const field = carveAt(state, "adventure_cave");
-    expect(field.difficulty).toBe(1); // guarded Ⅰ on first entry
+    expect(field.difficulty).toBe(2); // guarded Ⅱ on first entry
 
-    // --- Win 1: +3 gold, re-guard to Ⅱ ---
+    // --- Win 1: +3 gold, re-guard to Ⅲ ---
     visit(state);
     expect(field.wogCaveWins).toBe(1);
     expect(player.resources.gold).toBe(3);
-    expect(field.difficulty).toBe(2); // re-guarded one higher
+    expect(field.difficulty).toBe(3); // re-guarded one higher
     expect(state.adventure!.pendingVisit).toBeNull(); // auto-resolves (no stall)
 
-    // --- Win 2: a chosen Stack Token on a chosen card, re-guard to Ⅲ ---
+    // --- Win 2: a chosen Stack Token on a chosen card, re-guard to Ⅳ ---
     const eventsBefore = state.eventLog.length;
     visit(state);
     expect(field.wogCaveWins).toBe(2);
-    expect(field.difficulty).toBe(3);
+    expect(field.difficulty).toBe(4);
     expect(menu(state).options.some((o) => o.label.startsWith("Leave")), "AI-safe decline arm").toBe(true);
     chooseByLabel(state, (l) => l.includes("Marksmen"));
     chooseByLabel(state, (l) => l === "+1 Attack");
@@ -1214,7 +1243,7 @@ describe("Adventure Cave (wog.adventure_cave)", () => {
 });
 
 // ===========================================================================
-// 6e. Altar of the Gods — pay 3 valuables → morale / XP / commander-point arm
+// 6e. Altar of the Gods — pay 3 valuables → morale / hero XP / unit XP
 // ===========================================================================
 describe("Altar of the Gods (wog.altar_of_gods)", () => {
   function offerBlessing(state: GameState): void {
@@ -1259,26 +1288,28 @@ describe("Altar of the Gods (wog.altar_of_gods)", () => {
     expect(hero.level).toBe(2); // exp 2 crosses the level-2 threshold via gainExperience
   });
 
-  it("commander arm: with Commanders ON, pay 3 valuables → +1 commander point that is SPENDABLE", () => {
-    const state = wogGame({ seed: "altar-cmd", commanders: true, faction: "castle" });
+  it("Unit Experience ON: pay 3 valuables → a chosen army unit gains exactly +3 XP", () => {
+    const state = wogGame({ seed: "altar-unit-xp", unitExperience: true });
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 5 };
+    player.army = [
+      { id: "army_0", unitDefId: "castle.halberdiers", side: "few" },
+      { id: "army_1", unitDefId: "castle.marksmen", side: "few" }
+    ];
     injectField(state, "wog.altar_of_gods");
 
     visit(state);
     offerBlessing(state);
-    chooseByLabel(state, (l) => l.includes("commander"));
+    chooseByLabel(state, (l) => l.includes("unit experience"));
+    chooseByLabel(state, (l) => l.includes("Marksmen"));
 
     expect(player.resources.valuables).toBe(2);
-    expect(player.commander?.gradePoints).toBe(1);
-    // REAL point — spend it and a stat rises.
-    const result = applyAction(state, { type: "COMMANDER_GRADE_UP", playerId: "p1", stat: "defense" });
-    expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
-    expect(result.state.players.p1.commander?.grades.defense).toBe(1);
+    expect(player.army.find((unit) => unit.id === "army_1")?.experience).toBe(3);
+    expect(player.army.find((unit) => unit.id === "army_0")?.experience ?? 0).toBe(0);
   });
 
-  it("CONTROL: with Commanders OFF the commander blessing is ABSENT (only morale + XP offered)", () => {
-    const state = wogGame({ seed: "altar-nocmd", commanders: false, faction: "castle" });
+  it("CONTROL: with Unit Experience OFF the unit-XP blessing is absent", () => {
+    const state = wogGame({ seed: "altar-unit-xp-off" });
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 5 };
     injectField(state, "wog.altar_of_gods");
@@ -1288,13 +1319,13 @@ describe("Altar of the Gods (wog.altar_of_gods)", () => {
     const blessing = menu(state);
     expect(blessing.options.some((o) => o.label.includes("morale"))).toBe(true);
     expect(blessing.options.some((o) => o.label.includes("experience"))).toBe(true);
-    expect(blessing.options.some((o) => o.label.includes("commander"))).toBe(false);
+    expect(blessing.options.some((o) => o.label.includes("unit experience"))).toBe(false);
   });
 
   // -------------------------------------------------------------------------
   // FO redesign wave 4 — the GREATER SACRIFICE arm
   // -------------------------------------------------------------------------
-  it("wave 4 greater sacrifice: the chosen card leaves the game for good and +4 hero XP is paid", () => {
+  it("greater sacrifice: the chosen card leaves the game for good and +3 hero XP is paid", () => {
     const state = wogGame({ seed: "altar-sacrifice-xp" });
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 }; // no offering needed
@@ -1320,7 +1351,7 @@ describe("Altar of the Gods (wog.altar_of_gods)", () => {
       expect(zone).not.toContain("castle.marksmen");
     }
     expect(state.decks["neutral-bronze"]!.discardPile).not.toContain("castle.marksmen");
-    expect(hero.experience).toBe(4); // exactly +4, through the real gainExperience pipeline
+    expect(hero.experience).toBe(3); // exactly +3, through the real gainExperience pipeline
   });
 
   it("wave 4 greater sacrifice: the commander branch pays +1 stat point AND +1 morale", () => {

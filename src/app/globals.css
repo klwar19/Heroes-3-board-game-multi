@@ -23874,6 +23874,53 @@ img.cardBack {
 .mapPresetSpecificList li {
   font-size: 12px;
 }
+.mapPresetSpecificLink {
+  align-items: center;
+  background: rgba(20, 29, 20, 0.72);
+  border: 1px solid rgba(127, 224, 138, 0.3);
+  border-radius: 8px;
+  color: #eff7df;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  padding: 6px;
+  text-align: left;
+  width: 100%;
+}
+.mapPresetSpecificLink:hover {
+  border-color: rgba(167, 245, 174, 0.85);
+  background: rgba(31, 50, 31, 0.9);
+}
+.mapPresetSpecificLink img,
+.mapPresetSpecificFallback {
+  border-radius: 6px;
+  height: 36px;
+  object-fit: cover;
+  width: 42px;
+}
+.mapPresetSpecificFallback {
+  align-items: center;
+  background: rgba(127, 224, 138, 0.12);
+  display: flex;
+  font-size: 22px;
+  justify-content: center;
+}
+.mapPresetSpecificLink > span:nth-child(2) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.mapPresetSpecificLink small {
+  color: #cbd8bc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mapPresetSpecificJump {
+  color: #a7f5ae;
+  font-size: 16px;
+}
 .mapPresetPickChip {
   font-weight: 700;
 }
@@ -24613,6 +24660,75 @@ img.cardBack {
   border: 1px solid rgba(201, 162, 75, 0.35);
   border-radius: 8px;
   background: rgba(14, 10, 6, 0.4);
+}
+.popoverGuardTownRecipe {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(111, 75, 19, 0.72), rgba(37, 66, 48, 0.72));
+  border: 1px solid rgba(255, 218, 126, 0.58);
+  border-radius: 8px;
+  color: #fff1c7;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  padding: 7px 9px;
+  text-align: left;
+}
+.popoverGuardTownRecipe:hover {
+  border-color: #ffe49a;
+  filter: brightness(1.08);
+}
+.popoverGuardTownRecipe > span:first-child {
+  font-size: 22px;
+}
+.popoverGuardTownRecipe > span:last-child {
+  display: grid;
+  gap: 1px;
+}
+.popoverGuardTownRecipe small {
+  color: #d8cfad;
+  font-size: 10px;
+}
+.designerExactGuardGrid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(58px, 1fr));
+  margin: 7px 0;
+}
+.designerExactGuardHex {
+  align-items: center;
+  background: rgba(18, 15, 10, 0.72);
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  border-radius: 9px;
+  color: #d9c9a1;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 3px;
+  padding: 6px;
+}
+.designerExactGuardHex:hover,
+.designerExactGuardHex.active {
+  border-color: #ffe49a;
+  color: #fff0bd;
+}
+.designerExactGuardHex.set {
+  background: rgba(91, 57, 17, 0.72);
+}
+.designerExactGuardHex > span { color: #c99435; font-size: 17px; }
+.designerExactGuardHex small { font-size: 10px; }
+.designerExactGuardHex b { color: #fff2bd; font-size: 11px; }
+.designerExactGuardChoice {
+  border-top: 1px solid rgba(201, 162, 75, 0.25);
+  padding-top: 5px;
+}
+.designerExactGuardBadge circle {
+  fill: rgba(77, 36, 12, 0.94);
+  stroke: #ffd66c;
+  stroke-width: 1.5px;
+}
+.designerExactGuardBadge text {
+  fill: #fff1c2;
+  font-size: 9px;
 }
 .popoverGuardArmyChips {
   display: flex;

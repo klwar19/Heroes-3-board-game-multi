@@ -239,7 +239,8 @@ const CENTER_HEX_SEARCH_SPECS = [
 
 /**
  * True when `unitDefId` is a legal certain-army entry: a Neutral unit, a
- * `random:<tier>` Neutral slot, a `random-pack:<tier>` Pack slot, or a
+ * `random:<tier>` Neutral slot, a `random-pack:<tier>` Pack slot, a faction
+ * roster `town-rank:<2..6>:pack|few` slot, or a
  * `pack:<unitDefId>` named Pack.
  */
 export function isCustomGuardUnit(unitDefId: unknown): unitDefId is string {
@@ -2958,6 +2959,21 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
  */
 export function describeUtopiaGuards(guards: DragonUtopiaGuards): string {
   return guards === "default" ? "designer guard, or 2 azure + 2 golden units" : guards === "four" ? "always four dragons" : guards === "two-azure-two-gold" ? "2 azure + 2 golden units" : "the Field Difficulty table";
+}
+
+/** Clamp exact physical-hex guard pins; one guard per flower slot, last edit wins. */
+export function sanitizeFieldGuardPins(input: unknown): Array<{ slot: number; guard: CustomGuardSpec }> | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const bySlot = new Map<number, CustomGuardSpec>();
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as { slot?: unknown; guard?: unknown };
+    if (!Number.isInteger(raw.slot) || (raw.slot as number) < 0 || (raw.slot as number) > 6) continue;
+    const guard = sanitizeCustomGuardSpec(raw.guard);
+    if (guard) bySlot.set(raw.slot as number, guard);
+  }
+  const pins = [...bySlot.entries()].sort(([a], [b]) => a - b).map(([slot, guard]) => ({ slot, guard }));
+  return pins.length > 0 ? pins : undefined;
 }
 
 /**

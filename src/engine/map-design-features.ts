@@ -6,6 +6,7 @@
  * map-preset.ts / materialize paths. Default-off / absent ⇒ byte-identical.
  */
 
+import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type {
   CustomGuardSpec,
@@ -41,6 +42,8 @@ export const RANDOM_PACK_GUARD_PREFIX = "random-pack:" as const;
 export const FEW_GUARD_PREFIX = "few:" as const;
 /** Prefix for a "random Few of this tier" certain-army slot. */
 export const RANDOM_FEW_GUARD_PREFIX = "random-few:" as const;
+/** Prefix for a faction roster rank minted on its Pack/Few side. */
+export const TOWN_RANK_GUARD_PREFIX = "town-rank:" as const;
 
 export const RANDOM_GUARD_TIERS: readonly RandomGuardTier[] = ["bronze", "silver", "gold", "azure"];
 
@@ -101,6 +104,25 @@ export function isFewGuardSlot(id: unknown): id is `few:${string}` {
   return Boolean(coreUnitDefinitions[unitDefId]?.few);
 }
 
+export type TownRankGuardSlot = `town-rank:${2 | 3 | 4 | 5 | 6}:${"pack" | "few"}`;
+
+/**
+ * A Random-Town roster slot. Rank is the printed creature rank inside the
+ * rolled faction (II–VI), so two bronze slots resolve to two DIFFERENT units
+ * such as Rampart Dwarves + Elves instead of independently rolling a grade.
+ */
+export function isTownRankGuardSlot(id: unknown): id is TownRankGuardSlot {
+  if (typeof id !== "string" || !id.startsWith(TOWN_RANK_GUARD_PREFIX)) return false;
+  const match = /^town-rank:([2-6]):(pack|few)$/.exec(id);
+  return Boolean(match);
+}
+
+export function townRankGuardParts(id: string): { rank: 2 | 3 | 4 | 5 | 6; side: "pack" | "few" } | null {
+  if (!isTownRankGuardSlot(id)) return null;
+  const [, rank, side] = /^town-rank:([2-6]):(pack|few)$/.exec(id)!;
+  return { rank: Number(rank) as 2 | 3 | 4 | 5 | 6, side: side as "pack" | "few" };
+}
+
 /** True when `id` names a unit with a Neutral side (classic certain-army entry). */
 export function isNeutralGuardUnit(id: unknown): id is string {
   return typeof id === "string" && Boolean(coreUnitDefinitions[id]?.neutral);
@@ -118,7 +140,8 @@ export function isCustomGuardUnitEntry(id: unknown): id is string {
     isRandomPackGuardSlot(id) ||
     isPackGuardSlot(id) ||
     isRandomFewGuardSlot(id) ||
-    isFewGuardSlot(id)
+    isFewGuardSlot(id) ||
+    isTownRankGuardSlot(id)
   );
 }
 
@@ -159,16 +182,20 @@ export function fewGuardUnitDefId(id: string): string | null {
 
 /** True when the entry mints a Pack (named or random-pack tier). */
 export function isAnyPackGuardSlot(id: unknown): boolean {
-  return isPackGuardSlot(id) || isRandomPackGuardSlot(id);
+  return isPackGuardSlot(id) || isRandomPackGuardSlot(id) || townRankGuardParts(String(id))?.side === "pack";
 }
 
 /** True when the entry mints a Few (named or random-few tier). */
 export function isAnyFewGuardSlot(id: unknown): boolean {
-  return isFewGuardSlot(id) || isRandomFewGuardSlot(id);
+  return isFewGuardSlot(id) || isRandomFewGuardSlot(id) || townRankGuardParts(String(id))?.side === "few";
 }
 
 /** Display label for one certain-army entry (editor chips + previews). */
 export function guardUnitEntryLabel(id: string): string {
+  const townRank = townRankGuardParts(id);
+  if (townRank) {
+    return `${townRank.side === "pack" ? "Pack" : "Few"} of faction rank ${["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ"][townRank.rank]}`;
+  }
   if (isRandomPackGuardSlot(id)) {
     const tier = randomPackGuardTierOf(id)!;
     const labels: Record<RandomGuardTier, string> = {
@@ -268,6 +295,10 @@ export function expandGuardUnitGroups(
  * unit's tier). Azure body ⇒ Ⅶ overall when ANY entry is azure-tier.
  */
 export function guardUnitEntryPoints(id: string): { points: number; azure: boolean } {
+  const townRank = townRankGuardParts(id);
+  if (townRank) {
+    return { points: townRank.rank <= 3 ? 1 : townRank.rank <= 5 ? 2 : 3, azure: false };
+  }
   if (isRandomGuardSlot(id) || isRandomPackGuardSlot(id) || isRandomFewGuardSlot(id)) {
     const tier = isRandomPackGuardSlot(id)
       ? randomPackGuardTierOf(id)!
@@ -450,10 +481,10 @@ export function resolveCustomGuardDraws(
   options?: ResolveCustomGuardOptions
 ): ResolvedGuardDraw[] {
   const needsFaction =
-    Boolean(options?.packFaction) &&
-    units.some((entry) => isAnyPackGuardSlot(entry) || isAnyFewGuardSlot(entry));
+    units.some((entry) => isAnyPackGuardSlot(entry) || isAnyFewGuardSlot(entry)) &&
+    (Boolean(options?.packFaction) || units.some(isTownRankGuardSlot));
   const lockedFaction = needsFaction
-    ? resolvePackFactionForFight(options?.packFaction, rng, options?.playableFactions)
+    ? resolvePackFactionForFight(options?.packFaction ?? "random", rng, options?.playableFactions)
     : options?.packFaction && options.packFaction !== "random"
       ? options.packFaction
       : null;
@@ -465,6 +496,28 @@ export function resolveCustomGuardDraws(
   // eligible silver creature remains.
   const remainingNeutralPools = new Map<RandomGuardTier, string[]>();
   for (const entry of units.slice(0, MAX_CUSTOM_GUARD_UNITS)) {
+    const townRank = townRankGuardParts(entry);
+    if (townRank) {
+      const faction = lockedFaction;
+      const unitDefId = faction ? coreFactionDefinitions[faction]?.units?.[townRank.rank - 1] : undefined;
+      const def = unitDefId ? coreUnitDefinitions[unitDefId] : undefined;
+      const sideExists = townRank.side === "pack" ? def?.pack : def?.few;
+      if (unitDefId && def && sideExists) {
+        draws.push({
+          unitDefId,
+          tier: def.tier as RandomGuardTier,
+          ...(townRank.side === "pack" ? { factionPack: true } : { factionFew: true }),
+          bankGuard: true
+        });
+      } else {
+        const tier: RandomGuardTier = townRank.rank <= 3 ? "bronze" : townRank.rank <= 5 ? "silver" : "gold";
+        const fallback = townRank.side === "pack"
+          ? packDrawWithNeutralFallback(tier, faction, rng)
+          : fewDrawWithNeutralFallback(tier, faction, rng);
+        if (fallback) draws.push(fallback);
+      }
+      continue;
+    }
     if (isRandomGuardSlot(entry)) {
       const tier = randomGuardTierOf(entry)!;
       let pool = remainingNeutralPools.get(tier);

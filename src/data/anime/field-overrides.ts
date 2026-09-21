@@ -163,7 +163,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
   /**
    * Thí Luyện Tháp (Trial Tower) — a xianxia escalating repeatable fight, twin
    * of WoG's Adventure Cave (both drive the shared `handleEscalatingFightVisit`).
-   * Guarded Ⅰ on first entry; each win re-guards one higher (Ⅰ→Ⅱ→Ⅲ) and pays a
+   * Guarded Ⅱ on first entry; each win re-guards one higher (Ⅱ→Ⅲ→Ⅳ) and pays a
    * xianxia reward ladder (win 1: +2 gold, win 2: Search (1) Spell, win 3: +1
    * hero XP — plus, with `anime.cultivation` on, one FEWER die on the hero's next
    * Heavenly Tribulation, and with the WOG Commanders module on a commander
@@ -172,15 +172,15 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
   thi_luyen_thap: {
     id: "thi_luyen_thap",
     locationId: "anime.thi_luyen_thap",
-    name: "Thí Luyện Tháp (Trial Tower)",
+    name: "Thí Luyện Tháp — Trial Tower",
     nameVi: "Thí Luyện Tháp",
     package: "anime-xianxia",
     tileGroups: ["far", "near", "center"],
     terrain: "land",
-    guard: 1,
+    guard: 2,
     implementationStatus: "implemented",
     summary:
-      "Escalating fight (guarded Ⅰ→Ⅱ→Ⅲ). Each win pays a bigger reward (+2 gold; then +3 unit XP to a chosen army unit card with the Unit Experience rule on, otherwise Search (1) Spell; then +2 hero XP) and re-guards one higher; cleared after the 3rd win.",
+      "Escalating fight (guarded Ⅱ→Ⅲ→Ⅳ). Win 1: +2 gold. Win 2: +3 unit XP to a chosen army unit card with Unit Experience on, otherwise Search (1) Spell. Win 3: +1 hero XP, plus the cultivation and commander-artifact riders when enabled. Cleared after the 3rd win.",
     image: art("thi_luyen_thap")
   },
   /**

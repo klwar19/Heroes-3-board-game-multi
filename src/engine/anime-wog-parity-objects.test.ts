@@ -207,7 +207,7 @@ describe("Anime WOG-parity objects — registry", () => {
     // FO redesign 2026-08-19: dungeon_gate is a WAGER site now — it carves
     // UNGUARDED (the visitor picks the floor at the visit).
     for (const [kind, guard] of [
-      ["thi_luyen_thap", 1],
+      ["thi_luyen_thap", 2],
       ["dungeon_gate", undefined],
       ["linh_dien", undefined],
       ["guild_bounty", undefined]
@@ -273,13 +273,13 @@ describe("Anime WOG-parity objects — package gating", () => {
 });
 
 // ===========================================================================
-// 3. Thí Luyện Tháp (Trial Tower) — escalating Ⅰ→Ⅱ→Ⅲ fight + reward ladder
+// 3. Thí Luyện Tháp (Trial Tower) — escalating Ⅱ→Ⅲ→Ⅳ fight + reward ladder
 // ===========================================================================
 describe("Trial Tower (anime.thi_luyen_thap)", () => {
   // REWRITTEN for the Field Override redesign (2026-08-19, wave 2): the 2nd-win
   // reward is a Spell Search only while the Unit Experience rule is OFF (this
-  // game), and the 3rd win pays +2 hero XP, not +1.
-  it("escalates Ⅰ→Ⅱ→Ⅲ, pays +2 gold / Search Spell (Unit Experience off) / +2 XP, then clears for good", () => {
+  // game), and the 3rd win pays +1 hero XP.
+  it("escalates Ⅱ→Ⅲ→Ⅳ, pays +2 gold / Search Spell (Unit Experience off) / +1 XP, then clears for good", () => {
     const state = animeGame({ seed: "tt-escalate" });
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
@@ -287,28 +287,28 @@ describe("Trial Tower (anime.thi_luyen_thap)", () => {
     hero.experience = 0;
     hero.level = 1;
     const field = carveAt(state, "thi_luyen_thap");
-    expect(field.difficulty).toBe(1); // guarded Ⅰ on first entry
+    expect(field.difficulty).toBe(2); // guarded Ⅱ on first entry
 
-    // --- Win 1: +2 gold, re-guard to Ⅱ ---
+    // --- Win 1: +2 gold, re-guard to Ⅲ ---
     visit(state);
     expect(field.animeTrialWins).toBe(1);
     expect(player.resources.gold).toBe(2);
-    expect(field.difficulty).toBe(2);
+    expect(field.difficulty).toBe(3);
     expect(state.adventure!.pendingVisit).toBeNull();
 
-    // --- Win 2: Search (1) Spell deck, re-guard to Ⅲ ---
+    // --- Win 2: Search (1) Spell deck, re-guard to Ⅳ ---
     const spellSearchesBefore = queuedSearches(state, "spells");
     visit(state);
     expect(field.animeTrialWins).toBe(2);
-    expect(field.difficulty).toBe(3);
+    expect(field.difficulty).toBe(4);
     expect(queuedSearches(state, "spells")).toBe(spellSearchesBefore + 1);
     expect(state.adventure!.pendingVisit).toBeNull();
 
-    // --- Win 3: +2 hero XP (FO redesign wave 2; was +1), cleared for good ---
+    // --- Win 3: +1 hero XP, cleared for good ---
     visit(state);
     expect(field.animeTrialWins).toBe(3);
     expect(field.difficulty).toBeFalsy();
-    expect(hero.experience).toBe(2);
+    expect(hero.experience).toBe(1);
 
     // --- A later peaceful re-entry is inert (no reward, still cleared) ---
     const goldAfter = player.resources.gold;

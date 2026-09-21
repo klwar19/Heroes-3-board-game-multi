@@ -69,6 +69,14 @@ const RANDOM_FEW_QUICK: { tier: RandomGuardTier; slot: string; label: string }[]
   { tier: "azure" as const, slot: "random-few:azure", label: "+ Few IV" }
 ].filter(({ tier }) => Object.values(coreUnitDefinitions).some((def) => def.few && def.tier === tier));
 
+const RANDOM_TOWN_RANKS_II_VI = [
+  "town-rank:2:pack",
+  "town-rank:3:pack",
+  "town-rank:4:pack",
+  "town-rank:5:pack",
+  "town-rank:6:few"
+] as const;
+
 /** Every Neutral-side unit a designer may field, grouped by tier. */
 const GUARD_UNIT_OPTIONS: {
   tier: (typeof GUARD_TIER_ORDER)[number];
@@ -271,6 +279,15 @@ export function GuardSpecEditor({
 
       {armyMode ? (
         <div className="popoverGuardArmy">
+          <button
+            className="popoverGuardTownRecipe"
+            onClick={() => onChange({ units: [...RANDOM_TOWN_RANKS_II_VI], packFaction: "random" })}
+            title="One rolled faction: Packs of its rank II, III, IV and V creatures, plus Few of rank VI (for example Dwarves, Elves, Pegasi, Dendroids and Unicorns)."
+            type="button"
+          >
+            <span aria-hidden="true">🏰</span>
+            <span><strong>Random Town ranks II–VI</strong><small>4 Packs + rank VI Few · one faction</small></span>
+          </button>
           <div className="popoverGuardQuickRow" role="group" aria-label="Add random Neutral of tier">
             {RANDOM_NEUTRAL_QUICK.map(({ slot, label, tier }) => (
               <button

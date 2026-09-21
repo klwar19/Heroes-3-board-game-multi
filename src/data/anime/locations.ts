@@ -206,19 +206,19 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
 
   /**
    * Thí Luyện Tháp (*Trial Tower*) — a xianxia escalating repeatable fight, the
-   * WOG Adventure Cave's twin. Guarded Ⅰ is stamped by the Field Override
+   * WOG Adventure Cave's twin. Guarded Ⅱ is stamped by the Field Override
    * definition; the reward ladder (FO redesign 2026-08-19 — win 1: +2 gold, win
    * 2: +3 unit XP to a chosen army unit card with Unit Experience ON, otherwise
-   * the previous Search (1) Spell, win 3: +2 hero XP + optional
+   * the previous Search (1) Spell, win 3: +1 hero XP + optional
    * cultivation/commander riders) and the re-guard one
-   * higher (Ⅰ→Ⅱ→Ⅲ, cleared after the 3rd win) are engine code in
+   * higher (Ⅱ→Ⅲ→Ⅳ, cleared after the 3rd win) are engine code in
    * `beginFieldVisit` (`handleAnimeTrialTowerVisit` → the shared
    * `handleEscalatingFightVisit`, keyed off `field.animeTrialWins`) — no static
    * interaction.
    */
   "anime.thi_luyen_thap": {
     id: "anime.thi_luyen_thap",
-    name: "Thí Luyện Tháp (Trial Tower)",
+    name: "Thí Luyện Tháp — Trial Tower",
     category: "revisitable",
     // engine: the escalating reward / re-guard is handled in beginFieldVisit.
     interaction: { type: "NONE" },

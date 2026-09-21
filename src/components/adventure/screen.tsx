@@ -2962,7 +2962,7 @@ export function HexMapBoard({
         isMapObjectLocation(field.location) ||
         isTeleportMarkLocation(field.location) ||
         field.location === "subterranean_gate";
-      if ((!artShown || designedGuardHex) && field.difficulty && guarded) {
+      if ((!artShown || designedGuardHex || field.designedGuard) && field.difficulty && guarded) {
         overlays.push(
           <text
             className="hexDifficulty"

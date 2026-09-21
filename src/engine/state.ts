@@ -11468,6 +11468,8 @@ export type MapTileState = {
     mine?: CustomObjectFieldPlan;
     temple_of_the_sea?: CustomObjectFieldPlan;
   };
+  /** Exact physical flower hex guards (slot 0 center, 1–6 ring), authored in the map editor. */
+  fieldGuards?: Array<{ slot: number; guard: CustomGuardSpec }>;
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
   viiFieldReward?: ViiFieldReward;
   /** @deprecated Pre-centerHex snapshots only; folded on materialize. */
@@ -11652,14 +11654,14 @@ export type MapFieldState = {
   wogSkullSmashed?: boolean;
   /**
    * WOG New Objects — Adventure Cave (`wog.adventure_cave`): how many times this
-   * cave's guard has been beaten (0/absent → the fresh Ⅰ guard). Each win
-   * increments it, re-guards one difficulty higher (Ⅰ→Ⅱ→Ⅲ) and pays a scaling
+   * cave's guard has been beaten (0/absent → the fresh Ⅱ guard). Each win
+   * increments it, re-guards one difficulty higher (Ⅱ→Ⅲ→Ⅳ) and pays a scaling
    * reward; at 3 the cave is cleared for good.
    */
   wogCaveWins?: number;
   /**
    * Anime Field Override — Thí Luyện Tháp / Trial Tower (`anime.thi_luyen_thap`):
-   * how many times this tower's guard has been beaten (0/absent → the fresh Ⅰ
+   * how many times this tower's guard has been beaten (0/absent → the fresh Ⅱ
    * guard). The anime twin of {@link wogCaveWins} — both drive the shared
    * `handleEscalatingFightVisit`, kept as SEPARATE field props for serialization
    * compatibility (a mid-game snapshot of either object keeps its own count).
@@ -16411,6 +16413,12 @@ export type CustomMapTilePlan = {
     mine?: CustomObjectFieldPlan;
     temple_of_the_sea?: CustomObjectFieldPlan;
   };
+  /**
+   * Exact PHYSICAL flower-hex guard overrides. Slots use the rotation-0
+   * footprint (0 center, 1–6 ring), so a face-down tile may rotate or draw a
+   * different face without moving the authored guard to another board hex.
+   */
+  fieldGuards?: Array<{ slot: number; guard: CustomGuardSpec }>;
 };
 
 /**
@@ -16497,6 +16505,8 @@ export type CustomMapSettlementFieldPlan = {
  *       • `random-pack:bronze|silver|gold|azure` — roll a random faction Pack
  *         of that tier at fight time (seeded),
  *       • `pack:<unitDefId>` — a named faction Pack side (Random Town armies).
+ *       • `town-rank:2..6:pack|few` — that printed rank from one shared
+ *         faction (supports exact random-faction Town rosters).
  *     Minted Creature-Bank style (never deck-drawn). Never Quick-Combat skipped;
  *     experience uses difficulty derived from the army's tiers.
  *   - `packFaction`: every Pack / random-pack / level-as-packs body shares one

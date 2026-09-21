@@ -606,6 +606,7 @@ import {
   getLegalActions,
   getLegalMoveDestinations,
   getUnitMoveRange,
+  ongoingCombatPlayWindowOpen,
   balanceEagleEyeCopySpellId,
   balanceIntelligencePlayBlocked,
   combatEnemyImposesPowerTax,
@@ -26784,6 +26785,19 @@ function playCard(
     throw new Error(`${card.name} needs a chosen option.`);
   }
   const selectedOption = getChosenOption(card, action.optionIndex);
+  if (
+    state.combat &&
+    !ongoingCombatPlayWindowOpen(
+      state,
+      action.playerId,
+      effect,
+      selectedOption,
+    )
+  ) {
+    throw new Error(
+      "Ongoing effects may be played only during one of your own unit's activations.",
+    );
+  }
   const isPolishBookPlay =
     Boolean(action.fromSpellBook) && polishSpellBookEnabled(state);
   const playInFlightCardIds: CardId[] = [
@@ -34583,6 +34597,9 @@ function moveUnit(
     unitId: unit.id,
     from,
     to: finalPosition,
+    ...(getUnitAbilityDefinitions(unit).some((ability) => ability.id === "veteran-magma-teleport-strike")
+      ? { sourceAbilityId: "veteran-magma-teleport-strike" }
+      : {}),
   });
   gainSectQiAfterMove(state, unit, from, finalPosition);
   elementalMovement(state, unit, elementalHooks);

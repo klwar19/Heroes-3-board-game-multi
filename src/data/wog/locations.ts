@@ -23,10 +23,8 @@
  *    commander (a commander stat point), the hero (experience) or — with the Unit
  *    Experience rule on — ONE army unit card (pay 4 gold for +2 unit XP; the arm
  *    is absent with the rule off or an empty army). No creature enchant arm.
- *  - Mirror of the Home-Way: WoG's full Town-Portal price/movement table is
- *    reduced to TWO fares by destination band — 1 gold to a Town/Settlement on a
- *    starting or Ⅱ–Ⅲ tile, 3 gold to a Ⅳ+/centre one (subterranean, sea and an
- *    unresolvable tile are priced at the dearer tier). One PAY_TO arm per fare.
+ *  - Mirror of the Home-Way: pay 1 gold to teleport to a controlled Town,
+ *    Settlement, Mine or Random Town, then gain +1 morale.
  *  - Junk Merchant: WoG's 32-artifact fixed trade table is reduced to
  *    tier-priced sells (minor 2 / major 3 / relic 4), a per-card TRADE-IN (swap a
  *    hand Artifact for the face-up top of that tier's Artifact discard + 1 gold;
@@ -43,19 +41,19 @@
  *    an angry spirit guarding the hex at Ⅱ. Whoever beats that spirit collects one
  *    Search (1) Ability, and the hex is then inert for everyone forever. Listen
  *    (Search 1 Ability) is repeatable until the smash.
- *  - Adventure Cave: an escalating repeatable fight (guarded Ⅰ→Ⅱ→Ⅲ). Each win
+ *  - Adventure Cave: an escalating repeatable fight (guarded Ⅱ→Ⅲ→Ⅳ). Each win
  *    scales the reward and re-guards one higher; cleared after the 3rd win. The
  *    2nd win places a FIXED Stack Token (the player picks the card and the stat)
  *    on a token-free army unit card, falling back to a Treasure die when no card
  *    is eligible. The whole reward/re-guard flow is engine code in
  *    `beginFieldVisit`, not a static interaction (the location carries NONE).
  *  - Altar of the Gods: pay 3 valuables → choose +1 morale / +2 hero XP /
- *    (Commanders module) +1 commander stat point. A per-round latch was
+ *    (Unit Experience module) +3 unit XP to one chosen army unit card. A per-round latch was
  *    deliberately NOT added — plain revisitable (1 MP), gated only by the
  *    3-valuables cost each visit. A GREATER SACRIFICE arm (only with ≥2 army unit
  *    cards, so it can never strand an army) permanently removes one chosen unit
  *    card — the CARD leaves the game, a Pack does not flip — for either +1
- *    commander stat point AND +1 morale (Commanders module) or +4 hero XP.
+ *    commander stat point AND +1 morale (Commanders module) or +3 hero XP.
  */
 
 import type { LocationDefinition } from "@/data/map/types";
@@ -89,9 +87,9 @@ export const wogLocationDefinitions: Record<string, LocationDefinition> = {
   },
 
   /**
-   * Mirror of the Home-Way — pay-2-gold Town/Settlement teleport. The
-   * destination CHOOSE_ONE (Town-Portal `TELEPORT_HERO` machinery) is built at
-   * visit time; with no reachable Town the pay arm is absent.
+   * Mirror of the Home-Way — pay-1-gold controlled-holding teleport followed by
+   * +1 morale. The destination CHOOSE_ONE (Town-Portal `TELEPORT_HERO` machinery)
+   * is built at visit time; with no reachable destination the pay arm is absent.
    */
   "wog.mirror_home_way": {
     id: "wog.mirror_home_way",
@@ -153,10 +151,10 @@ export const wogLocationDefinitions: Record<string, LocationDefinition> = {
   },
 
   /**
-   * Adventure Cave — an escalating repeatable fight. Guarded difficulty 1 is
+   * Adventure Cave — an escalating repeatable fight. Guarded difficulty 2 is
    * stamped by the Field Override definition; the reward ladder (win 1: +3 gold,
    * win 2: Treasure die, win 3: Search 1 Artifact) and the re-guard one higher
-   * (Ⅰ→Ⅱ→Ⅲ, cleared after the 3rd win) are engine code in `beginFieldVisit`
+   * (Ⅱ→Ⅲ→Ⅳ, cleared after the 3rd win) are engine code in `beginFieldVisit`
    * (`handleWogAdventureCaveVisit`, keyed off `field.wogCaveWins`) — there is no
    * static interaction.
    */
@@ -172,8 +170,8 @@ export const wogLocationDefinitions: Record<string, LocationDefinition> = {
 
   /**
    * Altar of the Gods — pay 3 valuables → choose +1 morale / +2 hero XP /
-   * (Commanders module + a commander) +1 commander stat point. Menu built at
-   * visit time (the commander arm is context-filtered).
+   * (Unit Experience module) +3 unit XP to one chosen army unit card. Menu built
+   * at visit time (the unit arm is context-filtered).
    */
   "wog.altar_of_gods": {
     id: "wog.altar_of_gods",
