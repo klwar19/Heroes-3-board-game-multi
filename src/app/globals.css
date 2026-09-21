@@ -18176,31 +18176,6 @@ button.setupHubNavItem:hover {
   gap: 8px;
 }
 
-.heroInfoCardDetails {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.heroInfoCardDetail {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  color: #f2dfbd;
-  font-size: 11px;
-  line-height: 1.25;
-}
-
-.heroInfoCardDetail strong {
-  color: #ffd76a;
-  font-size: 11px;
-}
-
-.heroInfoCardDetail span {
-  color: #ead6b3;
-}
-
 .heroInfoIconButton {
   display: inline-grid;
   flex: 0 0 auto;

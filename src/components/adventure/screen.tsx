@@ -16641,17 +16641,6 @@ function HeroSetupDetail({ heroDefId, faces, onZoom }: {
               );
             })}
           </div>
-          <div className="heroInfoCardDetails">
-            {faces.map((face) => {
-              if (kind === "ability" ? face.key !== "ability" : !face.key.startsWith("specialty-")) return null;
-              return (
-                <div className="heroInfoCardDetail" key={`${kind}-${face.key}`}>
-                  <strong>{face.label}: {face.title}</strong>
-                  {face.line ? <span>{face.line}</span> : null}
-                </div>
-              );
-            })}
-          </div>
         </div>
       ))}
     </div>

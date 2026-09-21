@@ -144,7 +144,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   promestein: "/assets/specialty-card/icon-mgq-promestein.webp",
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
-  kaliki: "/assets/specialty-card/icon-water_magic.webp", // Water-school orb
+  kaliki: "/assets/ability-symbols/water_magic.webp", // Match her Water Magic ability emblem
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
   ciele: "/assets/specialty-card/icon-magic_arrow.webp",
   luna: "/assets/specialty-card/icon-firewall.webp",

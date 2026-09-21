@@ -18,6 +18,9 @@
  *                                                  content-addressed key, verify each object in the bucket,
  *                                                  then write the manifest(s) (needs .env.local R2_*).
  *                                                  --all also (re)uploads any manifest object the bucket lacks.
+ *   node scripts/media.mjs repair --prefix <manifest-key-prefix> [--sources]
+ *                                                  restore missing CDN objects for one manifest prefix
+ *                                                  from matching local bytes; leave manifests unchanged.
  *   node scripts/media.mjs pull [--sources] [--prune] [--concurrency N]
  *                                                  download every manifest entry missing/mismatched locally
  *                                                  from the CDN (no credentials; fresh clones, CI)
@@ -75,7 +78,13 @@ const CRITICAL_KEYS = [
   "assets/ui/menu/main-menu-loop.mp4",
   "assets/ui/ornate/banner-command.webp",
   "assets/ui/ornate/button-plate.webp",
-  "assets/ui/ornate/button-plate-gold.webp"
+  "assets/ui/ornate/button-plate-gold.webp",
+  "assets/factory-icons/agar.webp",
+  "assets/factory-icons/celestine.webp",
+  "assets/factory-icons/frederick.webp",
+  "assets/factory-icons/henrietta.webp",
+  "assets/factory-icons/sam.webp",
+  "assets/factory-icons/tancred.webp"
 ];
 
 function log(message) {
@@ -380,6 +389,42 @@ async function commandPublish() {
   );
 }
 
+async function commandRepair() {
+  const prefix = option("prefix", "");
+  if (!prefix || prefix.startsWith("/") || prefix.includes("..") || prefix.includes("\\")) {
+    fail("repair requires a safe --prefix relative to the manifest roots");
+  }
+  const manifest = readManifest(REPO_ROOT, family);
+  if (!manifest) fail(`${family.manifestFile} is missing.`);
+  const keys = Object.keys(manifest.files).filter((key) => key.startsWith(prefix));
+  if (keys.length === 0) fail(`No manifest entries match ${prefix}`);
+  const r2 = r2Client();
+  let restored = 0;
+  for (const key of keys) {
+    const entry = manifest.files[key];
+    const body = readFileSync(join(BASE_DIR, key));
+    const md5 = createHash("md5").update(body).digest("hex");
+    if (md5 !== entry.md5 || body.length !== entry.bytes) {
+      fail(`${key}: local bytes differ from the manifest; refusing to upload`);
+    }
+    const objectKey = objectKeyOf(manifest, key);
+    const existing = await r2.head(objectKey);
+    if (existing) {
+      const mismatch = existing.mismatch(entry);
+      if (mismatch) fail(`${objectKey}: existing object ${mismatch}; refusing to overwrite`);
+      log(`  already present ${objectKey}`);
+      continue;
+    }
+    const etag = await r2.put(objectKey, body, contentTypeFor(key));
+    if (etag && etag !== md5) fail(`${objectKey}: uploaded etag ${etag} != ${md5}`);
+    const verified = await r2.head(objectKey);
+    if (!verified || verified.mismatch(entry)) fail(`${objectKey}: upload did not verify`);
+    log(`  restored ${objectKey}`);
+    restored += 1;
+  }
+  log(`Restored ${restored} of ${keys.length} manifest object(s); manifests unchanged.`);
+}
+
 async function commandPull() {
   const manifest = readManifest(REPO_ROOT, family);
   if (!manifest) fail(`${family.manifestFile} is missing.`);
@@ -483,6 +528,9 @@ switch (command) {
     break;
   case "publish":
     await commandPublish();
+    break;
+  case "repair":
+    await commandRepair();
     break;
   case "pull":
     await commandPull();
