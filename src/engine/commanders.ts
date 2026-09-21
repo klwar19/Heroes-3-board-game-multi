@@ -983,6 +983,12 @@ export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitSta
     if (power === 1) return uses >= 2 || unit.commanderCastRound === state.combat?.round;
     return unit.commanderCastRound === state.combat?.round;
   }
+  // Factory Field Repair is a two-charge combat resource, not a once-per-round
+  // command. The legacy round stamp is folded into the count for old saves.
+  if (unit.commanderSlug === "factory") {
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    return uses >= 2;
+  }
   return unit.commanderCastRound !== undefined && unit.commanderCastRound === state.combat?.round;
 }
 

@@ -105,6 +105,20 @@ function tomeArtifact(
 
 export const artifactCards: CardLibrary = {
   // ---- Minor artifacts ----------------------------------------------------
+  "artifact.spell_scroll": {
+    id: "artifact.spell_scroll",
+    name: "Spell Scroll",
+    kind: "artifact",
+    timing: "passive",
+    artifactTier: "minor",
+    tags: ["artifact", "minor", "On taking this card, place two drawn Spells into a Spell Scroll. Cast them in combat at Power 0 or sell each at a Trading Post for 2 gold."],
+    // The acquisition tail immediately replaces this deck card with a live
+    // scroll. It is never a hand action; the scroll's casts use CAST_SPELL.
+    effect: { type: "DRAW_CARDS", amount: 0 },
+    assets: { cardImage: "/ui/hero-info/parchment.webp", imageAlt: "Spell Scroll" },
+    implementationStatus: "implemented",
+    source: { product: "Heroes of Might and Magic III: The Board Game", credit: "Spell Scroll artifact deck addition" },
+  },
   "artifact.armor_of_wonder": {
     id: "artifact.armor_of_wonder",
     name: "Armor of Wonder",
@@ -3449,6 +3463,7 @@ export const artifactCards: CardLibrary = {
  */
 export const artifactDeckLegacy: string[] = [
   // minor
+  ...Array(4).fill("artifact.spell_scroll"),
   "artifact.armor_of_wonder",
   "artifact.breastplate_of_petrified_wood",
   "artifact.buckler_of_the_gnoll_king",
@@ -3556,6 +3571,7 @@ export const EVERSMOKING_RING_OF_SULFUR_ID =
   "artifact.eversmoking_ring_of_sulfur";
 
 export const artifactDeckBinhMinor: string[] = [
+  ...Array(4).fill("artifact.spell_scroll"),
   "artifact.armor_of_wonder",
   "artifact.breastplate_of_petrified_wood",
   "artifact.buckler_of_the_gnoll_king",

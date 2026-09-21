@@ -169,15 +169,16 @@ const creatureVoices: Record<string, string> = {
   shamans: "shaman",
   mammoths: "mammoth",
   jotunns: "jotunn",
-  // Factory (HotA fan faction): reuse base-game voice sets until dedicated
-  // audio is converted. halflings already maps above (neutral creature).
-  mechanics: "gremlin",
-  armadillos: "basilisk",
-  automatons: "iron-golem",
-  sandworms: "hydra",
-  gunslingers: "sharpshooter",
-  couatls: "wyvern",
-  dreadnoughts: "behemoth",
+  // Factory: dedicated converted unit clips, including the correct Few/Pack
+  // family where the unit has a distinct ranged or special action. Halflings
+  // reuse the base H3 Halfling set because the Factory unit is the same voice.
+  mechanics: "mechanic",
+  armadillos: "armadillo",
+  automatons: "automaton",
+  sandworms: "sandworm",
+  gunslingers: "gunslinger",
+  couatls: "couatl",
+  dreadnoughts: "dreadnought",
   // Imperium of Man: reuse complete, role-matched H3 sets. Ranged profiles
   // deliberately map to sets with real shoot clips; vehicles use mechanical
   // or heavy-creature sets so every combat action remains audible.

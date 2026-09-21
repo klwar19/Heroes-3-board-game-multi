@@ -346,9 +346,9 @@ describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", (
 });
 
 describe("Bulwark heroes — roster & specialty wiring", () => {
-  const heroIds = ["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana"] as const;
+  const heroIds = ["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana", "kaliki"] as const;
 
-  it("registers six Bulwark heroes (three Chieftains, three Elders)", () => {
+  it("registers seven Bulwark heroes (four Chieftains, three Elders)", () => {
     for (const id of heroIds) {
       expect(coreHeroDefinitions[id]?.faction, id).toBe("bulwark");
     }
@@ -357,18 +357,21 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
       acc[klass] = (acc[klass] ?? 0) + 1;
       return acc;
     }, {});
-    expect(byClass).toEqual({ Chieftain: 3, Elder: 3 });
+    expect(byClass).toEqual({ Chieftain: 4, Elder: 3 });
     expect(coreHeroDefinitions.dhuin.class).toBe("Chieftain");
     expect(coreHeroDefinitions.dhuin.type).toBe("might");
     expect(coreHeroDefinitions.creyle.class).toBe("Chieftain");
     expect(coreHeroDefinitions.glacius.class).toBe("Elder");
     expect(coreHeroDefinitions.glacius.type).toBe("magic");
     expect(coreHeroDefinitions.kriv.class).toBe("Elder");
-    // batch 2: Eikthurn (Chieftain/Might, Mountain Rams) and Oidana (Elder/Magic, Diplomacy).
+    // Official preview: Oidana is the Chieftain/Might Archery hero; Kaliki is
+    // the Elder/Magic Water Magic hero.
     expect(coreHeroDefinitions.eikthurn.class).toBe("Chieftain");
     expect(coreHeroDefinitions.eikthurn.type).toBe("might");
-    expect(coreHeroDefinitions.oidana.class).toBe("Elder");
-    expect(coreHeroDefinitions.oidana.type).toBe("magic");
+    expect(coreHeroDefinitions.oidana.class).toBe("Chieftain");
+    expect(coreHeroDefinitions.oidana.type).toBe("might");
+    expect(coreHeroDefinitions.kaliki.class).toBe("Elder");
+    expect(coreHeroDefinitions.kaliki.type).toBe("magic");
   });
 
   it("each hero's starting ability and three specialties are real, implemented cards", () => {
@@ -386,12 +389,12 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
   });
 
   it("each Chieftain's starting ability is its intended secondary skill", () => {
-    // The three might Chieftains: Dhuin = Archery, Creyle = Armorer,
-    // Eikthurn = Logistics — each a real, implemented ability card.
+    // The four might Chieftains use the printed, implemented ability cards.
     const expected: Record<string, string> = {
       dhuin: "ability.archery",
       creyle: "ability.armorer",
-      eikthurn: "ability.logistics"
+      eikthurn: "ability.logistics",
+      oidana: "ability.archery"
     };
     for (const [id, abilityId] of Object.entries(expected)) {
       expect(coreHeroDefinitions[id].startingAbilityCardId, id).toBe(abilityId);
@@ -793,9 +796,9 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
     expect(after.players.p1.hand).toHaveLength(2);
   });
 
-  it("her starting ability is the real, implemented Diplomacy ability", () => {
-    expect(coreHeroDefinitions.oidana.startingAbilityCardId).toBe("ability.diplomacy");
-    expect(cardLibrary["ability.diplomacy"]?.implementationStatus).toBe("implemented");
+  it("her starting ability is the real, implemented Archery ability", () => {
+    expect(coreHeroDefinitions.oidana.startingAbilityCardId).toBe("ability.archery");
+    expect(cardLibrary["ability.archery"]?.implementationStatus).toBe("implemented");
   });
 });
 

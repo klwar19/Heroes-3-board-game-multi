@@ -254,7 +254,7 @@ export function getSchoolPowerMultiplier(
 }
 
 /**
- * Adrienne's Fire Magic specialty: the extra Power `playerId` adds to a Spell of
+ * School-magic specialties (Adrienne/Kaliki): extra Power `playerId` adds to a Spell of
  * the matching School. Sums every in-play SPELL_SCHOOL_POWER_BONUS the caster
  * controls whose school matches the spell. Magic Arrow (school "any") may use
  * only ONE school at a time (wiki), so different-school bonuses do NOT sum —

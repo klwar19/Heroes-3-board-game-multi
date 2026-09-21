@@ -110,6 +110,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true,
   },
   {
+    id: "no-artifact-scrolls",
+    label: "No Spell Scrolls in Artifact deck",
+    description: "Remove the four Spell Scroll cards from the Minor Artifact deck (or the combined Artifact deck). Map Spell Scroll fields still work.",
+    category: "decks",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "mystical-garden-gold",
     label: "Mystical Garden: 3 gold",
     description:
@@ -413,6 +421,14 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "Polish house rule: Quick Combat availability compares your 5 strongest units (bronze 1 / silver 2 / gold 3 / azure 4; Pack ×2; +0.5 per Stack layer) against 2× the Field Difficulty + game difficulty (easy 1 / normal 2 / hard 3 / impossible 4; +1 when playing with Unit Stacks) — VI–VII fields included. A covered fight that would give no Experience resolves as a mandatory Quick Combat; one that could give Experience offers fight-or-quick, including when Hero level exactly matches the field. Hero level alone no longer auto-wins.",
     category: "polish",
     default: false,
+    legacyDefault: false,
+  },
+  {
+    id: "polish-diplomacy-vii",
+    label: "Diplomacy on VII fields",
+    description: "With Polish Quick Combat, allow Diplomacy's Expert skip or battle effect on level VII Neutral fields. VI and lower fields retain their normal rules.",
+    category: "polish",
+    default: true,
     legacyDefault: false,
   },
   {

@@ -1445,7 +1445,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Magma movement carries its FX source; and the WOG/anime replacement objects
 // resolve their revised guards, costs, destinations and rewards. The Vercel
 // client and authoritative PartyKit room server must ship these rules together.
-export const ENGINE_PROTOCOL_VERSION = 163;
+// v164: Random Town rank guards, Artifact-deck Spell Scroll conversion, and
+// optional VII-field Diplomacy change authoritative map/combat resolution.
+// v165: designer Random Town rosters now persist named guards, Stack layers,
+// and veteran ranks for authoritative neutral combat resolution.
+export const ENGINE_PROTOCOL_VERSION = 165;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

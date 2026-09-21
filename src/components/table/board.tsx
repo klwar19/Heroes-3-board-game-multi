@@ -2756,6 +2756,9 @@ export function EffectsRail({
 // type is missing here is exactly the "engine offer with no UI surface" bug.
 export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "DEFEND_UNIT",
+  // Factory Tinkerer: the combat-only control appears only when two war
+  // machines are in play; the engine owns that gate.
+  "SWITCH_ACTIVE_WAR_MACHINE",
   // Polish Wait (house rule): offered at the start of the active unit's
   // activation; the unit re-activates after all other units, highest token
   // first. Never offered with the rule off (legal-actions gates it).
@@ -3234,6 +3237,14 @@ export function CommandDock({
         >
           {legal.action.type === "DEFEND_UNIT" ? (
             <img alt="" aria-hidden="true" className="defendButtonIcon" src={assetUrl("/assets/ui/defend-button.png")} />
+          ) : null}
+          {legal.action.type === "SWITCH_ACTIVE_WAR_MACHINE" ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="defendButtonIcon"
+              src={assetUrl("/assets/factory-icons/war-machine-switch.webp")}
+            />
           ) : null}
           {commandLabel(legal)}
         </button>

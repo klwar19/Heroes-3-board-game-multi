@@ -1788,6 +1788,7 @@
   "units/dreadnought-hurt": 731,
   "units/dreadnought-move": 1202,
   "units/dreadnought-shoot": 1384,
+  "units/dreadnought-laser": 3020,
   "units/dwarf-attack": 836,
   "units/dwarf-death": 1097,
   "units/dwarf-defend": 1123,

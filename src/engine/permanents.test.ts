@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, effectiveInitiative, getLegalActions } from "./index";
 import { activeSchoolFetches } from "./ruleset";
-import { countBallistas, warMachinesForSale } from "./permanents";
+import { activeWarMachineCardId, countBallistas, warMachinesForSale } from "./permanents";
+import { maybeOpenFactoryWarMachineChoice } from "./adventure-reducer";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -35,6 +36,80 @@ function endRound(state: GameState, playerId: PlayerId): GameState {
 }
 
 describe("permanent cards", () => {
+  it("Factory Tinkerer keeps two machines but exposes only one active switch", () => {
+    const state = createInitialGameState("tinkerer-switch");
+    state.players.p1.commander = {
+      slug: "factory",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, speed: 0, magic: 0 },
+    };
+    state.players.p1.permanents = ["war_machine.ballista"];
+    state.players.p1.hand = ["war_machine.cannon"];
+    const played = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "war_machine.cannon",
+      target: { type: "none" },
+    });
+    expect(played.players.p1.permanents).toEqual(["war_machine.ballista", "war_machine.cannon"]);
+    played.phase = "combat";
+    played.combat!.setup = null;
+    played.combat!.awaitingContinue = false;
+    played.combat!.outcome = null;
+    const offer = getLegalActions(played, "p1").find(
+      (entry) => entry.action.type === "SWITCH_ACTIVE_WAR_MACHINE" && entry.action.cardId === "war_machine.ballista",
+    );
+    expect(offer, "the switch control is offered only with two machines").toBeTruthy();
+    const switched = applyOk(played, offer!.action);
+    expect(activeWarMachineCardId(switched, "p1")).toBe("war_machine.ballista");
+    expect(switched.players.p1.permanents).toEqual(["war_machine.ballista", "war_machine.cannon"]);
+  });
+
+  it("asks the Tinkerer to choose the active machine at combat start", () => {
+    const state = createInitialGameState("tinkerer-start-choice");
+    state.players.p1.commander = {
+      slug: "factory",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, speed: 0, magic: 0 },
+    };
+    state.players.p1.permanents = ["war_machine.ballista", "war_machine.cannon"];
+    state.players.p1.activeWarMachineCardId = "war_machine.cannon";
+    state.phase = "combat";
+    state.combat!.setup = null;
+    state.combat!.round = 1;
+    expect(maybeOpenFactoryWarMachineChoice(state)).toBe(true);
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    expect(choice.context).toBe("factory-war-machine-select");
+    expect(choice.options).toHaveLength(2);
+    const picked = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 0,
+    });
+    expect(activeWarMachineCardId(picked, "p1")).toBe("war_machine.ballista");
+    expect(picked.pendingChoice).toBeNull();
+  });
+
+  it("Factory Tinkerer playing a non-machine discards both machine permanents", () => {
+    const state = createInitialGameState("tinkerer-replace-both");
+    state.players.p1.commander = {
+      slug: "factory",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, speed: 0, magic: 0 },
+    };
+    state.players.p1.permanents = ["war_machine.ballista", "war_machine.cannon"];
+    state.players.p1.hand = ["ability.fire_magic"];
+    const next = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.fire_magic",
+      target: { type: "none" },
+    });
+    expect(next.players.p1.permanents).toEqual(["ability.fire_magic"]);
+    expect(next.players.p1.discard.filter((id) => id === "war_machine.ballista")).toHaveLength(1);
+    expect(next.players.p1.discard.filter((id) => id === "war_machine.cannon")).toHaveLength(1);
+  });
+
   it("allows multiple physical Ballistas to share one permanent slot", () => {
     let state = createInitialGameState("multi-ballista-slot");
     state.players.p1.hand = ["war_machine.ballista", "war_machine.ballista"];

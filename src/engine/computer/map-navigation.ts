@@ -435,7 +435,14 @@ export function needsFarValuablesReveal(state: GameState, playerId: PlayerId): b
   if (hasGoldArmy(state, playerId)) return false;
   const targets = developmentResourceTargets(state, playerId);
   const held = state.players[playerId]?.resources.valuables ?? 0;
-  return held < (targets.valuables ?? 0) && !securedValuablesSource(state, playerId);
+  // Four revealed Far tiles are enough information. Continuing to peel open a
+  // fifth/sixth tile while the army has converted none of the first four is not
+  // a valuables plan; it is the expansion loop that leaves a level-2 hero with
+  // no economy or premium body in the late opening. At that point development,
+  // staging and the known lower-level fights must get the movement budget.
+  const opened = state.adventure?.farTilesOpenedByPlayer?.[playerId] ?? 0;
+  return opened < 4 && held < (targets.valuables ?? 0) &&
+    !securedValuablesSource(state, playerId);
 }
 
 /**
@@ -665,7 +672,7 @@ function canBeatGuardedFieldUncached(
   if (repeatsFailedFight(state, hero.controllerId, field.spaceId)) return false;
   // An opening full Bronze core can earn income/XP from ordinary level II
   // guards instead of waiting exclusively for the much harder Far III.
-  if (hero.kind === "main" && state.round <= 5 && fieldDifficulty === 2 &&
+  if (hero.kind === "main" && fieldDifficulty === 2 &&
       !field.flagOwnerId && !fieldCreatureBankId(field) && !field.customGuardUnits?.length &&
       !isBankStyleGuardLocation(field.location) && !isTeleportObjectGuardLocation(field.location) &&
       !field.unlimitedCombatRounds && neutralBattleLevel(state, hero) >= 2 &&

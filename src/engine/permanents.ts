@@ -92,6 +92,25 @@ export function getPermanentDefinitions(state: GameState, playerId: PlayerId): C
   });
 }
 
+/** True for a physical Factory/Trading Post war-machine permanent. */
+export function isWarMachineCard(cardId: CardId): boolean {
+  return cardLibrary[cardId]?.kind === "war-machine";
+}
+
+function tinkererActive(state: GameState, playerId: PlayerId): boolean {
+  const commander = state.players[playerId]?.commander;
+  return Boolean(commander && !commander.dead && commander.slug === "factory");
+}
+
+/** The single machine whose combat effect is active for this player. */
+export function activeWarMachineCardId(state: GameState, playerId: PlayerId): CardId | null {
+  const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+  if (machines.length === 0) return null;
+  if (!tinkererActive(state, playerId)) return machines[0] ?? null;
+  const selected = state.players[playerId]?.activeWarMachineCardId;
+  return selected && machines.includes(selected) ? selected : machines[machines.length - 1] ?? null;
+}
+
 /**
  * How many permanents the player may keep in play: 1 as printed ("You may
  * only have one permanent card at a time"), unless an in-play Pandora's Box
@@ -99,10 +118,14 @@ export function getPermanentDefinitions(state: GameState, playerId: PlayerId): C
  * time, including this one").
  */
 export function permanentLimitFor(state: GameState, playerId: PlayerId): number {
-  return getPermanentDefinitions(state, playerId).reduce(
+  const printedLimit = getPermanentDefinitions(state, playerId).reduce(
     (limit, card) => Math.max(limit, card.permanentEffect?.permanentLimitOverride ?? 1),
     1
   );
+  const machineCount = getPermanentCardIds(state, playerId).filter(isWarMachineCard).length;
+  return tinkererActive(state, playerId) && machineCount >= 2
+    ? Math.max(printedLimit, 2)
+    : printedLimit;
 }
 
 /**
@@ -187,7 +210,7 @@ export function elementalTileSpellPowerBonus(state: GameState, school: Elemental
 }
 
 /**
- * School-scoped specialty Power (e.g. Adrienne's Fire Magic SPELL_SCHOOL_POWER_BONUS)
+ * School-scoped specialty Power (e.g. Adrienne/Kaliki SPELL_SCHOOL_POWER_BONUS)
  * for ONE named school — never for Magic Arrow's "any" catch-all (callers pick a
  * school first). Sums every matching active-effect amount for that school.
  */
@@ -454,7 +477,9 @@ export function applyPermanentCombatEffectsForPlayer(state: GameState, playerId:
     return;
   }
 
+  const activeMachine = activeWarMachineCardId(state, playerId);
   for (const card of getPermanentDefinitions(state, playerId)) {
+    if (tinkererActive(state, playerId) && isWarMachineCard(card.id) && card.id !== activeMachine) continue;
     const { combatEffect, rangedInitiativeBonus } = card.permanentEffect ?? {};
     if (!combatEffect) {
       continue;
@@ -524,6 +549,46 @@ export function applyPermanentCombatEffects(state: GameState): void {
   }
 }
 
+/** Change the active machine without discarding either Tinkerer permanent. */
+export function switchActiveWarMachine(state: GameState, playerId: PlayerId, cardId: CardId, initialSelection = false): void {
+  const player = state.players[playerId];
+  const combat = state.combat;
+  const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+  if (
+    !combat ||
+    state.phase !== "combat" ||
+    combat.outcome ||
+    combat.setup ||
+    combat.awaitingContinue ||
+    combat.warMachineRound ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    !player ||
+    !tinkererActive(state, playerId) ||
+    (!initialSelection && (
+      combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId) ||
+      !combat.activeUnitId ||
+      combat.units[combat.activeUnitId]?.controllerId !== playerId ||
+      activeWarMachineCardId(state, playerId) === cardId
+    )) ||
+    machines.length < 2 ||
+    !machines.includes(cardId)
+  ) {
+    throw new Error("The Tinkerer can only switch between two in-play war machines.");
+  }
+  player.activeWarMachineCardId = cardId;
+  if (!initialSelection) {
+    combat.factoryWarMachineSwitchedPlayerIds = [
+      ...(combat.factoryWarMachineSwitchedPlayerIds ?? []), playerId,
+    ];
+  }
+  for (const machineId of machines) {
+    const card = cardLibrary[machineId];
+    if (card) removePermanentCombatEffects(state, playerId, card);
+  }
+  applyPermanentCombatEffectsForPlayer(state, playerId);
+}
+
 /**
  * Removes a leaving permanent's combat presence so a mid-combat replacement
  * does not leave bonuses behind. Dropping the card's active effect is enough:
@@ -566,6 +631,10 @@ export function discardPermanentFromPlay(
     playerId,
     inPlay.filter((_candidate, index) => index !== inPlay.indexOf(discardId))
   );
+  if (player.activeWarMachineCardId === discardId) {
+    const remainingMachines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+    player.activeWarMachineCardId = remainingMachines[remainingMachines.length - 1];
+  }
   // If discarded before firing, this physical machine loses its queued shot.
   // Other copies and specialty-triggered activations retain their entries.
   const pendingShots = state.combat?.warMachineRound?.pending;
@@ -617,6 +686,10 @@ export function removePermanentFromPlayToRemoved(
     playerId,
     inPlay.filter((_candidate, index) => index !== inPlay.indexOf(removeId))
   );
+  if (player.activeWarMachineCardId === removeId) {
+    const remainingMachines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+    player.activeWarMachineCardId = remainingMachines[remainingMachines.length - 1];
+  }
   // "Remove" leaves the GAME (removed pile), not the discard — matching the
   // income-permanent "crack open" side and the rulebook keyword.
   player.removed.push(removeId);
@@ -686,6 +759,27 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
   if (handIndex === -1) {
     throw new Error("That card is not in hand.");
   }
+  const activeMachineBeforePlay = tinkererActive(state, playerId)
+    ? activeWarMachineCardId(state, playerId)
+    : null;
+
+  // Tinkerer rule: a non-war-machine permanent replaces BOTH machines. This is
+  // deliberately resolved before the normal slot calculation so Pandora's
+  // expanded limit cannot accidentally leave one machine behind.
+  const currentMachineIds = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+  if (tinkererActive(state, playerId) && !isWarMachineCard(cardId) && currentMachineIds.length >= 2) {
+    for (const machineId of currentMachineIds) {
+      const discarded = discardPermanentFromPlay(state, playerId, machineId);
+      if (discarded) {
+        appendEvent(state, {
+          type: "PERMANENT_DISCARDED",
+          playerId,
+          cardId: discarded,
+          reason: "tinkerer-replaced",
+        });
+      }
+    }
+  }
 
   // The limit the table will be under ONCE this card is in play. Pandora's Gift:
   // Three Permanents prints "You can have up to 3 permanent cards played at a
@@ -695,8 +789,11 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
   // discard the very permanent it was meant to sit beside (the whole point of the
   // card), and `enforcePermanentLimit` below could not undo that. Data-driven off
   // `permanentLimitOverride`, never a card-id list.
+  const currentMachines = getPermanentCardIds(state, playerId).filter(isWarMachineCard).length;
+  const addsSecondMachine = tinkererActive(state, playerId) && isWarMachineCard(cardId) && currentMachines >= 1;
   const limit = Math.max(
     permanentLimitFor(state, playerId),
+    addsSecondMachine ? 2 : 1,
     card.permanentEffect?.permanentLimitOverride ?? 1
   );
   const ballistaAlreadyInPlay = getPermanentCardIds(state, playerId).some(isBallistaCard);
@@ -709,8 +806,21 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
           getPermanentCardIds(state, playerId)[0],
         )
       : null;
+  if (isWarMachineCard(cardId) && tinkererActive(state, playerId)) {
+    for (const machineId of getPermanentCardIds(state, playerId).filter(isWarMachineCard)) {
+      const machine = cardLibrary[machineId];
+      if (machine) removePermanentCombatEffects(state, playerId, machine);
+    }
+  }
   player.hand.splice(handIndex, 1);
   setPermanentCardIds(state, playerId, [...getPermanentCardIds(state, playerId), cardId]);
+  if (isWarMachineCard(cardId) && tinkererActive(state, playerId)) {
+    // A newly played second machine enters reserve; playing it cannot provide
+    // an extra mid-combat swap after the commander's one switch was spent.
+    player.activeWarMachineCardId = activeMachineBeforePlay &&
+      getPermanentCardIds(state, playerId).includes(activeMachineBeforePlay)
+      ? activeMachineBeforePlay : cardId;
+  }
 
   appendEvent(state, {
     type: "PERMANENT_PLAYED",
@@ -902,6 +1012,9 @@ function activeWarMachineEntry(
   if (!getPermanentCardIds(state, playerId).includes(head.cardId)) {
     return null;
   }
+  if (tinkererActive(state, playerId) && isWarMachineCard(head.cardId) && activeWarMachineCardId(state, playerId) !== head.cardId) {
+    return null;
+  }
 
   const roundStart = getRoundStartDefinitionForCard(head.cardId);
   if (!roundStart) {
@@ -921,6 +1034,7 @@ function isBallistaCard(cardId: CardId): boolean {
 /** Any number of physical Ballista cards share one war-machine permanent slot. */
 function permanentSlotUsage(state: GameState, playerId: PlayerId): number {
   const cards = getPermanentCardIds(state, playerId);
+  if (tinkererActive(state, playerId)) return cards.length;
   return cards.filter((cardId) => !isBallistaCard(cardId)).length + (cards.some(isBallistaCard) ? 1 : 0);
 }
 
@@ -929,7 +1043,12 @@ function permanentSlotUsage(state: GameState, playerId: PlayerId): number {
  * each of Torosar's temporary grants ("this card counts as a Ballista").
  */
 export function countBallistas(state: GameState, playerId: PlayerId): number {
-  const permanentBallistas = getPermanentCardIds(state, playerId).filter(isBallistaCard).length;
+  const active = activeWarMachineCardId(state, playerId);
+  const matchingBallistas = getPermanentCardIds(state, playerId)
+    .filter((cardId) => !tinkererActive(state, playerId) || cardId === active)
+    .filter(isBallistaCard).length;
+  const permanentBallistas = tinkererActive(state, playerId)
+    ? Math.min(1, matchingBallistas) : matchingBallistas;
   return permanentBallistas + countExtraBallistas(state, playerId);
 }
 
@@ -1071,7 +1190,11 @@ export function startWarMachineRound(state: GameState): void {
   }
 
   const pending = [combat.attackerPlayerId, combat.defenderPlayerId].flatMap((playerId) => [
-    ...getPermanentCardIds(state, playerId)
+    ...(tinkererActive(state, playerId)
+      ? getPermanentCardIds(state, playerId)
+          .filter((cardId) => cardId === activeWarMachineCardId(state, playerId))
+          .slice(0, 1)
+      : getPermanentCardIds(state, playerId))
       .filter((cardId) => getRoundStartDefinitionForCard(cardId))
       .map((cardId) => ({ playerId, cardId })),
     // Torosar's granted Ballistas each fire their own basic shot at round start.
@@ -2109,11 +2232,11 @@ export function warMachinesForSale(
   playerId?: PlayerId
 ): { cardId: CardId; card: CardDefinition; cost: NonNullable<CardDefinition["warMachineCosts"]>["factory"] }[] {
   const supply = state.adventure?.warMachineSupply ?? [];
-  // Artificer commander ("Tinkerer"): war machines cost this player 5 less
+  // Artificer commander ("Tinkerer"): war machines cost this player 4 less
   // gold, to a minimum of 0, at both shops. Applied here so the displayed
   // price and buyWarMachine (which re-derives the same offer) always agree.
   const tinkerer = playerId ? state.players[playerId]?.commander : undefined;
-  const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 5 : 0;
+  const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 4 : 0;
   return supply.flatMap((cardId) => {
     // Community Balance Change: the sheet re-prices the Ammo Cart, the Ballista
     // and the First Aid Tent at BOTH shops, so this shop menu must read the

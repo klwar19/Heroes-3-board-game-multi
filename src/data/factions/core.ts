@@ -53,6 +53,18 @@ function heroSource(slug: string) {
   };
 }
 
+const bulwarkExpansionPreviewUrl =
+  "https://imgcdn.gamefound.com/richtextimage/richtext/33b4a241-f645-41d3-aa35-0417606e9732.png";
+
+function bulwarkExpansionPreviewSource(heroName: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+    credit:
+      `${heroName}'s class, starting statistics and starting ability were transcribed from the official Bulwark expansion preview. The locally hosted portrait is project-generated from that visual reference.`,
+    url: bulwarkExpansionPreviewUrl
+  };
+}
+
 function towerHeroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
@@ -113,17 +125,17 @@ function confluxHeroSource(slug: string) {
 }
 
 /**
- * Source for Factory heroes: the board game Factory expansion does not yet have
- * an official fan-wiki page with hero boards, so these are PC-game data (stats,
- * class, starting ability) from heroes.thelazy.net, with the PC portrait
- * upscaled and hosted locally. Specialty cards are NOT yet wired (no board game
- * cards exist); `specialtyCardIds` is absent. Verify everything before release.
+ * Source for Factory heroes: the board-game Factory expansion does not yet have
+ * an official fan-wiki page with hero boards, so the roster, class, starting
+ * abilities and unit specialties are cross-referenced against the Factory
+ * hero documentation. The six shipped heroes have live I/IV/VI specialty
+ * cards in the adventure card library.
  */
 function factoryHeroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
     credit:
-      `Hero class and specialty from heroes.thelazy.net/index.php/${slug} (HotA PC game). Stats approximate the Mercenary/Artificer board-game class template; portrait is the classic PC portrait (upscaled, hosted locally). NO specialty cards exist yet — all I/IV/VI are stubs. Verify against official components before final release.`,
+      `Hero class, starting ability and unit specialty cross-referenced from heroes.thelazy.net/index.php/${slug} (HotA Factory documentation); I/IV/VI specialty behavior is implemented in the adventure engine. Stats use the board-game Mercenary/Artificer templates; portrait is the classic PC portrait (upscaled, hosted locally). Verify against official components before final release.`,
     url: `https://heroes.thelazy.net/index.php/${slug}`
   };
 }
@@ -2545,11 +2557,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   // Eikthurn (Chieftain, Might): the Mountain Rams unit-specialist (the bronze
   // level-2 unit) — ongoing Health at I, Attack + Rune gain at IV, and a
   // Rune-priced Defense reaction at VI; each benefit doubles for Mountain Rams.
-  // His starting ability is Logistics. Oidana (Elder, Magic): the diplomat — her
-  // starting ability is Diplomacy (DIPLOMACY_RECRUIT / skip-combat), and each
-  // specialty is a CHOOSE_ONE: a scaling card draw (DRAW_CARDS 1/2/2) OR a
-  // Diplomacy-mastery side — I recruits from 1 drawn Neutral, IV recruits from 2
-  // for 4 gold less, VI auras all her neutral units with +1 Attack for the battle.
+  // His starting ability is Logistics. Oidana (Chieftain, Might) is the printed
+  // Defense-heavy Archery hero; her Diplomacy specialty remains the fully wired
+  // CHOOSE_ONE set below. Kaliki (Elder, Magic) is the Water Magic specialist.
   eikthurn: {
     id: "eikthurn",
     name: "Eikthurn",
@@ -2566,22 +2576,31 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     id: "oidana",
     name: "Oidana",
     faction: "bulwark",
+    class: "Chieftain",
+    type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.archery",
+    specialtyCardIds: { 1: "specialty.oidana.1", 4: "specialty.oidana.4", 6: "specialty.oidana.6" },
+    portrait: "/game-tokens/hero-oidana.webp",
+    source: bulwarkExpansionPreviewSource("Oidana")
+  },
+  kaliki: {
+    id: "kaliki",
+    name: "Kaliki",
+    faction: "bulwark",
     class: "Elder",
     type: "magic",
-    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.diplomacy",
-    specialtyCardIds: { 1: "specialty.oidana.1", 4: "specialty.oidana.4", 6: "specialty.oidana.6" },
-    portrait: "/assets/hero_portraits-oidana.webp",
-    source: heroSource("oidana")
+    startingStats: { attack: 0, defense: 1, power: 1, knowledge: 3 },
+    startingAbilityCardId: "ability.water_magic",
+    specialtyCardIds: { 1: "specialty.kaliki.1", 4: "specialty.kaliki.4", 6: "specialty.kaliki.6" },
+    portrait: "/assets/hero_portraits-kaliki.webp",
+    source: bulwarkExpansionPreviewSource("Kaliki")
   },
 
   // ---- Factory (expansion) heroes ----------------------------------------
-  // STUBS — no board game specialty cards exist yet; `specialtyCardIds` is
-  // absent for all Factory heroes. Stats follow the PC game's Mercenary (might
-  // A3/D1/P1/K1) and Artificer (magic A0/D1/P2/K2) class templates. Starting
-  // abilities are PC-game approximations; verify against official board game
-  // cards before release. Portraits from heroes.thelazy.net via
-  // scripts/fetch-factory-art.py.
+  // Factory expansion heroes. Their specialty cards are live engine-backed
+  // digital designs with distinct identities; they are not inert placeholders
+  // or copied three-card sets. Portraits come from the Factory art pipeline.
 
   // Mercenary heroes (might class):
   henrietta: {
@@ -2591,8 +2610,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Mercenary",
     type: "might",
     startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.leadership",
-    // Halflings unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    startingAbilityCardId: "ability.luck",
+    // Luck: Halfling combat bonuses, card draw or health, and round advantage.
     specialtyCardIds: { 1: "specialty.henrietta.1", 4: "specialty.henrietta.4", 6: "specialty.henrietta.6" },
     portrait: "/assets/hero_portraits-henrietta.webp",
     source: factoryHeroSource("Henrietta")
@@ -2604,8 +2623,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Mercenary",
     type: "might",
     startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
-    startingAbilityCardId: "ability.armorer",
-    // Mechanics unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    startingAbilityCardId: "ability.offense",
+    // Specialty: Mechanics — type-based combat choice, extra machine health, armor.
     specialtyCardIds: { 1: "specialty.sam.1", 4: "specialty.sam.4", 6: "specialty.sam.6" },
     portrait: "/assets/hero_portraits-sam.webp",
     source: factoryHeroSource("Sam")
@@ -2618,7 +2637,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "might",
     startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
     startingAbilityCardId: "ability.archery",
-    // Bounty Hunters (Gunslingers) unit specialist (I/IV/VI) — engine-wired.
+    // Specialty: Bounty Hunters — ranged combat choice, marked targets, defense bypass.
     specialtyCardIds: { 1: "specialty.tancred.1", 4: "specialty.tancred.4", 6: "specialty.tancred.6" },
     portrait: "/assets/hero_portraits-tancred.webp",
     source: factoryHeroSource("Tancred")
@@ -2632,7 +2651,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     type: "magic",
     startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.wisdom",
-    // Armadillos unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    // Specialty: Armadillos — defense, health, then speed and conditional attack.
     specialtyCardIds: { 1: "specialty.celestine.1", 4: "specialty.celestine.4", 6: "specialty.celestine.6" },
     portrait: "/assets/hero_portraits-celestine.webp",
     source: factoryHeroSource("Celestine")
@@ -2644,8 +2663,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Artificer",
     type: "magic",
     startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
-    startingAbilityCardId: "ability.sorcery",
-    // Sandworms unit specialist (I/IV/VI) — engine-wired, face-less cards.
+    startingAbilityCardId: "ability.wisdom",
+    // Specialty: Sandworms — enemy initiative control, health, and a safe strike or draw.
     specialtyCardIds: { 1: "specialty.agar.1", 4: "specialty.agar.4", 6: "specialty.agar.6" },
     portrait: "/assets/hero_portraits-agar.webp",
     source: factoryHeroSource("Agar")
@@ -2657,10 +2676,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     class: "Artificer",
     type: "magic",
     startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
-    startingAbilityCardId: "ability.eagle_eye",
-    // Automatons unit specialist (I/IV/VI) — engine-wired, face-less cards. His
-    // inherent trait also adds +1 to every Automaton's Detonate this combat
-    // (seedFactoryHeroEffects → automatonDetonationBonus).
+    startingAbilityCardId: "ability.intelligence",
+    // Intelligence: Automaton health, a turn teleport, and an attack instant.
     specialtyCardIds: { 1: "specialty.frederick.1", 4: "specialty.frederick.4", 6: "specialty.frederick.6" },
     portrait: "/assets/hero_portraits-frederick.webp",
     source: factoryHeroSource("Frederick")
@@ -2821,7 +2838,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     // Glacial blue-white — distinct from Castle/Tower/Cove blues.
     color: "#7fb2d9",
     startingTileId: "S10",
-    heroes: ["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana"],
+    heroes: ["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana", "kaliki"],
     buildings: buildingsOfFaction("bulwark"),
     units: unitsOfFaction("bulwark"),
     source: {
@@ -2837,10 +2854,8 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     color: "#c17820",
     // PLAYABLE: "&S1" is the Factory starting tile (src/data/map/expansion-tiles.ts;
     // the "&" prefix is the Factory tile set's marker, printed on the tile). The
-    // units carry their real board-game abilities (the Automaton Detonate mechanic
-    // and friends), and Henrietta/Frederick ship engine-wired specialties.
-    // Buildings and the remaining unit abilities are still being filled in — see
-    // the per-item notes — but the faction starts and plays.
+    // The units, buildings, and all six Factory hero specialty ladders are
+    // available through the authoritative data and engine paths below.
     startingTileId: "&S1",
     heroes: [
       // Six unit specialists kept (the placeholder heroes were removed): each has

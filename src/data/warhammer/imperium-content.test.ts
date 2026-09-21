@@ -44,7 +44,7 @@ describe("Imperium component set", () => {
       "imperium.rhino": { type: "ground", few: [3, 1, 5, 5, 6, 0], pack: [4, 1, 8, 9, 12, 0] },
       "imperium.terminators": { type: "ground", few: [4, 2, 4, 5, 8, 0], pack: [5, 2, 4, 7, 13, 0] },
       "imperium.dreadnought": { type: "ranged", few: [5, 1, 7, 6, 13, 0], pack: [5, 1, 8, 8, 21, 1] },
-      "imperium.titan": { type: "ground", few: [6, 3, 9, 4, 20, 1], pack: [7, 3, 10, 6, 29, 2] }
+      "imperium.titan": { type: "ground", few: [6, 3, 9, 4, 20, 1], pack: [7, 3, 9, 6, 29, 2] }
     });
     expect(imperiumUnitDefinitions["imperium.titan"].type).not.toBe("ranged");
     expect(Object.values(imperiumUnitDefinitions).filter((unit) => unit.type === "flying")).toHaveLength(1);

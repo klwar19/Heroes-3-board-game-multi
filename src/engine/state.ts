@@ -84,6 +84,7 @@ export type HouseRuleId =
   | "settlement-neutral-recruitment"
   | "duplicate-unit-recruitment"
   | "split-decks"
+  | "no-artifact-scrolls"
   // Optional BINH town-economy rule: side buildings cost only their printed
   // building materials plus one additional material per printed valuable.
   | "side-buildings-materials-only"
@@ -211,6 +212,7 @@ export type HouseRuleId =
   // fight vs Quick Combat; not covered → the fight is mandatory (the classic
   // level > difficulty auto-win no longer applies).
   | "polish-quick-combat"
+  | "polish-diplomacy-vii"
   // Polish house rule: after a Creature Bank's Stack Tokens are revealed,
   // offer an automatic win only when every deployed unit's Defense is at least
   // every guard's maximum Attack (including a +1 die and live flat bonuses).
@@ -1006,6 +1008,12 @@ export type ActiveEffectModifier =
       excludeSourceUnitId?: UnitId;
     }
   | {
+      /** Factory Field Repair: one automatic heal charge at each round start. */
+      type: "REPAIR_HEAL_AT_COMBAT_ROUND_START";
+      amount: number;
+      remainingRounds: number;
+    }
+  | {
       type: "UNIT_CANNOT_MOVE";
     }
   | {
@@ -1139,6 +1147,11 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /** Celestine VI: printed movement bonus, independent of optional rules. */
+      type: "FACTORY_MOMENTUM_MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
       /** Unit-experience movement shift independent of optional Haste movement rules. */
       type: "NEUTRAL_MOVEMENT_BONUS";
       amount: number;
@@ -1184,6 +1197,11 @@ export type ActiveEffectModifier =
        */
       type: "ATTACK_BONUS_VS_INITIATIVE";
       comparison: "slower" | "faster";
+      amount: number;
+    }
+  | {
+      /** Tancred IV: bonus damage from a ranged attack on the marked unit. */
+      type: "RANGED_ATTACK_DAMAGE_TAKEN_BONUS";
       amount: number;
     }
   | {
@@ -3233,6 +3251,8 @@ export type EffectDefinition =
       type: "CREATE_ACTIVE_EFFECT";
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
+      /** Double numeric modifiers when placed on the named unit. */
+      doubleModifiersForUnitName?: string;
       /**
        * Community Balance Change Pendant of Second Sight option A: "⚡ Remove 1
        * Paralysis token. 🔄 Selected unit cannot gain Paralysis during this
@@ -5200,6 +5220,12 @@ type GameActionPayload =
        * discard pile. This stops the card effect immediately.").
        */
       type: "DISCARD_PERMANENT";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /** Factory Tinkerer: choose which of up to two in-play war machines is active. */
+      type: "SWITCH_ACTIVE_WAR_MACHINE";
       playerId: PlayerId;
       cardId: CardId;
     }
@@ -9379,6 +9405,8 @@ export type PlayerState = {
    * oldest and the owner may discard one voluntarily at any time.
    */
   permanents?: CardId[];
+  /** Factory Tinkerer: the one war machine whose combat effect is live. */
+  activeWarMachineCardId?: CardId;
   /** Unit deck: the army that fights the player's combats. */
   army: ArmyUnitState[];
   /** Persisted allocation cursor: a replacement must not inherit a dead card's ID. */
@@ -10191,6 +10219,10 @@ export type CombatUnitState = {
     goldEarned?: number;
     /** Titans' phantom Chain Lightning cards granted in this combat (max 2). */
     titanPhantomCards?: number;
+    /** Imperium Titan R3: actual damage assigned across this combat, even after healing or a side flip. */
+    damageSuffered?: number;
+    /** Imperium Titan R3: Attack already earned from damage thresholds (max 2). */
+    damageSufferedAttack?: number;
     lastAttackRoll?: number;
     improvisedRound?: number;
     returnFireRound?: number;
@@ -10740,6 +10772,8 @@ export type CombatState = {
     forcedTarget?: boolean;
     position?: number;
     adjacent?: boolean;
+    /** Optional bonus-movement reach; absent move-one requests remain adjacent-only. */
+    maxDistance?: number;
     valuablesCost?: number;
     runeCost?: number;
     optional?: boolean;
@@ -11089,6 +11123,10 @@ export type CombatState = {
    * Combat round 1 begins (finalizeCombatStart) only once the queue drains.
    */
   pendingTacticsSwaps?: PlayerId[] | null;
+  /** Factory Tinkerer owners who must choose which of their two machines is active at combat start. */
+  factoryWarMachineChoiceQueue?: PlayerId[];
+  /** Factory commanders who have spent their one voluntary swap in this combat. */
+  factoryWarMachineSwitchedPlayerIds?: PlayerId[];
   /**
    * PvP Neutral Control: the controlling player may SORT the revealed Neutral
    * formation before battle — "just like a defender" (user rule). Set to the
@@ -11737,6 +11775,8 @@ export type MapFieldState = {
    * a certain army. Cleared with the guard when the fight is won.
    */
   customGuardUnits?: string[];
+  /** Designer Random Town roster; resolved against the field's revealed faction. */
+  customTownGuardSlots?: RandomTownGuardSlot[];
   /**
    * Stamped from {@link CustomGuardSpec.packFaction} for certain-army and
    * level-as-packs guards. Fight-time resolve locks every Pack draw to this
@@ -16505,7 +16545,7 @@ export type CustomMapSettlementFieldPlan = {
  *       • `random-pack:bronze|silver|gold|azure` — roll a random faction Pack
  *         of that tier at fight time (seeded),
  *       • `pack:<unitDefId>` — a named faction Pack side (Random Town armies).
- *       • `town-rank:2..6:pack|few` — that printed rank from one shared
+ *       • `town-rank:1..7:pack|few` — that printed rank from one shared
  *         faction (supports exact random-faction Town rosters).
  *     Minted Creature-Bank style (never deck-drawn). Never Quick-Combat skipped;
  *     experience uses difficulty derived from the army's tiers.
@@ -16520,6 +16560,19 @@ export type CustomGuardSpec = {
   levelArmy?: "neutral" | "packs";
   units?: string[];
   packFaction?: FactionId | "random";
+  /** Random Town only: one chosen defender per faction-rank row. */
+  townSlots?: RandomTownGuardSlot[];
+};
+
+export type RandomTownGuardSlot = {
+  rank: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /** Absent: use this rank from the revealed Town faction. */
+  unitDefId?: string;
+  side: "few" | "pack" | "neutral";
+  /** Polish Unit Stacks: applied only if the rule is active and the side permits it. */
+  stacks?: number;
+  /** Unit Experience: veteran rank 1–3, applied only if the rule is active. */
+  veteranRank?: 1 | 2 | 3;
 };
 
 /** How many exact units a {@link CustomGuardSpec.units} army may field. */
@@ -17364,6 +17417,7 @@ export type PendingChoice =
         | "commander-artifact-barrier"
         | "commander-begin-cast"
         | "commander-magic-arrow-fetch"
+        | "factory-war-machine-select"
         | "polish-spell-or-cast";
       commanderArtifactOffer?: {
         cardIds: CardId[];
@@ -17405,6 +17459,8 @@ export type PendingChoice =
         handCardIds: CardId[];
         remainingPlayerIds: PlayerId[];
       };
+      /** Factory Tinkerer: both machines stay in play, but one is selected for this combat. */
+      factoryWarMachineSelect?: { cardIds: CardId[] };
       /** Groovy Satyr: the public old/new cards shown before combat continues. */
       satyrSwapResult?: {
         fromUnitDefId: string;
@@ -17744,7 +17800,7 @@ export type PendingChoice =
       ownDeckPick?: {
         cardIds: CardId[];
         /**
-         * Adrienne's Fire Magic IV: after the pick (the chosen card to hand, the
+         * School-magic IV: after the pick (the chosen card to hand, the
          * rest to discard), shuffle the player's whole discard pile back into
          * their deck. Omitted for Mana Vortex / Chain Lightning IV.
          */

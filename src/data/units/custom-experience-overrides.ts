@@ -128,9 +128,9 @@ export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
   // Imperium: combat medics, obstacle clearing and suppression complement printed roles.
   "imperium.astra_militarum": ranks("ntv-boarding-formation", "ntv-suppressing-shot", H({ health: 1 }, "ntv-return-fire"), S({ attack: 1, initiative: 1 })),
   "imperium.apothecary": ranks(S({ attack: 1, initiative: 1 }), "ntv-armoured-prey", "ntv-putrid-grasp", "ctv-rescue-step"),
-  "imperium.space_marines": ranks("town-elf-guard", "ntv-raking-dive", S({ health: 1, initiative: 1 }), "ntv-winged-riposte"),
-  "imperium.rhino": ranks(S({ health: 3 }), "veteran-sprite-obstacle", "ctv-field-repair", H({ initiative: 1 }, "ntv-set-the-spear")),
+  "imperium.space_marines": ranks("town-elf-guard", "ntv-raking-dive", S({ health: 1, initiative: 1 }), "imperium-winged-riposte-3"),
+  "imperium.rhino": ranks(S({ health: 1 }), "veteran-sprite-obstacle", "ctv-field-repair", H({ initiative: 1 }, "ntv-set-the-spear")),
   "imperium.terminators": ranks("veteran-energy-delay", "ctv-break-cover", "ctv-returning-edge", "town-yeti-specialty-aura"),
-  "imperium.dreadnought": ranks("ctv-clear-mind", "ntv-marked-volley", "town-lizard-spell-draw", "ntv-return-fire"),
-  "imperium.titan": ranks("town-ram-spell-draw", "ntv-arcane-plating", "veteran-sprite-obstacle", "ntv-deep-roots"),
+  "imperium.dreadnought": ranks("ctv-clear-mind", "imperium-marked-volley-all-attacks", "town-lizard-spell-draw", "ntv-return-fire"),
+  "imperium.titan": ranks("town-ram-spell-draw", "ntv-arcane-plating", "imperium-titan-damage-fury", H({ health: 1 }, "ntv-deep-roots")),
 };

@@ -461,6 +461,14 @@ export interface CommanderCastTargeting {
 export type CommanderCastEffect =
   | { kind: "heal-cleanse"; healByPower: readonly [number, number, number]; cleanseFromPower: number }
   | {
+      /** Factory Field Repair: heal now, then consume one repair charge at the
+       * start of each of the next `roundsByPower` combat rounds. */
+      kind: "repair-buff";
+      immediateHealByPower: readonly [number, number, number];
+      roundHealByPower: readonly [number, number, number];
+      roundsByPower: readonly [number, number, number];
+    }
+  | {
       kind: "defense-buff";
       amountByPower: readonly [number, number, number];
       vs: "melee" | "all";
@@ -1031,17 +1039,22 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
         adjacentBelowPower: 2,
         canTargetSelf: false
       },
-      effect: { kind: "heal", healByPower: [1, 2, 2] },
+      effect: {
+        kind: "repair-buff",
+        immediateHealByPower: [1, 2, 2],
+        roundHealByPower: [1, 1, 2],
+        roundsByPower: [1, 1, 2]
+      },
       tierText: [
-        "Remove 1 damage from an adjacent friendly mechanical unit.",
-        "Remove 2 damage from an adjacent friendly mechanical unit.",
-        "Remove 2 damage from a friendly mechanical unit anywhere."
+        "Place a Repair buff on an adjacent friendly mechanical unit: remove 1 damage now and 1 more at the start of the next Combat round.",
+        "Place a Repair buff on an adjacent friendly mechanical unit: remove 2 damage now and 1 more at the start of the next Combat round.",
+        "Place a Repair buff on a friendly mechanical unit: remove 2 damage now and 2 more at the start of each of the next 2 Combat rounds."
       ]
     },
     specialty: {
       id: "tinkerer",
       name: "Tinkerer",
-      text: "War machines cost you 5 less gold (to a minimum of 0)."
+      text: "War machines cost you 4 less gold (to a minimum of 0). You may keep up to 2 war machines as permanents: 1 active and 1 in reserve. During your own combat turn, you may switch the active machine once per Combat. Other permanents still use the normal permanent limit, including Pandora's Box expansions."
     },
     cardImage: "/assets/units-commander-factory.webp"
   },

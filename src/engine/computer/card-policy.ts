@@ -1498,6 +1498,14 @@ function scoreEffect(
   }
 
   if (COMBAT_DEBUFF_EFFECTS.has(effect.type)) {
+    if (card.id === "specialty.frederick.4") {
+      const unit = combatUnitFromTarget(observation, target);
+      // The destination picker advances toward enemies. Preserve a ranged
+      // unit's safe firing position and move a ground or flying unit instead.
+      return unit?.controllerId === observation.playerId && unit.type !== "ranged"
+        ? 675 + Math.min(40, unitThreatValue(unit) / 3)
+        : 180;
+    }
     // Action-denial is tempo, not just a stat shave: stealing a whole
     // activation (Blind's Paralysis, activation skips) or turning a unit on
     // its own side (Berserk) is worth far more against a scary enemy than a
@@ -1579,6 +1587,27 @@ function scoreEffect(
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    if (card.id === "specialty.henrietta.6") {
+      return observation.state.combat ? 735 : 180;
+    }
+    if (card.id === "specialty.agar.1") {
+      return observation.state.combat ? 710 : 180;
+    }
+    if (card.id === "specialty.tancred.4") {
+      const combat = observation.state.combat;
+      const marked = combatUnitFromTarget(observation, target);
+      const friendlyRanged = combat && Object.values(combat.units).some((unit) =>
+        unit.controllerId === observation.playerId && unit.type === "ranged" && unitRemainingHealth(unit) > 0);
+      return marked && friendlyRanged
+        ? 660 + Math.min(65, unitThreatValue(marked) / 2)
+        : 180;
+    }
+    if (card.id === "specialty.celestine.6") {
+      const unit = combatUnitFromTarget(observation, target);
+      return unit
+        ? scoreBuffTarget(observation, target, unitMatchesSpecialtyName(unit.name, "Armadillos") ? 745 : 680)
+        : 180;
+    }
     return 630 + modeBonus(mode);
   }
 

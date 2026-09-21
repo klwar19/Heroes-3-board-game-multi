@@ -46,6 +46,7 @@ import {
   queueNecromancyReinforce,
   recordLevelUpAbilityPick,
   grantRegularArtifactOfSameGrade,
+  materializeArtifactScrolls,
 } from "./adventure";
 import {
   diluteUnitExperienceForUpgrade,
@@ -305,6 +306,7 @@ import {
   spellCardForPowerSchool,
   spendFirstAidExpert,
   startWarMachineRound,
+  switchActiveWarMachine,
 } from "./permanents";
 import { cultivationCombatRerollBonus } from "./anime-cultivation";
 import {
@@ -682,6 +684,7 @@ import {
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
   getAttackBonusVsSlowerTarget,
+  getAttackBonusVsFasterTarget,
   deathStareFollowUpAppliesTo,
   getDeathStareFollowUps,
   moraleLockedForPlayer,
@@ -2305,8 +2308,25 @@ function createActiveEffectFromCard(
   mode: "basic" | "expert",
   target?: { type: "unit"; unitId: UnitId },
 ): void {
-  const effectDefinition =
+  let effectDefinition =
     mode === "expert" ? (effect.expertEffect ?? effect.effect) : effect.effect;
+  if (
+    effect.doubleModifiersForUnitName &&
+    target?.type === "unit" &&
+    unitMatchesSpecialtyName(
+      state.combat?.units[target.unitId]?.name,
+      effect.doubleModifiersForUnitName,
+    )
+  ) {
+    effectDefinition = {
+      ...effectDefinition,
+      modifiers: effectDefinition.modifiers.map((modifier) =>
+        "amount" in modifier && typeof modifier.amount === "number"
+          ? { ...modifier, amount: modifier.amount * 2 }
+          : modifier,
+      ),
+    };
+  }
   createActiveEffect(
     state,
     effectDefinition,
@@ -4685,6 +4705,13 @@ function getAttackDamagePreview(
   let rawDamage =
     fuyukiFixedDamage ??
     Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  if (state && getAttackKind(attacker, defender) === "ranged") {
+    rawDamage += state.activeEffects.reduce((bonus, active) =>
+      effectAppliesToUnit(active, defender)
+        ? bonus + active.modifiers.reduce((sum, modifier) =>
+            modifier.type === "RANGED_ATTACK_DAMAGE_TAKEN_BONUS" ? sum + modifier.amount : sum, 0)
+        : bonus, 0);
+  }
   if (isRetaliation && !dieCancelled && !neutralDieIgnored && (roll === 0 || roll === 1) && neutralVeterancy(attacker, "thunder-retaliation")) rawDamage += 1;
   if (attacker.unitDefId?.endsWith(".black_dragons") && defender.factionVeterancy?.marked) rawDamage += 1;
   if (factionVeterancy(attacker, "execution") && attacker.controllerId !== defender.controllerId && hasToken(defender, "paralysis")) rawDamage += 2;
@@ -4709,12 +4736,26 @@ function getAttackDamagePreview(
       : Math.min(unitCapped, cardDamageCap);
 
   const damageBeforeDeferral = elementalDamageCeiling(defender, damage);
+  const firstRoundArmourPreview =
+    state?.combat?.round === 1
+      ? getUnitAbilityDefinitions(defender).reduce(
+          (total, ability) =>
+            ability.effect?.type === "REDUCE_EACH_ATTACK_DAMAGE_FIRST_ROUND"
+              ? total + ability.effect.amount
+              : total,
+          0,
+        )
+      : 0;
+  const damageAfterFirstRoundArmour = Math.max(
+    0,
+    damageBeforeDeferral - firstRoundArmourPreview,
+  );
   const delayAmount = delayedImpactAmount(state, defender, state?.combat?.round);
-  const deferred = attacker.controllerId !== defender.controllerId ? Math.min(delayAmount, damageBeforeDeferral) : 0;
+  const deferred = attacker.controllerId !== defender.controllerId ? Math.min(delayAmount, damageAfterFirstRoundArmour) : 0;
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
-    damage: state ? veteranInterceptPreview(state, attacker, defender, damageBeforeDeferral - deferred) : damageBeforeDeferral - deferred,
+    damage: state ? veteranInterceptPreview(state, attacker, defender, damageAfterFirstRoundArmour - deferred) : damageAfterFirstRoundArmour - deferred,
     damageBeforeDeferral,
     neutralTownDamageReduced: townNeutralCapped < roundCapped,
     dieAttackBonus,
@@ -4973,6 +5014,26 @@ function applyAttackDamageFromCandidate(
   // A cancelled die (Shield of the Dwarven Lords) is reported like an unrolled
   // die so the client skips the rolling-dice cinematic.
   const skipDieCinematic = noDie || dieCancelled;
+
+  // Few Dreadnought's armour applies to every attack in round one. Resolve it
+  // before the once-per-Combat shield so a fully blocked hit does not spend
+  // Duty Eternal; spells and other effect damage never pass through here.
+  const firstRoundArmour = state.combat.round === 1
+    ? getUnitAbilityDefinitions(defender).find(
+        (ability) => ability.effect?.type === "REDUCE_EACH_ATTACK_DAMAGE_FIRST_ROUND",
+      )
+    : undefined;
+  if (firstRoundArmour?.effect?.type === "REDUCE_EACH_ATTACK_DAMAGE_FIRST_ROUND" && damage > 0) {
+    const prevented = Math.min(damage, firstRoundArmour.effect.amount);
+    damage -= prevented;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: firstRoundArmour.id,
+      targetUnitId: defender.id,
+      message: `${defender.cardName}'s ${firstRoundArmour.name} prevents ${prevented} attack damage.`,
+    });
+  }
 
   // Iron Horus must reduce the attack before lethal-save checks, Pack/Few layer
   // previews and damage-dependent follow-ups. Non-attack damage uses the same
@@ -5879,6 +5940,16 @@ function getAttackStackDetails(
     effectiveInitiative(defender, state.activeEffects, combat)
       ? getAttackBonusVsSlowerTarget(attacker)
       : 0;
+  const fasterTargetAttackBonus =
+    effectiveInitiative(attacker, state.activeEffects, combat) <
+    effectiveInitiative(defender, state.activeEffects, combat)
+      ? getAttackBonusVsFasterTarget(attacker)
+      : 0;
+
+  // Factory Dreadnoughts R3: this is a live attack bonus, so present the laser
+  // only when the strict "target has higher Initiative" condition is true.
+  // The event is emitted once for the actual attack resolution, not while the
+  // UI merely previews attack math.
 
   // MGQ Reaper Scythe: a live target-status read. The bonus is innate and
   // unclamped, just like the other printed conditional Attack bonuses. The
@@ -5967,6 +6038,7 @@ function getAttackStackDetails(
       attackDieResultBonus +
       hatredAttackBonus +
       markAttackBonus +
+      fasterTargetAttackBonus +
       wakamoMarkAttackBonus +
       retaliatedTargetAttackBonus +
       vanitasAttackBonus +
@@ -9057,6 +9129,20 @@ function finishResolvedAttack(
     commanderArtifactBonusesForUnit(state, details.attacker).firstOwnAttackBonus > 0
   ) {
     details.attacker.commanderArtifactFirstOwnAttackUsed = true;
+  }
+  if (
+    !details.isRetaliation &&
+    getAttackBonusVsFasterTarget(details.attacker) > 0 &&
+    effectiveInitiative(details.attacker, state.activeEffects, state.combat) <
+      effectiveInitiative(details.defender, state.activeEffects, state.combat)
+  ) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: "factory-dreadnought-speed-hunter",
+      targetUnitId: details.defender.id,
+      message: `${details.attacker.cardName} fires its laser against faster ${details.defender.cardName}.`,
+    });
   }
   markMgqGranberiaAttackResolved(
     state,
@@ -21200,7 +21286,7 @@ function openCombatRemoveThenSearchChoice(
   state.priorityPlayerId = playerId;
 }
 
-/** Adrienne's Fire Magic IV: Search your own deck, then reshuffle the discard back in. */
+/** School-magic IV: Search your own deck, then reshuffle the discard back in. */
 function resolveSearchDeckThenReshuffle(
   state: GameState,
   playerId: PlayerId,
@@ -28942,6 +29028,20 @@ function playCard(
     }
   }
 
+  // Frederick IV reuses the Spell teleport destination picker without a Power
+  // or grade payment. The card offer restricts the selected unit to its owner.
+  if (
+    effect.type === "TELEPORT_UNIT" &&
+    card.id === "specialty.frederick.4" &&
+    nonDamageTarget?.type === "unit" &&
+    state.combat
+  ) {
+    const unit = state.combat.units[nonDamageTarget.unitId];
+    if (unit?.controllerId === action.playerId && !arrowTowerRefusesEffect(unit, effect)) {
+      openTeleportChoice(state, action.playerId, unit);
+    }
+  }
+
   // Xyron's Inferno: the chosen unit's space and every orthogonally adjacent
   // space — every unit in the blast, friend or foe — takes the flat damage.
   // Xyron's Inferno: select a space (occupied or empty); every unit on it and on
@@ -29179,7 +29279,7 @@ function playCard(
     resolveDrawTopArtifactPlay(state, action.playerId, card.name);
   }
 
-  // Adrienne's Fire Magic IV: Search (`count`) your own deck (reveal the top
+  // School-magic IV: Search (`count`) your own deck (reveal the top
   // `count`, keep one, the rest to discard), then shuffle the discard pile back
   // into the deck. The reshuffle runs AFTER the pick (the own-deck-pick choice
   // carries `thenReshuffleDiscard`); a 0/1-card reveal reshuffles immediately.
@@ -29949,6 +30049,7 @@ function applyActiveEffectAction(
   if (healModifier.basicOnly && mode !== "basic") {
     throw new Error("That artifact heal cannot use First Aid's expert volley.");
   }
+
   if (healModifier.excludeSourceUnitId) {
     const sourceUnit = combat.units[healModifier.excludeSourceUnitId];
     if (!sourceUnit || !isUnitAlive(sourceUnit)) {
@@ -32224,6 +32325,35 @@ function resolveCommanderCast(
     case "heal":
       healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
       break;
+    case "repair-buff": {
+      const immediate = effect.immediateHealByPower[tier];
+      if (immediate > 0) {
+        healUnitDamage(state, source, targetRef, immediate);
+      }
+      const delayedAmount = effect.roundHealByPower[tier];
+      const delayedRounds = effect.roundsByPower[tier];
+      if (delayedAmount > 0 && delayedRounds > 0) {
+        createActiveEffect(
+          state,
+          {
+            name: `${cast.name} (${caster.cardName})`,
+            scope: "unit",
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: true,
+            modifiers: [{
+              type: "REPAIR_HEAL_AT_COMBAT_ROUND_START",
+              amount: delayedAmount,
+              remainingRounds: delayedRounds
+            }]
+          },
+          source,
+          caster.controllerId,
+          targetRef,
+        );
+      }
+      break;
+    }
     // Belfast "Royal Salvo" (Azur Lane): flat EFFECT damage to the chosen enemy
     // — the shared ability-damage path (no Retaliation, ignores Defense and the
     // per-attack caps, spell wards don't apply), lethal routes through the
@@ -33843,8 +33973,9 @@ function moveAndAttackUnit(
   // direct relocation below is unchanged).
   let finalPosition = destination;
   let haltedByQuicksand = false;
+  let enteredSpaces: number[] | null = null;
   if ((combat.battlefieldTokens ?? []).length > 0) {
-    const enteredSpaces =
+    enteredSpaces =
       attacker.type === "flying"
         ? [destination]
         : (planMovePath(
@@ -33872,6 +34003,7 @@ function moveAndAttackUnit(
       ? { sourceAbilityId: "veteran-magma-teleport-strike" }
       : {}),
   });
+  applyCouatlMomentumHeal(state, attacker, getBattlefieldDistance(from, finalPosition));
   gainSectQiAfterMove(state, attacker, from, finalPosition);
   elementalMovement(state, attacker, elementalHooks);
   healCommanderFromArtifactAction(state, attacker, "move");
@@ -33908,6 +34040,41 @@ function moveAndAttackUnit(
     }
     declareAttack(state, action, cards);
   }
+}
+
+/** Factory Couatl R3: a long move restores one damage after the relocation. */
+function applyCouatlMomentumHeal(
+  state: GameState,
+  unit: CombatUnitState,
+  movedSpaces: number,
+): void {
+  const ability = getUnitAbilityDefinitions(unit).find(
+    (candidate) => candidate.effect?.type === "ON_MOVE_HEAL_SELF",
+  );
+  if (
+    !ability ||
+    ability.effect?.type !== "ON_MOVE_HEAL_SELF" ||
+    movedSpaces < ability.effect.minimumSpaces ||
+    !isUnitAlive(unit) ||
+    unit.damage <= 0
+  ) {
+    return;
+  }
+
+  const healed = Math.min(ability.effect.amount, unit.damage);
+  healUnitDamage(
+    state,
+    { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    { type: "unit", unitId: unit.id },
+    ability.effect.amount,
+  );
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: ability.id,
+    targetUnitId: unit.id,
+    message: `${unit.cardName}'s ${ability.name} heals ${healed} damage after moving ${movedSpaces} spaces.`,
+  });
 }
 
 /** The spell a battlefield token's damage is attributed to (for damage events / FX). */
@@ -34601,6 +34768,7 @@ function moveUnit(
       ? { sourceAbilityId: "veteran-magma-teleport-strike" }
       : {}),
   });
+  applyCouatlMomentumHeal(state, unit, getBattlefieldDistance(from, finalPosition));
   gainSectQiAfterMove(state, unit, from, finalPosition);
   elementalMovement(state, unit, elementalHooks);
   townMovement(state, unit, from, finalPosition);
@@ -34683,6 +34851,18 @@ function defendUnit(
   unit.defenseToken = true;
   markActivatedThisRound(unit, true);
   if (factionVeterancy(unit, "defend-heal")) veteranHeal(state, unit, 1, "veteran-zombie-rest");
+  const defendHeal = getUnitAbilityDefinitions(unit).reduce(
+    (amount, ability) => amount + (ability.effect?.type === "DEFEND_HEAL" ? ability.effect.amount : 0),
+    0,
+  );
+  if (defendHeal > 0) {
+    healUnitDamage(
+      state,
+      { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      { type: "unit", unitId: unit.id },
+      defendHeal,
+    );
+  }
   // Bulwark "Runes" (Gamefound Update #3): taking the Defend action earns a
   // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
@@ -34702,6 +34882,48 @@ function defendUnit(
   });
 
   advanceActiveUnit(state);
+}
+
+/** Resolve the delayed charges created by Factory Artificer's Field Repair. */
+function applyRepairBuffsAtCombatRoundStart(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) return;
+
+  const keptEffects = [];
+  for (const effect of state.activeEffects) {
+    let consumedRepair = false;
+    const modifiers = effect.modifiers.filter((modifier) => {
+      if (modifier.type !== "REPAIR_HEAL_AT_COMBAT_ROUND_START") return true;
+      consumedRepair = true;
+      const targetId = effect.target?.type === "unit" ? effect.target.unitId : null;
+      const target = targetId ? combat.units[targetId] : undefined;
+      if (target && isUnitAlive(target) && target.damage > 0) {
+        healUnitDamage(
+          state,
+          effect.source,
+          { type: "unit", unitId: target.id },
+          modifier.amount,
+        );
+        if (effect.source.type === "unit") {
+          appendEvent(state, {
+            type: "UNIT_ABILITY_TRIGGERED",
+            unitId: effect.source.unitId,
+            abilityId: "commander-cast-factory",
+            targetUnitId: target.id,
+            message: `${target.cardName} receives a delayed Field Repair.`
+          });
+        }
+      }
+      const remaining = modifier.remainingRounds - 1;
+      if (remaining <= 0) return false;
+      modifier.remainingRounds = remaining;
+      return true;
+    });
+    if (consumedRepair && modifiers.length === 0) continue;
+    effect.modifiers = modifiers;
+    keptEffects.push(effect);
+  }
+  state.activeEffects = keptEffects;
 }
 
 function endActivation(
@@ -34815,6 +35037,11 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     round: state.combat.round,
     activeUnitId: null,
   });
+
+  // Field Repair's delayed charges resolve before other round-start effects, so
+  // a repaired machine enters the round at its new health before a war machine
+  // fires or an activation begins.
+  applyRepairBuffsAtCombatRoundStart(state);
 
   // Forced Battle Events (Anime mod, §3.12): a fought field's round-start script
   // events fire here — after the round is incremented, before war machines and
@@ -37097,6 +37324,9 @@ function applyActionInContext(
         case "DISCARD_PERMANENT":
           discardPermanentVoluntarily(nextState, action);
           break;
+        case "SWITCH_ACTIVE_WAR_MACHINE":
+          switchActiveWarMachine(nextState, action.playerId, action.cardId);
+          break;
         case "DISCARD_ONGOING_CARD":
           discardOngoingCardVoluntarily(
             nextState,
@@ -37668,6 +37898,7 @@ function applyActionInContext(
     // lets it leave alone a deck whose draw-pile top this action just returned /
     // reshuffled there (Tarnum VI's return-to-top, an Eagle Eye / Tome reshuffle),
     // so that card is drawn next rather than flipped face-up into the discard.
+    materializeArtifactScrolls(nextState);
     refillSharedDeckDiscards(nextState, base);
 
     if (actorPlayerId && !isTableMetaAction) {

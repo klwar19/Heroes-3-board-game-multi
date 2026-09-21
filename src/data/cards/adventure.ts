@@ -20,6 +20,17 @@ function heroSource(slug: string) {
   };
 }
 
+const bulwarkExpansionPreviewUrl =
+  "https://imgcdn.gamefound.com/richtextimage/richtext/33b4a241-f645-41d3-aa35-0417606e9732.png";
+
+function bulwarkExpansionPreviewSource(heroName: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
+    credit: `${heroName}'s specialty rules were transcribed from the official Bulwark expansion preview.`,
+    url: bulwarkExpansionPreviewUrl,
+  };
+}
+
 /**
  * "+1 attack or +1 defense" specialty shared by the might heroes. The bonus
  * doubles when it lands on the hero's signature unit (the unit attacking for
@@ -1059,28 +1070,30 @@ function warlockDigSpecialty(level: 1 | 6, count: number): CardLibrary[string] {
 }
 
 /**
- * Adrienne's Fire Magic I/VI: a combat play that, for the rest of the Combat,
- * adds +amount Power to the caster's Fire-school Spells (a player-scoped
- * SPELL_SCHOOL_POWER_BONUS read in getCurrentSpellPower). I = +1, VI = +2.
- *
- * engine: this boosts activation-cast spells (`CAST_SPELL` — the Fire damage
- * spells: Inferno, Berserk, Blind, Fire Wall, …). It does NOT boost the instant
- * attack-window Fire spell Curse, whose Power is pooled separately on the attack
- * stack (recomputePowerScaledAttackInstants), so Curse keeps its base scaling.
+ * Adrienne/Kaliki school-magic I/VI: a combat play that, for the rest of the
+ * Combat, adds +amount Power to every Spell the caster casts from that School.
+ * Magic Arrow's "any" school is deliberately included by getSchoolPowerBonus.
  */
-function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
+function schoolMagicSpecialty(
+  heroSlug: "adrienne" | "kaliki",
+  school: "fire" | "water",
+  level: 1 | 6,
+  amount: number,
+  printedArt: boolean,
+): CardLibrary[string] {
+  const schoolName = school === "fire" ? "Fire" : "Water";
   return {
-    id: `specialty.adrienne.${level}`,
-    name: `Fire Magic ${towerRoman(level)}`,
+    id: `specialty.${heroSlug}.${level}`,
+    name: `${schoolName} Magic ${towerRoman(level)}`,
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
       "combat",
-      "adrienne",
-      "fire-magic",
-      `During this Combat, every Spell you cast from the School of Fire is cast with +${amount} Power.`,
+      heroSlug,
+      `${school}-magic`,
+      `During this Combat, every Spell you cast from the School of ${schoolName} is cast with +${amount} Power (including Magic Arrow).`,
     ],
     target: { type: "none" },
     effect: {
@@ -1092,16 +1105,23 @@ function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
         polarity: "positive",
         removable: false,
         modifiers: [
-          { type: "SPELL_SCHOOL_POWER_BONUS", school: "fire", amount },
+          { type: "SPELL_SCHOOL_POWER_BONUS", school, amount },
         ],
       },
     },
-    assets: {
-      cardImage: specialtyCardImage("adrienne", level),
-      imageAlt: `Fire Magic level ${towerRoman(level)} specialty card`,
-    },
+    ...(printedArt
+      ? {
+          assets: {
+            cardImage: specialtyCardImage(heroSlug, level),
+            imageAlt: `${schoolName} Magic level ${towerRoman(level)} specialty card`,
+          },
+        }
+      : {}),
     implementationStatus: "implemented",
-    source: heroSource("adrienne"),
+    source:
+      heroSlug === "kaliki"
+        ? bulwarkExpansionPreviewSource("Kaliki")
+        : heroSource("adrienne"),
   };
 }
 
@@ -1956,79 +1976,104 @@ export const adventureCards: CardLibrary = {
     1,
     "a Dragons unit",
   ),
-  // Factory heroes (Gamefound "Faction Focus: Factory"). Face-less (no printed
-  // board-game specialty art yet) — withoutArt renders them natively.
-  // Henrietta (Mercenary): the Halflings specialist — "building your own armies
-  // of Halflings and Grenadiers, and buffing them all". I = +1 attack/defence;
-  // IV = +1 HP; VI = +1 initiative — doubled when the bonus lands on a Halflings.
-  "specialty.henrietta.1": withoutArt(
-    mightSpecialtyOne("henrietta", "Halflings", "Halflings"),
-  ),
-  "specialty.henrietta.4": withoutArt(
-    unitHealthSpecialty("henrietta", "Halflings", 4, 1, "Halflings"),
-  ),
-  "specialty.henrietta.6": withoutArt(
-    unitInitiativeSpecialty("henrietta", "Halflings", 6, 1, "Halflings"),
-  ),
-  // Frederick (Artificer): the Automatons specialist. His INHERENT trait also
-  // enhances every Automaton's Detonate by +1 (seedFactoryHeroEffects →
-  // PlayerState.automatonDetonationBonus); these three cards buff Automatons the
-  // way any unit-specialist does. (His "near-free Automaton re-recruit" is not
-  // yet wired — noted, not claimed.)
-  "specialty.frederick.1": withoutArt(
-    mightSpecialtyOne("frederick", "Automatons", "Automatons"),
-  ),
-  "specialty.frederick.4": withoutArt(
-    unitHealthSpecialty("frederick", "Automatons", 4, 1, "Automatons"),
-  ),
-  "specialty.frederick.6": withoutArt(
-    unitInitiativeSpecialty("frederick", "Automatons", 6, 1, "Automatons"),
-  ),
-  // The four other kept Factory heroes are unit specialists too (same wired
-  // pattern: I = +1 attack/defence, IV = +1 HP, VI = +1 initiative, doubled on
-  // the specialty unit). Sam -> Mechanics, Tancred -> Bounty Hunters,
-  // Celestine -> Armadillos, Agar -> Sandworms.
+  // Factory heroes (Gamefound "Faction Focus: Factory") use deliberately
+  // different, engine-backed curves. These are not copied three-card sets:
+  // Henrietta is a tempo engineer, Sam protects and rebuilds machines,
+  // Tancred controls ranged engagements, Celestine turns defense into offense,
+  // Agar manipulates battlefield pace, and Frederick coordinates volleys.
+  "specialty.henrietta.1": withoutArt({
+    ...mightSpecialtyOne("henrietta", "Luck", "Halflings"),
+    name: "Luck I",
+  }),
+  "specialty.henrietta.4": {
+    id: "specialty.henrietta.4", name: "Luck IV", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "henrietta", "Draw 1 card during an instant window or on the map, or give a unit +1 Health for this combat (+2 for Halflings)."],
+    effect: { type: "CHOOSE_ONE", options: [
+      { label: "Draw 1 card", target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 1 } },
+      { label: "+1 Health (+2 for Halflings)", combatOnly: true, target: { type: "friendly-unit" }, effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Halflings" } },
+    ] }, implementationStatus: "implemented", source: heroSource("henrietta"),
+  },
+  "specialty.henrietta.6": {
+    id: "specialty.henrietta.6", name: "Luck VI", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "henrietta", "At the start of any combat round, all your units roll two Attack dice and use the higher result this round."],
+    effect: { type: "CHOOSE_ONE", options: [{
+      label: "All your units attack with advantage this round", combatOnly: true,
+      combatRoundStartOnly: true, target: { type: "none" },
+      effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+        name: "Luck VI", scope: "player", duration: { type: "current-combat-round" },
+        polarity: "positive", removable: false, modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }],
+      } },
+    }] }, implementationStatus: "implemented", source: heroSource("henrietta"),
+  },
   "specialty.sam.1": withoutArt(
-    mightSpecialtyOne("sam", "Mechanics", "Mechanics"),
+    attackOrDefenseByTypeSpecialty("sam", "Mechanics", 1, "ground", "ground Mechanics"),
   ),
-  "specialty.sam.4": withoutArt(
-    unitHealthSpecialty("sam", "Mechanics", 4, 1, "Mechanics"),
-  ),
-  "specialty.sam.6": withoutArt(
-    unitInitiativeSpecialty("sam", "Mechanics", 6, 1, "Mechanics"),
-  ),
+  "specialty.sam.4": withoutArt(unitHealthSpecialty("sam", "Mechanics", 4, 1, "Mechanics")),
+  "specialty.sam.6": withoutArt(armorerSpecialty("sam", 6, 4, "Field Overhaul")),
   "specialty.tancred.1": withoutArt(
-    mightSpecialtyOne("tancred", "Bounty Hunters", "Bounty Hunters"),
+    attackOrDefenseByTypeSpecialty("tancred", "Bounty Hunters", 1, "ranged", "ranged units"),
   ),
-  "specialty.tancred.4": withoutArt(
-    unitHealthSpecialty("tancred", "Bounty Hunters", 4, 1, "Bounty Hunters"),
-  ),
+  "specialty.tancred.4": {
+    id: "specialty.tancred.4", name: "Bounty Mark IV", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"], target: { type: "enemy-unit" },
+    tags: ["hero-specialty", "combat", "tancred", "Mark an enemy unit. Each ranged attack against it deals 1 bonus damage this combat."],
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Bounty Mark", scope: "unit", duration: { type: "combat" },
+      polarity: "negative", removable: true, modifiers: [{ type: "RANGED_ATTACK_DAMAGE_TAKEN_BONUS", amount: 1 }],
+    } }, implementationStatus: "implemented", source: heroSource("tancred"),
+  },
   "specialty.tancred.6": withoutArt(
-    unitInitiativeSpecialty(
-      "tancred",
-      "Bounty Hunters",
-      6,
-      1,
-      "Bounty Hunters",
-    ),
+    ignoreDefenseOrDrawSpecialty("tancred", "Bounty Hunters", 6, 2),
   ),
-  "specialty.celestine.1": withoutArt(
-    mightSpecialtyOne("celestine", "Armadillos", "Armadillos"),
-  ),
-  "specialty.celestine.4": withoutArt(
-    unitHealthSpecialty("celestine", "Armadillos", 4, 1, "Armadillos"),
-  ),
-  "specialty.celestine.6": withoutArt(
-    unitInitiativeSpecialty("celestine", "Armadillos", 6, 1, "Armadillos"),
-  ),
-  "specialty.agar.1": withoutArt(
-    mightSpecialtyOne("agar", "Sandworms", "Sandworms"),
-  ),
-  "specialty.agar.4": withoutArt(
-    unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms"),
-  ),
-  "specialty.agar.6": withoutArt(
-    unitInitiativeSpecialty("agar", "Sandworms", 6, 1, "Sandworms"),
+  "specialty.celestine.1": withoutArt({
+    ...armorerSpecialty("celestine", 1, 2, "Armadillo Shell Ward"),
+    name: "Armadillos Shell Ward I",
+  }),
+  "specialty.celestine.4": withoutArt(unitHealthSpecialty("celestine", "Armadillos", 4, 1, "Armadillos")),
+  "specialty.celestine.6": {
+    id: "specialty.celestine.6", name: "Armadillo Momentum VI", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"], target: { type: "friendly-unit" },
+    tags: ["hero-specialty", "combat", "celestine", "Ongoing: +4 Initiative, move 1 more space, and +1 Attack against slower units; bonuses double for Armadillos."],
+    effect: { type: "CREATE_ACTIVE_EFFECT", doubleModifiersForUnitName: "Armadillos", effect: {
+      name: "Armadillo Momentum", scope: "unit", duration: { type: "combat" },
+      polarity: "positive", removable: true, modifiers: [
+        { type: "INITIATIVE_BONUS", amount: 4 },
+        { type: "FACTORY_MOMENTUM_MOVEMENT_BONUS", amount: 1 },
+        { type: "ATTACK_BONUS_VS_INITIATIVE", comparison: "slower", amount: 1 },
+      ],
+    } }, implementationStatus: "implemented", source: heroSource("celestine"),
+  },
+  "specialty.agar.1": {
+    id: "specialty.agar.1", name: "Sandworm Snare I", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "agar", "Ongoing: all enemy units have -2 Initiative this combat."],
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Sandworm Snare", scope: "global", appliesOnlyToEnemies: true,
+      duration: { type: "combat" }, polarity: "negative", removable: false,
+      modifiers: [{ type: "INITIATIVE_BONUS", amount: -2 }],
+    } }, implementationStatus: "implemented", source: heroSource("agar"),
+  },
+  "specialty.agar.4": withoutArt(unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms")),
+  "specialty.agar.6": {
+    id: "specialty.agar.6", name: "Sandworm Strike VI", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "agar", "+1 Attack and ignore Retaliation for this attack (+2 Attack for Sandworms), or draw 2 cards during an instant window or on the map."],
+    effect: { type: "CHOOSE_ONE", options: [
+      { label: "+1 Attack (+2 for Sandworms); ignore Retaliation", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" }, effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitName: "Sandworms", ignoresRetaliation: true } },
+      { label: "Draw 2 cards", target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 2 } },
+    ] }, implementationStatus: "implemented", source: heroSource("agar"),
+  },
+  "specialty.frederick.1": withoutArt(towerHealthSpecialty("frederick", "Intelligence", 1, 1, "Automatons")),
+  "specialty.frederick.4": {
+    id: "specialty.frederick.4", name: "Intelligence IV", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"], target: { type: "friendly-unit" },
+    tags: ["hero-specialty", "combat", "frederick", "On your turn, teleport one of your units to any empty combat space."],
+    effect: { type: "TELEPORT_UNIT", gradeByPower: { 0: "azure" } }, implementationStatus: "implemented", source: heroSource("frederick"),
+  },
+  "specialty.frederick.6": withoutArt(
+    attackInstantSpecialty("frederick", "Intelligence", 6, 2, "Automatons"),
   ),
   // Anime Realms unit specialists use the proven generic I/IV/VI curve: global
   // +1 at I/IV/VI, doubled only on the named line. Face-less cards render with
@@ -4607,8 +4652,8 @@ export const adventureCards: CardLibrary = {
     source: heroSource("eikthurn"),
   }),
 
-  // Oidana (Elder): the diplomat. Her starting ability is Diplomacy; each specialty
-  // is a CHOOSE_ONE. The card-draw side (DRAW_CARDS, a trigger-free instant) scales
+  // Oidana (Chieftain): the printed Defense-heavy Archery hero. Her Diplomacy
+  // specialty is a CHOOSE_ONE. The card-draw side (DRAW_CARDS) scales
   // 1 / 2 / 2. The OTHER side scales with her Diplomacy mastery:
   //   I  — Map: use the full Diplomacy Dwelling draw, then recruit one.
   //   IV — Map: use the full Diplomacy Dwelling draw, then recruit one for 4 gold
@@ -4643,7 +4688,7 @@ export const adventureCards: CardLibrary = {
       ],
     },
     implementationStatus: "implemented",
-    source: heroSource("oidana"),
+    source: bulwarkExpansionPreviewSource("Oidana"),
   },
   "specialty.oidana.4": {
     id: "specialty.oidana.4",
@@ -4671,7 +4716,7 @@ export const adventureCards: CardLibrary = {
       ],
     },
     implementationStatus: "implemented",
-    source: heroSource("oidana"),
+    source: bulwarkExpansionPreviewSource("Oidana"),
   },
   "specialty.oidana.6": {
     id: "specialty.oidana.6",
@@ -4703,8 +4748,40 @@ export const adventureCards: CardLibrary = {
       ],
     },
     implementationStatus: "implemented",
-    source: heroSource("oidana"),
+    source: bulwarkExpansionPreviewSource("Oidana"),
   },
+
+  // Kaliki (Elder): Water Magic mirrors Adrienne's engine-backed school-magic
+  // set for Water. I/VI create a combat-scoped +1/+2 Water-school Power effect
+  // (Magic Arrow included); IV performs the printed Search (4), then shuffles
+  // the whole discard pile back into the deck after the player keeps one card.
+  "specialty.kaliki.1": schoolMagicSpecialty("kaliki", "water", 1, 1, false),
+  "specialty.kaliki.4": {
+    id: "specialty.kaliki.4",
+    name: "Water Magic IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "kaliki",
+      "water-magic",
+      "Search (4) your deck (keep 1 card), then shuffle your discard pile into your deck.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Search (4) your deck, then shuffle the discard into your deck",
+          effect: { type: "SEARCH_DECK_THEN_RESHUFFLE", count: 4 },
+        },
+      ],
+    },
+    implementationStatus: "implemented",
+    source: bulwarkExpansionPreviewSource("Kaliki"),
+  },
+  "specialty.kaliki.6": schoolMagicSpecialty("kaliki", "water", 6, 2, false),
 
   // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
   // Lord Haart (Castle, Knight): the Estates / gold-economy specialist. Every
@@ -4807,7 +4884,7 @@ export const adventureCards: CardLibrary = {
   // via CREATE_ACTIVE_EFFECT); IV is a printed Instant that Searches (3) her deck
   // and shuffles her discard pile back in (SEARCH_DECK_THEN_RESHUFFLE) — playable
   // on the map AND mid-Combat (instantSideAllowedInCombat).
-  "specialty.adrienne.1": fireMagicSpecialty(1, 1),
+  "specialty.adrienne.1": schoolMagicSpecialty("adrienne", "fire", 1, 1, true),
   "specialty.adrienne.4": {
     id: "specialty.adrienne.4",
     name: "Fire Magic IV",
@@ -4841,7 +4918,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("adrienne"),
   },
-  "specialty.adrienne.6": fireMagicSpecialty(6, 2),
+  "specialty.adrienne.6": schoolMagicSpecialty("adrienne", "fire", 6, 2, true),
 
   // Vidomina (Necropolis, Necromancer): the Necromancy specialist. I/VI are
   // after-combat half-gold reinforces (NECROMANCY_REINFORCE, forced tier so the

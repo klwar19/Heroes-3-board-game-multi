@@ -107,14 +107,14 @@ describe("hero-board / zoom wiring", () => {
     expect(specialtyIconSrc("specialty.tarnum_rampart.1")).toContain("units-sharpshooter-portrait.webp");
     expect(specialtyIconSrc("specialty.ivor.4")).toContain("units-grand_elf-portrait.webp");
     expect(specialtyIconSrc("specialty.tarnum_conflux.6")).toContain("units-enchanter-portrait.webp");
-    // Factory unit specialists now use the unit's clean creature PORTRAIT, not the
-    // full unit CARD art (units-factory-<tier>-<unit>-few.webp) they used to borrow.
-    expect(specialtyIconSrc("specialty.henrietta.1")).toContain("units-factory-halfling-portrait.webp");
-    expect(specialtyIconSrc("specialty.frederick.1")).toContain("units-factory-automaton-portrait.webp");
-    expect(specialtyIconSrc("specialty.sam.4")).toContain("units-factory-mechanic-portrait.webp");
-    expect(specialtyIconSrc("specialty.tancred.6")).toContain("units-factory-bounty_hunter-portrait.webp");
-    expect(specialtyIconSrc("specialty.celestine.1")).toContain("units-factory-armadillo-portrait.webp");
-    expect(specialtyIconSrc("specialty.agar.4")).toContain("units-factory-sandworm-portrait.webp");
+    // Factory's redesigned cards use generated role icons rather than borrowing
+    // a unit face or a full battle card.
+    expect(specialtyIconSrc("specialty.henrietta.1")).toContain("/assets/factory-icons/henrietta.webp");
+    expect(specialtyIconSrc("specialty.frederick.1")).toContain("/assets/factory-icons/frederick.webp");
+    expect(specialtyIconSrc("specialty.sam.4")).toContain("/assets/factory-icons/sam.webp");
+    expect(specialtyIconSrc("specialty.tancred.6")).toContain("/assets/factory-icons/tancred.webp");
+    expect(specialtyIconSrc("specialty.celestine.1")).toContain("/assets/factory-icons/celestine.webp");
+    expect(specialtyIconSrc("specialty.agar.4")).toContain("/assets/factory-icons/agar.webp");
     // None of the unit specialists may fall back to a full battle sprite or CARD art.
     for (const slug of [
       "valeska", "casmetra", "lorelei", "tarnum_dungeon", "ingham", "cassiopeia",
@@ -123,7 +123,11 @@ describe("hero-board / zoom wiring", () => {
       "henrietta", "frederick", "sam", "tancred", "celestine", "agar",
     ]) {
       const src = specialtyIconSrc(`specialty.${slug}.1`);
-      expect(src, `${slug} should use a portrait, not a battle sprite`).toContain("-portrait.webp");
+      if (["henrietta", "frederick", "sam", "tancred", "celestine", "agar"].includes(slug)) {
+        expect(src, `${slug} should use a generated Factory icon`).toContain("/assets/factory-icons/");
+      } else {
+        expect(src, `${slug} should use a portrait, not a battle sprite`).toContain("-portrait.webp");
+      }
       expect(src, `${slug} should not use a creature-* battle sprite`).not.toContain("creature-");
       // A unit specialist must never borrow the full unit CARD art.
       expect(src, `${slug} should not use full card art`).not.toMatch(/-(few|pack|neutral)\.webp$/u);

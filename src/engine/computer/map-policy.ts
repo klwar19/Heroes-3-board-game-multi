@@ -3238,11 +3238,23 @@ export function scoreMapAction(
       // FAR-TILE HUNT: flipping a face-down Ⅱ–Ⅲ tile while the seat has no Far
       // economy is the settlement lottery the premium rush depends on — never
       // let the "collect the nearby payoff first" collapse (640/670) defer it.
-      // 905 beats every move/enter score (≤ 890 short of a victory step) but
-      // stays under the town build milestones (950+), so the flip happens the
-      // moment the hero is adjacent. Measured pre-fix: own placed Far tiles sat
-      // face-down for 5+ rounds while premium capture slipped to R7+/never.
+      // A LIVE beatable guard is different: converting revealed land into XP,
+      // loot and income must beat revealing a third/fourth tile. Previously the
+      // unconditional 905 here bypassed both objectiveStrategicValue's documented
+      // "live fight wins" ordering and expansionPriorityScore's collect-first
+      // collapse. That is how a level-2 army could expose four tiles by round 8
+      // while fighting nothing. Keep discovery decisive only when no fight can
+      // actually be entered; otherwise put it below the route move.
       if (farGroup && !hasOpenedFarEconomy(state, observation.playerId)) {
+        const hasBeatableGuard = Boolean(hero && collectMapObjectives(state, hero).some((objective) => {
+          if (objective.kind !== "guard") return false;
+          const field = state.adventure?.fields[objective.spaceId];
+          return Boolean(field && canBeatGuardedField(state, hero, field) &&
+            distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined);
+        }));
+        if (hasBeatableGuard) {
+          return { score: 675, policy: "map.convert-revealed-land-before-more-discovery" };
+        }
         return { score: 905, policy: "map.discover-far-economy" };
       }
       return {

@@ -317,7 +317,7 @@ describe("Factory Dreadnoughts — splash allocation", () => {
     return state;
   }
 
-  it("the Pack allocates 2/1/1 across three chosen adjacent units, in order", () => {
+  it("the Pack allocates 3/2/1 across three chosen adjacent units, in order", () => {
     let state = dreadnoughtBoard("dread-pack", "dreadnought-splash-2");
     const useSplash = getLegalActions(state, "p1").find(
       (entry) => entry.action.type === "USE_UNIT_ABILITY" && entry.action.abilityId === "dreadnought-splash-2"
@@ -325,7 +325,7 @@ describe("Factory Dreadnoughts — splash allocation", () => {
     expect(useSplash, "the splash 'other action' is offered").toBeDefined();
     state = applyOk(state, useSplash!.action);
 
-    // First pick takes 2, second and third take 1 each.
+    // Factory Pack takes 3/2/1 under the rebalanced rule.
     const order = ["unit_p2_skeletons", "unit_p2_vampires", "unit_p2_dread_knights"];
     for (const targetUnitId of order) {
       const choice = state.pendingChoice;
@@ -334,8 +334,8 @@ describe("Factory Dreadnoughts — splash allocation", () => {
       expect(choice.kind).toBe("dreadnought-splash");
       state = applyOk(state, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: choice.id, targetUnitId });
     }
-    expect(state.combat!.units.unit_p2_skeletons.damage, "first selected takes 2").toBe(2);
-    expect(state.combat!.units.unit_p2_vampires.damage, "second takes 1").toBe(1);
+    expect(state.combat!.units.unit_p2_skeletons.damage, "first selected takes 3").toBe(3);
+    expect(state.combat!.units.unit_p2_vampires.damage, "second takes 2").toBe(2);
     expect(state.combat!.units.unit_p2_dread_knights.damage, "third takes 1").toBe(1);
     // Each pick fires the splash FX event (per-target, drives the shockwave cue).
     expect(triggeredAbilities(state, "dreadnought-splash-2").length, "splash FX events fire").toBe(3);
@@ -343,7 +343,7 @@ describe("Factory Dreadnoughts — splash allocation", () => {
     expect(state.combat!.units.unit_p1_griffins.activatedThisRound, "splash replaced the attack").toBe(true);
   });
 
-  it("the Few allocates 1/1 across up to TWO units (never a third)", () => {
+  it("the Few allocates 2/1/1 across up to three adjacent units", () => {
     let state = dreadnoughtBoard("dread-few", "dreadnought-splash-1");
     const useSplash = getLegalActions(state, "p1").find(
       (entry) => entry.action.type === "USE_UNIT_ABILITY" && entry.action.abilityId === "dreadnought-splash-1"
@@ -359,12 +359,12 @@ describe("Factory Dreadnoughts — splash allocation", () => {
       state = applyOk(state, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: choice.id, targetUnitId });
       picks += 1;
     }
-    expect(picks, "the Few allocates exactly its two 1-damage values").toBe(2);
+    expect(picks, "the Few allocates all three values").toBe(3);
     const totalDamage =
       state.combat!.units.unit_p2_skeletons.damage +
       state.combat!.units.unit_p2_vampires.damage +
       state.combat!.units.unit_p2_dread_knights.damage;
-    expect(totalDamage, "1 + 1 dealt, never a 2").toBe(2);
+    expect(totalDamage, "2 + 1 + 1 damage dealt").toBe(4);
   });
 
   it("CONTROL: with the ability stripped, no splash 'other action' is offered", () => {

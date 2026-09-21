@@ -201,8 +201,10 @@ import {
   ballisticsOpeningBombardAvailable,
   polishBallistaOfferOpen,
   countBallistas,
+  activeWarMachineCardId,
   firstAidVolleyHeals,
   getPermanentCardIds,
+  isWarMachineCard,
   committedSchoolExpertPower,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
@@ -1526,7 +1528,9 @@ export function getUnitMoveRange(
     : (state?.activeEffects.reduce((total, effect) => {
         if (!effectAppliesToUnit(effect, unit)) return total;
         return total + effect.modifiers.reduce((sum, modifier) =>
-          modifier.type === "COMMANDER_MOVEMENT_BONUS" ? sum + modifier.amount : sum, 0);
+          modifier.type === "COMMANDER_MOVEMENT_BONUS" ||
+          modifier.type === "FACTORY_MOMENTUM_MOVEMENT_BONUS"
+            ? sum + modifier.amount : sum, 0);
       }, 0) ?? 0);
 
   // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
@@ -2741,6 +2745,13 @@ export function getTargetsForCard(
   // unit-targeted effect keeps the Tower as a legal target.
   targets = dropArrowTowerFromRelocation(state, targets, card?.effect);
   if (card?.effect.type === "TELEPORT_UNIT") targets = targets.filter(target => target.type !== "unit" || !state.combat?.units[target.unitId] || !neutralTownDeepRooted(state, state.combat.units[target.unitId]));
+  if (cardId === "specialty.frederick.4") {
+    targets = targets.filter((target) =>
+      target.type === "unit" &&
+      Boolean(state.combat?.units[target.unitId]) &&
+      !townBound(state, state.combat!.units[target.unitId]),
+    );
+  }
 
   return targets;
 }
@@ -4824,6 +4835,7 @@ function isOptionEffectPlayable(
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
     case "ADD_UNIT_MAX_HEALTH":
+    case "TELEPORT_UNIT":
     case "MOVE_UNIT_ADJACENT":
     case "HEAL_DAMAGE":
     // Shaman's Puppet (option B): a Cure-style cleanse, played in combat on a unit.
@@ -4937,7 +4949,7 @@ function isOptionEffectPlayable(
         ? Boolean(state.combat)
         : Boolean(state.adventure) && !polishSpellBookEnabled(state);
     case "SEARCH_DECK_THEN_RESHUFFLE": {
-      // Adrienne's Fire Magic IV: Search your own deck + reshuffle the discard. A
+      // School-magic IV: Search your own deck + reshuffle the discard. A
       // printed Instant's card manipulation is playable on the map AND mid-Combat
       // (instantSideAllowedInCombat — the reducer opens the own-deck pick with a
       // combat returnPhase). Useful whenever there is a card to reveal or a
@@ -9032,6 +9044,28 @@ function withComputerAdvanceOffer(
     },
     ...actions,
   ];
+}
+
+/** Factory Tinkerer: both machines stay in play, but only one combat effect is live. */
+function addWarMachineSwitchActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  const combat = state.combat;
+  const commander = state.players[playerId]?.commander;
+  if (
+    !combat || combat.outcome || combat.setup || combat.awaitingContinue || combat.warMachineRound ||
+    state.pendingChoice || state.reactionWindow || commander?.dead || commander?.slug !== "factory" ||
+    combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId) ||
+    !combat.activeUnitId || combat.units[combat.activeUnitId]?.controllerId !== playerId
+  ) return;
+  const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+  if (machines.length < 2) return;
+  const active = activeWarMachineCardId(state, playerId);
+  for (const cardId of machines) {
+    if (cardId === active) continue;
+    actions.push({
+      label: `Switch active war machine to ${cardLibrary[cardId]?.name ?? cardId}`,
+      action: { type: "SWITCH_ACTIVE_WAR_MACHINE", playerId, cardId }
+    });
+  }
 }
 
 function getLegalActionsCore(
@@ -16460,6 +16494,7 @@ function getCombatInteractionActions(
   // Active combat: the standard combat actions apply. Spells and instants
   // stay available to both fighters whoever's unit is active.
   if (state.phase === "combat" && !combat.outcome) {
+    addWarMachineSwitchActions(actions, state, playerId);
     addActiveEffectActions(actions, state, playerId);
     addUnitActions(actions, state, playerId);
     addTacticsCombatActions(actions, state, playerId);

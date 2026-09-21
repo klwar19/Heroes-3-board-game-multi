@@ -354,6 +354,31 @@ export function appendEvent<T extends EventDraft>(
         memory.damageSourceId = target.damage >= target.maxHealth && dealt.source.type === "unit" ? dealt.source.unitId : undefined;
       }
       if (target) target.neutralLastDamageSourceId = target.damage >= target.maxHealth && dealt.source.type === "unit" ? dealt.source.unitId : undefined;
+      if (target) {
+        const fury = getUnitAbilityDefinitions(target).find(
+          ability => ability.effect?.type === "ATTACK_BONUS_PER_DAMAGE_SUFFERED",
+        );
+        if (fury?.effect?.type === "ATTACK_BONUS_PER_DAMAGE_SUFFERED") {
+          const memory = (target.townVeterancy ??= {});
+          memory.damageSuffered = (memory.damageSuffered ?? 0) + dealt.amount;
+          const earned = Math.min(
+            fury.effect.maxBonus,
+            Math.floor(memory.damageSuffered / fury.effect.damagePerBonus),
+          );
+          const previous = memory.damageSufferedAttack ?? 0;
+          if (earned > previous) {
+            memory.damageSufferedAttack = earned;
+            memory.attack = (memory.attack ?? 0) + earned - previous;
+            appendEvent(state, {
+              type: "UNIT_ABILITY_TRIGGERED",
+              unitId: target.id,
+              targetUnitId: target.id,
+              abilityId: fury.id,
+              message: `${target.cardName} has suffered ${memory.damageSuffered} total damage and gains +${earned - previous} Attack.`,
+            });
+          }
+        }
+      }
       if (
         target && target.damage < target.maxHealth &&
         getUnitAbilityDefinitions(target).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "arctic-harden")

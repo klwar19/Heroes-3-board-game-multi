@@ -8,6 +8,7 @@ import { playSpellBookOpen } from "@/lib/sound";
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
+import { activeWarMachineCardId, isWarMachineCard } from "@/engine/permanents";
 import { useBalanceArtFlags, useCardFaceImage } from "./polish-balance-art";
 import { getDeckBack } from "@/data/decks";
 import {
@@ -169,6 +170,11 @@ export function PermanentSlot({
   const { zoomCard } = useCardZoom();
   const [openCardActions, setOpenCardActions] = useState<string | null>(null);
   const cardIds = getPermanentCardIds(state, playerId);
+  const factoryCommander = state.players[playerId]?.commander;
+  const factoryMachineTray = factoryCommander?.slug === "factory" && !factoryCommander?.dead &&
+    cardIds.filter(isWarMachineCard).length > 1;
+  const activeMachineId = factoryMachineTray ? activeWarMachineCardId(state, playerId) : null;
+  const activeMachineIndex = activeMachineId ? cardIds.findIndex((id) => id === activeMachineId) : -1;
   // Ongoing cards held in play: they reach the discard pile (or a recalled
   // spell the hand) only after their effect ends.
   const ongoingCards = state.players[playerId]?.ongoingCards ?? [];
@@ -249,6 +255,11 @@ export function PermanentSlot({
             data-fx-anchor={`war-machine:${playerId}:${cardId}`}
             key={`${cardId}-${index}`}
           >
+            {factoryMachineTray && isWarMachineCard(cardId) ? (
+              <span className={`factoryMachineStatus ${index === activeMachineIndex ? "active" : "reserve"}`}>
+                {index === activeMachineIndex ? "Active" : "Reserve"}
+              </span>
+            ) : null}
             <button
               aria-expanded={actionsOpen}
               aria-haspopup="menu"

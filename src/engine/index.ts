@@ -1220,6 +1220,7 @@ export type {
   CustomCenterHexReward,
   CustomFieldReward,
   CustomGuardSpec,
+  RandomTownGuardSlot,
   CustomHexEvent,
   CustomMapTileToken,
   CustomObjectFieldPlan,

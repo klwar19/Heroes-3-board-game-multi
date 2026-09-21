@@ -1969,7 +1969,7 @@ export function hasDefenseTokenAura(unit: CombatUnitState): boolean {
  * currently active on the unit.
  */
 export function hasSelfDefenseToken(unit: CombatUnitState): boolean {
-  return hasUnitAbilityEffect(unit, "SELF_DEFENSE_TOKEN");
+  return hasUnitAbilityEffect(unit, "SELF_DEFENSE_TOKEN") || hasUnitAbilityEffect(unit, "DEFEND_HEAL");
 }
 
 /**
@@ -2140,6 +2140,15 @@ export function getAttackBonusVsSlowerTarget(unit: CombatUnitState): number {
     (total, ability) =>
       total + (ability.effect?.type === "ATTACK_BONUS_VS_SLOWER_TARGET" ? ability.effect.amount : 0),
     0
+  );
+}
+
+/** Factory Dreadnought R3: bonus against a strictly faster target. */
+export function getAttackBonusVsFasterTarget(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ATTACK_BONUS_VS_FASTER_TARGET").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ATTACK_BONUS_VS_FASTER_TARGET" ? ability.effect.amount : 0),
+    0,
   );
 }
 

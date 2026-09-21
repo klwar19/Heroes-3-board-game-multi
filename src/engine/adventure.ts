@@ -284,6 +284,7 @@ import type {
   EventPoolEntry,
   EventsState,
   GameDifficulty,
+  FactionId,
   GameRuleset,
   GameState,
   HeroId,
@@ -437,7 +438,18 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
   if (!guard) {
     return;
   }
-  if (guard.units && guard.units.length > 0) {
+  if (field.location === "random_town" && guard.townSlots?.length) {
+    field.customTownGuardSlots = guard.townSlots.map((slot) => ({ ...slot }));
+    // Random Town keeps its printed VII encounter and reward rules even when
+    // the roster is hand-picked; the chosen cards only replace the defenders.
+    field.difficulty = 7;
+    field.designedGuard = true;
+    delete field.customGuardUnits;
+    delete field.customGuardPackFaction;
+    delete field.customGuardLevel;
+    delete field.customGuardLevelArmy;
+  } else if (guard.units && guard.units.length > 0) {
+    delete field.customTownGuardSlots;
     field.customGuardUnits = [...guard.units];
     field.difficulty = customGuardArmyDifficulty(guard.units);
     field.designedGuard = true;
@@ -449,6 +461,7 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
     delete field.customGuardLevel;
     delete field.customGuardLevelArmy;
   } else if (guard.level) {
+    delete field.customTownGuardSlots;
     field.difficulty = guard.level;
     field.designedGuard = true;
     // Keep level on the field so bank-style fights (difficulty forced to 0)
@@ -514,6 +527,7 @@ export function applyGrailUtopiaEncounterRules(state: GameState, field: MapField
 export function clearCustomGuard(field: MapFieldState): void {
   delete field.difficulty;
   delete field.customGuardUnits;
+  delete field.customTownGuardSlots;
   delete field.customGuardLevel;
   delete field.customGuardLevelArmy;
   delete field.customGuardPackFaction;
@@ -546,6 +560,17 @@ export function designedGuardPreview(field: MapFieldState | undefined, state?: G
   }
   if (state && usesDragonScenarioUtopiaGuards(state, field)) {
     return null;
+  }
+  if (field.customTownGuardSlots?.length) {
+    const faction = field.faction && field.faction in coreFactionDefinitions ? coreFactionDefinitions[field.faction as FactionId] : undefined;
+    return {
+      difficulty: field.difficulty ?? 7,
+      units: field.customTownGuardSlots.map((slot) => {
+        const unitId = slot.unitDefId ?? faction?.units?.[slot.rank - 1];
+        const name = unitId ? coreUnitDefinitions[unitId]?.name ?? unitId : `town unit Lv ${slot.rank}`;
+        return `${slot.unitDefId ? "Slot" : "Lv"} ${slot.rank} ${slot.side} ${name}${slot.stacks && (!state || armyUnitStacksActive(state)) ? ` · ${slot.stacks} Stack` : ""}${slot.veteranRank && (!state || unitExperienceActive(state)) ? ` · veteran ${slot.veteranRank}` : ""}`;
+      })
+    };
   }
   // Grouped labels (e.g. "3× Random gold") so the map tooltip matches the
   // designer army summary; empty for a level-only designed guard.
@@ -13300,6 +13325,37 @@ function drawTopOfSharedDeck(
   return taken;
 }
 
+/** Resolve Artifact-deck scroll cards from every acquisition path in one place. */
+export function materializeArtifactScrolls(state: GameState): void {
+  for (const player of Object.values(state.players)) {
+    let index = player.hand.indexOf("artifact.spell_scroll");
+    while (index !== -1) {
+      player.hand.splice(index, 1);
+      const scrollId = `scroll_${nextEventNumber(state)}`;
+      player.scrolls = player.scrolls ?? [];
+      const scroll = { id: scrollId, spellCardIds: [] as string[] };
+      player.scrolls.push(scroll);
+      for (let draw = 0; draw < 2; draw += 1) {
+        const preferred = draw === 1 ? ["spells-expert", "spells"] : ["spells", "spells-expert"];
+        for (const deckId of preferred) {
+          if (!state.decks[deckId]) continue;
+          const spell = drawTopOfSharedDeck(state, deckId, player.id);
+          if (spell) {
+            scroll.spellCardIds.push(spell);
+            break;
+          }
+        }
+      }
+      if (scroll.spellCardIds.length === 0) {
+        player.scrolls.pop();
+      } else {
+        appendEvent(state, { type: "SPELL_SCROLL_GAINED", playerId: player.id, scrollId, spellCardIds: [...scroll.spellCardIds] });
+      }
+      index = player.hand.indexOf("artifact.spell_scroll");
+    }
+  }
+}
+
 /**
  * Injected by the reducer (which owns the Ⅱ–Ⅲ keep/reroll/pick flip and
  * beginTileRotation — neither importable here without a cycle) so that a
@@ -16765,6 +16821,9 @@ export type NeutralDraw = {
   factionPack?: boolean;
   /** Designer few-slot guard: fight this unit on its faction Few side. */
   factionFew?: boolean;
+  /** Designer Random Town bonuses, gated at combat setup by optional rules. */
+  designerStacks?: number;
+  designerVeteranRank?: 1 | 2 | 3;
   /**
    * Naval Battles Creature Bank defender: fight from the unit's Creature Bank
    * card (its own stats/abilities, no tier) rather than the Few/Pack/Neutral
@@ -17938,6 +17997,25 @@ function drawGuardArmyBase(
   if (usesDragonScenarioUtopiaGuards(state, field)) {
     return drawDragonUtopiaArmy(state, 7, diplomacyTierReduction);
   }
+  if (field?.location === "random_town" && field.customTownGuardSlots?.length) {
+    const random = adventureRandom(state, `custom-town-guard-${field.spaceId}`);
+    const playable = PLAYABLE_FACTIONS.filter((id) => isPlayableFaction(id, state.anime));
+    const faction: FactionId | "random" = field.faction && field.faction in coreFactionDefinitions
+      ? field.faction as FactionId
+      : playable.length ? playable[random.nextInt(0, playable.length - 1)] as FactionId : "random";
+    return field.customTownGuardSlots.flatMap((slot) => {
+      const entry = slot.unitDefId
+        ? slot.side === "neutral" ? slot.unitDefId : `${slot.side}:${slot.unitDefId}`
+        : `town-rank:${slot.rank}:${slot.side}`;
+      return resolveCustomGuardDraws([entry], random, {
+        ...(slot.unitDefId ? {} : { packFaction: faction }), playableFactions: playable
+      }).map((draw) => ({
+        ...draw,
+        ...(slot.stacks ? { designerStacks: slot.stacks } : {}),
+        ...(slot.veteranRank ? { designerVeteranRank: slot.veteranRank } : {})
+      }));
+    });
+  }
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every
   // printed/location draw below. Unknown ids are skipped defensively.
@@ -17947,7 +18025,9 @@ function drawGuardArmyBase(
     const random = adventureRandom(state, `custom-guard-${field.spaceId}`);
     const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
     return resolveCustomGuardDraws(field.customGuardUnits, random, {
-      packFaction: field.customGuardPackFaction,
+      packFaction: field.location === "random_town" && field.customGuardPackFaction === "random"
+        ? field.faction && field.faction in coreFactionDefinitions ? field.faction as FactionId : "random"
+        : field.customGuardPackFaction,
       playableFactions: playable
     }) as NeutralDraw[];
   }

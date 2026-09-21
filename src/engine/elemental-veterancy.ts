@@ -7,6 +7,7 @@ import {
   isAdjacent,
   BATTLEFIELD_CELL_COUNT,
   getBattlefieldLabel,
+  getBattlefieldDistance,
 } from "./battlefield";
 import type {
   CombatUnitState,
@@ -192,11 +193,14 @@ export function elementalActivation(
     )
       continue;
     if (!elementalVeterancy(unit, "nest")) continue;
-    if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) continue;
+    if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) {
+      nest.damage = nest.maxHealth;
+      continue;
+    }
     queueElementalChoice(state, {
       kind: "nest-return",
       unitId: unit.id,
-      abilityId: risingNest ? "veteran-phoenix-rising-nest-return" : "veteran-phoenix-nest",
+      abilityId: risingNest ? "veteran-phoenix-rising-nest-return" : "veteran-phoenix-nest-return",
       targetId: nest.id,
     });
   }
@@ -346,34 +350,28 @@ export function openElementalChoice(
       const nest = combat.units[request.targetId!];
       if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) continue;
       const risingNest = request.abilityId === "veteran-phoenix-rising-nest-return";
-      if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) continue;
-      const from = unit.position;
-      unit.position = nest.position;
-      nest.damage = nest.maxHealth;
-      const healed = Math.min(1, Math.max(0, unit.damage));
-      unit.damage -= healed;
-      if (risingNest) (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
-      appendEvent(state, {
-        type: "UNIT_MOVED",
-        playerId: unit.controllerId,
-        unitId: unit.id,
-        from,
-        to: unit.position,
-      });
-      if (healed > 0) appendEvent(state, {
-        type: "DAMAGE_HEALED",
-        source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
-        target: { type: "unit", unitId: unit.id },
-        amount: healed,
-      });
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: unit.id,
-        targetUnitId: unit.id,
-        abilityId: request.abilityId,
-        message: `${unit.cardName} returns to its Nest.`,
-      });
-      continue;
+      if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) {
+        nest.damage = nest.maxHealth;
+        continue;
+      }
+      const chooser = hooks.chooser(state, combat, unit);
+      if (!chooser || chooser === NEUTRAL_PLAYER_ID) {
+        executeElementalPick(state, request, { targetId: nest.id }, hooks);
+        continue;
+      }
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId: chooser,
+        prompt: `${unit.cardName}: ${unitAbilities[request.abilityId]?.name ?? "Phoenix Nest"} — fly to the Nest?`,
+        options: [{ label: `Fly to Nest at ${getBattlefieldLabel(nest.position)}` }, { label: "Stay here" }],
+        context: "elemental-veterancy",
+        elementalChoice: { request, picks: [{ targetId: nest.id }, { targetId: nest.id, skip: true }] },
+        returnPhase: "combat",
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = chooser;
+      return true;
     }
     if (request.kind === "town-bolt") {
       const target = combat.units[request.targetId!];
@@ -424,7 +422,8 @@ export function openElementalChoice(
       for (const target of Object.values(combat.units)) if (alive(target)) { picks.push({ targetId: target.id }); labels.push(target.cardName); }
     } else if (request.kind === "move-one") {
       if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
-      for (const position of empty.filter(p => isAdjacent(p, unit.position))) {
+      const maxDistance = request.maxDistance ?? 1;
+      for (const position of empty.filter(p => getBattlefieldDistance(p, unit.position) <= maxDistance)) {
         picks.push({ position }); labels.push(`Move to ${getBattlefieldLabel(position)}`);
       }
     } else if (request.kind === "move-ally-one") {
@@ -625,6 +624,34 @@ function executeElementalPick(
     hooks.returnFire?.(state, unit, request.targetId!, !pick.skip);
     return;
   }
+  if (request.kind === "nest-return") {
+    const nest = combat.units[request.targetId!];
+    if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) return;
+    // The old Nest expires at this scheduled activation even when its owner
+    // stays. It cannot offer another return on a later round.
+    nest.damage = nest.maxHealth;
+    if (pick.skip || (request.abilityId === "veteran-phoenix-rising-nest-return" &&
+      (townBound(state, unit) || neutralTownDeepRooted(state, unit)))) return;
+    const from = unit.position;
+    unit.position = nest.position;
+    const canHeal = request.abilityId !== "veteran-phoenix-rising-nest-return" ||
+      getUnitAbilityDefinitions(unit).some(a => a.id === "veteran-phoenix-rising-nest-heal");
+    const healed = canHeal ? Math.min(1, Math.max(0, unit.damage)) : 0;
+    unit.damage -= healed;
+    if (request.abilityId === "veteran-phoenix-rising-nest-return")
+      (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
+    appendEvent(state, { type: "UNIT_MOVED", playerId: unit.controllerId, unitId: unit.id, from, to: unit.position, sourceAbilityId: request.abilityId });
+    if (healed > 0) appendEvent(state, {
+      type: "DAMAGE_HEALED",
+      source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      target: { type: "unit", unitId: unit.id }, amount: healed,
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: unit.id,
+      abilityId: request.abilityId, message: `${unit.cardName} flies to its Nest.`,
+    });
+    return;
+  }
   if (pick.skip) return;
   if (request.kind === "break-cover" || request.kind === "blood-price") {
     const target = combat.units[request.targetId!];
@@ -680,7 +707,7 @@ function executeElementalPick(
   if (request.kind === "move-one" || request.kind === "return-origin") {
     const position = pick.position!;
     const blocked = !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT ||
-      (request.kind === "move-one" && !isAdjacent(unit.position, position)) ||
+      (request.kind === "move-one" && getBattlefieldDistance(unit.position, position) > (request.maxDistance ?? 1)) ||
       (request.kind === "return-origin" && position !== request.position) ||
       (combat.obstacles ?? []).includes(position) || (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
       Boolean(combat.siege?.walls.includes(position)) || combat.siege?.gatePosition === position ||
@@ -844,6 +871,11 @@ function executeElementalPick(
       assets: { cardImage: "/game-tokens/phoenix-nest.webp" },
       elementalVeterancy: { nestOwnerId: unit.id, nestRound: combat.round },
     };
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: id,
+      abilityId: request.abilityId, message: `${unit.cardName} places a Nest.`,
+    });
+    return;
   }
   if (request.kind !== "damage")
     appendEvent(state, {

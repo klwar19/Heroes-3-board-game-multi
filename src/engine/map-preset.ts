@@ -48,6 +48,7 @@ import type {
   CustomCenterHexReward,
   CustomFieldReward,
   CustomGuardSpec,
+  RandomTownGuardSlot,
   CustomHexEvent,
   CustomMapMinesConfig,
   CustomMapObeliskBonus,
@@ -240,7 +241,7 @@ const CENTER_HEX_SEARCH_SPECS = [
 /**
  * True when `unitDefId` is a legal certain-army entry: a Neutral unit, a
  * `random:<tier>` Neutral slot, a `random-pack:<tier>` Pack slot, a faction
- * roster `town-rank:<2..6>:pack|few` slot, or a
+ * roster `town-rank:<1..7>:pack|few` slot, or a
  * `pack:<unitDefId>` named Pack.
  */
 export function isCustomGuardUnit(unitDefId: unknown): unitDefId is string {
@@ -269,13 +270,45 @@ function sanitizePackFaction(value: unknown): FactionId | "random" | undefined {
  * present. Keeps `levelArmy: "packs"` and `packFaction` when valid.
  * Shared by the persistence sanitiser, setup validation and the designer UI.
  */
-export function sanitizeCustomGuardSpec(input: unknown): CustomGuardSpec | undefined {
+export function sanitizeCustomGuardSpec(input: unknown, allowTownSlots = false): CustomGuardSpec | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
   const raw = input as Record<string, unknown>;
+  if (allowTownSlots && Array.isArray(raw.townSlots)) {
+    const slots: RandomTownGuardSlot[] = [];
+    const used = new Set<number>();
+    for (const entry of raw.townSlots) {
+      if (!entry || typeof entry !== "object") continue;
+      const slot = entry as Record<string, unknown>;
+      const rank = slot.rank;
+      if (typeof rank !== "number" || !Number.isInteger(rank) || rank < 1 || rank > 7 || used.has(rank)) continue;
+      const side = slot.side;
+      if (side !== "few" && side !== "pack" && side !== "neutral") continue;
+      const def = typeof slot.unitDefId === "string" ? coreUnitDefinitions[slot.unitDefId] : undefined;
+      if (slot.unitDefId !== undefined && (!def || !def[side])) continue;
+      if (!def && side === "neutral") continue;
+      const tier = def?.tier ?? (rank <= 3 ? "bronze" : rank <= 5 ? "silver" : rank === 6 ? "gold" : "azure");
+      const stacks = side !== "few" && typeof slot.stacks === "number" && Number.isFinite(slot.stacks)
+        ? Math.max(0, Math.min(tier === "bronze" ? 3 : tier === "silver" ? 2 : 1, Math.trunc(slot.stacks)))
+        : 0;
+      const veteranRank = slot.veteranRank === 1 || slot.veteranRank === 2 || slot.veteranRank === 3 ? slot.veteranRank : 0;
+      slots.push({
+        rank: rank as RandomTownGuardSlot["rank"],
+        ...(def ? { unitDefId: def.id } : {}),
+        side,
+        ...(stacks ? { stacks } : {}),
+        ...(veteranRank ? { veteranRank } : {})
+      });
+      used.add(rank);
+    }
+    if (slots.length > 0) return { townSlots: slots.sort((a, b) => a.rank - b.rank) };
+  }
   let units = Array.isArray(raw.units)
-    ? raw.units.filter(isCustomGuardUnit).slice(0, MAX_CUSTOM_GUARD_UNITS)
+    ? raw.units.filter(isCustomGuardUnit).slice(0,
+        raw.units.every((unit: unknown) => typeof unit === "string" && /^town-rank:[1-7]:(few|pack)$/.test(unit))
+          ? 7
+          : MAX_CUSTOM_GUARD_UNITS)
     : [];
   const packFaction = sanitizePackFaction(raw.packFaction);
 
@@ -1570,7 +1603,7 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
     vp?: unknown;
   };
   const config: CustomMapRandomTownsConfig = {};
-  const guard = sanitizeCustomGuardSpec(raw.guard);
+  const guard = sanitizeCustomGuardSpec(raw.guard, true);
   if (guard) config.guard = guard;
   if (
     raw.combatRoundLimit === 1 ||
@@ -3076,6 +3109,9 @@ export function describeVictoryPointsConfig(
 
 /** Short label for a designer guard: a level Ⅰ–Ⅶ or a grouped exact army. */
 export function describeGuardSpec(guard: CustomGuardSpec): string {
+  if (guard.townSlots?.length) {
+    return guard.townSlots.map((slot) => `${slot.unitDefId ? "Slot" : "Lv"} ${slot.rank} ${slot.side} ${slot.unitDefId ? coreUnitDefinitions[slot.unitDefId]?.name ?? slot.unitDefId : "town unit"}${slot.stacks ? ` +${slot.stacks} Stack` : ""}${slot.veteranRank ? ` · rank ${slot.veteranRank}` : ""}`).join(", ");
+  }
   if (guard.units && guard.units.length > 0) {
     const grouped = describeGuardArmyGrouped(guard.units);
     const base = grouped || `${guard.units.length}-unit army`;

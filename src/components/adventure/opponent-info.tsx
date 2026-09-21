@@ -322,15 +322,17 @@ export function OpponentInfoDock({
   const buttons = opponents.map((id) => {
     const identity = getSeatIdentity(state, id);
     const name = identity.personName ?? identity.seatName;
+    const orderNumber = seatIds.indexOf(id) + 1;
     return (
       <button
-        aria-label={`Show ${name} details`}
+        aria-label={`Show player ${orderNumber}, ${name}, details`}
         className="opponentInfoBtn"
         key={id}
         onClick={() => setOpenSeat(id)}
-        title={`Show ${name}'s resources, units, hero level and buildings`}
+        title={`Player ${orderNumber} in turn order · show ${name}'s resources, units, hero level and buildings`}
         type="button"
       >
+        <span className="opponentInfoOrder" aria-hidden="true">{orderNumber}.</span>
         <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
         {name}
       </button>
@@ -392,6 +394,7 @@ export function PhoneOpponentPanel({
         {opponents.map((id) => {
           const identity = getSeatIdentity(state, id);
           const name = identity.personName ?? identity.seatName;
+          const orderNumber = seatIds.indexOf(id) + 1;
           const player = state.players[id];
           const hero = Object.values(state.heroes).find(
             (candidate) => candidate.controllerId === id && candidate.kind === "main"
@@ -400,12 +403,13 @@ export function PhoneOpponentPanel({
             <li key={id}>
               <button
                 aria-haspopup="dialog"
-                aria-label={`Open ${name}'s dossier`}
+                aria-label={`Open player ${orderNumber}, ${name}'s dossier`}
                 className="phoneFoeCard"
                 onClick={() => setOpenSeat(id)}
                 type="button"
               >
                 <span className="phoneFoeName">
+                  <span className="opponentInfoOrder" aria-hidden="true">{orderNumber}.</span>
                   <span
                     aria-hidden="true"
                     className="seatFactionDot"

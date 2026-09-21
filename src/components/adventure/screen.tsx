@@ -4745,6 +4745,9 @@ export function AdventureHud({
   // already reads "Hero of Town", so no redundant pick line is shown.
   const activeIdentity = getSeatIdentity(state, state.activePlayerId);
   const activeName = activeIdentity.personName ?? activeIdentity.seatName;
+  const activeOrderNumber = state.turnOrder
+    .filter((playerId) => playerId !== NEUTRAL_PLAYER_ID)
+    .indexOf(state.activePlayerId) + 1;
   const activePick = activeIdentity.personName
     ? seatPickSummary(activeIdentity)
     : null;
@@ -4804,7 +4807,10 @@ export function AdventureHud({
         </div>
       ) : (
         <div className="advHudCell">
-          <strong>{activeName}&apos;s turn</strong>
+          <strong>
+            {activeOrderNumber > 0 ? <span title={`Player ${activeOrderNumber} in turn order`}>{activeOrderNumber}. </span> : null}
+            {activeName}&apos;s turn
+          </strong>
           <small>
             {activePick ? `${activePick} · ${state.phase}` : state.phase}
           </small>
@@ -16632,6 +16638,17 @@ function HeroSetupDetail({ heroDefId, faces, onZoom }: {
                     </span>
                   )}
                 </button>
+              );
+            })}
+          </div>
+          <div className="heroInfoCardDetails">
+            {faces.map((face) => {
+              if (kind === "ability" ? face.key !== "ability" : !face.key.startsWith("specialty-")) return null;
+              return (
+                <div className="heroInfoCardDetail" key={`${kind}-${face.key}`}>
+                  <strong>{face.label}: {face.title}</strong>
+                  {face.line ? <span>{face.line}</span> : null}
+                </div>
               );
             })}
           </div>

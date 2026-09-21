@@ -57,6 +57,7 @@ export type FxCue =
       to: string;
       cardImage?: string;
       teleport?: boolean;
+      teleportFxKey?: string;
       /** The card reads upside-down on the board (p1 / flipped view). */
       flip?: boolean;
       delayMs?: number;
@@ -482,18 +483,19 @@ async function runTeleport(stage: HTMLElement, cue: Extract<FxCue, { kind: "move
   }
   stage.appendChild(ghost);
   const previousOpacity = realCard?.style.opacity;
+  const teleportFxKey = cue.teleportFxKey ?? "magma-teleport-animated";
   if (realCard) realCard.style.opacity = "0";
   try {
     playLibrarySound("spells/teleport");
     await Promise.all([
-      runSprite(stage, "magma-teleport-animated", cue.from, undefined, 300),
+      runSprite(stage, teleportFxKey, cue.from, undefined, 300),
       animate(ghost, [
         { transform: "scale(1)", opacity: 1 },
         { transform: "scale(0.08)", opacity: 0 },
       ], { duration: 300, easing: "ease-in", fill: "forwards" }),
     ]);
     ghost.remove();
-    const arrival = runSprite(stage, "magma-teleport-animated", cue.to, undefined, 340);
+    const arrival = runSprite(stage, teleportFxKey, cue.to, undefined, 340);
     if (realCard) {
       realCard.style.opacity = previousOpacity ?? "";
       await Promise.all([arrival, animate(realCard, [
@@ -724,14 +726,17 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   const dy = to.y - from.y;
   const distance = Math.hypot(dx, dy);
   if (distance < 1) return;
-  const dragonBreath = cue.fxKey === "dragon-fire-breath-animated"
-    || cue.fxKey === "dragon-fierce-breath-animated";
+  const dragonBreath = ["dragon-fire-breath-animated", "dragon-fierce-breath-animated", "dragon-small-breath-animated", "faerie-rainbow-breath-animated"].includes(cue.fxKey);
+  const compactBreath = cue.fxKey === "dragon-small-breath-animated";
   // Let the dragon's fire carry past the struck unit instead of ending at its
-  // center. Other thrust effects retain their original anchor geometry.
-  const width = distance + (dragonBreath ? toRect.width * 0.38 : 0);
-  const height = Math.min(fromRect.height, toRect.height) * (dragonBreath ? 1.02 : 0.88);
-  const centerX = from.x + dx / distance * width / 2;
-  const centerY = from.y + dy / distance * width / 2;
+  // center. Efreet and Fire Elementals launch from the near edge and stop at
+  // the target instead, making the same frames visibly smaller and shorter.
+  const sourceInset = compactBreath ? fromRect.width * 0.24 : 0;
+  const targetOverrun = compactBreath ? toRect.width * 0.12 : dragonBreath ? toRect.width * 0.58 : 0;
+  const width = Math.max(distance * 0.6, distance - sourceInset + targetOverrun);
+  const height = Math.min(fromRect.height, toRect.height) * (compactBreath ? 0.67 : dragonBreath ? 1.14 : 0.88);
+  const centerX = from.x + dx / distance * (sourceInset + width / 2);
+  const centerY = from.y + dy / distance * (sourceInset + width / 2);
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxMeleeImpact";
   sprite.style.width = `${width}px`;
@@ -742,6 +747,8 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   sprite.style.top = `${centerY - height / 2}px`;
   sprite.style.transformOrigin = "center";
   sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+  if (cue.fxKey === "dragon-fierce-breath-animated")
+    sprite.style.filter = "brightness(1.07) saturate(1.15) drop-shadow(0 0 8px rgb(255 218 130 / 62%))";
   stage.appendChild(sprite);
   const playbackMs = (sheet.frames / sheet.fps) * 1000;
   if (cue.sound) playLibrarySound(cue.sound);
@@ -825,6 +832,7 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
     "thunderbird-trident-zap-animated",
     "hydra-multi-bite", "haspid-poison-bite",
     "phoenix-flame-flow-animated", "dragon-fire-breath-animated", "dragon-fierce-breath-animated",
+    "dragon-small-breath-animated", "faerie-rainbow-breath-animated",
     "azure-ice-breath-animated", "crystal-red-strike-animated", "rust-acid-breath-animated",
   ].includes(cue.fxKey)) return runThrust(stage, cue);
   const sheet = getFxSheet(cue.fxKey);

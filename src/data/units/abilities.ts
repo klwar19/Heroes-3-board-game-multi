@@ -17,7 +17,7 @@ export type NeutralVeterancyMechanic =
 
 /** Signature rank rules carried by the Neutral-deck counterparts of town units. */
 export type NeutralTownVeterancyMechanic =
-  | "set-the-spear" | "marked-volley" | "winged-riposte" | "righteous-pursuit" | "consecrated-shot" | "full-gallop" | "guardian-angel"
+  | "set-the-spear" | "marked-volley" | "marked-volley-all-attacks" | "winged-riposte" | "winged-riposte-3" | "righteous-pursuit" | "consecrated-shot" | "full-gallop" | "guardian-angel"
   | "skirmisher-step" | "runic-backlash" | "first-volley" | "mana-turbulence" | "deep-roots" | "moonlit-aid"
   | "improvised-ammunition" | "stone-landing" | "arcane-plating" | "spell-channel" | "unstable-wish" | "measured-blades"
   | "stolen-spark" | "scattering-flame" | "threefold-threat" | "hellish-endurance" | "summoned-torment" | "searing-passage" | "infernal-command"
@@ -44,6 +44,7 @@ export type UnitAbilityEffectDefinition =
   | { type: "NEUTRAL_VETERANCY"; mechanic: NeutralVeterancyMechanic }
   | { type: "NEUTRAL_TOWN_VETERANCY"; mechanic: NeutralTownVeterancyMechanic }
   | { type: "TOWN_VETERANCY"; mechanic: TownVeterancyMechanic }
+  | { type: "ATTACK_BONUS_PER_DAMAGE_SUFFERED"; damagePerBonus: number; maxBonus: number }
   | { type: "FACTION_VETERANCY"; mechanic: "mark" | "revenge" | "hide" | "cleave" | "medusa-mend" | "execution" | "full-rebirth" | "flip-haste" | "flip-health" | "eye-immunity" | "skeleton-rebirth" | "escape" | "spell-heal" | "intercept" | "defend-heal" | "cloud-pierce" | "ally-heal" | "tribute" | "first-ward" | "dread" }
   | { type: "ELEMENTAL_VETERANCY"; mechanic: ElementalVeterancyMechanic }
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
@@ -130,6 +131,7 @@ export type UnitAbilityEffectDefinition =
       superChargeFear?: boolean;
     }
   | { type: "ON_ATTACKED_HEAL_SELF"; amount: number }
+  | { type: "ON_MOVE_HEAL_SELF"; amount: number; minimumSpaces: number }
   | { type: "AZURE_DRAGON_SUPER_CHARGE"; healthAtMost: number; defenseReduction: number; paralysisRolls: number[]; fearMinRoll: number }
   | {
       /**
@@ -300,6 +302,11 @@ export type UnitAbilityEffectDefinition =
   | {
       /** Dreadnought: reduce only the first positive damage assignment of the Combat. */
       type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT";
+      amount: number;
+    }
+  | {
+      /** Few Dreadnought: reduce every attack's damage during Combat round one. */
+      type: "REDUCE_EACH_ATTACK_DAMAGE_FIRST_ROUND";
       amount: number;
     }
   | {
@@ -1504,6 +1511,11 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Factory Dreadnought R3: bonus against a strictly faster live target. */
+      type: "ATTACK_BONUS_VS_FASTER_TARGET";
+      amount: number;
+    }
+  | {
       /** Conditional innate Attack bonus against a target's current printed Defense. */
       type: "ATTACK_BONUS_VS_DEFENSE_AT_MOST";
       maximum: number;
@@ -1537,6 +1549,11 @@ export type UnitAbilityEffectDefinition =
        * the card is Stacked.
        */
       type: "SELF_DEFENSE_TOKEN";
+    }
+  | {
+      /** Factory Dreadnought R4: Defend action restores three damage. */
+      type: "DEFEND_HEAL";
+      amount: number;
     }
   | {
       /** MGQ Emily: grant the controller positive Morale at combat setup. */
@@ -1775,7 +1792,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "ntv-core-suppression": { id: "ntv-core-suppression", name: "Meridian Suppression", text: "Once per round, an enemy damaged by this unit loses 1 Attack and 1 Initiative until its next activation ends.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "core-suppression" }, implementationStatus: "implemented" },
   "ntv-mountain-stillness": { id: "ntv-mountain-stillness", name: "Mountain Stillness", text: "After this unit's own attack resolves -1 or 0 on its Attack die, paralyze the surviving enemy target. Does not trigger on retaliation or an ignored or cancelled die.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "mountain-stillness" }, implementationStatus: "implemented" },
   "ctv-mountain-break": { id: "ctv-mountain-break", name: "Mountain Break", text: "Once per combat, after this unit's own melee attack damages a surviving enemy on a resolved 0 or +1, you may destroy one obstacle, wall or unoccupied gate adjacent to that enemy and deal it 1 effect damage. If none is eligible, heal 1 HP instead. Cannot destroy tokens.", effect: { type: "CUSTOM_TOWN_VETERANCY", mechanic: "break-cover" }, implementationStatus: "implemented" },
-  "veteran-phoenix-rising-nest": { id: "veteran-phoenix-rising-nest", name: "Rising Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, teleport there and gain +1 Attack for this combat (maximum +2 from nests), then move normally. Does not heal. Bound or Deep Rooted units cannot return to the Nest.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
+  "veteran-phoenix-rising-nest": { id: "veteran-phoenix-rising-nest", name: "Rising Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, choose whether to fly there. If you do, gain +1 Attack for this combat (maximum +2 from nests), then move normally. Does not heal. The Nest then expires. Bound or Deep Rooted units cannot return to the Nest.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
   "ctv-break-cover": { id: "ctv-break-cover", name: "Break Cover", text: "Once per combat, after this unit's own melee attack damages a surviving enemy on a resolved 0 or +1, you may destroy one Combat Obstacle adjacent to that enemy and deal it 1 effect damage. Cannot destroy siege walls, gates or tokens.", effect: { type: "CUSTOM_TOWN_VETERANCY", mechanic: "break-cover" }, implementationStatus: "implemented" },
   "ctv-clear-mind": { id: "ctv-clear-mind", name: "Clear Mind", text: "Once per combat, when this unit activates with no adjacent enemy, remove its oldest removable negative ongoing effect. Does not remove tokens or heal damage.", effect: { type: "CUSTOM_TOWN_VETERANCY", mechanic: "clear-mind" }, implementationStatus: "implemented" },
   "ctv-rescue-step": { id: "ctv-rescue-step", name: "Rescue Step", text: "Once per round, at activation, you may move an adjacent ally that is adjacent to an enemy to an adjacent empty space. Does not trigger movement abilities or end this unit's activation. Bound or Deep Rooted allies cannot move.", effect: { type: "CUSTOM_TOWN_VETERANCY", mechanic: "rescue-step" }, implementationStatus: "implemented" },
@@ -1783,6 +1800,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "ntv-set-the-spear": { id: "ntv-set-the-spear", name: "Set the Spear", text: "When an adjacent enemy moves before attacking this unit, this unit gains +1 Defense against that attack.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "set-the-spear" }, implementationStatus: "implemented" },
   "ntv-marked-volley": { id: "ntv-marked-volley", name: "Marked Volley", text: "Once per round, after this unit's non-adjacent ranged attack damages an enemy, that enemy has -1 Defense against the next attack made against it this round.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "marked-volley" }, implementationStatus: "implemented" },
   "ntv-winged-riposte": { id: "ntv-winged-riposte", name: "Winged Riposte", text: "After this unit retaliates, it may move 1 space to an empty space. This movement does not provoke effects.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "winged-riposte" }, implementationStatus: "implemented" },
+  "imperium-marked-volley-all-attacks": { id: "imperium-marked-volley-all-attacks", name: "Marked Volley", text: "Once per round, after any attack by this unit damages an enemy, that enemy has -1 Defense against the next attack made against it this round.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "marked-volley-all-attacks" }, implementationStatus: "implemented" },
+  "imperium-winged-riposte-3": { id: "imperium-winged-riposte-3", name: "Winged Riposte", text: "After this unit retaliates, it may move up to 3 spaces to an empty space. This movement does not provoke effects.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "winged-riposte-3" }, implementationStatus: "implemented" },
+  "imperium-titan-damage-fury": { id: "imperium-titan-damage-fury", name: "Titanic Fury", text: "For every 6 damage this unit suffers in total, it gains +1 Attack for this Combat, up to +2 Attack.", effect: { type: "ATTACK_BONUS_PER_DAMAGE_SUFFERED", damagePerBonus: 6, maxBonus: 2 }, implementationStatus: "implemented" },
   "ntv-righteous-pursuit": { id: "ntv-righteous-pursuit", name: "Righteous Pursuit", text: "+1 Attack against an already-damaged enemy.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "righteous-pursuit" }, implementationStatus: "implemented" },
   "ntv-consecrated-shot": { id: "ntv-consecrated-shot", name: "Consecrated Shot", text: "Once per round, after this unit's non-adjacent ranged attack resolves 0 or +1, remove 1 damage from a chosen ally.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "consecrated-shot" }, implementationStatus: "implemented" },
   "ntv-full-gallop": { id: "ntv-full-gallop", name: "Full Gallop", text: "After moving at least 2 spaces during this activation, this unit's next attack pierces 1 Defense.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "full-gallop" }, implementationStatus: "implemented" },
@@ -2239,20 +2259,21 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
   // up to N units adjacent to this one. Allocate the printed damage, starting
-  // with the first selected unit." Few hits up to 2 for 1/1; Pack/Neutral up to
-  // 3 for 2/1/1. A flat allocation (no attack roll, no retaliation).
+  // with the first selected unit." Few hits up to 3 for 2/1/1; Pack hits up to
+  // 3 for 3/2/1; the Neutral side has its own 2/1/1 definition.
+  // A flat allocation (no attack roll, no retaliation).
   "dreadnought-splash-1": {
     id: "dreadnought-splash-1",
     name: "Concussive Slam",
-    text: "[activation] Instead of attacking, select up to 2 units adjacent to this one. Allocate 1/1 damage, starting with the first selected unit.",
-    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [1, 1] },
+    text: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 damage, starting with the first selected unit. Stop when done.",
+    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [2, 1, 1] },
     implementationStatus: "implemented"
   },
   "dreadnought-splash-2": {
     id: "dreadnought-splash-2",
     name: "Concussive Slam",
-    text: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 damage, starting with the first selected unit.",
-    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [2, 1, 1] },
+    text: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 3/2/1 damage, starting with the first selected unit.",
+    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [3, 2, 1] },
     implementationStatus: "implemented"
   },
   // Factory Bounty Hunters (Neutral guard): "Preemptive Shot" — retaliate before
@@ -2613,6 +2634,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Dragon Breath",
     text: "Attack 2 spaces in a line: after the attack, a full separate attack at attack 3 strikes the unit directly behind the target (friend or foe). That unit is not adjacent, so it never retaliates.",
     effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 3 },
+    implementationStatus: "implemented"
+  },
+  "dreadnought-splash-neutral": {
+    id: "dreadnought-splash-neutral",
+    name: "Concussive Slam",
+    text: "[activation] Instead of attacking, select up to 3 adjacent units. Allocate 2/1/1 damage, starting with the first selected unit. Stop when done.",
+    effect: { type: "SPLASH_ALLOCATION_ATTACK", damageValues: [2, 1, 1] },
     implementationStatus: "implemented"
   },
   "dragon-line-attack-4": {
@@ -4167,6 +4195,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "SPELL_CAST_HAND_TAX" },
     implementationStatus: "implemented"
   },
+  "factory-dreadnought-guarded": {
+    id: "factory-dreadnought-guarded",
+    name: "Guarded",
+    text: "[unit_passive] This unit is always treated as having a Defense token. When it takes the Defend action, remove 3 damage from it.",
+    effect: { type: "DEFEND_HEAL", amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "factory-bounty-hunter-cover": {
+    id: "factory-bounty-hunter-cover",
+    name: "Evasive Quarry",
+    text: "[unit_passive] When this unit is attacked, the attacker rolls at disadvantage.",
+    effect: { type: "FEAR_ATTACKER_DISADVANTAGE" },
+    implementationStatus: "implemented"
+  },
+  "factory-couatl-momentum": {
+    id: "factory-couatl-momentum",
+    name: "Skycurrent",
+    text: "[unit_passive] After this unit moves 2 or more spaces, remove 1 damage from it.",
+    effect: { type: "ON_MOVE_HEAL_SELF", amount: 1, minimumSpaces: 2 },
+    implementationStatus: "implemented"
+  },
+  "factory-dreadnought-speed-hunter": {
+    id: "factory-dreadnought-speed-hunter",
+    name: "Counter-velocity",
+    text: "[unit_attack] This unit has +1 Attack against an enemy with higher Initiative.",
+    effect: { type: "ATTACK_BONUS_VS_FASTER_TARGET", amount: 1 },
+    implementationStatus: "implemented"
+  },
   "commander-artifact-warding-aura": {
     id: "commander-artifact-warding-aura",
     name: "The Quiet Orbit",
@@ -4226,7 +4282,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-magma-teleport-strike": { id: "veteran-magma-teleport-strike", name: "Lava Leap", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
   "veteran-magma-attack-after-move": { id: "veteran-magma-attack-after-move", name: "Lava Leap Strike", text: "After moving, gain +1 Attack for the next attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
   "veteran-shaman-teleport-strike": { id: "veteran-shaman-teleport-strike", name: "Spirit Step", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
-  "veteran-phoenix-rising-nest-heal": { id: "veteran-phoenix-rising-nest-heal", name: "Rising Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, teleport there, gain +1 Attack for this combat (maximum +2 from nests), move normally, and heal 1 HP. Bound or Deep Rooted units cannot return to the Nest.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
+  "veteran-phoenix-rising-nest-heal": { id: "veteran-phoenix-rising-nest-heal", name: "Rising Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, choose whether to fly there. If you do, gain +1 Attack for this combat (maximum +2 from nests), move normally, and heal 1 HP. The Nest then expires. Bound or Deep Rooted units cannot return to the Nest.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
   "veteran-energy-drain": {
     id: "veteran-energy-drain",
     name: "Energy Drain",
@@ -4275,7 +4331,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-storm-link-2": { id: "veteran-storm-link-2", name: "Lightning Link", text: "Once per Combat after damaging a non-adjacent enemy, you may link it to another enemy adjacent to it. Before round end, the first linked unit voluntarily ending movement apart from the other takes 2 lightning effect damage and breaks the link.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "link" }, implementationStatus: "implemented" },
   "veteran-magma-solidify": { id: "veteran-magma-solidify", name: "Solidify", text: "Once per Combat after finishing an activation, you may solidify: cannot move next round, and receives 1 less damage until attacking next round; then may move again.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "solidify" }, implementationStatus: "implemented" },
   "veteran-phoenix-activation": { id: "veteran-phoenix-activation", name: "Scorch", text: "At activation, deal 1 damage to one adjacent enemy.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "activation-burn" }, implementationStatus: "implemented" },
-  "veteran-phoenix-nest": { id: "veteran-phoenix-nest", name: "Phoenix Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, teleport there, remove 1 damage and then move normally.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
+  "veteran-phoenix-nest": { id: "veteran-phoenix-nest", name: "Phoenix Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, choose whether to fly there, remove 1 damage and then move normally. The Nest then expires.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
   "veteran-sprite-spell-block": { id: "veteran-sprite-spell-block", name: "Spell Block", text: "When a Spell targets this unit, roll a die: on −1 or 0, block it.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "spell-block" }, implementationStatus: "implemented" },
   "veteran-water-damper": { id: "veteran-water-damper", name: "Water Dampening", text: "All enemy Water School Spells have −1 Power.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "water-damper" }, implementationStatus: "implemented" },
   "veteran-storm-speed": { id: "veteran-storm-speed", name: "Swift Lightning", text: "Deal 1 bonus damage when attacking a target with lower current Initiative.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "speed-damage" }, implementationStatus: "implemented" },
@@ -4596,6 +4652,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "imperium-teleport-assault": { id: "imperium-teleport-assault", name: "Teleport Assault", text: "This unit may move to any empty Combat space.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
   "imperium-crux-terminatus": { id: "imperium-crux-terminatus", name: "Crux Terminatus", text: "Gain +1 Defense against the first attack targeting this unit each Combat.", effect: { type: "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT", amount: 1 }, implementationStatus: "implemented" },
   "imperium-duty-eternal-few": { id: "imperium-duty-eternal-few", name: "Duty Eternal", text: "Once per Combat, reduce one damage assignment to this unit by 1.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-dreadnought-first-round-armour": { id: "imperium-dreadnought-first-round-armour", name: "First-Round Armour", text: "Reduce damage from every attack against this unit by 1 during the first Combat round.", effect: { type: "REDUCE_EACH_ATTACK_DAMAGE_FIRST_ROUND", amount: 1 }, implementationStatus: "implemented" },
   "imperium-duty-eternal-pack": { id: "imperium-duty-eternal-pack", name: "Venerable Duty Eternal", text: "Once per Combat, reduce one damage assignment to this unit by 2.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT", amount: 2 }, implementationStatus: "implemented" },
   "imperium-target-acquisition": { id: "imperium-target-acquisition", name: "Target Acquisition", text: "Gain +1 Attack against a damaged non-adjacent target.", effect: { type: "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT", amount: 1 }, implementationStatus: "implemented" },
   "imperium-assault-cannon": { id: "imperium-assault-cannon", name: "Assault Cannon", text: "This ranged unit ignores all Combat penalties (adjacent and long-range), on its own attacks and on Retaliation Attacks.", effect: { type: "IGNORE_RANGED_PENALTIES", includesRetaliation: true }, implementationStatus: "implemented" },

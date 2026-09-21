@@ -135,7 +135,12 @@ export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitSta
   delete mem.movedTwo;
   if (memory(defender).volleyMarkedRound === round && !memory(defender).volleyConsumed) memory(defender).volleyConsumed = true;
   if (damage > 0 && neutralTownVeterancy(attacker, "predators-mark") && !mem.predatorTarget) { mem.predatorTarget = defender.id; veteranTrigger(state, attacker, "ntv-predators-mark", defender); }
-  if (damage > 0 && neutralTownVeterancy(attacker, "marked-volley") && kind === "ranged" && nonAdjacent && !usedThisRound(attacker, "volleyRound", round)) { markRound(attacker, "volleyRound", round); memory(defender).volleyMarkedRound = round; memory(defender).volleyConsumed = false; veteranTrigger(state, attacker, "ntv-marked-volley", defender); }
+  const markedVolleyId = neutralTownVeterancy(attacker, "marked-volley-all-attacks")
+    ? "imperium-marked-volley-all-attacks"
+    : neutralTownVeterancy(attacker, "marked-volley") && kind === "ranged" && nonAdjacent
+      ? "ntv-marked-volley"
+      : undefined;
+  if (damage > 0 && markedVolleyId && !usedThisRound(attacker, "volleyRound", round)) { markRound(attacker, "volleyRound", round); memory(defender).volleyMarkedRound = round; memory(defender).volleyConsumed = false; veteranTrigger(state, attacker, markedVolleyId, defender); }
   if (damage > 0 && neutralTownVeterancy(attacker, "putrid-grasp")) {
     const effect = makeActiveEffect(state, { name: "Putrid Grasp", scope: "unit", duration: { type: "next-activation" }, polarity: "negative", removable: true, modifiers: [{ type: "TOWN_MOVE_LIMIT", amount: 1 }] }, { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId }, attacker.controllerId, { type: "unit", unitId: defender.id });
     if (state.combat?.activeUnitId === defender.id) effect.activationsRemaining = 2;
@@ -171,8 +176,9 @@ export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitSta
   if (neutralTownVeterancy(attacker, "consecrated-shot") && kind === "ranged" && nonAdjacent && roll >= 0 && !usedThisRound(attacker, "consecrateRound", round)) { markRound(attacker, "consecrateRound", round); queueElementalChoice(state, { kind: "heal", unitId: attacker.id, abilityId: "ntv-consecrated-shot", amount: 1, alliesOnly: true }); }
   if (damage > 0 && neutralTownVeterancy(attacker, "blood-tribute") && !usedThisRound(attacker, "bloodRound", round)) { markRound(attacker, "bloodRound", round); queueElementalChoice(state, { kind: "heal", unitId: attacker.id, abilityId: "ntv-blood-tribute", amount: 1, alliesOnly: true, adjacentOrSelf: true }); }
   if (neutralTownVeterancy(attacker, "moonlit-aid") && !usedThisRound(attacker, "moonRound", round)) { markRound(attacker, "moonRound", round); queueElementalChoice(state, { kind: "heal", unitId: attacker.id, abilityId: "ntv-moonlit-aid", amount: 1, alliesOnly: true, adjacent: true }); }
-  if ((retaliation && neutralTownVeterancy(attacker, "winged-riposte")) || (!retaliation && kind === "ranged" && nonAdjacent && neutralTownVeterancy(attacker, "skirmisher-step")) || (!retaliation && attacker.movedThisActivation && neutralTownVeterancy(attacker, "flowing-assault")))
-    queueElementalChoice(state, { kind: "move-one", unitId: attacker.id, abilityId: retaliation ? "ntv-winged-riposte" : neutralTownVeterancy(attacker, "skirmisher-step") ? "ntv-skirmisher-step" : "ntv-flowing-assault", optional: true });
+  const longRiposte = retaliation && neutralTownVeterancy(attacker, "winged-riposte-3");
+  if (longRiposte || (retaliation && neutralTownVeterancy(attacker, "winged-riposte")) || (!retaliation && kind === "ranged" && nonAdjacent && neutralTownVeterancy(attacker, "skirmisher-step")) || (!retaliation && attacker.movedThisActivation && neutralTownVeterancy(attacker, "flowing-assault")))
+    queueElementalChoice(state, { kind: "move-one", unitId: attacker.id, abilityId: longRiposte ? "imperium-winged-riposte-3" : retaliation ? "ntv-winged-riposte" : neutralTownVeterancy(attacker, "skirmisher-step") ? "ntv-skirmisher-step" : "ntv-flowing-assault", optional: true, ...(longRiposte ? { maxDistance: 3 } : {}) });
   if (!retaliation && neutralTownVeterancy(attacker, "strike-and-return") && typeof mem.activationOrigin === "number") queueElementalChoice(state, { kind: "return-origin", unitId: attacker.id, abilityId: "ntv-strike-and-return", position: mem.activationOrigin as number, optional: true });
   if (neutralTownVeterancy(defender, "barbed-revenge") && alive(defender) && isAdjacent(attacker.position, defender.position) && !usedThisRound(defender, "barbRound", round)) { markRound(defender, "barbRound", round); veteranDamage(state, defender, attacker, 1, "ntv-barbed-revenge"); }
   if (neutralTownVeterancy(attacker, "petrifying-aim") && kind === "ranged" && nonAdjacent && roll === 1 && alive(defender) && !unitImmuneToParalysis(state, defender) && !usedThisRound(attacker, "petrifyRound", round)) { markRound(attacker, "petrifyRound", round); placeCombatToken(state, defender, "paralysis", 0, "Petrifying Aim"); veteranTrigger(state, attacker, "ntv-petrifying-aim", defender); }

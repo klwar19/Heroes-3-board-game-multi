@@ -59,17 +59,15 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   erdamon: "/assets/units-magma_elemental-portrait.webp", // Magma Elementals
   monere: "/assets/units-magic_elemental-portrait.webp", // Magic Elementals
   pasis: "/assets/units-energy_elemental-portrait.webp", // Elementals (Energy)
-  // Factory unit specialists — the unit's own in-game creature PORTRAIT from
-  // heroes.thelazy.net (scripts/fetch-factory-unit-portraits.py), matching every
-  // other unit specialist. Previously they borrowed the full unit CARD art
-  // (units-factory-<tier>-<unit>-few.webp), which showed a shrunk card with its
-  // frame/stats instead of a clean portrait.
-  henrietta: "/assets/units-factory-halfling-portrait.webp", // Halflings
-  frederick: "/assets/units-factory-automaton-portrait.webp", // Automatons
-  sam: "/assets/units-factory-mechanic-portrait.webp", // Mechanics
-  tancred: "/assets/units-factory-bounty_hunter-portrait.webp", // Bounty Hunters
-  celestine: "/assets/units-factory-armadillo-portrait.webp", // Armadillos
-  agar: "/assets/units-factory-sandworm-portrait.webp", // Sandworms
+  // Factory heroes use dedicated transparent, compressed card medallions rather
+  // than recycled unit-card portraits. Each symbol matches that hero's actual
+  // specialty identity and is shared by all three of their specialty levels.
+  henrietta: "/assets/factory-icons/henrietta.webp", // Clockwork engineer
+  frederick: "/assets/factory-icons/frederick.webp", // Automaton core
+  sam: "/assets/factory-icons/sam.webp", // Repair gauntlet
+  tancred: "/assets/factory-icons/tancred.webp", // Bounty reticle
+  celestine: "/assets/factory-icons/celestine.webp", // Armadillo bulwark
+  agar: "/assets/factory-icons/agar.webp", // Sandworm breach
   // Moandor's specialty IS the Liches — the unit's own Power Lich wiki portrait
   // (scripts/fetch-lich-portrait.py), matching the Bulwark unit specialists. His
   // three cards used to reference baked scans (hero_specialties-moandor-*.webp)
@@ -146,6 +144,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   promestein: "/assets/specialty-card/icon-mgq-promestein.webp",
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
+  kaliki: "/assets/specialty-card/icon-water_magic.webp", // Water-school orb
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols
   ciele: "/assets/specialty-card/icon-magic_arrow.webp",
   luna: "/assets/specialty-card/icon-firewall.webp",

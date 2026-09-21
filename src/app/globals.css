@@ -18176,6 +18176,31 @@ button.setupHubNavItem:hover {
   gap: 8px;
 }
 
+.heroInfoCardDetails {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.heroInfoCardDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: #f2dfbd;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.heroInfoCardDetail strong {
+  color: #ffd76a;
+  font-size: 11px;
+}
+
+.heroInfoCardDetail span {
+  color: #ead6b3;
+}
+
 .heroInfoIconButton {
   display: inline-grid;
   flex: 0 0 auto;
@@ -18266,6 +18291,12 @@ button.setupHubNavItem:hover {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.opponentInfoOrder {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
 }
 
 .opponentInfoBtn:hover {
@@ -20552,6 +20583,25 @@ button.setupHubNavItem:hover {
   position: relative;
   display: block;
   padding: 3px;
+}
+
+.factoryMachineStatus {
+  position: absolute;
+  z-index: 2;
+  right: 2px;
+  bottom: 2px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #554331;
+  color: #f7e4bf;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.factoryMachineStatus.active {
+  background: #287249;
 }
 
 .permanentCardButton {
@@ -37701,6 +37751,29 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   border-color: #9ad0ff;
   background: rgba(40, 70, 100, 0.95);
 }
+
+.randomTownGuardEditor { display: grid; gap: 10px; }
+.randomTownGuardRows { display: grid; gap: 6px; }
+.randomTownGuardRow {
+  padding: 7px 9px;
+  border: 1px solid rgba(154, 208, 255, .16);
+  border-radius: 10px;
+  background: rgba(16, 24, 37, .65);
+}
+.randomTownGuardRow.selected { border-color: rgba(154, 208, 255, .42); background: rgba(26, 41, 58, .8); }
+.randomTownGuardMain { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; }
+.randomTownGuardMain strong { color: #dcecff; font-size: 12px; }
+.randomTownGuardSides { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.randomTownGuardSides button {
+  border: 1px solid rgba(154, 208, 255, .25); border-radius: 7px;
+  background: rgba(19, 30, 43, .92); color: #d8e8ff;
+  padding: 5px 4px; cursor: pointer;
+}
+.randomTownGuardSides button.active { border-color: #9ad0ff; background: #284966; color: white; }
+.randomTownGuardDetails { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; margin: 8px 0 0 52px; }
+.randomTownGuardDetails label { min-width: 0; display: grid; gap: 3px; color: #a9bfd8; font-size: 11px; }
+.randomTownGuardDetails select { min-width: 0; max-width: 100%; border-radius: 6px; border: 1px solid rgba(154, 208, 255, .3); background: #172638; color: #e5f1ff; padding: 5px; }
+@media (max-width: 640px) { .randomTownGuardDetails { margin-left: 0; grid-template-columns: minmax(0, 1fr) auto auto; } }
 
 .mapPresetList li {
   display: flex;

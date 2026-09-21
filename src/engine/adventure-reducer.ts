@@ -487,13 +487,16 @@ import {
   stopParallelTurns
 } from "./parallel-turns";
 import {
+  activeWarMachineCardId,
   applyPermanentCombatEffects,
   discardPermanentFromPlay,
   discardSchoolPermanentForExpert,
   getPermanentCardIds,
   getPermanentSchoolBonus,
+  isWarMachineCard,
   removePermanentFromPlayToRemoved,
   resolveWarMachineOption,
+  switchActiveWarMachine,
   startWarMachineRound
 } from "./permanents";
 import { getSchoolPowerMultiplier } from "./active-effects";
@@ -532,7 +535,8 @@ import {
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
-  polishUnitStackCost
+  polishUnitStackCost,
+  polishUnitStackCap
 } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
@@ -582,6 +586,7 @@ import type {
   HeroId,
   HeroState,
   MapFieldState,
+  RandomTownGuardSlot,
   MapSpaceId,
   MapTileState,
   PlayerId,
@@ -6093,7 +6098,7 @@ export function startNeutralEncounter(
   // exact designed army — a high-level hero cannot auto-win past units it has
   // never seen. The fight is always real; the field's (tier-derived) difficulty
   // still drives the experience reward as usual.
-  if (field.customGuardUnits && field.customGuardUnits.length > 0 && !scenarioUtopia) {
+  if (((field.customGuardUnits && field.customGuardUnits.length > 0) || field.customTownGuardSlots?.length) && !scenarioUtopia) {
     beginNeutralCombatPlacement(state, hero, field, difficulty, {
       unlimitedRounds: Boolean(field.unlimitedCombatRounds)
     });
@@ -6151,12 +6156,12 @@ export function startNeutralEncounter(
   // alternative and therefore needs no crown. The level bar is
   // `diplomacySkipLevelQualifies` (hero level AT LEAST the Field Difficulty), so
   // the Ⅵ/Ⅶ centre band remains reachable when the Polish rule forces a fight.
-  if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, difficulty)) {
+  if (diplomacyAllowedAtDifficulty(state, difficulty) && canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, difficulty)) {
     openDiplomacyBattleEaseChoice(state, hero, field, difficulty, "neutral");
     return;
   }
 
-  if (diplomacySkipLevelQualifies(level, difficulty) && canUseDiplomacySkip(state, state.players[playerId])) {
+  if (diplomacyAllowedAtDifficulty(state, difficulty) && diplomacySkipLevelQualifies(level, difficulty) && canUseDiplomacySkip(state, state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, difficulty);
     return;
   }
@@ -6328,11 +6333,11 @@ export function resolvePolishQuickCombatChoice(state: GameState, playerId: Playe
   // shortcut — Cyra's Diplomacy still gets its qualifying-level skip offer, then
   // the normal guard Combat Setup.
   const level = neutralBattleLevel(state, hero);
-  if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, decision.difficulty)) {
+  if (diplomacyAllowedAtDifficulty(state, decision.difficulty) && canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, decision.difficulty)) {
     openDiplomacyBattleEaseChoice(state, hero, field, decision.difficulty, "neutral");
     return;
   }
-  if (diplomacySkipLevelQualifies(level, decision.difficulty) && canUseDiplomacySkip(state, state.players[playerId])) {
+  if (diplomacyAllowedAtDifficulty(state, decision.difficulty) && diplomacySkipLevelQualifies(level, decision.difficulty) && canUseDiplomacySkip(state, state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, decision.difficulty);
     return;
   }
@@ -6350,13 +6355,14 @@ function persistLivingGuardsOnField(
   field: MapFieldState,
   combat: CombatState
 ): void {
-  const living = Object.values(combat.units)
+  const liveUnits = Object.values(combat.units)
     .filter(
       (unit) =>
         unit.controllerId === NEUTRAL_PLAYER_ID &&
         unit.damage < unit.maxHealth &&
         Boolean(unit.unitDefId)
-    )
+    );
+  const living = liveUnits
     // Derive pack/few-ness from the minted variant + designer flag:
     // - variant "pack" → re-persist as Pack
     // - variant "few" without factionFew (Pack→Few flip mid-fight) → re-persist
@@ -6378,7 +6384,24 @@ function persistLivingGuardsOnField(
   const breakTileGate = field.breakTileGate;
   const persistentGuard = field.persistentGuard;
   const unlimited = field.unlimitedCombatRounds;
-  applyCustomGuardToField(field, { units: survivors });
+  if (field.location === "random_town" && field.customTownGuardSlots?.length) {
+    const slots: RandomTownGuardSlot[] = liveUnits.slice(0, 7).flatMap((unit, index) => {
+      if (!unit.unitDefId) return [];
+      const def = coreUnitDefinitions[unit.unitDefId];
+      const veteranRank = def ? unitRankForExperience(def.tier, unit.unitExperience ?? 0) : 0;
+      return [{
+        rank: (index + 1) as RandomTownGuardSlot["rank"],
+        unitDefId: unit.unitDefId,
+        side: unit.variant === "pack" || (unit.variant === "few" && !unit.factionFew) ? "pack" as const
+          : unit.variant === "few" ? "few" as const : "neutral" as const,
+        ...(unit.armyStacks ? { stacks: unit.armyStacks } : {}),
+        ...(veteranRank ? { veteranRank: veteranRank as RandomTownGuardSlot["veteranRank"] } : {})
+      }];
+    });
+    applyCustomGuardToField(field, { townSlots: slots });
+  } else {
+    applyCustomGuardToField(field, { units: survivors });
+  }
   if (breakField) field.breakField = true;
   if (breakTileGate) field.breakTileGate = true;
   if (persistentGuard) field.persistentGuard = true;
@@ -6538,6 +6561,10 @@ function beginNeutralCombatPlacement(
  */
 export function diplomacySkipLevelQualifies(level: number, difficulty: number): boolean {
   return level >= difficulty;
+}
+
+function diplomacyAllowedAtDifficulty(state: GameState, difficulty: number): boolean {
+  return difficulty !== 7 || !polishQuickCombatEnabled(state) || houseRuleEnabled(state, "polish-diplomacy-vii");
 }
 
 function diplomacyCardHasEffect(state: GameState, type: "DIPLOMACY_SKIP_COMBAT" | "DIPLOMACY_EASE_BATTLE"): boolean {
@@ -9576,7 +9603,7 @@ export function revealNeutralArmy(
   combat.pendingNeutralDraws = null;
   combat.context.hasAzure = draws.some((draw) => draw.tier === "azure");
 
-  const drawnUnits = draws.flatMap((draw, index) => {
+  const drawnPairs = draws.flatMap((draw, index) => {
     const unit = makeCombatUnitFromNeutral(
       draw,
       `neutral_${index + 1}_${draw.unitDefId.split(".")[1]}`,
@@ -9584,8 +9611,9 @@ export function revealNeutralArmy(
       getRuleset(state),
       unitSideRuleOverrides(state)
     );
-    return unit ? [unit] : [];
+    return unit ? [{ draw, unit }] : [];
   });
+  const drawnUnits = drawnPairs.map(({ unit }) => unit);
   // Some neutral cards summon an extra guard before Combat (WOG Santa Gremlin's
   // Gremlin). Driven by the printed ADD_NEUTRAL_GUARD ability, not a unit id.
   const extraGuards = draws.flatMap((draw, index) =>
@@ -9643,6 +9671,29 @@ export function revealNeutralArmy(
         applyUnitCurrentSide(unit, ruleset, overrides);
       }
     }
+  }
+  // Designer Random Town roster bonuses use the same stack layers and veteran
+  // fold as ordinary army cards. Optional rules gate them at battle setup.
+  const townField = state.adventure?.fields[combat.context.fieldId];
+  if (townField?.location === "random_town" && townField.customTownGuardSlots?.length) {
+    const ruleset = getRuleset(state);
+    const overrides = unitSideRuleOverrides(state);
+    drawnPairs.forEach(({ draw, unit }) => {
+      if (!unit.unitDefId) return;
+      let changed = false;
+      if (draw.designerStacks && armyUnitStacksActive(state) && (unit.variant === "pack" || unit.variant === "neutral")) {
+        unit.armyStacks = Math.min(draw.designerStacks, polishUnitStackCap(unit.unitDefId, unit.variant));
+        changed = true;
+      }
+      if (draw.designerVeteranRank && unitExperienceActive(state)) {
+        const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+        if (tier) {
+          unit.unitExperience = Math.max(unit.unitExperience ?? 0, rankMirrorXp(tier, draw.designerVeteranRank));
+          changed = true;
+        }
+      }
+      if (changed) applyUnitCurrentSide(unit, ruleset, overrides);
+    });
   }
   augmentDrawnUnits?.(neutralUnits);
 
@@ -12502,6 +12553,14 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
     return;
   }
 
+  // Factory Tinkerer: both permanent machines remain in play, but each owner
+  // chooses the one whose combat effect and round-start shot are live before
+  // the first war-machine round. Computer seats keep their already selected
+  // machine and never open a human-only blocking prompt.
+  if (maybeOpenFactoryWarMachineChoice(state)) {
+    return;
+  }
+
   // WOG Commanders' optional combat-start decisions (Fortress Shaman begin-of-
   // match Haste, Tower Temple Guardian Magic Arrow fetch). Computer seats resolve
   // inline; each human seat with a decision gets a window. Resolving re-enters
@@ -12861,6 +12920,83 @@ function applyBountyHunterMark(state: GameState, sourceUnitId: UnitId, targetUni
     targetUnitId: target.id,
     message: `${source.name}: ${mark.abilityName} - Marks ${target.name}.`
   });
+}
+
+function factoryWarMachineOwners(state: GameState): PlayerId[] {
+  const combat = state.combat;
+  if (!combat) return [];
+  return [combat.attackerPlayerId, combat.defenderPlayerId]
+    .filter((playerId, index, owners) => playerId !== NEUTRAL_PLAYER_ID && owners.indexOf(playerId) === index)
+    .filter((playerId) => {
+      const commander = state.players[playerId]?.commander;
+      const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+      return Boolean(commander && !commander.dead && commander.slug === "factory" && machines.length >= 2);
+    });
+}
+
+/** Opens/advances the start-of-combat Tinkerer machine selection queue. */
+export function maybeOpenFactoryWarMachineChoice(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.round !== 1 || state.pendingChoice || combat.outcome) return false;
+  if (!combat.factoryWarMachineChoiceQueue) {
+    combat.factoryWarMachineChoiceQueue = factoryWarMachineOwners(state);
+  }
+  while (combat.factoryWarMachineChoiceQueue.length > 0) {
+    const playerId = combat.factoryWarMachineChoiceQueue[0];
+    const cardIds = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+    if (cardIds.length < 2) {
+      combat.factoryWarMachineChoiceQueue.shift();
+      continue;
+    }
+    const player = state.players[playerId];
+    if (isComputerPlayer(state, playerId)) {
+      // The normal card-play path already selected the newest machine. Make the
+      // fallback deterministic for old saves that have no selection recorded.
+      if (!activeWarMachineCardId(state, playerId) || !cardIds.includes(activeWarMachineCardId(state, playerId)!)) {
+        player.activeWarMachineCardId = cardIds[cardIds.length - 1];
+      }
+      combat.factoryWarMachineChoiceQueue.shift();
+      continue;
+    }
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: "Tinkerer: choose the war machine that will be active this combat.",
+      options: cardIds.map((cardId) => ({ label: cardLibrary[cardId]?.name ?? cardId })),
+      context: "factory-war-machine-select",
+      factoryWarMachineSelect: { cardIds },
+      returnPhase: "combat",
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return true;
+  }
+  return false;
+}
+
+function resolveFactoryWarMachineChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  const cardIds = choice?.type === "OPTION_CHOICE" ? choice.factoryWarMachineSelect?.cardIds : undefined;
+  const cardId = cardIds?.[optionIndex];
+  if (
+    !combat ||
+    choice?.type !== "OPTION_CHOICE" ||
+    choice.context !== "factory-war-machine-select" ||
+    choice.playerId !== playerId ||
+    !cardId ||
+    !cardIds?.includes(cardId)
+  ) {
+    throw new Error("Choose one of your two in-play war machines.");
+  }
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  switchActiveWarMachine(state, playerId, cardId, true);
+  combat.factoryWarMachineChoiceQueue = (combat.factoryWarMachineChoiceQueue ?? []).slice(1);
+  if (maybeOpenFactoryWarMachineChoice(state)) return;
+  resumeCombatStartAfterCommanderPlacement(state);
 }
 
 function openBountyHunterMarkSourceChoice(
@@ -18383,6 +18519,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "factory-war-machine-select") {
+    resolveFactoryWarMachineChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
   if (choice.context === "commander-magic-arrow-fetch") {
     resolveCommanderMagicArrowFetchChoice(state, action.playerId, action.optionIndex);
     return;
@@ -19480,7 +19621,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     gainOwnedCard(state, action.playerId, cardId);
     player.discard.push(...pick.cardIds.filter((_, index) => index !== action.optionIndex));
 
-    // Adrienne's Fire Magic IV: after the Search(3) pick, shuffle the whole
+    // School-magic IV: after the Search pick, shuffle the whole
     // discard pile (including the just-discarded revealed cards) back into the
     // deck.
     if (pick.thenReshuffleDiscard) {

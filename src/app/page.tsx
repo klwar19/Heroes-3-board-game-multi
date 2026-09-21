@@ -2789,6 +2789,8 @@ export default function Home() {
         approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = approachMoveDelays[index];
+          const nestReturn = event.sourceAbilityId === "veteran-phoenix-rising-nest-return" ||
+            event.sourceAbilityId === "veteran-phoenix-nest-return";
           cues.push({
             kind: "move",
             id: `${event.id}-move`,
@@ -2796,13 +2798,14 @@ export default function Home() {
             from: `cell:${event.from}`,
             to: `unit:${event.unitId}`,
             cardImage: unit?.assets?.cardImage,
-            teleport: event.sourceAbilityId === "veteran-magma-teleport-strike",
+            teleport: event.sourceAbilityId === "veteran-magma-teleport-strike" || nestReturn,
+            teleportFxKey: nestReturn ? "phoenix-scorch-animated" : undefined,
             // Cards always stand upright now (the seat flip only mirrors cell
             // positions), so the ghost never turns.
             flip: false,
             delayMs: moveDelay
           });
-          if (event.sourceAbilityId !== "veteran-magma-teleport-strike") {
+          if (event.sourceAbilityId !== "veteran-magma-teleport-strike" && !nestReturn) {
             playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
           }
           if (unit?.unitDefId === "bulwark.mountain_rams" && unit.abilities.includes("town-ram-trample")) {
@@ -3500,6 +3503,24 @@ export default function Home() {
               break;
             }
             case "COMMANDER_CAST_USED": {
+              if (event.commanderSlug === "lion_el_jonson" && event.castName === "Lion's Slash") {
+                const lion = Object.values(nextState.combat?.units ?? {}).find((unit) =>
+                  unit.commanderSlug === "lion_el_jonson" && unit.controllerId === event.playerId);
+                if (lion) {
+                  cues.push({
+                    kind: "slash",
+                    id: `${event.id}-lion-slash`,
+                    fxKey: "arch-devil-hellfire-slash",
+                    from: `unit:${lion.id}`,
+                    at: `unit:${event.targetUnitId}`,
+                    delayMs: timeline,
+                  });
+                  timeline += 400;
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
+                  break;
+                }
+              }
               // WOG commander command ability — the activation cast AND the
               // Shield / Stone Skin instant reaction both emit this. Reuse the
               // matching H3 spell's sprite + sound over the buffed/healed target
@@ -3874,11 +3895,27 @@ export default function Home() {
                 break;
               }
               if (event.abilityId === "veteran-phoenix-activation") {
+                const scorchCell = nextState.combat?.units[targetUnitId]?.position;
                 cues.push({
                   kind: "sprite",
                   id: `${event.id}-phoenix-scorch`,
                   fxKey: "phoenix-scorch-animated",
-                  at: `unit:${event.unitId}`,
+                  at: scorchCell !== undefined ? `cell:${scorchCell}` : `unit:${targetUnitId}`,
+                  sound: plan.sound,
+                  delayMs: timeline,
+                });
+                timeline += spellPresentationMs(plan);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
+                break;
+              }
+              if (["veteran-phoenix-rising-nest", "veteran-phoenix-nest"].includes(event.abilityId)) {
+                const nestCell = nextState.combat?.units[targetUnitId]?.position;
+                cues.push({
+                  kind: "sprite",
+                  id: `${event.id}-phoenix-nest`,
+                  fxKey: "phoenix-scorch-animated",
+                  at: nestCell !== undefined ? `cell:${nestCell}` : `unit:${event.unitId}`,
                   sound: plan.sound,
                   delayMs: timeline,
                 });
@@ -6319,7 +6356,7 @@ export default function Home() {
       !armedHandPlay &&
       !pendingCostPlay &&
       moraleOverflow === 0 &&
-      (moraleCombatPlays.length > 0 || Boolean(coverOfDarknessAction));
+      moraleCombatPlays.length > 0;
     // Parallel turns: a bystander (open parallel turn, NOT fighting) keeps the
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
@@ -7206,18 +7243,6 @@ export default function Home() {
                         {legal.label}
                       </button>
                     ))}
-                    {coverOfDarknessAction ? (
-                      <button
-                        className="commandButton"
-                        onClick={() => {
-                          setHandDiscards([]);
-                          setHandMode("cover-of-darkness");
-                        }}
-                        type="button"
-                      >
-                        Cover of Darkness
-                      </button>
-                    ) : null}
                   </div>
                 ) : null}
                 {selecting ? (

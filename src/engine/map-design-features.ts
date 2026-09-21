@@ -104,23 +104,23 @@ export function isFewGuardSlot(id: unknown): id is `few:${string}` {
   return Boolean(coreUnitDefinitions[unitDefId]?.few);
 }
 
-export type TownRankGuardSlot = `town-rank:${2 | 3 | 4 | 5 | 6}:${"pack" | "few"}`;
+export type TownRankGuardSlot = `town-rank:${1 | 2 | 3 | 4 | 5 | 6 | 7}:${"pack" | "few"}`;
 
 /**
  * A Random-Town roster slot. Rank is the printed creature rank inside the
- * rolled faction (II–VI), so two bronze slots resolve to two DIFFERENT units
+ * rolled faction (I–VII), so two bronze slots resolve to two DIFFERENT units
  * such as Rampart Dwarves + Elves instead of independently rolling a grade.
  */
 export function isTownRankGuardSlot(id: unknown): id is TownRankGuardSlot {
   if (typeof id !== "string" || !id.startsWith(TOWN_RANK_GUARD_PREFIX)) return false;
-  const match = /^town-rank:([2-6]):(pack|few)$/.exec(id);
+  const match = /^town-rank:([1-7]):(pack|few)$/.exec(id);
   return Boolean(match);
 }
 
-export function townRankGuardParts(id: string): { rank: 2 | 3 | 4 | 5 | 6; side: "pack" | "few" } | null {
+export function townRankGuardParts(id: string): { rank: 1 | 2 | 3 | 4 | 5 | 6 | 7; side: "pack" | "few" } | null {
   if (!isTownRankGuardSlot(id)) return null;
-  const [, rank, side] = /^town-rank:([2-6]):(pack|few)$/.exec(id)!;
-  return { rank: Number(rank) as 2 | 3 | 4 | 5 | 6, side: side as "pack" | "few" };
+  const [, rank, side] = /^town-rank:([1-7]):(pack|few)$/.exec(id)!;
+  return { rank: Number(rank) as 1 | 2 | 3 | 4 | 5 | 6 | 7, side: side as "pack" | "few" };
 }
 
 /** True when `id` names a unit with a Neutral side (classic certain-army entry). */
@@ -194,7 +194,7 @@ export function isAnyFewGuardSlot(id: unknown): boolean {
 export function guardUnitEntryLabel(id: string): string {
   const townRank = townRankGuardParts(id);
   if (townRank) {
-    return `${townRank.side === "pack" ? "Pack" : "Few"} of faction rank ${["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ"][townRank.rank]}`;
+    return `${townRank.side === "pack" ? "Pack" : "Few"} of faction rank ${["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"][townRank.rank]}`;
   }
   if (isRandomPackGuardSlot(id)) {
     const tier = randomPackGuardTierOf(id)!;
@@ -297,7 +297,7 @@ export function expandGuardUnitGroups(
 export function guardUnitEntryPoints(id: string): { points: number; azure: boolean } {
   const townRank = townRankGuardParts(id);
   if (townRank) {
-    return { points: townRank.rank <= 3 ? 1 : townRank.rank <= 5 ? 2 : 3, azure: false };
+    return { points: townRank.rank <= 3 ? 1 : townRank.rank <= 5 ? 2 : townRank.rank === 6 ? 3 : 0, azure: townRank.rank === 7 };
   }
   if (isRandomGuardSlot(id) || isRandomPackGuardSlot(id) || isRandomFewGuardSlot(id)) {
     const tier = isRandomPackGuardSlot(id)
@@ -495,7 +495,8 @@ export function resolveCustomGuardDraws(
   // both become the same creature (for example two Zealots) while another
   // eligible silver creature remains.
   const remainingNeutralPools = new Map<RandomGuardTier, string[]>();
-  for (const entry of units.slice(0, MAX_CUSTOM_GUARD_UNITS)) {
+  const maxUnits = units.every(isTownRankGuardSlot) ? 7 : MAX_CUSTOM_GUARD_UNITS;
+  for (const entry of units.slice(0, maxUnits)) {
     const townRank = townRankGuardParts(entry);
     if (townRank) {
       const faction = lockedFaction;
@@ -510,7 +511,7 @@ export function resolveCustomGuardDraws(
           bankGuard: true
         });
       } else {
-        const tier: RandomGuardTier = townRank.rank <= 3 ? "bronze" : townRank.rank <= 5 ? "silver" : "gold";
+        const tier: RandomGuardTier = townRank.rank <= 3 ? "bronze" : townRank.rank <= 5 ? "silver" : townRank.rank === 6 ? "gold" : "azure";
         const fallback = townRank.side === "pack"
           ? packDrawWithNeutralFallback(tier, faction, rng)
           : fewDrawWithNeutralFallback(tier, faction, rng);

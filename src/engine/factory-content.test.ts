@@ -54,8 +54,8 @@ const FACTORY_HEROES = ["henrietta", "sam", "tancred", "celestine", "agar", "fre
 
 // Which Factory unit each kept hero's I/IV/VI specialty buffs.
 const FACTORY_HERO_SPECIALTY_UNIT: Record<string, string> = {
-  henrietta: "Halflings",
-  sam: "Mechanics",
+  henrietta: "Grenadiers",
+  sam: "Engineers",
   tancred: "Bounty Hunters",
   celestine: "Armadillos",
   agar: "Sandworms",
@@ -106,14 +106,13 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     }
   });
 
-  it("every Factory unit-specialist shows the unit's clean PORTRAIT (on disk), not the card art", () => {
-    // The specialty picture is the unit's own creature portrait
-    // (units-factory-<unit>-portrait.webp), matching every other unit specialist —
-    // NOT the full unit card (…-few.webp), which rendered as a shrunk, framed card.
+  it("every Factory specialty uses its generated hero-specific icon (on disk), not borrowed card art", () => {
+    // Factory's redesigned heroes use generated role icons. They are intentionally
+    // distinct from the unit card faces and are checked as real published assets.
     for (const id of FACTORY_HEROES) {
       const icon = specialtyIconSrc(`specialty.${id}.1`);
       expect(icon, `${id} specialty icon`).toBeTruthy();
-      expect(icon!, `${id} uses a -portrait crop`).toMatch(/units-factory-[a-z_]+-portrait\.webp$/u);
+      expect(icon!, `${id} uses a generated Factory icon`).toMatch(/\/assets\/factory-icons\/[a-z]+\.webp$/u);
       expect(icon!, `${id} does not borrow the full unit card`).not.toMatch(/-(few|pack|neutral)\.webp$/u);
       expect(assetExists(icon!), `${id} specialty portrait not published (npm run media:publish): ${icon}`).toBe(true);
     }
@@ -232,12 +231,10 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     // Corrosion token on a "+1" roll (halfling-precise-shot).
     expect(u["factory.halflings"].few?.abilities, "halflings few").toEqual(["attack-roll-advantage"]);
     expect(u["factory.halflings"].pack?.abilities, "halflings pack").toEqual(["attack-roll-advantage", "halfling-precise-shot"]);
-    // Mechanics: the "Attack 2 spaces in a line" reach on all three sides (Few/
-    // Neutral at attack 1, Pack at attack 2), plus the Field Repair on the two
-    // faction sides (Few remove-1, Pack remove-2-or-+1-Attack). The Neutral guard
-    // prints only the reach.
-    expect(u["factory.mechanics"].few?.abilities, "mechanics few").toEqual(["mechanics-repair-1", "mechanics-line-attack-1"]);
-    expect(u["factory.mechanics"].pack?.abilities, "mechanics pack").toEqual(["mechanics-repair-2", "mechanics-line-attack-2"]);
+    // Only the Few Engineer carries the line attack; the Pack repairs.
+    // The separate Neutral guard retains its printed line attack.
+    expect(u["factory.mechanics"].few?.abilities, "engineers few").toEqual(["mechanics-line-attack-1"]);
+    expect(u["factory.mechanics"].pack?.abilities, "engineers pack").toEqual(["mechanics-repair-2"]);
     expect(u["factory.mechanics"].neutral?.abilities, "mechanics neutral").toEqual(["mechanics-line-attack-1"]);
     // Automatons: the Pack "Ignore Retaliation" and the single-cost NEUTRAL guard's
     // 1-damage on-death Detonate are wired. (The faction Few's cube-scaled Detonate
@@ -306,17 +303,17 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(u["factory.couatls"].pack?.abilities, "couatl pack invuln").toEqual(["couatl-invulnerability-pack"]);
     expect(u["factory.dreadnoughts"].few?.abilities, "dreadnought few splash").toEqual(["dreadnought-splash-1"]);
     expect(u["factory.dreadnoughts"].pack?.abilities, "dreadnought pack splash").toEqual(["dreadnought-splash-2"]);
-    expect(u["factory.dreadnoughts"].neutral?.abilities, "dreadnought neutral splash").toEqual(["dreadnought-splash-2"]);
+    expect(u["factory.dreadnoughts"].neutral?.abilities, "juggernaut neutral splash").toEqual(["dreadnought-splash-neutral"]);
     for (const abilityId of [
       "automaton-place-cube", "automaton-detonate-cubes", "sandworm-cube-gain", "sandworm-cube-attack",
       "bounty-hunter-preemptive", "couatl-invulnerability-few", "couatl-invulnerability-pack",
-      "dreadnought-splash-1", "dreadnought-splash-2"
+      "dreadnought-splash-1", "dreadnought-splash-2", "dreadnought-splash-neutral"
     ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
     }
   });
 
-  it("carries the physical-card stats/costs and single-cost Neutral sides (the redo)", () => {
+  it("carries the Factory stats/costs and single-cost Neutral sides", () => {
     // Regression guard against the PC-guess placeholders: a few exact card values.
     // House-rule rebalance: the three bronze units' Few recruit cost is 2/3/4 gold
     // (Halflings lv1 / Mechanics lv2 / Armadillos lv3).
@@ -324,7 +321,8 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(coreUnitDefinitions["factory.mechanics"].few).toMatchObject({ cost: { gold: 3 } });
     expect(coreUnitDefinitions["factory.armadillos"].few).toMatchObject({ cost: { gold: 4 } });
     expect(coreUnitDefinitions["factory.automatons"].few).toMatchObject({ attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 6 } });
-    expect(coreUnitDefinitions["factory.dreadnoughts"].pack).toMatchObject({ attack: 5, defense: 3, health: 10, initiative: 7, cost: { gold: 32, valuables: 2 } });
+    expect(coreUnitDefinitions["factory.dreadnoughts"].pack).toMatchObject({ attack: 7, defense: 3, health: 10, initiative: 7, cost: { gold: 30, valuables: 2 } });
+    expect(coreUnitDefinitions["factory.sandworms"].pack).toMatchObject({ attack: 5, defense: 1, health: 6, initiative: 10, cost: { gold: 12 } });
     expect(coreUnitDefinitions["factory.couatls"].few).toMatchObject({ cost: { gold: 18, valuables: 1 } });
     // The gold ranged unit's printed name is Bounty Hunters (id kept as gunslingers).
     expect(coreUnitDefinitions["factory.gunslingers"].name).toBe("Bounty Hunters");

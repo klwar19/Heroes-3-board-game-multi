@@ -494,6 +494,9 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 }
 
 function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.gunslingers") return H({ ...Z, health: 1 }, "factory-bounty-hunter-cover");
+  if (unitDefId === "factory.couatls") return H({ ...Z, initiative: 5 }, "factory-couatl-momentum");
+  if (unitDefId === "factory.dreadnoughts") return H({ ...Z, attack: 1 }, "factory-dreadnought-speed-hunter");
   if (unitDefId === "neutral.boars") return H({ ...Z, defense: 1 }, "veteran-boar-brace");
   if (unitDefId === "wog.dracolich") return H({ ...Z, health: 1 }, "veteran-dracolich-death-heal");
   if (unitDefId === "tower.gargoyles") return H({ ...Z, health: 2 }, "veteran-earth-defense-token");
@@ -587,6 +590,7 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.dreadnoughts") return A("factory-dreadnought-guarded");
   if (unitDefId === "rampart.elves") {
     return A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES.ranged).map(
       (abilityId) => abilityId === "veteran-spell-sunder" ? "veteran-elf-spell-sunder" : abilityId,

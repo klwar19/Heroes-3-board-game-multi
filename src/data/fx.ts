@@ -178,7 +178,7 @@ for (const [key, label] of [
 
 export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact"
   | "melee-claw-rake-animated" | "melee-bite-snap-animated" | "thunderbird-trident-zap-animated"
-  | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "dragon-fierce-breath-animated" | "azure-ice-breath-animated"
+  | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "dragon-fierce-breath-animated" | "dragon-small-breath-animated" | "faerie-rainbow-breath-animated" | "azure-ice-breath-animated"
   | "crystal-red-strike-animated" | "rust-acid-breath-animated" | "arch-devil-hellfire-slash"
   | "hydra-multi-bite" | "haspid-poison-bite" | "town-ram-earth-spike"
   | "anime-naval-melee" | "blue-archive-melee" | "mgq-tentacle-lash"
@@ -282,12 +282,14 @@ export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
   if (slug === "hydras") return "hydra-multi-bite";
   if (slug === "haspids") return "haspid-poison-bite";
   if (["earth_elementals", "magma_elementals"].includes(slug ?? "")) return "town-ram-earth-spike";
-  if (["efreet", "fire_elementals"].includes(slug ?? "")) return "dragon-fire-breath-animated";
+  if (["efreet", "fire_elementals"].includes(slug ?? "")) return "dragon-small-breath-animated";
+  if (["faerie_dragon", "faerie_dragons"].includes(slug ?? "")) return "faerie-rainbow-breath-animated";
   if (["phoenix", "phoenixes"].includes(slug ?? "")) return "phoenix-flame-flow-animated";
   if (["azure_dragon", "azure_dragons"].includes(slug ?? "")) return "azure-ice-breath-animated";
   if (["crystal_dragon", "crystal_dragons"].includes(slug ?? "")) return "crystal-red-strike-animated";
   if (["rust_dragon", "rust_dragons"].includes(slug ?? "")) return "rust-acid-breath-animated";
-  if (["black_dragon", "black_dragons", "gold_dragon", "gold_dragons"].includes(slug ?? "")) return "dragon-fierce-breath-animated";
+  if (["black_dragon", "black_dragons"].includes(slug ?? "")) return "dragon-fierce-breath-animated";
+  if (["gold_dragon", "gold_dragons"].includes(slug ?? "")) return "dragon-fire-breath-animated";
   if ([
     "green_dragon", "green_dragons", "red_dragon", "red_dragons",
     "hell_steed", "hell_steeds", "nightmare", "nightmares",
@@ -354,6 +356,24 @@ for (const name of ["evil-eye", "magi"] as const) {
     sourceDef: `imagegen-${name}-beam-animated`,
   };
 }
+sheets["factory-dreadnought-laser-beam"] = {
+  src: "/fx/factory-dreadnought-laser-beam.webp", label: "Dreadnought laser beam",
+  group: "factory", role: "projectile", frames: 16, cols: 4, rows: 4,
+  frameWidth: 256, frameHeight: 256, fps: 24, anchor: "center", sequentialFrames: true,
+  beamFrames: true, sourceDef: "imagegen-factory-dreadnought-laser-beam",
+};
+sheets["factory-couatl-momentum"] = {
+  src: "/fx/factory-couatl-momentum.webp", label: "Couatl momentum heal",
+  group: "factory", role: "affect", frames: 16, cols: 4, rows: 4,
+  frameWidth: 256, frameHeight: 256, fps: 24, anchor: "center", coverage: 1.2,
+  sequentialFrames: true, sourceDef: "imagegen-factory-couatl-momentum",
+};
+sheets["factory-bounty-hunter-mark"] = {
+  src: "/fx/factory-bounty-hunter-mark.webp", label: "Bounty Hunter mark",
+  group: "factory", role: "affect", frames: 16, cols: 4, rows: 4,
+  frameWidth: 256, frameHeight: 256, fps: 24, anchor: "center", coverage: 1.15,
+  sequentialFrames: true, sourceDef: "imagegen-factory-bounty-hunter-mark",
+};
 sheets["sea-dog-gunshot"] = {
   src: "/fx/sea-dog-gunshot-animated.webp", label: "Sea Dog animated gunshot",
   group: "ranged-attacks", role: "projectile", frames: 16, cols: 4, rows: 4,
@@ -384,8 +404,10 @@ const animatedLineAtlases: Record<string, [number, number, number]> = {
   "bonus-extra-shot-animated": [384, 256, 32],
   "storm-link-animated": [362, 272, 12],
   "phoenix-flame-flow-animated": [418, 168, 32],
-  "dragon-fire-breath-animated": [360, 180, 24],
-  "dragon-fierce-breath-animated": [360, 180, 24],
+  "dragon-fire-breath-animated": [320, 160, 40],
+  "dragon-fierce-breath-animated": [320, 160, 40],
+  "dragon-small-breath-animated": [320, 160, 40],
+  "faerie-rainbow-breath-animated": [320, 160, 40],
   "azure-ice-breath-animated": [496, 199, 32],
   "crystal-red-strike-animated": [496, 199, 32],
   "rust-acid-breath-animated": [542, 182, 32],
@@ -397,7 +419,16 @@ for (const [key, [frameWidth, frameHeight, fps]] of Object.entries(animatedLineA
     anchor: "center", sourceDef: `imagegen-${key}`, sequentialFrames: true,
   };
 }
-sheets["dragon-fierce-breath-animated"].sourceDef = "imagegen-dragon-fierce-breath";
+// One fire atlas serves the normal, fierce and compact geometry. Faerie Dragon
+// uses the same frame silhouettes recolored from an image-generated rainbow edit.
+for (const key of ["dragon-fire-breath-animated", "dragon-fierce-breath-animated", "dragon-small-breath-animated", "faerie-rainbow-breath-animated"]) {
+  sheets[key].src = key === "faerie-rainbow-breath-animated"
+    ? "/fx/faerie-rainbow-breath-32f.webp"
+    : "/fx/dragon-fire-breath-32f.webp";
+  sheets[key].frames = 32;
+  sheets[key].rows = 8;
+}
+sheets["dragon-fierce-breath-animated"].sourceDef = "imagegen-dragon-fire-breath-shared";
 sheets["bonus-extra-shot-animated"].beamFrames = true;
 
 // Original compact commander atlases. They use 256px cells so the two new
@@ -775,8 +806,8 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "ntv-core-suppression": { affect: [{ key: "slow" }, { key: "curse", delayMs: 120 }], sound: "spells/slow" },
   "ntv-victory-command": { tint: "bloodlust", sound: "spells/bloodlust" },
   "ntv-victory-command-move": { affect: [{ key: "teleport" }], sound: "spells/teleport" },
-  "veteran-phoenix-rising-nest": { sound: "spells/teleport" },
-  "veteran-phoenix-rising-nest-return": { tint: "bloodlust", sound: "spells/teleport" },
+  "veteran-phoenix-rising-nest": { affect: [{ key: "phoenix-scorch-animated" }], sound: "custom-ability/fire-impact" },
+  "veteran-phoenix-rising-nest-return": { tint: "bloodlust" },
   ...Object.fromEntries(customVeterancyFxKeys.map(key => [`ctv-${key}`, { affect: [{ key: `ctv-${key}` }], sound: `custom-veterancy/${key}` }])),
   "ntv-marked-volley": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
   "ntv-stone-landing": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
@@ -932,7 +963,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-storm-link": { sound: "spells/lightning-bolt" },
   "veteran-storm-link-2": { sound: "custom-ability/electric-impact" },
   "veteran-phoenix-activation": { affect: [{ key: "phoenix-scorch-animated" }], sound: "custom-ability/fire-impact" },
-  "veteran-phoenix-nest": { sound: "spells/teleport" },
+  "veteran-phoenix-nest": { affect: [{ key: "phoenix-scorch-animated" }], sound: "custom-ability/fire-impact" },
   // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
   // Archangels' once-per-combat cancel) all emit the "resurrection" ability
   // event when the killing blow is cancelled, so one plan covers all three.
@@ -1119,6 +1150,10 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // same per-target pattern as the Magog fireball splash.
   "dreadnought-splash-1": { affect: [{ key: "death-ripple" }], sound: "units/dreadnought-shoot" },
   "dreadnought-splash-2": { affect: [{ key: "death-ripple" }], sound: "units/dreadnought-shoot" },
+  "dreadnought-splash-neutral": { affect: [{ key: "death-ripple" }], sound: "units/dreadnought-shoot" },
+  "factory-dreadnought-speed-hunter": { projectile: "factory-dreadnought-laser-beam", sound: "units/dreadnought-laser" },
+  "factory-couatl-momentum": { affect: [{ key: "factory-couatl-momentum" }], sound: "spells/cure" },
+  "factory-bounty-hunter-cover": { affect: [{ key: "factory-bounty-hunter-mark" }], sound: "units/gunslinger-special" },
   // Automaton (Few) faction cube: a mechanical whir as a cube is armed onto the
   // unit ("Overcharge"), then the DETONATE explosion — a fireball burst + the
   // Automaton's signature blast. The fixed-amount Detonates (the boxed

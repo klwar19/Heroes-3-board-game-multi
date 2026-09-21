@@ -1001,7 +1001,7 @@ describe("commander casts — Rune Keeper's Rune Mend", () => {
 });
 
 describe("commander casts — Artificer's Field Repair", () => {
-  it("repairs 1/2 on a MECHANICAL friendly — adjacent below Pow 2, anywhere at Pow 2", () => {
+  it("supports two charges per combat and creates the correct delayed repair", () => {
     function withMachine(state: GameState, position: number): GameState {
       const machine = state.combat!.units.unit_p1_crusaders;
       machine.unitDefId = "factory.automatons"; // the engine's mechanical trait
@@ -1022,6 +1022,10 @@ describe("commander casts — Artificer's Field Repair", () => {
     near.combat!.units.unit_p2_skeletons.position = 13; // free cell 10 first
     near = castOn(near, "factory", "unit_p1_crusaders");
     expect(near.combat!.units.unit_p1_crusaders.damage).toBe(2);
+    expect(castOffer(near, "factory"), "Field Repair has a second combat charge").toBeTruthy();
+    near = castOn(near, "factory", "unit_p1_crusaders");
+    expect(near.combat!.units.unit_p1_crusaders.damage).toBe(1);
+    expect(castOffer(near, "factory"), "Field Repair is exhausted after two charges").toBeUndefined();
 
     // …a distant machine is NOT offered below Pow 2…
     const far = withMachine(castState("factory"), 17);
@@ -1031,6 +1035,15 @@ describe("commander casts — Artificer's Field Repair", () => {
     let reach = withMachine(castState("factory", { magic: 3 }), 17);
     reach = castOn(reach, "factory", "unit_p1_crusaders");
     expect(reach.combat!.units.unit_p1_crusaders.damage).toBe(1);
+    const repair = reach.activeEffects.find((effect) =>
+      effect.target?.type === "unit" &&
+      effect.target.unitId === "unit_p1_crusaders" &&
+      effect.modifiers.some((modifier) => modifier.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START"),
+    );
+    expect(repair, "Power 2 creates a delayed repair buff").toBeTruthy();
+    const modifier = repair?.modifiers.find((candidate) => candidate.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START");
+    expect(modifier?.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START" ? modifier.amount : 0).toBe(2);
+    expect(modifier?.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START" ? modifier.remainingRounds : 0).toBe(2);
   });
 });
 

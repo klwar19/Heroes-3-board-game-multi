@@ -1084,7 +1084,8 @@ function makeSharedDecks(
   torsoOfLegionMajor = true,
   // Mirrors torsoOfLegionMajor: the default matches the house rule's BINH
   // default, so an argument-less call agrees with `effectiveArtifactTier`.
-  eversmokingRingOfSulfurMajor = true
+  eversmokingRingOfSulfurMajor = true,
+  noArtifactScrolls = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -1096,7 +1097,7 @@ function makeSharedDecks(
   // so its membership never changes — only the per-card tier READ (via
   // `effectiveArtifactTier`) does, which is handled at each read site.
   const binhMinor = [
-    ...artifactDeckBinhMinor,
+    ...artifactDeckBinhMinor.filter((id) => !noArtifactScrolls || id !== "artifact.spell_scroll"),
     ...(torsoOfLegionMajor ? [] : [TORSO_OF_LEGION_ID]),
     ...(eversmokingRingOfSulfurMajor ? [] : [EVERSMOKING_RING_OF_SULFUR_ID])
   ];
@@ -1195,7 +1196,7 @@ function makeSharedDecks(
       "artifacts",
       without(
         withEquipment(
-          withWogCommander(withWog(withAnime(artifactDeckLegacy, animeXianxiaArtifactCardIds), wogArtifactCardIds), wogCommanderArtifactCardIds),
+          withWogCommander(withWog(withAnime(artifactDeckLegacy.filter((id) => !noArtifactScrolls || id !== "artifact.spell_scroll"), animeXianxiaArtifactCardIds), wogArtifactCardIds), wogCommanderArtifactCardIds),
           animeEquipmentCardIds
         ),
         TOURNAMENT_REMOVED_ARTIFACT_ID,
@@ -3653,7 +3654,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         // Sulfur from MINOR to MAJOR, so the pack forces the Major DECK exactly
         // as it forces the Major tier READ (`effectiveArtifactTier`). Composed
         // with the BINH toggle — Major whenever EITHER is on.
-        houseRules["eversmoking-ring-of-sulfur-major"] || houseRules["community-card-balance"]
+        houseRules["eversmoking-ring-of-sulfur-major"] || houseRules["community-card-balance"],
+        houseRules["no-artifact-scrolls"]
       ),
       ...makeNeutralDecks(seed, wog, anime),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn, ruleset),
