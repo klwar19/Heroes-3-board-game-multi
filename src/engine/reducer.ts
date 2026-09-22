@@ -6147,7 +6147,7 @@ function getAttackStackDetails(
         defender,
         houseRuleEnabled(state, "polish-bank-unit-spells"),
       ) ||
-      hasActiveIgnoresDefense(state, attacker),
+      hasActiveIgnoresDefense(state, attacker, defender),
     // Lord Haart (Necropolis) Dread Knights I/VI: an instant the defender's
     // controller played in this retaliation's window soaks `amount` less damage
     // off the strike (the ×2 for his Dread Knights is folded in when played).
@@ -14248,8 +14248,8 @@ function applyActivationStartAbilities(
     }
   }
 
-  // Factory Couatls: the activated invulnerability lasts "until its next
-  // activation" — so it ends the instant this unit begins that next activation.
+  // Drop obsolete ward flags from old serialized combats. Current Couatl
+  // protection is round-one targeting legality, not damage immunity.
   if (unit.invulnerableUntilActivation) {
     unit.invulnerableUntilActivation = false;
     appendEvent(state, {
@@ -14259,7 +14259,7 @@ function applyActivationStartAbilities(
         getInvulnerabilityActivation(unit)?.abilityId ??
         "couatl-invulnerability",
       targetUnitId: unit.id,
-      message: `${unit.cardName}'s invulnerability fades as it activates.`,
+      message: `${unit.cardName}'s old invulnerability marker is cleared.`,
     });
   }
 
@@ -16258,12 +16258,10 @@ export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutr
     return;
   }
 
-  // Factory Couatls: "[activation] Once per Combat. Until its next activation,
-  // this unit ignores all damage and spell effects." Offered as an optional
-  // yes/no at the start of the activation. The Few's activation of it ends the
-  // turn; the Pack's is free (resolved in chooseAbilityTarget).
+  // Few Couatls may choose their targeting ward only when they activate in
+  // round one. The Pack side has an automatic first-round passive instead.
   const couatlWard = getInvulnerabilityActivation(unit);
-  if (couatlWard && !unit.usedInvulnerabilityThisCombat) {
+  if (combat.round === 1 && couatlWard && !unit.usedInvulnerabilityThisCombat) {
     const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
@@ -16273,8 +16271,8 @@ export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutr
       abilityId: couatlWard.abilityId,
       abilityName: couatlWard.abilityName,
       prompt: couatlWard.endsActivation
-        ? `${unit.cardName}: ${couatlWard.abilityName} — become invulnerable until your next activation (this is your action for the turn), or skip.`
-        : `${unit.cardName}: ${couatlWard.abilityName} — become invulnerable until your next activation (free; you may still move and attack), or skip.`,
+        ? `${unit.cardName}: become untargetable by attacks and Spells until the end of round 1, ending this activation, or skip.`
+        : `${unit.cardName}: become untargetable by attacks and Spells until the end of round 1, or skip.`,
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: [unit.id],
@@ -16289,7 +16287,7 @@ export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutr
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.cardName} may become invulnerable this round.`,
+      message: `${unit.cardName} may become untargetable for round 1.`,
     });
     return;
   }
@@ -33284,22 +33282,19 @@ function chooseAbilityTarget(
     return;
   }
 
-  // Factory Couatls' invulnerability: the decision is made for this activation
-  // either way (activationAbilityDone). On "activate" the ward goes up (once per
-  // combat); the Few version then ends the turn, the Pack version is free so the
-  // unit still moves and attacks.
+  // Few Couatls: choosing the first-round targeting ward spends the activation.
   if (choice.kind === "couatl-invulnerability") {
     source.activationAbilityDone = true;
     const ward = getInvulnerabilityActivation(source);
-    if (!isSkip && ward && !source.usedInvulnerabilityThisCombat) {
-      source.invulnerableUntilActivation = true;
+    if (!isSkip && ward && combat.round === 1 && !source.usedInvulnerabilityThisCombat) {
+      source.couatlUntargetableRound = 1;
       source.usedInvulnerabilityThisCombat = true;
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: source.id,
         abilityId: ward.abilityId,
         targetUnitId: source.id,
-        message: `${source.cardName} coils into invulnerability — it ignores all damage and spell effects until its next activation.`,
+        message: `${source.cardName} cannot be targeted by attacks or Spells until round 1 ends.`,
       });
       if (ward.endsActivation) {
         markActivatedThisRound(source);
@@ -33759,7 +33754,7 @@ function declareAttack(
       throw new Error("That unit cannot attack the selected target.");
     }
   } else if (
-    !canUnitAttack(combat, attacker, selectedDefender, state.activeEffects)
+    !canUnitAttack(combat, attacker, selectedDefender, state.activeEffects, isRetaliation)
   ) {
     throw new Error("That unit cannot attack the selected target.");
   }

@@ -605,7 +605,7 @@ export function CommanderCardFace({
             {commanderUsesActionPoints(slug)
               ? "Start with 1 AP; gain +1 after moving, attacking, Defending, or being attacked. Spend AP on commands."
               : slug === "lion_el_jonson"
-                ? `1 Slash: adjacent enemy takes ${tierIndex + 1} flat damage. · 2 Counterstroke: ${["Bronze", "Bronze/Silver", "Bronze/Silver/Gold"][tierIndex]} ally gains unlimited Retaliation for this Combat. · Passive Rounds 1–3: random living enemy takes 1 flat damage.`
+                ? `1 Slash: enemy within 3 spaces takes ${tierIndex + 1} flat damage. · 2 Counterstroke: ${["Bronze", "Bronze/Silver", "Bronze/Silver/Gold"][tierIndex]} ally gains unlimited Retaliation for this Combat. · Passive Rounds 1–3: random living enemy takes 1 flat damage.`
               : def.cast.tierText[tierIndex]}
           </span>
         </span>

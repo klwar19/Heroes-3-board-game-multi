@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { assetUrl } from "@/lib/asset-url";
+
 /**
  * Shared designer guard editor — level Ⅰ–Ⅶ (Neutrals OR Packs of those tiers),
  * or an exact army of random-tier Neutrals, random-pack/few-of-tier, named
@@ -13,7 +16,6 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   customGuardArmyDifficulty,
-  describeGuardArmyGrouped,
   groupGuardUnitEntries,
   guardUnitEntryLabel,
   isAnyFewGuardSlot,
@@ -134,14 +136,204 @@ function fewUnitOptions(factionFilter: FactionId | "random" | undefined): {
   })).filter((group) => group.units.length > 0);
 }
 
-function setUnitCount(units: string[], id: string, count: number): string[] {
-  const without = units.filter((u) => u !== id);
-  const n = Math.max(0, Math.min(MAX_CUSTOM_GUARD_UNITS - without.length, Math.floor(count)));
-  return [...without, ...Array.from({ length: n }, () => id)];
-}
-
 function armyUsesPacks(units: string[]): boolean {
   return units.some((id) => isAnyPackGuardSlot(id) || isAnyFewGuardSlot(id));
+}
+
+function grailDefenderArt(id: string): string | undefined {
+  const side: "pack" | "few" | "neutral" = id.startsWith("pack:") ? "pack" : id.startsWith("few:") ? "few" : "neutral";
+  const unitId = side === "neutral" ? id : id.slice(side.length + 1);
+  return coreUnitDefinitions[unitId]?.[side]?.cardImage;
+}
+
+const GRAIL_UNIT_OPTIONS = [
+  ...RANDOM_NEUTRAL_QUICK.map(({ slot, tier }) => ({ id: slot, label: `Random ${tier} Neutral`, group: "Random Neutrals" })),
+  ...RANDOM_PACK_QUICK.map(({ slot, tier }) => ({ id: slot, label: `Pack of random ${tier} unit`, group: "Faction units" })),
+  ...RANDOM_FEW_QUICK.map(({ slot, tier }) => ({ id: slot, label: `Few of random ${tier} unit`, group: "Faction units" })),
+  ...GUARD_LEVELS.flatMap((rank) => (["pack", "few"] as const).map((side) => {
+    const id = `town-rank:${rank}:${side}`;
+    return { id, label: guardUnitEntryLabel(id), group: "One random Town faction" };
+  })),
+  ...GUARD_UNIT_OPTIONS.flatMap(({ tier, units }) => units.map(({ id, label }) => ({ id, label, group: `Neutral · ${GUARD_TIER_LABELS[tier]}` }))),
+  ...fewUnitOptions(undefined).flatMap(({ tier, units }) => units.map(({ id, label }) => ({ id, label, group: `Named Few · ${GUARD_TIER_LABELS[tier]}` }))),
+  ...packUnitOptions(undefined).flatMap(({ tier, units }) => units.map(({ id, label }) => ({ id, label, group: `Named Packs · ${GUARD_TIER_LABELS[tier]}` })))
+];
+
+function GuardUnitPicker({ value, onPick, faction, label }: {
+  value?: string;
+  onPick: (id: string) => void;
+  faction?: FactionId | "random";
+  label: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [open, setOpen] = useState(false);
+  const pickerRef = useRef<HTMLDetailsElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+    const closeOutside = (event: PointerEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        pickerRef.current.open = false;
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+  const categories = [...new Set(GRAIL_UNIT_OPTIONS.map((option) => option.group))];
+  const query = search.trim().toLocaleLowerCase();
+  const options = GRAIL_UNIT_OPTIONS.filter((option) => {
+    if (category !== "all" && option.group !== category) return false;
+    const unitId = option.id.startsWith("pack:") || option.id.startsWith("few:")
+      ? option.id.slice(option.id.indexOf(":") + 1) : option.id;
+    const unitFaction = coreUnitDefinitions[unitId]?.faction ?? "";
+    if (query && !`${option.label} ${option.group} ${unitFaction}`.toLocaleLowerCase().includes(query)) return false;
+    if (faction && faction !== "random" && (option.id.startsWith("pack:") || option.id.startsWith("few:"))) {
+      const def = coreUnitDefinitions[option.id.slice(option.id.indexOf(":") + 1)];
+      if (def?.faction !== faction && option.id !== value) return false;
+    }
+    return true;
+  });
+  const selectedLabel = value ? GRAIL_UNIT_OPTIONS.find((option) => option.id === value)?.label ?? guardUnitEntryLabel(value) : label;
+  const selectedArt = value ? grailDefenderArt(value) : undefined;
+  return (
+    <details className="guardUnitPicker" ref={pickerRef} onKeyDown={(event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (pickerRef.current) pickerRef.current.open = false;
+        setOpen(false);
+        pickerRef.current?.querySelector("summary")?.focus();
+      }
+    }} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary aria-label={label}>
+        {selectedArt ? <img alt="" height={27} src={assetUrl(selectedArt)} width={25} /> : <span aria-hidden="true">{value?.startsWith("town-rank:") ? "🏰" : "⚔"}</span>}
+        <span className="guardUnitPickerLabel">{selectedLabel}</span><span aria-hidden="true">⌄</span>
+      </summary>
+      <div className="guardUnitPickerMenu">
+        <input aria-label="Find guard unit" onChange={(event) => setSearch(event.target.value)} placeholder="Find unit, tier, or faction…" ref={searchRef} type="search" value={search} />
+        <select aria-label="Filter guard units" onChange={(event) => setCategory(event.target.value)} value={category}>
+          <option value="all">All kinds</option>
+          {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+        </select>
+        <div className="guardUnitPickerChoices">
+          {options.length ? options.map((option) => {
+            const art = grailDefenderArt(option.id);
+            const unitId = option.id.startsWith("pack:") || option.id.startsWith("few:")
+              ? option.id.slice(option.id.indexOf(":") + 1) : option.id;
+            const unitFaction = coreUnitDefinitions[unitId]?.faction;
+            return <button key={option.id} onClick={() => {
+              onPick(option.id);
+              if (pickerRef.current) pickerRef.current.open = false;
+              setOpen(false);
+              setSearch("");
+            }} type="button">
+              {art ? <img alt="" height={28} src={assetUrl(art)} width={25} /> : <span aria-hidden="true">{option.id.startsWith("town-rank:") ? "🏰" : "⚔"}</span>}
+              <span>{option.label}<small>{option.group}{unitFaction ? ` · ${unitFaction.replaceAll("_", " ")}` : ""}</small></span>
+            </button>;
+          }) : <small className="popoverHint">No matching units.</small>}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function GuardArmyTable({ guard, onChange, emptyMeansDefault = false }: {
+  guard: CustomGuardSpec;
+  onChange: (guard: CustomGuardSpec | undefined) => void;
+  emptyMeansDefault?: boolean;
+}) {
+  const units = guard.units ?? [];
+  const groups = groupGuardUnitEntries(units);
+  const maxUnits = units.every((id) => /^town-rank:[1-7]:(few|pack)$/.test(id)) && units.length > 0 ? 7 : MAX_CUSTOM_GUARD_UNITS;
+  const changeUnits = (next: string[], faction = guard.packFaction) => {
+    if (!next.length && emptyMeansDefault) return onChange(undefined);
+    const cap = next.length > 0 && next.every((id) => /^town-rank:[1-7]:(few|pack)$/.test(id)) ? 7 : MAX_CUSTOM_GUARD_UNITS;
+    onChange({ units: next.slice(0, cap), ...(faction ? { packFaction: faction } : {}) });
+  };
+  const changeGroup = (index: number, id: string, count: number) => changeUnits(groups.flatMap((group, groupIndex) =>
+    Array.from({ length: groupIndex === index ? count : group.count }, () => groupIndex === index ? id : group.id)
+  ));
+  return <div className="guardArmyTable" role="group" aria-label="Exact guard army">
+    <div className="guardArmyTableRows" role="list" aria-label="Defenders">
+      {groups.map(({ id, count }, index) => <div className="guardArmyTableRow" key={`${id}-${index}`} role="listitem">
+        <GuardUnitPicker faction={guard.packFaction} label={`Defender ${index + 1}`} onPick={(nextId) => changeGroup(index, nextId, count)} value={id} />
+        <label className="guardArmyTableCount"><span>×</span><select aria-label={`${guardUnitEntryLabel(id)} count`} onChange={(event) => changeGroup(index, id, Number(event.target.value))} value={count}>
+          {Array.from({ length: maxUnits - units.length + count }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
+        </select></label>
+        <button aria-label={`Remove ${guardUnitEntryLabel(id)}`} className="guardArmyTableRemove" onClick={() => changeGroup(index, id, 0)} type="button">×</button>
+      </div>)}
+    </div>
+    {units.length < maxUnits ? <GuardUnitPicker faction={guard.packFaction} label="Add defender" onPick={(id) => changeUnits([...units, id])} /> : null}
+    {!units.length ? <small className="popoverHint">Choose a defender to start the army.</small> :
+      <small className="popoverHint">{units.length}/{maxUnits} defenders · difficulty {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]} for experience</small>}
+    {armyUsesPacks(units) ? <label className="guardArmyTableFaction"><span>Pack/Few faction</span><select aria-label="Guard army faction" onChange={(event) => {
+      const faction = event.target.value === "any" ? undefined : event.target.value as FactionId | "random";
+      const next = faction && faction !== "random" ? units.map((id) => {
+        const side = id.startsWith("pack:") ? "pack" : id.startsWith("few:") ? "few" : null;
+        if (!side) return id;
+        const def = coreUnitDefinitions[id.slice(side.length + 1)];
+        return def && def.faction !== faction ? `random-${side}:${def.tier}` : id;
+      }) : units;
+      onChange({ units: next, ...(faction ? { packFaction: faction } : {}) });
+    }} value={guard.packFaction ?? "any"}>
+      <option value="any">Any faction</option><option value="random">One random faction</option>
+      {PACK_FACTIONS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+    </select></label> : null}
+  </div>;
+}
+
+/** The hidden Grail rule needs one direct army control, not the full map-object toolbox. */
+export function GrailGuardEditor({ guard, onChange }: {
+  guard: CustomGuardSpec | undefined;
+  onChange: (guard: CustomGuardSpec | undefined) => void;
+}) {
+  const mode = guard?.units ? "army" : guard?.level ? "level" : "default";
+  return (
+    <div className="grailGuardEditor" role="group" aria-label="Grail and Utopia guards">
+      <label className="grailGuardField">
+        <span>Guard</span>
+        <select aria-label="Grail guard mode" value={mode} onChange={(event) => {
+          if (event.target.value === "default") onChange(undefined);
+          else if (event.target.value === "level") onChange({ level: 7 });
+          else if (event.target.value === "town") onChange({ units: [...RANDOM_TOWN_RANKS_II_VI], packFaction: "random" });
+          else onChange({ units: guard?.units?.length ? guard.units : ["neutral.black_dragons", "random:azure", "random:azure"] });
+        }}>
+          <option value="default">Default · Black Dragon + 2 Azure</option>
+          <option value="level">Field Difficulty level</option>
+          <option value="army">Custom defenders</option>
+          <option value="town">Use Random Town ranks II–VI</option>
+        </select>
+      </label>
+      {mode === "level" ? (
+        <div className="grailGuardLine">
+          <label className="grailGuardField"><span>Difficulty</span>
+            <select aria-label="Grail guard difficulty" value={guard!.level} onChange={(event) => onChange({ ...guard, level: Number(event.target.value) })}>
+              {GUARD_LEVELS.map((level) => <option key={level} value={level}>{ROMAN_NUMERALS[level]}</option>)}
+            </select>
+          </label>
+          <label className="grailGuardField"><span>Army</span>
+            <select aria-label="Grail level army type" value={guard?.levelArmy === "packs" ? "packs" : "neutrals"} onChange={(event) => onChange({ level: guard!.level, ...(event.target.value === "packs" ? { levelArmy: "packs", ...(guard?.packFaction ? { packFaction: guard.packFaction } : {}) } : {}) })}>
+              <option value="neutrals">Neutrals</option><option value="packs">Faction Packs</option>
+            </select>
+          </label>
+        </div>
+      ) : null}
+      {mode === "army" && guard ? <GuardArmyTable emptyMeansDefault guard={guard} onChange={onChange} /> : null}
+      {mode === "level" && guard?.levelArmy === "packs" ? (
+        <label className="grailGuardField"><span>Pack/Few faction</span>
+          <select aria-label="Grail guard faction" value={guard?.packFaction ?? "any"} onChange={(event) => {
+            const faction = event.target.value === "any" ? undefined : event.target.value as FactionId | "random";
+            onChange({ level: guard!.level, levelArmy: "packs", ...(faction ? { packFaction: faction } : {}) });
+          }}>
+            <option value="any">Any faction</option><option value="random">One random faction</option>
+            {PACK_FACTIONS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+      ) : null}
+    </div>
+  );
 }
 
 export function GuardSpecEditor({
@@ -159,30 +351,8 @@ export function GuardSpecEditor({
 }) {
   const armyMode = Boolean(guard?.units);
   const levelMode = Boolean(guard?.level && !armyMode);
-  const units = guard?.units ?? [];
-  const groups = groupGuardUnitEntries(units);
-  const atCap = units.length >= MAX_CUSTOM_GUARD_UNITS;
-  const remaining = MAX_CUSTOM_GUARD_UNITS - units.length;
   const packFaction = guard?.packFaction;
   const levelArmyPacks = guard?.levelArmy === "packs";
-  const showFactionRow =
-    (armyMode && (armyUsesPacks(units) || units.length === 0)) || (levelMode && levelArmyPacks);
-  const packOptions = packUnitOptions(packFaction);
-  const fewOptions = fewUnitOptions(packFaction);
-
-  const setUnits = (next: string[], nextFaction = packFaction) => {
-    if (next.length === 0) {
-      onChange({
-        units: [],
-        ...(nextFaction ? { packFaction: nextFaction } : {})
-      });
-      return;
-    }
-    onChange({
-      units: next.slice(0, MAX_CUSTOM_GUARD_UNITS),
-      ...(nextFaction ? { packFaction: nextFaction } : {})
-    });
-  };
 
   const setLevel = (level: number, asPacks: boolean, faction?: FactionId | "random") => {
     onChange({
@@ -190,16 +360,6 @@ export function GuardSpecEditor({
       ...(asPacks ? { levelArmy: "packs" as const } : {}),
       ...(asPacks && faction ? { packFaction: faction } : {})
     });
-  };
-
-  const setPackFaction = (next: FactionId | "random" | undefined) => {
-    if (armyMode) {
-      setUnits(units, next);
-      return;
-    }
-    if (levelMode && guard?.level) {
-      setLevel(guard.level, levelArmyPacks, next);
-    }
   };
 
   return (
@@ -277,216 +437,17 @@ export function GuardSpecEditor({
         </div>
       ) : null}
 
-      {armyMode ? (
-        <div className="popoverGuardArmy">
-          <button
-            className="popoverGuardTownRecipe"
-            onClick={() => onChange({ units: [...RANDOM_TOWN_RANKS_II_VI], packFaction: "random" })}
-            title="One rolled faction: Packs of its rank II, III, IV and V creatures, plus Few of rank VI (for example Dwarves, Elves, Pegasi, Dendroids and Unicorns)."
-            type="button"
-          >
-            <span aria-hidden="true">🏰</span>
-            <span><strong>Random Town ranks II–VI</strong><small>4 Packs + rank VI Few · one faction</small></span>
-          </button>
-          <div className="popoverGuardQuickRow" role="group" aria-label="Add random Neutral of tier">
-            {RANDOM_NEUTRAL_QUICK.map(({ slot, label, tier }) => (
-              <button
-                className="popoverGuardChip popoverGuardQuickChip"
-                disabled={atCap}
-                key={slot}
-                onClick={() => {
-                  if (atCap) return;
-                  setUnits([...units, slot]);
-                }}
-                title={`Add a random ${tier} Neutral (rolled at fight time).`}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="popoverGuardQuickRow" role="group" aria-label="Add Pack of tier">
-            {RANDOM_PACK_QUICK.map(({ slot, label, tier }) => (
-              <button
-                className="popoverGuardChip popoverGuardQuickChip"
-                disabled={atCap}
-                key={slot}
-                onClick={() => {
-                  if (atCap) return;
-                  setUnits([...units, slot]);
-                }}
-                title={`Add a random Pack of Tier ${tier} (faction unit card, rolled at fight time).`}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="popoverGuardQuickRow" role="group" aria-label="Add Few of tier">
-            {RANDOM_FEW_QUICK.map(({ slot, label, tier }) => (
-              <button
-                className="popoverGuardChip popoverGuardQuickChip"
-                disabled={atCap}
-                key={slot}
-                onClick={() => {
-                  if (atCap) return;
-                  setUnits([...units, slot]);
-                }}
-                title={`Add a random Few of Tier ${tier} (faction unit card, rolled at fight time).`}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-            <span className="popoverGuardCapHint" aria-live="polite">
-              {units.length}/{MAX_CUSTOM_GUARD_UNITS}
-            </span>
-          </div>
+      {armyMode && guard ? <GuardArmyTable guard={guard} onChange={onChange} /> : null}
 
-          {groups.length > 0 ? (
-            <div className="popoverGuardArmyGroups" role="list" aria-label="Exact army units">
-              {groups.map(({ id, count }) => (
-                <div className="popoverGuardArmyGroup" key={id} role="listitem">
-                  <span className="popoverGuardArmyGroupLabel" title={guardUnitEntryLabel(id)}>
-                    <span className="popoverGuardArmyCount">×{count}</span> {guardUnitEntryLabel(id)}
-                  </span>
-                  <div className="popoverGuardArmySteppers">
-                    <button
-                      aria-label={`Remove one ${guardUnitEntryLabel(id)}`}
-                      className="popoverGuardStepBtn"
-                      onClick={() => setUnits(setUnitCount(units, id, count - 1))}
-                      type="button"
-                    >
-                      −
-                    </button>
-                    <button
-                      aria-label={`Add one ${guardUnitEntryLabel(id)}`}
-                      className="popoverGuardStepBtn"
-                      disabled={atCap}
-                      onClick={() => setUnits(setUnitCount(units, id, count + 1))}
-                      type="button"
-                    >
-                      +
-                    </button>
-                    <button
-                      aria-label={`Remove all ${guardUnitEntryLabel(id)}`}
-                      className="popoverGuardStepBtn popoverGuardRemoveAll"
-                      onClick={() => setUnits(units.filter((u) => u !== id))}
-                      title="Remove all of this entry"
-                      type="button"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <small className="popoverHint">
-              No units yet — add Pack/Few of Tier I–IV, random Neutrals, or a named unit (up to{" "}
-              {MAX_CUSTOM_GUARD_UNITS}).
-            </small>
-          )}
-
-          {remaining > 0 ? (
-            <select
-              aria-label="Add a named guard unit"
-              className="popoverSelect popoverGuardUnitSelect"
-              onChange={(event) => {
-                const unitId = event.target.value;
-                if (unitId) {
-                  setUnits([...units, unitId]);
-                }
-                event.target.value = "";
-              }}
-              value=""
-            >
-              <option value="">+ Add named unit…</option>
-              {GUARD_UNIT_OPTIONS.map((group) => (
-                <optgroup key={group.tier} label={`Neutral · ${GUARD_TIER_LABELS[group.tier]}`}>
-                  {group.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-              {fewOptions.map((group) => (
-                <optgroup key={`few-${group.tier}`} label={`Faction Few · ${GUARD_TIER_LABELS[group.tier]}`}>
-                  {group.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-              {packOptions.map((group) => (
-                <optgroup key={`pack-${group.tier}`} label={`Faction Pack · ${GUARD_TIER_LABELS[group.tier]}`}>
-                  {group.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          ) : null}
-
-          {units.length > 0 ? (
-            <small className="popoverHint popoverGuardArmyNote">
-              {describeGuardArmyGrouped(units)}
-              {packFaction === "random"
-                ? " · random faction packs"
-                : packFaction
-                  ? ` · ${packFaction} packs`
-                  : ""}{" "}
-              · counts as difficulty {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]} (experience); Quick
-              Combat never skips an exact army.
-            </small>
-          ) : null}
-        </div>
-      ) : null}
-
-      {showFactionRow ? (
-        <div className="popoverGuardArmy" role="group" aria-label="Pack faction">
-          <div className="popoverSectionLabel">Pack faction</div>
-          <div className="popoverGuardQuickRow" style={{ flexWrap: "wrap" }}>
-            <button
-              aria-pressed={!packFaction}
-              className={`popoverGuardChip${!packFaction ? " active" : ""}`}
-              onClick={() => setPackFaction(undefined)}
-              title="Packs may mix factions freely."
-              type="button"
-            >
-              Any
-            </button>
-            <button
-              aria-pressed={packFaction === "random"}
-              className={`popoverGuardChip${packFaction === "random" ? " active" : ""}`}
-              onClick={() => setPackFaction("random")}
-              title="Roll one playable faction once per fight; all Packs share it."
-              type="button"
-            >
-              Random faction
-            </button>
-            {PACK_FACTIONS.map(({ id, label }) => (
-              <button
-                aria-pressed={packFaction === id}
-                className={`popoverGuardChip${packFaction === id ? " active" : ""}`}
-                key={id}
-                onClick={() => setPackFaction(id)}
-                title={`All Packs are ${label} units.`}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <small className="popoverHint">
-            All Packs and Fews share one faction (or roll one at fight). Neutrals stay free.
-          </small>
-        </div>
-      ) : null}
+      {levelMode && levelArmyPacks ? <label className="guardArmyTableFaction"><span>Pack faction</span>
+        <select aria-label="Level guard faction" onChange={(event) => {
+          const faction = event.target.value === "any" ? undefined : event.target.value as FactionId | "random";
+          setLevel(guard!.level!, true, faction);
+        }} value={packFaction ?? "any"}>
+          <option value="any">Any faction</option><option value="random">One random faction</option>
+          {PACK_FACTIONS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+        </select>
+      </label> : null}
     </div>
   );
 }

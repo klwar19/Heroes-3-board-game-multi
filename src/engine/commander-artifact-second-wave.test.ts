@@ -237,9 +237,10 @@ describe("commander artifact second wave", () => {
       affect: [{ key: "armageddon" }],
       sound: "spells/armageddon",
       battlefield: true,
-      playbackMs: 5590,
+      playbackMs: 1600,
+      presentationMs: 1800,
     });
-    expect(spellPresentationMs(abilityFxPlans["commander-artifact-counterfeit-cataclysm"])).toBe(5590);
+    expect(spellPresentationMs(abilityFxPlans["commander-artifact-counterfeit-cataclysm"])).toBe(1800);
     expect(abilityFxPlans["commander-artifact-lanternroot-crook"]?.sound).toBe("spells/air-elemental");
     expect(abilityFxPlans["commander-artifact-sealed-horizon"]?.sound).toBe("spells/force-field");
     expect(abilityFxPlans["commander-artifact-widows-courtesy"]?.hit).toBe("magic-arrow-hit");

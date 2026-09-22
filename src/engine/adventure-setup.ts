@@ -2826,7 +2826,8 @@ function forcedObjectiveCenterTiles(
   polishRule = false,
   playerCount = 0,
   seed = "",
-  alreadyPlaced: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 }
+  alreadyPlaced: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 },
+  additionalUtopiaWin = false
 ): (string | undefined)[] {
   if (slots <= 0) {
     return [];
@@ -2842,6 +2843,24 @@ function forcedObjectiveCenterTiles(
     const forced: (string | undefined)[] = takeObjectiveTiles(pool, needed, seed, slots);
     while (forced.length < slots) forced.push(undefined);
     return forced;
+  }
+  // A Grail scenario may also carry the real, engine-checked
+  // `defeat-dragon-utopia` custom win condition. Reserve one Utopia before the
+  // Grail sites so both enabled objectives are physically playable. Remaining
+  // Grail sites can still overflow to Near/Far slots below, as in classic Grail.
+  if (mode === "grail" && additionalUtopiaWin && alreadyPlaced.dragon_utopia === 0) {
+    const result: (string | undefined)[] = [takeCenterTileWith(pool, "dragon_utopia")];
+    const grailsNeeded = Math.max(0, 2 - alreadyPlaced.grail);
+    while (result.length < slots && result.length - 1 < grailsNeeded) {
+      result.push(takeCenterTileWith(pool, "grail"));
+    }
+    while (result.length < slots) result.push(undefined);
+    return result;
+  }
+  if (additionalUtopiaWin && alreadyPlaced.dragon_utopia === 0) {
+    const result: (string | undefined)[] = [takeCenterTileWith(pool, "dragon_utopia")];
+    while (result.length < slots) result.push(undefined);
+    return result;
   }
   if (mode === "grail") {
     // Prefer a Grail on every Center slot, capped at 2 dig sites.
@@ -3230,7 +3249,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     dungeonDescentCandidate === 0 || dungeonDescentCandidate === 2
       ? dungeonDescentCandidate
       : 1;
-  let victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
+  const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const polishGrailUtopiaOn = houseRules["polish-grail-utopia"];
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "default";
@@ -3380,7 +3399,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // feature). This only flips `hiddenGrailUtopia`; it does NOT trigger the house
   // rule's extra per-seat objective overflow (gated on `polishGrailUtopiaOn`),
   // so the designer's explicit placement stands.
-  let mapPreset =
+  const mapPreset =
     customMapHasGrailUtopiaDesignation(customMap) &&
     victoryMode !== "grail" &&
     !resolvedMapPreset?.objectives?.hiddenGrailUtopia
@@ -4143,7 +4162,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       polishGrailUtopiaOn,
       playerConfigs.length,
       seed,
-      authoredObjectives
+      authoredObjectives,
+      Boolean(resolvedMapPreset?.customWinConditions?.some((condition) => condition.kind === "defeat-dragon-utopia"))
     );
     let forcedCenterIndex = 0;
 
@@ -4167,7 +4187,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : [];
     const grailOverflow: string[] =
       victoryMode === "grail" && !polishGrailUtopiaOn
-        ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length)
+        ? takeRemainingGrailTiles(
+            centerPool,
+            Math.max(0, 2 - authoredObjectives.grail - forcedObjectiveCounts.grail)
+          )
         : [];
     // Count designer-guaranteed Obelisks; pull the shortfall from Near/Far pools.
     const obelisksStillNeeded =
@@ -4437,7 +4460,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       victoryMode,
       polishGrailUtopiaOn,
       playerConfigs.length,
-      seed
+      seed,
+      { grail: 0, dragon_utopia: 0 },
+      Boolean(resolvedMapPreset?.customWinConditions?.some((condition) => condition.kind === "defeat-dragon-utopia"))
     );
     const forcedObjectiveCounts = objectiveCountsInTiles(forcedCenters);
     const polishDesired = polishGrailUtopiaCounts(playerConfigs.length, seed);
@@ -4453,7 +4478,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : [];
     const grailOverflow: string[] =
       victoryMode === "grail" && !polishGrailUtopiaOn
-        ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length)
+        ? takeRemainingGrailTiles(centerPool, 2 - forcedObjectiveCounts.grail)
         : [];
     const forcedObelisks: string[] =
       victoryMode === "grail" && !polishGrailUtopiaOn

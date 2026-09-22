@@ -7,6 +7,8 @@
  * hexes, tokens, objects, per-tile settlements and hex events.
  */
 
+import { assetUrl } from "@/lib/asset-url";
+import { ABILITY_EMPOWER_TOKEN_ICON, RESOURCE_ICONS, REWARD_GLYPH_ICONS, STAT_SYMBOL_ICONS, UI_REWARD_ICONS } from "@/data/assets/homm-assets";
 import {
   describeFieldReward,
   MAX_CENTER_HEX_DICE,
@@ -34,11 +36,16 @@ const SEARCH_FIELDS: {
   sizeKey: "searchSpell" | "searchAbility" | "searchArtifact";
   timesKey: "searchSpellTimes" | "searchAbilityTimes" | "searchArtifactTimes";
   label: string;
+  exampleCard: string;
 }[] = [
-  { sizeKey: "searchSpell", timesKey: "searchSpellTimes", label: "Spells" },
-  { sizeKey: "searchAbility", timesKey: "searchAbilityTimes", label: "Abilities" },
-  { sizeKey: "searchArtifact", timesKey: "searchArtifactTimes", label: "Artifacts" }
+  { sizeKey: "searchSpell", timesKey: "searchSpellTimes", label: "Spells", exampleCard: "/assets/spells-magic_arrow.webp" },
+  { sizeKey: "searchAbility", timesKey: "searchAbilityTimes", label: "Abilities", exampleCard: "/assets/abilities-offense.webp" },
+  { sizeKey: "searchArtifact", timesKey: "searchArtifactTimes", label: "Artifacts", exampleCard: "/assets/artifacts_minor-centaurs_axe.webp" }
 ];
+
+function RewardIcon({ src, tone }: { src: string; tone?: "gold" | "violet" | "green" }) {
+  return <img alt="" aria-hidden="true" className={`fieldRewardIcon${tone ? ` tone-${tone}` : ""}`} src={assetUrl(src)} />;
+}
 
 /**
  * Fold one amount into a field reward, returning the next reward (or undefined
@@ -119,10 +126,11 @@ export function FieldRewardEditor({
 
   return (
     <div className="fieldRewardEditor" role="group" aria-label={ariaLabel}>
+      <div className="fieldRewardEditorHeading"><RewardIcon src={REWARD_GLYPH_ICONS.treasure} tone="gold" /> Reward configuration</div>
       <div className="popoverViiRewardRow fieldRewardResourceRow">
         {RESOURCE_FIELDS.map((field) => (
           <label className="popoverViiField_num" key={field.key}>
-            <span>{field.label}</span>
+            <span className="fieldRewardLabel"><RewardIcon src={RESOURCE_ICONS[field.key]} />{field.label}</span>
             <input
               aria-label={`${ariaLabel} ${field.label}`}
               max={field.max}
@@ -137,7 +145,7 @@ export function FieldRewardEditor({
           </label>
         ))}
         <label className="popoverViiField_num">
-          <span>Treasure dice</span>
+          <span className="fieldRewardLabel"><RewardIcon src="/assets/glyphs/2_treasure_die.svg" tone="gold" />Treasure dice</span>
           <input
             aria-label={`${ariaLabel} Treasure dice`}
             max={MAX_CENTER_HEX_DICE}
@@ -155,7 +163,7 @@ export function FieldRewardEditor({
         </label>
         {showVp && onVpChange ? (
           <label className="popoverViiField_num popoverViiVp">
-            <span>Victory Pts</span>
+            <span className="fieldRewardLabel"><RewardIcon src="/map-designer/category-victory.webp" />Victory Pts</span>
             <input
               aria-label={`${ariaLabel} victory points`}
               max={MAX_CENTER_HEX_VP}
@@ -175,12 +183,15 @@ export function FieldRewardEditor({
       </div>
 
       <div className="fieldRewardSearchGrid" role="group" aria-label={`${ariaLabel} deck searches`}>
-        {SEARCH_FIELDS.map(({ sizeKey, timesKey, label }) => {
+        {SEARCH_FIELDS.map(({ sizeKey, timesKey, label, exampleCard }) => {
           const size = reward?.[sizeKey] ?? 0;
           const times = size > 0 ? (reward?.[timesKey] ?? 1) : 0;
           return (
             <div className="fieldRewardSearchCard" key={sizeKey}>
-              <div className="fieldRewardSearchTitle">{label}</div>
+              <div className="fieldRewardSearchTitle">
+                <img alt={`${label} card example`} className="fieldRewardExampleCard" src={assetUrl(exampleCard)} title={`Example ${label.toLowerCase()} card; Search draws from the deck, not this exact card.`} />
+                <span>{label}<small>Example card</small></span>
+              </div>
               <label className="popoverViiField_num">
                 <span>Search size (X)</span>
                 <input
@@ -230,10 +241,10 @@ export function FieldRewardEditor({
       </div>
 
       <div className="fieldRewardSpecialSection" role="group" aria-label={`${ariaLabel} special rewards`}>
-        <div className="fieldRewardSpecialTitle">Special rewards</div>
+        <div className="fieldRewardSpecialTitle"><RewardIcon src={REWARD_GLYPH_ICONS.treasure} tone="violet" /> Special rewards</div>
         <div className="fieldRewardSpecialGrid">
           <label className="fieldRewardSpecialSelect">
-            <span>Morale</span>
+            <span className="fieldRewardLabel"><RewardIcon src={STAT_SYMBOL_ICONS.moralePositive} />Morale</span>
             <select
               aria-label={`${ariaLabel} morale`}
               onChange={(event) => {
@@ -257,6 +268,7 @@ export function FieldRewardEditor({
               }
               type="checkbox"
             />
+            <RewardIcon src={ABILITY_EMPOWER_TOKEN_ICON} />
             <span>
               Ability Empower token
               <small>Stackable · spend one anytime on a hand Ability</small>
@@ -272,7 +284,7 @@ export function FieldRewardEditor({
               }
               type="checkbox"
             />
-            <span>Choose +1 Morale or Ability Empower token</span>
+            <span><span className="fieldRewardChoiceIcons"><RewardIcon src={STAT_SYMBOL_ICONS.moralePositive} /><RewardIcon src={ABILITY_EMPOWER_TOKEN_ICON} /></span>Choose +1 Morale or Ability Empower token</span>
           </label>
 
           <label className="fieldRewardSpecialToggle">
@@ -284,6 +296,12 @@ export function FieldRewardEditor({
               }
               type="checkbox"
             />
+            <span className="fieldRewardChoiceIcons" aria-hidden="true">
+              <RewardIcon src={STAT_SYMBOL_ICONS.attack} />
+              <RewardIcon src={STAT_SYMBOL_ICONS.defense} />
+              <RewardIcon src={STAT_SYMBOL_ICONS.power} />
+              <RewardIcon src={STAT_SYMBOL_ICONS.knowledge} />
+            </span>
             <span>
               Empower a Statistic
               <small>Free menu: hand or discard → Empowered form</small>
@@ -291,7 +309,7 @@ export function FieldRewardEditor({
           </label>
 
           <label className="popoverViiField_num">
-            <span>Experience</span>
+            <span className="fieldRewardLabel"><RewardIcon src={STAT_SYMBOL_ICONS.experience} />Experience</span>
             <input
               aria-label={`${ariaLabel} experience`}
               max={MAX_FIELD_REWARD_EXPERIENCE}
@@ -309,7 +327,7 @@ export function FieldRewardEditor({
           </label>
 
           <label className="popoverViiField_num">
-            <span>Movement</span>
+            <span className="fieldRewardLabel"><RewardIcon src={REWARD_GLYPH_ICONS.movement} tone="green" />Movement</span>
             <input
               aria-label={`${ariaLabel} movement`}
               max={MAX_FIELD_REWARD_MOVEMENT}
@@ -327,7 +345,7 @@ export function FieldRewardEditor({
           </label>
 
           <label className="popoverViiField_num">
-            <span>Resource dice</span>
+            <span className="fieldRewardLabel"><RewardIcon src={UI_REWARD_ICONS.treasureFaceResourceDie} />Resource dice</span>
             <input
               aria-label={`${ariaLabel} Resource dice`}
               max={MAX_FIELD_REWARD_RESOURCE_DICE}

@@ -171,12 +171,6 @@ export function unitImmuneToSpellSchools(
   unit: CombatUnitState,
   spellSchools: readonly SpellSchool[] | undefined
 ): boolean {
-  // Factory Couatls' activated invulnerability: while set the unit "ignores all
-  // spell effects", so it is immune to every Spell (of any school, and the
-  // school-less ones), exactly like a full immune-all-spells passive.
-  if (unit.invulnerableUntilActivation) {
-    return true;
-  }
   if (!spellSchools || spellSchools.length === 0) {
     return false;
   }
@@ -1855,9 +1849,7 @@ export function getOnRemovalDetonation(
 }
 
 /**
- * Factory Couatls: the activated invulnerability ability, if this unit carries
- * it. `endsActivation` is true for the Few (using it is the whole turn) and
- * false for the Pack ("does not replace any regular actions").
+ * Few Couatls' first-round activation choice. Pack protection is passive.
  */
 export function getInvulnerabilityActivation(
   unit: CombatUnitState
@@ -1871,12 +1863,19 @@ export function getInvulnerabilityActivation(
 }
 
 /**
- * Whether this unit currently "ignores all damage" — the Factory Couatls'
- * activated invulnerability. Every incoming-damage chokepoint checks this and
- * skips the unit while it is set (until its next activation).
+ * Legacy damage-immunity seam. Couatl targeting protection no longer negates
+ * damage from retaliation or untargeted effects.
  */
 export function isUnitDamageImmune(unit: CombatUnitState): boolean {
-  return Boolean(unit.invulnerableUntilActivation);
+  // The old Couatl ward prevented all damage. Its current card prevents attack
+  // and Spell targeting only; retaliation and untargeted damage still resolve.
+  return false;
+}
+
+export function couatlCannotBeTargeted(combat: CombatState | null | undefined, unit: CombatUnitState): boolean {
+  if (!combat || combat.round !== 1) return false;
+  return hasUnitAbilityEffect(unit, "FIRST_ROUND_UNTARGETABLE") ||
+    (unit.couatlUntargetableRound === combat.round && Boolean(getInvulnerabilityActivation(unit)));
 }
 
 /**

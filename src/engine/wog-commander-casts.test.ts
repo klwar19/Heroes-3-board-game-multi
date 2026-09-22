@@ -1209,13 +1209,18 @@ describe("commander casts — Ibuki's Executive Order", () => {
 });
 
 describe("Imperium commander — Lion command table", () => {
-  it("Lion's Slash deals 1/2/3 flat adjacent damage at Power 0/1/2", () => {
+  it("Lion's Slash deals 1/2/3 flat damage within 3 spaces at Power 0/1/2", () => {
     for (const [magic, expected] of [[0, 1], [2, 2], [3, 3]] as const) {
       let state = castState("lion_el_jonson", { magic });
+      state.combat!.units.unit_p2_skeletons.position = 1;
       state.combat!.units.unit_p2_skeletons.defense = 99;
       state = castOnByAbility(state, "commander-cast-lion-slash", "unit_p2_skeletons");
       expect(state.combat!.units.unit_p2_skeletons.damage).toBe(expected);
     }
+
+    const outOfRange = castState("lion_el_jonson");
+    outOfRange.combat!.units.unit_p2_skeletons.position = 19;
+    expect(castCandidateIdsByAbility(outOfRange, "commander-cast-lion-slash")).not.toContain("unit_p2_skeletons");
   });
 
   it("Deathwing Counterstroke follows the Bronze/Silver/Gold Power ladder and lasts the whole Combat", () => {

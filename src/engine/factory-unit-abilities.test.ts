@@ -755,9 +755,9 @@ describe("Factory Bounty Hunters — Mark", () => {
     expect(unmarked.combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
 
-  it("a Pack Bounty Hunter deals +2 into a Marked unit (7)", () => {
+  it("a Pack Bounty Hunter deals +1 into a Marked unit (6)", () => {
     const marked = bountyHunterShot(["bounty-hunter-mark-2"], true);
-    expect(marked.combat!.units.unit_p2_skeletons.damage).toBe(7);
+    expect(marked.combat!.units.unit_p2_skeletons.damage).toBe(6);
   });
 
   it("a real recruited Few card retains Mark and deals +1 through combat construction", () => {

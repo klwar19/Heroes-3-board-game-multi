@@ -246,7 +246,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(u["factory.sandworms"].neutral?.abilities, "sandworms neutral").toEqual(["sandworm-strike-again"]);
     // Armadillos PACK amplifies any Initiative increase by +1 (Few/Neutral bare).
     expect(u["factory.armadillos"].pack?.abilities, "armadillos pack").toEqual(["armadillo-initiative-amplify"]);
-    // Bounty Hunters Mark on both faction sides (Few +1, Pack +2 vs Marked).
+    // Bounty Hunters Mark on both faction sides (+1 vs Marked).
     expect(u["factory.gunslingers"].few?.abilities, "bounty hunters few").toEqual(["bounty-hunter-mark-1"]);
     expect(u["factory.gunslingers"].pack?.abilities, "bounty hunters pack").toEqual(["bounty-hunter-mark-2"]);
     for (const abilityId of [

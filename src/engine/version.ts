@@ -1449,7 +1449,10 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // optional VII-field Diplomacy change authoritative map/combat resolution.
 // v165: designer Random Town rosters now persist named guards, Stack layers,
 // and veteran ranks for authoritative neutral combat resolution.
-export const ENGINE_PROTOCOL_VERSION = 165;
+// v166: Couatl round-one targeting and Few activation choice, Bounty Hunter
+// Mark, Tancred VI timing/range, and Henrietta's round-start prompt change
+// authoritative combat rules and serialized choice state.
+export const ENGINE_PROTOCOL_VERSION = 166;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

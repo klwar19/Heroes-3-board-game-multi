@@ -407,6 +407,7 @@ import {
   moraleLockedForPlayer,
   unitHasAttackRollAdvantage,
   unitImmuneToSpellSchools,
+  couatlCannotBeTargeted,
 } from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -1171,6 +1172,7 @@ export function unitBlockedBySpellCard(
   if (card.kind !== "spell") {
     return false;
   }
+  if (couatlCannotBeTargeted(state.combat, unit)) return true;
   if (isUnitSpellImmune(state, unit)) {
     return true;
   }
@@ -2216,10 +2218,12 @@ export function canUnitAttack(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   activeEffects: ActiveEffectState[] = [],
+  isRetaliation = false,
 ): boolean {
   if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return false;
   }
+  if (!isRetaliation && couatlCannotBeTargeted(combat, defender)) return false;
 
   // Berserk forces a unit onto the nearest unit, friend or foe — so a berserked
   // attacker may strike its own ally (which still retaliates). Every other unit
@@ -2337,7 +2341,8 @@ export function getBerserkNearestTargets(
   unit: CombatUnitState,
 ): CombatUnitState[] {
   const others = Object.values(combat.units).filter(
-    (candidate) => candidate.id !== unit.id && isUnitAlive(candidate),
+    (candidate) => candidate.id !== unit.id && isUnitAlive(candidate) &&
+      !couatlCannotBeTargeted(combat, candidate),
   );
   if (others.length === 0) {
     return [];
@@ -9317,7 +9322,7 @@ function getLegalActionsCore(
                   : choice.kind === "dreadnought-splash"
                     ? `${choice.abilityName}: deal ${choice.chainRemainingDamages?.[0] ?? 0} to`
                     : choice.kind === "couatl-invulnerability"
-                      ? "Become invulnerable —"
+                      ? "Become untargetable for round 1 —"
                       : choice.kind === "automaton-cube"
                         ? "Place a faction cube on"
                         : choice.kind === "commander-cast"

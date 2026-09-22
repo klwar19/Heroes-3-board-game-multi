@@ -1422,7 +1422,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // (ranged) attackers too. The prior double-shot was a fabrication — the
     // physical card carries the Mark ability (faction sides) instead.
     few: { attack: 5, defense: 1, health: 5, initiative: 7, cost: { gold: 11 }, abilities: ["bounty-hunter-mark-1"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units.", cardImage: "/factory-cards/units-factory-golden-gunslingers-few-imagegen.webp" },
-    pack: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 16, valuables: 1 }, abilities: ["bounty-hunter-mark-2"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +2 [attack] against Marked units.", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 16, valuables: 1 }, abilities: ["bounty-hunter-mark-2"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units.", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
     neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 17 }, abilities: ["bounty-hunter-preemptive"], abilityText: "[unit_passive] Retaliate before an opponent's attack. This unit also retaliates against non-adjacent units.", cardImage: "/assets/units-factory-golden-gunslingers-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Gunslinger",
     source: {
@@ -1437,18 +1437,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "factory",
     tier: "gold",
     type: "flying",
-    // engine: Flying is the unit `type`. The activated invulnerability (once per
-    // Combat, until its next activation the unit ignores ALL damage and spell
-    // effects) is now wired: couatl-invulnerability-few (endsActivation: using it
-    // is the whole turn) and couatl-invulnerability-pack (free — "does not replace
-    // any regular actions"). The Neutral guard has no ability.
-    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: ["couatl-invulnerability-few"], abilityText: "[activation] Once per Combat. Until its next activation, this unit ignores all [damage] and [spell] effects.", cardImage: "/factory-cards/units-factory-golden-couatls-few-imagegen.webp" },
-    pack: { attack: 7, defense: 3, health: 8, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: ["couatl-invulnerability-pack"], abilityText: "[activation] Once per Combat. Until its next activation, this unit ignores all [damage] and [spell] effects. This special ability does not replace any regular actions.", cardImage: "/factory-cards/units-factory-golden-couatls-pack-imagegen.webp" },
+    // Flying is the unit type. Few can spend its first-round activation for
+    // targeting protection; Pack has that protection automatically in round 1.
+    // Neutral has neither ability.
+    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: ["couatl-invulnerability-few"], abilityText: "[activation] During the first round, you may end this unit's activation. If you do, it cannot be targeted by attacks or Spells until the round ends. Retaliation Attacks still work.", cardImage: "/factory-cards/units-factory-golden-couatls-few-first-round-castle-icons.webp" },
+    pack: { attack: 7, defense: 3, health: 8, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: ["couatl-invulnerability-pack"], abilityText: "[unit_passive] This unit cannot be targeted by attacks or Spells during the first round, including by Neutral units. Retaliation Attacks still work.", cardImage: "/factory-cards/units-factory-golden-couatls-pack-first-round.webp" },
     neutral: { attack: 5, defense: 2, health: 8, initiative: 13, cost: { gold: 18, valuables: 1 }, abilities: [], cardImage: "/assets/units-factory-golden-couatls-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Couatl",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Activated invulnerability wired on both faction sides (Few ends the turn, Pack is free); Neutral has no ability.",
+      credit: "Stats/cost from the physical Factory unit cards; first-round targeting protection follows the supplied card ruling (Few spends its activation, Pack automatic). Neutral has no ability.",
       url: "https://heroes.thelazy.net/index.php/Couatl"
     }
   },

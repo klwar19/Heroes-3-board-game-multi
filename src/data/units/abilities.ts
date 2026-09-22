@@ -1609,18 +1609,12 @@ export type UnitAbilityEffectDefinition =
       type: "IGNORE_SPELL_AND_SPECIALTY_NONDAMAGE";
     }
   | {
-      /**
-       * Factory Couatls: "[activation] Once per Combat. Until its next
-       * activation, this unit ignores all [damage] and [spell] effects." At the
-       * start of its activation the controller may switch on `invulnerable-
-       * UntilActivation` (once per combat). The Few's activation of it ENDS the
-       * turn (`endsActivation`); the Pack's card adds "does not replace any
-       * regular actions", so it is free and the unit still moves and attacks.
-       */
+      /** Few Couatls' optional round-one turn-consuming targeting protection. */
       type: "ON_ACTIVATION_INVULNERABILITY";
       /** Few: using it is the whole turn. Pack: false — it does not replace the action. */
       endsActivation: boolean;
     }
+  | { type: "FIRST_ROUND_UNTARGETABLE" }
   | {
       /**
        * Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking,
@@ -2177,8 +2171,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "bounty-hunter-mark-2": {
     id: "bounty-hunter-mark-2",
     name: "Mark",
-    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +2 Attack against Marked units.",
-    effect: { type: "MARK_AND_HUNT", attackBonus: 2 },
+    text: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. This unit gains +1 Attack against Marked units.",
+    effect: { type: "MARK_AND_HUNT", attackBonus: 1 },
     implementationStatus: "implemented"
   },
   // Factory Armadillos (Pack): "Whenever this unit's [initiative] is increased by
@@ -2239,22 +2233,19 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "SPEND_FACTION_CUBE_ATTACK_AGAIN" },
     implementationStatus: "implemented"
   },
-  // Factory Couatls (Few/Pack): the activated invulnerability. The Few version
-  // ends the turn when used; the Pack version is free ("does not replace any
-  // regular actions"). Both grant "ignore all damage & spell effects until this
-  // unit's next activation", once per combat.
+  // Few chooses round-one protection at activation; Pack has it passively.
   "couatl-invulnerability-few": {
     id: "couatl-invulnerability-few",
     name: "Ethereal Coil",
-    text: "[activation] Once per Combat. Until its next activation, this unit ignores all damage and spell effects. Using it is this unit's action for the turn.",
+    text: "[activation] In the first combat round, you may make this unit untargetable by attacks and Spells until that round ends. This ends its activation. Retaliation Attacks can still damage it.",
     effect: { type: "ON_ACTIVATION_INVULNERABILITY", endsActivation: true },
     implementationStatus: "implemented"
   },
   "couatl-invulnerability-pack": {
     id: "couatl-invulnerability-pack",
     name: "Ethereal Coil",
-    text: "[activation] Once per Combat. Until its next activation, this unit ignores all damage and spell effects. Does not replace any regular actions.",
-    effect: { type: "ON_ACTIVATION_INVULNERABILITY", endsActivation: false },
+    text: "[unit_passive] This unit cannot be targeted by attacks or Spells during the first combat round, including by Neutral units. Retaliation Attacks can still damage it.",
+    effect: { type: "FIRST_ROUND_UNTARGETABLE" },
     implementationStatus: "implemented"
   },
   // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select

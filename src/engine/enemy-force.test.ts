@@ -428,15 +428,20 @@ describe("enemy force — a damage card really deals Spell damage", () => {
     ).toBe(false);
   });
 
-  it("a damage-immune target turns the bolt aside whole", () => {
+  it("a spell-immune target turns the bolt aside whole", () => {
     const play = stage("immune", ["spell.lightning_bolt"]);
     const victimId = toughestOwnUnitId(play.state);
-    play.state.combat!.units[victimId].invulnerableUntilActivation = true;
+    // Printed all-school ("any") immunity — the ward the pool's school-less
+    // damage entries still respect (the Couatl damage ward no longer exists).
+    play.state.combat!.units[victimId].abilities = [
+      ...(play.state.combat!.units[victimId].abilities ?? []),
+      "magic-elemental-immunity"
+    ];
     const before = play.state.combat!.units[victimId].damage;
     const after = handOverToBoss(play.state, play.openerId);
     expect(after.combat!.units[victimId].damage - before).toBe(0);
     const feed = after.eventLog.find((event) => event.type === "ENEMY_FORCE_CARD_PLAYED");
-    expect((feed as { message: string }).message).toContain("invulnerable");
+    expect((feed as { message: string }).message).toContain("immune to Spells");
     // The card is still SPENT — the enemy force does not get it back.
     expect(after.combat!.enemyForce!.playedCardIds).toEqual(["spell.lightning_bolt"]);
   });

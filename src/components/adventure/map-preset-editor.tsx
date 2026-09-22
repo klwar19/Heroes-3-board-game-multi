@@ -1,11 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { DEFAULT_GRAIL_UTOPIA_GUARD } from "@/engine/map-design-features";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { DESIGNER_UI_ICONS, REWARD_GLYPH_ICONS, SECRET_FEATURE_ICONS } from "@/data/assets/homm-assets";
+import { DIFFICULTY_CHESS_ICONS, REWARD_GLYPH_ICONS, RESOURCE_ICONS, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import { listStoryScenes } from "@/data/story/scenes";
 import {
   DUNGEON_FLOOR_BOSSES,
@@ -62,7 +63,7 @@ import {
   type VictoryMode,
   type VictoryPointObjective
 } from "@/engine";
-import { GuardSpecEditor } from "./guard-spec-editor";
+import { GrailGuardEditor, GuardSpecEditor } from "./guard-spec-editor";
 import { FieldRewardEditor } from "./field-reward-editor";
 import {
   describeTileSpecificPlan,
@@ -76,6 +77,39 @@ type SpecificPickRequest = {
   objectKind: SpecificPickKind;
   target?: { row: number; col: number };
 };
+
+const MAP_DESIGN_ART = {
+  conditions: "/map-designer/category-conditions.webp",
+  layout: "/map-designer/category-layout.webp",
+  victory: "/map-designer/category-victory.webp",
+  guards: "/map-designer/category-guards.webp",
+  rewards: "/map-designer/category-rewards.webp",
+  objects: "/map-designer/category-objects.webp"
+} as const;
+
+type MapObjectPanel = "breaks" | "center" | "obelisk" | "mine" | "random-town" | "settlement";
+
+const MAP_OBJECT_CARDS: { id: MapObjectPanel; title: string; description: string; images: string[]; glyph?: string }[] = [
+  { id: "center", title: "Center objectives", description: "Grail, Dragon Utopia and other Ⅶ fields", images: ["vii-grail.webp", "vii-dragon-utopia.webp"] },
+  { id: "obelisk", title: "Obelisks", description: "Role, guard and first-clear reward", images: ["obelisk.webp"] },
+  { id: "mine", title: "Mines", description: "Guards, breaks and rewards", images: ["mine-gold.webp", "mine-materials.webp", "mine-valuable.webp"] },
+  { id: "random-town", title: "Random Town", description: "Army, capture and income", images: ["vii-random-town.webp"] },
+  { id: "settlement", title: "Settlements", description: "Guard, reward and control VP", images: ["settlement.webp"] },
+  { id: "breaks", title: "Break rules", description: "Entry gates and team scope", images: ["/map-designer/icon-break.webp"] }
+];
+
+const markerSrc = (name: string) => name.startsWith("/") ? name : `/game-tokens/markers/${name}`;
+
+type VictoryPanel = "mode" | "hidden" | "grail" | "utopia" | "vp" | "custom" | "bounty";
+const VICTORY_CARDS: { id: VictoryPanel; title: string; description: string; image: string }[] = [
+  { id: "mode", title: "Victory mode", description: "Choose the scenario goal", image: "/map-designer/icon-victory-mode.webp" },
+  { id: "hidden", title: "Hidden fields", description: "Grail and Utopia package", image: "/map-designer/icon-hidden-fields.webp" },
+  { id: "grail", title: "Grail objective", description: "Dig and build rules", image: "/game-tokens/markers/vii-grail.webp" },
+  { id: "utopia", title: "Dragon Utopia", description: "Guards, rewards and victory", image: "/game-tokens/markers/vii-dragon-utopia.webp" },
+  { id: "vp", title: "Victory Points", description: "Scoring and hard end", image: "/map-designer/icon-victory-points.webp" },
+  { id: "custom", title: "Custom win conditions", description: "Additional early wins", image: "/map-designer/icon-custom-win.webp" },
+  { id: "bounty", title: "Hero-defeat bounty", description: "Gold for winning a fight", image: "/map-designer/icon-hero-bounty.webp" }
+];
 
 /**
  * Map designer panel: mission-book style conditions (resources, army, buildings,
@@ -194,7 +228,7 @@ function SpecificModePanel({
           title="Highlights the eligible tiles on the map above — click one to open its options."
           type="button"
         >
-          📍 {pickArmed ? "Picking… (click a highlighted tile)" : "Pick a tile on the map"}
+          <Image alt="" aria-hidden="true" className="mapPresetTabIcon" height={21} src="/map-designer/icon-specific.webp" width={21} /> {pickArmed ? "Picking… (click a highlighted tile)" : "Pick a tile on the map"}
         </button>
       ) : (
         <small className="mapPresetHint mapPresetPickWarning" role="status">
@@ -227,7 +261,7 @@ function GlobalSpecificTabs({
         title="One setting for EVERY such object on the map."
         type="button"
       >
-        🌍 Global
+        <Image alt="" aria-hidden="true" className="mapPresetTabIcon" height={21} src="/map-designer/icon-global.webp" width={21} /> Global
       </button>
       <button
         aria-pressed={mode === "specific"}
@@ -236,7 +270,7 @@ function GlobalSpecificTabs({
         title="Per-tile settings — pick a tile on the map; overrides the global setting there."
         type="button"
       >
-        📍 Specific{specificCount > 0 ? ` (${specificCount})` : ""}
+        <Image alt="" aria-hidden="true" className="mapPresetTabIcon" height={21} src="/map-designer/icon-specific.webp" width={21} /> Specific{specificCount > 0 ? ` (${specificCount})` : ""}
       </button>
     </div>
   );
@@ -262,13 +296,14 @@ export function MapPresetEditor({
   pickArmed?: SpecificPickRequest | null;
 }) {
   const value = preset ?? {};
-  const soloHumanStarts = (tiles ?? []).filter(
+  const startingPlans = (tiles ?? []).filter((plan) => plan.group === "starting");
+  const soloHumanStarts = startingPlans.filter(
     (plan) => plan.group === "starting" && plan.singlePlayer?.role === "human"
   ).length;
-  const soloComputerStarts = (tiles ?? []).filter(
+  const soloComputerStarts = startingPlans.filter(
     (plan) => plan.group === "starting" && plan.singlePlayer?.role === "computer"
   ).length;
-  const startingPositionCount = (tiles ?? []).filter((plan) => plan.group === "starting").length;
+  const startingPositionCount = startingPlans.length;
   const summary = describeCustomMapPresetEntries(value);
   // Collapsed by default on a fresh/plain map so the tile board stays the
   // page's focus; opens itself when a map WITH conditions is loaded (0 → some),
@@ -287,6 +322,70 @@ export function MapPresetEditor({
   // page wires tiles + onPickOnMap (the standalone editor hides it).
   const specificEnabled = Boolean(tiles && onPickOnMap);
   const [objectModes, setObjectModes] = useState<Partial<Record<SpecificPickKind, "global" | "specific">>>({});
+  const [activeMapObject, setActiveMapObject] = useState<MapObjectPanel | null>(null);
+  const [activeVictoryPanel, setActiveVictoryPanel] = useState<VictoryPanel | null>(null);
+  const mapObjectTrigger = useRef<HTMLButtonElement | null>(null);
+  const mapObjectDialogRef = useRef<HTMLDivElement | null>(null);
+  const victoryTrigger = useRef<HTMLButtonElement | null>(null);
+  const victoryDialogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!activeMapObject) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    mapObjectDialogRef.current?.querySelector<HTMLButtonElement>(".mapObjectDialogClose")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActiveMapObject(null);
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(mapObjectDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]'
+      ) ?? []).filter((element) => element.getClientRects().length > 0);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      mapObjectTrigger.current?.focus();
+    };
+  }, [activeMapObject]);
+  useEffect(() => {
+    if (!activeVictoryPanel) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    victoryDialogRef.current?.querySelector<HTMLButtonElement>(".mapObjectDialogClose")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActiveVictoryPanel(null);
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(victoryDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]'
+      ) ?? []).filter((element) => element.getClientRects().length > 0);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      victoryTrigger.current?.focus();
+    };
+  }, [activeVictoryPanel]);
   const objectMode = (kind: SpecificPickKind): "global" | "specific" =>
     specificEnabled ? (objectModes[kind] ?? "global") : "global";
   const setObjectMode = (kind: SpecificPickKind, mode: "global" | "specific") =>
@@ -298,18 +397,28 @@ export function MapPresetEditor({
       <SpecificModePanel
         emptyWarning={emptyWarning}
         kind={kind}
-        onPickOnMap={onPickOnMap!}
+        onPickOnMap={(request) => {
+          mapObjectTrigger.current = null;
+          setActiveMapObject(null);
+          onPickOnMap!(request);
+        }}
         pickArmed={pickArmed?.kind === "object-plan" && pickArmed.objectKind === kind}
         tiles={tiles!}
       />
     ) : null;
   const modeTabs = (kind: SpecificPickKind) =>
     specificEnabled ? (
-      <GlobalSpecificTabs
-        mode={objectMode(kind)}
-        onMode={(mode) => setObjectMode(kind, mode)}
-        specificCount={specificCount(kind)}
-      />
+      <div className="mapObjectScopePicker">
+        <div className="mapObjectScopeTitle">
+          <Image alt="" height={34} src="/map-designer/icon-global.webp" width={34} />
+          <span><strong>Apply to</strong><small>Choose the whole object type or one placed object</small></span>
+        </div>
+        <GlobalSpecificTabs
+          mode={objectMode(kind)}
+          onMode={(mode) => setObjectMode(kind, mode)}
+          specificCount={specificCount(kind)}
+        />
+      </div>
     ) : null;
 
   // Hidden hex events live on the preset; placement happens via the on-map pick.
@@ -719,6 +828,34 @@ export function MapPresetEditor({
     }
     writeWinConditions([...winConditions, { kind: "defeat-dragon-utopia", count: clamped }]);
   };
+  const grailVictoryEnabled = value.victoryMode === "grail";
+  const dragonModeEnabled = value.victoryMode === "dragon-hunt" || value.victoryMode === "dragon-conqueror";
+  const utopiaVictoryEnabled = dragonModeEnabled || utopiaWinIndex >= 0;
+  const setGrailVictoryEnabled = (enabled: boolean) => {
+    if (enabled) {
+      const nextConditions = dragonModeEnabled && utopiaWinIndex < 0
+        ? [...winConditions, { kind: "defeat-dragon-utopia", count: 1 } as CustomWinCondition]
+        : winConditions;
+      patch({
+        victoryMode: "grail",
+        ...(nextConditions !== winConditions ? { customWinConditions: nextConditions } : {})
+      });
+      return;
+    }
+    if (grailVictoryEnabled) patch({ victoryMode: undefined });
+  };
+  const setUtopiaVictoryEnabled = (enabled: boolean) => {
+    if (enabled) {
+      if (utopiaWinIndex >= 0 || dragonModeEnabled) return;
+      writeWinConditions([...winConditions, { kind: "defeat-dragon-utopia", count: 1 }]);
+      return;
+    }
+    const nextConditions = winConditions.filter((entry) => entry.kind !== "defeat-dragon-utopia");
+    patch({
+      customWinConditions: nextConditions.length > 0 ? nextConditions : undefined,
+      ...(dragonModeEnabled ? { victoryMode: undefined } : {})
+    });
+  };
   // A Dragon Utopia is placeable on ANY map (a centre tile's Ⅶ field), so its
   // tuning must be reachable outside the two dragon victory modes too.
   const utopiaOnMap = (tiles ?? []).some(
@@ -766,7 +903,6 @@ export function MapPresetEditor({
   const groupCounts = {
     matchSetup:
       (value.supportedModes ? 1 : 0) +
-      (value.fixedTeams ? 1 : 0) +
       (value.difficulty ? 1 : 0) +
       (value.farTileOpening !== undefined ||
       value.farTilesPerPlayer !== undefined
@@ -778,7 +914,7 @@ export function MapPresetEditor({
         : 0) +
       Object.keys(value.houseRules ?? {}).length,
     singlePlayer:
-      (value.computerDiplomacy ? 1 : 0) +
+      (value.fixedTeams ? 1 : 0) +
       (soloHumanStarts === 1 && soloComputerStarts > 0 ? 1 : 0),
     startingPosition:
       (value.startingResources ? 1 : 0) +
@@ -834,6 +970,7 @@ export function MapPresetEditor({
         <span className="mapPresetSummaryChevron" aria-hidden="true">
           ▸
         </span>
+        <Image alt="" className="mapPresetHeroArt" height={48} src={MAP_DESIGN_ART.conditions} width={48} />
         <strong>Map conditions</strong>
         <span className={`mapPresetCountBadge${summary.length > 0 ? " active" : ""}`}>
           {summary.length > 0
@@ -864,9 +1001,9 @@ export function MapPresetEditor({
         <small className="mapPresetEmpty">No special conditions — pure tile layout.</small>
       )}
 
-      <MapPresetGroup title="Match setup" glyphEmoji="⚙️" count={groupCounts.matchSetup}>
+      <MapPresetGroup title="Match setup" glyphSrc={MAP_DESIGN_ART.layout} count={groupCounts.matchSetup}>
       <section className="mapPresetSection" aria-label="Supported table modes">
-        <div className="mapPresetSectionLabel">Supported table modes</div>
+        <div className="mapPresetSectionLabel mapPresetArtLabel"><Image alt="" height={36} src="/map-designer/icon-table-modes.webp" width={54} /> Supported table modes</div>
         <div className="mapPresetChipRow" role="group" aria-label="Supported table modes">
           {(
             [
@@ -902,7 +1039,7 @@ export function MapPresetEditor({
       </section>
 
       <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Difficulty (preset)</div>
+        <div className="mapPresetSectionLabel mapPresetArtLabel"><img alt="" src={assetUrl(DIFFICULTY_CHESS_ICONS.normal)} /> Difficulty (preset)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Difficulty">
           {MAP_PRESET_DIFFICULTY_OPTIONS.map((opt) => (
             <button
@@ -912,7 +1049,7 @@ export function MapPresetEditor({
               onClick={() => patch({ difficulty: value.difficulty === opt.id ? undefined : opt.id })}
               type="button"
             >
-              {opt.label}
+              <img alt="" className="mapPresetDifficultyIcon" src={assetUrl(DIFFICULTY_CHESS_ICONS[opt.id])} /> {opt.label}
             </button>
           ))}
         </div>
@@ -923,7 +1060,7 @@ export function MapPresetEditor({
       </section>
 
       <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Global house rules (preset)</div>
+        <div className="mapPresetSectionLabel mapPresetArtLabel"><Image alt="" height={36} src="/map-designer/icon-house-rules.webp" width={36} /> Global house rules (preset)</div>
         {(
           [
             {
@@ -979,7 +1116,7 @@ export function MapPresetEditor({
       </section>
 
       <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Additional Ⅱ–Ⅲ tiles (preset)</div>
+        <div className="mapPresetSectionLabel mapPresetArtLabel"><img alt="" src={assetUrl(TILE_BACK_IMAGES.far)} /> Additional Ⅱ–Ⅲ tiles (preset)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Additional Ⅱ–Ⅲ tile opening">
           {(
             [
@@ -1035,7 +1172,7 @@ export function MapPresetEditor({
       </section>
 
       <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">Ⅱ–Ⅲ tile type choice (preset)</div>
+        <div className="mapPresetSectionLabel mapPresetArtLabel"><img alt="" src={assetUrl(TILE_BACK_IMAGES.far)} /> Ⅱ–Ⅲ tile type choice (preset)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Ⅱ–Ⅲ tile type choice">
           {(
             [
@@ -1103,7 +1240,7 @@ export function MapPresetEditor({
 
       <MapPresetGroup
         title="Single-player opponents"
-        glyphEmoji="🤖"
+        glyphSrc={MAP_DESIGN_ART.guards}
         count={groupCounts.singlePlayer}
       >
         <section className="mapPresetSection" aria-label="Single-player enemy deployment">
@@ -1121,36 +1258,64 @@ export function MapPresetEditor({
             town type, personal war chest, starting army, and veteran XP. All of it is ignored in multiplayer.
           </small>
         </section>
-        <section className="mapPresetSection" aria-label="Computer diplomacy">
-          <div className="mapPresetSectionLabel">Computer diplomacy</div>
-          <div className="mapPresetChipRow" role="group" aria-label="Computer opponents relationship">
-            <button
-              aria-pressed={(value.computerDiplomacy ?? "free-for-all") === "free-for-all"}
-              className={`mapPresetChip${(value.computerDiplomacy ?? "free-for-all") === "free-for-all" ? " active" : ""}`}
-              onClick={() => patch({ computerDiplomacy: "free-for-all" })}
-              type="button"
-            >
-              Fight each other
-            </button>
-            <button
-              aria-pressed={value.computerDiplomacy === "allied"}
-              className={`mapPresetChip${value.computerDiplomacy === "allied" ? " active" : ""}`}
-              onClick={() => patch({ computerDiplomacy: "allied" })}
-              type="button"
-            >
-              Allied computers
-            </button>
-          </div>
-          <small className="mapPresetHint">
-            Allied computers share one team: they never attack one another, allied heroes can pass through each
-            other, and the combat engine rejects any allied PvP start. They remain enemies of the human player.
-          </small>
-        </section>
+        {startingPositionCount >= 2 ? (
+          <section className="mapPresetSection mapPresetTeamsSection" aria-label="Starting-position teams">
+            <div className="mapPresetSectionLabel mapPresetTeamsHeading">⚑ Opponents &amp; teams</div>
+            <div className="mapPresetTeamPresets" role="group" aria-label="Team presets">
+              <button
+                className={`mapPresetTeamPreset${value.fixedTeams === undefined ? " active" : ""}`}
+                onClick={() => patch({ fixedTeams: undefined, computerDiplomacy: undefined })}
+                type="button"
+              ><strong>Lobby choice</strong><small>Players choose teams later</small></button>
+              <button
+                className={`mapPresetTeamPreset${value.fixedTeams?.every((team, index) => team === index + 1) ? " active" : ""}`}
+                onClick={() => patch({ fixedTeams: startingPlans.map((_, index) => index + 1), computerDiplomacy: undefined })}
+                type="button"
+              ><strong>Free for all</strong><small>Every starting Town is a rival</small></button>
+              {soloHumanStarts === 1 && soloComputerStarts > 0 ? (
+                <button
+                  className={`mapPresetTeamPreset${value.fixedTeams?.every((team, index) => team === (startingPlans[index]?.singlePlayer?.role === "human" ? 1 : 2)) ? " active" : ""}`}
+                  onClick={() => patch({ fixedTeams: startingPlans.map((plan) => plan.singlePlayer?.role === "human" ? 1 : 2), computerDiplomacy: undefined })}
+                  type="button"
+                ><strong>You vs computers</strong><small>All Enemy AI Towns share team 2</small></button>
+              ) : null}
+            </div>
+            <div className="mapPresetTeamGrid">
+              {startingPlans.map((plan, seatIndex) => {
+                const current = value.fixedTeams ?? startingPlans.map((_, index) => index + 1);
+                const role = plan.singlePlayer?.role;
+                return (
+                  <div className="mapPresetTeamSeat" key={`${plan.row},${plan.col}`}>
+                    <span className={`mapPresetTeamSeatBadge${role ? ` ${role}` : ""}`}>S{seatIndex + 1}</span>
+                    <span className="mapPresetTeamSeatName">{role === "human" ? "You" : role === "computer" ? "Enemy AI" : "Player"}<small>@{plan.row},{plan.col}</small></span>
+                    <div className="mapPresetChipRow" role="group" aria-label={`Team for starting position ${seatIndex + 1}`}>
+                      {startingPlans.map((_, teamIndex) => teamIndex + 1).map((team) => (
+                        <button
+                          aria-pressed={current[seatIndex] === team}
+                          className={`mapPresetTeamNumber${current[seatIndex] === team ? " active" : ""}`}
+                          key={team}
+                          onClick={() => {
+                            const candidate = [...current];
+                            candidate[seatIndex] = team;
+                            if (new Set(candidate).size < 2) return;
+                            patch({ fixedTeams: candidate, computerDiplomacy: undefined });
+                          }}
+                          type="button"
+                        >{team}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <small className="mapPresetHint">Team numbers are authoritative for humans and computers. At least two opposing teams are required.</small>
+          </section>
+        ) : null}
       </MapPresetGroup>
 
       <MapPresetGroup
         title="Starting position"
-        glyphSrc={SECRET_FEATURE_ICONS.town}
+        glyphSrc={MAP_DESIGN_ART.rewards}
         count={groupCounts.startingPosition}
       >
       <section className="mapPresetSection">
@@ -1405,8 +1570,36 @@ export function MapPresetEditor({
       </section>
       </MapPresetGroup>
 
-      <MapPresetGroup title="Victory & scoring" glyphEmoji="🏆" count={groupCounts.victoryScoring}>
-      <section className="mapPresetSection">
+      <MapPresetGroup title="Victory & scoring" glyphSrc={MAP_DESIGN_ART.victory} count={groupCounts.victoryScoring}>
+      <div className="mapObjectGallery" aria-label="Victory and scoring settings">
+        {VICTORY_CARDS.map((card) => (
+          <button
+            aria-label={`Configure ${card.title}`}
+            className="mapObjectCard"
+            key={card.id}
+            onClick={(event) => {
+              victoryTrigger.current = event.currentTarget;
+              setActiveVictoryPanel(card.id);
+            }}
+            type="button"
+          >
+            <span className="mapObjectCardArt"><Image alt="" height={80} src={card.image} width={80} /></span>
+            <strong>{card.title}</strong>
+            <small>{card.description}</small>
+          </button>
+        ))}
+      </div>
+      {activeVictoryPanel ? createPortal(
+        <div className="mapObjectDialogLayer">
+          <button aria-label="Minimize victory settings" className="mapObjectDialogBackdrop" onClick={() => setActiveVictoryPanel(null)} type="button" />
+          <div aria-label={`${VICTORY_CARDS.find((card) => card.id === activeVictoryPanel)?.title ?? "Victory"} settings`} aria-modal="true" className="mapObjectDialog" ref={victoryDialogRef} role="dialog">
+            <div className="mapObjectDialogHead">
+              <span className="mapObjectDialogArt"><Image alt="" height={46} src={VICTORY_CARDS.find((card) => card.id === activeVictoryPanel)?.image ?? "/map-designer/icon-victory-mode.webp"} width={46} /></span>
+              <div><strong>{VICTORY_CARDS.find((card) => card.id === activeVictoryPanel)?.title}</strong><small>Scenario victory and scoring settings</small></div>
+              <button aria-label="Minimize victory settings" className="mapObjectDialogClose" onClick={() => setActiveVictoryPanel(null)} type="button">− <span>Minimize</span></button>
+            </div>
+            <div className="mapObjectDialogBody">
+      <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "mode"}>
         <div className="mapPresetSectionLabel">Victory (preset)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Victory mode">
           {MAP_PRESET_VICTORY_OPTIONS.map((opt) => (
@@ -1429,9 +1622,16 @@ export function MapPresetEditor({
           Seeds the lobby when the map is picked. The host can change it there.
           Dragon modes guarantee a Dragon Utopia on a VI–VII centre tile, including maps with hidden Grail/Utopia fields.
         </small>
+        {!vpOn ? (
+          <div className="mapPresetObjectiveRow">
+            <span className="mapPresetObjectiveLabel">Suggested length (rounds)</span>
+            <ResourceField label="Rounds" value={value.roundLimit ?? null} onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })} />
+            <small className="mapPresetHint">Display-only suggestion while Victory Points are off.</small>
+          </div>
+        ) : null}
       </section>
 
-      <section className="mapPresetSection" aria-label="Hidden Grail and Dragon Utopia fields">
+      <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "hidden"} aria-label="Hidden Grail and Dragon Utopia fields">
         <div className="mapPresetSectionLabel">🏆🐉 Hidden Grail / Dragon Utopia</div>
         <label className="mapPresetToggle">
           <input
@@ -1458,8 +1658,21 @@ export function MapPresetEditor({
           (Grail → Grail dig knobs; a Dragon mode → Dragon Utopia knobs), so the
           objective is set up where you chose the condition. Place the objective
           FIELD on the map via a centre tile's Ⅶ field in the tile popover. */}
-      {value.victoryMode === "grail" && !objectives.hiddenGrailUtopia ? (
-        <section className="mapPresetSection" aria-label="Objectives">
+      <section className="mapPresetSection victoryPanel victoryObjectiveSwitch" data-active={activeVictoryPanel === "grail"}>
+        <div className="victoryObjectiveSwitchArt"><img alt="" src="/game-tokens/markers/vii-grail.webp" /></div>
+        <div className="victoryObjectiveSwitchCopy">
+          <strong>Holy Grail win condition</strong>
+          <small>Visit the required Obelisks, dig up the Grail, and carry it home.</small>
+          {grailVictoryEnabled && utopiaVictoryEnabled ? <span className="victoryObjectiveCombined">Combined objective · either Grail or Dragon Utopia can win</span> : null}
+        </div>
+        <label className="victoryObjectiveToggle">
+          <input checked={grailVictoryEnabled} onChange={(event) => setGrailVictoryEnabled(event.target.checked)} type="checkbox" />
+          <span>{grailVictoryEnabled ? "Enabled" : "Enable"}</span>
+        </label>
+      </section>
+
+      {grailVictoryEnabled && !objectives.hiddenGrailUtopia ? (
+        <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "grail"} aria-label="Objectives">
           <div className="mapPresetSectionLabel">🏆 Grail objective</div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
             <span className="mapPresetObjectiveLabel">🏆 Grail dig — Obelisks needed</span>
@@ -1562,7 +1775,7 @@ export function MapPresetEditor({
             </div>
           </div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Grail dig reward gold">
-            <span className="mapPresetObjectiveLabel">Dig reward gold</span>
+            <span className="mapPresetObjectiveLabel mapPresetIconLabel"><img alt="" src={assetUrl(RESOURCE_ICONS.gold)} /> Dig reward gold</span>
             <input
               aria-label="Grail dig reward gold"
               className="mapPresetNumber"
@@ -1582,7 +1795,7 @@ export function MapPresetEditor({
               type="number"
               value={objectives.grailDigReward?.gold ?? 0}
             />
-            <span className="mapPresetObjectiveLabel">valuables</span>
+            <span className="mapPresetObjectiveLabel mapPresetIconLabel"><img alt="" src={assetUrl(RESOURCE_ICONS.valuables)} /> Valuables</span>
             <input
               aria-label="Grail dig reward valuables"
               className="mapPresetNumber"
@@ -1602,7 +1815,7 @@ export function MapPresetEditor({
               type="number"
               value={objectives.grailDigReward?.valuables ?? 0}
             />
-            <span className="mapPresetObjectiveLabel">stone</span>
+            <span className="mapPresetObjectiveLabel mapPresetIconLabel"><img alt="" src={assetUrl(RESOURCE_ICONS.buildingMaterials)} /> Stone</span>
             <input
               aria-label="Grail dig reward materials"
               className="mapPresetNumber"
@@ -1721,13 +1934,16 @@ export function MapPresetEditor({
           still honours (Obelisks needed; dig-site-as-Utopia Off/Always) and spell
           out the forced values, instead of silently hiding everything. */}
       {objectives.hiddenGrailUtopia ? (
-        <section className="mapPresetSection" aria-label="Objectives">
+        <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "grail"} aria-label="Objectives">
           <div className="mapPresetSectionLabel">🏆 Grail objective (hidden rules)</div>
-          <GuardLevelChips
-            ariaLabel="Grail and Utopia mode army"
-            guard={objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD}
-            label="Grail / Utopia army"
-            onChange={(guard) => patchObjectives({ ...objectives, grailUtopiaGuard: guard })}
+          <GrailGuardEditor
+            guard={objectives.grailUtopiaGuard}
+            onChange={(guard) => {
+              const next = { ...objectives };
+              if (guard) next.grailUtopiaGuard = guard;
+              else delete next.grailUtopiaGuard;
+              patchObjectives(next);
+            }}
           />
           <small className="mapPresetHint">
             This army guards every Grail and Dragon Utopia field, including converted sites.
@@ -1795,11 +2011,23 @@ export function MapPresetEditor({
         </section>
       ) : null}
 
-      {value.victoryMode === "dragon-hunt" ||
-      value.victoryMode === "dragon-conqueror" ||
+      <section className="mapPresetSection victoryPanel victoryObjectiveSwitch" data-active={activeVictoryPanel === "utopia"}>
+        <div className="victoryObjectiveSwitchArt"><img alt="" src="/game-tokens/markers/vii-dragon-utopia.webp" /></div>
+        <div className="victoryObjectiveSwitchCopy">
+          <strong>Dragon Utopia win condition</strong>
+          <small>Defeat and flag the required number of Dragon Utopia fields.</small>
+          {grailVictoryEnabled && utopiaVictoryEnabled ? <span className="victoryObjectiveCombined">Combined objective · either Dragon Utopia or Grail can win</span> : null}
+        </div>
+        <label className="victoryObjectiveToggle">
+          <input checked={utopiaVictoryEnabled} onChange={(event) => setUtopiaVictoryEnabled(event.target.checked)} type="checkbox" />
+          <span>{utopiaVictoryEnabled ? "Enabled" : "Enable"}</span>
+        </label>
+      </section>
+
+      {utopiaVictoryEnabled ||
       objectives.hiddenGrailUtopia ||
       utopiaOnMap ? (
-        <section className="mapPresetSection" aria-label="Objectives">
+        <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "utopia"} aria-label="Objectives">
           <div className="mapPresetSectionLabel">🐉 Dragon Utopia objective</div>
           {!objectives.hiddenGrailUtopia ? <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
             <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia guards</span>
@@ -1917,25 +2145,7 @@ export function MapPresetEditor({
         </section>
       ) : null}
 
-      <section className="mapPresetSection">
-        <div className="mapPresetSectionLabel">
-          {vpOn ? "Round limit (hard end)" : "Suggested length (rounds)"}
-        </div>
-        <div className="mapPresetResourceRow">
-          <ResourceField
-            label="Rounds"
-            value={value.roundLimit ?? null}
-            onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })}
-          />
-        </div>
-        <small className="mapPresetHint">
-          {vpOn
-            ? "With Victory Points on, the game ENDS when this round wraps (then VPs are scored)."
-            : "A display-only note today — a suggested length, not a hard end."}
-        </small>
-      </section>
-
-      <section className="mapPresetSection mapPresetVpSection" aria-label="Victory Points">
+      <section className="mapPresetSection mapPresetVpSection victoryPanel" data-active={activeVictoryPanel === "vp"} aria-label="Victory Points">
         <div className="mapPresetSectionLabel">🎖️ Victory Points</div>
         <label className="mapPresetToggle">
           <input
@@ -1948,9 +2158,14 @@ export function MapPresetEditor({
         </label>
         {vpOn ? (
           <>
+            <div className="mapPresetObjectiveRow mapPresetHardEndRow">
+              <span className="mapPresetObjectiveLabel">Round limit · hard end</span>
+              <ResourceField label="Rounds" value={value.roundLimit ?? null} onChange={(roundLimit) => patch({ roundLimit: roundLimit || undefined })} />
+              <small className="mapPresetHint">The game ends after this round, then scores Victory Points. Leave empty to end only on a completed victory condition.</small>
+            </div>
             <small className="mapPresetHint">
-              The game ends at the round limit above OR when a player completes the victory condition —
-              the most VPs wins. Set a round limit above for a hard cap.
+              The game ends at the hard end round or when a player completes the victory condition —
+              the most VPs wins.
               {value.roundLimit ? "" : " ⚠ No round limit set — completion is the only end trigger."}
             </small>
             <div className="mapPresetResourceRow">
@@ -2045,12 +2260,12 @@ export function MapPresetEditor({
           </>
         ) : (
           <small className="mapPresetHint">
-            Off — the round limit above stays a mere suggested length.
+            Off — a round count entered under Victory mode is only a suggested length.
           </small>
         )}
       </section>
 
-      <section className="mapPresetSection mapPresetVpSection" aria-label="Custom win conditions">
+      <section className="mapPresetSection mapPresetVpSection victoryPanel" data-active={activeVictoryPanel === "custom"} aria-label="Custom win conditions">
         <div className="mapPresetSectionLabel">🏁 Custom win conditions</div>
         <small className="mapPresetHint">
           Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
@@ -2186,7 +2401,7 @@ export function MapPresetEditor({
         </div>
       </section>
 
-      <section className="mapPresetSection" aria-label="Hero-defeat bounty">
+      <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "bounty"} aria-label="Hero-defeat bounty">
         <div className="mapPresetSectionLabel">⚔️ Hero-defeat bounty</div>
         <small className="mapPresetHint">
           Extra gold the winner gains for defeating an enemy Hero in a real fight — on top of the normal
@@ -2202,11 +2417,55 @@ export function MapPresetEditor({
           />
         </div>
       </section>
+            </div>
+          </div>
+        </div>,
+        document.body
+      ) : null}
       </MapPresetGroup>
 
-      <MapPresetGroup title="Map objects" glyphSrc={DESIGNER_UI_ICONS.map} count={groupCounts.mapLocations}>
-      <section className="mapPresetSection" aria-label="Break configuration">
-        <div className="mapPresetSectionLabel">🧱 Break configuration</div>
+      <MapPresetGroup title="Map objects" glyphSrc={MAP_DESIGN_ART.objects} count={groupCounts.mapLocations}>
+      <div className="mapObjectGallery" aria-label="Map object settings">
+        {MAP_OBJECT_CARDS.map((card) => (
+          <button
+            aria-label={`Configure ${card.title}`}
+            className="mapObjectCard"
+            key={card.id}
+            onClick={(event) => {
+              mapObjectTrigger.current = event.currentTarget;
+              setActiveMapObject(card.id);
+            }}
+            type="button"
+          >
+            <span className="mapObjectCardArt" aria-hidden="true">
+              {card.images.length > 0
+                ? card.images.map((name) => <Image height={80} key={name} src={markerSrc(name)} width={80} alt="" />)
+                : <span className="mapObjectCardGlyph">{card.glyph}</span>}
+            </span>
+            <strong>{card.title}</strong>
+            <small>{card.description}</small>
+          </button>
+        ))}
+      </div>
+      {activeMapObject ? createPortal(
+        <div className="mapObjectDialogLayer">
+          <button className="mapObjectDialogBackdrop" aria-label="Minimize object settings" onClick={() => setActiveMapObject(null)} type="button" />
+          <div aria-label={`${MAP_OBJECT_CARDS.find((card) => card.id === activeMapObject)?.title ?? "Map object"} settings`} aria-modal="true" className="mapObjectDialog" ref={mapObjectDialogRef} role="dialog">
+            <div className="mapObjectDialogHead">
+              <span className="mapObjectDialogArt" aria-hidden="true">
+                {MAP_OBJECT_CARDS.find((card) => card.id === activeMapObject)?.images.length
+                  ? MAP_OBJECT_CARDS.find((card) => card.id === activeMapObject)?.images.map((name) => <Image height={46} key={name} src={markerSrc(name)} width={46} alt="" />)
+                  : MAP_OBJECT_CARDS.find((card) => card.id === activeMapObject)?.glyph}
+              </span>
+              <div>
+                <strong>{MAP_OBJECT_CARDS.find((card) => card.id === activeMapObject)?.title}</strong>
+                <small>{activeMapObject === "breaks" ? "Map-wide entry and team-scope rules" : "Map-wide settings · choose Specific to edit a placed object"}</small>
+              </div>
+              <button className="mapObjectDialogClose" aria-label="Minimize object settings" onClick={() => setActiveMapObject(null)} type="button">− <span>Minimize</span></button>
+            </div>
+            <div className="mapObjectDialogBody">
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "breaks"} aria-label="Break configuration">
+        <div className="mapPresetSectionLabel mapPresetArtLabel"><Image alt="" height={36} src="/map-designer/icon-break.webp" width={36} /> Break configuration</div>
         <small className="mapPresetHint">
           A Break stops Pathfinding at a guarded destination. Tile gates apply only when crossing onto that
           tile; the Ⅶ-field gate applies whenever that field is entered. Exact Dragon Utopia, Grail, Random
@@ -2263,15 +2522,19 @@ export function MapPresetEditor({
         <small className="mapPresetHint">
           Individual: every player must flag each Break. Whole team: one player flagging it clears that Break for all allies.
         </small>
+      </section>
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "center"} aria-label="Center objectives">
+        <div className="mapPresetSectionLabel">Ⅶ Center objectives</div>
         {modeTabs("center")}
         {objectMode("center") === "specific"
           ? specificPanel("center", "No Ⅵ–Ⅶ center tile is placed yet — place one to configure its exact Ⅶ field.")
           : null}
-        <div hidden={objectMode("center") !== "global"}>
+        <div className="mapObjectConfigStack" hidden={objectMode("center") !== "global"}>
           <div className="mapPresetSectionLabel">All Ⅶ center objectives</div>
           <small className="mapPresetHint">
             Defaults for Ⅶ center fights outside the hidden Grail / Utopia mode. A value under 📍 Specific overrides its matching global value.
           </small>
+          <ObjectConfigHeading kind="encounter">Encounter &amp; defense</ObjectConfigHeading>
           <GuardLevelChips
             ariaLabel="Global center objective guard"
             guard={value.centerHexes?.guard}
@@ -2299,7 +2562,7 @@ export function MapPresetEditor({
               <option value="unlimited">Unlimited</option>
             </select>
           </label>
-          <div className="mapPresetSectionLabel">First-clear reward</div>
+          <RewardSectionTitle>First-clear reward</RewardSectionTitle>
           <FieldRewardEditor
             ariaLabel="Global center objective first-clear reward"
             reward={value.centerHexes?.reward}
@@ -2329,58 +2592,13 @@ export function MapPresetEditor({
         </div>
       </section>
 
-      {startingPositionCount >= 2 ? (
-        <section className="mapPresetSection" aria-label="Scenario teams">
-          <div className="mapPresetSectionLabel">Fixed teams by starting position</div>
-          <div className="mapPresetChipRow">
-            <button
-              aria-pressed={value.fixedTeams === undefined}
-              className={`mapPresetChip${value.fixedTeams === undefined ? " active" : ""}`}
-              onClick={() => patch({ fixedTeams: undefined })}
-              type="button"
-            >
-              Players choose
-            </button>
-          </div>
-          {Array.from({ length: startingPositionCount }, (_, seatIndex) => (
-            <div className="mapPresetObjectiveRow" key={seatIndex}>
-              <span className="mapPresetObjectiveLabel">S{seatIndex + 1}</span>
-              <div className="mapPresetChipRow" role="group" aria-label={`Fixed team for S${seatIndex + 1}`}>
-                {Array.from({ length: startingPositionCount }, (_, teamIndex) => teamIndex + 1).map((team) => {
-                  const current = value.fixedTeams ?? Array.from({ length: startingPositionCount }, (_, index) => index + 1);
-                  const candidate = [...current];
-                  candidate[seatIndex] = team;
-                  return (
-                    <button
-                      aria-pressed={current[seatIndex] === team}
-                      className={`mapPresetChip${current[seatIndex] === team ? " active" : ""}`}
-                      disabled={new Set(candidate).size < 2}
-                      key={team}
-                      onClick={() => {
-                        patch({ fixedTeams: candidate });
-                      }}
-                      type="button"
-                    >
-                      Team {team}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-          <small className="mapPresetHint">
-            Locks the alliance for S1…S{startingPositionCount}. Choose Players choose to let the lobby decide.
-            A scenario must keep at least two opposing teams.
-          </small>
-        </section>
-      ) : null}
-      <section className="mapPresetSection" aria-label="Obelisks">
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "obelisk"} aria-label="Obelisks">
         <div className="mapPresetSectionLabel">⚱ Obelisks</div>
         {modeTabs("obelisk")}
         {objectMode("obelisk") === "specific"
           ? specificPanel("obelisk", "No placed tile carries an Obelisk yet — pin an obelisk tile (or a face-down Secret Obelisk) first.")
           : null}
-        <div hidden={objectMode("obelisk") !== "global"}>
+        <div className="mapObjectConfigStack" hidden={objectMode("obelisk") !== "global"}>
         <small className="mapPresetHint">
           What visiting an Obelisk does. The ROLE applies to every Obelisk on the map (face-down tiles
           hide which is which); guard/reward can also be set per tile under 📍 Specific. Each role still
@@ -2402,6 +2620,7 @@ export function MapPresetEditor({
         </div>
         {(
           <>
+            <ObjectConfigHeading kind="encounter">Encounter &amp; defense</ObjectConfigHeading>
             <GuardLevelChips
               ariaLabel="Obelisk guard"
               guard={obeliskGuard}
@@ -2463,7 +2682,7 @@ export function MapPresetEditor({
                 <option value="unlimited">Unlimited</option>
               </select>
             </label>
-            <div className="mapPresetSectionLabel">First-clear reward</div>
+            <RewardSectionTitle>First-clear reward</RewardSectionTitle>
             <FieldRewardEditor
               ariaLabel="Global Obelisk first-clear reward"
               reward={obeliskConfig?.reward}
@@ -2540,17 +2759,18 @@ export function MapPresetEditor({
         </div>
       </section>
 
-      <section className="mapPresetSection" aria-label="Mines">
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "mine"} aria-label="Mines">
         <div className="mapPresetSectionLabel">⛏ Mines (all types)</div>
         {modeTabs("mine")}
         {objectMode("mine") === "specific"
           ? specificPanel("mine", "No placed tile carries a Mine yet — pin a mine tile (or a face-down Secret mine) first.")
           : null}
-        <div hidden={objectMode("mine") !== "global"}>
+        <div className="mapObjectConfigStack" hidden={objectMode("mine") !== "global"}>
         <small className="mapPresetHint">
           Optional guard and PC-style break options on every Mine. Persistent army leaves survivors after a
           lost or retreated fight.
         </small>
+        <ObjectConfigHeading kind="encounter">Encounter &amp; defense</ObjectConfigHeading>
         <GuardLevelChips
           ariaLabel="Mine guard"
           guard={value.mines?.guard}
@@ -2623,7 +2843,7 @@ export function MapPresetEditor({
             <option value="unlimited">Unlimited</option>
           </select>
         </label>
-        <div className="mapPresetSectionLabel">First-clear reward</div>
+        <RewardSectionTitle>First-clear reward</RewardSectionTitle>
         <FieldRewardEditor
           ariaLabel="Global Mine first-clear reward"
           reward={value.mines?.reward}
@@ -2652,7 +2872,7 @@ export function MapPresetEditor({
         </div>
       </section>
 
-      <section className="mapPresetSection" aria-label="Random Town">
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "random-town"} aria-label="Random Town">
         <div className="mapPresetSectionLabel">🏰 Random Town</div>
         {modeTabs("center")}
         {objectMode("center") === "specific"
@@ -2661,13 +2881,14 @@ export function MapPresetEditor({
               "No Ⅵ–Ⅶ center tile is placed yet — the Random Town / Grail / Dragon Utopia live on center tiles."
             )
           : null}
-        <div hidden={objectMode("center") !== "global"}>
+        <div className="mapObjectConfigStack" hidden={objectMode("center") !== "global"}>
         <small className="mapPresetHint">
           Override the rolled faction guard army, capture reward, and gold income (default 10). 📍 Specific
           picks a Ⅵ–Ⅶ center tile and customizes ITS objective (guard / reward / VP / win) — shared by
           Random Town, Grail, Dragon Utopia and printed center objects; map-wide Grail &amp; Utopia tuning
           lives under Victory &amp; scoring.
         </small>
+        <ObjectConfigHeading kind="encounter">Town defense</ObjectConfigHeading>
         <RandomTownGuardGrid
           guard={value.randomTowns?.guard}
           onChange={(guard) => {
@@ -2709,7 +2930,7 @@ export function MapPresetEditor({
             <option value="unlimited">Unlimited</option>
           </select>
         </label>
-        <div className="mapPresetSectionLabel">Extra first-capture reward</div>
+        <RewardSectionTitle>Extra first-capture reward</RewardSectionTitle>
         <FieldRewardEditor
           ariaLabel="Global Random Town first-capture reward"
           reward={value.randomTowns?.reward}
@@ -2727,7 +2948,7 @@ export function MapPresetEditor({
           showVp={false}
         />
         <div className="mapPresetObjectiveRow" role="group" aria-label="Random Town income">
-          <span className="mapPresetObjectiveLabel">Gold income</span>
+          <span className="mapPresetObjectiveLabel mapPresetIconLabel"><img alt="" src={assetUrl(RESOURCE_ICONS.gold)} /> Gold income</span>
           <input
             aria-label="Random Town gold income"
             className="mapPresetNumber"
@@ -2746,7 +2967,7 @@ export function MapPresetEditor({
             type="number"
             value={value.randomTowns?.incomeGold ?? 10}
           />
-          <span className="mapPresetObjectiveLabel">Capture gold</span>
+          <span className="mapPresetObjectiveLabel mapPresetIconLabel"><img alt="" src={assetUrl(RESOURCE_ICONS.gold)} /> Capture gold</span>
           <input
             aria-label="Random Town capture gold"
             className="mapPresetNumber"
@@ -2798,17 +3019,18 @@ export function MapPresetEditor({
         </div>
       </section>
 
-      <section className="mapPresetSection" aria-label="Settlements">
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "settlement"} aria-label="Settlements">
         <div className="mapPresetSectionLabel">🏘 Settlements</div>
         {modeTabs("settlement")}
         {objectMode("settlement") === "specific"
           ? specificPanel("settlement", "No placed tile can host a settlement yet — place a Ⅱ–Ⅲ / Ⅳ–Ⅴ tile first.")
           : null}
-        <div hidden={objectMode("settlement") !== "global"}>
+        <div className="mapObjectConfigStack" hidden={objectMode("settlement") !== "global"}>
         <small className="mapPresetHint">
           Make settlements matter: a guard fought the first time each one is flagged, a first-flag reward,
           and extra Victory Points for every settlement a player controls (VP mode only — on top of the flat 1 VP each).
         </small>
+        <ObjectConfigHeading kind="encounter">Settlement defense</ObjectConfigHeading>
         <GuardLevelChips
           ariaLabel="Settlement guard"
           guard={settlementGuard}
@@ -2836,7 +3058,7 @@ export function MapPresetEditor({
             <option value="unlimited">Unlimited</option>
           </select>
         </label>
-        <div className="mapPresetSectionLabel">First-flag reward</div>
+        <RewardSectionTitle>First-flag reward</RewardSectionTitle>
         <FieldRewardEditor
           ariaLabel="Global Settlement first-flag reward"
           reward={settlementConfig?.reward}
@@ -2855,6 +3077,12 @@ export function MapPresetEditor({
         </div>
       </section>
 
+            </div>
+          </div>
+        </div>,
+        document.body
+      ) : null}
+
       <small
         aria-label="Hidden hex events note"
         className="mapPresetHint mapPresetHexEventNote"
@@ -2866,7 +3094,7 @@ export function MapPresetEditor({
 
       </MapPresetGroup>
 
-      <MapPresetGroup title="Timed events" glyphEmoji="⏳" count={groupCounts.timedEvents}>
+      <MapPresetGroup title="Timed events" glyphSrc={MAP_DESIGN_ART.conditions} count={groupCounts.timedEvents}>
       <section className="mapPresetSection mapPresetTimedSection" aria-label="Timed events">
         <div className="mapPresetTimedSectionHeading">
           <div>
@@ -3093,7 +3321,7 @@ export function MapPresetEditor({
 
       <MapPresetGroup
         title="PvE encounter director"
-        glyphEmoji="⚔️"
+        glyphSrc={MAP_DESIGN_ART.guards}
         count={groupCounts.pve}
       >
       <section className="mapPresetSection mapPresetPveTheme" aria-label="PvE encounter theme (map)">
@@ -3499,7 +3727,7 @@ export function MapPresetEditor({
       </section>
       </MapPresetGroup>
 
-      <MapPresetGroup title="Designer note" glyphEmoji="📝" count={groupCounts.designerNote}>
+      <MapPresetGroup title="Designer note" glyphSrc={MAP_DESIGN_ART.layout} count={groupCounts.designerNote}>
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Designer note (shown when map is picked)</div>
         <textarea
@@ -3580,6 +3808,9 @@ function MapPresetGroup({
  * aria-hidden; the visible title text carries the meaning.
  */
 function MapPresetGroupGlyph({ emoji, src }: { emoji?: string; src?: string }) {
+  if (src?.startsWith("/map-designer/")) {
+    return <Image alt="" aria-hidden="true" className="mapPresetGroupGlyph" height={34} src={src} width={34} />;
+  }
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
@@ -3981,10 +4212,33 @@ function GuardLevelChips({
 }) {
   return (
     <div className="mapPresetObjectiveRow" role="group" aria-label={ariaLabel}>
-      <span className="mapPresetObjectiveLabel">⚔ {label}</span>
+      <span className="mapPresetObjectiveLabel mapPresetGuardLabel"><UnitCardFan /> {label}</span>
       <GuardSpecEditor compact guard={guard} noneLabel="None" onChange={onChange} />
     </div>
   );
+}
+
+function UnitCardFan() {
+  return (
+    <span aria-hidden="true" className="mapPresetUnitCardFan" title="Example unit cards">
+      {["/assets/units-castle-bronze-halberdiers-few.webp", "/assets/units-castle-bronze-griffins-pack.webp", "/assets/units-castle-golden-archangels-few.webp"].map((src) => (
+        <img alt="" key={src} src={assetUrl(src)} />
+      ))}
+    </span>
+  );
+}
+
+function ObjectConfigHeading({ kind, children }: { kind: "encounter" | "rules"; children: ReactNode }) {
+  return (
+    <div className={`mapObjectConfigHeading ${kind}`}>
+      <span aria-hidden="true">{kind === "encounter" ? "⚔" : "◆"}</span>
+      <strong>{children}</strong>
+    </div>
+  );
+}
+
+function RewardSectionTitle({ children }: { children: ReactNode }) {
+  return <div className="mapPresetSectionLabel mapPresetIconLabel"><img alt="" src={assetUrl(REWARD_GLYPH_ICONS.treasure)} />{children}</div>;
 }
 
 /** A compact roster: one slot per rank, with optional named cards and bonuses. */
@@ -3992,6 +4246,7 @@ function RandomTownGuardGrid({ guard, onChange }: {
   guard: CustomGuardSpec | undefined;
   onChange: (guard: CustomGuardSpec | undefined) => void;
 }) {
+  const [unitSearch, setUnitSearch] = useState("");
   const legacyRows: RandomTownGuardSlot[] | null = guard?.units?.every((unit) => /^town-rank:[1-7]:(few|pack)$/.test(unit))
     ? guard.units.map((unit) => {
         const [, rank, side] = /^town-rank:([1-7]):(few|pack)$/.exec(unit)!;
@@ -4009,10 +4264,11 @@ function RandomTownGuardGrid({ guard, onChange }: {
   const allUnits = Object.values(coreUnitDefinitions).sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="randomTownGuardEditor" role="group" aria-label="Random Town guard">
-      <div className="mapPresetSectionLabel">⚔ Guard roster</div>
+      <div className="mapPresetSectionLabel mapPresetGuardLabel"><UnitCardFan /> Guard roster</div>
       {gridGuard ? (
         <>
           <small className="mapPresetHint">{guard ? "Each row is one defender slot. Town unit follows that level in the revealed faction; named cards stay exact." : "Printed Random Town guards are active. Choose any row to replace them with a custom roster."}</small>
+          <input aria-label="Find Random Town guard unit" className="randomTownGuardSearch" onChange={(event) => setUnitSearch(event.target.value)} placeholder="Find unit, faction, or tier…" type="search" value={unitSearch} />
           <div className="randomTownGuardRows">
             {([1, 2, 3, 4, 5, 6, 7] as const).map((rank) => {
               const slot = slots.find((entry) => entry.rank === rank);
@@ -4047,6 +4303,7 @@ function RandomTownGuardGrid({ guard, onChange }: {
                 </div>
                 {slot ? <div className="randomTownGuardDetails">
                   <label>Unit
+                    {named?.[slot.side]?.cardImage ? <img alt="" className="randomTownGuardArt" height={34} src={assetUrl(named[slot.side]!.cardImage!)} width={30} /> : null}
                     <select aria-label={`Random Town level ${rank} unit`} value={slot.unitDefId ?? "town"}
                       onChange={(event) => setSlot(rank, {
                         ...slot,
@@ -4054,7 +4311,10 @@ function RandomTownGuardGrid({ guard, onChange }: {
                         stacks: undefined
                       })}>
                       {slot.side !== "neutral" ? <option value="town">Revealed town · level {rank}</option> : null}
-                      {allUnits.filter((unit) => Boolean(unit[slot.side])).map((unit) =>
+                      {allUnits.filter((unit) => Boolean(unit[slot.side]) && (
+                        !unitSearch || unit.id === slot.unitDefId ||
+                        `${unit.name} ${unit.faction} ${unit.tier}`.toLocaleLowerCase().includes(unitSearch.trim().toLocaleLowerCase())
+                      )).map((unit) =>
                         <option key={unit.id} value={unit.id}>{unit.name} · {unit.faction} · {unit.tier}</option>)}
                     </select>
                   </label>
@@ -4286,7 +4546,12 @@ function ResourceField({
 }) {
   return (
     <label className="mapPresetResourceField">
-      <span>{label}</span>
+      <span className="mapPresetResourceLabel">
+        {/gold/i.test(label) ? <img alt="" height={18} src={assetUrl(RESOURCE_ICONS.gold)} width={18} /> :
+          /material/i.test(label) ? <img alt="" height={18} src={assetUrl(RESOURCE_ICONS.buildingMaterials)} width={18} /> :
+            /valuable/i.test(label) ? <img alt="" height={18} src={assetUrl(RESOURCE_ICONS.valuables)} width={18} /> : null}
+        {label}
+      </span>
       <ClampedNumberInput
         max={max}
         min={min}

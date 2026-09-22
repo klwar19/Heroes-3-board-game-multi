@@ -449,6 +449,8 @@ export interface CommanderCastTargeting {
   maxTierByPower?: readonly [CommanderTargetTier, CommanderTargetTier, CommanderTargetTier];
   /** Below this Power the target must be adjacent to the commander. */
   adjacentBelowPower?: number;
+  /** Target must be no farther than this many battlefield spaces. */
+  maxDistance?: number;
   /** Runes spent from the owner's combat pool per Power tier (Rune Keeper). */
   runeCostByPower?: readonly [number, number, number];
   /**
@@ -1280,14 +1282,14 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       icon: "/assets/warhammer/icons/lions-slash.webp",
       targeting: {
         side: "enemy",
-        adjacentBelowPower: 3,
+        maxDistance: 3,
         canTargetSelf: false
       },
       effect: { kind: "enemy-damage", damageByPower: [1, 2, 3] },
       tierText: [
-        "Choose an adjacent enemy: deal 1 flat damage, ignoring Defense and Retaliation.",
-        "Choose an adjacent enemy: deal 2 flat damage, ignoring Defense and Retaliation.",
-        "Choose an adjacent enemy: deal 3 flat damage, ignoring Defense and Retaliation."
+        "Choose an enemy within 3 spaces: deal 1 flat damage, ignoring Defense and Retaliation.",
+        "Choose an enemy within 3 spaces: deal 2 flat damage, ignoring Defense and Retaliation.",
+        "Choose an enemy within 3 spaces: deal 3 flat damage, ignoring Defense and Retaliation."
       ]
     },
     additionalCasts: [{

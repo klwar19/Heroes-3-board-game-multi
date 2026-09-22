@@ -587,6 +587,19 @@ export function switchActiveWarMachine(state: GameState, playerId: PlayerId, car
     if (card) removePermanentCombatEffects(state, playerId, card);
   }
   applyPermanentCombatEffectsForPlayer(state, playerId);
+  if (!initialSelection) {
+    const commander = Object.values(combat.units).find(
+      (unit) => unit.controllerId === playerId && unit.commanderSlug === "factory" && isAlive(unit),
+    );
+    if (commander) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: commander.id,
+        abilityId: "factory-war-machine-switch",
+        message: `${commander.cardName} switches the active war machine to ${cardLibrary[cardId]?.name ?? cardId}.`,
+      });
+    }
+  }
 }
 
 /**
@@ -1210,7 +1223,12 @@ export function startWarMachineRound(state: GameState): void {
     // the head, so a card played meanwhile simply drops out).
     ...(playerCanUseBallisticsRoundStartBombard(state, playerId)
       ? [{ playerId, cardId: BALLISTICS_ABILITY_ID, handBallistics: true }]
-      : [])
+      : []),
+    // Henrietta VI may be established at the start of any combat round. Once
+    // accepted it leaves the hand for the Ongoing tray and stops re-prompting.
+    ...(playerCanStartHenriettaHalflings(state, playerId)
+      ? [{ playerId, cardId: HENRIETTA_HALFLINGS_ID, henriettaHalflings: true }]
+      : []),
   ]);
   combat.warMachineRound = pending.length > 0 ? { pending, firstTargetUnitId: null } : null;
   processWarMachineRound(state);
@@ -1361,6 +1379,7 @@ export function playerCanUseBasicArtilleryVolley(state: GameState, playerId: Pla
 
 const BALLISTA_CARD_ID = "war_machine.ballista" as CardId;
 const BALLISTICS_ABILITY_ID = "ability.ballistics" as CardId;
+const HENRIETTA_HALFLINGS_ID = "specialty.henrietta.6" as CardId;
 /** Polish Balance Pack: the reprinted Ballistics EXPERT doubles a Catapult volley. */
 export const BALLISTICS_CATAPULT_SHOTS = 2;
 
@@ -1386,6 +1405,17 @@ export function playerCanUseBallisticsCatapultDouble(state: GameState, playerId:
 const BALLISTICS_ROUND_START_COST: ResourceCost = { buildingMaterials: 1 };
 const BALLISTICS_ROUND_START_LABEL =
   "Play Ballistics: pay 1 building material — 1 damage to each of 2 adjacent targets";
+
+function playerCanStartHenriettaHalflings(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    state.combat &&
+      player &&
+      !isHandLockedInCombat(state, playerId) &&
+      combatRoundStartWindowOpen(state.combat) &&
+      player.hand.includes(HENRIETTA_HALFLINGS_ID),
+  );
+}
 
 /**
  * Polish Balance Pack — the reprinted BALLISTICS BASIC: "At the beginning of a
@@ -1788,6 +1818,21 @@ export function processWarMachineRound(state: GameState): void {
       return;
     }
 
+    if (head.henriettaHalflings) {
+      if (!playerCanStartHenriettaHalflings(state, playerId)) {
+        queue.pending.shift();
+        continue;
+      }
+      openWarMachineOffer(
+        state,
+        playerId,
+        "Halflings VI: give all your units Attack-roll advantage for the rest of this combat?",
+        "Use Halflings VI",
+        "Skip for this round",
+      );
+      return;
+    }
+
     const entry = activeWarMachineEntry(state, playerId);
     if (!entry) {
       queue.pending.shift();
@@ -1950,6 +1995,57 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
   const queue = combat?.warMachineRound;
   if (!combat || !queue || queue.pending[0]?.playerId !== playerId) {
     throw new Error("No war machine is waiting for that player.");
+  }
+
+  if (queue.pending[0]?.henriettaHalflings) {
+    if (optionIndex !== 0) {
+      queue.pending.shift();
+      processWarMachineRound(state);
+      return;
+    }
+    if (!playerCanStartHenriettaHalflings(state, playerId)) {
+      throw new Error("Halflings VI cannot be started right now.");
+    }
+    const player = state.players[playerId]!;
+    const handIndex = player.hand.indexOf(HENRIETTA_HALFLINGS_ID);
+    player.hand.splice(handIndex, 1);
+    const effect = makeActiveEffect(
+      state,
+      {
+        name: "Halflings VI",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }],
+      },
+      { type: "card", cardId: HENRIETTA_HALFLINGS_ID, controllerId: playerId },
+      playerId,
+    );
+    state.activeEffects.push(effect);
+    (player.ongoingCards ??= []).push({
+      cardId: HENRIETTA_HALFLINGS_ID,
+      effectIds: [effect.id],
+      returnTo: "discard",
+    });
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: HENRIETTA_HALFLINGS_ID,
+      timing: "ongoing",
+      mode: "basic",
+      optionLabel: "All your units attack with advantage for this combat",
+    });
+    appendEvent(state, {
+      type: "ACTIVE_EFFECT_CREATED",
+      effectId: effect.id,
+      controllerId: playerId,
+      name: effect.name,
+      duration: effect.duration,
+    });
+    queue.pending.shift();
+    processWarMachineRound(state);
+    return;
   }
 
   // Polish Balance Ballistics (basic), the round-start ASK: option 0 plays the

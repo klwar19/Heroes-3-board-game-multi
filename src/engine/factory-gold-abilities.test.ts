@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyAction, createInitialGameState } from "./index";
 import { markUnitRemovedIfNeeded } from "./combat-units";
-import { getLegalActions } from "./index";
+import { canUnitAttack, getLegalActions } from "./index";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -91,200 +91,119 @@ function triggeredAbilities(state: GameState, abilityId: string): Extract<GameEv
 }
 
 // ===========================================================================
-// Couatls (Few/Pack) — activated invulnerability ("ignore all damage & spell")
+// Couatls — first-round attack/Spell targeting, distinct Few/Pack timing
 // ===========================================================================
 
-describe("Factory Couatls — activated invulnerability", () => {
-  it("activating it at the Couatl's turn sets the ward, and it fades on its NEXT activation", () => {
-    const state = createInitialGameState("couatl-lifecycle");
+describe("Factory Couatls — first-round targeting protection", () => {
+  function couatlBoard(side: "few" | "pack"): GameState {
+    const state = createInitialGameState(`couatl-first-round-${side}`);
     Object.assign(state.combat!.units.unit_p1_griffins, {
       name: "Couatls",
       cardName: "Couatls",
       type: "flying",
-      variant: "pack",
-      abilities: ["couatl-invulnerability-pack"]
+      variant: side,
+      position: 5,
+      abilities: [`couatl-invulnerability-${side}`]
+    });
+    Object.assign(state.combat!.units.unit_p2_skeletons, {
+      position: 1, attack: 6, defense: 0, maxHealth: 20, damage: 0, abilities: []
     });
     state.players.p1.hand = [];
     state.players.p2.hand = [];
+    return state;
+  }
+
+  it("Pack is protected automatically in round 1, even against a Neutral attacker, then expires", () => {
+    const state = couatlBoard("pack");
+    const target = state.combat!.units.unit_p1_griffins;
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    setActive(state, "p2", enemy.id);
+    expect(getLegalActions(state, "p2").some(entry =>
+      entry.action.type === "ATTACK_UNIT" && entry.action.defenderId === target.id
+    )).toBe(false);
+    expect(applyAction(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: enemy.id, defenderId: target.id }).errors.length).toBeGreaterThan(0);
+    enemy.controllerId = "neutral";
+    expect(canUnitAttack(state.combat!, enemy, target, state.activeEffects), "Neutral targeting is also blocked").toBe(false);
+    state.combat!.round = 2;
+    enemy.controllerId = "p2";
+    expect(getLegalActions(state, "p2").some(entry =>
+      entry.action.type === "ATTACK_UNIT" && entry.action.defenderId === target.id
+    )).toBe(true);
+  });
+
+  it("Few is asked on its round-1 activation; accepting spends that turn, skipping leaves it targetable", () => {
+    const state = couatlBoard("few");
     const opened = makeNextActive(state, "unit_p1_marksmen", "unit_p1_griffins");
     const choice = opened.pendingChoice;
-    expect(choice?.type, "the invulnerability choice opens on the Couatl's activation").toBe("ABILITY_TARGET_CHOICE");
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
     if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
     expect(choice.kind).toBe("couatl-invulnerability");
-
-    const warded = applyOk(opened, {
-      type: "CHOOSE_ABILITY_TARGET",
-      playerId: "p1",
-      choiceId: choice.id,
-      targetUnitId: "unit_p1_griffins"
-    });
-    expect(warded.combat!.units.unit_p1_griffins.invulnerableUntilActivation, "ward is up").toBe(true);
-    expect(warded.combat!.units.unit_p1_griffins.usedInvulnerabilityThisCombat, "spent once per combat").toBe(true);
-    // The ability fires its UNIT_ABILITY_TRIGGERED (drives the shield FX cue).
-    expect(triggeredAbilities(warded, "couatl-invulnerability-pack").length, "invuln FX event fires").toBeGreaterThanOrEqual(1);
-
-    // The ward lasts "until its next activation": drive that next activation.
-    const next = makeNextActive(warded, "unit_p1_marksmen", "unit_p1_griffins");
-    expect(next.combat!.units.unit_p1_griffins.invulnerableUntilActivation, "ward faded as it re-activates").toBeFalsy();
+    const skipped = applyOk(opened, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: choice.id, targetUnitId: "skip" });
+    expect(skipped.combat!.units.unit_p1_griffins.couatlUntargetableRound).toBeUndefined();
+    const accepted = applyOk(opened, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: choice.id, targetUnitId: "unit_p1_griffins" });
+    expect(accepted.combat!.units.unit_p1_griffins.couatlUntargetableRound).toBe(1);
+    expect(accepted.combat!.units.unit_p1_griffins.activatedThisRound).toBe(true);
+    expect(triggeredAbilities(accepted, "couatl-invulnerability-few").length).toBeGreaterThan(0);
   });
 
-  it("CONTROL: skipping the choice leaves the ward down", () => {
-    const state = createInitialGameState("couatl-skip");
-    Object.assign(state.combat!.units.unit_p1_griffins, {
-      name: "Couatls",
-      type: "flying",
-      variant: "pack",
-      abilities: ["couatl-invulnerability-pack"]
-    });
-    state.players.p1.hand = [];
-    state.players.p2.hand = [];
-    const opened = makeNextActive(state, "unit_p1_marksmen", "unit_p1_griffins");
-    const choice = opened.pendingChoice;
-    if (choice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("no choice");
-    const skipped = applyOk(opened, {
-      type: "CHOOSE_ABILITY_TARGET",
-      playerId: "p1",
-      choiceId: choice.id,
-      targetUnitId: "skip"
-    });
-    expect(skipped.combat!.units.unit_p1_griffins.invulnerableUntilActivation).toBeFalsy();
-    expect(skipped.combat!.units.unit_p1_griffins.usedInvulnerabilityThisCombat).toBeFalsy();
+  it("Few protection expires at round end; round 2 offers no activation choice", () => {
+    const state = couatlBoard("few");
+    state.combat!.units.unit_p1_griffins.couatlUntargetableRound = 1;
+    state.combat!.round = 2;
+    expect(makeNextActive(state, "unit_p1_marksmen", "unit_p1_griffins").pendingChoice?.type).not.toBe("ABILITY_TARGET_CHOICE");
   });
 
-  it("the Few's activation of it ENDS the turn; the Pack's is free (still active)", () => {
-    for (const [ability, endsTurn] of [
-      ["couatl-invulnerability-few", true],
-      ["couatl-invulnerability-pack", false]
-    ] as const) {
-      const state = createInitialGameState(`couatl-turn-${ability}`);
-      Object.assign(state.combat!.units.unit_p1_griffins, {
-        name: "Couatls",
-        type: "flying",
-        variant: ability === "couatl-invulnerability-few" ? "few" : "pack",
-        abilities: [ability]
-      });
-      state.players.p1.hand = [];
-      state.players.p2.hand = [];
-      const opened = makeNextActive(state, "unit_p1_marksmen", "unit_p1_griffins");
-      const choice = opened.pendingChoice;
-      if (choice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("no choice");
-      const warded = applyOk(opened, {
-        type: "CHOOSE_ABILITY_TARGET",
-        playerId: "p1",
-        choiceId: choice.id,
-        targetUnitId: "unit_p1_griffins"
-      });
-      expect(warded.combat!.units.unit_p1_griffins.activatedThisRound, `${ability} ends-turn=${endsTurn}`).toBe(endsTurn);
-    }
-  });
-
-  it("an invulnerable Couatl takes ZERO damage from an attack; a bare one takes the hit", () => {
-    function couatlUnderAttack(invuln: boolean): GameState {
-      const state = createInitialGameState(`couatl-attack-${invuln}`);
-      Object.assign(state.combat!.units.unit_p1_griffins, {
-        name: "Couatls",
-        type: "flying",
-        defense: 0,
-        maxHealth: 20,
-        damage: 0,
-        position: 5,
-        abilities: ["couatl-invulnerability-few"],
-        invulnerableUntilActivation: invuln
-      });
-      Object.assign(state.combat!.units.unit_p2_skeletons, {
-        attack: 6,
-        defense: 0,
-        defenseToken: false,
-        maxHealth: 20,
-        damage: 0,
-        abilities: [],
-        position: 1 // adjacent to pos 5
-      });
-      state.players.p1.hand = [];
-      state.players.p2.hand = [];
-      script(state, [0, 0, 0, 0, 0, 0]);
-      setActive(state, "p2", "unit_p2_skeletons");
-      return settle(
-        applyOk(state, {
-          type: "ATTACK_UNIT",
-          playerId: "p2",
-          attackerId: "unit_p2_skeletons",
-          defenderId: "unit_p1_griffins"
-        })
+  it("Pack and protected Few cannot be chosen for Magic Arrow in round 1", () => {
+    for (const side of ["few", "pack"] as const) {
+      const state = couatlBoard(side);
+      const target = state.combat!.units.unit_p1_griffins;
+      target.controllerId = "p2";
+      if (side === "few") target.couatlUntargetableRound = 1;
+      state.players.p1.hand = ["spell.magic_arrow"];
+      const arrow = state.players.p1.hand.find(id => id.includes("magic_arrow"));
+      if (!arrow) continue;
+      const offered = getLegalActions(state, "p1").some(entry =>
+        entry.action.type === "CAST_SPELL" && entry.action.cardId === arrow &&
+        entry.action.target.type === "unit" && entry.action.target.unitId === target.id
       );
+      expect(offered, side).toBe(false);
+      state.combat!.round = 2;
+      expect(getLegalActions(state, "p1").some(entry =>
+        entry.action.type === "CAST_SPELL" && entry.action.cardId === arrow &&
+        entry.action.target.type === "unit" && entry.action.target.unitId === target.id
+      ), `${side} round 2`).toBe(true);
     }
-    expect(couatlUnderAttack(true).combat!.units.unit_p1_griffins.damage, "warded ⇒ 0 damage").toBe(0);
-    expect(couatlUnderAttack(false).combat!.units.unit_p1_griffins.damage, "bare ⇒ attack 6 − def 0 lands").toBe(6);
   });
 
-  it("an invulnerable Couatl ignores spell damage too; a bare one takes it", () => {
-    function couatlUnderSpell(invuln: boolean): GameState {
-      const state = createInitialGameState(`couatl-spell-${invuln}`);
-      Object.assign(state.combat!.units.unit_p2_skeletons, {
-        name: "Couatls",
-        type: "flying",
-        defense: 0,
-        maxHealth: 20,
-        damage: 0,
-        abilities: ["couatl-invulnerability-few"],
-        invulnerableUntilActivation: invuln,
-        position: 13
-      });
-      // Give p1 a Magic Arrow to cast at the Couatl.
-      const arrow = state.players.p1.hand.find((id) => id.includes("magic_arrow"));
-      state.players.p2.hand = [];
-      setActive(state, "p1", "unit_p1_marksmen");
-      if (!arrow) return state;
-      const cast = getLegalActions(state, "p1").find(
-        (entry) =>
-          entry.action.type === "CAST_SPELL" &&
-          entry.action.cardId === arrow &&
-          entry.action.target?.type === "unit" &&
-          entry.action.target.unitId === "unit_p2_skeletons"
-      );
-      if (!cast) return state;
-      return settle(applyOk(state, cast.action));
+  it("an untargetable Couatl still suffers untargeted Detonate damage", () => {
+    const state = couatlBoard("pack");
+    const automaton = state.combat!.units.unit_p2_skeletons;
+    Object.assign(automaton, {
+      unitDefId: "factory.automatons", cardName: "Automatons",
+      abilities: ["automaton-detonate"], variant: "few",
+      position: 1, maxHealth: 6, damage: 6
+    });
+    const couatl = state.combat!.units.unit_p1_griffins;
+    couatl.position = 5;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id !== automaton.id && unit.id !== couatl.id) unit.position = 19;
     }
-    const warded = couatlUnderSpell(true).combat!.units.unit_p2_skeletons.damage;
-    const bare = couatlUnderSpell(false).combat!.units.unit_p2_skeletons.damage;
-    expect(warded, "warded Couatl ignores the Magic Arrow").toBe(0);
-    expect(bare, "a bare Couatl takes the Magic Arrow").toBeGreaterThan(0);
+    markUnitRemovedIfNeeded(state, automaton);
+    expect(couatl.damage).toBe(2);
   });
 
-  it("an invulnerable Couatl ignores an Automaton's Detonate blast; a bare neighbour takes it", () => {
-    function couatlNextToBlast(invuln: boolean): number {
-      const state = createInitialGameState(`couatl-blast-${invuln}`);
-      const automaton = state.combat!.units.unit_p1_griffins;
-      Object.assign(automaton, {
-        unitDefId: "factory.automatons",
-        cardName: "Automatons",
-        abilities: ["automaton-detonate"],
-        variant: "few",
-        position: 5,
-        maxHealth: 6,
-        damage: 0
-      });
-      const couatl = state.combat!.units.unit_p2_skeletons;
-      Object.assign(couatl, {
-        name: "Couatls",
-        type: "flying",
-        maxHealth: 20,
-        damage: 0,
-        abilities: ["couatl-invulnerability-few"],
-        invulnerableUntilActivation: invuln,
-        position: 1 // adjacent to pos 5
-      });
-      // Park the rest away.
-      for (const id of ["unit_p1_crusaders", "unit_p1_marksmen", "unit_p2_vampires", "unit_p2_dread_knights"]) {
-        state.combat!.units[id].position = 19;
-      }
-      state.combat!.units.unit_p2_dread_knights.position = 18;
-      automaton.damage = automaton.maxHealth;
-      markUnitRemovedIfNeeded(state, automaton);
-      return couatl.damage;
-    }
-    expect(couatlNextToBlast(true), "warded ⇒ blast ignored").toBe(0);
-    expect(couatlNextToBlast(false), "bare ⇒ takes the 2-damage blast").toBe(2);
+  it("Pack protection does not stop a Retaliation Attack against it", () => {
+    const state = couatlBoard("pack");
+    const couatl = state.combat!.units.unit_p1_griffins;
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    Object.assign(couatl, { attack: 6, defense: 0, maxHealth: 20, damage: 0 });
+    Object.assign(enemy, { attack: 6, defense: 0, maxHealth: 20, damage: 0 });
+    setActive(state, "p1", couatl.id);
+    script(state, [0, 0, 0, 0, 0, 0]);
+    const after = settle(applyOk(state, {
+      type: "ATTACK_UNIT", playerId: "p1", attackerId: couatl.id, defenderId: enemy.id
+    }));
+    expect(after.combat!.units[couatl.id].damage, "the enemy retaliates through the targeting ward").toBeGreaterThan(0);
   });
 });
 

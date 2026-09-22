@@ -25,7 +25,7 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   shaman: "spell.haste", // Haste
   astral_spirit: "spell.counterstrike", // Counterstrike
   corsair: "spell.slow", // Slow
-  factory: "spell.cure", // Field Repair (mends → the Cure shimmer)
+  factory: "commander.factory.repair", // Field Repair (mechanical repair atlas + SFX)
   bulwark: "spell.sacrifice", // Rune Mend (sound-only, like the Sacrifice spell)
   ruler: "spell.bloodlust", // Command Seal
   sword_saint: "spell.precision", // Sword Intent
@@ -34,7 +34,7 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   demon_ancestor: "spell.bloodlust", // Blood Frenzy (reuses the Brute's Bloodlust cast + fx)
   kyousuke_natsume: "spell.prayer", // Little Busters, Assemble! (a rally over the adjacent allies)
   ibuki: "commander.ibuki.executive", // Executive Order
-  lion_el_jonson: "spell.magic_arrow", // Lion's Slash (Counterstroke is selected by cast name below)
+  lion_el_jonson: "commander.lion-slash", // Lion's Slash (Counterstroke is selected by cast name below)
   sonya: "spell.haste" // Cheer (Shaman Haste reuse)
 };
 

@@ -108,7 +108,7 @@ describe("Imperium component set", () => {
     const lion = commanderDefinitions.lion_el_jonson;
     expect(lion.faction).toBe("Imperium of Man");
     expect(lion.cast.effect).toEqual({ kind: "enemy-damage", damageByPower: [1, 2, 3] });
-    expect(lion.cast.targeting.adjacentBelowPower).toBe(3);
+    expect(lion.cast.targeting.maxDistance).toBe(3);
     expect(lion.additionalCasts?.[0]).toMatchObject({
       abilityId: "commander-cast-lion-counterstroke",
       effect: { kind: "unlimited-retaliation", duration: "combat" },

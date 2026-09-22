@@ -1597,6 +1597,8 @@ export type ActiveEffectModifier =
        * resolution alongside the innate Behemoth/Manticore defense-pierce.
        */
       type: "IGNORES_DEFENSE";
+      /** Tancred VI only: adjacent attacks still use the target's Defense. */
+      nonAdjacentOnly?: boolean;
     }
   | {
       /**
@@ -10257,18 +10259,11 @@ export type CombatUnitState = {
    * chokepoint can be re-entered for the same unit.
    */
   detonatedThisCombat?: boolean;
-  /**
-   * Factory Couatls' activated invulnerability: while set, this unit "ignores
-   * all damage and spell effects" — every incoming-damage chokepoint skips it
-   * and it is treated as immune to every Spell. Turned on at the unit's own
-   * activation ("[activation] Once per Combat. Until its next activation …")
-   * and cleared the next time the unit activates (applyActivationStartAbilities).
-   */
+  /** Legacy Couatl save marker; ignored by current targeting rules. */
   invulnerableUntilActivation?: boolean;
-  /**
-   * Factory Couatls: set once this unit has spent its once-per-combat
-   * invulnerability activation, so it can never turn it on a second time.
-   */
+  /** Few Couatls chose to forfeit their first-round activation for targeting protection. */
+  couatlUntargetableRound?: number;
+  /** Few Couatl has already chosen its first-round activation option. */
   usedInvulnerabilityThisCombat?: boolean;
   /**
    * Factory Bounty Hunters' Mark: set on an enemy unit at the start of Combat.
@@ -11036,6 +11031,8 @@ export type CombatState = {
        * Accepting rewrites the entry into an `openingBallistics` one.
        */
       handBallistics?: boolean;
+      /** Henrietta VI: optional round-start activation while the specialty remains in hand. */
+      henriettaHalflings?: boolean;
     }[];
     firstTargetUnitId?: UnitId | null;
     /**
@@ -18440,8 +18437,7 @@ export type PendingChoice =
         | "chain-lightning"
         | "place-token"
         | "sacrifice-transfer"
-        // Factory Couatls: an optional yes/no at activation — pick the Couatl
-        // itself to switch on its invulnerability, or skip.
+        // Few Couatls: optional round-one targeting protection, spending its turn.
         | "couatl-invulnerability"
         // Factory Automaton (Few): an optional yes/no — pick the Automaton to
         // bank one more faction cube, or skip.

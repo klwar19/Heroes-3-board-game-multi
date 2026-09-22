@@ -387,7 +387,7 @@ const animatedAbilityAtlases: Record<string, [number, number, number, number]> =
   // reverberation tails may continue after the final sprite frame.
   "fear-aura-animated": [314, 314, 2, 10],
   "phoenix-scorch-animated": [314, 314, 1.5, 12],
-  "energy-damage-delay-animated": [314, 314, 1.35, 10],
+  "energy-damage-delay-animated": [314, 314, 0.9, 10],
   "energy-feed-on-fire-animated": [314, 314, 1.5, 10],
   "magma-teleport-animated": [314, 314, 1.25, 24],
 };
@@ -522,6 +522,8 @@ export type SpellFxPlan = {
   battlefield?: boolean;
   /** Stretch the authored frame sequence to this exact presentation length. */
   playbackMs?: number;
+  /** Cap the blocking presentation gate while a longer sound tail continues. */
+  presentationMs?: number;
   tint?: "bloodlust";
   /** /public/sounds manifest key, e.g. "spells/fireball". */
   sound?: string;
@@ -573,6 +575,14 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "spell.cure": {
     affect: [{ key: "cure" }],
     sound: "spells/cure"
+  },
+  "commander.factory.repair": {
+    affect: [{ key: "ctv-field-repair" }],
+    sound: "spells/repair"
+  },
+  "commander.lion-slash": {
+    affect: [{ key: "arch-devil-hellfire-slash" }],
+    sound: "units/arch-devil-attack"
   },
   "spell.fortune": {
     affect: [{ key: "fortune" }],
@@ -998,10 +1008,16 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
     affect: [{ key: "armageddon" }],
     sound: "spells/armageddon",
     battlefield: true,
-    // The authentic clip is 5.590s. Keep its 20 frames visible for that whole
-    // span so the battlefield does not go blank while the firestorm audio runs.
-    playbackMs: 5590,
+    // Run the expensive full-board atlas as a compact burst. The authentic
+    // Armageddon sound may finish its tail without blocking combat for 5.59s.
+    playbackMs: 1600,
+    presentationMs: 1800,
   },
+  "lion-round-barrage": {
+    affect: [{ key: "arch-devil-hellfire-slash" }],
+    sound: "units/arch-devil-attack"
+  },
+  "factory-war-machine-switch": { sound: "units/automaton-move" },
   "commander-artifact-sealed-horizon": { affect: [{ key: "force-field" }], sound: "spells/force-field" },
   "commander-artifact-amulet-of-recoil": { affect: [{ key: "implosion" }], sound: "spells/implosion" },
   // Jotunn Warlord's start-of-activation Teleport: a sound-only plan, exactly
@@ -1154,6 +1170,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "factory-dreadnought-speed-hunter": { projectile: "factory-dreadnought-laser-beam", sound: "units/dreadnought-laser" },
   "factory-couatl-momentum": { affect: [{ key: "factory-couatl-momentum" }], sound: "spells/cure" },
   "factory-bounty-hunter-cover": { affect: [{ key: "factory-bounty-hunter-mark" }], sound: "units/gunslinger-special" },
+  // Artificer's immediate and delayed Field Repair use the Factory repair art
+  // and the native REPAIR clip, rather than the generic Cure presentation.
+  "commander-cast-factory": { affect: [{ key: "ctv-field-repair" }], sound: "spells/repair" },
   // Automaton (Few) faction cube: a mechanical whir as a cube is armed onto the
   // unit ("Overcharge"), then the DETONATE explosion — a fireball burst + the
   // Automaton's signature blast. The fixed-amount Detonates (the boxed
@@ -1665,6 +1684,9 @@ function tintSegmentMs(plan: SpellFxPlan): number {
 export function spellPresentationMs(plan: SpellFxPlan | undefined): number {
   if (!plan) {
     return 0;
+  }
+  if (plan.presentationMs !== undefined) {
+    return Math.min(MAX_PRESENTATION_MS, Math.max(0, plan.presentationMs));
   }
   if (plan.projectile && getFxSheet(plan.projectile)?.projectilePhases) {
     return Math.max(800, 120 + soundDurationMs(plan.sound), 500 + soundDurationMs(plan.hitSound));

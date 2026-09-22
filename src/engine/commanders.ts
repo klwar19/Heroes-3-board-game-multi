@@ -30,7 +30,7 @@ import {
   equipmentGrantsCommanderSort
 } from "./anime-equipment";
 import { makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
-import { isAdjacent } from "./battlefield";
+import { getBattlefieldDistance, isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
@@ -1074,6 +1074,12 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
       targeting.adjacentBelowPower !== undefined &&
       power < targeting.adjacentBelowPower &&
       !isAdjacent(unit.position, target.position)
+    ) {
+      return false;
+    }
+    if (
+      targeting.maxDistance !== undefined &&
+      getBattlefieldDistance(unit.position, target.position) > targeting.maxDistance
     ) {
       return false;
     }

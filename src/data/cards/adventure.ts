@@ -1,4 +1,4 @@
-import type { CardLibrary, UnitType } from "@/engine/state";
+import type { CardLibrary, EffectDurationDefinition, UnitType } from "@/engine/state";
 import { imperiumSpecialtyCards } from "@/data/warhammer/imperium-specialties";
 
 const wikiCredit =
@@ -1392,6 +1392,9 @@ function ignoreDefenseOrDrawSpecialty(
   specialtyName: string,
   level: 1 | 4 | 6,
   draw: number,
+  duration: EffectDurationDefinition = { type: "combat" },
+  durationText = "this Combat",
+  nonAdjacentOnly = false,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1409,7 +1412,7 @@ function ignoreDefenseOrDrawSpecialty(
       "hero-specialty",
       "instant",
       heroSlug,
-      `For this Combat, your ${specialtyName} unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`,
+      `Until the end of ${durationText}, your ${specialtyName} unit ignores ${nonAdjacentOnly ? "non-adjacent targets'" : "its targets'"} Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`,
     ],
     // The card-level target falls back to the signature unit; the ignore-Defense
     // option below pins it explicitly so the draw option can still target none.
@@ -1418,7 +1421,7 @@ function ignoreDefenseOrDrawSpecialty(
       type: "CHOOSE_ONE",
       options: [
         {
-          label: `Your ${specialtyName} unit ignores its targets' Defense this Combat`,
+          label: `Your ${specialtyName} unit ignores ${nonAdjacentOnly ? "non-adjacent targets'" : "its targets'"} Defense until the end of ${durationText}`,
           combatOnly: true,
           // Printed "your Zealots unit": offered only on the signature unit.
           target: { type: "friendly-unit", unitName: specialtyName },
@@ -1427,10 +1430,10 @@ function ignoreDefenseOrDrawSpecialty(
             effect: {
               name: `${specialtyName} ${towerRoman(level)}`,
               scope: "unit",
-              duration: { type: "combat" },
+              duration,
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "IGNORES_DEFENSE" }],
+              modifiers: [{ type: "IGNORES_DEFENSE", ...(nonAdjacentOnly ? { nonAdjacentOnly: true } : {}) }],
             },
           },
         },
@@ -1982,11 +1985,11 @@ export const adventureCards: CardLibrary = {
   // Tancred controls ranged engagements, Celestine turns defense into offense,
   // Agar manipulates battlefield pace, and Frederick coordinates volleys.
   "specialty.henrietta.1": withoutArt({
-    ...mightSpecialtyOne("henrietta", "Luck", "Halflings"),
-    name: "Luck I",
+    ...mightSpecialtyOne("henrietta", "Halflings", "Halflings"),
+    name: "Halflings I",
   }),
   "specialty.henrietta.4": {
-    id: "specialty.henrietta.4", name: "Luck IV", kind: "hero-specialty",
+    id: "specialty.henrietta.4", name: "Halflings IV", kind: "hero-specialty",
     timing: "instant", phaseLimit: ["combat"],
     tags: ["hero-specialty", "instant", "henrietta", "Draw 1 card during an instant window or on the map, or give a unit +1 Health for this combat (+2 for Halflings)."],
     effect: { type: "CHOOSE_ONE", options: [
@@ -1995,14 +1998,14 @@ export const adventureCards: CardLibrary = {
     ] }, implementationStatus: "implemented", source: heroSource("henrietta"),
   },
   "specialty.henrietta.6": {
-    id: "specialty.henrietta.6", name: "Luck VI", kind: "hero-specialty",
-    timing: "instant", phaseLimit: ["combat"],
-    tags: ["hero-specialty", "instant", "henrietta", "At the start of any combat round, all your units roll two Attack dice and use the higher result this round."],
+    id: "specialty.henrietta.6", name: "Halflings VI", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "henrietta", "At the start of any combat round, you may make all your units roll two Attack dice and use the higher result for the rest of this combat."],
     effect: { type: "CHOOSE_ONE", options: [{
-      label: "All your units attack with advantage this round", combatOnly: true,
+      label: "All your units attack with advantage for this combat", combatOnly: true,
       combatRoundStartOnly: true, target: { type: "none" },
       effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
-        name: "Luck VI", scope: "player", duration: { type: "current-combat-round" },
+        name: "Halflings VI", scope: "player", duration: { type: "combat" },
         polarity: "positive", removable: false, modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }],
       } },
     }] }, implementationStatus: "implemented", source: heroSource("henrietta"),
@@ -2025,7 +2028,15 @@ export const adventureCards: CardLibrary = {
     } }, implementationStatus: "implemented", source: heroSource("tancred"),
   },
   "specialty.tancred.6": withoutArt(
-    ignoreDefenseOrDrawSpecialty("tancred", "Bounty Hunters", 6, 2),
+    ignoreDefenseOrDrawSpecialty(
+      "tancred",
+      "Bounty Hunters",
+      6,
+      2,
+      { type: "current-combat-round" },
+      "this combat round",
+      true,
+    ),
   ),
   "specialty.celestine.1": withoutArt({
     ...armorerSpecialty("celestine", 1, 2, "Armadillo Shell Ward"),
@@ -2065,15 +2076,15 @@ export const adventureCards: CardLibrary = {
       { label: "Draw 2 cards", target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 2 } },
     ] }, implementationStatus: "implemented", source: heroSource("agar"),
   },
-  "specialty.frederick.1": withoutArt(towerHealthSpecialty("frederick", "Intelligence", 1, 1, "Automatons")),
+  "specialty.frederick.1": withoutArt(towerHealthSpecialty("frederick", "Automatons", 1, 1, "Automatons")),
   "specialty.frederick.4": {
-    id: "specialty.frederick.4", name: "Intelligence IV", kind: "hero-specialty",
+    id: "specialty.frederick.4", name: "Automatons IV", kind: "hero-specialty",
     timing: "combat", phaseLimit: ["combat"], target: { type: "friendly-unit" },
     tags: ["hero-specialty", "combat", "frederick", "On your turn, teleport one of your units to any empty combat space."],
     effect: { type: "TELEPORT_UNIT", gradeByPower: { 0: "azure" } }, implementationStatus: "implemented", source: heroSource("frederick"),
   },
   "specialty.frederick.6": withoutArt(
-    attackInstantSpecialty("frederick", "Intelligence", 6, 2, "Automatons"),
+    attackInstantSpecialty("frederick", "Automatons", 6, 2, "Automatons"),
   ),
   // Anime Realms unit specialists use the proven generic I/IV/VI curve: global
   // +1 at I/IV/VI, doubled only on the named line. Face-less cards render with

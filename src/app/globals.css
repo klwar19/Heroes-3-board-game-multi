@@ -24865,8 +24865,12 @@ img.cardBack {
   margin: 4px 0 8px;
 }
 .fieldRewardResourceRow {
-  flex-wrap: wrap;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 8px;
 }
+.fieldRewardResourceRow > label { min-width: 0; padding: 7px 8px; border: 1px solid rgba(158, 187, 214, .15); border-radius: 7px; background: rgba(16, 28, 42, .48); }
+.fieldRewardResourceRow input { width: 100%; }
 .fieldRewardSearchGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -24912,8 +24916,8 @@ img.cardBack {
 }
 .fieldRewardSpecialGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-  gap: 8px 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   align-items: start;
 }
 .fieldRewardSpecialSelect {
@@ -24922,6 +24926,11 @@ img.cardBack {
   gap: 3px;
   font-size: 11px;
   color: #d9c9a1;
+  min-height: 62px;
+  padding: 8px;
+  border: 1px solid rgba(156, 190, 222, .16);
+  border-radius: 7px;
+  background: rgba(14, 25, 38, .5);
 }
 .fieldRewardSpecialSelect select {
   font: inherit;
@@ -24939,7 +24948,11 @@ img.cardBack {
   font-size: 12px;
   color: #ffe9b8;
   cursor: pointer;
-  padding: 4px 2px;
+  min-height: 62px;
+  padding: 8px;
+  border: 1px solid rgba(156, 190, 222, .16);
+  border-radius: 7px;
+  background: rgba(14, 25, 38, .5);
 }
 .fieldRewardSpecialToggle input {
   margin-top: 2px;
@@ -25300,32 +25313,37 @@ img.cardBack {
 }
 
 .designerPopover .popoverSectionLabel {
-  font-size: 10px;
+  font-family: var(--font-heroic);
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(240, 220, 184, 0.72);
+  letter-spacing: 0.025em;
+  color: #f1deb5;
 }
+.fieldRewardSpecialGrid > .popoverViiField_num { min-height: 62px; padding: 8px; border: 1px solid rgba(156, 190, 222, .16); border-radius: 7px; background: rgba(14, 25, 38, .5); }
 
 /* Collapsible tile-inspector sections: a clickable header row with a chevron
    and an "active" dot, so a long popover reads as a few tidy groups instead of
    one endless scroll. Content stays in the DOM while collapsed. */
 .designerPopover .popoverGroup {
-  border-top: 1px solid rgba(214, 178, 94, 0.18);
-  margin-top: 2px;
+  border: 1px solid rgba(214, 178, 94, 0.28);
+  border-radius: 8px;
+  background: rgba(20, 29, 42, .66);
+  margin-top: 5px;
+  overflow: hidden;
 }
 .designerPopover .popoverGroupHead {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 1px;
+  padding: 8px 10px;
   list-style: none;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(240, 220, 184, 0.78);
+  color: #f0dfba;
+  background: linear-gradient(90deg, rgba(104, 84, 45, .26), rgba(35, 47, 64, .34));
 }
 .designerPopover .popoverGroupHead::-webkit-details-marker {
   display: none;
@@ -25351,7 +25369,8 @@ img.cardBack {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-bottom: 4px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(214, 178, 94, .15);
 }
 
 .designerPopover .popoverHint {
@@ -37067,15 +37086,16 @@ body {
 .mapPresetEditor {
   margin-top: 14px;
   display: grid;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(154, 208, 255, 0.28);
+  gap: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(206, 172, 105, 0.48);
   background: linear-gradient(
     180deg,
-    rgba(22, 30, 44, 0.95),
-    rgba(14, 18, 28, 0.98)
+    rgba(23, 35, 51, 0.97),
+    rgba(11, 19, 31, 0.99)
   );
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .25), inset 0 1px rgba(255, 232, 181, .09);
   /* Fill the (stable) column so collapsing the panel changes only its HEIGHT,
      never its width — no horizontal jump. Capped so it never sprawls too wide. */
   justify-self: stretch;
@@ -37152,23 +37172,25 @@ body {
 
 .mapPresetSection {
   display: grid;
-  gap: 6px;
-  padding: 10px 0 2px;
-  border-top: 1px solid rgba(154, 208, 255, 0.14);
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(154, 208, 255, .17);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(33, 48, 67, .66), rgba(17, 29, 45, .5));
 }
 
 /* The first section sits right under the summary — no double divider. */
 .mapPresetSection:first-of-type {
-  border-top: none;
-  padding-top: 2px;
+  border-top: 1px solid rgba(154, 208, 255, .17);
+  padding-top: 12px;
 }
 
 .mapPresetSectionLabel {
-  font-size: 10px;
+  font-family: var(--font-heroic);
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(190, 210, 235, 0.72);
+  letter-spacing: 0.025em;
+  color: #f1deb5;
 }
 
 .mapPresetChipRow {
@@ -37222,10 +37244,12 @@ body {
 
 .mapPresetResourceField {
   display: grid;
-  gap: 2px;
-  font-size: 10px;
-  color: rgba(190, 210, 235, 0.8);
+  gap: 4px;
+  font-size: 11px;
+  color: #cad9eb;
 }
+.mapPresetResourceLabel { display: flex; align-items: center; gap: 4px; min-height: 18px; }
+.mapPresetResourceLabel img { flex: 0 0 auto; width: 18px; height: 18px; object-fit: contain; }
 
 .mapPresetResourceField input,
 .mapPresetResourceField select,
@@ -37521,25 +37545,35 @@ details.mapPresetEditor > summary::-webkit-details-marker {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(221, 187, 113, .32);
+  border-radius: 10px;
+  background: linear-gradient(100deg, rgba(70, 61, 38, .55), rgba(22, 38, 57, .74));
   user-select: none;
 }
+
+.mapPresetHeroArt { flex: 0 0 auto; width: 48px; height: 48px; object-fit: contain; }
 
 .mapPresetSummaryBar:hover strong {
   color: #ffffff;
 }
 
 .mapPresetSummaryBar strong {
-  color: #e8f0ff;
-  font-size: 13px;
+  color: #fff0c7;
+  font-family: var(--font-heroic);
+  font-size: 18px;
+  letter-spacing: .025em;
 }
 
 .mapPresetSummaryBar small {
   flex-basis: 100%;
-  color: rgba(190, 210, 235, 0.75);
-  font-size: 11px;
+  padding-left: 61px;
+  color: #b9cbe0;
+  font-size: 12px;
   line-height: 1.4;
 }
+@media (max-width: 560px) { .mapPresetSummaryBar small { padding-left: 0; } }
 
 .mapPresetSummaryChevron {
   color: rgba(154, 208, 255, 0.85);
@@ -37571,8 +37605,8 @@ details.mapPresetEditor[open] .mapPresetSummaryChevron {
    related leaf .mapPresetSections under a glyph + title + active-count header,
    so the ~15 flat sections read as six clearly-separated, ordered groups. */
 .mapPresetGroup {
-  border-radius: 10px;
-  border: 1px solid rgba(154, 208, 255, 0.22);
+  border-radius: 11px;
+  border: 1px solid rgba(154, 208, 255, 0.3);
   background: linear-gradient(
     180deg,
     rgba(26, 36, 52, 0.72),
@@ -37597,13 +37631,20 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 9px 11px;
+  padding: 13px 14px;
   color: #dce9ff;
-  transition: background 0.12s ease;
+  background: linear-gradient(105deg, rgba(82, 110, 146, .46), rgba(35, 58, 78, .28) 58%, rgba(17, 29, 45, .2));
+  border-left: 3px solid rgba(236, 193, 101, .72);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .mapPresetGroupHead:hover {
-  background: rgba(154, 208, 255, 0.06);
+  background: linear-gradient(105deg, rgba(101, 136, 176, .55), rgba(35, 58, 78, .32));
+  box-shadow: inset 0 0 22px rgba(154, 208, 255, .11);
+}
+
+.mapPresetGroup[open] > .mapPresetGroupHead {
+  box-shadow: inset 0 -1px 0 rgba(236, 193, 101, .22), 0 4px 18px rgba(0, 0, 0, .16);
 }
 
 .mapPresetGroupLead {
@@ -37616,8 +37657,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
 .mapPresetGroupGlyph {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
@@ -37631,9 +37672,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
 .mapPresetGroupTitle {
   font-family: var(--font-heroic);
-  font-size: 12.5px;
+  font-size: clamp(17px, 1.8vw, 20px);
   letter-spacing: 0.03em;
-  color: #eaf2ff;
+  color: #fff1d1;
+  text-shadow: 0 1px 0 #352615, 0 0 15px rgba(255, 211, 135, .24);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -37664,8 +37706,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
 .mapPresetGroupBody {
   display: grid;
-  gap: 6px;
-  padding: 2px 11px 10px;
+  gap: 9px;
+  padding: 10px 11px 12px;
   border-top: 1px solid rgba(154, 208, 255, 0.14);
 }
 
@@ -37727,7 +37769,175 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   background: rgba(40, 70, 100, 0.95);
 }
 
+.mapPresetIconLabel { display: inline-flex; align-items: center; gap: 5px; }
+.mapPresetIconLabel img { width: 18px; height: 18px; object-fit: contain; }
+.mapPresetArtLabel, .mapPresetGuardLabel { display: inline-flex; align-items: center; gap: 8px; }
+.mapPresetArtLabel img { flex: 0 0 auto; width: 40px; height: 34px; object-fit: contain; filter: drop-shadow(0 2px 3px #000); }
+.mapPresetArtLabel img[src*="icon-table-modes"] { width: 54px; height: 36px; }
+.mapPresetDifficultyIcon { width: 21px; height: 21px; object-fit: contain; vertical-align: middle; }
+.mapPresetTabIcon { width: 34px; height: 34px; object-fit: contain; vertical-align: middle; filter: drop-shadow(0 1px 3px rgba(0,0,0,.55)); }
+.mapPresetModeTabs .mapPresetChip, .mapPresetPickChip { display: inline-flex; align-items: center; gap: 3px; }
+.mapPresetModeTabs .mapPresetChip { min-height: 40px; padding: 3px 12px 3px 5px; font-size: 12px; }
+.mapPresetUnitCardFan { display: inline-flex; align-items: center; width: 70px; height: 38px; margin-right: 4px; }
+.mapPresetUnitCardFan img { width: 26px; height: 36px; margin-right: -10px; border: 1px solid #ba985a; border-radius: 3px; object-fit: cover; object-position: center top; box-shadow: 0 2px 5px #000; transform: rotate(-7deg); }
+.mapPresetUnitCardFan img:nth-child(2) { transform: translateY(-2px); z-index: 1; }
+.mapPresetUnitCardFan img:nth-child(3) { transform: rotate(7deg); z-index: 2; }
+.fieldRewardEditorHeading, .fieldRewardLabel, .fieldRewardSpecialTitle { display: inline-flex; align-items: center; gap: 5px; }
+.fieldRewardEditorHeading { color: #ffe9ae; font: 700 12px var(--font-heroic); }
+.fieldRewardIcon { flex: 0 0 auto; width: 19px; height: 19px; object-fit: contain; }
+.fieldRewardIcon.tone-gold { filter: brightness(0) saturate(100%) invert(82%) sepia(34%) saturate(916%) hue-rotate(348deg) brightness(103%) contrast(97%); }
+.fieldRewardIcon.tone-violet { filter: brightness(0) saturate(100%) invert(69%) sepia(39%) saturate(847%) hue-rotate(201deg) brightness(101%) contrast(97%); }
+.fieldRewardIcon.tone-green { filter: brightness(0) saturate(100%) invert(73%) sepia(39%) saturate(606%) hue-rotate(73deg) brightness(102%) contrast(89%); }
+.mapPresetSectionLabel.mapPresetIconLabel img[src*="treasure"] { filter: brightness(0) saturate(100%) invert(82%) sepia(34%) saturate(916%) hue-rotate(348deg) brightness(103%) contrast(97%); }
+.fieldRewardChoiceIcons { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 2px; }
+.fieldRewardSpecialToggle > .fieldRewardIcon { width: 24px; height: 24px; }
+.fieldRewardSearchTitle { display: flex; align-items: center; gap: 8px; }
+.fieldRewardSearchTitle span { display: flex; flex-direction: column; }
+.fieldRewardSearchTitle small { color: #aebed0; font-size: 9px; font-weight: 400; }
+.fieldRewardExampleCard { width: 44px; height: 57px; border-radius: 4px; object-fit: cover; object-position: center top; box-shadow: 0 2px 7px #000; }
+
+.mapObjectGallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 10px;
+}
+.mapObjectCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-height: 150px;
+  padding: 9px 8px;
+  border: 1px solid rgba(216, 176, 98, .43);
+  border-radius: 10px;
+  color: #f6e8c7;
+  background: radial-gradient(circle at 50% 26%, rgba(181, 144, 85, .2), transparent 58%), linear-gradient(155deg, #29364a, #172330);
+  cursor: pointer;
+  text-align: center;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.mapObjectCard:hover, .mapObjectCard:focus-visible {
+  transform: translateY(-2px);
+  border-color: #f5d48f;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .3), 0 0 16px rgba(247, 205, 124, .2);
+}
+.mapObjectCardArt { display: flex; justify-content: center; align-items: center; height: 82px; width: 100%; }
+.mapObjectCardArt img { width: min(78px, 35%); height: 78px; object-fit: contain; filter: drop-shadow(0 5px 5px rgba(0, 0, 0, .6)); }
+.mapObjectCardArt img:only-child { width: 78px; }
+.mapObjectCardGlyph { font-size: 44px; color: #e9c681; text-shadow: 0 3px 8px #000; }
+.mapObjectCard strong { font-family: var(--font-heroic); font-size: 13px; line-height: 1.1; }
+.mapObjectCard small { color: #b7c8d8; font-size: 10px; line-height: 1.25; }
+.mapObjectDialogLayer { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 12px; }
+.mapObjectDialogBackdrop { position: absolute; inset: 0; border: 0; background: rgba(5, 10, 16, .74); cursor: default; }
+.mapObjectDialog { position: relative; width: min(880px, 100%); max-height: min(90vh, 940px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #d5af6c; border-radius: 15px; background: linear-gradient(155deg, #182838, #101b29); box-shadow: 0 18px 65px rgba(0, 0, 0, .7), 0 0 22px rgba(223, 179, 100, .2); }
+.mapObjectDialogHead { display: flex; align-items: center; gap: 11px; padding: 9px 14px; border-bottom: 1px solid rgba(225, 185, 111, .4); background: linear-gradient(100deg, #3d3c37, #233647 65%, #192a3b); }
+.mapObjectDialogArt { display: flex; align-items: center; flex: 0 0 auto; height: 48px; }
+.mapObjectDialogArt img { width: 44px; height: 44px; object-fit: contain; margin-right: -8px; filter: drop-shadow(0 2px 3px #000); }
+.mapObjectDialogHead > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mapObjectDialogHead strong { color: #ffe4aa; font-family: var(--font-heroic); font-size: 18px; }
+.mapObjectDialogHead small { color: #c6d4df; font-size: 11px; }
+.mapObjectDialogClose { flex: 0 0 auto; padding: 5px 9px; border: 1px solid #d5af6c; border-radius: 6px; background: #253448; color: #ffe7bd; cursor: pointer; }
+.mapObjectDialogClose:hover, .mapObjectDialogClose:focus-visible { background: #455168; }
+.mapObjectDialogBody { overflow: auto; padding: 16px; scrollbar-color: #987846 #172333; }
+.mapObjectDialogBody > .mapPresetSection { gap: 12px; padding: 0; border: 0; background: transparent; }
+.mapObjectDialogBody > .mapPresetSection > .mapPresetSectionLabel:first-child { padding: 9px 11px; border: 1px solid rgba(221, 180, 103, .34); border-radius: 8px; background: linear-gradient(100deg, rgba(85, 67, 37, .5), rgba(37, 54, 72, .42)); font-size: 14px; }
+.mapObjectDialogBody .mapPresetObjectiveRow { padding: 8px 10px; border: 1px solid rgba(143, 180, 215, .17); border-radius: 8px; background: rgba(15, 26, 39, .5); }
+.mapObjectDialogBody .fieldRewardEditor { padding: 10px; border: 1px solid rgba(218, 174, 91, .2); border-radius: 10px; background: rgba(10, 17, 26, .46); }
+.mapObjectDialogBody > .mapObjectPanel[data-active="false"] { display: none; }
+.mapObjectDialogBody > .mapObjectPanel[data-active="true"] { display: grid; }
+.mapObjectDialogBody > .victoryPanel[data-active="false"] { display: none; }
+.mapObjectDialogBody > .victoryPanel[data-active="true"] { display: grid; }
+.mapObjectScopePicker { display: grid; grid-template-columns: minmax(185px, .7fr) minmax(280px, 1.3fr); align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid rgba(97, 179, 220, .35); border-radius: 10px; background: linear-gradient(100deg, rgba(25, 61, 82, .68), rgba(17, 34, 50, .72)); box-shadow: inset 3px 0 #4ca4cd; }
+.mapObjectScopeTitle { display: flex; align-items: center; gap: 10px; color: #e8f5ff; }
+.mapObjectScopeTitle img { width: 34px; height: 34px; object-fit: contain; filter: drop-shadow(0 2px 3px #000); }
+.mapObjectScopeTitle span { display: flex; flex-direction: column; gap: 1px; }
+.mapObjectScopeTitle strong { font-size: 13px; letter-spacing: .03em; }
+.mapObjectScopeTitle small { color: #a9c3d5; font-size: 10px; }
+.mapObjectConfigStack { display: grid; gap: 11px; }
+.mapObjectConfigHeading { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 7px 10px; border: 1px solid rgba(190, 120, 83, .35); border-radius: 7px; color: #ffd7aa; background: linear-gradient(90deg, rgba(107, 53, 36, .48), rgba(35, 44, 57, .25)); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.mapObjectConfigHeading > span { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; background: rgba(218, 132, 77, .2); color: #ffbd7c; font-size: 15px; }
+.mapObjectConfigStack > .mapPresetSectionLabel.mapPresetIconLabel { margin-top: 5px; padding: 8px 10px; border: 1px solid rgba(215, 172, 83, .38); border-radius: 7px; color: #ffe2a1; background: linear-gradient(90deg, rgba(104, 77, 31, .48), rgba(35, 44, 57, .25)); font-size: 12px; letter-spacing: .055em; text-transform: uppercase; }
+.victoryObjectiveSwitch { grid-template-columns: 62px minmax(0, 1fr) auto !important; align-items: center; gap: 12px !important; padding: 11px 12px !important; border: 1px solid rgba(221, 180, 103, .38) !important; border-radius: 11px; background: linear-gradient(105deg, rgba(81, 61, 30, .55), rgba(20, 43, 60, .7)) !important; }
+.victoryObjectiveSwitchArt { display: grid; width: 58px; height: 58px; place-items: center; border-radius: 10px; background: rgba(8, 14, 21, .52); }
+.victoryObjectiveSwitchArt img { width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 3px 4px #000); }
+.victoryObjectiveSwitchCopy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.victoryObjectiveSwitchCopy strong { color: #ffe5ae; font-size: 15px; }
+.victoryObjectiveSwitchCopy small { color: #c7d6df; }
+.victoryObjectiveCombined { width: fit-content; margin-top: 2px; padding: 3px 7px; border: 1px solid rgba(105, 208, 147, .4); border-radius: 999px; background: rgba(36, 111, 73, .28); color: #b8f3cf; font-size: 10px; font-weight: 700; }
+.victoryObjectiveToggle { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #b68a45; border-radius: 8px; background: rgba(9, 18, 27, .7); color: #ffe4ad; font-size: 12px; font-weight: 700; cursor: pointer; }
+.victoryObjectiveToggle:has(input:checked) { border-color: #6bc993; background: rgba(31, 102, 66, .46); color: #d5ffe5; }
+.victoryObjectiveToggle input { accent-color: #5fc88b; }
+.mapPresetHardEndRow { padding: 10px; border: 1px solid rgba(243, 206, 123, .55); border-radius: 9px; background: linear-gradient(105deg, rgba(92, 64, 29, .35), rgba(29, 45, 59, .42)); }
+.mapPresetTeamsSection { gap: 12px; }
+.mapPresetTeamsHeading { font-size: 14px; color: #ffe1a2; }
+.mapPresetTeamPresets { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; }
+.mapPresetTeamPreset { display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid rgba(151, 188, 222, .28); border-radius: 9px; background: #18283a; color: #e5effa; text-align: left; cursor: pointer; }
+.mapPresetTeamPreset strong { color: #ffe2a4; font-family: var(--font-heroic); font-size: 12px; }
+.mapPresetTeamPreset small { color: #9fb2c5; font-size: 10px; }
+.mapPresetTeamPreset.active { border-color: #efc876; background: linear-gradient(120deg, rgba(112, 82, 35, .58), #23384c); box-shadow: inset 0 0 14px rgba(239, 200, 118, .1); }
+.mapPresetTeamGrid { display: grid; gap: 7px; }
+.mapPresetTeamSeat { display: grid; grid-template-columns: 42px minmax(105px, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid rgba(151, 188, 222, .2); border-radius: 8px; background: rgba(12, 23, 35, .58); }
+.mapPresetTeamSeatBadge { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #7794ad; background: #253d54; color: white; font: 700 12px var(--font-heroic); }
+.mapPresetTeamSeatBadge.human { border-color: #70c9ff; background: #18527a; }
+.mapPresetTeamSeatBadge.computer { border-color: #e57d69; background: #762e2a; }
+.mapPresetTeamSeatName { display: flex; flex-direction: column; color: #eaf2fa; font-size: 12px; font-weight: 700; }
+.mapPresetTeamSeatName small { color: #899fb2; font-size: 9px; font-weight: 400; }
+.mapPresetTeamNumber { min-width: 28px; height: 28px; border: 1px solid #4c6680; border-radius: 6px; background: #1d3043; color: #c9d7e4; cursor: pointer; }
+.mapPresetTeamNumber.active { border-color: #f0c66e; color: #1b1408; background: #efc66f; box-shadow: 0 0 10px rgba(239, 198, 111, .28); }
+@media (max-width: 520px) {
+  .mapObjectGallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mapObjectDialogHead small { display: none; }
+  .mapObjectDialogClose span { display: none; }
+  .mapObjectScopePicker { grid-template-columns: 1fr; }
+  .victoryObjectiveSwitch { grid-template-columns: 52px minmax(0, 1fr) !important; }
+  .victoryObjectiveToggle { grid-column: 1 / -1; justify-content: center; }
+  .mapPresetTeamSeat { grid-template-columns: 38px 1fr; }
+  .mapPresetTeamSeat > .mapPresetChipRow { grid-column: 1 / -1; }
+  .fieldRewardSpecialGrid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mapObjectCard, .mapPresetGroupHead { transition: none; }
+  .mapObjectCard:hover, .mapObjectCard:focus-visible { transform: none; }
+}
+
 .randomTownGuardEditor { display: grid; gap: 10px; }
+.randomTownGuardSearch { width: 100%; min-width: 0; border: 1px solid rgba(154, 208, 255, .32); border-radius: 6px; background: #172638; color: #e5f1ff; padding: 7px 9px; }
+.randomTownGuardArt { width: 30px; height: 34px; border-radius: 4px; object-fit: cover; }
+.grailGuardEditor { display: grid; gap: 8px; margin: 8px 0 12px; }
+.grailGuardField { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #c9d5e6; font-size: 12px; }
+.grailGuardField > span { min-width: 72px; }
+.grailGuardEditor select {
+  min-width: 0; max-width: 100%; border: 1px solid rgba(201, 162, 75, .5);
+  border-radius: 6px; background: #202a36; color: #f3e7c8; padding: 6px 8px;
+}
+.grailGuardField select { flex: 1 1 210px; }
+.grailGuardLine { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.grailGuardLine > .grailGuardField { flex: 1 1 180px; min-width: 0; }
+.guardArmyTable { display: grid; gap: 8px; margin: 8px 0; padding: 10px; border: 1px solid rgba(154, 208, 255, .24); border-radius: 9px; background: rgba(12, 22, 34, .54); }
+.guardArmyTableRows { display: grid; gap: 6px; }
+.guardArmyTableRow { display: flex; align-items: flex-start; gap: 6px; }
+.guardArmyTableRow > .guardUnitPicker { flex: 1 1 auto; min-width: 0; }
+.designerPopover .guardArmyTableRow { flex-wrap: wrap; }
+.designerPopover .guardArmyTableRow > .guardUnitPicker { flex-basis: 100%; }
+.guardArmyTableCount { display: flex; align-items: center; gap: 3px; color: #bcd2e8; }
+.guardArmyTableCount select { width: 54px; }
+.guardArmyTableRemove { flex: 0 0 32px; min-height: 34px; border: 1px solid rgba(154, 208, 255, .28); border-radius: 6px; background: #1a293a; color: #e9f1fa; cursor: pointer; }
+.guardArmyTableFaction { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #c9d5e6; font-size: 12px; }
+.guardArmyTableFaction select { flex: 1 1 190px; min-width: 0; }
+.guardUnitPicker { min-width: 0; }
+.guardUnitPicker summary { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 3px 7px; border: 1px solid rgba(154, 208, 255, .3); border-radius: 6px; background: #1b2a3a; color: #e7f1fc; cursor: pointer; list-style: none; font-size: 12px; }
+.guardUnitPicker summary::-webkit-details-marker { display: none; }
+.guardUnitPicker summary img { flex: 0 0 auto; width: 25px; height: 27px; border-radius: 3px; object-fit: cover; }
+.guardUnitPickerLabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.guardUnitPicker[open] summary { border-color: #9ad0ff; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.guardUnitPickerMenu { display: grid; gap: 5px; padding: 7px; border: 1px solid rgba(154, 208, 255, .35); border-top: 0; border-radius: 0 0 7px 7px; background: #132336; }
+.guardUnitPickerMenu input, .guardUnitPickerMenu select, .guardArmyTable select { min-width: 0; border: 1px solid rgba(154, 208, 255, .28); border-radius: 5px; background: #1b2a3a; color: #e7f1fc; padding: 5px 7px; }
+.guardUnitPickerChoices { display: grid; gap: 3px; max-height: 200px; overflow-y: auto; }
+.guardUnitPickerChoices button { display: flex; align-items: center; gap: 7px; min-width: 0; border: 0; border-radius: 5px; padding: 4px 6px; background: transparent; color: #e7f1fc; text-align: left; cursor: pointer; }
+.guardUnitPickerChoices button:hover, .guardUnitPickerChoices button:focus-visible { background: rgba(154, 208, 255, .16); }
+.guardUnitPickerChoices button img { flex: 0 0 auto; width: 25px; height: 28px; border-radius: 3px; object-fit: cover; }
+.guardUnitPickerChoices button > span:last-child { display: grid; gap: 1px; min-width: 0; font-size: 11px; }
+.guardUnitPickerChoices button small { color: #9db5cf; font-size: 10px; }
 .randomTownGuardRows { display: grid; gap: 6px; }
 .randomTownGuardRow {
   padding: 7px 9px;

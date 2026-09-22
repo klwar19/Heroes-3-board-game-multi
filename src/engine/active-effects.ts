@@ -777,11 +777,12 @@ export function getDisplayAttackBonus(state: GameState, unit: CombatUnitState): 
 }
 
 /** Ingham's Zealots VI: does this unit have a lasting "ignores Defense" effect? */
-export function hasActiveIgnoresDefense(state: GameState, unit: CombatUnitState): boolean {
+export function hasActiveIgnoresDefense(state: GameState, unit: CombatUnitState, defender?: CombatUnitState): boolean {
   return state.activeEffects.some(
     (effect) =>
       effectAppliesToUnit(effect, unit) &&
-      effect.modifiers.some((modifier) => modifier.type === "IGNORES_DEFENSE")
+      effect.modifiers.some((modifier) => modifier.type === "IGNORES_DEFENSE" &&
+        (!modifier.nonAdjacentOnly || (defender !== undefined && !isAdjacent(unit.position, defender.position))))
   );
 }
 
