@@ -5,6 +5,7 @@
 import { ChevronDown, ChevronUp, Hourglass, Mountain, Plus, ScrollText, Shield, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { AstrologersCombatNotice } from "./astrologers-combat-notice";
+import { BattlefieldConditionNotice, BattlefieldEnvironment } from "./battlefield-environment";
 import { CombatRetakeControls } from "./combat-retake-controls";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
@@ -1306,6 +1307,7 @@ export function BattlefieldBoard({
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
       <AstrologersCombatNotice state={state} />
+      <BattlefieldConditionNotice state={state} />
       {stopPlacingTokensAction ? (
         <div className="placeTokensBanner" role="status">
           <span>{placeTokensPrompt ?? "Place a token on an empty space, or stop."}</span>
@@ -1410,6 +1412,9 @@ export function BattlefieldBoard({
             can never eat a click on a cell underneath. Renders nothing for an
             unscripted combat. */}
         <PveFieldEffectOverlay state={state} />
+        {/* BATTLEFIELD CONDITIONS, sky plane: fog, ash, embers, leaves and the
+            colour grade paint ABOVE the unit cards. */}
+        <BattlefieldEnvironment boardArtId={boardArt.id} plane="sky" state={state} />
         <div className="battlefield">
           {/* Terrain art is a landscape 5x4 board, so it lines up directly with
               the transposed cells and only mirrors for the seat-relative flip. */}
@@ -1420,6 +1425,10 @@ export function BattlefieldBoard({
             referrerPolicy="no-referrer"
             src={assetUrl(boardArt.terrain)}
           />
+          {/* BATTLEFIELD CONDITIONS, ground plane: wet mud, lava cracks, heat
+              haze and cell-local motifs paint over the terrain art but UNDER
+              the cells (later siblings stack above it). */}
+          <BattlefieldEnvironment boardArtId={boardArt.id} plane="ground" state={state} />
           <div aria-label="Battlefield coordinate guide" className="battlefieldCoordinates">
             {Array.from({ length: BATTLEFIELD_ROWS }, (_, engineRow) => {
               const gridColumn = battlefieldCellPlacement(engineRow * BATTLEFIELD_COLUMNS, flipped).gridColumn;

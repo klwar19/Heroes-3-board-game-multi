@@ -197,12 +197,11 @@ export function MapTownBuildingsDock({
     !isPhone && pos ? { left: pos.x, top: pos.y, right: "auto", bottom: "auto" } : {};
 
   return (
-    <section aria-label="Town building actions" className="heroActionsDock mapTownBuildingsDock">
-      <header>Town buildings</header>
+    <section aria-label="Town building actions" className="mapTownBuildingsDock">
       <button
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="heroActionButton mapTownBuildingsButton actionable"
+        className="mapTownBuildingsButton actionable"
         onClick={() => {
           setOpen(true);
           setMinimized(false);
@@ -215,10 +214,11 @@ export function MapTownBuildingsDock({
           aria-hidden="true"
           className="mapTownBuildingsIcon"
           src={assetUrl(TOWN_BUILDINGS_ICON)}
-          width={18}
-          height={18}
+          width={16}
+          height={16}
         />
-        <span className="heroActionLabelEn">{label}</span>
+        <span className="mapTownBuildingsButtonLabel">{label}</span>
+        <ChevronUp aria-hidden="true" className="mapTownBuildingsButtonCaret" size={14} />
       </button>
       {open && typeof document !== "undefined"
         ? createPortal(

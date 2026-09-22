@@ -68,6 +68,9 @@ const nextConfig: NextConfig = {
       { source: "/fx/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
       { source: "/game-tokens/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
       { source: "/factory-cards/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
+      { source: "/ui/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
+      { source: "/map-designer/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
+      { source: "/credits/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
       { source: "/fonts/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] }
     ];
   },

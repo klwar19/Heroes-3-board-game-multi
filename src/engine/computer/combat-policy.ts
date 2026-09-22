@@ -41,6 +41,7 @@ import { unitSideStrength } from "./army-strength";
 import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations } from "../legal-actions";
 import { getPermanentCardIds } from "../permanents";
 import { effectiveInitiative } from "../active-effects";
+import { conditionExpectedStrikeDamage, conditionInitiativePrecedes } from "./battlefield-conditions";
 
 /**
  * True when our side is clearly losing a neutral fight: no living unit can
@@ -906,6 +907,9 @@ function attackScore(
     return PVP_OVEREXTENSION_ATTACK_SCORE;
   }
 
+  // Weather changes the expected value, while guaranteed-removal and trading
+  // safeguards above keep using the established conservative lower bound.
+  quality += Math.round((conditionExpectedStrikeDamage(state, attacker, defender, attackFromPosition) - damage) * 12);
   const result = Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE + quality));
   // Must-kill a defense-ignoring ONE-SHOTTER (user ruling 2026-09-18, live tutoring):
   // an enemy that deals elemental (defense-ignoring) damage AND can remove one of our
@@ -1228,7 +1232,7 @@ function outputThreatDeploymentRisk(
         canUnitMoveAndAttack(projected, enemy, destination, body, state));
     if (!reaches) continue;
     const enemyInitiative = effectiveInitiative(enemy, activeEffects, projected);
-    const threatActsFirst = enemyInitiative > bodyInitiative ||
+    const threatActsFirst = conditionInitiativePrecedes(enemyInitiative, bodyInitiative, projected) ||
       (enemyInitiative === bodyInitiative && enemy.controllerId === projected.attackerPlayerId);
     risk = Math.max(risk, threatActsFirst ? OUTPUT_THREAT_GOLD_REACH_PENALTY : OUTPUT_THREAT_GOLD_MOVER_PENALTY);
   }

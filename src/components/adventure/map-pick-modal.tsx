@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Hammer, Search } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
+import { sharedMapIsArchived } from "@/server/map-registry";
 import {
   clampSeatCount,
   coopMapSeatCapacity,
@@ -38,7 +39,8 @@ type MapEntry =
   | { kind: "builtin"; key: string; scenario: ScenarioDefinition }
   | { kind: "designed"; key: string; record: SharedMapRecord; problems: string[] };
 
-type SourceFilter = "all" | "builtin" | "designed";
+type SourceFilter = "all" | "builtin" | "designed" | "archive";
+type MapSort = "most-played" | "name" | "recently-added";
 
 /**
  * The difficulty bar: Easy = Pawn, Normal = Knight, Hard = Rook,
@@ -98,8 +100,10 @@ export function MapPickModal({
   const [savedMaps, setSavedMaps] = useState<SharedMapRecord[]>([]);
   const [source, setSource] = useState<SourceFilter>("all");
   const [seatFilter, setSeatFilter] = useState<number | null>(null);
+  const [sort, setSort] = useState<MapSort>("most-played");
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [catalogNow] = useState(() => Date.now());
 
   // The shared map library — fetched only while this window is open (same
   // effect as the classic MapPicker, incl. the focus re-fetch).
@@ -143,8 +147,12 @@ export function MapPickModal({
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return entries.filter((entry) => {
-      if (source !== "all" && entry.kind !== source) {
+    const visible = entries.filter((entry) => {
+      const archived = entry.kind === "designed" && sharedMapIsArchived(entry.record, catalogNow);
+      if (source === "archive" ? !archived : archived) {
+        return false;
+      }
+      if (source !== "all" && source !== "archive" && entry.kind !== source) {
         return false;
       }
       if (seatFilter !== null) {
@@ -167,7 +175,20 @@ export function MapPickModal({
       }
       return true;
     });
-  }, [entries, source, seatFilter, query]);
+    return visible.sort((left, right) => {
+      const leftName = left.kind === "builtin" ? left.scenario.name : left.record.name;
+      const rightName = right.kind === "builtin" ? right.scenario.name : right.record.name;
+      if (sort === "name") return leftName.localeCompare(rightName, undefined, { sensitivity: "base" });
+      if (sort === "recently-added") {
+        const leftCreated = left.kind === "designed" ? left.record.createdAt : 0;
+        const rightCreated = right.kind === "designed" ? right.record.createdAt : 0;
+        return rightCreated - leftCreated || leftName.localeCompare(rightName);
+      }
+      const leftPlayed = left.kind === "designed" ? left.record.finishedGames ?? 0 : 0;
+      const rightPlayed = right.kind === "designed" ? right.record.finishedGames ?? 0 : 0;
+      return rightPlayed - leftPlayed || leftName.localeCompare(rightName);
+    });
+  }, [entries, source, seatFilter, query, sort, catalogNow]);
 
   if (!lobby || !options) {
     return null;
@@ -205,7 +226,9 @@ export function MapPickModal({
     entry.kind === "builtin"
       ? usingScenarioSheet && options.scenarioId === entry.scenario.id
       : designedMapInPlay(options) &&
-        options.customMapName === entry.record.name &&
+        (options.customMapId
+          ? options.customMapId === entry.record.id
+          : options.customMapName === entry.record.name) &&
         options.customMap?.length === entry.record.tiles.length;
 
   const appliedEntry = entries.find(isApplied) ?? null;
@@ -258,7 +281,8 @@ export function MapPickModal({
         scenarioId: entry.scenario.id,
         ...(singlePlayer ? { playerCount: entry.scenario.minPlayers } : {}),
         customMap: null,
-        customMapName: null
+        customMapName: null,
+        customMapId: null
       });
       return;
     }
@@ -270,6 +294,7 @@ export function MapPickModal({
       playerCount: seatsForEntry(entry),
       customMap: entry.record.tiles,
       customMapName: entry.record.name,
+      customMapId: entry.record.id,
       customMapPreset: entry.record.preset ?? null
     });
   };
@@ -287,7 +312,8 @@ export function MapPickModal({
             [
               ["all", "All"],
               ["builtin", "Built-in"],
-              ["designed", "Designed"]
+              ["designed", "Designed"],
+              ["archive", "Archive"]
             ] as const
           ).map(([id, label]) => (
             <button
@@ -314,6 +340,14 @@ export function MapPickModal({
             </button>
           ))}
         </div>
+        <label className="mapPickSearch">
+          <span>Sort</span>
+          <select aria-label="Sort maps" onChange={(event) => setSort(event.target.value as MapSort)} value={sort}>
+            <option value="most-played">Most played</option>
+            <option value="name">By name</option>
+            <option value="recently-added">Recently added</option>
+          </select>
+        </label>
         <label className="mapPickSearch">
           <Search aria-hidden="true" size={13} />
           <input
@@ -353,7 +387,7 @@ export function MapPickModal({
                   <small className="mapPickRowMeta">
                     {entry.kind === "builtin"
                       ? `built-in · ${entry.scenario.minPlayers}–${entry.scenario.maxPlayers} players`
-                      : `by ${author} · ${entry.record.players} players${entry.record.preset ? " · conditions" : ""}`}
+                      : `by ${author} · ${entry.record.players} players · ${entry.record.finishedGames ?? 0} finished${entry.record.preset ? " · conditions" : ""}`}
                     {applied ? " · in play" : ""}
                   </small>
                 </button>
@@ -401,6 +435,13 @@ export function MapPickModal({
                     <small>
                       Designed map · by {selected.record.createdByName?.trim() || "a player"} ·{" "}
                       {selected.record.players} {singlePlayer ? "multiplayer seats" : "players"} · {selected.record.tiles.length} tiles
+                    </small>
+                    <small>
+                      {selected.record.finishedGames ?? 0} finished multiplayer game
+                      {(selected.record.finishedGames ?? 0) === 1 ? "" : "s"}
+                      {selected.record.lastFinishedAt
+                        ? ` · last finished ${new Date(selected.record.lastFinishedAt).toLocaleDateString()}`
+                        : " · not played to completion yet"}
                     </small>
                     {singlePlayer ? (() => {
                       const selectedScenario = scenarioDefinitions[selected.record.scenarioId];

@@ -19,6 +19,8 @@ import { coreBuildingDefinitions } from "@/data/factions/core";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { CardFrame, OpponentsInPlayTray, PermanentSlot, SeatNameplate } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
+import { CommanderCard } from "@/components/commander-card";
+import { commanderDefinitions, type CommanderSlug } from "@/data/commanders";
 import { ArmyPanel } from "@/components/adventure/screen";
 import { BattleMetric, signedMorale } from "@/components/table/battle-metrics";
 
@@ -72,6 +74,17 @@ function OpponentInfoModal({
   );
   const town = Object.values(state.towns).find((candidate) => candidate.controllerId === playerId);
   const buildings = town?.buildings ?? [];
+  // WOG Commander (public info): a seat's commander grades, level, stance and
+  // permanently-bound equipment are all open at the table, so the dossier shows
+  // the commander card read-only. No dispatcher is passed to `CommanderCard`, so
+  // it renders as a pure display — no grade-up / revive / bind controls. Gated
+  // on the Commanders module (same flag the owner's own commander tile uses).
+  const commander = player?.commander;
+  const commanderModuleOn = Boolean(state.wog?.enabled && state.wog?.commanders);
+  const commanderDef =
+    commander && commanderModuleOn
+      ? commanderDefinitions[commander.slug as CommanderSlug]
+      : undefined;
   // Public counts only. In a redacted view an opponent's `hand`/`deck` are
   // same-length placeholder ids (see redactStateForSeat), so their LENGTH is the
   // real count while the cards themselves stay hidden — exactly what the physical
@@ -220,6 +233,22 @@ function OpponentInfoModal({
           {hero ? <HeroBoard playerId={playerId} state={state} /> : <p className="opponentInfoEmpty">No hero.</p>}
         </section>
 
+        {commander && commanderDef ? (
+          <section className="opponentInfoSection opponentCommanderSection" aria-label="Commander">
+            <h4>Commander</h4>
+            <CommanderCard
+              slug={commander.slug as CommanderSlug}
+              grades={commander.grades}
+              level={hero?.level ?? 1}
+              dead={Boolean(commander.dead)}
+              stance={commander.stance}
+              artifacts={commander.artifacts}
+              showArtifactSlots={commanderModuleOn}
+              className="opponentCommanderCard"
+            />
+          </section>
+        ) : null}
+
         <section className="opponentInfoSection" aria-label="Current units">
           <h4>Current units</h4>
           <ArmyPanel playerId={playerId} state={state} />
@@ -298,14 +327,19 @@ export function OpponentInfoDock({
   state,
   viewerPlayerId,
   seatIds,
-  variant = "map"
+  variant = "map",
+  observer = false
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   seatIds: PlayerId[];
   variant?: "map" | "combat";
+  /** Observer view: the viewer holds no seat, so EVERY seat's dossier is shown
+   *  and the dock is labelled "Players" rather than "Opponents". */
+  observer?: boolean;
 }) {
   const [openSeat, setOpenSeat] = useState<PlayerId | null>(null);
+  // An observer is not a seat, so nothing filters out — they inspect everyone.
   const opponents = seatIds.filter((id) => id !== viewerPlayerId);
 
   // No opponents (solo / a one-live-seat table) → render nothing at all, so
@@ -316,7 +350,7 @@ export function OpponentInfoDock({
 
   const label = (
     <span className="opponentInfoDockLabel">
-      <Users aria-hidden="true" size={13} /> Opponents
+      <Users aria-hidden="true" size={13} /> {observer ? "Players" : "Opponents"}
     </span>
   );
   const buttons = opponents.map((id) => {

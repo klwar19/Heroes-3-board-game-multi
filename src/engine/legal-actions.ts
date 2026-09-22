@@ -1,3 +1,4 @@
+import { denseFogThisRound } from "./battlefield-condition-fog";
 import { townBound } from "./town-veterancy";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { neutralTownDeepRooted } from "./neutral-town-veterancy";
@@ -1495,10 +1496,15 @@ export function getUnitMoveRange(
   unit: CombatUnitState,
   state?: GameState,
 ): number {
-  if (state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) return 1;
+  const condition = state?.combat?.battlefieldCondition?.id;
+  const battlefieldMoveShift = condition === "sinking-mud" && unit.type === "ground" ? -1
+    : condition === "tail-wind" && unit.type === "flying" ? 1 : 0;
+  if (state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) return Math.max(0, 1 + Math.min(0, battlefieldMoveShift));
   const townLimit = state?.activeEffects.filter(e => effectAppliesToUnit(e, unit)).flatMap(e => e.modifiers.filter(m => m.type === "TOWN_MOVE_LIMIT").map(m => m.amount));
   const moveCap = townLimit?.length ? Math.min(...townLimit) : Infinity;
   const rooted = neutralTownDeepRooted(state, unit);
+  const conditionMovement = (range: number): number => battlefieldMoveShift === 0 ? range
+    : Math.max(0, Math.min(moveCap, range + (rooted ? Math.min(0, battlefieldMoveShift) : battlefieldMoveShift)));
   const baseRange = unit.type === "ranged" ? 1 : 3;
   const base = baseRange + (rooted ? Math.min(0, getUnitAbilityMoveRangeBonus(unit)) : getUnitAbilityMoveRangeBonus(unit));
   const artifactMoveBonus = unit.commanderSlug && state
@@ -1566,7 +1572,7 @@ export function getUnitMoveRange(
       Math.max(1, base + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
       moveCap,
     );
-    return Math.max(0, unrestrictedRange + artifactMovePenalty);
+    return conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty));
   }
   let bonus = 0;
   for (const effect of state.activeEffects) {
@@ -1598,7 +1604,7 @@ export function getUnitMoveRange(
     moveCap,
     Math.max(1, base + bonus + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
   );
-  return Math.max(0, unrestrictedRange + artifactMovePenalty);
+  return conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty));
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -1819,13 +1825,14 @@ function selectActivationStep(
   attackerId: PlayerId,
   initiativeOf: (unit: CombatUnitState) => number,
   hasActed: (unit: CombatUnitState) => boolean,
+  ascending = false,
 ): ActivationStep | null {
   const eligible = units.filter((unit) => isUnitAlive(unit) && !hasActed(unit));
   if (eligible.length === 0) {
     return null;
   }
 
-  const topInitiative = Math.max(...eligible.map(initiativeOf));
+  const topInitiative = ascending ? Math.min(...eligible.map(initiativeOf)) : Math.max(...eligible.map(initiativeOf));
   const tier = eligible
     .filter((unit) => initiativeOf(unit) === topInitiative)
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -1914,6 +1921,7 @@ export function getActivationStep(
     combat.attackerPlayerId,
     initiativeOf,
     (unit) => unit.activatedThisRound,
+    combat.battlefieldCondition?.id === "fey-trickery",
   );
 }
 
@@ -1963,7 +1971,7 @@ export function getActivationOrder(
     .filter((unit) => unit.activatedThisRound && !unit.waitPending)
     .sort(
       (left, right) =>
-        initiativeOf(right) - initiativeOf(left) ||
+        (combat.battlefieldCondition?.id === "fey-trickery" ? initiativeOf(left) - initiativeOf(right) : initiativeOf(right) - initiativeOf(left)) ||
         left.id.localeCompare(right.id),
     );
 
@@ -1982,6 +1990,7 @@ export function getActivationOrder(
       combat.attackerPlayerId,
       initiativeOf,
       (unit) => acted.has(unit.id),
+      combat.battlefieldCondition?.id === "fey-trickery",
     )?.candidates[0];
     if (!next) {
       break;
@@ -2042,7 +2051,7 @@ export function getAttackRollMode(
   state?: GameState,
   isRetaliation = false,
 ): AttackRollMode {
-  if (attacker.commanderArtifactAttackDisadvantage) {
+  if (attacker.commanderArtifactAttackDisadvantage || (attacker.type === "ranged" && denseFogThisRound(state?.combat))) {
     return "disadvantage";
   }
   // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
@@ -2149,7 +2158,7 @@ export function getAttackRollMode(
   // a Retaliation Attack — like the [unit_attack] penalty waivers above — while
   // the Crusaders' [unit_passive] "any attack" variant keeps the advantage even
   // when retaliating (handled inside unitHasAttackRollAdvantage).
-  if (unitHasAttackRollAdvantage(attacker, isRetaliation)) {
+  if ((state?.combat?.battlefieldCondition?.id === "perfect-conditions" && attacker.type === "ranged") || unitHasAttackRollAdvantage(attacker, isRetaliation)) {
     return "advantage";
   }
   if (

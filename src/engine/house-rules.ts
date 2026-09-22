@@ -59,6 +59,14 @@ export type HouseRuleDef = {
 
 export const HOUSE_RULES: HouseRuleDef[] = [
   {
+    id: "battlefield-conditions",
+    label: "Battlefield Conditions: roll two dice",
+    description: "Roll two ordered Attack dice once per battle to choose one of nine Battlefield Conditions. Their result changes ranged rolls, flying Initiative or Movement, ground Movement or Defense tokens, starting silver/golden damage, or activation order. Clear Skies has no effect.",
+    category: "combat",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "combat-retake",
     label: "Combat: retake turn by agreement",
     description: "During player-versus-player combat, either participant may request restarting the current unit's activation. The other participant must agree. Available before the next activation starts; not during simultaneous battles or map play.",

@@ -34,6 +34,8 @@ export type ResolvedGuardDraw = {
 
 /** Prefix for a "random Neutral of this tier" certain-army slot. */
 export const RANDOM_GUARD_PREFIX = "random:" as const;
+/** A random core Neutral without a tier restriction. */
+export const RANDOM_ANY_NEUTRAL_GUARD_SLOT = "random:any" as const;
 /** Prefix for a named faction Pack certain-army slot. */
 export const PACK_GUARD_PREFIX = "pack:" as const;
 /** Prefix for a "random Pack of this tier" certain-army slot. */
@@ -44,6 +46,9 @@ export const FEW_GUARD_PREFIX = "few:" as const;
 export const RANDOM_FEW_GUARD_PREFIX = "random-few:" as const;
 /** Prefix for a faction roster rank minted on its Pack/Few side. */
 export const TOWN_RANK_GUARD_PREFIX = "town-rank:" as const;
+/** Prefix for one designer-defined random choice among several legal entries. */
+export const ONE_OF_GUARD_PREFIX = "one-of:" as const;
+export const MAX_ONE_OF_GUARD_CHOICES = 12;
 
 export const RANDOM_GUARD_TIERS: readonly RandomGuardTier[] = ["bronze", "silver", "gold", "azure"];
 
@@ -117,6 +122,35 @@ export function isTownRankGuardSlot(id: unknown): id is TownRankGuardSlot {
   return Boolean(match);
 }
 
+/**
+ * Decode an arbitrary designer group. The payload is a URI-encoded JSON array
+ * so unit ids containing punctuation remain unambiguous and old string-based
+ * guard saves need no schema migration.
+ */
+export function oneOfGuardChoices(id: unknown): string[] | null {
+  if (typeof id !== "string" || !id.startsWith(ONE_OF_GUARD_PREFIX)) return null;
+  if (id.length > 4096) return null;
+  try {
+    const parsed: unknown = JSON.parse(decodeURIComponent(id.slice(ONE_OF_GUARD_PREFIX.length)));
+    if (!Array.isArray(parsed)) return null;
+    const choices = [...new Set(parsed.filter((entry): entry is string =>
+      typeof entry === "string" && !entry.startsWith(ONE_OF_GUARD_PREFIX) && isCustomGuardUnitEntry(entry)
+    ))].slice(0, MAX_ONE_OF_GUARD_CHOICES);
+    return choices.length >= 2 ? choices : null;
+  } catch {
+    return null;
+  }
+}
+
+export function makeOneOfGuardSlot(choices: string[]): string | null {
+  const clean = [...new Set(choices.filter((entry) =>
+    !entry.startsWith(ONE_OF_GUARD_PREFIX) && isCustomGuardUnitEntry(entry)
+  ))].slice(0, MAX_ONE_OF_GUARD_CHOICES);
+  return clean.length >= 2
+    ? `${ONE_OF_GUARD_PREFIX}${encodeURIComponent(JSON.stringify(clean))}`
+    : null;
+}
+
 export function townRankGuardParts(id: string): { rank: 1 | 2 | 3 | 4 | 5 | 6 | 7; side: "pack" | "few" } | null {
   if (!isTownRankGuardSlot(id)) return null;
   const [, rank, side] = /^town-rank:([1-7]):(pack|few)$/.exec(id)!;
@@ -135,13 +169,15 @@ export function isNeutralGuardUnit(id: unknown): id is string {
  */
 export function isCustomGuardUnitEntry(id: unknown): id is string {
   return (
+    id === RANDOM_ANY_NEUTRAL_GUARD_SLOT ||
     isNeutralGuardUnit(id) ||
     isRandomGuardSlot(id) ||
     isRandomPackGuardSlot(id) ||
     isPackGuardSlot(id) ||
     isRandomFewGuardSlot(id) ||
     isFewGuardSlot(id) ||
-    isTownRankGuardSlot(id)
+    isTownRankGuardSlot(id) ||
+    oneOfGuardChoices(id) !== null
   );
 }
 
@@ -182,16 +218,27 @@ export function fewGuardUnitDefId(id: string): string | null {
 
 /** True when the entry mints a Pack (named or random-pack tier). */
 export function isAnyPackGuardSlot(id: unknown): boolean {
-  return isPackGuardSlot(id) || isRandomPackGuardSlot(id) || townRankGuardParts(String(id))?.side === "pack";
+  const choices = oneOfGuardChoices(id);
+  return choices
+    ? choices.some(isAnyPackGuardSlot)
+    : isPackGuardSlot(id) || isRandomPackGuardSlot(id) || townRankGuardParts(String(id))?.side === "pack";
 }
 
 /** True when the entry mints a Few (named or random-few tier). */
 export function isAnyFewGuardSlot(id: unknown): boolean {
-  return isFewGuardSlot(id) || isRandomFewGuardSlot(id) || townRankGuardParts(String(id))?.side === "few";
+  const choices = oneOfGuardChoices(id);
+  return choices
+    ? choices.some(isAnyFewGuardSlot)
+    : isFewGuardSlot(id) || isRandomFewGuardSlot(id) || townRankGuardParts(String(id))?.side === "few";
 }
 
 /** Display label for one certain-army entry (editor chips + previews). */
 export function guardUnitEntryLabel(id: string): string {
+  const choices = oneOfGuardChoices(id);
+  if (choices) {
+    return `Random one: ${choices.map(guardUnitEntryLabel).join(" / ")}`;
+  }
+  if (id === RANDOM_ANY_NEUTRAL_GUARD_SLOT) return "Random Neutral (any tier)";
   const townRank = townRankGuardParts(id);
   if (townRank) {
     return `${townRank.side === "pack" ? "Pack" : "Few"} of faction rank ${["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"][townRank.rank]}`;
@@ -295,6 +342,15 @@ export function expandGuardUnitGroups(
  * unit's tier). Azure body ⇒ Ⅶ overall when ANY entry is azure-tier.
  */
 export function guardUnitEntryPoints(id: string): { points: number; azure: boolean } {
+  const choices = oneOfGuardChoices(id);
+  if (choices) {
+    // A group can resolve to any member. Rate it by the strongest possible
+    // result unless the map maker supplies an explicit field difficulty.
+    const ratings = choices.map(guardUnitEntryPoints);
+    if (ratings.some((rating) => rating.azure)) return { points: 0, azure: true };
+    return { points: Math.max(...ratings.map((rating) => rating.points)), azure: false };
+  }
+  if (id === RANDOM_ANY_NEUTRAL_GUARD_SLOT) return { points: 0, azure: true };
   const townRank = townRankGuardParts(id);
   if (townRank) {
     return { points: townRank.rank <= 3 ? 1 : townRank.rank <= 5 ? 2 : townRank.rank === 6 ? 3 : 0, azure: townRank.rank === 7 };
@@ -497,6 +553,24 @@ export function resolveCustomGuardDraws(
   const remainingNeutralPools = new Map<RandomGuardTier, string[]>();
   const maxUnits = units.every(isTownRankGuardSlot) ? 7 : MAX_CUSTOM_GUARD_UNITS;
   for (const entry of units.slice(0, maxUnits)) {
+    const groupChoices = oneOfGuardChoices(entry);
+    if (groupChoices) {
+      const picked = pickRandomFromPool(groupChoices, rng);
+      if (picked) {
+        draws.push(...resolveCustomGuardDraws([picked], rng, {
+          ...options,
+          ...(lockedFaction ? { packFaction: lockedFaction as FactionId } : {})
+        }));
+      }
+      continue;
+    }
+    if (entry === RANDOM_ANY_NEUTRAL_GUARD_SLOT) {
+      const pool = RANDOM_GUARD_TIERS.flatMap(neutralUnitPoolForTier);
+      const unitDefId = pickRandomFromPool(pool, rng);
+      const tier = unitDefId ? coreUnitDefinitions[unitDefId]?.tier as RandomGuardTier | undefined : undefined;
+      if (unitDefId && tier) draws.push({ unitDefId, tier, bankGuard: true });
+      continue;
+    }
     const townRank = townRankGuardParts(entry);
     if (townRank) {
       const faction = lockedFaction;

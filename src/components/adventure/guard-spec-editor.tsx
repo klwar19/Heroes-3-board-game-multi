@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Dices, ShieldCheck } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 
 /**
@@ -20,6 +21,8 @@ import {
   guardUnitEntryLabel,
   isAnyFewGuardSlot,
   isAnyPackGuardSlot,
+  makeOneOfGuardSlot,
+  MAX_ONE_OF_GUARD_CHOICES,
   MAX_CUSTOM_GUARD_UNITS,
   RANDOM_GUARD_TIERS,
   type CustomGuardSpec,
@@ -147,6 +150,7 @@ function grailDefenderArt(id: string): string | undefined {
 }
 
 const GRAIL_UNIT_OPTIONS = [
+  { id: "random:any", label: "Random Neutral · any tier", group: "Random Neutrals" },
   ...RANDOM_NEUTRAL_QUICK.map(({ slot, tier }) => ({ id: slot, label: `Random ${tier} Neutral`, group: "Random Neutrals" })),
   ...RANDOM_PACK_QUICK.map(({ slot, tier }) => ({ id: slot, label: `Pack of random ${tier} unit`, group: "Faction units" })),
   ...RANDOM_FEW_QUICK.map(({ slot, tier }) => ({ id: slot, label: `Few of random ${tier} unit`, group: "Faction units" })),
@@ -158,6 +162,56 @@ const GRAIL_UNIT_OPTIONS = [
   ...fewUnitOptions(undefined).flatMap(({ tier, units }) => units.map(({ id, label }) => ({ id, label, group: `Named Few · ${GUARD_TIER_LABELS[tier]}` }))),
   ...packUnitOptions(undefined).flatMap(({ tier, units }) => units.map(({ id, label }) => ({ id, label, group: `Named Packs · ${GUARD_TIER_LABELS[tier]}` })))
 ];
+
+const GROUP_UNIT_OPTIONS = GRAIL_UNIT_OPTIONS.filter((option) =>
+  !option.id.startsWith("random:") &&
+  !option.id.startsWith("random-pack:") &&
+  !option.id.startsWith("random-few:") &&
+  !option.id.startsWith("town-rank:")
+);
+
+function GuardRandomGroupBuilder({ onAdd }: { onAdd: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const query = search.trim().toLocaleLowerCase();
+  const options = GROUP_UNIT_OPTIONS.filter((option) =>
+    !query || `${option.label} ${option.group}`.toLocaleLowerCase().includes(query)
+  );
+  return <div className="guardRandomGroupBuilder">
+    <button className="guardRandomGroupToggle" onClick={() => setOpen((value) => !value)} type="button">
+      <Dices aria-hidden="true" size={15} /> Random from a custom group
+    </button>
+    {open ? <div className="guardRandomGroupPanel">
+      <div className="guardRandomGroupHeading"><Dices aria-hidden="true" size={16} /><strong>Choose 2–{MAX_ONE_OF_GUARD_CHOICES} possible units</strong></div>
+      <input aria-label="Find units for random guard group" onChange={(event) => setSearch(event.target.value)} placeholder="Find Vampire, Lich…" type="search" value={search} />
+      <div className="guardRandomGroupChoices">
+        {options.map((option) => {
+          const checked = selected.includes(option.id);
+          const art = grailDefenderArt(option.id);
+          return <label className={checked ? "selected" : ""} key={option.id}>
+            <input checked={checked} disabled={!checked && selected.length >= MAX_ONE_OF_GUARD_CHOICES} onChange={() => setSelected((current) =>
+              checked ? current.filter((id) => id !== option.id) : [...current, option.id]
+            )} type="checkbox" />
+            {art ? <img alt="" height={31} src={assetUrl(art)} width={27} /> : <span aria-hidden="true">⚔</span>}
+            <span>{option.label}<small>{option.group}</small></span>
+          </label>;
+        })}
+      </div>
+      <div className="guardRandomGroupActions">
+        <small>{selected.length} selected · one is rolled when the fight starts</small>
+        <button disabled={selected.length < 2} onClick={() => {
+          const id = makeOneOfGuardSlot(selected);
+          if (!id) return;
+          onAdd(id);
+          setSelected([]);
+          setSearch("");
+          setOpen(false);
+        }} type="button"><Dices aria-hidden="true" size={14} /> Add group</button>
+      </div>
+    </div> : null}
+  </div>;
+}
 
 function GuardUnitPicker({ value, onPick, faction, label }: {
   value?: string;
@@ -208,7 +262,7 @@ function GuardUnitPicker({ value, onPick, faction, label }: {
       }
     }} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary aria-label={label}>
-        {selectedArt ? <img alt="" height={27} src={assetUrl(selectedArt)} width={25} /> : <span aria-hidden="true">{value?.startsWith("town-rank:") ? "🏰" : "⚔"}</span>}
+        {selectedArt ? <img alt="" height={27} src={assetUrl(selectedArt)} width={25} /> : <span aria-hidden="true">{value?.startsWith("town-rank:") ? "🏰" : value?.startsWith("random:") || value?.startsWith("random-pack:") || value?.startsWith("random-few:") || value?.startsWith("one-of:") ? "🎲" : "⚔"}</span>}
         <span className="guardUnitPickerLabel">{selectedLabel}</span><span aria-hidden="true">⌄</span>
       </summary>
       <div className="guardUnitPickerMenu">
@@ -229,7 +283,7 @@ function GuardUnitPicker({ value, onPick, faction, label }: {
               setOpen(false);
               setSearch("");
             }} type="button">
-              {art ? <img alt="" height={28} src={assetUrl(art)} width={25} /> : <span aria-hidden="true">{option.id.startsWith("town-rank:") ? "🏰" : "⚔"}</span>}
+              {art ? <img alt="" height={28} src={assetUrl(art)} width={25} /> : <span aria-hidden="true">{option.id.startsWith("town-rank:") ? "🏰" : option.id.startsWith("random") ? "🎲" : "⚔"}</span>}
               <span>{option.label}<small>{option.group}{unitFaction ? ` · ${unitFaction.replaceAll("_", " ")}` : ""}</small></span>
             </button>;
           }) : <small className="popoverHint">No matching units.</small>}
@@ -245,12 +299,13 @@ function GuardArmyTable({ guard, onChange, emptyMeansDefault = false }: {
   emptyMeansDefault?: boolean;
 }) {
   const units = guard.units ?? [];
+  const townRanksShareFaction = units.some((id) => id.startsWith("town-rank:"));
   const groups = groupGuardUnitEntries(units);
   const maxUnits = units.every((id) => /^town-rank:[1-7]:(few|pack)$/.test(id)) && units.length > 0 ? 7 : MAX_CUSTOM_GUARD_UNITS;
   const changeUnits = (next: string[], faction = guard.packFaction) => {
     if (!next.length && emptyMeansDefault) return onChange(undefined);
     const cap = next.length > 0 && next.every((id) => /^town-rank:[1-7]:(few|pack)$/.test(id)) ? 7 : MAX_CUSTOM_GUARD_UNITS;
-    onChange({ units: next.slice(0, cap), ...(faction ? { packFaction: faction } : {}) });
+    onChange({ units: next.slice(0, cap), ...(guard.difficulty ? { difficulty: guard.difficulty } : {}), ...(faction ? { packFaction: faction } : {}) });
   };
   const changeGroup = (index: number, id: string, count: number) => changeUnits(groups.flatMap((group, groupIndex) =>
     Array.from({ length: groupIndex === index ? count : group.count }, () => groupIndex === index ? id : group.id)
@@ -266,8 +321,9 @@ function GuardArmyTable({ guard, onChange, emptyMeansDefault = false }: {
       </div>)}
     </div>
     {units.length < maxUnits ? <GuardUnitPicker faction={guard.packFaction} label="Add defender" onPick={(id) => changeUnits([...units, id])} /> : null}
+    {units.length < maxUnits ? <GuardRandomGroupBuilder onAdd={(id) => changeUnits([...units, id])} /> : null}
     {!units.length ? <small className="popoverHint">Choose a defender to start the army.</small> :
-      <small className="popoverHint">{units.length}/{maxUnits} defenders · difficulty {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]} for experience</small>}
+      <small className="popoverHint">{units.length}/{maxUnits} defenders · field rating {ROMAN_NUMERALS[guard.difficulty ?? customGuardArmyDifficulty(units)]}{guard.difficulty ? " (custom)" : " (auto)"}</small>}
     {armyUsesPacks(units) ? <label className="guardArmyTableFaction"><span>Pack/Few faction</span><select aria-label="Guard army faction" onChange={(event) => {
       const faction = event.target.value === "any" ? undefined : event.target.value as FactionId | "random";
       const next = faction && faction !== "random" ? units.map((id) => {
@@ -276,10 +332,20 @@ function GuardArmyTable({ guard, onChange, emptyMeansDefault = false }: {
         const def = coreUnitDefinitions[id.slice(side.length + 1)];
         return def && def.faction !== faction ? `random-${side}:${def.tier}` : id;
       }) : units;
-      onChange({ units: next, ...(faction ? { packFaction: faction } : {}) });
-    }} value={guard.packFaction ?? "any"}>
+      onChange({ units: next, ...(guard.difficulty ? { difficulty: guard.difficulty } : {}), ...(faction ? { packFaction: faction } : {}) });
+    }} value={guard.packFaction ?? (townRanksShareFaction ? "random" : "any")}>
       <option value="any">Any faction</option><option value="random">One random faction</option>
       {PACK_FACTIONS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+    </select></label> : null}
+    {units.length ? <label className="guardArmyTableFaction guardDifficultyRating"><span><ShieldCheck aria-hidden="true" size={15} /> Field rating</span><select aria-label="Guard field difficulty" onChange={(event) => {
+      const difficulty = Number(event.target.value) || undefined;
+      const next = { ...guard };
+      if (difficulty) next.difficulty = difficulty;
+      else delete next.difficulty;
+      onChange(next);
+    }} value={guard.difficulty ?? 0}>
+      <option value={0}>Auto · {ROMAN_NUMERALS[customGuardArmyDifficulty(units)]}</option>
+      {GUARD_LEVELS.map((level) => <option key={level} value={level}>{ROMAN_NUMERALS[level]} · XP &amp; field rules</option>)}
     </select></label> : null}
   </div>;
 }
@@ -349,7 +415,8 @@ export function GuardSpecEditor({
   /** Tighter layout for map-preset rows. */
   compact?: boolean;
 }) {
-  const armyMode = Boolean(guard?.units);
+  const legacyTownMode = Boolean(guard?.townSlots?.length);
+  const armyMode = Boolean(guard?.units) || legacyTownMode;
   const levelMode = Boolean(guard?.level && !armyMode);
   const packFaction = guard?.packFaction;
   const levelArmyPacks = guard?.levelArmy === "packs";
@@ -397,10 +464,10 @@ export function GuardSpecEditor({
               onChange({ units: [], ...(packFaction ? { packFaction } : {}) });
             }
           }}
-          title="Field an exact army: Neutrals, Pack of Tier N, and/or named units."
+          title="Build any mix of random Neutrals, named units, Few/Pack ranks, and random groups."
           type="button"
         >
-          Exact army
+          Build army
         </button>
       </div>
 
@@ -437,7 +504,14 @@ export function GuardSpecEditor({
         </div>
       ) : null}
 
-      {armyMode && guard ? <GuardArmyTable guard={guard} onChange={onChange} /> : null}
+      {armyMode && guard?.units ? <GuardArmyTable guard={guard} onChange={onChange} /> : null}
+      {legacyTownMode && guard ? <div className="guardLegacyRoster">
+        <span>🏰 Existing rank roster preserved · {guard.townSlots!.length} defenders</span>
+        <button onClick={() => onChange({
+          units: [],
+          ...(guard.difficulty ? { difficulty: guard.difficulty } : {})
+        })} title="Replace this legacy roster with a new mixed army. The saved roster remains untouched until you choose this." type="button">Replace with uniform builder</button>
+      </div> : null}
 
       {levelMode && levelArmyPacks ? <label className="guardArmyTableFaction"><span>Pack faction</span>
         <select aria-label="Level guard faction" onChange={(event) => {

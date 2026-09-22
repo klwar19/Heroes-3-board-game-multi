@@ -8,6 +8,7 @@ import {
   supabaseConfigFromEnv,
 } from "@/server/accounts/account-store-instance";
 import type { MatchParticipantInput } from "@/server/accounts/account-store";
+import { recordDesignedMapFinish } from "@/server/map-finish-report";
 import {
   RANKED_REPLAY_MAX_BYTES,
   rankedReplayEnabled,
@@ -78,9 +79,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "TOO_LARGE", message: "Match report exceeds the replay safety limit." }, { status: 413 });
   }
   const body = parsed.value as
-    | { matchId?: unknown; participants?: unknown; ranked?: unknown; replay?: unknown; replayGzipBase64?: unknown }
+    | { matchId?: unknown; mapId?: unknown; participants?: unknown; ranked?: unknown; replay?: unknown; replayGzipBase64?: unknown }
     | null;
   const matchId = typeof body?.matchId === "string" ? body.matchId.slice(0, 200) : "";
+  const mapId = typeof body?.mapId === "string" ? body.mapId.slice(0, 120) : "";
   // Casual games still record win/loss but leave MMR alone. Absent ⇒ ranked
   // (back-compat with edge deploys that predate the flag).
   const ranked = body?.ranked !== false;
@@ -153,6 +155,13 @@ export async function POST(request: Request) {
   // fails after this idempotent write, PartyKit's durable outbox retries; the
   // next request observes the duplicate match and fills the missing replay.
   const outcome = await getAccountBackend().recordMatchResult({ matchId, participants, ranked });
+  if (mapId) {
+    try {
+      await recordDesignedMapFinish(mapId, matchId, configured);
+    } catch (error) {
+      console.error(`[map-stats] failed to record ${matchId} on ${mapId}:`, error);
+    }
+  }
   if (outcome.applied && accountsBackendKind() === "builtin") {
     persistAccounts(getAccountStore());
   }

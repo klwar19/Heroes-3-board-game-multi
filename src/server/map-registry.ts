@@ -56,6 +56,9 @@ export const MAX_MAP_PLAYERS = 6;
  * on upsert, so the shared library can't grow without bound.
  */
 export const MAX_STORED_MAPS = 200;
+/** Five quiet months moves a designed map out of the default catalog view. */
+export const MAP_ARCHIVE_AFTER_MS = 5 * 30 * 24 * 60 * 60 * 1000;
+const MAX_FINISHED_MATCH_IDS = 64;
 
 /**
  * One saved map in the shared library. `players` is the number of seats the map
@@ -90,7 +93,18 @@ export type SharedMapRecord = {
   createdByUserId: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Authoritative multiplayer games that reached a real terminal state. */
+  finishedGames?: number;
+  /** Wall-clock time of the most recent counted finish. */
+  lastFinishedAt?: number;
+  /** Bounded server-side idempotency ledger; never used for display. */
+  finishedMatchIds?: string[];
 };
+
+/** Archive is derived, so an old map automatically returns after it is played. */
+export function sharedMapIsArchived(record: SharedMapRecord, now: number = Date.now()): boolean {
+  return now - (record.lastFinishedAt ?? record.createdAt) >= MAP_ARCHIVE_AFTER_MS;
+}
 
 /**
  * The actor attempting a map mutation: their account userId + role, or nulls
@@ -141,8 +155,14 @@ export function stampSavedMapOwnership(
   if (existing) {
     record.createdAt = existing.createdAt;
     record.createdByUserId = existing.createdByUserId;
+    record.finishedGames = existing.finishedGames ?? 0;
+    record.lastFinishedAt = existing.lastFinishedAt;
+    record.finishedMatchIds = existing.finishedMatchIds;
   } else {
     record.createdByUserId = actor.userId;
+    record.finishedGames = 0;
+    delete record.lastFinishedAt;
+    delete record.finishedMatchIds;
   }
   return record;
 }
@@ -296,11 +316,19 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(secretFeature && Boolean(candidate.faceDown) ? { secretFeature } : {}),
     ...(secretFeatures.length > 0 && Boolean(candidate.faceDown) ? { secretFeatures } : {}),
     ...(excludeFeatures.length > 0 && Boolean(candidate.faceDown) ? { excludeFeatures } : {}),
+    ...(candidate.group !== "starting" && candidate.faceDown && candidate.strictLandmarkFilter === true
+      ? { strictLandmarkFilter: true } : {}),
     ...(Number.isInteger(candidate.rotation) ? { rotation: (((candidate.rotation as number) % 6) + 6) % 6 } : {}),
     // `lockRotation` fixes a starting seat's home-tile orientation (no opening
     // rotation). Meaningful only on a starting plan — kept there, dropped on any
     // other group; only a literal `true` survives so garbage can't set it.
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
+    ...(candidate.group === "starting" && typeof candidate.blockedDirection === "number" &&
+      Number.isInteger(candidate.blockedDirection) && candidate.blockedDirection >= 0 && candidate.blockedDirection < 6
+      ? { blockedDirection: candidate.blockedDirection } : {}),
+    ...(candidate.group !== "starting" && typeof candidate.drawShuffleSet === "number" &&
+      Number.isInteger(candidate.drawShuffleSet) && candidate.drawShuffleSet >= 1 && candidate.drawShuffleSet <= 8
+      ? { drawShuffleSet: candidate.drawShuffleSet } : {}),
     // "Start revealed": the slot still DRAWS face-down-style (random / secret /
     // one-of) but is placed face-UP at setup. Meaningful only on a FACE-DOWN,
     // NON-starting plan — stripped on a starting plan (seat tiles are always
@@ -572,7 +600,21 @@ export function sanitizeSharedMap(input: unknown, now: number = Date.now()): Sha
       typeof candidate.createdAt === "number" && Number.isFinite(candidate.createdAt) && candidate.createdAt > 0
         ? candidate.createdAt
         : now,
-    updatedAt: now
+    updatedAt: now,
+    finishedGames:
+      typeof candidate.finishedGames === "number" && Number.isInteger(candidate.finishedGames) && candidate.finishedGames > 0
+        ? candidate.finishedGames
+        : 0,
+    ...(typeof candidate.lastFinishedAt === "number" && Number.isFinite(candidate.lastFinishedAt) && candidate.lastFinishedAt > 0
+      ? { lastFinishedAt: candidate.lastFinishedAt }
+      : {}),
+    ...(Array.isArray(candidate.finishedMatchIds)
+      ? {
+          finishedMatchIds: candidate.finishedMatchIds
+            .filter((id): id is string => typeof id === "string")
+            .slice(-MAX_FINISHED_MATCH_IDS)
+        }
+      : {})
   };
 }
 
@@ -620,6 +662,22 @@ export class MapRegistry {
 
   has(id: string): boolean {
     return this.maps.has(id);
+  }
+
+  /** Count a completed multiplayer game once, even when an outbox retries. */
+  recordFinishedGame(id: string, matchId: string, finishedAt: number = Date.now()): SharedMapRecord | null {
+    const record = this.maps.get(id);
+    if (!record || !matchId) return null;
+    const seen = record.finishedMatchIds ?? [];
+    if (seen.includes(matchId)) return record;
+    const updated: SharedMapRecord = {
+      ...record,
+      finishedGames: (record.finishedGames ?? 0) + 1,
+      lastFinishedAt: finishedAt,
+      finishedMatchIds: [...seen, matchId].slice(-MAX_FINISHED_MATCH_IDS)
+    };
+    this.maps.set(id, updated);
+    return updated;
   }
 
   get size(): number {

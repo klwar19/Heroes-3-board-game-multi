@@ -1,4 +1,5 @@
 import { hasNecromancyPlan } from "./computer/necromancy-plan";
+import { initializeBattlefieldCondition, applyBattlefieldConditionAtCombatStart } from "./battlefield-conditions";
 import { currentSaplingsOffer } from "./adventure";
 import { choiceReturnPhase } from "./choice-phase";
 import { townCombatStart } from "./town-veterancy";
@@ -5965,6 +5966,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
     units: {}
   };
   initializeCultivationFactionCombat(state, shell);
+  initializeBattlefieldCondition(state, shell);
 
   // Crag Hack (Astrologers): "For the first Combat this round, all ground units
   // gain +1 attack." This is the single chokepoint every real combat's shell is
@@ -6398,9 +6400,9 @@ function persistLivingGuardsOnField(
         ...(veteranRank ? { veteranRank: veteranRank as RandomTownGuardSlot["veteranRank"] } : {})
       }];
     });
-    applyCustomGuardToField(field, { townSlots: slots });
+    applyCustomGuardToField(field, { townSlots: slots, ...(field.customGuardDifficulty ? { difficulty: field.customGuardDifficulty } : {}) });
   } else {
-    applyCustomGuardToField(field, { units: survivors });
+    applyCustomGuardToField(field, { units: survivors, ...(field.customGuardDifficulty ? { difficulty: field.customGuardDifficulty } : {}) });
   }
   if (breakField) field.breakField = true;
   if (breakTileGate) field.breakTileGate = true;
@@ -12588,6 +12590,8 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   seedFactoryHeroEffects(state);
   // In-play permanents join the fight and round-start war machines fire.
   applyPermanentCombatEffects(state);
+  applyBattlefieldConditionAtCombatStart(state);
+  if (combat.outcome) return;
   applyCombatStartMoraleCards(state);
   applyCombatStartUnitAbilities(state);
   if (combat.outcome) return;

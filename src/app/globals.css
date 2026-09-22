@@ -16910,6 +16910,16 @@ button.setupHubNavItem:hover {
   outline: none;
 }
 
+.mapPickSearch select {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: #20170d;
+  color: #ffe9bd;
+  font-size: 13px;
+  outline: none;
+}
+
 .mapPickLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -18830,6 +18840,12 @@ button.setupHubNavItem:hover {
     inset 0 1px 0 rgb(255 235 190 / 6%),
     inset 3px 0 0
       color-mix(in srgb, var(--opp-faction, #b08d2f) 70%, transparent);
+}
+
+/* Commander card in the read-only opponent/observer dossier: centre the fixed
+   420px-max card in the section so it does not hug the left edge. */
+.opponentCommanderSection .opponentCommanderCard {
+  margin: 0 auto;
 }
 
 .opponentInfoSection h4 {
@@ -30684,6 +30700,56 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   opacity: 0.72;
 }
 
+/* Map town-buildings launcher — a compact SINGLE-LINE button (not a panel):
+   clicking opens the floating choices window below. It sits in the left-rail
+   dock among the tiles, kept deliberately small so it never grows into a panel
+   of its own. */
+.mapTownBuildingsDock {
+  margin-top: 8px;
+}
+
+.mapTownBuildingsButton {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(214, 172, 91, 0.5);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(40, 33, 20, 0.92), rgba(24, 20, 12, 0.95));
+  color: #f0dfb2;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mapTownBuildingsButton:hover {
+  background: linear-gradient(180deg, rgba(58, 47, 27, 0.95), rgba(34, 28, 16, 0.97));
+  border-color: rgba(240, 205, 130, 0.78);
+}
+
+.mapTownBuildingsIcon {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.mapTownBuildingsButtonLabel {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapTownBuildingsButtonCaret {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
 /* Map town-buildings floating window — a draggable (desktop) / bottom-sheet
    (phone) utility panel surfacing a controlled town's special building actions
    on the map. Non-blocking (no backdrop) so the board stays visible, and it sits
@@ -33589,6 +33655,25 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 
 .dockTile.commanderTileBlink {
   animation: commanderBlink 0.55s ease-in-out 8;
+}
+
+/* Hero-board tile blink: pulses while the engine is offering the seated viewer
+   a hero MAP action (Train, Heavenly Tribulation, Revisit, Build the Grail…)
+   whose button now lives INSIDE the hero board — a cue to open the board. */
+@keyframes heroActionPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(126, 184, 255, 0);
+    border-color: rgba(126, 184, 255, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 14px 3px rgba(126, 184, 255, 0.5);
+    border-color: rgba(160, 205, 255, 0.95);
+  }
+}
+
+.dockTile.heroDockTile.heroActionReady {
+  animation: heroActionPulse 1.5s ease-in-out infinite;
 }
 
 /* ---------------------------------------------------------------------------
@@ -37924,6 +38009,25 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .guardArmyTableRemove { flex: 0 0 32px; min-height: 34px; border: 1px solid rgba(154, 208, 255, .28); border-radius: 6px; background: #1a293a; color: #e9f1fa; cursor: pointer; }
 .guardArmyTableFaction { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #c9d5e6; font-size: 12px; }
 .guardArmyTableFaction select { flex: 1 1 190px; min-width: 0; }
+.guardDifficultyRating { padding-top: 7px; border-top: 1px solid rgba(154, 208, 255, .14); }
+.guardDifficultyRating > span { display: inline-flex; align-items: center; gap: 5px; color: #f1d79b; }
+.guardRandomGroupBuilder { display: grid; gap: 6px; }
+.guardRandomGroupToggle { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 1px dashed rgba(205, 177, 111, .55); border-radius: 7px; background: rgba(59, 46, 27, .42); color: #f4dfae; cursor: pointer; }
+.guardRandomGroupPanel { display: grid; gap: 7px; padding: 9px; border: 1px solid rgba(205, 177, 111, .36); border-radius: 8px; background: linear-gradient(145deg, rgba(34, 29, 24, .95), rgba(18, 31, 45, .96)); }
+.guardRandomGroupHeading { display: flex; align-items: center; gap: 6px; color: #f2d99f; font-size: 12px; }
+.guardRandomGroupPanel > input { min-width: 0; border: 1px solid rgba(205, 177, 111, .34); border-radius: 6px; background: #172638; color: #edf5ff; padding: 6px 8px; }
+.guardRandomGroupChoices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; max-height: 215px; overflow-y: auto; }
+.guardRandomGroupChoices label { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 5px; border: 1px solid transparent; border-radius: 6px; color: #dbe8f5; cursor: pointer; }
+.guardRandomGroupChoices label.selected { border-color: rgba(242, 217, 159, .48); background: rgba(205, 177, 111, .13); }
+.guardRandomGroupChoices label > span:last-child { display: grid; min-width: 0; font-size: 11px; }
+.guardRandomGroupChoices label small { color: #91a9c2; font-size: 9px; }
+.guardRandomGroupChoices img { flex: 0 0 auto; border-radius: 3px; object-fit: cover; }
+.guardRandomGroupActions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.guardRandomGroupActions small { color: #9fb4c9; }
+.guardRandomGroupActions button, .guardLegacyRoster button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgba(205, 177, 111, .48); border-radius: 6px; background: #4a3820; color: #fff0c9; padding: 6px 9px; cursor: pointer; }
+.guardRandomGroupActions button:disabled { opacity: .45; cursor: default; }
+.guardLegacyRoster { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; padding: 8px; border: 1px solid rgba(205, 177, 111, .3); border-radius: 7px; color: #ead7aa; font-size: 12px; }
+@media (max-width: 640px) { .guardRandomGroupChoices { grid-template-columns: minmax(0, 1fr); } }
 .guardUnitPicker { min-width: 0; }
 .guardUnitPicker summary { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 3px 7px; border: 1px solid rgba(154, 208, 255, .3); border-radius: 6px; background: #1b2a3a; color: #e7f1fc; cursor: pointer; list-style: none; font-size: 12px; }
 .guardUnitPicker summary::-webkit-details-marker { display: none; }
@@ -42420,6 +42524,60 @@ body:has(main.phoneMode) .opponentInfoModal .heroInfoClose {
 .theme-wuxia .dockTile {
   background: linear-gradient(135deg, rgb(18 53 48 / 97%), rgb(10 27 25 / 98%));
   border-color: rgb(124 215 181 / 35%);
+}
+
+/* On-board hero MAP actions (Train, Heavenly Tribulation, Revisit, Build the
+   Grail, Artifact-set powers). The engine-offered map actions used to live in a
+   separate left-rail dock; they now render ON the hero board itself (see
+   HeroBoard's HeroActionButtons block), shown only on the controlling player's
+   interactive board. Themed to the board so the buttons cohere with the
+   hero-systems row below them rather than looking like the dark rail. */
+.hbHeroActions {
+  display: flex;
+  flex-direction: column;
+  gap: 1cqw;
+  margin: 0.4cqw 0.8cqw 0;
+  padding: 1.4cqw 1.6cqw;
+  border: 0.22cqw solid var(--mod-line);
+  border-radius: 1.1cqw;
+  background: linear-gradient(145deg, var(--mod-accent-soft), rgb(0 0 0 / 24%));
+}
+
+.hbHeroActionsLabel {
+  font-size: 2.9cqw;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mod-accent, #eaf1ff);
+}
+
+.hbHeroActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1cqw;
+}
+
+.hb .hbHeroActionsRow .heroActionButton {
+  flex: 1 1 40%;
+  min-width: 40%;
+  padding: 1.1cqw 1.4cqw;
+  border-radius: 1.1cqw;
+  border: 0.22cqw solid var(--mod-line);
+  background: linear-gradient(145deg, var(--mod-accent-soft), rgb(0 0 0 / 30%));
+  color: var(--hb-pale, #f3e6bf);
+}
+
+.hb .hbHeroActionsRow .heroActionButton:hover {
+  border-color: var(--mod-accent);
+  background: linear-gradient(145deg, var(--mod-accent-soft), rgb(0 0 0 / 18%));
+}
+
+.hb .hbHeroActionsRow .heroActionLabelEn {
+  font-size: 3cqw;
+}
+
+.hb .hbHeroActionsRow .heroActionLabelVi {
+  font-size: 2.5cqw;
 }
 
 .heroSystemButtons {

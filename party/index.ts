@@ -34,7 +34,7 @@ import {
   settleComputerVisibleStep,
 } from "@/server/computer-runner";
 import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID, STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
-import { detectFinishedMatch, type FinishedMatch } from "@/server/match-report";
+import { detectFinishedDesignedMap, detectFinishedMatch, type FinishedMatch } from "@/server/match-report";
 import {
   appendRankedReplayEntryFromCursor,
   createRankedReplay,
@@ -2302,7 +2302,12 @@ export default class GameRoomServer implements Party.Server {
   /** Detect a just-finished ranked game and durably enqueue its app report. */
   private async reportFinishedMatchToApp(prev: GameState, next: GameState): Promise<void> {
     const match = detectFinishedMatch(prev, next);
+    // Best-effort map popularity reports AFTER the durable ranked-report write
+    // below: a slow or cold app must never stall the outbox put, or a torn-down
+    // DO request would lose the match's W/L, Elo and replay.
+    const mapFinish = detectFinishedDesignedMap(prev, next);
     if (!match) {
+      await this.reportFinishedDesignedMap(mapFinish);
       return;
     }
     await this.room.storage.put(RANKED_MATCH_REPORT_OUTBOX_KEY, {
@@ -2318,6 +2323,24 @@ export default class GameRoomServer implements Party.Server {
     // cannot reuse seed/matchSeats. Casual / single-player / sandbox stay open.
     if (match.ranked) {
       await this.forceCloseAfterRankedMatch(match.matchId, delivery !== "delivered");
+    }
+    await this.reportFinishedDesignedMap(mapFinish);
+  }
+
+  /** Fire the designed-map completion counter; failures only log (no outbox). */
+  private async reportFinishedDesignedMap(mapFinish: ReturnType<typeof detectFinishedDesignedMap>): Promise<void> {
+    if (!mapFinish) return;
+    const config = matchReportConfigOf(this.room);
+    if (!config) return;
+    try {
+      const response = await fetch(`${config.appUrl}/api/maps/finished`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-homm3bg-report-key": config.key },
+        body: JSON.stringify(mapFinish)
+      });
+      if (!response.ok) console.error(`[map-stats] app answered HTTP ${response.status}`);
+    } catch (error) {
+      console.error(`[map-stats] failed to report ${mapFinish.matchId}:`, error);
     }
   }
 

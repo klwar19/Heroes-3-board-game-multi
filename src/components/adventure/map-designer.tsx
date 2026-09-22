@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { assetUrl } from "@/lib/asset-url";
-import { Layers, Lock, Trash2 } from "lucide-react";
+import { Layers, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import {
@@ -1684,6 +1684,13 @@ export function MapDesigner({
             return plan;
           }
           const next = { ...plan, ...changes };
+          for (const key of ["blockedDirection", "drawShuffleSet", "strictLandmarkFilter"] as const) {
+            if (key in changes && changes[key] === undefined) delete next[key];
+          }
+          if (next.strictLandmarkFilter && (!next.faceDown || next.tileDefId || next.oneOfTileDefIds?.length ||
+              (planAllowedSecretFeatures(next).length === 0 && planExcludedSecretFeatures(next).length === 0))) {
+            delete next.strictLandmarkFilter;
+          }
           // Explicit `undefined` clears an optional field (secret pin / feature / token / gate links).
           if (changes.tileDefId === undefined && "tileDefId" in changes) {
             delete next.tileDefId;
@@ -3318,19 +3325,6 @@ export function MapDesigner({
     updateTile(selectedIndex, { rotation });
   };
 
-  /**
-   * Toggle a STARTING tile's Fixed orientation: when on, its home tile is placed
-   * at the chosen rotation in game and the seat owes NO opening free-rotation.
-   * Off restores the classic rotation-0 + opening-ceremony flow. Starting-only,
-   * exactly like the engine honours `lockRotation` only on a starting plan.
-   */
-  const toggleLockRotation = () => {
-    if (selectedIndex === null || !selected || selected.group !== "starting") {
-      return;
-    }
-    updateTile(selectedIndex, { lockRotation: selected.lockRotation ? undefined : true });
-  };
-
   /** Assign this Town a solo-only role. Choosing You clears any previous human
    * marker; multiplayer never reads these fields and keeps normal seat order. */
   const setSinglePlayerRole = (role: "human" | "computer" | undefined) => {
@@ -4206,9 +4200,9 @@ export function MapDesigner({
           </text>
         );
       }
-      // Fixed-orientation seats wear a small lock badge naming the forced angle —
-      // the faction art is unknown at design time, so the degrees are the signal.
-      if (plan.lockRotation) {
+      // The faction is chosen later; show its required blocked edge. Legacy
+      // maps retain their original degree-based orientation until edited.
+      if (plan.lockRotation || plan.blockedDirection !== undefined) {
         labelLayer.push(
           <text
             className="designerStartLockBadge"
@@ -4217,8 +4211,11 @@ export function MapDesigner({
             x={centerPixel.x}
             y={centerPixel.y - size * 0.7}
           >
-            <title>{`Fixed orientation ${(plan.rotation ?? 0) * 60}° — no opening rotation`}</title>
-            {`🔒 ${(plan.rotation ?? 0) * 60}°`}
+            <title>{plan.blockedDirection !== undefined
+              ? `Blocked field: ${SLOT_DIRECTIONS[plan.blockedDirection]} — no opening rotation`
+              : `Legacy fixed orientation ${(plan.rotation ?? 0) * 60}°`}</title>
+            {plan.blockedDirection !== undefined
+              ? `🔒 ${SLOT_DIRECTIONS[plan.blockedDirection]}` : `🔒 ${(plan.rotation ?? 0) * 60}°`}
           </text>
         );
       }
@@ -5828,41 +5825,26 @@ export function MapDesigner({
                     ) : null}
                   </>
                 ) : null}
-                {/* Rotation + Fix-orientation: the faction art is unknown at design
-                    time, so the preview shows the orientation as a badge/degrees. */}
-                <div className="popoverActions">
-                  <button
-                    className="popoverIconButton"
-                    onClick={() => rotateSelected(-1)}
-                    title="Rotate 60° counterclockwise"
-                    type="button"
-                  >
-                    <DesignerGlyph className="popoverActionGlyph flipH" src={DESIGNER_UI_ICONS.rotate} />
-                    <span>−60°</span>
-                  </button>
-                  <button
-                    className="popoverIconButton"
-                    onClick={() => rotateSelected(1)}
-                    title="Rotate 60° clockwise"
-                    type="button"
-                  >
-                    <DesignerGlyph className="popoverActionGlyph" src={DESIGNER_UI_ICONS.rotate} />
-                    <span>{(selected.rotation ?? 0) * 60}°</span>
-                  </button>
-                </div>
-                <button
-                  aria-pressed={Boolean(selected.lockRotation)}
-                  className={`popoverLockToggle${selected.lockRotation ? " active" : ""}`}
-                  onClick={toggleLockRotation}
-                  type="button"
-                >
-                  <Lock size={13} />
-                  Fix orientation (no opening rotation)
-                </button>
+                <label className="popoverSelectField">
+                  Blocked field position
+                  <select aria-label="Starting tile blocked field position"
+                    value={selected.blockedDirection ?? (selected.lockRotation ? "legacy" : "free")}
+                    onChange={(e) => updateTile(selectedIndex as number, {
+                      blockedDirection: e.target.value === "free" ? undefined : Number(e.target.value),
+                      lockRotation: undefined
+                    })}>
+                    <option value="free">Use normal opening rules</option>
+                    {selected.lockRotation && selected.blockedDirection === undefined ? (
+                      <option value="legacy" disabled>Saved orientation: {(selected.rotation ?? 0) * 60}°</option>
+                    ) : null}
+                    {SLOT_DIRECTIONS.map((direction, index) => (
+                      <option key={direction} value={index}>{direction}</option>
+                    ))}
+                  </select>
+                </label>
                 <small className="popoverHint">
-                  {selected.lockRotation
-                    ? `Locked at ${(selected.rotation ?? 0) * 60}° — this seat's home tile keeps this orientation and skips the opening free-rotation.`
-                    : "Unlocked: the tile starts at 0° and this seat rotates it once at the start of their first turn (opening ceremony)."}
+                  The chosen faction&apos;s tile rotates to put its blocked field on this edge and skips opening rotation.
+                  Saved degree-based orientations remain unchanged until you choose an edge.
                 </small>
               </>
             ) : (
@@ -6020,6 +6002,55 @@ export function MapDesigner({
                   </button>
                 ) : null}
 
+                {(selectedMode === "random" || selectedMode === "secret") &&
+                  !selected.tileDefId && !selected.oneOfTileDefIds?.length ? (
+                  <div className="popoverFeaturePicker">
+                    <label className="popoverSelectField">
+                      Obelisk tiles
+                      <select aria-label="Obelisk tile filter"
+                        value={selectedExcludeSet.includes("obelisk") ? "exclude"
+                          : selectedSecretSet.length === 1 && selectedSecretSet[0] === "obelisk" ? "only" : "any"}
+                        onChange={(e) => updateTile(selectedIndex as number, {
+                          strictLandmarkFilter: e.target.value === "any" ? undefined : true,
+                          playerResourcePick: undefined,
+                          secretFeature: undefined,
+                          secretFeatures: e.target.value === "only" ? ["obelisk"]
+                            : selectedSecretSet.filter(feature => feature !== "obelisk"),
+                          excludeFeatures: e.target.value === "exclude"
+                            ? [...selectedExcludeSet.filter(feature => feature !== "obelisk"), "obelisk"]
+                            : selectedExcludeSet.filter(feature => feature !== "obelisk")
+                        })}>
+                        <option value="any">Either (other landmark filters still apply)</option>
+                        <option value="only" disabled={selected.group === "far" || !pickableTiles.some(tile =>
+                          !pinnedElsewhere.has(tile.id) && tilePassesSecretFilters(tile, ["obelisk"],
+                            selectedExcludeSet.filter(feature => feature !== "obelisk")))}>Obelisks only</option>
+                        <option value="exclude">No obelisks</option>
+                      </select>
+                      <small className="popoverHint">Obelisk-only and no-obelisk draws require enough matching tiles to start the game.</small>
+                    </label>
+                    {!selected.playerResourcePick && !selected.playerViiPick && !selected.viiField && !selected.viiFields?.length ? (
+                      <label className="popoverSelectField">
+                        Shuffle landmark positions
+                        <select aria-label="Landmark draw shuffle set" value={selected.drawShuffleSet ?? 0}
+                          onChange={(e) => updateTile(selectedIndex as number, {
+                            drawShuffleSet: Number(e.target.value) || undefined
+                          })}>
+                          <option value={0}>Fixed position</option>
+                          {Array.from({ length: 8 }, (_, index) => (
+                            <option key={index + 1} value={index + 1}>Shuffle set {index + 1}</option>
+                          ))}
+                        </select>
+                        <small className="popoverHint">
+                          Give obelisk-only and no-obelisk slots the same set number to mix their positions each game.
+                          Only landmark draw filters move; borders, objects and rewards stay in place.
+                          At least two filtered slots must share the same pool, band, layer and reveal setting.
+                          Exact tiles, unfiltered slots and player-choice slots do not shuffle. Insufficient matching tiles prevent game start.
+                        </small>
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {/* Step 2a — Secret: pick one or more landmark features (primary). */}
                 {selectedMode === "secret" && PICKABLE_GROUPS.has(selected.group) ? (
                   <div className="popoverFeaturePicker">
@@ -6075,7 +6106,7 @@ export function MapDesigner({
                         </div>
                       </div>
                     ) : null}
-                    {selected.faceDown && (selected.group === "far" || selected.group === "near") ? (
+                    {selected.faceDown && !selected.strictLandmarkFilter && (selected.group === "far" || selected.group === "near") ? (
                       <button
                         aria-pressed={Boolean(selected.playerResourcePick)}
                         className={`popoverFilterChip${selected.playerResourcePick ? " active" : ""}`}
@@ -6151,6 +6182,7 @@ export function MapDesigner({
                       </div>
                     ) : null}
                     {selectedMode === "random" &&
+                    !selected.strictLandmarkFilter &&
                     selected.faceDown &&
                     (selected.group === "far" || selected.group === "near") ? (
                       <button
@@ -8014,7 +8046,8 @@ export function MapDesigner({
         link options, and use <strong>↻</strong> to slide it). Arm <strong>🖌 Yellow border</strong> in the Objects
         palette, then click a tile&apos;s{" "}
         <strong>edge hexes</strong> to paint impassable borders (or use the edge chips in the tile panel), and{" "}
-        <strong>lock</strong> a starting tile&apos;s orientation so it never opens with a rotation. The{" "}
+        choose a starting tile&apos;s <strong>blocked field position</strong> to fix its orientation for any faction.
+        Give filtered slots the same <strong>shuffle set</strong> to randomize their landmark positions each game. The{" "}
         <strong>Objects</strong> palette drops
         standalone one-hex pieces — four colored <strong>Gate</strong> pairs and designer-guarded objects;{" "}
         <strong>drag a placed object</strong> (either half of a Gate pair) to move it, or click it for guard / remove.

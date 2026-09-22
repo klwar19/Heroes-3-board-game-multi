@@ -1452,7 +1452,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v166: Couatl round-one targeting and Few activation choice, Bounty Hunter
 // Mark, Tancred VI timing/range, and Henrietta's round-start prompt change
 // authoritative combat rules and serialized choice state.
-export const ENGINE_PROTOCOL_VERSION = 166;
+// v167: Battlefield Conditions (two ordered dice, nine combat weathers, Dense
+// Fog rolling in and lifting round by round), designer blocked-field start
+// orientation, strict/shuffled landmark draws, one-of guard groups with field
+// ratings, per-seat timed events, and designed-map completion stats all change
+// authoritative rules and serialized state.
+export const ENGINE_PROTOCOL_VERSION = 167;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

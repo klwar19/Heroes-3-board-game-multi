@@ -21,6 +21,7 @@ import {
 import { factionUiLexicon } from "@/data/faction-theme";
 import { EquipGradeChip } from "@/components/equip-grade-chip";
 import { UnitExperienceWindow } from "@/components/adventure/unit-experience-window";
+import { HeroActionButtons, heroMapActionOffers } from "@/components/adventure/hero-actions-dock";
 import {
   ABILITY_SEARCH_LEVELS,
   ANIME_EQUIPMENT_SLOTS,
@@ -439,6 +440,13 @@ export function HeroBoard({
         .filter((entry): entry is { slot: AnimeEquipmentSlot; def: NonNullable<typeof entry>["def"] } => entry !== null)
     : [];
 
+  // Hero MAP actions (Train, Heavenly Tribulation, Revisit field, Build the
+  // Grail, Artifact-set powers…) now live ON the board instead of a separate
+  // left-rail dock. They render ONLY on the controlling player's interactive
+  // board (an `onAction` dispatcher was passed — never on a read-only opponent
+  // or observer board) and only while the engine is actually offering one.
+  const heroActionOffers = onAction ? heroMapActionOffers(legalActions) : [];
+
   const stats = [
     { label: "Attack", value: heroDef.startingStats.attack, icon: <StatIcon stat="attack" /> },
     { label: "Defense", value: heroDef.startingStats.defense, icon: <StatIcon stat="defense" /> },
@@ -717,6 +725,15 @@ export function HeroBoard({
             Hand {handLimit} · Crowns {player.limits.expertUses}
           </span>
         </footer>
+
+        {onAction && heroActionOffers.length > 0 ? (
+          <div className="hbHeroActions" aria-label="Hero actions">
+            <span className="hbHeroActionsLabel">Hero actions</span>
+            <div className="hbHeroActionsRow">
+              <HeroActionButtons offers={heroActionOffers} onAction={onAction} />
+            </div>
+          </div>
+        ) : null}
 
         {showGrade || showEquip || showUnitXp ? (
           <div className="heroSystemButtons" aria-label="Hero systems">

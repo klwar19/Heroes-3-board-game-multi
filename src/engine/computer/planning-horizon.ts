@@ -40,6 +40,7 @@ import {
   unitThreatValue,
 } from "./score";
 import { estimatedStrikeDamage } from "./strike-value";
+import { conditionAttackFaces } from "./battlefield-conditions";
 
 /** Public, bounded planning horizons. Keeping these small makes live turns fast. */
 export const STRATEGIC_HORIZON_ROUNDS = 4;
@@ -244,10 +245,10 @@ function strikeUtility(defender: CombatUnitState, damage: number): number {
     (damage > 0 && damage >= remaining ? unitThreatValue(defender) * 0.7 : 0);
 }
 
-function strikeOutcomes(attacker: CombatUnitState, defender: CombatUnitState, from: number): number[] {
+function strikeOutcomes(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, from: number): number[] {
   // Apply the face BEFORE defense and damage caps. Adding +/-1 to already
   // clamped damage invents hits against armor and damage above an ability cap.
-  return ATTACK_DIE_FACES.map(face => isUnitDamageImmune(defender) ? 0 :
+  return (conditionAttackFaces(state, attacker, defender, from) ?? ATTACK_DIE_FACES).map(face => isUnitDamageImmune(defender) ? 0 :
     estimatedStrikeDamage(attacker, defender, from, false, face));
 }
 
@@ -276,7 +277,7 @@ function nextReply(state: GameState, combat: CombatState, budget: CombatPlanning
           ? canUnitAttack(board, attacker, defender, state.activeEffects ?? [])
           : canUnitMoveAndAttack(board, attacker, from, defender, view);
         if (!legal) continue;
-        const outcomes = strikeOutcomes(attacker, defender, from);
+        const outcomes = strikeOutcomes(view, attacker, defender, from);
         const utility = outcomes.reduce((sum, damage) => sum + strikeUtility(defender, damage), 0) / outcomes.length;
         if (utility > (best?.utility ?? 0)) {
           // Follow-up plies use the median face; only the chosen first action
@@ -368,7 +369,7 @@ export function combatHorizonAdjustment(
   const defender = combat.units[action.defenderId];
   if (!attacker || !defender) return 0;
   const from = action.type === "MOVE_AND_ATTACK_UNIT" ? action.destination : attacker.position;
-  const outcomes = strikeOutcomes(attacker, defender, from);
+  const outcomes = strikeOutcomes(state, attacker, defender, from);
   const values = new Map<number, number>();
   const baseline = sideStrength(combat, attacker.controllerId) - sideStrength(combat, defender.controllerId);
   for (const damage of new Set(outcomes)) {

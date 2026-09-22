@@ -77,9 +77,12 @@ export function retaliationValue(state: GameState, attacker: CombatUnitState, de
 /** Current-round replies plus next-round enemies that act before this unit.
  * Tied initiative is conservatively treated as a possible enemy reply. */
 function incoming(state: GameState, unit: CombatUnitState, removedId?: string): number {
+  const ascending = state.combat?.battlefieldCondition?.id === "fey-trickery";
   return living(state.combat!).filter(enemy => enemy.controllerId !== unit.controllerId && enemy.id !== removedId &&
     !enemy.tokens?.some(token => token.kind === "paralysis") &&
-    (!enemy.activatedThisRound || effectiveInitiative(enemy, state.activeEffects, state.combat) >= effectiveInitiative(unit, state.activeEffects, state.combat)))
+    (!enemy.activatedThisRound || (ascending
+      ? effectiveInitiative(enemy, state.activeEffects, state.combat) <= effectiveInitiative(unit, state.activeEffects, state.combat)
+      : effectiveInitiative(enemy, state.activeEffects, state.combat) >= effectiveInitiative(unit, state.activeEffects, state.combat))))
     .reduce((sum, enemy) => {
       const next = { ...enemy, activatedThisRound: false, attackedThisActivation: false, movedThisActivation: false };
       return sum + bestDamage(state, next, unit);
@@ -126,7 +129,9 @@ function positionValue(state: GameState, unit: CombatUnitState): number {
     const enemies = living(combat).filter(enemy => enemy.controllerId !== ally.controllerId);
     const canExit = enemies.some(enemy => attackPositions(state, combat, next, enemy).length > 0);
     if (!canExit && isAdjacent(unit.position, ally.position) &&
-        effectiveInitiative(unit, state.activeEffects, combat) <= effectiveInitiative(ally, state.activeEffects, combat)) score -= 18;
+        (combat.battlefieldCondition?.id === "fey-trickery"
+          ? effectiveInitiative(unit, state.activeEffects, combat) >= effectiveInitiative(ally, state.activeEffects, combat)
+          : effectiveInitiative(unit, state.activeEffects, combat) <= effectiveInitiative(ally, state.activeEffects, combat))) score -= 18;
   }
   return score;
 }
@@ -193,7 +198,7 @@ export function placeRandomTownFormation(state: GameState, combat: CombatState, 
   const score = (layout: number[]) => {
     const placed = ordered.map((unit, index) => ({ ...unit, position: layout[index] }));
     const board = { ...combat, units: { ...combat.units, ...Object.fromEntries(placed.map(unit => [unit.id, unit])) } };
-    const initiative = (index: number) => effectiveInitiative(placed[index], state.activeEffects, board);
+    const initiative = (index: number) => effectiveInitiative(placed[index], state.activeEffects, board) * (board.battlefieldCondition?.id === "fey-trickery" ? -1 : 1);
     let total = 0;
     for (let index = 0; index < ordered.length; index++) {
       const unit = ordered[index];

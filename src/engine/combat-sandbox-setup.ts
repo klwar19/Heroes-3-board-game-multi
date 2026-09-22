@@ -32,6 +32,7 @@ import {
 } from "./adventure-setup";
 import { prepareIntegratedCombatDeployment } from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { initializeBattlefieldCondition } from "./battlefield-conditions";
 import { makeInitialCommanderState } from "./commanders";
 import { shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
@@ -559,6 +560,9 @@ export function sandboxSetOptions(
   }
 
   const opts = action.options;
+  if (opts.battlefieldConditions !== undefined) {
+    setup.battlefieldConditions = Boolean(opts.battlefieldConditions);
+  }
   if (opts.boardArtId !== undefined) {
     if (opts.boardArtId !== "random" && !DEFAULT_BOARD_ART_IDS.includes(opts.boardArtId)) {
       throw new Error(`Unknown battlefield ${opts.boardArtId}.`);
@@ -722,7 +726,7 @@ export function sandboxBeginCombat(
   // Ensure decks match the chosen mode at fight start (covers a mode switch
   // that ran before decks were rebuilt, and legacy snapshots without playMode).
   state.decks = makeSandboxDecks(state.seed, playMode);
-  state.sandboxRules = { moraleCards: moraleCardsOn };
+  state.sandboxRules = { moraleCards: moraleCardsOn, battlefieldConditions: Boolean(setup.battlefieldConditions) };
   state.players = {
     p1: buildPlayerFromSeat(p1, moraleCardsOn, Boolean(wog.enabled && wog.unitExperience)),
     p2: buildPlayerFromSeat(p2, moraleCardsOn, Boolean(wog.enabled && wog.unitExperience))
@@ -820,6 +824,7 @@ export function sandboxBeginCombat(
   // after both sides Ready, parking the phase in `combat-setup` instead of
   // starting the fight (pre-existing for a Vanguard-Marshal seat; reachable by
   // any Speed-graded commander since 2026-08-14).
+  initializeBattlefieldCondition(state, state.combat);
   prepareIntegratedCombatDeployment(state);
 
   state.phase = "combat-setup";

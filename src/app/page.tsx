@@ -203,7 +203,6 @@ import {
   type TilePlacementSelection
 } from "@/components/adventure/screen";
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
-import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
 import { MapTownBuildingsDock } from "@/components/adventure/map-town-buildings";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { OpponentInfoDock, PhoneOpponentPanel } from "@/components/adventure/opponent-info";
@@ -6708,13 +6707,18 @@ export default function Home() {
                   the map. Their fly-out boards open to the right, over the map. */}
               <div className="leftRailDock">
                 {/* A seated player inspects any opponent's public state
-                    (resources, units, hero level, buildings) with a small
-                    click-to-open button. Kept at the TOP of the rail so it is
-                    a compact button, never a big panel, and never reaches the
-                    bottom-left chat dock. */}
-                {isSeated ? (
-                  <OpponentInfoDock seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
-                ) : null}
+                    (resources, units, hero + commander with equipment,
+                    buildings) with a small click-to-open button; an observer
+                    gets the same dossier for EVERY seat ("Players"). Kept at the
+                    TOP of the rail so it is a compact button, never a big panel,
+                    and never reaches the bottom-left chat dock. */}
+                <OpponentInfoDock
+                  observer={!isSeated}
+                  seatIds={seatIds}
+                  state={state}
+                  variant="map"
+                  viewerPlayerId={viewerPlayerId}
+                />
                 <TownHeroDock
                   armySeatId={isSeated ? viewerPlayerId : undefined}
                   heroSeatIds={isSeated ? [viewerPlayerId] : seatIds}
@@ -6725,11 +6729,10 @@ export default function Home() {
                   viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
                 />
                 {/* Anime hero map actions (Cultivation §5.6 / Hero Grades
-                    §3.11): Train / Forced March / Heavenly Tribulation, shown
-                    only while the engine offers them to this seat. */}
-                {isSeated ? (
-                  <HeroActionsDock legalActions={legalActions} onAction={submitAction} />
-                ) : null}
+                    §3.11): Train / Heavenly Tribulation / Revisit / Build the
+                    Grail now live ON the hero board itself (opened from the
+                    hero tile above, which blinks while an action is offered) —
+                    see HeroBoard's on-board Hero-actions block. */}
                 {/* Use a controlled town's special building actions (Cover of
                     Darkness, Castle Gate, Blacksmith, Mage Guild, City Hall
                     choice…) straight from the map — shown only when the engine

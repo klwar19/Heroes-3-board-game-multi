@@ -133,6 +133,26 @@ export default class MapsServer implements Party.Server {
 
     if (request.method === "POST") {
       const body = (await request.json().catch(() => null)) as unknown;
+      if (new URL(request.url).pathname.endsWith("/finished")) {
+        const env = (this.room as unknown as { env?: Record<string, unknown> }).env;
+        const configured =
+          (typeof env?.HOMM3BG_MATCH_REPORT_KEY === "string" ? env.HOMM3BG_MATCH_REPORT_KEY : "").trim() ||
+          (typeof env?.HOMM3BG_ADMIN_KEY === "string" ? env.HOMM3BG_ADMIN_KEY : "").trim();
+        if (!configured || request.headers.get("x-homm3bg-report-key") !== configured) {
+          return jsonWithCors({ ok: false, error: "Forbidden." }, 403);
+        }
+        const completion = body as { mapId?: unknown; matchId?: unknown; finishedAt?: unknown } | null;
+        const mapId = typeof completion?.mapId === "string" ? completion.mapId : "";
+        const matchId = typeof completion?.matchId === "string" ? completion.matchId.slice(0, 200) : "";
+        const finishedAt =
+          typeof completion?.finishedAt === "number" && Number.isFinite(completion.finishedAt)
+            ? completion.finishedAt
+            : Date.now();
+        if (!mapId || !matchId) return jsonWithCors({ ok: false, error: "Map and match ids are required." }, 400);
+        const record = this.registry.recordFinishedGame(mapId, matchId, finishedAt);
+        if (record) await this.room.storage.put(mapKey(record.id), record);
+        return jsonWithCors({ ok: true, map: record });
+      }
       const record = sanitizeSharedMap(body);
       if (!record) {
         return jsonWithCors({ ok: false, error: "A map needs a tiles array." }, 400);
@@ -181,7 +201,7 @@ export default class MapsServer implements Party.Server {
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, X-HOMM3BG-Report-Key",
   "Access-Control-Max-Age": "86400"
 };
 

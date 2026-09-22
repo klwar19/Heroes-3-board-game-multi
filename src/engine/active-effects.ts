@@ -859,7 +859,8 @@ export function effectiveInitiative(
       ability.effect?.type === "NEUTRAL_VETERANCY" &&
       ability.effect.mechanic === "werewolf-astral-hunt"
     ) ? 3 : 0;
-  return unit.initiative + amplified + adjacentEnemyAura + maidAura + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0);
+  const battlefieldShift = combat?.battlefieldCondition?.id === "raining-ash" && unit.type === "flying" ? -2 : 0;
+  return unit.initiative + amplified + adjacentEnemyAura + maidAura + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0) + battlefieldShift;
 }
 
 /**

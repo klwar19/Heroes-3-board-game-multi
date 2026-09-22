@@ -22,6 +22,7 @@ import {
   COMBAT_PLANNING_WORK_LIMIT,
 } from "./planning-horizon";
 import type { ComputerObservation } from "./types";
+import { conditionInitiativePrecedes } from "./battlefield-conditions";
 
 type RankedAction = { legal: LegalAction; score: number; policy: string; tie: number };
 
@@ -149,7 +150,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
         damage: best,
         current,
         beforeEnemy: enemy.activatedThisRound || ally.id === combat.activeUnitId ||
-          effectiveInitiative(ally, state.activeEffects ?? [], combat) > enemyInitiative,
+          conditionInitiativePrecedes(effectiveInitiative(ally, state.activeEffects ?? [], combat), enemyInitiative, combat),
       });
     }
     strikeCache.set(enemy.id, strikes);
@@ -174,7 +175,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
     }
     const enemyInitiative = effectiveInitiative(enemy, state.activeEffects ?? [], combat);
     const laterCastWindow = friendlies.some(ally => ally.id !== combat.activeUnitId &&
-      effectiveInitiative(ally, state.activeEffects ?? [], combat) > enemyInitiative);
+      conditionInitiativePrecedes(effectiveInitiative(ally, state.activeEffects ?? [], combat), enemyInitiative, combat));
     if (laterCastWindow) {
       candidate.score = 440;
       candidate.policy = "plan.denial-spell-later-window";
@@ -226,8 +227,8 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
     // otherwise cast now, then use this unit's still-legal attack.
     if (spellDamage < removal && all > 0 && all + spellDamage >= removal) {
       const laterCastWindow = friendlies.some(ally => ally.id !== combat.activeUnitId &&
-        (enemy.activatedThisRound || effectiveInitiative(ally, state.activeEffects ?? [], combat) >
-          effectiveInitiative(enemy, state.activeEffects ?? [], combat)));
+        (enemy.activatedThisRound || conditionInitiativePrecedes(effectiveInitiative(ally, state.activeEffects ?? [], combat),
+          effectiveInitiative(enemy, state.activeEffects ?? [], combat), combat)));
       if (current && !laterCastWindow) {
         candidate.score = Math.min(895, 850 + threat + (shooter ? 25 : 0));
         candidate.policy = "plan.damage-spell-before-move-attack";

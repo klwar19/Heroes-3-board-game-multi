@@ -1,4 +1,5 @@
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
+import { denseFogThisRound } from "./battlefield-condition-fog";
 import { repairOrphanedChoicePhase } from "./choice-phase";
 import { randomTownTokenValue } from "./random-town-tactics";
 import { isGrailUtopiaModeField } from "./map-design-features";
@@ -5687,7 +5688,7 @@ function getAttackStackDetails(
   // Shaman's Puppet (option A) forces the attacker to roll two dice and keep the
   // lower. That is not a ranged penalty, so the Precision/Golden Bow waiver above
   // must never lift it — re-assert disadvantage here for a puppeted attacker.
-  if (attacker.commanderArtifactAttackDisadvantage || unitAttackRollDisadvantaged(state, attacker)) {
+  if (attacker.commanderArtifactAttackDisadvantage || unitAttackRollDisadvantaged(state, attacker) || (attacker.type === "ranged" && denseFogThisRound(combat))) {
     rollMode = "disadvantage";
   }
 
@@ -14609,7 +14610,9 @@ function maybeStealActivationAfterInitiativeShift(
       unit.id !== active.id &&
       isUnitAlive(unit) &&
       !unit.activatedThisRound &&
-      effectiveInitiative(unit, state.activeEffects, combat) > activeInitiative,
+      (combat.battlefieldCondition?.id === "fey-trickery" && !combat.waitPhase
+        ? effectiveInitiative(unit, state.activeEffects, combat) < activeInitiative
+        : effectiveInitiative(unit, state.activeEffects, combat) > activeInitiative),
   );
   if (!fasterFreshUnitExists) {
     return;

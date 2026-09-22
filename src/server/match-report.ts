@@ -60,8 +60,12 @@ export type FinishedMatch = {
    * profile), but leaves the rating untouched — only a RANKED game moves MMR.
    */
   ranked: boolean;
+  /** Designed-map catalog id; present only when the lobby picked a shared map. */
+  mapId?: string;
   participants: (MatchParticipantInput & { nickname: string })[];
 };
+
+export type FinishedDesignedMap = { mapId: string; matchId: string };
 
 /**
  * Terminal-state test shared by every reporter.
@@ -235,6 +239,27 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
       }
     }
   }
-  return { matchId: next.seed, ranked, participants };
+  return {
+    matchId: next.seed,
+    ranked,
+    ...(next.adventure?.customMapId ? { mapId: next.adventure.customMapId } : {}),
+    participants
+  };
+}
+
+/** A designed map completed in a real multiplayer table, independent of ladder eligibility. */
+export function detectFinishedDesignedMap(prev: GameState, next: GameState): FinishedDesignedMap | null {
+  if (gameIsOver(prev) || !gameIsOver(next) || next.sessionMode === "single-player") return null;
+  const mapId = next.adventure?.customMapId;
+  if (!mapId) return null;
+  // "Most played" counts only games that look like real play: at least two
+  // HUMAN seats (a solo table padded with computer seats is practice, not a
+  // completion) and a table that got past the opening rounds, so an instant
+  // resign-and-reset loop cannot farm a map's popularity counter.
+  const humanSeats = Object.keys(next.players).filter(
+    (seat) => seat !== NEUTRAL_PLAYER_ID && !isComputerPlayer(next, seat)
+  );
+  if (humanSeats.length < 2 || next.round < 3) return null;
+  return { mapId, matchId: next.seed };
 }
 

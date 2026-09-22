@@ -588,6 +588,7 @@ export function CombatSandboxSetupScreen({
     boardArtId?: (typeof setup)["boardArtId"];
     obstacles?: number[];
     moraleCards?: boolean;
+    battlefieldConditions?: boolean;
     wog?: Partial<WogModOptions>;
     playMode?: CombatSandboxPlayMode;
   }) => onAction({ type: "SANDBOX_SET_OPTIONS", playerId: actorId, options });
@@ -676,6 +677,14 @@ export function CombatSandboxSetupScreen({
               type="checkbox"
             />
             Morale Cards (optional rule)
+          </label>
+          <label className="sandboxToggle">
+            <input
+              checked={Boolean(setup.battlefieldConditions)}
+              onChange={(event) => setOptions({ battlefieldConditions: event.target.checked })}
+              type="checkbox"
+            />
+            Battlefield Conditions (roll two dice)
           </label>
           <label className="sandboxToggle">
             <input

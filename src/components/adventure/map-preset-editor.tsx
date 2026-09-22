@@ -5,7 +5,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { coreUnitDefinitions } from "@/data/factions/units";
 import { DIFFICULTY_CHESS_ICONS, REWARD_GLYPH_ICONS, RESOURCE_ICONS, TILE_BACK_IMAGES } from "@/data/assets/homm-assets";
 import { listStoryScenes } from "@/data/story/scenes";
 import {
@@ -28,7 +27,8 @@ import {
   describeCustomMapPresetEntries,
   describeObjectivesConfig,
   describeVictoryPointsConfig,
-  describeTimedMapEffect,
+  describeTimedEventEffect,
+  timedEffectTargetsPlayers,
   describeTimedEventSchedule,
   FAR_TILE_TYPES,
   FAR_TILE_TYPE_LABELS,
@@ -36,7 +36,6 @@ import {
   MAX_OBELISK_BONUSES,
   MAX_TIMED_EVENTS,
   MAX_VICTORY_POINT_OBJECTIVES,
-  polishUnitStackCap,
   MAP_PRESET_BUILDING_OPTIONS,
   MAP_PRESET_DIFFICULTY_OPTIONS,
   MAP_PRESET_OBELISK_BONUS_KINDS,
@@ -47,7 +46,6 @@ import {
   VICTORY_POINT_OBJECTIVE_OPTIONS,
   MAX_HEX_EVENTS,
   type CustomGuardSpec,
-  type RandomTownGuardSlot,
   type CustomMapObeliskBonus,
   type CustomMapObeliskConfig,
   type CustomMapSettlementConfig,
@@ -2889,8 +2887,10 @@ export function MapPresetEditor({
           lives under Victory &amp; scoring.
         </small>
         <ObjectConfigHeading kind="encounter">Town defense</ObjectConfigHeading>
-        <RandomTownGuardGrid
+        <GuardLevelChips
+          ariaLabel="Random Town guard"
           guard={value.randomTowns?.guard}
+          label="Guard army"
           onChange={(guard) => {
             const next = { ...(value.randomTowns ?? {}) };
             if (guard) next.guard = guard;
@@ -3109,7 +3109,7 @@ export function MapPresetEditor({
         </div>
         <small className="mapPresetHint">
           Mission-book style: pick any round (1–30) and any effect, then tweak the numbers. Multiple
-          events can share a round. Fires at the start of that round for every player.
+          events can share a round. Player effects can target everyone or a player at a starting position.
         </small>
 
         <div className="mapPresetTimedTools">
@@ -3245,7 +3245,8 @@ export function MapPresetEditor({
                         const kind = e.target.value as TimedEffectKind;
                         updateTimed(index, {
                           ...event,
-                          effect: defaultTimedEffect(kind)
+                          effect: defaultTimedEffect(kind),
+                          targetStart: timedEffectTargetsPlayers(defaultTimedEffect(kind)) ? event.targetStart : undefined
                         });
                       }}
                       value={event.effect.kind}
@@ -3257,13 +3258,29 @@ export function MapPresetEditor({
                       ))}
                     </select>
                   </label>
+                  {timedEffectTargetsPlayers(event.effect) ? (
+                    <label className="mapPresetTimedKind">
+                      Target
+                      <select aria-label={`Timed event ${index + 1} target player`}
+                        value={event.targetStart ?? "all"}
+                        onChange={(e) => updateTimed(index, { ...event,
+                          targetStart: e.target.value === "all" ? undefined : Number(e.target.value) })}>
+                        <option value="all">All players</option>
+                        {Array.from({ length: Math.max(tiles?.filter(tile => tile.group === "starting").length ?? 8, event.targetStart ?? 0) }, (_, seat) => (
+                          <option key={seat + 1} value={seat + 1}>Player at S{seat + 1}</option>
+                        ))}
+                      </select>
+                      <small>Starting position; empty or eliminated seats are skipped.</small>
+                    </label>
+                  ) : null}
                   <label className="mapPresetTimedRepeat">
                     Repeat
                     <select
                       aria-label={`Timed event ${index + 1} repeat`}
                       onChange={(e) => {
                         const n = Number(e.target.value);
-                        const next: CustomMapTimedEvent = { round: event.round, effect: event.effect };
+                        const next: CustomMapTimedEvent = { ...event };
+                        delete next.repeatEveryRounds;
                         if (n >= 2) {
                           next.repeatEveryRounds = Math.min(10, n);
                         }
@@ -3303,7 +3320,7 @@ export function MapPresetEditor({
                   onChange={(effect) => updateTimed(index, { ...event, effect })}
                 />
                 <div className="mapPresetTimedPreview" aria-live="polite">
-                  {describeTimedEventSchedule(event)}: {describeTimedMapEffect(event.effect)}
+                  {describeTimedEventSchedule(event)}: {describeTimedEventEffect(event)}
                 </div>
                 {timedEventWarning(event, value.roundLimit) ? (
                   <small className="mapPresetTimedWarning" role="status">
@@ -4241,115 +4258,6 @@ function RewardSectionTitle({ children }: { children: ReactNode }) {
   return <div className="mapPresetSectionLabel mapPresetIconLabel"><img alt="" src={assetUrl(REWARD_GLYPH_ICONS.treasure)} />{children}</div>;
 }
 
-/** A compact roster: one slot per rank, with optional named cards and bonuses. */
-function RandomTownGuardGrid({ guard, onChange }: {
-  guard: CustomGuardSpec | undefined;
-  onChange: (guard: CustomGuardSpec | undefined) => void;
-}) {
-  const [unitSearch, setUnitSearch] = useState("");
-  const legacyRows: RandomTownGuardSlot[] | null = guard?.units?.every((unit) => /^town-rank:[1-7]:(few|pack)$/.test(unit))
-    ? guard.units.map((unit) => {
-        const [, rank, side] = /^town-rank:([1-7]):(few|pack)$/.exec(unit)!;
-        return { rank: Number(rank) as RandomTownGuardSlot["rank"], side: side as "few" | "pack" };
-      })
-    : null;
-  const slots = guard?.townSlots ?? legacyRows ?? [];
-  const gridGuard = !guard || Boolean(guard.townSlots) || (Boolean(legacyRows) && (!guard.packFaction || guard.packFaction === "random"));
-  const setSlot = (rank: RandomTownGuardSlot["rank"], slot: RandomTownGuardSlot | null) => {
-    const next = slots.filter((entry) => entry.rank !== rank);
-    if (slot) next.push(slot);
-    next.sort((a, b) => a.rank - b.rank);
-    onChange(next.length ? { townSlots: next } : undefined);
-  };
-  const allUnits = Object.values(coreUnitDefinitions).sort((a, b) => a.name.localeCompare(b.name));
-  return (
-    <div className="randomTownGuardEditor" role="group" aria-label="Random Town guard">
-      <div className="mapPresetSectionLabel mapPresetGuardLabel"><UnitCardFan /> Guard roster</div>
-      {gridGuard ? (
-        <>
-          <small className="mapPresetHint">{guard ? "Each row is one defender slot. Town unit follows that level in the revealed faction; named cards stay exact." : "Printed Random Town guards are active. Choose any row to replace them with a custom roster."}</small>
-          <input aria-label="Find Random Town guard unit" className="randomTownGuardSearch" onChange={(event) => setUnitSearch(event.target.value)} placeholder="Find unit, faction, or tier…" type="search" value={unitSearch} />
-          <div className="randomTownGuardRows">
-            {([1, 2, 3, 4, 5, 6, 7] as const).map((rank) => {
-              const slot = slots.find((entry) => entry.rank === rank);
-              const named = slot?.unitDefId ? coreUnitDefinitions[slot.unitDefId] : undefined;
-              const tier = named?.tier ?? (rank <= 3 ? "bronze" : rank <= 5 ? "silver" : rank === 6 ? "gold" : "azure");
-              const cap = slot && slot.side !== "few" ? named ? polishUnitStackCap(named.id, slot.side) : tier === "bronze" ? 3 : tier === "silver" ? 2 : 1 : 0;
-              return <div className={`randomTownGuardRow${slot ? " selected" : ""}`} key={rank}>
-                <div className="randomTownGuardMain">
-                  <strong>{slot?.unitDefId ? "Slot" : "Lv"} {rank}</strong>
-                  <div className="randomTownGuardSides" role="group" aria-label={`Random Town level ${rank} side`}>
-                    {([null, "few", "pack", "neutral"] as const).map((side) => (
-                      <button aria-pressed={(slot?.side ?? null) === side}
-                        aria-label={`Random Town level ${rank} ${side ?? "none"}`}
-                        className={(slot?.side ?? null) === side ? "active" : ""}
-                        key={side ?? "none"}
-                        onClick={() => {
-                          if (!side) return setSlot(rank, null);
-                          const matching = side === "neutral"
-                            ? allUnits.find((unit) => unit.neutral && unit.tier === tier)
-                            : named?.[side] ? named : undefined;
-                          setSlot(rank, {
-                            rank, side,
-                            ...(matching ? { unitDefId: matching.id } : {}),
-                            ...(side !== "few" && slot?.stacks ? { stacks: slot.stacks } : {}),
-                            ...(slot?.veteranRank ? { veteranRank: slot.veteranRank } : {})
-                          });
-                        }} type="button">
-                        {side === null ? "—" : side === "few" ? "Few" : side === "pack" ? "Pack" : "Neutral"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {slot ? <div className="randomTownGuardDetails">
-                  <label>Unit
-                    {named?.[slot.side]?.cardImage ? <img alt="" className="randomTownGuardArt" height={34} src={assetUrl(named[slot.side]!.cardImage!)} width={30} /> : null}
-                    <select aria-label={`Random Town level ${rank} unit`} value={slot.unitDefId ?? "town"}
-                      onChange={(event) => setSlot(rank, {
-                        ...slot,
-                        ...(event.target.value === "town" ? { unitDefId: undefined } : { unitDefId: event.target.value }),
-                        stacks: undefined
-                      })}>
-                      {slot.side !== "neutral" ? <option value="town">Revealed town · level {rank}</option> : null}
-                      {allUnits.filter((unit) => Boolean(unit[slot.side]) && (
-                        !unitSearch || unit.id === slot.unitDefId ||
-                        `${unit.name} ${unit.faction} ${unit.tier}`.toLocaleLowerCase().includes(unitSearch.trim().toLocaleLowerCase())
-                      )).map((unit) =>
-                        <option key={unit.id} value={unit.id}>{unit.name} · {unit.faction} · {unit.tier}</option>)}
-                    </select>
-                  </label>
-                  {cap > 0 ? <label>Stacks
-                    <select aria-label={`Random Town level ${rank} stacks`} value={slot.stacks ?? 0}
-                      onChange={(event) => setSlot(rank, { ...slot, stacks: Number(event.target.value) || undefined })}>
-                      {Array.from({ length: cap + 1 }, (_, count) => <option key={count} value={count}>{count}</option>)}
-                    </select>
-                  </label> : null}
-                  <label>Veteran
-                    <select aria-label={`Random Town level ${rank} veteran rank`} value={slot.veteranRank ?? 0}
-                      onChange={(event) => setSlot(rank, { ...slot, veteranRank: (Number(event.target.value) || undefined) as RandomTownGuardSlot["veteranRank"] })}>
-                      <option value={0}>None</option><option value={1}>Rank 1</option><option value={2}>Rank 2</option><option value={3}>Rank 3</option>
-                    </select>
-                  </label>
-                </div> : null}
-              </div>;
-            })}
-          </div>
-          <small className="mapPresetHint">Stacks apply when Polish Unit Stacks or Anime Unit Stacks is enabled. Veteran ranks apply when Unit Experience is enabled.</small>
-          <button className="mapPresetLinkBtn" disabled={!guard} onClick={() => onChange(undefined)} type="button">Use default guards</button>
-        </>
-      ) : (
-        <>
-          <small className="mapPresetHint">This saved preset uses another guard format and remains active.</small>
-          <button className="mapPresetLinkBtn" onClick={() => onChange({ townSlots: [
-            { rank: 2, side: "pack" }, { rank: 3, side: "pack" }, { rank: 4, side: "pack" },
-            { rank: 5, side: "pack" }, { rank: 6, side: "few" }
-          ] })} type="button">Edit as roster</button>
-        </>
-      )}
-    </div>
-  );
-}
-
 function ObeliskBonusFields({
   bonus,
   onChange
@@ -4690,6 +4598,7 @@ function suggestNextRound(existing: CustomMapTimedEvent[], roundLimit?: number):
 
 function cloneTimedEvent(event: CustomMapTimedEvent): CustomMapTimedEvent {
   const clone: CustomMapTimedEvent = {
+    targetStart: event.targetStart,
     round: event.round,
     effect:
       event.effect.kind === "clear_visitable_cubes"

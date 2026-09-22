@@ -489,6 +489,8 @@ export {
   describeObjectivesConfig,
   describeUtopiaGuards,
   describeTimedMapEffect,
+  describeTimedEventEffect,
+  timedEffectTargetsPlayers,
   describeTimedEventSchedule,
   describeVictoryPointsConfig,
   foldLegacyViiBonus,
@@ -596,6 +598,8 @@ export {
   isRandomGuardSlot,
   isRandomPackGuardSlot,
   isRandomFewGuardSlot,
+  makeOneOfGuardSlot,
+  oneOfGuardChoices,
   isLevelPackGuard,
   packUnitPoolForTier,
   fewUnitPoolForTier,
@@ -604,9 +608,11 @@ export {
   PACK_GUARD_PREFIX,
   FEW_GUARD_PREFIX,
   RANDOM_GUARD_PREFIX,
+  RANDOM_ANY_NEUTRAL_GUARD_SLOT,
   RANDOM_PACK_GUARD_PREFIX,
   RANDOM_FEW_GUARD_PREFIX,
-  RANDOM_GUARD_TIERS
+  RANDOM_GUARD_TIERS,
+  MAX_ONE_OF_GUARD_CHOICES
 } from "./map-design-features";
 export type { RandomGuardTier, ResolveCustomGuardOptions } from "./map-design-features";
 export {

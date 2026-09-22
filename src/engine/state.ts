@@ -77,6 +77,7 @@ export type ArtifactDeckAccess = {
  * union). Defined here so the pure-type state module needs no data-layer import.
  */
 export type HouseRuleId =
+  | "battlefield-conditions"
   | "combat-retake"
   | "settlement-foreign-recruitment"
   // A controlled Settlement recruits the single-sided Neutral Unit cards that
@@ -4991,6 +4992,7 @@ type GameActionPayload =
       playerId: PlayerId;
       options: {
         boardArtId?: CombatBoardArtId | "random";
+        battlefieldConditions?: boolean;
         obstacles?: number[];
         moraleCards?: boolean;
         wog?: Partial<WogModOptions>;
@@ -10736,6 +10738,14 @@ export type CombatScriptStatModifier = {
 };
 
 export type CombatState = {
+  /** Optional, combat-scoped ordered dice result; absent in older saves/off games. */
+  battlefieldCondition?: {
+    id: import("@/data/battlefield-conditions").BattlefieldConditionId;
+    dice: [import("@/data/battlefield-conditions").BattlefieldConditionDie, import("@/data/battlefield-conditions").BattlefieldConditionDie];
+    source: "dice" | "preset";
+    /** Opening damage/Defense tokens have already been placed. */
+    applied?: boolean;
+  };
   /** Adventure round captured when combat starts (even values are Astrologers' rounds). */
   worldRound?: number;
   veteranAttackContinuation?: {
@@ -11807,6 +11817,8 @@ export type MapFieldState = {
    * guards and legacy snapshots.
    */
   designedGuard?: boolean;
+  /** Designer-authored Field Difficulty override (1-7); survives guard re-stamps. */
+  customGuardDifficulty?: number;
   /**
    * Break field (PC-style): Pathfinding may NOT walk through this guarded hex
    * — the hero must fight to enter / clear it. Set from the map-designer mine /
@@ -14228,6 +14240,8 @@ export type AdventureState = {
   difficulty: GameDifficulty;
   /** Scenario this map was built from (data/map/scenarios). */
   scenarioId?: string;
+  /** Stable id of the shared designed map, when this game uses one. */
+  customMapId?: string;
   /**
    * Map designer scenario conditions active for this adventure (timed events,
    * notes). Copied from GameSetupOptions.customMapPreset at build time.
@@ -15131,6 +15145,8 @@ export type GameSetupOptions = {
   customMap?: CustomMapTilePlan[] | null;
   /** Display name of the saved map design the lobby picked. */
   customMapName?: string | null;
+  /** Stable shared-library id used for authoritative finished-game statistics. */
+  customMapId?: string | null;
   /**
    * Map-only scenario conditions from the designer (resources, army, buildings,
    * timed events, victory preset, notes). Applied when the map is picked and
@@ -15355,6 +15371,8 @@ export type CustomMapPreset = {
   timedEvents?: Array<{
     round: number;
     repeatEveryRounds?: number;
+    /** One-based starting position; absent applies to all players. */
+    targetStart?: number;
     effect:
       | {
           kind: "resources";
@@ -16203,6 +16221,8 @@ export type CustomMapTilePlan = {
   excludeFeatures?: SecretTileFeature[];
   /** Clockwise 60° steps (0-5, default 0). Honoured face-up and face-down. */
   rotation?: number;
+  /** Require the authored landmark filter; insufficient supply rejects setup instead of substituting. */
+  strictLandmarkFilter?: boolean;
   /**
    * Starting (Ⅰ) tiles only: FIX this seat's home-tile orientation. When set, the
    * faction tile is instantiated at the designed {@link rotation} (default 0) and
@@ -16216,6 +16236,10 @@ export type CustomMapTilePlan = {
    * opening-ceremony flow byte-identically.
    */
   lockRotation?: boolean;
+  /** Board ring direction (0 = NE through 5 = NW) for the faction's blocked field. */
+  blockedDirection?: number;
+  /** Swap draw specifications within this numbered set and matching tile band at setup. */
+  drawShuffleSet?: number;
   /**
    * Optional SOLO-ONLY deployment for this starting tile. A complete authored
    * deployment has exactly one `human` tile and one or more `computer` tiles;
@@ -16549,10 +16573,14 @@ export type CustomMapSettlementFieldPlan = {
  *   - `packFaction`: every Pack / random-pack / level-as-packs body shares one
  *     faction — a concrete {@link FactionId}, or `"random"` (roll once per fight).
  *     Neutral / `random:` slots ignore it. Absent = free mix (legacy).
+ *   - `difficulty`: optional independent Field Difficulty rating (1-7). It
+ *     controls field presentation, combat round rules and experience without
+ *     changing the selected defenders. Absent derives from the army/level.
  * Sanitisers keep exactly one arm (`units` wins) and clamp both.
  */
 export type CustomGuardSpec = {
   level?: number;
+  difficulty?: number;
   /** How a level arm mints bodies. Absent = `"neutral"` (legacy). */
   levelArmy?: "neutral" | "packs";
   units?: string[];
@@ -16881,6 +16909,8 @@ export type CombatSandboxSeatConfig = {
 export type CombatSandboxPlayMode = "binh" | "legacy" | "tournament";
 
 export type CombatSandboxSetupState = {
+  /** Optional ordered two-die Battlefield Conditions; absent means disabled. */
+  battlefieldConditions?: boolean;
   seats: Record<PlayerId, CombatSandboxSeatConfig>;
   /** Forced board art, or "random" (currently resolves to classic). */
   boardArtId: CombatBoardArtId | "random";
@@ -18694,7 +18724,7 @@ export type GameState = {
    * Battle Test rules that must survive Begin (morale cards etc.). Adventure
    * games keep these on `adventure`; the sandbox has no adventure object.
    */
-  sandboxRules?: { moraleCards?: boolean } | null;
+  sandboxRules?: { moraleCards?: boolean; battlefieldConditions?: boolean } | null;
   towns: Record<TownId, TownState>;
   heroes: Record<HeroId, HeroState>;
   combat: CombatState | null;

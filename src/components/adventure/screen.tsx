@@ -4,6 +4,7 @@ import { conquestProgress, currentSaplingsOffer, requiredRivalHeroDefeats, wande
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
+import { BattlefieldConditionsOptions } from "./battlefield-conditions-options";
 import { assetUrl, contentAddressedPath } from "@/lib/asset-url";
 import { playLibrarySound } from "@/lib/sound";
 import {
@@ -230,6 +231,7 @@ import {
   CommanderLevelUpOverlay,
 } from "@/components/commander-card";
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
+import { heroMapActionOffers } from "./hero-actions-dock";
 import {
   commanderDefinitions,
   commanderReviveCost,
@@ -5314,6 +5316,14 @@ export function TownHeroDock({
   const army = armyPlayer?.army ?? [];
   const lexicon = factionUiLexicon(armyPlayer?.factionId ?? player?.factionId);
 
+  // Hero MAP actions (Train, Heavenly Tribulation, Revisit, Build the Grail,
+  // Artifact-set powers) now live INSIDE the hero board rather than in a
+  // separate rail dock. When the engine is offering the seated viewer at least
+  // one, blink their own hero-board tile so they know to open the board and use
+  // it. Only the seated viewer's own tile blinks — a read-only observer /
+  // opponent board is passed no dispatcher, so `onAction` is undefined there.
+  const heroActionsAvailable = onAction ? heroMapActionOffers(legalActions).length > 0 : false;
+
   // WOG Commanders: the seated viewer's commander tile (module on = the state
   // exists). Everything on it is live: grades, level, death, owed grade-ups.
   const commander = armyPlayer?.commander;
@@ -5441,11 +5451,12 @@ export function TownHeroDock({
           return null;
         }
         const open = openHeroSeat === seatId;
+        const actionReady = seatId === viewerPlayerId && heroActionsAvailable && !open;
         return (
           <button
             aria-expanded={open}
-            aria-label={`Open ${heroDef.name}'s hero board`}
-            className={`dockTile heroDockTile ${open ? "open" : ""}`}
+            aria-label={`Open ${heroDef.name}'s hero board${actionReady ? " (hero action ready)" : ""}`}
+            className={`dockTile heroDockTile ${open ? "open" : ""}${actionReady ? " heroActionReady" : ""}`}
             key={seatId}
             onClick={() => setOpenHeroSeat(open ? null : seatId)}
             style={
@@ -5467,7 +5478,9 @@ export function TownHeroDock({
                 {heroSeats.length > 1 ? `${seat.name} · ` : ""}level{" "}
                 {seatHero?.level ?? 1}
               </small>
-              <small className="dockSubtle">Hero board</small>
+              <small className="dockSubtle">
+                {actionReady ? "Action ready ▸" : "Hero board"}
+              </small>
             </span>
             <span aria-hidden="true" className="dockOpenHint">
               {open ? "Close ▾" : "Open ▸"}
@@ -11892,6 +11905,7 @@ function MapPicker({
                       : {}),
                     customMap: null,
                     customMapName: null,
+                    customMapId: null,
                   })
                 }
                 title={scenario.description}
@@ -11928,7 +11942,9 @@ function MapPicker({
               );
               const selected =
                 designedMapInPlay(options) &&
-                options.customMapName === record.name &&
+                (options.customMapId
+                  ? options.customMapId === record.id
+                  : options.customMapName === record.name) &&
                 options.customMap?.length === record.tiles.length;
               const author = record.createdByName?.trim() || null;
               return (
@@ -11964,6 +11980,7 @@ function MapPicker({
                         : record.players,
                       customMap: record.tiles,
                       customMapName: record.name,
+                      customMapId: record.id,
                       customMapPreset: record.preset ?? null,
                     })
                   }
@@ -12000,7 +12017,7 @@ function MapPicker({
           </small>
           {(() => {
             const fixedSeats = options.customMap!.filter(
-              (plan) => plan.group === "starting" && plan.lockRotation,
+              (plan) => plan.group === "starting" && (plan.lockRotation || plan.blockedDirection !== undefined),
             ).length;
             return fixedSeats > 0 ? (
               <small className="optionHint">
@@ -15234,6 +15251,10 @@ function GameOptionsPanel({
             );
           })()}
 
+          <BattlefieldConditionsOptions
+            enabled={houseRules["battlefield-conditions"]}
+            onChange={(on) => setHouseRule("battlefield-conditions", on)}
+          />
           <HouseRulesSection
             creatureBanksEnabled={options.creatureBanks ?? true}
             houseRules={houseRules}

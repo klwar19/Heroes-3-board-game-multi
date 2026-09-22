@@ -275,6 +275,7 @@ export function sanitizeCustomGuardSpec(input: unknown, allowTownSlots = false):
     return undefined;
   }
   const raw = input as Record<string, unknown>;
+  const difficulty = clampInt(raw.difficulty, 1, 7, 0);
   if (allowTownSlots && Array.isArray(raw.townSlots)) {
     const slots: RandomTownGuardSlot[] = [];
     const used = new Set<number>();
@@ -302,7 +303,10 @@ export function sanitizeCustomGuardSpec(input: unknown, allowTownSlots = false):
       });
       used.add(rank);
     }
-    if (slots.length > 0) return { townSlots: slots.sort((a, b) => a.rank - b.rank) };
+    if (slots.length > 0) return {
+      townSlots: slots.sort((a, b) => a.rank - b.rank),
+      ...(difficulty ? { difficulty } : {})
+    };
   }
   let units = Array.isArray(raw.units)
     ? raw.units.filter(isCustomGuardUnit).slice(0,
@@ -332,6 +336,7 @@ export function sanitizeCustomGuardSpec(input: unknown, allowTownSlots = false):
     } else {
       return {
         units,
+        ...(difficulty ? { difficulty } : {}),
         ...(packFaction ? { packFaction } : {})
       };
     }
@@ -341,6 +346,7 @@ export function sanitizeCustomGuardSpec(input: unknown, allowTownSlots = false):
   const levelArmy = raw.levelArmy === "packs" ? ("packs" as const) : undefined;
   return {
     level,
+    ...(difficulty ? { difficulty } : {}),
     ...(levelArmy ? { levelArmy } : {}),
     ...(packFaction && levelArmy === "packs" ? { packFaction } : {})
   };
@@ -559,6 +565,20 @@ export type CustomMapStartingBonus = NonNullable<CustomMapPreset["startingBonuse
 export type CustomMapTimedEffect = NonNullable<CustomMapPreset["timedEvents"]>[number]["effect"];
 
 export type CustomMapTimedEvent = NonNullable<CustomMapPreset["timedEvents"]>[number];
+
+export function timedEffectTargetsPlayers(effect: CustomMapTimedEffect): boolean {
+  return !["note", "story", "clear_visitable_cubes", "clear_tile_cubes"].includes(effect.kind);
+}
+
+export function describeTimedEventEffect(event: CustomMapTimedEvent): string {
+  const description = describeTimedEffect(event.effect);
+  if (!event.targetStart || !timedEffectTargetsPlayers(event.effect)) return description;
+  if (description.startsWith("all heroes")) {
+    return description.replace("all heroes", `heroes of player at S${event.targetStart}`);
+  }
+  return description.replace(/all players|each player/g, `player at S${event.targetStart}`)
+    .replace(/\bgain\b/, "gains").replace(/\blose\b/, "loses").replace(/\broll\b/, "rolls");
+}
 
 const VICTORY_MODES = new Set<VictoryMode>([
   "conquest",
@@ -2712,6 +2732,11 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       const effect = sanitizeTimedEffect((entry as CustomMapTimedEvent).effect);
       if (round > 0 && effect) {
         const event: CustomMapTimedEvent = { round, effect };
+        const targetStart = (entry as CustomMapTimedEvent).targetStart;
+        if (timedEffectTargetsPlayers(effect) && typeof targetStart === "number" &&
+            Number.isInteger(targetStart) && targetStart >= 1 && targetStart <= 8) {
+          event.targetStart = targetStart;
+        }
         // Optional repeat schedule: an int in [2, 10] fires the event again
         // every N rounds. Anything below 2 (incl. a hand-edited 1) or a non-int
         // is DROPPED — the event stays a one-shot (byte-identical to legacy).
@@ -3109,15 +3134,16 @@ export function describeVictoryPointsConfig(
 
 /** Short label for a designer guard: a level Ⅰ–Ⅶ or a grouped exact army. */
 export function describeGuardSpec(guard: CustomGuardSpec): string {
+  const rating = guard.difficulty ? ` · field ${guard.difficulty}` : "";
   if (guard.townSlots?.length) {
-    return guard.townSlots.map((slot) => `${slot.unitDefId ? "Slot" : "Lv"} ${slot.rank} ${slot.side} ${slot.unitDefId ? coreUnitDefinitions[slot.unitDefId]?.name ?? slot.unitDefId : "town unit"}${slot.stacks ? ` +${slot.stacks} Stack` : ""}${slot.veteranRank ? ` · rank ${slot.veteranRank}` : ""}`).join(", ");
+    return guard.townSlots.map((slot) => `${slot.unitDefId ? "Slot" : "Lv"} ${slot.rank} ${slot.side} ${slot.unitDefId ? coreUnitDefinitions[slot.unitDefId]?.name ?? slot.unitDefId : "town unit"}${slot.stacks ? ` +${slot.stacks} Stack` : ""}${slot.veteranRank ? ` · rank ${slot.veteranRank}` : ""}`).join(", ") + rating;
   }
   if (guard.units && guard.units.length > 0) {
     const grouped = describeGuardArmyGrouped(guard.units);
     const base = grouped || `${guard.units.length}-unit army`;
-    if (guard.packFaction === "random") return `${base} · random faction packs`;
-    if (guard.packFaction) return `${base} · ${guard.packFaction} packs`;
-    return base;
+    if (guard.packFaction === "random") return `${base} · random faction packs${rating}`;
+    if (guard.packFaction) return `${base} · ${guard.packFaction} packs${rating}`;
+    return base + rating;
   }
   if (!guard.level) return "none";
   if (guard.levelArmy === "packs") {
@@ -3127,9 +3153,9 @@ export function describeGuardSpec(guard: CustomGuardSpec): string {
         : guard.packFaction
           ? ` · ${guard.packFaction}`
           : "";
-    return `level ${guard.level} packs${fac}`;
+    return `level ${guard.level} packs${fac}${rating}`;
   }
-  return `level ${guard.level}`;
+  return `level ${guard.level}${rating}`;
 }
 
 /** Plain-words description of the awards a "bonus" Obelisk grants. */
@@ -3455,7 +3481,7 @@ export function describeCustomMapPresetEntries(
     for (const event of preset.timedEvents) {
       entries.push({
         icon: "⏳",
-        text: `${describeTimedEventSchedule(event)}: ${describeTimedEffect(event.effect)}`
+        text: `${describeTimedEventSchedule(event)}: ${describeTimedEventEffect(event)}`
       });
     }
   }
@@ -3907,6 +3933,7 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
       seaBand?: CustomMapTilePlan["seaBand"];
       subBand?: CustomMapTilePlan["subBand"];
       count: number;
+      required: boolean;
     }
   >();
   for (const plan of plans) {
@@ -3925,9 +3952,11 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
       group: plan.group,
       seaBand: plan.seaBand,
       subBand: plan.subBand,
-      count: 0
+      count: 0,
+      required: false
     };
     current.count += 1;
+    current.required ||= Boolean(plan.strictLandmarkFilter || plan.drawShuffleSet);
     demand.set(key, current);
   }
   const warnings: string[] = [];
@@ -3952,11 +3981,11 @@ export function secretFeatureDemandWarnings(plans: CustomMapTilePlan[]): string[
         : "";
     if (supply === 0) {
       warnings.push(
-        `Filter “${includeLabel}”${excludeLabel} on ${entry.group}: no tiles in that pool match — in game the slot falls back to pure random.`
+        `Filter “${includeLabel}”${excludeLabel} on ${entry.group}: no tiles in that pool match — ${entry.required ? "required filters prevent game start" : "in game the slot falls back to pure random"}.`
       );
     } else if (entry.count > supply) {
       warnings.push(
-        `Filter “${includeLabel}”${excludeLabel} on ${entry.group}: ${entry.count} slots need it but only ${supply} matching tiles exist — extras fall back to random.`
+        `Filter “${includeLabel}”${excludeLabel} on ${entry.group}: ${entry.count} slots need it but only ${supply} matching tiles exist — ${entry.required ? "required filters may prevent game start" : "extras fall back to random"}.`
       );
     }
   }

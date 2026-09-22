@@ -93,28 +93,42 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   return null;
 }
 
-export function HeroActionsDock({
-  legalActions,
-  onAction
-}: {
-  legalActions: LegalAction[];
-  onAction: (action: GameAction) => void;
-}) {
-  const offers: { key: HeroMapActionKey; action: GameAction; legalLabel: string }[] = [];
+export type HeroMapActionOffer = { key: HeroMapActionKey; action: GameAction; legalLabel: string };
+
+/**
+ * The hero MAP actions the engine is offering the viewer right now, in
+ * legal-action order. READ over `getLegalActions` (never re-derived), so the
+ * result is non-empty IFF at least one hero map action is currently playable —
+ * the same gate that decides whether the on-board Hero-actions block renders and
+ * whether the hero-board tile blinks for attention.
+ */
+export function heroMapActionOffers(legalActions: LegalAction[]): HeroMapActionOffer[] {
+  const offers: HeroMapActionOffer[] = [];
   for (const legal of legalActions) {
     const key = heroMapActionKey(legal.action);
     if (key) {
       offers.push({ key, action: legal.action, legalLabel: legal.label });
     }
   }
+  return offers;
+}
 
-  if (offers.length === 0) {
-    return null;
-  }
-
+/**
+ * The bare hero-action buttons (no section chrome). Shared by the left-rail
+ * `HeroActionsDock` and the on-board Hero-actions block, so a Train / Heavenly
+ * Tribulation / Revisit / Build-the-Grail / set-power button looks and behaves
+ * identically wherever it is surfaced. Clicking dispatches the exact legal
+ * payload; the return value (async accept/reject) is ignored here.
+ */
+export function HeroActionButtons({
+  offers,
+  onAction
+}: {
+  offers: HeroMapActionOffer[];
+  onAction: (action: GameAction) => unknown;
+}) {
   return (
-    <section aria-label="Hero actions" className="heroActionsDock">
-      <header>Hero actions</header>
+    <>
       {offers.map((offer) => {
         const label = HERO_MAP_ACTION_LABELS[offer.key];
         const reactKey =
@@ -142,6 +156,25 @@ export function HeroActionsDock({
           </button>
         );
       })}
+    </>
+  );
+}
+
+export function HeroActionsDock({
+  legalActions,
+  onAction
+}: {
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const offers = heroMapActionOffers(legalActions);
+  if (offers.length === 0) {
+    return null;
+  }
+  return (
+    <section aria-label="Hero actions" className="heroActionsDock">
+      <header>Hero actions</header>
+      <HeroActionButtons offers={offers} onAction={onAction} />
     </section>
   );
 }

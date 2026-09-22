@@ -695,6 +695,8 @@ export type AdventureSetupOptions = {
   startingBuildings?: string[];
   /** Map designer: replaces the scenario's face-down Near/Center layout. */
   customMap?: CustomMapTilePlan[] | null;
+  /** Stable shared-library id for completed-game statistics. */
+  customMapId?: string | null;
   /** Map designer scenario conditions (resources, timed events, victory preset…). */
   customMapPreset?: CustomMapPreset | null;
   /** Content sets whose tiles fill the supply pools (default: every published set). */
@@ -909,6 +911,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     startingBuildings: [...scenario.startingBuildings],
     customMap: null,
     customMapName: null,
+    customMapId: null,
     customMapPreset: null
   };
 }
@@ -1726,8 +1729,24 @@ export function validateCustomMapPlan(
   // globally above, so nothing else about a stripped plan changes.)
   for (let index = 0; index < accepted.length; index += 1) {
     const plan = accepted[index];
+    const next = { ...plan };
+    if (plan.group !== "starting" || !Number.isInteger(plan.blockedDirection) ||
+        (plan.blockedDirection ?? -1) < 0 || (plan.blockedDirection ?? 6) > 5) {
+      delete next.blockedDirection;
+    }
+    if (plan.group === "starting" || !Number.isInteger(plan.drawShuffleSet) ||
+        (plan.drawShuffleSet ?? 0) < 1 || (plan.drawShuffleSet ?? 9) > 8) {
+      delete next.drawShuffleSet;
+    }
+    if (plan.group === "starting" || !plan.faceDown || plan.strictLandmarkFilter !== true ||
+        plan.tileDefId || plan.oneOfTileDefIds?.length ||
+        (planAllowedSecretFeatures(plan).length === 0 && planExcludedSecretFeatures(plan).length === 0)) {
+      delete next.strictLandmarkFilter;
+    }
+    // A later mine-choice redraw cannot override an explicitly required filter.
+    if (next.strictLandmarkFilter) delete next.playerResourcePick;
+    accepted[index] = next;
     if (plan.lockRotation && plan.group !== "starting") {
-      const next = { ...plan };
       delete next.lockRotation;
       accepted[index] = next;
     }
@@ -2557,6 +2576,13 @@ function countGuaranteedObelisks(plans: CustomMapTilePlan[] | undefined): number
   }
   let count = 0;
   for (const plan of plans) {
+    const requiredFeatures = planAllowedSecretFeatures(plan);
+    if ((plan.strictLandmarkFilter || plan.drawShuffleSet) && !plan.tileDefId &&
+        !plan.oneOfTileDefIds?.length && requiredFeatures.length === 1 &&
+        requiredFeatures[0] === "obelisk" && !planExcludedSecretFeatures(plan).includes("obelisk")) {
+      count += 1;
+      continue;
+    }
     if (plan.secretFeature === "obelisk") {
       count += 1;
       continue;
@@ -3007,6 +3033,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.farTileBlindChoice !== undefined ? { farTileBlindChoice: options.farTileBlindChoice } : {}),
     ...(options.farTileTypeChoice !== undefined ? { farTileTypeChoice: options.farTileTypeChoice } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
+    ...(options.customMapId !== undefined ? { customMapId: options.customMapId } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
   // Map preset APPLY-ONCE semantics: the preset seeds these fields when the
@@ -3412,6 +3439,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const adventure: AdventureState = {
     difficulty,
     scenarioId: scenario.id,
+    ...(setupOptions.customMap && setupOptions.customMapId ? { customMapId: setupOptions.customMapId } : {}),
     ...(mapPreset ? { mapPreset } : {}),
     tiles: {},
     fields: {},
@@ -3873,8 +3901,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // ONLY when it is locked — an unlocked starting plan (or a legacy map that
     // happened to store a rotation) keeps the classic rotation-0 + opening-ceremony
     // flow byte-identically.
-    const orientationLocked = startPlan?.lockRotation === true;
-    const startRotation = orientationLocked ? (((startPlan!.rotation ?? 0) % 6) + 6) % 6 : 0;
+    const blockedSlot = allTileDefinitions[startTileId]?.fields.findIndex(field => field.location === "blocked_field") ?? -1;
+    const blockedDirection = startPlan?.blockedDirection;
+    const orientationLocked = blockedDirection !== undefined || startPlan?.lockRotation === true;
+    const startRotation = blockedDirection !== undefined && blockedSlot > 0
+      ? (blockedDirection - (blockedSlot - 1) + 6) % 6
+      : orientationLocked ? (((startPlan!.rotation ?? 0) % 6) + 6) % 6 : 0;
     const tile = instantiateTile(adventure, startTileId, center, startRotation, false);
     // A designer may draw yellow borders on a starting Town tile too.
     if (startPlan) {
@@ -3972,6 +4004,33 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 
   if (customMap) {
     // Map designer: hand-placed tiles instead of the scenario layout.
+    // Shuffle only draw filters, keeping geometry, borders, objects and rewards
+    // on their authored positions. Exact pins and player-choice draws opt out.
+    const shuffleSets = new Map<string, number[]>();
+    customMap.forEach((plan, index) => {
+      if (!plan.drawShuffleSet || plan.group === "starting" || !plan.faceDown ||
+          plan.tileDefId || plan.oneOfTileDefIds?.length || plan.playerResourcePick ||
+          plan.playerViiPick || plan.viiField || plan.viiFields?.length ||
+          (planAllowedSecretFeatures(plan).length === 0 && planExcludedSecretFeatures(plan).length === 0)) return;
+      const key = `${plan.drawShuffleSet}:${plan.group}:${plan.seaBand ?? ""}:${plan.subBand ?? ""}:${plan.underground === true}:${plan.revealAtSetup === true}`;
+      const members = shuffleSets.get(key) ?? [];
+      members.push(index);
+      shuffleSets.set(key, members);
+    });
+    const shuffledDrawPlans = new Set<CustomMapTilePlan>();
+    for (const [key, members] of shuffleSets) {
+      if (members.length < 2) continue;
+      const sources = shuffleCards(members.map(String), `${seed}#draw-shuffle#${key}`)
+        .map(index => customMap[Number(index)]);
+      members.forEach((index, offset) => {
+        const source = sources[offset];
+        const plan = { ...customMap[index], secretFeature: source.secretFeature,
+          secretFeatures: source.secretFeatures, excludeFeatures: source.excludeFeatures,
+          strictLandmarkFilter: source.strictLandmarkFilter };
+        customMap[index] = plan;
+        shuffledDrawPlans.add(plan);
+      });
+    }
     // Face-up plans place their chosen tile revealed; face-down plans either
     // pin an exact `tileDefId`, filter by `secretFeature` (random matching
     // landmark from the pool), or draw fully at random ("down means random").
@@ -4141,7 +4200,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // a specific Center tile or named a secretFeature keeps that choice.
     const unpinnedFaceDownCenterSlots = customMap.filter(
       (plan) =>
-        plan.faceDown && plan.group === "center" && !effectiveExactTileDefId(plan) && !plan.secretFeature
+        plan.faceDown && plan.group === "center" && !effectiveExactTileDefId(plan) && !plan.secretFeature &&
+        !shuffledDrawPlans.has(plan) && !plan.strictLandmarkFilter
     ).length;
     const authoredObjectives: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 };
     for (const plan of customMap) {
@@ -4210,6 +4270,45 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const plannedTokens: { plan: (typeof customMap)[number]; tile: MapTileState }[] = [];
     const plannedFieldOverrides: { plan: (typeof customMap)[number]; tile: MapTileState }[] = [];
 
+    // Reserve the shuffled sets before unrestricted draws consume their tiles.
+    // Match all slots together so overlapping filters cannot starve one another.
+    const shuffledPicks = new Map<CustomMapTilePlan, string>();
+    const candidateTiles = new Map<CustomMapTilePlan, string[]>();
+    const requiredDrawPlans = customMap.filter(plan => shuffledDrawPlans.has(plan) ||
+      (plan.strictLandmarkFilter && plan.faceDown && plan.group !== "starting" &&
+        !effectiveExactTileDefId(plan) && !plan.oneOfTileDefIds?.length &&
+        (planAllowedSecretFeatures(plan).length > 0 || planExcludedSecretFeatures(plan).length > 0)));
+    for (const plan of requiredDrawPlans) {
+      candidateTiles.set(plan, (pools[plan.group] ?? []).filter(id => {
+        const copy = [id];
+        return Boolean(popTileMatchingFilters(copy, planAllowedSecretFeatures(plan), planExcludedSecretFeatures(plan),
+          { group: plan.group, seaBand: plan.seaBand, subBand: plan.subBand }));
+      }));
+    }
+    const tileOwners = new Map<string, CustomMapTilePlan>();
+    const assignDraw = (plan: CustomMapTilePlan, visited: Set<string>): boolean => {
+      for (const id of candidateTiles.get(plan) ?? []) {
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const owner = tileOwners.get(id);
+        if (!owner || assignDraw(owner, visited)) {
+          tileOwners.set(id, plan);
+          shuffledPicks.set(plan, id);
+          return true;
+        }
+      }
+      return false;
+    };
+    for (const plan of requiredDrawPlans) {
+      if (!assignDraw(plan, new Set())) {
+        throw new Error(`Map landmark filters need more matching ${plan.group} tiles than remain. Adjust the filters or enabled tile sets.`);
+      }
+    }
+    for (const [plan, id] of shuffledPicks) {
+      const pool = pools[plan.group];
+      pool.splice(pool.indexOf(id), 1);
+    }
+
     for (const plan of customMap) {
       if (plan.group === "starting") {
         continue;
@@ -4224,7 +4323,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         let tileDefId: string | undefined;
         // Exact pin (or a resolved "one of" pick) wins over include/exclude.
         const pinnedId = effectiveExactTileDefId(plan);
-        if (pinnedId && allTileDefinitions[pinnedId]) {
+        if (shuffledPicks.has(plan)) {
+          tileDefId = shuffledPicks.get(plan);
+        } else if (pinnedId && allTileDefinitions[pinnedId]) {
           tileDefId = pinnedId;
         } else if (allowedFeatures.length > 0 || excludedFeatures.length > 0) {
           // Include and/or exclude: pop the first pool tile that matches the
@@ -4305,7 +4406,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // leaving the drawn tile identity hidden. A failed landmark-filter
           // fallback must not advertise a guarantee the placed tile cannot keep.
           const fulfilledFeatureHints =
-            allowedFeatures.length > 0 &&
+            !shuffledDrawPlans.has(plan) && allowedFeatures.length > 0 &&
             tileMatchesAnySecretFeature(allTileDefinitions[tileDefId], allowedFeatures)
               ? allowedFeatures
               : [];
@@ -4318,7 +4419,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             tile.faceDownHints = [...new Set(faceDownHints)];
           }
           applyDesignedSettlement(adventure, tile, plan);
-          if (excludedFeatures.length > 0) {
+          // Shuffled filters must not reveal which hidden position received a
+          // no-obelisk draw. These slots cannot request resource reassignment.
+          if (excludedFeatures.length > 0 && !shuffledDrawPlans.has(plan)) {
             tile.excludeFeatures = [...excludedFeatures];
           }
           if (planTokens(plan).length > 0) {
@@ -5795,6 +5898,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       const previousPreset = lobby.options.customMapPreset ?? null;
       lobby.options.customMap = null;
       lobby.options.customMapName = null;
+      lobby.options.customMapId = null;
       lobby.options.customMapPreset = null;
       changes.push("map back to the scenario layout");
       // The dropped map's conditions must not leak into the scenario game.
@@ -5916,6 +6020,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     delete lobby.options.startingTileAssignments;
     const mapName =
       typeof next.customMapName === "string" ? next.customMapName.trim().slice(0, 48) : null;
+    const mapId = typeof next.customMapId === "string" ? next.customMapId.trim().slice(0, 120) : null;
     // Conditions the OUTGOING map forced are restored to scenario defaults
     // when the map (or its preset) goes away — one map's resources/army/victory
     // must never leak into the next game.
@@ -5923,6 +6028,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.customMap === null) {
       lobby.options.customMap = null;
       lobby.options.customMapName = null;
+      lobby.options.customMapId = null;
       lobby.options.customMapPreset = null;
       if (state.sessionMode === "single-player") {
         const scenario = getScenario(lobby.options.scenarioId);
@@ -5950,6 +6056,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       }
       lobby.options.customMap = accepted;
       lobby.options.customMapName = mapName;
+      lobby.options.customMapId = mapId;
       if (state.sessionMode === "single-player") {
         const deployment = singlePlayerMapDeployment(
           accepted,
@@ -7232,6 +7339,7 @@ function buildAdventureFromLobby(state: GameState): void {
     startingUnits: lobby.options.startingUnits ?? null,
     startingBuildings: lobby.options.startingBuildings,
     customMap: lobby.options.customMap ?? null,
+    customMapId: lobby.options.customMapId ?? null,
     customMapPreset: lobby.options.customMapPreset ?? null,
     players: lobby.seats.map((seat) => ({
       id: seat.playerId,

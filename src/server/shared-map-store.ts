@@ -82,6 +82,18 @@ export function listSharedMaps(): SharedMapRecord[] {
   return getRegistry().list();
 }
 
+/** Authoritative completion counter used only by the game-over reporter. */
+export function recordSharedMapFinishedGame(
+  id: string,
+  matchId: string,
+  finishedAt: number = Date.now()
+): SharedMapRecord | null {
+  const registry = getRegistry();
+  const record = registry.recordFinishedGame(id, matchId, finishedAt);
+  if (record) persist(registry);
+  return record;
+}
+
 export type SaveSharedMapResult =
   | { ok: true; map: SharedMapRecord; maps: SharedMapRecord[] }
   | { ok: false; error: string; forbidden?: boolean };

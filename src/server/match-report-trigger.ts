@@ -12,9 +12,10 @@ import {
   getAccountStore,
   persistAccounts
 } from "@/server/accounts/account-store-instance";
-import { detectFinishedMatch, type FinishedMatch } from "./match-report";
+import { detectFinishedDesignedMap, detectFinishedMatch, type FinishedMatch } from "./match-report";
 import { storeRankedReplay } from "./ranked-replay-store";
 import type { RankedReplay } from "./ranked-replay";
+import { recordSharedMapFinishedGame } from "./shared-map-store";
 
 /**
  * Detect + record, called by the room store after every successfully applied
@@ -28,11 +29,17 @@ export function reportFinishedMatch(
   replay?: RankedReplay | null,
 ): Promise<void> | null {
   const match = detectFinishedMatch(prev, next);
-  if (!match) {
+  const mapFinish = detectFinishedDesignedMap(prev, next);
+  if (!match && !mapFinish) {
     return null;
   }
-  return recordMatch(match, replay).catch((error) => {
-    console.error(`[match-report] failed to record match ${match.matchId}:`, error);
+  return Promise.all([
+    match ? recordMatch(match, replay) : Promise.resolve(),
+    mapFinish
+      ? Promise.resolve(recordSharedMapFinishedGame(mapFinish.mapId, mapFinish.matchId)).then(() => undefined)
+      : Promise.resolve()
+  ]).then(() => undefined).catch((error) => {
+    console.error(`[match-report] failed to record match ${next.seed}:`, error);
   });
 }
 

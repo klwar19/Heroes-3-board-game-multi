@@ -438,11 +438,15 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
   if (!guard) {
     return;
   }
+  // Remember an authored rating so survivor re-stamps can restore it; a spec
+  // without one clears it (derived ratings keep re-deriving, as before).
+  if (guard.difficulty) field.customGuardDifficulty = guard.difficulty;
+  else delete field.customGuardDifficulty;
   if (field.location === "random_town" && guard.townSlots?.length) {
     field.customTownGuardSlots = guard.townSlots.map((slot) => ({ ...slot }));
     // Random Town keeps its printed VII encounter and reward rules even when
     // the roster is hand-picked; the chosen cards only replace the defenders.
-    field.difficulty = 7;
+    field.difficulty = guard.difficulty ?? 7;
     field.designedGuard = true;
     delete field.customGuardUnits;
     delete field.customGuardPackFaction;
@@ -451,7 +455,7 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
   } else if (guard.units && guard.units.length > 0) {
     delete field.customTownGuardSlots;
     field.customGuardUnits = [...guard.units];
-    field.difficulty = customGuardArmyDifficulty(guard.units);
+    field.difficulty = guard.difficulty ?? customGuardArmyDifficulty(guard.units);
     field.designedGuard = true;
     if (guard.packFaction) {
       field.customGuardPackFaction = guard.packFaction;
@@ -462,7 +466,7 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
     delete field.customGuardLevelArmy;
   } else if (guard.level) {
     delete field.customTownGuardSlots;
-    field.difficulty = guard.level;
+    field.difficulty = guard.difficulty ?? guard.level;
     field.designedGuard = true;
     // Keep level on the field so bank-style fights (difficulty forced to 0)
     // still draw the designed composition, and so packs can re-mint from the table.
@@ -20886,11 +20890,19 @@ export function applyCustomMapTimedEvents(
       state.players[playerId] &&
       !state.players[playerId]?.eliminated
   );
-  const livePlayers = new Set(players);
   const queueLengthBefore = adventure.rewardQueue.length;
 
   for (const event of due) {
     const effect = event.effect;
+    const targetId = event.targetStart === undefined
+      ? undefined : adventure.startingTileSeats?.[event.targetStart - 1];
+    const recipients = event.targetStart === undefined ? players : players.filter(id => id === targetId);
+    const livePlayers = new Set(recipients);
+    const playerLabel = event.targetStart === undefined ? "every player" : `player at S${event.targetStart}`;
+    const heroLabel = event.targetStart === undefined ? "every hero" : `each hero of player at S${event.targetStart}`;
+    // An empty or eliminated position never redirects rewards to another player.
+    if (event.targetStart !== undefined && recipients.length === 0 &&
+        !["note", "story", "clear_visitable_cubes", "clear_tile_cubes"].includes(effect.kind)) continue;
     if (effect.kind === "note") {
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
@@ -20919,7 +20931,7 @@ export function applyCustomMapTimedEvents(
       // Negative amounts mean every player LOSES that much; the treasury is
       // floored at 0 (a player can never go negative, even short of the loss).
       const anyLoss = gold < 0 || buildingMaterials < 0 || valuables < 0;
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         if (!anyLoss) {
           // Pure gain — byte-identical to the legacy give-only path.
           gainResources(state, playerId, { gold, buildingMaterials, valuables }, `map event round ${round}`);
@@ -20990,12 +21002,12 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player ${clauses.join(" and ") || "gains nothing"}.`
+        message: `Map event (round ${round}): ${playerLabel} ${clauses.join(" and ") || "gains nothing"}.`
       });
       continue;
     }
     if (effect.kind === "experience") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         // Ride the NORMAL experience pipeline (level-ups, hand-limit / expert-use
         // bumps, Ability searches, specialty cards, commander points, Learning).
         gainExperience(state, playerId, effect.amount);
@@ -21003,12 +21015,12 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every hero gains ${effect.amount} experience.`
+        message: `Map event (round ${round}): ${heroLabel} gains ${effect.amount} experience.`
       });
       continue;
     }
     if (effect.kind === "search") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         adventure.rewardQueue.push({
           playerId,
           kind: "visit-steps",
@@ -21024,7 +21036,7 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player may Search(${effect.count}) the ${effect.deck} deck.`
+        message: `Map event (round ${round}): ${playerLabel} may Search(${effect.count}) the ${effect.deck} deck.`
       });
       continue;
     }
@@ -21102,13 +21114,13 @@ export function applyCustomMapTimedEvents(
       continue;
     }
     if (effect.kind === "morale") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         changeMorale(state, playerId, effect.amount);
       }
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player ${
+        message: `Map event (round ${round}): ${playerLabel} ${
           effect.amount > 0 ? "gains +1" : "loses 1"
         } morale.`
       });
@@ -21126,14 +21138,14 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every hero gains +${effect.amount} movement (${heroesBuffed} hero${
+        message: `Map event (round ${round}): ${heroLabel} gains +${effect.amount} movement (${heroesBuffed} hero${
           heroesBuffed === 1 ? "" : "es"
         }).`
       });
       continue;
     }
     if (effect.kind === "treasure_roll") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         adventure.rewardQueue.push({
           playerId,
           kind: "visit-steps",
@@ -21143,14 +21155,14 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player rolls ${
+        message: `Map event (round ${round}): ${playerLabel} rolls ${
           effect.count === 1 ? "a Treasure die" : `${effect.count} Treasure dice`
         }.`
       });
       continue;
     }
     if (effect.kind === "resource_roll") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         adventure.rewardQueue.push({
           playerId,
           kind: "visit-steps",
@@ -21160,14 +21172,14 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player rolls ${
+        message: `Map event (round ${round}): ${playerLabel} rolls ${
           effect.count === 1 ? "a Resource die" : `${effect.count} Resource dice`
         }.`
       });
       continue;
     }
     if (effect.kind === "market_trade") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         adventure.rewardQueue.push({
           playerId,
           kind: "visit-steps",
@@ -21177,12 +21189,12 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player may trade resources at Market rates.`
+        message: `Map event (round ${round}): ${playerLabel} may trade resources at Market rates.`
       });
       continue;
     }
     if (effect.kind === "choice") {
-      for (const playerId of players) {
+      for (const playerId of recipients) {
         adventure.rewardQueue.push({
           playerId,
           kind: "visit-steps",
@@ -21201,7 +21213,7 @@ export function applyCustomMapTimedEvents(
       appendEvent(state, {
         type: "MAP_PRESET_TRIGGERED",
         round,
-        message: `Map event (round ${round}): every player chooses one reward.`
+        message: `Map event (round ${round}): ${playerLabel} chooses one reward.`
       });
     }
   }
