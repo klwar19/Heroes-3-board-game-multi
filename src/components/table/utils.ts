@@ -389,7 +389,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         force_field: "Force Field",
         fire_wall: "Fire Wall",
         quicksand: "Quicksand",
-        land_mine: "Land Mine"
+        land_mine: "Land Mine",
+        factory_trap: "Mechanical Trap"
       };
       return `${playerName(state, event.playerId)} places ${names[event.kind]} at ${getBattlefieldLabel(event.position)}.`;
     }
@@ -402,12 +403,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
           ? "Fire Wall"
           : event.kind === "land_mine"
             ? "Land Mine"
+            : event.kind === "factory_trap"
+              ? "Mechanical Trap"
             : "Quicksand";
         return `${unitName(state, event.unitId)} is immune to ${name} at ${getBattlefieldLabel(event.position)}.`;
       }
       return event.outcome === "stop"
         ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends, and the trap is spent.`
-        : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
+        : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : event.kind === "factory_trap" ? "a Mechanical Trap" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
     case "BATTLEFIELD_TOKEN_EXPIRED":
       return `The ${event.kind === "force_field" ? "Force Field" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
     case "COMBAT_OBSTACLE_REMOVED":

@@ -355,6 +355,8 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
 }
 
 function explicitRankOne(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.halflings") return S({ ...Z, health: 2 });
+  if (unitDefId === "factory.automatons") return H({ ...Z, initiative: 3 }, "factory-automaton-reroll");
   if (unitDefId === "neutral.boars") return H({ ...Z, health: 1 }, "veteran-boar-regeneration");
   if (unitDefId === "rampart.centaurs") return H({ ...Z, health: 1 }, "veteran-centaur-retaliation");
   if (unitDefId === "wog.fire_messenger") return A("veteran-ranged-fire-shield");
@@ -426,6 +428,9 @@ function rankOneStepFor(unitDefId: string): RankStep {
 }
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.mechanics") return A("factory-engineer-attack-support");
+  if (unitDefId === "factory.armadillos") return A("reduce-spell-and-specialty-damage-1");
+  if (unitDefId === "factory.sandworms") return A("factory-sandworm-burrow");
   if (unitDefId === "neutral.boars") return A("veteran-boar-armor-break");
   if (unitDefId === "neutral.nomads") return A("veteran-nomad-hardcap");
   if (unitDefId === "neutral.mummies") return H({ ...Z, health: 1 }, "veteran-mummy-attack-heal");
@@ -494,9 +499,11 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 }
 
 function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.armadillos") return A("factory-armadillo-momentum");
+  if (unitDefId === "factory.automatons") return A("factory-automaton-round-blast");
   if (unitDefId === "factory.gunslingers") return H({ ...Z, health: 1 }, "factory-bounty-hunter-cover");
   if (unitDefId === "factory.couatls") return H({ ...Z, initiative: 5 }, "factory-couatl-momentum");
-  if (unitDefId === "factory.dreadnoughts") return H({ ...Z, attack: 1 }, "factory-dreadnought-speed-hunter");
+  if (unitDefId === "factory.dreadnoughts") return A("factory-dreadnought-speed-hunter");
   if (unitDefId === "neutral.boars") return H({ ...Z, defense: 1 }, "veteran-boar-brace");
   if (unitDefId === "wog.dracolich") return H({ ...Z, health: 1 }, "veteran-dracolich-death-heal");
   if (unitDefId === "tower.gargoyles") return H({ ...Z, health: 2 }, "veteran-earth-defense-token");
@@ -590,6 +597,8 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.halflings") return A("factory-grenadier-high-roll");
+  if (unitDefId === "factory.automatons") return A("factory-automaton-detonation-repair");
   if (unitDefId === "factory.dreadnoughts") return A("factory-dreadnought-guarded");
   if (unitDefId === "rampart.elves") {
     return A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES.ranged).map(

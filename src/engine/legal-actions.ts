@@ -1,3 +1,4 @@
+import { unitMatchesSpecialtyName as matchesUnitName } from "./specialty-unit-name";
 import { denseFogThisRound } from "./battlefield-condition-fog";
 import { townBound } from "./town-veterancy";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
@@ -129,6 +130,7 @@ import {
   activeSpellPowerBonus,
   ignoresAllRangedCombatPenalties,
   effectiveInitiative,
+  hasPositiveInitiativeEffect,
   getSchoolPowerBonus,
   getSchoolPowerMultiplier,
   getSpellCastRestriction,
@@ -203,6 +205,7 @@ import {
   polishBallistaOfferOpen,
   countBallistas,
   activeWarMachineCardId,
+  factoryWarMachineSwitchCost,
   firstAidVolleyHeals,
   getPermanentCardIds,
   isWarMachineCard,
@@ -1507,6 +1510,8 @@ export function getUnitMoveRange(
     : Math.max(0, Math.min(moveCap, range + (rooted ? Math.min(0, battlefieldMoveShift) : battlefieldMoveShift)));
   const baseRange = unit.type === "ranged" ? 1 : 3;
   const base = baseRange + (rooted ? Math.min(0, getUnitAbilityMoveRangeBonus(unit)) : getUnitAbilityMoveRangeBonus(unit));
+  const armadilloMomentum = !rooted && state && hasPositiveInitiativeEffect(state, unit) &&
+    getUnitAbilityDefinitions(unit).some((ability) => ability.id === "factory-armadillo-momentum") ? 1 : 0;
   const artifactMoveBonus = unit.commanderSlug && state
     ? commanderArtifactBonusesForUnit(state, unit).moveRangeBonus : 0;
   const artifactMovePenalty = state?.activeEffects.reduce((total, effect) => {
@@ -1569,7 +1574,7 @@ export function getUnitMoveRange(
   );
   if (!state || (!classicRider && !balancePrinted && !communityPrinted)) {
     const unrestrictedRange = Math.min(
-      Math.max(1, base + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
+      Math.max(1, base + armadilloMomentum + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
       moveCap,
     );
     return conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty));
@@ -1602,7 +1607,7 @@ export function getUnitMoveRange(
   }
   const unrestrictedRange = Math.min(
     moveCap,
-    Math.max(1, base + bonus + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
+    Math.max(1, base + armadilloMomentum + bonus + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
   );
   return conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty));
 }
@@ -2375,43 +2380,6 @@ type UnitTargetDefinition = Exclude<
   | { type: "any-space" }
   | { type: "unit-or-obstacle" }
 >;
-
-/**
- * Mirrors the reducer's `unitMatchesSpecialtyName` (kept local to avoid a
- * legal-actions -> reducer import cycle): exact name, "X and/or Y" descriptors,
- * and "a … unit" family suffixes all match.
- */
-function matchesUnitName(
-  unitName: string | undefined,
-  target: string,
-): boolean {
-  if (!unitName) {
-    return false;
-  }
-  if (/\s+(?:and|or)\s+/i.test(target)) {
-    return target
-      .split(/\s+(?:and|or)\s+/i)
-      .some((part) => matchesUnitName(unitName, part.trim()));
-  }
-  if (unitName === target) {
-    return true;
-  }
-  if (target.toLowerCase() === "slime girl") {
-    return /slime|slimy/i.test(unitName) || unitName === "Ooma";
-  }
-  if (target.toLowerCase() === "dragon girl") {
-    return unitName === "Giga" || unitName.toLowerCase().endsWith("dragons");
-  }
-  const family = target
-    .replace(/^an?\s+/i, "")
-    .replace(/\s+units?$/i, "")
-    .trim();
-  return (
-    family.length > 0 &&
-    family !== target &&
-    unitName.toLowerCase().endsWith(family.toLowerCase())
-  );
-}
 
 function unitMatchesTarget(
   unit: CombatUnitState,
@@ -9067,16 +9035,17 @@ function addWarMachineSwitchActions(actions: LegalAction[], state: GameState, pl
   if (
     !combat || combat.outcome || combat.setup || combat.awaitingContinue || combat.warMachineRound ||
     state.pendingChoice || state.reactionWindow || commander?.dead || commander?.slug !== "factory" ||
-    combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId) ||
     !combat.activeUnitId || combat.units[combat.activeUnitId]?.controllerId !== playerId
   ) return;
   const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
   if (machines.length < 2) return;
+  const cost = factoryWarMachineSwitchCost(state, playerId);
+  if ((state.players[playerId]?.resources.gold ?? 0) < cost) return;
   const active = activeWarMachineCardId(state, playerId);
   for (const cardId of machines) {
     if (cardId === active) continue;
     actions.push({
-      label: `Switch active war machine to ${cardLibrary[cardId]?.name ?? cardId}`,
+      label: `Switch active war machine to ${cardLibrary[cardId]?.name ?? cardId}${cost ? " — pay 1 gold" : " — free"}`,
       action: { type: "SWITCH_ACTIVE_WAR_MACHINE", playerId, cardId }
     });
   }

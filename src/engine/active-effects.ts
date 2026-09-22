@@ -691,7 +691,7 @@ export function unitImmuneToSpellSchoolsByEffect(
 }
 
 export function getActiveAttackBonus(state: GameState, context: AttackContext): number {
-  return state.activeEffects.reduce((total, effect) => {
+  const activeBonus = state.activeEffects.reduce((total, effect) => {
     if (!effectAppliesToUnit(effect, context.attacker)) {
       return total;
     }
@@ -716,6 +716,23 @@ export function getActiveAttackBonus(state: GameState, context: AttackContext): 
       }, 0)
     );
   }, 0);
+  const armadilloMomentum = hasPositiveInitiativeEffect(state, context.attacker) &&
+    getUnitAbilityDefinitions(context.attacker).some((ability) => ability.id === "factory-armadillo-momentum") ? 1 : 0;
+  return activeBonus + armadilloMomentum;
+}
+
+/** True only for a net-positive Initiative increase supplied by ongoing effects. */
+export function hasPositiveInitiativeEffect(state: GameState, unit: CombatUnitState): boolean {
+  const bonus = state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) return total;
+    return total + effect.modifiers.reduce((sum, modifier) => {
+      if (modifier.type === "INITIATIVE_BONUS") return sum + modifier.amount;
+      if (modifier.type === "RANGED_INITIATIVE_BONUS" && unit.type === "ranged") return sum + modifier.amount;
+      if (modifier.type === "GROUND_INITIATIVE_BONUS" && unit.type === "ground") return sum + modifier.amount;
+      return sum;
+    }, 0);
+  }, 0);
+  return bonus > 0;
 }
 
 export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): number {

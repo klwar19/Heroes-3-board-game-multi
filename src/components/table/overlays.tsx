@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
-import { combatEnemySpellSunderUnit } from "@/engine/legal-actions";
+import { combatEnemySpellSunderUnit, getPendingStackItem } from "@/engine/legal-actions";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
   AFK_AUTO_KICK_MS,
@@ -71,6 +71,7 @@ import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
 import { balanceCardForDisplay } from "@/engine/community-balance-cards";
 import { getEffectiveCardEffectForState } from "@/engine/effects";
+import { specialtyCombatStatMultiplier } from "@/engine/specialty-unit-name";
 import { AstrologersCombatNotice } from "./astrologers-combat-notice";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
@@ -165,6 +166,16 @@ function selectionPreview(
     }
 
     if (effect.type === "ADD_COMBAT_STAT") {
+      const trigger = state.reactionWindow?.triggerEvent;
+      const pending = trigger ? getPendingStackItem(state, trigger)?.action : undefined;
+      if (pending?.type === "ATTACK_UNIT" || pending?.type === "MOVE_AND_ATTACK_UNIT") {
+        amount *= specialtyCombatStatMultiplier(
+          state,
+          effect,
+          state.combat?.units[pending.attackerId],
+          state.combat?.units[pending.defenderId],
+        );
+      }
       const key = effect.stat === "attack" ? "Attack" : "Defense";
       totals.set(key, (totals.get(key) ?? 0) + amount);
     } else if (effect.type === "ADD_SPELL_POWER") {

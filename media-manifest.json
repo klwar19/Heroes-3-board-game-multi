@@ -2,7 +2,7 @@
   "version": 1,
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["assets","sounds"],
-  "count": 5863,
+  "count": 5864,
   "files": {
     "assets/abilities-air_magic-empowered.webp": { "md5": "f47398ae1322d34b22b6a213fe7f8549", "bytes": 135374, "width": 743, "height": 1040 },
     "assets/abilities-air_magic.webp": { "md5": "7f73e9cfeed567196c9b66122c3ad83a", "bytes": 137732, "width": 743, "height": 1040 },
@@ -1230,6 +1230,7 @@
     "assets/events-withered_hermit.webp": { "md5": "69df2a3e998e3185e9596ed87ad989eb", "bytes": 223472, "width": 1040, "height": 743 },
     "assets/factory-icons/agar.webp": { "md5": "45dedb86ce20dcd41b36cbca4cb47aa5", "bytes": 64718, "width": 512, "height": 512 },
     "assets/factory-icons/celestine.webp": { "md5": "dfca8db462d9568046381175d8eca1c6", "bytes": 77040, "width": 512, "height": 512 },
+    "assets/factory-icons/commander-trap.webp": { "md5": "145f855001b6df3453ead89d1016fe84", "bytes": 16274, "width": 192, "height": 192 },
     "assets/factory-icons/frederick.webp": { "md5": "21fdd0ca65973eb52bf016667f989f2b", "bytes": 76060, "width": 512, "height": 512 },
     "assets/factory-icons/henrietta.webp": { "md5": "d4ba59d6f6c70df013b5a31395314bab", "bytes": 74270, "width": 512, "height": 512 },
     "assets/factory-icons/sam.webp": { "md5": "603af62e6c8cac6361e19701e66a8fde", "bytes": 77572, "width": 512, "height": 512 },

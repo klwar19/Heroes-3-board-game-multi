@@ -1056,7 +1056,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "tinkerer",
       name: "Tinkerer",
-      text: "War machines cost you 4 less gold (to a minimum of 0). You may keep up to 2 war machines as permanents: 1 active and 1 in reserve. During your own combat turn, you may switch the active machine once per Combat. Other permanents still use the normal permanent limit, including Pandora's Box expansions."
+      text: "War machines cost you 5 less gold (to a minimum of 0). At the start of battle, place 1/2/3 Mechanical Traps at Power 0/1/2; each is spent when a unit steps on it and deals 2 damage. You may keep up to 2 war machines as permanents: 1 active and 1 in reserve. During your own combat turn, switch them any number of times: the first switch each Combat is free, then each switch costs 1 gold. Without gold, you cannot switch again. Other permanents still use the normal permanent limit, including Pandora's Box expansions."
     },
     cardImage: "/assets/units-commander-factory.webp"
   },

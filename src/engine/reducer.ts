@@ -1,3 +1,4 @@
+import { specialtyCombatStatMultiplier, unitMatchesSpecialtyName } from "./specialty-unit-name";
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
 import { denseFogThisRound } from "./battlefield-condition-fog";
 import { repairOrphanedChoicePhase } from "./choice-phase";
@@ -2782,44 +2783,7 @@ function attackInstantSignedAmount(
  * every unit whose name ends in "Dragons" (Black/Gold/Ghost/Azure/Crystal/
  * Faerie/Rust Dragons) but not Dragon Flies.
  */
-export function unitMatchesSpecialtyName(
-  unitName: string | undefined,
-  target: string | undefined,
-): boolean {
-  if (!unitName || !target) {
-    return false;
-  }
-  // Multi-unit descriptors ("Elves and Sharpshooters", "X or Y" — Gelu's
-  // specialty doubles for two unit types): match when the unit is any of them.
-  if (/\s+(?:and|or)\s+/i.test(target)) {
-    return target
-      .split(/\s+(?:and|or)\s+/i)
-      .some((part) => unitMatchesSpecialtyName(unitName, part.trim()));
-  }
-  if (unitName === target) {
-    return true;
-  }
-  // MGQ prints the companion's species-title while its army card keeps the
-  // character's proper name. Keep those specialist labels honest and make the
-  // corresponding real roster families live (plus the classic Dragons family).
-  if (target.toLowerCase() === "slime girl") {
-    return /slime|slimy/i.test(unitName) || unitName === "Ooma";
-  }
-  if (target.toLowerCase() === "dragon girl") {
-    return unitName === "Giga" || unitName.toLowerCase().endsWith("dragons");
-  }
-  // Family descriptors like "a Dragons unit": strip the "a … unit" wrapper and
-  // match any unit whose name ends with the remaining creature family word.
-  const family = target
-    .replace(/^an?\s+/i, "")
-    .replace(/\s+units?$/i, "")
-    .trim();
-  return (
-    family.length > 0 &&
-    family !== target &&
-    unitName.toLowerCase().endsWith(family.toLowerCase())
-  );
-}
+export { unitMatchesSpecialtyName } from "./specialty-unit-name";
 
 function doubleAmountForUnitName(
   amount: number,
@@ -6034,6 +5998,7 @@ function getAttackStackDetails(
       // With the BINH elemental toggle ON, attack-window buffs clamp to ≤0.
       // Attack tokens, the die and innate bonuses remain normal.
       effectiveCardAttackBonus +
+      (attacker.engineerNextAttackBonus ?? 0) +
       (stackItem.modifiers.cultivationAttackBonus ?? 0) +
       tokenAttack +
       attackDieResultBonus +
@@ -8310,6 +8275,11 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary,
 ): void {
+  // Engineer support is a one-shot bonus. The attack details already captured
+  // it, so consume it exactly once before any follow-up attack is declared.
+  if ((details.attacker.engineerNextAttackBonus ?? 0) > 0) {
+    details.attacker.engineerNextAttackBonus = 0;
+  }
   if (!details.ignoreAttackDie && !stackItem.modifiers.attackDieCancelled) {
     applyBlindDustDice(state, details.attacker, candidate, details.rollMode);
     applyHydraForcedReroll(
@@ -8329,8 +8299,8 @@ function finishResolvedAttack(
       (ability) => ability.id === "town-titan-storm-cache",
     ) &&
     candidate.rolls.length >= 2 &&
-    !candidate.rolls.includes(1) &&
-    (details.attacker.townVeterancy?.titanPhantomCards ?? 0) < 2
+    candidate.rolls.every((roll) => roll === -1) &&
+    (details.attacker.townVeterancy?.titanPhantomCards ?? 0) < 1
   ) {
     const owner = state.players[details.attacker.controllerId];
     if (owner && state.combat) {
@@ -8347,7 +8317,7 @@ function finishResolvedAttack(
         details.attacker,
         "town-titan-storm-cache",
         details.attacker,
-        `${details.attacker.cardName} gains a phantom Chain Lightning (${memory.titanPhantomCards}/2).`,
+        `${details.attacker.cardName} gains a phantom Chain Lightning (${memory.titanPhantomCards}/1).`,
       );
     }
   }
@@ -23140,36 +23110,7 @@ function applyReactionPlayCore(
       effectAmount += effect.perCostCard * costCardsPaid;
     }
 
-    // Hero specialties double their bonus when the signature unit is the one
-    // attacking (attack bonus) or being attacked (defense bonus). Mutare's
-    // "a Dragons unit" matches the whole Dragons family, not one exact name.
-    // Ivor's Elves IV doubles for the unit TYPE instead (his "ranged" unit).
-    // Cyra's Haste IV instead doubles when the attacked unit is faster than the
-    // attacker (a strictly higher effective Initiative).
-    const defenderIsFaster =
-      Boolean(effect.doubleIfDefenderInitiativeHigher) &&
-      Boolean(attacker) &&
-      Boolean(defender) &&
-      effectiveInitiative(defender!, state.activeEffects, state.combat) >
-        effectiveInitiative(attacker!, state.activeEffects, state.combat);
-    // Gundula IV: doubles when YOUR (attacking) unit is strictly faster than the
-    // attacked unit — the mirror of Cyra's defender-faster condition.
-    const attackerIsFaster =
-      Boolean(effect.doubleIfAttackerInitiativeHigher) &&
-      Boolean(attacker) &&
-      Boolean(defender) &&
-      effectiveInitiative(attacker!, state.activeEffects, state.combat) >
-        effectiveInitiative(defender!, state.activeEffects, state.combat);
-    const matchesDoubledType =
-      Boolean(effect.doubleForUnitType) &&
-      affectedUnit?.type === effect.doubleForUnitType;
-    const doubleFactor =
-      unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) ||
-      matchesDoubledType ||
-      defenderIsFaster ||
-      attackerIsFaster
-        ? 2
-        : 1;
+    const doubleFactor = specialtyCombatStatMultiplier(state, effect, attacker, defender);
     // Merist's Stone Skin I: a defense reaction grants extra Defense when the
     // buffed (defending) unit is orthogonally adjacent to the attacker. The
     // double factor scales the printed bonus only; the adjacency bonus is added
@@ -34081,6 +34022,7 @@ const BATTLEFIELD_TOKEN_CARD_ID: Record<BattlefieldTokenKind, CardId> = {
   fire_wall: "spell.fire_wall",
   quicksand: "spell.quicksand",
   land_mine: "spell.land_mine",
+  factory_trap: "commander.factory.mechanical_trap",
 };
 
 /**
@@ -34158,7 +34100,7 @@ function getKnownHazardSpaces(
     if (token.kind === "fire_wall") {
       hazards.add(token.position);
     } else if (
-      (token.kind === "quicksand" || token.kind === "land_mine") &&
+      (token.kind === "quicksand" || token.kind === "land_mine" || token.kind === "factory_trap") &&
       token.armed === true &&
       token.controllerId === unit.controllerId
     ) {
@@ -34223,7 +34165,9 @@ function dealBattlefieldTokenDamage(
   // Every wall/mine remains spell-like for full all-Spell immunity, including
   // Luna/Hell Steed specialty walls. Numeric Spell-damage reduction remains
   // source-sensitive and applies only to a token actually created by a Spell.
-  if (unitIgnoresBattlefieldTokenEffect(state, token, unit)) {
+  // A Mechanical Trap is the Factory commander's device, not a Spell effect:
+  // printed all-Spell immunity does not shrug it off.
+  if (token.kind !== "factory_trap" && unitIgnoresBattlefieldTokenEffect(state, token, unit)) {
     appendBattlefieldTokenImmune(state, token, unit);
     return;
   }
@@ -34249,11 +34193,13 @@ function dealBattlefieldTokenDamage(
   unit.damage += appliedAmount;
   const assignedDamage = appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: {
-      type: "card",
-      cardId: token.sourceSpellCardId ?? BATTLEFIELD_TOKEN_CARD_ID[token.kind],
-      controllerId: token.controllerId,
-    },
+    source: token.sourceUnitId
+      ? { type: "unit", unitId: token.sourceUnitId, controllerId: token.controllerId }
+      : {
+          type: "card",
+          cardId: token.sourceSpellCardId ?? BATTLEFIELD_TOKEN_CARD_ID[token.kind],
+          controllerId: token.controllerId,
+        },
     target: { type: "unit", unitId: unit.id },
     amount: appliedAmount,
     damageKind: sourceSpell ? "spell" : "effect",
@@ -34345,11 +34291,11 @@ function walkMoveThroughTokens(
       }
     }
 
-    // Land Mine: a sprung trap is removed at once. An armed one deals its damage
+    // Land Mine / Factory Mechanical Trap: a sprung trap is removed at once. An armed one deals its damage
     // (then the unit continues if it survives); a decoy does nothing. Either way
     // the token is taken off the board, so its armed/decoy identity never leaks.
     for (const token of tokens) {
-      if (token.kind !== "land_mine") {
+      if (token.kind !== "land_mine" && token.kind !== "factory_trap") {
         continue;
       }
       // Explosive Prank is explicitly waiting for its first ENEMY. Friendly
@@ -34367,7 +34313,9 @@ function walkMoveThroughTokens(
             unitId: prankSource.id,
             abilityId: token.sourceAbilityId,
             targetUnitId: unit.id,
-            message: `${prankSource.cardName}'s Explosive Prank detonates under ${unit.cardName}.`,
+            message: token.kind === "factory_trap"
+              ? `${prankSource.cardName}'s Mechanical Trap springs under ${unit.cardName}.`
+              : `${prankSource.cardName}'s Explosive Prank detonates under ${unit.cardName}.`,
           });
         }
         dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
@@ -34402,7 +34350,7 @@ function walkMoveThroughTokens(
         appendEvent(state, {
           type: "BATTLEFIELD_TOKEN_TRIGGERED",
           tokenId: token.id,
-          kind: "land_mine",
+          kind: token.kind,
           position,
           unitId: unit.id,
           outcome: "decoy",

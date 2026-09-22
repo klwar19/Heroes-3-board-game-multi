@@ -102,6 +102,16 @@ function tinkererActive(state: GameState, playerId: PlayerId): boolean {
   return Boolean(commander && !commander.dead && commander.slug === "factory");
 }
 
+/** Factory Tinkerer: the opening switch is free; every later switch costs 1 gold. */
+export function factoryWarMachineSwitchCost(state: GameState, playerId: PlayerId): number {
+  const combat = state.combat;
+  if (!combat) return 0;
+  const recorded = combat.factoryWarMachineSwitchCounts?.[playerId];
+  // Older saves only recorded whether the once-per-combat switch was spent.
+  const legacySpent = combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId) ? 1 : 0;
+  return (recorded ?? legacySpent) === 0 ? 0 : 1;
+}
+
 /** The single machine whose combat effect is active for this player. */
 export function activeWarMachineCardId(state: GameState, playerId: PlayerId): CardId | null {
   const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
@@ -566,21 +576,29 @@ export function switchActiveWarMachine(state: GameState, playerId: PlayerId, car
     !player ||
     !tinkererActive(state, playerId) ||
     (!initialSelection && (
-      combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId) ||
       !combat.activeUnitId ||
       combat.units[combat.activeUnitId]?.controllerId !== playerId ||
-      activeWarMachineCardId(state, playerId) === cardId
+      activeWarMachineCardId(state, playerId) === cardId ||
+      !hasResources(player, { gold: factoryWarMachineSwitchCost(state, playerId) })
     )) ||
     machines.length < 2 ||
     !machines.includes(cardId)
   ) {
     throw new Error("The Tinkerer can only switch between two in-play war machines.");
   }
+  const switchCost = initialSelection ? 0 : factoryWarMachineSwitchCost(state, playerId);
+  if (switchCost > 0) {
+    spendResources(state, playerId, { gold: switchCost }, "switched the active war machine");
+  }
   player.activeWarMachineCardId = cardId;
   if (!initialSelection) {
-    combat.factoryWarMachineSwitchedPlayerIds = [
-      ...(combat.factoryWarMachineSwitchedPlayerIds ?? []), playerId,
-    ];
+    const counts = (combat.factoryWarMachineSwitchCounts ??= {});
+    counts[playerId] = (counts[playerId] ?? (combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId) ? 1 : 0)) + 1;
+    if (!combat.factoryWarMachineSwitchedPlayerIds?.includes(playerId)) {
+      combat.factoryWarMachineSwitchedPlayerIds = [
+        ...(combat.factoryWarMachineSwitchedPlayerIds ?? []), playerId,
+      ];
+    }
   }
   for (const machineId of machines) {
     const card = cardLibrary[machineId];
@@ -596,7 +614,7 @@ export function switchActiveWarMachine(state: GameState, playerId: PlayerId, car
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: commander.id,
         abilityId: "factory-war-machine-switch",
-        message: `${commander.cardName} switches the active war machine to ${cardLibrary[cardId]?.name ?? cardId}.`,
+        message: `${commander.cardName} switches the active war machine to ${cardLibrary[cardId]?.name ?? cardId}${switchCost > 0 ? " for 1 gold" : " for free"}.`,
       });
     }
   }
@@ -2328,11 +2346,11 @@ export function warMachinesForSale(
   playerId?: PlayerId
 ): { cardId: CardId; card: CardDefinition; cost: NonNullable<CardDefinition["warMachineCosts"]>["factory"] }[] {
   const supply = state.adventure?.warMachineSupply ?? [];
-  // Artificer commander ("Tinkerer"): war machines cost this player 4 less
+  // Artificer commander ("Tinkerer"): war machines cost this player 5 less
   // gold, to a minimum of 0, at both shops. Applied here so the displayed
   // price and buyWarMachine (which re-derives the same offer) always agree.
   const tinkerer = playerId ? state.players[playerId]?.commander : undefined;
-  const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 4 : 0;
+  const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 5 : 0;
   return supply.flatMap((cardId) => {
     // Community Balance Change: the sheet re-prices the Ammo Cart, the Ballista
     // and the First Aid Tent at BOTH shops, so this shop menu must read the

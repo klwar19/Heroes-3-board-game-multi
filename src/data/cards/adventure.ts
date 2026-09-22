@@ -1985,35 +1985,35 @@ export const adventureCards: CardLibrary = {
   // Tancred controls ranged engagements, Celestine turns defense into offense,
   // Agar manipulates battlefield pace, and Frederick coordinates volleys.
   "specialty.henrietta.1": withoutArt({
-    ...mightSpecialtyOne("henrietta", "Halflings", "Halflings"),
-    name: "Halflings I",
+    ...mightSpecialtyOne("henrietta", "Grenadiers", "Grenadiers"),
+    name: "Grenadiers I",
   }),
   "specialty.henrietta.4": {
-    id: "specialty.henrietta.4", name: "Halflings IV", kind: "hero-specialty",
+    id: "specialty.henrietta.4", name: "Grenadiers IV", kind: "hero-specialty",
     timing: "instant", phaseLimit: ["combat"],
-    tags: ["hero-specialty", "instant", "henrietta", "Draw 1 card during an instant window or on the map, or give a unit +1 Health for this combat (+2 for Halflings)."],
+    tags: ["hero-specialty", "instant", "henrietta", "Draw 1 card during an instant window or on the map, or give a unit +1 Health for this combat (+2 for Grenadiers)."],
     effect: { type: "CHOOSE_ONE", options: [
       { label: "Draw 1 card", target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 1 } },
-      { label: "+1 Health (+2 for Halflings)", combatOnly: true, target: { type: "friendly-unit" }, effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Halflings" } },
+      { label: "+1 Health (+2 for Grenadiers)", combatOnly: true, target: { type: "friendly-unit" }, effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Grenadiers" } },
     ] }, implementationStatus: "implemented", source: heroSource("henrietta"),
   },
   "specialty.henrietta.6": {
-    id: "specialty.henrietta.6", name: "Halflings VI", kind: "hero-specialty",
+    id: "specialty.henrietta.6", name: "Grenadiers VI", kind: "hero-specialty",
     timing: "ongoing", phaseLimit: ["combat"],
     tags: ["hero-specialty", "ongoing", "henrietta", "At the start of any combat round, you may make all your units roll two Attack dice and use the higher result for the rest of this combat."],
     effect: { type: "CHOOSE_ONE", options: [{
       label: "All your units attack with advantage for this combat", combatOnly: true,
       combatRoundStartOnly: true, target: { type: "none" },
       effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
-        name: "Halflings VI", scope: "player", duration: { type: "combat" },
+        name: "Grenadiers VI", scope: "player", duration: { type: "combat" },
         polarity: "positive", removable: false, modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }],
       } },
     }] }, implementationStatus: "implemented", source: heroSource("henrietta"),
   },
   "specialty.sam.1": withoutArt(
-    attackOrDefenseByTypeSpecialty("sam", "Mechanics", 1, "ground", "ground Mechanics"),
+    attackOrDefenseByTypeSpecialty("sam", "Engineers", 1, "ground", "ground units"),
   ),
-  "specialty.sam.4": withoutArt(unitHealthSpecialty("sam", "Mechanics", 4, 1, "Mechanics")),
+  "specialty.sam.4": withoutArt(unitHealthSpecialty("sam", "Engineers", 4, 1, "Engineers")),
   "specialty.sam.6": withoutArt(armorerSpecialty("sam", 6, 4, "Field Overhaul")),
   "specialty.tancred.1": withoutArt(
     attackOrDefenseByTypeSpecialty("tancred", "Bounty Hunters", 1, "ranged", "ranged units"),

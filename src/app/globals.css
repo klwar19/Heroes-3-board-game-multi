@@ -11733,6 +11733,19 @@ button.hbSlot:disabled {
   height: 22px;
 }
 
+.factoryCommanderTrapTokenArt {
+  width: 46%;
+  height: 46%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(255, 91, 45, 0.62));
+}
+
+.boardCard .factoryCommanderTrapTokenArt {
+  width: 24px;
+  height: 24px;
+}
+
 /* Spell tokens on a board space (Force Field / Fire Wall / Quicksand / Land Mine). */
 .battlefieldToken {
   position: absolute;
@@ -11770,6 +11783,10 @@ button.hbSlot:disabled {
 
 .battlefieldToken.land_mine {
   color: #ff6b6b;
+}
+
+.battlefieldToken.factory_trap {
+  color: #e7b15a;
 }
 
 /* Animated obstacle art (Force Field / Fire Wall / Land Mine): one frame's box,

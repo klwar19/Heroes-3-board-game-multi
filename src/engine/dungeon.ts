@@ -196,7 +196,7 @@ function describeVisitStep(step: VisitStep): string | null {
     case "GAIN_UNIT_XP":
       return `+${step.amount} unit XP to one army card`;
     case "GRANT_STACK_TOKEN":
-      return "a Stack Token for one army card";
+      return "a Stack Token for one Bronze army card";
     case "GAIN_COMMANDER_POINTS":
       return `+${step.amount} commander stat point${step.amount === 1 ? "" : "s"}`;
     case "ROLL_TREASURE_DICE":
@@ -265,19 +265,22 @@ function dungeonUnitXpStep(
 
 /**
  * A rulebook Stack Token (`ArmyUnitState.stackToken`) onto a token-free army
- * card, shaped exactly like the Adventure Cave's second-win grant.
+ * BRONZE army card, shaped exactly like the Adventure Cave's second-win grant.
  *
  * OPEN QUESTION §F4, RESOLVED: `GRANT_STACK_TOKEN` is **not** gated on the
  * Polish `polish-unit-stacks` rule — that rule governs the separate persistent
  * `stackLayers`. This step writes the rulebook Creature-Bank Stack Token, which
  * `makeCombatUnitFromArmy` folds unconditionally (+1 Attack/Defense/Health or
  * +2 Initiative, absorbing one lethal blow). So it is a REAL payout with the
- * Polish rule off. Its only real gate is enumeration: the step names one card,
- * so with no token-free card left there is nothing to grant and this returns
- * null (callers fall back).
+ * Polish rule off. Its gates are the Bronze tier and enumeration: the step names
+ * one card, so with no token-free Bronze card left there is nothing to grant and this returns
+ * null (callers fall back). Gold/silver/azure cards are deliberately ineligible:
+ * every bonus Stack Token awarded by the WOG Dungeon is bronze-only.
  */
 function dungeonStackTokenStep(state: GameState, playerId: PlayerId, prompt: string): VisitStep | null {
-  const eligible = (state.players[playerId]?.army ?? []).filter((unit) => !unit.stackToken);
+  const eligible = (state.players[playerId]?.army ?? []).filter(
+    (unit) => !unit.stackToken && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+  );
   if (eligible.length === 0) {
     return null;
   }
@@ -333,7 +336,7 @@ function dungeonThemedRewardSteps(
       : null;
   const stackToken = () =>
     playerId
-      ? dungeonStackTokenStep(state, playerId, "The armoury yields a Stack Token. Which card takes it?")
+      ? dungeonStackTokenStep(state, playerId, "The armoury yields a Stack Token. Which Bronze card takes it?")
       : null;
   const commanderPoint = (amount: number) =>
     playerId ? dungeonCommanderPointStep(state, playerId, amount) : null;
@@ -456,7 +459,7 @@ export type DungeonRoom = {
 
 /**
  * Optional visitor context (§F4). The FORGE room mints a rulebook Stack Token,
- * whose VisitStep names ONE army card — so it can only be built when the caller
+ * whose VisitStep names ONE Bronze army card — so it can only be built when the caller
  * knows whose army it is. The pool LENGTH never depends on this (only the
  * forge's label and steps do), so `dungeonDoorsForFloor`'s seeded indices stay
  * stable whether or not a context is passed.
@@ -465,18 +468,18 @@ export type DungeonRoomContext = { state: GameState; playerId: PlayerId };
 
 /**
  * §F4 — the forge room. RESOLVED OPEN QUESTION: `GRANT_STACK_TOKEN` is a real
- * payout with `polish-unit-stacks` OFF (it writes the rulebook
+ * payout with `polish-unit-stacks` OFF for a Bronze recipient (it writes the rulebook
  * `ArmyUnitState.stackToken`, folded unconditionally by
  * `makeCombatUnitFromArmy` — the Polish rule governs the separate persistent
  * `stackLayers`), so the room is NOT gated on that rule. It degrades only when
- * the token cannot be aimed at anything: with no context, or with every army
- * card already Stacked, the smith buys scrap instead and the room pays the
+ * the token cannot be aimed at anything: with no context, no Bronze army card,
+ * or every Bronze card already Stacked, the smith buys scrap instead and the room pays the
  * plan's refund-equivalent 3 gold. Never a dead room, never a PAY_TO whose
  * payout would silently no-op.
  */
 function forgeRoom(label: string, coldLabel: string, context?: DungeonRoomContext): DungeonRoom {
   const token = context
-    ? dungeonStackTokenStep(context.state, context.playerId, "The forge is hot. Which card takes the Stack Token?")
+    ? dungeonStackTokenStep(context.state, context.playerId, "The forge is hot. Which Bronze card takes the Stack Token?")
     : null;
   if (!token) {
     return { key: "forge", label: coldLabel, steps: [{ type: "GAIN_RESOURCES", gold: 3 }] };
@@ -487,7 +490,7 @@ function forgeRoom(label: string, coldLabel: string, context?: DungeonRoomContex
     steps: [
       {
         type: "PAY_TO",
-        prompt: "The forge still burns — pay 3 gold to temper one of your cards?",
+    prompt: "The forge still burns — pay 3 gold to temper one of your Bronze cards?",
         costOptions: [{ gold: 3 }],
         steps: [token]
       }
@@ -551,7 +554,7 @@ export function dungeonRoomPool(
         ]
       },
       forgeRoom(
-        "Dwarven forge (pay 3 gold: a Stack Token)",
+        "Dwarven forge (pay 3 gold: a Bronze-only Stack Token)",
         "Cold dwarven forge (the smith buys your scrap: +3 gold)",
         context
       ),
@@ -609,7 +612,7 @@ export function dungeonRoomPool(
       ]
     },
     forgeRoom(
-      "Weapon locker (pay 3 gold: a Stack Token)",
+      "Weapon locker (pay 3 gold: a Bronze-only Stack Token)",
       "Stripped weapon locker (sell the salvage: +3 gold)",
       context
     ),

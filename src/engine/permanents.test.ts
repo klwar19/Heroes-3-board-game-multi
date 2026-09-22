@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, effectiveInitiative, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, effectiveInitiative, getLegalActions, getPlayerView } from "./index";
 import { activeSchoolFetches } from "./ruleset";
 import { activeWarMachineCardId, countBallistas, warMachinesForSale } from "./permanents";
-import { maybeOpenFactoryWarMachineChoice } from "./adventure-reducer";
+import { maybeOpenFactoryCommanderTrapChoice, maybeOpenFactoryWarMachineChoice } from "./adventure-reducer";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -36,7 +36,7 @@ function endRound(state: GameState, playerId: PlayerId): GameState {
 }
 
 describe("permanent cards", () => {
-  it("Factory Tinkerer keeps two machines but exposes only one active switch", () => {
+  it("Factory Tinkerer keeps two machines and charges only switches after the first", () => {
     const state = createInitialGameState("tinkerer-switch");
     state.players.p1.commander = {
       slug: "factory",
@@ -55,13 +55,133 @@ describe("permanent cards", () => {
     played.combat!.setup = null;
     played.combat!.awaitingContinue = false;
     played.combat!.outcome = null;
+    played.players.p1.resources.gold = 2;
+    setActiveUnit(played, "p1", "unit_p1_crusaders");
     const offer = getLegalActions(played, "p1").find(
-      (entry) => entry.action.type === "SWITCH_ACTIVE_WAR_MACHINE" && entry.action.cardId === "war_machine.ballista",
+      (entry) => entry.action.type === "SWITCH_ACTIVE_WAR_MACHINE" && entry.action.cardId === "war_machine.cannon",
     );
     expect(offer, "the switch control is offered only with two machines").toBeTruthy();
     const switched = applyOk(played, offer!.action);
-    expect(activeWarMachineCardId(switched, "p1")).toBe("war_machine.ballista");
+    expect(activeWarMachineCardId(switched, "p1")).toBe("war_machine.cannon");
+    expect(switched.players.p1.resources.gold).toBe(2);
     expect(switched.players.p1.permanents).toEqual(["war_machine.ballista", "war_machine.cannon"]);
+
+    const paidOffer = getLegalActions(switched, "p1").find(
+      (entry) => entry.action.type === "SWITCH_ACTIVE_WAR_MACHINE" && entry.action.cardId === "war_machine.ballista",
+    );
+    expect(paidOffer?.label).toContain("pay 1 gold");
+    const paid = applyOk(switched, paidOffer!.action);
+    expect(activeWarMachineCardId(paid, "p1")).toBe("war_machine.ballista");
+    expect(paid.players.p1.resources.gold).toBe(1);
+
+    const paidAgain = getLegalActions(paid, "p1").find(
+      (entry) => entry.action.type === "SWITCH_ACTIVE_WAR_MACHINE" && entry.action.cardId === "war_machine.cannon",
+    );
+    const empty = applyOk(paid, paidAgain!.action);
+    expect(empty.players.p1.resources.gold).toBe(0);
+    expect(getLegalActions(empty, "p1").some((entry) => entry.action.type === "SWITCH_ACTIVE_WAR_MACHINE")).toBe(false);
+  });
+
+  it("Factory commander discounts every war machine by 5 gold, never below zero", () => {
+    const state = createAdventureGameState({ seed: "factory-five-gold-discount", rollFirstPlayer: false });
+    state.adventure!.warMachineSupply = ["war_machine.first_aid_tent", "war_machine.cannon"];
+    const control = warMachinesForSale(state, "factory", "p1");
+    expect(control.map((offer) => offer.cost.gold)).toEqual([3, 10]);
+
+    state.players.p1.commander = {
+      slug: "factory",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, speed: 0, magic: 0 },
+    };
+    const discounted = warMachinesForSale(state, "factory", "p1");
+    expect(discounted.map((offer) => offer.cost.gold)).toEqual([0, 5]);
+  });
+
+  it.each([
+    [0, 1],
+    [2, 2],
+    [3, 3],
+  ] as const)("Factory Mechanical Traps scale from Magic grade %i to %i placement(s)", (magic, expected) => {
+    let state = createInitialGameState(`factory-traps-power-${magic}`);
+    state.players.p1.commander = {
+      slug: "factory",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, speed: 0, magic },
+    };
+    const commander = state.combat!.units.unit_p1_crusaders;
+    commander.commanderSlug = "factory";
+    commander.cardName = "Artificer";
+    state.phase = "combat";
+    state.combat!.setup = null;
+    state.combat!.round = 1;
+
+    expect(maybeOpenFactoryCommanderTrapChoice(state)).toBe(true);
+    for (let placed = 0; placed < expected; placed += 1) {
+      const choice = state.pendingChoice;
+      expect(choice?.type).toBe("OPTION_CHOICE");
+      if (choice?.type !== "OPTION_CHOICE") throw new Error("Expected trap placement choice.");
+      state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    }
+    const traps = state.combat!.battlefieldTokens?.filter((token) => token.kind === "factory_trap") ?? [];
+    expect(traps).toHaveLength(expected);
+    expect(traps.every((token) => token.damage === 2 && token.armed === true)).toBe(true);
+    if (magic === 0) {
+      expect(getPlayerView(state, "p1").combat!.battlefieldTokens?.filter((token) => token.kind === "factory_trap")).toHaveLength(1);
+      const enemyView = getPlayerView(state, "p2");
+      expect(enemyView.combat!.battlefieldTokens?.some((token) => token.kind === "factory_trap")).toBe(false);
+      expect(enemyView.eventLog.some((event) =>
+        event.type === "BATTLEFIELD_TOKEN_PLACED" && event.kind === "factory_trap"
+      )).toBe(false);
+      expect(enemyView.eventLog.some((event) =>
+        event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "commander-factory-mechanical-trap"
+      )).toBe(false);
+    }
+  });
+
+  it("Mechanical Trap deals 2 damage on an actual move and is spent once", () => {
+    const base = createInitialGameState("factory-trap-movement");
+    base.players.p1.commander = {
+      slug: "factory",
+      grades: { attack: 0, defense: 0, health: 0, damage: 0, speed: 0, magic: 0 },
+    };
+    const commander = base.combat!.units.unit_p1_crusaders;
+    commander.commanderSlug = "factory";
+    commander.cardName = "Artificer";
+    base.phase = "combat";
+    base.combat!.setup = null;
+    base.combat!.round = 1;
+    setActiveUnit(base, "p2", "unit_p2_vampires");
+    const move = getLegalActions(base, "p2").find(
+      (entry): entry is typeof entry & { action: Extract<GameAction, { type: "MOVE_UNIT" }> } => entry.action.type === "MOVE_UNIT",
+    );
+    expect(move).toBeDefined();
+    const beforeDamage = base.combat!.units.unit_p2_vampires.damage;
+
+    const control = applyOk(structuredClone(base), move!.action);
+    expect(control.combat!.units.unit_p2_vampires.damage).toBe(beforeDamage);
+
+    let trapped = structuredClone(base);
+    expect(maybeOpenFactoryCommanderTrapChoice(trapped)).toBe(true);
+    const choice = trapped.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE" || !choice.factoryCommanderTraps) throw new Error("Expected trap placement choice.");
+    const optionIndex = choice.factoryCommanderTraps.positions.indexOf(move!.action.destination);
+    expect(optionIndex).toBeGreaterThanOrEqual(0);
+    trapped = applyOk(trapped, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex });
+    setActiveUnit(trapped, "p2", "unit_p2_vampires");
+    const stepOnTrap = getLegalActions(trapped, "p2").find(
+      (entry) => entry.action.type === "MOVE_UNIT" && entry.action.destination === move!.action.destination,
+    );
+    expect(stepOnTrap).toBeDefined();
+    const sprung = applyOk(trapped, stepOnTrap!.action);
+    expect(sprung.combat!.units.unit_p2_vampires.damage).toBe(beforeDamage + 2);
+    expect(sprung.combat!.battlefieldTokens?.some((token) => token.kind === "factory_trap")).toBe(false);
+    expect(sprung.eventLog).toContainEqual(expect.objectContaining({
+      type: "BATTLEFIELD_TOKEN_TRIGGERED",
+      kind: "factory_trap",
+      unitId: "unit_p2_vampires",
+      outcome: "damage",
+      amount: 2,
+      sourceAbilityId: "commander-factory-mechanical-trap",
+    }));
   });
 
   it("asks the Tinkerer to choose the active machine at combat start", () => {

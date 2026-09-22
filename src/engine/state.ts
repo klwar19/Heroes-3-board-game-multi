@@ -9955,7 +9955,8 @@ export type BattlefieldTokenKind =
   | "force_field"
   | "fire_wall"
   | "quicksand"
-  | "land_mine";
+  | "land_mine"
+  | "factory_trap";
 
 /**
  * A token (or card) occupying a Combat-board space, placed by a Spell:
@@ -9976,6 +9977,9 @@ export type BattlefieldTokenKind =
  *    board, the opponent never learns which of the remaining face-down tokens
  *    are real. Two tokens of the same kind may share a space only when placed by
  *    different players.
+ *  - factory_trap — the Factory commander's secret one-shot mechanical trap;
+ *    it is omitted from an opponent's player view until sprung, deals 2 flat
+ *    effect damage to the first unit that enters, then is removed.
  */
 export type BattlefieldTokenState = {
   id: string;
@@ -10221,8 +10225,11 @@ export type CombatUnitState = {
     draws?: number;
     /** Gnolls' Raiders' Pay earnings in this combat (hard-capped at 3). */
     goldEarned?: number;
-    /** Titans' phantom Chain Lightning cards granted in this combat (max 2). */
+    /** Titans' phantom Chain Lightning cards granted in this combat (max 1). */
     titanPhantomCards?: number;
+    /** Sandworms' +3 Initiative gains after their own attacks (hard-capped at 2). */
+    sandwormBurrowUses?: number;
+    sandwormInitiativeBonus?: number;
     /** Imperium Titan R3: actual damage assigned across this combat, even after healing or a side flip. */
     damageSuffered?: number;
     /** Imperium Titan R3: Attack already earned from damage thresholds (max 2). */
@@ -10244,6 +10251,8 @@ export type CombatUnitState = {
     /** Tower Magi R4 extra hand discards triggered this combat. */
     magiSpellSunderUses?: number;
   };
+  /** One-shot Attack support banked by an Engineer; consumed by this unit's next attack. */
+  engineerNextAttackBonus?: number;
   factionVeterancy?: {
     marked?: boolean;
     rebirthUsed?: boolean;
@@ -10763,7 +10772,7 @@ export type CombatState = {
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
@@ -11132,8 +11141,14 @@ export type CombatState = {
   pendingTacticsSwaps?: PlayerId[] | null;
   /** Factory Tinkerer owners who must choose which of their two machines is active at combat start. */
   factoryWarMachineChoiceQueue?: PlayerId[];
+  /** Factory commander owners still entitled to place their Power-scaled opening traps. */
+  factoryCommanderTrapQueue?: PlayerId[];
+  /** Owners whose opening Mechanical Trap placement has completed or been declined. */
+  factoryCommanderTrapResolvedPlayerIds?: PlayerId[];
   /** Factory commanders who have spent their one voluntary swap in this combat. */
   factoryWarMachineSwitchedPlayerIds?: PlayerId[];
+  /** Factory Tinkerer voluntary switch count: switch 1 is free, later switches cost 1 gold. */
+  factoryWarMachineSwitchCounts?: Partial<Record<PlayerId, number>>;
   /**
    * PvP Neutral Control: the controlling player may SORT the revealed Neutral
    * formation before battle — "just like a defender" (user rule). Set to the
@@ -12470,8 +12485,8 @@ export type VisitStep =
   | {
       /**
        * FO redesign wave 4 — Adventure Cave (`wog.adventure_cave`) 2nd win:
-       * place a FIXED rulebook Stack Token of the CHOSEN stat on one army unit
-       * card that has none ({@link ArmyUnitState.stackToken} — +1 Attack /
+       * place a FIXED rulebook Stack Token of the CHOSEN stat on one BRONZE army
+       * unit card that has none ({@link ArmyUnitState.stackToken} — +1 Attack /
        * Defense / Health or +2 Initiative, folded by `makeCombatUnitFromArmy`
        * and absorbing one lethal blow). Validated at resolution: the card must
        * still exist and still be token-free. Auto-resolves.
@@ -17445,6 +17460,7 @@ export type PendingChoice =
         | "commander-begin-cast"
         | "commander-magic-arrow-fetch"
         | "factory-war-machine-select"
+        | "factory-commander-traps"
         | "polish-spell-or-cast";
       commanderArtifactOffer?: {
         cardIds: CardId[];
@@ -17488,6 +17504,13 @@ export type PendingChoice =
       };
       /** Factory Tinkerer: both machines stay in play, but one is selected for this combat. */
       factoryWarMachineSelect?: { cardIds: CardId[] };
+      /** Factory commander: sequential placement of 1/2/3 secret, one-shot traps. */
+      factoryCommanderTraps?: {
+        commanderUnitId: UnitId;
+        positions: number[];
+        placedCount: number;
+        limit: number;
+      };
       /** Groovy Satyr: the public old/new cards shown before combat continues. */
       satyrSwapResult?: {
         fromUnitDefId: string;

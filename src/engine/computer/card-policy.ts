@@ -1,4 +1,5 @@
 import { reinforceCostFor } from "../adventure";
+import { specialtyCombatStatMultiplier } from "../specialty-unit-name";
 import { previewSpellDamage, unitMatchesSpecialtyName } from "../reducer";
 import { cardLibrary } from "@/data/cards/library";
 import { unitAbilities } from "@/data/units/abilities";
@@ -830,27 +831,21 @@ function scoreStatReaction(
         ("amount" in effect ? (effect.amount as number) : 1)
       : ("amount" in effect ? (effect.amount as number) : 1);
 
-  // Hero-specialty tactical awareness: a "might" specialty (ADD_COMBAT_STAT with
-  // `doubleForUnitName`) grants DOUBLE the stat to the hero's signature unit —
-  // the attacker for its attack option, the unit under attack for its defense
-  // option (mirrors the reducer's doubleAmountForUnitName). Reflect that here so
-  // the AI values the boost at its true size on that unit: it plays the attack
-  // card more readily behind the signature attacker, and recognises that the
-  // doubled defense can save the signature unit from an otherwise lethal hit.
-  if (effect.type === "ADD_COMBAT_STAT" && effect.doubleForUnitName) {
+  // Value named-unit, unit-type and Initiative specialty doubling exactly as
+  // combat resolution does, including Factory's renamed units in old saves.
+  if (effect.type === "ADD_COMBAT_STAT") {
     const combat = observation.state.combat;
     const pending = observation.state.stack?.at(-1)?.action;
     if (
       combat &&
       (pending?.type === "ATTACK_UNIT" || pending?.type === "MOVE_AND_ATTACK_UNIT")
     ) {
-      const signatureUnit =
-        effect.stat === "attack"
-          ? combat.units[pending.attackerId]
-          : combat.units[pending.defenderId];
-      if (unitMatchesSpecialtyName(signatureUnit?.name, effect.doubleForUnitName)) {
-        amount *= 2;
-      }
+      amount *= specialtyCombatStatMultiplier(
+        observation.state,
+        effect,
+        combat.units[pending.attackerId],
+        combat.units[pending.defenderId],
+      );
     }
   }
 

@@ -551,15 +551,19 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   // `playedCardIds` stays exact, because a spent card was announced by name in
   // the feed and painted by the cue. Nobody "owns" the enemy force, so this is
   // masked for EVERY viewer, not just the opposing seat.
+  // Factory Mechanical Traps are fully secret instead: an opposing connection
+  // receives no token record at all until the one-shot trigger announces it.
   const combat = base.combat
     ? {
         ...base.combat,
-        battlefieldTokens: base.combat.battlefieldTokens?.map((token) =>
-          token.controllerId !== viewerPlayerId &&
-          (token.kind === "quicksand" || token.kind === "land_mine")
-            ? { ...token, armed: undefined }
-            : token
-        ),
+        battlefieldTokens: base.combat.battlefieldTokens
+          ?.filter((token) => token.kind !== "factory_trap" || token.controllerId === viewerPlayerId)
+          .map((token) =>
+            token.controllerId !== viewerPlayerId &&
+            (token.kind === "quicksand" || token.kind === "land_mine")
+              ? { ...token, armed: undefined }
+              : token
+          ),
         ...(base.combat.enemyForce
           ? {
               enemyForce: {
@@ -577,17 +581,20 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   // multiplayer seats through the event log. Solo rooms have no human
   // opponent, so their owner keeps exact ids for a useful personal history;
   // multiplayer views get same-length hidden placeholders.
+  const enemyFactoryTrapPlacementEvent = (event: GameState["eventLog"][number]): boolean =>
+    event.type === "BATTLEFIELD_TOKEN_PLACED" && event.kind === "factory_trap" && event.playerId !== viewerPlayerId;
   const eventLog = base.eventLog.some(
     (event) =>
-      (event.type === "PANDORA_CARD_DRAWN" ||
+      enemyFactoryTrapPlacementEvent(event) ||
+      ((event.type === "PANDORA_CARD_DRAWN" ||
         event.type === "CARDS_DRAWN" ||
         event.type === "DECK_SEARCH_RESOLVED" ||
         event.type === "HAND_REFRESHED" ||
         event.type === "HAND_MULLIGAN") &&
       "playerId" in event &&
-      (base.sessionMode === "single-player" ? event.playerId !== viewerPlayerId : true)
+      (base.sessionMode === "single-player" ? event.playerId !== viewerPlayerId : true))
   )
-    ? base.eventLog.map((event) => {
+    ? base.eventLog.filter((event) => !enemyFactoryTrapPlacementEvent(event)).map((event) => {
         if (event.type === "PANDORA_CARD_DRAWN" && event.playerId !== viewerPlayerId) {
           return { ...event, cardId: HIDDEN_CARD_ID };
         }

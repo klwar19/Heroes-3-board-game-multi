@@ -1457,7 +1457,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // orientation, strict/shuffled landmark draws, one-of guard groups with field
 // ratings, per-seat timed events, and designed-map completion stats all change
 // authoritative rules and serialized state.
-export const ENGINE_PROTOCOL_VERSION = 167;
+// v168: Factory, Tower, and Rampart veteran-rank rules add serialized combat
+// choices, per-unit temporary attack state, and persistent Sandworm initiative.
+export const ENGINE_PROTOCOL_VERSION = 168;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

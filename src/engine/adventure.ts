@@ -8023,16 +8023,18 @@ function handleEscalatingFightVisit(
 
 /**
  * FO redesign wave 4 — the Adventure Cave's 2nd-win Stack Token: a CHOOSE_ONE of
- * every army unit card that does NOT already carry a fixed Stack Token, each
+ * every BRONZE army unit card that does NOT already carry a fixed Stack Token, each
  * opening a stat pick (+1 Attack / Defense / Health or +2 Initiative). Returns
- * null when nothing is eligible (empty army, or every card is already Stacked),
+ * null when nothing is eligible (no Bronze army card, or every Bronze card is already Stacked),
  * in which case the caller falls back to the old Treasure die — never a dead
  * prompt. The outer level carries a Decline arm (AI/AFK safe); the inner stat
  * pick has none on purpose — every one of its four arms is a pure gain, and the
  * player already declined at the level where refusing means something.
  */
 function caveStackTokenChoiceStep(state: GameState, playerId: PlayerId): VisitStep | null {
-  const eligible = (state.players[playerId]?.army ?? []).filter((unit) => !unit.stackToken);
+  const eligible = (state.players[playerId]?.army ?? []).filter(
+    (unit) => !unit.stackToken && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+  );
   if (eligible.length === 0) {
     return null;
   }
@@ -8044,7 +8046,7 @@ function caveStackTokenChoiceStep(state: GameState, playerId: PlayerId): VisitSt
   };
   return {
     type: "CHOOSE_ONE",
-    prompt: "Adventure Cave — the second expedition hauls out a Stack Token. Which unit card takes it?",
+    prompt: "Adventure Cave — the second expedition hauls out a Stack Token. Which Bronze unit card takes it?",
     options: [
       ...eligible.map((unit) => ({
         label: `${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
@@ -8067,7 +8069,7 @@ function caveStackTokenChoiceStep(state: GameState, playerId: PlayerId): VisitSt
 /**
  * WOG New Objects — Adventure Cave (`wog.adventure_cave`). The wog reward ladder
  * over the shared escalating-fight machinery: win 1 → +3 gold, win 2 → a FIXED
- * Stack Token of the player's chosen stat onto a chosen token-free army unit card
+ * Stack Token of the player's chosen stat onto a chosen token-free BRONZE army unit card
  * (FO redesign wave 4; the old Treasure die remains the fall-back when no card is
  * eligible), win 3 → Search (1) the Artifact deck + the commander-artifact bonus.
  */
@@ -10385,11 +10387,15 @@ export function processPendingVisit(state: GameState): void {
       }
       case "GRANT_STACK_TOKEN": {
         // FO redesign wave 4 — the Adventure Cave's 2nd-win Stack Token. Fixed
-        // stat (the player picked it), on a card that must still be token-free:
+        // stat (the player picked it), on a BRONZE card that must still be token-free:
         // re-gated so a stale step can never overwrite an existing token.
         const tokenPlayer = state.players[visit.playerId];
         const tokenUnit = tokenPlayer?.army.find((candidate) => candidate.id === step.armyUnitId);
-        if (tokenUnit && !tokenUnit.stackToken) {
+        if (
+          tokenUnit &&
+          !tokenUnit.stackToken &&
+          coreUnitDefinitions[tokenUnit.unitDefId]?.tier === "bronze"
+        ) {
           tokenUnit.stackToken = step.stat;
           eventNote(
             state,

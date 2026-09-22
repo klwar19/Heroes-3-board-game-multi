@@ -201,6 +201,16 @@ export function townAfterAttack(
   dieCancelled: boolean,
   kind: "melee" | "ranged",
 ): void {
+  if (!retaliation && alive(attacker) && townVeterancy(attacker, "sandworm-burrow")) {
+    const memory = (attacker.townVeterancy ??= {});
+    if ((memory.sandwormBurrowUses ?? 0) < 2) {
+      memory.sandwormBurrowUses = (memory.sandwormBurrowUses ?? 0) + 1;
+      memory.sandwormInitiativeBonus = (memory.sandwormInitiativeBonus ?? 0) + 3;
+      attacker.initiative += 3;
+      veteranTrigger(state, attacker, "factory-sandworm-burrow", attacker, `${attacker.cardName} gains +3 Initiative (${memory.sandwormBurrowUses}/2).`);
+    }
+    queueElementalChoice(state, { kind: "veteran-teleport", unitId: attacker.id, abilityId: "factory-sandworm-burrow", optional: true });
+  }
   if (!retaliation && attacker.movedThisActivation && getUnitAbilityDefinitions(attacker).some(a => a.id === "veteran-magma-attack-after-move")) {
     (attacker.townVeterancy ??= {}).attackAfterMoveUsed = true;
   }
@@ -343,7 +353,7 @@ export function townAfterAttack(
       placeCombatToken(state, attacker, "paralysis", 0, "Petrifying Hide");
       veteranTrigger(state, defender, "town-demon-paralyze", attacker);
     }
-    if (townVeterancy(defender, "dragon-snare") && alive(attacker)) {
+    if (!retaliation && townVeterancy(defender, "dragon-snare") && alive(attacker)) {
       const roots = ((attacker.townVeterancy ??= {}).boundBy ??= []);
       if (alive(defender) && !roots.includes(defender.id))
         roots.push(defender.id);
@@ -375,6 +385,9 @@ export function townCombatRoundStart(state: GameState): void {
   for (const unit of Object.values(state.combat?.units ?? {})) {
     if (alive(unit) && townVeterancy(unit, "hydra-round-mend")) {
       veteranHeal(state, unit, 2, "town-hydra-round-mend");
+    }
+    if (alive(unit) && townVeterancy(unit, "automaton-round-blast")) {
+      queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "factory-automaton-round-blast", amount: 1, adjacent: true });
     }
   }
 }
@@ -409,6 +422,9 @@ export function townMovement(
 }
 
 export function townActivation(state: GameState, unit: CombatUnitState): void {
+  if (townVeterancy(unit, "engineer-attack-support")) {
+    queueElementalChoice(state, { kind: "engineer-buff", unitId: unit.id, abilityId: "factory-engineer-attack-support" });
+  }
   // Mammoth Rune Mend heals 1 HP FREE on activation, then (below, if Runes remain)
   // offers 1 more HP for 1 Rune.
   if (townVeterancy(unit, "mammoth-rune-mend") && unit.damage > 0) {

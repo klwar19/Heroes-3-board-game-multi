@@ -4052,7 +4052,7 @@ export default function Home() {
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
                 }
               } else {
-                const soundKey = event.kind === "land_mine" ? "spells/land-mine" : "spells/quicksand";
+                const soundKey = event.kind === "land_mine" || event.kind === "factory_trap" ? "spells/land-mine" : "spells/quicksand";
                 window.setTimeout(() => playLibrarySound(soundKey), at);
               }
               break;
@@ -4071,11 +4071,11 @@ export default function Home() {
               const at = springArrivalAt ?? timeline;
               if (event.outcome === "decoy") {
                 // An empty decoy: the dull token cue plays as it is removed, no bite.
-                window.setTimeout(() => playLibrarySound(event.kind === "land_mine" ? "spells/land-mine" : "spells/quicksand"), at);
+                window.setTimeout(() => playLibrarySound(event.kind === "land_mine" || event.kind === "factory_trap" ? "spells/land-mine" : "spells/quicksand"), at);
                 cues.push({ kind: "floater", id: `${event.id}-decoy`, at: `cell:${event.position}`, text: "Empty", tone: "info", delayMs: at + 120 });
               } else if (event.kind === "fire_wall") {
                 cues.push({ kind: "sprite", id: `${event.id}-burn`, fxKey: "fire-wall-e", at: `cell:${event.position}`, sound: "spells/fire-wall", delayMs: at });
-              } else if (event.kind === "land_mine") {
+              } else if (event.kind === "land_mine" || event.kind === "factory_trap") {
                 if (event.sourceAbilityId === "kivotos-explosive-prank") {
                   cues.push({ kind: "sprite", id: `${event.id}-bomb`, fxKey: "mutsuki-prank-bomb", at: `cell:${event.position}`, delayMs: at });
                   cues.push({ kind: "sprite", id: `${event.id}-boom`, fxKey: "land-mine-hit", at: `cell:${event.position}`, sound: "spells/land-mine-trigger", delayMs: at + 360 });

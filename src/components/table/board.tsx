@@ -410,7 +410,8 @@ const BATTLEFIELD_TOKEN_VIEW: Record<
   force_field: { sprite: "force-field", glyph: "🛡️", label: "Force Field" },
   fire_wall: { sprite: "fire-wall-e", glyph: "🔥", label: "Fire Wall" },
   quicksand: { sprite: "quicksand", glyph: "🌀", label: "Quicksand" },
-  land_mine: { sprite: "land-mine-b", glyph: "💣", label: "Land Mine" }
+  land_mine: { sprite: "land-mine-b", glyph: "💣", label: "Land Mine" },
+  factory_trap: { sprite: "land-mine-b", glyph: "⚙️", label: "Mechanical Trap" }
 };
 
 /**
@@ -509,8 +510,13 @@ function BattlefieldTokenMark({
   viewerPlayerId: PlayerId;
   state: GameState;
 }) {
+  // Mechanical Traps are secret until sprung: the opponent gets no marker,
+  // label, DOM hint or fallback glyph at their position.
+  if (token.kind === "factory_trap" && token.controllerId !== viewerPlayerId) {
+    return null;
+  }
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
-  const isTrap = token.kind === "quicksand" || token.kind === "land_mine";
+  const isTrap = token.kind === "quicksand" || token.kind === "land_mine" || token.kind === "factory_trap";
   // A trap's KIND is public (its icon sits on the board), but its armed/decoy
   // state is the caster's secret. So an enemy trap shows the same icon, just
   // WITHOUT the armed/decoy label. Masking by ownership is robust whether or not
@@ -520,6 +526,7 @@ function BattlefieldTokenMark({
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
   const spriteSheet = getFxSheet(view.sprite);
   const isMutsukiBomb = token.sourceAbilityId === "kivotos-explosive-prank";
+  const isFactoryCommanderTrap = token.kind === "factory_trap";
 
   let detail: React.ReactNode = null;
   if (token.kind === "fire_wall") {
@@ -552,12 +559,24 @@ function BattlefieldTokenMark({
       ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through`
       : token.kind === "force_field"
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
+        : token.kind === "factory_trap"
+          ? `Mechanical Trap (${owner}) — deals 2 damage to the first unit that steps here, then is removed`
         : hideArmedState
           ? `${view.label} (${owner}) — an enemy trap; you cannot see whether it is armed or a decoy`
           : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "empty decoy"}`;
 
   let art: React.ReactNode;
-  if (isMutsukiBomb) {
+  if (isFactoryCommanderTrap) {
+    art = (
+      <img
+        alt=""
+        aria-hidden="true"
+        className="factoryCommanderTrapTokenArt"
+        draggable={false}
+        src={assetUrl("/assets/factory-icons/commander-trap.webp")}
+      />
+    );
+  } else if (isMutsukiBomb) {
     art = (
       <img
         alt=""
@@ -998,11 +1017,12 @@ export function BattlefieldBoard({
   if (
     combat &&
     placeChoice?.type === "OPTION_CHOICE" &&
-    placeChoice.context === "place-battlefield-tokens" &&
+    (placeChoice.context === "place-battlefield-tokens" || placeChoice.context === "factory-commander-traps") &&
     placeChoice.playerId === viewerPlayerId &&
-    placeChoice.placeTokens
+    (placeChoice.placeTokens || placeChoice.factoryCommanderTraps)
   ) {
-    placeChoice.placeTokens.positions.forEach((position, optionIndex) => {
+    const positions = placeChoice.placeTokens?.positions ?? placeChoice.factoryCommanderTraps?.positions ?? [];
+    positions.forEach((position, optionIndex) => {
       placeTokenActionsByPosition.set(position, {
         type: "CHOOSE_OPTION",
         playerId: viewerPlayerId,
@@ -1015,7 +1035,7 @@ export function BattlefieldBoard({
       type: "CHOOSE_OPTION",
       playerId: viewerPlayerId,
       choiceId: placeChoice.id,
-      optionIndex: placeChoice.placeTokens.positions.length
+      optionIndex: positions.length
     };
     placeTokensPrompt = placeChoice.prompt;
   }

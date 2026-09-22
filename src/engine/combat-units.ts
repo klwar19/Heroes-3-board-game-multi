@@ -670,6 +670,9 @@ function applyOnRemovalDetonation(state: GameState, unit: CombatUnitState): void
     });
     markUnitRemovedIfNeeded(state, neighbour);
   }
+  if (townVeterancy(unit, "automaton-detonation-repair")) {
+    queueElementalChoice(state, { kind: "heal", unitId: unit.id, abilityId: "factory-automaton-detonation-repair", amount: 2 });
+  }
 }
 
 /**

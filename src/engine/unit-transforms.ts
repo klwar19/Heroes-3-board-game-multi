@@ -192,6 +192,7 @@ export function applyUnitCurrentSide(
   const waveAttack = unit.waveEventBonuses?.attack ?? 0;
   const waveDefense = unit.waveEventBonuses?.defense ?? 0;
   const waveInitiative = unit.waveEventBonuses?.initiative ?? 0;
+  const veteranInitiative = unit.townVeterancy?.sandwormInitiativeBonus ?? 0;
   const top = topTransform(unit);
   if (top) {
     // Polish Balance Pack Sandro I / Vidomina IV: "Put this card on the Stack or
@@ -206,7 +207,7 @@ export function applyUnitCurrentSide(
     unit.attack = top.attack + coverStackBonus + waveAttack;
     unit.defense = top.defense + waveDefense;
     unit.maxHealth = top.health;
-    unit.initiative = top.initiative + waveInitiative;
+    unit.initiative = top.initiative + waveInitiative + veteranInitiative;
     // A Job is a separate persistent token on the army card, not printed text
     // covered by the transform. Its base package and rank-3 signature remain.
     unit.abilities = withMgqJobAbilities(withRankAbilities([], combatUnitRankFold(unit)), unit.job);
@@ -247,7 +248,7 @@ export function applyUnitCurrentSide(
     unit.defense = bankSide.defense + bonus("defense") + (rankFold?.defense ?? 0) + waveDefense;
     unit.maxHealth = bankSide.health + bonus("health") + (rankFold?.health ?? 0);
     unit.initiative =
-      bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0) + waveInitiative;
+      bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0) + waveInitiative + veteranInitiative;
     unit.abilities = rankFold ? withRankAbilities(bankSide.abilities, rankFold) : bankSide.abilities;
     // Same lockstep as the cover branch above: a bank card's ability list is
     // replaced wholesale, so the movement type must be recomputed from the
@@ -328,7 +329,8 @@ export function applyUnitCurrentSide(
       tokenBonus("health"),
     combatAbilityIds
   );
-  unit.initiative = side.initiative + rankFold.initiative + tokenBonus("initiative") + waveInitiative;
+  unit.initiative =
+    side.initiative + rankFold.initiative + tokenBonus("initiative") + waveInitiative + veteranInitiative;
   unit.abilities = combatAbilityIds;
   if (rankFold.rank > 0) {
     unit.unitRank = rankFold.rank;

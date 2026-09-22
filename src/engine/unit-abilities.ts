@@ -1880,8 +1880,8 @@ export function couatlCannotBeTargeted(combat: CombatState | null | undefined, u
 
 /**
  * Factory Dreadnoughts: the "instead of attacking, allocate splash" activation,
- * if this unit carries it. `damageValues` is the ordered allocation (Few [1,1],
- * Pack/Neutral [2,1,1]); the k-th selected adjacent unit takes `damageValues[k]`.
+ * if this unit carries it. `damageValues` is the ordered allocation (Few/Neutral
+ * [2,1,1], Pack [3,2,1]); the k-th selected adjacent unit takes `damageValues[k]`.
  */
 export function getSplashAllocationAttack(
   unit: CombatUnitState

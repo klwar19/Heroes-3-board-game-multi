@@ -345,7 +345,8 @@ export function openElementalChoice(
   while (combat.elementalChoices?.length) {
     const request = combat.elementalChoices.shift()!;
     const unit = combat.units[request.unitId];
-    if (!unit || !alive(unit)) continue;
+    const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
+    if (!unit || (!alive(unit) && !postDetonationRepair)) continue;
     if (request.kind === "nest-return") {
       const nest = combat.units[request.targetId!];
       if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) continue;
@@ -420,6 +421,12 @@ export function openElementalChoice(
       }
     } else if (request.kind === "town-buff") {
       for (const target of Object.values(combat.units)) if (alive(target)) { picks.push({ targetId: target.id }); labels.push(target.cardName); }
+    } else if (request.kind === "engineer-buff") {
+      for (const target of Object.values(combat.units)) {
+        if (alive(target) && target.id !== unit.id && target.controllerId === unit.controllerId && isAdjacent(unit.position, target.position)) {
+          picks.push({ targetId: target.id }); labels.push(`${target.cardName}: +1 Attack on its next attack`);
+        }
+      }
     } else if (request.kind === "move-one") {
       if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
       const maxDistance = request.maxDistance ?? 1;
@@ -615,7 +622,8 @@ function executeElementalPick(
 ): void {
   const combat = state.combat!;
   const unit = combat.units[request.unitId];
-  if (!unit || !alive(unit)) return;
+  const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
+  if (!unit || (!alive(unit) && !postDetonationRepair)) return;
   if (request.kind === "dispel") {
     hooks.dispelAttack(state, request.attack!, !pick.skip);
     return;
@@ -704,6 +712,15 @@ function executeElementalPick(
     veteranTrigger(state, unit, request.abilityId, target);
     return;
   }
+  if (request.kind === "engineer-buff") {
+    const target = combat.units[pick.targetId!];
+    if (!target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || !isAdjacent(unit.position, target.position)) {
+      throw new Error("Choose an adjacent allied unit.");
+    }
+    target.engineerNextAttackBonus = (target.engineerNextAttackBonus ?? 0) + (request.amount ?? 1);
+    veteranTrigger(state, unit, request.abilityId, target, `${target.cardName} gains +1 Attack for its next attack.`);
+    return;
+  }
   if (request.kind === "move-one" || request.kind === "return-origin") {
     const position = pick.position!;
     const blocked = !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT ||
@@ -736,7 +753,7 @@ function executeElementalPick(
   }
   if (request.kind === "heal") {
     const target = combat.units[pick.targetId!];
-    if (!target || !alive(target) || target.damage <= 0 || target.controllerId !== unit.controllerId ||
+    if (!target || !alive(target) || target.damage <= 0 || (!postDetonationRepair && target.controllerId !== unit.controllerId) ||
       (request.adjacent && !isAdjacent(unit.position, target.position)) ||
       (request.adjacentOrSelf && target.id !== unit.id && !isAdjacent(unit.position, target.position))) throw new Error("Choose a damaged allied unit in range.");
     veteranHeal(state, target, request.amount ?? 1, request.abilityId, unit); return;

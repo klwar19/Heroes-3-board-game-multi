@@ -298,6 +298,7 @@ import {
   commanderBeginCastOption,
   commanderFirstAidGoldCost,
   commanderGradesOf,
+  commanderPowerOf,
   commanderMagicArrowFetchOption,
   COMMANDER_MAGIC_ARROW_CARD_ID,
   commanderIntegratedDeploymentSortAvailable,
@@ -12555,6 +12556,11 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
     return;
   }
 
+  // Factory Artificer: place its Power-scaled one-shot traps before machines fire.
+  if (maybeOpenFactoryCommanderTrapChoice(state)) {
+    return;
+  }
+
   // Factory Tinkerer: both permanent machines remain in play, but each owner
   // chooses the one whose combat effect and round-start shot are live before
   // the first war-machine round. Computer seats keep their already selected
@@ -12924,6 +12930,165 @@ function applyBountyHunterMark(state: GameState, sourceUnitId: UnitId, targetUni
     targetUnitId: target.id,
     message: `${source.name}: ${mark.abilityName} - Marks ${target.name}.`
   });
+}
+
+function factoryCommanderTrapOwners(state: GameState): PlayerId[] {
+  const combat = state.combat;
+  if (!combat) return [];
+  return [combat.attackerPlayerId, combat.defenderPlayerId]
+    .filter((playerId, index, owners) => playerId !== NEUTRAL_PLAYER_ID && owners.indexOf(playerId) === index)
+    .filter((playerId) => {
+      const commander = state.players[playerId]?.commander;
+      return Boolean(commander && !commander.dead && commander.slug === "factory" &&
+        Object.values(combat.units).some((unit) =>
+          unit.controllerId === playerId && unit.commanderSlug === "factory" && unit.damage < unit.maxHealth
+        ));
+    });
+}
+
+function factoryCommanderTrapLimit(state: GameState, playerId: PlayerId): number {
+  const commander = state.players[playerId]?.commander;
+  if (!commander || commander.dead || commander.slug !== "factory") return 0;
+  return Math.min(3, commanderPowerOf(commander) + 1);
+}
+
+function emptyFactoryTrapPositions(state: GameState): number[] {
+  const combat = state.combat;
+  if (!combat) return [];
+  const positions: number[] = [];
+  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    if (!commanderArtifactSpaceBlocked(combat, position)) positions.push(position);
+  }
+  return positions;
+}
+
+function placeFactoryCommanderTrap(
+  state: GameState,
+  playerId: PlayerId,
+  commanderUnitId: UnitId,
+  position: number,
+): void {
+  const combat = state.combat;
+  const commander = combat?.units[commanderUnitId];
+  if (!combat || !commander || commander.controllerId !== playerId || commander.commanderSlug !== "factory" ||
+      commander.damage >= commander.maxHealth || commanderArtifactSpaceBlocked(combat, position)) {
+    throw new Error("Choose an empty battlefield space for the Mechanical Trap.");
+  }
+  const token = {
+    id: `bftoken_${nextEventNumber(state)}`,
+    kind: "factory_trap" as const,
+    position,
+    controllerId: playerId,
+    damage: 2,
+    armed: true,
+    sourceUnitId: commander.id,
+    sourceAbilityId: "commander-factory-mechanical-trap",
+  };
+  combat.battlefieldTokens = [...(combat.battlefieldTokens ?? []), token];
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_PLACED",
+    playerId,
+    tokenId: token.id,
+    kind: token.kind,
+    position,
+    sourceAbilityId: token.sourceAbilityId,
+  });
+}
+
+function openFactoryCommanderTrapChoice(
+  state: GameState,
+  playerId: PlayerId,
+  placedCount: number,
+): boolean {
+  const combat = state.combat;
+  const commander = combat && Object.values(combat.units).find((unit) =>
+    unit.controllerId === playerId && unit.commanderSlug === "factory" && unit.damage < unit.maxHealth
+  );
+  const limit = factoryCommanderTrapLimit(state, playerId);
+  const positions = emptyFactoryTrapPositions(state);
+  if (!combat || !commander || placedCount >= limit || positions.length === 0) return false;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Mechanical Traps: place trap ${placedCount + 1} of ${limit} on an empty space, or stop. Each deals 2 damage once.`,
+    options: [
+      ...positions.map((position) => ({ label: `Place at ${getBattlefieldLabel(position)}` })),
+      { label: "Stop placing traps" },
+    ],
+    context: "factory-commander-traps",
+    factoryCommanderTraps: {
+      commanderUnitId: commander.id,
+      positions,
+      placedCount,
+      limit,
+    },
+    returnPhase: "combat",
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+/** Opens/advances Factory's optional Power-scaled combat-start trap placement. */
+export function maybeOpenFactoryCommanderTrapChoice(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.round !== 1 || state.pendingChoice || combat.outcome) return false;
+  if (!combat.factoryCommanderTrapQueue) {
+    combat.factoryCommanderTrapQueue = factoryCommanderTrapOwners(state);
+  }
+  while (combat.factoryCommanderTrapQueue.length > 0) {
+    const playerId = combat.factoryCommanderTrapQueue[0];
+    if (isComputerPlayer(state, playerId)) {
+      const commander = Object.values(combat.units).find((unit) =>
+        unit.controllerId === playerId && unit.commanderSlug === "factory" && unit.damage < unit.maxHealth
+      );
+      const enemies = Object.values(combat.units).filter((unit) =>
+        unit.controllerId !== playerId && unit.damage < unit.maxHealth
+      );
+      if (commander) {
+        const candidates = emptyFactoryTrapPositions(state).sort((left, right) => {
+          const leftAdjacent = enemies.some((enemy) => getOrthogonalNeighbors(enemy.position).includes(left)) ? 0 : 1;
+          const rightAdjacent = enemies.some((enemy) => getOrthogonalNeighbors(enemy.position).includes(right)) ? 0 : 1;
+          return leftAdjacent - rightAdjacent || Math.abs(left - 8) - Math.abs(right - 8) || left - right;
+        });
+        for (const position of candidates.slice(0, factoryCommanderTrapLimit(state, playerId))) {
+          placeFactoryCommanderTrap(state, playerId, commander.id, position);
+        }
+      }
+      (combat.factoryCommanderTrapResolvedPlayerIds ??= []).push(playerId);
+      combat.factoryCommanderTrapQueue.shift();
+      continue;
+    }
+    if (openFactoryCommanderTrapChoice(state, playerId, 0)) return true;
+    (combat.factoryCommanderTrapResolvedPlayerIds ??= []).push(playerId);
+    combat.factoryCommanderTrapQueue.shift();
+  }
+  return false;
+}
+
+function resolveFactoryCommanderTrapChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.factoryCommanderTraps : undefined;
+  const combat = state.combat;
+  if (!combat || choice?.type !== "OPTION_CHOICE" || choice.context !== "factory-commander-traps" ||
+      choice.playerId !== playerId || !data) {
+    throw new Error("There is no Mechanical Trap placement to resolve.");
+  }
+  const position = data.positions[optionIndex];
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  if (position !== undefined) {
+    placeFactoryCommanderTrap(state, playerId, data.commanderUnitId, position);
+    if (openFactoryCommanderTrapChoice(state, playerId, data.placedCount + 1)) return;
+  } else if (optionIndex !== data.positions.length) {
+    throw new Error("Choose an empty battlefield space or stop placing traps.");
+  }
+  (combat.factoryCommanderTrapResolvedPlayerIds ??= []).push(playerId);
+  combat.factoryCommanderTrapQueue = (combat.factoryCommanderTrapQueue ?? []).slice(1);
+  if (maybeOpenFactoryCommanderTrapChoice(state)) return;
+  resumeCombatStartAfterCommanderPlacement(state);
 }
 
 function factoryWarMachineOwners(state: GameState): PlayerId[] {
@@ -18525,6 +18690,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "factory-war-machine-select") {
     resolveFactoryWarMachineChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "factory-commander-traps") {
+    resolveFactoryCommanderTrapChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
