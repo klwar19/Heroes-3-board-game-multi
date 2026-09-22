@@ -3059,7 +3059,7 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgb(8 18 28 / 78%), rgb(8 18 28 / 90%));
+  background: linear-gradient(180deg, rgb(8 18 28 / 64%), rgb(8 18 28 / 84%));
   pointer-events: none;
 }
 
@@ -3293,6 +3293,24 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .runeNext {
   font-weight: 700;
   color: #eaf7ff;
+}
+
+/* Docked in the 290px rail the three plaques cannot fit label + need on one
+   line; stack them (label over the need badge) so nothing truncates. */
+.runePanel.docked .runeLevelPlaque {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px 6px;
+}
+
+.runePanel.docked .runeLevelPlaqueBonus {
+  font-size: 10.5px;
+}
+
+.runePanel.docked .runeLevelPlaqueNeed {
+  align-self: flex-end;
+  font-size: 10px;
 }
 
 .handFan {

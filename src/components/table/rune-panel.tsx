@@ -105,6 +105,11 @@ function runePlayersInCombat(state: GameState, viewerPlayerId: PlayerId): Player
   const combat = state.combat;
   if (!combat) return [];
   const ids = new Set<PlayerId>();
+  // The two fighting seats count from deployment on, before any unit is placed
+  // or the Rune pool is seeded, so the tracker is on screen for the whole fight.
+  for (const id of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (id && id !== NEUTRAL_PLAYER_ID && isBulwarkPlayer(state, id)) ids.add(id);
+  }
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId !== NEUTRAL_PLAYER_ID && isBulwarkPlayer(state, unit.controllerId)) ids.add(unit.controllerId);
   }
@@ -263,7 +268,7 @@ export function RunePanel({ state, viewerPlayerId, phone = false }: { state: Gam
     ? pos
       ? { left: pos.x, top: pos.y, right: "auto", bottom: "auto" }
       : phone
-        ? { right: 10, bottom: 82, left: "auto", top: "auto" }
+        ? { right: 10, bottom: 134, left: "auto", top: "auto" } // above the phone tab bar and the helper-tips chip
         : { right: 16, top: 72, left: "auto", bottom: "auto" }
     : undefined;
 
