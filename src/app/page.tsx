@@ -154,6 +154,7 @@ import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
 import { HelperCoachLobbyPrompt, HelperCoachStrip } from "@/components/table/helper-coach-ui";
 import { PhoneTabBar, type PhoneTab } from "@/components/table/phone-tab-bar";
+import { RunePanel } from "@/components/table/rune-panel";
 import { UiModePrompt, UiModeToggle } from "@/components/table/ui-mode-prompt";
 import { AnimationToggle } from "@/components/table/animation-toggle";
 import { useSkipAnimationsPreference } from "@/lib/animation-preference";
@@ -8259,6 +8260,8 @@ export default function Home() {
             surface="battle"
             viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
           />
+          {/* Bulwark Rune tracker: docked here, or popped out / minimized by the player. */}
+          <RunePanel phone={phoneUi} state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
           {!adventureMode
             ? // Battle simulator: both level 5 hero boards stay on the table.
               seatIds.map((playerId) => <HeroBoard key={playerId} playerId={playerId} state={state} />)

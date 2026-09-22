@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HandFan, OpponentBar, PermanentSlot, RuneTrack, SeatNameplate } from "./seats";
+import { HandFan, OpponentBar, PermanentSlot, SeatNameplate } from "./seats";
 import { CardZoomProvider } from "./zoom";
 import { PolishBalanceArtProvider } from "./polish-balance-art";
 import * as sound from "@/lib/sound";
@@ -353,56 +353,6 @@ describe("HandFan — Ciele IV surfaces its free discard-cast on the specialty c
     );
     const cardButton = container.querySelector(".fanCard");
     expect(cardButton?.classList.contains("playable")).toBe(false);
-  });
-});
-
-describe("RuneTrack — Bulwark combat HUD", () => {
-  function bulwarkCombat(buildings: string[], count: number): GameState {
-    const state = createInitialGameState("rune-track-ui");
-    state.players.p1.factionId = "bulwark";
-    state.towns.town_p1.factionId = "bulwark";
-    state.towns.town_p1.buildings.push(...buildings);
-    state.combat!.runes = { p1: { count, appliedLevel: 0 } };
-    return state;
-  }
-
-  it("shows the count, level and each level's bonus with active/pending/locked status", () => {
-    // Sieidi built (cap 2), 7 Runes earned = Level 2: L1+L2 active, L3 locked.
-    const state = bulwarkCombat(["bulwark.sieidi"], 7);
-    const { container } = render(<RuneTrack state={state} playerId="p1" />);
-
-    expect(screen.getByLabelText(/Runes for .*: 7 of 10, Level 2 of 2/i)).toBeTruthy();
-    expect(screen.getByText("+1 Attack")).toBeTruthy();
-    expect(screen.getByText("+1 Defense")).toBeTruthy();
-    expect(screen.getByText("+3 Initiative")).toBeTruthy();
-
-    expect(container.querySelectorAll(".runeLevel.active")).toHaveLength(2);
-    expect(container.querySelectorAll(".runeLevel.pending")).toHaveLength(0);
-    expect(container.querySelectorAll(".runeLevel.locked")).toHaveLength(1);
-  });
-
-  it("marks the unlocked-but-unearned level as pending (Sieidi built, only base Runes)", () => {
-    // Sieidi built (cap 2) but only 4 Runes (Level 1): L2 is PENDING, not active.
-    const state = bulwarkCombat(["bulwark.sieidi"], 4);
-    const { container } = render(<RuneTrack state={state} playerId="p1" />);
-    expect(container.querySelectorAll(".runeLevel.active")).toHaveLength(1);
-    expect(container.querySelectorAll(".runeLevel.pending")).toHaveLength(1);
-    expect(container.querySelectorAll(".runeLevel.locked")).toHaveLength(1);
-  });
-
-  it("renders the compact pip form with three status dots", () => {
-    const state = bulwarkCombat(["bulwark.sieidi", "bulwark.altar"], 10);
-    const { container } = render(<RuneTrack state={state} playerId="p1" compact />);
-    expect(container.querySelectorAll(".runePip")).toHaveLength(3);
-    expect(container.querySelectorAll(".runePip.active")).toHaveLength(3);
-    expect(container.querySelector(".runeLevels")).toBeNull(); // no labelled chips in compact mode
-  });
-
-  it("renders nothing for a non-Bulwark player", () => {
-    const state = createInitialGameState("rune-track-none");
-    state.players.p1.factionId = "castle";
-    const { container } = render(<RuneTrack state={state} playerId="p1" />);
-    expect(container.firstChild).toBeNull();
   });
 });
 

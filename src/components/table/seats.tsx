@@ -14,7 +14,6 @@ import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
   getPermanentCardIds,
-  getRuneTrack,
   getSeatIdentity,
   isBulwarkPlayer,
   isCastASpellCard,
@@ -1286,68 +1285,6 @@ export function HandFan({
   );
 }
 
-function runeLevelHint(status: string, bonusLabel: string, threshold: number, level: number): string {
-  const base = `Rune Level ${level} (${threshold} Runes): ${bonusLabel}`;
-  if (status === "active") return `${base} — active`;
-  if (status === "pending") return `${base} — earn ${threshold} Runes to activate`;
-  return `${base} — locked (build the Sieidi/Altar)`;
-}
-
-/**
- * Bulwark's Rune track for the combat HUD. Renders only for a Bulwark player in
- * combat; everything it shows comes from the tested engine `getRuneTrack`. The
- * compact form (opponent seats) shows the icon, count/level and three status
- * pips; the full form (your dock) adds the labelled level chips.
- */
-export function RuneTrack({
-  state,
-  playerId,
-  compact
-}: {
-  state: GameState;
-  playerId: PlayerId;
-  compact?: boolean;
-}) {
-  if (!state.combat || !isBulwarkPlayer(state, playerId)) {
-    return null;
-  }
-  const track = getRuneTrack(state, playerId);
-  return (
-    <div
-      className={`runeTrack${compact ? " compact" : ""}`}
-      aria-label={`Runes for ${state.players[playerId]?.name ?? playerId}: main track ${track.count} of 9, reserve ${track.reserve}, level ${track.level} of ${track.levelCap}. Rune costs spend reserve first.`}
-    >
-      <div className="runeBoard">
-        <img className="runeBoardArt" src={assetUrl("/assets/rune-tracker-bulwark.webp")} alt="" aria-hidden="true" draggable={false} />
-        {track.levels.map((lvl, index) => (
-          <span
-            key={lvl.level}
-            className={`runeBoardLevel ${lvl.status}`}
-            style={{ left: `${46 + index * 18}%` }}
-            title={runeLevelHint(lvl.status, lvl.bonusLabel, lvl.threshold, lvl.level)}
-            aria-hidden="true"
-          />
-        ))}
-        {Array.from({ length: 9 }, (_, index) => (
-          <span
-            key={index}
-            className={`runeBoardStep ${track.count >= index + 1 ? "filled" : ""}`}
-            style={{ left: `${index === 8 ? 91.5 : 16.5 + index * 9.4}%` }}
-            title={`${index + 1} of 9 Runes on the main track`}
-            aria-hidden="true"
-          />
-        ))}
-        <span className="runeBoardReserve" title="Reserve Runes are spent before main-track Runes" aria-hidden="true">{track.reserve}</span>
-      </div>
-      <div className="runeTrackReadout">
-        <span>Track {track.count}/9</span>
-        <span>Reserve {track.reserve}</span>
-        <span>Level {track.level}/{track.levelCap}</span>
-      </div>
-    </div>
-  );
-}
-
 /**
  * Person-first seat nameplate: who is playing this seat (account nickname /
  * display name), with their hero + town on a second line and a faction-colour
@@ -1404,6 +1341,7 @@ export function SeatNameplate({ state, playerId }: { state: GameState; playerId:
     </span>
   );
 }
+
 
 export function OpponentBar({
   view,
@@ -1470,7 +1408,6 @@ export function OpponentBar({
                   value={signedMorale(player.morale)}
                 />
               </span>
-              <RuneTrack state={state} playerId={playerId} compact />
             </div>
             <div className="opponentCardStats" aria-label={`${player.name} card counts`}>
               <span title={`${player.handCount} hidden cards in hand`} data-fx-anchor={`hand:${playerId}`}>
@@ -1565,7 +1502,6 @@ export function PlayerDock({
           {player.resources.gold}g · {player.resources.buildingMaterials}m · {player.resources.valuables}v
         </span>
       </div>
-      <RuneTrack state={state} playerId={viewerPlayerId} />
     </div>
   );
 }
