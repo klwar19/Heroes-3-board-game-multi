@@ -2487,9 +2487,11 @@ export function getDamageCapPerAttack(
   let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
   for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
     if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK") {
-      const amount = ability.effect.reflectOverflow
-        ? Math.max(0, ability.effect.amount - unit.damage)
-        : ability.effect.amount;
+      // A cap limits THIS hit. Molten Body's reflection changes what happens to
+      // the prevented overflow; it does not turn the cap into a lifetime
+      // "damage may never exceed 4" ceiling. A wounded Magma Elemental must
+      // still take up to 4 damage from every later attack.
+      const amount = ability.effect.amount;
       if (cap === null || amount < cap.amount) {
         cap = { amount, abilityId: ability.id, abilityName: ability.name };
       }
@@ -2515,9 +2517,9 @@ export function getDamageCapPerSpell(
   let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
   for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
     if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK" && ability.effect.includeSpells) {
-      const amount = ability.effect.reflectOverflow
-        ? Math.max(0, ability.effect.amount - unit.damage)
-        : ability.effect.amount;
+      // Same per-hit reading as attacks: existing damage never reduces the
+      // amount a later Spell hit may deal.
+      const amount = ability.effect.amount;
       if (cap === null || amount < cap.amount) {
         cap = { amount, abilityId: ability.id, abilityName: ability.name };
       }

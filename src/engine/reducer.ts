@@ -8763,7 +8763,7 @@ function finishResolvedAttack(
   }
 
   if (!attackResult.cancelled) {
-    if (attackResult.damageCapOverflow > 0 && isUnitAlive(details.defender)) {
+    if (attackResult.damageCapOverflow > 0) {
       const reflected = Math.floor(attackResult.damageCapOverflow / 2);
       if (reflected > 0 && isUnitAlive(details.attacker)) {
         veteranDamage(state, details.defender, details.attacker, reflected, "veteran-magma-overflow");

@@ -786,7 +786,7 @@ export type UnitAbilityEffectDefinition =
       amount: number;
       /** When true, also cap a single Spell-card / spell-damage hit at `amount`. */
       includeSpells?: boolean;
-      /** Magma Elementals return half of damage prevented by their cap. */
+      /** Magma Elementals return half of damage prevented by their per-hit cap. */
       reflectOverflow?: boolean;
     }
   | {
@@ -4131,7 +4131,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-snow-elf-rune-strike": { id: "town-snow-elf-rune-strike", name: "Rune-Tipped Strike", text: "After this unit's own attack, gain 1 additional Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "snow-elf-rune-strike" }, implementationStatus: "implemented" },
   "town-yeti-specialty-aura": { id: "town-yeti-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Spell and Specialty cards.", effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
   "town-yeti-spell-specialty-aura": { id: "town-yeti-spell-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Spell and Specialty cards.", effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
-  "veteran-magma-overflow": { id: "veteran-magma-overflow", name: "Molten Body", text: "This unit can never accumulate more than 4 damage. Half the extra damage is returned to the attacker; if the source was a Spell, return it to a random enemy unit.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4, reflectOverflow: true, includeSpells: true }, implementationStatus: "implemented" },
+  "veteran-magma-overflow": { id: "veteran-magma-overflow", name: "Molten Body", text: "This unit takes at most 4 damage from each attack or Spell hit. Half the damage prevented by this cap is returned to the attacker; for a Spell, return it to a random enemy unit.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4, reflectOverflow: true, includeSpells: true }, implementationStatus: "implemented" },
   "town-jotunn-rune-hide": { id: "town-jotunn-rune-hide", name: "Runes from Pain", text: "Whenever this unit is attacked, gain 1 Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-hide" }, implementationStatus: "implemented" },
   "town-jotunn-rune-bolt": { id: "town-jotunn-rune-bolt", name: "Rune Bolt", text: "At activation, you may spend 1 Rune to deal 1 damage, or 2 Runes to deal 2 damage, to a chosen unit.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-bolt" }, implementationStatus: "implemented" },
   "town-mammoth-rune-mend": { id: "town-mammoth-rune-mend", name: "Rune Mend", text: "At activation, heal 1 HP from this unit for free. Then you may spend 1 Rune to heal 1 additional HP.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-rune-mend" }, implementationStatus: "implemented" },

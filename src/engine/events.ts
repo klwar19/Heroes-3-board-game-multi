@@ -306,10 +306,8 @@ export function appendEvent<T extends EventDraft>(
       ? getUnitAbilityDefinitions(unit).some(
           (ability) =>
             ability.implementationStatus === "implemented" &&
-            ((ability.effect?.type === "ELEMENTAL_VETERANCY" &&
-              ability.effect.mechanic === "earth-shield") ||
-             (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK" &&
-              ability.effect.reflectOverflow === true)),
+            ability.effect?.type === "ELEMENTAL_VETERANCY" &&
+            ability.effect.mechanic === "earth-shield",
         )
       : false;
     if (unit && hasEarthShield && unit.damage > 4) {
