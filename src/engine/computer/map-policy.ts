@@ -3867,14 +3867,3 @@ export function armyNeedsReinforcement(
   const army = state.players[playerId]?.army.length ?? 0;
   return army < 4 || playerArmyStrength(state, playerId) < 20;
 }
-
-/** @internal — re-export for tests that want sticky target space. */
-export function stickyObjectiveSpace(
-  state: GameState,
-  heroId: string,
-  stickySpaceId?: MapSpaceId | null,
-): MapSpaceId | null {
-  const hero = state.heroes[heroId];
-  if (!hero) return null;
-  return primaryMapObjective(state, hero, undefined, stickySpaceId)?.spaceId ?? null;
-}

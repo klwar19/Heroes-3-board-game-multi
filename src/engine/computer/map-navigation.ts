@@ -127,13 +127,19 @@ export type MapObjectiveKind =
  * exact state object; any other state (a reducer clone, a probe) computes
  * uncached, so nothing can observe a stale value.
  */
-type MapScoringCache = { state: GameState; entries: Map<string, unknown> };
+type MapScoringCache = {
+  state: GameState;
+  entries: Map<string, unknown>;
+  /** JSON keys of the hero / objectives records already stringified in this pass (identity-keyed). */
+  heroKeys: WeakMap<HeroState, string>;
+  objectiveKeys: WeakMap<ReadonlyArray<MapObjective>, string>;
+};
 let mapScoringCache: MapScoringCache | null = null;
 
 export function withMapScoringCache<T>(state: GameState, run: () => T): T {
   if (mapScoringCache && mapScoringCache.state === state) return run();
   const previous = mapScoringCache;
-  mapScoringCache = { state, entries: new Map() };
+  mapScoringCache = { state, entries: new Map(), heroKeys: new WeakMap(), objectiveKeys: new WeakMap() };
   try {
     return run();
   } finally {
@@ -150,13 +156,33 @@ function mapScoringCached<T>(state: GameState, key: string, compute: () => T): T
   return value;
 }
 
-/** Probe heroes (`{ ...hero, spaceId }`) differ by field, so key on the whole small record. */
+/**
+ * Probe heroes (`{ ...hero, spaceId }`) differ by field, so key on the whole
+ * small record. The JSON is memoized by object identity for the active pass:
+ * the same hero / objectives array is stringified on every memo probe (dozens
+ * of times inside the per-objective loops), and the pass already treats the
+ * state as immutable, so identity implies the same JSON.
+ */
 function heroCacheKey(hero: HeroState): string {
-  return JSON.stringify(hero);
+  const cache = mapScoringCache;
+  if (!cache) return JSON.stringify(hero);
+  let key = cache.heroKeys.get(hero);
+  if (key === undefined) {
+    key = JSON.stringify(hero);
+    cache.heroKeys.set(hero, key);
+  }
+  return key;
 }
 
 function objectivesCacheKey(objectives: ReadonlyArray<MapObjective>): string {
-  return JSON.stringify(objectives);
+  const cache = mapScoringCache;
+  if (!cache) return JSON.stringify(objectives);
+  let key = cache.objectiveKeys.get(objectives);
+  if (key === undefined) {
+    key = JSON.stringify(objectives);
+    cache.objectiveKeys.set(objectives, key);
+  }
+  return key;
 }
 
 export type MapObjective = {

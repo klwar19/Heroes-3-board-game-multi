@@ -54,6 +54,23 @@ const nextConfig: NextConfig = {
       ...assetRedirects(assetBaseUrl, undefined, assetVersion)
     ];
   },
+  // Code-shipped media (assetUrl() leaves /fx, /game-tokens and /factory-cards
+  // on the app origin — see src/lib/asset-url.ts) and the same-origin fonts are
+  // served by Vercel with its default "max-age=0, must-revalidate": every
+  // combat FX sheet, token and card face is re-validated on every page load
+  // (one round trip each, ~150 ms from Asia). These paths are not
+  // content-addressed, so a short max-age keeps a replaced file fresh within
+  // minutes while stale-while-revalidate lets the browser paint the cached copy
+  // at once and refresh it in the background. Fonts never change: immutable.
+  async headers() {
+    const shippedMedia = "public, max-age=600, stale-while-revalidate=604800";
+    return [
+      { source: "/fx/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
+      { source: "/game-tokens/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
+      { source: "/factory-cards/:path*", headers: [{ key: "Cache-Control", value: shippedMedia }] },
+      { source: "/fonts/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] }
+    ];
+  },
   // Runtime room-file reads opt out of tracing in game-room-store.ts. Keep
   // static media and offline tooling excluded as a packaging safeguard;
   // server functions do not read these directories.

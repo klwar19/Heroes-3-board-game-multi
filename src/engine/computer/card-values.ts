@@ -1,5 +1,3 @@
-import { cardLibrary } from "@/data/cards/library";
-
 /**
  * Community tier-list value model for the computer player (score layer only —
  * no engine rule reads this). Source: the four BGG strategy-forum tier lists
@@ -426,12 +424,4 @@ export function cardTierValue(
 /** Printed tier lookup (no context), for coarse keep/sell splits. */
 export function cardTier(cardId: string): CardValueTier | undefined {
   return CARD_TIER[cardId];
-}
-
-/**
- * Hygiene helper for the test: ids in the tier tables that do NOT resolve.
- * Exported so the test failure names the offending key directly.
- */
-export function unknownCardTierIds(): string[] {
-  return Object.keys(CARD_TIER).filter((cardId) => !cardLibrary[cardId]);
 }

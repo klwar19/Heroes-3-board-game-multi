@@ -1233,13 +1233,3 @@ export function scoreChoiceAction(
       return null;
   }
 }
-
-/** @internal — expose keep ranking for tests. */
-export function testCardKeepValue(cardId: string): number {
-  return cardKeepValue(cardId);
-}
-
-/** @internal */
-export function testLooksLikeDecline(label: string): boolean {
-  return looksLikeDecline(label);
-}
