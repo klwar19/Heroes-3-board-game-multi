@@ -1,6 +1,7 @@
 import { hasNecromancyPlan } from "./development";
 import { openingGuardCommitment } from "./necropolis-combat";
 import { cardLibrary } from "@/data/cards/library";
+import { baseCardId, isPhantomCardId } from "../phantom-cards";
 import { effectiveHandLimit, explorersHandStepActive, getUnitSide, isFieldGuarded } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
 import { cardHandValue, moraleRedrawDiscards, scoreCardAction } from "./card-policy";
@@ -400,9 +401,19 @@ function chooseComputerActionUncached(
   observation: ComputerObservation,
   options: ChooseComputerActionOptions,
 ): ComputerDecision | null {
+  // An expiring copy has the same printed effect as its real twin. Remove
+  // only identical legal plays (target, mode and costs included) from this
+  // decision, so neither learned nudges nor tie/exploration picks waste the
+  // real card. Empowered cards have different base ids and remain distinct.
+  const phantomPlays = new Set<string>();
+  if (observation.state.combat) for (const { action } of observation.legalActions) {
+    if ((action.type === "PLAY_CARD" || action.type === "CAST_SPELL" || action.type === "PLAY_REACTION") &&
+        isPhantomCardId(action.cardId)) phantomPlays.add(canonicalActionKey({ ...action, cardId: baseCardId(action.cardId) }));
+  }
   const candidates = observation.legalActions.filter(
     (legal) =>
       !NEVER_AUTOMATE.has(legal.action.type) &&
+      !(phantomPlays.size > 0 && phantomPlays.has(canonicalActionKey(legal.action))) &&
       // The bare morale-redraw template needs a non-empty discard list — the
       // reducer rejects an empty one, so with no junk to swap the action must
       // be structurally off the table (a score floor is only relative and the

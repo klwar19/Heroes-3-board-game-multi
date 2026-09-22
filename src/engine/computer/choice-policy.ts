@@ -1,4 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
+import { balanceCardLibrary } from "../community-balance-cards";
+import { chainBoltValue } from "./chain-planning";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { commanderValuesMagicGrade } from "@/data/commanders";
 import { farTileChoiceValue } from "./far-tile-policy";
@@ -207,6 +209,10 @@ function scoreCityHallOption(
   const army = player?.army.length ?? 0;
   let score = CHOICE_BASE;
   if (option.reinforceBronzeFree && army < 5) score += 40;
+  if (option.freeRecruitOrReinforceUnitDefId) {
+    const armadillos = player?.army.find((unit) => unit.unitDefId === option.freeRecruitOrReinforceUnitDefId);
+    score += !armadillos ? (army < 5 ? 42 : 25) : armadillos.side === "few" ? 35 : 0;
+  }
   if (option.gold) {
     score += option.gold * 2;
     if (gold < 10) score += 15;
@@ -331,6 +337,11 @@ function scoreAbilityTarget(
     choice?.type === "ABILITY_TARGET_CHOICE" &&
     choice.kind === "war-machine" &&
     choice.abilityId === "war_machine.catapult";
+  if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.kind === "chain-lightning") {
+    const state = observation.state as unknown as GameState;
+    const card = balanceCardLibrary(state, cardLibrary)[choice.abilityId ?? ""];
+    if (card) return CHOICE_BASE + chainBoltValue(state, observation.playerId, card, unit, choice.amount ?? 0);
+  }
   if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.sourceUnitId) {
     const source = combat.units[choice.sourceUnitId];
     const state = observation.state as unknown as GameState;

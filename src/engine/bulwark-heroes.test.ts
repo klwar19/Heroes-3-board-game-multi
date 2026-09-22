@@ -6,7 +6,7 @@ import {
   getActiveAttackBonus
 } from "./active-effects";
 import { getTownOfPlayer, NEUTRAL_DECK_IDS } from "./adventure";
-import { gainRunes, getRuneSummary, grantStartingRunes, seedRunesForCombat } from "./runes";
+import { gainRunes, getRuneSummary, grantStartingRunes, runeTrackHasRoom, seedRunesForCombat } from "./runes";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { adventureCards } from "@/data/cards/adventure";
@@ -94,15 +94,30 @@ function krivCombat(seed: string, faction: FactionId): GameState {
 }
 
 describe("Bulwark hero — Kriv's rune-synergy specialty", () => {
-  it("kriv.1 banks 1 Rune AND draws 1 card for a Bulwark caster (the bundled level-I play)", () => {
+  it("kriv.1 banks 3 Runes AND draws 1 card for a Bulwark caster (the bundled level-I play)", () => {
     const state = krivCombat("kriv-banks", "bulwark");
     state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow"];
     const deckBefore = state.players.p1.deck.length;
     const play = findPlay(state, "specialty.kriv.1", 0);
     expect(play, "the gain-Rune-and-draw option should be offered to a Bulwark caster in combat").toBeTruthy();
     const after = applyOk(state, play!.action);
-    expect(after.combat!.runes?.p1?.count).toBe(1); // gained the Rune…
+    expect(after.combat!.runes?.p1?.count).toBe(3); // gained the Runes…
     expect(after.players.p1.deck.length).toBe(deckBefore - 1); // …AND drew the bundled card
+  });
+
+  it("a full, capped Rune track withholds a pure Rune gain (kriv.6) but keeps gains that also draw (kriv.1)", () => {
+    const state = krivCombat("kriv-full-track", "bulwark");
+    state.players.p1.hand = ["specialty.kriv.6", "specialty.kriv.1"];
+    state.players.p1.deck = ["spell.magic_arrow", "spell.magic_arrow"];
+    // CONTROL: with room on the track the pure gain is offered.
+    expect(findPlay(state, "specialty.kriv.6", 0), "kriv.6 gain offered with room").toBeTruthy();
+
+    // No rune building (cap 1): Level 1 reached and the next track filled to 9.
+    gainRunes(state, "p1", 18);
+    expect(runeTrackHasRoom(state, "p1")).toBe(false);
+    expect(findPlay(state, "specialty.kriv.6", 0), "kriv.6 pure gain withheld on a full track").toBeFalsy();
+    expect(findPlay(state, "specialty.kriv.6", 2), "kriv.6 draw-2 still offered").toBeTruthy();
+    expect(findPlay(state, "specialty.kriv.1", 0), "kriv.1 gain-and-draw still offered").toBeTruthy();
   });
 
   it("offers the rune option ONLY to a Bulwark caster (control: castle)", () => {
@@ -170,12 +185,13 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
     state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
     state.combat!.dice.rollCount = 0;
 
-    // Earn p1 up to 11 Runes (Level 2 with the Altar: +1 Attack, +3 Initiative — no
-    // Defense yet, since Level 3 now sits at 12). The reaction banks the 12th BEFORE
-    // the strike resolves, crossing into Level 3 (+1 Defense); the defender's
-    // retaliation then banks a 13th afterwards.
-    gainRunes(state, "p1", 11);
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 11, level: 2 });
+    // Earn p1 up to 24 Runes (Level 2 with the Altar: +1 Attack, +3 Initiative — no
+    // Defense yet; the third nine-Rune cycle sits at 6/9). The defender's committed
+    // retaliation banks its +2 at declaration (8/9, still Level 2); the reaction's +3
+    // then completes the cycle BEFORE the strike resolves, crossing into Level 3
+    // (+1 Defense) with 2 Runes carried onto the reset track.
+    gainRunes(state, "p1", 24);
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 6, reserve: 10, level: 2 });
 
     state.activePlayerId = "p2";
     state.combat!.activeUnitId = "unit_p2_skeletons";
@@ -192,15 +208,15 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
       expect(play, "Kriv I should be offered as a reaction to the enemy attack").toBeTruthy();
       current = applyOk(current, play!.action);
       // The buff is live the instant the reaction resolves — before the strike does.
-      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 13, level: 3 });
+      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 2, reserve: 15, level: 3 });
     }
     current = settleReactions(current);
     return current.combat!.units.unit_p1_crusaders.damage;
   }
 
   it("the threshold Rune banked in reaction softens the very attack that triggered it (4 → 3)", () => {
-    expect(defenderDamage(false), "control: no reaction → 11 Runes → Level 2 → full 6 − 2 = 4").toBe(4);
-    expect(defenderDamage(true), "react → 12 Runes at the strike → Level 3 +1 Defense → 6 − 3 = 3").toBe(3);
+    expect(defenderDamage(false), "control: no reaction → 24 Runes → Level 2 → full 6 − 2 = 4").toBe(4);
+    expect(defenderDamage(true), "react → 27 Runes at the strike → Level 3 +1 Defense → 6 − 3 = 3").toBe(3);
   });
 
   it("the rune-gain reaction is offered ONLY to a Bulwark reactor (control: castle defender)", () => {
@@ -276,13 +292,13 @@ describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", (
     );
   }
 
-  it("only kriv.4 carries a starting-Rune empowerment (+1), map-only; kriv.1 and kriv.6 have none", () => {
+  it("only kriv.4 carries a starting-Rune empowerment (+3), map-only; kriv.1 and kriv.6 have none", () => {
     const effect = adventureCards["specialty.kriv.4"].effect as {
       options: { mapOnly?: boolean; effect: { type: string; amount?: number } }[];
     };
     const option = effect.options.find((entry) => entry.effect.type === "GAIN_STARTING_RUNES");
     expect(option, "kriv.4").toBeTruthy();
-    expect(option!.effect.amount).toBe(1);
+    expect(option!.effect.amount).toBe(3);
     expect(option!.mapOnly).toBe(true); // it sets up FUTURE combats, so it's a map play
 
     // After the nerf the other two levels are gain-Rune / card-draw only — no
@@ -293,17 +309,19 @@ describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", (
     }
   });
 
-  it("a Bulwark Kriv becomes Rune-Empowered on the map: kriv.4 banks +1 (and further grants stack)", () => {
+  it("a Bulwark Kriv becomes Rune-Empowered on the map: kriv.4 banks +3 (and further grants stack)", () => {
     let state = krivMap("kriv-empower", "bulwark", ["specialty.kriv.4"]);
     const play4 = findEmpowerPlay(state, "specialty.kriv.4");
-    expect(play4, "a Bulwark Kriv should be offered the +1 starting-Rune empowerment on the map").toBeTruthy();
+    expect(play4, "a Bulwark Kriv should be offered the +3 starting-Rune empowerment on the map").toBeTruthy();
     state = applyOk(state, play4!.action);
-    expect(state.players.p1.runeEmpoweredNextCombats).toBe(1);
+    expect(state.players.p1.runeEmpoweredNextCombats).toBe(3);
+    // Kriv's grant is its own flag, not the City Hall's.
+    expect(state.players.p1.cityHallRunesNextCombats ?? 0).toBe(0);
 
-    // The empowerment flag is additive across separate grants (a later play, or a
-    // City Hall combat-focus on top): a second +1 climbs to 2 (capped at RUNE_MAX).
-    grantStartingRunes(state, "p1", 1);
-    expect(state.players.p1.runeEmpoweredNextCombats).toBe(2);
+    // The empowerment flag is additive across separate grants (a later play):
+    // a second +3 climbs to 6 (capped at RUNE_MAX).
+    grantStartingRunes(state, "p1", 3);
+    expect(state.players.p1.runeEmpoweredNextCombats).toBe(6);
   });
 
   it("offers the empowerment ONLY to a Bulwark caster (control: a non-Bulwark holder)", () => {
@@ -320,13 +338,15 @@ describe("Bulwark hero — Kriv's Rune-Empowered head-start (starting Runes)", (
     const combat = createInitialGameState("kriv-empower-seed");
     combat.players.p1.factionId = "bulwark";
     combat.towns.town_p1.factionId = "bulwark";
-    combat.players.p1.runeEmpoweredNextCombats = 1; // what kriv.4's empowerment grants
+    combat.players.p1.runeEmpoweredNextCombats = 3; // what kriv.4's empowerment grants
     combat.combat!.attackerPlayerId = "p1";
     combat.combat!.defenderPlayerId = "p2";
     seedRunesForCombat(combat);
-    expect(getRuneSummary(combat, "p1").count).toBe(1); // opens at 1, not 0
+    expect(getRuneSummary(combat, "p1").count).toBe(3); // opens at 3, not 0
 
-    gainRunes(combat, "p1", 3); // +3 earned → 4 = Level 1 threshold
+    gainRunes(combat, "p1", 5); // 8: still one short
+    expect(getRuneSummary(combat, "p1").level).toBe(0);
+    gainRunes(combat, "p1", 1); // 9 = Level 1 threshold
     expect(getRuneSummary(combat, "p1").level).toBe(1);
     expect(
       getActiveAttackBonus(combat, {
@@ -453,11 +473,11 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     }
   });
 
-  it("each of Kriv's three specialties carries a scaling GAIN_RUNES option (nerfed 1 / 2 / 3)", () => {
+  it("each of Kriv's three specialties carries a scaling GAIN_RUNES option (3 / 4 / 5)", () => {
     for (const [id, amount, bundledDraw] of [
-      ["specialty.kriv.1", 1, 1],
-      ["specialty.kriv.4", 2, 1],
-      ["specialty.kriv.6", 3, 0]
+      ["specialty.kriv.1", 3, 1],
+      ["specialty.kriv.4", 4, 1],
+      ["specialty.kriv.6", 5, 0]
     ] as const) {
       const effect = adventureCards[id].effect as {
         options: {
@@ -467,7 +487,7 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
       };
       const runeOptions = effect.options.filter((option) => option.effect.type === "GAIN_RUNES");
       // Every level has BOTH a normal-play and an enemy-attack-reaction rune-gain,
-      // at the nerfed amount; levels I/IV also bundle the card draw.
+      // at the printed amount; levels I/IV also bundle the card draw.
       expect(runeOptions.length, `${id} rune options`).toBe(2);
       for (const runeOption of runeOptions) {
         expect(runeOption.effect.amount, id).toBe(amount);
@@ -611,7 +631,7 @@ describe("Bulwark hero — Eikthurn's Mountain Rams specialty (the bronze lv2 un
       type: "ADD_COMBAT_STAT",
       stat: "attack",
       amount: 1,
-      gainRunes: 2,
+      gainRunes: 4,
       doubleForUnitName: "Mountain Rams"
     });
     expect(adventureCards["specialty.eikthurn.6"].effect).toMatchObject({

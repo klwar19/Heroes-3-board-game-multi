@@ -3,6 +3,8 @@ import type { GameState, HeroState } from "../state";
 import {
   armyReadyForContestedFight,
   hasGoldArmy,
+  nextGoldLadderStep,
+  purchaseLandingRounds,
 } from "./development";
 import { isMarketLocation } from "@/data/map/locations";
 import { GOLD_RESERVE, wantsMarketVisit } from "./market-trades";
@@ -12,13 +14,23 @@ import {
   primaryMapObjective,
   isFreeSeizeObjective,
   premiumRecruitMarketVisit,
+  mapScoringCached,
 } from "./map-navigation";
+import { playersAreAllied } from "./control";
+import { pvpReach } from "./pvp-reach";
 /** Hire for a concrete short route, not merely because the treasury can pay.
  * Two jobs or a premium income capture must be reachable within two turns. */
 export function secondaryHeroOpportunity(
   state: GameState,
   playerId: string,
   fieldId?: string,
+): { worthwhile: boolean; jobs: number; target?: string } {
+  return mapScoringCached(state, `secondary-route:${playerId}:${fieldId ?? "any"}`,
+    () => secondaryHeroOpportunityUncached(state, playerId, fieldId));
+}
+
+function secondaryHeroOpportunityUncached(
+  state: GameState, playerId: string, fieldId?: string,
 ): { worthwhile: boolean; jobs: number; target?: string } {
   const player = state.players[playerId];
   if (
@@ -28,6 +40,16 @@ export function secondaryHeroOpportunity(
     player.resources.gold < GOLD_RESERVE + 10
   )
     return { worthwhile: false, jobs: 0 };
+  const step = nextGoldLadderStep(state, playerId);
+  if (step) {
+    const before = purchaseLandingRounds(player.resources, player.production, step.cost, false);
+    const after = purchaseLandingRounds({ ...player.resources, gold: player.resources.gold - 10 }, player.production, step.cost, false);
+    // Hiring also spends this round's Population token. Keep an affordable
+    // Gold recruit first; a collector can precede upgrades from genuine surplus.
+    if (step.kind === "recruit" && before === 0 || before !== null && (after === null || after > before)) {
+      return { worthwhile: false, jobs: 0 };
+    }
+  }
   const main = Object.values(state.heroes ?? {}).find(
     (h) => h.controllerId === playerId && h.kind === "main",
   );
@@ -46,12 +68,19 @@ export function secondaryHeroOpportunity(
   const placements = secondaryHeroPlacementFields(state, playerId).filter(
     (p) => !fieldId || p.fieldId === fieldId,
   );
+  const danger = new Set<string>();
+  for (const enemy of Object.values(state.heroes ?? {})) {
+    if (!enemy.spaceId || enemy.controllerId === "neutrals" || state.players[enemy.controllerId]?.eliminated ||
+        playersAreAllied(state, playerId, enemy.controllerId)) continue;
+    for (const spaceId of pvpReach(state, enemy, true).keys()) danger.add(spaceId);
+  }
   let best = {
     worthwhile: false,
     jobs: 0,
     target: undefined as string | undefined,
   };
   for (const placement of placements) {
+    if (danger.has(placement.fieldId)) continue;
     const scout: HeroState = {
       id: "prospective-secondary",
       controllerId: playerId,
@@ -72,29 +101,26 @@ export function secondaryHeroOpportunity(
             (isMarketLocation(state.adventure?.fields[o.spaceId]?.location ?? "") &&
               (wantsMarketVisit(state, playerId, state.adventure?.fields[o.spaceId]?.location) ||
                 premiumRecruitMarketVisit(state, playerId, state.adventure?.fields[o.spaceId]?.location)))) &&
-          o.spaceId !== mainGoal?.spaceId,
+          o.spaceId !== mainGoal?.spaceId && !danger.has(o.spaceId),
       )
-      .filter((o) => {
-        const distance = objectiveDistanceField(state, scout, [o]).get(
-          placement.fieldId,
-        );
-        return distance !== undefined && distance > 0 && distance <= 4;
-      });
-    const premium = jobs.find((o) => {
-      const f = state.adventure?.fields[o.spaceId];
-      return (
-        o.kind === "flaggable" &&
-        (f?.location === "settlement" ||
-          f?.location === "mine")
-      );
-    });
-    const worthwhile = jobs.length >= 2 || Boolean(premium);
-    if (jobs.length > best.jobs || (worthwhile && !best.worthwhile))
-      best = {
-        worthwhile,
-        jobs: jobs.length,
-        target: premium?.spaceId ?? jobs[0]?.spaceId,
+      .map(objective => ({ objective, distances: objectiveDistanceField(state, scout, [objective], true) }))
+      .map(job => ({ ...job, distance: job.distances.get(placement.fieldId) ?? Infinity }))
+      .filter(job => job.distance > 0 && job.distance <= 4)
+      .sort((a, b) => a.distance - b.distance || a.objective.spaceId.localeCompare(b.objective.spaceId))
+      .slice(0, 8);
+    for (const first of jobs) {
+      const field = state.adventure?.fields[first.objective.spaceId];
+      const premium = first.objective.kind === "flaggable" && (field?.location === "settlement" || field?.location === "mine");
+      // Count a connected itinerary, not two independent four-step radii on
+      // opposite sides of the hire location. Reuse the same distance fields.
+      const second = jobs.some(next => next !== first &&
+        first.distance + (next.distances.get(first.objective.spaceId) ?? Infinity) <= 4);
+      const count = second ? 2 : 1;
+      const worthwhile = second || premium;
+      if (worthwhile && (!best.worthwhile || count > best.jobs)) best = {
+        worthwhile, jobs: count, target: first.objective.spaceId,
       };
+    }
   }
   return best;
 }

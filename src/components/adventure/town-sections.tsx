@@ -183,6 +183,10 @@ export function buildingPanelNote(
         : effect.options.length > 1
           ? "Pick one of these at the start of each Resource round."
           : "Collected at the start of each Resource round.";
+    case "RESOURCE_ROUND_BANK":
+      return player.factoryBankNextResourceGold
+        ? `${player.factoryBankNextResourceGold} gold is invested for your next Resource round.`
+        : "Choose an investment before normal income at each Resource round; its payout arrives next Resource round.";
     case "COMBAT_CUBES": {
       const cubes = town.factionCubes?.[building.id] ?? 0;
       const bonus = effect.spend === "spell-power" ? "+1 Power per cube (max 1 per spell)" : "+1 attack or defense per cube";
@@ -207,7 +211,6 @@ export function buildingPanelNote(
         ? "Already used this round — available again next round."
         : "Ready — choose a School of Magic instead when you next Search the shared Spell deck.";
     case "MAGE_GUILD":
-    case "ARTIFACT_SMITH":
     case "COVER_OF_DARKNESS":
     case "CASTLE_GATE":
       if (hasActions) {
@@ -216,6 +219,11 @@ export function buildingPanelNote(
       return usedThisRound
         ? "Already used this round."
         : "Becomes available on your turn (token and resources permitting).";
+    case "ARTIFACT_SMITH":
+      if (hasActions) return null;
+      return player.blacksmithUsedRound === state.round
+        ? "Already used this turn."
+        : "Available during your turn when you can pay for a Search or have an Artifact card to sell.";
     case "MGQ_SPIRIT_SHRINE":
       return player.mgqSpirit
         ? "The selected built contract will be snapshotted at the next combat setup."

@@ -1281,6 +1281,13 @@ export type ActiveEffectModifier =
       /** Fire Shield: adjacent attackers take damage after their attack. */
       type: "FIRE_SHIELD";
       amount: number;
+      /** Commander Fire Shield variant that also burns ranged attackers. */
+      includesRanged?: boolean;
+    }
+  | {
+      /** Succubus Power 2: +1 Defense against the first attack after the shield is applied. */
+      type: "FIRE_SHIELD_FIRST_ATTACK_DEFENSE";
+      amount: number;
     }
   | {
       /** Scouting: the next Search(X) becomes Search(count). Consumed on use. */
@@ -2690,9 +2697,9 @@ export type EffectDefinition =
        * Kriv (Bulwark)'s rune-empowerment specialty: a MAP play that makes the
        * caster Rune-Empowered — their Hero then starts EVERY combat with `amount`
        * extra Runes (a head-start toward the Rune-Level thresholds), until the
-       * caster's next Resource round. It ADDS to PlayerState.runeEmpoweredNextCombats
-       * (the same flag the City Hall combat-focus sets), capped at RUNE_MAX, so it
-       * stacks with the City Hall option. No-op for a non-Bulwark caster.
+       * caster's next Resource round. It ADDS to PlayerState.runeEmpoweredNextCombats,
+       * separately from the City Hall flag, so both grants stack. No-op for a
+       * non-Bulwark caster.
        */
       type: "GAIN_STARTING_RUNES";
       amount: number;
@@ -9831,6 +9838,11 @@ export type PlayerState = {
   }[];
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
+  /**
+   * Factory Bank investment waiting for the next Resource round. Paid when
+   * chosen; collected before that next round's normal Resource income.
+   */
+  factoryBankNextResourceGold?: number;
   /** Round the Magic University deck-dig was last used ("once per round"). */
   magicUniversityUsedRound?: number;
   /**
@@ -9861,12 +9873,11 @@ export type PlayerState = {
    */
   necromancyWindow?: boolean;
   /**
-   * Bulwark "Rune-Empowered" flag (Gamefound Update #3): set when this player
-   * picks the City Hall combat-focus option (forgoing gold income), giving them
-   * this many EXTRA starting Runes in every combat until their next Resource
-   * round, where it is cleared. Read at combat start by seedRunesForCombat.
+   * Bulwark specialty's extra starting Runes until the next Resource round.
    */
   runeEmpoweredNextCombats?: number;
+  /** Bulwark City Hall's separate extra starting Runes for this Resource round. */
+  cityHallRunesNextCombats?: number;
   /**
    * PUBLIC record of Ability cards this player acquired by drawing them out of
    * the shared Ability deck (the level-up "Search (2) the Ability deck" reward).
@@ -11257,18 +11268,10 @@ export type CombatState = {
     playedCardIds: CardId[];
     fired: string[];
   } | null;
-  /**
-   * Bulwark "Runes" (Gamefound Update #3, local house-rule gains), per Bulwark
-   * player, for THIS combat only — discarded when the combat state is torn down,
-   * so it resets every battle. `count` is the accumulated Rune total, earned in
-   * battle (Attack +1 / Retaliate +1 / Defend +2 house rule; opens at 0 plus
-   * any City Hall flag head-start; the Sieidi/Altar raise the max Rune Level
-   * rather than pre-charging Runes);
-   * `appliedLevel` is the highest Rune Level whose army-wide buff has already
-   * been created as a player-scoped active effect, so the add-only sync never
-   * double-applies. See src/engine/runes.ts.
-   */
-  runes?: Record<PlayerId, { count: number; appliedLevel: number }>;
+  /** Bulwark combat Runes: `count` is the current 0–9 progress track,
+   * `reserve` is spent first on Rune costs, and `appliedLevel` records lasting
+   * bonuses already earned in this combat. `reserve` is optional for old saves. */
+  runes?: Record<PlayerId, { count: number; reserve?: number; appliedLevel: number }>;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**
@@ -12196,6 +12199,15 @@ export type AdventureReward =
     }
   | {
       /**
+       * Divider behind all Factory Bank decisions. Reaching it means every
+       * investment was chosen before income, so the normal Resource-round
+       * income/event/building pipeline may continue.
+       */
+      playerId: PlayerId;
+      kind: "resource-round-income";
+    }
+  | {
+      /**
        * Round-start Event / Astrologers barrier sentinel. Queued once, right
        * after the round's Event (or Astrologers proclamation) has pushed its
        * per-player resolution rewards, so it is the LAST event-related reward in
@@ -12283,6 +12295,12 @@ export type VisitStep =
       gold?: number;
       buildingMaterials?: number;
       valuables?: number;
+    }
+  | {
+      /** Factory Bank: pay now and record its payout for the next Resource round. */
+      type: "FACTORY_BANK_INVEST";
+      payGold: number;
+      payoutGold: number;
     }
   | {
       /** Accepted Polish Alliance offer; revalidated and applied automatically. */
@@ -17554,6 +17572,8 @@ export type PendingChoice =
           movement?: number;
           drawCards?: number;
           reinforceBronzeFree?: boolean;
+          /** Factory City Hall: named free Few recruit or Few-to-Pack reinforcement. */
+          freeRecruitOrReinforceUnitDefId?: string;
           tradingPost?: boolean;
           searchSpellDeck?: number;
           /** Cove City Hall: gain Hero experience (paired with removeArtifactFromHand). */

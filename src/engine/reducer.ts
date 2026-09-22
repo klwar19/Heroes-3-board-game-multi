@@ -8275,6 +8275,24 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary,
 ): void {
+  // This is the first attack that actually resolves after Succubus Power 2's
+  // shield is received. Consume after the attack details captured the bonus so
+  // previews, rerolls, and suspended reaction windows cannot spend it early.
+  for (const effect of state.activeEffects) {
+    if (
+      effect.target?.type === "unit" &&
+      effect.target.unitId === details.defender.id &&
+      effect.name.startsWith("Fire Shield (")
+    ) {
+      const firstDefense = effect.modifiers.findIndex(
+        (modifier) => modifier.type === "FIRE_SHIELD_FIRST_ATTACK_DEFENSE",
+      );
+      if (firstDefense >= 0) {
+        effect.modifiers.splice(firstDefense, 1);
+        break;
+      }
+    }
+  }
   // Engineer support is a one-shot bonus. The attack details already captured
   // it, so consume it exactly once before any follow-up attack is declared.
   if ((details.attacker.engineerNextAttackBonus ?? 0) > 0) {
@@ -8600,7 +8618,7 @@ function finishResolvedAttack(
       : undefined;
 
   // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved Attack earns
-  // its controller +1 Rune, a Retaliation Attack +1 (RUNE_GAIN_*). Credited HERE,
+  // its controller +1 Rune, a Retaliation Attack +2 (RUNE_GAIN_*). Credited HERE,
   // BEFORE the blow's damage is computed, so a strike that CROSSES a Rune
   // threshold already carries its new Level's army-wide +Attack on THIS very blow
   // — the user-reported fix ("rune has effect the moment it reaches the
@@ -9068,7 +9086,7 @@ function finishResolvedAttack(
       abilityName: azureCharge.abilityName,
     });
   }
-  // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
+  // Rune Keeper commander: +3 Runes whenever it is attacked and survives.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
   gainCommanderActionPoint(state, details.attacker, "attacking");
   gainCommanderActionPoint(state, details.defender, "being attacked");
@@ -9914,7 +9932,7 @@ function applyFireShieldDamage(
       nonSpellTotal += ability.effect.amount;
     }
   }
-  if (attackKind === "melee") for (const effect of state.activeEffects) {
+  for (const effect of state.activeEffects) {
     if (
       effect.target?.type !== "unit" ||
       effect.target.unitId !== defender.id
@@ -9922,7 +9940,10 @@ function applyFireShieldDamage(
       continue;
     }
     for (const modifier of effect.modifiers) {
-      if (modifier.type === "FIRE_SHIELD") {
+      if (
+        modifier.type === "FIRE_SHIELD" &&
+        (attackKind === "melee" || modifier.includesRanged)
+      ) {
         const sourceCard =
           effect.source.type === "card"
             ? balanceCardLibrary(state, cardLibrary)[effect.source.cardId]
@@ -32418,6 +32439,19 @@ function resolveCommanderCast(
       break;
     case "fire-shield": {
       const span = effect.durationByPower[tier];
+      const modifiers: ActiveEffectModifier[] = [
+        {
+          type: "FIRE_SHIELD",
+          amount: effect.damageByPower[tier],
+          includesRanged: true,
+        },
+      ];
+      if (
+        effect.firstAttackDefenseFromPower !== undefined &&
+        tier >= effect.firstAttackDefenseFromPower
+      ) {
+        modifiers.push({ type: "FIRE_SHIELD_FIRST_ATTACK_DEFENSE", amount: 1 });
+      }
       createActiveEffect(
         state,
         {
@@ -32426,14 +32460,14 @@ function resolveCommanderCast(
           duration:
             span === "combat"
               ? { type: "combat" }
-              : span === "two-rounds"
-                ? { type: "combat-rounds", rounds: 2 }
-                : { type: "current-combat-round" },
+              : span === "three-rounds"
+                ? { type: "combat-rounds", rounds: 3 }
+                : span === "two-rounds"
+                  ? { type: "combat-rounds", rounds: 2 }
+                  : { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
-          modifiers: [
-            { type: "FIRE_SHIELD", amount: effect.damageByPower[tier] },
-          ],
+          modifiers,
         },
         source,
         caster.controllerId,
@@ -34721,7 +34755,7 @@ function moveUnit(
   neutralTownMovement(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
 
-  // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
+  // Rune Keeper commander (Rune Ritual, move half): +3 Runes whenever it moves.
   applyCommanderRuneOnMove(state, unit);
   gainCommanderActionPoint(state, unit, "moving");
 
@@ -34810,7 +34844,7 @@ function defendUnit(
     );
   }
   // Bulwark "Runes" (Gamefound Update #3): taking the Defend action earns a
-  // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
+  // Bulwark unit's controller +3 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
   gainRunesForDefend(state, unit);
   gainCommanderActionPoint(state, unit, "defending");

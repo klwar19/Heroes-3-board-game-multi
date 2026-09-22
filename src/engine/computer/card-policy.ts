@@ -17,7 +17,8 @@ import { houseRuleEnabled } from "../house-rules";
 import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { resolvedSpellPowerForStackItem, standingSpellPower } from "../legal-actions";
-import { baseCardId } from "../phantom-cards";
+import { baseCardId, isPhantomCardId } from "../phantom-cards";
+import { chainLightningValue } from "./chain-planning";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   CardDefinition,
@@ -564,6 +565,12 @@ function scoreDamageEffect(
   target: TargetRef | undefined,
   base: number,
 ): number {
+  if (effect.type === "CHAIN_LIGHTNING" && target?.type === "unit") {
+    const state = observation.state as unknown as GameState;
+    const power = (card.power ?? 0) + (card.kind === "spell" ? standingSpellPower(state, observation.playerId, card) : 0);
+    const value = chainLightningValue(state, observation.playerId, card, target.unitId, power);
+    return value <= 0 ? 200 : Math.max(180, Math.min(895, base + value));
+  }
   const affected = areaDamageUnits(observation, effect, target);
   if (affected) {
     const damage = areaDamageAmount(card, effect);
@@ -1668,6 +1675,11 @@ function pendingSpellBoostImpact(
     ...top,
     modifiers: { ...top.modifiers, spellPowerBonus: top.modifiers.spellPowerBonus + boost },
   }, cards);
+  if (spell.effect.type === "CHAIN_LIGHTNING") {
+    const now = chainLightningValue(publicState, observation.playerId, spell, defender.id, power);
+    const boosted = chainLightningValue(publicState, observation.playerId, spell, defender.id, boostedPower);
+    return boosted > now ? "chips" : "no-ladder-step";
+  }
   // Dice-roll spells (Inferno, Slayer): the ladder is the DICE count.
   const diceNow = getSpellDiceRollCount(spell, power);
   if (diceNow !== null) {
@@ -2066,6 +2078,12 @@ export function scoreCardAction(
                 ? "card.play-ability"
                 : "card.play-card";
 
+      // Preserve real Power once this safe neutral fight no longer needs it.
+      // The phantom remains spendable; scarce cards can support the next cast
+      // or next map fight. Kill conversions and armoured guards keep priority.
+      if (isReaction && actionEffect?.type === "ADD_SPELL_POWER" && !isPhantomCardId(action.cardId) &&
+          pendingSpellBoostImpact(observation, mode === "expert" ? actionEffect.expertAmount ?? actionEffect.amount : actionEffect.amount) === "chips" && !armouredNeutralTarget(observation) &&
+          neutralFightAllowsCardReserve(observation)) score = Math.min(score, 1_020);
       return { score, policy };
     }
     case "PLAY_REACTIONS": {

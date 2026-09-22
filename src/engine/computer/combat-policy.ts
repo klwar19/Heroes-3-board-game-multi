@@ -638,7 +638,7 @@ function attackScore(
   // Do not erase retaliation/reply risk on a kill that needs a neutral die.
   // Deterministic elemental damage keeps its printed value under that rule.
   const lowDamage = estimatedStrikeDamage(attacker, defender, attackFromPosition, false,
-    dealsElementalStrike(attacker) && houseRuleEnabled(state, "elemental-damage-no-die") ? 0 : -1);
+    dealsElementalStrike(attacker) && houseRuleEnabled(state, "elemental-damage-zero-die") ? 0 : -1);
   const lethal = lowDamage > 0 && lowDamage >= unitRemovalHealth(defender);
   const ownRemaining = unitRemainingHealth(attacker);
   let retaliationDamage = 0;
@@ -665,7 +665,7 @@ function attackScore(
   // Breaking a Pack's first health bar is a flip, not a removal. Do not use
   // that false finish to justify waking paralysis or exposing a valuable unit.
   const armyCanFinish = lowDamage + reachingAllies.reduce((sum, unit) => sum + estimatedStrikeDamage(unit, defender,
-    unit.position, false, dealsElementalStrike(unit) && houseRuleEnabled(state, "elemental-damage-no-die") ? 0 : -1), 0) >= unitRemovalHealth(defender);
+    unit.position, false, dealsElementalStrike(unit) && houseRuleEnabled(state, "elemental-damage-zero-die") ? 0 : -1), 0) >= unitRemovalHealth(defender);
 
   // Don't wake a safely-skippable paralyzed enemy for chip: any damage removes
   // its Paralysis token, cancelling the activation it would have skipped. Only a

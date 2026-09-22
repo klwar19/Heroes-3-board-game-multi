@@ -13,8 +13,10 @@ on every built bar. Factory ships a complete real printed tile set. **Cove and C
 printed portrait tiles here (`cove-*.webp` / `conflux-*.webp`); full empty/full
 board scans with English definitions live at
 `/assets/towns-{cove,conflux}-board-{empty,full}.webp` (pipeline under
-`assets-to-translate/cove-conflux-town-boards/`). Bulwark still has none, so its
-built bars fall back to the townscape slice / plaque. Dropping a correctly-named
+`assets-to-translate/cove-conflux-town-boards/`). Bulwark now uses aligned
+`bulwark-panorama-unbuilt.webp` and seven `bulwark-panorama-tile-N.webp`
+construction inserts. The shared Glacial Halls / Sieidi slot reveals its built
+half only until both stand; the Altar has its own slot. Dropping a correctly-named
 file in here upgrades a bar automatically — that is the whole integration
 contract, no code changes needed:
 
@@ -39,6 +41,11 @@ contract, no code changes needed:
   `python3 -c "from PIL import Image; Image.open('x.png').save('y.webp','WEBP',quality=90)"`).
 - Missing/broken files are harmless: the view falls back to the built-town
   slice (where the board has one) or the plaque.
+
+Factory's generated Artifact Merchants built tile is code-shipped at
+`/public/factory-cards/town-board-artifact-merchants.webp` and explicitly mapped
+in `townBoardTileArt`, so it is available even in a checkout without the archived
+CDN media. Its unbuilt face uses the board's live name and cost plaque.
 
 The designed boards' resource-track + token-well section is NOT drawn in CSS
 anymore: they paste the authentic printed panel cropped from the Stronghold

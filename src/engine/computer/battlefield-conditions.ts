@@ -1,7 +1,8 @@
-import { unitAttackRollFixedMinusOne } from "../active-effects";
+import { unitAttackRollFixedMinusOne, unitIgnoresAttackDieFromEffects } from "../active-effects";
 import { denseFogThisRound } from "../battlefield-condition-fog";
 import { houseRuleEnabled } from "../house-rules";
 import { getAttackRollMode } from "../legal-actions";
+import { getForcedAttackerDie, hasIgnoreOwnAttackDie } from "../unit-abilities";
 import type { CombatState, CombatUnitState, GameState } from "../state";
 import { dealsElementalStrike, estimatedStrikeDamage } from "./strike-value";
 
@@ -26,8 +27,20 @@ export function conditionAttackFaces(
   if (attacker.type !== "ranged") return null;
   // Lifted fog rounds keep the ordinary flat estimate — no phantom penalty.
   if (condition === "dense-fog" ? !denseFogThisRound(state.combat) : condition !== "perfect-conditions") return null;
-  if (dealsElementalStrike(attacker) && houseRuleEnabled(state, "elemental-damage-no-die")) return [0];
+  return plannedAttackFaces(state, attacker, defender, position, retaliation);
+}
+
+/** Public ordinary-roll weights, including forced/ignored dice. Special
+ * multi-die riders remain approximations; this enumerates faces, never RNG. */
+export function plannedAttackFaces(
+  state: GameState, attacker: CombatUnitState, defender: CombatUnitState,
+  position = attacker.position, retaliation = false,
+): readonly number[] {
+  if (dealsElementalStrike(attacker) && houseRuleEnabled(state, "elemental-damage-zero-die")) return [0];
+  if ((!retaliation && hasIgnoreOwnAttackDie(attacker)) || unitIgnoresAttackDieFromEffects(state, attacker)) return [0];
   if (unitAttackRollFixedMinusOne(state, attacker)) return [-1];
+  const forced = getForcedAttackerDie(defender);
+  if (forced !== null) return [forced];
   const mode = getAttackRollMode({ ...attacker, position }, defender, state, retaliation);
   if (mode === "advantage") return [-1, 0, 0, 0, 1, 1, 1, 1, 1];
   if (mode === "disadvantage") return [-1, -1, -1, -1, -1, 0, 0, 0, 1];

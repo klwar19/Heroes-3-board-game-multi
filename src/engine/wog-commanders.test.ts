@@ -50,6 +50,7 @@ import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-redu
 import { countBallistas, startWarMachineRound, warMachinesForSale } from "./permanents";
 import { countExtraBallistas, effectiveInitiative } from "./active-effects";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { gainRunes } from "./runes";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
   CombatState,
@@ -1303,14 +1304,28 @@ describe("WOG commanders — specialties", () => {
     const bulwark = ritualState("bulwark");
     expect(bulwark.combat!.runes?.p1?.count ?? 0).toBe(0); // no combat-start grant
     let s = attackCommander(bulwark, "unit_p2_skeletons", 10);
-    expect(s.combat!.runes?.p1?.count).toBe(1); // first attack banks a Rune
+    expect(s.combat!.runes?.p1?.count).toBe(3); // first attack banks +3 Runes
     s = attackCommander(s, "unit_p2_vampires", 13);
-    expect(s.combat!.runes?.p1?.count).toBe(2); // and so does the second
+    expect(s.combat!.runes?.p1?.count).toBe(6); // and so does the second
 
-    // Moved half: moving the commander banks a Rune too (cell 9 → the free 10).
+    // Moved half: moving the commander banks +3 Runes too (cell 9 → the free 10).
     const moved = moveCommander(ritualState("bulwark"), 10);
     expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(10);
-    expect(moved.combat!.runes?.p1?.count).toBe(1);
+    expect(moved.combat!.runes?.p1?.count).toBe(3);
+
+    // Level 1 gives the living Rune Keeper its own extra +1 Attack on top of the
+    // army-wide Rune Power (6 banked + 3 = 9 → Level 1).
+    const keeperRider = (state: GameState) =>
+      state.activeEffects.filter(
+        (effect) =>
+          effect.name === "Rune Keeper's Rune Power" &&
+          effect.target?.type === "unit" &&
+          effect.target.unitId === commanderUnitId("p1")
+      );
+    expect(keeperRider(s)).toHaveLength(0);
+    gainRunes(s, "p1", 3);
+    expect(s.combat!.runes?.p1).toMatchObject({ count: 0, appliedLevel: 1 });
+    expect(keeperRider(s)).toHaveLength(1);
 
     // CONTROL: a Paladin commander (even for a Bulwark player) has no Rune Ritual,
     // so neither being attacked nor moving banks anything.
@@ -1318,6 +1333,10 @@ describe("WOG commanders — specialties", () => {
     expect(ctrlAttacked.combat!.runes?.p1?.count ?? 0).toBe(0);
     const ctrlMoved = moveCommander(ritualState("paladin"), 10);
     expect(ctrlMoved.combat!.runes?.p1?.count ?? 0).toBe(0);
+    // CONTROL: a Paladin commander reaching Level 1 gets no Rune Keeper rider.
+    gainRunes(ctrlMoved, "p1", 9);
+    expect(ctrlMoved.combat!.runes?.p1?.appliedLevel).toBe(1);
+    expect(ctrlMoved.activeEffects.some((effect) => effect.name === "Rune Keeper's Rune Power")).toBe(false);
   });
 });
 

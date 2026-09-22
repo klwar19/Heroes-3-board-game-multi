@@ -26,6 +26,10 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
       return `When built: Search (2) the Spell deck twice. Afterwards, once per round (Spell Book token): pay ${building.spellBookCost ?? 5} gold to Search (2) the Spell deck.`;
     case "RESOURCE_ROUND_CHOICE":
       return `At the beginning of each Resource round, choose: ${effect.options.map((option) => option.label).join(" — OR — ")}.`;
+    case "RESOURCE_ROUND_BANK":
+      return `Before receiving normal income in each Resource round, you may choose one investment: ${effect.options
+        .map((option) => `pay ${option.payGold} gold to gain ${option.nextResourceGold} gold at the next Resource round`)
+        .join(" — OR — ")}.`;
     case "RESOURCE_ROUND_MORALE":
       return "At the beginning of each Resource round, gain a positive Morale token.";
     case "RESOURCE_ROUND_RESOURCE_DIE":
@@ -60,7 +64,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "FREELANCERS_GUILD":
       return `Always on: each time you win against Neutral Units, gain ${effect.winGold} gold (2 with the BINH Freelancer's Guild bounty option). When recruiting or reinforcing, if you do not have enough gold, you may use building materials or valuables as gold at 1:1.`;
     case "ARTIFACT_SMITH":
-      return `Once during your turn, choose one: pay ${effect.searchCost} gold to Search (2) the Artifact deck, OR remove an Artifact card from your hand to gain ${effect.sellGold} gold. Counts as an artifact source (hero level 4+ may search Major, 6+ Relic artifacts in BINH mode).`;
+      return `Once during your turn, choose one: pay ${effect.searchCost} gold to Search (${effect.searchCount ?? 2}) the Artifact deck, OR remove an Artifact card from your hand to gain ${effect.sellGold} gold. Counts as an artifact source (hero level 4+ may search Major, 6+ Relic artifacts in BINH mode).`;
     case "ROUND_START_FREE_SPRITE":
       return "At the beginning of each round, you may recruit a Few of Sprites for free, or reinforce a Few of your Sprites to a Pack for free.";
     case "MAGIC_UNIVERSITY":
@@ -68,11 +72,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "THIEVES_GUILD":
       return "Once during your turn, choose any one deck in the game (a shared deck, or any player's Might & Magic deck — your own or an opponent's), look at its top 2 cards, then put one of them on that deck's discard pile and the other back on top.";
     case "RUNE_ALTAR":
-      return `Bulwark Runes: raises your maximum Rune Level to ${effect.levelCap}${
-        effect.startingRunes > 0
-          ? ` and starts each combat with ${effect.startingRunes} Rune${effect.startingRunes === 1 ? "" : "s"}`
-          : ""
-      }. Level 1 = +1 Attack, Level 2 = +3 Initiative, Level 3 = +1 Defense to all your units. Current house rule for earning Runes in battle: Attack +1, Retaliate +1, Defend +2.`;
+      return `Bulwark Runes: unlocks Rune Level ${effect.levelCap} and adds ${effect.neutralStartingRunes} starting Runes against Neutral units. Building grants stack. Each unlocked level needs 9 Runes on the main track; on reaching it, gain its lasting combat bonus, reset the main track to 0, and add 5 Runes to the reserve. Levels grant +1 Attack, then +3 Speed, then +1 Defense to all your units. Rune costs spend reserve first, then main-track Runes. Attack +1 Rune, Retaliate +2 Runes, Defend +3 Runes.`;
     case "MGQ_SPIRIT_SHRINE":
       return "Outside combat, select one Spirit whose Contract building is built. That choice is snapshotted at combat setup and lasts for that combat.";
     case "MGQ_SPIRIT_CONTRACT": {
@@ -95,6 +95,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
 export function buildingTimingLabel(building: TownBuildingDefinition): string | null {
   switch (building.effect?.type) {
     case "RESOURCE_ROUND_CHOICE":
+    case "RESOURCE_ROUND_BANK":
     case "RESOURCE_ROUND_MORALE":
     case "RESOURCE_ROUND_RESOURCE_DIE":
     case "RESOURCE_ROUND_SEARCH_DISCARD":

@@ -582,7 +582,7 @@ describe("Combat-scoped effects do not leak past a Retreat/Surrender (Bulwark Ru
 
       // p1 (Bulwark) earned a Rune Level this fight: a live, player-scoped +1 Attack.
       seedRunesForCombat(state);
-      gainRunes(state, "p1", 4); // 0 → 4 = Level 1
+      gainRunes(state, "p1", 9); // 0 → 9 = Level 1
       const ctx = {
         attacker: state.combat!.units.a1,
         defender: state.combat!.units.b2,

@@ -10067,6 +10067,21 @@ export function processPendingVisit(state: GameState): void {
       case "GAIN_RESOURCES":
         gainResources(state, visit.playerId, step, `visited ${fieldName(state, visit.fieldId)}`);
         break;
+      case "FACTORY_BANK_INVEST": {
+        const bankPlayer = state.players[visit.playerId];
+        if (!bankPlayer || !hasResources(bankPlayer, { gold: step.payGold })) {
+          throw new Error("Not enough gold for that Bank investment.");
+        }
+        spendResources(state, visit.playerId, { gold: step.payGold }, "Factory Bank investment");
+        bankPlayer.factoryBankNextResourceGold = step.payoutGold;
+        appendEvent(state, {
+          type: "TOWN_BUILDING_USED",
+          playerId: visit.playerId,
+          buildingId: "factory.bank",
+          message: `Bank: paid ${step.payGold} gold; ${step.payoutGold} gold is due before the next Resource-round income.`
+        });
+        break;
+      }
       case "ALLY_TRANSFER":
         applyAllyTransfer(state, visit, step);
         break;
@@ -20260,7 +20275,14 @@ export function migrateParallelEventRewards(state: GameState): void {
   }
 }
 
-export function startAdventureRound(state: GameState): void {
+export function startAdventureRound(state: GameState, resumeResourceRoundAfterBank = false): void {
+  const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
+
+  // A Factory Bank decision is a real pre-income timing window. The reward
+  // queue resumes this function after every seat has invested or skipped; the
+  // wrapper prevents that continuation from replaying round-start cleanup,
+  // token refreshes, timed events, or every-round income.
+  if (!resumeResourceRoundAfterBank) {
   // Victory Points mode: the round limit is the HARD end trigger. Both round
   // wraps (ordered `endTurnAdventure`, parallel `endParallelTurn`) call this
   // right after `state.round += 1`, so when the counter passes the limit the
@@ -20294,8 +20316,6 @@ export function startAdventureRound(state: GameState): void {
 
   // Underdog catch-up: trailing seats train before this round's turns begin.
   applyUnderdogUnitExperience(state);
-
-  const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
   // Anime faction hand-limit penalties (Hidden Leaf on Resource rounds, Little
   // Busters on Astrologers rounds) are ROUND-SCOPED, not permanent stacking
@@ -20545,8 +20565,66 @@ export function startAdventureRound(state: GameState): void {
     return;
   }
 
+  }
+
   if (kind !== "resource") {
     return;
+  }
+
+  if (!resumeResourceRoundAfterBank) {
+    const adventure = state.adventure;
+    if (!adventure) return;
+    let queuedBankChoice = false;
+
+    for (const playerId of state.turnOrder) {
+      const player = state.players[playerId];
+      if (!player || playerId === NEUTRAL_PLAYER_ID || player.eliminated) continue;
+
+      // A prior investment matures before this round's ordinary production.
+      const matured = player.factoryBankNextResourceGold ?? 0;
+      if (matured > 0) {
+        player.factoryBankNextResourceGold = undefined;
+        gainResources(state, playerId, { gold: matured }, "Factory Bank payout");
+      }
+
+      const town = getTownOfPlayer(state, playerId);
+      const bank = town?.buildings
+        .map((buildingId) => coreBuildingDefinitions[buildingId])
+        .find((building) => building?.effect?.type === "RESOURCE_ROUND_BANK");
+      if (!bank || bank.effect?.type !== "RESOURCE_ROUND_BANK") continue;
+
+      queuedBankChoice = true;
+      adventure.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: [{
+          type: "CHOOSE_ONE",
+          prompt: `${bank.name}: invest before receiving this Resource round's normal income?`,
+          options: [
+            ...bank.effect.options.map((option) => ({
+              label: `Pay ${option.payGold} gold now → gain ${option.nextResourceGold} gold next Resource round`,
+              disabledReason: player.resources.gold < option.payGold ? "Not enough gold before income." : undefined,
+              steps: [{
+                type: "FACTORY_BANK_INVEST" as const,
+                payGold: option.payGold,
+                payoutGold: option.nextResourceGold
+              }]
+            })),
+            { label: "Do not invest", steps: [] }
+          ]
+        }]
+      });
+    }
+
+    if (queuedBankChoice) {
+      const continuationOwner = state.turnOrder.find((playerId) =>
+        playerId !== NEUTRAL_PLAYER_ID && state.players[playerId] && !state.players[playerId]?.eliminated
+      );
+      if (continuationOwner) {
+        adventure.rewardQueue.push({ playerId: continuationOwner, kind: "resource-round-income" });
+        return;
+      }
+    }
   }
 
   const astrologers = getAstrologersState(state);
@@ -20567,6 +20645,7 @@ export function startAdventureRound(state: GameState): void {
     // player picks the combat-focus option again this round, the City Hall
     // resolver re-sets it.
     player.runeEmpoweredNextCombats = undefined;
+    player.cityHallRunesNextCombats = undefined;
 
     const income = {
       gold: Math.max(0, player.production.gold + modifiers.gold),
@@ -21368,6 +21447,57 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
       }
     ]
   });
+}
+
+/**
+ * Factory City Hall: the printed level-3 bronze option names Armadillos, not
+ * an arbitrary bronze card. Offer the one legal card action: recruit its Few
+ * when unowned, or reinforce the owned Few to its Pack. The explicit Skip
+ * keeps the resource-round choice optional after the player selects this arm.
+ */
+export function queueFreeUnitRecruitOrReinforce(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  prompt: string
+): void {
+  const player = state.players[playerId];
+  const def = coreUnitDefinitions[unitDefId];
+  const adventure = state.adventure;
+  if (!player || !def || !adventure) return;
+
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  const owned = player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  if (!owned && getUnitSide(unitDefId, "few")) {
+    options.push({ label: `Recruit ${def.name} (free)`, steps: [{ type: "RECRUIT_FREE", unitDefId }] });
+  }
+  for (const unit of player.army) {
+    if (unit.unitDefId === unitDefId && unit.side === "few" && getUnitSide(unitDefId, "pack")) {
+      options.push({
+        label: `Reinforce ${def.name} to a Pack (free)`,
+        steps: [{ type: "REINFORCE_FREE", armyUnitId: unit.id }]
+      });
+    }
+  }
+  if (options.length === 0) return;
+  options.push({ label: "Skip", steps: [] });
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [{ type: "CHOOSE_ONE", prompt, options }]
+  });
+}
+
+/** Whether the named City Hall unit has a real free recruit/reinforce action. */
+export function hasFreeUnitRecruitOrReinforceTarget(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string
+): boolean {
+  const player = state.players[playerId];
+  if (!player || !getUnitSide(unitDefId, "few")) return false;
+  const owned = player.army.filter((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  return owned.length === 0 || owned.some((unit) => unit.side === "few" && Boolean(getUnitSide(unitDefId, "pack")));
 }
 
 /** Live Saplings choices, shared by presentation, legality and resolution.

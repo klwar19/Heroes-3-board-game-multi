@@ -110,6 +110,7 @@ import {
   nextPlannedSilver,
   rankedGoldUnits,
   spendDelaysSavedCost,
+  spendWorsensGoldMilestone,
   unitDevelopmentSideStrength,
   shouldPrioritizeFirstAidTent,
   shouldLaunchBronzeRush,
@@ -393,6 +394,10 @@ function buildingScore(
       score = 820 + (broke ? 15 : 0);
       focusKind = "build-income";
       break;
+    case "RESOURCE_ROUND_BANK":
+      score = 825 + ((state.round ?? 0) <= 5 ? 20 : 0) + (broke ? -20 : 0);
+      focusKind = "build-income";
+      break;
     case "RESOURCE_ROUND_MORALE":
     case "RESOURCE_ROUND_RESOURCE_DIE":
       // Recurring early resources/morale compound across several rounds.
@@ -585,6 +590,10 @@ function buildingScore(
     // legal step that completes the scenario immediately (980), nor the
     // income-first City Hall (970+) while that is still missing.
     return Math.min(score, incomeFirst ? 960 : 975);
+  }
+  const optionalBuilding = coreBuildingDefinitions[buildingId];
+  if (optionalBuilding && spendWorsensGoldMilestone(state, playerId, effectiveTownBuildingCost(state, optionalBuilding))) {
+    return Math.min(score, 280);
   }
   // Dwelling-first: while saving for the Silver/Gold dwelling, a side building
   // (Mage Guild, economy, anything non-milestone) that would eat into the
@@ -1113,6 +1122,10 @@ function populationScore(
       }
     }
   }
+  // Planned recovery, Silver breakthroughs and the Gold ladder returned above.
+  // Optional troops cannot consume inputs still needed for the R9 project.
+  if (spendWorsensGoldMilestone(state, observation.playerId,
+      { gold: spentGold, buildingMaterials: spentMaterials, valuables: spentValuables })) return 240;
   if (
     development.phase === "unlock-silver" ||
     development.phase === "unlock-gold"
@@ -2292,6 +2305,9 @@ function visitStepsUtility(
       case "GAIN_RESOURCES":
         utility += (step.gold ?? 0) * 2 + (step.buildingMaterials ?? 0) * 3 + (step.valuables ?? 0) * 6;
         break;
+      case "FACTORY_BANK_INVEST":
+        utility += (step.payoutGold - step.payGold) * 4 - step.payGold;
+        break;
       case "GAIN_EXPERIENCE":
         utility += 18 + step.amount * 4;
         break;
@@ -2912,6 +2928,15 @@ function resolveVisitStepScore(
           (state.players[playerId]?.factionId === "necropolis" &&
             cardLibrary[inner.cardId]?.effect.type === "NECROMANCY_REINFORCE")))) return 1_020;
     if (rejectsPaidBronzeSteps(state, playerId, option.steps)) return 1_020;
+    const bankInvestment = option.steps.find((inner) => inner.type === "FACTORY_BANK_INVEST");
+    if (bankInvestment?.type === "FACTORY_BANK_INVEST") {
+      const gold = playerGold(state, playerId);
+      if (gold < bankInvestment.payGold || gold - bankInvestment.payGold < GOLD_RESERVE) return 1_020;
+      // Delayed profit is worthwhile only after preserving the shared
+      // development reserve; among affordable brackets, prefer the best net.
+      const profit = bankInvestment.payoutGold - bankInvestment.payGold;
+      return 1_100 + Math.max(0, profit * 6 - bankInvestment.payGold);
+    }
     // Anime Equipment outfitter (§3.13): buy an item into an EMPTY slot only from
     // genuine surplus (gold ≥ cost + 6); otherwise leave. A buy below that scores
     // under the Leave option (1_050) so the shop always exits cleanly (no stall).
@@ -3143,15 +3168,16 @@ export function scoreMapAction(
       // offer waits for a developed, funded turn (the old flat 420 hired a
       // hero while the army was still thin whenever recruiting didn't fire).
       const gold = playerGold(state, observation.playerId);
+      const opportunity = secondaryHeroOpportunity(state, observation.playerId, action.fieldId);
       if (
         !armyReadyForContestedFight(state, observation.playerId) ||
         gold < 10 + GOLD_RESERVE ||
-        !secondaryHeroOpportunity(state, observation.playerId, action.fieldId).worthwhile
+        !opportunity.worthwhile
       ) {
         return { score: 150, policy: "map.hire-secondary-hold" };
       }
       return {
-        score: 946,
+        score: opportunity.jobs >= 2 ? 977 : 966,
         policy: "map.hire-secondary-hero",
       };
     }

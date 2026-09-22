@@ -27,6 +27,12 @@ if (mode === 'prepare') {
     fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.writeFileSync(dest, contents);
     hashes[file] = createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex');
   }
+  // Include new policy modules as well as files present in the baseline commit.
+  for (const name of fs.readdirSync(path.join(snapshot, 'src/engine/computer'))) {
+    if (!name.endsWith('.ts') || name.includes('.test.')) continue;
+    const file = `src/engine/computer/${name}`;
+    hashes[file] = createHash('sha256').update(fs.readFileSync(path.join(snapshot, file))).digest('hex');
+  }
   let runner = fs.readFileSync(path.join(snapshot, 'src/server/computer-runner.ts'), 'utf8');
   for (const name of ['chooseComputerAction', 'collectMapObjectives', 'primaryMapObjective']) {
     runner = runner.replace(`  ${name},`, `  ${name} as current_${name},`);
@@ -75,7 +81,7 @@ for (const job of jobs) {
   const me = job.candidateSeat ?? 'p2';
   runner.setBaselineSeats(job.kind === 'pvp' ? [me === 'p1' ? 'p2' : 'p1'] :
     job.version === 'baseline' ? ['p1', 'p2'] : ['p1']);
-  let state = setup.createAdventureGameState({ seed: job.seed, difficulty: 'impossible', events: false,
+  let state = setup.createAdventureGameState({ seed: job.seed, difficulty: job.difficulty ?? 'impossible', events: false,
     rollFirstPlayer: false, sessionMode: job.kind === 'pvp' ? 'multiplayer' : 'single-player',
     players: [{ id: 'p1', name: 'P1', factionId: job.kind === 'pvp' ? job.faction : 'castle',
       heroDefId: job.kind === 'pvp' ? hero : factions.coreFactionDefinitions.castle.heroes[0] },
@@ -91,8 +97,12 @@ for (const job of jobs) {
     const carry = job.faction === 'dungeon' ? 'dungeon.minotaurs' : job.faction === 'rampart' ? 'rampart.dendroids' : silver[0];
     for (const id of ['p1', 'p2']) {
       state.players[id].army = [];
-      for (const [def, side] of [[bronze[2], 'pack'], [bronze[0], 'few'], [carry, 'few'], [gold.at(-1), 'few'], [gold[0], 'few']])
-        adventure.addArmyUnit(state.players[id], def, side);
+      for (const [def, side] of [[bronze[2], 'pack'], [bronze[0], 'few'], [carry, 'few'], [gold.at(-1), 'few'], [gold[0], 'few']]) {
+        // Factory's mutually exclusive Gold cards cannot coexist in a legal army.
+        const legalDef = factions.factoryGoldUnitConflict(state.players[id].army, def)
+          ? silver.find(unit => unit !== carry) : def;
+        if (legalDef) adventure.addArmyUnit(state.players[id], legalDef, side);
+      }
       state.players[id].hand = ['stat.attack', 'stat.defense', 'stat.power', 'stat.knowledge', 'spell.magic_arrow', 'ability.luck', 'ability.leadership'];
       state.players[id].resources = { gold: 25, buildingMaterials: 5, valuables: 3 };
       const h = Object.values(state.heroes).find(h => h.controllerId === id && h.kind === 'main'); h.level = 5;
@@ -104,7 +114,7 @@ for (const job of jobs) {
   const topGold = factions.coreFactionDefinitions[job.faction].units.filter(id => tier(id) === 'gold').at(-1);
   const row = { ...job, hero, firstGold: null, firstTopGold: null, firstSilver: null, firstFar: null, secondFar: null,
     firstL3FarWin: null, secondL3FarWin: null, pvpWinner: null, actions: 0, termination: null, reason: null,
-    neutralWins: 0, neutralLosses: 0, retreats: 0, cardPlays: 0, purchases: [] };
+    neutralWins: 0, neutralLosses: 0, retreats: 0, cardPlays: 0, purchases: [], decisionMs: [] };
   const seen = new Set(), l3Tiles = new Set(), trail = [];
   try {
     for (let i = 0; i < (job.kind === 'pvp' ? 2500 : 6000); i++) {
@@ -128,15 +138,19 @@ for (const job of jobs) {
         }
       }
       if (state.phase === 'game-over' && !state.combat) { row.termination = 'engine-game-over'; break; }
+      const decisionStarted = performance.now();
       const run = runner.driveComputerPlayers(state, apply, { maxSteps: 1 });
+      row.decisionMs.push(performance.now() - decisionStarted);
       if (!run.decisions.length) { row.termination = 'stalled'; row.reason = run.reason ?? 'No computer decision'; break; }
       for (const d of run.decisions) {
         if (job.trace && d.playerId === me) {
+          if (state.combat && d.policy === 'combat.retreat-hopeless') fs.writeFileSync(`${resultFile}.retreat-${state.round}.json`, JSON.stringify(state));
           if (!state.combat && job.captureRound === state.round) fs.writeFileSync(`${resultFile}.state.json`, JSON.stringify(state));
           const h = Object.values(state.heroes).find(h => h.controllerId === me && h.kind === 'main');
           fs.appendFileSync(`${resultFile}.trace.jsonl`, JSON.stringify({ seed: job.seed, faction: job.faction,
             round: state.round, action: d.action, policy: d.policy, resources: state.players[me].resources,
-            production: state.players[me].production, buildings: state.players[me].town,
+            production: state.players[me].production,
+            buildings: Object.values(state.towns).filter(town => town.controllerId === me).map(town => town.buildings),
             army: state.players[me].army.map(u => `${u.unitDefId}:${u.side}`),
             hero: h && {level:h.level, spaceId:h.spaceId, movementPoints:h.movementPoints},
             hand: state.players[me].hand, combat: Boolean(state.combat) }) + '\n');
@@ -158,6 +172,11 @@ for (const job of jobs) {
     row.termination ??= 'step-limit';
   } catch (error) { row.termination = 'error'; row.reason = error.stack; }
   row.finalRound = state.round; row.ms = Date.now() - begun;
+  row.decisionMs.sort((a, b) => a - b);
+  row.decisionP50Ms = row.decisionMs[Math.floor(row.decisionMs.length * 0.5)] ?? 0;
+  row.decisionP95Ms = row.decisionMs[Math.floor(row.decisionMs.length * 0.95)] ?? 0;
+  row.decisionMaxMs = row.decisionMs.at(-1) ?? 0;
+  delete row.decisionMs;
   row.resources = state.players[me].resources;
   row.army = state.players[me].army.map(u => `${u.unitDefId}:${u.side}`);
   row.farOpened = state.adventure?.farTilesOpenedByPlayer?.[me] ?? 0;

@@ -72,6 +72,7 @@ import {
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  goldMilestoneShortfall,
   nextGoldLadderStep,
   hasGoldArmy,
   hasReachedGoldArmy,
@@ -147,7 +148,7 @@ export function withMapScoringCache<T>(state: GameState, run: () => T): T {
   }
 }
 
-function mapScoringCached<T>(state: GameState, key: string, compute: () => T): T {
+export function mapScoringCached<T>(state: GameState, key: string, compute: () => T): T {
   const cache = mapScoringCache;
   if (!cache || cache.state !== state) return compute();
   if (cache.entries.has(key)) return cache.entries.get(key) as T;
@@ -1990,6 +1991,19 @@ export function objectiveStrategicValue(
     }
     if (field.location === "settlement" && !hasOpenedFarEconomy(state, hero.controllerId)) value += 45;
   }
+  // Fund what printed production will still be missing at R9. A valuables
+  // source matters before the next-dwelling target alone notices the shortage.
+  if (field && objective.kind !== "explore" && objective.kind !== "enemy-hero") {
+    const gaps = mapScoringCached(state, `gold-deadline:${hero.controllerId}`,
+      () => goldMilestoneShortfall(state, hero.controllerId));
+    let fundingBonus = 0;
+    for (const resource of ["gold", "buildingMaterials", "valuables"] as const) {
+      if (gaps[resource] > 0 && fieldSuppliesResource(state, hero.controllerId, field, resource)) {
+        fundingBonus = Math.max(fundingBonus, Math.min(54, gaps[resource] * (resource === "gold" ? 3 : 18)));
+      }
+    }
+    value += fundingBonus;
+  }
   // Four-round public-board forecast: recurring income pays once per future
   // Resource round, contested targets account for the enemy's arrival window,
   // and dense regions retain option value for the next objective. This stays a
@@ -2198,9 +2212,7 @@ function bestObjectiveOf(
   fightAvailable: boolean,
   resolvePeacefulVisits = false,
 ): MapObjective | null {
-  let best: MapObjective | null = null;
-  let bestValue = Number.NEGATIVE_INFINITY;
-  let bestDistance = Number.POSITIVE_INFINITY;
+  const ranked: { objective: MapObjective; distance: number; value: number }[] = [];
   for (const objective of candidates) {
     const distance = distanceFromHeroTo(state, hero, objective.spaceId, resolvePeacefulVisits);
     if (distance === undefined) continue;
@@ -2211,20 +2223,33 @@ function bestObjectiveOf(
       distance,
       fightAvailable,
     );
-    if (
-      !best ||
-      value > bestValue ||
-      (value === bestValue && distance < bestDistance) ||
-      (value === bestValue &&
-        distance === bestDistance &&
-        objective.spaceId.localeCompare(best.spaceId) < 0)
-    ) {
-      best = objective;
-      bestValue = value;
-      bestDistance = distance;
-    }
+    ranked.push({ objective, distance, value });
   }
-  return best;
+  const compare = (a: typeof ranked[number], b: typeof ranked[number]) =>
+    b.value - a.value || a.distance - b.distance || a.objective.spaceId.localeCompare(b.objective.spaceId);
+  ranked.sort(compare);
+  const leader = ranked[0];
+  if (!leader) return null;
+  // Two-object routes on the real movement graph. Reuse the distance fields
+  // already needed above; at most four close first stops and eight follow-ups.
+  // A nearby icon behind a wall or a guard is not a collectible second job.
+  const jobs = ranked.filter(entry => entry.objective.kind !== "town" &&
+    isFreeSeizeObjective(entry.objective, state)).slice(0, 8);
+  const horizon = Math.max(0, hero.movementPoints) + heroMovementMax(state, hero);
+  const threshold = leader.value - 18;
+  for (const entry of ranked.slice(0, 4)) {
+    if (entry.value < threshold || !isFreeSeizeObjective(entry.objective, state) || entry.objective.kind === "town") continue;
+    let bestBonus = 0;
+    for (const next of jobs) {
+      if (next === entry) continue;
+      const leg = objectiveDistanceField(state, hero, [next.objective], resolvePeacefulVisits).get(entry.objective.spaceId);
+      if (leg === undefined || leg <= 0 || entry.distance + leg > horizon) continue;
+      bestBonus = Math.max(bestBonus, Math.max(0, 18 - leg * 3));
+    }
+    entry.value += bestBonus;
+  }
+  ranked.sort(compare);
+  return ranked[0].objective;
 }
 
 /** Small stable permutation helper; the home opening has at most 3 payoffs. */

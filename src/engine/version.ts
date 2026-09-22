@@ -1459,7 +1459,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // authoritative rules and serialized state.
 // v168: Factory, Tower, and Rampart veteran-rank rules add serialized combat
 // choices, per-unit temporary attack state, and persistent Sandworm initiative.
-export const ENGINE_PROTOCOL_VERSION = 168;
+// v169: Bulwark nine-Rune track with a spendable reserve (combat.runes.reserve,
+// neutral-only building grants, separate City Hall flag), Factory Bank
+// pre-income investment window (resource-round-income reward divider,
+// FACTORY_BANK_INVEST visit step, factoryBankNextResourceGold), Factory City
+// Hall named Armadillo recruit, Succubus/Shaman/Charming commander redesigns.
+export const ENGINE_PROTOCOL_VERSION = 169;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

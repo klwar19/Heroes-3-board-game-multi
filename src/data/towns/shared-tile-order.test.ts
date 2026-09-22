@@ -30,6 +30,14 @@ describe("shared-tile build order — every town", () => {
     let sharedTiles = 0;
     for (const [faction, spec] of Object.entries(townBoardSpecs)) {
       const shared = spec.bars.filter((bar) => bar.length > 1);
+      // Bulwark's physical art only SHARES A STRIP between the Glacial Halls
+      // (gold dwelling) and the Sieidi; they stay independent builds (pinned by
+      // the Bulwark CONTROL below), so the main→special gate does not apply.
+      if (faction === "bulwark") {
+        expect(shared.length, "bulwark: shared art strips").toBe(1);
+        sharedTiles++;
+        continue;
+      }
       // MGQ has TWO main+special inserts (dwelling_silver+Colosseum,
       // citadel+Amira's Shop); its Spirit Shrine is a lone building, not a
       // shared bar. Every other board keeps exactly one shared bar.
@@ -74,12 +82,15 @@ describe("shared-tile build order — every town", () => {
     }
   });
 
-  it("CONTROL: the Bulwark Altar keeps its Sieidi requirement AND gains the shared main", () => {
-    // Merge, not overwrite: the Altar shares its tile with the Silver dwelling but
-    // already required the Sieidi — it must now require both.
+  it("CONTROL: Bulwark's shared Glacial Halls/Sieidi strip stays independent; the Altar requires only the Sieidi", () => {
+    const bulwarkShared = townBoardSpecs.bulwark.bars.filter((bar) => bar.length > 1);
+    expect(bulwarkShared).toEqual([["bulwark.dwelling_gold", "bulwark.sieidi"]]);
+    // Independent builds: neither building of the shared strip gates the other.
+    expect(coreBuildingDefinitions["bulwark.sieidi"].prerequisites ?? []).not.toContain("bulwark.dwelling_gold");
+    expect(coreBuildingDefinitions["bulwark.dwelling_gold"].prerequisites ?? []).not.toContain("bulwark.sieidi");
+    // The Altar keeps its own Sieidi requirement (and no longer rides a dwelling strip).
     const altar = coreBuildingDefinitions["bulwark.altar"];
-    expect(altar.prerequisites).toContain("bulwark.sieidi");
-    expect(altar.prerequisites).toContain("bulwark.dwelling_silver");
+    expect(altar.prerequisites).toEqual(["bulwark.sieidi"]);
   });
 
   // ---- Behavioural gate (Factory: Bank shares the Industrialized Catacombs tile) ----

@@ -699,7 +699,7 @@ describe("commander casts — Brute's Bloodlust", () => {
 });
 
 describe("commander casts — Succubus' Fire Shield", () => {
-  it("burns a melee attacker for 1 (Pow 0/1) or 2 (Pow 2); durations follow the tiers", () => {
+  it("burns an attacker for 1 (Pow 0) or 2 (Pow 1/2); lasts 2/2/3 rounds; Pow 2 adds a one-attack +1 Defense", () => {
     function burn(state: GameState): number {
       // The defender's retaliation is spent, so any damage on the attacker
       // can only come from the Fire Shield itself.
@@ -712,24 +712,44 @@ describe("commander casts — Succubus' Fire Shield", () => {
     expect(burn(castState("succubus"))).toBe(0);
     // Pow 0: 1 damage back.
     expect(burn(castOn(castState("succubus"), "succubus", "unit_p1_marksmen"))).toBe(1);
+    // Pow 1 (Magic grade 2; the ladder is 0/0/1/2): 2 damage back.
+    expect(burn(castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen"))).toBe(2);
     // Pow 2: 2 damage back.
     expect(burn(castOn(castState("succubus", { magic: 3 }), "succubus", "unit_p1_marksmen"))).toBe(2);
 
     // Durations (expiry machinery itself is pinned in the active-effects tests):
-    // Pow 0 ends with this round, Pow 1 lasts the combat, Pow 2 two rounds.
+    // Pow 0 and Pow 1 last two combat rounds, Pow 2 three.
+    const shieldOf = (state: GameState) =>
+      state.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     const low = castOn(castState("succubus"), "succubus", "unit_p1_marksmen");
-    const lowEffect = low.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
-    expect(lowEffect?.expiresAtCombatRoundEnd).toBe(low.combat!.round);
+    const lowEffect = shieldOf(low);
+    expect(lowEffect?.expiresAtCombatRoundEnd).toBe(low.combat!.round + 1);
 
-    // Magic grade 2 = Power 1 (the ladder is 0/0/1/2).
     const mid = castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen");
-    const midEffect = mid.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
-    expect(midEffect?.duration.type).toBe("combat");
-    expect(midEffect?.expiresAtCombatRoundEnd).toBeUndefined();
+    const midEffect = shieldOf(mid);
+    expect(midEffect?.expiresAtCombatRoundEnd).toBe(mid.combat!.round + 1);
 
     const high = castOn(castState("succubus", { magic: 3 }), "succubus", "unit_p1_marksmen");
-    const highEffect = high.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
-    expect(highEffect?.expiresAtCombatRoundEnd).toBe(high.combat!.round + 1);
+    const highEffect = shieldOf(high);
+    expect(highEffect?.expiresAtCombatRoundEnd).toBe(high.combat!.round + 2);
+
+    // Every tier burns ranged attackers too.
+    for (const effect of [lowEffect, midEffect, highEffect]) {
+      expect(effect?.modifiers.find((m) => m.type === "FIRE_SHIELD")).toMatchObject({ includesRanged: true });
+    }
+
+    // Pow 2 alone adds the first-attack +1 Defense; it is consumed by the first
+    // resolved attack against the shielded unit, while the burn itself remains.
+    const firstDefense = (effect: typeof lowEffect) =>
+      effect?.modifiers.some((m) => m.type === "FIRE_SHIELD_FIRST_ATTACK_DEFENSE") ?? false;
+    expect(firstDefense(lowEffect)).toBe(false);
+    expect(firstDefense(midEffect)).toBe(false);
+    expect(firstDefense(highEffect)).toBe(true);
+    high.combat!.units.unit_p1_marksmen.retaliatedThisRound = true;
+    const afterFirst = enemyAttack(high, "unit_p2_skeletons", 2, "unit_p1_marksmen");
+    const shieldAfter = shieldOf(afterFirst);
+    expect(shieldAfter, "the shield outlives the first attack").toBeTruthy();
+    expect(firstDefense(shieldAfter)).toBe(false);
   });
 });
 

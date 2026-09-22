@@ -339,7 +339,15 @@ export function BattlefieldEnvironment({ state, boardArtId, plane = "sky" }: {
       fog(time, _dt, layer, k) {
         // Ease toward this round's engine-decided density; static paints snap.
         fogLevel = _dt > 0 ? fogLevel + (fogRef.current - fogLevel) * Math.min(1, _dt * .8) : fogRef.current;
-        k *= fogLevel;
+        // Presentation only (user request 2026-09-23): while the engine says
+        // the fog is thick, the banks still drift in and out on a slow cycle
+        // (~22 s) so the units show through every so often. The ranged
+        // disadvantage stays round-authoritative (denseFogThisRound); only the
+        // paint breathes. Lifted rounds keep their thin haze untouched.
+        const breath = .5 + .5 * Math.sin(time * (Math.PI * 2 / 22) - Math.PI / 2);
+        const gap = Math.pow(breath, 3); // brief clear spells, long thick spells
+        const thickShare = Math.max(0, Math.min(1, (fogLevel - .18) / .82));
+        k *= fogLevel * (1 - thickShare * .78 * gap);
         if (plane === "ground") { wash("#9fb0b8", .12 * k, "source-over"); return; }
         wash("#c3ccd2", .14 * k);
         drawNoise(time * 14, time * 4, 2.6 * cellSize() / 90, .5 * k, "source-over", "#dfe7ec");

@@ -34,7 +34,7 @@ import { getBattlefieldDistance, isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
-import { gainRunes } from "./runes";
+import { availableRunes, gainRunes } from "./runes";
 import { createSeededRandom } from "./random";
 import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import { isMechanicalUnit } from "./unit-abilities";
@@ -949,7 +949,7 @@ export function commanderCastRuneCost(state: GameState, unit: CombatUnitState, a
 
 /** The owner's current per-combat Rune pool (Bulwark subsystem). */
 export function commanderRunePool(state: GameState, playerId: PlayerId): number {
-  return state.combat?.runes?.[playerId]?.count ?? 0;
+  return availableRunes(state, playerId);
 }
 
 const TIER_RANK: Record<string, number> = { bronze: 0, silver: 1, gold: 2, azure: 3 };
@@ -1379,6 +1379,28 @@ export function applyCommanderBeginCastHaste(
   if (vsSlower > 0) {
     modifiers.push({ type: "ATTACK_BONUS_VS_INITIATIVE", comparison: "slower", amount: vsSlower });
   }
+  // Opening Haste also accelerates the Shaman itself at the two upgraded Power
+  // tiers. This is separate from the target's Haste: it is commander-only,
+  // lasts two rounds, and never applies to a normal in-turn cast.
+  const commanderOpeningInitiative = tier === 1 ? 3 : tier === 2 ? 5 : 0;
+  if (commanderOpeningInitiative > 0) {
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: `Opening ${cast.name} (${commander.cardName})`,
+          scope: "unit",
+          duration: { type: "combat-rounds", rounds: 2 },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "INITIATIVE_BONUS", amount: commanderOpeningInitiative }]
+        },
+        source,
+        commander.controllerId,
+        { type: "unit", unitId: commander.id }
+      )
+    );
+  }
   // User spec: the begin-of-match Haste lasts only 1 combat round when cast on a
   // GOLD unit (the normal in-turn activation cast keeps its full duration for
   // every grade — this override lives only on the begin-of-match helper).
@@ -1452,11 +1474,11 @@ function emitSpecialty(state: GameState, playerId: PlayerId, slug: CommanderSlug
 
 /**
  * Succubus — Charming: at the start of a combat against neutral units, one
- * random enemy neutral unit (any tier) gains a Paralysis token. Paralysis-
- * immune guards are skipped when picking (the charm always lands on a
- * charmable target if any exists).
+ * random enemy neutral unit (any tier) gains a Paralysis token and -1 Defense
+ * for combat rounds 1-2. Paralysis-immune guards are skipped when picking (the
+ * charm always lands on a charmable target if any exists).
  */
-function applyCharming(state: GameState, playerId: PlayerId): void {
+function applyCharming(state: GameState, playerId: PlayerId, commander: CombatUnitState): void {
   const candidates = livingNeutralDefenders(state).filter((unit) => !unitImmuneToParalysis(state, unit));
   if (candidates.length === 0) {
     return;
@@ -1470,7 +1492,29 @@ function applyCharming(state: GameState, playerId: PlayerId): void {
     return;
   }
   placeCombatToken(state, target, "paralysis", 0, "Succubus' Charming");
-  emitSpecialty(state, playerId, "succubus", "charming", `The Succubus charms ${target.cardName} — it gains a Paralysis token.`);
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Charming (Succubus)",
+        scope: "unit",
+        duration: { type: "combat-rounds", rounds: 2 },
+        polarity: "negative",
+        removable: true,
+        modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }]
+      },
+      { type: "unit", unitId: commander.id, controllerId: playerId },
+      playerId,
+      { type: "unit", unitId: target.id }
+    )
+  );
+  emitSpecialty(
+    state,
+    playerId,
+    "succubus",
+    "charming",
+    `The Succubus charms ${target.cardName} — it gains a Paralysis token and -1 Defense for combat rounds 1-2.`
+  );
 }
 
 /**
@@ -1554,7 +1598,7 @@ export function applyCommanderCombatStart(state: GameState): void {
       // Rune Keeper's Rune Ritual is NOT a combat-start grant — it triggers the
       // first time the commander is attacked (applyCommanderRuneRitual).
       case "succubus":
-        applyCharming(state, playerId);
+        applyCharming(state, playerId, unit);
         break;
       case "astral_spirit":
         applyElementalScourge(state, playerId, unit);
@@ -1590,44 +1634,44 @@ export function applyCommanderCombatStart(state: GameState): void {
 
 /**
  * Rune Keeper commander — Rune Ritual (attack half): EVERY time the commander is
- * attacked in a combat, its owner gains 1 Rune. Called from the attack resolution
+ * attacked in a combat, its owner gains 3 Runes. Called from the attack resolution
  * with the attack's DEFENDER; a no-op unless that defender is a living Rune Keeper
  * commander. `isRetaliation` is the incoming attack's flag — a retaliation's
  * "defender" is the original attacker (the commander striking back is not "being
  * attacked"), so those are skipped. There is NO once-per-combat cap: each incoming
- * attack banks a Rune (the move half is applyCommanderRuneOnMove).
+ * attack banks 3 Runes (the move half is applyCommanderRuneOnMove).
  */
 export function applyCommanderRuneRitual(state: GameState, defender: CombatUnitState, isRetaliation: boolean): void {
   if (isRetaliation || defender.commanderSlug !== "bulwark" || defender.damage >= defender.maxHealth) {
     return;
   }
-  gainRunes(state, defender.controllerId, 1);
+  gainRunes(state, defender.controllerId, 3);
   emitSpecialty(
     state,
     defender.controllerId,
     "bulwark",
     "rune-ritual",
-    `The Rune Keeper's ritual answers the attack — +1 Rune.`
+    `The Rune Keeper's ritual answers the attack — +3 Runes.`
   );
 }
 
 /**
  * Rune Keeper commander — Rune Ritual (move half): every time the commander
- * MOVES, its owner gains 1 Rune. Called from moveUnit after a Rune Keeper
+ * MOVES, its owner gains 3 Runes. Called from moveUnit after a Rune Keeper
  * commander's move resolves; a no-op for any other unit. A commander moves at
- * most once per activation, so this is naturally bounded to one Rune per turn.
+ * most once per activation, so this is naturally bounded to one grant per turn.
  */
 export function applyCommanderRuneOnMove(state: GameState, unit: CombatUnitState): void {
   if (unit.commanderSlug !== "bulwark" || unit.damage >= unit.maxHealth) {
     return;
   }
-  gainRunes(state, unit.controllerId, 1);
+  gainRunes(state, unit.controllerId, 3);
   emitSpecialty(
     state,
     unit.controllerId,
     "bulwark",
     "rune-ritual",
-    `The Rune Keeper carves a rune as it advances — +1 Rune.`
+    `The Rune Keeper carves runes as it advances — +3 Runes.`
   );
 }
 

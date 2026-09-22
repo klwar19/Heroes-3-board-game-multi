@@ -509,7 +509,9 @@ export type CommanderCastEffect =
   | {
       kind: "fire-shield";
       damageByPower: readonly [number, number, number];
-      durationByPower: readonly ["round" | "combat" | "two-rounds", "round" | "combat" | "two-rounds", "round" | "combat" | "two-rounds"];
+      durationByPower: readonly ["round" | "combat" | "two-rounds" | "three-rounds", "round" | "combat" | "two-rounds" | "three-rounds", "round" | "combat" | "two-rounds" | "three-rounds"];
+      /** Add +1 Defense against only the first attack after this shield is applied at Power 2. */
+      firstAttackDefenseFromPower?: number;
     }
   | { kind: "heal"; healByPower: readonly [number, number, number] }
   | {
@@ -841,19 +843,20 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       targeting: { side: "friendly", canTargetSelf: false },
       effect: {
         kind: "fire-shield",
-        damageByPower: [1, 1, 2],
-        durationByPower: ["round", "combat", "two-rounds"]
+        damageByPower: [1, 2, 2],
+        durationByPower: ["two-rounds", "two-rounds", "three-rounds"],
+        firstAttackDefenseFromPower: 2
       },
       tierText: [
-        "A friendly unit gains a Fire Shield (melee attackers take 1 damage) for this round.",
-        "A friendly unit gains a Fire Shield (melee attackers take 1 damage) for the whole combat.",
-        "A friendly unit gains a Fire Shield (melee attackers take 2 damage) for two rounds."
+        "A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 1 damage. Lasts 2 combat rounds.",
+        "A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage. Lasts 2 combat rounds.",
+        "A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage for 3 combat rounds. It also gets +1 Defense against only the first attack after receiving the shield."
       ]
     },
     specialty: {
       id: "charming",
       name: "Charming",
-      text: "At the start of a combat against neutral units, one random enemy neutral unit (any tier) gains a Paralysis token."
+      text: "At the start of a combat against neutral units, one random enemy neutral unit (any tier) gains a Paralysis token and -1 Defense for combat rounds 1-2."
     },
     cardImage: "/assets/units-commander-succubus.webp"
   },
@@ -971,8 +974,8 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       },
       tierText: [
         "A friendly unit gains +3 Initiative and +1 Attack for 2 combat rounds.",
-        "A friendly unit gains +6 Initiative, +1 Attack and +1 Movement for 2 combat rounds.",
-        "A friendly unit gains +9 Initiative, +1 Attack (+1 more vs slower units) and +1 Movement for 2 combat rounds."
+        "A friendly unit gains +6 Initiative, +1 Attack and +1 Movement for 2 combat rounds. If cast at the start of combat, the commander also gains +3 Initiative for 2 combat rounds.",
+        "A friendly unit gains +9 Initiative, +1 Attack (+1 more vs slower units) and +1 Movement for 2 combat rounds. If cast at the start of combat, the commander also gains +5 Initiative for 2 combat rounds."
       ]
     },
     specialty: {
@@ -1082,7 +1085,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "rune-ritual",
       name: "Rune Ritual",
-      text: "Gain +1 Rune every time the commander MOVES, and +1 Rune every time it is attacked."
+      text: "Gain +3 Runes every time the commander MOVES, and +3 Runes every time it is attacked. At Rune Level 1, the commander gains +1 additional Attack beyond the army-wide +1 Attack."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
   },

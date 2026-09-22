@@ -26,7 +26,7 @@ import { balanceCardLibrary } from "./community-balance-cards";
 import { effectiveInitiative } from "./active-effects";
 import { appendEvent, nextEventNumber } from "./events";
 import { applyNeutralDebuff } from "./neutral-veterancy";
-import { spendRunes } from "./runes";
+import { availableRunes, spendRunes } from "./runes";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { destroyFortification, defenderOnFortification } from "./siege";
 
@@ -381,7 +381,7 @@ export function openElementalChoice(
       continue;
     }
     if (request.valuablesCost && (unit.controllerId === NEUTRAL_PLAYER_ID || (state.players[unit.controllerId]?.resources.valuables ?? 0) < request.valuablesCost)) continue;
-    if (request.runeCost && (combat.runes?.[unit.controllerId]?.count ?? 0) < request.runeCost) continue;
+    if (request.runeCost && availableRunes(state, unit.controllerId) < request.runeCost) continue;
     const picks: NonNullable<
       Extract<
         NonNullable<GameState["pendingChoice"]>,
@@ -536,7 +536,7 @@ export function openElementalChoice(
             // Jotunn Rune Bolt: 1 Rune → 1 damage, or (if affordable) 2 Runes → 2 damage.
             picks.push({ targetId: target.id, amount: 1, runeCost: 1 });
             labels.push(`${target.cardName} — 1 damage (1 Rune)`);
-            if ((combat.runes?.[unit.controllerId]?.count ?? 0) >= 2) {
+            if (availableRunes(state, unit.controllerId) >= 2) {
               picks.push({ targetId: target.id, amount: 2, runeCost: 2 });
               labels.push(`${target.cardName} — 2 damage (2 Runes)`);
             }

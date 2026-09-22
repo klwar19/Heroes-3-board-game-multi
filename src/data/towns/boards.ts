@@ -80,6 +80,8 @@ export type TownBoardSpec = {
    * reads as one town instead of seven unrelated illustrations.
    */
   barTileImages?: readonly string[];
+  /** Seven aligned physical-style inserts over the empty town panorama. */
+  physicalPanoramaTiles?: boolean;
   /** Designed boards: the authentic printed tracks/tokens panel (a crop of the
    *  Stronghold fan scan) pasted at `geometry.panel` instead of CSS cells. */
   panelImage?: string;
@@ -428,18 +430,19 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   bulwark: {
     factionId: "bulwark",
-    // Published empty town background (thelazy.net "Bulwark-in-background"); the
-    // built town (fullImage) is revealed a bar-slice at a time as you build.
-    panoramaImage: "/assets/towns-bulwark-background.webp",
-    fullImage: "/assets/towns-bulwark-empty.webp",
+    // Official physical board composition, redrawn as aligned unbuilt scenery
+    // and seven matching built inserts. Each completed bar reveals one strip.
+    panoramaImage: "/assets/town-board/bulwark-panorama-unbuilt.webp",
+    physicalPanoramaTiles: true,
+    barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/assets/town-board/bulwark-panorama-tile-${slot}.webp`),
     panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["bulwark.city_hall"],
-      ["bulwark.dwelling_bronze"],
-      ["bulwark.dwelling_silver", "bulwark.altar"],
       ["bulwark.citadel"],
-      ["bulwark.sieidi"],
-      ["bulwark.dwelling_gold"],
+      ["bulwark.dwelling_bronze"],
+      ["bulwark.dwelling_silver"],
+      ["bulwark.dwelling_gold", "bulwark.sieidi"],
+      ["bulwark.altar"],
       ["bulwark.mage_guild"]
     ],
     geometry: DESIGNED_GEOMETRY
@@ -632,6 +635,11 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
  * the file is missing).
  */
 export function townBoardTileArt(buildingId: string): string {
+  // New Factory board art ships with code so it is available in checkouts and
+  // previews that have not pulled the historical R2 media archive.
+  if (buildingId === "factory.artifact_merchants") {
+    return "/factory-cards/town-board-artifact-merchants.webp";
+  }
   return `/assets/town-board/${buildingId.replace(".", "-")}.webp`;
 }
 

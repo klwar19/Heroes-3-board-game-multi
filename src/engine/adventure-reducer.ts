@@ -194,6 +194,7 @@ import {
   getUnitSide,
   hasFreeBronzeReinforceTarget,
   hasFreeBronzeStackTarget,
+  hasFreeUnitRecruitOrReinforceTarget,
   hasRecruitResources,
   hasResources,
   canHeroShareSpaceAfterMove,
@@ -231,6 +232,7 @@ import {
   pvpAttacksBanned,
   queueExplorersEmpower,
   queueFreeBronzeReinforce,
+  queueFreeUnitRecruitOrReinforce,
   queueSkeletonReinforce,
   queueTurnStartBuildingChoices,
   recordLevelUpAbilityPick,
@@ -12588,8 +12590,8 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   applyEquipmentRound1RetaliationPenalty(state);
 
   // Bulwark "Runes" (Gamefound Update #3): seed each Bulwark player's per-combat
-  // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
-  // Rune Level the starting pool already qualifies for.
+  // Rune pool from Neutral-only buildings plus City Hall and specialty grants;
+  // each nine-Rune cycle applies its level and credits the reserve.
   seedRunesForCombat(state);
   // Factory — Frederick "further enhances the Automaton's explosion": seed each
   // player's Automaton-detonation bonus for this combat from their hero.
@@ -17876,9 +17878,9 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
 }
 
 /**
- * Blacksmith (rulebook town board): once during your turn, pay 6 gold to
- * Search (2) the Artifact deck, or remove an Artifact card from your hand to
- * gain 4 gold. Owning the Blacksmith also unlocks the BINH Major/Relic
+ * Artifact-smith buildings: once during your turn, pay the building's printed
+ * cost to Search its printed number of Artifact cards, or remove an Artifact
+ * from hand for its printed sale value. They also unlock the BINH Major/Relic
  * artifact decks at hero level 4/6.
  */
 export function blacksmithAction(state: GameState, action: Extract<GameAction, { type: "BLACKSMITH_ACTION" }>): void {
@@ -17899,23 +17901,30 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
     throw new Error("This action needs a Blacksmith.");
   }
 
+  if (smith.id === "factory.artifact_merchants") {
+    if (!hasOpenAdventureTurn(state, action.playerId)) {
+      throw new Error("Use Artifact Merchants during your own turn.");
+    }
+    assertParallelInteractionFree(state, action.playerId);
+  }
+
   if (player.blacksmithUsedRound === state.round) {
-    throw new Error("The Blacksmith was already used this turn.");
+    throw new Error(`${smith.name} was already used this turn.`);
   }
 
   if (action.option === "search") {
     const cost: ResourceCost = { gold: smith.effect.searchCost };
     if (!hasResources(player, cost)) {
-      throw new Error("Not enough gold for the Blacksmith search.");
+      throw new Error(`Not enough gold for the ${smith.name} search.`);
     }
 
-    spendResources(state, action.playerId, cost, "Blacksmith");
+    spendResources(state, action.playerId, cost, smith.name);
     player.blacksmithUsedRound = state.round;
     state.adventure?.rewardQueue.push({
       playerId: action.playerId,
       kind: "shared-deck-search",
       deckId: "artifacts",
-      count: 2,
+      count: smith.effect.searchCount ?? 2,
       // Polish Random Artifacts: merchant / building path uses hero level.
       polishArtifactBand: "level"
     });
@@ -17931,7 +17940,7 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
   player.hand.splice(index, 1);
   player.removed.push(cardId);
   player.blacksmithUsedRound = state.round;
-  gainResources(state, action.playerId, { gold: smith.effect.sellGold }, `sold ${cardLibrary[cardId]?.name ?? cardId} at the Blacksmith`);
+  gainResources(state, action.playerId, { gold: smith.effect.sellGold }, `sold ${cardLibrary[cardId]?.name ?? cardId} at ${smith.name}`);
 }
 
 /** Reject stale clients that still expose the old free-standing University action. */
@@ -20112,6 +20121,15 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         includeStacks: true
       });
     }
+    if (option.freeRecruitOrReinforceUnitDefId) {
+      const unitDefId = option.freeRecruitOrReinforceUnitDefId;
+      queueFreeUnitRecruitOrReinforce(
+        state,
+        action.playerId,
+        unitDefId,
+        `City Hall: recruit or reinforce ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} for free`
+      );
+    }
     if (option.tradingPost) {
       // Fortress City Hall: open a Trading Post to exchange resources, exactly
       // like stepping onto a Trading Post field.
@@ -20155,14 +20173,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     }
     // Bulwark City Hall combat focus (Gamefound Update #3): forgo the gold to be
     // Rune-Empowered until the next Resource round — every combat then starts
-    // with this many extra Runes. This SETS the flag (replace), it never ADDS to
-    // it: the +2 must NOT stack into +4/+6 round after round. The Resource-round
-    // loop (adventure.ts) clears the flag to 0 before re-offering this choice, so
-    // picking the combat focus again only ever re-applies the flat +2.
+    // with this many extra Runes. Multiple controlled Halls and specialty
+    // bonuses stack within the round; the next Resource round clears them.
     if (option.runesNextCombats) {
       const player = state.players[action.playerId];
       if (player) {
-        player.runeEmpoweredNextCombats = option.runesNextCombats;
+        player.cityHallRunesNextCombats = (player.cityHallRunesNextCombats ?? 0) + option.runesNextCombats;
         appendEvent(state, {
           type: "TOWN_BUILDING_USED",
           playerId: action.playerId,
@@ -20701,6 +20717,11 @@ function advanceAfterTurn(
 
   state.activePlayerId = nextPlayerId;
   state.turn.observingPlayerId = nextPlayerId;
+  if (wrapsRound && state.adventure?.rewardQueue.some((reward) => reward.kind === "resource-round-income")) {
+    // The Bank window must close before the new turn's start effects run.
+    // Its continuation starts this turn after completing Resource income.
+    return;
+  }
   // During the round parallel turns stopped in, everyone's start-of-turn
   // already ran at the round start — running it again would grant a second
   // start-of-turn draw and re-queue the turn-start effects. The next player
@@ -20787,6 +20808,11 @@ function endParallelTurn(
 
   startAdventureRound(state);
   if (gameEnded()) {
+    return;
+  }
+  if (state.adventure?.rewardQueue.some((reward) => reward.kind === "resource-round-income")) {
+    // The continuation starts every parallel turn after Bank decisions and
+    // the ordinary round-start income/event rewards are queued.
     return;
   }
 
@@ -22952,6 +22978,7 @@ export function pumpAdventureQueues(state: GameState): void {
     if (
       reward.kind !== "round-start-events-resolved" &&
       reward.kind !== "opening-first-player-roll" &&
+      reward.kind !== "resource-round-income" &&
       state.players[reward.playerId]?.eliminated
     ) {
       const nextLiveId = humanPlayerIds(state).find((id) => !state.players[id]?.eliminated);
@@ -23009,6 +23036,26 @@ export function pumpAdventureQueues(state: GameState): void {
       // first-turn hand, turns) proceed.
       adventure.rewardQueue.shift();
       adventure.eventResolution = null;
+      continue;
+    }
+
+    if (reward.kind === "resource-round-income") {
+      // Every Bank owner has now invested or skipped. Resume exactly below the
+      // pre-income window; startAdventureRound's continuation mode deliberately
+      // does not repeat any earlier round-start work. Only after that may the
+      // new turn begin and queue its start-of-turn hand divider.
+      adventure.rewardQueue.shift();
+      startAdventureRound(state, true);
+      if (state.phase === "game-over" || adventure.winnerPlayerId) continue;
+      if (parallelTurnsActive(state)) {
+        for (const playerId of state.turnOrder) {
+          if (playerId !== NEUTRAL_PLAYER_ID && !state.players[playerId]?.eliminated) {
+            startPlayerTurn(state, playerId);
+          }
+        }
+      } else if (state.activePlayerId) {
+        startPlayerTurn(state, state.activePlayerId);
+      }
       continue;
     }
 
@@ -23242,7 +23289,13 @@ export function pumpAdventureQueues(state: GameState): void {
       const options = choiceEffect.options.filter(
         (option) =>
           (!option.removeArtifactFromHand || holdsArtifact) &&
-          (!option.reinforceBronzeFree || canReinforceBronze)
+          (!option.reinforceBronzeFree || canReinforceBronze) &&
+          (!option.freeRecruitOrReinforceUnitDefId ||
+            hasFreeUnitRecruitOrReinforceTarget(
+              state,
+              reward.playerId,
+              option.freeRecruitOrReinforceUnitDefId
+            ))
       );
 
       // Every option filtered out: opening the choice anyway would strand the

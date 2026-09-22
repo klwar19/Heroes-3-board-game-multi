@@ -4480,17 +4480,17 @@ export const adventureCards: CardLibrary = {
     source: heroSource("glacius"),
   },
 
-  // Kriv (Elder): the Rune-synergy hero — each level banks Runes (a nerfed 1/2/3)
+  // Kriv (Elder): each specialty Rune grant is increased by two.
   // to climb the Bulwark Rune track. EVERY rune-gain side is BOTH a normal combat
   // instant AND a REACTION to an enemy attack (trigger UNIT_ATTACK_DECLARED /
   // "opponent"), so the Bulwark player can bank the Rune the instant the enemy
   // strikes — crossing a threshold then turns its army-wide buff on BEFORE that
   // attack resolves (the "receive the buff earlier" play). After the nerf:
-  //   I  — gain 1 Rune AND draw 1 card (one bundled effect; react-or-play).
-  //   IV — gain 2 Runes AND draw 1 card (react-or-play) — OR — the lone map
-  //        "Rune-Empowered" head-start (GAIN_STARTING_RUNES +1, until the next
+  //   I  — gain 3 Runes AND draw 1 card (one bundled effect; react-or-play).
+  //   IV — gain 4 Runes AND draw 1 card (react-or-play) — OR — the map
+  //        "Rune-Empowered" head-start (GAIN_STARTING_RUNES +3, until the next
   //        Resource round).
-  //   VI — gain 3 Runes (react-or-play) — OR — draw 2 cards.
+  //   VI — gain 5 Runes (react-or-play) — OR — draw 2 cards.
   // The GAIN_RUNES / GAIN_STARTING_RUNES options are offered only to a Bulwark
   // caster (gated to faction "bulwark" in legal-actions); the draws are universal.
   "specialty.kriv.1": {
@@ -4503,21 +4503,21 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 1 Rune AND draw 1 card — playable on your turn OR in reaction to an enemy attack.",
+      "Instant (Combat): gain 3 Runes AND draw 1 card — playable on your turn OR in reaction to an enemy attack.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Gain 1 Rune and draw 1 card",
+          label: "Gain 3 Runes and draw 1 card",
           combatOnly: true,
-          effect: { type: "GAIN_RUNES", amount: 1, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 3, drawCards: 1 },
         },
         {
-          label: "React to an enemy attack: gain 1 Rune and draw 1 card",
+          label: "React to an enemy attack: gain 3 Runes and draw 1 card",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 1, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 3, drawCards: 1 },
         },
       ],
     },
@@ -4533,27 +4533,27 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 2 Runes AND draw 1 card — on your turn OR in reaction to an enemy attack. — OR — (Map) become Rune-Empowered: +1 starting Rune each combat until your next Resource round.",
+      "Instant (Combat): gain 4 Runes AND draw 1 card — on your turn OR in reaction to an enemy attack. — OR — (Map) become Rune-Empowered: +3 starting Runes each combat until your next Resource round.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Gain 2 Runes and draw 1 card",
+          label: "Gain 4 Runes and draw 1 card",
           combatOnly: true,
-          effect: { type: "GAIN_RUNES", amount: 2, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 4, drawCards: 1 },
         },
         {
-          label: "React to an enemy attack: gain 2 Runes and draw 1 card",
+          label: "React to an enemy attack: gain 4 Runes and draw 1 card",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 2, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 4, drawCards: 1 },
         },
         {
           label:
-            "Rune-Empowered: +1 starting Rune each combat (until next Resource round)",
+            "Rune-Empowered: +3 starting Runes each combat (until next Resource round)",
           mapOnly: true,
-          effect: { type: "GAIN_STARTING_RUNES", amount: 1 },
+          effect: { type: "GAIN_STARTING_RUNES", amount: 3 },
         },
       ],
     },
@@ -4570,21 +4570,21 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 3 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 2 cards.",
+      "Instant (Combat): gain 5 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 2 cards.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Gain 3 Runes",
+          label: "Gain 5 Runes",
           combatOnly: true,
-          effect: { type: "GAIN_RUNES", amount: 3 },
+          effect: { type: "GAIN_RUNES", amount: 5 },
         },
         {
-          label: "React to an enemy attack: gain 3 Runes",
+          label: "React to an enemy attack: gain 5 Runes",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 3 },
+          effect: { type: "GAIN_RUNES", amount: 5 },
         },
         { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
       ],
@@ -4624,7 +4624,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "eikthurn",
-      "Instant: your attacking unit gains +1 Attack for this attack and you gain 2 Runes — both effects are doubled (+2 Attack and 4 Runes) for Mountain Rams.",
+      "Instant: your attacking unit gains +1 Attack for this attack and you gain 4 Runes — both effects are doubled (+2 Attack and 8 Runes) for Mountain Rams.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     target: { type: "none" },
@@ -4632,7 +4632,7 @@ export const adventureCards: CardLibrary = {
       type: "ADD_COMBAT_STAT",
       stat: "attack",
       amount: 1,
-      gainRunes: 2,
+      gainRunes: 4,
       doubleForUnitName: "Mountain Rams",
     },
     implementationStatus: "implemented",

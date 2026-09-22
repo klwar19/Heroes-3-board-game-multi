@@ -3,73 +3,20 @@ import { makeActiveEffect } from "./active-effects";
 import { appendEvent } from "./events";
 import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from "./state";
 
-/**
- * Bulwark "Runes" — the faction's unique combat mechanic, based on Gamefound
- * Update #3 ("Faction Focus: Bulwark") with the repo's current house-rule
- * action gains.
- *
- * Current house rule:
- *  - During a battle, whenever a Bulwark player's unit ACTS it earns that player
- *    Runes: Attack -> +1, Retaliate -> +1, Defend -> +2.
- *  - The accumulated Rune total pushes the player up Rune LEVELS, each granting a
- *    CUMULATIVE army-wide passive buff to ALL of that player's units:
- *      Level 1                -> +1 Attack
- *      Level 2 (needs Sieidi) -> +3 Initiative (on top of L1)
- *      Level 3 (needs Altar)  -> +1 Defense  (on top of L1+L2)
- *  - Runes RESET every battle (collected again from scratch). Every Bulwark army
- *    BEGINS each battle with RUNE_STARTING_BASE Runes (0) and GRADUALLY earns
- *    more by acting; the army gets a level's buff the moment its Rune total
- *    REACHES that level's threshold (the user spec: "each battle gradually get
- *    rune, and get buff when reach threshold (4, 7, 12)").
- *  - The Sieidi/Altar buildings do NOT pre-charge Runes; they raise the MAX
- *    LEVEL only (Sieidi -> Level 2, Altar -> Level 3 — "building will raise the
- *    max level"). Without a rune building a Bulwark army can still earn up to
- *    Level 1. The City Hall combat-focus choice and Kriv's specialty add
- *    starting/banked Runes to reach the thresholds sooner. This is deliberate:
- *    pre-charging straight to the cap (the original behaviour) made the entire
- *    earn-by-acting loop, Kriv's specialty and the City Hall option inert in real
- *    combat — a decorative mechanic. They are load-bearing now.
- *
- * What the dev note leaves open (designed here, tunable in ONE place):
- *  - the per-level Rune THRESHOLDS (4 / 7 / 12 — first rung at 4, then +3, then +5)
- *    and the starting-rune amount (RUNE_STARTING_BASE = 0; you earn the runes).
- *    The Sieidi/Altar buildings carry startingRunes: 0 (max-level raisers, not
- *    pre-chargers); the City Hall flag is the head-start path (see core.ts
- *    RUNE_ALTAR buildings + the bulwark.city_hall option).
- *  - action-gain values are intentionally house-ruled for now. If the official
- *    +1/+2/+3 rate is adopted later, update these constants, tests and UI text
- *    together.
- *
- * Implementation note: the army-wide buff reuses the engine's existing
- * player-scoped active-effect machinery (exactly how Necklace of Swiftness /
- * Expert Archery grant "all your units +X"). A Rune Level's buff is a
- * player-scoped, combat-duration ATTACK_BONUS / DEFENSE_BONUS / INITIATIVE_BONUS
- * effect, so `getActiveAttackBonus` / `getActiveDefenseBonus` / `effectiveInitiative`
- * pick it up everywhere (combat maths, neutral AI, UI) for free, and
- * `expireEffectsForCombatEnd` discards it when the battle ends.
- */
+/** Bulwark's cumulative, player-scoped combat Rune bonuses. */
 
-/**
- * Rune totals required to reach Rune Levels 1, 2 and 3. The first rung is at 4,
- * the second at 7 and the top rung (Level 3, the Altar level) at 12: a Bulwark
- * army begins at 0 and earns its way up, getting each level's buff when its Rune
- * total reaches that threshold, as far as the Sieidi/Altar max level. Level 3 was
- * nerfed from 10 to 12 — two more Runes are needed to reach the top buff.
- */
-export const RUNE_LEVEL_THRESHOLDS = [4, 7, 12] as const;
-/**
- * Runes may bank a few points PAST the top level as surplus fuel for
- * Rune-spending skills (the WOG Rune Keeper's Rune Mend and future rune-priced
- * reactions). Surplus Runes grant NO further passive level — they only exist to
- * be spent — so the pool caps at the top threshold plus this surplus.
- */
-export const RUNE_SURPLUS_MAX = 3;
-export const RUNE_MAX = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1] + RUNE_SURPLUS_MAX;
+/** Each unlocked level needs a fresh nine Runes on the main track. */
+export const RUNE_LEVEL_THRESHOLDS = [9, 9, 9] as const;
+export const RUNE_THRESHOLD = 9;
+/** Reserve credited whenever one of the three Rune levels is earned. */
+export const RUNE_SURPLUS_MAX = 5;
+/** Three thresholds and one final spendable main track bound starting grants. */
+export const RUNE_MAX = RUNE_THRESHOLD * (RUNE_LEVEL_THRESHOLDS.length + 1);
 
 /** House-rule Runes a Bulwark unit's action earns its controller. */
 export const RUNE_GAIN_ATTACK = 1;
-export const RUNE_GAIN_RETALIATION = 1;
-export const RUNE_GAIN_DEFEND = 2;
+export const RUNE_GAIN_RETALIATION = 2;
+export const RUNE_GAIN_DEFEND = 3;
 
 /**
  * Baseline Runes every Bulwark army starts a battle with, before any City Hall
@@ -84,8 +31,7 @@ export const RUNE_LEVEL_BONUS = { attack: 1, defense: 1, initiative: 3 } as cons
 /**
  * The player-scoped buff added when each successive Rune Level is first reached.
  * Order is load-bearing: index 0 = Level 1, index 1 = Level 2, index 2 = Level 3.
- * Per the house-rule swap the Initiative bonus sits on Level 2 (the cheaper Sieidi
- * threshold, 7 Runes) and the Defense bonus on Level 3 (the Altar threshold, 10).
+ * Speed is represented by Initiative in this combat engine.
  */
 const RUNE_LEVEL_EFFECTS: { name: string; modifier: ActiveEffectModifier }[] = [
   { name: "Rune Power", modifier: { type: "ATTACK_BONUS", amount: RUNE_LEVEL_BONUS.attack } },
@@ -93,22 +39,29 @@ const RUNE_LEVEL_EFFECTS: { name: string; modifier: ActiveEffectModifier }[] = [
   { name: "Rune Ward", modifier: { type: "DEFENSE_BONUS", amount: RUNE_LEVEL_BONUS.defense } }
 ];
 
-/** The names of every army-wide Rune buff — the set this module owns and clears. */
-const RUNE_EFFECT_NAMES = new Set(RUNE_LEVEL_EFFECTS.map((spec) => spec.name));
+/** Rune Ritual rider: an extra +1 Attack for the Rune Keeper at Level 1. */
+const RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME = "Rune Keeper's Rune Power";
+
+/** The names of every Rune buff — the set this module owns and clears. */
+const RUNE_EFFECT_NAMES = new Set([
+  ...RUNE_LEVEL_EFFECTS.map((spec) => spec.name),
+  RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME
+]);
 
 /**
- * Strips a player's army-wide Rune buffs out of `state.activeEffects`. Used to
+ * Strips a player's Rune buffs out of `state.activeEffects` (the army-wide
+ * level effects plus the Rune Keeper's unit-scoped Level-1 rider). Used to
  * make seeding idempotent: a Rune buff that leaked from a PRIOR combat (a
  * Retreat/Surrender/Give-up ends combat without expiring combat-scoped effects)
  * is cleared before the new battle re-seeds, so a second copy is never stacked
  * on top — the "+1 Attack applied twice" double-buff. Identified by the buff
- * NAME + the player scope + owner, exactly how the engine and tests recognise
+ * NAME + owner, exactly how the engine recognises
  * them; the freshly-seeded set is rebuilt immediately after by syncRuneEffects.
  */
 function clearRuneEffects(state: GameState, playerId: PlayerId): void {
   state.activeEffects = state.activeEffects.filter(
     (effect) =>
-      !(effect.scope === "player" && effect.controllerId === playerId && RUNE_EFFECT_NAMES.has(effect.name))
+      !(effect.controllerId === playerId && RUNE_EFFECT_NAMES.has(effect.name))
   );
 }
 
@@ -117,19 +70,17 @@ export function isBulwarkPlayer(state: GameState, playerId: PlayerId | undefined
 }
 
 /**
- * The Sieidi/Altar baseline for a player: the Rune Level CAP their rune building
- * unlocks (Sieidi -> 2, Altar -> 3) and any starting Runes it pre-charges. The
- * board's rune buildings are cap-raisers, not pre-chargers, so startingRunes is
- * 0 — the player must EARN the climb to the unlocked level by acting in battle.
+ * The Sieidi/Altar baseline for a player: the Rune Level cap and the sum of
+ * starting Runes granted only in Neutral combats.
  * Without any rune building a Bulwark player is capped at Level 1 (the base
  * faction mechanic), so the cap floor is 1. The strongest controlled rune
- * building wins, even if the player controls several towns.
+ * building wins, while grants from each controlled building stack.
  */
 export function runeBuildingInfo(
   state: GameState,
   playerId: PlayerId
-): { startingRunes: number; levelCap: number } {
-  let startingRunes = 0;
+): { neutralStartingRunes: number; levelCap: number } {
+  let neutralStartingRunes = 0;
   let levelCap = 1;
   for (const town of Object.values(state.towns)) {
     if (town.controllerId !== playerId) {
@@ -138,46 +89,37 @@ export function runeBuildingInfo(
     for (const buildingId of town.buildings ?? []) {
       const effect = coreBuildingDefinitions[buildingId]?.effect;
       if (effect?.type === "RUNE_ALTAR") {
-        startingRunes = Math.max(startingRunes, effect.startingRunes);
+        neutralStartingRunes += effect.neutralStartingRunes;
         levelCap = Math.max(levelCap, effect.levelCap);
       }
     }
   }
-  return { startingRunes, levelCap };
+  return { neutralStartingRunes, levelCap };
 }
 
-/** Highest Rune Level (0–3) reached by `count`, ignoring the building cap. */
+/** Number of full nine-Rune cycles represented by a lifetime gain total. */
 export function runeLevelForCount(count: number): number {
-  let level = 0;
-  for (const threshold of RUNE_LEVEL_THRESHOLDS) {
-    if (count >= threshold) {
-      level += 1;
-    }
-  }
-  return level;
+  return Math.min(3, Math.floor(Math.max(0, count) / RUNE_THRESHOLD));
 }
 
-/** Current effective Rune Level for a player: min(level-from-runes, building cap). */
+/** Earned levels persist for this combat after the track resets or is spent. */
 export function effectiveRuneLevel(state: GameState, playerId: PlayerId): number {
   const entry = state.combat?.runes?.[playerId];
   if (!entry) {
     return 0;
   }
-  return Math.min(runeLevelForCount(entry.count), runeBuildingInfo(state, playerId).levelCap);
+  return Math.min(entry.appliedLevel, runeBuildingInfo(state, playerId).levelCap);
 }
 
 /**
- * Brings the player's army-wide Rune buffs up to their current effective Rune
- * Level. Add-only: Runes only ever rise within a battle and the building cap is
- * fixed, so this never has to remove a buff — `appliedLevel` records how far we
- * have already gone so the same buff is never created twice.
+ * Applies the next earned army-wide bonus. `appliedLevel` prevents a spent
+ * main track or reserve from revoking or duplicating a lasting combat bonus.
  */
-function syncRuneEffects(state: GameState, playerId: PlayerId): void {
+function syncRuneEffects(state: GameState, playerId: PlayerId, target: number): void {
   const entry = state.combat?.runes?.[playerId];
   if (!entry) {
     return;
   }
-  const target = effectiveRuneLevel(state, playerId);
   while (entry.appliedLevel < target) {
     const nextLevel = entry.appliedLevel + 1;
     const spec = RUNE_LEVEL_EFFECTS[nextLevel - 1];
@@ -195,6 +137,40 @@ function syncRuneEffects(state: GameState, playerId: PlayerId): void {
       playerId
     );
     state.activeEffects.push(effect);
+    // Rune Power grants the whole army +1 Attack. Rune Ritual gives the living
+    // Rune Keeper one more +1 as soon as that Level-1 threshold is crossed.
+    if (nextLevel === 1) {
+      const commander = Object.values(state.combat?.units ?? {}).find(
+        (unit) =>
+          unit.controllerId === playerId &&
+          unit.commanderSlug === "bulwark" &&
+          unit.damage < unit.maxHealth
+      );
+      if (commander) {
+        const commanderEffect = makeActiveEffect(
+          state,
+          {
+            name: RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME,
+            scope: "unit",
+            modifiers: [{ type: "ATTACK_BONUS", amount: 1 }],
+            duration: { type: "combat" },
+            polarity: "positive",
+            removable: false
+          },
+          { type: "system" },
+          playerId,
+          { type: "unit", unitId: commander.id }
+        );
+        state.activeEffects.push(commanderEffect);
+        appendEvent(state, {
+          type: "ACTIVE_EFFECT_CREATED",
+          effectId: commanderEffect.id,
+          controllerId: playerId,
+          name: `${RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME} (Rune Level 1)`,
+          duration: commanderEffect.duration
+        });
+      }
+    }
     entry.appliedLevel = nextLevel;
     appendEvent(state, {
       type: "ACTIVE_EFFECT_CREATED",
@@ -219,11 +195,8 @@ function syncRuneEffects(state: GameState, playerId: PlayerId): void {
 /**
  * Seeds the per-combat Rune pools for both participants at the start of a battle
  * (called from finalizeCombatStart). Only Bulwark players get a pool; the
- * starting amount is RUNE_STARTING_BASE (0) plus the rune building's startingRunes
- * (0 — max-level raisers, not pre-chargers) plus any City Hall "Rune-Empowered"
- * bonus, capped at RUNE_MAX. So a normal Bulwark army opens at 0 Runes / Level 0
- * and earns its buffs by acting; further levels are reached via gainRunes during
- * the fight as far as the building max level allows.
+ * starting amount is the neutral-only building grants plus any City Hall or
+ * specialty head start, capped at RUNE_MAX.
  */
 export function seedRunesForCombat(state: GameState): void {
   const combat = state.combat;
@@ -240,20 +213,21 @@ export function seedRunesForCombat(state: GameState): void {
     // scratch instead of stacking a second +Attack/+Defense on top. Without this
     // a leaked Level-1 buff makes a Level-2 unit read base+1+1 Attack.
     clearRuneEffects(state, playerId);
-    const { startingRunes } = runeBuildingInfo(state, playerId);
-    const flagBonus = state.players[playerId]?.runeEmpoweredNextCombats ?? 0;
-    const count = Math.min(RUNE_MAX, RUNE_STARTING_BASE + startingRunes + flagBonus);
-    combat.runes[playerId] = { count, appliedLevel: 0 };
-    // Any Rune Level the starting pool already qualifies for is applied (and
-    // logged via a real ACTIVE_EFFECT_CREATED event) by syncRuneEffects.
-    syncRuneEffects(state, playerId);
+    const { neutralStartingRunes } = runeBuildingInfo(state, playerId);
+    const flagBonus = (state.players[playerId]?.runeEmpoweredNextCombats ?? 0)
+      + (state.players[playerId]?.cityHallRunesNextCombats ?? 0);
+    const buildingBonus = combat.context.kind === "neutral" ? neutralStartingRunes : 0;
+    const startingRunes = Math.min(RUNE_MAX, RUNE_STARTING_BASE + buildingBonus + flagBonus);
+    combat.runes[playerId] = { count: 0, reserve: 0, appliedLevel: 0 };
+    // Starting grants go through the same nine-Rune cycles as action gains.
+    gainRunes(state, playerId, startingRunes);
   }
 }
 
 /**
  * Credits a Bulwark player with `amount` Runes for one of their units' actions
- * and re-applies any Rune Level newly reached. No-op for non-Bulwark players,
- * outside combat, or once the Rune cap is hit.
+ * and applies each newly reached level. Every completed cycle resets the main
+ * track and credits five spendable reserve Runes.
  */
 export function gainRunes(state: GameState, playerId: PlayerId | undefined, amount: number): void {
   if (!state.combat || amount <= 0 || !isBulwarkPlayer(state, playerId)) {
@@ -261,19 +235,59 @@ export function gainRunes(state: GameState, playerId: PlayerId | undefined, amou
   }
   const owner = playerId as PlayerId;
   state.combat.runes = state.combat.runes ?? {};
-  const entry = state.combat.runes[owner] ?? (state.combat.runes[owner] = { count: 0, appliedLevel: 0 });
-  const before = entry.count;
-  entry.count = Math.min(RUNE_MAX, entry.count + amount);
-  if (entry.count !== before) {
-    syncRuneEffects(state, owner);
+  const entry = state.combat.runes[owner] ?? (state.combat.runes[owner] = { count: 0, reserve: 0, appliedLevel: 0 });
+  normalizeRuneEntry(entry);
+  let remaining = amount;
+  const levelCap = runeBuildingInfo(state, owner).levelCap;
+  while (remaining > 0) {
+    const room = RUNE_THRESHOLD - entry.count;
+    if (room <= 0) break;
+    const gained = Math.min(room, remaining);
+    entry.count += gained;
+    remaining -= gained;
+    if (entry.count === RUNE_THRESHOLD && entry.appliedLevel < levelCap) {
+      syncRuneEffects(state, owner, entry.appliedLevel + 1);
+      entry.count = 0;
+      entry.reserve = (entry.reserve ?? 0) + RUNE_SURPLUS_MAX;
+    }
   }
+}
+
+/** Convert an in-progress old save without discarding earned combat bonuses. */
+function runeEntryBalances(entry: { count: number; reserve?: number; appliedLevel: number }): { count: number; reserve: number } {
+  if (entry.reserve !== undefined) return { count: entry.count, reserve: entry.reserve };
+  const oldThresholds = [0, 4, 7, 12];
+  return {
+    count: Math.max(0, Math.min(RUNE_THRESHOLD, entry.count - oldThresholds[Math.min(3, entry.appliedLevel)])),
+    reserve: 0
+  };
+}
+
+function normalizeRuneEntry(entry: { count: number; reserve?: number; appliedLevel: number }): void {
+  const balance = runeEntryBalances(entry);
+  entry.count = balance.count;
+  entry.reserve = balance.reserve;
+}
+
+/** Spendable Runes in reserve and on the main track, for all legality checks. */
+export function availableRunes(state: GameState, playerId: PlayerId): number {
+  const entry = state.combat?.runes?.[playerId];
+  if (!entry) return 0;
+  const balance = runeEntryBalances(entry);
+  return balance.reserve + balance.count;
+}
+
+/** Whether another Rune gain can change the main track in this combat. */
+export function runeTrackHasRoom(state: GameState, playerId: PlayerId): boolean {
+  const entry = state.combat?.runes?.[playerId];
+  return !entry || runeEntryBalances(entry).count < RUNE_THRESHOLD;
 }
 
 /**
  * Makes a Bulwark player Rune-Empowered: their Hero then starts each combat with
  * `amount` more Runes (added to runeEmpoweredNextCombats, capped at RUNE_MAX),
- * until their next Resource round clears the flag. Stacks with the City Hall
- * combat-focus option (both feed the same flag, read by seedRunesForCombat).
+ * until their next Resource round clears the flag. Stacks with the separate
+ * City Hall bonus at combat start.
  * No-op (returns the unchanged flag) for a non-Bulwark player or amount <= 0.
  * Returns the resulting starting-rune total so the caller can log it.
  */
@@ -290,29 +304,29 @@ export function grantStartingRunes(state: GameState, playerId: PlayerId | undefi
 
 /**
  * WOG Rune Keeper commander ("Rune Mend"): spends Runes from the per-combat
- * pool. Reached Rune Levels are add-only (`appliedLevel` never drops), so a
- * spend never revokes an already-applied army buff — it only delays reaching
- * the next threshold. Returns false (and changes nothing) when the pool
- * cannot cover the cost.
+ * pool. Reserve is spent first, then the main track. Reached levels persist.
  */
 export function spendRunes(state: GameState, playerId: PlayerId, amount: number): boolean {
   if (amount <= 0) {
     return true;
   }
   const entry = state.combat?.runes?.[playerId];
-  if (!entry || entry.count < amount) {
+  if (!entry || availableRunes(state, playerId) < amount) {
     return false;
   }
-  entry.count -= amount;
+  normalizeRuneEntry(entry);
+  const fromReserve = Math.min(entry.reserve ?? 0, amount);
+  entry.reserve = (entry.reserve ?? 0) - fromReserve;
+  entry.count -= amount - fromReserve;
   return true;
 }
 
-/** Rune gain for a resolved attack (Attack +1) or Retaliation Attack (+1). */
+/** Rune gain for a resolved attack (+1) or Retaliation Attack (+2). */
 export function gainRunesForAttack(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
   gainRunes(state, attacker.controllerId, isRetaliation ? RUNE_GAIN_RETALIATION : RUNE_GAIN_ATTACK);
 }
 
-/** Rune gain for taking the Defend action (+2). */
+/** Rune gain for taking the Defend action (+3). */
 export function gainRunesForDefend(state: GameState, unit: CombatUnitState): void {
   gainRunes(state, unit.controllerId, RUNE_GAIN_DEFEND);
 }
@@ -321,22 +335,26 @@ export function gainRunesForDefend(state: GameState, unit: CombatUnitState): voi
 export function getRuneSummary(
   state: GameState,
   playerId: PlayerId
-): { count: number; level: number; levelCap: number; nextThreshold: number | null } {
-  const count = state.combat?.runes?.[playerId]?.count ?? 0;
+): { count: number; reserve: number; available: number; level: number; levelCap: number; nextThreshold: number | null } {
+  const entry = state.combat?.runes?.[playerId];
+  const balance = entry ? runeEntryBalances(entry) : { count: 0, reserve: 0 };
+  const count = balance.count;
+  const reserve = balance.reserve;
   const { levelCap } = runeBuildingInfo(state, playerId);
-  const level = Math.min(runeLevelForCount(count), levelCap);
-  const nextThreshold = level < levelCap ? RUNE_LEVEL_THRESHOLDS[level] : null;
-  return { count, level, levelCap, nextThreshold };
+  // Rune effects persist once earned, including after a Rune-priced ability
+  // spends from the pool. Keep the track aligned with the active effects.
+  const level = Math.min(entry?.appliedLevel ?? 0, levelCap);
+  const nextThreshold = level < levelCap ? RUNE_THRESHOLD : null;
+  return { count, reserve, available: count + reserve, level, levelCap, nextThreshold };
 }
 
 /**
- * The per-level cumulative buff label shown on the Rune track (kept in sync with
- * RUNE_LEVEL_BONUS and, crucially, with the RUNE_LEVEL_EFFECTS order above:
- * Level 2 = Initiative, Level 3 = Defense after the house-rule swap).
+ * The per-level cumulative buff label shown on the Rune track. Speed uses the
+ * combat engine's Initiative bonus.
  */
 export const RUNE_LEVEL_LABELS = [
   `+${RUNE_LEVEL_BONUS.attack} Attack`,
-  `+${RUNE_LEVEL_BONUS.initiative} Initiative`,
+  `+${RUNE_LEVEL_BONUS.initiative} Speed`,
   `+${RUNE_LEVEL_BONUS.defense} Defense`
 ] as const;
 
@@ -351,32 +369,27 @@ export type RuneLevelStatus = "active" | "pending" | "locked";
 
 export type RuneTrackView = {
   count: number;
+  reserve: number;
+  available: number;
   level: number;
   levelCap: number;
   max: number;
   nextThreshold: number | null;
-  /**
-   * Runes banked PAST the top threshold — spendable fuel for Rune-priced skills
-   * that grant no further passive level. 0 until the top rung is reached.
-   */
+  /** Alias for reserve, retained for existing display consumers. */
   surplus: number;
   levels: { level: number; threshold: number; bonusLabel: string; status: RuneLevelStatus }[];
 };
 
 /**
- * Everything the combat UI needs to draw a Bulwark player's Rune track in one
- * tested place: the live count, the effective level/cap, the cap (RUNE_MAX) and
- * each level's threshold, bonus label and active/pending/locked status.
+ * Live main track, reserve, earned bonuses and building locks for the combat UI.
  */
 export function getRuneTrack(state: GameState, playerId: PlayerId): RuneTrackView {
-  const { count, level, levelCap, nextThreshold } = getRuneSummary(state, playerId);
+  const { count, reserve, available, level, levelCap, nextThreshold } = getRuneSummary(state, playerId);
   const levels = RUNE_LEVEL_THRESHOLDS.map((threshold, index) => {
     const rung = index + 1;
     const status: RuneLevelStatus =
       rung > levelCap ? "locked" : level >= rung ? "active" : "pending";
     return { level: rung, threshold, bonusLabel: RUNE_LEVEL_LABELS[index], status };
   });
-  const topThreshold = RUNE_LEVEL_THRESHOLDS[RUNE_LEVEL_THRESHOLDS.length - 1];
-  const surplus = Math.max(0, count - topThreshold);
-  return { count, level, levelCap, max: RUNE_MAX, nextThreshold, surplus, levels };
+  return { count, reserve, available, level, levelCap, max: RUNE_THRESHOLD, nextThreshold, surplus: reserve, levels };
 }

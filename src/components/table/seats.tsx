@@ -1286,15 +1286,6 @@ export function HandFan({
   );
 }
 
-// The Runes skill graphic shown on the track scales with the player's cap:
-// no rune building (cap 1) -> Basic, Sieidi (cap 2) -> Advanced, Altar (cap 3)
-// -> Expert (heroes.thelazy.net Runes art, fetched by fetch-bulwark-art.py).
-const RUNE_SKILL_ICONS = [
-  "/assets/runes-basic.webp",
-  "/assets/runes-advanced.webp",
-  "/assets/runes-expert.webp"
-] as const;
-
 function runeLevelHint(status: string, bonusLabel: string, threshold: number, level: number): string {
   const base = `Rune Level ${level} (${threshold} Runes): ${bonusLabel}`;
   if (status === "active") return `${base} — active`;
@@ -1321,56 +1312,38 @@ export function RuneTrack({
     return null;
   }
   const track = getRuneTrack(state, playerId);
-  const icon = RUNE_SKILL_ICONS[Math.min(RUNE_SKILL_ICONS.length - 1, Math.max(0, track.levelCap - 1))];
-
   return (
     <div
       className={`runeTrack${compact ? " compact" : ""}`}
-      aria-label={`Runes for ${state.players[playerId]?.name ?? playerId}: ${track.count} of ${track.max}, Level ${track.level} of ${track.levelCap}`}
+      aria-label={`Runes for ${state.players[playerId]?.name ?? playerId}: main track ${track.count} of 9, reserve ${track.reserve}, level ${track.level} of ${track.levelCap}. Rune costs spend reserve first.`}
     >
-      <div className="runeTrackHead">
-        <img className="runeSkillIcon" src={assetUrl(icon)} alt="" aria-hidden="true" loading="lazy" />
-        <span className="runeTitle">Runes</span>
-        <span className="runeCount">
-          {track.count}
-          <small>/{track.max}</small>
-        </span>
-        {track.surplus > 0 ? (
+      <div className="runeBoard">
+        <img className="runeBoardArt" src={assetUrl("/assets/rune-tracker-bulwark.webp")} alt="" aria-hidden="true" draggable={false} />
+        {track.levels.map((lvl, index) => (
           <span
-            className="runeSurplus"
-            title={`${track.surplus} surplus Rune${track.surplus === 1 ? "" : "s"} past the top level — spendable fuel for Rune-priced skills`}
-          >
-            +{track.surplus}
-          </span>
-        ) : null}
-        <span className="runeLevelTag" title={`Rune Level ${track.level} (cap ${track.levelCap})`}>
-          Lv&nbsp;{track.level}
-        </span>
+            key={lvl.level}
+            className={`runeBoardLevel ${lvl.status}`}
+            style={{ left: `${46 + index * 18}%` }}
+            title={runeLevelHint(lvl.status, lvl.bonusLabel, lvl.threshold, lvl.level)}
+            aria-hidden="true"
+          />
+        ))}
+        {Array.from({ length: 9 }, (_, index) => (
+          <span
+            key={index}
+            className={`runeBoardStep ${track.count >= index + 1 ? "filled" : ""}`}
+            style={{ left: `${index === 8 ? 91.5 : 16.5 + index * 9.4}%` }}
+            title={`${index + 1} of 9 Runes on the main track`}
+            aria-hidden="true"
+          />
+        ))}
+        <span className="runeBoardReserve" title="Reserve Runes are spent before main-track Runes" aria-hidden="true">{track.reserve}</span>
       </div>
-      {compact ? (
-        <div className="runePips" role="presentation">
-          {track.levels.map((lvl) => (
-            <span
-              key={lvl.level}
-              className={`runePip ${lvl.status}`}
-              title={runeLevelHint(lvl.status, lvl.bonusLabel, lvl.threshold, lvl.level)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="runeLevels">
-          {track.levels.map((lvl) => (
-            <div
-              key={lvl.level}
-              className={`runeLevel ${lvl.status}`}
-              title={runeLevelHint(lvl.status, lvl.bonusLabel, lvl.threshold, lvl.level)}
-            >
-              <span className="runeLevelThreshold">{lvl.threshold}</span>
-              <span className="runeLevelBonus">{lvl.bonusLabel}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="runeTrackReadout">
+        <span>Track {track.count}/9</span>
+        <span>Reserve {track.reserve}</span>
+        <span>Level {track.level}/{track.levelCap}</span>
+      </div>
     </div>
   );
 }

@@ -105,6 +105,8 @@ export type CityHallOption = {
   valuables?: number;
   movement?: number;
   reinforceBronzeFree?: boolean;
+  /** Recruit the named Few, or reinforce its owned Few to Pack, for free. */
+  freeRecruitOrReinforceUnitDefId?: string;
   /** MGQ Pocket Castle Kitchen: waive the gold cost of one Job reassignment. */
   freeJobReassign?: boolean;
   /** Stronghold City Hall / Tower City Hall: draw cards from the M&M deck. */
@@ -123,9 +125,8 @@ export type CityHallOption = {
   /**
    * Bulwark City Hall ("combat focus", per Gamefound Update #3): forgo the gold
    * income to become Rune-Empowered. Until this player's next Resource round,
-   * they start EVERY combat with this many extra Runes (added on top of the
-   * Sieidi/Altar baseline). Stored on PlayerState.runeEmpoweredNextCombats and
-   * cleared at the next Resource round.
+   * they start EVERY combat with this many extra Runes, stacking with rune
+   * buildings and specialties. Cleared at the next Resource round.
    */
   runesNextCombats?: number;
 };
@@ -135,6 +136,15 @@ export type TownBuildingEffect =
   | { type: "UNLOCK_REINFORCE" }
   | { type: "MAGE_GUILD" }
   | { type: "RESOURCE_ROUND_CHOICE"; options: CityHallOption[] }
+  | {
+      /**
+       * Factory Bank: before this round's normal Resource income, optionally
+       * pay into one bracket; its larger payout arrives before normal income
+       * at the next Resource round.
+       */
+      type: "RESOURCE_ROUND_BANK";
+      options: { payGold: number; nextResourceGold: number }[];
+    }
   | { type: "RESOURCE_ROUND_MORALE" }
   | {
       /** Mystic Pond: each Resource round, roll a Resource die and gain it. */
@@ -260,6 +270,8 @@ export type TownBuildingEffect =
        */
       type: "ARTIFACT_SMITH";
       searchCost: number;
+      /** Number of cards revealed by the Artifact Search (classic default 2). */
+      searchCount?: number;
       sellGold: number;
     }
   | {
@@ -292,17 +304,15 @@ export type TownBuildingEffect =
        * Bulwark Sieidi / Altar of the Runes (Gamefound Update #3). The Altar is
        * a same-tile upgrade of the Sieidi (prerequisite). Two fields, both read
        * by the Runes engine (src/engine/runes.ts):
-       *  - `startingRunes`: extra Runes this player's Hero starts each combat
-       *    with. The board's rune buildings are cap-raisers, not pre-chargers, so
-       *    this is 0 — the climb to the unlocked level is EARNED by acting (the
-       *    City Hall flag is the head-start path).
+       *  - `neutralStartingRunes`: extra Runes at the start of a Neutral combat;
+       *    grants from controlled rune buildings stack.
        *  - `levelCap`: the highest Rune Level reachable in combat while this
        *    building stands. Without any rune building a Bulwark player can still
        *    reach Level 1 (the base faction mechanic); Sieidi unlocks Level 2,
        *    the Altar unlocks Level 3.
        */
       type: "RUNE_ALTAR";
-      startingRunes: number;
+      neutralStartingRunes: number;
       levelCap: number;
     }
   | {

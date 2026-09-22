@@ -13,7 +13,7 @@ import { makeActiveEffect, effectAppliesToUnit, unitImmuneToParalysis } from "./
 import { placeCombatToken } from "./tokens";
 import { drawCardsForPlayer } from "./decks";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { gainRunes } from "./runes";
+import { availableRunes, gainRunes } from "./runes";
 import { appendEvent } from "./events";
 
 export function townVeterancy(
@@ -233,7 +233,7 @@ export function townAfterAttack(
     veteranHeal(state, attacker, 1, "town-haspid-aggressive-drill");
   }
   if (!retaliation && townVeterancy(attacker, "snow-elf-rune-strike")) {
-    gainRunes(state, attacker.controllerId, 1);
+    gainRunes(state, attacker.controllerId, 2);
     veteranTrigger(state, attacker, "town-snow-elf-rune-strike");
   }
   if (!retaliation && townVeterancy(attacker, "ayssid-slow") && alive(defender)) {
@@ -251,7 +251,7 @@ export function townAfterAttack(
     attacker.controllerId !== defender.controllerId &&
     townVeterancy(defender, "jotunn-rune-hide")
   ) {
-    gainRunes(state, defender.controllerId, 1);
+    gainRunes(state, defender.controllerId, 2);
     veteranTrigger(state, defender, "town-jotunn-rune-hide", attacker);
   }
   if (
@@ -403,7 +403,7 @@ export function townMovement(
     queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-dragon-fly-landing", amount: 1, adjacent: true });
   }
   if (townVeterancy(unit, "kobold-rune-step")) {
-    gainRunes(state, unit.controllerId, 1);
+    gainRunes(state, unit.controllerId, 2);
     veteranTrigger(state, unit, "town-kobold-rune-step");
   }
   if (townVeterancy(unit, "ram-trample")) {
@@ -430,7 +430,7 @@ export function townActivation(state: GameState, unit: CombatUnitState): void {
   if (townVeterancy(unit, "mammoth-rune-mend") && unit.damage > 0) {
     veteranHeal(state, unit, 1, "town-mammoth-rune-mend");
   }
-  const runes = state.combat?.runes?.[unit.controllerId]?.count ?? 0;
+  const runes = availableRunes(state, unit.controllerId);
   if (runes <= 0) return;
   if (townVeterancy(unit, "jotunn-rune-bolt")) {
     // Rune Bolt R3: spend 1 Rune for 1 damage, or 2 Runes for 2 damage (per-target tiers).

@@ -394,7 +394,11 @@ function RealUnbuiltTile({
         <b>{building.name}</b>
         <CostLine cost={cost} />
       </span>
-      <TileImg src={townBoardUnbuiltTileArt(building.id)} />
+      {/* The archived Factory plaques still print the former City Hall/Bank
+          prices. Show the live cost plate until updated printed art exists. */}
+      {building.id === "factory.city_hall" || building.id === "factory.bank"
+        ? null
+        : <TileImg src={townBoardUnbuiltTileArt(building.id)} />}
       {buildable ? (
         <span className="tbRealBuildBadge" aria-hidden="true">
           <Hammer size={compact ? 9 : 12} /> Build
@@ -825,7 +829,7 @@ export function TownBoardView({
                 <img
                   alt=""
                   aria-hidden="true"
-                  className={faction.id === "little_busters" ? "tbTownArtTopAligned" : undefined}
+                  className={spec.physicalPanoramaTiles || faction.id === "little_busters" ? "tbTownArtTopAligned" : undefined}
                   decoding="async"
                   draggable={false}
                   src={assetUrl(spec.panoramaImage)}
@@ -915,14 +919,20 @@ export function TownBoardView({
                   bothBuiltImage={spec.combinedTile!.bothBuiltImage}
                 />
               ) : builtIds.length > 0 ? (
-                faction.id === "little_busters" && spec.barTileImages?.[index] ? (
+                (spec.physicalPanoramaTiles || faction.id === "little_busters") && spec.barTileImages?.[index] ? (
                   // Seven real physical inserts: each completed slot replaces
                   // its matching area of the empty panorama with one coherent
                   // crop of the fully-built campus. The unique shared slot is
                   // still one whole tile; its plaque reports the built/missing
                   // half without visually cutting the artwork in two.
                   <div className={`tbFill designed tbLittleBustersPhysicalTile ${partial ? "partial" : ""}`}>
-                    <LoadedImg className="tbBarTileArt tbTownArtTopAligned" src={spec.barTileImages[index]} />
+                    <LoadedImg
+                      className="tbBarTileArt tbTownArtTopAligned"
+                      src={spec.barTileImages[index]}
+                      style={spec.physicalPanoramaTiles && partial
+                        ? { clipPath: builtIds[0] === bar[0] ? "inset(0 50% 0 0)" : "inset(0 0 0 50%)" }
+                        : undefined}
+                    />
                     <span className="tbTilePlaque">
                       <Check aria-hidden="true" size={12} />
                       {builtIds.map((buildingId) => coreBuildingDefinitions[buildingId]?.name ?? buildingId).join(" + ")}
@@ -989,7 +999,7 @@ export function TownBoardView({
                 // wuxia towns, and any future designed town). Keyed off the board
                 // spec's built art, never the faction/theme, so it is generic.
                 <div className={`tbEmptyBar ${anyBuildable ? "buildable" : ""}`}>
-                  {faction.id !== "little_busters" && spec.barTileImages?.[index] ? (
+                  {!spec.physicalPanoramaTiles && faction.id !== "little_busters" && spec.barTileImages?.[index] ? (
                     <LoadedImg className="tbEmptyPreview" src={spec.barTileImages[index]} />
                   ) : null}
                   {bar.map((buildingId) => {

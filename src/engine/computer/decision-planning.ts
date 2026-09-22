@@ -18,6 +18,7 @@ import { isParalyzed, unitRemainingHealth, unitRemovalHealth, unitThreatValue } 
 import { estimatedStrikeDamage } from "./strike-value";
 import {
   combatHorizonAdjustment,
+  strikeOutcomes,
   COMBAT_PLANNING_CANDIDATES,
   COMBAT_PLANNING_WORK_LIMIT,
 } from "./planning-horizon";
@@ -26,7 +27,7 @@ import { conditionInitiativePrecedes } from "./battlefield-conditions";
 
 type RankedAction = { legal: LegalAction; score: number; policy: string; tie: number };
 
-type RoundStrike = { damage: number; beforeEnemy: boolean; current?: RankedAction };
+type RoundStrike = { damage: number; guaranteedDamage: number; beforeEnemy: boolean; current?: RankedAction };
 
 /** Look across every friendly activation still available this round. The
  * forecast uses legal current attacks and the move engine for later units; it
@@ -110,6 +111,8 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
         estimatedStrikeDamage(enemy, ally, enemy.position, true) >= unitRemainingHealth(ally)) return 0;
     return damage;
   };
+  const guaranteedDamage = (ally: CombatUnitState, enemy: CombatUnitState, from: number) =>
+    usefulDamage(ally, enemy, from) > 0 ? Math.min(...strikeOutcomes(state, ally, enemy, from)) : 0;
   // strikesAgainst is pure for the duration of this planning pass (it only
   // reads the fixed combat/friendlies/activeAttacks state), yet it is invoked
   // once per denial and once per damage candidate — recomputing the same
@@ -124,6 +127,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
     const strikes: RoundStrike[] = [];
     for (const ally of friendlies) {
       let best = 0;
+      let reliable = 0;
       let current: RankedAction | undefined;
       if (ally.id === combat.activeUnitId) {
         for (const candidate of activeAttacks) {
@@ -132,22 +136,28 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
               action.attackerId !== ally.id || action.defenderId !== enemy.id) continue;
           const damage = usefulDamage(ally, enemy,
             action.type === "MOVE_AND_ATTACK_UNIT" ? action.destination : ally.position);
-          if (damage > best) { best = damage; current = candidate; }
+          const minimum = guaranteedDamage(ally, enemy,
+            action.type === "MOVE_AND_ATTACK_UNIT" ? action.destination : ally.position);
+          if (damage > best || damage === best && minimum > reliable) { best = damage; reliable = minimum; current = candidate; }
         }
       } else {
         if (canUnitAttack(combat, ally, enemy, state.activeEffects ?? [])) {
           best = usefulDamage(ally, enemy, ally.position);
+          reliable = guaranteedDamage(ally, enemy, ally.position);
         }
         if (best < unitRemovalHealth(enemy)) {
           for (const destination of getLegalMoveDestinations(combat, ally, state)) {
             if (canUnitMoveAndAttack(combat, ally, destination, enemy, state)) {
-              best = Math.max(best, usefulDamage(ally, enemy, destination));
+              const damage = usefulDamage(ally, enemy, destination);
+              const minimum = guaranteedDamage(ally, enemy, destination);
+              if (damage > best || damage === best && minimum > reliable) { best = damage; reliable = minimum; }
             }
           }
         }
       }
       if (best > 0) strikes.push({
         damage: best,
+        guaranteedDamage: reliable,
         current,
         beforeEnemy: enemy.activatedThisRound || ally.id === combat.activeUnitId ||
           conditionInitiativePrecedes(effectiveInitiative(ally, state.activeEffects ?? [], combat), enemyInitiative, combat),
@@ -167,7 +177,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
     const enemy = combat.units[action.target.unitId];
     if (!enemy || enemy.controllerId === observation.playerId || enemy.activatedThisRound || isParalyzed(enemy)) continue;
     const before = strikesAgainst(enemy).filter(strike => strike.beforeEnemy)
-      .reduce((sum, strike) => sum + strike.damage, 0);
+      .reduce((sum, strike) => sum + strike.guaranteedDamage, 0);
     if (before >= unitRemovalHealth(enemy)) {
       candidate.score = 370;
       candidate.policy = "plan.denial-spell-physical-removal";
@@ -199,8 +209,9 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
     if (spellDamage <= 0) { candidate.score = 200; candidate.policy = "plan.damage-spell-no-hit"; continue; }
     const removal = unitRemovalHealth(enemy);
     const strikes = strikesAgainst(enemy);
-    const before = strikes.filter(strike => strike.beforeEnemy).reduce((sum, strike) => sum + strike.damage, 0);
+    const before = strikes.filter(strike => strike.beforeEnemy).reduce((sum, strike) => sum + strike.guaranteedDamage, 0);
     const all = strikes.reduce((sum, strike) => sum + strike.damage, 0);
+    const reliableAll = strikes.reduce((sum, strike) => sum + strike.guaranteedDamage, 0);
     const shooter = enemy.type === "ranged";
     const threat = Math.min(35, Math.round(unitThreatValue(enemy) / 2));
     const current = strikes.find(strike => strike.current)?.current;
@@ -211,7 +222,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
         attack.defenderId === enemy.id;
     });
     // The entire reachable army can remove this target without the spell.
-    if (before >= removal || (enemy.activatedThisRound && all >= removal)) {
+    if (before >= removal || (enemy.activatedThisRound && reliableAll >= removal)) {
       candidate.score = 380;
       candidate.policy = "plan.damage-spell-physical-removal";
       continue;
@@ -306,9 +317,9 @@ export function deferDiscretionarySpending(observation: ComputerObservation, ran
   }
 }
 
-/** Called once after ordinary scoring, before learned close-choice nudges.
- * At most four close attacks share 384 reply checks. Exhaustion discards the
- * whole refinement, so enumeration order cannot reward an unfinished search. */
+/** At most four attacks share 384 reply checks. If deeper work runs out,
+ * compare every contender at the same first-strike depth instead of losing
+ * the whole forecast or mixing completed and incomplete depths. */
 export function refineCombatShortlist(observation: ComputerObservation, ranked: RankedAction[]): void {
   if (!observation.state.combat) return;
   const ordinaryAttack = (candidate: RankedAction) =>
@@ -318,11 +329,15 @@ export function refineCombatShortlist(observation: ComputerObservation, ranked: 
   const best = shortlist[0];
   if (!best || ranked.some(candidate => !ordinaryAttack(candidate) && candidate.score > Math.min(ATTACK_CEIL, best.score + 24))) return;
   const close = shortlist.filter(candidate => best.score - candidate.score <= 48).slice(0, COMBAT_PLANNING_CANDIDATES);
+  const state = observation.state as unknown as GameState;
   const budget = { remaining: COMBAT_PLANNING_WORK_LIMIT };
-  const adjustments: number[] = [];
+  let adjustments: number[] = [];
   for (const candidate of close) {
     adjustments.push(combatHorizonAdjustment(observation.state as unknown as GameState, candidate.legal.action, budget));
-    if (budget.remaining < 0) return;
+    if (budget.remaining < 0) {
+      adjustments = close.map(candidate => combatHorizonAdjustment(state, candidate.legal.action, { remaining: 0 }, 1));
+      break;
+    }
   }
   close.forEach((candidate, index) => {
     candidate.score = Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, candidate.score + adjustments[index]));

@@ -1077,8 +1077,8 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     effect: {
       type: "RESOURCE_ROUND_CHOICE",
       options: [
-        { label: "Gain 4 gold", gold: 4 },
-        { label: "Rune-Empowered: +2 starting Runes each combat (until next Resource round)", runesNextCombats: 2 }
+        { label: "Gain 5 gold", gold: 5 },
+        { label: "Rune-Empowered: +3 starting Runes each combat (until next Resource round)", runesNextCombats: 3 }
       ]
     },
     implementationStatus: "implemented",
@@ -1132,30 +1132,25 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     implementationStatus: "implemented",
     source: townSource("bulwark")
   },
-  // Sieidi of the Runes (Gamefound Update #3): raises the MAX Rune Level, NOT a
-  // pre-charger. It unlocks Level 2; the army still opens each battle at 0 Runes
-  // and EARNS its way to the Level 2 threshold (7) by acting (startingRunes: 0).
-  // See src/engine/runes.ts — pre-charging to the cap made the earn-by-acting
-  // loop decorative, so the building now grants the potential to climb higher.
+  // The rune buildings unlock cumulative combat bonuses and add starting Runes
+  // only against Neutral units. The Altar requires the Sieidi, so both grants stack.
   "bulwark.sieidi": {
     id: "bulwark.sieidi",
     name: "Sieidi of the Runes",
     faction: "bulwark",
     cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
-    effect: { type: "RUNE_ALTAR", startingRunes: 0, levelCap: 2 },
+    effect: { type: "RUNE_ALTAR", neutralStartingRunes: 4, levelCap: 2 },
     implementationStatus: "implemented",
     source: townSource("bulwark")
   },
-  // Altar of the Runes (Gamefound Update #3): the same-tile upgrade of the Sieidi.
-  // Raises the max one more step to Level 3 (the third threshold, at 12 Runes);
-  // again no pre-charge — every Rune up to that threshold is earned in battle.
+  // Altar of the Runes adds 2 more starting Runes against Neutral units.
   "bulwark.altar": {
     id: "bulwark.altar",
     name: "Altar of the Runes",
     faction: "bulwark",
     cost: { gold: 6, buildingMaterials: 4, valuables: 2 },
     prerequisites: ["bulwark.sieidi"],
-    effect: { type: "RUNE_ALTAR", startingRunes: 0, levelCap: 3 },
+    effect: { type: "RUNE_ALTAR", neutralStartingRunes: 2, levelCap: 3 },
     implementationStatus: "implemented",
     source: townSource("bulwark")
   },
@@ -1171,22 +1166,22 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   // (it put the artifact trading on the "Bank" and dropped the Artifact Merchants
   // card); the article makes them distinct, so both are shipped here — eight
   // Factory buildings in all.
-  // Factory City Hall — the "classic" variant from the Gamefound Faction Focus:
-  // "provides gold OR allows you to recruit/upgrade the Armadillo unit." Modeled
-  // as the shared gold-or-free-bronze-reinforce City Hall (the Armadillo is the
-  // Factory's emblematic bronze); the +1 Movement option the PC-guess placeholder
-  // carried was not on the card. (Archon are playtesting a second, cheaper
-  // Armadillo-focused variant; the classic is wired here.)
+  // Factory City Hall (physical board): 8 gold + 3 materials. At each Resource
+  // round choose 4 gold OR recruit/reinforce the level-3 bronze Armadillos for
+  // free. This is unit-specific; it must never widen the generic bronze picker.
   "factory.city_hall": {
     id: "factory.city_hall",
     name: "City Hall",
     faction: "factory",
-    cost: { gold: 10, buildingMaterials: 4 },
+    cost: { gold: 8, buildingMaterials: 3 },
     effect: {
       type: "RESOURCE_ROUND_CHOICE",
       options: [
-        { label: "5 Gold", gold: 5 },
-        { label: "Reinforce 1 bronze unit (Armadillos) for free", reinforceBronzeFree: true }
+        { label: "Gain 4 gold", gold: 4 },
+        {
+          label: "Recruit or reinforce the level 3 bronze unit (Armadillos) for free",
+          freeRecruitOrReinforceUnitDefId: "factory.armadillos"
+        }
       ]
     },
     implementationStatus: "implemented",
@@ -1215,35 +1210,34 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     implementationStatus: "implemented",
     source: townSource("factory")
   },
-  // Factory's SPECIAL building #1, the Bank (Gamefound Faction Focus): "allows the
-  // player to gain a bit more gold during the game" — the extra late-game income
-  // that tips a long scenario. Modeled as a per-Resource-round gold engine (the
-  // shared RESOURCE_ROUND_CHOICE income, single gold option). The earlier wiring
-  // put the Blacksmith/Artifact archetype on the Bank; per the article that is the
-  // SEPARATE Artifact Merchants building (below), so the Bank is now pure gold.
+  // Factory Bank (physical board): invest BEFORE normal Resource income; the
+  // selected return is paid before normal income at the NEXT Resource round.
   "factory.bank": {
     id: "factory.bank",
     name: "Bank",
     faction: "factory",
-    cost: { gold: 3, buildingMaterials: 2 },
+    cost: { gold: 4, buildingMaterials: 2 },
     effect: {
-      type: "RESOURCE_ROUND_CHOICE",
-      options: [{ label: "Gain 4 gold", gold: 4 }]
+      type: "RESOURCE_ROUND_BANK",
+      options: [
+        { payGold: 3, nextResourceGold: 5 },
+        { payGold: 6, nextResourceGold: 10 },
+        { payGold: 11, nextResourceGold: 18 }
+      ]
     },
     implementationStatus: "implemented",
     source: townSource("factory")
   },
   // Factory's SPECIAL building #2, the Artifact Merchants (Gamefound Faction
   // Focus): "a building that allows you to buy and sell artifacts during the
-  // game." The Blacksmith/Artifact archetype (ARTIFACT_SMITH: pay to Search the
-  // Artifact deck, or sell an Artifact card from hand for gold) — exactly what the
-  // Bank used to carry before the article split them apart.
+  // game." During your turn, pay 7 to Search (3), or remove one Artifact from
+  // hand for 2 gold.
   "factory.artifact_merchants": {
     id: "factory.artifact_merchants",
     name: "Artifact Merchants",
     faction: "factory",
     cost: { gold: 4, buildingMaterials: 3 },
-    effect: { type: "ARTIFACT_SMITH", searchCost: 6, sellGold: 4 },
+    effect: { type: "ARTIFACT_SMITH", searchCost: 7, searchCount: 3, sellGold: 2 },
     implementationStatus: "implemented",
     source: townSource("factory")
   },
@@ -1304,6 +1298,11 @@ for (const building of Object.values(coreBuildingDefinitions)) {
 for (const spec of Object.values(townBoardSpecs)) {
   for (const bar of spec.bars) {
     if (bar.length < 2) {
+      continue;
+    }
+    // Bulwark's physical art shares one strip between Glacial Halls and the
+    // Sieidi. They remain independent builds; the Altar requires the Sieidi.
+    if (spec.factionId === "bulwark") {
       continue;
     }
     const [mainId, ...specials] = bar;

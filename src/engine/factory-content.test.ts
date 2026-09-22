@@ -381,24 +381,25 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       expect(b[id]?.implementationStatus, `${id} implemented`).toBe("implemented");
       expect(b[id]?.effect?.type, `${id} has a real effect`).not.toBe("NOT_IMPLEMENTED");
     }
-    // City Hall is the "classic" gold-or-Armadillo variant (the +1 Movement guess
-    // is gone); the reinforce-a-bronze option is what recruits/upgrades Armadillos.
-    expect(b["factory.city_hall"]).toMatchObject({ cost: { gold: 10, buildingMaterials: 4 }, effect: { type: "RESOURCE_ROUND_CHOICE" } });
+    // The physical Factory City Hall names the level-3 bronze Armadillos.
+    expect(b["factory.city_hall"]).toMatchObject({ cost: { gold: 8, buildingMaterials: 3 }, effect: { type: "RESOURCE_ROUND_CHOICE" } });
     const cityHallEffect = b["factory.city_hall"].effect;
-    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.gold)).toBe(true);
-    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.reinforceBronzeFree)).toBe(true);
+    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.gold === 4)).toBe(true);
+    expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.freeRecruitOrReinforceUnitDefId === "factory.armadillos")).toBe(true);
     expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.movement)).toBe(false);
     expect(b["factory.citadel"]).toMatchObject({ cost: { gold: 8, buildingMaterials: 5, valuables: 1 }, effect: { type: "UNLOCK_REINFORCE" } });
     // The spell building keeps id mage_guild (default-setup slot) but is the
     // printed "Mana Generator" card.
     expect(b["factory.mage_guild"]).toMatchObject({ name: "Mana Generator", cost: { gold: 4, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
-    // The two special buildings per the article: the Bank is a GOLD engine (a
-    // per-Resource-round gold income), the Artifact Merchants is the buy/sell
-    // Blacksmith archetype. (The earlier data put ARTIFACT_SMITH on the Bank.)
-    expect(b["factory.bank"]).toMatchObject({ name: "Bank", effect: { type: "RESOURCE_ROUND_CHOICE" } });
+    // Bank investments pay at the next Resource round; Merchants trade now.
+    expect(b["factory.bank"]).toMatchObject({ name: "Bank", cost: { gold: 4, buildingMaterials: 2 }, effect: { type: "RESOURCE_ROUND_BANK" } });
     const bankEffect = b["factory.bank"].effect;
-    expect(bankEffect?.type === "RESOURCE_ROUND_CHOICE" && bankEffect.options.every((o) => o.gold)).toBe(true);
-    expect(b["factory.artifact_merchants"]).toMatchObject({ name: "Artifact Merchants", effect: { type: "ARTIFACT_SMITH" } });
+    expect(bankEffect?.type === "RESOURCE_ROUND_BANK" ? bankEffect.options : []).toEqual([
+      { payGold: 3, nextResourceGold: 5 },
+      { payGold: 6, nextResourceGold: 10 },
+      { payGold: 11, nextResourceGold: 18 }
+    ]);
+    expect(b["factory.artifact_merchants"]).toMatchObject({ name: "Artifact Merchants", effect: { type: "ARTIFACT_SMITH", searchCost: 7, searchCount: 3, sellGold: 2 } });
     expect(b["factory.dwelling_bronze"]).toMatchObject({ name: "Remote Settlement", cost: { gold: 5, buildingMaterials: 3, valuables: 1 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" } });
     expect(b["factory.dwelling_silver"]).toMatchObject({ name: "Industrialized Catacombs", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, prerequisites: ["factory.dwelling_bronze"] });
     expect(b["factory.dwelling_gold"]).toMatchObject({ name: "Gantry under Serpent Hill", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, prerequisites: ["factory.dwelling_silver"] });

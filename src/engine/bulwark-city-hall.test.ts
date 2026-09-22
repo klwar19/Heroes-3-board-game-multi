@@ -5,16 +5,17 @@ import { pumpAdventureQueues } from "./adventure-reducer";
 import type { GameAction, GameState } from "./state";
 
 /**
- * Bulwark City Hall — the "Rune-Empowered" combat-focus Resource-round option
- * (Gamefound Update #3). Two things are pinned here:
- *   1. the nerf: the option grants +2 starting Runes each combat, not +3, and
- *   2. it must NOT stack — neither within one resolution (the handler SETS the
- *      flag, it never adds) nor round after round (the flag is cleared at every
- *      Resource round before the choice is re-offered).
- * Both are tested on the OBSERVABLE flag (PlayerState.runeEmpoweredNextCombats),
- * the exact value seedRunesForCombat reads when a battle opens.
+ * Bulwark City Hall — the "Rune-Empowered" combat-focus Resource-round option.
+ * Pinned here:
+ *   1. the option grants +3 starting Runes each combat, stored in its own
+ *      City Hall flag (PlayerState.cityHallRunesNextCombats), separate from
+ *      Kriv's GAIN_STARTING_RUNES flag (runeEmpoweredNextCombats),
+ *   2. it is ADDITIVE within one Resource round (a second resolution adds), and
+ *   3. it is cleared at the next Resource round before the choice is re-offered,
+ *      so it never carries over round after round.
+ * All asserted on the OBSERVABLE flag that seedRunesForCombat reads.
  */
-describe("Bulwark City Hall — Rune-Empowered combat focus (nerfed +2, non-stacking)", () => {
+describe("Bulwark City Hall — Rune-Empowered combat focus (+3, cleared each Resource round)", () => {
   function applyOk(state: GameState, action: GameAction): GameState {
     const result = applyAction(state, action);
     expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
@@ -55,35 +56,46 @@ describe("Bulwark City Hall — Rune-Empowered combat focus (nerfed +2, non-stac
     return getLegalActions(state, "p1").find((legal) => legal.label.includes("Rune-Empowered"));
   }
 
-  it("grants exactly +2 starting Runes (the nerf), not +3", () => {
-    const state = bulwarkCityHallRound("bulwark-ch-plus2", 3);
+  it("grants exactly +3 starting Runes in the City Hall flag (Kriv's flag untouched)", () => {
+    const state = bulwarkCityHallRound("bulwark-ch-plus3", 3);
     expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "city-hall").toBe(true);
 
     const pick = runeOption(state);
     expect(pick, "the Rune-Empowered combat-focus option should be offered").toBeTruthy();
     const after = applyOk(state, pick!.action);
-    expect(after.players.p1.runeEmpoweredNextCombats).toBe(2);
+    expect(after.players.p1.cityHallRunesNextCombats).toBe(3);
+    expect(after.players.p1.runeEmpoweredNextCombats ?? 0).toBe(0);
   });
 
-  it("does NOT stack within a resolution: the handler REPLACES the flag with +2 (never +7)", () => {
-    // Inject a stale flag value AFTER the round's clear but BEFORE resolving the
-    // choice, so this directly exercises the resolver's set-vs-add behaviour. If
-    // the handler ever used `+=` instead of `=`, this would read 5 + 2 = 7.
-    const state = bulwarkCityHallRound("bulwark-ch-nostack", 3);
-    state.players.p1.runeEmpoweredNextCombats = 5;
+  it("CONTROL: the gold option pays 5 gold and sets no Rune flag", () => {
+    const state = bulwarkCityHallRound("bulwark-ch-gold", 3);
+    const gold = getLegalActions(state, "p1").find((legal) => legal.label.includes("Gain 5 gold"));
+    expect(gold, "the Gain 5 gold option should be offered").toBeTruthy();
+    const before = state.players.p1.resources.gold;
+    const after = applyOk(state, gold!.action);
+    expect(after.players.p1.resources.gold).toBe(before + 5);
+    expect(after.players.p1.cityHallRunesNextCombats ?? 0).toBe(0);
+  });
+
+  it("is ADDITIVE within a Resource round: a second resolution adds +3 on top", () => {
+    // A City Hall resolution already banked +3 this round (e.g. a second
+    // controlled Bulwark City Hall); resolving the option again adds, 3 + 3 = 6.
+    const state = bulwarkCityHallRound("bulwark-ch-additive", 3);
+    state.players.p1.cityHallRunesNextCombats = 3;
     const pick = runeOption(state);
     expect(pick).toBeTruthy();
     const after = applyOk(state, pick!.action);
-    expect(after.players.p1.runeEmpoweredNextCombats).toBe(2); // replaced, not 7
+    expect(after.players.p1.cityHallRunesNextCombats).toBe(6);
   });
 
-  it("does NOT stack across Resource rounds: cleared at the new round, re-choosing stays +2 (never +4)", () => {
-    // Round 3: pick the combat focus → +2.
+  it("is cleared at the next Resource round: re-choosing stays +3 (never +6 across rounds)", () => {
+    // Round 3: pick the combat focus → +3 (Kriv's separate flag also set).
     let state = bulwarkCityHallRound("bulwark-ch-rounds", 3);
     state = applyOk(state, runeOption(state)!.action);
-    expect(state.players.p1.runeEmpoweredNextCombats).toBe(2);
+    expect(state.players.p1.cityHallRunesNextCombats).toBe(3);
+    state.players.p1.runeEmpoweredNextCombats = 3;
 
-    // Round 5 (the next Resource round): the flag must be cleared at round start…
+    // Round 5 (the next Resource round): both flags are cleared at round start…
     state.pendingChoice = null;
     if (state.adventure) {
       state.adventure.rewardQueue = [];
@@ -91,10 +103,24 @@ describe("Bulwark City Hall — Rune-Empowered combat focus (nerfed +2, non-stac
     state.round = 5;
     startAdventureRound(state);
     pumpAdventureQueues(state);
-    expect(state.players.p1.runeEmpoweredNextCombats ?? 0, "flag cleared at the new Resource round").toBe(0);
+    expect(state.players.p1.cityHallRunesNextCombats ?? 0, "City Hall flag cleared at the new Resource round").toBe(0);
+    expect(state.players.p1.runeEmpoweredNextCombats ?? 0, "Kriv flag cleared at the new Resource round").toBe(0);
 
-    // …and picking it again re-applies the flat +2 — it does not climb to +4.
+    // …and picking it again re-applies the flat +3 — it does not climb to +6.
     state = applyOk(state, runeOption(state)!.action);
-    expect(state.players.p1.runeEmpoweredNextCombats).toBe(2);
+    expect(state.players.p1.cityHallRunesNextCombats).toBe(3);
+  });
+
+  it("CONTROL: an Astrologers (even) round does not clear the City Hall flag", () => {
+    let state = bulwarkCityHallRound("bulwark-ch-even", 3);
+    state = applyOk(state, runeOption(state)!.action);
+    state.pendingChoice = null;
+    if (state.adventure) {
+      state.adventure.rewardQueue = [];
+    }
+    state.round = 4;
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+    expect(state.players.p1.cityHallRunesNextCombats).toBe(3);
   });
 });

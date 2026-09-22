@@ -2940,15 +2940,90 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .runeTrack {
   display: grid;
   gap: 4px;
-  padding: 5px 7px;
-  border: 1px solid rgb(127 178 217 / 35%);
-  border-radius: 7px;
-  background: linear-gradient(180deg, rgb(20 34 50 / 80%), rgb(12 22 34 / 90%));
+  width: min(100%, 320px);
+  background: transparent;
 }
 
 .runeTrack.compact {
+  width: min(100%, 190px);
+}
+
+.runeBoard {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1554 / 832;
+  overflow: hidden;
+}
+
+.runeBoardArt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.runeBoardLevel {
+  position: absolute;
+  top: 42%;
+  width: 8.5%;
+  height: 17%;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(203, 240, 255, 0.72);
+  box-shadow: inset 0 0 9px rgba(147, 224, 255, 0.55), 0 0 9px rgba(147, 224, 255, 0.7);
+  pointer-events: auto;
+}
+
+.runeBoardLevel.pending {
+  border-color: rgba(255, 221, 143, 0.45);
+  box-shadow: none;
+}
+
+.runeBoardLevel.locked {
+  border-color: rgba(12, 21, 26, 0.72);
+  background: rgba(4, 12, 18, 0.36);
+  box-shadow: none;
+}
+
+.runeBoardStep {
+  position: absolute;
+  top: 81%;
+  width: 6.4%;
+  height: 11%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: auto;
+}
+
+.runeBoardStep.filled {
+  border: 1px solid #d7f6ff;
+  background: rgba(83, 204, 245, 0.35);
+  box-shadow: 0 0 12px 3px rgba(99, 218, 255, 0.72);
+}
+
+.runeBoardReserve {
+  position: absolute;
+  right: 5.5%;
+  top: 64%;
+  min-width: 10%;
+  padding: 1px 3px;
+  border: 1px solid rgba(236, 203, 128, 0.8);
+  border-radius: 999px;
+  background: rgba(7, 23, 29, 0.9);
+  color: #fff2cb;
+  font-size: clamp(9px, 1.1cqw, 13px);
+  font-weight: 800;
+  text-align: center;
+}
+
+.runeTrackReadout {
+  display: flex;
+  justify-content: space-between;
   gap: 3px;
-  padding: 3px 5px;
+  color: #d7efff;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .runeTrackHead {
@@ -28353,12 +28428,12 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 /* Little Busters follows the physical Castle-board construction language:
    the EMPTY panorama remains visible beneath seven printed name/cost plaques;
    construction inserts a full-color illustrated tile into that exact slot. */
-.tbBoard.faction-little_busters .tbEmptyBar {
+.tbBoard:is(.faction-little_busters, .faction-bulwark) .tbEmptyBar {
   background: transparent;
   box-shadow: none;
 }
 
-.tbBoard.faction-little_busters .tbBar.built {
+.tbBoard:is(.faction-little_busters, .faction-bulwark) .tbBar.built {
   z-index: 2;
   box-shadow: none;
 }
@@ -28366,14 +28441,14 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 /* These seven inserts are contiguous pieces of one perspective painting. Do
    not style them as seven floating decorative cards: no edge shadow, scaling
    reveal, badge or seam. The buildings themselves are the built-state cue. */
-.tbBoard.faction-little_busters .tbFill,
-.tbBoard.faction-little_busters .tbLittleBustersPhysicalTile {
+.tbBoard:is(.faction-little_busters, .faction-bulwark) .tbFill,
+.tbBoard:is(.faction-little_busters, .faction-bulwark) .tbLittleBustersPhysicalTile {
   box-shadow: none;
   animation: none;
 }
 
-.tbBoard.faction-little_busters .tbBar.built .tbBarTileArt,
-.tbBoard.faction-little_busters .tbBar.built .tbPanoramaSlice {
+.tbBoard:is(.faction-little_busters, .faction-bulwark) .tbBar.built .tbBarTileArt,
+.tbBoard:is(.faction-little_busters, .faction-bulwark) .tbBar.built .tbPanoramaSlice {
   filter: saturate(1.08) brightness(1.04) contrast(1.04);
 }
 
@@ -28381,6 +28456,14 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+
+.tbBoard.faction-bulwark .tbLittleBustersPhysicalTile {
+  background: transparent;
+}
+
+.tbBoard.faction-bulwark .tbFill.partial > img {
+  filter: none;
 }
 
 .tbLittleBustersPhysicalTile .tbTilePlaque {

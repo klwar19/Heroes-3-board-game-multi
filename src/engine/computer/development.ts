@@ -1042,6 +1042,64 @@ export type GoldLadderStep = {
   rank: number;
 };
 
+/** Remaining dwelling prerequisites plus the first level-7 body. No speculative
+ * loot, trades or expiring Legion vouchers are counted as future income. */
+export function firstGoldMilestoneCost(state: GameState, playerId: PlayerId): Required<ResourceCost> | null {
+  const player = state.players[playerId];
+  const unitId = rankedGoldUnits(state, playerId)[0];
+  if (!player || !unitId || player.army.some(unit => unit.unitDefId === unitId && unit.side !== "bank")) return null;
+  const dwelling = factionBuildingForEffect(state, playerId,
+    effect => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold");
+  if (!dwelling) return null;
+  const cost = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  const add = (part: ResourceCost) => {
+    for (const key of ["gold", "buildingMaterials", "valuables"] as const) cost[key] += part[key] ?? 0;
+  };
+  const built = new Set(Object.values(state.towns ?? {}).filter(town => town.controllerId === playerId)
+    .flatMap(town => town.buildings));
+  const seen = new Set<string>();
+  const addBuilding = (id: string) => {
+    if (built.has(id) || seen.has(id)) return;
+    seen.add(id);
+    const building = coreBuildingDefinitions[id];
+    if (!building) return;
+    for (const prerequisite of building.prerequisites ?? []) addBuilding(prerequisite);
+    add(effectiveTownBuildingCost(state, building));
+  };
+  if (!armyDevelopmentProfile(state, playerId).goldUnlocked) addBuilding(dwelling.id);
+  add(coreUnitDefinitions[unitId]!.few!.cost);
+  return cost;
+}
+
+/** The actual Resource rounds remaining through R9, not nine income ticks.
+ * After R9, keep planning over the next two rounds to recover a late start. */
+export function goldMilestoneShortfall(
+  state: GameState, playerId: PlayerId, spend: ResourceCost = {},
+): Required<ResourceCost> {
+  const shortfall = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  const cost = firstGoldMilestoneCost(state, playerId);
+  const player = state.players[playerId];
+  if (!cost || !player) return shortfall;
+  let payouts = 0;
+  const deadline = state.round <= 9 ? 9 : state.round + 2;
+  for (let round = state.round + 1; round <= deadline; round += 1) {
+    if (round > 1 && round % 2 === 1) payouts += 1;
+  }
+  for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
+    shortfall[key] = Math.max(0, cost[key] + (spend[key] ?? 0) - player.resources[key] -
+      payouts * (player.production?.[key] ?? 0));
+  }
+  return shortfall;
+}
+
+/** Optional spending must not create or worsen a deadline funding gap. Core
+ * recovery and the planned Silver breakthrough decide in their own paths. */
+export function spendWorsensGoldMilestone(state: GameState, playerId: PlayerId, spend: ResourceCost): boolean {
+  const before = goldMilestoneShortfall(state, playerId);
+  const after = goldMilestoneShortfall(state, playerId, spend);
+  return (["gold", "buildingMaterials", "valuables"] as const).some(key => after[key] > before[key]);
+}
+
 /**
  * The next Gold-army purchase in the taught order: the highest-ranked missing
  * Few, else the highest-ranked unit still at Few (its Pack), with an affordable

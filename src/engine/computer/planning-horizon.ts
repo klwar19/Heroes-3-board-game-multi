@@ -1,6 +1,6 @@
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { locationDefinitions } from "@/data/map/locations";
-import { ATTACK_DIE_FACES, isAdjacent } from "../battlefield";
+import { isAdjacent } from "../battlefield";
 import { effectiveInitiative } from "../active-effects";
 import { getUnitSide, heroMovementMax } from "../adventure";
 import { effectiveTownBuildingCost } from "../house-rules";
@@ -40,7 +40,7 @@ import {
   unitThreatValue,
 } from "./score";
 import { estimatedStrikeDamage } from "./strike-value";
-import { conditionAttackFaces } from "./battlefield-conditions";
+import { plannedAttackFaces } from "./battlefield-conditions";
 
 /** Public, bounded planning horizons. Keeping these small makes live turns fast. */
 export const STRATEGIC_HORIZON_ROUNDS = 4;
@@ -144,23 +144,8 @@ export function objectiveHorizonAdjustment(
     else if (enemyEta < ownEta && objective.kind !== "victory") adjustment -= 22;
   }
 
-  // Option value: after this target, prefer a region with several distinct
-  // visible jobs. This is intentionally small; it breaks close route choices
-  // without overriding a victory target or a safety gate.
-  const target = parseHexSpaceId(objective.spaceId);
-  if (target) {
-    let followUps = 0;
-    for (const other of Object.values(state.adventure?.fields ?? {})) {
-      if (other.spaceId === objective.spaceId || other.blackCube) continue;
-      const cell = parseHexSpaceId(other.spaceId);
-      if (!cell || hexDistance(target, cell) > 2) continue;
-      const category = locationDefinitions[other.location]?.category;
-      if (category === "blocked" || category === "empty") continue;
-      if (other.flagOwnerId === hero.controllerId) continue;
-      followUps += 1;
-    }
-    adjustment += Math.min(18, followUps * 3);
-  }
+  // Follow-up collection routes are scored by map-navigation on its cached
+  // movement graph, after filtering actual unclaimed objectives.
 
   // Exploration is an uncertain strategy. Reward it when the current visible
   // board has little productive diversity, but never pretend to know what is
@@ -184,6 +169,9 @@ function recurringBuildingReturn(buildingId: string): number {
       (option.gold ?? 0) * RESOURCE_VALUE.gold +
       (option.buildingMaterials ?? 0) * RESOURCE_VALUE.buildingMaterials +
       (option.valuables ?? 0) * RESOURCE_VALUE.valuables));
+  }
+  if (effect.type === "RESOURCE_ROUND_BANK") {
+    return Math.max(0, ...effect.options.map((option) => option.nextResourceGold - option.payGold));
   }
   // Expected public value of recurring non-City-Hall engines. These are not
   // treated as exact resources: the conservative equivalents only compare
@@ -245,10 +233,10 @@ function strikeUtility(defender: CombatUnitState, damage: number): number {
     (damage > 0 && damage >= remaining ? unitThreatValue(defender) * 0.7 : 0);
 }
 
-function strikeOutcomes(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, from: number): number[] {
+export function strikeOutcomes(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, from: number): number[] {
   // Apply the face BEFORE defense and damage caps. Adding +/-1 to already
   // clamped damage invents hits against armor and damage above an ability cap.
-  return (conditionAttackFaces(state, attacker, defender, from) ?? ATTACK_DIE_FACES).map(face => isUnitDamageImmune(defender) ? 0 :
+  return plannedAttackFaces(state, attacker, defender, from).map(face => isUnitDamageImmune(defender) ? 0 :
     estimatedStrikeDamage(attacker, defender, from, false, face));
 }
 
@@ -361,6 +349,7 @@ export function combatHorizonAdjustment(
   state: GameState,
   action: GameAction,
   budget: CombatPlanningBudget = { remaining: COMBAT_PLANNING_WORK_LIMIT },
+  plies = COMBAT_HORIZON_PLIES,
 ): number {
   const combat = state.combat;
   if (!combat || Object.keys(combat.units).length > 24 ||
@@ -375,7 +364,7 @@ export function combatHorizonAdjustment(
   for (const damage of new Set(outcomes)) {
     let board = projectReply(state, combat, { utility: 0, damage, attackerId: attacker.id, defenderId: defender.id, from });
     if (!board) return 0;
-    for (let ply = 1; ply < COMBAT_HORIZON_PLIES; ply += 1) {
+    for (let ply = 1; ply < Math.min(plies, COMBAT_HORIZON_PLIES); ply += 1) {
       const reply = nextReply(state, board, budget);
       if (budget.remaining < 0) return 0;
       if (!reply) break;

@@ -180,7 +180,7 @@ import {
   commanderStandsInCurrentCombat,
   commanderUnitId,
 } from "./commanders";
-import { RUNE_MAX } from "./runes";
+import { availableRunes, runeTrackHasRoom, RUNE_MAX } from "./runes";
 import {
   COMMANDER_ARTIFACT_GOLD_COST,
   availableCommanderArtifactSpecs,
@@ -4860,7 +4860,8 @@ function isOptionEffectPlayable(
       return (
         context === "combat" &&
         Boolean(state.combat) &&
-        state.players[playerId]?.factionId === "bulwark"
+        state.players[playerId]?.factionId === "bulwark" &&
+        (runeTrackHasRoom(state, playerId) || Boolean(effect.drawCards))
       );
     case "GAIN_STARTING_RUNES":
       // Kriv (Bulwark): become Rune-Empowered on the MAP — only a Bulwark caster
@@ -13791,7 +13792,8 @@ export function isEffectLegalForTrigger(
     // Only a Bulwark reactor benefits (gainRunes is a no-op otherwise); the card's
     // "opponent" trigger already keeps this off the attacker's own tray.
     if (effect.type === "GAIN_RUNES") {
-      return state.players[playerId]?.factionId === "bulwark";
+      return state.players[playerId]?.factionId === "bulwark" &&
+        (runeTrackHasRoom(state, playerId) || Boolean(effect.drawCards));
     }
 
     // Centaur's Axe: only the attacker (the side whose unit is making this
@@ -14004,7 +14006,7 @@ export function isEffectLegalForTrigger(
     // the reducer repeats this check before changing the pending attack.
     if (
       effect.runeCost &&
-      (state.combat?.runes?.[playerId]?.count ?? 0) < effect.runeCost
+      availableRunes(state, playerId) < effect.runeCost
     ) {
       return false;
     }
@@ -15246,18 +15248,21 @@ function addTownActions(
   if (
     !state.combat &&
     smith?.effect?.type === "ARTIFACT_SMITH" &&
-    player.blacksmithUsedRound !== state.round
+    player.blacksmithUsedRound !== state.round &&
+    (smith.id !== "factory.artifact_merchants" || (
+      hasOpenAdventureTurn(state, playerId) && !parallelInteractionBlocker(state, playerId)
+    ))
   ) {
     if (player.resources.gold >= smith.effect.searchCost) {
       actions.push({
-        label: `Blacksmith: pay ${smith.effect.searchCost} gold, Search (2) Artifacts`,
+        label: `${smith.name}: pay ${smith.effect.searchCost} gold, Search (${smith.effect.searchCount ?? 2}) Artifacts`,
         action: { type: "BLACKSMITH_ACTION", playerId, option: "search" },
       });
     }
     for (const cardId of new Set(player.hand)) {
       if (cardLibrary[cardId]?.kind === "artifact") {
         actions.push({
-          label: `Blacksmith: sell ${cardLibrary[cardId]?.name} for ${smith.effect.sellGold} gold`,
+          label: `${smith.name}: sell ${cardLibrary[cardId]?.name} for ${smith.effect.sellGold} gold`,
           action: {
             type: "BLACKSMITH_ACTION",
             playerId,

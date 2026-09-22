@@ -745,7 +745,9 @@ export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): 
       total +
       effect.modifiers.reduce((modifierTotal, modifier) => {
         if (modifier.type !== "DEFENSE_BONUS") {
-          return modifierTotal;
+          return modifier.type === "FIRE_SHIELD_FIRST_ATTACK_DEFENSE"
+            ? modifierTotal + modifier.amount
+            : modifierTotal;
         }
 
         return modifierTotal + modifier.amount;
