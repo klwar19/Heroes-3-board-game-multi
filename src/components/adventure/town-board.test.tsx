@@ -25,6 +25,7 @@ import { AdventureHud, PreBattlePanel, TownHeroDock, TownPanel } from "./screen"
 import { CardZoomProvider } from "@/components/table/zoom";
 import { createAdventureGameState, getLegalActions } from "@/engine";
 import { coreBuildingDefinitions } from "@/data/factions/core";
+import { townBoardSpecs } from "@/data/towns/boards";
 import { getMainHero } from "@/engine/adventure";
 import { startPlayerCombat } from "@/engine/adventure-reducer";
 import type { GameState } from "@/engine/state";
@@ -857,8 +858,9 @@ describe("Stronghold scan board — seven-slice reveal and modal panels", () => 
   });
 });
 
-/** A factory town: a designed board WITH a built-town reveal image AND real
- *  per-building printed tiles, plus the pasted authentic tracks panel. */
+/** A factory town: a designed board drawn from ONE whole printed face (blank
+ *  plaques, rule cards, tracks and token wells printed in the base) with seven
+ *  aligned built strips revealed per bar. */
 function factoryState(): GameState {
   const state = createAdventureGameState({ startingBuildings: [],
     seed: "town-board-factory",
@@ -872,6 +874,35 @@ function factoryState(): GameState {
   state.players.p1.resources = { gold: 200, buildingMaterials: 100, valuables: 100 };
   return state;
 }
+
+/** A bulwark town: a designed board over a townscape panorama WITH the pasted
+ *  authentic tracks/tokens panel (the classic designed-board treatment). */
+function bulwarkState(): GameState {
+  const state = createAdventureGameState({ startingBuildings: [],
+    seed: "town-board-bulwark",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    players: [
+      { id: "p1", name: "Kriv", factionId: "bulwark", heroDefId: "kriv" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  state.players.p1.resources = { gold: 200, buildingMaterials: 100, valuables: 100 };
+  return state;
+}
+
+/** Build `ids` in p1's town (idempotent). */
+function buildIn(state: GameState, ids: readonly string[]) {
+  const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+  for (const id of ids) {
+    if (!town.buildings.includes(id)) {
+      town.buildings.push(id);
+    }
+  }
+}
+
+const barSlot = (container: HTMLElement, slot: number) =>
+  container.querySelector(`.tbBar[data-building-slot='${slot}']`) as HTMLElement;
 
 describe("Designed board — authentic printed art (reveal slice + tile overlay, tracks panel)", () => {
   it("Little Busters visibly changes from the empty campus to built-town slices", () => {
@@ -898,22 +929,52 @@ describe("Designed board — authentic printed art (reveal slice + tile overlay,
     expect(builtRender.container.querySelector(".tbBar.built .tbBarTileArt[src*='little-busters-bar-1']")).toBeTruthy();
   });
 
-  it("factory: a built bar shows the REAL printed building tile directly (no muddy panorama slice)", () => {
+  it("factory: the whole printed face is the base and a built bar reveals its aligned built strip (no per-building tile, no panorama)", () => {
     const state = factoryState();
-    if (!state.towns.town_p1.buildings.includes("factory.city_hall")) {
-      state.towns.town_p1.buildings.push("factory.city_hall");
-    }
+    buildIn(state, ["factory.city_hall"]); // bar 2 on the printed face
     const { container } = render(viewFor(state));
-    // The Factory board carries the real printed portrait tiles: a raised slot
-    // shows its own built illustration full-bleed…
-    expect(container.querySelector(".tbRealTile.built")).toBeTruthy();
-    expect(container.querySelector(".tbRealTileImg[src*='factory-city_hall']")).toBeTruthy();
-    // …and NOT the old fullImage panorama-reveal slice (which muddied the tiles).
+    // The complete empty printed face is the board base…
+    expect(container.querySelector("img.tbBoardBase[src*='factory-board-empty']")).toBeTruthy();
+    // …not a panorama window, the retired per-building tiles, or a reveal slice.
+    expect(container.querySelector(".tbDesignedWindow")).toBeNull();
+    expect(container.querySelector(".tbRealTile")).toBeNull();
     expect(container.querySelector(".tbPanoramaSlice")).toBeNull();
+    // The raised bar shows the matching built strip of the face, crisp and whole.
+    const cityHallBar = barSlot(container, 2);
+    expect(cityHallBar.classList.contains("built")).toBe(true);
+    const strip = cityHallBar.querySelector(".tbBarTileArt") as HTMLImageElement | null;
+    expect(strip?.getAttribute("src")).toMatch(/factory-board-built-strip-2\.webp$/);
+    expect(strip?.style.clipPath ?? "").toBe("");
+    // The six unbuilt bars keep the empty face showing: no blurred preview strip
+    // is laid over the printed scenery.
+    expect(container.querySelectorAll(".tbEmptyBar")).toHaveLength(6);
+    expect(container.querySelector(".tbEmptyPreview")).toBeNull();
+  });
+
+  it("factory: every bar writes its live name + full cost onto the blank printed plaque, built or not", () => {
+    const state = factoryState();
+    buildIn(state, ["factory.city_hall"]);
+    const { container } = render(viewFor(state));
+    const bars = townBoardSpecs.factory.bars;
+    bars.forEach((bar, index) => {
+      const plates = barSlot(container, index + 1).querySelectorAll(".tbFactoryBarPlates .tbPlate");
+      expect(plates, `bar ${index + 1} plaque plates`).toHaveLength(bar.length);
+      bar.forEach((buildingId, plateIndex) => {
+        expect(plates[plateIndex].querySelector("b")?.textContent).toBe(coreBuildingDefinitions[buildingId].name);
+        // The printed plaque lists all three resources, zeros included.
+        expect(plates[plateIndex].querySelectorAll(".tbCost > span"), `${buildingId} cost parts`).toHaveLength(3);
+      });
+    });
+    // The Bank (bar 1) reads its printed 4 gold / 2 materials / 0 valuables.
+    const bankCost = barSlot(container, 1).querySelector(".tbFactoryBarPlates .tbCost")!;
+    expect([...bankCost.querySelectorAll("span")].map((part) => part.textContent)).toEqual(["4", "2", "0"]);
+    // The in-bar CSS plates of the classic designed board are not doubled up.
+    expect(container.querySelector(".tbEmptyBar .tbPlate")).toBeNull();
   });
 
   it("designed boards paste the authentic printed tracks/tokens panel instead of CSS cells", () => {
-    const state = factoryState();
+    // Bulwark keeps the classic designed treatment: panorama + pasted panel.
+    const state = bulwarkState();
     const { container } = render(viewFor(state));
     // The Stronghold-scan crop is pasted…
     const panel = container.querySelector(".tbPanelArt") as HTMLImageElement | null;
@@ -922,6 +983,19 @@ describe("Designed board — authentic printed art (reveal slice + tile overlay,
     // …so the CSS mock cells and the overlay token icons stay unmounted…
     expect(container.querySelector(".tbTrackCell")).toBeNull();
     expect(container.querySelector(".tbTokenImg")).toBeNull();
+    // …while the live production markers and working token buttons remain.
+    expect(container.querySelectorAll(".tbMarker")).toHaveLength(3);
+    expect(container.querySelectorAll(".tbToken")).toHaveLength(3);
+  });
+
+  it("a printed face with its panel in the base (factory) pastes NO second panel and no overlay token icons", () => {
+    const state = factoryState();
+    const { container } = render(viewFor(state));
+    // printedPanelInBase: the face already prints the tracks and wells…
+    expect(container.querySelector(".tbPanelArt")).toBeNull();
+    expect(container.querySelector(".tbTokenImg")).toBeNull();
+    // …and no fallback CSS title plate covers the printed panel either…
+    expect(container.querySelector(".tbDesignedTitle")).toBeNull();
     // …while the live production markers and working token buttons remain.
     expect(container.querySelectorAll(".tbMarker")).toHaveLength(3);
     expect(container.querySelectorAll(".tbToken")).toHaveLength(3);
@@ -942,38 +1016,55 @@ describe("Designed board — authentic printed art (reveal slice + tile overlay,
     expect(container.querySelector(".tbToken.designed")).toBeNull();
   });
 
-  it("a half-built shared bar shows the printed plaque tile for the missing half (no scan-style note)", () => {
+  it("a half-built shared bar reveals only the built half's strip and names the missing half on the plaque (no scan-style note)", () => {
     const state = factoryState();
-    // Bank shares its bar with the Industrialized Catacombs (dwelling_silver).
-    if (!state.towns.town_p1.buildings.includes("factory.bank")) {
-      state.towns.town_p1.buildings.push("factory.bank");
-    }
+    // The Mage Guild shares bar 3 with the Artifact Merchants.
+    buildIn(state, ["factory.mage_guild"]);
     const { container } = render(viewFor(state));
-    // The raised half shows its built tile, the missing half its own name/cost
-    // plaque tile — a distinct, self-labelling slot…
-    expect(container.querySelector(".tbRealTile.built")).toBeTruthy();
-    expect(container.querySelector(".tbRealTile.unbuilt")).toBeTruthy();
+    const shared = barSlot(container, 3);
+    expect(shared.classList.contains("partial")).toBe(true);
+    // Only the Mage Guild's (left) half of the aligned strip is revealed; the
+    // Artifact Merchants' half keeps the empty printed face.
+    const strip = shared.querySelector(".tbBarTileArt[src*='factory-board-built-strip-3']") as HTMLImageElement | null;
+    expect(strip).toBeTruthy();
+    expect(strip!.style.clipPath).toBe("inset(0 50% 0 0)");
+    // The plaque says which half is up and which is not…
+    expect(shared.querySelector(".tbTilePlaque")?.textContent).toContain(coreBuildingDefinitions["factory.mage_guild"].name);
+    expect(shared.querySelector(".tbSharedMissing")?.textContent).toContain(coreBuildingDefinitions["factory.artifact_merchants"].name);
+    // …and both halves keep their printed name/cost plates…
+    expect(shared.querySelectorAll(".tbFactoryBarPlates .tbPlate")).toHaveLength(2);
     // …so the scan-board written note must NOT double-label the bar.
     expect(container.querySelector(".tbPartialNote")).toBeNull();
+
+    // CONTROL: with both halves up the whole strip shows and the missing note goes.
+    cleanup();
+    buildIn(state, ["factory.artifact_merchants"]);
+    const { container: both } = render(viewFor(state));
+    const full = barSlot(both, 3);
+    expect(full.classList.contains("partial")).toBe(false);
+    expect((full.querySelector(".tbBarTileArt") as HTMLImageElement).style.clipPath ?? "").toBe("");
+    expect(full.querySelector(".tbSharedMissing")).toBeNull();
   });
 
-  it("each built Factory bar shows ITS OWN printed tile (the citadel↔mana-generator swap is fixed)", () => {
+  it("each built Factory bar reveals ITS OWN aligned strip of the printed face (no slot swap)", () => {
     const state = factoryState();
-    for (const id of ["factory.citadel", "factory.mage_guild", "factory.city_hall"]) {
-      if (!state.towns.town_p1.buildings.includes(id)) {
-        state.towns.town_p1.buildings.push(id);
-      }
-    }
+    buildIn(state, ["factory.citadel", "factory.mage_guild", "factory.city_hall"]);
     const { container } = render(viewFor(state));
-    // Every raised slot renders the tile keyed to its OWN building id — the
-    // regression that had the Citadel slot show the Mana Generator tower (and the
-    // Mana Generator slot show its cost-banner plaque) fails this.
-    expect(container.querySelector(".tbRealTileImg[src*='factory-citadel']")).toBeTruthy();
-    expect(container.querySelector(".tbRealTileImg[src*='factory-mage_guild']")).toBeTruthy();
-    expect(container.querySelector(".tbRealTileImg[src*='factory-city_hall']")).toBeTruthy();
-    // The built Mana Generator uses the clean built art, NOT the "-unbuilt" plaque
-    // (with the printed resource cost) the player flagged.
-    expect(container.querySelector(".tbRealTileImg[src*='factory-mage_guild-unbuilt']")).toBeNull();
+    const bars = townBoardSpecs.factory.bars;
+    // Every raised slot renders the strip keyed to its OWN bar position — a
+    // regression that paints one building's art into another's slot fails this.
+    for (const id of ["factory.citadel", "factory.mage_guild", "factory.city_hall"]) {
+      const slot = bars.findIndex((bar) => bar.includes(id)) + 1;
+      const bar = barSlot(container, slot);
+      expect(bar.classList.contains("built"), `${id} bar is built`).toBe(true);
+      const strips = [...bar.querySelectorAll(".tbBarTileArt")].map((image) => image.getAttribute("src") ?? "");
+      expect(strips, `${id} bar strip`).toHaveLength(1);
+      expect(strips[0], `${id} shows strip ${slot}`).toMatch(new RegExp(`factory-board-built-strip-${slot}\\.webp$`));
+      expect(bar.querySelector(".tbTilePlaque")?.textContent).toContain(coreBuildingDefinitions[id].name);
+    }
+    // Exactly the three raised bars show built art; the other four stay empty.
+    expect(container.querySelectorAll(".tbBar.built .tbBarTileArt")).toHaveLength(3);
+    expect(container.querySelectorAll(".tbEmptyBar")).toHaveLength(4);
   });
 });
 

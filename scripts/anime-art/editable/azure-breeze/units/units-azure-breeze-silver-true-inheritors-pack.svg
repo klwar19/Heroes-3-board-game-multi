@@ -12,7 +12,7 @@
       .smallcaps { font-family: "Liberation Serif", Georgia, serif; font-weight: 700; letter-spacing: 2.5px; }
       .statNumber { fill: #fff0c8; font-family: "Liberation Serif", Georgia, serif; font-size: 40px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
       .typeLabel { fill: #e8e2b4; font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 2px; filter: url(#textShadow); }
-      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 21px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 18px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
     </style>
   </defs>
 
@@ -74,6 +74,6 @@
     <text x="371" y="105" class="display" fill="#f5dda0" font-size="41" text-anchor="middle" filter="url(#textShadow)">True Inheritors</text>
     <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Chân truyền đệ tử</text>
     <text x="376" y="814" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)"># PACK</text>
-    <g id="editable-rules"><path d="M84 908.22q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="917.22" class="ruleText">Charge — +1 Attack when attacking after moving.</text><path d="M84 938.22q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="947.22" class="ruleText">Peerless Form — Ignores retaliation.</text></g>
+    <g id="editable-rules"><path d="M84 901.38q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="910.38" class="ruleText">Peerless Form — Charge; ignores Retaliation;</text><text x="384" y="931.38" class="ruleText">Inheritance Burst — with 2+ Sect Qi, Sword Formation</text><text x="384" y="952.38" class="ruleText">spends 2 Qi for +2 Attack.</text></g>
   </g>
 </svg>

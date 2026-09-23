@@ -1,16 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown, ChevronUp, GripHorizontal, PictureInPicture2, PanelRightClose } from "lucide-react";
-import { getRuneTrack, isBulwarkPlayer, RUNE_GAIN_ATTACK, RUNE_GAIN_DEFEND, RUNE_GAIN_RETALIATION } from "@/engine/runes";
+import { createPortal } from "react-dom";
+import { ChevronDown, ChevronUp, GripHorizontal, Lock, PictureInPicture2, PanelRightClose } from "lucide-react";
+import { getRuneTrack, isBulwarkPlayer, RUNE_THRESHOLD } from "@/engine/runes";
 import { NEUTRAL_PLAYER_ID, type GameState, type PlayerId } from "@/engine/state";
 import { assetUrl } from "@/lib/asset-url";
 
 /**
  * Bulwark Rune tracker for the combat surface. One panel for every Bulwark
  * player in the current fight (the viewer's own first), fed only by the tested
- * engine `getRuneTrack`: the nine-cell main track with real Rune tokens, the
- * three Rune Level plaques, and the spendable reserve pile.
+ * engine `getRuneTrack`, drawn as the printed tracker board with pieces on it:
+ * the Rune cube sits on the main-track slot (1-8) matching the Runes on the
+ * track, a gold seal covers each "9" threshold box whose Rune Level is earned
+ * (the next one to climb is lit, ones beyond the Sieidi/Altar cap are locked),
+ * and the spendable reserve is a tray of cubes under the board.
  *
  * It lives in the right rail (docked) and can be popped out into a floating,
  * draggable window or minimized to a one-line readout; on the phone layout it
@@ -19,9 +23,29 @@ import { assetUrl } from "@/lib/asset-url";
  */
 
 const PREF_KEY = "homm3bg.runePanel";
-const TOKEN_ART = "/game-tokens/rune-token.webp";
-const POUCH_ART = "/game-tokens/rune-pouch.webp";
+const CUBE_ART = "/game-tokens/rune-cube.webp";
+const SEAL_ART = "/game-tokens/rune-level-seal.webp";
 const BOARD_ART = "/assets/rune-tracker-bulwark.webp";
+
+/**
+ * Piece positions on the 800x428 printed board, as % of its width / height
+ * (measured from the art): the centres of the numbered track slots 1-8 (the
+ * trough steps, so odd and even slots sit at different heights), the rune
+ * emblem past slot 8 where a full nine-Rune track rests once the top Level is
+ * earned, and the three "9" threshold boxes (Level 1, 2, 3).
+ */
+const BOARD_SLOTS: readonly (readonly [number, number])[] = [
+  [16.56, 79.44], [25.94, 81.54], [35.31, 79.44], [44.69, 81.54],
+  [54.06, 79.44], [63.44, 81.54], [72.81, 79.44], [82.19, 81.54]
+];
+const BOARD_FULL_SLOT = [91.38, 79.44] as const;
+const BOARD_LEVEL_BOXES: readonly (readonly [number, number])[] = [
+  [46.0, 42.06], [64.04, 42.06], [81.91, 42.06]
+];
+/** Pointer travel before a header press becomes a drag (and pops a docked panel out). */
+const DRAG_THRESHOLD_PX = 6;
+/** Reserve cubes drawn individually before the tray collapses the rest into "+N". */
+const RESERVE_CUBES_SHOWN = 15;
 
 type PanelPos = { x: number; y: number };
 type PanelPrefs = {
@@ -126,68 +150,85 @@ function levelHint(status: string, bonusLabel: string, level: number): string {
   return `${base} — locked (build the ${level === 2 ? "Sieidi" : "Altar"} of the Runes)`;
 }
 
+const pct = (value: number) => `${value}%`;
+
 function RuneTrackBody({ state, playerId, showName }: { state: GameState; playerId: PlayerId; showName: boolean }) {
   const track = getRuneTrack(state, playerId);
   const name = state.players[playerId]?.name ?? playerId;
   const remaining = (track.nextThreshold ?? 0) - track.count;
   const nextLabel = track.nextThreshold === null
-    ? "Top level earned — the track now only banks spendable Runes"
+    ? track.levelCap < track.levels.length
+      ? `Level ${track.level} is your cap — the track now only banks spendable Runes`
+      : "Top level earned — the track now only banks spendable Runes"
     : `${remaining} more Rune${remaining === 1 ? "" : "s"} to Level ${track.level + 1}`;
+  // The cube marks the track total: slot 1-8, or the emblem past slot 8 when
+  // the top Level is earned and the track fills to nine. No Runes, no cube.
+  const cubeAt = track.count <= 0
+    ? null
+    : track.count >= RUNE_THRESHOLD
+      ? BOARD_FULL_SLOT
+      : BOARD_SLOTS[track.count - 1];
+  const reserveShown = Math.min(track.reserve, RESERVE_CUBES_SHOWN);
   return (
     <section
       className="runeSeat"
+      data-rune-seat={playerId}
       aria-label={`Runes for ${name}: track ${track.count} of 9, reserve ${track.reserve}, level ${track.level} of ${track.levelCap}`}
     >
       {showName ? <h4 className="runeSeatName">{name}</h4> : null}
-      <div className="runeLevelRow" role="list">
-        {track.levels.map((lvl) => (
-          <div
-            key={lvl.level}
-            className={`runeLevelPlaque ${lvl.status}`}
-            role="listitem"
-            title={levelHint(lvl.status, lvl.bonusLabel, lvl.level)}
-          >
-            <span className="runeLevelPlaqueBonus">{lvl.bonusLabel}</span>
-            <span className="runeLevelPlaqueNeed">{lvl.status === "active" ? "✓" : lvl.threshold}</span>
-          </div>
-        ))}
+      <div className="runeBoard">
+        <img alt="" aria-hidden="true" className="runeBoardArt" draggable={false} src={assetUrl(BOARD_ART)} />
+        {track.levels.map((lvl, index) => {
+          const [x, y] = BOARD_LEVEL_BOXES[index];
+          const next = lvl.status === "pending" && lvl.level === track.level + 1;
+          return (
+            <div
+              key={lvl.level}
+              className={`runeBoardLevel ${lvl.status}${next ? " next" : ""}`}
+              data-rune-level={lvl.level}
+              role="img"
+              aria-label={levelHint(lvl.status, lvl.bonusLabel, lvl.level)}
+              title={levelHint(lvl.status, lvl.bonusLabel, lvl.level)}
+              style={{ left: pct(x), top: pct(y) }}
+            >
+              {lvl.status === "active" ? (
+                <img alt="" aria-hidden="true" className="runeBoardSeal" draggable={false} src={assetUrl(SEAL_ART)} />
+              ) : lvl.status === "locked" ? (
+                <Lock aria-hidden="true" className="runeBoardLock" />
+              ) : null}
+            </div>
+          );
+        })}
+        {BOARD_SLOTS.map(([x, y], index) =>
+          index < track.count - 1 ? (
+            <span aria-hidden="true" className="runeBoardPassed" key={index} style={{ left: pct(x), top: pct(y) }} />
+          ) : null
+        )}
+        {cubeAt ? (
+          <img
+            alt=""
+            className="runeBoardCube"
+            draggable={false}
+            src={assetUrl(CUBE_ART)}
+            style={{ left: pct(cubeAt[0]), top: pct(cubeAt[1]) }}
+            title={`Main track: ${track.count} of 9 Runes`}
+          />
+        ) : null}
       </div>
-      <div className="runeTrackRow">
-        <ol className="runeCells" aria-label={`Main track: ${track.count} of 9 Runes`}>
-          {Array.from({ length: 9 }, (_, index) => {
-            const filled = track.count >= index + 1;
-            return (
-              <li
-                key={index}
-                className={`runeCell ${filled ? "filled" : ""}${index === 8 ? " last" : ""}`}
-                title={filled ? `Rune ${index + 1} of 9 on the main track` : `Empty slot ${index + 1} of 9`}
-              >
-                {filled ? <img alt="" aria-hidden="true" className="runeToken" draggable={false} src={assetUrl(TOKEN_ART)} /> : null}
-                <span className="runeCellNumber" aria-hidden="true">{index + 1}</span>
-              </li>
-            );
-          })}
-        </ol>
-        <div
-          className={`runeReserve ${track.reserve > 0 ? "stocked" : ""}`}
-          title={`Reserve: ${track.reserve} spendable Rune${track.reserve === 1 ? "" : "s"} — Rune costs spend the reserve before the main track`}
-        >
-          <div className="runeReservePile" aria-hidden="true">
-            <img alt="" className="runeReservePouch" draggable={false} src={assetUrl(POUCH_ART)} />
-            {Array.from({ length: Math.min(4, track.reserve) }, (_, index) => (
-              <img alt="" className={`runeToken reserveToken t${index}`} draggable={false} key={index} src={assetUrl(TOKEN_ART)} />
-            ))}
-          </div>
-          <span className="runeReserveCount">{track.reserve}</span>
-          <span className="runeReserveLabel">Reserve</span>
-        </div>
-      </div>
-      <div className="runeFooter">
-        <span className="runeNext">{nextLabel}</span>
-        <span className="runeGains" title="Runes each of your units' actions earns">
-          Attack +{RUNE_GAIN_ATTACK} · Retaliate +{RUNE_GAIN_RETALIATION} · Defend +{RUNE_GAIN_DEFEND}
+      <div
+        className={`runeReserveTray${track.reserve > 0 ? " stocked" : ""}`}
+        title={`Reserve: ${track.reserve} spendable Rune${track.reserve === 1 ? "" : "s"} (5 banked each time a Level is earned) — Rune costs spend the reserve before the main track`}
+      >
+        <span className="runeReserveLabel">Reserve</span>
+        <span className="runeReserveCubes" aria-hidden="true">
+          {Array.from({ length: reserveShown }, (_, index) => (
+            <img alt="" className="runeReserveCube" draggable={false} key={index} src={assetUrl(CUBE_ART)} />
+          ))}
+          {track.reserve > reserveShown ? <span className="runeReserveMore">+{track.reserve - reserveShown}</span> : null}
         </span>
+        <span className="runeReserveCount">{track.reserve}</span>
       </div>
+      <p className="runeNext">{nextLabel}</p>
     </section>
   );
 }
@@ -197,7 +238,7 @@ export function RunePanel({ state, viewerPlayerId, phone = false }: { state: Gam
   const prefs = useSyncExternalStore(subscribePrefs, getPrefsSnapshot, getPrefsServerSnapshot);
   const [dragging, setDragging] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
   const floating = phone || Boolean(prefs?.floating);
   const minimized = phone ? Boolean(prefs?.phoneMinimized) : Boolean(prefs?.minimized);
@@ -216,46 +257,80 @@ export function RunePanel({ state, viewerPlayerId, phone = false }: { state: Gam
     return () => window.removeEventListener("resize", onResize);
   }, [floating, pos]);
 
-  const onDragPointerDown = useCallback(
+  // Re-clamp when the panel's own height changes: expanding from the pill (or
+  // mounting with a saved desktop position at phone width) can otherwise put
+  // the header past the viewport edge, with no way to drag it back.
+  useEffect(() => {
+    if (!floating || minimized) return;
+    const el = panelRef.current;
+    const current = getPrefsSnapshot();
+    if (!current.pos || !el) return;
+    const next = clampPos(current.pos, el.offsetWidth, el.offsetHeight);
+    if (next.x !== current.pos.x || next.y !== current.pos.y) setPrefs({ pos: next });
+  }, [floating, minimized]);
+
+  // Drag from anywhere on the header (its buttons excepted). A floating window
+  // follows the pointer; the docked panel pops out of the rail once the pointer
+  // has travelled a few pixels, so a plain click never undocks it. Movement is
+  // tracked on `window`, not by pointer capture, because popping out re-mounts
+  // the panel into <body> mid-drag.
+  const onHeadPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      if (event.button !== 0 || !floating) return;
+      if (event.button !== 0 || dragCleanupRef.current) return;
+      if ((event.target as HTMLElement).closest("button")) return;
       const el = panelRef.current;
       if (!el) return;
       event.preventDefault();
-      event.stopPropagation();
       const rect = el.getBoundingClientRect();
-      el.setPointerCapture(event.pointerId);
-      dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: rect.left, originY: rect.top };
-      setDragging(true);
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let moved = false;
+
+      const onMove = (move: PointerEvent) => {
+        if (move.pointerId !== pointerId) return;
+        const dx = move.clientX - startX;
+        const dy = move.clientY - startY;
+        if (!moved) {
+          if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+          moved = true;
+          setDragging(true);
+        }
+        const current = panelRef.current;
+        const next = clampPos(
+          { x: rect.left + dx, y: rect.top + dy },
+          current?.offsetWidth ?? rect.width,
+          current?.offsetHeight ?? rect.height
+        );
+        // Live position only (popping a desktop panel out if still docked); the
+        // drop persists once. The phone panel always floats, so it keeps the
+        // desktop dock preference untouched.
+        setPrefs(phone ? { pos: next } : { floating: true, pos: next }, false);
+      };
+      const finish = (end: PointerEvent) => {
+        if (end.pointerId !== pointerId) return;
+        cleanup();
+        if (moved) {
+          setDragging(false);
+          setPrefs({}, true);
+        }
+      };
+      const cleanup = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", finish);
+        window.removeEventListener("pointercancel", finish);
+        dragCleanupRef.current = null;
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", finish);
+      window.addEventListener("pointercancel", finish);
+      dragCleanupRef.current = cleanup;
     },
-    [floating]
+    [phone]
   );
 
-  const onDragPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    const el = panelRef.current;
-    if (!drag || !el || drag.pointerId !== event.pointerId) return;
-    const next = clampPos(
-      { x: drag.originX + (event.clientX - drag.startX), y: drag.originY + (event.clientY - drag.startY) },
-      el.offsetWidth,
-      el.offsetHeight
-    );
-    // Live position only; the drop persists once.
-    setPrefs({ pos: next }, false);
-  }, []);
-
-  const endDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    setDragging(false);
-    try {
-      panelRef.current?.releasePointerCapture(event.pointerId);
-    } catch {
-      // already released
-    }
-    setPrefs({}, true);
-  }, []);
+  // Drop any in-flight drag listeners if the panel leaves the screen mid-drag.
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   if (players.length === 0 || !prefs) return null;
   const summary = players.map((playerId) => {
@@ -272,30 +347,23 @@ export function RunePanel({ state, viewerPlayerId, phone = false }: { state: Gam
         : { right: 16, top: 72, left: "auto", bottom: "auto" }
     : undefined;
 
-  return (
+  const panel = (
     <div
       ref={panelRef}
       className={`runePanel${floating ? " floating" : " docked"}${minimized ? " minimized" : ""}${dragging ? " dragging" : ""}${phone ? " phone" : ""}`}
       style={style}
-      onPointerMove={floating ? onDragPointerMove : undefined}
-      onPointerUp={floating ? endDrag : undefined}
-      onPointerCancel={floating ? endDrag : undefined}
       role="region"
       aria-label="Bulwark Rune tracker"
     >
-      <div className="runePanelHead">
-        {floating ? (
-          <button
-            type="button"
-            className="runePanelHandle"
-            aria-label="Drag the Rune tracker"
-            title="Drag to move"
-            onPointerDown={onDragPointerDown}
-          >
-            <GripHorizontal size={14} aria-hidden="true" />
-          </button>
-        ) : null}
-        <img alt="" aria-hidden="true" className="runePanelIcon" draggable={false} src={assetUrl(TOKEN_ART)} />
+      <div
+        className="runePanelHead"
+        onPointerDown={onHeadPointerDown}
+        title={floating ? "Drag to move" : "Drag out of the rail to pop the tracker out"}
+      >
+        <span aria-hidden="true" className="runePanelHandle">
+          <GripHorizontal size={14} />
+        </span>
+        <img alt="" aria-hidden="true" className="runePanelIcon" draggable={false} src={assetUrl(CUBE_ART)} />
         <span className="runePanelTitle">Runes</span>
         <span className="runePanelSummary" title="Main track / Reserve / Rune Level">{summary}</span>
         {!phone ? (
@@ -321,7 +389,7 @@ export function RunePanel({ state, viewerPlayerId, phone = false }: { state: Gam
         </button>
       </div>
       {!minimized ? (
-        <div className="runePanelBody" style={{ backgroundImage: `url(${assetUrl(BOARD_ART)})` }}>
+        <div className="runePanelBody">
           {players.map((playerId) => (
             <RuneTrackBody key={playerId} playerId={playerId} showName={players.length > 1} state={state} />
           ))}
@@ -329,4 +397,7 @@ export function RunePanel({ state, viewerPlayerId, phone = false }: { state: Gam
       ) : null}
     </div>
   );
+  // Floating windows live in <body> so no ancestor transform, clip or stacking
+  // context can trap or hide them; docked, the panel stays in the rail.
+  return floating ? createPortal(panel, document.body) : panel;
 }

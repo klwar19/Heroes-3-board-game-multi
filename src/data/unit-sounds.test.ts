@@ -190,7 +190,22 @@ describe("unit combat voices", () => {
     // silently pick up a Doom voice — the exact regression class this repo has
     // shipped before. No unit outside the doom.* namespace may resolve to a
     // Doom clip.
+    //
+    // The ONLY exceptions are the Forge's deliberate machinery mixes (user
+    // direction; see the Forge comments in unit-sounds.ts and the
+    // "doom/dssawhit" manifest note). They are pinned by FULL unit id + action
+    // + clip, so any other borrow — including a new unit that merely shares one
+    // of these bare names — still fails the guard.
+    const deliberateForgeBorrows = new Set([
+      "forge.cyber_zombies: attack -> doom/dssawhit",
+      "forge.watchers: death -> doom/dspedth",
+      "forge.watchers: move -> units/doom-pain-elemental-move",
+      "forge.jump_troopers: move -> doom/dsskeatk",
+      "forge.cyberbrutes: death -> doom/dscybdth",
+      "neutral.cyberbrutes: death -> doom/dscybdth"
+    ]);
     const leaks: string[] = [];
+    const borrowed: string[] = [];
     for (const unit of roster) {
       if (unit.id.startsWith("doom.")) {
         continue;
@@ -198,11 +213,14 @@ describe("unit combat voices", () => {
       for (const action of [...coreActions, "shoot"] as UnitSoundAction[]) {
         const key = unitSoundKey(unit.id, action);
         if (key && (key.startsWith("units/doom-") || key.startsWith("doom/"))) {
-          leaks.push(`${unit.id}: ${action} -> ${key}`);
+          const entry = `${unit.id}: ${action} -> ${key}`;
+          (deliberateForgeBorrows.has(entry) ? borrowed : leaks).push(entry);
         }
       }
     }
     expect(leaks).toEqual([]);
+    // Every allowlisted borrow is live (no dead exception entries).
+    expect(borrowed.sort()).toEqual([...deliberateForgeBorrows].sort());
     // CONTROL: a real Doom unit DOES resolve to a Doom clip, so the guard is
     // asserting a live condition, not a vacuous one.
     expect(unitSoundKey("doom.imp", "attack")).toBe("units/doom-imp-attack");

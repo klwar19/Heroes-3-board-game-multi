@@ -23,7 +23,7 @@ export function randomTownStrikeValue(state: GameState, attacker: CombatUnitStat
     getInnateFlatAttackBonus(attacker, retaliation) + commanderLiveAttackBonus(state, attacker) +
     townAttackBonus(state, attacker, defender, retaliation) + (retaliation ? getRetaliationAttackBonus(attacker) + getActiveRetaliationAttackBonus(state, attacker) : 0) +
     (!retaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0);
-  const pierce = getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation, retaliation)?.amount ?? 0;
+  const pierce = getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation, retaliation, defender.defense + getActiveDefenseBonus(state, defender))?.amount ?? 0;
   const printed = !retaliation && getIgnoreTargetCardDefenseAbility(attacker) ? 0 : defender.defense;
   const defense = Math.max(0, printed + tokenDefenseDelta(defender) + getActiveDefenseBonus(state, defender) +
     getAttackerTypeDefenseBonus(state, defender, attacker) + getSelfAttackerTypeDefenseBonus(defender, attacker) +

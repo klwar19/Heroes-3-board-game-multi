@@ -94,44 +94,19 @@ function guardId(state: GameState): string {
 }
 
 describe("neutral combat — pre-activation reaction pause (Intelligence / instants)", () => {
-  it("pauses before a guard acts so an Intelligence holder can cast a non-instant spell at it", () => {
+  it("USER RULING 2026-09-23: Intelligence is a round-start one-shot — once a unit has acted, its holder gets no Spell cast in the pre-activation pause", () => {
     let state = neutralFightWithGuard(rangedGuard);
-    // Player holds Intelligence + Magic Arrow (a non-instant activation spell)
-    // and NO card to change attack/defense — the exact "you're about to be
-    // attacked but can only cast through Intelligence" case.
     grantIntelligence(state);
     state.players.p1.hand = ["spell.magic_arrow"];
-    const guard = guardId(state);
 
-    // Defend the player unit; the guard now comes up — and the engine pauses.
     state = defendActivePlayerUnit(state);
 
-    const pause = state.combat!.pendingNeutralStep;
-    expect(pause?.kind).toBe("pre-activation");
-    expect(pause?.reactingPlayerId).toBe("p1");
-    expect(pause?.unitId).toBe(guard);
-    // The pop-up previews that the guard is about to attack the player unit.
-    expect(pause?.intent?.kind).toBe("attack");
-
-    // The pause offers the Magic Arrow cast (via Intelligence) AND the resume.
+    expect(playerHasSpellTimingFreedom(state, "p1"), "the printed 'before any unit activates' window is closed").toBe(false);
     const actions = getLegalActions(state, "p1");
-    const castArrow = actions.find(
-      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
-    );
-    expect(castArrow, "Magic Arrow is castable during the pre-activation pause").toBeTruthy();
-    expect(actions.some((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP")).toBe(true);
-
-    // Cast Magic Arrow at the guard: it resolves while the guard still waits.
-    const damageBefore = state.combat!.units[guard].damage;
-    state = apply(state, castArrow!.action);
-    // The spell counted and dealt damage; the fight is still paused on the guard.
-    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
-    expect(state.combat!.units[guard].damage).toBeGreaterThan(damageBefore);
-    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
-
-    // Magic Arrow is spent; resuming lets the guard finally act.
-    state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
-    expect(state.combat!.units[guard].activatedThisRound || state.combat!.units[guard].attackedThisActivation).toBe(true);
+    expect(
+      actions.some((legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"),
+      "Magic Arrow is NOT castable off-turn any more",
+    ).toBe(false);
   });
 
   it("only the reacting player may resume the pause", () => {
@@ -270,27 +245,18 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
     expect(state.combat!.pendingNeutralStep ?? null).toBeNull();
   });
 
-  it("pauses for a trigger-free instant ability even without Intelligence", () => {
+  it("USER RULING 2026-09-23: Intelligence is withheld in a pre-activation pause once a unit has acted (round-start only)", () => {
     let state = neutralFightWithGuard(rangedGuard);
-    // No Intelligence, but Intelligence itself is an instant the player may play
-    // off-turn — so the pause opens to let them play it before the guard acts.
     state.players.p1.hand = ["ability.intelligence"];
 
     state = defendActivePlayerUnit(state);
 
-    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
     const actions = getLegalActions(state, "p1");
     expect(
-      actions.some((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.intelligence")
-    ).toBe(true);
-
-    // Playing Intelligence keeps the pause open; the player can then cast.
-    const play = actions.find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.intelligence"
-    )!;
-    state = apply(state, play.action);
-    expect(playerHasSpellTimingFreedom(state, "p1")).toBe(true);
-    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
+      actions.some((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.intelligence"),
+      "the printed window (before any unit activates) is closed",
+    ).toBe(false);
+    expect(playerHasSpellTimingFreedom(state, "p1")).toBe(false);
   });
 });
 

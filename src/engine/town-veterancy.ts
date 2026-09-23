@@ -15,6 +15,7 @@ import { drawCardsForPlayer } from "./decks";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { availableRunes, gainRunes } from "./runes";
 import { appendEvent } from "./events";
+import { forgeAfterAttack, forgeActivation, forgeDefenseBonus, forgeDefenseToken } from "./forge";
 
 export function townVeterancy(
   unit: CombatUnitState,
@@ -28,6 +29,40 @@ export function townVeterancy(
   );
 }
 const alive = (u: CombatUnitState) => u.damage < u.maxHealth;
+
+/**
+ * Arch Devils R1 Devil's Luck: a living veteran devil opposing `attacker` that
+ * can still curse an enemy "+1" Attack die this combat round (2 per round, per
+ * devil). Read-only, so previews and the real hit agree; the hit spends it.
+ */
+export function devilLuckSource(
+  state: GameState | undefined,
+  attacker: CombatUnitState,
+): CombatUnitState | undefined {
+  const combat = state?.combat;
+  if (!combat) return undefined;
+  return Object.values(combat.units).find(
+    (unit) =>
+      unit.controllerId !== attacker.controllerId &&
+      alive(unit) &&
+      townVeterancy(unit, "devil-luck") &&
+      (unit.townVeterancy?.devilLuckRound === combat.round
+        ? (unit.townVeterancy.devilLuckUses ?? 0)
+        : 0) < 2,
+  );
+}
+
+export function spendDevilLuck(
+  state: GameState,
+  devil: CombatUnitState,
+  attacker: CombatUnitState,
+): void {
+  const round = state.combat?.round ?? 0;
+  const vet = (devil.townVeterancy ??= {});
+  vet.devilLuckUses = vet.devilLuckRound === round ? (vet.devilLuckUses ?? 0) + 1 : 1;
+  vet.devilLuckRound = round;
+  veteranTrigger(state, devil, "town-devil-luck", attacker, `${devil.cardName} curses ${attacker.cardName}'s +1 — Devil's Luck gives -1 Attack (${vet.devilLuckUses}/2 this round).`);
+}
 function sharedDrawCount(
   state: GameState,
   controllerId: string,
@@ -98,6 +133,7 @@ export function townDefenseBonus(
   isRetaliation = false,
 ): number {
   return (
+    forgeDefenseBonus(state, attacker, defender) +
     (!isRetaliation && state.combat?.round !== undefined && state.combat.round % 2 === 1 && townVeterancy(defender, "behemoth-odd-defense") ? 1 : 0) +
     (townVeterancy(defender, "elf-guard") &&
     ["ranged", "flying"].includes(attacker.type)
@@ -125,6 +161,7 @@ export function townDefenseToken(
   defender: CombatUnitState,
 ): boolean {
   return (
+    forgeDefenseToken(state, defender) ||
     townVeterancy(defender, "golem-shield") ||
     townVeterancy(defender, "nix-guarded") ||
     Object.values(state.combat?.units ?? {}).some(
@@ -201,6 +238,7 @@ export function townAfterAttack(
   dieCancelled: boolean,
   kind: "melee" | "ranged",
 ): void {
+  forgeAfterAttack(state, attacker, defender, retaliation, roll, dieCancelled);
   if (!retaliation && alive(attacker) && townVeterancy(attacker, "sandworm-burrow")) {
     const memory = (attacker.townVeterancy ??= {});
     if ((memory.sandwormBurrowUses ?? 0) < 2) {
@@ -422,6 +460,7 @@ export function townMovement(
 }
 
 export function townActivation(state: GameState, unit: CombatUnitState): void {
+  forgeActivation(unit);
   if (townVeterancy(unit, "engineer-attack-support")) {
     queueElementalChoice(state, { kind: "engineer-buff", unitId: unit.id, abilityId: "factory-engineer-attack-support" });
   }

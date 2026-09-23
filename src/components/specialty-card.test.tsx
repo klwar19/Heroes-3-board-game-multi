@@ -26,7 +26,7 @@ describe("parseSpecialtyCardId", () => {
 
 describe("canRenderSpecialtyCard", () => {
   it("is true for EVERY art-less specialty (icon optional), false for baked-art + non-specialties", () => {
-    expect(canRenderSpecialtyCard("specialty.kriv.1")).toBe(true); // Bulwark rune specialist (has icon)
+    expect(canRenderSpecialtyCard("specialty.glacius.1")).toBe(true); // Bulwark spell specialist (has icon)
     expect(canRenderSpecialtyCard("specialty.dhuin.4")).toBe(true); // Bulwark unit specialist (has icon)
     expect(canRenderSpecialtyCard("specialty.henrietta.1")).toBe(true); // Factory unit specialist
     expect(canRenderSpecialtyCard("specialty.miku.6")).toBe(true); // anime, no board-game scan exists
@@ -40,6 +40,15 @@ describe("canRenderSpecialtyCard", () => {
     expect(canRenderSpecialtyCard("specialty.ash.1")).toBe(false);
     expect(canRenderSpecialtyCard("specialty.torosar.6")).toBe(false);
     expect(canRenderSpecialtyCard("specialty.jeremy.1")).toBe(false);
+    // Kriv, Eikthurn and Oidana now carry printed specialty scans at every level
+    // (hero_specialties-<slug>-{1,4,6}.webp), so they left the native renderer.
+    for (const slug of ["kriv", "eikthurn", "oidana"]) {
+      for (const level of [1, 4, 6]) {
+        const id = `specialty.${slug}.${level}`;
+        expect(cardLibrary[id]?.assets?.cardImage, id).toBe(`/assets/hero_specialties-${slug}-${level}.webp`);
+        expect(canRenderSpecialtyCard(id), id).toBe(false);
+      }
+    }
     expect(canRenderSpecialtyCard("spell.teleport")).toBe(false);
     expect(canRenderSpecialtyCard(undefined)).toBe(false);
   });
@@ -184,7 +193,11 @@ describe("hero-board / zoom wiring", () => {
   });
 
   it("cardZoomContent flags an art-less specialty to render the native card on zoom", () => {
-    expect(cardZoomContent("specialty.kriv.6").specialtyCardId).toBe("specialty.kriv.6");
+    expect(cardLibrary["specialty.glacius.6"]?.assets?.cardImage).toBeUndefined();
+    expect(cardZoomContent("specialty.glacius.6").specialtyCardId).toBe("specialty.glacius.6");
+    // A scanned specialty (Kriv's printed Runes VI) zooms to its scan instead.
+    expect(cardZoomContent("specialty.kriv.6").specialtyCardId).toBeUndefined();
+    expect(cardZoomContent("specialty.kriv.6").image).toBeTruthy();
     // A baked-art specialty keeps its image and does NOT use the native card.
     expect(cardZoomContent("specialty.catherine.1").specialtyCardId).toBeUndefined();
     expect(cardZoomContent("specialty.catherine.1").image).toBeTruthy();

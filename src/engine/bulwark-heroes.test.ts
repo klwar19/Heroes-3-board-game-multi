@@ -62,7 +62,7 @@ function settleReactions(state: GameState): GameState {
   return current;
 }
 
-function findPlay(state: GameState, cardId: string, optionIndex: number) {
+function findPlay(state: GameState, cardId: string, optionIndex: number | undefined) {
   return getLegalActions(state, "p1").find(
     (legal) =>
       legal.action.type === "PLAY_CARD" &&
@@ -685,22 +685,16 @@ function neutralsDrawn(state: GameState): number {
   return drawn?.type === "DIPLOMACY_NEUTRALS_DRAWN" ? drawn.unitDefIds.length : 0;
 }
 
-describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
-  it("draws scale 1 / 2 / 2; I & IV are capped Diplomacy recruits, VI is the neutral-army Attack aura", () => {
+describe("Bulwark hero — Oidana the diplomat (Neutral scry + later Diplomacy)", () => {
+  it("I scries a chosen Neutral deck; IV/VI retain their draw and specialty options", () => {
+    expect(adventureCards["specialty.oidana.1"].effect.type).toBe("OIDANA_NEUTRAL_SCRY");
     for (const [id, amount] of [
-      ["specialty.oidana.1", 1],
       ["specialty.oidana.4", 2],
       ["specialty.oidana.6", 2]
     ] as const) {
       const draw = optionWith(id, "DRAW_CARDS");
       expect(draw.effect.type === "DRAW_CARDS" && draw.effect.amount, `${id} draw amount`).toBe(amount);
     }
-
-    // I: full Dwelling-derived Diplomacy choice, full price.
-    const i = optionWith("specialty.oidana.1", "DIPLOMACY_RECRUIT");
-    expect(i.mapOnly).toBe(true);
-    expect(i.effect.type === "DIPLOMACY_RECRUIT" && i.effect.maxDraws).toBeUndefined();
-    expect(i.effect.type === "DIPLOMACY_RECRUIT" && (i.effect.goldReduction ?? 0)).toBe(0);
 
     // IV: full Dwelling-derived Diplomacy choice, 4 gold off.
     const iv = optionWith("specialty.oidana.4", "DIPLOMACY_RECRUIT");
@@ -726,7 +720,6 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
     };
     for (const [cardId, optionIndex] of [
       ["ability.diplomacy", 0],
-      ["specialty.oidana.1", 1],
       ["specialty.oidana.4", 1]
     ] as const) {
       const state = drawsFor(cardId, optionIndex);
@@ -737,7 +730,7 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
     }
   });
 
-  it("Oidana IV recruits for 4 gold less than the printed cost; I (and Cyra) pay full price", () => {
+  it("Oidana IV recruits for 4 gold less than the printed cost; base Diplomacy pays full price", () => {
     const recruitGoldPaid = (cardId: string, optionIndex: number): number => {
       const state = oidanaMap(`gold-${cardId}`, cardId, ["bronze"]);
       // Stack a known gold-costed Neutral on top so the draw is deterministic.
@@ -762,8 +755,28 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
       return goldBefore - after.players.p1.resources.gold;
     };
     expect(recruitGoldPaid("specialty.oidana.4", 1), "IV: 10 − 4 discount").toBe(6);
-    expect(recruitGoldPaid("specialty.oidana.1", 1), "I: full 10").toBe(10);
     expect(recruitGoldPaid("ability.diplomacy", 0), "Cyra: full 10").toBe(10);
+  });
+
+  it("Oidana I discards a selected inspected card and returns the other to the chosen deck top", () => {
+    let state = oidanaMap("oidana-scry", "specialty.oidana.1", []);
+    const bronze = state.decks[NEUTRAL_DECK_IDS.bronze]!;
+    bronze.drawPile = ["neutral.cerberi", "neutral.familiars"];
+    bronze.discardPile = [];
+    const play = findPlay(state, "specialty.oidana.1", undefined);
+    expect(play).toBeTruthy();
+    state = applyOk(state, play!.action);
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("oidana-scry-deck");
+    const deckChoice = state.pendingChoice as Extract<GameState["pendingChoice"], { type: "OPTION_CHOICE" }>;
+    const bronzeIndex = deckChoice.oidanaScryDeck!.tiers.indexOf("bronze");
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: deckChoice.id, optionIndex: bronzeIndex });
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.oidanaScry?.remaining).toEqual(["neutral.familiars", "neutral.cerberi"]);
+    const first = state.pendingChoice as Extract<GameState["pendingChoice"], { type: "OPTION_CHOICE" }>;
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: first.id, optionIndex: 2 }); // discard Familiars
+    const second = state.pendingChoice as Extract<GameState["pendingChoice"], { type: "OPTION_CHOICE" }>;
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: second.id, optionIndex: 0 }); // return Cerberi
+    expect(state.decks[NEUTRAL_DECK_IDS.bronze]!.discardPile).toEqual(["neutral.familiars"]);
+    expect(state.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile.at(-1)).toBe("neutral.cerberi");
   });
 
   it("VI's ongoing aura gives +1 Attack to the caster's NEUTRAL units only, for the whole battle", () => {

@@ -609,6 +609,37 @@ export const spellCards: CardLibrary = {
     implementationStatus: "implemented",
     source: spellSource("chain_lightning")
   },
+  "spell.death_ripple": {
+    id: "spell.death_ripple",
+    name: "Death Ripple",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["earth"],
+    power: 0,
+    target: { type: "none" },
+    tags: [
+      "spell", "expert", "earth", "area",
+      "Activation: Enemy units suffer 1 damage. Power 0: bronze units. Power 2: bronze and silver units. Power 3: bronze, silver, gold, and Creature Bank units. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "DEATH_RIPPLE_SPELL",
+      amount: 1,
+      maxGradeByPower: { 0: "bronze", 2: "silver", 3: "gold" },
+      bankUnitsAtPower: 3
+    },
+    assets: {
+      cardImage: "/assets/spells-death_ripple.webp",
+      imageAlt: "Death Ripple Expert Earth spell card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Original spell adaptation for Heroes of Might and Magic III: The Board Game",
+      credit: "User-supplied Death Ripple card reference; original Septienna emblem reference from the board-game wiki. Complete spell card generated with ImageGen.",
+      url: "https://en.homm3bg.wiki/heroes/septienna/"
+    }
+  },
   // Resurrection is an instant lethal save: it reuses the engine's
   // CANCEL_LETHAL_ATTACK mechanism (shared with Alamar's specialty and the
   // Archangels' ability), offered only in the lethal-save window, gated by the
@@ -1244,6 +1275,34 @@ export const spellCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: spellSource("frost_ring")
+  },
+  "spell.meteor_shower": {
+    id: "spell.meteor_shower",
+    name: "Meteor Shower",
+    kind: "spell",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    spellLevel: "expert",
+    spellSchools: ["earth"],
+    power: 0,
+    target: { type: "any-space" },
+    tags: [
+      "spell", "expert", "earth", "area",
+      "Activation: Select a space. The unit on this space and all adjacent units, friend or foe, take 1 damage at Power 2 or 2 damage at Power 4. Below Power 2, deal no damage. — OR — Instant: +1 Power."
+    ],
+    effect: {
+      type: "METEOR_SHOWER_SPELL",
+      damageByPower: { 2: 1, 4: 2 }
+    },
+    assets: {
+      cardImage: "/assets/spells-meteor_shower.webp",
+      imageAlt: "Meteor Shower spell card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "User-supplied card photograph; HD card face recreated from that reference."
+    }
   },
   "spell.visions": {
     id: "spell.visions",
@@ -2122,6 +2181,7 @@ export const spellDeckBinhBasicUnique: string[] = [
 
 /** Every distinct Expert Spell the shared deck can hold. */
 export const spellDeckBinhExpertUnique: string[] = [
+  "spell.death_ripple",
   "spell.fireball",
   "spell.fire_shield",
   "spell.counterstrike",
@@ -2147,6 +2207,7 @@ export const spellDeckBinhExpertUnique: string[] = [
   "spell.frenzy",
   // Frost Ring — Expert Water.
   "spell.frost_ring",
+  "spell.meteor_shower",
   // Teleport (Expert Water) & Berserk (Expert Fire).
   "spell.teleport",
   "spell.berserk",

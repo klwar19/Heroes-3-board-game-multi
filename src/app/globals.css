@@ -2936,12 +2936,11 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   white-space: nowrap;
 }
 
-/* Bulwark "Runes" combat track (frosty palette to match the faction colour). */
 /* ---- Bulwark Rune tracker panel (src/components/table/rune-panel.tsx) ----
    Docked in the combat right rail, or popped out as a floating draggable
    window (position persisted), or minimized to its one-line readout. The
-   printed tracker board sits faintly behind the live HTML track so nothing
-   depends on pixel alignment at any width. */
+   printed tracker board is drawn at full strength with the pieces placed on
+   it; the board keeps its aspect ratio so they stay on their slots at any width. */
 .runePanel {
   display: grid;
   border: 1px solid rgb(127 178 217 / 38%);
@@ -2956,7 +2955,12 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .runePanel.floating {
   position: fixed;
   z-index: 880;
-  width: min(400px, calc(100vw - 20px));
+  width: min(460px, calc(100vw - 20px));
+  /* Never taller than the viewport: a phone-landscape or two-seat track
+     scrolls inside the body instead of pushing the header off-screen. */
+  max-height: calc(100dvh - 20px);
+  display: flex;
+  flex-direction: column;
   touch-action: none;
   box-shadow:
     0 0 0 1px rgb(0 0 0 / 50%),
@@ -2966,6 +2970,9 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 
 .runePanel.floating.phone {
   width: min(360px, calc(100vw - 20px));
+  /* The phone default anchors 134px above the bottom edge and grows upward:
+     leave that offset plus a top gutter so the header always stays on-screen. */
+  max-height: calc(100dvh - 144px);
 }
 
 .runePanel.floating.minimized {
@@ -2990,6 +2997,16 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   border-bottom: 0;
 }
 
+/* The whole header is the drag grip (docked: drag it out to pop the panel out). */
+.runePanelHead {
+  cursor: grab;
+  touch-action: none;
+}
+
+.runePanel.dragging .runePanelHead {
+  cursor: grabbing;
+}
+
 .runePanelHandle,
 .runePanelButton {
   display: inline-flex;
@@ -3007,15 +3024,9 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 }
 
 .runePanelHandle {
-  cursor: grab;
-  touch-action: none;
+  cursor: inherit;
 }
 
-.runePanel.dragging .runePanelHandle {
-  cursor: grabbing;
-}
-
-.runePanelHandle:hover,
 .runePanelButton:hover {
   background: rgb(99 218 255 / 22%);
 }
@@ -3047,26 +3058,18 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 }
 
 .runePanelBody {
-  position: relative;
   display: grid;
   gap: 10px;
-  padding: 9px;
-  background-size: cover;
-  background-position: center;
-}
-
-.runePanelBody::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgb(8 18 28 / 64%), rgb(8 18 28 / 84%));
-  pointer-events: none;
+  padding: 8px;
+  background: rgb(8 16 24 / 96%);
+  /* Pairs with the floating panel's max-height. */
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .runeSeat {
-  position: relative;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .runeSeatName {
@@ -3078,239 +3081,191 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   color: #eaf7ff;
 }
 
-.runeLevelRow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.runeLevelPlaque {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  min-width: 0;
-  padding: 4px 6px;
-  border: 1px solid rgb(203 240 255 / 30%);
-  border-radius: 7px;
-  background: rgb(14 40 52 / 80%);
-  font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.runeLevelPlaque.active {
-  border-color: rgb(203 240 255 / 80%);
-  box-shadow:
-    inset 0 0 9px rgb(147 224 255 / 45%),
-    0 0 9px rgb(147 224 255 / 55%);
-  color: #f3fbff;
-}
-
-.runeLevelPlaque.pending {
-  border-color: rgb(255 221 143 / 45%);
-  color: #ffe9b0;
-}
-
-.runeLevelPlaque.locked {
-  opacity: 0.5;
-}
-
-.runeLevelPlaqueBonus {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.runeLevelPlaqueNeed {
-  flex: 0 0 auto;
-  min-width: 18px;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: rgb(0 0 0 / 35%);
-  color: #ffd76a;
-  text-align: center;
-}
-
-.runeTrackRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.runeCells {
-  display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
-  gap: 3px;
-  margin: 0;
-  padding: 5px;
-  list-style: none;
-  border: 1px solid rgb(127 178 217 / 25%);
-  border-radius: 8px;
-  background: rgb(0 0 0 / 40%);
-}
-
-.runeCell {
+/* The printed tracker board is the tracker: every piece is placed on it at a
+   % of the art's own 800x428 box (positions live in rune-panel.tsx). */
+.runeBoard {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1;
-  border: 1px dashed rgb(203 240 255 / 30%);
-  border-radius: 50%;
-  background: rgb(12 21 26 / 60%);
+  width: 100%;
+  aspect-ratio: 800 / 428;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 60%), 0 4px 12px rgb(0 0 0 / 45%);
 }
 
-.runeCell.last {
-  border-style: solid;
-  border-color: rgb(255 215 106 / 55%);
-}
-
-.runeCell.filled {
-  border: 1px solid rgb(99 218 255 / 70%);
-  background: rgb(83 204 245 / 18%);
-  box-shadow: 0 0 10px 2px rgb(99 218 255 / 55%);
-}
-
-.runeCellNumber {
+.runeBoardArt {
   position: absolute;
-  right: 0;
-  bottom: -1px;
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  color: rgb(255 215 106 / 80%);
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
-.runeCell.filled .runeCellNumber {
-  display: none;
+/* One "9" threshold box per Rune Level (70x72 of the 800x428 art). */
+.runeBoardLevel {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 8.75%;
+  height: 16.82%;
+  border-radius: 3px;
+  transform: translate(-50%, -50%);
 }
 
-.runeToken {
-  width: 92%;
-  height: 92%;
+.runeBoardLevel.next {
+  box-shadow:
+    0 0 0 2px rgb(255 215 106 / 90%),
+    0 0 12px 2px rgb(255 215 106 / 55%);
+  animation: runeNextPulse 1.8s ease-in-out infinite;
+}
+
+.runeBoardLevel.locked {
+  background: rgb(3 9 13 / 74%);
+  color: rgb(190 210 222 / 85%);
+}
+
+.runeBoardLock {
+  width: 52%;
+  height: 52%;
+}
+
+.runeBoardSeal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 124%;
+  height: 124%;
+  translate: -50% -50%;
+  max-width: none;
   object-fit: contain;
-  filter: drop-shadow(0 0 4px rgb(99 218 255 / 70%));
-  animation: runeTokenDrop 0.35s ease-out;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 70%));
+  animation: runePieceDrop 0.35s ease-out;
 }
 
-@keyframes runeTokenDrop {
+/* Slots the cube has already passed on this lap of the track. */
+.runeBoardPassed {
+  position: absolute;
+  width: 7.4%;
+  height: 15%;
+  border-radius: 3px;
+  background: radial-gradient(closest-side, rgb(99 218 255 / 30%), rgb(99 218 255 / 0%));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.runeBoardCube {
+  position: absolute;
+  width: 8.4%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  transform: translate(-50%, -54%);
+  filter:
+    drop-shadow(0 2px 2px rgb(0 0 0 / 80%))
+    drop-shadow(0 0 5px rgb(99 218 255 / 55%));
+  transition:
+    left 0.35s ease,
+    top 0.35s ease;
+  animation: runePieceDrop 0.35s ease-out;
+}
+
+@keyframes runePieceDrop {
   from {
-    transform: scale(1.6);
     opacity: 0;
+    scale: 1.6;
   }
 
   to {
-    transform: scale(1);
     opacity: 1;
+    scale: 1;
   }
 }
 
-.runeReserve {
-  display: grid;
-  justify-items: center;
-  gap: 1px;
-  min-width: 58px;
-  padding: 3px 4px;
-  border: 1px solid rgb(236 203 128 / 45%);
-  border-radius: 8px;
-  background: rgb(0 0 0 / 40%);
+@keyframes runeNextPulse {
+  50% {
+    box-shadow:
+      0 0 0 2px rgb(255 215 106 / 60%),
+      0 0 5px 1px rgb(255 215 106 / 30%);
+  }
 }
 
-.runeReserve.stocked {
+/* Spendable reserve: one cube per banked Rune, beneath the board. */
+.runeReserveTray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid rgb(199 164 92 / 45%);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgb(40 44 48 / 95%), rgb(24 27 30 / 95%));
+}
+
+.runeReserveTray.stocked {
   border-color: rgb(236 203 128 / 85%);
-  box-shadow: 0 0 10px rgb(236 203 128 / 30%);
-}
-
-.runeReservePile {
-  position: relative;
-  width: 46px;
-  height: 38px;
-}
-
-.runeReservePouch {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.runeReserve:not(.stocked) .runeReservePouch {
-  opacity: 0.55;
-  filter: grayscale(0.4);
-}
-
-.reserveToken {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-}
-
-.reserveToken.t0 {
-  left: 1px;
-  bottom: 0;
-}
-
-.reserveToken.t1 {
-  right: 1px;
-  bottom: 1px;
-}
-
-.reserveToken.t2 {
-  left: 12px;
-  bottom: 9px;
-}
-
-.reserveToken.t3 {
-  right: 10px;
-  bottom: 11px;
-}
-
-.runeReserveCount {
-  font-size: 15px;
-  font-weight: 900;
-  line-height: 1;
-  color: #fff2cb;
 }
 
 .runeReserveLabel {
-  font-size: 9px;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #d8c48f;
 }
 
-.runeFooter {
+.runeReserveCubes {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px 8px;
-  font-size: 10px;
-  color: #a9d6f0;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.runeReserveCube {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 80%));
+  animation: runePieceDrop 0.35s ease-out;
+}
+
+.runeReserveMore {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff2cb;
+}
+
+.runeReserveCount {
+  flex: 0 0 auto;
+  min-width: 18px;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: right;
+  color: #fff2cb;
+}
+
+.runeReserveTray:not(.stocked) .runeReserveCount {
+  color: rgb(216 196 143 / 60%);
 }
 
 .runeNext {
+  margin: 0;
+  font-size: 11px;
   font-weight: 700;
   color: #eaf7ff;
 }
 
-/* Docked in the 290px rail the three plaques cannot fit label + need on one
-   line; stack them (label over the need badge) so nothing truncates. */
-.runePanel.docked .runeLevelPlaque {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  padding: 3px 6px;
-}
-
-.runePanel.docked .runeLevelPlaqueBonus {
-  font-size: 10.5px;
-}
-
-.runePanel.docked .runeLevelPlaqueNeed {
-  align-self: flex-end;
-  font-size: 10px;
+@media (prefers-reduced-motion: reduce) {
+  .runeBoardCube,
+  .runeBoardSeal,
+  .runeReserveCube,
+  .runeBoardLevel.next {
+    transition: none;
+    animation: none;
+  }
 }
 
 .handFan {
@@ -20395,6 +20350,114 @@ button.setupHubNavItem:hover {
   will-change: transform, opacity;
 }
 
+/* Bulwark Rune Level celebration (RUNE_LEVEL_REACHED). A 0×0 fixed point at
+   the battlefield centre, mounted on <body> so the burst can fly ON TOP of the
+   floating Rune panel (z 880) into its earned seal box; fx.tsx animates the
+   burst, halo and inscription with transform/opacity/filter only. Colours and
+   glows here are static paint. */
+.fxRuneLevel {
+  position: fixed;
+  z-index: 881;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  --rune-size: 320px;
+  --rune-ice: #bfe6ff;
+  --rune-gold: #ffd77a;
+}
+
+.fxRuneBurst,
+.fxRuneHalo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--rune-size);
+  height: var(--rune-size);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  will-change: transform, opacity, filter;
+  user-select: none;
+}
+
+.fxRuneHalo {
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgb(255 236 180 / 70%) 0%,
+    rgb(120 190 255 / 32%) 38%,
+    transparent 68%
+  );
+}
+
+.fxRuneWord {
+  position: absolute;
+  left: 0;
+  top: calc(var(--rune-size) * 0.34);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px 7px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid rgb(255 215 122 / 55%);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgb(14 22 34 / 88%), rgb(8 12 20 / 82%));
+  box-shadow: 0 0 18px rgb(120 190 255 / 35%);
+  opacity: 0;
+  transform: translate(-50%, 0);
+  will-change: transform, opacity;
+  white-space: nowrap;
+}
+
+.fxRuneGlyphs {
+  display: flex;
+  gap: 6px;
+  color: var(--rune-ice);
+  filter: drop-shadow(0 0 4px rgb(140 205 255 / 90%)) drop-shadow(0 0 1px var(--rune-gold));
+}
+
+.fxRuneGlyph {
+  display: block;
+  width: 17px;
+  height: 26px;
+  will-change: transform, opacity;
+}
+
+.fxRuneGlyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fxRuneCaption {
+  font-family: "Liberation Serif", Georgia, serif;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: #f4ead2;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 90%);
+  will-change: transform, opacity;
+}
+
+.fxRuneCaption strong {
+  color: var(--rune-gold);
+  letter-spacing: 0.16em;
+}
+
+@media (max-width: 480px) {
+  .fxRuneGlyph {
+    width: 14px;
+    height: 21px;
+  }
+  .fxRuneCaption {
+    font-size: 13px;
+  }
+}
+
 /* ---- Combat strike effects ------------------------------------------------
    The attacker's card lunges and the struck card recoils via the FX layer.
    Melee contact uses the transparent crescent atlas; the fallback ranged bolt
@@ -27488,11 +27551,15 @@ img.cardBack {
 .scLevel {
   grid-area: 2 / 2 / 3 / 3;
   background-color: var(--sc-accent);
-  background-image: radial-gradient(
-    120% 120% at 50% 0%,
-    rgba(255, 255, 255, 0.18),
-    transparent 60%
+  /* A faction with a printed-style level painting (--sc-level-art, e.g.
+     Factory's bronze clockwork dragon) shows it edge to edge behind the
+     medallion; the accent tint + sheen stays the fallback for the rest. */
+  background-image: var(
+    --sc-level-art,
+    radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.18), transparent 60%)
   );
+  background-size: cover;
+  background-position: center;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -29036,6 +29103,209 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   border-radius: 0.45cqw;
   color: #d6b25e;
   font-size: clamp(7px, 0.95cqw, 11px);
+}
+
+/* Factory's photographed board uses a near-black frame, green rule-card
+   headings, and a three-over-two card arrangement below the seven strips. */
+.tbBoard.faction-factory,
+.tbBoard.faction-forge {
+  border-radius: 0;
+}
+
+.tbBoard.faction-factory .tbDesignedBase,
+.tbBoard.faction-forge .tbDesignedBase {
+  background: #211b16;
+}
+
+.tbBoard.faction-factory .tbDesignedBase::after,
+.tbBoard.faction-forge .tbDesignedBase::after {
+  display: none;
+}
+
+.tbBoard.faction-factory .tbDesignedWindow,
+.tbBoard.faction-forge .tbDesignedWindow {
+  border-radius: 0;
+  box-shadow: inset 0 0 0 0.12cqw #45301c;
+}
+
+.tbBoard.faction-factory .tbEmptyBar,
+.tbBoard.faction-forge .tbEmptyBar,
+.tbBoard.faction-factory .tbBar.built,
+.tbBoard.faction-forge .tbBar.built,
+.tbBoard.faction-factory .tbFill,
+.tbBoard.faction-forge .tbFill,
+.tbBoard.faction-factory .tbLittleBustersPhysicalTile,
+.tbBoard.faction-forge .tbLittleBustersPhysicalTile {
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+
+.tbBoard.faction-factory .tbFill.partial > img,
+.tbBoard.faction-forge .tbFill.partial > img {
+  filter: none;
+}
+
+.tbBoard.faction-factory .tbBar.partial::after,
+.tbBoard.faction-forge .tbBar.partial::after {
+  display: none;
+}
+
+.tbBoard.faction-factory .tbEmptyBar,
+.tbBoard.faction-forge .tbEmptyBar {
+  padding-top: 5%;
+}
+
+.tbFactoryBarPlates {
+  position: absolute;
+  top: 5%;
+  left: 10%;
+  z-index: 2;
+  display: grid;
+  gap: 0.28cqw;
+  width: 80%;
+  pointer-events: none;
+}
+
+.tbBoard.faction-factory .tbPlate,
+.tbBoard.faction-forge .tbPlate {
+  width: 100%;
+  border-color: #b99a60;
+  border-radius: 0;
+}
+
+.tbBoard.faction-factory .tbPlate b,
+.tbBoard.faction-forge .tbPlate b,
+.tbBoard.faction-factory .tbMiniCard b,
+.tbBoard.faction-forge .tbMiniCard b {
+  background: linear-gradient(#40764b, #274b2f);
+  color: #f2dfad;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tbBoard.faction-factory .tbPlate .tbCost,
+.tbBoard.faction-forge .tbPlate .tbCost {
+  background: #342a23;
+}
+
+.tbBoard.faction-factory .tbPlate .tbCost span,
+.tbBoard.faction-forge .tbPlate .tbCost span {
+  gap: 0.08cqw;
+}
+
+.tbBoard.faction-factory .tbPlate .tbCost img,
+.tbBoard.faction-forge .tbPlate .tbCost img {
+  width: 1.12cqw;
+  height: 1.12cqw;
+}
+
+.tbBoard.faction-factory .tbUnbuiltPlaque,
+.tbBoard.faction-forge .tbUnbuiltPlaque {
+  display: none;
+}
+
+.tbBoard.faction-factory .tbTilePlaque,
+.tbBoard.faction-forge .tbTilePlaque {
+  display: none;
+}
+
+.tbBoard.faction-factory .tbFactoryDefs,
+.tbBoard.faction-forge .tbFactoryDefs {
+  inset: 0;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: 1fr 1fr;
+  gap: 2.5%;
+}
+
+.tbBoard.faction-factory .tbDefsHit,
+.tbBoard.faction-forge .tbDefsHit {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tbBoard.faction-factory .tbFactoryDefs .tbMiniCard,
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard {
+  grid-column: span 2;
+  gap: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tbBoard.faction-factory .tbFactoryDefs .tbMiniCard:nth-child(n + 4),
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard:nth-child(n + 4) {
+  grid-column: span 3;
+}
+
+.tbBoard.faction-factory .tbFactoryDefs .tbMiniCard b,
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard b {
+  display: grid;
+  flex: 0 0 16%;
+  place-items: center;
+  padding: 0 0.25cqw;
+  border: none;
+  background: transparent;
+  font-size: clamp(7px, 1.02cqw, 13px);
+}
+
+.tbBoard.faction-factory .tbFactoryDefs .tbMiniCard small,
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard small {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25cqw;
+  padding: 0.35cqw 0.48cqw;
+  color: #f1e4c7;
+  font-family: Georgia, serif;
+  font-size: clamp(6px, 0.83cqw, 10px);
+  line-height: 1.22;
+  text-align: center;
+  -webkit-line-clamp: unset;
+}
+
+.tbBoard.faction-factory .tbTrackIcon,
+.tbBoard.faction-forge .tbTrackIcon {
+  display: none;
+}
+
+.tbBoard.faction-factory .tbTrackCell,
+.tbBoard.faction-forge .tbTrackCell {
+  background: transparent;
+  box-shadow: none;
+  color: #e8d7ae;
+  font-family: Georgia, serif;
+  font-size: clamp(7px, 1.15cqw, 14px);
+  font-weight: 700;
+}
+
+.tbBoard.faction-factory .tbFactoryDefs .tbMiniCard small > span,
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard small > span {
+  display: block;
+}
+
+.tbFactoryGold {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.13cqw;
+  white-space: nowrap;
+}
+
+.tbFactoryGold img {
+  width: 1cqw;
+  height: 1cqw;
+  object-fit: contain;
+}
+
+.tbBoard.faction-factory .tbFactoryDefs .tbMiniMore,
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniMore {
+  display: none;
 }
 
 .tbTrackRow {
@@ -48716,3 +48986,15 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .zoomUnitXpPanel .unitXpEffect {
   font-size: 14px;
 }
+.helmCounterTray {
+  max-width: min(95vw, 520px);
+  text-align: center;
+}
+.helmCounterCards {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+.helmCounterCards figure { margin: 0; width: 42%; }
+.helmCounterCards .trayCardImage { width: 100%; height: auto; }
+.helmCounterCards figcaption { margin-top: .35rem; }

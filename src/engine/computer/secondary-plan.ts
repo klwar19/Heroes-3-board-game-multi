@@ -45,8 +45,12 @@ function secondaryHeroOpportunityUncached(
     const before = purchaseLandingRounds(player.resources, player.production, step.cost, false);
     const after = purchaseLandingRounds({ ...player.resources, gold: player.resources.gold - 10 }, player.production, step.cost, false);
     // Hiring also spends this round's Population token. Keep an affordable
-    // Gold recruit first; a collector can precede upgrades from genuine surplus.
-    if (step.kind === "recruit" && before === 0 || before !== null && (after === null || after > before)) {
+    // Gold recruit first. With a Gold body already standing, a collector that
+    // sweeps the leftover pickups may push the next ladder step back by at
+    // most one Resource Round (it pays that back from the pickups); measured
+    // before: the strict "no delay at all" gate hired only at R11, in 5 of 48
+    // impossible games, even for seats holding their Gold body from R7.
+    if (step.kind === "recruit" && before === 0 || before !== null && (after === null || after > before + 1)) {
       return { worthwhile: false, jobs: 0 };
     }
   }

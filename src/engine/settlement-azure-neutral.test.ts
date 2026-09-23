@@ -42,11 +42,12 @@ function settlement(state: GameState, faction: string): MapFieldState {
 }
 
 describe("azureNeutralCounterpartId", () => {
-  it("maps the four signature creatures by name and nothing else", () => {
+  it("maps the five signature creatures by name and nothing else", () => {
     expect(azureNeutralCounterpartId("rampart")).toBe("neutral.gold_dragons");
     expect(azureNeutralCounterpartId("tower")).toBe("neutral.titans");
     expect(azureNeutralCounterpartId("fortress")).toBe("neutral.hydras");
     expect(azureNeutralCounterpartId("conflux")).toBe("neutral.phoenixes");
+    expect(azureNeutralCounterpartId("forge")).toBe("neutral.cyberbrutes");
     for (const faction of ["castle", "dungeon", "necropolis", "inferno", "stronghold", "cove", "bulwark", "factory"]) {
       expect(azureNeutralCounterpartId(faction)).toBeUndefined();
     }

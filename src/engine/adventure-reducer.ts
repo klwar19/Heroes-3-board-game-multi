@@ -3,6 +3,7 @@ import { initializeBattlefieldCondition, applyBattlefieldConditionAtCombatStart 
 import { currentSaplingsOffer } from "./adventure";
 import { choiceReturnPhase } from "./choice-phase";
 import { townCombatStart } from "./town-veterancy";
+import { applyForgeRoundStartInitiativeRolls, forgeCombatRoundStart } from "./forge";
 import { placeRandomTownFormation } from "./random-town-tactics";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { cardLibrary } from "@/data/cards/library";
@@ -498,6 +499,7 @@ import {
   getPermanentCardIds,
   getPermanentSchoolBonus,
   isWarMachineCard,
+  playerOwnsWarMachine,
   removePermanentFromPlayToRemoved,
   resolveWarMachineOption,
   switchActiveWarMachine,
@@ -605,6 +607,39 @@ import type {
 } from "./state";
 import { GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 
+
+type CityHallOption = NonNullable<Extract<NonNullable<GameState["pendingChoice"]>, { type: "OPTION_CHOICE" }>["cityHall"]>["options"][number];
+
+/**
+ * Forge City Hall "The opponent discards two cards": one option per living,
+ * non-allied opponent holding a card (the chooser names the opponent when
+ * there are several). Dropped entirely when no opponent qualifies.
+ */
+function expandOpponentDiscardOption(
+  state: GameState,
+  playerId: PlayerId,
+  option: CityHallOption
+): CityHallOption[] {
+  if (!option.opponentDiscards || option.opponentDiscardTargetId) {
+    return [option];
+  }
+  const opponents = state.turnOrder.filter((id) => {
+    const opponent = state.players[id];
+    return (
+      id !== playerId &&
+      id !== NEUTRAL_PLAYER_ID &&
+      Boolean(opponent) &&
+      !opponent!.eliminated &&
+      opponent!.hand.length > 0 &&
+      !playersAreAllied(state, playerId, id)
+    );
+  });
+  return opponents.map((id) => ({
+    ...option,
+    label: opponents.length > 1 ? `${option.label} (${state.players[id]!.name})` : option.label,
+    opponentDiscardTargetId: id
+  }));
+}
 
 /** First built town building of this player carrying the given effect type. */
 function findTownBuildingWithEffect(
@@ -1005,17 +1040,26 @@ export const COMMANDER_COMBAT_UNIT_LIMIT = 4;
  * battles can have different limits on the two sides.
  */
 export function combatUnitLimit(state: GameState, playerId?: PlayerId): number {
+  let limit: number;
   if (!commandersModuleEnabled(state)) {
-    return COMBAT_UNIT_LIMIT;
-  }
-  if (
+    limit = COMBAT_UNIT_LIMIT;
+  } else if (
     playerId !== undefined &&
     state.combat &&
     !commanderStandsInCurrentCombat(state, playerId)
   ) {
-    return COMBAT_UNIT_LIMIT;
+    limit = COMBAT_UNIT_LIMIT;
+  } else {
+    limit = COMMANDER_COMBAT_UNIT_LIMIT;
   }
-  return COMMANDER_COMBAT_UNIT_LIMIT;
+  // Hellstorm Helmet's "field 6 units" is +1 over the side's NORMAL cap: 6 army
+  // cards without a Commander, 5 army + the Commander (6 bodies) with one. A
+  // flat 6 would grant +2 alongside a Commander and overflow the 6-cell
+  // Creature Bank attacker grid, silently dropping the Commander.
+  if (playerId !== undefined && state.players[playerId]?.hellstormSixUnitRound === state.round) {
+    return limit + 1;
+  }
+  return limit;
 }
 
 /**
@@ -1025,6 +1069,9 @@ export function combatUnitLimit(state: GameState, playerId?: PlayerId): number {
  */
 export function combatSetupUnitLimit(state: GameState, playerId: PlayerId): number {
   const configured = state.combat?.setup?.unitLimit ?? combatUnitLimit(state, playerId);
+  if (state.players[playerId]?.hellstormSixUnitRound === state.round) {
+    return Math.max(configured, 6);
+  }
   return configured === COMMANDER_COMBAT_UNIT_LIMIT
     ? combatUnitLimit(state, playerId)
     : configured;
@@ -2828,6 +2875,26 @@ function grantFreeTownBuilding(
   if (building.effect?.type === "COMBAT_CUBES") {
     gainTownCube(state, town, buildingId, building.effect.max);
   }
+  grantToxicMoatWarMachine(state, playerId, buildingId);
+}
+
+/** Forge Toxic Moat "When built: gain a Lightning Generator" (card to hand). */
+function grantToxicMoatWarMachine(state: GameState, playerId: PlayerId, buildingId: string): void {
+  const effect = coreBuildingDefinitions[buildingId]?.effect;
+  const player = state.players[playerId];
+  if (effect?.type !== "TOXIC_MOAT" || !player || !cardLibrary[effect.warMachineCardId]) {
+    return;
+  }
+  if (playerOwnsWarMachine(state, playerId, effect.warMachineCardId)) {
+    return;
+  }
+  player.hand.push(effect.warMachineCardId);
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId,
+    buildingId,
+    message: `${coreBuildingDefinitions[buildingId]?.name ?? "Toxic Moat"}: gained the ${cardLibrary[effect.warMachineCardId]?.name ?? "war machine"} card.`
+  });
 }
 
 /**
@@ -6477,22 +6544,26 @@ function beginNeutralCombatPlacement(
   };
   if (field.location === "random_town") {
     // Random Town fights use the siege battlefield and its four middle-row
-    // fortifications, including the defending enemy's Arrow Tower. The
-    // deterministic gate keeps every client/replay on the same board without
-    // consuming a gameplay random stream.
+    // fortifications. The printed card adds "Walls and the Gate for this
+    // Combat, but not the Arrow Tower": the defending Neutral Arrow Tower is
+    // ONLY part of the BINH `random-town-veteran-defense` house rule, read live
+    // from the rule here (never stamped by setup), so a game with the rule off
+    // gets Walls + Gate alone. The deterministic gate keeps every client/replay
+    // on the same board without consuming a gameplay random stream.
     const gatePosition = createSeededRandom(
       `${state.seed}#random-town-gate#${field.spaceId}`
     ).pick([...SIEGE_ROW_POSITIONS]);
-    const towerUnit = makeArrowTowerUnit(
-      `random_town_tower_${nextEventNumber(state)}`,
-      NEUTRAL_PLAYER_ID
-    );
-    combat.units[towerUnit.id] = towerUnit;
+    const towerUnit = houseRuleEnabled(state, "random-town-veteran-defense")
+      ? makeArrowTowerUnit(`random_town_tower_${nextEventNumber(state)}`, NEUTRAL_PLAYER_ID)
+      : null;
+    if (towerUnit) {
+      combat.units[towerUnit.id] = towerUnit;
+    }
     combat.siege = {
       townPlayerId: NEUTRAL_PLAYER_ID,
       walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
       gatePosition,
-      arrowTowerUnitId: towerUnit.id
+      arrowTowerUnitId: towerUnit?.id ?? null
     };
   }
   assignCombatBoardArt(state, combat);
@@ -9092,6 +9163,84 @@ function liftVisionsCards(state: GameState, tier: NeutralTier, count: number): V
     lifted.push({ cardId: drawn, tier });
   }
   return lifted;
+}
+
+/** Oidana I: one selected Neutral deck, exactly its next two available cards. */
+export function openOidanaNeutralScry(state: GameState, playerId: PlayerId): void {
+  const tiers = visionsTiersWithCards(state);
+  if (tiers.length === 0) return;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Diplomacy I: choose any Neutral Unit deck to look at its top 2 cards.",
+    options: tiers.map((tier) => ({ label: `${tier[0].toUpperCase()}${tier.slice(1)} Neutral Unit deck` })),
+    context: "oidana-scry-deck",
+    oidanaScryDeck: { tiers },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+function openOidanaScryCards(
+  state: GameState, playerId: PlayerId, tier: NeutralTier,
+  remaining: CardId[], toReturn: CardId[]
+): void {
+  if (remaining.length === 0) {
+    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+    // The first card chosen for the top must be drawn first (drawPile pops its end).
+    for (let index = toReturn.length - 1; index >= 0; index -= 1) deck?.drawPile.push(toReturn[index]);
+    state.pendingChoice = null;
+    state.phase = state.combat ? "combat" : "player-turn";
+    state.priorityPlayerId = null;
+    if (!state.combat) pumpAdventureQueues(state);
+    return;
+  }
+  const name = (cardId: CardId) => coreUnitDefinitions[cardId]?.name ?? cardId;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Diplomacy I: discard any of the ${tier} cards; choose the order of cards returned to the top (first returned is drawn first).`,
+    options: [
+      ...remaining.map((cardId) => ({ label: `Return ${name(cardId)} to top` })),
+      ...remaining.map((cardId) => ({ label: `Discard ${name(cardId)}` }))
+    ],
+    context: "oidana-scry-cards",
+    oidanaScry: { tier, remaining, toReturn },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+export function resolveOidanaScryChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.playerId !== playerId) {
+    throw new Error("There is no Oidana scry choice to resolve.");
+  }
+  if (choice.context === "oidana-scry-deck") {
+    const tier = choice.oidanaScryDeck?.tiers[optionIndex];
+    if (!tier) throw new Error("Choose an available Neutral Unit deck.");
+    const cards = liftVisionsCards(state, tier, 2).map(({ cardId }) => cardId);
+    openOidanaScryCards(state, playerId, tier, cards, []);
+    return;
+  }
+  if (choice.context !== "oidana-scry-cards" || !choice.oidanaScry) {
+    throw new Error("There are no inspected Neutral cards to place.");
+  }
+  const { tier, remaining, toReturn } = choice.oidanaScry;
+  const keep = optionIndex < remaining.length;
+  const cardIndex = keep ? optionIndex : optionIndex - remaining.length;
+  const cardId = remaining[cardIndex];
+  if (!cardId) throw new Error("Choose one of the inspected Neutral cards.");
+  if (!keep) state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(cardId);
+  openOidanaScryCards(
+    state, playerId, tier,
+    remaining.filter((_, index) => index !== cardIndex),
+    keep ? [...toReturn, cardId] : toReturn
+  );
 }
 
 /** Begins the draw: the whole card count is still owed, nothing lifted yet. */
@@ -12383,6 +12532,57 @@ export function resolveWayfarerParalysisChoice(state: GameState, playerId: Playe
   finalizeCombatStart(state);
 }
 
+/** Offer the Dungeon Brute's optional card purchase before neutral combat starts. */
+function maybeOpenBruteCombatDraw(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral" || combat.bruteCombatDrawOffered) return false;
+  combat.bruteCombatDrawOffered = true;
+  const playerId = combat.attackerPlayerId;
+  const player = state.players[playerId];
+  if (!player || !playerHasLivingCommander(state, playerId, "brute") ||
+      !commanderStandsInCurrentCombat(state, playerId) || player.resources.gold < 2 ||
+      player.deck.length + player.discard.length === 0) return false;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Brute: pay 2 gold to draw 1 card at the start of this neutral combat?",
+    options: [{ label: "Pay 2 gold and draw 1 card" }, { label: "Keep the gold" }],
+    context: "brute-combat-draw",
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+function resolveBruteCombatDraw(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  if (!combat || choice?.type !== "OPTION_CHOICE" || choice.context !== "brute-combat-draw" ||
+      choice.playerId !== playerId || (optionIndex !== 0 && optionIndex !== 1)) {
+    throw new Error("There is no Brute combat-start draw decision to make.");
+  }
+  state.pendingChoice = null;
+  if (optionIndex === 0) {
+    const player = state.players[playerId];
+    if (!player || player.resources.gold < 2 || !playerHasLivingCommander(state, playerId, "brute") ||
+        !commanderStandsInCurrentCombat(state, playerId)) {
+      throw new Error("The Brute's combat-start draw is no longer available.");
+    }
+    spendResources(state, playerId, { gold: 2 }, "Brute combat-start draw");
+    const drawn = drawCardsForPlayer(state, playerId, 1);
+    appendEvent(state, {
+      type: "COMMANDER_SPECIALTY_TRIGGERED",
+      playerId,
+      commanderSlug: "brute",
+      specialtyId: "soul-reformer",
+      message: `The Brute pays 2 gold and draws ${drawn} card${drawn === 1 ? "" : "s"}.`
+    });
+  }
+  finalizeCombatStart(state);
+}
+
 /**
  * Won Creature-Bank REWARD cards (Dragon Fly Hive / Griffin Conservatory, X≥2)
  * carry a RANDOM Stack Token that re-rolls EVERY fight (USER RULE 2026-08-18 — no
@@ -12483,6 +12683,9 @@ function finalizeCombatStart(state: GameState): void {
   // Ring of the Wayfarer: the attacker's start-of-combat paralysis decision, made
   // before any unit acts (Neutral combats only). Resolving it re-enters here.
   if (maybeOpenWayfarerParalysisDecision(state)) {
+    return;
+  }
+  if (maybeOpenBruteCombatDraw(state)) {
     return;
   }
 
@@ -12635,6 +12838,9 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   if (state.combat?.outcome) {
     return;
   }
+  // Forge Jump Troopers: round 1's round-start Attack-die initiative roll.
+  forgeCombatRoundStart(state);
+  applyForgeRoundStartInitiativeRolls(state);
   applyCommanderArtifactCombatRoundStart(state);
   startWarMachineRound(state);
 }
@@ -15741,6 +15947,34 @@ export function finalizeAdventureCombat(state: GameState): void {
     });
   }
 
+  // Forge Storm Engineer "Storm Salvage": +1 building material after every
+  // combat its owner WINS (neutral, PvP, siege or bank alike) — provided the
+  // Storm Engineer took the field for the winner in that combat (surviving is
+  // not required; a commander who stayed home earns nothing).
+  if (
+    outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID &&
+    Object.values(combat.units).some(
+      (unit) => unit.commanderSlug === "forge" && unit.controllerId === outcome.winnerPlayerId
+    )
+  ) {
+    if (playerCanPlayNecromancy(state, outcome.winnerPlayerId)) {
+      adventure.rewardQueue.push({
+        playerId: outcome.winnerPlayerId,
+        kind: "visit-steps",
+        steps: [{ type: "GAIN_RESOURCES", buildingMaterials: 1 }]
+      });
+    } else {
+      gainResources(state, outcome.winnerPlayerId, { buildingMaterials: 1 }, "Storm Salvage");
+    }
+    appendEvent(state, {
+      type: "COMMANDER_SPECIALTY_TRIGGERED",
+      playerId: outcome.winnerPlayerId,
+      commanderSlug: "forge",
+      specialtyId: "storm-salvage",
+      message: "The Storm Engineer salvages the battlefield — +1 building material."
+    });
+  }
+
   // Anime Hero Grades Bounty Hunter's Eye (tier 1, §3.11): +1 gold after each
   // combat the player wins. Gated on the node; no-op when the module is off /
   // unpicked, and never for a NEUTRAL "winner".
@@ -17382,6 +17616,7 @@ export function buildStructureAdventure(
   if (building.effect?.type === "COMBAT_CUBES") {
     gainTownCube(state, town, action.buildingId, building.effect.max);
   }
+  grantToxicMoatWarMachine(state, action.playerId, action.buildingId);
 }
 
 /**
@@ -19972,6 +20207,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     resolveWayfarerParalysisChoice(state, action.playerId, action.optionIndex);
     return;
   }
+  if (choice.context === "brute-combat-draw") {
+    resolveBruteCombatDraw(state, action.playerId, action.optionIndex);
+    return;
+  }
 
   if (choice.context === "diplomacy-skip") {
     resolveDiplomacySkipChoice(state, action.playerId, action.optionIndex);
@@ -20024,6 +20263,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "visions-deck") {
     resolveVisionsDeckChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "oidana-scry-deck" || choice.context === "oidana-scry-cards") {
+    resolveOidanaScryChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
@@ -20184,6 +20428,23 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
           playerId: action.playerId,
           buildingId: "bulwark.city_hall",
           message: `City Hall: Rune-Empowered — +${option.runesNextCombats} starting Runes each combat until the next Resource round.`
+        });
+      }
+    }
+    // Forge City Hall: the named opponent discards N random cards (seeded).
+    if (option.opponentDiscards && option.opponentDiscardTargetId) {
+      const targetId = option.opponentDiscardTargetId;
+      const target = state.players[targetId];
+      if (target && !target.eliminated && !playersAreAllied(state, action.playerId, targetId)) {
+        const before = target.hand.length;
+        for (let index = 0; index < option.opponentDiscards; index += 1) {
+          discardRandomHandCard(state, targetId);
+        }
+        appendEvent(state, {
+          type: "TOWN_BUILDING_USED",
+          playerId: action.playerId,
+          buildingId: "forge.city_hall",
+          message: `City Hall: ${target.name} discards ${before - target.hand.length} random card${before - target.hand.length === 1 ? "" : "s"} from their hand.`
         });
       }
     }
@@ -20722,6 +20983,7 @@ function advanceAfterTurn(
     // Its continuation starts this turn after completing Resource income.
     return;
   }
+
   // During the round parallel turns stopped in, everyone's start-of-turn
   // already ran at the round start — running it again would grant a second
   // start-of-turn draw and re-queue the turn-start effects. The next player
@@ -23296,7 +23558,7 @@ export function pumpAdventureQueues(state: GameState): void {
               reward.playerId,
               option.freeRecruitOrReinforceUnitDefId
             ))
-      );
+      ).flatMap((option) => expandOpponentDiscardOption(state, reward.playerId, option));
 
       // Every option filtered out: opening the choice anyway would strand the
       // whole table on a prompt with ZERO legal answers (nobody — not even the

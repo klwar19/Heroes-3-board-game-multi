@@ -12,6 +12,7 @@ import {
   getReapOnAdjacentRemoval,
   getSelfRebirthAbility,
   getSelfRebirthRollAbility,
+  getUnitAbilityDefinitions,
   isUnitDamageImmune,
 } from "../unit-abilities";
 import {
@@ -19,6 +20,7 @@ import {
   canUnitMoveAndAttack,
   getLegalMoveDestinations,
   getActivationStep,
+  isUnitAlive,
 } from "../legal-actions";
 import { hexDistance, parseHexSpaceId } from "../hex";
 import type {
@@ -177,7 +179,8 @@ function recurringBuildingReturn(buildingId: string): number {
   // treated as exact resources: the conservative equivalents only compare
   // their four-round compounding against one-off side buildings.
   switch (effect.type) {
-    case "RESOURCE_ROUND_RESOURCE_DIE": return 3;
+    // Forge Resource Silo drops the materials faces (a third of the die).
+    case "RESOURCE_ROUND_RESOURCE_DIE": return effect.ignoreBuildingMaterials ? 2 : 3;
     case "RESOURCE_ROUND_MORALE": return 1.5;
     case "RESOURCE_ROUND_SEARCH_DISCARD": return 2;
     case "FREELANCERS_GUILD": return Math.max(1, effect.winGold);
@@ -278,6 +281,31 @@ function nextReply(state: GameState, combat: CombatState, budget: CombatPlanning
   return best;
 }
 
+/** Veterancy effect families whose removal-time triggers (last stands,
+ * rebirths, revenge, mends) the forecast does not model. */
+const REMOVAL_VETERANCY_EFFECTS = new Set<string>([
+  "TOWN_VETERANCY", "FACTION_VETERANCY", "ELEMENTAL_VETERANCY", "NEUTRAL_VETERANCY",
+  "NEUTRAL_TOWN_VETERANCY", "CUSTOM_TOWN_VETERANCY", "MUMMY_LAST_STAND",
+]);
+/** Neutral veterancy that reacts to ANOTHER unit's removal (Guardian Angel,
+ * Dracolich Death Feast). */
+const OBSERVER_VETERANCY_EFFECTS = new Set<string>(["NEUTRAL_VETERANCY", "NEUTRAL_TOWN_VETERANCY"]);
+
+/** A removal the forecast cannot follow: a veterancy ABILITY with a removal-time
+ * trigger on the unit, or an observer of removals on the board. The
+ * `townVeterancy` / `factionVeterancy` objects themselves are per-combat
+ * bookkeeping nearly every unit carries once it has acted; gating on their
+ * presence zeroed this forecast for almost every kill in real games. */
+function removalTriggerPresent(combat: CombatState, unit: CombatUnitState): boolean {
+  const effects = (subject: CombatUnitState) => getUnitAbilityDefinitions(subject)
+    .filter(ability => ability.implementationStatus === "implemented" && ability.effect?.type)
+    .map(ability => ability.effect!.type as string);
+  return Boolean(unit.elementalVeterancy?.nestOwnerId) ||
+    effects(unit).some(type => REMOVAL_VETERANCY_EFFECTS.has(type)) ||
+    Object.values(combat.units).some(other => other.id !== unit.id && isUnitAlive(other) &&
+      effects(other).some(type => OBSERVER_VETERANCY_EFFECTS.has(type)));
+}
+
 /** Approximate ordinary damage on detached unit copies, never the live state.
  * Special death/flip triggers fall back to the established policy instead of
  * inventing a continuation with a dead unit or stale Pack statistics. */
@@ -290,7 +318,7 @@ function projectDamage(state: GameState, combat: CombatState, id: string, damage
   const units = { ...combat.units, [id]: unit };
   if (unit.damage >= unit.maxHealth) {
     if (unit.maxHealth <= 0 || (unit.armyStacks ?? 0) > 8 || unit.stackToken || unit.bossUnit || unit.unitRank || unit.cloneOfUnitId || unit.transforms?.length ||
-        unit.townVeterancy || unit.factionVeterancy || unit.elementalVeterancy ||
+        removalTriggerPresent(combat, unit) ||
         getSelfRebirthAbility(unit) || getSelfRebirthRollAbility(unit) || getOnRemovalDetonation(unit) ||
         Object.values(combat.units).some(other => other.cloneOfUnitId === id ||
           isAdjacent(other.position, unit.position) && getReapOnAdjacentRemoval(other)) ||

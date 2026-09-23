@@ -173,7 +173,10 @@ describe("Random Town is always a VII siege", () => {
     const state = createAdventureGameState({
       seed: "random-town-vii-siege",
       difficulty: "normal",
-      rollFirstPlayer: false
+      rollFirstPlayer: false,
+      // The Arrow Tower is BINH `random-town-veteran-defense` only, and that
+      // rule DEFAULTS ON — turn it off to assert the printed card's board.
+      houseRules: { "random-town-veteran-defense": false }
     });
     clearHandGate(state);
     const hero = getMainHero(state, "p1")!;
@@ -194,7 +197,9 @@ describe("Random Town is always a VII siege", () => {
     expect(state.combat.context.difficulty).toBe(7);
     expect(state.combat.siege?.walls).toHaveLength(3);
     expect(state.combat.siege?.gatePosition).not.toBeNull();
-    expect(state.combat.siege?.arrowTowerUnitId).toBeTruthy();
+    // Printed card: Walls and the Gate, but not the Arrow Tower (the tower is
+    // BINH `random-town-veteran-defense` only; this game leaves it off).
+    expect(state.combat.siege?.arrowTowerUnitId).toBeNull();
     expect(state.combat.boardArtId).toBe("castle-siege");
 
     hero.level = 3;

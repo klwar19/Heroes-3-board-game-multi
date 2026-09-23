@@ -1464,7 +1464,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // pre-income investment window (resource-round-income reward divider,
 // FACTORY_BANK_INVEST visit step, factoryBankNextResourceGold), Factory City
 // Hall named Armadillo recruit, Succubus/Shaman/Charming commander redesigns.
-export const ENGINE_PROTOCOL_VERSION = 169;
+// v170: Forge faction (units, buildings, S12 tile), City Hall opponent-discard
+// option, Resource Silo die, Toxic Moat wall damage, Lightning Generator.
+export const ENGINE_PROTOCOL_VERSION = 170;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

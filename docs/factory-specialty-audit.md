@@ -15,7 +15,7 @@ The user confirmed that other units already receive Henrietta's base +1. That el
 
 | Hero | I | IV | VI |
 | --- | --- | --- | --- |
-| Henrietta | Attack or Defense reaction: +1, doubled for Grenadiers. | Draw 1 or combat-long +1 maximum Health, doubled for Grenadiers. | Round-start option grants all friendly units Attack-roll advantage for the combat. |
+| Henrietta (redesigned 2026-09-23 as the printed "Halflings" cards) | Start of Combat: +1 Defense to all your Halflings and Grenadiers units for the combat, and +1 combat-long Health to the neutral ones (`HALFLINGS_RALLY`, name-gated player effect). | Global: search the bronze Neutral deck and discard for a Halfling/Grenadier, recruit it free, then shuffle the deck (`NEUTRAL_DECK_UNIT_SEARCH`); or +2 Defense on the friendly unit being attacked. | Round-start option grants all friendly units Attack-roll advantage for the combat. |
 | Sam | Attack or Defense reaction: +1, doubled for ground units. | Combat-long +1 maximum Health, doubled for Engineers. | +4 Defense on the friendly unit being attacked. |
 | Tancred | Attack or Defense reaction: +1, doubled for ranged units. | Enemy mark adds 1 damage to ranged attacks against that unit this combat. | Bounty Hunters ignore non-adjacent targets' Defense for this round, or draw 2. |
 | Celestine | +2 Defense on the friendly unit being attacked. | Combat-long +1 maximum Health, doubled for Armadillos. | Combat-long +4 Initiative, +1 movement and +1 Attack against slower units; numeric modifiers double for Armadillos. |

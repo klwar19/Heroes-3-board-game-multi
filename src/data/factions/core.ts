@@ -33,7 +33,8 @@ const townProducts: Record<string, string> = {
   conflux: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
   cove: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
   bulwark: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
-  factory: "Heroes of Might and Magic III: The Board Game (Factory Expansion)"
+  factory: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
+  forge: "Heroes of Might and Magic III: The Board Game (Forge Expansion)"
 };
 
 function townSource(faction: string) {
@@ -137,6 +138,21 @@ function factoryHeroSource(slug: string) {
     credit:
       `Hero class, starting ability and unit specialty cross-referenced from heroes.thelazy.net/index.php/${slug} (HotA Factory documentation); I/IV/VI specialty behavior is implemented in the adventure engine. Stats use the board-game Mercenary/Artificer templates; portrait is the classic PC portrait (upscaled, hosted locally). Verify against official components before final release.`,
     url: `https://heroes.thelazy.net/index.php/${slug}`
+  };
+}
+
+/**
+ * Source for the Forge heroes: class, statistics and starting ability are the
+ * PRINTED values from the official Forge preview (Archon "Faction Focus: Forge");
+ * the specialty cards are engine-backed digital designs and the portrait /
+ * board / specialty faces are project-generated from that visual reference.
+ */
+function forgeHeroSource(heroName: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+    credit:
+      `${heroName}'s class, starting statistics and starting ability were transcribed from the official Forge expansion preview (Archon / Gamefound "Faction Focus: Forge"). Portrait, board and specialty faces are project-generated. Verify against official components before final release.`,
+    url: "https://gamefound.com/en/projects/archon-studio/heroes-of-might-and-magic-iii-the-board-game"
   };
 }
 
@@ -1159,7 +1175,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   // Factory town buildings, wired to the effects the Gamefound Faction Focus:
   // Factory update describes. Each maps to its shared archetype effect: City Hall
   // income (the "classic" gold-or-Armadillo variant), Citadel reinforce, Mage
-  // Guild spells (the Factory card is the "Mana Generator"), the three dwellings
+  // Guild spells, the three dwellings
   // unlock a recruit tier, and the faction's TWO signature special buildings — the
   // Bank (extra gold income) and the Artifact Merchants (buy/sell artifacts, the
   // Blacksmith/Artifact archetype). An earlier transcription conflated the two
@@ -1198,11 +1214,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   },
   // Factory's spell building. Its id stays "mage_guild" (the shared building slot
   // the default game setup and every Mage-Guild rule key on), but its printed name
-  // is the "Mana Generator" card. Archetype effect: Search(2) the Spell deck when
+  // is the printed Mage Guild card. Archetype effect: Search(2) the Spell deck when
   // built and pay to Search again thereafter; sells the Spell Book token.
   "factory.mage_guild": {
     id: "factory.mage_guild",
-    name: "Mana Generator",
+    name: "Mage Guild",
     faction: "factory",
     cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
     effect: { type: "MAGE_GUILD" },
@@ -1243,7 +1259,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   },
   "factory.dwelling_bronze": {
     id: "factory.dwelling_bronze",
-    name: "Remote Settlement",
+    name: "Halfling Ranch",
     faction: "factory",
     cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
     effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
@@ -1252,9 +1268,9 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   },
   "factory.dwelling_silver": {
     id: "factory.dwelling_silver",
-    name: "Industrialized Catacombs",
+    name: "Catacomb Foundry",
     faction: "factory",
-    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    cost: { gold: 8, buildingMaterials: 5, valuables: 3 },
     prerequisites: ["factory.dwelling_bronze"],
     effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
     implementationStatus: "implemented",
@@ -1269,6 +1285,98 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
     implementationStatus: "implemented",
     source: townSource("factory")
+  },
+
+  // ---- Forge (expansion) -------------------------------------------------
+  // Eight buildings on seven board bars (tmp/forge/FORGE-SPEC.md). Printed:
+  // City Hall, Mage Guild, Citadel, Toxic Moat and Rusty Factories costs.
+  "forge.city_hall": {
+    id: "forge.city_hall",
+    name: "City Hall",
+    faction: "forge",
+    cost: { gold: 6, buildingMaterials: 2 },
+    effect: {
+      type: "RESOURCE_ROUND_CHOICE",
+      options: [
+        { label: "Gain 3 gold", gold: 3 },
+        // Engine: the chooser names the opponent (never an ally); that opponent
+        // discards 2 RANDOM cards from hand (seeded).
+        { label: "The opponent discards two random cards from their hand", opponentDiscards: 2 }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  "forge.mage_guild": {
+    id: "forge.mage_guild",
+    name: "Mage Guild",
+    faction: "forge",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    effect: { type: "MAGE_GUILD" },
+    spellBookCost: 6,
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  // Resource Silo: Mystic Pond's Resource-round die, but a rolled building-
+  // materials face is ignored (gold or valuables only).
+  "forge.resource_silo": {
+    id: "forge.resource_silo",
+    name: "Resource Silo",
+    faction: "forge",
+    cost: { gold: 5, buildingMaterials: 3 },
+    effect: { type: "RESOURCE_ROUND_RESOURCE_DIE", ignoreBuildingMaterials: true },
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  "forge.dwelling_bronze": {
+    id: "forge.dwelling_bronze",
+    name: "Rusty Factories",
+    faction: "forge",
+    cost: { gold: 5, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" },
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  "forge.dwelling_silver": {
+    id: "forge.dwelling_silver",
+    name: "Launch Runway",
+    faction: "forge",
+    cost: { gold: 8, buildingMaterials: 6, valuables: 3 },
+    prerequisites: ["forge.dwelling_bronze"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" },
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  "forge.citadel": {
+    id: "forge.citadel",
+    name: "Citadel",
+    faction: "forge",
+    cost: { gold: 8, buildingMaterials: 3, valuables: 1 },
+    effect: { type: "UNLOCK_REINFORCE" },
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  // Toxic Moat (shares the Citadel bar): when built gain a Lightning Generator;
+  // an attacking ground/flying unit that fells a Wall/Gate here takes 1 damage.
+  "forge.toxic_moat": {
+    id: "forge.toxic_moat",
+    name: "Toxic Moat",
+    faction: "forge",
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    prerequisites: ["forge.citadel"],
+    effect: { type: "TOXIC_MOAT", wallDamage: 1, warMachineCardId: "war_machine.lightning_generator" },
+    implementationStatus: "implemented",
+    source: townSource("forge")
+  },
+  "forge.dwelling_gold": {
+    id: "forge.dwelling_gold",
+    name: "Heavenly Forge",
+    faction: "forge",
+    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    prerequisites: ["forge.dwelling_silver"],
+    effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
+    implementationStatus: "implemented",
+    source: townSource("forge")
   }
 };
 
@@ -2502,8 +2610,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   // ---- Bulwark heroes (expansion; fan faction, placeholder portraits) -----
   // Two Chieftains (Might) and two Elders (Magic). Dhuin/Creyle are unit
   // specialists (Snow Elves / Mammoths); Glacius is the Frost Ring caster; Kriv
-  // is the Rune-synergy hero. Portraits are download-pending (UI falls back to
-  // the initial), like Cyra/Torosar/Luna.
+  // is the Rune-synergy hero.
   dhuin: {
     id: "dhuin",
     name: "Dhuin",
@@ -2556,9 +2663,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   // Eikthurn (Chieftain, Might): the Mountain Rams unit-specialist (the bronze
   // level-2 unit) — ongoing Health at I, Attack + Rune gain at IV, and a
   // Rune-priced Defense reaction at VI; each benefit doubles for Mountain Rams.
-  // His starting ability is Logistics. Oidana (Chieftain, Might) is the printed
-  // Defense-heavy Archery hero; her Diplomacy specialty remains the fully wired
-  // CHOOSE_ONE set below. Kaliki (Elder, Magic) is the Water Magic specialist.
+  // His starting ability is Logistics. Oidana (Chieftain, Might) has the
+  // Neutral-deck scry at I; her later Diplomacy cards retain their own effects.
+  // Kaliki (Elder, Magic) is the Water Magic specialist.
   eikthurn: {
     id: "eikthurn",
     name: "Eikthurn",
@@ -2680,6 +2787,39 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.frederick.1", 4: "specialty.frederick.4", 6: "specialty.frederick.6" },
     portrait: "/assets/hero_portraits-frederick.webp",
     source: factoryHeroSource("Frederick")
+  },
+
+  // ---- Forge (expansion) heroes ------------------------------------------
+  // Class, statistics and starting ability are PRINTED on the official Forge
+  // hero cards (front sides). Their I/IV/VI specialties (Overclock / Storm
+  // Circuit) are live engine-backed cards in the adventure card library.
+  dark_mullich: {
+    id: "dark_mullich",
+    name: "Dark Mullich",
+    faction: "forge",
+    class: "Cyborg",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.logistics",
+    // Overclock: Initiative / Attack surges, doubled for Forge units at I.
+    specialtyCardIds: { 1: "specialty.dark_mullich.1", 4: "specialty.dark_mullich.4", 6: "specialty.dark_mullich.6" },
+    portrait: "/assets/hero_portraits-dark_mullich.webp",
+    boardScan: "/assets/heroes-forge-might-dark_mullich.webp",
+    source: forgeHeroSource("Dark Mullich")
+  },
+  zeestral: {
+    id: "zeestral",
+    name: "Zeestral",
+    faction: "forge",
+    class: "Techno Pagan",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.intelligence",
+    // Storm Circuit: enemy-unit lightning damage or a ranged-unit Attack boost.
+    specialtyCardIds: { 1: "specialty.zeestral.1", 4: "specialty.zeestral.4", 6: "specialty.zeestral.6" },
+    portrait: "/assets/hero_portraits-zeestral.webp",
+    boardScan: "/assets/heroes-forge-magic-zeestral.webp",
+    source: forgeHeroSource("Zeestral")
   }
 
   // Four more wiki heroes complete the remaining rosters; their PC portraits are
@@ -2872,6 +3012,24 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
       credit: "Factory Expansion faction: PLAYABLE, with the &S1 starting tile. Unit Few/Pack art and abilities are transcribed from the real board-game scans; buildings map to shared archetype effects. Some town/hero PC art remains placeholder — verify before final release.",
       url: "https://heroes.thelazy.net/index.php/Factory"
     }
+  },
+  forge: {
+    id: "forge",
+    name: "Forge",
+    // Steel grey — the cybernetic Heavenly Forge.
+    color: "#6f7f8c",
+    // S12 is the Forge starting tile (src/data/map/expansion-tiles.ts).
+    startingTileId: "S12",
+    // Hero definitions are registered with the Forge heroes/specialties batch.
+    heroes: ["dark_mullich", "zeestral"],
+    buildings: buildingsOfFaction("forge"),
+    units: unitsOfFaction("forge"),
+    townImage: "/assets/towns-forge-background.webp",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge Expansion faction per the Archon/Gamefound Faction Focus: Forge preview and WIP component screenshots (tmp/forge/FORGE-SPEC.md). Values not marked printed are project transcriptions — verify against official components before final release.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
   }
 };
 
@@ -2947,7 +3105,8 @@ export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntr
 /**
  * The AZURE-tier Neutral Units card depicting a faction's gold-tier signature
  * creature (Rampart → neutral.gold_dragons, Tower → neutral.titans, Fortress →
- * neutral.hydras, Conflux → neutral.phoenixes) — matched by creature NAME
+ * neutral.hydras, Conflux → neutral.phoenixes, Forge → neutral.cyberbrutes) —
+ * matched by creature NAME
  * against the roster's gold units, since the azure card is deliberately not a
  * same-tier counterpart (see `neutralCounterpartId`). `undefined` for factions
  * whose top creature has no azure printing. Consumed by the BINH house rule

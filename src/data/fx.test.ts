@@ -15,7 +15,7 @@ import {
   type SpellFxPlan
 } from "./fx";
 import { cardLibrary } from "./cards/library";
-import { WAR_MACHINE_CARD_IDS } from "./cards/permanents";
+import { GRANTED_WAR_MACHINE_CARD_IDS, WAR_MACHINE_CARD_IDS } from "./cards/permanents";
 
 describe("elemental experience presentation", () => {
   it.each([
@@ -420,8 +420,9 @@ describe("warMachineFxPlans", () => {
   });
 
   it("references only real war machine cards", () => {
+    const allMachines: readonly string[] = [...WAR_MACHINE_CARD_IDS, ...GRANTED_WAR_MACHINE_CARD_IDS];
     for (const cardId of Object.keys(warMachineFxPlans)) {
-      expect(WAR_MACHINE_CARD_IDS).toContain(cardId);
+      expect(allMachines).toContain(cardId);
     }
   });
 });

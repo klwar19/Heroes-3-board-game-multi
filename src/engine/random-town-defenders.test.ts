@@ -218,7 +218,7 @@ describe("Random Town faction pick", () => {
     expect(new Set(factions).size).toBeGreaterThan(1);
   });
 
-  it("is the field's VII fight with Walls, the Gate, and the enemy Arrow Tower", () => {
+  it("is the field's VII fight with Walls and the Gate, but not the Arrow Tower (printed card)", () => {
     const state = fightRandomTown(makeGame("rt-siege"));
     expect(state.combat?.context.kind).toBe("neutral");
     if (state.combat?.context.kind !== "neutral") return;
@@ -226,9 +226,19 @@ describe("Random Town faction pick", () => {
     expect(state.combat.siege?.walls).toHaveLength(3);
     expect(state.combat.siege?.gatePosition).not.toBeNull();
     expect(state.combat.siege?.gatePosition).toBeGreaterThanOrEqual(0);
-    const towerId = state.combat.siege?.arrowTowerUnitId;
+    expect(state.combat.siege?.arrowTowerUnitId).toBeNull();
+    expect(Object.values(state.combat.units).some((unit) => unit.name === "Arrow Tower")).toBe(false);
+  });
+
+  it("adds the defending Neutral Arrow Tower only under the BINH veteran-defense rule (CONTROL)", () => {
+    const state = fightRandomTown(makeGame("rt-siege", {
+      houseRules: { "random-town-veteran-defense": true }
+    }));
+    expect(state.combat?.siege?.walls).toHaveLength(3);
+    expect(state.combat?.siege?.gatePosition).not.toBeNull();
+    const towerId = state.combat?.siege?.arrowTowerUnitId;
     expect(towerId).toBeTruthy();
-    expect(state.combat.units[towerId!]).toMatchObject({
+    expect(state.combat!.units[towerId!]).toMatchObject({
       controllerId: NEUTRAL_PLAYER_ID,
       name: "Arrow Tower",
       position: -1
@@ -279,8 +289,17 @@ describe("Random Town — BINH veteran AI defense", () => {
     expect(state.combat?.pendingNeutralPlacement).toBeFalsy();
     expect(optionChoiceContext(state)).not.toBe("random-town-pack");
     expect(state.eventLog.some((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")).toBe(false);
-    // The formation's protected anchor is deliberately central-back.
-    expect(neutralUnits(state).some((unit) => unit.position === 1 && unit.grade === "gold")).toBe(true);
+    // The coordinated path still runs the formation optimizer. Its layout
+    // depends on the rolled faction (the playable pool moves with every new
+    // town), so assert the optimizer's invariant rather than one seed's cells:
+    // every guard stands in the defender grid, and ranged support is shielded
+    // in the back row (cells 0-3).
+    const guards = neutralUnits(state);
+    expect(guards.length).toBeGreaterThan(0);
+    expect(guards.every((unit) => unit.position >= 0 && unit.position <= 7)).toBe(true);
+    for (const unit of guards.filter((guard) => guard.type === "ranged")) {
+      expect([0, 1, 2, 3], `${unit.cardName} shielded in the back row`).toContain(unit.position);
+    }
   });
 
   it("coordinates focus on the dangerous target instead of the ordinary tier-first target", () => {

@@ -234,6 +234,8 @@ export function buildingPanelNote(
       return hasActions
         ? "Ready this Astrologers' round — choose the unit to reinforce with the Pub discount."
         : "Available during each Astrologers' round; the Citadel is required to reinforce.";
+    case "TOXIC_MOAT":
+      return `Always on in sieges of this town — an attacker's melee or flying unit that destroys a Wall or the Gate takes ${effect.wallDamage} damage. The Lightning Generator was granted when it was built.`;
     default:
       // Round / turn-start automatic effects (City Hall, Brotherhood, Mystic
       // Pond, Saplings, Necromancy Amplifier, Portal, Mana Vortex…).

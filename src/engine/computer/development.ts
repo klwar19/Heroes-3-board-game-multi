@@ -35,7 +35,9 @@ const SECOND_PACK_PREFERS_LEVEL_ONE = new Set(["conflux", "castle", "inferno"]);
 /** Factions content with only TWO bronze Packs (no third body): Inferno and
  * Dungeon (evil_eyes + harpies) per the user ruling, and Rampart which pivots
  * early into its Silver (Dendroid) after the Elves + Dwarves Packs. */
-const TWO_PACK_FACTIONS = new Set(["inferno", "dungeon", "rampart"]);
+const TWO_PACK_FACTIONS = new Set(["inferno", "dungeon", "rampart", "forge"]);
+// Forge: expensive, slow, ranged-heavy — Watchers + Cyber Zombies Packs, the
+// Grunts stay a Few screen and gold flows to the Silver/Gold ladder.
 
 /**
  * Ordered Pack purchases (user ruling 2026-09-15): the 1st Pack is ALWAYS the
@@ -273,6 +275,9 @@ const SILVER_RECRUIT_PLAN: Record<string, string[]> = {
   // with the Demons/Bronze army was lost or retreated, no Far income ever
   // landed and the Gold body never arrived.
   inferno: ["inferno.pit_lords"],
+  // Forge: the flying Jump Troopers (4/1/5) screen the ranged line and carry
+  // the Far fights; Bruisers (ranged splash) follow.
+  forge: ["forge.jump_troopers", "forge.bruisers"],
 };
 
 export function silverRecruitPlan(state: GameState, playerId: PlayerId): string[] {
@@ -721,6 +726,11 @@ export const NO_INCOME_HALL_FACTIONS: ReadonlySet<string> = new Set(["necropolis
 export function factionSkipsIncomeHall(state: GameState, playerId: PlayerId): boolean {
   return NO_INCOME_HALL_FACTIONS.has(state.players[playerId]?.factionId ?? "");
 }
+/**
+ * Factions whose City Hall pays too little (Forge: 3 gold, or 2 random enemy
+ * discards) to outrank a dwelling as hall-first; it is still built normally.
+ */
+export const NO_HALL_FIRST_FACTIONS: ReadonlySet<string> = new Set(["forge"]);
 /** A hostile main hero this many levels (or more) ahead = "behind": army first, no hall-first. */
 export const INCOME_FIRST_LEVEL_DEFICIT = 2;
 
@@ -831,7 +841,8 @@ export function incomeBuildingBeforeDwelling(
   playerId: PlayerId,
   bronzeCoreHasWork = true,
 ) {
-  if (!bronzeCoreHasWork || factionSkipsIncomeHall(state, playerId) || needsNecromancyVampire(state, playerId) ||
+  if (!bronzeCoreHasWork || factionSkipsIncomeHall(state, playerId) ||
+      NO_HALL_FIRST_FACTIONS.has(state.players[playerId]?.factionId ?? "") || needsNecromancyVampire(state, playerId) ||
       needsPremiumSilverBreakthrough(state, playerId) || securedFarTileIds(state, playerId).size >= 2) return null;
   // No "first FAR income captured" precondition: the ranked seats build the
   // hall on R2–R4, before their first Far fight (median first fight R3–R4),
@@ -1077,19 +1088,51 @@ export function goldMilestoneShortfall(
   state: GameState, playerId: PlayerId, spend: ResourceCost = {},
 ): Required<ResourceCost> {
   const shortfall = { gold: 0, buildingMaterials: 0, valuables: 0 };
+  const balance = goldMilestoneBalance(state, playerId, spend);
+  if (!balance) return shortfall;
+  for (const key of ["gold", "buildingMaterials", "valuables"] as const) shortfall[key] = Math.max(0, -balance[key]);
+  return shortfall;
+}
+
+/** Stock plus deadline income minus the first-Gold milestone (and `spend`),
+ * per resource: negative = short, positive = surplus. Null without a milestone. */
+function goldMilestoneBalance(
+  state: GameState, playerId: PlayerId, spend: ResourceCost = {},
+): Required<ResourceCost> | null {
   const cost = firstGoldMilestoneCost(state, playerId);
   const player = state.players[playerId];
-  if (!cost || !player) return shortfall;
+  if (!cost || !player) return null;
   let payouts = 0;
   const deadline = state.round <= 9 ? 9 : state.round + 2;
   for (let round = state.round + 1; round <= deadline; round += 1) {
     if (round > 1 && round % 2 === 1) payouts += 1;
   }
+  const balance = { gold: 0, buildingMaterials: 0, valuables: 0 };
   for (const key of ["gold", "buildingMaterials", "valuables"] as const) {
-    shortfall[key] = Math.max(0, cost[key] + (spend[key] ?? 0) - player.resources[key] -
-      payouts * (player.production?.[key] ?? 0));
+    balance[key] = player.resources[key] + payouts * (player.production?.[key] ?? 0) - cost[key] - (spend[key] ?? 0);
   }
-  return shortfall;
+  return balance;
+}
+
+/**
+ * Gold the Trading Post still needs at the deadline to buy the milestone's
+ * missing materials / valuables, after deadline income and after surplus
+ * materials are exchanged 3 → 1 valuable. Gold is the only stock that converts
+ * into the scarce inputs, so gold "above the milestone's gold cost" is not
+ * spare while this is positive. Printed trade rates only.
+ */
+export function goldMilestoneConversionGold(state: GameState, playerId: PlayerId, spend: ResourceCost = {}): number {
+  const balance = goldMilestoneBalance(state, playerId, spend);
+  if (!balance) return 0;
+  const valuablesRate = goldPurchaseRate("valuables");
+  const materialsRate = goldPurchaseRate("buildingMaterials");
+  const exchange = materialsForValuableRate();
+  const missingMaterials = Math.max(0, -balance.buildingMaterials);
+  let missingValuables = Math.max(0, -balance.valuables);
+  if (exchange && balance.buildingMaterials > 0) {
+    missingValuables = Math.max(0, missingValuables - Math.floor(balance.buildingMaterials / exchange.materialsPerValuable));
+  }
+  return missingValuables * (valuablesRate?.goldPerUnit ?? 0) + missingMaterials * (materialsRate?.goldPerUnit ?? 0);
 }
 
 /** Optional spending must not create or worsen a deadline funding gap. Core

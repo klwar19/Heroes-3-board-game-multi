@@ -71,6 +71,64 @@ type OpenPanel =
 
 const pct = (fraction: number) => `${(fraction * 100).toFixed(3)}%`;
 
+function FactoryGold({ amount }: { amount: number }) {
+  return <span className="tbFactoryGold">{amount}<img alt="Gold" src={assetUrl(RESOURCE_ICONS.gold)} /></span>;
+}
+
+/** Boards drawn from ONE generated whole face with blank plaques/rule cards. */
+function usesPrintedFaceBoard(factionId: string): boolean {
+  return factionId === "factory" || factionId === "forge";
+}
+
+/** Forge printed-card text; null falls back to the Factory/generic layout. */
+function forgeBoardDescription(building: TownBuildingDefinition): ReactNode | null {
+  const effect = building.effect;
+  if (building.id === "forge.city_hall" && effect?.type === "RESOURCE_ROUND_CHOICE") {
+    const income = effect.options.find((option) => option.gold !== undefined);
+    return <><span>At the beginning of each Resource round, choose:</span><span><FactoryGold amount={income?.gold ?? 0} /> OR</span><span>The opponent discards two cards from their hand (at random).</span></>;
+  }
+  if (building.id === "forge.citadel" && effect?.type === "UNLOCK_REINFORCE") {
+    return <><span>Unlocks Reinforcing units.</span><span>When under siege, add 3 Walls, 1 Gate and 1 Arrow Tower to the combat board.</span></>;
+  }
+  if (building.id === "forge.mage_guild" && effect?.type === "MAGE_GUILD") {
+    return <><span>When built: Search (2) Spell twice.</span><span>After built: once per your turn pay <FactoryGold amount={building.spellBookCost ?? 6} /> to Search (2) Spell.</span></>;
+  }
+  if (building.id === "forge.resource_silo" && effect?.type === "RESOURCE_ROUND_RESOURCE_DIE") {
+    return <><span>At the beginning of each Resource round, roll 1 Resource die.</span><span>Gain the rolled gold or valuables; ignore building materials.</span></>;
+  }
+  if (building.id === "forge.toxic_moat" && effect?.type === "TOXIC_MOAT") {
+    return <><span>When built: gain a Lightning Generator.</span><span>During a siege of this Town, an attacking player&apos;s melee or flying unit that destroys a Wall or the Gate suffers {effect.wallDamage} damage.</span></>;
+  }
+  return null;
+}
+
+/** Compact printed-card layout; the modal retains the full rule text. */
+function factoryBoardDescription(building: TownBuildingDefinition): ReactNode {
+  const forge = forgeBoardDescription(building);
+  if (forge) {
+    return forge;
+  }
+  const effect = building.effect;
+  if (building.id === "factory.city_hall" && effect?.type === "RESOURCE_ROUND_CHOICE") {
+    const income = effect.options.find((option) => option.gold !== undefined);
+    const freeUnit = effect.options.find((option) => option.freeRecruitOrReinforceUnitDefId);
+    return <><span>At the beginning of each Resource round, choose:</span><span><FactoryGold amount={income?.gold ?? 0} /> OR</span><span>{freeUnit?.label ?? "Recruit or reinforce Armadillos for free"}.</span></>;
+  }
+  if (building.id === "factory.citadel" && effect?.type === "UNLOCK_REINFORCE") {
+    return <><span>Unlocks Reinforcing units.</span><span>When under siege, add 3 Walls, 1 Gate and 1 Arrow Tower to the combat board.</span></>;
+  }
+  if (building.id === "factory.mage_guild" && effect?.type === "MAGE_GUILD") {
+    return <><span>When built: Search (2) Spell twice.</span><span>After built, once per round: pay <FactoryGold amount={building.spellBookCost ?? 5} /> to Search (2) Spell.</span></>;
+  }
+  if (building.id === "factory.bank" && effect?.type === "RESOURCE_ROUND_BANK") {
+    return <><span>Before Resource income, choose one investment:</span>{effect.options.map(({ payGold, nextResourceGold }) => <span key={payGold}><FactoryGold amount={payGold} /> → <FactoryGold amount={nextResourceGold} /> next Resource round</span>)}</>;
+  }
+  if (building.id === "factory.artifact_merchants" && effect?.type === "ARTIFACT_SMITH") {
+    return <><span>Once during your turn, choose one:</span><span>1. Pay <FactoryGold amount={effect.searchCost} /> to Search ({effect.searchCount ?? 2}) Artifacts.</span><span>2. Remove 1 Artifact from hand to gain <FactoryGold amount={effect.sellGold} />.</span></>;
+  }
+  return describeBuildingEffect(building);
+}
+
 /** The board-relative rectangle of a bar (fractions of the board box). */
 function barRect(spec: TownBoardSpec, index: number) {
   const { window } = spec.geometry;
@@ -103,14 +161,14 @@ function FullScanCrop({ spec, index }: { spec: TownBoardSpec; index: number }) {
 }
 
 /** Compact printed-style cost line: resource icon + amount pairs. */
-function CostLine({ cost }: { cost: TownBuildingDefinition["cost"] }) {
+function CostLine({ cost, showZeros = false }: { cost: TownBuildingDefinition["cost"]; showZeros?: boolean }) {
   const parts = (
     [
-      ["gold", cost.gold],
-      ["buildingMaterials", cost.buildingMaterials],
-      ["valuables", cost.valuables]
+      ["gold", cost.gold ?? 0],
+      ["buildingMaterials", cost.buildingMaterials ?? 0],
+      ["valuables", cost.valuables ?? 0]
     ] as const
-  ).filter((entry): entry is [TownTrackResource, number] => Boolean(entry[1]));
+  ).filter((entry): entry is [TownTrackResource, number] => showZeros || Boolean(entry[1]));
   if (parts.length === 0) {
     return <small className="tbCost">free</small>;
   }
@@ -219,14 +277,16 @@ function DesignedTile({
 function DesignedPlate({
   building,
   cost = building.cost,
+  showZeros = false,
 }: {
   building: TownBuildingDefinition;
   cost?: TownBuildingDefinition["cost"];
+  showZeros?: boolean;
 }) {
   return (
     <span className="tbPlate">
       <b>{building.name}</b>
-      <CostLine cost={cost} />
+      <CostLine cost={cost} showZeros={showZeros} />
     </span>
   );
 }
@@ -816,29 +876,33 @@ export function TownBoardView({
           <img alt={`${faction.name} town board`} className="tbBoardBase" decoding="async" draggable={false} src={assetUrl(spec.emptyImage!)} />
         ) : (
           <div className="tbBoardBase tbDesignedBase">
-            <div
-              className="tbDesignedWindow"
-              style={{
-                left: pct(geometry.window.left),
-                top: pct(geometry.window.top),
-                width: pct(7 * geometry.window.barPitch),
-                height: pct(geometry.window.bottom - geometry.window.top)
-              }}
-            >
-              {spec.panoramaImage ? (
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className={spec.physicalPanoramaTiles || faction.id === "little_busters" ? "tbTownArtTopAligned" : undefined}
-                  decoding="async"
-                  draggable={false}
-                  src={assetUrl(spec.panoramaImage)}
-                />
-              ) : null}
-            </div>
+            {spec.boardFaceImage ? (
+              <img alt="" aria-hidden="true" className="tbBoardBase" decoding="async" draggable={false} src={assetUrl(spec.boardFaceImage)} />
+            ) : (
+              <div
+                className="tbDesignedWindow"
+                style={{
+                  left: pct(geometry.window.left),
+                  top: pct(geometry.window.top),
+                  width: pct(7 * geometry.window.barPitch),
+                  height: pct(geometry.window.bottom - geometry.window.top)
+                }}
+              >
+                {spec.panoramaImage ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className={spec.physicalPanoramaTiles || faction.id === "little_busters" ? "tbTownArtTopAligned" : undefined}
+                    decoding="async"
+                    draggable={false}
+                    src={assetUrl(spec.panoramaImage)}
+                  />
+                ) : null}
+              </div>
+            )}
             {/* The authentic printed tracks/tokens panel, pasted back at the
                 exact fractional rectangle it was cropped from. */}
-            {spec.panelImage && geometry.panel ? (
+            {spec.printedPanelInBase ? null : spec.panelImage && geometry.panel ? (
               <img
                 alt=""
                 aria-hidden="true"
@@ -1002,7 +1066,7 @@ export function TownBoardView({
                   {!spec.physicalPanoramaTiles && faction.id !== "little_busters" && spec.barTileImages?.[index] ? (
                     <LoadedImg className="tbEmptyPreview" src={spec.barTileImages[index]} />
                   ) : null}
-                  {bar.map((buildingId) => {
+                  {usesPrintedFaceBoard(faction.id) ? null : bar.map((buildingId) => {
                     const building = coreBuildingDefinitions[buildingId];
                     return building ? <DesignedPlate building={building} cost={buildingCost(building)} key={buildingId} /> : null;
                   })}
@@ -1026,6 +1090,14 @@ export function TownBoardView({
                   </span>
                 </div>
               )}
+              {usesPrintedFaceBoard(faction.id) ? (
+                <div className="tbFactoryBarPlates" aria-hidden="true">
+                  {bar.map((buildingId) => {
+                    const building = coreBuildingDefinitions[buildingId];
+                    return building ? <DesignedPlate building={building} cost={buildingCost(building)} showZeros key={buildingId} /> : null;
+                  })}
+                </div>
+              ) : null}
               {/* Scan boards paint the whole bar from ONE fully-built crop, so a
                   two-in-one bar with just one building up looks like both are
                   built. Name BOTH halves — which is built (✓) and which is not
@@ -1114,7 +1186,7 @@ export function TownBoardView({
             title="Read every building's engine-true definition"
             type="button"
           >
-            <span className="tbDesignedDefs">
+            <span className={`tbDesignedDefs ${usesPrintedFaceBoard(faction.id) ? "tbFactoryDefs" : ""}`}>
               {[
                 ...new Set(
                   [
@@ -1137,7 +1209,7 @@ export function TownBoardView({
                   return building ? (
                     <span className="tbMiniCard" key={buildingId}>
                       <b>{building.name}</b>
-                      <small>{describeBuildingEffect(building)}</small>
+                      <small>{usesPrintedFaceBoard(faction.id) ? factoryBoardDescription(building) : describeBuildingEffect(building)}</small>
                     </span>
                   ) : null;
                 })}
@@ -1203,7 +1275,7 @@ export function TownBoardView({
           return (
             <button
               aria-label={`${label} — ${tokenState.note}`}
-              className={`tbToken ${slot.kind} ${tokenState.spent ? "spent" : "ready"} ${!isScan && !spec.panelImage ? "designed" : ""}`}
+              className={`tbToken ${slot.kind} ${tokenState.spent ? "spent" : "ready"} ${!isScan && !spec.panelImage && !spec.printedPanelInBase ? "designed" : ""}`}
               key={slot.kind}
               onClick={() => togglePanel(panel)}
               style={{
@@ -1218,7 +1290,7 @@ export function TownBoardView({
               {/* Scan boards and the pasted panel already print the tokens; a
                   designed board without either shows the authentic token icon
                   cropped from the real board. */}
-              {!isScan && !spec.panelImage ? (
+              {!isScan && !spec.panelImage && !spec.printedPanelInBase ? (
                 <img alt="" aria-hidden="true" className="tbTokenImg" draggable={false} src={assetUrl(TOWN_TOKEN_ICONS[slot.kind])} />
               ) : null}
               {tokenState.spent ? <X aria-hidden="true" className="tbTokenSpent" /> : null}

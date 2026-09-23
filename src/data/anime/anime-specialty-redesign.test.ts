@@ -49,6 +49,23 @@ const REDESIGNS: Record<string, [string, string]> = {
   xuanming: ["oidana", "Legion of Bones"]
 };
 
+/**
+ * DELIBERATE level divergences from the source card (the card data documents
+ * each one). 2026-09-23 Bulwark redesign: Oidana I became the Neutral-deck
+ * scry (OIDANA_NEUTRAL_SCRY) while Xuanming I "retain[s] the original
+ * recruit/draw I card" — the pre-redesign Diplomacy I mechanics, pinned here
+ * verbatim so the clone still cannot drift silently. IV and VI stay clones.
+ */
+const RETAINED_LEVEL_EFFECTS: Record<string, unknown> = {
+  "xuanming.1": {
+    type: "CHOOSE_ONE",
+    options: [
+      { effect: { type: "DRAW_CARDS", amount: 1 } },
+      { mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
+    ]
+  }
+};
+
 /** Strip the display-only strings so mechanics compare exactly. */
 function normalize(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -80,8 +97,10 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
       // Art-less on purpose: the native renderer draws the hero's own portrait.
       expect(clone.assets?.cardImage, `${heroSlug} ${level} must stay art-less`).toBeUndefined();
       // The MECHANICS are byte-identical to the source (display strings aside),
-      // so every behaviour test on the source card covers this clone.
-      expect(normalize(clone.effect)).toEqual(normalize(source.effect));
+      // so every behaviour test on the source card covers this clone — except a
+      // documented retained level, pinned to its own exact mechanics instead.
+      const retained = RETAINED_LEVEL_EFFECTS[`${heroSlug}.${level}`];
+      expect(normalize(clone.effect)).toEqual(retained ?? normalize(source.effect));
       expect(clone.timing).toBe(source.timing);
       expect(clone.phaseLimit ?? null).toEqual(source.phaseLimit ?? null);
       expect(clone.trigger ?? null).toEqual(source.trigger ?? null);
@@ -120,6 +139,18 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
     for (const level of LEVELS) {
       const clone = cardLibrary[`specialty.xuanming.${level}`];
       const source = cardLibrary[`specialty.oidana.${level}`];
+      if (RETAINED_LEVEL_EFFECTS[`xuanming.${level}`]) {
+        // Xuanming I keeps the pre-redesign Diplomacy I card (Oidana I is now
+        // the scry): its Diplomacy side still wears the re-flavoured label.
+        const labels = ((clone.effect as { options?: Array<{ label?: string }> }).options ?? []).map(
+          (option) => option.label
+        );
+        expect(labels).toEqual([
+          "Draw 1 card",
+          "Raise the fallen: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)"
+        ]);
+        continue;
+      }
       const cloneOptions = (clone.effect as { options?: Array<{ label?: string; effect?: unknown }> }).options ?? [];
       const sourceOptions = (source.effect as { options?: Array<{ label?: string; effect?: unknown }> }).options ?? [];
       expect(cloneOptions.length).toBe(sourceOptions.length);

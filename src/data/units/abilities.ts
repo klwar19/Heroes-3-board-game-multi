@@ -28,7 +28,7 @@ export type NeutralTownVeterancyMechanic =
   | "flowing-assault" | "boarding-formation" | "return-fire" | "raking-dive" | "bewitching-bolt" | "scaled-intercept" | "toxic-counter"
   | "lucky-ricochet" | "victory-command" | "ally-blind-instinct" | "core-suppression" | "mountain-stillness" | "water-air-damper";
 
-export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd-hunter" | "halberd-aura" | "marksman-mark" | "marksman-survival" | "crusader-undead" | "zealot-loss" | "angel-safe" | "champion-safe" | "gremlin-recover" | "golem-cap" | "golem-shield" | "magi-recover" | "naga-mend" | "titan-bolt" | "goblin-save" | "orc-discard" | "ogre-guard" | "bird-lightning" | "cyclops-splash" | "dwarf-backlash" | "elf-guard" | "pegasus-guard" | "dragon-snare" | "dragon-hunter" | "unicorn-die" | "familiar-backlash" | "demon-paralyze" | "pit-mend" | "devil-slow" | "devil-draw" | "efreet-mend"
+export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd-hunter" | "halberd-aura" | "marksman-mark" | "marksman-survival" | "crusader-undead" | "zealot-loss" | "angel-safe" | "champion-safe" | "gremlin-recover" | "golem-cap" | "golem-shield" | "magi-recover" | "naga-mend" | "titan-bolt" | "goblin-save" | "orc-discard" | "ogre-guard" | "bird-lightning" | "cyclops-splash" | "dwarf-backlash" | "elf-guard" | "pegasus-guard" | "dragon-snare" | "dragon-hunter" | "unicorn-die" | "familiar-backlash" | "demon-paralyze" | "pit-mend" | "devil-slow" | "devil-luck" | "devil-draw" | "efreet-mend"
   | "dragon-fly-landing" | "gnoll-gold" | "lizard-spell-draw" | "gorgon-stare-reroll" | "gorgon-armored-prey"
   | "hydra-forced-reroll" | "hydra-round-mend" | "wyvern-potent-poison" | "sea-dog-ranged-retaliation"
   | "seaman-survival-gold" | "ayssid-slow" | "sorceress-ranged-mend" | "sorceress-artifact-tax"
@@ -37,10 +37,12 @@ export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd
   | "mammoth-hunter" | "mammoth-last-stand" | "centaur-retaliation" | "behemoth-odd-defense" | "minotaur-last-stand" | "skeleton-last-stand"
   | "basilisk-lower-roll" | "nix-guarded" | "pit-demon-bond" | "haspid-aggressive-drill"
   | "engineer-attack-support" | "armadillo-momentum" | "sandworm-burrow" | "automaton-round-blast" | "automaton-detonation-repair";
+export type ForgeVeterancyMechanic = "cyberbrute-mend" | "open-wound" | "tank-reposition" | "tank-death-burst" | "jump-guard" | "bruiser-guard" | "bruiser-break" | "zombie-repair" | "grunt-tempo" | "grunt-cover" | "grunt-mark";
 
 export type CustomTownVeterancyMechanic = "muscle-reversal" | "returning-edge" | "covering-extraction" | "meridian-exchange" | "rule-unravel" | "field-repair" | "break-cover" | "clear-mind" | "rescue-step" | "blood-price";
 
 export type UnitAbilityEffectDefinition =
+  | { type: "FORGE_VETERANCY"; mechanic: ForgeVeterancyMechanic }
   | { type: "CUSTOM_TOWN_VETERANCY"; mechanic: CustomTownVeterancyMechanic }
   | { type: "NEUTRAL_VETERANCY"; mechanic: NeutralVeterancyMechanic }
   | { type: "NEUTRAL_TOWN_VETERANCY"; mechanic: NeutralTownVeterancyMechanic }
@@ -571,6 +573,10 @@ export type UnitAbilityEffectDefinition =
       onRoll?: number;
       /** Kivotos Royal Artillery: only after attacking a non-adjacent target. */
       requiresNonAdjacentTarget?: boolean;
+      /** Forge Tanks ("You may also attack"): the owner may decline. */
+      optional?: boolean;
+      /** Forge follow-ups: only ENEMY units adjacent to the target (never the attacker or its allies). */
+      enemiesOnly?: boolean;
     }
   | {
       /**
@@ -644,6 +650,42 @@ export type UnitAbilityEffectDefinition =
        */
       type: "DEFENSE_REDUCTION_ON_ATTACK";
       allAttacks?: boolean;
+      amount: number;
+      /**
+       * Forge Cyberbrutes: the reduction scales with the target's FULL
+       * effective Defense at damage time — printed Defense plus every card,
+       * spell, ability, token and Defend-die bonus — removing ceil(def/2).
+       * `amount` is then only the AI's static estimate.
+       */
+      fraction?: "half-round-up";
+    }
+  | {
+      /**
+       * Forge Cyberbrutes: "Each time this unit kills a unit, it heals
+       * `amount`." Every enemy side, Polish stack layer or Stack Token this
+       * unit's damage defeats (UNIT_REMOVED / UNIT_FLIPPED / ARMY_STACK_LOST /
+       * STACK_TOKEN_DISCARDED at the events.ts loss seam) counts as one kill,
+       * retaliation and ability damage included. Never heals above max.
+       */
+      type: "HEAL_PER_KILL";
+      amount: number;
+    }
+  | {
+      /**
+       * Forge Cyber Zombies: "Double the Attack die's outcome." The resolved
+       * face (after rerolls/advantage) is multiplied by 2 on every attack of
+       * this unit, retaliation included (-1 → -2, +1 → +2).
+       */
+      type: "DOUBLE_ATTACK_DIE_OUTCOME";
+    }
+  | {
+      /**
+       * Forge Jump Troopers: at the start of each Combat round roll an Attack
+       * die; on a face >= `minRoll` the unit gains +`amount` Initiative for
+       * that round. Resolved in src/engine/forge.ts.
+       */
+      type: "ROUND_START_INITIATIVE_ROLL";
+      minRoll: number;
       amount: number;
     }
   | {
@@ -2325,6 +2367,95 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Teleport",
     text: "[activation] At the start of its activation this unit may teleport one of your other units (a friendly unit, never itself or an enemy) to an empty space — optional, and it still acts as normal afterwards.",
     effect: { type: "TELEPORT_ANY_AT_ACTIVATION" },
+    implementationStatus: "implemented"
+  },
+  // ---- Forge (expansion) unit abilities ----------------------------------
+  "forge-double-attack-die": {
+    id: "forge-double-attack-die",
+    name: "Overdriven Chainsaw",
+    text: "[unit_passive] Double the Attack die's outcome (a -1 becomes -2, a +1 becomes +2) on every attack, Retaliation Attacks included.",
+    effect: { type: "DOUBLE_ATTACK_DIE_OUTCOME" },
+    implementationStatus: "implemented"
+  },
+  "forge-chainsaw-shred": {
+    id: "forge-chainsaw-shred",
+    name: "Chainsaw Shred",
+    text: "[unit_attack] The target has -1 Defense during this attack (to a minimum of 0).",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "forge-psionic-daze": {
+    id: "forge-psionic-daze",
+    name: "Psionic Daze",
+    text: "[unit_attack] After the attack, the target has -2 Initiative through its next combat round.",
+    effect: { type: "ON_ATTACK_INITIATIVE_DEBUFF", amount: -2 },
+    implementationStatus: "implemented"
+  },
+  "forge-bruiser-rocket-1": {
+    id: "forge-bruiser-rocket-1",
+    name: "Rocket Splash",
+    text: "[unit_attack] When the target of the attack is not adjacent to this unit, deal 1 damage to a unit adjacent to the target (the attacker chooses).",
+    effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: true },
+    implementationStatus: "implemented"
+  },
+  "forge-bruiser-rocket-2": {
+    id: "forge-bruiser-rocket-2",
+    name: "Rocket Barrage",
+    text: "[unit_attack] When the target of the attack is not adjacent to this unit, deal 2 damage to a unit adjacent to the target (the attacker chooses).",
+    effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 2, requiresNonAdjacentTarget: true },
+    implementationStatus: "implemented"
+  },
+  "forge-vet-cyberbrute-mend": { id: "forge-vet-cyberbrute-mend", name: "Reactive Repair", text: "When damaged by a spell or specialty, heal 1 HP.", effect: { type: "FORGE_VETERANCY", mechanic: "cyberbrute-mend" }, implementationStatus: "implemented" },
+  "forge-vet-open-wound": { id: "forge-vet-open-wound", name: "Open Wound", text: "Attacks open a wound: the enemy loses 1 HP at the start of each combat round.", effect: { type: "FORGE_VETERANCY", mechanic: "open-wound" }, implementationStatus: "implemented" },
+  "forge-vet-tank-reposition": { id: "forge-vet-tank-reposition", name: "Counterdrive", text: "After retaliating, this unit may move up to 2 spaces.", effect: { type: "FORGE_VETERANCY", mechanic: "tank-reposition" }, implementationStatus: "implemented" },
+  "forge-vet-tank-death-burst": { id: "forge-vet-tank-death-burst", name: "Death Burst", text: "When this unit dies, deal 1 damage to up to 3 enemies.", effect: { type: "FORGE_VETERANCY", mechanic: "tank-death-burst" }, implementationStatus: "implemented" },
+  "forge-vet-jump-guard": { id: "forge-vet-jump-guard", name: "Aerial Guard", text: "At round start, roll an Attack die. On 0 or +1, gain +1 Defense for that round.", effect: { type: "FORGE_VETERANCY", mechanic: "jump-guard" }, implementationStatus: "implemented" },
+  "forge-vet-bruiser-guard": { id: "forge-vet-bruiser-guard", name: "Flak Armor", text: "+1 Defense against ranged and flying units.", effect: { type: "FORGE_VETERANCY", mechanic: "bruiser-guard" }, implementationStatus: "implemented" },
+  "forge-vet-bruiser-break": { id: "forge-vet-bruiser-break", name: "Armor Break", text: "When this unit attacks with a -1 or 0 Attack die, the enemy loses 1 Defense until this unit's next activation.", effect: { type: "FORGE_VETERANCY", mechanic: "bruiser-break" }, implementationStatus: "implemented" },
+  "forge-vet-zombie-repair": { id: "forge-vet-zombie-repair", name: "Motion Scavenger", text: "Whenever a unit moves, heal 1 HP; at most twice per combat round.", effect: { type: "FORGE_VETERANCY", mechanic: "zombie-repair" }, implementationStatus: "implemented" },
+  "forge-vet-grunt-tempo": { id: "forge-vet-grunt-tempo", name: "Tempo Field", text: "This unit and all surrounding units gain +2 Initiative.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-tempo" }, implementationStatus: "implemented" },
+  "forge-vet-grunt-cover": { id: "forge-vet-grunt-cover", name: "Cover Field", text: "All surrounding units are treated as having a Defend token.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-cover" }, implementationStatus: "implemented" },
+  "forge-vet-grunt-mark": { id: "forge-vet-grunt-mark", name: "Target Lock", text: "Attacking an enemy marks it. This unit's later attacks against it ignore 3 Defense for the rest of combat.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-mark" }, implementationStatus: "implemented" },
+  "forge-jetpack-surge-1": {
+    id: "forge-jetpack-surge-1",
+    name: "Jetpack Surge",
+    text: "[unit_passive] At the start of each Combat round, roll the Attack die: on +1, this unit gains +3 Initiative this round.",
+    effect: { type: "ROUND_START_INITIATIVE_ROLL", minRoll: 1, amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "forge-jetpack-surge-2": {
+    id: "forge-jetpack-surge-2",
+    name: "Jetpack Overdrive",
+    text: "[unit_passive] At the start of each Combat round, roll the Attack die: on 0 or +1, this unit gains +3 Initiative this round.",
+    effect: { type: "ROUND_START_INITIATIVE_ROLL", minRoll: 0, amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "forge-tank-cannon-2": {
+    id: "forge-tank-cannon-2",
+    name: "Twin Cannon",
+    text: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, your Attack is 2.",
+    effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 2, optional: true, enemiesOnly: true },
+    implementationStatus: "implemented"
+  },
+  "forge-tank-cannon-3": {
+    id: "forge-tank-cannon-3",
+    name: "Heavy Twin Cannon",
+    text: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, your Attack is 3.",
+    effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 3, optional: true, enemiesOnly: true },
+    implementationStatus: "implemented"
+  },
+  "forge-cyberbrute-crush": {
+    id: "forge-cyberbrute-crush",
+    name: "Arc Crush",
+    text: "[unit_attack] Decrease the target's Defense by half, rounded up (to a minimum of 0), for this attack. Uses the target's full current Defense: card, spell and ability bonuses and the Defend die's +1 included.",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1, fraction: "half-round-up" },
+    implementationStatus: "implemented"
+  },
+  "forge-cyberbrute-feast": {
+    id: "forge-cyberbrute-feast",
+    name: "Scrap Feast",
+    text: "[unit_passive] Each time this unit kills a unit, it heals 1 Health (never above its maximum). Every enemy side, stack layer or Stack Token it defeats counts, Retaliation included.",
+    effect: { type: "HEAL_PER_KILL", amount: 1 },
     implementationStatus: "implemented"
   },
   "magog-fireball-splash": {
@@ -4099,6 +4230,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-familiar-backlash": { id: "town-familiar-backlash", name: "Impish Backlash", text: "Whenever an enemy casts a Spell, deal 1 damage to a random enemy unit.", effect: { type: "TOWN_VETERANCY", mechanic: "familiar-backlash" }, implementationStatus: "implemented" },
   "town-demon-paralyze": { id: "town-demon-paralyze", name: "Petrifying Hide", text: "After an adjacent attacker resolves +1 on its Attack die, paralyze it.", effect: { type: "TOWN_VETERANCY", mechanic: "demon-paralyze" }, implementationStatus: "implemented" },
   "town-pit-mend": { id: "town-pit-mend", name: "Feed on the Fallen", text: "Whenever another ally dies, loses a Stack, or changes from Pack to Few, heal 1 HP.", effect: { type: "TOWN_VETERANCY", mechanic: "pit-mend" }, implementationStatus: "implemented" },
+  "town-devil-luck": { id: "town-devil-luck", name: "Devil's Luck", text: "Twice per combat round, when an enemy unit resolves +1 on its Attack die, that attack gets -1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-luck" }, implementationStatus: "implemented" },
   "town-devil-slow": { id: "town-devil-slow", name: "Crippling Strike", text: "Attacked enemies can move at most 2 spaces during their next activation.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-slow" }, implementationStatus: "implemented" },
   "town-devil-draw": { id: "town-devil-draw", name: "Spoils of Death", text: "After defeating an enemy, including Pack to Few or a lost Stack, draw 1 card, at most 3 per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-draw" }, implementationStatus: "implemented" },
   "town-efreet-mend": { id: "town-efreet-mend", name: "Cinder Renewal", text: "Enemy retaliation has -1 Attack. After being retaliated against, heal 1 HP if alive.", effect: { type: "TOWN_VETERANCY", mechanic: "efreet-mend" }, implementationStatus: "implemented" },
@@ -4530,7 +4662,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-temple_guardian": {
     id: "commander-cast-temple_guardian",
     name: "Precision",
-    text: "[activation] Once per combat round: a friendly ranged unit gains +1/+1/+2 Attack (Power 0/1/2) and ignores all ranged penalties for 2 combat rounds. Does not end the activation.",
+    text: "[instant] When a friendly ranged unit attacks a nonadjacent target, buff that attack once per combat round. Power 0/1: first use +1/+2 Attack, second +1; both ignore ranged penalties, up to twice per combat. Power 2: +2 Attack on uses 1-3, then +1 on use 4; only use 1 ignores ranged penalties.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
@@ -4601,6 +4733,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "commander-cast-bulwark",
     name: "Rune Mend",
     text: "[activation] Once per combat round: spend 1/2/2 Runes (Power 0/1/2) to remove 1/2/3 damage from a friendly unit. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-forge": {
+    id: "commander-cast-forge",
+    name: "Arc Discharge",
+    text: "[activation] Once per combat round: deal 1/2/3 damage (Power 0/1/2) to an enemy unit anywhere. Effect damage: no Retaliation, not reduced by Defense. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

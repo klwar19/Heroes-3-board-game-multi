@@ -83,6 +83,7 @@ const creatureVoices: Record<string, string> = {
   // Neutral-only creatures
   boars: "boar",
   halflings: "halfling",
+  grenadiers: "halfling", // neutral Grenadiers: the Halfling voice set
   peasants: "peasant",
   rogues: "rogue",
   mummies: "mummy",
@@ -179,6 +180,21 @@ const creatureVoices: Record<string, string> = {
   gunslingers: "gunslinger",
   couatls: "couatl",
   dreadnoughts: "dreadnought",
+  // Forge: cyber-enhanced classic creatures keep their base creature's H3
+  // voice (Grunts = goblin gunners, Cyber Zombies = zombies, Watchers = the
+  // beholder skull-drone, Bruisers = a plain green Ogre with a rocket launcher,
+  // Jump Troopers = the Minotaur King, Tanks = the Naga Queen on treads,
+  // Cyberbrutes = the Ancient Behemoth). Their machinery (plasma pistol,
+  // chainsaw, jetpack, treads, rockets, cannon, cyber-servos) is mixed in per
+  // action below from the DOOM / Factory sets (actionSoundOverrides,
+  // moveSoundOverrides, attackFlourishes) and the shot plans in fx.ts.
+  grunts: "goblin",
+  cyber_zombies: "zombie-lord",
+  watchers: "beholder",
+  bruisers: "ogre",
+  jump_troopers: "minotaur-king",
+  tanks: "naga-queen",
+  cyberbrutes: "ancient-behemoth",
   // Imperium of Man: reuse complete, role-matched H3 sets. Ranged profiles
   // deliberately map to sets with real shoot clips; vehicles use mechanical
   // or heavy-creature sets so every combat action remains audible.
@@ -508,7 +524,10 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   demon_ancestor: { attack: "minotaur", move: "minotaur", defend: "minotaur", hurt: "minotaur", death: "minotaur" },
   // The Imperium commander uses the requested female presentation. Sea Witch
   // is the complete female H3 battle set and includes every required action.
-  lion_el_jonson: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" }
+  lion_el_jonson: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" },
+  // Forge — the Storm Engineer is a cybernetic tinkerer: the Factory Mechanic
+  // (Engineer) set, a complete converted H3 voice line.
+  forge: { attack: "mechanic", move: "mechanic", defend: "mechanic", hurt: "mechanic", death: "mechanic" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */
@@ -680,12 +699,32 @@ const doomMoveSoundOverrides: Record<string, string> = {
 const moveSoundOverrides: Record<string, string> = {
   ...doomMoveSoundOverrides,
   arch_devils: "units/arch-devil-teleport",
-  gorynych: "units/black-dragon-move"
+  gorynych: "units/black-dragon-move",
+  // Forge machinery on the move: the Watcher skull-drone floats like the
+  // Pain Elemental; Jump Troopers blast off with the Revenant's rocket whoosh
+  // (jetpack thrust); Tanks roll on the Factory Juggernaut's clanking treads;
+  // Cyberbrutes (Forge gold and the azure neutral) move with the Crystal
+  // Dragon's heavy crystalline stride (user direction).
+  watchers: "units/doom-pain-elemental-move",
+  jump_troopers: "doom/dsskeatk",
+  tanks: "units/dreadnought-move",
+  cyberbrutes: "units/crystal-dragon-move"
 };
 
 const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
   ...doomActionSoundOverrides,
-  dracolich: { shoot: "units/lich-shoot" }
+  dracolich: { shoot: "units/lich-shoot" },
+  // Forge per-action mixes. Shooters keep their creature's voice on "shoot"
+  // (goblin / ogre / naga yell) while the weapon report rides the shot plan in
+  // fx.ts (plasma zap, rocket launch + blast, twin cannon), so it is never
+  // doubled. Cyber Zombies strike with the DOOM chainsaw (the zombie groan is
+  // layered under it as a flourish); Watchers die with the Pain Elemental's
+  // burst; Tanks break apart like the Juggernaut; Cyberbrutes strike with the
+  // Behemoth's own attack (user direction) and die with the Cyberdemon's roar.
+  cyber_zombies: { attack: "doom/dssawhit" },
+  watchers: { death: "doom/dspedth" },
+  tanks: { death: "units/dreadnought-death" },
+  cyberbrutes: { attack: "units/behemoth-attack", death: "doom/dscybdth" }
 };
 
 /**
@@ -819,7 +858,9 @@ const attackFlourishes: Record<string, string> = {
   akagi: "units/ballista-shoot",
   // The Hell Steed is a NORMAL melee attacker (no Magic Arrow), so its blow no
   // longer layers a magic-arrow zap — it just plays its war-unicorn strike voice.
-  santa_gremlin: "spells/ice-bolt"
+  santa_gremlin: "spells/ice-bolt",
+  // Forge: the Cyber Zombie groans under its chainsaw.
+  cyber_zombies: "units/zombie-lord-attack"
 };
 
 /**

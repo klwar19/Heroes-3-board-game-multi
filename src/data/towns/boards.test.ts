@@ -35,16 +35,25 @@ describe("town board manifest", () => {
     }
   });
 
-  it("every board has an art source (scan or panorama) and sane geometry", () => {
+  it("every board has an art source (scan, panorama or whole printed face) and sane geometry", () => {
     for (const spec of Object.values(townBoardSpecs)) {
       expect(
-        Boolean(spec.emptyImage || spec.panoramaImage),
-        `${spec.factionId} board needs an empty scan or a panorama`
+        Boolean(spec.emptyImage || spec.panoramaImage || spec.boardFaceImage),
+        `${spec.factionId} board needs an empty scan, a panorama or a whole board face`
       ).toBe(true);
       // A fully-built image only makes sense over an empty base to reveal from:
-      // an empty scan (scan boards) OR the empty panorama (designed boards).
+      // an empty scan (scan boards), the empty panorama or the empty face
+      // (designed boards).
       if (spec.fullImage) {
-        expect(Boolean(spec.emptyImage || spec.panoramaImage)).toBe(true);
+        expect(Boolean(spec.emptyImage || spec.panoramaImage || spec.boardFaceImage)).toBe(true);
+      }
+      // A whole printed face (Factory, Forge) is the complete empty board: its
+      // built state comes from seven aligned built strips, one per bar.
+      if (spec.boardFaceImage) {
+        expect(spec.emptyImage, `${spec.factionId} face board is not a scan board`).toBeUndefined();
+        expect(spec.physicalPanoramaTiles, `${spec.factionId} face board reveals aligned strips`).toBe(true);
+        expect(spec.barTileImages, `${spec.factionId} face board ships seven built strips`).toHaveLength(7);
+        expect(new Set(spec.barTileImages).size, `${spec.factionId} built strips must be unique`).toBe(7);
       }
       const { window, tracks, tokens, definitions, aspect } = spec.geometry;
       expect(aspect[0]).toBeGreaterThan(aspect[1]);
@@ -134,6 +143,29 @@ describe("town board manifest", () => {
       if (spec.emptyImage) {
         // Scan boards print their own panel — no pasted crop.
         expect(spec.panelImage, `${spec.factionId} is a scan board and needs no panelImage`).toBeUndefined();
+        continue;
+      }
+      if (spec.printedPanelInBase) {
+        // A whole printed face prints its own tracks and token wells, so it
+        // needs neither a pasted crop nor its rectangle — but that face must
+        // exist, and the markers/buttons must land in its lower-right panel
+        // (below the bars, right of the definition cards).
+        expect(spec.boardFaceImage, `${spec.factionId} prints its panel in a board face`).toBeTruthy();
+        expect(spec.panelImage, `${spec.factionId} must not paste a second panel over its face`).toBeUndefined();
+        const { tracks, tokens, window, definitions } = spec.geometry;
+        for (const row of tracks.rows) {
+          expect(row.y).toBeGreaterThan(window.bottom);
+          expect(row.y).toBeLessThan(1);
+        }
+        expect(tracks.iconX).toBeGreaterThan(definitions.right);
+        expect(tracks.firstCellX).toBeGreaterThan(tracks.iconX);
+        expect(tracks.firstCellX + 7 * tracks.cellPitchX).toBeLessThan(1);
+        for (const slot of tokens.slots) {
+          expect(slot.x).toBeGreaterThan(definitions.right);
+          expect(slot.x).toBeLessThan(1);
+          expect(slot.y).toBeGreaterThan(Math.max(...tracks.rows.map((row) => row.y)));
+          expect(slot.y).toBeLessThan(1);
+        }
         continue;
       }
       const panel = spec.geometry.panel;

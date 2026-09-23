@@ -1,7 +1,7 @@
 import { townDefenseToken } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
-import { balanceIntelligenceWindowClosed } from "./combat-timing";
+import { combatRoundStartWindowOpen, intelligenceCastWindowClosed } from "./combat-timing";
 import { appendEvent, nextEventNumber } from "./events";
 import { houseRuleEnabled } from "./house-rules";
 import {
@@ -143,7 +143,7 @@ export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId
   // Polish Balance Pack: the reprinted Intelligence scopes the free cast to the
   // START of the current combat round, so the freedom (and the Polish-Book
   // enabler waiver that reads it) closes the moment a unit acts that round.
-  if (balanceIntelligenceWindowClosed(state)) {
+  if (intelligenceCastWindowClosed(state)) {
     return false;
   }
   return state.activeEffects.some(
@@ -159,7 +159,7 @@ export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId
  */
 export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId): boolean {
   // Balance Pack: the reprint's no-limit rider is likewise round-start only.
-  if (balanceIntelligenceWindowClosed(state)) {
+  if (intelligenceCastWindowClosed(state)) {
     return false;
   }
   // Polish Spell Book reading: Expert Intelligence raises the limit by +1 rather
@@ -541,6 +541,11 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
   if (effect.appliesOnlyToVariant && unit.variant !== effect.appliesOnlyToVariant) {
     return false;
   }
+  // Unit-name gate (Henrietta's Halflings I: "+1 Defense to all your Halflings
+  // and Grenadiers units"): the printed name must be one of the listed names.
+  if (effect.appliesOnlyToUnitNames && !effect.appliesOnlyToUnitNames.includes(unit.name)) {
+    return false;
+  }
   if (effect.appliesOnlyToGrades && !effect.appliesOnlyToGrades.includes(unit.grade)) {
     return false;
   }
@@ -871,6 +876,12 @@ export function effectiveInitiative(
         return Math.max(best, getFriendlyAdjacentInitiativeAuraAmount(candidate));
       }, 0)
     : 0;
+  const forgeTempo = combat
+    ? Object.values(combat.units).reduce((total, candidate) =>
+        total + (candidate.damage < candidate.maxHealth && candidate.position >= 0 && unit.position >= 0 &&
+          (candidate.id === unit.id || isAdjacent(candidate.position, unit.position)) &&
+          getUnitAbilityDefinitions(candidate).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "FORGE_VETERANCY" && ability.effect.mechanic === "grunt-tempo") ? 2 : 0), 0)
+    : 0;
   const astralHunt =
     (combat?.worldRound ?? 1) % 2 === 0 &&
     getUnitAbilityDefinitions(unit).some(ability =>
@@ -879,7 +890,7 @@ export function effectiveInitiative(
       ability.effect.mechanic === "werewolf-astral-hunt"
     ) ? 3 : 0;
   const battlefieldShift = combat?.battlefieldCondition?.id === "raining-ash" && unit.type === "flying" ? -2 : 0;
-  return unit.initiative + amplified + adjacentEnemyAura + maidAura + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0) + battlefieldShift;
+  return unit.initiative + amplified + adjacentEnemyAura + maidAura + forgeTempo + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0) + battlefieldShift;
 }
 
 /**
@@ -1571,4 +1582,32 @@ export function discardOngoingCardVoluntarily(
   const effectIds = new Set(player.ongoingCards[heldIndex].effectIds);
   state.activeEffects = state.activeEffects.filter((effect) => !effectIds.has(effect.id));
   releaseEndedOngoingCards(state);
+}
+
+/** The player holds Intelligence's unspent one-shot cast (classic or reprint). */
+export function playerHasIntelligenceOneShot(state: GameState, playerId: PlayerId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true)
+  );
+}
+
+/**
+ * The Intelligence window: whose turn it is to "play a Spell card" (or skip)
+ * before any unit activates. Derived, never stored, so every path that creates
+ * the one-shot effect (on-turn play, reaction-window play) opens it. The
+ * attacker answers first when both fighters hold one.
+ */
+export function intelligenceCastOwner(state: GameState): PlayerId | null {
+  const combat = state.combat;
+  if (!combat || combat.prep || combat.outcome || !combatRoundStartWindowOpen(combat)) {
+    return null;
+  }
+  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (state.players[playerId] && playerHasIntelligenceOneShot(state, playerId)) {
+      return playerId;
+    }
+  }
+  return null;
 }

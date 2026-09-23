@@ -213,6 +213,26 @@ describe("Balance Pack Cards of Prophecy option B — ABILITY rolls (Death Stare
     expect(new Set(offers.map((offer) => offer.dieIndex))).toEqual(new Set([0, 1]));
   });
 
+  it("it is a PRE-roll declaration: the throw stays hidden until the holder answers", () => {
+    // USER RULING 2026-09-23: "you play this card not knowing the result of a
+    // roll … it is not a reroll. Same in combat."
+    const state = stareWindow({ balance: true, rolls: SCENE });
+    expect(abilityWindow(state).prophecyBlind).toBe(true);
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    // Only "play it" (per die) and "roll without it" — no face is named anywhere.
+    expect(labels.some((label) => /Keep/i.test(label))).toBe(false);
+    expect(labels.some((label) => /-1|\+1/.test(label))).toBe(false);
+    expect(labels.some((label) => /without Cards of Prophecy/i.test(label))).toBe(true);
+    // Answering either way ends the blind stage.
+    const played = applyOk(state, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: abilityWindow(state).id,
+      dieIndex: 1
+    });
+    expect(abilityWindow(played).prophecyBlind ?? false).toBe(false);
+  });
+
   it("spending it throws the chosen die 3 times and the CHOSEN result really petrifies", () => {
     let state = stareWindow({ balance: true, rolls: SCENE });
     const choice = abilityWindow(state);

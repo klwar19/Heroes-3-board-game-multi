@@ -46,8 +46,9 @@ function getVisibleReactionWindow(window: ReactionWindow | null, viewerPlayerId:
     return null;
   }
 
+  const { helmCounterPending: _authoritativePending, ...publicWindow } = window;
   return {
-    ...window,
+    ...publicWindow,
     triggerEvent: cloneSerializable(window.triggerEvent),
     allowedPlayerIds: [...window.allowedPlayerIds],
     legalReactions: {
@@ -76,6 +77,23 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
       subterraneanTilePick: choice.subterraneanTilePick
         ? { ...choice.subterraneanTilePick, candidates: ["hidden", "hidden"] }
         : undefined
+    };
+  }
+
+  // Cards of Prophecy pre-roll stage on an ability roll: the die is already
+  // thrown by the seeded stream but must stay hidden from EVERY seat, the
+  // holder included (USER RULING 2026-09-23 — "you play this card not knowing
+  // the result of a roll"). The UI already refuses to show the dice while
+  // `prophecyBlind` is set; this strips the values from the wire too, so no
+  // client (or devtools reader) can peek before answering.
+  if (choice.type === "ATTACK_DIE_REROLL" && choice.prophecyBlind) {
+    return {
+      ...cloneSerializable(choice),
+      candidates: choice.candidates.map((candidate) => ({
+        ...cloneSerializable(candidate),
+        roll: 0,
+        rolls: []
+      }))
     };
   }
 
@@ -184,6 +202,18 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
               ? { toReturnTiers: [...choice.visionsScry.toReturnTiers] }
               : {})
           }
+        : undefined
+    };
+  }
+
+  if (choice.type === "OPTION_CHOICE" && choice.context === "oidana-scry-cards" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      oidanaScry: choice.oidanaScry
+        ? { ...choice.oidanaScry,
+            remaining: choice.oidanaScry.remaining.map(() => "hidden"),
+            toReturn: choice.oidanaScry.toReturn.map(() => "hidden") }
         : undefined
     };
   }
@@ -570,6 +600,24 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
                 ...base.combat.enemyForce,
                 cardIds: base.combat.enemyForce.cardIds.map((cardId) =>
                   base.combat!.enemyForce!.playedCardIds.includes(cardId) ? cardId : HIDDEN_CARD_ID
+                )
+              }
+            }
+          : {}),
+        // Round-start offers that ride the war-machine queue for a card still
+        // in the owner's HAND (Polish Ballistics, Henrietta VI, Dark Mullich's
+        // Overclock) would otherwise name that hidden hand card to every seat.
+        // Machines in play are public and stay exact.
+        ...(base.combat.warMachineRound
+          ? {
+              warMachineRound: {
+                ...base.combat.warMachineRound,
+                pending: base.combat.warMachineRound.pending.map((entry) =>
+                  entry.playerId !== viewerPlayerId &&
+                  (entry.handBallistics || entry.henriettaHalflings ||
+                    entry.forgeOverclock || entry.forgeOverclockStart !== undefined)
+                    ? { ...entry, cardId: HIDDEN_CARD_ID }
+                    : entry
                 )
               }
             }

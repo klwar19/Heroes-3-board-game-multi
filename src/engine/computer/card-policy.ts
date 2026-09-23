@@ -9,7 +9,7 @@ import {
   getBattlefieldDistance,
   getOrthogonalNeighbors,
 } from "../battlefield";
-import { cancelSpellAllowsSchoolAndLevel, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
+import { cancelSpellAllowsSchoolAndLevel, deathRippleReachesUnit, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
 import { dealsElementalStrike } from "./strike-value";
@@ -98,12 +98,14 @@ const COMBAT_DAMAGE_EFFECTS = new Set<EffectDefinition["type"]>([
   "DEAL_DAMAGE",
   "AREA_DAMAGE_ADJACENT",
   "AREA_DAMAGE_ALL_ADJACENT",
+  "METEOR_SHOWER_SPELL",
   "AREA_DAMAGE_PICK_ADJACENT",
   "CHAIN_LIGHTNING",
   "INFERNO",
   "SLAYER_ATTACK",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "DAMAGE_ENEMY_UNITS_BY_GRADE",
+  "DEATH_RIPPLE_SPELL",
   "DAMAGE_ALL_ENEMY_UNITS",
   "SLOW_ALL_ENEMIES",
   "CREATE_HEAL_ON_ATTACKED",
@@ -119,6 +121,7 @@ const COMBAT_DAMAGE_EFFECTS = new Set<EffectDefinition["type"]>([
 const COMBAT_BUFF_EFFECTS = new Set<EffectDefinition["type"]>([
   "CREATE_ATTACK_BUFF",
   "CREATE_VARIANT_ATTACK_BUFF",
+  "HALFLINGS_RALLY",
   "CREATE_DEFENSE_BUFF",
   "CREATE_INITIATIVE_BUFF",
   "CREATE_FIRE_SHIELD",
@@ -173,6 +176,7 @@ const TEMPO_DENIAL_EFFECTS = new Set<EffectDefinition["type"]>([
 const SAVE_EFFECTS = new Set<EffectDefinition["type"]>([
   "CANCEL_LETHAL_ATTACK",
   "CANCEL_SPELL",
+  "CANCEL_INSTANT",
   "NEGATE_ATTACK",
   "REDIRECT_SPELL",
   "INTERFERE_SPELL",
@@ -182,6 +186,7 @@ const MAP_ECONOMY_EFFECTS = new Set<EffectDefinition["type"]>([
   "GAIN_RESOURCES",
   "DRAW_CARDS",
   "DRAW_NEUTRAL_RECRUIT_OFFER",
+  "NEUTRAL_DECK_UNIT_SEARCH",
   "RESOURCE_FORTUNE_PLAY",
   "GAIN_RECRUIT_DISCOUNT",
   // Community Balance Change Legion remove-sides: a map economy play (it opens
@@ -211,6 +216,7 @@ const MAP_SEARCH_EFFECTS = new Set<EffectDefinition["type"]>([
   "EAGLE_EYE_DIG",
   "TAKE_FROM_DISCARD",
   "VISIONS_SCRY",
+  "OIDANA_NEUTRAL_SCRY",
   "PANDORA_VISIT",
   "PANDORA_SCRY",
   "PANDORA_SILVER_REFRESH",
@@ -462,7 +468,8 @@ export function cardKeepValue(
     const isCounter = (entry: CardDefinition) =>
       entry.effect.type === "CANCEL_SPELL" ||
       (entry.effect.type === "CHOOSE_ONE" &&
-        entry.effect.options.some((option) => option.effect.type === "CANCEL_SPELL"));
+        entry.effect.options.some((option) =>
+          option.effect.type === "CANCEL_SPELL" || option.effect.type === "CANCEL_INSTANT"));
     if (isCounter(card) && cardValueContext(view.state, view.playerId).enemyHeroThreat) {
       const counters = known.filter(isCounter).length;
       if (counters < 2) value += 14;
@@ -531,13 +538,23 @@ function areaDamageUnits(
   if (
     effect.type === "AREA_DAMAGE_ADJACENT" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
-    effect.type === "INFERNO"
+    effect.type === "INFERNO" ||
+    effect.type === "METEOR_SHOWER_SPELL"
   ) {
     const positions = new Set([
       ...(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false ? [] : [center]),
       ...getOrthogonalNeighbors(center),
     ]);
-    return living.filter((unit) => positions.has(unit.position));
+    // Zeestral VI spares friendly neighbours (the engine filters on the caster).
+    const enemiesOnly =
+      effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.adjacentEnemiesOnly === true;
+    return living.filter(
+      (unit) =>
+        positions.has(unit.position) &&
+        (!enemiesOnly ||
+          unit.position === center ||
+          unit.controllerId !== observation.playerId),
+    );
   }
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
     const adjacent = new Set(getOrthogonalNeighbors(center));
@@ -565,6 +582,24 @@ function scoreDamageEffect(
   target: TargetRef | undefined,
   base: number,
 ): number {
+  if (effect.type === "DEATH_RIPPLE_SPELL") {
+    const state = observation.state as unknown as GameState;
+    const handPower = state.players[observation.playerId]?.hand.filter(
+      (id) => baseCardId(id) === "stat.power"
+    ).length ?? 0;
+    const power = (card.power ?? 0) + standingSpellPower(state, observation.playerId, card) + handPower;
+    const enemies = Object.values(state.combat?.units ?? {}).filter((unit) =>
+      unit.controllerId !== observation.playerId &&
+      unitRemainingHealth(unit) > 0 &&
+      deathRippleReachesUnit(effect, unit, power) &&
+      previewSpellDamage(state, unit, card, effect.amount) > 0
+    );
+    if (enemies.length === 0) return 200;
+    const swing = enemies.reduce((total, unit) => total + 24 +
+      Math.min(35, Math.round(unitThreatValue(unit) / 2)) +
+      (unitRemainingHealth(unit) <= effect.amount ? 45 : 0), 0);
+    return Math.max(180, Math.min(900, base + swing));
+  }
   if (effect.type === "CHAIN_LIGHTNING" && target?.type === "unit") {
     const state = observation.state as unknown as GameState;
     const power = (card.power ?? 0) + (card.kind === "spell" ? standingSpellPower(state, observation.playerId, card) : 0);
@@ -573,12 +608,39 @@ function scoreDamageEffect(
   }
   const affected = areaDamageUnits(observation, effect, target);
   if (affected) {
-    const damage = areaDamageAmount(card, effect);
+    // This card has no Power-0 damage rung. Require enough visible Power before
+    // valuing the blast, and use its own two-row ladder rather than generic
+    // spell-damage estimates.
+    const meteorPower = effect.type === "METEOR_SHOWER_SPELL"
+      ? (card.power ?? 0) + standingSpellPower(
+          observation.state as unknown as GameState,
+          observation.playerId,
+          card,
+        ) + (observation.state.players[observation.playerId]?.hand.filter(
+          (id) => baseCardId(id) === "stat.power",
+        ).length ?? 0)
+      : 0;
+    if (effect.type === "METEOR_SHOWER_SPELL" && meteorPower < 2) return 200;
+    const damage = effect.type === "METEOR_SHOWER_SPELL"
+      ? (meteorPower >= 4 ? 2 : 1)
+      : areaDamageAmount(card, effect);
+    // Zeestral VI hits its chosen centre harder than the ring (2 vs 1).
+    const centreDamage =
+      effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.centerAmount !== undefined
+        ? effect.centerAmount
+        : damage;
+    const centrePosition =
+      target?.type === "space"
+        ? target.position
+        : target?.type === "unit"
+          ? observation.state.combat?.units[target.unitId]?.position
+          : undefined;
     let enemyHits = 0;
     const swing = affected.reduce((total, unit) => {
       const remaining = unitRemainingHealth(unit);
       const threat = unitThreatValue(unit);
-      const lethal = damage >= remaining;
+      const lethal =
+        (unit.position === centrePosition ? centreDamage : damage) >= remaining;
       if (unit.controllerId === observation.playerId) {
         // User ruling (2026-09-15): an AoE damage spell (Fireball / Frost Ring /
         // Meteor Shower) must AVOID catching our OWN gold lvl-7 bodies — never hit
@@ -1255,6 +1317,53 @@ function permanentPlayScore(observation: ComputerObservation, card: CardDefiniti
   return state.combat && !state.combat.prep ? 760 + Math.min(40, value / 4) : 1_015;
 }
 
+/**
+ * Helm of Chaos counter window: the paused enemy Instant (card + announced
+ * side) is public on the window. The single-use counter is spent on a Spell,
+ * hero-specialty or artifact Instant. A bare Statistic card is only worth it
+ * when it decides a body: their +Attack turns the pending hit on our unit
+ * lethal, or their +Defense pulls their unit under our lethal hit.
+ */
+function scoreHelmCounter(observation: ComputerObservation): number {
+  const state = observation.state as unknown as GameState;
+  const window = state.reactionWindow;
+  const announced = window?.helmCounterCardId
+    ? balanceCardLibrary(state, cardLibrary)[window.helmCounterCardId]
+    : undefined;
+  if (!announced) return 1_010;
+  // A Spell discarded for +1 Power is worth a bare statistic, not a real Spell.
+  if (window?.helmCounterPowerBoost) return 1_010;
+  if (announced.kind !== "statistic") return 1_140;
+  const effect = primaryEffect(announced, undefined);
+  const pending = pendingAttackValues(observation);
+  if (!pending || effect?.type !== "ADD_COMBAT_STAT") return 1_010;
+  const amount =
+    window?.helmCounterPlayMode === "expert"
+      ? (effect.expertAmount ?? effect.amount)
+      : effect.amount;
+  const remaining = unitRemainingHealth(pending.defender);
+  if (
+    effect.stat === "attack" &&
+    pending.defender.controllerId === observation.playerId &&
+    pending.damage < remaining &&
+    pending.damage + amount >= remaining
+  ) {
+    return 1_150;
+  }
+  if (
+    effect.stat === "defense" &&
+    // An elemental strike ignores Defense cards entirely — cancelling their
+    // +Defense with the one-use Helm would change nothing.
+    !pending.elemental &&
+    pending.attacker.controllerId === observation.playerId &&
+    pending.damage >= remaining &&
+    pending.damage - amount < remaining
+  ) {
+    return 1_150;
+  }
+  return 1_010;
+}
+
 function scoreSaveReaction(
   observation: ComputerObservation,
   effect: EffectDefinition,
@@ -1269,6 +1378,9 @@ function scoreSaveReaction(
   }
   if (effect.type === "NEGATE_ATTACK") {
     return 1_150 + modeBonus(mode) + ally;
+  }
+  if (effect.type === "CANCEL_INSTANT") {
+    return scoreHelmCounter(observation) + modeBonus(mode);
   }
   if (effect.type === "CANCEL_SPELL" || effect.type === "REDIRECT_SPELL") {
     if (effect.type === "CANCEL_SPELL" && counteredInstantHasNoBenefit(observation, effect, mode)) return 1_010;
@@ -1347,6 +1459,13 @@ function scoreMapEconomy(
   if (effect.type === "DIPLOMACY_SKIP_COMBAT" || effect.type === "DIPLOMACY_RECRUIT") {
     return base + 30;
   }
+  if (effect.type === "NEUTRAL_DECK_UNIT_SEARCH") {
+    // Henrietta's Halflings IV: a FREE Neutral unit (the legal-action gate only
+    // offers the side while a Halfling/Grenadier can actually be found). Worth
+    // a whole recruit's gold, so it outranks every ordinary map economy play —
+    // priced like a Legion voucher that saves a full recruit.
+    return 1_070;
+  }
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
     const state = observation.state as unknown as GameState;
     const savings = legionPurchaseSavings(state, observation.playerId, effect.amount, effect.valuables);
@@ -1402,6 +1521,15 @@ function scoreEffect(
 
   const state = observation.state as unknown as GameState;
   if (!isReaction) {
+    if (effect.type === "HELLSTORM_SIX_UNITS") {
+      const player = state.players[observation.playerId];
+      const available = player?.army.length ?? 0;
+      if (player?.hellstormSixUnitRound === state.round || available < 6) return 180;
+      // The six-unit side is a one-shot that REMOVES the card and only lasts
+      // this round: without a fight to field into it is a pure loss, so it
+      // must never outrank END_TURN (300).
+      return state.combat?.prep || upcomingFight(observation) ? 910 : 180;
+    }
     if (effect.type === "DIPLOMACY_SKIP_COMBAT" || effect.type === "DIPLOMACY_EASE_BATTLE") return 1_080;
     if (card.id === "ability.scholar" && effect.type === "SCHOLAR_EMPOWER_SWAP") return 180;
     if (card.id === "ability.scholar" && effect.type === "TAKE_FROM_DISCARD") {
@@ -1493,6 +1621,26 @@ function scoreEffect(
       if (missing <= 0 && !(clearsParalysis && paralyzed)) return 180;
       return 660 + Math.min(45, missing * 10) + (paralyzed && clearsParalysis ? 55 : 0);
     }
+  }
+
+  // Henrietta's Halflings I: a start-of-Combat army buff whose value is the
+  // number of Halfling/Grenadier bodies it lands on (plus the neutral ones that
+  // also gain Health). With none on the field it is a dead play — hold it.
+  if (effect.type === "HALFLINGS_RALLY") {
+    const combat = observation.state.combat;
+    const rallied = combat
+      ? Object.values(combat.units).filter(
+          (unit) =>
+            unit.controllerId === observation.playerId &&
+            effect.unitNames.includes(unit.name) &&
+            unitRemainingHealth(unit) > 0,
+        )
+      : [];
+    if (rallied.length === 0) {
+      return 120;
+    }
+    const neutrals = rallied.filter((unit) => unit.variant === "neutral").length;
+    return 700 + Math.min(60, rallied.length * 25 + neutrals * 10) + modeBonus(mode);
   }
 
   if (COMBAT_BUFF_EFFECTS.has(effect.type)) {
@@ -1664,6 +1812,54 @@ function pendingSpellBoostImpact(
   const cards = balanceCardLibrary(publicState, cardLibrary);
   const spell = cards[top.action.cardId];
   const target = top.action.target;
+  if (spell?.effect.type === "METEOR_SHOWER_SPELL" && target?.type === "space") {
+    const blast = new Set([target.position, ...getOrthogonalNeighbors(target.position)]);
+    if (!Object.values(combat.units).some((unit) =>
+      unit.controllerId !== observation.playerId &&
+      unitRemainingHealth(unit) > 0 && blast.has(unit.position))) return "no-ladder-step";
+    const power = resolvedSpellPowerForStackItem(publicState, top, cards);
+    if (power >= 4) return "no-ladder-step";
+    const nextRung = power < 2 ? 2 : 4;
+    if (power + boost >= nextRung) return "chips";
+    // A two-card climb must be allowed through its first, otherwise the AI
+    // would never reach either printed rung from Power 0 or Power 2.
+    const heldPower = publicState.players[observation.playerId]?.hand.filter(
+      (id) => baseCardId(id) === "stat.power",
+    ).length ?? 0;
+    return heldPower >= nextRung - power ? "chips" : "no-ladder-step";
+  }
+  if (spell?.effect.type === "DEATH_RIPPLE_SPELL") {
+    // Targetless: extra Power only matters when a higher rung sweeps an enemy
+    // body the current rung misses (silver at 2, gold / bank at 3).
+    const effect = spell.effect;
+    const power = resolvedSpellPowerForStackItem(publicState, top, cards);
+    const rungs = Object.keys(effect.maxGradeByPower).map(Number)
+      .concat(effect.bankUnitsAtPower)
+      .filter((rung) => Number.isFinite(rung) && rung > power)
+      .sort((left, right) => left - right);
+    const heldPower = publicState.players[observation.playerId]?.hand.filter(
+      (id) => baseCardId(id) === "stat.power",
+    ).length ?? 0;
+    // A two-card climb (0 -> 2, or straight to 3) must be allowed through its
+    // first step, like Meteor Shower above.
+    for (const rung of rungs) {
+      if (power + boost < rung && heldPower < rung - power) break;
+      const reach = Math.max(power + boost, rung);
+      const gained = Object.values(combat.units).filter((unit) =>
+        unit.controllerId !== observation.playerId &&
+        unitRemainingHealth(unit) > 0 &&
+        !deathRippleReachesUnit(effect, unit, power) &&
+        deathRippleReachesUnit(effect, unit, reach) &&
+        previewSpellDamage(publicState, unit, spell, effect.amount) > 0);
+      if (gained.length > 0) {
+        return gained.some((unit) =>
+          previewSpellDamage(publicState, unit, spell, effect.amount) >= unitRemainingHealth(unit))
+          ? "kills"
+          : "chips";
+      }
+    }
+    return "no-ladder-step";
+  }
   if (!spell || !target || target.type !== "unit") return null;
   if (!COMBAT_DAMAGE_EFFECTS.has(spell.effect.type)) return null;
   const defender = combat.units[target.unitId];

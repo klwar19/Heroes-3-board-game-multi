@@ -684,7 +684,15 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.tarnum_castle.6", optionIndex: 0 },
   { cardId: "specialty.tarnum_rampart.6", optionIndex: 1 },
   { cardId: "specialty.torosar.1", optionIndex: 1 },
-  { cardId: "specialty.torosar.6", optionIndex: 0 }
+  { cardId: "specialty.torosar.6", optionIndex: 0 },
+  // Forge — Zeestral's Storm Circuit: each level's printed "Instant: Deal N
+  // damage to an enemy unit" side follows the anytime-damage precedent
+  // (Adelaide / Glacius). Storm Circuit I's +Attack side is a printed
+  // UNIT_ATTACK_DECLARED reaction and IV's Draw 2 is a plain instant, so
+  // neither belongs here.
+  { cardId: "specialty.zeestral.1", optionIndex: 0 },
+  { cardId: "specialty.zeestral.4", optionIndex: 0 },
+  { cardId: "specialty.zeestral.6", optionIndex: 0 }
   // Yuiko Kurugaya's Melodia (Fortune) clone left the library in the 2026-09-05
   // Little Busters redesign; her Blade Dance set is a turn play, not an instant.
 ];

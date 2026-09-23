@@ -420,6 +420,34 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/board/tiles/sf1.webp"
     }
   },
+  S12: {
+    id: "S12",
+    group: "starting",
+    content: "forge_expansion",
+    // Grey ash wasteland (Forge's native lava is not a map terrain here); the
+    // closest existing value is Factory's "rough". The hexes and outer borders
+    // mirror the Factory starting tile &S1 (sf1.webp) EXACTLY so S12's art can
+    // be derived from that scan with only the town and palette repainted.
+    terrain: "rough",
+    fields: [
+      { location: "town", faction: "forge" },
+      { location: "resource_symbol" },
+      { location: "empty_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "blocked_field" },
+    ],
+    outerImpassable: [false, false, true, true, true, true],
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge starting tile; hex layout mirrors the Factory starting tile &S1 (sf1.webp), the art base. Verify against the physical tile before final release.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    },
+    assets: {
+      tileImage: "/assets/board/tiles/s12.webp"
+    }
+  },
   F19: {
     id: "F19",
     group: "far",

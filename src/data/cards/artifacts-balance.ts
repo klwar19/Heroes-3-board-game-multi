@@ -41,14 +41,14 @@ import { sampleCards } from "./sample";
  *        times up front. It is filtered OUT of the post-roll attack-die window
  *        (`prophecyLeavesDieWindow`) so it cannot also be spent after seeing the
  *        face.
- *      · ABILITY rolls (Death Stare & co.) and the MAP Resource/Treasure dice —
- *        these are thrown inline with no pre-roll window anywhere, so the card is
- *        offered at the window that DOES exist and its one use throws the chosen
- *        die twice more with a free pick among all three faces
- *        (`AttackRerollSource.rollExtraCandidates` / the `prophecyThreePick`
- *        visit-step flag). Same roll-3-keep-1 outcome, one moment later; the
- *        holder sees the first face before committing. A documented widening,
- *        stated rather than silently narrowed.
+ *      · MAP Resource/Treasure dice — the roll step first asks "play Cards of
+ *        Prophecy or roll normally" (`offerProphecyMapPreRoll`); the die is
+ *        thrown only after the answer (`prophecyThreePick` on a play).
+ *      · ABILITY rolls (Death Stare & co.) — the window opens BLIND
+ *        (`prophecyBlind`): the seeded throw is hidden until the holder plays
+ *        the card (`rollExtraCandidates`, free pick among all three) or rolls
+ *        without it. USER RULING 2026-09-23: "you play this card not knowing the
+ *        result of a roll … it is not a reroll. Same in combat."
  *    (2026-08-26: the ability-roll half was BROKEN — filtered out with nothing in
  *    its place, so the card was dead there and that window stopped opening at all.
  *    Pinned in `prophecy-ability-roll-three-throws.test.ts`.)

@@ -35,7 +35,8 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   kyousuke_natsume: "spell.prayer", // Little Busters, Assemble! (a rally over the adjacent allies)
   ibuki: "commander.ibuki.executive", // Executive Order
   lion_el_jonson: "commander.lion-slash", // Lion's Slash (Counterstroke is selected by cast name below)
-  sonya: "spell.haste" // Cheer (Shaman Haste reuse)
+  sonya: "spell.haste", // Cheer (Shaman Haste reuse)
+  forge: "commander.forge.arc-discharge" // Arc Discharge (three chain-lightning strikes + the Titan's shot report)
 };
 
 /**
@@ -70,7 +71,8 @@ export function commanderCastFxPlan(commanderSlug: string, castName?: string): S
 export const COMMANDER_SPECIALTY_SOUND: Record<string, string> = {
   charming: "spells/curse", // Succubus: a hex seizes an enemy
   "elemental-scourge": "spells/death-ripple", // Astral Spirit: sears every neutral
-  "rune-ritual": "effects/rune" // Rune Keeper: a rune is carved
+  "rune-ritual": "effects/rune", // Rune Keeper: a rune is carved
+  "storm-salvage": "units/automaton-move" // Storm Engineer: servos haul scrap off the field
 };
 
 /** The specialty sting sound for a trigger event, or undefined if none applies. */

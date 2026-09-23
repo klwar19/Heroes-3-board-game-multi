@@ -965,12 +965,12 @@ export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitSta
     if (commanderCastPower(state, unit) <= 0) return uses >= 1;
     return uses >= 2 || unit.commanderCastRound === state.combat?.round;
   }
-  // Tower Precision (instant reaction): once per combat round, at most two uses
-  // in the whole combat (the second use grants only +1 — resolved in
-  // resolveCommanderCast). Same budget shape as the Rampart Shield's Power 1+.
+  // Tower Precision: Power 0/1 keep two uses; Power 2 gets four. Every Power
+  // remains limited to one reaction per combat round.
   if (unit.commanderSlug === "temple_guardian") {
     const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
-    return uses >= 2 || unit.commanderCastRound === state.combat?.round;
+    const limit = commanderCastPower(state, unit) >= 2 ? 4 : 2;
+    return uses >= limit || unit.commanderCastRound === state.combat?.round;
   }
   // Stronghold Stone Skin (nerf): Power 0 is once per combat; Power 1 is once per
   // round with a maximum of two uses in the combat; Power 2 is once per round with
@@ -1212,10 +1212,13 @@ export function commanderDefenseReactionUnit(
  */
 export function commanderPrecisionReactionUnit(
   state: GameState,
-  attackerUnit: CombatUnitState
+  attackerUnit: CombatUnitState,
+  defenderUnit: CombatUnitState | undefined
 ): CombatUnitState | null {
   const combat = state.combat;
-  if (!combat || attackerUnit.type !== "ranged" || attackerUnit.damage >= attackerUnit.maxHealth) {
+  if (!combat || !defenderUnit || attackerUnit.position < 0 || defenderUnit.position < 0 ||
+      isAdjacent(attackerUnit.position, defenderUnit.position) ||
+      attackerUnit.type !== "ranged" || attackerUnit.damage >= attackerUnit.maxHealth) {
     return null;
   }
   const commander = findCommanderUnit(state, attackerUnit.controllerId);
@@ -1240,23 +1243,22 @@ export function commanderPrecisionReactionUnit(
   return commander;
 }
 
-/**
- * The Attack the Tower Precision reaction grants right now: `amountByPower[tier]`
- * on the FIRST cast of the combat, `secondCastAmount` on every later cast (all
- * Powers). Reads the commander's pre-resolution cast count, so the offer label
- * and the resolution agree. 0 for any non-precision-instant cast.
- */
+/** Tower Precision's Attack bonus for the next use at this Power. */
 export function commanderPrecisionReactionAmount(state: GameState, commander: CombatUnitState): number {
   const cast = commanderCastOf(commander);
   if (!cast || cast.effect.kind !== "precision-instant") {
     return 0;
   }
-  const priorCasts = commander.commanderCastCount ?? (commander.commanderCastRound !== undefined ? 1 : 0);
   const tier = commanderCastTierIndex(commanderCastPower(state, commander));
-  if (priorCasts >= 1) {
-    return cast.effect.secondCastAmountByPower[tier];
-  }
-  return cast.effect.amountByPower[tier];
+  const priorCasts = commander.commanderCastCount ?? (commander.commanderCastRound !== undefined ? 1 : 0);
+  if (tier === 2 && priorCasts >= 3) return cast.effect.fourthCastAmountAtPower2;
+  return priorCasts > 0 ? cast.effect.secondCastAmountByPower[tier] : cast.effect.amountByPower[tier];
+}
+
+/** Only Power 2 loses Precision's ranged-penalty waiver after its first use. */
+export function commanderPrecisionIgnoresRangedPenalty(state: GameState, commander: CombatUnitState): boolean {
+  if (commanderCastPower(state, commander) < 2) return true;
+  return (commander.commanderCastCount ?? (commander.commanderCastRound !== undefined ? 1 : 0)) === 0;
 }
 
 /** The Magic Arrow spell card the Tower's combat-start fetch pulls. */

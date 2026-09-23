@@ -277,9 +277,26 @@ export function parallelStateForPlayer(
   // queue empties the still-standing selection returns them to the battle it
   // names by itself. (Owed work INSIDE the selected battle honours the
   // selection, of course — that projection is where the work is answered.)
+  // Only the viewer's OWN flow counts here. A decision the viewer owes merely as
+  // the PvP-Neutral-Control COMMANDER of somebody else's guards (activation
+  // order, a guard reaction, formation) is not their own after-combat work: it
+  // never outranked their own window (`preferred === playerId` is honoured
+  // regardless), so it must not silently override an explicit watch / control
+  // selection either — otherwise SELECT_PARALLEL_CONTEXT is accepted yet the seat
+  // keeps acting in (and advancing) the commanded battle instead of the one it
+  // chose. The option list still flags that battle `needsInput`.
+  const commandsOnly = (combat: ParallelCombatContext["combat"]): boolean =>
+    Boolean(
+      combat &&
+        combat.attackerPlayerId !== playerId &&
+        combat.defenderPlayerId !== playerId &&
+        neutralCombatControllerId(state, combat) === playerId,
+    );
+  const owesOwnWorkIn = (context: Pick<ParallelCombatContext, "combat" | "pendingChoice" | "reactionWindow">): boolean =>
+    !commandsOnly(context.combat) && owesIn(context);
   const viewerOwesElsewhere =
-    (currentOwner !== preferred && owesIn(state)) ||
-    Object.entries(parked).some(([ownerId, context]) => ownerId !== preferred && owesIn(context));
+    (currentOwner !== preferred && owesOwnWorkIn(state)) ||
+    Object.entries(parked).some(([ownerId, context]) => ownerId !== preferred && owesOwnWorkIn(context));
   const honorsWatch = Boolean(preferred) && (preferred === playerId ||
     (preferredCombat && !preferredCombat.outcome && !viewerOwesElsewhere &&
       // A seat the AFK / turn-timeout driver is FORCING still only ever gets its

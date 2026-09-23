@@ -15,6 +15,13 @@ const ranks = (r1: string | RankStep, r2: string | RankStep, r3: string | RankSt
  * MGQ jobs retain their R3 signature; R2 uses the authored species reward.
  */
 export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
+  // Forge experience is authored per unit; keep its combat hooks isolated.
+  "forge.cyberbrutes": ranks("forge-vet-cyberbrute-mend", S({ defense: 1 }), S({ health: 1 }), H({ initiative: 3 }, "forge-vet-open-wound")),
+  "forge.tanks": ranks(H({ initiative: 2 }, "forge-vet-tank-reposition"), S({ health: 1 }), S({ defense: 1 }), "forge-vet-tank-death-burst"),
+  "forge.jump_troopers": ranks("forge-vet-jump-guard", S({ attack: 1 }), "veteran-mobility-1", S({ health: 1 })),
+  "forge.bruisers": ranks(S({ health: 1 }), "forge-vet-bruiser-guard", S({ attack: 1 }), "forge-vet-bruiser-break"),
+  "forge.cyber_zombies": ranks(H({ health: 1 }, "forge-vet-zombie-repair"), S({ defense: 1 }), "veteran-zombie-intercept", "veteran-defense-pierce"),
+  "forge.grunts": ranks("forge-vet-grunt-tempo", S({ attack: 1 }), H({ defense: 1 }, "forge-vet-grunt-cover"), "forge-vet-grunt-mark"),
   // Fuyuki: duelists gain utility; existing multi-hit kits get restrained payoffs.
   "fuyuki.assassins": ranks("ntv-first-volley", "ntv-strike-and-return", S({ attack: 1, health: 1 }), "ctv-returning-edge"),
   "fuyuki.riders": ranks(S({ health: 1, initiative: 1 }), "ntv-predators-mark", "ntv-bone-wall", "veteran-troll-snare"),

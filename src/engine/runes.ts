@@ -180,7 +180,7 @@ function syncRuneEffects(state: GameState, playerId: PlayerId, target: number): 
       duration: effect.duration
     });
     // A dedicated cue for the combat UI: a Rune Level just turned on, which the
-    // table announces with the Rune sound (effects/rune). Emitted on the climb
+    // table announces with the Rune Level seal sound (effects/rune-level-seal) and burst. Emitted on the climb
     // only (the while-loop runs solely when appliedLevel < target), so it never
     // fires for Level 0 or a no-change re-sync.
     appendEvent(state, {

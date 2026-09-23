@@ -267,33 +267,50 @@ describe("Cards of Prophecy option B on the map — roll 3 times, keep one (poli
     return state;
   }
 
-  it("a single Resource die is thrown THREE times and the owner keeps a CHOSEN one", () => {
-    // Seed pins the three candidate faces to 1 valuables / 3 gold / 6 gold — three
-    // distinct outcomes, so the pick is real, not a formality.
+  it("it is played BEFORE the roll, not knowing the result — then THREE throws and a CHOSEN one", () => {
     const state = balanceHold("artifact.cards_of_prophecy", "resource_symbol", "pfx-resource_symbol-0");
 
-    // The offer names the 3-throw pick, NOT the plain single reroll.
-    expect(visitChoice(state).options.some((option) => /roll the Resource die 3 times/i.test(option.label))).toBe(true);
-    expect(visitChoice(state).options.some((option) => /reroll the Resource die/i.test(option.label))).toBe(false);
+    // USER RULING 2026-09-23: "you play this card not knowing the result of a
+    // roll … it is not a reroll". The question comes BEFORE any die is thrown.
+    expect(countRolls(state, "resource"), "nothing is rolled before the answer").toBe(0);
+    const question = visitChoice(state);
+    expect(question.options.some((option) => /roll the Resource die 3 times/i.test(option.label))).toBe(true);
+    expect(question.options.some((option) => /reroll the Resource die/i.test(option.label))).toBe(false);
 
     resolveByLabel(state, (label) => /roll the Resource die 3 times/i.test(label));
+    expect(state.players.p1.hand).not.toContain("artifact.cards_of_prophecy");
+    expect(state.players.p1.discard).toContain("artifact.cards_of_prophecy");
 
-    // The re-throw event carries THREE candidate faces (one die, rolled thrice).
-    const rerollEvent = lastDiceEvent(state, "resource");
-    expect(rerollEvent?.results).toEqual(["1 valuables", "3 gold", "6 gold"]);
+    // ONE throw event carrying THREE candidate faces (one die, rolled thrice).
+    expect(countRolls(state, "resource")).toBe(1);
+    const results = lastDiceEvent(state, "resource")?.results ?? [];
+    expect(results).toHaveLength(3);
 
-    // All three are pickable — an ordinary reroll would offer only the latest.
+    // Every thrown face is pickable, and the card is not offered again as a reroll.
     const pick = visitChoice(state);
-    expect(pick.options.map((option) => option.label)).toEqual(
-      expect.arrayContaining(["1 valuables", "3 gold", "6 gold"])
-    );
+    const labels = pick.options.map((option) => option.label);
+    expect(labels).toEqual(expect.arrayContaining(results));
+    expect(labels.some((label) => /Cards of Prophecy/i.test(label))).toBe(false);
 
-    // OBSERVABLE: keep the 6-gold candidate and only that resource lands.
-    const goldBefore = state.players.p1.resources.gold;
-    const valuablesBefore = state.players.p1.resources.valuables;
-    resolveByLabel(state, (label) => label === "6 gold");
-    expect(state.players.p1.resources.gold).toBe(goldBefore + 6);
-    expect(state.players.p1.resources.valuables).toBe(valuablesBefore);
+    // OBSERVABLE: keep the richest-gold face (or the first) and it lands.
+    const chosen = results.find((label) => /gold/.test(label)) ?? results[0];
+    const [amount, ...rest] = chosen.split(" ");
+    const key = rest.join(" ") === "gold" ? "gold" : rest.join(" ") === "valuables" ? "valuables" : "buildingMaterials";
+    const before = state.players.p1.resources[key];
+    resolveByLabel(state, (label) => label === chosen);
+    expect(state.players.p1.resources[key]).toBe(before + Number(amount));
+  });
+
+  it("CONTROL: rolling WITHOUT it throws once, keeps the card, and offers no post-roll 3-pick", () => {
+    const state = balanceHold("artifact.cards_of_prophecy", "resource_symbol", "pfx-resource_symbol-0");
+    resolveByLabel(state, (label) => /without Cards of Prophecy/i.test(label));
+    expect(countRolls(state, "resource")).toBe(1);
+    expect(lastDiceEvent(state, "resource")?.results).toHaveLength(1);
+    expect(state.players.p1.hand).toContain("artifact.cards_of_prophecy");
+    const step = state.adventure!.pendingVisit?.steps[0];
+    if (step?.type === "CHOOSE_ONE") {
+      expect(step.options.some((option) => /Cards of Prophecy/i.test(option.label))).toBe(false);
+    }
   });
 
   it("CONTROL: with the rule OFF the Resource-die reroll is a single re-throw (one face), no pick", () => {
@@ -332,13 +349,7 @@ describe("Cards of Prophecy option B on the map — roll 3 times, keep one (poli
     // whole-roll re-throw ×3 would be 6 — this proves only one die was tripled.
     const rerollEvent = lastDiceEvent(state, "treasure");
     expect(rerollEvent?.results).toHaveLength(4);
-
-    // The untouched second die's face is still a standalone option (it "stays
-    // random"), alongside die 0's expanded candidates.
-    const labels = visitChoice(state).options.map((option) => option.label);
-    expect(labels).toContain("Roll 1 Resource die"); // die 1, kept as-is
-    expect(labels).toContain("Search (2) the Artifact deck"); // die 0, candidate 1
-    expect(labels).toContain("Gain 1 experience"); // die 0, candidates 2-3
+    expect(countRolls(state, "treasure"), "one throw — the card was declared before it").toBe(1);
   });
 });
 

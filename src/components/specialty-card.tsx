@@ -9,6 +9,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   FACTION_ACCENT,
+  FACTION_LEVEL_ART,
   LEVEL_STYLE,
   SPECIALTY_ICON_BY_HERO,
   parseSpecialtyCardId,
@@ -43,11 +44,15 @@ export function SpecialtyCard({ cardId, className }: { cardId: string; className
   const level = LEVEL_STYLE[parsed.level];
   const iconSrc = SPECIALTY_ICON_BY_HERO[parsed.slug];
   const accent = FACTION_ACCENT[hero.faction] ?? "#3a3a3a";
+  // The printed cards paint the level panel with a faction picture (Castle's
+  // blue griffin); a faction that has one draws it behind the medallion.
+  const levelArt = FACTION_LEVEL_ART[hero.faction];
 
   const style = {
     "--sc-border": `url("${assetUrl(`/assets/specialty-card/${level.border}.webp`)}")`,
     "--sc-leather": `url("${assetUrl("/assets/specialty-card/leather.webp")}")`,
-    "--sc-accent": accent
+    "--sc-accent": accent,
+    ...(levelArt ? { "--sc-level-art": `url("${assetUrl(levelArt)}")` } : {})
   } as CSSProperties;
 
   return (

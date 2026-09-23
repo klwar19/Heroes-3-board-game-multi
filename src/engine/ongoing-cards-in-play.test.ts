@@ -56,6 +56,14 @@ function liveEffectCardsInDiscard(state: GameState): string[] {
     if (effect.source.type !== "card" || effect.duration.type === "instant") {
       continue;
     }
+    // The one modelled exception: a `keepSourceInDiscard` effect is a one-shot
+    // enabler whose card is SPENT the instant it is played (Intelligence — the
+    // Polish reprint and, per the 2026-09-23 user ruling, the classic card too:
+    // "the card is spent either way"). `holdLiveOngoingCardsFromDiscard` skips
+    // it by design, so its card legitimately lies in the discard pile.
+    if (effect.keepSourceInDiscard) {
+      continue;
+    }
     const owner = state.players[effect.source.controllerId];
     if (owner?.discard.includes(effect.source.cardId)) {
       violations.add(`${owner.id}:${effect.source.cardId}:${effect.name}:${effect.duration.type}`);

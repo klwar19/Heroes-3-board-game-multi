@@ -25,7 +25,8 @@ export function specialtyCombatStatMultiplier(
   const affected = effect.stat === "attack" ? attacker : defender;
   if (
     unitMatchesSpecialtyName(affected?.name, effect.doubleForUnitName) ||
-    (effect.doubleForUnitType && affected?.type === effect.doubleForUnitType)
+    (effect.doubleForUnitType && affected?.type === effect.doubleForUnitType) ||
+    unitBelongsToFaction(affected, effect.doubleForUnitFaction)
   ) {
     return 2;
   }
@@ -44,6 +45,20 @@ export function specialtyCombatStatMultiplier(
   }
   // Signature names are bonus conditions, never eligibility restrictions.
   return 1;
+}
+
+/**
+ * "The effect doubles for <Faction> units" (Dark Mullich's Overclock I): a unit
+ * belongs to a faction when its unit definition id carries that faction's
+ * `<faction>.` prefix (the same test isUndeadUnit uses for `necropolis.`), so a
+ * Forge card fielded as Few, Pack or its Neutral face all count. A unit with no
+ * definition id (commanders, summons without a card) never matches.
+ */
+export function unitBelongsToFaction(
+  unit: Pick<CombatUnitState, "unitDefId"> | undefined,
+  faction: string | undefined,
+): boolean {
+  return Boolean(faction && unit?.unitDefId?.startsWith(`${faction}.`));
 }
 
 export function unitMatchesSpecialtyName(

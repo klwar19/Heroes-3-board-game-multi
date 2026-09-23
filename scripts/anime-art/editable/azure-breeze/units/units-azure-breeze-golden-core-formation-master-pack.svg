@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
   <title>Azure Breeze Sect Golden Core Elders PACK art proof</title>
-  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-core-formation-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="6" data-variant="pack" data-attack="5" data-defense="1" data-health="7" data-initiative="6" data-traits="RANGED,MAGIC" data-rule-capacity-lines="7"/>
+  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-core-formation-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="6" data-variant="pack" data-attack="5" data-defense="1" data-health="8" data-initiative="7" data-traits="RANGED,MAGIC" data-rule-capacity-lines="7"/>
   <defs>
     <linearGradient id="variantBand" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4a2d1d"/><stop offset=".52" stop-color="#29170f"/><stop offset="1" stop-color="#1a0d09"/></linearGradient>
     <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -51,14 +51,14 @@
       <path d="M-11-29H11V-11H29V11H11V29H-11V11H-29V-11H-11Z" fill="#d7d7a4" stroke="#f2e7bd"/>
       <path d="M0 18C-7 10-15 8-20 9-17 1-10-5 0-10 10-5 17 1 20 9 15 8 7 10 0 18Z" fill="#4f846d" stroke="#315f50" stroke-width="2.5"/>
     </g>
-      <text x="118" y="570" class="statNumber">7</text>
+      <text x="118" y="570" class="statNumber">8</text>
     </g><g id="stat-initiative">
       <g id="icon-initiative-cloud-step" transform="translate(118 649)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
     <circle cx="10" cy="-22" r="7" fill="#dce4c5"/>
     <path d="M7-13-2 4l-17 7M-2 4l12 8 15-3M4-6l17 2M10 12 2 29M-18 22h25c9 0 12-8 7-12"/>
     <path d="M-25 31H9c8 0 12-6 8-11" stroke="#8ab39a" stroke-width="3"/>
   </g>
-      <text x="118" y="718" class="statNumber">6</text>
+      <text x="118" y="718" class="statNumber">7</text>
     </g></g>
     <g id="primary-type">
       <g id="type-ranged-bow" transform="translate(202 184)" fill="none" stroke="#e5e2b1" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)"><path d="M-11-20C11-11 11 11-11 20M-11-20v40M-20 0h39M12-5l8 5-8 5"/></g>
@@ -74,6 +74,6 @@
     <text x="371" y="105" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)">Golden Core Elders</text>
     <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Kim Đan Trưởng Lão</text>
     <text x="376" y="814" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)"># PACK</text>
-    <g id="editable-rules"><path d="M84 887.88q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="896.88" class="ruleText">Talisman Arts — ignores penalties; first Spell +1</text><text x="384" y="917.88" class="ruleText">Power.</text><path d="M84 935.88q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="944.88" class="ruleText">Talisman Aura — adjacent allies reduce Spell damage by</text><text x="384" y="965.88" class="ruleText">1.</text></g>
+    <g id="editable-rules"><path d="M84 901.38q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="910.38" class="ruleText">Talisman Arts; Golden Core — once per round,</text><text x="384" y="931.38" class="ruleText">activating beside an ally gains 1 Sect Qi; Talisman</text><text x="384" y="952.38" class="ruleText">Aura — Spell damage to it and adjacent allies -1.</text></g>
   </g>
 </svg>

@@ -19,7 +19,7 @@ import { updateDevelopmentPlan } from "./development-plan";
 import { securedFarTileIds } from "./far-sweep";
 
 const difficulties = ["easy", "normal", "hard", "impossible"] as const;
-const factions = ["castle", "rampart", "inferno", "dungeon", "tower", "fortress", "stronghold", "conflux", "cove", "factory", "bulwark"] as const;
+const factions = ["castle", "rampart", "inferno", "dungeon", "tower", "fortress", "stronghold", "conflux", "cove", "factory", "bulwark", "forge"] as const;
 function fixture(difficulty: typeof difficulties[number], faction: typeof factions[number] = "castle") {
   const state = createAdventureGameState({ seed: `far-sweep-${faction}`, difficulty, events: false, rollFirstPlayer: false,
     players: [{ id: "p1", name: "Control", factionId: "castle", heroDefId: "catherine" },
@@ -376,7 +376,9 @@ describe("town strategy actual games", () => {
       return tile && tile.group === "far" && entry.difficulty === 3;
     });
     expect(farIII[0]?.round).toBeLessThanOrEqual(4);
-    expect(farIII[0]?.hand).toContain("spell.magic_arrow");
+    // No real Magic Arrow required in hand: the AI is granted a phantom
+    // Power + Magic Arrow in every fight (established ruling), so holding the
+    // paper copy is not part of a competent Far III entry.
     const firstTile = result.state.adventure!.fields[farIII[0].fieldId].tileInstanceId;
     const second = farIII.find(entry => result.state.adventure!.fields[entry.fieldId].tileInstanceId !== firstTile);
     expect(second, "must fight on a second Far tile").toBeDefined();

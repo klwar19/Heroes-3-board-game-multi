@@ -109,8 +109,9 @@ describe("expansion tile data", () => {
     // tiles A-S1 (Fuyuki) / W-S1 (Azure Breeze) / L-S1 (Hidden Leaf) / P-S1 (Azur
     // Lane) / D-S1 (Heavenly Demon Palace), plus LB-S1 (Little Busters) and
     // MGQ-S1 (Monster Girl Quest: Paradox), BA-S1 (Blue Archive), and IM-S1
-    // (Imperium of Man).
-    expect(Object.keys(allTileDefinitions)).toHaveLength(124);
+    // (Imperium of Man), plus the Forge S12 starting tile (Bulwark S10's own-
+    // content precedent; starting tiles never enter a supply pool).
+    expect(Object.keys(allTileDefinitions)).toHaveLength(125);
   });
 
   it("default pools include every tile of that group (all content sets + Random Town)", () => {
@@ -200,7 +201,7 @@ describe("expansion tile data", () => {
     // #N4-#N7, #C2/#C3) were cropped from the community subterranean map scans.
     const withArt = Object.values(allTileDefinitions).filter((tile) => tile.assets?.tileImage);
     expect(withArt).toHaveLength(Object.keys(allTileDefinitions).length);
-    expect(withArt).toHaveLength(124);
+    expect(withArt).toHaveLength(125);
   });
 });
 

@@ -579,13 +579,14 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     expect(labels.some((label) => /Halberdiers|Archangels|Champions/.test(label))).toBe(false);
   });
 
-  it("handles factions with no units yet defined (e.g. Forge) — no offer", () => {
+  it("handles factions with no units yet defined (an undefined faction id) — no offer", () => {
     const state = unexpectedGame(["bronze", "gold"]);
     // A faction not yet in the game has no roster, so there is nothing to recruit
     // even with Dwellings built — the offer self-guards instead of crashing.
-    // (Conflux and Cove now ship full rosters with neutral counterparts, so the
-    // never-implemented Forge stands in for the not-yet-defined case.)
-    state.players.p1.factionId = "forge" as typeof state.players.p1.factionId;
+    // (Conflux, Cove and now Forge all ship rosters — Forge takes the random
+    // fallback below — so a synthetic id the build does not define stands in
+    // for the not-yet-defined case.)
+    state.players.p1.factionId = "undefined_faction" as typeof state.players.p1.factionId;
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
     expect(state.adventure?.pendingVisit).toBeNull();
@@ -636,7 +637,8 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     "little_busters",
     "mgq",
     "azure_breeze",
-    "heavenly_demon"
+    "heavenly_demon",
+    "forge"
   ])(
     "offers %s a random Dwelling-eligible Neutral Unit instead of no effect",
     (factionId) => {

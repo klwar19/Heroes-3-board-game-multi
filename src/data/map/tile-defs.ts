@@ -196,7 +196,7 @@ export const coreTileDefinitions: Record<string, TileDefinition> = {
       { location: "empty_field" },
       { location: "settlement", difficulty: 3, faction: "dungeon" },
       { location: "magic_spring" },
-      { location: "artifact_symbol" },
+      { location: "artifact_symbol", difficulty: 2 },
       { location: "blocked_field" },
       { location: "shrine_of_magic_incantation" },
       { location: "trading_post" },

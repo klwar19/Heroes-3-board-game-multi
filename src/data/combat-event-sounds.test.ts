@@ -7,7 +7,7 @@ const library = soundManifest as Record<string, { src?: string }>;
 
 describe("combat-event sounds", () => {
   it("rings the rune cue when a Bulwark army reaches a Rune Level", () => {
-    expect(COMBAT_EVENT_SOUNDS.RUNE_LEVEL_REACHED).toBe("effects/rune");
+    expect(COMBAT_EVENT_SOUNDS.RUNE_LEVEL_REACHED).toBe("effects/rune-level-seal");
   });
 
   it("every combat-event sound resolves to a real clip on disk", () => {

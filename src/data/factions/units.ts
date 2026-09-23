@@ -1474,6 +1474,126 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     }
   },
 
+  // ---- Forge (expansion) units --------------------------------------------
+  // Transcribed from the Forge faction spec (tmp/forge/FORGE-SPEC.md): Archon/
+  // Gamefound Faction Focus previews + WIP card screenshots. High Attack, low
+  // Initiative, four ranged units. Every printed ability is engine-wired.
+  // Neutral sides follow Factory's precedent: the faction units never enter
+  // the Neutral Units decks (those are faction === "neutral" only).
+  "forge.grunts": {
+    id: "forge.grunts",
+    name: "Grunts",
+    faction: "forge",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 3, defense: 0, health: 2, initiative: 3, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-forge-bronze-grunts-few.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-pack.webp" },
+    neutral: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-neutral.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). Pack/Neutral Attack reroll uses the shared attack-die-reroll ability.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+  "forge.cyber_zombies": {
+    id: "forge.cyber_zombies",
+    name: "Cyber Zombies",
+    faction: "forge",
+    tier: "bronze",
+    type: "ground",
+    few: { attack: 3, defense: 0, health: 3, initiative: 3, cost: { gold: 4 }, abilities: ["forge-double-attack-die"], abilityText: "[unit_passive] Double the Attack die's outcome.", cardImage: "/assets/units-forge-bronze-cyber_zombies-few.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["forge-double-attack-die", "forge-chainsaw-shred"], abilityText: "[unit_passive] Double the Attack die's outcome. [unit_attack] The target has -1 [defense] during this attack.", cardImage: "/assets/units-forge-bronze-cyber_zombies-pack.webp" },
+    neutral: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["forge-double-attack-die"], abilityText: "[unit_passive] Double the Attack die's outcome.", cardImage: "/assets/units-forge-bronze-cyber_zombies-neutral.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). Neutral cost/ability printed. Doubled Attack die (every attack) and Pack -1 Defense are engine-wired.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+  "forge.watchers": {
+    id: "forge.watchers",
+    name: "Watchers",
+    faction: "forge",
+    tier: "bronze",
+    type: "ranged",
+    few: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["forge-psionic-daze"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round.", cardImage: "/assets/units-forge-bronze-watchers-few.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 8 }, abilities: ["forge-psionic-daze", "reduce-spell-damage-1"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round. [unit_passive] Reduce any [damage] from [spell] by 1.", cardImage: "/assets/units-forge-bronze-watchers-pack.webp" },
+    neutral: { attack: 3, defense: 0, health: 4, initiative: 5, cost: { gold: 8 }, abilities: ["forge-psionic-daze"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round.", cardImage: "/assets/units-forge-bronze-watchers-neutral.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). Psionic Daze resolves exactly like Bulwark Freezing Shot; Pack spell-damage reduction uses the shared ability.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+  "forge.bruisers": {
+    id: "forge.bruisers",
+    name: "Bruisers",
+    faction: "forge",
+    tier: "silver",
+    type: "ranged",
+    few: { attack: 3, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: ["forge-bruiser-rocket-1"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 1 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-few.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 5, cost: { gold: 12 }, abilities: ["forge-bruiser-rocket-2"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 2 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-pack.webp" },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 4, cost: { gold: 15 }, abilities: ["forge-bruiser-rocket-1"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 1 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-neutral.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). Few cost/ability and Neutral cost printed. Rocket splash reuses the Magog FLAT_DAMAGE_ADJACENT_TO_TARGET path.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+  "forge.jump_troopers": {
+    id: "forge.jump_troopers",
+    name: "Jump Troopers",
+    faction: "forge",
+    tier: "silver",
+    type: "flying",
+    few: { attack: 4, defense: 1, health: 5, initiative: 4, cost: { gold: 9 }, abilities: ["forge-jetpack-surge-1"], abilityText: "[unit_passive] At the start of each Combat round, roll the Attack die: on +1, this unit gains +3 [initiative] this round.", cardImage: "/assets/units-forge-silver-jump_troopers-few.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 5, cost: { gold: 14 }, abilities: ["forge-jetpack-surge-2"], abilityText: "[unit_passive] At the start of each Combat round, roll the Attack die: on 0 or +1, this unit gains +3 [initiative] this round.", cardImage: "/assets/units-forge-silver-jump_troopers-pack.webp" },
+    neutral: { attack: 4, defense: 1, health: 6, initiative: 5, cost: { gold: 17 }, abilities: ["forge-jetpack-surge-1"], abilityText: "[unit_passive] At the start of each Combat round, roll the Attack die: on +1, this unit gains +3 [initiative] this round.", cardImage: "/assets/units-forge-silver-jump_troopers-neutral.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). The round-start Attack-die roll (src/engine/forge.ts) grants a real current-round Initiative effect.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+  "forge.tanks": {
+    id: "forge.tanks",
+    name: "Tanks",
+    faction: "forge",
+    tier: "gold",
+    type: "ranged",
+    few: { attack: 6, defense: 2, health: 7, initiative: 4, cost: { gold: 14 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-few.webp" },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 5, cost: { gold: 22, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
+    neutral: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 20, valuables: 1 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). Attack-2 follow-up printed; recruit 14 gold / upgrade 22 gold + 1 valuable per the user's 2026-09-23 balance ruling. The optional follow-up reuses the Lich Death Cloud second-attack path.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+  "forge.cyberbrutes": {
+    id: "forge.cyberbrutes",
+    name: "Cyberbrutes",
+    faction: "forge",
+    tier: "gold",
+    type: "ground",
+    few: { attack: 8, defense: 2, health: 7, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: ["forge-cyberbrute-crush"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0).", cardImage: "/assets/units-forge-golden-cyberbrutes-few.webp" },
+    pack: { attack: 8, defense: 2, health: 9, initiative: 7, cost: { gold: 35, valuables: 2 }, abilities: ["forge-cyberbrute-crush", "forge-cyberbrute-feast"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0). [unit_passive] Each time this unit kills a unit, it heals 1 [health_points].", cardImage: "/assets/units-forge-golden-cyberbrutes-pack.webp" },
+    // No neutral side: like Titans / Hydras, the Cyberbrutes' Neutral Unit card
+    // is the separate AZURE-tier neutral.cyberbrutes (azureNeutralCounterpartId).
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge spec (Faction Focus: Forge). Few costs/ability printed. The halving reads the target's full effective Defense (card, spell, ability and Defend-die bonuses included); the Pack's kill-heal counts every enemy side, stack layer or Stack Token it defeats.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
+  },
+
   // ---- Cove neutral guards (expansion) ----------------------------------
   // The single-sided Neutral Unit card the wiki prints for each Cove creature
   // (https://en.homm3bg.wiki/units/<slug>/, "Neutral" column). Auto-joins its
@@ -1660,6 +1780,26 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",
       credit: "Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/halflings/"
+    }
+  },
+  // Neutral Grenadiers (user design, 2026-09-23): the Neutral-deck twin of the
+  // Factory Grenadiers PACK — same stats and abilities (roll 2 Attack dice keep
+  // the higher; Precise Shot Corrosion on a "+1"), one more Initiative (7), own
+  // art. One copy in the bronze Neutral deck (it joins neutralUnitIdsByTier by
+  // tier automatically). Henrietta's Halflings I/IV count it by printed name.
+  // Recruit cost mirrors the neutral Halflings (Few 2 + Pack 3 = 5 gold).
+  "neutral.grenadiers": {
+    id: "neutral.grenadiers",
+    name: "Grenadiers",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ranged",
+    neutral: { attack: 2, defense: 0, health: 3, initiative: 7, cost: { gold: 5 }, abilities: ["attack-roll-advantage", "halfling-precise-shot"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0).", cardImage: "/assets/units-neutral-bronze-grenadiers.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Factory Expansion, fan-made neutral card)",
+      credit: "User design: the Factory Grenadiers Pack stats/abilities with +1 Initiative as a bronze Neutral Unit card; art generated with Codex image_gen.",
+      url: "https://heroes.thelazy.net/index.php/Halfling_(Factory)"
     }
   },
   "neutral.harpies": {
@@ -2851,6 +2991,23 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game",
       credit: "Neutral Fortress unit. Stats from the fan wiki units table. Verify against official cards before final release.",
       url: "https://en.homm3bg.wiki/units/hydras/"
+    }
+  },
+  // Forge Cyberbrutes' Neutral Unit card sits at the azure tier (the Titans /
+  // Hydras precedent): it joins the azure Neutral Units deck and is the Forge
+  // Settlement's azure counterpart; forge.cyberbrutes has no neutral side.
+  "neutral.cyberbrutes": {
+    id: "neutral.cyberbrutes",
+    name: "Cyberbrutes",
+    faction: "neutral",
+    tier: "azure",
+    type: "ground",
+    neutral: { attack: 8, defense: 3, health: 9, initiative: 7, cost: { gold: 38, valuables: 2 }, abilities: ["forge-cyberbrute-crush", "forge-cyberbrute-feast"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0). [unit_passive] Each time this unit kills a unit, it heals 1 [health_points].", cardImage: "/assets/units-neutral-azure-cyberbrutes.webp" },
+    wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Neutral Forge unit (azure tier, user ruling 2026-09-23). Stats per the project Forge spec; verify against official components.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
     }
   },
   "neutral.phoenixes": {

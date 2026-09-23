@@ -1638,6 +1638,33 @@ export function ReactionTray({
     "--reaction-tray-y": `${trayOffset.y}px`
   } as CSSProperties;
 
+  if (window.helmCounterCardId) {
+    const counter = legalActions.find((legal) =>
+      legal.action.type === "PLAY_REACTION" &&
+      legal.action.cardId === "artifact.helm_of_chaos" &&
+      legal.action.optionIndex === 0,
+    );
+    return (
+      <div className="reactionTray helmCounterTray" role="dialog" aria-label="Helm of Chaos counter window">
+        <header><strong>Instant counter window</strong></header>
+        <p>
+          {cardName(window.helmCounterCardId)}
+          {window.helmCounterPowerBoost ? " (discarded for +1 Power)" : window.helmCounterPlayMode === "expert" ? " (expert side)" : ""} is paused. Helm of Chaos can cancel this card only.
+        </p>
+        <div className="helmCounterCards">
+          <figure><CardFrame cardId={window.helmCounterCardId} className="trayCardImage" /><figcaption>Announced Instant</figcaption></figure>
+          <figure><CardFrame cardId="artifact.helm_of_chaos" className="trayCardImage" /><figcaption>Counter</figcaption></figure>
+        </div>
+        {isPriority ? (
+          <footer>
+            {counter ? <button className="trayInstant" onClick={() => onAction(counter.action)} type="button">Cancel this Instant</button> : null}
+            <button className="trayPass" onClick={() => onAction({ type: "PASS_REACTION", playerId: viewerPlayerId })} type="button">Let it resolve</button>
+          </footer>
+        ) : <p>Waiting for {state.players[window.priorityPlayerId]?.name ?? "the opponent"} to choose.</p>}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`reactionTray movableReactionTray${trayMinimized ? " minimized" : ""}`}
@@ -3087,7 +3114,11 @@ export function RerollModal({
   // the effect only ever calls setState from inside the settle timer — never
   // synchronously — and each fresh throw re-arms the tumble on its own.
   const [settledKey, setSettledKey] = useState<string | null>(null);
-  const rolling = isViewersChoice && Boolean(latestCandidate) && settledKey !== rollKey;
+  // Cards of Prophecy PRE-roll stage: the throw is hidden until the holder
+  // answers, so nothing tumbles (the tumble lands on the face).
+  const prophecyBlind = isReroll && choice.prophecyBlind === true;
+  const rolling =
+    isViewersChoice && !prophecyBlind && Boolean(latestCandidate) && settledKey !== rollKey;
   useEffect(() => {
     if (!rolling || !rollKey) {
       return;
@@ -3137,6 +3168,42 @@ export function RerollModal({
   );
   // Both the plain reroll and the Positive Morale set-die (useSetDie) offers.
   const rerollActions = legalActions.filter((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
+
+  if (prophecyBlind) {
+    // "You play this card not knowing the result of the roll": only the two
+    // answers the engine offers — play Cards of Prophecy, or roll without it.
+    const answers = legalActions.filter(
+      (legal) =>
+        legal.action.type === "REROLL_PENDING_CHOICE" || legal.action.type === "CHOOSE_PENDING_ROLL"
+    );
+    return (
+      <div className="modalBackdrop" role="dialog" aria-label="Cards of Prophecy">
+        <div className="searchModal rerollModal">
+          <header>
+            <strong>{abilityRoll ? `${abilityRoll.abilityName} — about to roll` : "About to roll"}</strong>
+            <span>
+              {unitName(state, choice.attackerId)} is about to roll
+              {abilityRoll ? ` for ${abilityRoll.abilityName}` : ""}. Play Cards of Prophecy BEFORE the roll to
+              throw that die 3 times and resolve 1 chosen result?
+            </span>
+          </header>
+          <div className="rerollRow">
+            {answers.map((answer) => (
+              <button
+                className={answer.action.type === "REROLL_PENDING_CHOICE" ? "rerollDie again" : "commandButton"}
+                key={answer.label}
+                onClick={() => onAction(answer.action)}
+                type="button"
+              >
+                {answer.action.type === "REROLL_PENDING_CHOICE" ? <Dices aria-hidden="true" size={22} /> : null}
+                <span>{answer.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modalBackdrop" role="dialog" aria-label="Reroll choice">

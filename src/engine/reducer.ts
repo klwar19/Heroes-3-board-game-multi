@@ -1,11 +1,11 @@
-import { specialtyCombatStatMultiplier, unitMatchesSpecialtyName } from "./specialty-unit-name";
+import { specialtyCombatStatMultiplier, unitBelongsToFaction, unitMatchesSpecialtyName } from "./specialty-unit-name";
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
 import { denseFogThisRound } from "./battlefield-condition-fog";
 import { repairOrphanedChoicePhase } from "./choice-phase";
 import { randomTownTokenValue } from "./random-town-tactics";
 import { isGrailUtopiaModeField } from "./map-design-features";
 import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./computer/unit-ability-value";
-import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation } from "./town-veterancy";
+import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation, devilLuckSource, spendDevilLuck } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
 import { veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranTrigger } from "./faction-veterancy";
@@ -13,7 +13,7 @@ import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, eleme
 import { neutralVeterancy, neutralActivation, neutralAfterAttack, neutralAttackBonus, applyNeutralBurnAtActivation } from "./neutral-veterancy";
 import { resolveManaTurbulence, neutralTownDelayedDamageAtActivation, neutralTownRunicBacklash, neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { neutralTownVeterancy, neutralTownAttackBonus, neutralTownDefenseBonus, neutralTownAttackDamagePreview, neutralTownCommitAttackReduction, neutralTownMovement, neutralTownActivation, neutralTownAfterAttack, neutralTownFailedParalysis, neutralTownFinishActivation } from "./neutral-town-veterancy";
-import { getTargetsForCard } from "./legal-actions";
+import { getTargetsForCard, isCombatParticipant, rerollSourceAvailableFor as helmRerollSourceAvailableFor } from "./legal-actions";
 import { baseCardId, toPhantomCardId } from "./phantom-cards";
 import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
@@ -41,6 +41,7 @@ import {
   liftSeaHaltForWaterWalk,
   makeCombatUnitFromArmy,
   NEUTRAL_DECK_IDS,
+  openNeutralDeckUnitSearch,
   openNeutralRecruitOffer,
   openPandoraSilverRefresh,
   queueLegionDiscountChoice,
@@ -63,8 +64,10 @@ import {
 import {
   balanceIntelligenceWindowClosed,
   combatStartWindowOpen,
+  intelligenceCastWindowClosed,
   polishIntelligenceHandReadingActive,
 } from "./combat-timing";
+import { intelligenceCastOwner } from "./active-effects";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
   applyUnitCurrentSide,
@@ -95,6 +98,7 @@ import {
   resolveTurnTimeout,
   openDiplomacyRecruit,
   openVisionsScry,
+  openOidanaNeutralScry,
   openPandoraScry,
   openSiegeDemolishChoice,
   openRemoveObstacleChoice,
@@ -557,6 +561,7 @@ import {
   commanderDefenseReactionUnit,
   commanderPrecisionReactionUnit,
   commanderPrecisionReactionAmount,
+  commanderPrecisionIgnoresRangedPenalty,
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
   commanderActionPoints,
@@ -588,6 +593,7 @@ import {
   cardCanBoostPower,
   cardCanFuelSchoollessPower,
   collectPowerBreakpoints,
+  deathRippleReachesUnit,
   getEffectAmount,
   getEffectDamageAmount,
   getEffectiveCardEffect,
@@ -674,6 +680,7 @@ import {
   getVanitasAttackBonus,
   getDamagedNonAdjacentAttackBonus,
   getAttackDefenseReductionAbility,
+  attackDieOutcomeMultiplier,
   getAzureDragonSuperCharge,
   getSagittaMortisDefenseReduction,
   getAttackDieDefenseReductionAbility,
@@ -793,6 +800,7 @@ import {
   type DeathStareFollowUp,
 } from "./unit-abilities";
 import type {
+  HelmPausableAction,
   ActiveEffectDefinition,
   ActiveEffectModifier,
   ActiveEffectState,
@@ -834,6 +842,7 @@ import type {
   VisitStep,
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { applyForgeRoundStartInitiativeRolls, forgeCombatRoundStart } from "./forge";
 import { applyCombatRetake, trackCombatRetake } from "./combat-retake";
 
 export type ReducerOptions = {
@@ -1129,6 +1138,20 @@ function assertBatchReactionLegal(
     return {
       code: "NO_REACTION_WINDOW",
       message: "No reaction window is open.",
+    };
+  }
+  if (
+    action.plays.some((play) =>
+      helmAnnouncedInstant(state, { type: "PLAY_REACTION", playerId: action.playerId, ...play }, cards) !== null) &&
+    Object.values(state.players).some((player) =>
+      player.id !== action.playerId &&
+      player.hand.includes("artifact.helm_of_chaos") &&
+      isCombatParticipant(state, player.id) &&
+      !isHandLockedInCombat(state, player.id))
+  ) {
+    return {
+      code: "ACTION_NOT_LEGAL",
+      message: "Play these Instants one at a time so Helm of Chaos can answer one card.",
     };
   }
 
@@ -2789,8 +2812,16 @@ function doubleAmountForUnitName(
   amount: number,
   unit: CombatUnitState | undefined,
   unitName: string | undefined,
+  /** "The effect doubles for <Faction> units". */
+  unitFaction?: string,
+  /** "The effect doubles for ground units" (Dark Mullich Overclock I). */
+  unitType?: string,
 ): number {
-  return unitMatchesSpecialtyName(unit?.name, unitName) ? amount * 2 : amount;
+  return unitMatchesSpecialtyName(unit?.name, unitName) ||
+    unitBelongsToFaction(unit, unitFaction) ||
+    (unitType !== undefined && unit?.type === unitType)
+    ? amount * 2
+    : amount;
 }
 
 /**
@@ -2917,7 +2948,7 @@ function noteSpellCast(
   let effectiveCountsTowardLimit = countsTowardLimit;
   if (oneShotIntelligence) {
     const waivesLimit =
-      !balanceIntelligenceWindowClosed(state) &&
+      !intelligenceCastWindowClosed(state) &&
       oneShotIntelligence.modifiers.some(
         (modifier) =>
           modifier.type === "SPELL_CAST_ANYTIME" &&
@@ -4187,6 +4218,29 @@ function dealAreaCardDamage(
   markUnitRemovedIfNeeded(state, unit);
 }
 
+/** The printed Spell hits the selected space and every orthogonal neighbour. */
+function resolveMeteorShowerSpell(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  position: number,
+  power: number,
+): void {
+  const combat = state.combat;
+  if (!combat || card.effect.type !== "METEOR_SHOWER_SPELL") return;
+  // The card prints only Power 2 and 4. A cast below the first rung has no hit.
+  const amount = power < 2
+    ? 0
+    : getAmountByPower(card.effect.damageByPower, 0, power);
+  if (amount <= 0) return;
+  const blast = new Set([position, ...getOrthogonalNeighbors(position)]);
+  for (const unit of Object.values(combat.units)) {
+    if (isUnitAlive(unit) && blast.has(unit.position)) {
+      dealAreaCardDamage(state, playerId, card, unit, amount);
+    }
+  }
+}
+
 /**
  * When a damaging specialty (Frost Ring / Meteor Shower / …) is about to hit
  * units and a threatened player can still heal (Cure / First Aid Tent / First
@@ -4301,10 +4355,21 @@ function applyAreaAllAdjacentPlay(
     ...getOrthogonalNeighbors(center),
   ]);
   const inBlast = Object.values(state.combat.units).filter(
-    (unit) => isUnitAlive(unit) && blastArea.has(unit.position),
+    (unit) =>
+      isUnitAlive(unit) &&
+      blastArea.has(unit.position) &&
+      // Zeestral VI: the neighbours are the caster's ENEMY units only; the
+      // centre (the chosen enemy) is always hit.
+      (!effect.adjacentEnemiesOnly ||
+        unit.position === center ||
+        unit.controllerId !== action.playerId),
   );
   for (const unit of inBlast) {
-    dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
+    const amount =
+      unit.position === center && effect.centerAmount !== undefined
+        ? effect.centerAmount
+        : effect.amount;
+    dealAreaCardDamage(state, action.playerId, card, unit, amount);
   }
 }
 
@@ -4597,9 +4662,15 @@ function getAttackDamagePreview(
   ignorePlusOneDie = false,
   state?: GameState,
   neutralDieIgnored = false,
+  // Forge Cyberbrutes: "Decrease the target's Defense by half, rounded up" —
+  // cut from the FULL effective Defense below (printed + every buff + the
+  // Defend die's shield + die-face Defense), so no source escapes the halving.
+  defenseFraction?: "half-round-up",
 ): {
   attackValue: number;
   defenseValue: number;
+  /** Defense removed by a fractional (Cyberbrute) reduction on this hit. */
+  defenseFractionCut: number;
   damage: number;
   dieAttackBonus: number;
   dieDefenseBonus: number;
@@ -4625,20 +4696,27 @@ function getAttackDamagePreview(
     : getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const neutralPenalty = !dieCancelled && !neutralDieIgnored && (roll === -1 || roll === 1) && neutralVeterancy(defender, "troll-resilience") ? 2 : 0;
+  // Arch Devils R1 Devil's Luck: an enemy "+1" Attack die gets -1 Attack while
+  // an opposing veteran devil still has a curse left this combat round.
+  // (Hourglass of the Evil Hour: a "+1" that is ignored never "resolves", so
+  // it draws no Devil's Luck penalty and spends no curse.)
+  const devilLuckPenalty = !dieCancelled && !neutralDieIgnored && !ignorePlusOneDie && roll === 1 && devilLuckSource(state, attacker) ? 1 : 0;
   // WOG commander Might (Damage grade): `mightBonus` is the contribution of the
   // extra attack dice the commander rolled for this attack (+1 per "+1" face,
   // −1 for the whole pool if any "−1" appeared). They are ADDITIONAL attack
   // dice, so they ride the attack value beside the normal die (before Defense),
   // rolled once by the caller and passed in so every recompute agrees.
   // Centaur's Axe (Balance Pack): the tripling is ignored on a rolled "-1".
+  // (A Forge Cyber Zombie's own doubling still applies to that "-1".)
   const effectiveDieMultiplier =
-    dieMultiplierSkipsNegative && roll < 0 ? 1 : dieMultiplier;
+    dieMultiplierSkipsNegative && roll < 0 ? attackDieOutcomeMultiplier(attacker) : dieMultiplier;
   // Community Balance Change Hourglass of the Evil Hour: the "+1" result is ignored.
   const countedRoll = ignorePlusOneDie && roll > 0 ? 0 : roll;
   const rawAttackValue = Math.max(
     0,
     baseAttack -
-      neutralPenalty +
+      neutralPenalty -
+      devilLuckPenalty +
       attackBonus +
       dieAttackBonus +
       countedRoll * effectiveDieMultiplier +
@@ -4658,11 +4736,14 @@ function getAttackDamagePreview(
   // Corrosion-token sibling (`-Math.min(unit.defense, reduction)`) — so a strike
   // can never land for MORE than the attacker's full Attack. The Defend roll and
   // any die-face Defense bonus are separate shields added on top of the floor.
-  const defenseValue = ignoreDefense
+  const fullDefenseValue = ignoreDefense
     ? 0
     : Math.max(0, defender.defense + defenseBonus) +
       defendBonus +
       dieDefenseBonus;
+  const defenseFractionCut =
+    defenseFraction === "half-round-up" ? Math.ceil(Math.max(0, fullDefenseValue) / 2) : 0;
+  const defenseValue = fullDefenseValue - defenseFractionCut;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense. The commander's Might dice already rode into attackValue
   // above (they are extra attack dice, not a post-defense bonus).
@@ -4720,6 +4801,7 @@ function getAttackDamagePreview(
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
+    defenseFractionCut: fuyukiFixedDamage === undefined ? defenseFractionCut : 0,
     damage: state ? veteranInterceptPreview(state, attacker, defender, damageAfterFirstRoundArmour - deferred) : damageAfterFirstRoundArmour - deferred,
     damageBeforeDeferral,
     neutralTownDamageReduced: townNeutralCapped < roundCapped,
@@ -4822,6 +4904,8 @@ function applyAttackDamageFromCandidate(
   dieMultiplierSkipsNegative = false,
   // Community Balance Change Hourglass of the Evil Hour: a rolled "+1" counts 0.
   ignorePlusOneDie = false,
+  // Forge Cyberbrutes: halve the defender's full effective Defense (see preview).
+  defenseFraction?: "half-round-up",
 ): {
   damage: number;
   roll: number;
@@ -4853,8 +4937,9 @@ function applyAttackDamageFromCandidate(
     ignorePlusOneDie,
     state,
     noDie,
+    defenseFraction,
   );
-  const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } =
+  const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus, defenseFractionCut } =
     preview;
   // Spend the previous victory before damage can earn a fresh one on a kill.
   if (attacker.townVeterancy) delete (attacker.townVeterancy as Record<string, unknown>).victoryAttackReady;
@@ -4955,7 +5040,14 @@ function applyAttackDamageFromCandidate(
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
   const trollAttackPenalty = !dieCancelled && !noDie && (candidate.roll === -1 || candidate.roll === 1) && neutralVeterancy(defender, "troll-resilience") ? 2 : 0;
-  const reportedAttackBonus = attackBonus + dieAttackBonus - trollAttackPenalty;
+  // Same predicate as the preview above, which already folded the -1 into
+  // attackValue; spend one of the devil's two curses for this round now.
+  const luckDevil = !dieCancelled && !noDie && !ignorePlusOneDie && candidate.roll === 1 ? devilLuckSource(state, attacker) : undefined;
+  if (luckDevil) {
+    spendDevilLuck(state, luckDevil, attacker);
+    pushRollModifierNote(candidate, "Devil's Luck", "−1 Attack");
+  }
+  const reportedAttackBonus = attackBonus + dieAttackBonus - trollAttackPenalty - (luckDevil ? 1 : 0);
   if (trollAttackPenalty) pushRollModifierNote(candidate, "Troll Resilience", "−2 Attack");
   // Include the Defend-die payout in the reported bonus. `defenseValue` already
   // contains it; omitting it here made the dice overlay subtract only other
@@ -4963,7 +5055,7 @@ function applyAttackDamageFromCandidate(
   // and then showed another "+1 Defense" Guarded chip). The resolved damage was
   // correct, but the visible formula was not. A winning Guarded roll must read
   // printed 1 + die 1 = total 2; a 0/-1 roll stays at printed 1.
-  const reportedDefenseBonus = defenseBonus + defendBonus + dieDefenseBonus;
+  const reportedDefenseBonus = defenseBonus + defendBonus + dieDefenseBonus - defenseFractionCut;
   if (
     defender.unitDefId === "little_busters.mio" &&
     defender.variant === "pack"
@@ -5577,6 +5669,16 @@ function getAttackStackDetails(
     abilityName: string;
     amount: number;
   };
+  /**
+   * Forge Cyberbrutes: a fractional cut resolved at damage time against the
+   * defender's FULL Defense (Defend die included), so it is not folded into
+   * `defenseBonus` like the flat reductions above.
+   */
+  defenseFraction?: {
+    abilityId: string;
+    abilityName: string;
+    fraction: "half-round-up";
+  };
   /** Seia sources spending Tea Party Order on this incoming attack. */
   teaPartyDefenseSources: Array<{
     source: CombatUnitState;
@@ -5771,8 +5873,24 @@ function getAttackStackDetails(
     // script targeting the DEFENDER's Defense (e.g. "the Neutral side +1 Defense").
     // Folds into the printed/buffed Defense before the reduction-ability clamp.
     combatScriptStatDelta(combat, defender, "defense");
-  const normalDefenseReductionSource =
-    getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation, isRetaliation || Boolean(abilityAttack));
+  const reductionAbilityRead =
+    getAttackDefenseReductionAbility(
+      attacker,
+      attacker.movedThisActivation,
+      isRetaliation || Boolean(abilityAttack),
+      Math.max(0, defender.defense + defenseBonusBeforeAbility),
+    );
+  // Forge Cyberbrutes halve the FULL Defense, which includes the Defend die
+  // rolled only at resolution — so the fractional cut rides the damage preview
+  // (`defenseFraction`) instead of this pre-roll flat clamp.
+  const defenseFraction = reductionAbilityRead?.fraction
+    ? {
+        abilityId: reductionAbilityRead.abilityId,
+        abilityName: reductionAbilityRead.abilityName,
+        fraction: reductionAbilityRead.fraction,
+      }
+    : undefined;
+  const normalDefenseReductionSource = defenseFraction ? null : reductionAbilityRead;
   // Super Charge enhances attacks, including retaliation and Azure Breath. Read current
   // HP for each hit; retain the existing scope of other piercing abilities.
   const azureCharge = getAzureDragonSuperCharge(attacker);
@@ -6068,7 +6186,10 @@ function getAttackStackDetails(
       defenseReductionAmount +
       retaliationDefenseBonus +
       equipmentRowDefenseBonus(state, defender),
-    dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
+    // Forge Cyber Zombies double the resolved face on every attack.
+    dieMultiplier:
+      (stackItem.modifiers.attackDieMultiplier ?? 1) *
+      attackDieOutcomeMultiplier(attacker),
     // Elemental attacks roll the Attack die normally in both modes. The BINH
     // toggle only controls whether positive attack-window buffs are clamped.
     // Mummies "[unit_attack] ignore the result on the Attack die" — their OWN
@@ -6142,6 +6263,7 @@ function getAttackStackDetails(
         : 0) -
       adjacentEnemyDamageBonus(state, attacker),
     defenseReductionAbility,
+    defenseFraction,
     teaPartyDefenseSources,
     abilityAttack,
   };
@@ -6757,6 +6879,11 @@ function rerollArtifactSource(
  * left it dead with nothing in its place (the 2026-08-26 report) — it keeps the
  * card and hands it `rollExtraCandidates` instead.
  */
+/** The Polish Cards of Prophecy ability-roll source (roll 3, keep 1). */
+function isProphecyThreeRollSource(source: AttackRerollSource): boolean {
+  return source.cardId === PROPHECY_CARD_ID && (source.rollExtraCandidates ?? 0) > 0;
+}
+
 function prophecyLeavesDieWindow(state: GameState, cardId: CardId): boolean {
   return (
     cardId === PROPHECY_CARD_ID &&
@@ -6878,10 +7005,18 @@ function openAbilityRollWindow(
   candidate: AttackRollCandidate,
   context: PendingAbilityRollContext,
 ): boolean {
-  const sources = buildAbilityRerollSources(state, roller, context);
-  if (sources.length === 0) {
+  const builtSources = buildAbilityRerollSources(state, roller, context);
+  if (builtSources.length === 0) {
     return false;
   }
+  // Polish Cards of Prophecy is a PRE-roll declaration: when it is among the
+  // sources the window opens BLIND (the throw hidden, see `prophecyBlind`) with
+  // the Prophecy source first, so its press is the one REROLL_PENDING_CHOICE
+  // spends.
+  const prophecySource = builtSources.find(isProphecyThreeRollSource);
+  const sources = prophecySource
+    ? [prophecySource, ...builtSources.filter((source) => source !== prophecySource)]
+    : builtSources;
   const remainingRerolls = countAvailableRerolls(sources, candidate.roll);
   if (remainingRerolls <= 0) {
     return false;
@@ -6907,6 +7042,7 @@ function openAbilityRollWindow(
     rerollSources: sources,
     sourceEffectIds: [],
     abilityRoll: context,
+    ...(prophecySource ? { prophecyBlind: true } : {}),
   };
   state.phase = "choice";
   state.priorityPlayerId = roller.controllerId;
@@ -6917,7 +7053,9 @@ function openAbilityRollWindow(
     choiceType: "ATTACK_DIE_REROLL",
     playerId: roller.controllerId,
     sourceEffectIds: [],
-    message: `${roller.name} may reroll the ${context.abilityName} dice.`,
+    message: prophecySource
+      ? `${roller.name} is about to roll for ${context.abilityName} — play Cards of Prophecy before the roll?`
+      : `${roller.name} may reroll the ${context.abilityName} dice.`,
   });
   return true;
 }
@@ -6961,7 +7099,13 @@ function openAttackRerollChoice(
     attackKind: details.attackKind,
     rollMode: details.rollMode,
     attackBonus: details.attackBonus,
-    defenseBonus: details.defenseBonus,
+    // A Cyberbrute's halving resolves after the Defend die; before it, show
+    // the cut off the Defense known now.
+    defenseBonus:
+      details.defenseBonus -
+      (details.defenseFraction
+        ? Math.ceil(Math.max(0, details.defender.defense + details.defenseBonus) / 2)
+        : 0),
     candidates,
     remainingRerolls,
     rerollSources,
@@ -8501,6 +8645,7 @@ function finishResolvedAttack(
       details.ignorePlusOneDie,
       state,
       details.ignoreAttackDie,
+      details.defenseFraction?.fraction,
     );
     const stackLayerOnly = armyStacksWouldAbsorbHit(
       state,
@@ -8572,6 +8717,7 @@ function finishResolvedAttack(
         details.ignorePlusOneDie,
         state,
         details.ignoreAttackDie,
+        details.defenseFraction?.fraction,
       );
       if (
         preview.damage > 0 &&
@@ -8609,6 +8755,41 @@ function finishResolvedAttack(
       targetUnitId: details.defender.id,
       message: `${details.attacker.name} lowers ${details.defender.name}'s defense by ${details.defenseReductionAbility.amount}.`,
     });
+  }
+  // Forge Cyberbrutes: announce the halving once the Defend die is known, sized
+  // off the same preview the hit resolves with (full Defense incl. the shield).
+  if (details.defenseFraction && !details.ignoreDefense) {
+    const halved = getAttackDamagePreview(
+      details.attacker,
+      details.defender,
+      resolvedCandidate.roll,
+      details.attackBonus,
+      details.defenseBonus,
+      defendBonus,
+      details.dieMultiplier,
+      details.abilityAttack?.baseAttack,
+      details.damageReduction,
+      details.ignoreDefense,
+      dieCancelled,
+      mightBonus,
+      details.isRetaliation,
+      details.attackDamageCap,
+      details.halveAttack,
+      details.dieMultiplierSkipsNegative,
+      details.ignorePlusOneDie,
+      state,
+      details.ignoreAttackDie,
+      details.defenseFraction.fraction,
+    );
+    if (halved.defenseFractionCut > 0) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: details.attacker.id,
+        abilityId: details.defenseFraction.abilityId,
+        targetUnitId: details.defender.id,
+        message: `${details.attacker.cardName}'s ${details.defenseFraction.abilityName} halves ${details.defender.cardName}'s Defense: -${halved.defenseFractionCut} (of ${halved.defenseValue + halved.defenseFractionCut}) for this attack.`,
+      });
+    }
   }
 
   const cancelLethal = stackItem.modifiers.cancelLethal;
@@ -8652,6 +8833,7 @@ function finishResolvedAttack(
         details.ignorePlusOneDie,
         state,
         details.ignoreAttackDie,
+        details.defenseFraction?.fraction,
       );
       return (
         preview.damage > 0 &&
@@ -8728,6 +8910,7 @@ function finishResolvedAttack(
     details.halveAttack,
     details.dieMultiplierSkipsNegative,
     details.ignorePlusOneDie,
+    details.defenseFraction?.fraction,
   );
   if (
     !details.isRetaliation &&
@@ -13702,6 +13885,7 @@ function openSecondAttackFollowUp(
   if (
     ability.onRoll === undefined &&
     ability.abilityId !== "veteran-eye-splash" &&
+    !ability.optional &&
     destroyEnemyFortificationsInCells(
       state,
       attacker,
@@ -13713,12 +13897,16 @@ function openSecondAttackFollowUp(
     }
   }
 
-  const candidates = getSecondAttackCandidates(combat, attacker, defender);
+  const candidates = getSecondAttackCandidates(combat, attacker, defender, ability.enemiesOnly);
   if (candidates.length === 0) {
     return false;
   }
 
-  if (candidates.length === 1) {
+  // Forge Tanks print "You may also attack": an optional follow-up always asks.
+  // A Neutral guard's pick is re-stamped to its victim, so it never declines.
+  const optionalFollowUp =
+    Boolean(ability.optional) && attacker.controllerId !== NEUTRAL_PLAYER_ID;
+  if (candidates.length === 1 && !optionalFollowUp) {
     declareAbilityAttack(state, attacker, candidates[0], ability, cards);
     return true;
   }
@@ -13736,6 +13924,9 @@ function openSecondAttackFollowUp(
     anchorUnitId: defender.id,
     candidateUnitIds: candidates,
     baseAttack: ability.baseAttack,
+    ...(optionalFollowUp
+      ? { optional: true, skipLabel: `Skip ${ability.abilityName}` }
+      : {}),
   };
   state.phase = "choice";
   state.priorityPlayerId = attacker.controllerId;
@@ -18086,6 +18277,22 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       openRemoveObstacleChoice(state, stackItem.action.playerId, count);
     }
 
+    if (card?.effect.type === "DEATH_RIPPLE_SPELL" && state.combat) {
+      const power = getCurrentSpellPower(state, stackItem, cards);
+      const caster = stackItem.action.playerId;
+      for (const unit of Object.values(state.combat.units)) {
+        if (unit.controllerId === caster || !isUnitAlive(unit)) continue;
+        // Bosses carry bankUnit for stack handling, but are not Creature Bank
+        // units for this spell's printed Power-3 target row (the shared
+        // predicate skips them, heroes and commanders).
+        if (!deathRippleReachesUnit(card.effect, unit, power)) continue;
+        dealAreaCardDamage(state, caster, card, unit, card.effect.amount);
+      }
+      // No inline finishCombatIfNeeded here: the shared check after
+      // finalizeSpellCardDestination handles a ripple that swept the last
+      // enemy, keeping the resolved/card-moved events ahead of combat end.
+    }
+
     if (
       card?.effect.type === "DEAL_DAMAGE" &&
       state.combat &&
@@ -18354,6 +18561,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         ),
         targetUnit,
         card.effect.doubleForUnitName,
+        card.effect.doubleForUnitFaction,
+        card.effect.doubleForUnitType,
       );
       createActiveEffect(
         state,
@@ -18407,6 +18616,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           getAmountByPower(chosen.amountByPower, chosen.amount ?? 0, power),
           targetUnit,
           chosen.doubleForUnitName,
+          chosen.doubleForUnitFaction,
+          chosen.doubleForUnitType,
         );
         createActiveEffect(
           state,
@@ -18600,6 +18811,20 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           1,
           getCurrentSpellPower(state, stackItem, cards),
         ),
+      );
+    }
+
+    if (
+      card?.effect.type === "METEOR_SHOWER_SPELL" &&
+      state.combat &&
+      stackItem.action.target.type === "space"
+    ) {
+      resolveMeteorShowerSpell(
+        state,
+        stackItem.action.playerId,
+        card,
+        stackItem.action.target.position,
+        getCurrentSpellPower(state, stackItem, cards),
       );
     }
 
@@ -20423,6 +20648,12 @@ function passReaction(
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
   }
+  const helmPending = state.reactionWindow.helmCounterPending;
+  if (helmPending) {
+    restoreHelmCounterWindow(state);
+    resumeHelmPausedPlay(state, helmPending, cards, false);
+    return;
+  }
 
   // Under-min Power guard: the CASTER of a pending cast may not pass while the
   // spell is still below its useful Power floor AND they can still fuel it
@@ -21378,6 +21609,7 @@ function applyReactionPlayCore(
   cards: CardLibrary,
   elementalEcho = false,
   spellSunderPaid = false,
+  cancelledByHelm = false,
 ): { windowEnded: boolean } {
   // Reuse every existing Scroll Power-0 gate without consuming a physical Scroll.
   if (elementalEcho) play = { ...play, fromScroll: "elemental-echo" };
@@ -21439,6 +21671,18 @@ function applyReactionPlayCore(
       if (moveError) {
         throw new Error(moveError.message);
       }
+    }
+    if (cancelledByHelm) {
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId,
+        cardId: play.cardId,
+        timing: card.timing,
+        mode: "basic",
+        effectAmount: 0,
+        optionLabel: "+1 Power — cancelled by Helm of Chaos",
+      });
+      return { windowEnded: false };
     }
     // Attack windows pool Power per caster; a spell cast on your own turn uses
     // the single spellPowerBonus.
@@ -21686,6 +21930,7 @@ function applyReactionPlayCore(
   if (
     card.kind === "spell" &&
     !play.asPowerBoost &&
+    !cancelledByHelm &&
     !spellSunderPaid &&
     !play.fromScroll &&
     !play.fromSpellDeck &&
@@ -21789,6 +22034,7 @@ function applyReactionPlayCore(
     // the stack item; a reaction has none, so it is inscribed right here through
     // the same shared seam.
     if (
+      !cancelledByHelm &&
       spellDeckArm?.effect.addToSpellBook === true &&
       polishSpellBookEnabled(state) &&
       spellCanEnterSpellBook(play.cardId) &&
@@ -21891,6 +22137,55 @@ function applyReactionPlayCore(
     !abilityExpertIsCrownFree(state.players[playerId], play.cardId)
   ) {
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  // Helm counters the announced Instant before any of its resolution branches
+  // run. The played card and its printed costs are still spent.
+  if (cancelledByHelm) {
+    if (card.kind === "spell" && state.combat && player) {
+      noteSpellCast(
+        state, player,
+        !play.tarnumReturn && !play.fromScroll && !spellDeckCastIsFree,
+        [], play.cardId, !elementalEcho,
+        !play.fromSpellBook && !play.fromScroll && !play.fromSpellDeck && !play.tarnumReturn,
+      );
+    }
+    // Crazy Wizard's first-Spell return was claimed above; a countered Spell
+    // still comes back, exactly as the Resistance / Boots cancel path returns it.
+    if (crazyWizardReturn) {
+      const polishBookCast =
+        Boolean(play.fromSpellBook) && polishSpellBookEnabled(state);
+      if (stackItem && isAttackStackItem(stackItem)) {
+        (stackItem.modifiers.deferredSpellRecalls ??= []).push({
+          cardId: play.cardId,
+          playerId,
+          toSpellBook: false,
+          ...(polishBookCast ? { fromPolishUsed: true } : {}),
+          ...(play.castEnablerCardId
+            ? { castEnablerCardId: play.castEnablerCardId }
+            : {}),
+          reason: "Crazy Wizard",
+        });
+      } else if (polishBookCast) {
+        returnCrazyWizardPolishBookSpell(
+          state,
+          playerId,
+          play.cardId,
+          play.castEnablerCardId,
+        );
+      } else {
+        returnCrazyWizardSpellFromDiscard(state, playerId, play.cardId);
+      }
+    }
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: play.cardId,
+      timing: card.timing,
+      mode,
+      optionLabel: "Cancelled by Helm of Chaos",
+    });
+    return { windowEnded: false };
   }
 
   // Standing spell Power for a Power-scaling spell instant played as a reaction
@@ -22208,7 +22503,7 @@ function applyReactionPlayCore(
   }
 
   if (
-    effect.type === "CANCEL_SPELL" &&
+    (effect.type === "CANCEL_SPELL" || effect.type === "CANCEL_INSTANT") &&
     stackItem?.action.type === "CAST_SPELL"
   ) {
     // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
@@ -22216,7 +22511,7 @@ function applyReactionPlayCore(
     // spell resolves — return without ending the window so the cast continues
     // to resolution and other reactions may still answer it.
     if (
-      effect.diceRoll &&
+      effect.type === "CANCEL_SPELL" && effect.diceRoll &&
       !rollSpellCancelDice(
         state,
         effect.diceRoll,
@@ -24722,11 +25017,476 @@ function acknowledgeCombatEnd(
   combat.endAcknowledged = true;
 }
 
+/** >0 while a Helm-paused action is being re-dispatched: never pause it twice. */
+let helmResumeDepth = 0;
+
+function withHelmResume<T>(run: () => T): T {
+  helmResumeDepth += 1;
+  try {
+    return run();
+  } finally {
+    helmResumeDepth -= 1;
+  }
+}
+
+/**
+ * The card an action announces that carries the printed Instant symbol — the
+ * one Helm of Chaos may cancel — or null when the action spends no such card.
+ * USER RULING 2026-09-23: "cancel Instant" means anything with that symbol:
+ * instant/reaction-timed hand cards (statistics, specialties, artifacts,
+ * Bless/Curse/…, Magic Mirror/Resurrection/Sorrow/Protection, Knowledge/
+ * Mysticism/Intelligence/Scholar recalls), a Spell discarded for its printed
+ * "+1 Power", the enabler of a discard-cast (Alabaster Helm / Ciele /
+ * Intelligence), the Eagle Eye copy, a reroll artifact spent from hand, and
+ * Cards of Prophecy. Combat-timed spells cast from hand/Book/Scroll are NOT
+ * Instants (their symbol is Combat) and are left alone.
+ */
+function helmAnnouncedInstant(
+  state: GameState,
+  action: HelmPausableAction,
+  cards: CardLibrary,
+): { cardId: CardId; mode: CardPlayMode; powerBoost?: true } | null {
+  const symbol = (cardId: CardId | undefined): boolean => {
+    const timing = cardId ? cards[cardId]?.timing : undefined;
+    return timing === "instant" || timing === "reaction";
+  };
+  switch (action.type) {
+    case "PLAY_REACTION":
+      if (action.asPowerBoost) {
+        return cards[action.cardId]?.kind === "spell"
+          ? { cardId: action.cardId, mode: "basic", powerBoost: true }
+          : null;
+      }
+      if (action.fromSpellDeck) {
+        return symbol(action.fromSpellDeck)
+          ? { cardId: action.fromSpellDeck, mode: action.mode ?? "basic" }
+          : null;
+      }
+      return symbol(action.cardId) ? { cardId: action.cardId, mode: action.mode ?? "basic" } : null;
+    case "PLAY_CARD":
+      if (symbol(action.cardId)) return { cardId: action.cardId, mode: action.mode ?? "basic" };
+      if (cards[action.cardId]?.kind === "spell" && intelligenceCastOwner(state) === action.playerId) {
+        return { cardId: action.cardId, mode: action.mode ?? "basic" };
+      }
+      return null;
+    case "CAST_SPELL":
+      if (action.eagleEyeCopy) return { cardId: EAGLE_EYE_ABILITY_ID, mode: "expert" };
+      if (action.fromSpellDeck && symbol(action.fromSpellDeck)) {
+        return { cardId: action.fromSpellDeck, mode: action.castEnablerMode ?? "basic" };
+      }
+      // Intelligence window: "play a Spell card" before any unit activates — an
+      // Instant-timed cast whatever the Spell's own printed timing.
+      if (intelligenceCastOwner(state) === action.playerId) {
+        return { cardId: action.cardId, mode: "basic" };
+      }
+      return null;
+    case "REROLL_PENDING_CHOICE": {
+      const source = helmRerollSourceFor(state, action);
+      return source?.cardId &&
+        state.players[action.playerId]?.hand.includes(source.cardId) &&
+        symbol(source.cardId)
+        ? { cardId: source.cardId, mode: "basic" }
+        : null;
+    }
+    case "USE_PROPHECY_PRE_ROLL":
+      return { cardId: PROPHECY_CARD_ID, mode: "basic" };
+    case "USE_EAGLE_EYE_UNIT_COPY":
+      return { cardId: EAGLE_EYE_ABILITY_ID, mode: "expert" };
+    case "USE_SCHOOL_FETCH_EXPERT": {
+      const fetchCardId = `ability.basic_${action.school}_magic` as CardId;
+      return cards[fetchCardId] ? { cardId: fetchCardId, mode: "expert" } : null;
+    }
+    case "USE_SCHOOL_PERMANENT_EXPERT":
+      return cards[action.cardId] ? { cardId: action.cardId, mode: "expert" } : null;
+  }
+}
+
+/** The reroll source a REROLL_PENDING_CHOICE would spend — the same pick rerollPendingChoice makes. */
+function helmRerollSourceFor(
+  state: GameState,
+  action: Extract<GameAction, { type: "REROLL_PENDING_CHOICE" }>,
+): AttackRerollSource | undefined {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "ATTACK_DIE_REROLL" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId
+  ) {
+    return undefined;
+  }
+  const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
+  return choice.rerollSources.find(
+    (candidate) =>
+      helmRerollSourceAvailableFor(candidate, currentRoll) &&
+      (action.useSetDie
+        ? candidate.setDieFace !== undefined
+        : candidate.setDieFace === undefined),
+  );
+}
+
+function restoreHelmCounterWindow(state: GameState): void {
+  const window = state.reactionWindow;
+  const pending = window?.helmCounterPending;
+  if (!window || !pending) return;
+  if (pending.createdWindow) {
+    state.reactionWindow = null;
+    state.phase = pending.previousPhase ?? "combat";
+    state.priorityPlayerId = pending.previousStatePriorityPlayerId ?? null;
+    if (pending.pausedChoice) state.pendingChoice = pending.pausedChoice;
+    return;
+  }
+  window.allowedPlayerIds = pending.previousAllowedPlayerIds;
+  window.priorityPlayerId = pending.previousPriorityPlayerId;
+  window.legalReactions = pending.previousLegalReactions;
+  window.passedPlayerIds = pending.previousPassedPlayerIds;
+  delete window.helmCounterPending;
+  delete window.helmCounterCardId;
+  delete window.helmCounterPlayMode;
+  delete window.helmCounterPowerBoost;
+  if (pending.pausedChoice) state.pendingChoice = pending.pausedChoice;
+  state.priorityPlayerId = window.priorityPlayerId;
+}
+
+function offerHelmCounterForPlay(
+  state: GameState,
+  action: HelmPausableAction,
+  cards: CardLibrary,
+  resumedBallistaOffer = false,
+): boolean {
+  if (helmResumeDepth > 0) return false;
+  let window = state.reactionWindow;
+  if (!state.combat || state.combat.prep || state.combat.outcome) return false;
+  const announced = helmAnnouncedInstant(state, action, cards);
+  const announcedCard = announced ? cards[announced.cardId] : undefined;
+  if (!announced || !announcedCard) return false;
+  const counterer = Object.values(state.players).find((candidate) =>
+    candidate.id !== action.playerId &&
+    candidate.hand.includes("artifact.helm_of_chaos") &&
+    isCombatParticipant(state, candidate.id) &&
+    !isHandLockedInCombat(state, candidate.id),
+  );
+  if (!counterer) return false;
+  const createdWindow = !window;
+  const previousPhase = state.phase;
+  const previousStatePriorityPlayerId = state.priorityPlayerId;
+  // An open pending choice (the attack-die reroll a Ring is spent into) is
+  // parked so getLegalActions serves the counter window, then restored.
+  const pausedChoice = state.pendingChoice;
+  if (!window) {
+    const triggerEvent = state.eventLog.at(-1);
+    if (!triggerEvent) return false;
+    window = {
+      id: `helm_${nextEventNumber(state)}`,
+      triggerEvent,
+      allowedPlayerIds: [],
+      priorityPlayerId: action.playerId,
+      legalReactions: {},
+      passedPlayerIds: [],
+      closesWhen: "one-reaction",
+    };
+    state.reactionWindow = window;
+    state.phase = "reaction";
+  }
+  window.helmCounterPending = {
+    play: action,
+    ...(createdWindow ? { createdWindow: true as const, previousPhase, previousStatePriorityPlayerId } : {}),
+    ...(pausedChoice ? { pausedChoice } : {}),
+    ...(resumedBallistaOffer ? { resumedBallistaOffer: true as const } : {}),
+    previousAllowedPlayerIds: window.allowedPlayerIds,
+    previousPriorityPlayerId: window.priorityPlayerId,
+    previousLegalReactions: window.legalReactions,
+    previousPassedPlayerIds: window.passedPlayerIds,
+  };
+  if (pausedChoice) state.pendingChoice = null;
+  window.helmCounterCardId = announced.cardId;
+  window.helmCounterPlayMode = announced.mode;
+  if (announced.powerBoost) window.helmCounterPowerBoost = true;
+  window.allowedPlayerIds = [counterer.id];
+  window.priorityPlayerId = counterer.id;
+  window.passedPlayerIds = [];
+  window.legalReactions = {
+    [counterer.id]: [{
+      label: `Helm of Chaos: cancel ${announcedCard.name}${announced.powerBoost ? " (+1 Power)" : ""}`,
+      action: {
+        type: "PLAY_REACTION", playerId: counterer.id,
+        cardId: "artifact.helm_of_chaos", mode: "basic", optionIndex: 0,
+      },
+    }],
+  };
+  state.priorityPlayerId = counterer.id;
+  return true;
+}
+
+/**
+ * Re-dispatch the paused action after the Helm holder answered. `cancelled`
+ * spends the announced card exactly as its normal path would (costs, crown,
+ * spell limit) and skips every effect.
+ */
+function resumeHelmPausedPlay(
+  state: GameState,
+  pending: NonNullable<NonNullable<GameState["reactionWindow"]>["helmCounterPending"]>,
+  cards: CardLibrary,
+  cancelled: boolean,
+): void {
+  const play = pending.play;
+  withHelmResume(() => {
+    switch (play.type) {
+      case "PLAY_REACTION":
+        playReaction(state, play, cards, true, cancelled);
+        break;
+      case "PLAY_CARD":
+        applyPlayCardWithWindowTail(state, play, cards, pending.resumedBallistaOffer === true, cancelled);
+        break;
+      case "CAST_SPELL":
+        if (cancelled) spendCancelledCastEnabler(state, play, cards);
+        else castSpell(state, play, cards);
+        break;
+      case "REROLL_PENDING_CHOICE":
+        if (cancelled) spendCancelledRerollCard(state, play);
+        else rerollPendingChoice(state, play);
+        break;
+      case "USE_PROPHECY_PRE_ROLL":
+        if (cancelled) spendCancelledProphecy(state, play, cards);
+        else applyProphecyPreRoll(state, play, cards);
+        break;
+      case "USE_EAGLE_EYE_UNIT_COPY":
+        if (cancelled) spendCancelledEagleEyeCopy(state, play);
+        else applyEagleEyeUnitCopy(state, play);
+        break;
+      case "USE_SCHOOL_FETCH_EXPERT":
+        if (cancelled) spendCancelledSchoolExpert(state, play.playerId, `ability.basic_${play.school}_magic` as CardId, "+3 Power");
+        else applySchoolFetchExpert(state, play);
+        noteReactionWindowPlay(state, play.playerId, cards);
+        break;
+      case "USE_SCHOOL_PERMANENT_EXPERT":
+        if (cancelled) spendCancelledSchoolExpert(state, play.playerId, play.cardId, "School of Magic expert Power");
+        else applySchoolPermanentExpert(state, play, cards);
+        noteReactionWindowPlay(state, play.playerId, cards);
+        break;
+    }
+  });
+}
+
+/** Mirrors the school experts' crown + discard-from-play, without the Power. */
+function spendCancelledSchoolExpert(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  what: string,
+): void {
+  const player = state.players[playerId];
+  if (!player) return;
+  if (!abilityExpertIsCrownFree(player, cardId)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+  if (!discardPermanentFromPlay(state, playerId, cardId)) {
+    throw new Error("That School of Magic permanent could not be discarded.");
+  }
+  helmCancelledEvent(state, playerId, cardId, "expert", what);
+}
+
+function helmCancelledEvent(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  mode: CardPlayMode,
+  what: string,
+): void {
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId,
+    timing: cardLibrary[cardId]?.timing ?? "instant",
+    mode,
+    optionLabel: `${what} — cancelled by Helm of Chaos`,
+  });
+}
+
+/** Mirrors performSpellCast's enabler spending (Eagle Eye copy / discard-cast), without the cast. */
+function spendCancelledCastEnabler(
+  state: GameState,
+  play: Extract<GameAction, { type: "CAST_SPELL" }>,
+  cards: CardLibrary,
+): void {
+  const caster = state.players[play.playerId];
+  if (!caster) return;
+  if (play.eagleEyeCopy) {
+    if (!abilityExpertIsCrownFree(caster, EAGLE_EYE_ABILITY_ID)) {
+      caster.combatStats.expertUsesSpentThisRound += 1;
+    }
+    const handIndex = caster.hand.indexOf(EAGLE_EYE_ABILITY_ID);
+    if (handIndex !== -1) {
+      caster.hand.splice(handIndex, 1);
+      caster.discard.push(EAGLE_EYE_ABILITY_ID);
+    }
+    caster.combatStats.eagleEyeCopySpellId = undefined;
+    caster.combatStats.eagleEyeCopyOriginalTarget = undefined;
+    helmCancelledEvent(state, play.playerId, EAGLE_EYE_ABILITY_ID, "expert", `Eagle Eye copy of ${cards[play.cardId]?.name ?? play.cardId}`);
+    return;
+  }
+  if (play.fromSpellDeck) {
+    const enablerKind = cardLibrary[play.fromSpellDeck]?.kind;
+    const enablerCycles = enablerKind === "hero-specialty" || enablerKind === "ability";
+    const anySpellCast =
+      castFromSpellDiscardOption(state, cards, play.fromSpellDeck, play.castEnablerMode)?.anySpell === true;
+    if (anySpellCast && play.castEnablerMode === "expert" && !abilityExpertIsCrownFree(caster, play.fromSpellDeck)) {
+      caster.combatStats.expertUsesSpentThisRound += 1;
+    }
+    const removeError = moveCardFromHandToDiscard(
+      state, play.playerId, play.fromSpellDeck, enablerCycles ? "discard" : "removed",
+    );
+    if (removeError) throw new Error(removeError.message);
+    helmCancelledEvent(
+      state, play.playerId, play.fromSpellDeck, play.castEnablerMode ?? "basic",
+      `Cast ${cards[play.cardId]?.name ?? play.cardId} from the discard pile`,
+    );
+    return;
+  }
+  if (intelligenceCastOwner(state) === play.playerId) {
+    // The Spell leaves its source exactly as a real cast would, THEN the
+    // one-shot is consumed (noteSpellCast), so a Book cast still finds the
+    // freedom it keys off.
+    if (play.fromScroll) {
+      if (!consumeScrollSpell(state, play.playerId, play.fromScroll, play.cardId)) {
+        throw new Error("That spell is not in the named Spell Scroll.");
+      }
+    } else if (play.fromSpellBook) {
+      const moveError = consumeSpellBookCast(state, play.playerId, play.cardId, play.castEnablerCardId);
+      if (moveError) throw new Error(moveError.message);
+    } else {
+      const moveError = moveCardFromHandToDiscard(state, play.playerId, play.cardId);
+      if (moveError) throw new Error(moveError.message);
+    }
+    noteSpellCast(
+      state, caster, !play.fromScroll, [], play.cardId, true,
+      !play.fromSpellBook && !play.fromScroll,
+    );
+    helmCancelledEvent(state, play.playerId, play.cardId, "basic", "Intelligence cast");
+  }
+}
+
+/** Intelligence window: cast nothing; the one-shot cast is forfeited. */
+function skipIntelligenceCast(
+  state: GameState,
+  action: Extract<GameAction, { type: "SKIP_INTELLIGENCE_CAST" }>,
+): void {
+  if (intelligenceCastOwner(state) !== action.playerId) {
+    throw new Error("No Intelligence cast window is open for you.");
+  }
+  state.activeEffects = state.activeEffects.filter(
+    (effect) =>
+      !(effect.controllerId === action.playerId &&
+        effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true)),
+  );
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} casts no Spell with Intelligence.`,
+  });
+}
+
+/** Mirrors rerollPendingChoice's card discard + sibling retirement, without the reroll. */
+function spendCancelledRerollCard(
+  state: GameState,
+  play: Extract<GameAction, { type: "REROLL_PENDING_CHOICE" }>,
+): void {
+  const choice = state.pendingChoice;
+  const source = helmRerollSourceFor(state, play);
+  if (!choice || choice.type !== "ATTACK_DIE_REROLL" || !source?.cardId) return;
+  const player = state.players[play.playerId];
+  const handIndex = player?.hand.indexOf(source.cardId) ?? -1;
+  if (player && handIndex !== -1) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(source.cardId);
+  }
+  source.remaining = 0;
+  source.used += 1;
+  for (const sibling of choice.rerollSources) {
+    if (sibling !== source && sibling.cardId === source.cardId) sibling.remaining = 0;
+  }
+  // A countered Cards of Prophecy pre-roll: the card is spent, the throw is shown.
+  delete choice.prophecyBlind;
+  choice.remainingRerolls = countAvailableRerolls(
+    choice.rerollSources,
+    choice.candidates.at(-1)?.roll ?? 0,
+  );
+  helmCancelledEvent(
+    state, play.playerId, source.cardId, "basic",
+    source.setDieFace !== undefined ? 'Set a die to the "+1" side' : "Reroll a die",
+  );
+}
+
+/** Mirrors applyProphecyPreRoll's discard, without the three-roll flag. */
+function spendCancelledProphecy(
+  state: GameState,
+  play: Extract<GameAction, { type: "USE_PROPHECY_PRE_ROLL" }>,
+  cards: CardLibrary,
+): void {
+  const player = state.players[play.playerId];
+  const handIndex = player?.hand.indexOf(PROPHECY_CARD_ID) ?? -1;
+  if (player && handIndex !== -1) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(PROPHECY_CARD_ID);
+  }
+  helmCancelledEvent(state, play.playerId, PROPHECY_CARD_ID, "basic", "Roll this die 3 times and resolve 1 chosen result");
+  if (state.reactionWindow) advanceReactionWindowAfterPlay(state, play.playerId, cards);
+}
+
+/** Mirrors applyEagleEyeUnitCopy's crown + discard, without the copied bolt. */
+function spendCancelledEagleEyeCopy(
+  state: GameState,
+  play: Extract<GameAction, { type: "USE_EAGLE_EYE_UNIT_COPY" }>,
+): void {
+  const player = state.players[play.playerId];
+  if (!player) return;
+  if (!abilityExpertIsCrownFree(player, EAGLE_EYE_ABILITY_ID)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+  const handIndex = player.hand.indexOf(EAGLE_EYE_ABILITY_ID);
+  if (handIndex >= 0) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(EAGLE_EYE_ABILITY_ID);
+  }
+  player.combatStats.eagleEyeCopyUnitBolt = undefined;
+  helmCancelledEvent(state, play.playerId, EAGLE_EYE_ABILITY_ID, "expert", "Eagle Eye unit-bolt copy");
+}
+
 function playReaction(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary,
+  resumingHelm = false,
+  cancelledByHelm = false,
 ): void {
+  const helmPending = state.reactionWindow?.helmCounterPending;
+  if (helmPending) {
+    if (
+      action.cardId !== "artifact.helm_of_chaos" ||
+      action.optionIndex !== 0 ||
+      action.playerId === helmPending.play.playerId
+    ) throw new Error("Choose Helm of Chaos or pass this Instant counter window.");
+    const spent = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    if (spent) throw new Error(spent.message);
+    appendEvent(state, {
+      type: "CARD_PLAYED", playerId: action.playerId,
+      cardId: action.cardId, timing: "instant", mode: "basic",
+      optionLabel: `Cancel ${cards[state.reactionWindow?.helmCounterCardId ?? ""]?.name ?? "the announced Instant"}`,
+    });
+    const cancelledName = cards[state.reactionWindow?.helmCounterCardId ?? ""]?.name ?? "The announced Instant";
+    restoreHelmCounterWindow(state);
+    resumeHelmPausedPlay(state, helmPending, cards, true);
+    appendEvent(state, {
+      type: "EVENT_NOTE", playerId: action.playerId,
+      message: `Helm of Chaos cancels ${cancelledName}; its effect does not resolve.`,
+    });
+    return;
+  }
+
+  // A hand-held Helm creates a precise answer window before an enemy Instant
+  // applies. The announced play is kept intact for a pass, or paid and negated
+  // when Helm is chosen. No previous effect needs to be rolled back.
+  if (!resumingHelm && offerHelmCounterForPlay(state, action, cards)) return;
   // Tarnum (Conflux) VI played AS a reaction: consume the specialty (it cycles to
   // the caster's discard) and open the per-search deck choice. The Search runs
   // inside the still-open reaction window; once it finishes, resolveTarnumSearch
@@ -24734,7 +25494,7 @@ function playReaction(
   // cast into the SAME window) and hands priority back to the caster. The window
   // is not advanced/closed here — that happens after the Search resolves.
   const reactionCardEffect = cards[action.cardId]?.effect;
-  if (reactionCardEffect?.type === "TARNUM_OVERLIMIT_SEARCH") {
+  if (!cancelledByHelm && reactionCardEffect?.type === "TARNUM_OVERLIMIT_SEARCH") {
     if (!state.reactionWindow) {
       throw new Error("No reaction window is open.");
     }
@@ -24810,6 +25570,8 @@ function playReaction(
     action,
     cards,
     Boolean(action.elementalEchoUnitId),
+    false,
+    cancelledByHelm,
   );
   if (windowEnded) {
     return;
@@ -24930,7 +25692,7 @@ function applyCommanderCastReaction(
     throw new Error("That commander reaction cannot be used now.");
   }
   if (reactingCast.effect.kind === "precision-instant") {
-    const legal = commanderPrecisionReactionUnit(state, target);
+    const legal = commanderPrecisionReactionUnit(state, target, combat.units[window.triggerEvent.defenderId]);
     if (
       !legal ||
       legal.id !== commander.id ||
@@ -26571,11 +27333,61 @@ const ARTIFACT_DECK_LABELS: Record<string, string> = {
   "artifacts-relic": "Relic",
 };
 
+/**
+ * PLAY_CARD resolution plus its dispatch tail (Polish war-machine step, open
+ * reaction-window refresh). Shared by the direct dispatch and BOTH Helm of Chaos
+ * resume paths — pass (the play resolves) and counter (the play is spent with no
+ * effect) — so a paused Instant gets byte-identical follow-up handling.
+ */
+function applyPlayCardWithWindowTail(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+  cards: CardLibrary,
+  resumesBallistaOffer: boolean,
+  cancelledByHelm = false,
+): void {
+  playCard(state, action, cards, false, cancelledByHelm);
+  if ((polishBallistaTiming(state) || resumesBallistaOffer) && !state.pendingChoice) {
+    processWarMachineRound(state);
+  }
+  // An "Instant (any time during Combat)" card played INSIDE a reaction
+  // window (Gerwulf's Ballista discard, Deemer's Meteor Shower — see
+  // combatAnytimeInstantWindowJoins) keeps that window open, exactly like
+  // the First Aid Tent's USE_ACTIVE_EFFECT twin below: clear stale passes,
+  // re-derive the offers (the card is spent now, so its own offer drops out
+  // and cannot be replayed), and hand priority back so the player may keep
+  // reacting or pass — then the parked attack/cast resumes. Without this the
+  // window kept a STALE offer list naming a card no longer in hand.
+  //
+  // Gated on PRIORITY: only the priority player's PLAY_CARD can be a
+  // reaction in this window (that is the only offer list getLegalActions
+  // serves). Without the gate, any other card play that ever coexists with
+  // an open window — a parallel-turns bystander's quiet action today, some
+  // future seam tomorrow — would reset the window's passes and hand
+  // priority to a NON-participant, stranding the parked attack.
+  if (
+    state.reactionWindow &&
+    state.reactionWindow.priorityPlayerId === action.playerId
+  ) {
+    // The pendingChoice TYPE check belongs to
+    // advanceReactionWindowAfterPlay alone: it pauses the window for the
+    // three shapes that HAVE a resume tail and keeps the documented
+    // close-and-resolve fallback for every other shape. Duplicating the
+    // check here silently DISABLED that fallback — a play that opened any
+    // other choice type left stale passes and never resumed. Only the
+    // PHASE flip stays conditional: a play that parked a choice must keep
+    // the choice's own phase.
+    if (!state.pendingChoice) state.phase = "reaction";
+    advanceReactionWindowAfterPlay(state, action.playerId, cards);
+  }
+}
+
 function playCard(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
   cards: CardLibrary,
   spellSunderPaid = false,
+  cancelledByHelm = false,
 ): void {
   const card = cards[action.cardId];
   if (!card) {
@@ -26670,6 +27482,7 @@ function playCard(
   // read): playable only during the continue-or-retreat decision against neutral
   // units — the combat extends one round for free.
   if (
+    !cancelledByHelm &&
     getEffectiveCardEffectForState(state, card, action.optionIndex)?.type ===
     "CONTINUE_NEUTRAL_FREE"
   ) {
@@ -26714,7 +27527,9 @@ function playCard(
 
   // Sandro's Cloak: the specialty card leaves the hand and is physically
   // placed on a matching unit card, replacing its statistics until defeated.
-  if (card.effect.type === "TRANSFORM_UNIT") {
+  // A Helm-countered Cloak falls through to the generic pay-and-log path below
+  // (the card is spent to the discard pile; no unit is transformed).
+  if (!cancelledByHelm && card.effect.type === "TRANSFORM_UNIT") {
     playTransformCard(state, action, card, card.effect);
     return;
   }
@@ -27028,7 +27843,7 @@ function playCard(
     ) {
       throw new Error("Spell limit reached for this combat round.");
     }
-    const sunder = !spellSunderPaid && combatEnemySpellSunderUnit(state, action.playerId);
+    const sunder = !spellSunderPaid && !cancelledByHelm && combatEnemySpellSunderUnit(state, action.playerId);
     if (sunder) {
       const discardChoices = [...playerForLimit.hand];
       for (const reserved of [
@@ -27136,6 +27951,7 @@ function playCard(
       optionLabel,
     });
   }
+  if (cancelledByHelm) return;
   if (card.kind === "spell" && state.combat && negatesPainSpell(state, action.playerId)) return;
 
   if (action.drawOnly) {
@@ -27749,6 +28565,48 @@ function playCard(
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
     );
+  }
+
+  // Henrietta's Halflings I (start of Combat): "+1 Defense to all your
+  // Halflings and Grenadiers units for this Combat" is ONE player-scoped,
+  // combat-long DEFENSE_BONUS gated by printed unit name (effectAppliesToUnit),
+  // so a Halfling/Grenadier that flips Pack→Few or reveals a Stack layer keeps
+  // it. "Additionally, your NEUTRAL Halflings/Grenadiers gain +1 Health for
+  // this Combat" lands per unit through the ADD_UNIT_MAX_HEALTH path (max HP +
+  // combatMaxHealthBonus + a unit-scoped HEALTH_BONUS entry), which survives
+  // side/stack recomputes exactly like every other combat-long HP grant.
+  if (effect.type === "HALFLINGS_RALLY" && state.combat) {
+    createActiveEffect(
+      state,
+      {
+        name: effect.name,
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        appliesOnlyToUnitNames: [...effect.unitNames],
+        modifiers: [{ type: "DEFENSE_BONUS", amount: effect.defense }],
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId,
+    );
+    for (const unit of Object.values(state.combat.units)) {
+      if (
+        unit.controllerId === action.playerId &&
+        unit.variant === "neutral" &&
+        effect.unitNames.includes(unit.name) &&
+        isUnitAlive(unit)
+      ) {
+        applyUnitMaxHealthBonus(
+          state,
+          unit,
+          effect.neutralHealth,
+          effect.name,
+          { type: "card", cardId: card.id, controllerId: action.playerId },
+          action.playerId,
+        );
+      }
+    }
   }
 
   // Tarnum (Castle)'s Ballista VI: "Choose N enemy units. Each suffers `amount`
@@ -28480,6 +29338,12 @@ function playCard(
     grantRegularArtifactOfSameGrade(state, action.playerId, effect.equipmentId);
   }
 
+  if (effect.type === "HELLSTORM_SIX_UNITS") {
+    // The flag is round-scoped, so no cleanup can accidentally erase it between
+    // combats. PvP prep is a map play; deployment reads the same flag per side.
+    state.players[action.playerId].hellstormSixUnitRound = state.round;
+  }
+
   if (effect.type === "GAIN_HERO_MOVEMENT") {
     // Wiki Logistics note: "+1 Movement may also be granted to the secondary
     // hero." When both Main and Secondary stand on the map, the player picks
@@ -28619,9 +29483,25 @@ function playCard(
     );
   }
 
+  if (effect.type === "OIDANA_NEUTRAL_SCRY") {
+    openOidanaNeutralScry(state, action.playerId);
+  }
+
   // Pandora's Gift: Recruits — draw N Neutral units, offer one at half cost.
   if (effect.type === "DRAW_NEUTRAL_RECRUIT_OFFER") {
     openNeutralRecruitOffer(state, action.playerId, effect.count, effect.tier);
+  }
+
+  // Henrietta's Halflings IV (Global): search the tier's Neutral deck + discard
+  // for a Halfling/Grenadier, recruit one for free, then shuffle the deck.
+  if (effect.type === "NEUTRAL_DECK_UNIT_SEARCH") {
+    openNeutralDeckUnitSearch(
+      state,
+      action.playerId,
+      effect.tier,
+      effect.unitNames,
+      `${card.name}: search the ${effect.tier} Neutral Unit deck and discard pile — recruit one for free`,
+    );
   }
 
   // Visions (Map): begin the scry. Its printed Power ladder ("Draw * cards") is
@@ -28926,6 +29806,8 @@ function playCard(
       getAmountByPower(effect.amountByPower, effect.amount ?? 0, 0),
       targetUnit,
       effect.doubleForUnitName,
+      effect.doubleForUnitFaction,
+      effect.doubleForUnitType,
     );
     createActiveEffect(
       state,
@@ -29562,6 +30444,16 @@ function playCard(
     !state.pendingChoice
   ) {
     openPolishBookRefreshPick(state, action.playerId);
+  }
+  if (
+    effect.type === "CREATE_ACTIVE_EFFECT" &&
+    intelligenceCastOwner(state) === action.playerId
+  ) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: action.playerId,
+      message: `${state.players[action.playerId]?.name ?? action.playerId} may cast a Spell now with Intelligence (before any unit activates), or skip.`,
+    });
   }
 
   // Use the same recall offer as interactive map casts: include every held
@@ -31629,6 +32521,13 @@ function rerollPendingChoice(
         : "No rerolls remain for that choice.",
     );
   }
+  if (choice.prophecyBlind) {
+    // PRE-roll stage: the only press is Cards of Prophecy itself (sorted first).
+    if (!isProphecyThreeRollSource(source)) {
+      throw new Error("Play Cards of Prophecy or roll without it first.");
+    }
+    delete choice.prophecyBlind;
+  }
 
   // An ability-roll window ranks dice by the ability's SUCCESS WINDOW (a
   // Death Stare wants "-1"s); the attack window keeps its roll-mode aggregate.
@@ -32003,6 +32902,30 @@ function choosePendingRoll(
   const candidate = choice.candidates[action.candidateIndex];
   if (!candidate) {
     throw new Error("That roll choice is not available.");
+  }
+
+  // Cards of Prophecy PRE-roll stage: "roll without it" REVEALS the throw.
+  // Prophecy was a before-the-roll declaration, so it leaves this window; any
+  // other source (morale reroll, set-die…) stays offered on the seen face, and
+  // with none left the throw resolves straight through.
+  if (choice.prophecyBlind) {
+    delete choice.prophecyBlind;
+    choice.rerollSources = choice.rerollSources.filter(
+      (source) => !isProphecyThreeRollSource(source),
+    );
+    const latestRoll = choice.candidates.at(-1)?.roll ?? 0;
+    choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, latestRoll);
+    if (choice.remainingRerolls > 0) {
+      appendEvent(state, {
+        type: "PENDING_CHOICE_CREATED",
+        choiceId: choice.id,
+        choiceType: "ATTACK_DIE_REROLL",
+        playerId: choice.playerId,
+        sourceEffectIds: choice.sourceEffectIds,
+        message: `${choice.abilityRoll?.abilityName ?? "The"} dice are rolled without Cards of Prophecy.`,
+      });
+      return;
+    }
   }
 
   // Rulebook rerolls: "the new result replaces the old one" — once rerolled,
@@ -32397,10 +33320,8 @@ function resolveCommanderCast(
       );
       break;
     // Tower Precision (instant reaction): buff the PENDING attack of the chosen
-    // ranged unit (`target`) — +Attack and ignore all ranged penalties, for that
-    // attack only. The +Attack scales by Power on the first cast of the combat and
-    // drops to a flat `secondCastAmount` on later casts (commanderPrecisionReaction-
-    // Amount reads the count BEFORE this cast is stamped at the end of the switch).
+    // ranged unit (`target`) for its nonadjacent attack. Power 0/1 retain the
+    // original amounts; Power 2 has three +2 uses and a final +1 use.
     case "precision-instant": {
       const pendingAttack = state.stack.find(
         (item) =>
@@ -32413,7 +33334,9 @@ function resolveCommanderCast(
       }
       const bonus = commanderPrecisionReactionAmount(state, caster);
       pendingAttack.modifiers.attackBonus += bonus;
-      pendingAttack.modifiers.ignoreRangedPenalty = true;
+      if (commanderPrecisionIgnoresRangedPenalty(state, caster)) {
+        pendingAttack.modifiers.ignoreRangedPenalty = true;
+      }
       break;
     }
     case "attack-buff":
@@ -32643,9 +33566,13 @@ function resolveCommanderCast(
       break;
   }
 
+  const priorCommanderCastRound = caster.commanderCastRound;
   caster.commanderCastRound = combat.round;
   if (!commanderUsesActionPoints(caster.commanderSlug)) {
-    caster.commanderCastCount = (caster.commanderCastCount ?? 0) + 1;
+    // Older combat saves may have only the round stamp. Preserve that spent
+    // Precision use when enforcing its three-use combat limit.
+    caster.commanderCastCount = (caster.commanderCastCount ??
+      (caster.commanderSlug === "temple_guardian" && priorCommanderCastRound !== undefined ? 1 : 0)) + 1;
   }
   if (commanderUsesActionPoints(caster.commanderSlug)) {
     if (commanderActionPoints(caster) < COMMANDER_AP_CAST_COST)
@@ -33390,6 +34317,12 @@ function chooseAbilityTarget(
   }
 
   if (choice.kind === "second-attack") {
+    // Declined optional follow-up (Forge Tanks) or every candidate died: the
+    // parked attack sequence (retaliation) simply continues.
+    if (isSkip) {
+      resumeAttackSequence(state, cards);
+      return;
+    }
     // House rule: the Hydra's pick-one extra attack may fell an enemy Wall/Gate.
     const fort = parseFortificationTargetId(action.targetUnitId);
     if (fort) {
@@ -35032,6 +35965,9 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   applyLionRoundStartBarrage(state);
   applyAnimeCombatRoundPenalties(state);
   townCombatRoundStart(state);
+  forgeCombatRoundStart(state);
+  // Forge Jump Troopers: round-start Attack-die roll for +3 Initiative.
+  applyForgeRoundStartInitiativeRolls(state);
   if (finishCombatIfNeeded(state)) {
     return;
   }
@@ -36977,9 +37913,10 @@ function applyActionInContext(
           // draw is taken (no-op in combat / off-turn). Checked before resolving so
           // the cast never half-runs.
           assertStartOfTurnDrawTaken(nextState, action.playerId);
+          if (offerHelmCounterForPlay(nextState, action, cards)) break;
           castSpell(nextState, action, cards);
           break;
-        case "PLAY_CARD":
+        case "PLAY_CARD": {
           // Likewise for any other card played on the quiet map turn.
           assertStartOfTurnDrawTaken(nextState, action.playerId);
           const resumesBallistaOffer = polishBallistaOfferOpen(nextState, action.playerId);
@@ -36988,41 +37925,14 @@ function applyActionInContext(
             nextState.phase = "combat";
             nextState.priorityPlayerId = null;
           }
-          playCard(nextState, action, cards);
-          if ((polishBallistaTiming(nextState) || resumesBallistaOffer) && !nextState.pendingChoice) {
-            processWarMachineRound(nextState);
-          }
-          // An "Instant (any time during Combat)" card played INSIDE a reaction
-          // window (Gerwulf's Ballista discard, Deemer's Meteor Shower — see
-          // combatAnytimeInstantWindowJoins) keeps that window open, exactly like
-          // the First Aid Tent's USE_ACTIVE_EFFECT twin below: clear stale passes,
-          // re-derive the offers (the card is spent now, so its own offer drops out
-          // and cannot be replayed), and hand priority back so the player may keep
-          // reacting or pass — then the parked attack/cast resumes. Without this the
-          // window kept a STALE offer list naming a card no longer in hand.
-          //
-          // Gated on PRIORITY: only the priority player's PLAY_CARD can be a
-          // reaction in this window (that is the only offer list getLegalActions
-          // serves). Without the gate, any other card play that ever coexists with
-          // an open window — a parallel-turns bystander's quiet action today, some
-          // future seam tomorrow — would reset the window's passes and hand
-          // priority to a NON-participant, stranding the parked attack.
-          if (
-            nextState.reactionWindow &&
-            nextState.reactionWindow.priorityPlayerId === action.playerId
-          ) {
-            // The pendingChoice TYPE check belongs to
-            // advanceReactionWindowAfterPlay alone: it pauses the window for the
-            // three shapes that HAVE a resume tail and keeps the documented
-            // close-and-resolve fallback for every other shape. Duplicating the
-            // check here silently DISABLED that fallback — a play that opened any
-            // other choice type left stale passes and never resumed. Only the
-            // PHASE flip stays conditional: a play that parked a choice must keep
-            // the choice's own phase.
-            if (!nextState.pendingChoice) nextState.phase = "reaction";
-            advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
-          }
+          // Helm of Chaos may pause the announced Instant. The Ballista offer is
+          // closed FIRST so the counter window is never stranded behind that
+          // pendingChoice; the shared tail then re-runs the war-machine step on
+          // resume exactly as the direct path does.
+          if (offerHelmCounterForPlay(nextState, action, cards, resumesBallistaOffer)) break;
+          applyPlayCardWithWindowTail(nextState, action, cards, resumesBallistaOffer);
           break;
+        }
         case "ATTACK_UNIT":
           attackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
           break;
@@ -37085,6 +37995,7 @@ function applyActionInContext(
           completeSimultaneousTurn(nextState, action);
           break;
         case "REROLL_PENDING_CHOICE":
+          if (offerHelmCounterForPlay(nextState, action, cards)) break;
           rerollPendingChoice(nextState, action);
           break;
         case "CHOOSE_PENDING_ROLL":
@@ -37109,6 +38020,7 @@ function applyActionInContext(
           applyUnitMagicMirror(nextState, action, cards);
           break;
         case "USE_EAGLE_EYE_UNIT_COPY":
+          if (offerHelmCounterForPlay(nextState, action, cards)) break;
           applyEagleEyeUnitCopy(nextState, action);
           break;
         case "USE_UNIT_DIE_IGNORE":
@@ -37294,10 +38206,12 @@ function applyActionInContext(
           sellScrollSpell(nextState, action);
           break;
         case "USE_SCHOOL_FETCH_EXPERT":
+          if (offerHelmCounterForPlay(nextState, action, cards)) break;
           applySchoolFetchExpert(nextState, action);
           noteReactionWindowPlay(nextState, action.playerId, cards);
           break;
         case "USE_SCHOOL_PERMANENT_EXPERT":
+          if (offerHelmCounterForPlay(nextState, action, cards)) break;
           applySchoolPermanentExpert(nextState, action, cards);
           noteReactionWindowPlay(nextState, action.playerId, cards);
           break;
@@ -37372,6 +38286,7 @@ function applyActionInContext(
           applyArtifactSetPower(nextState, action, cards);
           break;
         case "USE_PROPHECY_PRE_ROLL":
+          if (offerHelmCounterForPlay(nextState, action, cards)) break;
           applyProphecyPreRoll(nextState, action, cards);
           break;
         case "LITTLE_BUSTERS_COUNTER":
@@ -37449,6 +38364,9 @@ function applyActionInContext(
         case "CONTINUE_NEUTRAL_COMBAT":
           continueNeutralCombat(nextState, action);
           advanceCombatRound(nextState, action.playerId);
+          break;
+        case "SKIP_INTELLIGENCE_CAST":
+          skipIntelligenceCast(nextState, action);
           break;
         case "CONTINUE_NEUTRAL_STEP":
           continueNeutralStep(nextState, action);

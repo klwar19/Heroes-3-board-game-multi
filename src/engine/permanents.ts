@@ -1247,6 +1247,17 @@ export function startWarMachineRound(state: GameState): void {
     ...(playerCanStartHenriettaHalflings(state, playerId)
       ? [{ playerId, cardId: HENRIETTA_HALFLINGS_ID, henriettaHalflings: true }]
       : []),
+    // Dark Mullich Overclock I / IV "may also be played at the beginning of
+    // the combat": asked once, in combat round 1 before any unit acts.
+    ...([1, 4] as const)
+      .filter((level) => playerCanStartOverclockAtCombatStart(state, playerId, level))
+      .map((level) => ({ playerId, cardId: overclockStartCardId(level), forgeOverclockStart: level })),
+    // Dark Mullich VI (Overclock) is played "at the beginning of the Combat
+    // round": the holder is asked each round start (round 1 = the beginning of
+    // the combat included) while it is in hand.
+    ...(playerCanStartForgeOverclock(state, playerId)
+      ? [{ playerId, cardId: MULLICH_OVERCLOCK_ID, forgeOverclock: true }]
+      : []),
   ]);
   combat.warMachineRound = pending.length > 0 ? { pending, firstTargetUnitId: null } : null;
   processWarMachineRound(state);
@@ -1423,6 +1434,120 @@ export function playerCanUseBallisticsCatapultDouble(state: GameState, playerId:
 const BALLISTICS_ROUND_START_COST: ResourceCost = { buildingMaterials: 1 };
 const BALLISTICS_ROUND_START_LABEL =
   "Play Ballistics: pay 1 building material — 1 damage to each of 2 adjacent targets";
+
+const MULLICH_OVERCLOCK_ID = "specialty.dark_mullich.6" as CardId;
+const MULLICH_OVERCLOCK_I_ID = "specialty.dark_mullich.1" as CardId;
+const MULLICH_OVERCLOCK_IV_ID = "specialty.dark_mullich.4" as CardId;
+
+function overclockStartCardId(level: 1 | 4): CardId {
+  return level === 1 ? MULLICH_OVERCLOCK_I_ID : MULLICH_OVERCLOCK_IV_ID;
+}
+
+/** The holder's living units on the battlefield (Overclock's legal targets). */
+function friendlyBoardUnits(state: GameState, playerId: PlayerId): CombatUnitState[] {
+  return livingUnits(state).filter((unit) => unit.controllerId === playerId && unit.position >= 0);
+}
+
+/**
+ * Dark Mullich Overclock I / IV at the BEGINNING of the combat: combat round 1,
+ * before any unit has acted (the shared combatStartWindowOpen read), card in a
+ * hand that may play cards, and at least one own unit to overclock.
+ */
+function playerCanStartOverclockAtCombatStart(state: GameState, playerId: PlayerId, level: 1 | 4): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    state.combat &&
+      !state.combat.outcome &&
+      state.combat.round === 1 &&
+      player &&
+      !isHandLockedInCombat(state, playerId) &&
+      combatStartWindowOpen(state.combat) &&
+      player.hand.includes(overclockStartCardId(level)) &&
+      friendlyBoardUnits(state, playerId).length > 0,
+  );
+}
+
+/**
+ * Resolves a combat-start Overclock I / IV on the chosen friendly unit: the
+ * card leaves the hand for the discard (an Instant, exactly like the
+ * from-hand play) and its unit-scoped effect is created.
+ *  I  - +2 Initiative until the end of the round, or +1 Attack until the end
+ *       of the round (the combat-start form of the attack reaction); either
+ *       doubles on a GROUND unit.
+ *  IV - +1 Attack and +3 Initiative for this round and the next.
+ */
+function applyOverclockAtCombatStart(state: GameState, playerId: PlayerId, targetUnitId: UnitId): void {
+  const head = state.combat?.warMachineRound?.pending[0];
+  const level = head?.forgeOverclockStart;
+  const target = state.combat?.units[targetUnitId];
+  const player = state.players[playerId];
+  if (!head || !level || !player || !target || !isAlive(target) || target.controllerId !== playerId) {
+    throw new Error("That unit cannot be overclocked.");
+  }
+  if (!playerCanStartOverclockAtCombatStart(state, playerId, level)) {
+    throw new Error(`Overclock ${level === 1 ? "I" : "IV"} cannot be played right now.`);
+  }
+  const cardId = overclockStartCardId(level);
+  player.hand.splice(player.hand.indexOf(cardId), 1);
+  player.discard.push(cardId);
+  const factor = level === 1 && target.type === "ground" ? 2 : 1;
+  const attackSide = level === 1 && head.forgeOverclockOption === "attack";
+  const modifiers =
+    level === 4
+      ? [{ type: "INITIATIVE_BONUS" as const, amount: 3 }, { type: "ATTACK_BONUS" as const, amount: 1 }]
+      : attackSide
+        ? [{ type: "ATTACK_BONUS" as const, amount: 1 * factor }]
+        : [{ type: "INITIATIVE_BONUS" as const, amount: 2 * factor }];
+  const optionLabel =
+    level === 4
+      ? "Beginning of combat: +1 Attack and +3 Initiative for this round and the next"
+      : attackSide
+        ? `Beginning of combat: +${factor} Attack until the end of the round`
+        : `Beginning of combat: +${2 * factor} Initiative until the end of the round`;
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: "Overclock",
+      scope: "unit",
+      duration: level === 4 ? { type: "combat-rounds", rounds: 2 } : { type: "current-combat-round" },
+      polarity: "positive",
+      removable: true,
+      modifiers,
+    },
+    { type: "card", cardId, controllerId: playerId },
+    playerId,
+    { type: "unit", unitId: target.id },
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId,
+    timing: "instant",
+    mode: "basic",
+    optionLabel,
+    targetUnitId: target.id,
+  });
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: playerId,
+    name: effect.name,
+    duration: effect.duration,
+  });
+}
+
+/** Dark Mullich VI: holder, in hand, not hand-locked, round-start window open. */
+function playerCanStartForgeOverclock(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    state.combat &&
+      player &&
+      !isHandLockedInCombat(state, playerId) &&
+      combatRoundStartWindowOpen(state.combat) &&
+      player.hand.includes(MULLICH_OVERCLOCK_ID),
+  );
+}
 
 function playerCanStartHenriettaHalflings(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
@@ -1851,6 +1976,47 @@ export function processWarMachineRound(state: GameState): void {
       return;
     }
 
+    if (head.forgeOverclockStart) {
+      if (!playerCanStartOverclockAtCombatStart(state, playerId, head.forgeOverclockStart)) {
+        queue.pending.shift();
+        continue;
+      }
+      if (head.forgeOverclockStart === 1) {
+        openWarMachineOffer(
+          state,
+          playerId,
+          "Overclock I (beginning of the combat): overclock one of your units? The effect doubles for a ground unit.",
+          "+2 Initiative until the end of the round",
+          "Skip",
+          ["+1 Attack until the end of the round"],
+        );
+      } else {
+        openWarMachineOffer(
+          state,
+          playerId,
+          "Overclock IV (beginning of the combat): one of your units gains +1 Attack and +3 Initiative for this round and the next?",
+          "Use Overclock IV",
+          "Skip",
+        );
+      }
+      return;
+    }
+
+    if (head.forgeOverclock) {
+      if (!playerCanStartForgeOverclock(state, playerId)) {
+        queue.pending.shift();
+        continue;
+      }
+      openWarMachineOffer(
+        state,
+        playerId,
+        "Overclock VI: all your units gain +2 Initiative and roll their Attack dice with advantage until the end of this round?",
+        "Use Overclock VI",
+        "Skip for this round",
+      );
+      return;
+    }
+
     const entry = activeWarMachineEntry(state, playerId);
     if (!entry) {
       queue.pending.shift();
@@ -1988,6 +2154,29 @@ export function processWarMachineRound(state: GameState): void {
       return;
     }
 
+    // Forge Lightning Generator: a free shot at any enemy unit the owner picks
+    // (flat war-machine damage, so Defense never applies).
+    if (roundStart.kind === "damage-chosen-enemy") {
+      const candidates = enemiesOf(state, playerId);
+      if (candidates.length === 0) {
+        queue.pending.shift();
+        continue;
+      }
+      if (candidates.length === 1) {
+        applyWarMachineDamage(state, playerId, candidates[0].id, roundStart.amount);
+        queue.pending.shift();
+        continue;
+      }
+      openWarMachineTargetChoice(
+        state,
+        playerId,
+        `${name}: choose which enemy unit takes ${roundStart.amount} damage.`,
+        candidates.map((unit) => unit.id),
+        roundStart.amount
+      );
+      return;
+    }
+
     // expert-shot (Cannon)
     if (!hasExpertUseLeft(state, playerId) || cannonTargetIds(state, playerId).length === 0) {
       queue.pending.shift();
@@ -2013,6 +2202,85 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
   const queue = combat?.warMachineRound;
   if (!combat || !queue || queue.pending[0]?.playerId !== playerId) {
     throw new Error("No war machine is waiting for that player.");
+  }
+
+  const overclockStart = queue.pending[0];
+  if (overclockStart?.forgeOverclockStart) {
+    if (optionIndex === 1) {
+      queue.pending.shift();
+      processWarMachineRound(state);
+      return;
+    }
+    if (!playerCanStartOverclockAtCombatStart(state, playerId, overclockStart.forgeOverclockStart)) {
+      throw new Error("Overclock cannot be played right now.");
+    }
+    if (overclockStart.forgeOverclockStart === 1) {
+      overclockStart.forgeOverclockOption = optionIndex === 2 ? "attack" : "initiative";
+    }
+    const candidates = friendlyBoardUnits(state, playerId);
+    if (candidates.length === 1) {
+      applyOverclockAtCombatStart(state, playerId, candidates[0].id);
+      queue.pending.shift();
+      processWarMachineRound(state);
+      return;
+    }
+    openWarMachineTargetChoice(
+      state,
+      playerId,
+      `${cardLibrary[overclockStart.cardId]?.name ?? "Overclock"}: choose the unit to overclock.`,
+      candidates.map((unit) => unit.id),
+      0,
+    );
+    return;
+  }
+
+  if (queue.pending[0]?.forgeOverclock) {
+    if (optionIndex !== 0) {
+      queue.pending.shift();
+      processWarMachineRound(state);
+      return;
+    }
+    if (!playerCanStartForgeOverclock(state, playerId)) {
+      throw new Error("Overclock VI cannot be played right now.");
+    }
+    const player = state.players[playerId]!;
+    player.hand.splice(player.hand.indexOf(MULLICH_OVERCLOCK_ID), 1);
+    // An Instant: the card goes straight to the discard; its round-scoped
+    // effect (identical to the from-hand CHOOSE_ONE option) expires with the
+    // combat round via expiresAtCombatRoundEnd.
+    player.discard.push(MULLICH_OVERCLOCK_ID);
+    const effect = makeActiveEffect(
+      state,
+      {
+        name: "Overclock VI",
+        scope: "player",
+        duration: { type: "current-combat-round" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "INITIATIVE_BONUS", amount: 2 }, { type: "ATTACK_ROLL_ADVANTAGE" }],
+      },
+      { type: "card", cardId: MULLICH_OVERCLOCK_ID, controllerId: playerId },
+      playerId,
+    );
+    state.activeEffects.push(effect);
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId,
+      cardId: MULLICH_OVERCLOCK_ID,
+      timing: "instant",
+      mode: "basic",
+      optionLabel: "Round start: all your units gain +2 Initiative and Attack-roll advantage until the end of the round",
+    });
+    appendEvent(state, {
+      type: "ACTIVE_EFFECT_CREATED",
+      effectId: effect.id,
+      controllerId: playerId,
+      name: effect.name,
+      duration: effect.duration,
+    });
+    queue.pending.shift();
+    processWarMachineRound(state);
+    return;
   }
 
   if (queue.pending[0]?.henriettaHalflings) {
@@ -2239,6 +2507,15 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
   const queue = combat?.warMachineRound;
   if (!combat || !queue || queue.pending[0]?.playerId !== playerId) {
     throw new Error("No war machine is waiting for that player.");
+  }
+
+  // Dark Mullich Overclock I / IV played at the beginning of the combat: the
+  // pick is the friendly unit to overclock, not a shot.
+  if (queue.pending[0]?.forgeOverclockStart) {
+    applyOverclockAtCombatStart(state, playerId, targetUnitId);
+    queue.pending.shift();
+    processWarMachineRound(state);
+    return;
   }
 
   const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;

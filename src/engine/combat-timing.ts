@@ -60,6 +60,15 @@ export function combatRoundStartWindowOpen(combat: CombatState): boolean {
 }
 
 /**
+ * Intelligence (classic AND Polish reprint — USER RULING 2026-09-23, matching
+ * the printed "before any unit activates"): the one-shot cast window is CLOSED
+ * once a unit has acted in the current combat round. Outside combat: false.
+ */
+export function intelligenceCastWindowClosed(state: GameState): boolean {
+  return Boolean(state.combat) && !combatRoundStartWindowOpen(state.combat!);
+}
+
+/**
  * Polish Balance Pack — the reprinted INTELLIGENCE: "At the start of a combat
  * round, Refresh 1 Spell, then Cast a Spell." The classic card grants a
  * combat-long timing freedom; the reprint scopes its one-shot cast to the start

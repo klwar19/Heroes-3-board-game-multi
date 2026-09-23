@@ -8,8 +8,10 @@ fetched by `scripts/fetch-town-boards.py`) — nothing is needed here for them.
 
 Stronghold now uses the genuine wiki empty/full scans under `/public/assets`
 and reveals the full scan in seven aligned slices like the other Archon boards.
-The remaining DESIGNED boards overlay per-building tile art from THIS folder
-on every built bar. Factory ships a complete real printed tile set. **Cove and Conflux** now ship
+The remaining DESIGNED boards reveal aligned built strips over an empty scene.
+Factory's active board face and seven built inserts are in
+`/public/factory-cards/factory-board-*.webp`;
+the older individual Factory tile crops in this folder are archival. **Cove and Conflux** now ship
 printed portrait tiles here (`cove-*.webp` / `conflux-*.webp`); full empty/full
 board scans with English definitions live at
 `/assets/towns-{cove,conflux}-board-{empty,full}.webp` (pipeline under
@@ -42,10 +44,9 @@ contract, no code changes needed:
 - Missing/broken files are harmless: the view falls back to the built-town
   slice (where the board has one) or the plaque.
 
-Factory's generated Artifact Merchants built tile is code-shipped at
-`/public/factory-cards/town-board-artifact-merchants.webp` and explicitly mapped
-in `townBoardTileArt`, so it is available even in a checkout without the archived
-CDN media. Its unbuilt face uses the board's live name and cost plaque.
+Factory now uses the continuous empty panorama and seven built strips in
+`/public/factory-cards/`. Its building plaques use live names and costs, and
+the lower five cards use compact descriptions of the implemented effects.
 
 The designed boards' resource-track + token-well section is NOT drawn in CSS
 anymore: they paste the authentic printed panel cropped from the Stronghold

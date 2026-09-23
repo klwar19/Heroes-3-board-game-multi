@@ -60,7 +60,22 @@ export function unitSideStrength(unit: ArmyUnitState): number {
   const attack =
     side.attack + (unit.permanentAttackBonus ?? 0) + (stackLayers > 0 ? 1 : 0) + (rankBonus?.attack ?? 0);
   const health = (side.health + (unit.permanentHealthBonus ?? 0) + (rankBonus?.health ?? 0)) * (1 + stackLayers);
-  return attack * 3 + health * 2 + side.defense + (rankBonus?.defense ?? 0) + Math.round(side.initiative / 2);
+  return attack * 3 + health * 2 + side.defense + (rankBonus?.defense ?? 0) + Math.round(side.initiative / 2) +
+    killHealValue(side.abilities);
+}
+
+/**
+ * Forge Cyberbrutes' "heals 1 per kill": modest sustain — worth about one
+ * extra point of Health per combat (kills are not guaranteed), so +2 per
+ * healed point in the same health * 2 currency.
+ */
+function killHealValue(abilityIds: readonly string[]): number {
+  return abilityIds.reduce((sum, id) => {
+    const ability = unitAbilities[id];
+    return ability?.implementationStatus === "implemented" && ability.effect?.type === "HEAL_PER_KILL"
+      ? sum + ability.effect.amount * 2
+      : sum;
+  }, 0);
 }
 
 /** Total army strength of a player's unit deck (all sides summed). */
@@ -197,8 +212,20 @@ export function commanderStrength(state: GameState, playerId: PlayerId): number 
  * cards still have economic value, but cannot all attack in the same battle. */
 export function deployedArmyStrength(state: GameState, playerId: PlayerId): number {
   return (state.players[playerId]?.army ?? []).map(unitSideStrength)
-    .sort((a, b) => b - a).slice(0, combatUnitLimit(state))
+    .sort((a, b) => b - a).slice(0, plannedUnitLimit(state, playerId))
     .reduce((sum, strength) => sum + strength, commanderStrength(state, playerId));
+}
+
+/** Deploy cap for PLANNING a future fight: the module default, plus the
+ * Hellstorm round bonus. Passing the player id into `combatUnitLimit`
+ * unconditionally would make map-time strength depend on whether some OTHER
+ * combat happens to be open (the not-in-this-combat commander branch), letting
+ * the same engage decision flip between ticks. */
+function plannedUnitLimit(state: GameState, playerId: PlayerId): number {
+  return combatUnitLimit(
+    state,
+    state.players[playerId]?.hellstormSixUnitRound === state.round ? playerId : undefined,
+  );
 }
 
 /** Matchup adjustment isolated to PvP. Average the printed die faces instead
@@ -207,7 +234,7 @@ export function deployedArmyStrength(state: GameState, playerId: PlayerId): numb
  * uncertain, so this cannot replace the army/level/fortification safeguards. */
 export function pvpArmyStrength(state: GameState, playerId: PlayerId, enemyId: PlayerId): number {
   const deployed = (id: PlayerId) => [...(state.players[id]?.army ?? [])]
-    .sort((a, b) => unitSideStrength(b) - unitSideStrength(a)).slice(0, combatUnitLimit(state));
+    .sort((a, b) => unitSideStrength(b) - unitSideStrength(a)).slice(0, plannedUnitLimit(state, id));
   const enemies = deployed(enemyId).map(unit => ({ unit, side: getUnitSide(unit.unitDefId, unit.side) }))
     .filter(entry => entry.side);
   const base = deployedArmyStrength(state, playerId);
@@ -224,9 +251,12 @@ export function pvpArmyStrength(state: GameState, playerId: PlayerId, enemyId: P
       .map(ability => ability.effect);
     const ignores = effects.some(effect => effect?.type === "IGNORE_TARGET_CARD_DEFENSE" ||
       (effect?.type === "DEALS_ELEMENTAL_DAMAGE" && (!effect.rangedOnly || type === "ranged")));
-    const pierce = Math.max(0, ...effects.map(effect => effect?.type === "DEFENSE_REDUCTION_ON_ATTACK" ? effect.amount : 0));
+    const pierce = Math.max(0, ...effects.map(effect => effect?.type === "DEFENSE_REDUCTION_ON_ATTACK" && !effect.fraction ? effect.amount : 0));
+    // Forge Cyberbrutes halve (round up) whatever Defense the target has.
+    const halves = effects.some(effect => effect?.type === "DEFENSE_REDUCTION_ON_ATTACK" && effect.fraction === "half-round-up");
     const damage = enemies.reduce((sum, enemy) => {
-      const defense = ignores ? 0 : Math.max(0, enemy.side!.defense + (armyUnitRankInfo(enemy.unit)?.bonus.defense ?? 0) - pierce);
+      const enemyDefense = Math.max(0, enemy.side!.defense + (armyUnitRankInfo(enemy.unit)?.bonus.defense ?? 0) - pierce);
+      const defense = ignores ? 0 : halves ? enemyDefense - Math.ceil(enemyDefense / 2) : enemyDefense;
       const cap = Math.min(Infinity, ...enemy.side!.abilities.map(id => {
         const ability = unitAbilities[id];
         return ability?.implementationStatus === "implemented" && ability.effect?.type === "CAP_DAMAGE_PER_ATTACK"

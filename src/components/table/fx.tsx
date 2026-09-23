@@ -5,6 +5,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import { getFxSheet } from "@/data/fx";
+import { RUNE_BURST_ART, runeWordForLevel } from "@/data/rune-words";
 import {
   playCardPlace,
   playCardSwish,
@@ -109,7 +110,7 @@ export type FxCue =
       /** Fixed attack beat; independent of viewport size and shot distance. */
       flightMs?: number;
       /** Recoil the matching in-play war-machine card as the shot launches. */
-      recoil?: "ballista" | "catapult" | "cannon";
+      recoil?: "ballista" | "catapult" | "cannon" | "lightning_generator";
     }
   | { kind: "line"; id: string; fxKey: string; from: string; to: string; delayMs?: number; sound?: string }
   | { kind: "floater"; id: string; at: string; text: string; tone: "damage" | "heal" | "info"; delayMs?: number }
@@ -167,6 +168,21 @@ export type FxCue =
       id: string;
       at: string;
       tone?: "build" | "tile";
+      delayMs?: number;
+    }
+  | {
+      /**
+       * Bulwark reached a Rune Level (RUNE_LEVEL_REACHED): the rune-circle
+       * burst sprite blooms over the battlefield (viewport centre when the
+       * board isn't on screen) while the level's Elder Futhark rune word is
+       * inscribed glyph by glyph beneath it, then swells, blurs and flies into
+       * `playerId`'s earned Level seal box on the Rune board. The cue is
+       * silent — page.tsx rings `effects/rune-level-seal` on the same beat.
+       */
+      kind: "rune";
+      id: string;
+      playerId: string;
+      level: number;
       delayMs?: number;
     };
 
@@ -795,7 +811,7 @@ async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "sla
   const scale = Math.min(
     (toRect.width * 1.05) / sheet.frameWidth,
     (toRect.height * 1.05) / sheet.frameHeight,
-  ) * (cue.scaleMultiplier ?? 1);
+  ) * (cue.scaleMultiplier ?? 1) * (sheet.scaleMultiplier ?? 1);
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxMeleeImpact";
   sprite.style.width = `${sheet.frameWidth}px`;
@@ -826,7 +842,9 @@ async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "sla
 
 /** Plays the unit-appropriate melee-contact atlas over the defender. */
 async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
-  if (cue.fxKey === "melee-claw-rake-animated") return runClawSwipe(stage, cue);
+  if (cue.fxKey === "melee-claw-rake-animated" || cue.fxKey === "cyberbrute-claw-rake-animated") {
+    return runClawSwipe(stage, cue);
+  }
   if ([
     "melee-thrust-impact", "melee-bite-snap-animated",
     "thunderbird-trident-zap-animated",
@@ -1517,6 +1535,239 @@ async function runBurst(stage: HTMLElement, cue: Extract<FxCue, { kind: "burst" 
   }
 }
 
+/**
+ * Elder Futhark glyphs drawn as SVG strokes on a 10×16 grid, so the rune word
+ * renders identically on every device (few system fonts carry the Runic block).
+ */
+const RUNE_GLYPH_PATHS: Record<string, string> = {
+  "ᛏ": "M5 16V0M1 4.5L5 0L9 4.5", // Tiwaz
+  "ᛁ": "M5 16V0", // Isa
+  "ᚹ": "M2.5 16V0L8 4L2.5 8", // Wunjo
+  "ᚨ": "M2.5 16V0L8 4M2.5 5L8 9", // Ansuz
+  "ᛉ": "M5 16V0M5 7L1 2.5M5 7L9 2.5", // Algiz
+  "ᚱ": "M2.5 16V0L8 4L2.5 8L8 16", // Raidho
+  "ᛞ": "M1 0V16L9 0V16L1 0", // Dagaz
+  "ᛟ": "M5 0L9 4.5L1.5 12V16M5 0L1 4.5L8.5 12V16", // Othala
+  "ᛚ": "M2.5 16V0L8 5", // Laguz
+  "ᚷ": "M1 1L9 15M9 1L1 15" // Gebo
+};
+
+function makeRuneGlyph(char: string): HTMLElement {
+  const holder = document.createElement("span");
+  holder.className = "fxRuneGlyph";
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "-1 -1 12 18");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", RUNE_GLYPH_PATHS[char] ?? "M5 16V0");
+  svg.appendChild(path);
+  holder.appendChild(svg);
+  return holder;
+}
+
+/** Rune Level celebration length: bloom (0–30%), swell + blur (30–48%), flight into the board (48–80%), seal flash + fade. */
+const RUNE_LEVEL_MS = 2600;
+
+/** Warm the rune-burst art once a Bulwark army is in a fight (page.tsx). */
+let runeBurstPreloaded = false;
+export function preloadRuneBurstArt(): void {
+  if (runeBurstPreloaded || typeof window === "undefined") {
+    return;
+  }
+  runeBurstPreloaded = true;
+  const img = new Image();
+  img.decoding = "async";
+  img.src = assetUrl(RUNE_BURST_ART);
+}
+
+/**
+ * Where the burst lands: the earned Level's seal box on that seat's printed
+ * Rune board (`data-rune-seat` / `data-rune-level` in rune-panel.tsx), else the
+ * Rune panel itself (minimized / collapsed to its header). Measured once, at
+ * trigger; null when neither is on screen (the burst then fades in place).
+ */
+function runeLevelTargetRect(playerId: string, level: number): DOMRect | null {
+  const onScreen = (element: Element | null): DOMRect | null => {
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    return rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth
+      ? rect
+      : null;
+  };
+  return (
+    onScreen(firstVisibleAnchor(`[data-rune-seat="${playerId}"] [data-rune-level="${level}"]`)) ??
+    onScreen(firstVisibleAnchor(".runePanel"))
+  );
+}
+
+/**
+ * Rune Level celebration, "enlarge, blur, then go": the rune-circle sprite
+ * blooms big over the combat board with the level's rune word inscribed glyph
+ * by glyph beneath it, swells and blurs, then flies and shrinks into the
+ * earned Level's seal box on the printed Rune board (the panel when that box
+ * is not shown) and flashes out there. One-shot Web Animations of transform /
+ * opacity / filter only (no per-frame JS); the target is one
+ * getBoundingClientRect at trigger. Under prefers-reduced-motion it is a brief
+ * static flash of the same art and word, with no flight.
+ */
+async function runRuneLevel(stage: HTMLElement, cue: Extract<FxCue, { kind: "rune" }>): Promise<void> {
+  const rect = resolveAnchorRect("battlefield") ?? resolveAnchorRect("center");
+  if (!rect) {
+    return;
+  }
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+  const word = runeWordForLevel(cue.level);
+  const center = centerOf(rect);
+  // Sized to the board, clamped to the phone viewport (16px gutters).
+  const size = Math.round(
+    Math.max(160, Math.min(420, Math.min(rect.width, rect.height) * 0.62, window.innerWidth - 32, window.innerHeight * 0.5))
+  );
+  // Keep the inscription (hung below the ring) inside the viewport.
+  const x = center.x;
+  const y = Math.max(size * 0.3, Math.min(center.y, window.innerHeight - size * 0.34 - 100));
+
+  const root = document.createElement("div");
+  root.className = `fxRuneLevel level-${word.level}`;
+  root.style.left = `${x}px`;
+  root.style.top = `${y}px`;
+  root.style.setProperty("--rune-size", `${size}px`);
+
+  const halo = document.createElement("div");
+  halo.className = "fxRuneHalo";
+  const burst = document.createElement("img");
+  burst.className = "fxRuneBurst";
+  burst.src = assetUrl(RUNE_BURST_ART);
+  burst.alt = "";
+  burst.decoding = "async";
+  burst.draggable = false;
+
+  const inscription = document.createElement("div");
+  inscription.className = "fxRuneWord";
+  inscription.setAttribute("aria-label", `${word.name}: ${word.label}`);
+  const glyphRow = document.createElement("div");
+  glyphRow.className = "fxRuneGlyphs";
+  glyphRow.title = word.futhark;
+  const glyphs = Array.from(word.futhark).map((char) => makeRuneGlyph(char));
+  glyphRow.append(...glyphs);
+  const caption = document.createElement("div");
+  caption.className = "fxRuneCaption";
+  const name = document.createElement("strong");
+  name.textContent = word.name;
+  const label = document.createElement("span");
+  label.textContent = word.label;
+  caption.append(name, document.createTextNode(" — "), label);
+  inscription.append(glyphRow, caption);
+
+  root.append(halo, burst, inscription);
+  // Mounted on <body>, not inside the FX stage: the stage's stacking context
+  // (z 89) sits under the floating Rune panel (z 880), and the burst has to
+  // land visibly ON the board. Viewport coordinates are the same either way.
+  (stage.ownerDocument?.body ?? stage).appendChild(root);
+
+  try {
+    if (reduced) {
+      // Static pieces (CSS starts them hidden for the animated path).
+      burst.style.opacity = "1";
+      halo.style.opacity = "0.6";
+      inscription.style.opacity = "1";
+      await animate(
+        root,
+        [{ opacity: 0 }, { opacity: 1, offset: 0.12 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }],
+        { duration: 1400, easing: "linear" }
+      );
+      return;
+    }
+
+    // Flight vector into the seal box (or the panel), measured once now.
+    const target = runeLevelTargetRect(cue.playerId, cue.level);
+    const c = "translate(-50%, -50%)";
+    let flight: Keyframe[];
+    if (target) {
+      const to = centerOf(target);
+      const dx = Math.round(to.x - x);
+      const dy = Math.round(to.y - y);
+      // Land a touch larger than the box so the ring visibly "seats" over it.
+      const landScale = Math.max(0.05, Math.min(0.6, (Math.max(target.width, target.height) * 1.5) / size));
+      flight = [
+        { opacity: 0, transform: `${c} scale(0.25) rotate(-50deg)`, filter: "blur(0px) brightness(1)" },
+        { opacity: 1, transform: `${c} scale(1.05) rotate(0deg)`, filter: "blur(0px) brightness(1.1)", offset: 0.18 },
+        { opacity: 1, transform: `${c} scale(1) rotate(8deg)`, filter: "blur(0px) brightness(1)", offset: 0.3 },
+        // Enlarge + blur...
+        { opacity: 0.95, transform: `${c} scale(1.4) rotate(18deg)`, filter: "blur(7px) brightness(1.5)", offset: 0.48 },
+        // ...then go: shrink and fly into the seal box, sharpening on the way in.
+        {
+          opacity: 1,
+          transform: `${c} translate(${dx}px, ${dy}px) scale(${landScale}) rotate(200deg)`,
+          filter: "blur(1px) brightness(1.7)",
+          offset: 0.8,
+          easing: "ease-out"
+        },
+        {
+          opacity: 0,
+          transform: `${c} translate(${dx}px, ${dy}px) scale(${landScale * 1.8}) rotate(230deg)`,
+          filter: "blur(3px) brightness(2)"
+        }
+      ];
+    } else {
+      flight = [
+        { opacity: 0, transform: `${c} scale(0.25) rotate(-50deg)`, filter: "blur(0px)" },
+        { opacity: 1, transform: `${c} scale(1.05) rotate(0deg)`, filter: "blur(0px)", offset: 0.18 },
+        { opacity: 1, transform: `${c} scale(1) rotate(8deg)`, filter: "blur(0px)", offset: 0.3 },
+        { opacity: 0.9, transform: `${c} scale(1.4) rotate(18deg)`, filter: "blur(7px)", offset: 0.55 },
+        { opacity: 0, transform: `${c} scale(1.7) rotate(30deg)`, filter: "blur(12px)" }
+      ];
+    }
+    // The halo stays at centre stage: it flares with the bloom and dies as the
+    // burst leaves, so the trail reads as the burst departing the board.
+    const haloFrames: Keyframe[] = [
+      { opacity: 0, transform: `${c} scale(0.3)` },
+      { opacity: 1, transform: `${c} scale(1.1)`, offset: 0.16 },
+      { opacity: 0.55, transform: `${c} scale(0.95)`, offset: 0.32 },
+      { opacity: 0.8, transform: `${c} scale(1.45)`, offset: 0.48 },
+      { opacity: 0, transform: `${c} scale(1.6)`, offset: 0.62 },
+      { opacity: 0, transform: `${c} scale(1.6)` }
+    ];
+
+    await Promise.all([
+      animate(burst, flight, { duration: RUNE_LEVEL_MS, easing: "cubic-bezier(0.3, 0.6, 0.35, 1)" }),
+      animate(halo, haloFrames, { duration: RUNE_LEVEL_MS, easing: "ease-out" }),
+      // The rune word: glyphs strike in one after another under the ring, the
+      // buff label follows, and it holds until the burst takes flight.
+      animate(
+        inscription,
+        [
+          { opacity: 0, transform: "translate(-50%, 0) translateY(10px)" },
+          { opacity: 1, transform: "translate(-50%, 0) translateY(0)", offset: 0.08 },
+          { opacity: 1, transform: "translate(-50%, 0) translateY(0)", offset: 0.6 },
+          { opacity: 0, transform: "translate(-50%, 0) translateY(-6px)", offset: 0.72 },
+          { opacity: 0, transform: "translate(-50%, 0) translateY(-6px)" }
+        ],
+        { duration: RUNE_LEVEL_MS, easing: "ease-out" }
+      ),
+      ...glyphs.map((glyph, index) =>
+        animate(
+          glyph,
+          [
+            { opacity: 0, transform: "scale(1.9)" },
+            { opacity: 1, transform: "scale(0.92)", offset: 0.6 },
+            { opacity: 1, transform: "scale(1)" }
+          ],
+          { duration: 280, delay: 200 + index * 110, easing: "ease-out", fill: "backwards" }
+        )
+      ),
+      animate(
+        caption,
+        [
+          { opacity: 0, transform: "translateY(6px)" },
+          { opacity: 1, transform: "translateY(0)" }
+        ],
+        { duration: 300, delay: 200 + glyphs.length * 110 + 100, easing: "ease-out", fill: "backwards" }
+      )
+    ]);
+  } finally {
+    root.remove();
+  }
+}
+
 // A battle can emit the same effect many times. Keep one decoded browser-cache
 // warmup per asset instead of allocating a new Image object for every cue.
 const preloadedFxSources = new Set<string>();
@@ -1581,6 +1832,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runBolt(stage, cue);
           case "burst":
             return runBurst(stage, cue);
+          case "rune":
+            return runRuneLevel(stage, cue);
         }
       };
 

@@ -346,7 +346,7 @@ export function openElementalChoice(
     const request = combat.elementalChoices.shift()!;
     const unit = combat.units[request.unitId];
     const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
-    if (!unit || (!alive(unit) && !postDetonationRepair)) continue;
+    if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst")) continue;
     if (request.kind === "nest-return") {
       const nest = combat.units[request.targetId!];
       if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) continue;
@@ -400,7 +400,12 @@ export function openElementalChoice(
         combat.siege?.gatePosition !== p &&
         !Object.values(combat.units).some((t) => alive(t) && t.position === p),
     );
-    if (request.kind === "break-cover" || request.kind === "blood-price") {
+    if (request.kind === "forge-death-burst") {
+      for (const target of Object.values(combat.units)) {
+        if (!alive(target) || target.controllerId === unit.controllerId || request.excludedTargetIds?.includes(target.id)) continue;
+        picks.push({ targetId: target.id }); labels.push(target.cardName);
+      }
+    } else if (request.kind === "break-cover" || request.kind === "blood-price") {
       const target = combat.units[request.targetId!];
       if (!target || !alive(target) || isUnitDamageImmune(target) || target.controllerId === unit.controllerId || unit.customVeterancyRounds?.[request.kind] !== undefined) continue;
       if (request.kind === "break-cover") {
@@ -571,7 +576,7 @@ export function openElementalChoice(
       );
     }
     if (!picks.length) continue;
-    if (request.optional || (request.kind !== "damage" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
+    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
       picks.push({ skip: true });
       labels.push("Skip");
     }
@@ -623,7 +628,14 @@ function executeElementalPick(
   const combat = state.combat!;
   const unit = combat.units[request.unitId];
   const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
-  if (!unit || (!alive(unit) && !postDetonationRepair)) return;
+  if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst")) return;
+  if (request.kind === "forge-death-burst") {
+    const target = combat.units[pick.targetId!];
+    if (!target || !alive(target) || target.controllerId === unit.controllerId || request.excludedTargetIds?.includes(target.id)) throw new Error("Choose an unhit enemy for Death Burst.");
+    veteranDamage(state, unit, target, 1, request.abilityId);
+    if ((request.remaining ?? 1) > 1) queueElementalChoice(state, { ...request, remaining: (request.remaining ?? 1) - 1, excludedTargetIds: [...(request.excludedTargetIds ?? []), target.id] });
+    return;
+  }
   if (request.kind === "dispel") {
     hooks.dispelAttack(state, request.attack!, !pick.skip);
     return;
@@ -675,7 +687,8 @@ function executeElementalPick(
       noteUnitDamagedForTokens(state, unit, cost.amount);
     }
     (unit.customVeterancyRounds ??= {})[request.kind] = combat.round;
-    hooks.damage(state, unit, target.id, request.abilityId, unitAbilities[request.abilityId]!.name, request.kind === "break-cover" ? 1 : 2);
+    // A Toxic Moat can kill the unit while it fells a Wall/Gate; a dead unit deals no damage.
+    if (alive(unit)) hooks.damage(state, unit, target.id, request.abilityId, unitAbilities[request.abilityId]!.name, request.kind === "break-cover" ? 1 : 2);
     return;
   }
   if ((request.kind === "move-one" || request.kind === "return-origin" || request.kind === "veteran-teleport") && townBound(state, unit)) throw new Error("This unit is bound and cannot move.");

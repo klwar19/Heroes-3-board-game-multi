@@ -2,6 +2,7 @@ import type {
   CardDefinition,
   CardOptionDefinition,
   CardPlayMode,
+  CombatUnitState,
   EffectDefinition,
   EffectDurationDefinition,
   GameState,
@@ -12,12 +13,14 @@ import type {
 import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
 
 export const implementedCardEffectTypes = [
+  "OIDANA_NEUTRAL_SCRY",
   "REDIRECT_PENDING_DAMAGE",
   "GAIN_MORALE_AND_GOLD",
   "DEAL_DAMAGE",
   "HEAL_DAMAGE",
   "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
   "CANCEL_SPELL",
+  "CANCEL_INSTANT",
   "DRAW_CARDS",
   "CHOOSE_ONE",
   "ADD_COMBAT_STAT",
@@ -38,6 +41,8 @@ export const implementedCardEffectTypes = [
   "ENTER_PLAY",
   "GAIN_RESOURCES",
   "DRAW_NEUTRAL_RECRUIT_OFFER",
+  "NEUTRAL_DECK_UNIT_SEARCH",
+  "HALFLINGS_RALLY",
   "RESOURCE_FORTUNE_PLAY",
   "GAIN_RECRUIT_DISCOUNT",
   "LEGION_TIER_REINFORCE",
@@ -46,6 +51,7 @@ export const implementedCardEffectTypes = [
   "BIND_COMMANDER_ARTIFACT",
   "EQUIP_HERO_EQUIPMENT",
   "GAIN_EXPERT_USE",
+  "HELLSTORM_SIX_UNITS",
   "TAKE_FROM_DISCARD",
   "SCHOLAR_EMPOWER_SWAP",
   "CARD_DECK_SEARCH",
@@ -74,6 +80,7 @@ export const implementedCardEffectTypes = [
   "ADD_UNIT_MAX_HEALTH",
   "AREA_DAMAGE_ADJACENT",
   "AREA_DAMAGE_ALL_ADJACENT",
+  "METEOR_SHOWER_SPELL",
   "AREA_DAMAGE_PICK_ADJACENT",
   "RESHUFFLE_DISCARD_THEN_DRAW",
   "GAIN_RUNES",
@@ -96,6 +103,7 @@ export const implementedCardEffectTypes = [
   "BALLISTA_SPECIALTY",
   "DAMAGE_LOWEST_INITIATIVE_ENEMY",
   "DAMAGE_ENEMY_UNITS_BY_GRADE",
+  "DEATH_RIPPLE_SPELL",
   "DAMAGE_ALL_ENEMY_UNITS",
   "SLOW_ALL_ENEMIES",
   "CREATE_HEAL_ON_ATTACKED",
@@ -765,6 +773,29 @@ export function spellMaxUsefulPower(card: CardDefinition | undefined): number | 
 }
 
 /**
+ * Death Ripple (Expert Earth Spell): whether an enemy `unit` falls inside the
+ * printed Power row. Heroes, WOG commanders and bosses are tierless and never
+ * swept; a Creature Bank unit is reached only at `bankUnitsAtPower`. Shared by
+ * the resolver, the pre-hit heal threat read and the AI so they never disagree.
+ */
+export function deathRippleReachesUnit(
+  effect: Extract<EffectDefinition, { type: "DEATH_RIPPLE_SPELL" }>,
+  unit: Pick<CombatUnitState, "grade" | "bankUnit" | "bossUnit" | "commanderSlug" | "heroUnit">,
+  power: number,
+): boolean {
+  if (unit.bossUnit || unit.commanderSlug || unit.heroUnit) return false;
+  if (unit.bankUnit) return power >= effect.bankUnitsAtPower;
+  const rank = (grade: CombatUnitState["grade"]): number =>
+    grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+  const reached = Object.entries(effect.maxGradeByPower)
+    .map(([rung, grade]) => ({ rung: Number(rung), grade }))
+    .filter((entry) => Number.isFinite(entry.rung) && entry.rung <= power)
+    .sort((left, right) => left.rung - right.rung)
+    .at(-1);
+  return reached !== undefined && rank(unit.grade) <= rank(reached.grade);
+}
+
+/**
  * Lowest Power needed for a damaging Power-ladder spell to deal any damage.
  * Walks DEAL_DAMAGE `amountByPower` and CHAIN_LIGHTNING `damagesByPower` tables:
  * the minimum key whose value is positive. Implosion `{0:0,1:2,3:4,5:6}` → 1;
@@ -776,6 +807,9 @@ export function spellMaxUsefulPower(card: CardDefinition | undefined): number | 
 export function spellMinUsefulPower(card: CardDefinition | undefined): number {
   if (!card) {
     return 0;
+  }
+  if (card.effect.type === "METEOR_SHOWER_SPELL") {
+    return Math.min(...Object.keys(card.effect.damageByPower).map(Number));
   }
   let floor = 0;
   const visit = (value: unknown): void => {
@@ -902,6 +936,12 @@ function effectLadderRows(
   effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>,
 ): SpellLadderRow[] {
   switch (effect.type) {
+    case "METEOR_SHOWER_SPELL":
+      return ladderFromTable(effect.damageByPower, (amount) => `${amount} damage to all units in the blast`);
+    case "DEATH_RIPPLE_SPELL":
+      return ladderFromTable(effect.maxGradeByPower, (grade, power) =>
+        `${effect.amount} damage to enemy units up to ${grade}${power >= effect.bankUnitsAtPower ? " and Creature Bank units" : ""}`,
+      );
     case "DEAL_DAMAGE":
       return ladderFromTable(
         effect.amountByPower,
@@ -1281,6 +1321,11 @@ export function describePermanentEffect(card: CardDefinition): string {
       `each combat round: may pay 1 building material to hit 2 adjacent targets for ${permanent.roundStart.amount} each`,
     );
   }
+  if (permanent.roundStart?.kind === "damage-chosen-enemy") {
+    parts.push(
+      `each combat round: ${permanent.roundStart.amount} damage to an enemy unit of your choice (ignores Defense)`,
+    );
+  }
   if (permanent.roundStart?.kind === "expert-shot") {
     parts.push(
       `each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`,
@@ -1376,7 +1421,11 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "ADD_COMBAT_STAT") {
     const doubled = card.effect.doubleForUnitName
       ? ` (x2 for ${card.effect.doubleForUnitName})`
-      : "";
+      : card.effect.doubleForUnitFaction
+        ? ` (x2 for ${card.effect.doubleForUnitFaction} units)`
+        : card.effect.doubleForUnitType
+          ? ` (x2 for ${card.effect.doubleForUnitType} units)`
+          : "";
     const draw = card.effect.drawCards
       ? `, then draw ${card.effect.drawCards}`
       : "";
@@ -1540,6 +1589,14 @@ export function describeCardEffect(card: CardDefinition): string {
     return `draw ${card.effect.count} ${card.effect.tier} Neutral units; recruit one for half cost (rounded up)`;
   }
 
+  if (card.effect.type === "NEUTRAL_DECK_UNIT_SEARCH") {
+    return `search the ${card.effect.tier} Neutral Unit deck and discard pile for ${card.effect.unitNames.join(" or ")}; recruit one for free, then shuffle the deck`;
+  }
+
+  if (card.effect.type === "HALFLINGS_RALLY") {
+    return `+${card.effect.defense} Defense to all your ${card.effect.unitNames.join("/")} units and +${card.effect.neutralHealth} Health to your neutral ${card.effect.unitNames.join("/")} for this combat`;
+  }
+
   if (card.effect.type === "CARD_DECK_SEARCH") {
     return `Search (${card.effect.count}) the ${card.effect.deck} deck`;
   }
@@ -1662,9 +1719,20 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "AREA_DAMAGE_ALL_ADJACENT") {
+    if (card.effect.adjacentEnemiesOnly) {
+      return `${card.effect.centerAmount ?? card.effect.amount} damage to an enemy unit and ${card.effect.amount} damage to each enemy unit adjacent to it`;
+    }
     return card.effect.includeCenter === false
       ? `${card.effect.amount} damage to every unit adjacent to the chosen space (excluding the center; friend or foe)`
       : `${card.effect.amount} damage to a space and every adjacent unit (friend or foe)`;
+  }
+
+  if (card.effect.type === "DEATH_RIPPLE_SPELL") {
+    return `${card.effect.amount} damage to every enemy bronze unit (Power 2: also silver; Power 3: also gold and Creature Bank units)`;
+  }
+
+  if (card.effect.type === "METEOR_SHOWER_SPELL") {
+    return "1 damage at Power 2 or 2 damage at Power 4 to every unit on the chosen space and adjacent spaces (friend or foe)";
   }
 
   if (card.effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
@@ -1906,6 +1974,10 @@ export function describeCardEffect(card: CardDefinition): string {
       .map(([power, count]) => `${power}:${count}`)
       .join(", ");
     return `scry a Neutral Unit deck (cards by power ${breakpoints}); discard any and reorder the rest on top`;
+  }
+
+  if (card.effect.type === "OIDANA_NEUTRAL_SCRY") {
+    return "choose any Neutral Unit deck; look at its top 2 cards, discard any number to that deck's discard pile, then return the rest to its top in any order";
   }
 
   if (card.effect.type === "DISRUPTING_RAY") {

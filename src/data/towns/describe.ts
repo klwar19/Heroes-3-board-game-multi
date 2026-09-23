@@ -33,7 +33,11 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "RESOURCE_ROUND_MORALE":
       return "At the beginning of each Resource round, gain a positive Morale token.";
     case "RESOURCE_ROUND_RESOURCE_DIE":
-      return "At the beginning of each Resource round, roll 1 Resource die and gain the rolled resources.";
+      return effect.ignoreBuildingMaterials
+        ? "At the beginning of each Resource round, roll 1 Resource die: gain the rolled gold or valuables; a building-materials result is ignored."
+        : "At the beginning of each Resource round, roll 1 Resource die and gain the rolled resources.";
+    case "TOXIC_MOAT":
+      return `When built: gain a Lightning Generator war machine (at the start of each combat round it deals 1 damage to an enemy unit of your choice, ignoring Defense). During a siege of this town, an attacking player's melee or flying unit that destroys a Wall or the Gate suffers ${effect.wallDamage} damage.`;
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
       return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for half of the gold cost (rounded up), then apply Legion and other discounts (minimum 0). Play Legion inside the beginning-of-round prompt before confirming; reinforce now or skip.`;
     case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
@@ -126,6 +130,8 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
       return building.effect.trainingWinXp ? "after won combat" : "during combat";
     case "RUNE_ALTAR":
       return "combat (Runes)";
+    case "TOXIC_MOAT":
+      return "when built · sieges";
     case "FREELANCERS_GUILD":
       return "always on";
     case "MAGE_GUILD":

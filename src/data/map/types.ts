@@ -13,6 +13,7 @@ export type TileContent =
   | "conflux_expansion"
   | "cove_expansion"
   | "bulwark_expansion"
+  | "forge_expansion"
   | "regular_stretch_goals";
 
 export type TileFieldDefinition = {

@@ -23,6 +23,15 @@ function heroSource(slug: string) {
 const bulwarkExpansionPreviewUrl =
   "https://imgcdn.gamefound.com/richtextimage/richtext/33b4a241-f645-41d3-aa35-0417606e9732.png";
 
+/** Forge heroes: rules from the repo's Forge design spec (tmp/forge/FORGE-SPEC.md). */
+function forgeSpecialtySource(heroName: string) {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+    credit: `${heroName}'s specialty is a digital Forge design built on the official Faction Focus: Forge preview (Archon / Gamefound); printed card faces are project-generated. Verify against official components before final release.`,
+    url: "https://gamefound.com/en/projects/archon-studio/heroes-of-might-and-magic-iii-the-board-game",
+  };
+}
+
 function bulwarkExpansionPreviewSource(heroName: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1637,6 +1646,54 @@ function attackOrDefenseByTypeSpecialty(
   };
 }
 
+/**
+ * Zeestral (Forge) Storm Circuit I: "Deal N damage to an enemy unit. — OR —
+ * Your selected ranged unit gains +N Attack." The damage side is an Instant
+ * playable any time during Combat (combatAnytime, the anytime-damage precedent)
+ * dealing flat effect damage; the Attack side is the standard own-attack
+ * reaction, offered only while the ATTACKING unit is ranged (unitTypes).
+ */
+function stormCircuitSpecialty(level: 1, amount: number): CardLibrary[string] {
+  const roman = "I";
+  return {
+    id: `specialty.zeestral.${level}`,
+    name: `Storm Circuit ${roman}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "zeestral",
+      `Instant: Deal ${amount} damage to an enemy unit. — OR — Instant: Your selected ranged unit gains +${amount} Attack.`,
+    ],
+    target: { type: "enemy-unit" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Deal ${amount} damage to an enemy unit`,
+          combatAnytime: true,
+          target: { type: "enemy-unit" },
+          effect: { type: "DEAL_DAMAGE", amount, damageKind: "effect" },
+        },
+        {
+          label: `Your ranged unit gains +${amount} Attack`,
+          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount,
+            unitTypes: ["ranged"],
+          },
+        },
+      ],
+    },
+    implementationStatus: "implemented",
+    source: forgeSpecialtySource("Zeestral"),
+  };
+}
+
 export const adventureCards: CardLibrary = {
   "ability.leadership": {
     id: "ability.leadership",
@@ -1984,28 +2041,64 @@ export const adventureCards: CardLibrary = {
   // Henrietta is a tempo engineer, Sam protects and rebuilds machines,
   // Tancred controls ranged engagements, Celestine turns defense into offense,
   // Agar manipulates battlefield pace, and Frederick coordinates volleys.
-  "specialty.henrietta.1": withoutArt({
-    ...mightSpecialtyOne("henrietta", "Grenadiers", "Grenadiers"),
-    name: "Grenadiers I",
-  }),
+  // Henrietta — the HALFLINGS specialist (printed Factory cards "Halflings I/IV";
+  // the Factory roster's own Halfling unit is named Grenadiers, the neutral
+  // bronze card is Halflings, and the neutral Grenadiers card joins the same
+  // family — every one of them counts, by printed name).
+  //  I  — "You can play this card at the start of Combat. For this Combat, all
+  //       your Halflings and Grenadiers Units gain +1 [defense]. Additionally,
+  //       all your Neutral Halflings/Grenadiers gain +1 [health] for this
+  //       Combat." (HALFLINGS_RALLY: a name-gated player-scoped Defense buff +
+  //       per-unit combat-long max Health on the neutral ones; combatStartOnly.)
+  //  IV — "[global] Search the [bronze] deck and discard pile for a Halfling or
+  //       Grenadier Unit. You may recruit it for free. If you searched the deck,
+  //       shuffle it. — OR — [instant] Your selected unit gains +2 [defense]."
+  //       (NEUTRAL_DECK_UNIT_SEARCH on the map; the +2 Defense is the standard
+  //       attacked-unit reaction.)
+  "specialty.henrietta.1": {
+    id: "specialty.henrietta.1", name: "Halflings I", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "henrietta",
+      "You can play this card at the start of Combat. For this Combat, all your Halflings and Grenadiers Units gain +1 Defense. Additionally, all your Neutral Halflings/Grenadiers gain +1 Health for this Combat."],
+    effect: { type: "CHOOSE_ONE", options: [{
+      label: "Start of Combat: +1 Defense to all your Halflings/Grenadiers, +1 Health to the neutral ones",
+      combatOnly: true, combatStartOnly: true, target: { type: "none" },
+      effect: {
+        type: "HALFLINGS_RALLY", name: "Halflings I",
+        unitNames: ["Halflings", "Grenadiers"], defense: 1, neutralHealth: 1,
+      },
+    }] },
+    implementationStatus: "implemented", source: heroSource("henrietta"),
+  },
   "specialty.henrietta.4": {
-    id: "specialty.henrietta.4", name: "Grenadiers IV", kind: "hero-specialty",
-    timing: "instant", phaseLimit: ["combat"],
-    tags: ["hero-specialty", "instant", "henrietta", "Draw 1 card during an instant window or on the map, or give a unit +1 Health for this combat (+2 for Grenadiers)."],
+    id: "specialty.henrietta.4", name: "Halflings IV", kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "henrietta",
+      "Global: Search the bronze Neutral Unit deck and discard pile for a Halfling or Grenadier Unit. You may recruit it for free. If you searched the deck, shuffle it. — OR — Instant: your selected unit gains +2 Defense."],
+    target: { type: "none" },
     effect: { type: "CHOOSE_ONE", options: [
-      { label: "Draw 1 card", target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 1 } },
-      { label: "+1 Health (+2 for Grenadiers)", combatOnly: true, target: { type: "friendly-unit" }, effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Grenadiers" } },
-    ] }, implementationStatus: "implemented", source: heroSource("henrietta"),
+      {
+        label: "Global: search the bronze Neutral deck + discard for a Halfling/Grenadier — recruit it for free, then shuffle",
+        mapOnly: true, target: { type: "none" },
+        effect: { type: "NEUTRAL_DECK_UNIT_SEARCH", tier: "bronze", unitNames: ["Halflings", "Grenadiers"] },
+      },
+      {
+        label: "+2 defense",
+        trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+        effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
+      },
+    ] },
+    implementationStatus: "implemented", source: heroSource("henrietta"),
   },
   "specialty.henrietta.6": {
-    id: "specialty.henrietta.6", name: "Grenadiers VI", kind: "hero-specialty",
+    id: "specialty.henrietta.6", name: "Halflings VI", kind: "hero-specialty",
     timing: "ongoing", phaseLimit: ["combat"],
     tags: ["hero-specialty", "ongoing", "henrietta", "At the start of any combat round, you may make all your units roll two Attack dice and use the higher result for the rest of this combat."],
     effect: { type: "CHOOSE_ONE", options: [{
       label: "All your units attack with advantage for this combat", combatOnly: true,
       combatRoundStartOnly: true, target: { type: "none" },
       effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
-        name: "Grenadiers VI", scope: "player", duration: { type: "combat" },
+        name: "Halflings VI", scope: "player", duration: { type: "combat" },
         polarity: "positive", removable: false, modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }],
       } },
     }] }, implementationStatus: "implemented", source: heroSource("henrietta"),
@@ -2086,6 +2179,123 @@ export const adventureCards: CardLibrary = {
   "specialty.frederick.6": withoutArt(
     attackInstantSpecialty("frederick", "Automatons", 6, 2, "Automatons"),
   ),
+  // ---- Forge (expansion) heroes -------------------------------------------
+  // Dark Mullich (Cyborg) — "Overclock", the speed specialist:
+  //  I  — Instant: +2 Initiative until the end of the combat round (a
+  //       round-scoped CREATE_INITIATIVE_BUFF on a friendly unit) OR the
+  //       standard +1 Attack attack reaction; BOTH double on a GROUND unit
+  //       (doubleForUnitType "ground"). Also offered at the beginning of the
+  //       combat (src/engine/permanents.ts forgeOverclockStart).
+  //  IV — Instant: one friendly unit gains +3 Initiative AND +1 Attack for this
+  //       combat round and the next (combat-rounds 2). Also offered at the
+  //       beginning of the combat.
+  //  VI — Instant, at the beginning of a combat round (combatRoundStartOnly;
+  //       round 1 = the beginning of the combat is asked too): every unit you
+  //       control gains +2 Initiative AND rolls its Attack dice with advantage
+  //       until the end of that round (a player-scoped round active effect).
+  "specialty.dark_mullich.1": {
+    id: "specialty.dark_mullich.1", name: "Overclock I", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "dark_mullich",
+      "Instant: Your selected unit gains +2 Initiative until the end of the round. — OR — Instant: Your selected unit gains +1 Attack. The effect doubles for ground units. May also be played at the beginning of the combat."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CHOOSE_ONE", options: [
+      {
+        label: "+2 Initiative until the end of the round (x2 for ground units)",
+        combatOnly: true,
+        target: { type: "friendly-unit" },
+        effect: {
+          type: "CREATE_INITIATIVE_BUFF", name: "Overclock", amount: 2,
+          duration: { type: "current-combat-round" }, polarity: "positive",
+          removable: true, doubleForUnitType: "ground",
+        },
+      },
+      {
+        label: "+1 Attack (x2 for ground units)",
+        trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+        effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitType: "ground" },
+      },
+    ] },
+    implementationStatus: "implemented", source: forgeSpecialtySource("Dark Mullich"),
+  },
+  "specialty.dark_mullich.4": {
+    id: "specialty.dark_mullich.4", name: "Overclock IV", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "dark_mullich",
+      "Instant: Your selected unit gains +1 Attack and +3 Initiative for 2 rounds (this round and the next). May also be played at the beginning of the combat."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Overclock", scope: "unit", duration: { type: "combat-rounds", rounds: 2 },
+      polarity: "positive", removable: true, modifiers: [
+        { type: "INITIATIVE_BONUS", amount: 3 },
+        { type: "ATTACK_BONUS", amount: 1 },
+      ],
+    } },
+    implementationStatus: "implemented", source: forgeSpecialtySource("Dark Mullich"),
+  },
+  "specialty.dark_mullich.6": {
+    id: "specialty.dark_mullich.6", name: "Overclock VI", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "dark_mullich",
+      "Instant: At the beginning of the Combat round (including the beginning of the combat), all your units gain +2 Initiative and roll their Attack dice with advantage (roll 2, keep the higher) until the end of the round."],
+    target: { type: "none" },
+    effect: { type: "CHOOSE_ONE", options: [{
+      label: "Round start: all your units gain +2 Initiative and Attack-roll advantage until the end of the round",
+      combatOnly: true, combatRoundStartOnly: true, target: { type: "none" },
+      effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+        name: "Overclock VI", scope: "player", duration: { type: "current-combat-round" },
+        polarity: "positive", removable: false,
+        modifiers: [{ type: "INITIATIVE_BONUS", amount: 2 }, { type: "ATTACK_ROLL_ADVANTAGE" }],
+      } },
+    }] },
+    implementationStatus: "implemented", source: forgeSpecialtySource("Dark Mullich"),
+  },
+  // Zeestral (Techno Pagan) — "Storm Circuit", the lightning-rite specialist:
+  //  I  — Instant (any time in Combat): 1 effect damage to an enemy unit, OR the
+  //       +1 Attack attack reaction limited to a RANGED attacker (unitTypes).
+  //  IV — Instant: 2 effect damage to an enemy unit, OR draw 2 cards (the draw
+  //       side has no target and no combat gate, so it is playable purely to
+  //       draw — on the map or in combat).
+  //  VI — Instant (any time in Combat): 2 damage to the chosen enemy unit and 1
+  //       damage to each ENEMY unit orthogonally adjacent to it
+  //       (AREA_DAMAGE_ALL_ADJACENT with centerAmount + adjacentEnemiesOnly —
+  //       friendly neighbours are spared).
+  "specialty.zeestral.1": stormCircuitSpecialty(1, 1),
+  "specialty.zeestral.4": {
+    id: "specialty.zeestral.4", name: "Storm Circuit IV", kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "zeestral",
+      "Instant: Deal 2 damage to an enemy unit. — OR — Instant: Draw 2 cards."],
+    effect: { type: "CHOOSE_ONE", options: [
+      {
+        label: "Deal 2 damage to an enemy unit",
+        combatAnytime: true,
+        target: { type: "enemy-unit" },
+        effect: { type: "DEAL_DAMAGE", amount: 2, damageKind: "effect" },
+      },
+      {
+        label: "Draw 2 cards",
+        effect: { type: "DRAW_CARDS", amount: 2 },
+      },
+    ] },
+    implementationStatus: "implemented", source: forgeSpecialtySource("Zeestral"),
+  },
+  "specialty.zeestral.6": {
+    id: "specialty.zeestral.6", name: "Storm Circuit VI", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "zeestral",
+      "Instant: Deal 2 damage to an enemy unit and 1 damage to each enemy unit adjacent to it."],
+    target: { type: "enemy-unit" },
+    effect: { type: "CHOOSE_ONE", options: [{
+      label: "2 damage to an enemy unit and 1 damage to each enemy unit adjacent to it",
+      combatAnytime: true, target: { type: "enemy-unit" },
+      effect: {
+        type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1, centerAmount: 2,
+        includeCenter: true, adjacentEnemiesOnly: true,
+      },
+    }] },
+    implementationStatus: "implemented", source: forgeSpecialtySource("Zeestral"),
+  },
   // Anime Realms unit specialists use the proven generic I/IV/VI curve: global
   // +1 at I/IV/VI, doubled only on the named line. Face-less cards render with
   // the current hero portrait. Bin remains for legacy story scenarios; Fuyuki's
@@ -4521,6 +4731,7 @@ export const adventureCards: CardLibrary = {
         },
       ],
     },
+    assets: { cardImage: specialtyCardImage("kriv", 1), imageAlt: "Kriv Runes I specialty card" },
     implementationStatus: "implemented",
     source: heroSource("kriv"),
   },
@@ -4557,6 +4768,7 @@ export const adventureCards: CardLibrary = {
         },
       ],
     },
+    assets: { cardImage: specialtyCardImage("kriv", 4), imageAlt: "Kriv Runes IV specialty card" },
     implementationStatus: "implemented",
     source: heroSource("kriv"),
   },
@@ -4589,6 +4801,7 @@ export const adventureCards: CardLibrary = {
         { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
       ],
     },
+    assets: { cardImage: specialtyCardImage("kriv", 6), imageAlt: "Kriv Runes VI specialty card" },
     implementationStatus: "implemented",
     source: heroSource("kriv"),
   },
@@ -4597,7 +4810,7 @@ export const adventureCards: CardLibrary = {
   // buff. IV adds Attack and Runes to the declared attack, with both parts
   // doubled for Mountain Rams. VI spends one live Rune for a large Defense
   // reaction, whose Defense (but not its cost) doubles for Mountain Rams.
-  "specialty.eikthurn.1": withoutArt({
+  "specialty.eikthurn.1": {
     id: "specialty.eikthurn.1",
     name: "Mountain Rams I",
     kind: "hero-specialty",
@@ -4611,10 +4824,11 @@ export const adventureCards: CardLibrary = {
     ],
     target: { type: "friendly-unit" },
     effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Mountain Rams" },
+    assets: { cardImage: specialtyCardImage("eikthurn", 1), imageAlt: "Eikthurn Mountain Rams I specialty card" },
     implementationStatus: "implemented",
     source: heroSource("eikthurn"),
-  }),
-  "specialty.eikthurn.4": withoutArt({
+  },
+  "specialty.eikthurn.4": {
     id: "specialty.eikthurn.4",
     name: "Mountain Rams IV",
     kind: "hero-specialty",
@@ -4635,10 +4849,11 @@ export const adventureCards: CardLibrary = {
       gainRunes: 4,
       doubleForUnitName: "Mountain Rams",
     },
+    assets: { cardImage: specialtyCardImage("eikthurn", 4), imageAlt: "Eikthurn Mountain Rams IV specialty card" },
     implementationStatus: "implemented",
     source: heroSource("eikthurn"),
-  }),
-  "specialty.eikthurn.6": withoutArt({
+  },
+  "specialty.eikthurn.6": {
     id: "specialty.eikthurn.6",
     name: "Mountain Rams VI",
     kind: "hero-specialty",
@@ -4659,14 +4874,13 @@ export const adventureCards: CardLibrary = {
       runeCost: 1,
       doubleForUnitName: "Mountain Rams",
     },
+    assets: { cardImage: specialtyCardImage("eikthurn", 6), imageAlt: "Eikthurn Mountain Rams VI specialty card" },
     implementationStatus: "implemented",
     source: heroSource("eikthurn"),
-  }),
+  },
 
-  // Oidana (Chieftain): the printed Defense-heavy Archery hero. Her Diplomacy
-  // specialty is a CHOOSE_ONE. The card-draw side (DRAW_CARDS) scales
-  // 1 / 2 / 2. The OTHER side scales with her Diplomacy mastery:
-  //   I  — Map: use the full Diplomacy Dwelling draw, then recruit one.
+  // Oidana (Chieftain): level I scries two cards from one chosen Neutral deck.
+  // Her later specialty cards retain their existing Diplomacy options:
   //   IV — Map: use the full Diplomacy Dwelling draw, then recruit one for 4 gold
   //        less (goldReduction 4 — applied to the affordability check, label AND spend).
   //   VI — Combat (ongoing): +1 Attack to every NEUTRAL (Diplomacy-recruited) unit she
@@ -4678,26 +4892,11 @@ export const adventureCards: CardLibrary = {
     name: "Diplomacy I",
     kind: "hero-specialty",
     timing: "instant",
-    tags: [
-      "hero-specialty",
-      "instant",
-      "oidana",
-      "diplomacy",
-      "Instant: draw 1 card. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost).",
-    ],
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy",
+      "Global: Choose any Neutral Unit deck. Look at the top 2 cards. Put any number into that deck's discard pile and the rest on top of that deck in any order."],
     target: { type: "none" },
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
-        {
-          label:
-            "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)",
-          mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT" },
-        },
-      ],
-    },
+    effect: { type: "OIDANA_NEUTRAL_SCRY" },
+    assets: { cardImage: specialtyCardImage("oidana", 1), imageAlt: "Oidana Diplomacy I specialty card" },
     implementationStatus: "implemented",
     source: bulwarkExpansionPreviewSource("Oidana"),
   },
@@ -4726,6 +4925,7 @@ export const adventureCards: CardLibrary = {
         },
       ],
     },
+    assets: { cardImage: specialtyCardImage("oidana", 4), imageAlt: "Oidana Diplomacy IV specialty card" },
     implementationStatus: "implemented",
     source: bulwarkExpansionPreviewSource("Oidana"),
   },
@@ -4758,6 +4958,7 @@ export const adventureCards: CardLibrary = {
         },
       ],
     },
+    assets: { cardImage: specialtyCardImage("oidana", 6), imageAlt: "Oidana Diplomacy VI specialty card" },
     implementationStatus: "implemented",
     source: bulwarkExpansionPreviewSource("Oidana"),
   },
@@ -7197,10 +7398,9 @@ for (const level of [1, 4, 6] as const) {
     level,
     "Ghostfire Coil",
   );
-  // Xuanming (Heavenly Demon, might) — Legion of Bones: conscript the fallen
-  // into service (Oidana's Diplomacy set). Only the display labels and the VI
-  // buff's display name are re-flavoured — the mechanics text after each colon
-  // and every effect stay byte-identical to Diplomacy's.
+  // Xuanming (Heavenly Demon, might) — Legion of Bones: retain the original
+  // recruit/draw I card while Oidana I alone gains the Neutral-deck scry.
+  // IV and VI continue to share Oidana's later Diplomacy mechanics.
   const xuanmingCard = rethemedSpecialty(
     adventureCards[`specialty.oidana.${level}`],
     "oidana",
@@ -7208,6 +7408,27 @@ for (const level of [1, 4, 6] as const) {
     level,
     "Legion of Bones",
   );
+  if (level === 1) {
+    xuanmingCard.tags = [
+      "hero-specialty", "instant", "xuanming", "diplomacy",
+      "Instant: draw 1 card. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost).",
+    ];
+    xuanmingCard.effect = {
+      type: "CHOOSE_ONE",
+      options: [
+        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
+        {
+          label: "Raise the fallen: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" },
+        },
+      ],
+    };
+    xuanmingCard.source = {
+      product: "Anime Mod — Ninefold Realms × Otherworld Gate",
+      credit: "Original hero specialty; retains its existing Diplomacy recruit and draw rules.",
+    };
+  }
   const xuanmingEffect = xuanmingCard.effect as
     | { options?: Array<{ label?: string; effect?: { name?: string } }> }
     | undefined;

@@ -16,11 +16,8 @@ import { MGQ_TOWN_BOARD_BARS } from "@/data/anime/mgq";
  *    lives in `geometry` as fractions of the scan size, measured once from the
  *    shared Archon die-cut.
  *
- *  - DESIGNED boards (bulwark, factory): no
- *    printed board is published, so the view draws the same die-cut layout in
- *    CSS: bars over the empty PC townscape (built bars reveal the fully-built
- *    slice and overlay per-building tile art where a file exists — see
- *    `townBoardTileArt` and public/assets/town-board/README.md), definition
+ *  - DESIGNED boards (bulwark, factory): the view draws the same die-cut layout
+ *    in CSS: seven aligned built inserts over an empty townscape, definition
  *    cards in the bottom-left corner, and the AUTHENTIC printed resource-track
  *    + token-well panel (`panelImage`, cropped from the Stronghold fan scan by
  *    scripts/crop-town-tracks-panel.py) pasted bottom-right at the exact
@@ -71,6 +68,8 @@ export type TownBoardSpec = {
   emptyImage?: string;
   /** Real printed-board scan with every building tile slotted in. */
   fullImage?: string;
+  /** Complete empty printed-style face for a designed board. */
+  boardFaceImage?: string;
   /** Designed boards: fully-built PC townscape drawn behind the bars. */
   panoramaImage?: string;
   /**
@@ -85,6 +84,8 @@ export type TownBoardSpec = {
   /** Designed boards: the authentic printed tracks/tokens panel (a crop of the
    *  Stronghold fan scan) pasted at `geometry.panel` instead of CSS cells. */
   panelImage?: string;
+  /** The designed board's base already prints its resource tracks and wells. */
+  printedPanelInBase?: boolean;
   /**
    * Real printed BUILDING-TILE art per slot (the physical Factory board): each
    * building has a full-bleed built-art tile (`townBoardTileArt`) and an unbuilt
@@ -190,6 +191,64 @@ const DESIGNED_GEOMETRY: TownBoardGeometry = {
 };
 
 const DESIGNED_PANEL_IMAGE = "/assets/town-tracks-panel.webp";
+
+/** Factory's generated board face uses the same seven-slot die-cut as the
+ * supplied reference, measured on its 1470×1070 artwork. */
+const FACTORY_GEOMETRY: TownBoardGeometry = {
+  aspect: [1470, 1070],
+  window: { left: 61 / 1470, top: 86 / 1070, bottom: 508 / 1070, barPitch: (1408 - 61) / 7 / 1470 },
+  definitions: { left: 60 / 1470, top: 530 / 1070, right: 776 / 1470, bottom: 1010 / 1070 },
+  tracks: {
+    firstCellX: 922 / 1470,
+    cellPitchX: 63 / 1470,
+    zigzagDy: 9 / 1070,
+    iconX: 850 / 1470,
+    rows: [
+      { resource: "gold", y: 568 / 1070, values: TOWN_TRACK_VALUES.gold },
+      { resource: "buildingMaterials", y: 675 / 1070, values: TOWN_TRACK_VALUES.buildingMaterials },
+      { resource: "valuables", y: 782 / 1070, values: TOWN_TRACK_VALUES.valuables }
+    ]
+  },
+  tokens: {
+    radius: 77 / 1470,
+    slots: [
+      { kind: "build", x: 920 / 1470, y: 938 / 1070 },
+      { kind: "population", x: 1095 / 1470, y: 938 / 1070 },
+      { kind: "spellBook", x: 1320 / 1470, y: 938 / 1070 }
+    ]
+  }
+};
+
+/**
+ * Forge's generated face (1536×1024) repeats the Factory die-cut: seven plaque
+ * bars on top, five rule cards bottom-left, tracks + three token wells bottom-
+ * right. The fractions start as Factory's; recalibrate here once the art lands.
+ */
+const FORGE_GEOMETRY: TownBoardGeometry = {
+  // Measured on the generated Forge face (forge-board-empty.webp, 1536x1024).
+  aspect: [1536, 1024],
+  window: { left: 0.0373, top: 0.0682, bottom: 0.4748, barPitch: 0.1327 },
+  definitions: { left: 0.0364, top: 0.494, right: 0.53, bottom: 0.941 },
+  tracks: {
+    firstCellX: 0.628,
+    cellPitchX: 0.0426,
+    zigzagDy: 0.011,
+    iconX: 0.578,
+    rows: [
+      { resource: "gold", y: 0.536, values: TOWN_TRACK_VALUES.gold },
+      { resource: "buildingMaterials", y: 0.632, values: TOWN_TRACK_VALUES.buildingMaterials },
+      { resource: "valuables", y: 0.73, values: TOWN_TRACK_VALUES.valuables }
+    ]
+  },
+  tokens: {
+    radius: 0.053,
+    slots: [
+      { kind: "build", x: 0.623, y: 0.866 },
+      { kind: "population", x: 0.755, y: 0.866 },
+      { kind: "spellBook", x: 0.9, y: 0.866 }
+    ]
+  }
+};
 
 /**
  * Cove and Conflux ship REAL printed English board scans (the pipeline under
@@ -449,24 +508,42 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   factory: {
     factionId: "factory",
-    // The real printed Factory town board: every slot shows its own portrait
-    // building tile (public/assets/town-board/factory-<building>{,-unbuilt}.webp,
-    // cropped from the physical board scans) — the name/cost plaque while unbuilt,
-    // the built illustration once raised. No panorama-reveal, so nothing muddies
-    // the tiles; the empty desert only shows in the gaps between slots.
-    realTileArt: true,
-    panoramaImage: "/assets/towns-factory-background.webp",
-    panelImage: DESIGNED_PANEL_IMAGE,
+    // The whole face, not just a townscape: blank plaques and rule cards receive
+    // live names, costs and rules in the view; each built strip is an aligned
+    // crop of this face's built counterpart.
+    boardFaceImage: "/factory-cards/factory-board-empty.webp",
+    physicalPanoramaTiles: true,
+    barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/factory-cards/factory-board-built-strip-${slot}.webp`),
+    printedPanelInBase: true,
     bars: [
+      ["factory.bank"],
       ["factory.city_hall"],
+      ["factory.mage_guild", "factory.artifact_merchants"],
       ["factory.dwelling_bronze"],
-      ["factory.dwelling_silver", "factory.bank"],
       ["factory.citadel"],
-      ["factory.artifact_merchants"],
-      ["factory.dwelling_gold"],
-      ["factory.mage_guild"]
+      ["factory.dwelling_silver"],
+      ["factory.dwelling_gold"]
     ],
-    geometry: DESIGNED_GEOMETRY
+    geometry: FACTORY_GEOMETRY
+  },
+  forge: {
+    factionId: "forge",
+    // Same whole-face treatment as Factory: live names/costs/rules are drawn
+    // onto the blank plaques and rule cards; built strips are aligned crops.
+    boardFaceImage: "/assets/town-board/forge-board-empty.webp",
+    physicalPanoramaTiles: true,
+    barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/assets/town-board/forge-board-built-strip-${slot}.webp`),
+    printedPanelInBase: true,
+    bars: [
+      ["forge.city_hall"],
+      ["forge.mage_guild"],
+      ["forge.resource_silo"],
+      ["forge.dwelling_bronze"],
+      ["forge.dwelling_silver"],
+      ["forge.citadel", "forge.toxic_moat"],
+      ["forge.dwelling_gold"]
+    ],
+    geometry: FORGE_GEOMETRY
   },
   fuyuki: {
     factionId: "fuyuki",

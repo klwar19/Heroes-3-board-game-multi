@@ -239,9 +239,11 @@ import {
   FxStage,
   HOLD_CENTER_MS,
   NEUTRAL_ATTACK_PAUSE_MS,
+  preloadRuneBurstArt,
   RANGED_RELEASE_MS,
   type FxCue
 } from "@/components/table/fx";
+import { isBulwarkPlayer } from "@/engine/runes";
 import {
   abilityFxPlans,
   cancelFx,
@@ -742,6 +744,17 @@ export default function Home() {
     () => rawState ? parallelStateForPlayer(rawState, viewerPlayerId) : null,
     [rawState, viewerPlayerId],
   );
+  // Warm the Rune Level celebration art only once a Bulwark seat is fighting —
+  // no other battle ever fetches it.
+  const bulwarkInCombat = Boolean(
+    state?.combat &&
+      [state.combat.attackerPlayerId, state.combat.defenderPlayerId].some(
+        (id) => id && id !== NEUTRAL_PLAYER_ID && isBulwarkPlayer(state, id)
+      )
+  );
+  useEffect(() => {
+    if (bulwarkInCombat) preloadRuneBurstArt();
+  }, [bulwarkInCombat]);
   /** Stable per-browser identity for room membership (host/seat enforcement). */
   const clientId = useMemo(() => getClientId(), []);
   /**
@@ -3002,7 +3015,11 @@ export default function Home() {
           } else {
             const meleeFxKey = unitMeleeFxKey(attackerVoice);
             const targetOnly = meleeFxKey === "town-ram-earth-spike";
-            const behemothClaw = meleeFxKey === "melee-claw-rake-animated" && attackerFxSlug === "behemoths";
+            // Behemoths rake three times; the Forge Cyberbrute rakes the same
+            // three times with its own larger claw atlas.
+            const behemothClaw =
+              (meleeFxKey === "melee-claw-rake-animated" && attackerFxSlug === "behemoths") ||
+              meleeFxKey === "cyberbrute-claw-rake-animated";
             const repeats = behemothClaw ? 3 : 1;
             for (let repeat = 0; repeat < repeats; repeat += 1) cues.push(targetOnly ? {
                 kind: "sprite",
@@ -3234,6 +3251,10 @@ export default function Home() {
         // Walk the events in *presentation* order, not log order: a spell's
         // sprite must lead the damage / death / heal it caused, even though the
         // engine records the outcome first (the spell is still on the stack).
+        // Two Rune Levels can land in ONE update (a big starting pool, or a
+        // Bulwark-vs-Bulwark opening): stagger their bursts so the words and
+        // seal sounds never play on top of each other.
+        let runeBeat = 0;
         for (const event of orderFxEventsForPresentation(freshFx)) {
           switch (event.type) {
             case "RUNE_LEVEL_REACHED": {
@@ -3242,9 +3263,24 @@ export default function Home() {
               // or sounds as a Rune-Empowered battle opens). It's a public board
               // event, so it plays for either side reaching a level.
               const runeSound = COMBAT_EVENT_SOUNDS.RUNE_LEVEL_REACHED;
+              const runeAt = timeline + runeBeat;
               if (runeSound) {
-                window.setTimeout(() => playLibrarySound(runeSound), timeline);
+                window.setTimeout(() => playLibrarySound(runeSound), runeAt);
               }
+              // ...and bloom the rune-circle burst with the level's rune word on
+              // the same beat, then fly it into that seat's earned Level seal on
+              // the Rune board. Rides over the action (no timeline advance) and
+              // is pointer-events:none, so it never holds up a prompt. De-duped
+              // like every FX cue: seenFxIdsRef is seeded with the whole log on
+              // connect, so reloads / reconnects / catch-up never replay it.
+              cues.push({
+                kind: "rune",
+                id: `${event.id}-rune`,
+                playerId: event.playerId,
+                level: event.level,
+                delayMs: runeAt
+              });
+              runeBeat += 900;
               break;
             }
             case "CARDS_DRAWN": {
@@ -3306,7 +3342,12 @@ export default function Home() {
               // cast is not itself resolving, so it is skipped (it still gets
               // the card-flight foley).
               const isPowerBoost = /^\+\d+ Power/u.test(event.optionLabel ?? "");
-              const playedPlan = isPowerBoost ? undefined : spellFxPlans[event.cardId];
+              // A damage side whose struck units each carry their own card-damage
+              // presentation (Zeestral's Storm Circuit bolts, cardSpellFxPlans)
+              // is shown on those DAMAGE_ASSIGNED beats, not flashed here too.
+              const presentedPerHit =
+                Boolean(cardSpellFxPlans[event.cardId]) && /damage/iu.test(event.optionLabel ?? "");
+              const playedPlan = isPowerBoost || presentedPerHit ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
                 // Attack-window / Sorrow reactions carry the unit they land on
@@ -3466,6 +3507,50 @@ export default function Home() {
                   const soundKey = plan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
                 }
+              } else if (plan.affectStruckUnits && plan.affect?.[0] && inCombat) {
+                // Death Ripple (the Spell): the H3 ripple washes over every
+                // creature this cast struck at the same moment, with one cast
+                // sound; their damage numbers follow on the DAMAGE_ASSIGNED beats.
+                const at = timeline;
+                const affectKey = plan.affect[0].key;
+                // The engine logs the hits BEFORE SPELL_CAST_RESOLVED (the
+                // presentation order only moves them after it), so walk the raw
+                // snapshot back to this cast's start to collect them.
+                const struck: string[] = [];
+                for (let index = freshFx.indexOf(event) - 1; index >= 0; index -= 1) {
+                  const earlier = freshFx[index];
+                  if (
+                    earlier.type === "SPELL_CAST_STARTED" ||
+                    earlier.type === "SPELL_CAST_RESOLVED" ||
+                    earlier.type === "CARD_PLAYED"
+                  ) {
+                    break;
+                  }
+                  if (
+                    earlier.type === "DAMAGE_ASSIGNED" &&
+                    earlier.source.type === "card" &&
+                    earlier.source.cardId === event.spellCardId &&
+                    earlier.source.controllerId === event.playerId &&
+                    earlier.target.type === "unit" &&
+                    !struck.includes(earlier.target.unitId)
+                  ) {
+                    struck.unshift(earlier.target.unitId);
+                  }
+                }
+                const anchors = struck.length > 0 ? struck.map((unitId) => `unit:${unitId}`) : ["center"];
+                anchors.forEach((anchor, index) => {
+                  cues.push({
+                    kind: "sprite",
+                    id: `${event.id}-ripple-${index}`,
+                    fxKey: affectKey,
+                    at: anchor,
+                    sound: index === 0 ? plan.sound : undefined,
+                    delayMs: at
+                  });
+                });
+                timeline += spellPresentationMs(plan);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
               } else if (plan.affect || plan.sound) {
                 // A player-scoped spell with no single target unit (Mirth):
                 // there is nothing on the board to anchor on, so its sprite
@@ -4630,7 +4715,10 @@ export default function Home() {
 
   const presentationActive = Boolean(
     dice.current || mapDice.current || mapNotice.current || firstRoll || newDay.current || moraleCue.current ||
-    astrologerCue || eventCue || mapEventCue || storyCue || drawCue || moveCue || fxCues.length > 0 || combatPresenting
+    astrologerCue || eventCue || mapEventCue || storyCue || drawCue || moveCue ||
+    // Rune-level bursts deliberately ride OVER the action (pointer-events:none,
+    // no timeline advance) — they must not hold the computer's next move back.
+    fxCues.some((cue) => cue.kind !== "rune") || combatPresenting
   );
   useEffect(() => {
     if (!presentationActive) {

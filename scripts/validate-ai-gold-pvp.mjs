@@ -114,7 +114,8 @@ for (const job of jobs) {
   const topGold = factions.coreFactionDefinitions[job.faction].units.filter(id => tier(id) === 'gold').at(-1);
   const row = { ...job, hero, firstGold: null, firstTopGold: null, firstSilver: null, firstFar: null, secondFar: null,
     firstL3FarWin: null, secondL3FarWin: null, pvpWinner: null, actions: 0, termination: null, reason: null,
-    neutralWins: 0, neutralLosses: 0, retreats: 0, cardPlays: 0, purchases: [], decisionMs: [] };
+    neutralWins: 0, neutralLosses: 0, retreats: 0, cardPlays: 0, purchases: [], decisionMs: [],
+    secondaryHired: null, pvpFights: 0, pvpWins: 0, unitsLost: 0, spellBuys: 0, mpWasted: 0 };
   const seen = new Set(), l3Tiles = new Set(), trail = [];
   try {
     for (let i = 0; i < (job.kind === 'pvp' ? 2500 : 6000); i++) {
@@ -125,6 +126,7 @@ for (const job of jobs) {
         const c = state.combat; seen.add(c.id);
         if (c.context.kind === 'player') {
           row.pvpWinner = c.outcome.winnerPlayerId;
+          if (c.attackerPlayerId === me || c.defenderPlayerId === me) { row.pvpFights++; if (c.outcome.winnerPlayerId === me) row.pvpWins++; }
           if (job.kind === 'pvp') { row.termination = 'pvp-outcome'; break; }
         } else if (c.attackerPlayerId === me) {
           if (c.outcome.winnerPlayerId === me) {
@@ -159,8 +161,15 @@ for (const job of jobs) {
         if (trail.length > 60) trail.shift();
         if (d.playerId === me && ['CAST_SPELL', 'PLAY_CARD', 'PLAY_REACTION'].includes(d.action.type)) row.cardPlays++;
         if (d.playerId === me && d.action.type === 'POPULATION_ACTION') row.purchases.push({ round: state.round, purchases: d.action.purchases });
+        if (d.playerId === me && d.action.type === 'HIRE_SECONDARY_HERO') row.secondaryHired ??= state.round;
+        if (d.playerId === me && d.action.type === 'SPELL_BOOK_ACTION') row.spellBuys++;
+        if (d.playerId === me && d.action.type === 'END_TURN' && !state.combat) row.mpWasted += Object.values(state.heroes)
+          .filter(h => h.controllerId === me && h.kind === 'main').reduce((n, h) => n + (h.movementPoints ?? 0), 0);
       }
+      const before = state.players[me].army.filter(u => u.side !== 'bank').length;
       state = run.state; row.actions++;
+      const after = state.players[me].army.filter(u => u.side !== 'bank').length;
+      if (after < before && !run.decisions.some(d => d.playerId === me && d.action.type === 'POPULATION_ACTION')) row.unitsLost += before - after;
       if (has(state, me, ['gold', 'azure'])) row.firstGold ??= state.round;
       if (state.players[me].army.some(u => u.side !== 'bank' && u.unitDefId === topGold)) row.firstTopGold ??= state.round;
       if (has(state, me, ['silver'])) row.firstSilver ??= state.round;

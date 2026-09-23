@@ -7,6 +7,7 @@ import {
   parallelInteractionBlocker,
   roundStartEventResolver,
 } from "../parallel-turns";
+import { intelligenceCastOwner } from "../active-effects";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type { GameState, PlayerId } from "../state";
 import { controllerOf, isComputerPlayer } from "./control";
@@ -175,6 +176,12 @@ function computerDecisionOwnerInContext(
     // see that a computer controller owns the window.
     if (combat.pendingNeutralPlacement) {
       return eligible(state, combat.pendingNeutralPlacement);
+    }
+
+    // Mirrors getCombatInteractionActions' Intelligence window gate.
+    const intelligenceOwner = intelligenceCastOwner(state);
+    if (intelligenceOwner) {
+      return eligible(state, intelligenceOwner);
     }
 
     // 4. Start-of-combat Tactics window: the queue head acts, everyone else

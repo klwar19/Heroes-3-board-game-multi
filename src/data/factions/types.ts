@@ -13,6 +13,7 @@ export type FactionId =
   | "cove"
   | "bulwark"
   | "factory"
+  | "forge"
   | "fuyuki"
   | "azure_breeze"
   | "hidden_leaf"
@@ -129,6 +130,15 @@ export type CityHallOption = {
    * buildings and specialties. Cleared at the next Resource round.
    */
   runesNextCombats?: number;
+  /**
+   * Forge City Hall: "The opponent discards two cards from their hand." The
+   * named opponent discards this many RANDOM cards (seeded). Allies are never
+   * targeted; with several opponents the option is split into one entry per
+   * eligible opponent when the choice opens (`opponentDiscardTargetId`).
+   */
+  opponentDiscards?: number;
+  /** Runtime only: the opponent this expanded option targets. */
+  opponentDiscardTargetId?: string;
 };
 
 export type TownBuildingEffect =
@@ -149,6 +159,22 @@ export type TownBuildingEffect =
   | {
       /** Mystic Pond: each Resource round, roll a Resource die and gain it. */
       type: "RESOURCE_ROUND_RESOURCE_DIE";
+      /**
+       * Forge Resource Silo: a rolled building-materials face is ignored (only
+       * gold or valuables are gained). Absent = Mystic Pond (gain any face).
+       */
+      ignoreBuildingMaterials?: boolean;
+    }
+  | {
+      /**
+       * Forge Toxic Moat (prereq Citadel). When built the owner gains the
+       * `warMachineCardId` war machine card to hand. During a siege of this
+       * town, an ATTACKING player's ground or flying unit that destroys a Wall
+       * or the Gate takes `wallDamage` damage.
+       */
+      type: "TOXIC_MOAT";
+      wallDamage: number;
+      warMachineCardId: string;
     }
   | {
       /**

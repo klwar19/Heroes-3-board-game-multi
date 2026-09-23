@@ -2792,6 +2792,8 @@ export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // activation; the unit re-activates after all other units, highest token
   // first. Never offered with the rule off (legal-actions gates it).
   "WAIT_UNIT",
+  // Intelligence window: the holder casts a Spell now or skips.
+  "SKIP_INTELLIGENCE_CAST",
   "END_ACTIVATION",
   "END_COMBAT_ROUND",
   "USE_UNIT_ABILITY",
@@ -2864,6 +2866,8 @@ function commandLabel(legal: LegalAction): string {
       return "Wait (re-activate after the other units)";
     case "END_ACTIVATION":
       return "Hold position";
+    case "SKIP_INTELLIGENCE_CAST":
+      return "Intelligence: cast no Spell now";
     case "END_COMBAT_ROUND":
       return "Next combat round";
     case "COMPLETE_SIMULTANEOUS_TURN":

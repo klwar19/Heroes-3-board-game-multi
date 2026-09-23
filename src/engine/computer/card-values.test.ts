@@ -139,10 +139,10 @@ describe("card-values — id hygiene", () => {
     expect(inert).toEqual([]);
   });
 
-  it("covers the full published lists: 63 artifacts + 41 spells + 26 abilities", () => {
+  it("covers the full published lists: 65 artifacts + 43 spells + 26 abilities", () => {
     const keys = Object.keys(CARD_TIER);
-    expect(keys.filter((id) => id.startsWith("artifact.")).length).toBe(63);
-    expect(keys.filter((id) => id.startsWith("spell.")).length).toBe(41);
+    expect(keys.filter((id) => id.startsWith("artifact.")).length).toBe(65); // 63 published + Helm of Chaos + Hellstorm Helmet
+    expect(keys.filter((id) => id.startsWith("spell.")).length).toBe(43); // 41 published + Meteor Shower + Death Ripple
     expect(keys.filter((id) => id.startsWith("ability.")).length).toBe(26);
     // Necromancy is deliberately contextual, never a flat table entry.
     expect(CARD_TIER["ability.necromancy"]).toBeUndefined();

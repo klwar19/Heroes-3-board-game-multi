@@ -38,6 +38,6 @@ export const cardLibrary: CardLibrary = {
   ...pandoraCards
 };
 
-export { WAR_MACHINE_CARD_IDS } from "./permanents";
+export { GRANTED_WAR_MACHINE_CARD_IDS, WAR_MACHINE_CARD_IDS } from "./permanents";
 export { pandoraDeckCardIds } from "./pandora";
 export { moraleNegativeDeckCardIds, moralePositiveDeckCardIds } from "./morale";

@@ -369,7 +369,7 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "rampart.unicorns") return H({ ...Z, initiative: 1 }, "veteran-mobility-1");
   if (unitDefId === "inferno.cerberi") return S({ ...Z, initiative: 2 });
   if (unitDefId === "inferno.pit_lords") return H({ ...Z, initiative: 1 }, "town-pit-demon-bond");
-  if (unitDefId === "inferno.arch_devils") return H({ ...Z, initiative: 1 }, "town-devil-slow");
+  if (unitDefId === "inferno.arch_devils") return H({ ...Z, initiative: 1 }, "town-devil-luck");
   if (unitDefId === "dungeon.manticores") return A("veteran-manticore-mend");
   if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-hide");
   if (unitDefId === "dungeon.harpies") return H({ ...Z, initiative: 3 }, "veteran-harpy-haste");
@@ -429,6 +429,11 @@ function rankOneStepFor(unitDefId: string): RankStep {
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "factory.mechanics") return A("factory-engineer-attack-support");
+  // Forge: the psionic skull-drone keeps its beholder heritage (no ranged
+  // penalties, immune to enemy ongoing effects); the Cyberbrute's generated R2
+  // duplicated its R1 own-attack reward, so it takes the Behemoth hide instead.
+  if (unitDefId === "forge.watchers") return A("veteran-eye-immunity");
+  if (unitDefId === "forge.cyberbrutes") return A("veteran-behemoth-odd-defense");
   if (unitDefId === "factory.armadillos") return A("reduce-spell-and-specialty-damage-1");
   if (unitDefId === "factory.sandworms") return A("factory-sandworm-burrow");
   if (unitDefId === "neutral.boars") return A("veteran-boar-armor-break");
@@ -476,6 +481,7 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "inferno.magogs") return A("reduce-spell-and-specialty-damage-1");
   if (unitDefId === "inferno.demons") return A("town-demon-paralyze");
   if (unitDefId === "inferno.arch_devils") return A("reduce-spell-and-specialty-damage-1");
+  if (unitDefId === "inferno.efreet") return A("wog-fire-shield-1");
   // Preserve R2 after replacing the earlier Guarded Stance that used to exclude it.
   if (unitDefId === "necropolis.ghost_dragons") return A("bulwark-air-shield");
   if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-cleave");
@@ -500,6 +506,10 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 
 function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "factory.armadillos") return A("factory-armadillo-momentum");
+  // Forge: the Cyber Zombie shields its neighbours; the Jump Troopers' jet
+  // packs carry them one extra space.
+  if (unitDefId === "forge.cyber_zombies") return A("veteran-zombie-intercept");
+  if (unitDefId === "forge.jump_troopers") return A("veteran-mobility-1");
   if (unitDefId === "factory.automatons") return A("factory-automaton-round-blast");
   if (unitDefId === "factory.gunslingers") return H({ ...Z, health: 1 }, "factory-bounty-hunter-cover");
   if (unitDefId === "factory.couatls") return H({ ...Z, initiative: 5 }, "factory-couatl-momentum");
@@ -521,6 +531,8 @@ function explicitRankThree(unitDefId: string): RankStep | null {
     "neutral.gnolls":"ntv-marsh-scavenger", "neutral.lizardmen":"ntv-venom-arrow", "neutral.dragon_flies":"ntv-disorienting-landing", "neutral.basilisks":"ntv-heavy-gaze", "neutral.gorgons":"ntv-armoured-prey",
     "neutral.oceanids":"ntv-flowing-assault", "neutral.seamen":"ntv-boarding-formation", "neutral.sea_dogs":"ntv-return-fire", "neutral.ayssids":"ntv-raking-dive", "neutral.sorceresses":"ntv-bewitching-bolt",
     "neutral.halflings":"ntv-lucky-ricochet",
+    // Neutral Grenadiers: the Factory Grenadier's Perfect Trajectory (+3 Attack on a "+1").
+    "neutral.grenadiers":"factory-grenadier-high-roll",
   };
   if (neutralTownR3[unitDefId]) return A(neutralTownR3[unitDefId]!);
   if (unitDefId === "neutral.air_elementals") return A("veteran-air-chain-lightning");
@@ -598,6 +610,14 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 
 function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "factory.halflings") return A("factory-grenadier-high-roll");
+  // Forge signature capstones (all already-implemented, iconned rank abilities):
+  // gunners sight their mark, the chainsaw shreds armour, rockets splash, the
+  // naga tank's coils pierce, and the Cyberbrute's lightning arcs on a low roll.
+  if (unitDefId === "forge.grunts") return A("town-marksman-mark");
+  if (unitDefId === "forge.cyber_zombies") return A("veteran-defense-pierce");
+  if (unitDefId === "forge.bruisers") return A("veteran-cyber-splash");
+  if (unitDefId === "forge.tanks") return A("town-naga-pierce");
+  if (unitDefId === "forge.cyberbrutes") return A("town-titan-bolt");
   if (unitDefId === "factory.automatons") return A("factory-automaton-detonation-repair");
   if (unitDefId === "factory.dreadnoughts") return A("factory-dreadnought-guarded");
   if (unitDefId === "rampart.elves") {
@@ -818,6 +838,17 @@ const NEUTRAL_TOWN_ICON_SLUGS: Record<string, readonly string[]> = {
 const NEUTRAL_TOWN_ICONS = Object.fromEntries(Object.entries(NEUTRAL_TOWN_ICON_SLUGS).flatMap(([faction, slugs]) => slugs.map(slug => [`ntv-${slug}`, `/game-tokens/rank-ability/neutral-town/${faction}-${slug}.webp`] as const)));
 
 export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
+  "forge-vet-cyberbrute-mend": "/game-tokens/rank-ability/forge/forge-vet-cyberbrute-mend.webp",
+  "forge-vet-open-wound": "/game-tokens/rank-ability/forge/forge-vet-open-wound.webp",
+  "forge-vet-tank-reposition": "/game-tokens/rank-ability/forge/forge-vet-tank-reposition.webp",
+  "forge-vet-tank-death-burst": "/game-tokens/rank-ability/forge/forge-vet-tank-death-burst.webp",
+  "forge-vet-jump-guard": "/game-tokens/rank-ability/forge/forge-vet-jump-guard.webp",
+  "forge-vet-bruiser-guard": "/game-tokens/rank-ability/forge/forge-vet-bruiser-guard.webp",
+  "forge-vet-bruiser-break": "/game-tokens/rank-ability/forge/forge-vet-bruiser-break.webp",
+  "forge-vet-zombie-repair": "/game-tokens/rank-ability/forge/forge-vet-zombie-repair.webp",
+  "forge-vet-grunt-tempo": "/game-tokens/rank-ability/forge/forge-vet-grunt-tempo.webp",
+  "forge-vet-grunt-cover": "/game-tokens/rank-ability/forge/forge-vet-grunt-cover.webp",
+  "forge-vet-grunt-mark": "/game-tokens/rank-ability/forge/forge-vet-grunt-mark.webp",
   "veteran-air-chain-lightning": "/game-tokens/rank-ability/neutral-revisions/air-chain-lightning.webp",
   "veteran-fire-damage-cap": "/game-tokens/rank-ability/neutral-revisions/fire-damage-cap.webp",
   "veteran-ranged-fire-shield": "/game-tokens/rank-ability/neutral-revisions/ranged-fire-shield.webp",
@@ -889,6 +920,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-demon-paralyze": "/game-tokens/rank-ability/town-revisions/demon-paralyze.webp",
   "town-pit-mend": "/game-tokens/rank-ability/town-revisions/pit-mend.webp",
   "town-devil-slow": "/game-tokens/rank-ability/town-revisions/devil-slow.webp",
+  "town-devil-luck": "/game-tokens/rank-ability/town-revisions/devil-luck.webp",
   "town-efreet-mend": "/game-tokens/rank-ability/town-revisions/efreet-mend.webp",
   "veteran-crystal-burst": "/game-tokens/rank-ability/neutral/crystal-burst.webp",
   "veteran-blind-dust": "/game-tokens/rank-ability/neutral/blind-dust.webp",
@@ -998,6 +1030,17 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-troglodyte-three-dice": "/game-tokens/rank-ability/veterancy/veteran-troglodyte-three-dice.webp",
   "veteran-unicorn-enfeeble": "/game-tokens/rank-ability/veterancy/veteran-unicorn-enfeeble.webp",
   "wog-war-zealot-mirror": "/game-tokens/rank-ability/veterancy/wog-war-zealot-mirror.webp",
+  "factory-armadillo-momentum": "/game-tokens/rank-ability/veterancy/factory-armadillo-momentum.webp",
+  "factory-automaton-reroll": "/game-tokens/rank-ability/veterancy/factory-automaton-reroll.webp",
+  "factory-automaton-round-blast": "/game-tokens/rank-ability/veterancy/factory-automaton-round-blast.webp",
+  "factory-automaton-detonation-repair": "/game-tokens/rank-ability/veterancy/factory-automaton-detonation-repair.webp",
+  "factory-bounty-hunter-cover": "/game-tokens/rank-ability/veterancy/factory-bounty-hunter-cover.webp",
+  "factory-couatl-momentum": "/game-tokens/rank-ability/veterancy/factory-couatl-momentum.webp",
+  "factory-dreadnought-speed-hunter": "/game-tokens/rank-ability/veterancy/factory-dreadnought-speed-hunter.webp",
+  "factory-dreadnought-guarded": "/game-tokens/rank-ability/veterancy/factory-dreadnought-guarded.webp",
+  "factory-engineer-attack-support": "/game-tokens/rank-ability/veterancy/factory-engineer-attack-support.webp",
+  "factory-grenadier-high-roll": "/game-tokens/rank-ability/veterancy/factory-grenadier-high-roll.webp",
+  "factory-sandworm-burrow": "/game-tokens/rank-ability/veterancy/factory-sandworm-burrow.webp",
   "bulwark-thick-hide": "/assets/ui/rank-ability/thick-hide.webp",
   "bulwark-air-shield": "/assets/ui/rank-ability/air-shield.webp",
   "wog-no-negative-attack-roll": "/assets/ui/rank-ability/sure-shot.webp",

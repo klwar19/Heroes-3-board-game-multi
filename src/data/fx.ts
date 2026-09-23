@@ -177,7 +177,7 @@ for (const [key, label] of [
 }
 
 export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact"
-  | "melee-claw-rake-animated" | "melee-bite-snap-animated" | "thunderbird-trident-zap-animated"
+  | "melee-claw-rake-animated" | "cyberbrute-claw-rake-animated" | "melee-bite-snap-animated" | "thunderbird-trident-zap-animated"
   | "phoenix-flame-flow-animated" | "dragon-fire-breath-animated" | "dragon-fierce-breath-animated" | "dragon-small-breath-animated" | "faerie-rainbow-breath-animated" | "azure-ice-breath-animated"
   | "crystal-red-strike-animated" | "rust-acid-breath-animated" | "arch-devil-hellfire-slash"
   | "hydra-multi-bite" | "haspid-poison-bite" | "town-ram-earth-spike"
@@ -279,6 +279,12 @@ export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
   if (animeProfile) return animeProfile;
   const slug = unitDefId?.split(/[.:]/).at(-1)?.replaceAll("-", "_");
   if (slug === "arch_devils") return "arch-devil-hellfire-slash";
+  // Forge: the Cyberbrute rakes like a Behemoth, only bigger; the Cyber
+  // Zombie's chainsaw arm tears a flurry of cuts; the Jump Trooper rams in
+  // on its jetpack.
+  if (slug === "cyberbrutes") return "cyberbrute-claw-rake-animated";
+  if (slug === "cyber_zombies") return "saya-multi-slash";
+  if (slug === "jump_troopers") return "melee-thrust-impact";
   if (slug === "hydras") return "hydra-multi-bite";
   if (slug === "haspids") return "haspid-poison-bite";
   if (["earth_elementals", "magma_elementals"].includes(slug ?? "")) return "town-ram-earth-spike";
@@ -343,6 +349,8 @@ for (const [name, [widthInCells, impactWidthInCells]] of Object.entries(rangedPh
     },
   };
 }
+// The shotgun atlas was exported at 1256px (4 x 314), not the shared 1254px.
+Object.assign(sheets["shotgun-shot-phases"], { frameWidth: 314, frameHeight: 314 });
 
 // These authored frames depict a growing, pulsing, then dissipating full ray.
 // They are played across the whole shooter-to-target segment, not flown as an orb.
@@ -429,6 +437,9 @@ for (const key of ["dragon-fire-breath-animated", "dragon-fierce-breath-animated
   sheets[key].rows = 8;
 }
 sheets["dragon-fierce-breath-animated"].sourceDef = "imagegen-dragon-fire-breath-shared";
+// scripts/build-breath-fx.mjs interpolates the 16 phoenix keys to 32 frames;
+// 64fps keeps the original half-second breath.
+Object.assign(sheets["phoenix-flame-flow-animated"], { frames: 32, rows: 8, fps: 64 });
 sheets["bonus-extra-shot-animated"].beamFrames = true;
 
 // Original compact commander atlases. They use 256px cells so the two new
@@ -495,6 +506,37 @@ sheets["lich-death-cloud-shot-phases"] = {
   },
 };
 
+// Forge Cyberbrutes: the Behemoth's claw rake, scaled up for the cyber
+// Ancient Behemoth (rendered by the same claw-swipe path, 3 rakes).
+sheets["cyberbrute-claw-rake-animated"] = {
+  ...sheets["melee-claw-rake-animated"],
+  label: "Cyberbrute giant claw marks",
+  scaleMultiplier: 1.4,
+};
+
+// Zeestral's Storm Circuit: the Chain Lightning bolt + crackle, THICKER — the
+// same H3 sheets drawn larger — and a wider Titan lightning shot that carries
+// the bolt from Zeestral's side to each struck unit.
+sheets["storm-circuit-bolt"] = {
+  ...sheets["lightning-bolt"],
+  label: "Storm Circuit thick lightning bolt",
+  scaleMultiplier: 1.7,
+};
+sheets["storm-circuit-crackle"] = {
+  ...sheets["lightning-crackle"],
+  label: "Storm Circuit thick lightning crackle",
+  scaleMultiplier: 1.6,
+};
+sheets["storm-circuit-shot-phases"] = {
+  ...sheets["titan-shot-phases"],
+  label: "Storm Circuit thick lightning shot",
+  projectilePhases: {
+    ...sheets["titan-shot-phases"].projectilePhases!,
+    widthInCells: 1.4,
+    impactWidthInCells: 1.85,
+  },
+};
+
 export function getFxSheet(key: string): FxSheet | undefined {
   return sheets[key];
 }
@@ -520,6 +562,12 @@ export type SpellFxPlan = {
   affect?: { key: string; delayMs?: number }[];
   /** Render affect/hit art clipped across the complete battlefield frame. */
   battlefield?: boolean;
+  /**
+   * An untargeted cast whose affect sprite plays at once over EVERY unit the
+   * cast damaged (the Death Ripple spell washing over each struck creature, as
+   * in H3), instead of one centre-stage burst.
+   */
+  affectStruckUnits?: boolean;
   /** Stretch the authored frame sequence to this exact presentation length. */
   playbackMs?: number;
   /** Cap the blocking presentation gate while a longer sound tail continues. */
@@ -534,13 +582,31 @@ export type SpellFxPlan = {
    * at SP12_'s bright midpoint while its closing frames and sound tail fade.
    */
   resultAtMs?: number;
-  /** Physical launcher whose in-play card recoils when this projectile fires. */
-  warMachine?: "ballista" | "catapult" | "cannon";
+  /**
+   * Physical launcher whose in-play card this projectile leaves from (and, for
+   * the ballistic machines, recoils).
+   */
+  warMachine?: "ballista" | "catapult" | "cannon" | "lightning_generator";
 };
 
 // SP12_ reaches its full, readable orb on frame 10 of 20 at 15 fps. The heal
 // number and health bar land here; the remaining frames close the circle while
 // REGENER.wav finishes underneath them.
+function stormCircuitFlashPlan(): SpellFxPlan {
+  return {
+    affect: [{ key: "storm-circuit-bolt" }, { key: "storm-circuit-crackle", delayMs: 220 }],
+    sound: "spells/chain-lightning",
+  };
+}
+
+/** Zeestral's damage sides: a thick bolt flies from his seat to each struck unit. */
+const stormCircuitBoltPlan: SpellFxPlan = {
+  projectile: "storm-circuit-shot-phases",
+  hit: "storm-circuit-bolt",
+  sound: "spells/chain-lightning",
+  hitSound: "spells/lightning-bolt",
+};
+
 const regenerationFxPlan: SpellFxPlan = {
   affect: [{ key: "regeneration" }],
   sound: "effects/regeneration",
@@ -601,6 +667,7 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
     affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
     sound: "spells/chain-lightning"
   },
+  "spell.death_ripple": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple", affectStruckUnits: true },
   // Blind drops the paralyze sprite on the target with the Blind cast cue — both
   // the paralyze sheet and blind.mp3 were converted but had never been wired.
   "spell.blind": { affect: [{ key: "paralyze" }], sound: "spells/blind" },
@@ -671,6 +738,7 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // adjacent units' damage floats after. No dice, so the impact sound rides on
   // the burst itself.
   "spell.frost_ring": { hit: "frost-ring", sound: "spells/frost-ring", hitSound: "spells/frost-ring" },
+  "spell.meteor_shower": { hit: "meteor-shower", sound: "spells/meteor-shower", hitSound: "spells/meteor-shower" },
   // Implosion: the converted implosion sheet caves in over the struck enemy with
   // the H3 cast roar; the damage number is held behind it (it had been resolving
   // silently). Anchored on the target unit by the SPELL_CAST_RESOLVED path.
@@ -758,6 +826,26 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.enterprise.1": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.enterprise.4": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.enterprise.6": { sound: "azur-lane/voices/enterprise/ability" },
+  // Zeestral's Storm Circuit: every play — damage, ranged buff, draw —
+  // flashes the THICK chain-lightning bolt + crackle with the Chain Lightning
+  // cast (over the buffed unit, or centre stage over the card for a draw).
+  // The damage sides present per struck unit via cardSpellFxPlans instead.
+  "specialty.zeestral.1": stormCircuitFlashPlan(),
+  "specialty.zeestral.4": stormCircuitFlashPlan(),
+  "specialty.zeestral.6": stormCircuitFlashPlan(),
+  // Storm Engineer's Arc Discharge: repeated lightning strikes on the target
+  // (chain-lightning style, three bolts) under the Titan's ranged-shot report.
+  "commander.forge.arc-discharge": {
+    affect: [
+      { key: "lightning-bolt" },
+      { key: "lightning-crackle", delayMs: 200 },
+      { key: "lightning-bolt", delayMs: 380 },
+      { key: "lightning-sparks", delayMs: 520 },
+      { key: "lightning-bolt", delayMs: 760 },
+      { key: "lightning-crackle", delayMs: 900 },
+    ],
+    sound: "units/titan-shoot",
+  },
   "specialty.melodia.1": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.4": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.6": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
@@ -883,12 +971,16 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "town-mammoth-rune-mend": { affect: [{ key: "cure" }], sound: "effects/rune" },
   "town-dwarf-backlash": { affect: [{ key: "town-dwarf-backlash" }], sound: "spells/magic-arrow" },
   "town-titan-bolt": { projectile: "titan-shot-phases", sound: "units/titan-shoot" },
+  // Forge Scrap Feast (Cyberbrutes' kill-heal): the Regeneration orb over the
+  // healed brute.
+  "forge-cyberbrute-feast": { affect: [{ key: "regeneration" }], sound: "effects/regeneration" },
   "town-demon-paralyze": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "town-pit-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "town-efreet-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "town-naga-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "town-dragon-snare": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "town-devil-slow": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  "town-devil-luck": { affect: [{ key: "misfortune" }], sound: "spells/misfortune" },
   "town-goblin-save": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   ...blueArchiveAbilityVoicePlans,
   "ranged-extra-shot-on-low-roll": {
@@ -1256,6 +1348,7 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   orcs: { projectile: "axe-shot-phases" },
   lizardmen: { projectile: "spear-shot-phases" },
   halflings: { projectile: "stone-shot-phases" },
+  grenadiers: { projectile: "stone-shot-phases" }, // neutral Grenadiers lob the same sling stone
   gremlins: { projectile: "stone-shot-phases" },
   cyclopes: { projectile: "boulder-shot-phases" },
   magogs: { projectile: "fireball-shot-phases" },
@@ -1284,6 +1377,16 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   disciplinary_committee: { projectile: "little-busters-warning-shot-phases" },
   mio: { projectile: "magi-shot-phases" },
   spider_overmind: { projectile: "plasma-shot-phases" },
+  // Forge shooters (the creature's own voice rides the "shoot" action in
+  // unit-sounds.ts; the weapon report is the plan's sound):
+  //  Grunts   — DOOM plasma rifle bolt (Arachnotron plasma).
+  //  Watchers — the Evil Eye's psionic beam, a mind-blast (Forgetfulness) on impact.
+  //  Bruisers — DOOM rocket launch, rocket, and a fireball blast on impact.
+  //  Tanks    — cannon shell with the cannon report and a DOOM barrel blast.
+  grunts: { projectile: "plasma-shot-phases", sound: "doom/dsplasma" },
+  watchers: { projectile: "evil-eye-shot-phases", hit: "forgetfulness", hitSound: "spells/forgetfulness" },
+  bruisers: { projectile: "rocket-shot-phases", hit: "fireball", sound: "doom/dsrlaunc", hitSound: "doom/dsbarexp" },
+  tanks: { projectile: "war-machine-cannon-projectile", hit: "land-mine-hit", sound: "units/cannon-shoot", hitSound: "doom/dsbarexp" },
   santa_gremlin: {
     projectile: "ice-shot-phases",
     sound: "spells/ice-bolt",
@@ -1349,6 +1452,8 @@ const commanderShotFxPlans: Record<string, SpellFxPlan> = {
   },
   "commander:lion_el_jonson": { projectile: "commander-spirit-blade-shot-phases" },
   "commander:sonya": { projectile: "magi-shot-phases" },
+  // Forge Storm Engineer: the Titan's lightning bolt.
+  "commander:forge": { projectile: "titan-shot-phases" },
 };
 
 const groundFirearmVisualUnits = new Set([
@@ -1515,6 +1620,16 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
   "war_machine.cannon": {
     projectile: "war-machine-cannon-projectile", hit: "land-mine-hit",
     sound: "units/cannon-shoot", hitSound: "effects/siege-wall-hit", warMachine: "cannon"
+  },
+  // Forge Lightning Generator: the Titan's lightning shot leaves the in-play
+  // generator card and travels to the struck unit, where a bolt lands. The
+  // crackle is the Energy Elemental rank-I ability's sound (Delayed Impact,
+  // "veteran-energy-delay" → custom-ability/electric-impact). Its long electric
+  // tail keeps ringing while combat resumes (presentationMs gate).
+  "war_machine.lightning_generator": {
+    projectile: "titan-shot-phases", hit: "lightning-bolt",
+    sound: "custom-ability/electric-impact", warMachine: "lightning_generator",
+    presentationMs: 1500
   }
 };
 
@@ -1522,6 +1637,9 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
 // specialty's spell on its damage event, without animating its Power option.
 export const cardSpellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.ciele.6": spellFxPlans["spell.magic_arrow"],
+  "specialty.zeestral.1": stormCircuitBoltPlan,
+  "specialty.zeestral.4": stormCircuitBoltPlan,
+  "specialty.zeestral.6": stormCircuitBoltPlan,
 };
 
 /**

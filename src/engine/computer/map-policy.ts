@@ -111,6 +111,7 @@ import {
   rankedGoldUnits,
   spendDelaysSavedCost,
   spendWorsensGoldMilestone,
+  goldMilestoneConversionGold,
   unitDevelopmentSideStrength,
   shouldPrioritizeFirstAidTent,
   shouldLaunchBronzeRush,
@@ -478,6 +479,12 @@ function buildingScore(
     case "RUNE_ALTAR":
       score = 800 + effect.levelCap;
       focusKind = "build-magic";
+      break;
+    case "TOXIC_MOAT":
+      // Forge: a free Lightning Generator (1 flat damage every combat round)
+      // plus siege deterrence — worth it once the army is fighting.
+      score = 805 + (armyReadyForContestedFight(state, playerId) ? 20 : 0);
+      focusKind = "build-other";
       break;
     default:
       score = broke ? 760 : 790;
@@ -2831,6 +2838,9 @@ function rejectsPaidBronzeSteps(state: GameState, playerId: PlayerId, steps: Rea
     if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(step.recruit) &&
       eventNeutralUnitUtility(state, playerId, step.recruit!.unitDefId,
         neutralRecruitCost(state, playerId, step.recruit!.unitDefId)) <= 0;
+    // Elemental Conflux offers are paid Neutral recruits like any other.
+    if (step.type === "ELEMENTAL_RECRUIT_ONE") return eventNeutralUnitUtility(state, playerId, step.unitDefId,
+      neutralRecruitCost(state, playerId, step.unitDefId)) <= 0;
     // War Machine grant / discounted buy: never a second machine, never from
     // the reserve or the next Gold body's gold.
     if (step.type === "GRANT_WAR_MACHINE") return warMachineGrantUtility(state, playerId, step.cardId, step.cost) <= 0;
@@ -2894,6 +2904,20 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    // Polish Cards of Prophecy pre-roll question on a map Resource/Treasure die:
+    // the card's other half is a lasting combat buff and it also pre-rolls an
+    // attack die, so the AI keeps it for combat and rolls the map die normally.
+    if (
+      step.options.some((candidate) =>
+        candidate.steps.some(
+          (inner) =>
+            (inner.type === "ROLL_RESOURCE_DICE" || inner.type === "ROLL_TREASURE_DICE") &&
+            inner.prophecyPreRollAsked === true,
+        ),
+      )
+    ) {
+      return option.steps.some((inner) => inner.type === "CONSUME_REROLL_ARTIFACT") ? 1_060 : 1_100;
+    }
     // Necromancy Amplifier turn-start (user lesson 2026-09-18, live tutoring):
     // the Amplifier's NECROMANCY_FETCH is the whole point of the build — it
     // fetches the Necromancer ability to UPGRADE a Few-side body at half cost
@@ -2988,6 +3012,24 @@ function resolveVisitStepScore(
         Math.max(planTarget.valuables, goldLadderValuablesReserve(state, playerId))) ||
       (matsCost > 0 && resources.buildingMaterials - matsCost < planTarget.buildingMaterials)
     ) {
+      return 1_020;
+    }
+    // Gold refills every Resource Round, but only so many rounds remain before
+    // R9: a paid convenience (experience, a spell search) may not make the
+    // first level-7 purchase miss that deadline. Measured (Fortress, seed lk-1):
+    // 3 + 10 gold of shrine and Tree of Knowledge visits left the Hydra 4 gold
+    // short at R9, so it landed R11. Visits that pay out resources are exempt.
+    // "Pays out" must also see treasure dice and payouts nested inside a
+    // CHOOSE_ONE option, or a paid treasure visit gets declined near the
+    // milestone even though it can pay gold back.
+    const paysOutResources = (steps: readonly { type: string }[]): boolean =>
+      steps.some((inner) =>
+        /RESOURCE|INCOME|GOLD|MINE|TREASURE/.test(inner.type) ||
+        (inner.type === "CHOOSE_ONE" &&
+          (inner as unknown as { options: { interaction: { type: string } }[] }).options
+            .some((option) => paysOutResources([option.interaction]))));
+    if (goldCost > 0 && !paysOutResources(step.steps) &&
+        spendWorsensGoldMilestone(state, playerId, cost)) {
       return 1_020;
     }
     const followUp = visitStepsUtility(state, playerId, step.steps);
@@ -3749,9 +3791,17 @@ export function scoreMapAction(
       const needsArrow =
         ![...state.players[observation.playerId].hand,
           ...(state.players[observation.playerId].spellBook ?? [])].includes("spell.magic_arrow");
-      const arrowFunded = needsArrow && phase !== "establish-core" && playerGold(state, observation.playerId) - cost >= target.gold;
-      const funded = cost === 0 || arrowFunded || (phase === "improve-army" &&
-        playerGold(state, observation.playerId) - cost >= target.gold);
+      // Gold that must still buy the Gold milestone's missing valuables /
+      // materials at the Trading Post is not spare, and every computer combat
+      // already fields a phantom Magic Arrow (combat-boost.ts): a real one is a
+      // second copy, so a missing Arrow no longer outranks the Gold plan. The
+      // measured leak: a seat paid 6 gold for a failed Arrow search each round
+      // R7-R10 while one valuable short of its Gold dwelling.
+      const spare = playerGold(state, observation.playerId) - cost - target.gold -
+        goldMilestoneConversionGold(state, observation.playerId);
+      const arrowFunded = needsArrow && phase !== "establish-core" && spare >= 0 &&
+        !spendWorsensGoldMilestone(state, observation.playerId, { gold: cost });
+      const funded = cost === 0 || arrowFunded || (phase === "improve-army" && spare >= 0);
 
       // Rolling Spells trades a weak owned Spell for two new looks. Keep strong
       // S/A/B spells and only roll C/D cards once the army fund is protected.
@@ -3776,7 +3826,7 @@ export function scoreMapAction(
       }
 
       if (funded) {
-        return { score: arrowFunded ? 930 : 620, policy: arrowFunded ? "town.seek-magic-arrow" : "town.buy-spells-after-army-core" };
+        return { score: arrowFunded ? 640 : 620, policy: arrowFunded ? "town.seek-magic-arrow" : "town.buy-spells-after-army-core" };
       }
       return { score: 250, policy: "town.skip-spell-buy-fund-army" };
     }

@@ -60,7 +60,10 @@ function applyOk(state: GameState, action: GameAction): GameState {
 }
 
 function takeableDiscard(): string[] {
-  return ["stat.attack", "ability.offense", "spell.magic_arrow", "specialty.rion.1"];
+  // One card per printed recovery filter. stat.knowledge covers the Hellstorm
+  // Helmet's "Return 1 Knowledge or Power Statistic" filter (stat.attack is a
+  // Statistic but not one it may return).
+  return ["stat.attack", "stat.knowledge", "ability.offense", "spell.magic_arrow", "specialty.rion.1"];
 }
 
 function mapState(face: AnyFace): GameState {

@@ -232,6 +232,9 @@ describe("Necropolis actual games", () => {
         ),
       ).toBe(true);
     },
+    // A full 18-round game: ~10-18 s on one idle worker, so the global 20 s
+    // default times out under a parallel full-suite run (not an assertion).
+    120_000,
   );
 });
 

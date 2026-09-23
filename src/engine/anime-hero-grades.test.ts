@@ -1275,7 +1275,7 @@ describe("anime.heroGrades — grade-name registers", () => {
   });
 
   it("every current faction maps to the core register (data-driven faction family)", () => {
-    for (const factionId of ["castle", "rampart", "necropolis", "conflux", "cove", "factory"]) {
+    for (const factionId of ["castle", "rampart", "necropolis", "conflux", "cove", "factory", "forge"]) {
       expect(factionGradeRegister(factionId)).toBe("core");
     }
     expect(factionGradeRegister("some-future-anime-town")).toBe("core"); // default

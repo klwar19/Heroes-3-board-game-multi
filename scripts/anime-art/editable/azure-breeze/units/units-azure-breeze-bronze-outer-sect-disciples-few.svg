@@ -12,7 +12,7 @@
       .smallcaps { font-family: "Liberation Serif", Georgia, serif; font-weight: 700; letter-spacing: 2.5px; }
       .statNumber { fill: #fff0c8; font-family: "Liberation Serif", Georgia, serif; font-size: 40px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
       .typeLabel { fill: #e8e2b4; font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 2px; filter: url(#textShadow); }
-      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 21px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 18px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
     </style>
   </defs>
 
@@ -74,6 +74,6 @@
     <text x="371" y="105" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)">Outer Sect Disciples</text>
     <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Ngoại môn đệ tử</text>
     <text x="376" y="814" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)"># FEW</text>
-    <g id="editable-rules"><path d="M84 923.22q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#9cc8b2"/><text x="384" y="932.22" class="ruleText">No printed ability.</text></g>
+    <g id="editable-rules"><path d="M84 901.38q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#9cc8b2"/><text x="384" y="910.38" class="ruleText">Qi Breathing — once per Combat, this unit's new</text><text x="384" y="931.38" class="ruleText">formation link gains 1 Sect Qi even after this round's</text><text x="384" y="952.38" class="ruleText">link Qi was taken.</text></g>
   </g>
 </svg>

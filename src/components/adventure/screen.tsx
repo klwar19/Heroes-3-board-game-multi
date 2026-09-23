@@ -95,6 +95,7 @@ import {
   bannableHeroesForSeat,
   CUSTOM_WIN_CONDITION_OPTIONS,
   deckDisplayName,
+  combatSetupUnitLimit,
   defaultCustomWinCondition,
   describeCardEffect,
   describeCustomMapPresetEntries,
@@ -11484,7 +11485,7 @@ export function PlacementPanel({
   return (
     <div className="placementPanel" aria-label="Deploy your units">
       <strong>
-        Deploy up to {setup.unitLimit} units ({placed.length} placed)
+        Deploy up to {combatSetupUnitLimit(state, viewerPlayerId)} units ({placed.length} placed)
       </strong>
       {versusNeutrals ? (
         <small className="placementNote">

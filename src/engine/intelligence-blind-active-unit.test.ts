@@ -155,6 +155,10 @@ describe("Blind cast through Intelligence onto the unit already holding the acti
   it("CONTROL: with nothing cast at all the enemy unit simply takes its turn", () => {
     let state = enemyHoldsTheSlot("int-none-control", true, ["ability.intelligence"]);
     state = playIntelligence(state);
+    // USER RULING 2026-09-23: the Intelligence window holds the table until the
+    // holder casts or skips; skipping hands the enemy unit its turn untouched.
+    expect(unitCanAct(state, "p2", TARGET), "the enemy waits for the Intelligence answer").toBe(false);
+    state = applyOk(state, { type: "SKIP_INTELLIGENCE_CAST", playerId: "p1" });
     expect(state.combat!.activeUnitId).toBe(TARGET);
     expect(unitCanAct(state, "p2", TARGET)).toBe(true);
   });
@@ -191,15 +195,14 @@ describe("Blind cast through Intelligence onto the unit already holding the acti
     expect(unitCanAct(state, "p2", TARGET)).toBe(false);
   });
 
-  it("SCOPE CONTROL: a unit that has ALREADY begun acting keeps its turn — its token waits for the next activation", () => {
-    let state = grantClassicFreedom(enemyHoldsTheSlot("int-blind-midturn", false, ["spell.blind"]));
-    // The activation has started (this is the Medusa-retaliation shape: the
-    // paralysis arrives after the unit began acting).
+  it("SCOPE CONTROL (USER RULING 2026-09-23): once the unit has begun acting the round-start window is closed — no Intelligence cast reaches it, and it keeps its turn", () => {
+    const state = grantClassicFreedom(enemyHoldsTheSlot("int-blind-midturn", false, ["spell.blind"]));
     state.combat!.units[TARGET].movedThisActivation = true;
-    state = castAtTarget(state, "spell.blind");
-
-    expect(hasParalysis(state, TARGET), "the token stays for the NEXT activation").toBe(true);
-    expect(state.combat!.units[TARGET].activatedThisRound, "the running activation is not cancelled").toBe(false);
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.blind"),
+      "no off-turn Blind once a unit has acted",
+    ).toBe(false);
+    expect(hasParalysis(state, TARGET)).toBe(false);
     expect(state.combat!.activeUnitId, "it keeps the slot").toBe(TARGET);
   });
 

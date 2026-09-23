@@ -15,8 +15,58 @@ import {
 } from "./unit-abilities";
 import { isAdjacent } from "./battlefield";
 import { cardLibrary } from "@/data/cards/library";
+import { forgeTankDied, forgeUnitMoved, forgeVeterancy } from "./forge";
+import { veteranTrigger } from "./faction-veterancy";
 
 type EventDraft = Omit<GameEvent, "id">;
+
+/**
+ * Forge Cyberbrutes (HEAL_PER_KILL): "Each time this unit kills a unit, it
+ * heals 1." Called once per loss event at the single loss seam below, so every
+ * defeated enemy side (UNIT_FLIPPED Pack→Few), Polish stack layer
+ * (ARMY_STACK_LOST), Stack Token (STACK_TOKEN_DISCARDED) and final removal
+ * (UNIT_REMOVED) counts as one kill. The killer is the unit whose lethal hit
+ * set `townVeterancy.damageSourceId` (attacks, retaliations and unit-sourced
+ * ability damage alike; spells/cards/war machines have no unit source).
+ */
+function healKillerPerKill(
+  state: GameState,
+  fallen: NonNullable<GameState["combat"]>["units"][string],
+  lossType: "UNIT_REMOVED" | "UNIT_FLIPPED" | "ARMY_STACK_LOST" | "STACK_TOKEN_DISCARDED"
+): void {
+  const combat = state.combat;
+  const killerId = fallen.townVeterancy?.damageSourceId;
+  const killer = killerId ? combat?.units[killerId] : undefined;
+  // A final removal only counts when damage defeated it (not a flee/expiry).
+  if (!combat || !killer || (lossType === "UNIT_REMOVED" && fallen.damage < fallen.maxHealth)) return;
+  if (killer.id === fallen.id || killer.controllerId === fallen.controllerId) return;
+  if (killer.damage >= killer.maxHealth || killer.damage <= 0) return;
+  const feast = getUnitAbilityDefinitions(killer).find(
+    (ability) => ability.implementationStatus === "implemented" && ability.effect?.type === "HEAL_PER_KILL"
+  );
+  if (feast?.effect?.type !== "HEAL_PER_KILL") return;
+  const healed = Math.min(feast.effect.amount, killer.damage);
+  if (healed <= 0) return;
+  killer.damage -= healed;
+  const what =
+    lossType === "UNIT_FLIPPED" ? `knocks ${fallen.cardName} down to its Few side`
+      : lossType === "ARMY_STACK_LOST" ? `destroys a stack of ${fallen.cardName}`
+        : lossType === "STACK_TOKEN_DISCARDED" ? `strips ${fallen.cardName}'s Stack Token`
+          : `kills ${fallen.cardName}`;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: killer.id,
+    abilityId: feast.id,
+    targetUnitId: killer.id,
+    message: `${killer.cardName} ${what} — ${feast.name} heals ${healed} Health.`
+  });
+  appendEvent(state, {
+    type: "DAMAGE_HEALED",
+    source: { type: "unit", unitId: killer.id, controllerId: killer.controllerId },
+    target: { type: "unit", unitId: killer.id },
+    amount: healed
+  });
+}
 
 /** Feed/FX slug for Komari's Star Candy shield absorbing a hit. */
 export const LITTLE_BUSTERS_STAR_CANDY_ID = "little-busters-star-candy";
@@ -415,6 +465,7 @@ export function appendEvent<T extends EventDraft>(
   if (nextEvent.type === "UNIT_MOVED" && state.combat) {
     const moved = nextEvent as Extract<GameEvent, { type: "UNIT_MOVED" }>;
     const unit = state.combat.units[moved.unitId];
+    if (unit && moved.from !== moved.to) forgeUnitMoved(state);
     if (unit && moved.from !== moved.to) (unit.townVeterancy ??= {}).movedRound = state.combat.round;
     for (const target of Object.values(state.combat.units)) {
       if (target.townVeterancy?.boundBy) target.townVeterancy.boundBy = target.townVeterancy.boundBy.filter(id => {
@@ -430,6 +481,7 @@ export function appendEvent<T extends EventDraft>(
       if (nextEvent.type === "UNIT_REMOVED") (fallen.townVeterancy ??= {}).lossRecorded = true;
       townAllyLost(state, fallen);
       neutralTownAllyLost(state, fallen, nextEvent.type);
+      healKillerPerKill(state, fallen, nextEvent.type);
     }
   }
   if (nextEvent.type === "DAMAGE_ASSIGNED" && state.combat) {
@@ -439,6 +491,16 @@ export function appendEvent<T extends EventDraft>(
     // Record every hit so the removal chokepoint can distinguish attacks from spells.
     if (target) {
       (target.factionVeterancy ??= {}).lastDamage = { kind: hit.damageKind, source: hit.source, amount: hit.amount };
+      if (hit.amount > 0 && forgeVeterancy(target, "cyberbrute-mend") &&
+          (hit.damageKind === "spell" || (hit.source.type === "card" && cardLibrary[hit.source.cardId]?.kind === "hero-specialty"))) {
+        // The damage event precedes removal. Repair can therefore save a unit
+        // from a hit that would otherwise be exactly lethal.
+        if (target.damage > 0) {
+          target.damage -= 1;
+          veteranTrigger(state, target, "forge-vet-cyberbrute-mend", target, `${target.cardName} repairs 1 HP after spell or specialty damage.`);
+          appendEvent(state, { type: "DAMAGE_HEALED", source: { type: "unit", unitId: target.id, controllerId: target.controllerId }, target: { type: "unit", unitId: target.id }, amount: 1 });
+        }
+      }
     }
     // Follow-up damage may remove the target recursively. Preserve this hit's
     // bookkeeping first so the outer event cannot restore stale lethal state.
@@ -449,6 +511,7 @@ export function appendEvent<T extends EventDraft>(
       state.combat.units[
         (nextEvent as Extract<GameEvent, { type: "UNIT_REMOVED" }>).unitId
       ];
+    if (lost && lost.damage >= lost.maxHealth) forgeTankDied(state, lost);
     if (
       lost?.armyUnitId &&
       !lost.summoned &&

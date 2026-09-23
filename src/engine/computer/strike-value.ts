@@ -33,7 +33,8 @@ export function estimatedStrikeDamage(
   attackDie = 0,
 ): number {
   const moved = attacker.movedThisActivation || position !== attacker.position;
-  const pierce = getAttackDefenseReductionAbility(attacker, moved, retaliation)?.amount ?? 0;
+  // Forge Cyberbrutes size their half/ignore pierce off the target's Defense.
+  const pierce = getAttackDefenseReductionAbility(attacker, moved, retaliation, defender.defense)?.amount ?? 0;
   // The resolver treats the combat card's current Defense as printed Defense
   // (including its current face), with separate effect bonuses added later.
   const printedDefense = !retaliation && getIgnoreTargetCardDefenseAbility(attacker) ? defender.defense : 0;

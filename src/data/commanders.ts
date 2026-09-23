@@ -52,7 +52,8 @@ export const COMMANDER_SLUGS = [
   "kyousuke_natsume",
   "ibuki",
   "lion_el_jonson",
-  "sonya"
+  "sonya",
+  "forge"
 ] as const;
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
@@ -164,11 +165,10 @@ export function commanderStatValue(key: CommanderStatKey, grade: CommanderGrade)
 
 /**
  * Commanders whose Command cast is their primary value and rewards Magic Power
- * (Necropolis Animate Dead heal 1→3, Tower Precision +Atk/no-penalty, Conflux
- * Counterstrike tier-by-Power, Rampart Shield +Def). In ranked human play (16
- * commander games, 197 grade-ups) MAGIC was graded on EXACTLY these four
- * commanders (soul_eater 9, astral_spirit 5, temple_guardian 4, hierophant 2
- * total magic grades) and on NONE of the melee/utility commanders (paladin,
+ * (Necropolis Animate Dead heal 1→3, Conflux Counterstrike tier-by-Power,
+ * Rampart Shield +Def, Tower Precision's extra Power-2 uses). In ranked human play (16
+ * commander games, 197 grade-ups) MAGIC was graded on these casters and on
+ * NONE of the melee/utility commanders (paladin,
  * succubus, shaman, corsair/Sea Marshal, brute, ogre_leader, bulwark, factory —
  * 0 magic grades between them). Cast Power itself only climbs at Magic grade 2+
  * (COMMANDER_GRADE_VALUES.magic = [0,0,1,2]), so only a commander that actually
@@ -488,17 +488,17 @@ export type CommanderCastEffect =
       /**
        * Tower Temple Guardian "Precision" (redesigned): an INSTANT-REACTION
        * offensive buff played through the attack window when a FRIENDLY RANGED
-       * unit declares an attack. It boosts THAT ATTACK ONLY (a per-attack
-       * `stackItem.modifiers.attackBonus`) and lifts every ranged penalty for it
-       * (`ignoreRangedPenalty`). Free, once per combat round, at most twice per
-       * combat: the first cast of the combat grants `amountByPower[tier]` Attack,
-       * every later cast grants `secondCastAmountByPower[tier]`. Resolved in
+       * unit declares a nonadjacent attack. It boosts THAT ATTACK ONLY (a
+       * per-attack `stackItem.modifiers.attackBonus`). Power 0/1 retain their
+       * two-use ladder; Power 2 gets four uses, with +2 Attack on the first
+       * three and +1 on the fourth. Resolved in
        * resolveCommanderCast's `precision-instant` branch, offered by
        * commanderPrecisionReactionUnit and gated by commanderCastUsedThisRound.
        */
       kind: "precision-instant";
       amountByPower: readonly [number, number, number];
       secondCastAmountByPower: readonly [number, number, number];
+      fourthCastAmountAtPower2: number;
     }
   | {
       kind: "attack-buff";
@@ -600,7 +600,8 @@ export interface CommanderSpecialtyDefinition {
     | "rune-ritual"
     | "mission-briefing"
     | "unbreakable-bond"
-    | "lion-round-barrage";
+    | "lion-round-barrage"
+    | "storm-salvage";
   name: string;
   text: string;
 }
@@ -814,17 +815,15 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Precision",
       icon: "/assets/spell-icons/precision.png",
       // Redesigned (user spec): an INSTANT-REACTION buff played through the attack
-      // window when one of your RANGED units declares an attack. It boosts THAT
-      // ATTACK ONLY — Pow 0/1/2 = +1/+2/+3 Attack — and lifts every ranged penalty
-      // for that shot. Free, once per combat round, at most TWICE per combat; the
-      // SECOND (and any later) cast of a combat grants only +1 Attack at every
-      // Power. Not an activation cast (commanderCastIsInstantReaction is true).
+      // window when one of your RANGED units attacks a NONADJACENT target.
+      // Power 0/1 retain their original two-use ladder. Power 2 gives +2 Attack
+      // on uses 1-3 and +1 on use 4; only use 1 ignores ranged penalties.
       targeting: { side: "friendly", unitType: "ranged", canTargetSelf: false },
-      effect: { kind: "precision-instant", amountByPower: [1, 2, 3], secondCastAmountByPower: [1, 1, 2] },
+      effect: { kind: "precision-instant", amountByPower: [1, 2, 2], secondCastAmountByPower: [1, 1, 2], fourthCastAmountAtPower2: 1 },
       tierText: [
-        "Instant, when your ranged unit attacks (once per round, twice per combat): +1 Attack and ignore all ranged penalties for that attack. The second use each combat gives +1.",
-        "Instant, when your ranged unit attacks (once per round, twice per combat): +2 Attack and ignore all ranged penalties for that attack. The second use each combat gives +1.",
-        "Instant, when your ranged unit attacks (once per round, twice per combat): +3 Attack and ignore all ranged penalties for that attack. The second use each combat gives +2."
+        "Instant, when your ranged unit attacks a nonadjacent target: +1 Attack and ignore ranged penalties for that attack. Once per round, twice per combat; the second use gives +1 Attack and ignores ranged penalties.",
+        "Instant, when your ranged unit attacks a nonadjacent target: +2 Attack and ignore ranged penalties for that attack. Once per round, twice per combat; the second use gives +1 Attack and ignores ranged penalties.",
+        "Instant, when your ranged unit attacks a nonadjacent target: +2 Attack for the first three uses, then +1 Attack on the fourth. Only the first use ignores ranged penalties. Once per round, four times per combat."
       ]
     },
     specialty: {
@@ -880,7 +879,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "soul-reformer",
       name: "Soul Reformer",
-      text: "After each combat you win, gain 2 gold."
+      text: "At the start of combat against neutral units, you may pay 2 gold to draw 1 card. After each combat you win, gain 2 gold."
     },
     cardImage: "/assets/units-commander-brute.webp"
   },
@@ -1346,6 +1345,34 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       text: "Outside combat, choose one army card. While Sonya lives, that unit has +1 Defense during combat round 1; the first time it would die each combat, Sonya takes 1 damage instead."
     },
     cardImage: "/assets/units-commander-sonya.webp"
+  },
+  forge: {
+    slug: "forge", name: "Storm Engineer", faction: "Forge", original: true,
+    // Cast: "Arc Discharge" — REUSES Belfast's `enemy-damage` kind (flat EFFECT
+    // damage to an enemy unit: no Retaliation, ignores Defense, resolved in
+    // resolveCommanderCast's enemy-damage branch) at 1/2/3 by Power tier, with
+    // no adjacency gate (a lightning arc reaches across the field).
+    cast: {
+      abilityId: "commander-cast-forge",
+      name: "Arc Discharge",
+      icon: "/assets/spell-icons/disrupting_ray.png",
+      targeting: { side: "enemy", canTargetSelf: false },
+      effect: { kind: "enemy-damage", damageByPower: [1, 2, 3] },
+      tierText: [
+        "Deal 1 damage to an enemy unit (no Retaliation, ignores Defense).",
+        "Deal 2 damage to an enemy unit (no Retaliation, ignores Defense).",
+        "Deal 3 damage to an enemy unit (no Retaliation, ignores Defense)."
+      ]
+    },
+    // Specialty: automatic after-combat reward (finalizeAdventureCombat in
+    // src/engine/adventure-reducer.ts). The Storm Engineer must have taken the
+    // field on the WINNING side of that combat (alive or fallen).
+    specialty: {
+      id: "storm-salvage",
+      name: "Storm Salvage",
+      text: "After every combat you win, gain 1 building material."
+    },
+    cardImage: "/assets/units-commander-forge.webp"
   }
 };
 
@@ -1371,7 +1398,8 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   little_busters: "kyousuke_natsume",
   blue_archive: "ibuki",
   imperium: "lion_el_jonson",
-  mgq: "sonya"
+  mgq: "sonya",
+  forge: "forge"
 };
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {

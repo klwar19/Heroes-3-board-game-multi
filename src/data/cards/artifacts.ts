@@ -119,6 +119,44 @@ export const artifactCards: CardLibrary = {
     implementationStatus: "implemented",
     source: { product: "Heroes of Might and Magic III: The Board Game", credit: "Spell Scroll artifact deck addition" },
   },
+  "artifact.helm_of_chaos": {
+    id: "artifact.helm_of_chaos",
+    name: "Helm of Chaos",
+    kind: "artifact",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Immediately after an opponent plays an Instant in combat against you, that Instant has no effect. — OR — Gain +2 Power while casting a Spell in combat.",
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Cancel the opponent's just-played Instant",
+          combatOnly: true,
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_INSTANT" },
+        },
+        {
+          label: "+2 Power for this Spell",
+          combatOnly: true,
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
+    },
+    // Ship this user-supplied card restoration with the app so its counter
+    // prompt always has the actual card face on both clients.
+    assets: { cardImage: "/game-tokens/helm-of-chaos.webp", imageAlt: "Helm of Chaos artifact card" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "User-provided Helm of Chaos card image; HD restoration generated from that card.",
+    },
+  },
   "artifact.armor_of_wonder": {
     id: "artifact.armor_of_wonder",
     name: "Armor of Wonder",
@@ -1238,6 +1276,36 @@ export const artifactCards: CardLibrary = {
   },
 
   // ---- Major artifacts ----------------------------------------------------
+  "artifact.hellstorm_helmet": {
+    id: "artifact.hellstorm_helmet",
+    name: "Hellstorm Helmet",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "major",
+    tags: [
+      "artifact",
+      "major",
+      "Return 1 Knowledge or Power Statistic card from your discard pile to your hand. — OR — This round, you can field 6 units in every combat. Then remove this card.",
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Return 1 Knowledge or Power Statistic from your discard pile",
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "power-or-knowledge-statistic" },
+        },
+        {
+          label: "This round, field 6 units in every combat; remove this card",
+          mapOnly: true,
+          cost: { removeSelf: true },
+          effect: { type: "HELLSTORM_SIX_UNITS" },
+        },
+      ],
+    },
+    assets: { cardImage: "/factory-cards/hellstorm-helmet.webp", imageAlt: "Hellstorm Helmet artifact card" },
+    implementationStatus: "implemented",
+    source: { product: "Custom artifact", credit: "User-provided Hellstorm Helmet reference and rules" },
+  },
   "artifact.dragon_scale_shield": {
     id: "artifact.dragon_scale_shield",
     name: "Dragon Scale Shield",
@@ -3465,6 +3533,7 @@ export const artifactDeckLegacy: string[] = [
   // minor
   ...Array(4).fill("artifact.spell_scroll"),
   "artifact.armor_of_wonder",
+  "artifact.helm_of_chaos",
   "artifact.breastplate_of_petrified_wood",
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
@@ -3497,6 +3566,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.shamans_puppet",
   "artifact.spirit_of_oppression",
   // major
+  "artifact.hellstorm_helmet",
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
   "artifact.endless_purse_of_gold",
@@ -3573,6 +3643,7 @@ export const EVERSMOKING_RING_OF_SULFUR_ID =
 export const artifactDeckBinhMinor: string[] = [
   ...Array(4).fill("artifact.spell_scroll"),
   "artifact.armor_of_wonder",
+  "artifact.helm_of_chaos",
   "artifact.breastplate_of_petrified_wood",
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
@@ -3607,6 +3678,7 @@ export const artifactDeckBinhMinor: string[] = [
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
 export const artifactDeckBinhMajor: string[] = [
+  "artifact.hellstorm_helmet",
   "artifact.dragon_scale_shield",
   "artifact.endless_bag_of_gold",
   "artifact.endless_purse_of_gold",

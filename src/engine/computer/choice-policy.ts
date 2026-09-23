@@ -2,7 +2,8 @@ import { cardLibrary } from "@/data/cards/library";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { chainBoltValue } from "./chain-planning";
 import { coreFactionDefinitions } from "@/data/factions/core";
-import { commanderValuesMagicGrade } from "@/data/commanders";
+import { commanderCastTierIndex, commanderValuesMagicGrade } from "@/data/commanders";
+import { commanderCastOf, commanderCastPower } from "../commanders";
 import { farTileChoiceValue } from "./far-tile-policy";
 import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
 import { getEnchanterActivationAbility } from "../unit-abilities";
@@ -232,6 +233,12 @@ function scoreCityHallOption(
   if (option.searchSpellDeck) score += 12;
   if (option.tradingPost) score += 5;
   if (option.runesNextCombats) score += option.runesNextCombats * 6;
+  // Forge City Hall: 2 random enemy cards beat 3 gold unless broke (the gold
+  // arm's +15 broke bonus above flips it back). Bigger hands lose more value.
+  if (option.opponentDiscards && option.opponentDiscardTargetId) {
+    const hand = observation.state.players[option.opponentDiscardTargetId]?.hand.length ?? 0;
+    score += Math.min(option.opponentDiscards, hand) * 5 + (hand >= 4 ? 4 : 0);
+  }
   // Paying an artifact from hand is a real cost — only take when desperate.
   if (option.removeArtifactFromHand) score -= gold > 15 ? 30 : 5;
   return score;
@@ -321,6 +328,23 @@ function scoreCombatDiscard(
  * may legally hit friendlies — those score LOW so the AI prefers enemies, but
  * still pick an ally when that is the only candidate (mandatory friendly fire).
  */
+/**
+ * Damage an `enemy-damage` commander cast (Forge Arc Discharge, Belfast Royal
+ * Salvo) deals at the caster's current Power tier — so its target pick prefers
+ * the enemy it can REMOVE now. 0 for every other cast kind.
+ */
+function commanderCastEnemyDamage(
+  observation: ComputerObservation,
+  sourceUnitId: string | null | undefined,
+  abilityId: string | null | undefined,
+): number {
+  const state = observation.state as unknown as GameState;
+  const source = sourceUnitId ? state.combat?.units[sourceUnitId] : undefined;
+  const cast = source ? commanderCastOf(source, abilityId ?? undefined) : null;
+  if (!source || cast?.effect.kind !== "enemy-damage") return 0;
+  return cast.effect.damageByPower[commanderCastTierIndex(commanderCastPower(state, source))];
+}
+
 function scoreAbilityTarget(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "CHOOSE_ABILITY_TARGET" }>,
@@ -405,6 +429,19 @@ function scoreAbilityTarget(
         })()
       : 0;
 
+  // Dark Mullich Overclock I / IV played at the beginning of the combat: the
+  // pick is the friendly unit to buff — the biggest threat, and a GROUND unit
+  // for Overclock I (its effect doubles there).
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "war-machine" &&
+    choice.abilityId?.startsWith("specialty.dark_mullich.")
+  ) {
+    if (unit.controllerId !== observation.playerId) return CHOICE_BASE - 80;
+    const doubles = choice.abilityId === "specialty.dark_mullich.1" && unit.type === "ground";
+    return CHOICE_BASE + 20 + Math.min(60, Math.round(unitThreatValue(unit) / 2)) + (doubles ? 25 : 0);
+  }
+
   if (unit.controllerId === observation.playerId) {
     if (isDamagePick) {
       // Friendly fire: legal (Magog/Lich) but never preferred over an enemy.
@@ -430,9 +467,13 @@ function scoreAbilityTarget(
             choice.kind === "spell-splash" ||
             choice.kind === "ballistics-splash" ||
             choice.kind === "area-pick" ||
-            choice.kind === "dreadnought-splash"
+            choice.kind === "dreadnought-splash" ||
+            // Forge Lightning Generator: flat damage at any enemy.
+            (choice.kind === "war-machine" && choice.abilityId === "war_machine.lightning_generator")
           ? (choice.amount ?? 0)
-          : 0
+          : choice.kind === "commander-cast"
+            ? commanderCastEnemyDamage(observation, choice.sourceUnitId, choice.abilityId)
+            : 0
       : 0;
   const removesNow = abilityDamage > 0 && abilityDamage >= remaining;
   return (
@@ -479,6 +520,9 @@ function scorePendingRoll(
   if (!choice || choice.type !== "ATTACK_DIE_REROLL") {
     return CHOICE_BASE + (action.candidateIndex === 0 ? 5 : 0);
   }
+  // Cards of Prophecy pre-roll stage: the throw is hidden — never peek at it.
+  // The AI rolls without the card (it keeps it for its attack pre-roll / buff).
+  if (choice.prophecyBlind) return CHOICE_BASE + 50;
   const candidate = choice.candidates[action.candidateIndex];
   if (!candidate) return CHOICE_BASE;
   const faces = candidate.rolls ?? [];
@@ -506,6 +550,7 @@ function scoreRerollOffer(
   if (!choice || choice.type !== "ATTACK_DIE_REROLL") {
     return CHOICE_BASE - 20;
   }
+  if (choice.prophecyBlind) return CHOICE_BASE - 40;
   // Ability roll: (re)roll toward the success window — reroll (or set-die) only
   // when NO current candidate already satisfies it; once it succeeds, keep.
   if (choice.abilityRoll) {
@@ -886,6 +931,18 @@ function scorePositionOption(
     // Prefer taking a free war machine over declining.
     const label = optionLabel(choice, optionIndex);
     if (looksLikeDecline(label)) return CHOICE_BASE + 5;
+    // Overclock I at the beginning of the combat: both sides double on a
+    // ground unit. With a ground body on the field the round-long +2 Attack
+    // is the stronger play; an all-ranged/flying army takes the Initiative
+    // (shooting first) instead.
+    if (choice.prompt?.startsWith("Overclock I (")) {
+      const combat = observation.state.combat;
+      const hasGround = Object.values(combat?.units ?? {}).some((unit) =>
+        unit.controllerId === observation.playerId && unit.position >= 0 &&
+        unit.damage < unit.maxHealth && unit.type === "ground");
+      const wantsAttack = hasGround;
+      return CHOICE_BASE + 25 + ((optionIndex === 2) === wantsAttack ? 10 : 0);
+    }
     return CHOICE_BASE + 25;
   }
 
@@ -1046,6 +1103,30 @@ function scorePositionOption(
     );
   }
 
+  if (context === "oidana-scry-deck") {
+    // The chosen deck is locked for both cards. Prefer the tier matching the
+    // visible upcoming guard difficulty, without inspecting hidden deck cards.
+    const tiers = choice?.type === "OPTION_CHOICE" ? choice.oidanaScryDeck?.tiers ?? [] : [];
+    const fight = upcomingFight(observation);
+    const difficulty = fight?.spaceId
+      ? (observation.state as unknown as GameState).adventure?.fields[fight.spaceId]?.difficulty ?? 1
+      : 1;
+    const preferred = difficulty >= 4 ? "azure" : difficulty >= 3 ? "gold" : difficulty >= 2 ? "silver" : "bronze";
+    return CHOICE_BASE + (tiers[optionIndex] === preferred ? 45 : 20 - optionIndex);
+  }
+
+  if (context === "oidana-scry-cards") {
+    const scry = choice?.type === "OPTION_CHOICE" ? choice.oidanaScry : undefined;
+    if (!scry) return CHOICE_BASE;
+    const keep = optionIndex < scry.remaining.length;
+    const cardId = scry.remaining[keep ? optionIndex : optionIndex - scry.remaining.length];
+    if (!cardId) return CHOICE_BASE;
+    const excess = neutralUnitStrength(cardId) - neutralTierMeanStrength(scry.tier);
+    // Discard above-average guards; return weaker ones first so the next draw
+    // is easier. Each choice consumes one card, so the window always finishes.
+    return CHOICE_BASE + (keep ? 32 - excess : 30 + excess);
+  }
+
   // Astrologers Judge Dread: keep the drawn guard army or redraw the same
   // tiers. Redraw only when the draw runs ABOVE its tiers' deck average — a
   // below-average army is the fight to keep.
@@ -1146,6 +1227,13 @@ function scorePositionOption(
   if (context === "pandora-upkeep") {
     const morale = observation.state.players[observation.playerId]?.morale ?? 0;
     return (optionIndex === 1) === morale > 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
+  if (context === "brute-combat-draw") {
+    // Buy combat flexibility when the Brute can spare the gold; preserve the
+    // last few coins for recruits and post-fight recovery.
+    const gold = observation.state.players[observation.playerId]?.resources.gold ?? 0;
+    return (optionIndex === 0) === (gold >= 4) ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
   // Generic OPTION_CHOICE: slight preference for non-decline, first options.

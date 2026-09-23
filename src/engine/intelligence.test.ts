@@ -83,20 +83,20 @@ describe("Intelligence — when spells may be cast", () => {
     expect(castAction(state, "p1", "spell.magic_arrow")).toBeFalsy();
   });
 
-  it("expert lets the holder cast more than one spell in a combat round", () => {
+  it("expert (USER RULING 2026-09-23): the one Intelligence cast is free of the limit, and the ordinary cast is still available after it", () => {
     let state = withIntelligence("expert", ["spell.magic_arrow", "spell.lightning_bolt"]);
 
+    // The Intelligence window: the printed one-shot cast, not counted.
     const first = castAction(state, "p1", "spell.magic_arrow");
     expect(first).toBeTruthy();
     state = passAllReactions(applyOk(state, first!.action));
-    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
 
-    // A second cast would breach the normal one-per-round limit — expert
-    // Intelligence ignores it.
+    // Back on the ordinary rules: the own-activation Spell is untouched.
     const second = castAction(state, "p1", "spell.lightning_bolt");
-    expect(second, "expert Intelligence ignores the per-round spell limit").toBeTruthy();
+    expect(second, "the ordinary allowance is untouched by the Intelligence cast").toBeTruthy();
     state = passAllReactions(applyOk(state, second!.action));
-    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(2);
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 
   it("control: basic Intelligence still enforces one spell per combat round", () => {

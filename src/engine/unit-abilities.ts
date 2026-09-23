@@ -135,6 +135,11 @@ export function unitHasAttackRollAdvantage(
   });
 }
 
+/** Forge Cyber Zombies: the resolved Attack die face counts twice (every attack). */
+export function attackDieOutcomeMultiplier(unit: CombatUnitState): number {
+  return hasUnitAbilityEffect(unit, "DOUBLE_ATTACK_DIE_OUTCOME") ? 2 : 1;
+}
+
 /** Doom Demon: the unit's Retaliation Attack gains a flat Attack bonus. */
 export function getRetaliationAttackBonus(unit: CombatUnitState): number {
   return getAbilitiesWithEffect(unit, "RETALIATION_ATTACK_BONUS").reduce(
@@ -243,7 +248,7 @@ export function getDoubleAttackAbility(
  */
 export function getSecondAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack: number; onRoll?: number; requiresNonAdjacentTarget?: boolean } | null {
+): { abilityId: string; abilityName: string; baseAttack: number; onRoll?: number; requiresNonAdjacentTarget?: boolean; optional?: boolean; enemiesOnly?: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_ADJACENT_TO_TARGET")) {
     if (ability.effect?.type === "SECOND_ATTACK_ADJACENT_TO_TARGET") {
       return {
@@ -251,7 +256,9 @@ export function getSecondAttackAbility(
         abilityName: ability.name,
         baseAttack: ability.effect.useOwnAttack ? unit.attack : ability.effect.baseAttack,
         onRoll: ability.effect.onRoll,
-        requiresNonAdjacentTarget: ability.effect.requiresNonAdjacentTarget
+        requiresNonAdjacentTarget: ability.effect.requiresNonAdjacentTarget,
+        ...(ability.effect.optional ? { optional: true } : {}),
+        ...(ability.effect.enemiesOnly ? { enemiesOnly: true } : {})
       };
     }
   }
@@ -430,12 +437,32 @@ export function getEnemyDiscardAbility(
 export function getAttackDefenseReductionAbility(
   unit: CombatUnitState,
   movedThisActivation = false,
-  passiveOnly = false
-): { abilityId: string; abilityName: string; amount: number } | null {
+  passiveOnly = false,
+  /** The target's effective Defense; sizes Forge's fractional reduction. */
+  targetDefense?: number
+): { abilityId: string; abilityName: string; amount: number; fraction?: "half-round-up" } | null {
+  // Flat reductions STACK (a Rank-4 Cyber Zombies Pack carries both Chainsaw
+  // Shred and the Armor-Piercing Drill, -2 total); a fractional cut (Cyberbrute
+  // halving) is exclusive and reported as before.
+  let flatTotal = 0;
+  let firstFlat: { abilityId: string; abilityName: string } | null = null;
   for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK")) {
     if (ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK" && (!passiveOnly || ability.effect.allAttacks)) {
-      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+      const fraction = ability.effect.fraction;
+      if (fraction) {
+        const defense = targetDefense === undefined ? undefined : Math.max(0, targetDefense);
+        // The resolver applies a fractional cut itself at damage time (after the
+        // Defend die), so `fraction` is reported; `amount` is the estimate
+        // off the Defense the caller passed.
+        const amount = defense !== undefined ? Math.ceil(defense / 2) : ability.effect.amount;
+        return { abilityId: ability.id, abilityName: ability.name, amount, fraction };
+      }
+      flatTotal += ability.effect.amount;
+      firstFlat ??= { abilityId: ability.id, abilityName: ability.name };
     }
+  }
+  if (firstFlat) {
+    return { ...firstFlat, amount: flatTotal };
   }
   if (movedThisActivation && !passiveOnly) {
     for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_AFTER_MOVE")) {
@@ -1100,16 +1127,22 @@ export function getFlatDamageFollowUps(
 /**
  * Candidates of the Liches' second attack: every living unit adjacent to the
  * original target's position — enemies, friends, and the Liches themselves
- * (the wiki FAQ confirms all three) — except the original target.
+ * (the wiki FAQ confirms all three) — except the original target. With
+ * the enemiesOnly flag (Forge Tanks / Plasmatic Vomit) only the attacker's enemies.
  */
 export function getSecondAttackCandidates(
   combat: CombatState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  enemiesOnly = false
 ): UnitId[] {
   return Object.values(combat.units)
     .filter(
-      (unit) => unit.id !== defender.id && isAlive(unit) && isAdjacent(unit.position, defender.position)
+      (unit) =>
+        unit.id !== defender.id &&
+        isAlive(unit) &&
+        isAdjacent(unit.position, defender.position) &&
+        (!enemiesOnly || unit.controllerId !== attacker.controllerId)
     )
     .map((unit) => unit.id);
 }

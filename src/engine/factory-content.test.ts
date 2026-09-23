@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { hasMediaFile } from "@/lib/media-manifest";
@@ -12,7 +14,7 @@ import {
   startingTileByFaction
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { townBoardSpecs, townBoardTileArt, townBoardUnbuiltTileArt } from "@/data/towns/boards";
+import { townBoardSpecs } from "@/data/towns/boards";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { unitAbilities } from "@/data/units/abilities";
 import { adventureCards } from "@/data/cards/adventure";
@@ -54,7 +56,7 @@ const FACTORY_HEROES = ["henrietta", "sam", "tancred", "celestine", "agar", "fre
 
 // Which Factory unit each kept hero's I/IV/VI specialty buffs.
 const FACTORY_HERO_SPECIALTY_UNIT: Record<string, string> = {
-  henrietta: "Grenadiers",
+  henrietta: "Halflings",
   sam: "Engineers",
   tancred: "Bounty Hunters",
   celestine: "Armadillos",
@@ -127,17 +129,32 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     }
   });
 
-  it("renders the real printed BUILDING TILES (built art + name/cost plaque) — not the panorama reveal", () => {
+  it("renders the whole printed BOARD FACE (empty face + seven aligned built strips) — not per-building tiles", () => {
     const spec = townBoardSpecs.factory;
-    expect(spec.realTileArt, "factory board uses the real printed tiles").toBe(true);
-    // The muddy fullImage panorama-reveal is gone, so nothing overlays the tiles.
+    // One complete printed face carries the plaques, rule cards, tracks and
+    // token wells; the view writes live names/costs/rules onto it.
+    expect(spec.boardFaceImage, "factory board uses the whole printed face").toBe("/factory-cards/factory-board-empty.webp");
+    expect(spec.printedPanelInBase, "tracks/wells are printed in the face").toBe(true);
+    expect(spec.physicalPanoramaTiles, "built bars reveal aligned strips").toBe(true);
+    // The retired per-building tile / panorama / pasted-panel design is gone.
+    expect(spec.realTileArt, "no per-building printed tiles").toBeUndefined();
+    expect(spec.panoramaImage, "no townscape panorama").toBeUndefined();
     expect(spec.fullImage, "no panorama-reveal image").toBeUndefined();
-    // Every building with a real printed scan ships BOTH tile states on disk; the
-    // built art carries NO cost banner, the "-unbuilt" plaque carries the cost.
-    for (const building of ["city_hall", "citadel", "mage_guild", "bank", "dwelling_bronze", "dwelling_silver", "dwelling_gold"]) {
-      const id = `factory.${building}`;
-      expect(assetExists(townBoardTileArt(id)), `${id} built tile not published (npm run media:publish)`).toBe(true);
-      expect(assetExists(townBoardUnbuiltTileArt(id)), `${id} unbuilt plaque not published (npm run media:publish)`).toBe(true);
+    expect(spec.panelImage, "no pasted tracks panel").toBeUndefined();
+    // Bars follow the printed face's left-to-right plaque order.
+    expect(spec.bars).toEqual([
+      ["factory.bank"],
+      ["factory.city_hall"],
+      ["factory.mage_guild", "factory.artifact_merchants"],
+      ["factory.dwelling_bronze"],
+      ["factory.citadel"],
+      ["factory.dwelling_silver"],
+      ["factory.dwelling_gold"]
+    ]);
+    // Seven distinct built strips, one per bar slot, all shipped with the code.
+    expect(spec.barTileImages).toEqual([1, 2, 3, 4, 5, 6, 7].map((slot) => `/factory-cards/factory-board-built-strip-${slot}.webp`));
+    for (const image of [spec.boardFaceImage!, ...spec.barTileImages!]) {
+      expect(existsSync(fileURLToPath(new URL(`../../public${image}`, import.meta.url))), `${image} ships in public/`).toBe(true);
     }
   });
 
@@ -342,8 +359,11 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
         const card = adventureCards[cardId];
         expect(card, `${cardId} exists`).toBeTruthy();
         expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");
-        // Face-less specialties must render natively (no missing art file).
-        expect(card.assets?.cardImage, `${cardId} has no missing art`).toBeUndefined();
+        // Face-less specialties must render natively (no missing art file);
+        // a generated card face (Henrietta's Halflings I/IV) must be published.
+        if (card.assets?.cardImage) {
+          expect(assetExists(card.assets.cardImage), `${cardId} card face not published (npm run media:publish): ${card.assets.cardImage}`).toBe(true);
+        }
         // The I-level card is the unit-specialist card for this hero's unit.
         if (level === 1) {
           expect(card.name, `${id} specialty unit`).toContain(FACTORY_HERO_SPECIALTY_UNIT[id]);
@@ -389,8 +409,8 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(cityHallEffect?.type === "RESOURCE_ROUND_CHOICE" && cityHallEffect.options.some((o) => o.movement)).toBe(false);
     expect(b["factory.citadel"]).toMatchObject({ cost: { gold: 8, buildingMaterials: 5, valuables: 1 }, effect: { type: "UNLOCK_REINFORCE" } });
     // The spell building keeps id mage_guild (default-setup slot) but is the
-    // printed "Mana Generator" card.
-    expect(b["factory.mage_guild"]).toMatchObject({ name: "Mana Generator", cost: { gold: 4, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
+    // printed "Mage Guild" card.
+    expect(b["factory.mage_guild"]).toMatchObject({ name: "Mage Guild", cost: { gold: 4, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
     // Bank investments pay at the next Resource round; Merchants trade now.
     expect(b["factory.bank"]).toMatchObject({ name: "Bank", cost: { gold: 4, buildingMaterials: 2 }, effect: { type: "RESOURCE_ROUND_BANK" } });
     const bankEffect = b["factory.bank"].effect;
@@ -400,8 +420,8 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       { payGold: 11, nextResourceGold: 18 }
     ]);
     expect(b["factory.artifact_merchants"]).toMatchObject({ name: "Artifact Merchants", effect: { type: "ARTIFACT_SMITH", searchCost: 7, searchCount: 3, sellGold: 2 } });
-    expect(b["factory.dwelling_bronze"]).toMatchObject({ name: "Remote Settlement", cost: { gold: 5, buildingMaterials: 3, valuables: 1 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" } });
-    expect(b["factory.dwelling_silver"]).toMatchObject({ name: "Industrialized Catacombs", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, prerequisites: ["factory.dwelling_bronze"] });
+    expect(b["factory.dwelling_bronze"]).toMatchObject({ name: "Halfling Ranch", cost: { gold: 5, buildingMaterials: 3, valuables: 1 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" } });
+    expect(b["factory.dwelling_silver"]).toMatchObject({ name: "Catacomb Foundry", cost: { gold: 8, buildingMaterials: 5, valuables: 3 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, prerequisites: ["factory.dwelling_bronze"] });
     expect(b["factory.dwelling_gold"]).toMatchObject({ name: "Gantry under Serpent Hill", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, prerequisites: ["factory.dwelling_silver"] });
     // The PC-only fabricated stub buildings with no board-game card stay removed.
     for (const id of ["factory.mana_generator", "factory.pen", "factory.lightning_rod"]) {
@@ -437,7 +457,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       "silver dwelling rejected before bronze"
     ).toBeGreaterThan(0);
 
-    // Bronze (Remote Settlement) builds; then Silver builds on top of it.
+    // Bronze (Halfling Ranch) builds; then Silver builds on top of it.
     state = apply(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId, buildingId: "factory.dwelling_bronze" });
     expect(state.towns[townId].buildings, "bronze dwelling stands").toContain("factory.dwelling_bronze");
     ready(state);

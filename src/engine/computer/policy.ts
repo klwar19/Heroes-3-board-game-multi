@@ -174,6 +174,9 @@ function foundationScore(action: GameAction): {
       return { score: 500, policy: "safe.defend" };
     case "END_ACTIVATION":
       return { score: 400, policy: "safe.end-activation" };
+    // Intelligence window: a worthwhile cast (660+) beats skipping; chaff does not.
+    case "SKIP_INTELLIGENCE_CAST":
+      return { score: 400, policy: "safe.skip-intelligence-cast" };
     // Fight the neutral combat on rather than burning cards or retreating: the
     // continue costs 1 MP and is the rulebook default for a fighter that can
     // still win. Scored above generic card plays (0) so a +Movement card in the

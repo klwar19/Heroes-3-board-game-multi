@@ -199,17 +199,45 @@ describe("PvP — a real stop before the enemy unit acts (off-turn reaction wind
     expect(offersHeal, "the Tent heal is offered in the off-turn window").toBe(true);
   });
 
-  it("still stops for an Intelligence-enabled off-turn cast (the prior behavior is preserved)", () => {
+  it("no longer stops mid-round for an Intelligence cast (USER RULING 2026-09-23: the window closes once any unit has acted)", () => {
     const s = pvpStage("pvp-stop-intel");
     s.players.p1.hand = ["spell.magic_arrow"];
     grantIntelligence(s);
+    // p1's own Defend already activated a unit this round, so the printed
+    // "before any unit activates" freedom is CLOSED and the cast alone no
+    // longer justifies a pre-activation pause.
     const state = defendAndPump(s);
-    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
-    expect(state.combat!.pendingNeutralStep?.reactingPlayerId).toBe("p1");
-    const offersCast = getLegalActions(state, "p1").some(
-      (l) => l.action.type === "CAST_SPELL" && l.action.cardId === "spell.magic_arrow"
-    );
-    expect(offersCast, "the Intelligence cast is offered in the window").toBe(true);
+    expect(state.combat!.pendingNeutralStep ?? null, "closed window → no pause").toBeNull();
+    expect(state.combat!.activeUnitId).toBe(ENEMY_P2);
+  });
+
+  it("still lets the off-turn Intelligence holder cast at a NEW round's start — via the exclusive cast-or-skip window", () => {
+    const s = pvpStage("pvp-stop-intel-round");
+    s.players.p1.hand = ["spell.magic_arrow"];
+    grantIntelligence(s);
+    // The ruling's mechanism is the ONE-SHOT cast: mark the granted freedom as
+    // such so the derived exclusive window (`intelligenceCastOwner`) opens.
+    const granted = s.activeEffects.at(-1)!;
+    granted.modifiers = [{ type: "SPELL_CAST_ANYTIME", oneShot: true }];
+    // The enemy unit already acted in round 1, so p1's Defend closes the round;
+    // round 2 opens with the freedom unspent and NO unit yet activated.
+    s.combat!.units[ENEMY_P2].activatedThisRound = true;
+    s.combat!.units[ENEMY_P2].initiative = 99;
+    const state = defendAndPump(s);
+    const p1Actions = getLegalActions(state, "p1");
+    expect(
+      p1Actions.some((l) => l.action.type === "CAST_SPELL" && l.action.cardId === "spell.magic_arrow"),
+      "the Intelligence cast is offered in the round-start window"
+    ).toBe(true);
+    expect(
+      p1Actions.some((l) => l.action.type === "SKIP_INTELLIGENCE_CAST"),
+      "the exclusive window always offers the skip"
+    ).toBe(true);
+    // Exclusive: the on-turn seat cannot act past the open window.
+    expect(
+      getLegalActions(state, "p2").some((l) => l.action.type === "ATTACK_UNIT" || l.action.type === "MOVE_UNIT"),
+      "the enemy seat waits for the cast-or-skip answer"
+    ).toBe(false);
   });
 
   it("does NOT stop when the off-turn player has nothing to react with (no over-pausing)", () => {

@@ -4,8 +4,8 @@ import { cardLibrary } from "@/data/cards/library";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
 import { adventurePvpTroopLoss, getUnitSide } from "../adventure";
-import { commanderAdjacentAllies, commanderCastOf } from "../commanders";
-import { commanderApSkillOf, commanderValuesMagicGrade } from "@/data/commanders";
+import { commanderAdjacentAllies, commanderCastCandidates, commanderCastOf, commanderCastPower } from "../commanders";
+import { commanderApSkillOf, commanderCastTierIndex, commanderValuesMagicGrade } from "@/data/commanders";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -590,7 +590,13 @@ function handAttackBoostFor(
       if (effect?.type === "ADD_COMBAT_STAT" && effect.stat === "attack") {
         let amount = effect.amount ?? 1;
         const doubleName = (effect as { doubleForUnitName?: string }).doubleForUnitName;
-        if (doubleName && signature.includes(doubleName.toLowerCase())) amount *= 2;
+        const doubleFaction = (effect as { doubleForUnitFaction?: string }).doubleForUnitFaction;
+        const doubleType = (effect as { doubleForUnitType?: string }).doubleForUnitType;
+        if (
+          (doubleName && signature.includes(doubleName.toLowerCase())) ||
+          (doubleFaction && signature.startsWith(`${doubleFaction}.`)) ||
+          (doubleType && attacker.type === doubleType)
+        ) amount *= 2;
         best = Math.max(best, amount);
       }
     }
@@ -1776,6 +1782,21 @@ function commanderCastScore(
       // Defensive buffs — worth casting while the fight continues.
       base = 560;
       break;
+    case "enemy-damage": {
+      // Flat effect damage (Forge Arc Discharge 1/2/3, Belfast Royal Salvo): it
+      // ignores Defense and draws no Retaliation, so a cast that FINISHES a
+      // reachable enemy is a real swing; otherwise it is a free chip worth
+      // taking over idling. Reads the engine's own candidate list + tier.
+      const state = observation.state as unknown as GameState;
+      const amount =
+        cast.effect.damageByPower[commanderCastTierIndex(commanderCastPower(state, unit))];
+      const targets = commanderCastCandidates(state, unit, cast.abilityId);
+      const lethal = targets.some((target) => unitRemainingHealth(target) <= amount);
+      const bestThreat = targets.reduce((best, target) => Math.max(best, unitThreatValue(target)), 0);
+      base = lethal ? 700 : 590 + Math.min(40, Math.round(bestThreat / 3));
+      swing = lethal;
+      break;
+    }
     default:
       base = 550;
   }

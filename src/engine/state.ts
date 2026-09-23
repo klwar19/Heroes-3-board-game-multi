@@ -695,6 +695,7 @@ export type FactionId =
   | "cove"
   | "bulwark"
   | "factory"
+  | "forge"
   | "fuyuki"
   | "azure_breeze"
   | "hidden_leaf"
@@ -1670,6 +1671,13 @@ export type ActiveEffectDefinition = {
    */
   appliesOnlyToVariant?: CombatUnitState["variant"];
   /**
+   * Optional unit-name gate (Henrietta's Halflings I: "+1 Defense to all your
+   * Halflings and Grenadiers units"): when set, the effect only touches combat
+   * units whose printed name is one of these. Checked in effectAppliesToUnit
+   * beside the variant gate, so every stat getter honours it for free.
+   */
+  appliesOnlyToUnitNames?: string[];
+  /**
    * Polish Set Artifacts: WHICH set laid this effect (`ArtifactSetId`, kept as a
    * plain string so this types leaf never imports the card data back).
    *
@@ -1741,6 +1749,10 @@ export type EffectDefinition =
       drawCards?: number;
       /** Post-draw "and discard N card(s) from your hand" — see HEAL_DAMAGE.thenDiscard. */
       thenDiscard?: number;
+    }
+  | {
+      /** Helm of Chaos: negate the selected, just-played enemy Instant. */
+      type: "CANCEL_INSTANT";
     }
   | {
       type: "CANCEL_SPELL";
@@ -1873,6 +1885,14 @@ export type EffectDefinition =
        * defender for a defense bonus, exactly like the name-keyed doubling.
        */
       doubleForUnitType?: UnitType;
+      /**
+       * Dark Mullich (Forge) Overclock I: the bonus doubles when the unit it
+       * lands on belongs to this faction (its unit definition id carries the
+       * `<faction>.` prefix) — "The effect doubles for Forge units". Checked on
+       * the same unit as `doubleForUnitName` (attacker for attack, defender for
+       * defense) through specialtyCombatStatMultiplier.
+       */
+      doubleForUnitFaction?: FactionId;
       /**
        * Merist's Stone Skin I: this much EXTRA defense is added on top of
        * `amount` when the buffed (defending) unit is orthogonally adjacent to the
@@ -2099,6 +2119,36 @@ export type EffectDefinition =
       tier: "bronze" | "silver" | "gold" | "azure";
     }
   | {
+      /**
+       * Henrietta's Halflings IV (Global): "Search the `tier` Neutral Unit deck
+       * and its discard pile for a unit named one of `unitNames`. You may
+       * recruit it for free. Then shuffle that deck." A map play: opens a
+       * NEUTRAL_RECRUIT_MENU over every distinct matching card still in the
+       * deck or discard (the chosen copy leaves the pile it was found in, onto
+       * the army's single-sided Neutral side), then the draw pile is shuffled
+       * whether or not a unit was taken — the player looked through it.
+       * Resolved in openNeutralDeckUnitSearch / RECRUIT_SEARCHED_NEUTRAL.
+       */
+      type: "NEUTRAL_DECK_UNIT_SEARCH";
+      tier: "bronze" | "silver" | "gold" | "azure";
+      unitNames: string[];
+    }
+  | {
+      /**
+       * Henrietta's Halflings I (start of Combat): a player-scoped, combat-long
+       * `+defense` Defense buff gated to units named one of `unitNames`
+       * (`appliesOnlyToUnitNames` on the created effect), plus `+neutralHealth`
+       * combat-long max Health on every NEUTRAL-variant matching unit the caster
+       * controls (the same combatMaxHealthBonus path as ADD_UNIT_MAX_HEALTH, so
+       * it survives stack-layer recomputes). Resolved in playCard.
+       */
+      type: "HALFLINGS_RALLY";
+      name: string;
+      unitNames: string[];
+      defense: number;
+      neutralHealth: number;
+    }
+  | {
       /** Estates, gold/resource artifacts: gain resources immediately. */
       type: "GAIN_RESOURCES";
       gain: ResourceCost;
@@ -2256,6 +2306,10 @@ export type EffectDefinition =
       amount: number;
     }
   | {
+      /** Hellstorm Helmet: the owner can deploy six army units in each combat this round. */
+      type: "HELLSTORM_SIX_UNITS";
+    }
+  | {
       /**
        * Scholar (basic), Rib Cage, Crown of Dragontooth, Skull Helmet,
        * Mystic Orb: pick card(s) from your discard pile into hand.
@@ -2274,6 +2328,7 @@ export type EffectDefinition =
       filter?:
         | "spell"
         | "non-artifact"
+        | "power-or-knowledge-statistic"
         | "spell-or-specialty"
         | "magic-arrow"
         | "cast-enabler-or-specialty"
@@ -2608,6 +2663,16 @@ export type EffectDefinition =
       /** Hero specialties: the bonus doubles when placed on the named unit. */
       doubleForUnitName?: string;
       /**
+       * The bonus doubles when placed on a unit of this faction (unit
+       * definition id prefix `<faction>.`).
+       */
+      doubleForUnitFaction?: FactionId;
+      /**
+       * Dark Mullich (Forge) Overclock I: the bonus doubles when placed on a
+       * unit of this type ("The effect doubles for ground units").
+       */
+      doubleForUnitType?: UnitType;
+      /**
        * House rule (BINH): the created effect also carries a MOVEMENT_BONUS of
        * this much (Haste/Cyra +1, Slow/Gundula −1) — a flat ±1 Combat-movement
        * shift independent of the power-scaled Initiative change.
@@ -2644,6 +2709,11 @@ export type EffectDefinition =
       amountByPower: Record<number, number>;
     }
   | {
+      /** Meteor Shower Spell: all units on the chosen space and its neighbours. */
+      type: "METEOR_SHOWER_SPELL";
+      damageByPower: Record<number, number>;
+    }
+  | {
       /**
        * Xyron's Inferno: select a space (occupied or empty); every unit on that
        * space and every unit orthogonally adjacent to it — friend or foe — takes
@@ -2653,6 +2723,18 @@ export type EffectDefinition =
       amount: number;
       /** Defaults to true for Inferno; Frost Ring excludes the selected space. */
       includeCenter?: boolean;
+      /**
+       * Zeestral (Forge) Storm Circuit VI: "Deal 2 damage to an enemy unit and
+       * 1 damage to each enemy unit adjacent to it." When set, the unit on the
+       * centre space takes this amount instead of `amount` (the neighbours keep
+       * `amount`). Absent = every unit in the blast takes `amount` (Inferno).
+       */
+      centerAmount?: number;
+      /**
+       * Zeestral VI: only the caster's ENEMY units on the neighbouring spaces are
+       * hit (friendly neighbours are spared). Absent = friend or foe (Inferno).
+       */
+      adjacentEnemiesOnly?: boolean;
     }
   | {
       /**
@@ -3026,6 +3108,17 @@ export type EffectDefinition =
       type: "DAMAGE_ENEMY_UNITS_BY_GRADE";
       grades: UnitGrade[];
       amount: number;
+    }
+  | {
+      /** Expert Earth spell: Power 0 reaches bronze; Power 2 adds silver;
+       * Power 3 adds gold and tierless Creature Bank units. */
+      type: "DEATH_RIPPLE_SPELL";
+      amount: number;
+      /** Highest enemy grade reached at each Power rung (the printed ladder;
+       * also feeds the shared Power breakpoints: UI ceiling, Tome, Interference). */
+      maxGradeByPower: Record<number, UnitGrade>;
+      /** Power at which tierless Creature Bank units are reached too. */
+      bankUnitsAtPower: number;
     }
   | {
       /**
@@ -3808,6 +3901,7 @@ export type EffectDefinition =
       amount: number;
       expertAmount: number;
     }
+  | { type: "OIDANA_NEUTRAL_SCRY" }
   | {
       /**
        * Visions spell (Map): scry one Neutral Unit deck. Draw `cardsByPower[P]`
@@ -3976,6 +4070,14 @@ export type WarMachineRoundStartDefinition =
   | {
       /** Cannon: spend 1 expert use to hit an enemy unit or enemy fortification. */
       kind: "expert-shot";
+      amount: number;
+    }
+  | {
+      /**
+       * Forge Lightning Generator: `amount` flat damage (ignores Defense) to an
+       * enemy unit of the owner's choice at the start of every combat round.
+       */
+      kind: "damage-chosen-enemy";
       amount: number;
     };
 
@@ -5351,6 +5453,11 @@ type GameActionPayload =
     }
   | { type: "CONTINUE_NEUTRAL_COMBAT"; playerId: PlayerId }
   | { type: "CONTINUE_NEUTRAL_STEP"; playerId: PlayerId }
+  | {
+      /** Intelligence window: cast no Spell now; the one-shot cast is forfeited. */
+      type: "SKIP_INTELLIGENCE_CAST";
+      playerId: PlayerId;
+    }
   /**
    * Manual guard control: the fighter hands the CURRENT guard's activation to
    * the rulebook Neutral AI instead of commanding it by hand ("Let the unit
@@ -8811,6 +8918,28 @@ export type PowerScaledAttackReroll = {
   baseRerolls: number;
 };
 
+/**
+ * Every action that spends a card carrying the printed Instant symbol during
+ * combat, and can therefore be paused by Helm of Chaos: a hand play (including
+ * a Spell discarded for +1 Power and a discard-cast enabler), an enabler-driven
+ * cast (Alabaster Helm / Ciele / Intelligence discard-cast, Eagle Eye copy), a
+ * reroll artifact spent from hand, Cards of Prophecy, the Eagle Eye unit copy.
+ */
+export type HelmPausableAction = Extract<
+  GameAction,
+  {
+    type:
+      | "PLAY_REACTION"
+      | "PLAY_CARD"
+      | "CAST_SPELL"
+      | "REROLL_PENDING_CHOICE"
+      | "USE_PROPHECY_PRE_ROLL"
+      | "USE_EAGLE_EYE_UNIT_COPY"
+      | "USE_SCHOOL_FETCH_EXPERT"
+      | "USE_SCHOOL_PERMANENT_EXPERT";
+  }
+>;
+
 export type ReactionWindow = {
   id: string;
   triggerEvent: GameEvent;
@@ -8819,6 +8948,27 @@ export type ReactionWindow = {
   legalReactions: Record<PlayerId, LegalAction[]>;
   passedPlayerIds: PlayerId[];
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
+  /** Helm of Chaos pauses one announced hand Instant before its effect resolves. */
+  helmCounterPending?: {
+    play: HelmPausableAction;
+    createdWindow?: true;
+    /** A pending choice (attack-die reroll) that was open when the Instant was announced; restored on resume. */
+    pausedChoice?: PendingChoice;
+    /** The paused PLAY_CARD had just closed a Polish Ballista firing offer; the resume tail re-runs the war-machine step. */
+    resumedBallistaOffer?: true;
+    previousPhase?: GamePhase;
+    previousStatePriorityPlayerId?: PlayerId | null;
+    previousAllowedPlayerIds: PlayerId[];
+    previousPriorityPlayerId: PlayerId;
+    previousLegalReactions: Record<PlayerId, LegalAction[]>;
+    previousPassedPlayerIds: PlayerId[];
+  };
+  /** Public face of the one Instant currently awaiting a Helm answer. */
+  helmCounterCardId?: CardId;
+  /** Announced side of that Instant (basic / expert) — public, like the card itself. */
+  helmCounterPlayMode?: CardPlayMode;
+  /** The announced Instant is a Spell discarded for its printed "+1 Power" side. */
+  helmCounterPowerBoost?: true;
   /**
    * School expert Power committed before a reaction Spell (Sorrow, Misfortune,
    * Resurrection, Fortune…). SCHOOL-TAGGED and SINGLE-USE: the printed card
@@ -9337,6 +9487,8 @@ export type CommanderPlayerState = {
 export type PlayerState = {
   id: PlayerId;
   name: string;
+  /** Hellstorm Helmet: six army units may deploy in each combat of this game round. */
+  hellstormSixUnitRound?: number;
   /** Adventure mode: chosen faction and main hero definition ids. */
   factionId?: FactionId;
   heroDefId?: string;
@@ -10228,6 +10380,12 @@ export type CombatUnitState = {
     zeal?: number;
     movedRound?: number;
     markedTargets?: string[];
+    forgeBruiserBreakTargets?: string[];
+    forgeWoundSources?: string[];
+    forgeZombieHealRound?: number;
+    forgeZombieHealUses?: number;
+    forgeJumpGuardRound?: number;
+    forgeTankExplosionUsed?: boolean;
     boundBy?: string[];
     startUsed?: boolean;
     saveUsed?: boolean;
@@ -10261,6 +10419,9 @@ export type CombatUnitState = {
     magiRecoveryUses?: number;
     /** Tower Magi R4 extra hand discards triggered this combat. */
     magiSpellSunderUses?: number;
+    /** Arch Devils R1 Devil's Luck: combat round of the last curse and curses spent in it (max 2). */
+    devilLuckRound?: number;
+    devilLuckUses?: number;
   };
   /** One-shot Attack support banked by an Engineer; consumed by this unit's next attack. */
   engineerNextAttackBonus?: number;
@@ -10783,10 +10944,12 @@ export type CombatState = {
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
+    remaining?: number;
+    excludedTargetIds?: string[];
     targetId?: string;
     anchorId?: string;
     excludeTargetId?: string;
@@ -11063,6 +11226,22 @@ export type CombatState = {
       handBallistics?: boolean;
       /** Henrietta VI: optional round-start activation while the specialty remains in hand. */
       henriettaHalflings?: boolean;
+      /**
+       * Dark Mullich VI (Overclock): optional round-start play from hand — all
+       * the holder's units gain +2 Initiative until the end of that round. Asked
+       * each round start so BOTH seats get the printed "beginning of the Combat
+       * round" window (the from-hand play only reaches the seat whose unit is
+       * active first).
+       */
+      forgeOverclock?: boolean;
+      /**
+       * Dark Mullich Overclock I / IV: the BEGINNING-OF-COMBAT offer (combat
+       * round 1, before any unit acts) to play the specialty from hand on one
+       * of the holder's units. The level identifies the card.
+       */
+      forgeOverclockStart?: 1 | 4;
+      /** Overclock I at combat start: the side picked before the unit choice. */
+      forgeOverclockOption?: "initiative" | "attack";
     }[];
     firstTargetUnitId?: UnitId | null;
     /**
@@ -11125,6 +11304,8 @@ export type CombatState = {
    * been offered this combat (a Neutral fight), so it is never re-offered.
    */
   wayfarerParalysisOffered?: boolean;
+  /** Dungeon Brute's optional 2-gold draw has been offered this combat. */
+  bruteCombatDrawOffered?: boolean;
   /**
    * Player-vs-player pre-battle preparation window, presented on the adventure
    * MAP (not the battlefield) so both sides can see their towns, resources and
@@ -12589,6 +12770,17 @@ export type VisitStep =
        * normal single random face. Default false (a plain single reroll).
        */
       prophecyThreePick?: boolean;
+      /**
+       * Polish Cards of Prophecy option B is declared BEFORE the throw: set once
+       * the holder answered the pre-roll "play it or roll normally" question, so
+       * the re-queued step throws instead of asking again.
+       */
+      prophecyPreRollAsked?: boolean;
+      /**
+       * Forge Resource Silo: a building-materials result is ignored (gold and
+       * valuables are gained). Carried onto every reroll of this roll.
+       */
+      ignoreBuildingMaterials?: boolean;
     }
   | {
       type: "RESUME_FIELD_VISIT";
@@ -12608,6 +12800,12 @@ export type VisitStep =
        * faces and the player picks which to keep.
        */
       prophecyThreePick?: boolean;
+      /**
+       * Polish Cards of Prophecy option B is declared BEFORE the throw: set once
+       * the holder answered the pre-roll "play it or roll normally" question, so
+       * the re-queued step throws instead of asking again.
+       */
+      prophecyPreRollAsked?: boolean;
     }
   | {
       /**
@@ -13019,6 +13217,17 @@ export type VisitStep =
     }
   | {
       /**
+       * Halflings IV leaf: take one copy of neutral `unitDefId` out of `tier`'s
+       * Neutral Units deck (draw pile first, then discard) and add it to the
+       * army's single-sided Neutral side for free; a null `unitDefId` declines.
+       * Either way the tier's draw pile is then shuffled (the search is over).
+       */
+      type: "RECRUIT_SEARCHED_NEUTRAL";
+      unitDefId: string | null;
+      tier: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
+      /**
        * Faction-recruit leaf: take one copy of neutral `unitDefId` from its tier's
        * Neutral Units deck and add it to the army's single-sided Neutral side, for
        * free. Recruited as neutral, it can never be reinforced to a Pack.
@@ -13373,8 +13582,8 @@ export type VisitStep =
       filter?:
         | "spell"
         | "non-artifact"
-        | "specialty"
         | "power-or-knowledge-statistic"
+        | "specialty"
         | "spell-or-specialty";
     }
   | {
@@ -17324,6 +17533,18 @@ export type PendingChoice =
        */
       freeCandidateChoice?: boolean;
       /**
+       * Polish Balance Pack Cards of Prophecy on an ABILITY roll, PRE-roll stage
+       * (USER RULING 2026-09-23: "you play this card not knowing the result of a
+       * roll … it is not a reroll"). The ability die is already thrown by the
+       * seeded stream but NOT shown: the holder first answers "play Cards of
+       * Prophecy" (REROLL_PENDING_CHOICE — the Prophecy source, sorted first,
+       * throws the die twice more and unlocks the free pick among all three) or
+       * "roll without it" (CHOOSE_PENDING_ROLL — reveals the throw; Prophecy
+       * leaves the window and any other source stays offered). Cleared on either
+       * answer.
+       */
+      prophecyBlind?: boolean;
+      /**
        * Veteran Troglodytes' "Threefold Savage": this window may reroll ONLY the
        * dice currently showing "-1", and each such die at most ONCE (the rerolled
        * indexes are tracked in `rerolledDieIndexes`). Additive — absent on every
@@ -17427,6 +17648,7 @@ export type PendingChoice =
         | "cover-of-darkness"
         | "shackles-of-war"
         | "wayfarer-paralysis"
+        | "brute-combat-draw"
          | "disciplinary-committee-start"
          | "bounty-hunter-mark-start"
          | "mgq-mad-science"
@@ -17445,6 +17667,8 @@ export type PendingChoice =
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
+        | "oidana-scry-deck"
+        | "oidana-scry-cards"
         | "artifact-set-scry"
         | "visions-guard-cast"
         | "visions-guard-boost"
@@ -17584,6 +17808,9 @@ export type PendingChoice =
           runesNextCombats?: number;
           /** MGQ Pocket Castle Kitchen: one no-gold Job assignment or reassignment. */
           freeJobReassign?: boolean;
+          /** Forge City Hall: the named opponent discards this many random cards. */
+          opponentDiscards?: number;
+          opponentDiscardTargetId?: PlayerId;
         }[];
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */
@@ -18357,6 +18584,14 @@ export type PendingChoice =
         remainingTiers?: ("bronze" | "silver" | "gold" | "azure")[];
         toReturn: CardId[];
         toReturnTiers?: ("bronze" | "silver" | "gold" | "azure")[];
+      };
+      /** Oidana I chooses one Neutral tier before revealing its top two cards. */
+      oidanaScryDeck?: { tiers: ("bronze" | "silver" | "gold" | "azure")[] };
+      /** Oidana I holds the inspected cards outside their chosen Neutral deck. */
+      oidanaScry?: {
+        tier: "bronze" | "silver" | "gold" | "azure";
+        remaining: CardId[];
+        toReturn: CardId[];
       };
       /**
        * artifact-set-scry (Polish Set Artifacts, Diplomat's Cloak tier 2): the

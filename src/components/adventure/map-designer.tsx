@@ -185,23 +185,33 @@ function DesignerGlyph({
 function PopoverGroup({
   title,
   active,
+  focus,
   children
 }: {
   title: string;
   active: boolean;
+  /** A changing non-zero token forces the section open and scrolls it into view. */
+  focus?: number;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(active);
+  const [open, setOpen] = useState(active || Boolean(focus));
   const prevActive = useRef(active);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     if (!prevActive.current && active) {
       setOpen(true);
     }
     prevActive.current = active;
   }, [active]);
+  useEffect(() => {
+    if (!focus) return;
+    setOpen(true);
+    detailsRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [focus]);
   return (
     <details
       aria-label={title}
+      ref={detailsRef}
       className={`popoverGroup${active ? " active" : ""}`}
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
@@ -475,17 +485,26 @@ function planDefHasLocation(plan: CustomMapTilePlan, location: "obelisk" | "mine
  * SPECIFIC-mode eligibility: which plans may carry a per-tile plan for this
  * object kind. Face-up pinned tiles must PRINT the location; a face-down tile
  * qualifies when a secret landmark guarantees a matching draw (mines), else it
- * is skipped (random content — the plan could land inert).
+ * is skipped (random content — the plan could land inert). A "one of these
+ * tiles" slot (face-up or face-down, no exact pin) qualifies when ANY listed
+ * candidate prints the location: setup copies the plan onto whichever tile is
+ * drawn and materialize (at setup or on discovery) folds it onto that tile's
+ * mine/obelisk field; a candidate without one leaves the plan inert.
  */
 function planEligibleForObjectKind(plan: CustomMapTilePlan, kind: "obelisk" | "mine"): boolean {
   if (plan.group === "starting") {
     return false;
   }
-  if (!plan.faceDown) {
-    return planDefHasLocation(plan, kind);
-  }
   if (plan.tileDefId) {
     return planDefHasLocation(plan, kind);
+  }
+  if ((plan.oneOfTileDefIds?.length ?? 0) > 0) {
+    return plan.oneOfTileDefIds!.some((id) =>
+      Boolean(allTileDefinitions[id]?.fields.some((field) => field.location === kind))
+    );
+  }
+  if (!plan.faceDown) {
+    return false;
   }
   const secrets = [
     ...(plan.secretFeatures ?? []),
@@ -568,6 +587,130 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     if (plan.viiField) bits.push(`forced ${plan.viiField.replace("_", " ")}`);
   }
   return bits.join(" · ");
+}
+
+/** The tile-popover section (PopoverGroup title) that edits each SPECIFIC kind. */
+export const SPECIFIC_POPOVER_GROUP: Record<SpecificPickKind, string> = {
+  obelisk: "Obelisk & Mine (this tile)",
+  mine: "Obelisk & Mine (this tile)",
+  settlement: "Special settlement",
+  center: "Center (Ⅶ) objective"
+};
+
+const SPECIFIC_KIND_LABEL: Record<SpecificPickKind, string> = {
+  obelisk: "Obelisk",
+  mine: "Mine",
+  settlement: "Settlement",
+  center: "Center objective"
+};
+
+/** Plain-words tile position for designer confirmations ("Ⅳ–Ⅴ tile @4,6"). */
+function planPositionLabel(plan: CustomMapTilePlan): string {
+  return `${planGroupLabel(plan)} tile @${plan.row},${plan.col}`;
+}
+
+/** The confirmation shown right after a SPECIFIC pick lands on a tile. */
+function specificPickMessage(plan: CustomMapTilePlan, kind: SpecificPickKind): string {
+  const drawn =
+    (kind === "mine" || kind === "obelisk") && !plan.tileDefId
+      ? ` Applies when the tile drawn here has a${kind === "obelisk" ? "n Obelisk" : " Mine"}.`
+      : "";
+  const listed = describeTileSpecificPlan(plan, kind).length > 0
+    ? ""
+    : " It joins the Specific list once you set a value.";
+  return `${SPECIFIC_KIND_LABEL[kind]} on ${planPositionLabel(plan)} selected — editing its specific settings.${listed}${drawn}`;
+}
+
+/** One per-object / per-hex override a tile carries (tile popover list + board badge). */
+export type TileSpecificOverride = {
+  /** PopoverGroup title of the tile-popover section that edits it. */
+  group: string;
+  label: string;
+  summary: string;
+  win: boolean;
+};
+
+/**
+ * Every SPECIFIC override on one tile plan — obelisk / mine / Temple object
+ * plans, the special settlement, the center objective, exact-hex guards and
+ * pinned Field Overrides — in plain words. Drives the popover's "Modified on
+ * this tile" list and the board's ✎ badge, so both always agree.
+ */
+export function tileSpecificOverrides(plan: CustomMapTilePlan): TileSpecificOverride[] {
+  const entries: TileSpecificOverride[] = [];
+  for (const kind of ["obelisk", "mine"] as const) {
+    const objectPlan = plan.objectPlans?.[kind];
+    if (objectPlan) {
+      entries.push({
+        group: SPECIFIC_POPOVER_GROUP[kind],
+        label: kind === "mine" ? "Mine" : "Obelisk",
+        summary: describeTileSpecificPlan(plan, kind) || "custom",
+        win: Boolean(objectPlan.winCondition)
+      });
+    }
+  }
+  const temple = plan.objectPlans?.temple_of_the_sea;
+  if (temple) {
+    const bits: string[] = [];
+    if (temple.guard) bits.push(`guard ${guardBadgeNumeral(temple.guard) ?? "custom"}`);
+    if (temple.reward) bits.push("custom award");
+    if (temple.vp) bits.push(`+${temple.vp} VP`);
+    if (temple.winCondition) bits.push("first clear WINS");
+    entries.push({
+      group: "Temple of the Sea (this tile)",
+      label: "Temple of the Sea",
+      summary: bits.join(" · ") || "custom",
+      win: Boolean(temple.winCondition)
+    });
+  }
+  if (plan.settlement) {
+    const bits = [describeTileSpecificPlan(plan, "settlement")].filter(Boolean);
+    if (plan.settlement.ownerStart !== undefined) bits.push(`owned by S${plan.settlement.ownerStart + 1}`);
+    entries.push({
+      group: SPECIFIC_POPOVER_GROUP.settlement,
+      label: "Settlement",
+      summary: bits.join(" · ") || "custom",
+      win: Boolean(plan.settlement.winCondition || plan.settlement.holdRoundsToWin)
+    });
+  }
+  if (plan.group === "center" && (plan.centerHex || plan.viiField || plan.viiFields?.length)) {
+    const summary =
+      describeTileSpecificPlan(plan, "center") ||
+      (plan.viiFields?.length ? `objective: ${plan.viiFields.map((field) => field.replace("_", " ")).join(" / ")}` : "");
+    entries.push({
+      group: SPECIFIC_POPOVER_GROUP.center,
+      label: "Center objective",
+      summary: summary || "custom",
+      win: Boolean(plan.centerHex?.winCondition || plan.centerHex?.holdRoundsToWin)
+    });
+  }
+  // Exact-hex guards pin a PHYSICAL board hex; when the tile identity is known
+  // (exact pin) name the printed field that lands on it at this rotation.
+  const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+  const center = { row: plan.row, col: plan.col };
+  for (const pin of plan.fieldGuards ?? []) {
+    const hex = tileFootprint(center, 0)[pin.slot];
+    const defSlot = hex
+      ? tileFootprint(center, plan.rotation ?? 0).findIndex((cell) => cell.row === hex.row && cell.col === hex.col)
+      : -1;
+    const location = def && defSlot >= 0 ? def.fields[defSlot]?.location : undefined;
+    const where = pin.slot === 0 ? "Center hex" : `Hex ${pin.slot}`;
+    entries.push({
+      group: "Exact hex strength",
+      label: location ? `${locationDefinitions[location]?.name ?? location} (${where})` : where,
+      summary: `custom guard ${guardBadgeNumeral(pin.guard) ?? ""}`.trim(),
+      win: false
+    });
+  }
+  for (const pin of planFieldOverrides(plan)) {
+    entries.push({
+      group: "",
+      label: getFieldOverrideDefinition(pin.kind)?.nameVi ?? pin.kind,
+      summary: `Field Override${pin.slot !== undefined ? ` · slot ${pin.slot}` : ""}`,
+      win: false
+    });
+  }
+  return entries;
 }
 
 /**
@@ -1231,6 +1374,21 @@ export function MapDesigner({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   /** Physical flower slot whose exact guard is open in the tile panel. */
   const [selectedFieldGuardSlot, setSelectedFieldGuardSlot] = useState<number | null>(null);
+  /**
+   * SPECIFIC-pick / "Modified" focus: which tile-popover section to force open
+   * and scroll to (`n` changes on every request), plus the pick kind for the
+   * popover's "editing" line.
+   */
+  const [specificFocus, setSpecificFocus] = useState<
+    { index: number; group: string; kind?: SpecificPickKind; n: number } | null
+  >(null);
+  /** Short-lived confirmation banner after a SPECIFIC tile pick. */
+  const [pickConfirm, setPickConfirm] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pickConfirm) return;
+    const timer = window.setTimeout(() => setPickConfirm(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [pickConfirm]);
   const [popoverAt, setPopoverAt] = useState<{ x: number; y: number } | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   // Wheel-zoom defaults ON here (the designer board is the main surface). The
@@ -1590,6 +1748,7 @@ export function MapDesigner({
   const closePopover = useCallback(() => {
     setSelectedIndex(null);
     setSelectedFieldGuardSlot(null);
+    setSpecificFocus(null);
     setPopoverAt(null);
     setTilePickFilter("all");
     setGateGuardEditorIndex(null);
@@ -1641,11 +1800,14 @@ export function MapDesigner({
       onPickResolved?.();
       return;
     }
+    const kind = pickRequest.objectKind;
     const frame = window.requestAnimationFrame(() => {
       closeAllPanels();
       setSelectedIndex(index);
       setTilePickFilter("all");
       setPopoverAt({ x: 0, y: 0 });
+      setSpecificFocus({ index, group: SPECIFIC_POPOVER_GROUP[kind], kind, n: Date.now() });
+      setPickConfirm(specificPickMessage(plan, kind));
       onPickResolved?.();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -2948,6 +3110,10 @@ export function MapDesigner({
   }
 
   const selected = selectedIndex !== null ? customMap[selectedIndex] : null;
+  const selectedSpecificOverrides = selected ? tileSpecificOverrides(selected) : [];
+  /** Focus token for one tile-popover section (see {@link specificFocus}). */
+  const popoverFocusFor = (group: string): number | undefined =>
+    specificFocus && specificFocus.index === selectedIndex && specificFocus.group === group ? specificFocus.n : undefined;
   // A tile id may only be used once — face-up OR exact secret face-down pin.
   const usedPinnedIds = new Set(
     customMap.filter((plan) => plan.tileDefId).map((plan) => plan.tileDefId as string)
@@ -4116,6 +4282,17 @@ export function MapDesigner({
       if (plan.centerHex?.winCondition) {
         specificBits.push("center: WIN on clear");
       }
+      // Per-hex guards, pinned Field Overrides and non-winning center plans
+      // are specific overrides too — the ✎ badge must flag them as well.
+      for (const entry of tileSpecificOverrides(plan)) {
+        if (
+          entry.group === "Exact hex strength" ||
+          entry.group === "" ||
+          (entry.group === SPECIFIC_POPOVER_GROUP.center && !plan.centerHex?.winCondition)
+        ) {
+          specificBits.push(`${entry.label}: ${entry.summary}`);
+        }
+      }
       if (specificBits.length > 0) {
         const hasWin = specificBits.some((bit) => bit.includes("WIN"));
         labelLayer.push(
@@ -4127,8 +4304,8 @@ export function MapDesigner({
             x={centerPixel.x - size * 0.9}
             y={centerPixel.y - size * 1.15}
           >
-            <title>{`Specific settings — ${specificBits.join(" · ")}`}</title>
-            {hasWin ? "🏁⚔" : "⚔"}
+            <title>{`Modified (specific settings) — ${specificBits.join(" · ")}. Click the tile to edit.`}</title>
+            {hasWin ? "✎🏁⚔" : "✎⚔"}
           </text>
         );
       }
@@ -5432,6 +5609,15 @@ export function MapDesigner({
       </div>
 
       <div className="designerBoardWrap" ref={wrapRef}>
+        {!pickRequest && pickConfirm ? (
+          <div className="designerPickBanner" role="status" aria-label="Specific tile selected" data-testid="designer-pick-confirm">
+            <span aria-hidden="true">✎</span>
+            <strong>{pickConfirm}</strong>
+            <button className="commandButton ghost" onClick={() => setPickConfirm(null)} type="button">
+              OK
+            </button>
+          </div>
+        ) : null}
         {pickRequest ? (
           <div className="designerPickBanner" role="status" aria-label="Pick a tile on the map">
             <span aria-hidden="true">📍</span>
@@ -5587,10 +5773,13 @@ export function MapDesigner({
               if (pickRequest?.kind === "object-plan") {
                 const plan = customMap[press.index];
                 if (plan && planEligibleForPick(plan, pickRequest.objectKind)) {
+                  const kind = pickRequest.objectKind;
                   closeAllPanels();
                   setSelectedIndex(press.index);
                   setTilePickFilter("all");
                   setPopoverAt({ x: event.clientX, y: event.clientY });
+                  setSpecificFocus({ index: press.index, group: SPECIFIC_POPOVER_GROUP[kind], kind, n: Date.now() });
+                  setPickConfirm(specificPickMessage(plan, kind));
                   onPickResolved?.();
                 }
                 return;
@@ -5678,6 +5867,45 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
+            {specificFocus?.kind && specificFocus.index === selectedIndex ? (
+              <small className="popoverHint" data-testid="designer-specific-editing" role="status">
+                ✎ Editing the specific {SPECIFIC_KIND_LABEL[specificFocus.kind]} settings of {planPositionLabel(selected)}.
+              </small>
+            ) : null}
+            {selectedSpecificOverrides.length > 0 ? (
+              <div className="popoverSection" aria-label="Modified on this tile" data-testid="designer-tile-modified">
+                <div className="popoverSectionLabel">
+                  ✎ Modified on this tile <span className="popoverGroupDot" aria-hidden="true" />
+                </div>
+                {selectedSpecificOverrides.map((entry, entryIndex) => (
+                  <div className="designerModPinRow" key={`${entry.group}-${entry.label}-${entryIndex}`}>
+                    <span>
+                      <strong>{entry.label}</strong> — {entry.summary}
+                      {entry.win ? " 🏁" : ""}
+                    </span>
+                    <button
+                      className="popoverIconButton"
+                      onClick={() => {
+                        if (entry.group) {
+                          setSpecificFocus((current) => ({
+                            index: selectedIndex as number,
+                            group: entry.group,
+                            kind: current?.index === selectedIndex ? current.kind : undefined,
+                            n: Date.now()
+                          }));
+                        } else {
+                          setModPanelOpen(true);
+                        }
+                      }}
+                      title={entry.group ? `Open "${entry.group}" below` : "Open the Mod panel's Field Overrides for this tile"}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {selected.group === "starting" ? (
               <>
@@ -6330,6 +6558,7 @@ export function MapDesigner({
                     optional and independent. */}
                 {selected.group === "center" ? (
                   <PopoverGroup
+                    focus={popoverFocusFor("Center (Ⅶ) objective")}
                     title="Center (Ⅶ) objective"
                     active={Boolean(selected.viiField || selected.viiFields?.length || selected.centerHex)}
                   >
@@ -6593,7 +6822,7 @@ export function MapDesigner({
                   </PopoverGroup>
                 ) : null}
 
-                <PopoverGroup title="Exact hex strength" active={Boolean(selected.fieldGuards?.length)}>
+                <PopoverGroup focus={popoverFocusFor("Exact hex strength")} title="Exact hex strength" active={Boolean(selected.fieldGuards?.length)}>
                   <div className="popoverSection designerExactGuardEditor" aria-label="Exact hex guard strength">
                     <small className="popoverHint">
                       Pick one physical hex, then set its real Field Difficulty or exact army. It overrides Global
@@ -6646,7 +6875,7 @@ export function MapDesigner({
                     Excludes center tiles — their own hex is customized by the
                     center-hex editor above, whose guard/VP would otherwise clash. */}
                 {selected.group !== "sea" && selected.group !== "center" ? (
-                  <PopoverGroup title="Special settlement" active={Boolean(selected.settlement)}>
+                  <PopoverGroup focus={popoverFocusFor("Special settlement")} title="Special settlement" active={Boolean(selected.settlement)}>
                   <div className="popoverSettlementPlan popoverSection" aria-label="Special settlement">
                     <small className="popoverHint">
                       Make THIS tile&apos;s settlement matter: a stronger first-flag guard, extra Victory Points,
@@ -6837,7 +7066,7 @@ export function MapDesigner({
                     sections. A set field OVERRIDES the map-wide config; unset
                     fields fall back to it. */}
                 {planEligibleForObjectKind(selected, "obelisk") || planEligibleForObjectKind(selected, "mine") ? (
-                  <PopoverGroup title="Obelisk & Mine (this tile)" active={Boolean(selected.objectPlans)}>
+                  <PopoverGroup focus={popoverFocusFor("Obelisk & Mine (this tile)")} title="Obelisk & Mine (this tile)" active={Boolean(selected.objectPlans)}>
                 {(["obelisk", "mine"] as const).map((objectKind) =>
                   planEligibleForObjectKind(selected, objectKind) ? (
                     <div
@@ -6965,7 +7194,7 @@ export function MapDesigner({
                 ) : null}
 
                 {selected.group === "sea" ? (
-                  <PopoverGroup title="Temple of the Sea (this tile)" active={Boolean(selected.objectPlans?.temple_of_the_sea)}>
+                  <PopoverGroup focus={popoverFocusFor("Temple of the Sea (this tile)")} title="Temple of the Sea (this tile)" active={Boolean(selected.objectPlans?.temple_of_the_sea)}>
                     <div className="popoverObjectPlan popoverSection" aria-label="Temple of the Sea settings">
                       <small className="popoverHint">
                         Applies only if this sea tile reveals a Temple of the Sea. A custom award replaces

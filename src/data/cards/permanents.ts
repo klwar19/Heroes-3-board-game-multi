@@ -29,6 +29,12 @@ export const WAR_MACHINE_CARD_IDS = [
 ] as const;
 
 /**
+ * War machines that are never sold at a shop: they only enter a hand through a
+ * specific source (Forge Toxic Moat grants the Lightning Generator).
+ */
+export const GRANTED_WAR_MACHINE_CARD_IDS = ["war_machine.lightning_generator"] as const;
+
+/**
  * School of Magic ability cards (Tower expansion): permanents that boost the
  * owner's spells of one school by +1 power while in play, or discard for +3
  * power on a single matching cast (the expert effect).
@@ -211,6 +217,31 @@ export const permanentCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: warMachineSource("cannon")
+  },
+
+  // Forge Lightning Generator (Forge box, 4 cards). Gained only from the Forge
+  // Toxic Moat ("When built: gain a Lightning Generator"); not in the shop supply.
+  "war_machine.lightning_generator": {
+    id: "war_machine.lightning_generator",
+    name: "Lightning Generator",
+    kind: "war-machine",
+    timing: "ongoing",
+    tags: ["war-machine", "permanent", "damage", "forge"],
+    permanent: true,
+    permanentEffect: {
+      roundStart: { kind: "damage-chosen-enemy", amount: 1 }
+    },
+    effect: { type: "ENTER_PLAY" },
+    assets: {
+      cardImage: "/assets/war_machines-lightning_generator.webp",
+      imageAlt: "Lightning Generator war machine card"
+    },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
+      credit: "Forge Faction Focus: the Forge box ships 4 Lightning Generator war machine cards. Effect per the project Forge spec; verify against official components.",
+      url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
+    }
   },
 
   // ---- Schools of Magic (Tower expansion) ----------------------------------

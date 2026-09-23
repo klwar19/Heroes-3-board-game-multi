@@ -69,6 +69,7 @@ import {
   isSeaField,
   NEUTRAL_DECK_IDS,
   neutralDeckHas,
+  neutralDeckUnitSearchCandidates,
   obeliskRoleIsMonolith,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   currentSurrenderGoldCost,
@@ -136,6 +137,7 @@ import {
   getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
+  intelligenceCastOwner,
   unitAttackRollAdvantaged,
   unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
@@ -146,6 +148,7 @@ import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
   astrologersAdjustedCardEffect,
+  deathRippleReachesUnit,
   getEffectAmount,
   getEffectiveCardEffect,
   getEffectiveCardEffectForState,
@@ -171,6 +174,7 @@ import {
   commanderDefenseReactionUnit,
   commanderPrecisionReactionUnit,
   commanderPrecisionReactionAmount,
+  commanderPrecisionIgnoresRangedPenalty,
   commanderGradeUpChoices,
   commanderIntegratedDeploymentSortAvailable,
   commanderActionPoints,
@@ -340,6 +344,7 @@ import {
 } from "./house-rules";
 import {
   balanceIntelligenceWindowClosed,
+  intelligenceCastWindowClosed,
   combatRoundStartWindowOpen,
   combatStartWindowOpen,
   polishIntelligenceHandReadingActive,
@@ -462,6 +467,15 @@ export function ongoingCombatPlayWindowOpen(
   }
   if (option?.combatAnytime) {
     return true;
+  }
+  // Intelligence (classic and reprint — USER RULING 2026-09-23, printed
+  // "before any unit activates"): playable in the round-start window whoever
+  // holds the activation slot, never after a unit has acted.
+  if (
+    effect.type === "CREATE_ACTIVE_EFFECT" &&
+    effect.effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME")
+  ) {
+    return combatRoundStartWindowOpen(state.combat);
   }
   if (option?.combatStartOnly) {
     return combatStartWindowOpen(state.combat);
@@ -1349,8 +1363,8 @@ export function spellPotentialBlastUnitIds(
   const effect = card.effect;
   const target = stackItem.action.target;
 
-  // Inferno: the centre space and all orthogonal neighbours.
-  if (effect.type === "INFERNO" && target.type === "space") {
+  // Inferno and Meteor Shower: the centre space and all orthogonal neighbours.
+  if ((effect.type === "INFERNO" || effect.type === "METEOR_SHOWER_SPELL") && target.type === "space") {
     return unitsOnPositions(
       combat,
       new Set([target.position, ...getOrthogonalNeighbors(target.position)]),
@@ -2855,8 +2869,13 @@ export function balanceIntelligencePlayBlocked(
   state: GameState,
   cardId: CardId,
 ): boolean {
+  // Classic and Polish Intelligence alike are round-start plays (the printed
+  // "before any unit activates"). The community reprint is a different card (a
+  // cast-from-discard enabler) and keeps its own timing.
   return (
-    cardId === "ability.intelligence" && balanceIntelligenceWindowClosed(state)
+    cardId === "ability.intelligence" &&
+    !houseRuleEnabled(state, "community-card-balance") &&
+    intelligenceCastWindowClosed(state)
   );
 }
 
@@ -4565,6 +4584,10 @@ function isOptionEffectPlayable(
   excludeCardId?: CardId,
 ): boolean {
   switch (effect.type) {
+    case "CANCEL_INSTANT":
+      // This face needs the particular enemy Instant that is paused in the
+      // Helm counter window. Ordinary combat/map card offers have no target.
+      return false;
     case "GAIN_RESOURCES":
       // Sephinroth's Valuables I: "Pay N gold to gain …" is only offered when the
       // player can actually afford the gold cost.
@@ -4589,6 +4612,9 @@ function isOptionEffectPlayable(
     // valid map play (a no-op when the module is off).
     case "GAIN_GRADE_PROGRESS":
       return true;
+    case "HELLSTORM_SIX_UNITS":
+      return context === "map" && Boolean(state.adventure) &&
+        state.players[playerId]?.hellstormSixUnitRound !== state.round;
     // Akashi (Azur Lane) "Repair Dock": a map-only bank of a flat gold
     // reinforcement discount — always a valid map play (it is redeemed later,
     // and an unredeemed bank dies on the next hero step like every other one).
@@ -4792,10 +4818,35 @@ function isOptionEffectPlayable(
         Boolean(state.adventure) &&
         unlockedRecruitTiers(state, playerId).size > 0
       );
+    case "NEUTRAL_DECK_UNIT_SEARCH":
+      // Henrietta's Halflings IV (Global): a map play, offered only while the
+      // tier's deck or discard still holds a matching unit to recruit (with
+      // nothing to find the play would only shuffle the deck).
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        !state.adventure?.pendingVisit &&
+        neutralDeckUnitSearchCandidates(state, effect.tier, effect.unitNames).length > 0
+      );
+    case "HALFLINGS_RALLY":
+      // Henrietta's Halflings I: a combat play (its start-of-Combat window is
+      // the option's `combatStartOnly` flag, enforced by the shared gate).
+      return context === "combat" && Boolean(state.combat);
     case "DIPLOMACY_EASE_BATTLE":
       // Offered only by the authoritative encounter-entry window. Keeping the
       // marker out of PLAY_CARD prevents using it without a pending battle.
       return false;
+    case "OIDANA_NEUTRAL_SCRY":
+      // Oidana's printed Global timing allows the same deck action on the map
+      // or during a combat in which her hand can be played.
+      return (
+        (context === "map" && Boolean(state.adventure) ||
+          context === "combat" && Boolean(state.combat)) &&
+        (["bronze", "silver", "gold", "azure"] as const).some((tier) => {
+          const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+          return Boolean(deck) && deck.drawPile.length + deck.discardPile.length > 0;
+        })
+      );
     case "VISIONS_SCRY":
       // Visions scrys a Neutral Unit deck — only useful when at least one tier
       // deck still holds cards.
@@ -4836,6 +4887,7 @@ function isOptionEffectPlayable(
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
     // enemy unit of a grade.
     case "DAMAGE_ENEMY_UNITS_BY_GRADE":
+    case "DEATH_RIPPLE_SPELL":
     // Miku Voice of Angel VI: targetless damage to every living enemy.
     case "DAMAGE_ALL_ENEMY_UNITS":
     // Miku Voice of Angel I/IV: targetless ongoing combat plays.
@@ -7052,6 +7104,7 @@ function effectDealsCombatDamage(
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "INFERNO" ||
+    effect.type === "METEOR_SHOWER_SPELL" ||
     effect.type === "CHAIN_LIGHTNING" ||
     effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
     effect.type === "DAMAGE_CHOSEN_ENEMIES"
@@ -7092,6 +7145,21 @@ export function playerThreatenedByPendingDamage(
     if (
       spellPotentialBlastUnitIds(state, stackItem, cards).some(
         (unitId) => combat.units[unitId]?.controllerId === playerId,
+      )
+    ) {
+      return true;
+    }
+    // Death Ripple: targetless sweep of the caster's enemies. Power can still
+    // climb while the window is open, so any of our units the top rung could
+    // reach counts as threatened (the same "could hit" read as the blasts).
+    if (
+      effect?.type === "DEATH_RIPPLE_SPELL" &&
+      stackItem.action.playerId !== playerId &&
+      Object.values(combat.units).some(
+        (unit) =>
+          unit.controllerId === playerId &&
+          isUnitAlive(unit) &&
+          deathRippleReachesUnit(effect, unit, Number.POSITIVE_INFINITY),
       )
     ) {
       return true;
@@ -7208,7 +7276,7 @@ export function unitIdsThreatenedByDamageEffect(
       .map((unit) => unit.id);
   }
 
-  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" || effect.type === "INFERNO") {
+  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" || effect.type === "INFERNO" || effect.type === "METEOR_SHOWER_SPELL") {
     const center =
       target.type === "space"
         ? target.position
@@ -7218,13 +7286,27 @@ export function unitIdsThreatenedByDamageEffect(
     if (center === undefined) {
       return [];
     }
-    return unitsOnPositions(
+    const hit = unitsOnPositions(
       combat,
       new Set([
         ...(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false ? [] : [center]),
         ...getOrthogonalNeighbors(center),
       ]),
     );
+    // Zeestral VI: only the chosen enemy and ITS side's neighbours are hit —
+    // friendly units beside the target are spared (the reducer filters on the
+    // caster; here the centre unit's controller stands in for "the enemy").
+    if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.adjacentEnemiesOnly) {
+      const centreController = Object.values(combat.units).find(
+        (unit) => isUnitAlive(unit) && unit.position === center,
+      )?.controllerId;
+      return hit.filter((unitId) => {
+        const unit = combat.units[unitId];
+        return unit !== undefined &&
+          (unit.position === center || unit.controllerId === centreController);
+      });
+    }
+    return hit;
   }
 
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
@@ -9286,7 +9368,9 @@ function getLegalActionsCore(
     if (state.pendingChoice.type === "ABILITY_TARGET_CHOICE") {
       const choice = state.pendingChoice;
       const verb =
-        choice.kind === "second-attack"
+        choice.kind === "war-machine" && choice.abilityId?.startsWith("specialty.dark_mullich.")
+          ? `${choice.abilityName}: overclock`
+          : choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
           : choice.kind === "enchanter-activation"
             ? choice.abilityId?.startsWith("mechanics-repair-")
@@ -9385,6 +9469,47 @@ function getLegalActionsCore(
     // An ability-roll window (Death Stare & co.) names the ability and shows
     // every die — its outcome is the faces, not a single kept value.
     const abilityRoll = state.pendingChoice.abilityRoll;
+    // Polish Cards of Prophecy PRE-roll stage on an ability roll: the throw is
+    // hidden; the holder plays the card (one press per die of a multi-die roll —
+    // "that die") or rolls without it. Nothing else is offered until answered.
+    if (state.pendingChoice.prophecyBlind && abilityRoll) {
+      const prophecyName =
+        state.pendingChoice.rerollSources[0]?.name ?? "Cards of Prophecy";
+      const blindActions: LegalAction[] = [
+        {
+          label: `Roll the ${abilityRoll.abilityName} dice without ${prophecyName}`,
+          action: {
+            type: "CHOOSE_PENDING_ROLL",
+            playerId,
+            choiceId: state.pendingChoice.id,
+            candidateIndex: latestIndex,
+          },
+        },
+      ];
+      if (latest.rolls.length > 1) {
+        latest.rolls.forEach((_, index) => {
+          blindActions.push({
+            label: `Play ${prophecyName}: roll ${abilityRoll.abilityName} die ${index + 1} 3 times and resolve 1 chosen result`,
+            action: {
+              type: "REROLL_PENDING_CHOICE",
+              playerId,
+              choiceId: state.pendingChoice!.id,
+              dieIndex: index,
+            },
+          });
+        });
+      } else {
+        blindActions.push({
+          label: `Play ${prophecyName}: roll the ${abilityRoll.abilityName} die 3 times and resolve 1 chosen result`,
+          action: {
+            type: "REROLL_PENDING_CHOICE",
+            playerId,
+            choiceId: state.pendingChoice.id,
+          },
+        });
+      }
+      return blindActions;
+    }
     const facesLabel = latest.rolls
       .map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`))
       .join(", ");
@@ -12328,9 +12453,9 @@ function getLegalReactionsForTriggerCore(
 
     // WOG Commanders: the Tower Temple Guardian's Precision is the ATTACKER-side
     // instant reaction — offered to the controller of the attacking RANGED unit,
-    // buffing THAT attack (+Attack, ignore ranged penalties). Like the Hero-Grade
+    // buffing THAT nonadjacent attack. Like the Hero-Grade
     // Battle Focus it is NOT `windowJoinOnly`, so it can OPEN the window on the
-    // attacker's own shot even in a neutral fight. Once per round, twice per combat.
+    // attacker's own shot even in a neutral fight. Once per round.
     const precisionPendingAttack = attackerUnit
       ? state.stack.find(
           (item) =>
@@ -12339,16 +12464,17 @@ function getLegalReactionsForTriggerCore(
             item.action.attackerId === attackerUnit.id,
         )
       : undefined;
-    if (attackerUnit && precisionPendingAttack) {
-      const precisionCommander = commanderPrecisionReactionUnit(state, attackerUnit);
+    if (attackerUnit && defenderUnit && precisionPendingAttack) {
+      const precisionCommander = commanderPrecisionReactionUnit(state, attackerUnit, defenderUnit);
       if (precisionCommander) {
         const owner = attackerUnit.controllerId;
         const amount = commanderPrecisionReactionAmount(state, precisionCommander);
+        const ignoresPenalty = commanderPrecisionIgnoresRangedPenalty(state, precisionCommander);
         const precisionCast = commanderCastOf(precisionCommander);
         result[owner] = [
           ...(result[owner] ?? []),
           {
-            label: `${precisionCommander.cardName}: cast ${precisionCast?.name ?? "Precision"} — ${attackerUnit.cardName} gets +${amount} Attack and ignores ranged penalties this attack`,
+            label: `${precisionCommander.cardName}: cast ${precisionCast?.name ?? "Precision"} — ${attackerUnit.cardName} gets +${amount} Attack${ignoresPenalty ? " and ignores ranged penalties" : ""} this attack`,
             action: {
               type: "USE_COMMANDER_CAST_REACTION",
               playerId: owner,
@@ -13686,6 +13812,13 @@ export function isEffectLegalForTrigger(
           : undefined;
       const schools = pendingSpell?.spellSchools ?? [];
       return schools.includes(effect.schoolOnly) || schools.includes("any");
+    }
+
+    if (effect.type === "CANCEL_INSTANT") {
+      const pending = getPendingStackItem(state, triggerEvent);
+      return triggerEvent.playerId !== playerId &&
+        pending?.action.type === "CAST_SPELL" &&
+        cardLibrary[pending.action.cardId]?.timing === "instant";
     }
 
     if (effect.type === "CANCEL_SPELL") {
@@ -16283,6 +16416,32 @@ function getCombatInteractionActions(
     if (combat.pendingNeutralPlacement === playerId) {
       addNeutralPlacementActions(actions, state, playerId);
     }
+    return actions;
+  }
+
+  // Intelligence window (USER RULING 2026-09-23): the holder "plays a Spell
+  // card" now, before any unit activates, or skips. Exclusive: nobody else acts
+  // until it is answered, so the cast really happens at the start of the round.
+  const intelligenceOwner = intelligenceCastOwner(state);
+  if (intelligenceOwner) {
+    if (intelligenceOwner !== playerId) {
+      return actions;
+    }
+    const spellOffers: LegalAction[] = [];
+    addSpellActions(spellOffers, state, playerId, cards);
+    addPlayableCardActions(spellOffers, state, playerId, cards);
+    for (const legal of spellOffers) {
+      const offered = legal.action;
+      if (offered.type === "CAST_SPELL" && !offered.eagleEyeCopy) {
+        actions.push(legal);
+      } else if (offered.type === "PLAY_CARD" && cards[offered.cardId]?.kind === "spell") {
+        actions.push(legal);
+      }
+    }
+    actions.push({
+      label: "Intelligence: cast no Spell now",
+      action: { type: "SKIP_INTELLIGENCE_CAST", playerId },
+    });
     return actions;
   }
 

@@ -2,6 +2,7 @@ import { ignoresAllRangedCombatPenalties } from "./active-effects";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
 import { BATTLEFIELD_COLUMNS, BATTLEFIELD_CROSSING_ROW } from "./battlefield";
 import { appendEvent } from "./events";
+import { applyToxicMoatWallDamage } from "./forge";
 import type { CombatState, CombatUnitState, GameState, PlayerId, SiegeState, UnitId } from "./state";
 
 /**
@@ -321,6 +322,9 @@ export function destroyFortification(
     position,
     message: `${byUnit ? byUnit.cardName : "An effect"} destroys the ${kind === "wall" ? "Wall" : "Gate"}.`
   });
+
+  // Forge Toxic Moat: the breaching attacker's ground/flying unit takes damage.
+  applyToxicMoatWallDamage(state, byUnit);
 
   collapseArrowTowerIfBreached(state);
 }

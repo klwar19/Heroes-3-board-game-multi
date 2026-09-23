@@ -55,6 +55,7 @@ const RECOVERY_TYPE_PREFERENCE: GameAction["type"][] = [
   "CONTINUE_NEUTRAL_STEP",
   "CONTINUE_NEUTRAL_COMBAT",
   "ACKNOWLEDGE_COMBAT_END",
+  "SKIP_INTELLIGENCE_CAST",
   // Do-least unit commands, in do-least order.
   "END_ACTIVATION",
   "DEFEND_UNIT",

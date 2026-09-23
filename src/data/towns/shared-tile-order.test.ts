@@ -93,7 +93,7 @@ describe("shared-tile build order — every town", () => {
     expect(altar.prerequisites).toEqual(["bulwark.sieidi"]);
   });
 
-  // ---- Behavioural gate (Factory: Bank shares the Industrialized Catacombs tile) ----
+  // ---- Behavioural gate (Factory board face: Artifact Merchants shares the Mage Guild bar) ----
 
   it("a special cannot be built before its shared main, and can right after", () => {
     let state = createAdventureGameState({
@@ -117,20 +117,38 @@ describe("shared-tile build order — every town", () => {
     const build = (s: GameState, buildingId: string) => applyAction(s, { type: "BUILD_STRUCTURE", playerId: "p1", townId, buildingId });
 
     ready(state);
-    // Bank (the shared-tile SPECIAL) refuses to build before the Industrialized
-    // Catacombs (the silver dwelling — its shared-tile MAIN).
-    expect(build(state, "factory.bank").errors.length, "Bank rejected before its main dwelling").toBeGreaterThan(0);
+    // The starting Factory town already stands its Mage Guild — take it down
+    // so the shared-bar gate is observable (a captured or secondary Factory
+    // town can genuinely lack it).
+    state.towns[townId].buildings = state.towns[townId].buildings.filter(
+      (id) => id !== "factory.mage_guild"
+    );
+    // Artifact Merchants (the shared-bar SPECIAL on the printed Factory face)
+    // refuses to build before the Mage Guild (its shared-bar MAIN).
+    expect(
+      build(state, "factory.artifact_merchants").errors.length,
+      "Artifact Merchants rejected before its main"
+    ).toBeGreaterThan(0);
 
-    // Raise the dwelling chain up to the shared main…
-    state = build(state, "factory.dwelling_bronze").state;
-    ready(state);
-    state = build(state, "factory.dwelling_silver").state;
-    expect(state.towns[townId].buildings, "silver dwelling stands").toContain("factory.dwelling_silver");
-
-    // …now the Bank builds.
-    ready(state);
+    // The Bank sits on its own bar of the printed face, so it needs no
+    // dwelling — it builds straight away.
     const bank = build(state, "factory.bank");
     expect(bank.errors, bank.errors.map((e) => e.message).join("; ")).toHaveLength(0);
-    expect(bank.state.towns[townId].buildings, "Bank stands after its main").toContain("factory.bank");
+    expect(bank.state.towns[townId].buildings, "Bank stands on its own bar").toContain("factory.bank");
+    state = bank.state;
+
+    // Raise the shared main…
+    ready(state);
+    state = build(state, "factory.mage_guild").state;
+    expect(state.towns[townId].buildings, "Mage Guild stands").toContain("factory.mage_guild");
+
+    // …now the Merchants build.
+    ready(state);
+    const merchants = build(state, "factory.artifact_merchants");
+    expect(merchants.errors, merchants.errors.map((e) => e.message).join("; ")).toHaveLength(0);
+    expect(
+      merchants.state.towns[townId].buildings,
+      "Artifact Merchants stand after their main"
+    ).toContain("factory.artifact_merchants");
   });
 });

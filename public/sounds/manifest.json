@@ -1123,6 +1123,10 @@
     "src": "/sounds/effects/rune.mp3",
     "note": "RUNE — likely Bulwark rune magic; uncertain, unverified in configs"
   },
+  "effects/rune-level-seal": {
+    "src": "/sounds/effects/rune-level-seal.mp3",
+    "note": "Bulwark Rune Level reached (RUNE_LEVEL_REACHED) — sacred rune-lock seal activation (user-supplied clip by coghezzi, unmodified)"
+  },
   "effects/siege-keep-shot": {
     "src": "/sounds/effects/siege-keep-shot.mp3",
     "note": "arrow tower firing during siege"
@@ -5253,6 +5257,10 @@
   "doom/dsskedth": {
     "src": "/sounds/doom/dsskedth.mp3",
     "note": "DOOM Revenant death"
+  },
+  "doom/dssawhit": {
+    "src": "/sounds/doom/dssawhit.mp3",
+    "note": "DOOM chainsaw biting flesh; Forge Cyber Zombies' chainsaw-arm strike"
   },
   "doom/dsrlaunc": {
     "src": "/sounds/doom/dsrlaunc.mp3",

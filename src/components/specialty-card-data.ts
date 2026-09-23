@@ -68,6 +68,11 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   tancred: "/assets/factory-icons/tancred.webp", // Bounty reticle
   celestine: "/assets/factory-icons/celestine.webp", // Armadillo bulwark
   agar: "/assets/factory-icons/agar.webp", // Sandworm breach
+  // Forge heroes: dedicated specialty symbols (Overclock / Storm Circuit). Their
+  // cards render NATIVELY (no baked face) with this symbol, over the Forge
+  // FACTION_LEVEL_ART level panel.
+  dark_mullich: "/assets/forge-icons/dark_mullich.webp", // Overclock
+  zeestral: "/assets/forge-icons/zeestral.webp", // Storm Circuit
   // Moandor's specialty IS the Liches — the unit's own Power Lich wiki portrait
   // (scripts/fetch-lich-portrait.py), matching the Bulwark unit specialists. His
   // three cards used to reference baked scans (hero_specialties-moandor-*.webp)
@@ -222,6 +227,8 @@ export const LEVEL_STYLE: Record<1 | 4 | 6, { border: string; numeral: string }>
 export const FACTION_ACCENT: Record<string, string> = {
   imperium: "#174c35",
   bulwark: "#1f3a5f",
+  // Forge: steel with a rust undertone (faction colour ~ #6f7f8c).
+  forge: "#5a646c",
   conflux: "#2b6c6c",
   // Anime Realms towns — match faction.color so native specialty cards wear
   // the same town tint as the hero board / commander chrome.
@@ -229,6 +236,19 @@ export const FACTION_ACCENT: Record<string, string> = {
   azure_breeze: "#27a9a0",
   heavenly_demon: "#8b1a2b",
   azur_lane: "#2f6fc1"
+};
+
+/**
+ * The level-panel FACTION PAINTING behind the I/IV/VI medallion — the printed
+ * cards carry one per town (Castle: the soft blue griffin). When a faction has
+ * one, the native card draws it (cover) instead of the flat accent tint.
+ * Factory: the bronze clockwork-dragon emblem (Codex image_gen, 2026-09-23,
+ * see scripts/build-henrietta-halflings-cards.mjs).
+ */
+export const FACTION_LEVEL_ART: Record<string, string> = {
+  factory: "/assets/specialty-card/level-art-factory.webp",
+  // Forge: the level-panel painting behind the I/IV/VI medallion.
+  forge: "/assets/specialty-card/level-art-forge.webp"
 };
 
 /** Parse `specialty.<slug>.<level>` → its hero slug and I/IV/VI level. */

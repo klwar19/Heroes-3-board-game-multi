@@ -129,11 +129,11 @@ describe("Balance Pack — Intelligence is a START-of-combat cast", () => {
     expect(playerHasSpellTimingFreedom(on, "p1"), "the start-of-combat window is open").toBe(true);
     expect(playerHasSpellTimingFreedom(fightingBegins(on), "p1")).toBe(false);
 
-    // CONTROL: the classic card grants the freedom for the WHOLE combat, so the
-    // same unit acting changes nothing.
+    // USER RULING 2026-09-23: the classic card is the same printed round-start
+    // one-shot ("before any unit activates"), so it closes just the same.
     const off = withFreedom("balance-int-off", false);
     expect(playerHasSpellTimingFreedom(off, "p1")).toBe(true);
-    expect(playerHasSpellTimingFreedom(fightingBegins(off), "p1")).toBe(true);
+    expect(playerHasSpellTimingFreedom(fightingBegins(off), "p1")).toBe(false);
   });
 
   it("the EXPERT no-limit rider is likewise start-of-combat only", () => {
@@ -167,7 +167,7 @@ describe("Balance Pack — Intelligence is a START-of-combat cast", () => {
 
     // CONTROL: the classic card is playable at any point of the combat.
     const off = fightingBegins(sandbox("balance-int-play-off", false, ["ability.intelligence"]));
-    expect(playsOf(off, "p1", "ability.intelligence").length).toBeGreaterThan(0);
+    expect(playsOf(off, "p1", "ability.intelligence"), "USER RULING 2026-09-23: the classic card is round-start only too").toHaveLength(0);
   });
 
   it("opens the same direct Spell Book cast flow as Cast a Spell", () => {
@@ -308,17 +308,15 @@ describe("Balance Pack — Intelligence is a ONE-SHOT free cast", () => {
     expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
   });
 
-  it("CONTROL: with polish-card-balance OFF the classic card is combat-long and parks in the Ongoing tray", () => {
+  it("CONTROL (USER RULING 2026-09-23): with polish-card-balance OFF the classic card is the same printed one-shot — no Ongoing-tray parking, spent on its one cast", () => {
     let state = bookSandbox("int-classic", false, [], 1);
     state = playIntelligence(state, "expert");
-    // Classic: held in the Ongoing tray, not left spent in the discard.
-    expect(state.players.p1.ongoingCards?.some((held) => held.cardId === "ability.intelligence")).toBe(true);
+    expect(state.players.p1.ongoingCards?.some((held) => held.cardId === "ability.intelligence") ?? false).toBe(false);
+    expect(hasTimingEffect(state)).toBe(true);
 
     state = passAllReactions(applyOk(state, bookCastOf(state, "spell.magic_arrow", true)!.action));
-    // The effect persists all combat, so a 2nd cast is STILL free (the classic
-    // combat-long freedom this reprint deliberately replaced).
-    expect(hasTimingEffect(state)).toBe(true);
-    expect(bookCastOf(state, "spell.lightning_bolt", true), "classic Intelligence keeps casting free").toBeTruthy();
+    expect(hasTimingEffect(state), "the one-shot is consumed by the cast").toBe(false);
+    expect(bookCastOf(state, "spell.lightning_bolt", true), "no second free cast").toBeFalsy();
   });
 });
 

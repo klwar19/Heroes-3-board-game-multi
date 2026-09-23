@@ -173,6 +173,7 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   fortress: "core",
   conflux: "core",
   factory: "core",
+  forge: "core",
   cove: "core",
   bulwark: "core",
   fuyuki: "isekai",

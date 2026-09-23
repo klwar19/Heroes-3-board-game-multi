@@ -13,13 +13,26 @@ afterEach(cleanup);
 // fallback, so the card "only showed when zoomed". CardFrame must now draw the
 // native SpecialtyCard in-slot for those, exactly like zoom.tsx.
 describe("CardFrame — art-less specialties render the native card in the tray", () => {
-  it("draws the native SpecialtyCard (not the text fallback) for a Bulwark specialty", () => {
-    const { container } = render(<CardFrame cardId="specialty.kriv.6" className="fanCardImage" />);
+  it("draws the native SpecialtyCard (not the text fallback) for an art-less Bulwark specialty", () => {
+    // Kriv used to stand in here; his Runes cards now ship printed scans, so the
+    // art-less Bulwark example is Dhuin's Snow Elves specialist.
+    expect(cardLibrary["specialty.dhuin.6"]?.assets?.cardImage).toBeUndefined();
+    const { container } = render(<CardFrame cardId="specialty.dhuin.6" className="fanCardImage" />);
     // The native card frame is present...
     expect(container.querySelector(".scWrap")).toBeTruthy();
     // ...and its title/effect read, proving it is the real card, not a stub.
-    expect(container.textContent ?? "").toContain("Runes VI");
+    expect(container.textContent ?? "").toContain("Snow Elves VI");
     // It must NOT be the plain dashed text fallback that caused the bug.
+    expect(container.querySelector(".cardFaceFallback")).toBeNull();
+  });
+
+  it("renders Kriv's printed Runes VI scan in-slot now that the card ships one", () => {
+    expect(cardLibrary["specialty.kriv.6"]?.assets?.cardImage).toBe("/assets/hero_specialties-kriv-6.webp");
+    const { container } = render(<CardFrame cardId="specialty.kriv.6" className="fanCardImage" />);
+    const image = container.querySelector("img");
+    expect(image?.getAttribute("src") ?? "").toContain("hero_specialties-kriv-6");
+    // The scan replaces the native renderer — and is never the text fallback.
+    expect(container.querySelector(".scWrap")).toBeNull();
     expect(container.querySelector(".cardFaceFallback")).toBeNull();
   });
 

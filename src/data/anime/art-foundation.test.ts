@@ -195,7 +195,11 @@ describe("anime art foundation", () => {
     expect(masterPack).toContain("Kim Đan Trưởng Lão");
     expect(masterPack).toContain('data-traits="RANGED,MAGIC"');
     expect(masterPack).toContain('data-attack="5"');
-    expect(masterPack).toContain("Talisman Aura");
+    // The refreshed face wraps its rules across <text> lines ("…; Talisman" /
+    // "Aura — …"), so read the printed rules as one flowing sentence.
+    const printedRules = (svg: string) =>
+      [...svg.matchAll(/class="ruleText">([^<]*)</g)].map((match) => match[1]).join(" ");
+    expect(printedRules(masterPack)).toContain("Talisman Aura");
 
     const guardianFew = await readProof("golden-mountain-guardian-few");
     const guardianPack = await readProof("golden-mountain-guardian-pack");

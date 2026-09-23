@@ -6156,6 +6156,15 @@ export function eliminatePlayer(
           state.decks[NEUTRAL_DECK_IDS[scry.toReturnTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
         });
       }
+      if (choice.type === "OPTION_CHOICE" && choice.oidanaScry) {
+        // Oidana I (Diplomacy scry) lifted up to 2 cards off ONE Neutral deck;
+        // they live only on the open choice. Return every undecided AND
+        // already-kept card to that deck's discard pile — same convention as
+        // the Visions scry above — so eliminating Oidana's owner mid-prompt
+        // destroys no Neutral card.
+        const scry = choice.oidanaScry;
+        state.decks[NEUTRAL_DECK_IDS[scry.tier]]?.discardPile.push(...scry.remaining, ...scry.toReturn);
+      }
       if (choice.type === "OPTION_CHOICE" && choice.visionsDeck?.drawn) {
         // The Visions deck pick holds the cards already lifted this cast (they are
         // out of every pile while it is open) — return them so eliminating the
@@ -10561,7 +10570,10 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "ROLL_RESOURCE_DICE":
-        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount, step.prophecyThreePick);
+        if (offerProphecyMapPreRoll(state, visit, step)) {
+          break;
+        }
+        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount, step.prophecyThreePick, step.ignoreBuildingMaterials);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit, {
@@ -10613,6 +10625,9 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       case "ROLL_TREASURE_DICE":
+        if (offerProphecyMapPreRoll(state, visit, step)) {
+          break;
+        }
         rollTreasureDice(state, visit, step.count, step.resolveCount, step.prophecyThreePick);
         break;
       case "CONSUME_LUCK":
@@ -10670,7 +10685,10 @@ export function processPendingVisit(state: GameState): void {
             cardId: step.cardId,
             timing: cardLibrary[step.cardId]?.timing ?? "instant",
             mode: "basic",
-            optionLabel: "Reroll a die"
+            optionLabel:
+              step.cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance")
+                ? "Roll the die 3 times and resolve 1 chosen result"
+                : "Reroll a die"
           });
         }
         break;
@@ -13067,6 +13085,32 @@ export function processPendingVisit(state: GameState): void {
             cost: {}
           });
         }
+        break;
+      }
+      case "RECRUIT_SEARCHED_NEUTRAL": {
+        // Halflings IV leaf: the chosen copy leaves the pile it was found in
+        // (draw pile first, then discard — removeFromNeutralDeck) onto the
+        // army's Neutral side for free; a stale pick (copy gone) recruits
+        // nothing. The searched draw pile is shuffled either way.
+        const player = state.players[visit.playerId];
+        const def = step.unitDefId ? coreUnitDefinitions[step.unitDefId] : undefined;
+        if (
+          player &&
+          step.unitDefId &&
+          def?.neutral &&
+          def.tier === step.tier &&
+          removeFromNeutralDeck(state, step.tier, step.unitDefId)
+        ) {
+          addArmyUnit(player, step.unitDefId, "neutral");
+          appendEvent(state, {
+            type: "UNIT_RECRUITED",
+            playerId: visit.playerId,
+            unitDefId: step.unitDefId,
+            kind: "recruit",
+            cost: {}
+          });
+        }
+        shuffleNeutralDeckDrawPile(state, step.tier);
         break;
       }
       case "RECRUIT_FACTION_UNIT": {
@@ -16363,6 +16407,57 @@ function moraleRerollCardOption(
 const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
 
 /**
+ * Polish Balance Pack Cards of Prophecy option B on the MAP dice — "When you are
+ * about to roll any die, play this BEFORE the roll: that die is rolled 3 times
+ * and you resolve 1 chosen result". USER RULING 2026-09-23: it is played NOT
+ * knowing the result; it is not a reroll. So a Resource/Treasure roll step, when
+ * the holder has the card in hand, first asks "play it or roll normally" — the
+ * die is thrown only after that answer. Playing discards the card and throws die
+ * 0 three times with a free pick (`prophecyThreePick`); declining throws once.
+ * Every reroll of the result is a new throw and asks again while the card is
+ * still held. Returns true when the question was queued (the step is re-queued
+ * inside both answers).
+ */
+function offerProphecyMapPreRoll(
+  state: GameState,
+  visit: PendingVisit,
+  step: Extract<VisitStep, { type: "ROLL_RESOURCE_DICE" | "ROLL_TREASURE_DICE" }>
+): boolean {
+  if (
+    step.prophecyThreePick ||
+    step.prophecyPreRollAsked ||
+    !houseRuleEnabled(state, "polish-card-balance") ||
+    !(state.players[visit.playerId]?.hand ?? []).includes(PROPHECY_CARD_ID) ||
+    // Community Balance wins for a card both packs reprint (its Prophecy has no
+    // die half) — the same shared list every other die surface reads.
+    !balanceRerollReactionArtifactIds(state, [PROPHECY_CARD_ID]).includes(PROPHECY_CARD_ID)
+  ) {
+    return false;
+  }
+  const dice = step.type === "ROLL_RESOURCE_DICE" ? "Resource" : "Treasure";
+  const dieWord = step.count > 1 ? `${step.count} ${dice} dice` : `${dice} die`;
+  const cardName = cardLibrary[PROPHECY_CARD_ID]?.name ?? "Cards of Prophecy";
+  visit.steps.unshift({
+    type: "CHOOSE_ONE",
+    prompt: `About to roll the ${dieWord} — play ${cardName} before the roll?`,
+    options: [
+      {
+        label: `Play ${cardName}: roll the ${dice} die 3 times and resolve 1 chosen result`,
+        steps: [
+          { type: "CONSUME_REROLL_ARTIFACT", cardId: PROPHECY_CARD_ID } as VisitStep,
+          { ...step, prophecyThreePick: true, prophecyPreRollAsked: true }
+        ]
+      },
+      {
+        label: `Roll the ${dieWord} without ${cardName}`,
+        steps: [{ ...step, prophecyPreRollAsked: true }]
+      }
+    ]
+  });
+  return true;
+}
+
+/**
  * Optional rerolls of an adventure die beyond Luck: the positive morale token
  * ("Reroll any Die you have thrown") and the Swift Weasel Astrologers card
  * (one free Treasure/Resource reroll per turn).
@@ -16425,21 +16520,17 @@ function extraDieRerollOptions(
     houseRuleEnabled(state, "polish-card-balance");
   for (const cardId of balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)) {
     if (hand.includes(cardId)) {
-      // Polish Balance Pack Cards of Prophecy option B: "roll it 3 times and
-      // resolve 1 chosen result" — its reroll re-throws the die with ONE face
-      // getting three candidates and a free pick, instead of the plain single
-      // reroll every other artifact (and the classic Prophecy) takes.
-      const threePick = cardId === PROPHECY_CARD_ID && prophecyThreePick;
-      const rollStepForCard: VisitStep = threePick
-        ? dice === "resource"
-          ? { type: "ROLL_RESOURCE_DICE", count, resolveCount, prophecyThreePick: true, ...(origin ? { origin } : {}) }
-          : { type: "ROLL_TREASURE_DICE", count, resolveCount, prophecyThreePick: true }
-        : rollStep;
+      // Polish Balance Pack Cards of Prophecy option B is a PRE-roll
+      // declaration ("play this BEFORE the roll: that die is rolled 3 times and
+      // you resolve 1 chosen result" — not a reroll). It is offered BEFORE the
+      // throw by `offerProphecyMapPreRoll`, so it is never a post-roll reaction
+      // here; the classic card keeps its plain "Reroll any die".
+      if (cardId === PROPHECY_CARD_ID && prophecyThreePick) {
+        continue;
+      }
       options.push({
-        label: threePick
-          ? `Play ${cardLibrary[cardId]?.name ?? cardId}: roll the ${dice} ${count > 1 ? "die 3 times" : "die 3 times"} and keep one`
-          : `Play ${cardLibrary[cardId]?.name ?? cardId}: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
-        steps: [{ type: "CONSUME_REROLL_ARTIFACT", cardId } as VisitStep, rollStepForCard]
+        label: `Play ${cardLibrary[cardId]?.name ?? cardId}: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
+        steps: [{ type: "CONSUME_REROLL_ARTIFACT", cardId } as VisitStep, rollStep]
       });
     }
   }
@@ -16500,6 +16591,23 @@ function isHighResourceDieFace(face: { resource: ResourceKind; amount: number })
   return false;
 }
 
+/** Forge Resource Silo: drop materials gains and keep the flag on rerolls. */
+function stripSiloMaterials(option: { label: string; steps: VisitStep[] }): { label: string; steps: VisitStep[] } {
+  let ignored = false;
+  const steps = option.steps.flatMap((step): VisitStep[] => {
+    if (step.type === "ROLL_RESOURCE_DICE") {
+      return [{ ...step, ignoreBuildingMaterials: true }];
+    }
+    if (step.type === "GAIN_RESOURCES" && step.buildingMaterials) {
+      ignored = true;
+      const { buildingMaterials: _dropped, ...rest } = step;
+      return rest.gold || rest.valuables ? [rest as VisitStep] : [];
+    }
+    return [step];
+  });
+  return { label: ignored ? `${option.label} (materials ignored)` : option.label, steps };
+}
+
 function rollResourceDice(
   state: GameState,
   visit: PendingVisit,
@@ -16507,7 +16615,8 @@ function rollResourceDice(
   capHighValues = false,
   origin?: "treasure",
   requestedResolveCount = 1,
-  prophecyThreePick = false
+  prophecyThreePick = false,
+  ignoreBuildingMaterials = false
 ): void {
   const random = adventureRandom(state, "resource-die");
   const faces = resourceDieFaces(state);
@@ -16560,6 +16669,16 @@ function rollResourceDice(
     octaviaOptions.length === 0
   ) {
     for (const roll of rolls) {
+      // Forge Resource Silo: a rolled building-materials face is ignored.
+      if (ignoreBuildingMaterials && roll.resource === "buildingMaterials") {
+        appendEvent(state, {
+          type: "TOWN_BUILDING_USED",
+          playerId: visit.playerId,
+          buildingId: "forge.resource_silo",
+          message: `Resource Silo: the rolled ${roll.amount} building materials are ignored.`
+        });
+        continue;
+      }
       gainResources(state, visit.playerId, { [roll.resource]: roll.amount }, "resource die");
     }
     return;
@@ -16628,7 +16747,16 @@ function rollResourceDice(
         : rolls.length > 1 || prophecyThreePick
           ? "Choose one resource die result"
           : "Resource die result",
-    options
+    // Forge Resource Silo: every result/reroll/set-face path drops materials.
+    // A set-face pick whose ONLY payout was materials would spend its source
+    // (Prophecy / a die-set effect / a held card) for nothing once stripped —
+    // drop it. Options without a consume step (take the result, Mastery picks)
+    // always stay so the roll can still resolve.
+    options: ignoreBuildingMaterials
+      ? options.map(stripSiloMaterials).filter((option) =>
+          option.steps.some((step) => step.type === "GAIN_RESOURCES" || step.type === "ROLL_RESOURCE_DICE") ||
+          !option.steps.some((step) => step.type === "CONSUME_DIE_SET" || step.type === "CONSUME_HELD_CARD"))
+      : options
   });
 }
 
@@ -17056,6 +17184,99 @@ function halfRecruitCostRoundedUp(cost: ResourceCost): ResourceCost {
     }
   }
   return halved;
+}
+
+/** Fisher-Yates the draw pile of one Neutral tier deck (seeded, logged nowhere — the order is hidden anyway). */
+export function shuffleNeutralDeckDrawPile(
+  state: GameState,
+  tier: "bronze" | "silver" | "gold" | "azure"
+): void {
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!deck || deck.drawPile.length < 2) {
+    return;
+  }
+  const random = adventureRandom(state, `neutral-search-shuffle-${tier}`);
+  for (let i = deck.drawPile.length - 1; i > 0; i -= 1) {
+    const j = random.nextInt(0, i);
+    [deck.drawPile[i], deck.drawPile[j]] = [deck.drawPile[j], deck.drawPile[i]];
+  }
+}
+
+/**
+ * Halflings IV (Henrietta): the distinct recruitable Neutral unit ids of `tier`
+ * whose printed name is one of `unitNames`, counting BOTH the draw pile and the
+ * discard pile (the card says "deck and discard pile"). Shared by the legal-
+ * action gate (the Global side is only offered when something can be found)
+ * and the opener below.
+ */
+export function neutralDeckUnitSearchCandidates(
+  state: GameState,
+  tier: "bronze" | "silver" | "gold" | "azure",
+  unitNames: readonly string[]
+): string[] {
+  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+  if (!deck) {
+    return [];
+  }
+  const found: string[] = [];
+  for (const unitDefId of [...deck.drawPile, ...deck.discardPile]) {
+    if (found.includes(unitDefId) || !isRecruitableNeutralUnit(unitDefId)) {
+      continue;
+    }
+    const def = coreUnitDefinitions[unitDefId];
+    if (def?.tier === tier && unitNames.includes(def.name)) {
+      found.push(unitDefId);
+    }
+  }
+  return found;
+}
+
+/**
+ * Halflings IV (Henrietta, Global): "Search the Neutral Unit deck and discard
+ * pile for a Halfling or Grenadier unit. You may recruit it for free. If you
+ * searched the deck, shuffle it." Opens a one-of pick over every distinct
+ * matching card (free — no price, no Legion voucher), plus "Recruit none". The
+ * RECRUIT_SEARCHED_NEUTRAL leaf takes the copy and shuffles the draw pile; with
+ * nothing to find the pile is shuffled at once (the player still searched it).
+ */
+export function openNeutralDeckUnitSearch(
+  state: GameState,
+  playerId: PlayerId,
+  tier: "bronze" | "silver" | "gold" | "azure",
+  unitNames: readonly string[],
+  prompt: string
+): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const candidates = neutralDeckUnitSearchCandidates(state, tier, unitNames);
+  if (candidates.length === 0) {
+    shuffleNeutralDeckDrawPile(state, tier);
+    return;
+  }
+  const hero = getMainHero(state, playerId);
+  adventure.pendingVisit = {
+    heroId: hero?.id ?? "",
+    playerId,
+    fieldId: hero?.spaceId ?? "",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt,
+        options: [
+          ...candidates.map((unitDefId) => ({
+            label: `Recruit ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (free)`,
+            steps: [{ type: "RECRUIT_SEARCHED_NEUTRAL", unitDefId, tier } as VisitStep]
+          })),
+          {
+            label: "Recruit none (shuffle the deck)",
+            steps: [{ type: "RECRUIT_SEARCHED_NEUTRAL", unitDefId: null, tier } as VisitStep]
+          }
+        ]
+      }
+    ]
+  };
 }
 
 /**
@@ -18657,7 +18878,7 @@ export function settlementRecruitFactions(state: GameState, playerId: PlayerId):
 /**
  * Neutral-deck cards sold by the factions of this player's Settlements. With a
  * Gold Dwelling built in any controlled town, the Settlement faction's AZURE
- * signature creature (Gold Dragons / Titans / Hydras / Phoenixes) is sold too
+ * signature creature (Gold Dragons / Titans / Hydras / Phoenixes / Cyberbrutes) is sold too
  * (USER RULE 2026-09-11) — the same single-sided Neutral card at its printed
  * Neutral cost, pulled from the azure Neutral deck like every other recruit.
  */
@@ -20853,10 +21074,15 @@ export function startAdventureRound(state: GameState, resumeResourceRoundAfterBa
       }
       if (effect?.type === "RESOURCE_ROUND_RESOURCE_DIE") {
         // Mystic Pond: roll a Resource die through the shared dice pipeline.
+        // Forge Resource Silo sets ignoreBuildingMaterials on the same step.
         state.adventure?.rewardQueue.push({
           playerId,
           kind: "visit-steps",
-          steps: [{ type: "ROLL_RESOURCE_DICE", count: 1 }]
+          steps: [{
+            type: "ROLL_RESOURCE_DICE",
+            count: 1,
+            ...(effect.ignoreBuildingMaterials ? { ignoreBuildingMaterials: true } : {})
+          }]
         });
       }
       if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "resource" && town) {
