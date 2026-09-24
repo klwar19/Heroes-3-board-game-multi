@@ -319,6 +319,7 @@ import {
   playerHasLivingFirstAidCommander,
   type CommanderFirstAidOption
 } from "./commanders";
+import { toPhantomCardId } from "./phantom-cards";
 import { isComputerPlayer, playersAreAllied } from "./computer/control";
 import { fightingHeroIdForPlayer, injectHeroIntoCombat } from "./heroes";
 import {
@@ -5960,6 +5961,63 @@ export function sellScrollSpell(state: GameState, action: Extract<GameAction, { 
     cardId: action.cardId,
     gold: SCROLL_SPELL_SELL_GOLD
   });
+}
+
+/**
+ * The Power-0 tier a Spell Scroll casts a Map Spell at, or null when the spell
+ * is not a map Power-tier Spell (Fortune's instant reroll ladder included —
+ * it is not a map-timed Spell).
+ */
+export function scrollMapSpellTier(state: GameState, cardId: CardId): MapSpellTierEffect | null {
+  const spell = balanceCard(state, cardId);
+  if (!spell || spell.kind !== "spell" || spell.timing !== "map") {
+    return null;
+  }
+  const tiers = mapSpellPowerTiers(spell);
+  return tiers ? bestMapSpellTier(tiers, 0).effect : null;
+}
+
+/**
+ * Cast a Map Spell from a Spell Scroll on the owner's map turn, at Power 0: the
+ * spell leaves the scroll (and the game — like a combat scroll cast), an emptied
+ * scroll is removed, and the lowest printed tier resolves through the same map
+ * effect code a hand cast uses (Town Portal's destination pick, Fly's lasting
+ * effect …). No boost window, no Knowledge/Mysticism recall — there is no card
+ * left to recall.
+ */
+export function castScrollMapSpell(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SCROLL_MAP_SPELL" }>
+): void {
+  requireAdventure(state);
+  if (state.combat) {
+    throw new Error("A scroll's Map Spell is cast on the adventure map, not in combat.");
+  }
+  assertActiveTurn(state, action.playerId);
+  assertNoPendingInput(state);
+  const player = state.players[action.playerId];
+  const scroll = player?.scrolls?.find((candidate) => candidate.id === action.scrollId);
+  const cardIndex = scroll?.spellCardIds.indexOf(action.cardId) ?? -1;
+  if (!player || !scroll || cardIndex === -1) {
+    throw new Error("That spell is not in the named Spell Scroll.");
+  }
+  const spell = balanceCard(state, action.cardId);
+  const effect = scrollMapSpellTier(state, action.cardId);
+  if (!spell || !effect) {
+    throw new Error("Only a Map Spell can be cast from a Spell Scroll outside combat.");
+  }
+
+  scroll.spellCardIds.splice(cardIndex, 1);
+  player.removed.push(action.cardId);
+  if (scroll.spellCardIds.length === 0) {
+    player.scrolls = player.scrolls?.filter((candidate) => candidate.id !== action.scrollId);
+  }
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId: action.playerId,
+    message: `${player.name} casts ${spell.name} from a Spell Scroll at Power 0.`
+  });
+  applyMapSpellEffect(state, action.playerId, spell, effect, []);
 }
 
 // ---------------------------------------------------------------------------
@@ -12606,6 +12664,95 @@ function resolveBruteCombatDraw(state: GameState, playerId: PlayerId, optionInde
 }
 
 /**
+ * Forge Storm Engineer: at the start of EVERY combat (neutral, PvP, siege, bank),
+ * each side whose Storm Engineer takes the field may pay 1 building material for
+ * a phantom Chain Lightning. Asked one seat at a time (attacker first); resolving
+ * re-enters finalizeCombatStart, which asks the next seat.
+ */
+function maybeOpenForgeChainLightning(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat) return false;
+  const offered = (combat.forgeChainLightningOffered ??= []);
+  for (const playerId of [...new Set([combat.attackerPlayerId, combat.defenderPlayerId])]) {
+    if (offered.includes(playerId)) continue;
+    offered.push(playerId);
+    const player = state.players[playerId];
+    if (!player || !playerHasLivingCommander(state, playerId, "forge") ||
+        !commanderStandsInCurrentCombat(state, playerId) || player.resources.buildingMaterials < 1) continue;
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: "Storm Engineer: pay 1 building material for a phantom Chain Lightning this combat? (It disappears after the fight.)",
+      options: [{ label: "Pay 1 building material: gain a phantom Chain Lightning" }, { label: "Keep the building material" }],
+      context: "forge-phantom-chain-lightning",
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+    return true;
+  }
+  return false;
+}
+
+function resolveForgeChainLightning(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const combat = state.combat;
+  if (!combat || choice?.type !== "OPTION_CHOICE" || choice.context !== "forge-phantom-chain-lightning" ||
+      choice.playerId !== playerId || (optionIndex !== 0 && optionIndex !== 1)) {
+    throw new Error("There is no Storm Engineer Chain Lightning decision to make.");
+  }
+  state.pendingChoice = null;
+  if (optionIndex === 0) {
+    const player = state.players[playerId];
+    if (!player || player.resources.buildingMaterials < 1 || !playerHasLivingCommander(state, playerId, "forge") ||
+        !commanderStandsInCurrentCombat(state, playerId)) {
+      throw new Error("The Storm Engineer's Chain Lightning is no longer available.");
+    }
+    spendResources(state, playerId, { buildingMaterials: 1 }, "Storm Engineer phantom Chain Lightning");
+    // The card itself is handed out in finalizeCombatStart, AFTER the computer
+    // seats' phantom grant (which only runs while computerPhantomCards is unset).
+    (combat.forgeChainLightningPaid ??= []).push(playerId);
+  }
+  finalizeCombatStart(state);
+}
+
+/**
+ * Hands each paying Storm Engineer seat its phantom Chain Lightning: a distinct
+ * phantom id (phantom-cards.ts) that casts exactly like the real Spell, tracked
+ * on computerPhantomCards so the shared combat-end cleanup removes it from every
+ * pile, whatever happened to it. Under the Polish Spell Book rule (owned Spells
+ * are cast from the Book) it goes to the Book, otherwise to the hand.
+ */
+function grantForgePhantomChainLightning(state: GameState): void {
+  const combat = state.combat;
+  const paid = combat?.forgeChainLightningPaid;
+  if (!combat || !paid?.length) return;
+  combat.forgeChainLightningPaid = [];
+  for (const playerId of paid) {
+    const player = state.players[playerId];
+    if (!player) continue;
+    const phantomId = toPhantomCardId("spell.chain_lightning");
+    if (polishSpellBookEnabled(state)) {
+      player.spellBook.push(phantomId);
+    } else {
+      player.hand.push(phantomId);
+    }
+    const grants = (combat.computerPhantomCards ??= []);
+    const tracked = grants.find((entry) => entry.playerId === playerId);
+    if (tracked) tracked.cardIds.push(phantomId);
+    else grants.push({ playerId, cardIds: [phantomId] });
+    appendEvent(state, {
+      type: "COMMANDER_SPECIALTY_TRIGGERED",
+      playerId,
+      commanderSlug: "forge",
+      specialtyId: "storm-salvage",
+      message: "The Storm Engineer pays 1 building material: a phantom Chain Lightning joins this combat."
+    });
+  }
+}
+
+/**
  * Won Creature-Bank REWARD cards (Dragon Fly Hive / Griffin Conservatory, X≥2)
  * carry a RANDOM Stack Token that re-rolls EVERY fight (USER RULE 2026-08-18 — no
  * longer a one-time player pick). Roll it once at combat start: deterministic and
@@ -12708,6 +12855,9 @@ function finalizeCombatStart(state: GameState): void {
     return;
   }
   if (maybeOpenBruteCombatDraw(state)) {
+    return;
+  }
+  if (maybeOpenForgeChainLightning(state)) {
     return;
   }
 
@@ -12838,6 +12988,9 @@ export function resumeCombatStartAfterCommanderPlacement(state: GameState): void
   // every computer seat (attacker and/or defender), in EVERY combat kind incl.
   // PvP — removed again at combat end (finalizeAdventureCombat). See combat-boost.ts.
   applyComputerPhantomCards(state);
+  // Forge Storm Engineer: the phantom Chain Lightning(s) paid for above join the
+  // same tracked phantom list (after the computer grant, which it must not block).
+  grantForgePhantomChainLightning(state);
   // FO redesign wave 2 — Đài Luyện Khí "Temper the body": a fighting player who
   // banked `pendingCombatAttackBoost` on the map spends it HERE. Idempotent across
   // finalizeCombatStart re-entries because the flag is consumed.
@@ -20258,6 +20411,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   }
   if (choice.context === "brute-combat-draw") {
     resolveBruteCombatDraw(state, action.playerId, action.optionIndex);
+    return;
+  }
+  if (choice.context === "forge-phantom-chain-lightning") {
+    resolveForgeChainLightning(state, action.playerId, action.optionIndex);
     return;
   }
 

@@ -257,7 +257,7 @@ export function isNeutralSideCombatChoice(combat: CombatState, choice: PendingCh
     return combat.units[choice.attackerId]?.controllerId === NEUTRAL_PLAYER_ID;
   }
   if (choice.type === "OPTION_CHOICE") {
-    if (choice.context === "neutral-destination") {
+    if (choice.context === "neutral-destination" || choice.context === "neutral-target-wall") {
       return true;
     }
     // The Random Town's choosable bronze Pack: the NEUTRAL side's own pre-battle

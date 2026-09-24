@@ -181,6 +181,7 @@ import {
   astrologersHeroEmpower,
   tradeResources,
   sellScrollSpell,
+  castScrollMapSpell,
   queueTownPortalChoice,
   unplaceCombatUnit,
   endTurnAdventure,
@@ -13251,6 +13252,62 @@ function resolveNeutralDestinationChoice(
   // Resume the activation, forcing BOTH the (rules-fixed) target and the picked
   // cell — planNeutralActivation then commits to the move-and-attack.
   executeNeutralActivation(state, unit, cards, defenderId, destination);
+}
+
+/** A neutral's target by id: a unit's name, or a Ladybird of Luck Wall's. */
+function neutralTargetName(
+  combat: CombatState,
+  targetId: string,
+): string | undefined {
+  const unit = combat.units[targetId];
+  if (unit) {
+    return unit.name;
+  }
+  const wall = combat.battlefieldTokens?.find(
+    (token) => token.id === targetId && token.kind === "artifact_wall",
+  );
+  if (!wall) {
+    return undefined;
+  }
+  return `${cardLibrary[wall.sourceArtifactCardId ?? ""]?.name ?? "Ladybird of Luck"} Wall`;
+}
+
+/**
+ * Resolves a neutral target tie that includes a Ladybird of Luck Wall: resume
+ * the guard's activation with the picked unit / Wall forced (planNeutralDefault
+ * commits to it, or re-plans if it is gone).
+ */
+function resolveNeutralTargetOrWallChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary,
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "neutral-target-wall" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.neutralTargetOrWall
+  ) {
+    throw new Error("There is no neutral target choice to resolve.");
+  }
+  const unit = state.combat?.units[choice.neutralTargetOrWall.unitId];
+  const targetId = choice.neutralTargetOrWall.targetIds[action.optionIndex];
+  if (!state.combat || !unit || targetId === undefined) {
+    throw new Error("That neutral target is not available.");
+  }
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex,
+  });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  executeNeutralActivation(state, unit, cards, targetId);
 }
 
 // ---------------------------------------------------------------------------
@@ -30263,13 +30320,28 @@ function playCard(
     if (isSpaceBlockedForSummon(state.combat, position)) {
       throw new Error(`${card.name} must be placed on an empty space.`);
     }
-    addBattlefieldToken(state, {
+    const wall = addBattlefieldToken(state, {
       kind: "artifact_wall",
       position,
       controllerId: action.playerId,
       sourceArtifactCardId: card.id,
       goldOnAttackRemoval: effect.goldOnAttackRemoval,
     });
+    // "It counts as a Wall until the end of the combat": the card itself lies on
+    // the board, so it is an Ongoing card, never in the discard pile (where a
+    // discard-recovery effect could pull it back while its Wall still stands).
+    // Held against the Wall token's id: releaseEndedOngoingCards discards it the
+    // moment the token is gone — torn down by an attack or ended with the combat.
+    const owner = state.players[action.playerId];
+    const discardIndex = owner?.discard.lastIndexOf(card.id) ?? -1;
+    if (owner && discardIndex >= 0) {
+      owner.discard.splice(discardIndex, 1);
+      (owner.ongoingCards ??= []).push({
+        cardId: card.id,
+        effectIds: [wall.id],
+        returnTo: "discard",
+      });
+    }
   }
 
   // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
@@ -33047,9 +33119,9 @@ function attackFortification(
  * Ladybird of Luck lying on the board as a Wall: an adjacent ground/flying unit
  * (or a Cyclops-style demolisher at range) tears it down as its attack —
  * automatically successful, no die, no cards, like a siege Wall. "If this card
- * is removed by an attack, you gain 2 gold and discard this card": the card
- * already sits in the owner's discard (it went there when played, like every
- * ongoing card), so removal pays the gold and lifts the token.
+ * is removed by an attack, you gain 2 gold and discard this card": removal pays
+ * the gold and lifts the token; the card, held in its owner's Ongoing tray
+ * against the token, then reaches the discard in releaseEndedOngoingCards.
  */
 function attackArtifactWall(
   state: GameState,
@@ -37369,13 +37441,12 @@ function executeNeutralActivation(
     // player's choice. Resolved by resolveNeutralDestinationChoice, which resumes
     // this activation with the picked cell forced.
     const chooser = combat.attackerPlayerId;
-    const target = combat.units[intent.defenderId];
     const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
       type: "OPTION_CHOICE",
       playerId: chooser,
-      prompt: `${unit.name} — choose where it moves to attack ${target?.name ?? "its target"}.`,
+      prompt: `${unit.name} — choose where it moves to attack ${neutralTargetName(combat, intent.defenderId) ?? "its target"}.`,
       options: intent.destinations.map((cell) => ({
         label: `Move to ${getBattlefieldLabel(cell)}`,
       })),
@@ -37398,6 +37469,95 @@ function executeNeutralActivation(
       sourceEffectIds: [],
       message: `${unit.name}: the player chooses its move destination.`,
     });
+    return;
+  }
+
+  if (intent.kind === "choose-target-or-wall") {
+    // The rulebook tie ("the player chooses which unit is attacked") when a
+    // Ladybird of Luck Wall is among the equally valid targets. A Wall is not a
+    // unit card, so the pick is a labelled option list instead of the unit
+    // target picker; the resolver resumes this activation with the pick forced.
+    const chooser = combat.attackerPlayerId;
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "OPTION_CHOICE",
+      playerId: chooser,
+      prompt: `${unit.name} has equally valid targets — you choose what it attacks.`,
+      options: intent.targetIds.map((targetId) => {
+        const target = combat.units[targetId];
+        const wall = combat.battlefieldTokens?.find((token) => token.id === targetId);
+        return {
+          label: target
+            ? `Attack ${target.name} at ${getBattlefieldLabel(target.position)}`
+            : `Tear down the ${neutralTargetName(combat, targetId) ?? "Wall"} at ${wall ? getBattlefieldLabel(wall.position) : "?"}`,
+        };
+      }),
+      context: "neutral-target-wall",
+      neutralTargetOrWall: { unitId: unit.id, targetIds: intent.targetIds },
+      returnPhase: "combat",
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = chooser;
+
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      sourceEffectIds: [],
+      message: `${unit.name} has tied targets: the player chooses what it attacks.`,
+    });
+    return;
+  }
+
+  if (intent.kind === "attack-wall") {
+    attackArtifactWall(state, unit, intent.tokenId);
+    return;
+  }
+
+  if (intent.kind === "move-and-attack-wall") {
+    const from = unit.position;
+    // Walked through battlefield tokens like any guard approach.
+    const walked = planNeutralTokenWalk(
+      state,
+      combat,
+      unit,
+      intent.destination,
+    );
+    unit.position = walked.finalPosition;
+    unit.movedThisActivation = true;
+    appendEvent(state, {
+      type: "UNIT_MOVED",
+      playerId: unit.controllerId,
+      unitId: unit.id,
+      from,
+      to: walked.finalPosition,
+    });
+    elementalMovement(state, unit, elementalHooks);
+    // An elemental choice pauses here; the pump re-plans this still-active
+    // guard afterwards and, standing next to the Wall, it tears it down.
+    if (openElementalChoice(state, elementalHooks)) return;
+    if (
+      !isUnitAlive(unit) ||
+      walked.haltedByQuicksand ||
+      walked.finalPosition !== intent.destination
+    ) {
+      if (isUnitAlive(unit)) {
+        markActivatedThisRound(unit);
+      }
+      appendExpiredEffectEvents(
+        state,
+        expireEffectsForActivationEnd(state, unit.id),
+        "activation-ended",
+      );
+      if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      advanceActiveUnit(state);
+      return;
+    }
+    attackArtifactWall(state, unit, intent.tokenId);
     return;
   }
 
@@ -37552,15 +37712,25 @@ function previewNeutralIntent(
     case "move":
       return { kind: "move", destination: intent.destination };
     case "choose-target":
+    case "choose-target-or-wall":
       return { kind: "attack" };
+    case "attack-wall":
+    case "move-and-attack-wall":
+      return {
+        kind: "attack",
+        targetName: neutralTargetName(combat, intent.tokenId),
+        ...(intent.kind === "move-and-attack-wall"
+          ? { destination: intent.destination }
+          : {}),
+      };
     case "choose-destination": {
       // The neutral is about to move-and-attack; the exact landing cell is the
       // player's choice, so preview it as a plain attack on the fixed target.
       const target = combat.units[intent.defenderId];
       return {
         kind: "attack",
-        targetUnitId: intent.defenderId,
-        targetName: target?.name,
+        ...(target ? { targetUnitId: intent.defenderId } : {}),
+        targetName: neutralTargetName(combat, intent.defenderId),
       };
     }
     default:
@@ -38881,6 +39051,9 @@ function applyActionInContext(
         case "SELL_SCROLL_SPELL":
           sellScrollSpell(nextState, action);
           break;
+        case "CAST_SCROLL_MAP_SPELL":
+          castScrollMapSpell(nextState, action);
+          break;
         case "USE_SCHOOL_FETCH_EXPERT":
           if (offerHelmCounterForPlay(nextState, action, cards)) break;
           applySchoolFetchExpert(nextState, action);
@@ -39220,6 +39393,11 @@ function applyActionInContext(
             nextState.pendingChoice.context === "neutral-destination"
           ) {
             resolveNeutralDestinationChoice(nextState, action, cards);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "neutral-target-wall"
+          ) {
+            resolveNeutralTargetOrWallChoice(nextState, action, cards);
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             nextState.pendingChoice.context === "place-battlefield-tokens"

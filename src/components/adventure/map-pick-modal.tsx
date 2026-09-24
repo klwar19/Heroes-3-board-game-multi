@@ -12,7 +12,7 @@
  */
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Hammer, Search } from "lucide-react";
+import { Hammer, Search, Star } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 import { sharedMapIsArchived } from "@/server/map-registry";
@@ -40,7 +40,41 @@ type MapEntry =
   | { kind: "designed"; key: string; record: SharedMapRecord; problems: string[] };
 
 type SourceFilter = "all" | "builtin" | "designed" | "archive";
-type MapSort = "most-played" | "name" | "recently-added";
+type MapSort = "most-played" | "name" | "recently-updated";
+
+/**
+ * Starred maps, per BROWSER (the app has no server-side per-user preference
+ * store, and guests / accounts-off tables must star too). Keyed by the list
+ * entry key (`builtin:<scenarioId>` / `designed:<mapId>`). Storage can be
+ * missing or throw (private window, blocked site data) — then favourites just
+ * last for this window.
+ */
+const MAP_FAVORITES_STORAGE_KEY = "homm3bg.mapFavorites";
+
+function readMapFavorites(): string[] {
+  try {
+    const raw = window.localStorage.getItem(MAP_FAVORITES_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeMapFavorites(keys: string[]): void {
+  try {
+    window.localStorage.setItem(MAP_FAVORITES_STORAGE_KEY, JSON.stringify(keys));
+  } catch {
+    // Storage unavailable — the in-memory set still works for this window.
+  }
+}
+
+/** A designed map's last save time; legacy records without one fall back to createdAt. */
+function mapUpdatedAt(record: SharedMapRecord): number {
+  return typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt) && record.updatedAt > 0
+    ? record.updatedAt
+    : record.createdAt ?? 0;
+}
 
 /**
  * The difficulty bar: Easy = Pawn, Normal = Knight, Hard = Rook,
@@ -104,6 +138,26 @@ export function MapPickModal({
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [catalogNow] = useState(() => Date.now());
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+
+  // Loaded after mount (not in the initial state) so server and client render
+  // the same first frame.
+  useEffect(() => {
+    setFavorites(new Set(readMapFavorites()));
+  }, []);
+
+  const toggleFavorite = (key: string) => {
+    setFavorites((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      writeMapFavorites([...next]);
+      return next;
+    });
+  };
 
   // The shared map library — fetched only while this window is open (same
   // effect as the classic MapPicker, incl. the focus re-fetch).
@@ -176,19 +230,22 @@ export function MapPickModal({
       return true;
     });
     return visible.sort((left, right) => {
+      // Starred maps always lead; within each group the chosen sort applies.
+      const favoriteOrder = Number(favorites.has(right.key)) - Number(favorites.has(left.key));
+      if (favoriteOrder !== 0) return favoriteOrder;
       const leftName = left.kind === "builtin" ? left.scenario.name : left.record.name;
       const rightName = right.kind === "builtin" ? right.scenario.name : right.record.name;
       if (sort === "name") return leftName.localeCompare(rightName, undefined, { sensitivity: "base" });
-      if (sort === "recently-added") {
-        const leftCreated = left.kind === "designed" ? left.record.createdAt : 0;
-        const rightCreated = right.kind === "designed" ? right.record.createdAt : 0;
-        return rightCreated - leftCreated || leftName.localeCompare(rightName);
+      if (sort === "recently-updated") {
+        const leftUpdated = left.kind === "designed" ? mapUpdatedAt(left.record) : 0;
+        const rightUpdated = right.kind === "designed" ? mapUpdatedAt(right.record) : 0;
+        return rightUpdated - leftUpdated || leftName.localeCompare(rightName);
       }
       const leftPlayed = left.kind === "designed" ? left.record.finishedGames ?? 0 : 0;
       const rightPlayed = right.kind === "designed" ? right.record.finishedGames ?? 0 : 0;
       return rightPlayed - leftPlayed || leftName.localeCompare(rightName);
     });
-  }, [entries, source, seatFilter, query, sort, catalogNow]);
+  }, [entries, source, seatFilter, query, sort, catalogNow, favorites]);
 
   if (!lobby || !options) {
     return null;
@@ -345,7 +402,7 @@ export function MapPickModal({
           <select aria-label="Sort maps" onChange={(event) => setSort(event.target.value as MapSort)} value={sort}>
             <option value="most-played">Most played</option>
             <option value="name">By name</option>
-            <option value="recently-added">Recently added</option>
+            <option value="recently-updated">Recently updated</option>
           </select>
         </label>
         <label className="mapPickSearch">
@@ -371,11 +428,12 @@ export function MapPickModal({
               const name = entry.kind === "builtin" ? entry.scenario.name : entry.record.name;
               const author =
                 entry.kind === "designed" ? entry.record.createdByName?.trim() || "a player" : null;
+              const favorite = favorites.has(entry.key);
               return (
+                <div className="mapPickRowWrap" key={entry.key}>
                 <button
                   aria-selected={highlighted}
                   className={`mapPickRow ${highlighted ? "highlighted" : ""} ${applied ? "applied" : ""}`}
-                  key={entry.key}
                   onClick={() => setSelectedKey(entry.key)}
                   role="option"
                   type="button"
@@ -391,6 +449,17 @@ export function MapPickModal({
                     {applied ? " · in play" : ""}
                   </small>
                 </button>
+                <button
+                  aria-label={favorite ? `Unstar ${name}` : `Star ${name}`}
+                  aria-pressed={favorite}
+                  className={`mapPickFavorite ${favorite ? "starred" : ""}`}
+                  onClick={() => toggleFavorite(entry.key)}
+                  title={favorite ? "Remove from favourites" : "Add to favourites (starred maps list first)"}
+                  type="button"
+                >
+                  <Star aria-hidden="true" fill={favorite ? "currentColor" : "none"} size={15} />
+                </button>
+                </div>
               );
             })
           )}

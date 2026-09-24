@@ -22311,10 +22311,13 @@ export function queueTurnStartBuildingChoices(state: GameState, playerId: Player
           (cardId) => cardLibrary[cardId]?.kind === "hero-specialty"
         );
         // Necromancy Amplifier is the one explicit exception to the normal
-        // no-duplicate Ability rule: a Necropolis hero may own up to two copies.
+        // no-duplicate Ability rule: it fetches once per Necromancy copy still
+        // in the shared Ability deck (3 in the game = up to 3 fetches, 2 when
+        // the hero started with one). Once none is left there, only the
+        // Specialty recall remains.
         const canFetchNecromancy =
           player.factionId === NECROPOLIS_FACTION_ID &&
-          ownedNecromancyCopies(player) < 2;
+          abilityDeckHoldsNecromancy(state);
         const options: { label: string; steps: VisitStep[] }[] = [];
         if (canFetchNecromancy) {
           options.push({ label: "Search the Ability deck for a Necromancy card", steps: [{ type: "NECROMANCY_FETCH" }] });
@@ -24716,15 +24719,17 @@ export function queueNecromancyReinforce(
 
 /**
  * Necromancy Amplifier: dig the Ability deck for its first Necromancy card,
- * take it to hand (up to two owned copies), and reshuffle the searched cards.
+ * take it to hand, and reshuffle the searched cards. Every Necromancy copy in
+ * the game can be fetched this way — the fetch is available while the shared
+ * Ability deck (draw or discard pile) still holds one.
  */
-function ownedNecromancyCopies(player: PlayerState): number {
-  return [
-    ...player.hand,
-    ...player.deck,
-    ...player.discard,
-    ...(player.ongoingCards ?? []).map((ongoing) => ongoing.cardId)
-  ].filter((cardId) => cardId === NECROMANCY_ABILITY_ID).length;
+function abilityDeckHoldsNecromancy(state: GameState): boolean {
+  const deck = state.decks.abilities;
+  return Boolean(
+    deck &&
+      (deck.drawPile.includes(NECROMANCY_ABILITY_ID) ||
+        deck.discardPile.includes(NECROMANCY_ABILITY_ID))
+  );
 }
 
 function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
@@ -24735,7 +24740,7 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
   }
   if (
     player.factionId !== NECROPOLIS_FACTION_ID ||
-    ownedNecromancyCopies(player) >= 2
+    !abilityDeckHoldsNecromancy(state)
   ) {
     return;
   }
@@ -24752,8 +24757,6 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
       }
     }
     const cardId = deck.drawPile.pop() as string;
-    // Re-check the two-copy cap at resolution so a card gained after the prompt
-    // opened can never produce a third copy.
     if (cardId === NECROMANCY_ABILITY_ID) {
       found = cardId;
       break;

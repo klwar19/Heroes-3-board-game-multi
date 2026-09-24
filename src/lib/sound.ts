@@ -2,7 +2,7 @@
 
 import soundManifest from "../../public/sounds/manifest.json";
 import { assetUrl } from "@/lib/asset-url";
-import { unitSoundKey, type UnitSoundAction, type UnitSoundVariant } from "@/data/unit-sounds";
+import { unitSoundKey, unitSoundLayerKey, type UnitSoundAction, type UnitSoundVariant } from "@/data/unit-sounds";
 
 /**
  * Table audio. Two sources:
@@ -233,13 +233,18 @@ export function playUnitSound(
     return;
   }
   const key = unitSoundKey(unitDefId, action, variant);
-  if (!key) {
+  const layerKey = unitSoundLayerKey(unitDefId, action);
+  if (!key && !layerKey) {
     return;
   }
+  const play = () => {
+    if (key) playLibrarySound(key);
+    if (layerKey) playLibrarySound(layerKey);
+  };
   if (delayMs > 0) {
-    window.setTimeout(() => playLibrarySound(key), delayMs);
+    window.setTimeout(play, delayMs);
   } else {
-    playLibrarySound(key);
+    play();
   }
 }
 

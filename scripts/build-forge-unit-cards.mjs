@@ -440,8 +440,11 @@ for (const u of units) {
 // sold (the Toxic Moat grants it), so its cost bar states that instead of prices.
 if (!filter || "commander".includes(filter)) {
   const frame = await upscale("public/assets/units-commander-factory.webp");
-  const art = await sharp(readFileSync("generated-session-art/forge/commander/storm-engineer.png")).resize(k(504), k(658), { fit: "cover", position: "north" }).png().toBuffer();
-  writeFileSync("public/assets/units-commander-forge.webp", await sharp(frame).composite([{ input: art, left: k(174), top: k(166) }]).webp(WEBP).toBuffer());
+  // The Storm Engineer (a woman) wielding her lightning blade. Written at the
+  // print size every other commander card uses (743x1040), not the 2x scale.
+  const art = await sharp(readFileSync("generated-session-art/forge/commander/storm-engineer-lightning-blade.png")).resize(k(504), k(658), { fit: "cover", position: "north" }).png().toBuffer();
+  const card = await sharp(frame).composite([{ input: art, left: k(174), top: k(166) }]).png().toBuffer();
+  writeFileSync("public/assets/units-commander-forge.webp", await sharp(card).resize(743, 1040, { kernel: "lanczos3" }).webp(WEBP).toBuffer());
   console.log("wrote public/assets/units-commander-forge.webp");
 }
 if ((!filter || "lightning".includes(filter)) && existsSync("generated-session-art/forge/war-machines/lightning_generator.png")) {

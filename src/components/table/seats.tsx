@@ -221,9 +221,12 @@ export function PermanentSlot({
     ownView
       ? (legalActions ?? []).filter(
           (legal) =>
-            legal.action.type === "CAST_SPELL" &&
-            legal.action.cardId === cardId &&
-            legal.action.fromScroll === scrollId
+            (legal.action.type === "CAST_SPELL" &&
+              legal.action.cardId === cardId &&
+              legal.action.fromScroll === scrollId) ||
+            (legal.action.type === "CAST_SCROLL_MAP_SPELL" &&
+              legal.action.cardId === cardId &&
+              legal.action.scrollId === scrollId)
         )
       : [];
 
@@ -384,7 +387,7 @@ export function PermanentSlot({
         const spellNames = spellIds.map((id) => cardLibrary[id]?.name ?? id);
         const title =
           spellNames.length > 0
-            ? `Spell Scroll — ${spellNames.join(" · ")} (cast in combat at power 0; sell at market for 2 gold each)`
+            ? `Spell Scroll — ${spellNames.join(" · ")} (cast at power 0 — combat Spells in combat, Map Spells on your map turn; sell at market for 2 gold each)`
             : "Spell Scroll (empty — will be discarded)";
         return (
           <div className={`permanentSlot scrollSlot ${compact ? "compact" : ""}`} key={`scroll-${scroll.id}`}>
@@ -417,7 +420,7 @@ export function PermanentSlot({
                   {spellNames.length > 0
                     ? spellNames.join(" · ")
                     : "No spells left"}
-                  {" — cast at power 0 in combat"}
+                  {" — cast at power 0 (Map Spells on your map turn)"}
                 </small>
               ) : null}
               {!compact && spellIds.length > 1

@@ -1377,7 +1377,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "storm-salvage",
       name: "Storm Salvage",
-      text: "After every combat you win, gain 1 building material."
+      text: "At the start of each combat, you may pay 1 building material to gain a phantom Chain Lightning card (it disappears after the combat). After every combat you win, gain 1 building material."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

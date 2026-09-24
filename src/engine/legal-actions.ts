@@ -126,6 +126,7 @@ import {
   observatoryRevealTargets,
   removableHandCards,
   tacticsMoveDestinations,
+  scrollMapSpellTier,
 } from "./adventure-reducer";
 import {
   effectAppliesToUnit,
@@ -5989,6 +5990,31 @@ function addTurnCardActions(
   // wait while another player's interaction is resolving.
   if (context === "map" && parallelInteractionBlocker(state, playerId)) {
     return;
+  }
+
+  // Spell Scroll: a Map Spell on a scroll (Town Portal, Fly …) is cast on your
+  // map turn at Power 0 — its lowest printed tier — through the same effect
+  // gate a hand cast of that tier uses (Town Portal needs a town to go to).
+  if (context === "map") {
+    for (const scroll of player.scrolls ?? []) {
+      for (const cardId of new Set(scroll.spellCardIds)) {
+        const card = cards[cardId];
+        const tier = scrollMapSpellTier(state, cardId);
+        if (
+          !card ||
+          card.implementationStatus !== "implemented" ||
+          !tier ||
+          spellEffectIsAlreadyOngoing(state, playerId, cardId) ||
+          !isOptionEffectPlayable(state, playerId, tier, "map", cardId)
+        ) {
+          continue;
+        }
+        actions.push({
+          label: `Cast ${card.name} from the Spell Scroll (Power 0)`,
+          action: { type: "CAST_SCROLL_MAP_SPELL", playerId, scrollId: scroll.id, cardId },
+        });
+      }
+    }
   }
 
   // Spell Book (house rule): a Map Spell in the Book may be cast on your turn

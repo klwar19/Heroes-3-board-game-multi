@@ -5359,6 +5359,18 @@ type GameActionPayload =
     }
   | {
       /**
+       * Cast a Map Spell (Town Portal, Fly, View Air …) from a Spell Scroll on
+       * your map turn. Like a combat scroll cast it resolves at Power 0 (its
+       * lowest printed tier, no boost), does not count as a hand/Book cast, and
+       * the spell leaves the scroll and the game; an emptied scroll is removed.
+       */
+      type: "CAST_SCROLL_MAP_SPELL";
+      playerId: PlayerId;
+      scrollId: string;
+      cardId: CardId;
+    }
+  | {
+      /**
        * Basic X Magic (the in-play spell-fetch permanent): spend an expert use
        * for +3 Power on a matching-school spell — a normal cast (into
        * schoolPowerBonus) or an instant played into an attack (into the caster's
@@ -11414,6 +11426,13 @@ export type CombatState = {
   wayfarerParalysisOffered?: boolean;
   /** Dungeon Brute's optional 2-gold draw has been offered this combat. */
   bruteCombatDrawOffered?: boolean;
+  /**
+   * Forge Storm Engineer's combat-start offer (pay 1 building material for a
+   * phantom Chain Lightning): seats already asked this combat, and seats that
+   * paid and still await the card (granted in finalizeCombatStart).
+   */
+  forgeChainLightningOffered?: PlayerId[];
+  forgeChainLightningPaid?: PlayerId[];
   /**
    * Player-vs-player pre-battle preparation window, presented on the adventure
    * MAP (not the battlefield) so both sides can see their towns, resources and
@@ -17768,6 +17787,7 @@ export type PendingChoice =
         | "kivotos-key-authority"
         | "kivotos-mode-change"
         | "neutral-destination"
+        | "neutral-target-wall"
         | "place-battlefield-tokens"
         | "combat-clone"
         | "combat-step"
@@ -17776,6 +17796,7 @@ export type PendingChoice =
         | "shackles-of-war"
         | "wayfarer-paralysis"
         | "brute-combat-draw"
+        | "forge-phantom-chain-lightning"
          | "disciplinary-committee-start"
          | "bounty-hunter-mark-start"
          | "mgq-mad-science"
@@ -18056,6 +18077,15 @@ export type PendingChoice =
         unitId: UnitId;
         positions: number[];
         defenderId: UnitId;
+      };
+      /**
+       * neutral-target-wall: a neutral guard's rulebook target tie that includes
+       * a Ladybird of Luck Wall. `targetIds` (index-aligned with the options)
+       * mixes unit ids and `artifact_wall` token ids; the attacking player picks.
+       */
+      neutralTargetOrWall?: {
+        unitId: UnitId;
+        targetIds: string[];
       };
       /**
        * place-battlefield-tokens: the caster places the rest of a Quicksand /

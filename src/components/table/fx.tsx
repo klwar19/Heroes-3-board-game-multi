@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
-import { getFxSheet } from "@/data/fx";
+import { getFxSheet, LIGHTNING_BEAM_SHEET } from "@/data/fx";
 import { RUNE_BURST_ART, runeWordForLevel } from "@/data/rune-words";
 import {
   playCardPlace,
@@ -113,6 +113,8 @@ export type FxCue =
       recoil?: "ballista" | "catapult" | "cannon" | "lightning_generator";
     }
   | { kind: "line"; id: string; fxKey: string; from: string; to: string; delayMs?: number; sound?: string }
+  /** A horizontal lightning beam from `from` to `to` (LIGHTNING_BEAM_SHEET). */
+  | { kind: "beam"; id: string; from: string; to: string; width: "thin" | "normal" | "thick"; delayMs?: number; sound?: string }
   | { kind: "floater"; id: string; at: string; text: string; tone: "damage" | "heal" | "info"; delayMs?: number }
   | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number }
   | {
@@ -843,6 +845,104 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
       tick(started);
     });
   } finally { sprite.remove(); }
+}
+
+/**
+ * Beam FRAME height as a share of the smaller card's height (the bolt core with
+ * its glow fills about a third of a frame): Zeestral's specialty thin, the
+ * Lightning Generator normal, the Forge commander's Arc Discharge thick.
+ */
+const BEAM_WIDTH_FACTOR = { thin: 0.26, normal: 0.36, thick: 0.62 } as const;
+
+/**
+ * A horizontal lightning beam from source to target. The sheet's bolts run
+ * left → right, so the strip is anchored at the SOURCE (transform-origin on its
+ * left edge) and rotated by the source→target angle: it always leaves the caster
+ * and ends on the target, whichever side of the board either stands on. The
+ * bolt is revealed (not stretched) as it grows behind a glowing head, then
+ * crackles — the painted frames cycle fast, each randomly mirrored (8 distinct
+ * bolt shapes) with a brightness flicker — and fades.
+ */
+async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: "beam" }>): Promise<void> {
+  const fromRect = resolveAnchorRect(cue.from);
+  const toRect = resolveAnchorRect(cue.to);
+  if (cue.sound) playLibrarySound(cue.sound);
+  if (!fromRect || !toRect) return;
+  const from = centerOf(fromRect);
+  const to = centerOf(toRect);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return;
+
+  const thickness = Math.max(6, Math.min(fromRect.height, toRect.height) * BEAM_WIDTH_FACTOR[cue.width]);
+  const frames = LIGHTNING_BEAM_SHEET.frames;
+  const beam = document.createElement("div");
+  beam.className = "fxSprite fxProjectile";
+  beam.style.left = `${from.x}px`;
+  beam.style.top = `${from.y - thickness / 2}px`;
+  beam.style.height = `${thickness}px`;
+  beam.style.width = "0px";
+  beam.style.backgroundImage = `url(${assetUrl(LIGHTNING_BEAM_SHEET.src)})`;
+  beam.style.backgroundRepeat = "no-repeat";
+  beam.style.backgroundSize = `${distance}px ${thickness * frames}px`;
+  beam.style.mixBlendMode = "screen";
+  beam.style.filter = "drop-shadow(0 0 6px rgba(123, 207, 255, .85))";
+  beam.style.transformOrigin = "0 50%";
+  const angle = Math.atan2(dy, dx);
+  beam.style.transform = `rotate(${angle}rad)`;
+  stage.appendChild(beam);
+  // The bright head that races ahead of the bolt while it grows.
+  const head = document.createElement("div");
+  head.className = "fxSprite";
+  const headSize = thickness * 1.2;
+  head.style.width = `${headSize}px`;
+  head.style.height = `${headSize}px`;
+  head.style.borderRadius = "50%";
+  head.style.background = "radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(150,215,255,.75) 30%, rgba(60,140,255,0) 70%)";
+  head.style.mixBlendMode = "screen";
+  stage.appendChild(head);
+
+  const started = performance.now();
+  const growMs = 170;
+  const holdMs = 190;
+  const fadeMs = 150;
+  const frameMs = 45;
+  let shownFrame = -1;
+  try {
+    await new Promise<void>((resolve) => {
+      const tick = (now: number) => {
+        if (!stage.isConnected) { resolve(); return; }
+        const elapsed = now - started;
+        if (elapsed >= growMs + holdMs + fadeMs) { resolve(); return; }
+        const grown = Math.min(1, elapsed / growMs);
+        // Ease-out so the head races across and settles on the target.
+        const reach = distance * (1 - (1 - grown) ** 2);
+        beam.style.width = `${reach}px`;
+        head.style.left = `${from.x + Math.cos(angle) * reach - headSize / 2}px`;
+        head.style.top = `${from.y + Math.sin(angle) * reach - headSize / 2}px`;
+        head.style.opacity = grown < 1 ? "1" : String(Math.max(0, 1 - (elapsed - growMs) / 120));
+        const tickIndex = Math.floor(elapsed / frameMs);
+        if (tickIndex !== shownFrame) {
+          shownFrame = tickIndex;
+          // Next painted frame, randomly mirrored across the beam's axis.
+          const frame = (tickIndex + Math.floor(Math.random() * (frames - 1))) % frames;
+          beam.style.backgroundPosition = `0 ${-frame * thickness}px`;
+          beam.style.transform = `rotate(${angle}rad) scaleY(${Math.random() < 0.5 ? -1 : 1})`;
+          beam.dataset.flicker = String(0.72 + Math.random() * 0.28);
+        }
+        const flicker = Number(beam.dataset.flicker ?? 1);
+        beam.style.opacity = elapsed > growMs + holdMs
+          ? String(Math.max(0, 1 - (elapsed - growMs - holdMs) / fadeMs) * flicker)
+          : String(flicker);
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
+  } finally {
+    beam.remove();
+    head.remove();
+  }
 }
 
 /** Compact claw marks flash over the defender; they never fly like a projectile. */
@@ -1852,6 +1952,11 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
 
       // Start fetching phase art while the dice/card presentation is still
       // running, rather than waiting until its first launch frame is due.
+      if (cue.kind === "beam" && !preloadedFxSources.has(LIGHTNING_BEAM_SHEET.src)) {
+        preloadedFxSources.add(LIGHTNING_BEAM_SHEET.src);
+        const preload = new Image();
+        preload.src = assetUrl(LIGHTNING_BEAM_SHEET.src);
+      }
       if (["projectile", "line", "slash", "sprite"].includes(cue.kind)) {
         const fxKey = "fxKey" in cue ? cue.fxKey : undefined;
         const sheet = fxKey ? getFxSheet(fxKey) : undefined;
@@ -1874,6 +1979,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runProjectile(stage, cue);
           case "line":
             return runThrust(stage, { fxKey: cue.fxKey, from: cue.from, at: cue.to, sound: cue.sound });
+          case "beam":
+            return runLightningBeam(stage, cue);
           case "floater":
             return runFloater(stage, cue);
           case "pulse":

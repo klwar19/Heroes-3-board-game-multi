@@ -1503,6 +1503,11 @@ export function releaseEndedOngoingCards(state: GameState): void {
   for (const context of Object.values(state.parallelCombats ?? {})) {
     for (const effect of context.effects) liveEffectIds.add(effect.id);
   }
+  // A card lying on the board as a battlefield token (Ladybird of Luck's Wall)
+  // is held against that token's id: it stays in play while the token stands.
+  for (const combat of [state.combat, ...Object.values(state.parallelCombats ?? {}).map((context) => context.combat)]) {
+    for (const token of combat?.battlefieldTokens ?? []) liveEffectIds.add(token.id);
+  }
 
   for (const player of Object.values(state.players)) {
     if (!player.ongoingCards?.length) {
@@ -1642,6 +1647,13 @@ export function discardOngoingCardVoluntarily(
   // Walk recalled by Mysticism leaked OUT of the Spell Book into the deck cycle.
   const effectIds = new Set(player.ongoingCards[heldIndex].effectIds);
   state.activeEffects = state.activeEffects.filter((effect) => !effectIds.has(effect.id));
+  // A card lying on the board (Ladybird of Luck's Wall) leaves it with the card —
+  // not "removed by an attack", so no gold.
+  for (const combat of [state.combat, ...Object.values(state.parallelCombats ?? {}).map((context) => context.combat)]) {
+    if (combat?.battlefieldTokens?.some((token) => effectIds.has(token.id))) {
+      combat.battlefieldTokens = combat.battlefieldTokens.filter((token) => !effectIds.has(token.id));
+    }
+  }
   releaseEndedOngoingCards(state);
 }
 

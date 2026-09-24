@@ -1286,6 +1286,13 @@ function scorePositionOption(
     return (optionIndex === 1) === morale > 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
+  if (context === "forge-phantom-chain-lightning") {
+    // A free Chain Lightning for the fight is worth 1 building material when a
+    // spare one is on hand; keep the last one for building.
+    const materials = observation.state.players[observation.playerId]?.resources.buildingMaterials ?? 0;
+    return (optionIndex === 0) === (materials >= 2) ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
   if (context === "brute-combat-draw") {
     // Buy combat flexibility when the Brute can spare the gold; preserve the
     // last few coins for recruits and post-fight recovery.

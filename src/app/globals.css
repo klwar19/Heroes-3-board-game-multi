@@ -17169,6 +17169,43 @@ button.setupHubNavItem:hover {
   color: #bfa87c;
 }
 
+/* Row + its favourite star side by side (the star is a sibling button, never
+   nested inside the row's option button). */
+.mapPickRowWrap {
+  position: relative;
+  display: grid;
+}
+
+.mapPickRowWrap .mapPickRow {
+  padding-right: 38px;
+}
+
+.mapPickFavorite {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #8f7a52;
+  cursor: pointer;
+}
+
+.mapPickFavorite:hover {
+  color: #ffd76a;
+  background: rgba(255, 215, 106, 0.1);
+}
+
+.mapPickFavorite.starred {
+  color: #ffd76a;
+}
+
 /* The detail column: the preview + info SCROLL inside .mapPickDetailScroll,
    while .mapPickApplyBar (the "Play this map" button) stays pinned below them,
    always visible — it must never have to be hunted for under a long

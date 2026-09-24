@@ -525,8 +525,9 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   // The Imperium commander uses the requested female presentation. Sea Witch
   // is the complete female H3 battle set and includes every required action.
   lion_el_jonson: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" },
-  // Forge — the Storm Engineer is a cybernetic tinkerer: the Factory Mechanic
-  // (Engineer) set, a complete converted H3 voice line.
+  // Forge — the Storm Engineer: only the Mechanic MOVE step is used from this
+  // set; every other action is routed by forgeCommanderSoundKey (Saber voice,
+  // Titan melee hit) before this table is read.
   forge: { attack: "mechanic", move: "mechanic", defend: "mechanic", hurt: "mechanic", death: "mechanic" }
 };
 
@@ -747,6 +748,9 @@ export function commanderSoundKey(slug: string, action: UnitSoundAction): string
   if (slug === "kyousuke_natsume") {
     return littleBustersVoiceKey("kyousuke", action);
   }
+  if (slug === "forge") {
+    return forgeCommanderSoundKey(action);
+  }
   const voices = commanderVoices[slug];
   if (!voices) {
     return undefined;
@@ -759,6 +763,38 @@ export function commanderSoundKey(slug: string, action: UnitSoundAction): string
     }
   }
   return undefined;
+}
+
+/**
+ * Forge commander (Storm Engineer) base clip per action: attack/shoot = the
+ * Titan's melee hit, move = the Mechanic's footstep, defend/hurt/death = the
+ * Japanese Saber voice itself. The Saber attack/move calls ride on top of the
+ * first two through unitSoundLayerKey, so EVERY action carries her voice.
+ */
+function forgeCommanderSoundKey(action: UnitSoundAction): string | undefined {
+  const key =
+    action === "attack" || action === "shoot"
+      ? "units/titan-attack"
+      : action === "move"
+        ? "units/mechanic-move"
+        : `fuyuki/voices/sabers/${action}`;
+  return soundLibrary[key] ? key : undefined;
+}
+
+/**
+ * Extra voice layer for selected unit actions: the Forge commander's Saber
+ * attack call over the Titan melee hit (attacks and ranged shots) and her move
+ * call over the Mechanic footstep. Defend/hurt/death already ARE her voice.
+ */
+export function unitSoundLayerKey(
+  unitDefId: string | undefined,
+  action: UnitSoundAction
+): string | undefined {
+  if (unitDefId !== `${COMMANDER_VOICE_PREFIX}forge`) return undefined;
+  const voiceAction = action === "shoot" ? "attack" : action;
+  if (voiceAction !== "attack" && voiceAction !== "move") return undefined;
+  const key = `fuyuki/voices/sabers/${voiceAction}`;
+  return soundLibrary[key] ? key : undefined;
 }
 
 /**

@@ -1472,7 +1472,10 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // commander marker, COMMANDER_ATTACK_CANCELLED), Astrologers Card Games /
 // Pre-Order / New Buildings (ASTROLOGERS_CARD_GAMES action, free-build visit
 // steps), Ladybird of Luck wall token, neutral-side veteran tracks.
-export const ENGINE_PROTOCOL_VERSION = 171;
+// v172: CAST_SCROLL_MAP_SPELL action, neutral-target-wall choice (neutrals tear
+// down Ladybird Walls), Ladybird card held in play, Necromancy Amplifier fetch
+// per copy, Forge Storm Engineer phantom Chain Lightning combat-start choice.
+export const ENGINE_PROTOCOL_VERSION = 172;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

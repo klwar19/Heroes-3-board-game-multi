@@ -2,6 +2,7 @@ import { unitIsBerserk } from "./active-effects";
 import { getBattlefieldDistance } from "./battlefield";
 import { houseRuleEnabled } from "./house-rules";
 import { planRandomTownActivation } from "./random-town-tactics";
+import { getDemolishAbility } from "./siege";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./computer/unit-ability-value";
 import {
   canUnitAttack,
@@ -14,7 +15,7 @@ import {
   isAdjacent,
   isUnitAlive
 } from "./legal-actions";
-import type { CombatState, CombatUnitState, GameAction, GameState, UnitGrade, UnitId } from "./state";
+import type { BattlefieldTokenState, CombatState, CombatUnitState, GameAction, GameState, UnitGrade, UnitId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
 /**
@@ -56,6 +57,11 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  *   ranged guard still hunts ranged targets first, and an engaged one must hit an
  *   adjacent enemy. Detected from the `bankUnit` flag via isGradelessNeutralAttacker.
  * - Neutral units never defend.
+ * - A Ladybird of Luck Wall (`artifact_wall` token, "counts as a Wall") is torn
+ *   down by a graded neutral only when it can attack NO enemy unit this
+ *   activation. A gradeless Creature Bank guard ranks it purely by distance with
+ *   the units it can strike: it tears the Wall down when that is nearer, and an
+ *   equally near Wall joins the tie the player chooses from.
  */
 
 const TIER_RANK: Record<UnitGrade, number> = { bronze: 0, silver: 1, gold: 2, azure: 3 };
@@ -380,6 +386,17 @@ export type NeutralIntent =
   | { kind: "unit-action"; action: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>; targetUnitId?: UnitId }
   | { kind: "attack"; defenderId: string }
   | { kind: "move-and-attack"; destination: number; defenderId: string }
+  /** Tear down a Ladybird of Luck Wall (`artifact_wall` token) as its attack. */
+  | { kind: "attack-wall"; tokenId: string }
+  | { kind: "move-and-attack-wall"; destination: number; tokenId: string }
+  | {
+      /**
+       * A tie between equally valid targets that includes a Ladybird of Luck
+       * Wall: the player chooses. `targetIds` mixes unit ids and Wall token ids.
+       */
+      kind: "choose-target-or-wall";
+      targetIds: string[];
+    }
   | { kind: "move"; destination: number }
   | { kind: "pass" }
   | {
@@ -394,6 +411,7 @@ export type NeutralIntent =
        * which. It still attacks `defenderId` (the target is fixed by the rules);
        * only the landing cell is the player's choice. Composes with a preceding
        * `choose-target` tie: once the target is picked, this offers the cells.
+       * `defenderId` may be a Ladybird of Luck Wall token id.
        */
       kind: "choose-destination";
       defenderId: UnitId;
@@ -463,6 +481,11 @@ function planNeutralDefault(
   // stands — strike it directly or close the last step into it (letting the
   // player pick the landing cell too when several reach it).
   if (forcedTargetId) {
+    const forcedWall = enemyArtifactWalls(combat, unit).find((token) => token.id === forcedTargetId);
+    const wallIntent = forcedWall ? attackOrReachWall(state, combat, unit, forcedWall, forcedDestination) : null;
+    if (wallIntent) {
+      return wallIntent;
+    }
     const forced = combat.units[forcedTargetId] ?? null;
     if (forced && isUnitAlive(forced)) {
       return (
@@ -480,8 +503,25 @@ function planNeutralDefault(
   // among the enemies the unit can actually strike this activation, never
   // wandering toward an out-of-reach favourite while an attackable enemy waits.
   const attackable = attackableTargetPool(state, combat, unit);
+  const walls = attackableArtifactWalls(state, combat, unit);
   if (attackable.length > 0) {
     const ties = coordinated ? [attackable[0]] : leadingTieGroup(combat, unit, attackable);
+    // A gradeless Creature Bank guard ranks a Ladybird Wall by distance alongside
+    // the units it can strike: a nearer Wall is torn down, an equally near one
+    // joins the tie the player chooses from.
+    if (!coordinated && walls.length > 0 && isGradelessNeutralAttacker(unit)) {
+      const unitDistance = neutralMoveDistanceToTarget(combat, unit, ties[0]);
+      const nearestWalls = walls.filter((wall) => wall.distance === walls[0].distance);
+      if (walls[0].distance < unitDistance) {
+        return wallTargetIntent(state, combat, unit, nearestWalls);
+      }
+      if (walls[0].distance === unitDistance) {
+        return {
+          kind: "choose-target-or-wall",
+          targetIds: [...ties.map((candidate) => candidate.id), ...nearestWalls.map((wall) => wall.token.id)],
+        };
+      }
+    }
     if (!coordinated && !forcedTargetId && ties.length > 1) {
       return { kind: "choose-target", candidateIds: ties.map((candidate) => candidate.id) };
     }
@@ -491,6 +531,17 @@ function planNeutralDefault(
     return (
       attackOrReach(state, combat, unit, target, forcedDestination, coordinated) ??
       approachTarget(state, combat, unit, target)
+    );
+  }
+
+  // No enemy unit can be struck this activation: a reachable Ladybird of Luck
+  // Wall becomes its target (the nearest; equally near Walls go to the player).
+  if (walls.length > 0) {
+    return wallTargetIntent(
+      state,
+      combat,
+      unit,
+      walls.filter((wall) => wall.distance === walls[0].distance),
     );
   }
 
@@ -624,6 +675,87 @@ function attackOrReach(
   }
 
   return { kind: "move-and-attack", destination: attackSpots[0], defenderId: target.id };
+}
+
+/** Ladybird of Luck Walls on the board placed by this unit's enemies. */
+function enemyArtifactWalls(combat: CombatState, unit: CombatUnitState): BattlefieldTokenState[] {
+  return (combat.battlefieldTokens ?? []).filter(
+    (token) => token.kind === "artifact_wall" && token.controllerId !== unit.controllerId
+  );
+}
+
+/**
+ * Tear down a Ladybird of Luck Wall — the same legality as the player's
+ * ATTACK_FORTIFICATION offer (attackArtifactWall): an adjacent ground/flying
+ * unit, or a demolisher (Cyclops) from anywhere. A melee/flying unit may first
+ * move next to it; several landing cells go to the player like a unit target.
+ * Null when the Wall cannot be reached to strike this activation.
+ */
+function attackOrReachWall(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  wall: BattlefieldTokenState,
+  forcedDestination?: number
+): NeutralIntent | null {
+  if (unit.attackedThisActivation) {
+    return null;
+  }
+  if (getDemolishAbility(unit) || (unit.type !== "ranged" && isAdjacent(unit.position, wall.position))) {
+    return { kind: "attack-wall", tokenId: wall.id };
+  }
+  if (unit.type === "ranged") {
+    return null;
+  }
+  const spots = getLegalMoveDestinations(combat, unit, state).filter(
+    (space) => isAdjacent(space, wall.position) && canUnitMoveTo(combat, unit, space, state)
+  );
+  if (spots.length === 0) {
+    return null;
+  }
+  if (forcedDestination !== undefined && spots.includes(forcedDestination)) {
+    return { kind: "move-and-attack-wall", destination: forcedDestination, tokenId: wall.id };
+  }
+  if (spots.length > 1) {
+    return { kind: "choose-destination", defenderId: wall.id, destinations: [...spots].sort((left, right) => left - right) };
+  }
+  return { kind: "move-and-attack-wall", destination: spots[0], tokenId: wall.id };
+}
+
+/**
+ * The enemy Ladybird Walls this unit can tear down THIS activation, nearest
+ * first, with the same distance metric as unit targets (straight line for a
+ * shooter, walked path otherwise).
+ */
+function attackableArtifactWalls(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState
+): { token: BattlefieldTokenState; distance: number }[] {
+  return enemyArtifactWalls(combat, unit)
+    .filter((token) => attackOrReachWall(state, combat, unit, token) !== null)
+    .map((token) => {
+      const distance =
+        unit.type === "ranged"
+          ? getBattlefieldDistance(unit.position, token.position)
+          : getPathDistances(combat, unit, token.position).get(unit.position) ??
+            getBattlefieldDistance(unit.position, token.position) + BATTLEFIELD_PATH_PENALTY;
+      return { token, distance };
+    })
+    .sort((left, right) => left.distance - right.distance || left.token.position - right.token.position);
+}
+
+/** Strike the one nearest Wall, or let the player pick among equally near ones. */
+function wallTargetIntent(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  nearest: { token: BattlefieldTokenState }[]
+): NeutralIntent {
+  if (nearest.length > 1) {
+    return { kind: "choose-target-or-wall", targetIds: nearest.map((wall) => wall.token.id) };
+  }
+  return attackOrReachWall(state, combat, unit, nearest[0].token) ?? { kind: "pass" };
 }
 
 /** Step toward a target the unit cannot strike yet, or pass if it cannot close in. */

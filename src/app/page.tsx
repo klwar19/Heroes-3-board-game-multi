@@ -733,6 +733,42 @@ function makeSpellDiceCue(
   };
 }
 
+/**
+ * A lightning-beam plan's cues: `beamShots` horizontal beams from `from` to
+ * `to`, `beamIntervalMs` apart, each with a crackle on the target as it lands.
+ * The plan's sound plays once, with the first beam.
+ */
+function pushLightningBeamCues(
+  cues: FxCue[],
+  plan: SpellFxPlan,
+  eventId: string,
+  from: string,
+  to: string,
+  start: number
+): void {
+  const shots = Math.max(1, plan.beamShots ?? 1);
+  const intervalMs = plan.beamIntervalMs ?? 240;
+  for (let shot = 0; shot < shots; shot += 1) {
+    const at = start + shot * intervalMs;
+    cues.push({
+      kind: "beam",
+      id: `${eventId}-lightning-beam-${shot}`,
+      from,
+      to,
+      width: plan.beamWidth ?? "normal",
+      ...(shot === 0 && plan.sound ? { sound: plan.sound } : {}),
+      delayMs: at
+    });
+    cues.push({
+      kind: "sprite",
+      id: `${eventId}-lightning-beam-impact-${shot}`,
+      fxKey: "lightning-crackle",
+      at: to,
+      delayMs: at + 150
+    });
+  }
+}
+
 /** How the hand rail is currently being used. */
 type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw" | "cover-of-darkness";
 
@@ -3126,7 +3162,9 @@ export default function Home() {
         ) => {
           const at = plan.battlefield ? "battlefield" : `unit:${targetUnitId}`;
           const start = timeline;
-          if (plan.projectile) {
+          if (plan.chainLightningBeam) {
+            pushLightningBeamCues(cues, plan, eventId, fromAnchor, at, start);
+          } else if (plan.projectile) {
             const projectileCount = Math.max(1, plan.projectileCount ?? 1);
             const projectileIntervalMs = plan.projectileIntervalMs ?? 60;
             const flightMs = projectileCount > 1
@@ -3192,7 +3230,7 @@ export default function Home() {
           }
           // Sound-only plan (Teleport): no sprite/projectile/tint carries the
           // cue, so the cast sound is played directly over the target unit.
-          if (!plan.projectile && !plan.hit && !plan.affect?.length && !plan.tint && plan.sound) {
+          if (!plan.chainLightningBeam && !plan.projectile && !plan.hit && !plan.affect?.length && !plan.tint && plan.sound) {
             const soundKey = plan.sound;
             window.setTimeout(() => playLibrarySound(soundKey), start);
           }
@@ -3220,7 +3258,9 @@ export default function Home() {
         ): number => {
           const machineCardId = plan.warMachine ? `war_machine.${plan.warMachine}` : "";
           const from = machineCardId ? `war-machine:${playerId}:${machineCardId}` : `hand:${playerId}`;
-          if (plan.projectile) {
+          if (plan.chainLightningBeam) {
+            pushLightningBeamCues(cues, plan, eventId, from, targetAnchor, start);
+          } else if (plan.projectile) {
             cues.push({
               kind: "projectile",
               id: `${eventId}-projectile`,
@@ -3613,7 +3653,14 @@ export default function Home() {
               // so every commander cast animates and sounds (Bloodlust tints red,
               // Animate Dead uses its resurrection sheet and spell sound).
               const plan = commanderCastFxPlan(event.commanderSlug, event.castName);
-              queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.targetUnitId);
+              const forgeCommander = event.commanderSlug === "forge"
+                ? Object.values(nextState.combat?.units ?? {}).find((unit) =>
+                    unit.commanderSlug === "forge" && unit.controllerId === event.playerId)
+                : undefined;
+              const sourceAnchor = forgeCommander
+                ? `unit:${forgeCommander.id}`
+                : `hand:${event.playerId}`;
+              queueBoardFx(plan, event.id, sourceAnchor, event.targetUnitId);
               if (inCombat) {
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 900);

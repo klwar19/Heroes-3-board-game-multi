@@ -111,7 +111,7 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "passive",
     artifactTier: "minor",
-    tags: ["artifact", "minor", "On taking this card, place two drawn Spells into a Spell Scroll. Cast them in combat at Power 0 or sell each at a Trading Post for 2 gold."],
+    tags: ["artifact", "minor", "On taking this card, place two drawn Spells into a Spell Scroll. Cast them at Power 0 (combat Spells in combat, Map Spells on your map turn) or sell each at a Trading Post for 2 gold."],
     // The acquisition tail immediately replaces this deck card with a live
     // scroll. It is never a hand action; the scroll's casts use CAST_SPELL.
     effect: { type: "DRAW_CARDS", amount: 0 },

@@ -277,6 +277,8 @@ const animeMeleeFxByUnit: Record<string, MeleeFxKey> = {
 };
 
 export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
+  // The Forge commander's lightning blade: an electric zap, not a fire slash.
+  if (unitDefId === "commander:forge") return "thunderbird-trident-zap-animated";
   if (unitDefId?.startsWith("azur_lane.")) return "anime-naval-melee";
   if (unitDefId === "blue_archive.mika") return "masato-muscle-punch";
   if (unitDefId === "blue_archive.seia") return "melee-starry-strike";
@@ -529,9 +531,7 @@ sheets["cyberbrute-claw-rake-animated"] = {
   scaleMultiplier: 1.4,
 };
 
-// Zeestral's Storm Circuit: the Chain Lightning bolt + crackle, THICKER — the
-// same H3 sheets drawn larger — and a wider Titan lightning shot that carries
-// the bolt from Zeestral's side to each struck unit.
+// Legacy Storm Circuit impact sheets retained for older FX references.
 sheets["storm-circuit-bolt"] = {
   ...sheets["lightning-bolt"],
   label: "Storm Circuit thick lightning bolt",
@@ -556,6 +556,12 @@ export function getFxSheet(key: string): FxSheet | undefined {
   return sheets[key];
 }
 
+/**
+ * Horizontal lightning beam: FRAMES rows stacked vertically, each one bolt
+ * running left → right across the full width (screen-blended over black).
+ */
+export const LIGHTNING_BEAM_SHEET = { src: "/fx/lightning-beam-sheet.webp", frames: 4 } as const;
+
 export function listFxSheets(): Record<string, FxSheet> {
   return sheets;
 }
@@ -568,6 +574,16 @@ export function listFxSheets(): Record<string, FxSheet> {
  * game either - the engine tinted the creature red).
  */
 export type SpellFxPlan = {
+  /**
+   * A HORIZONTAL lightning beam (LIGHTNING_BEAM_SHEET) drawn from the source
+   * anchor straight to the target, rotated to the live board geometry so it
+   * always points the right way. `beamWidth` sets its thickness, `beamShots`
+   * fires it several times `beamIntervalMs` apart (visual only).
+   */
+  chainLightningBeam?: boolean;
+  beamWidth?: "thin" | "normal" | "thick";
+  beamShots?: number;
+  beamIntervalMs?: number;
   projectile?: string;
   /** Number of visual rounds in one rapid-fire attack (game damage is unchanged). */
   projectileCount?: number;
@@ -609,17 +625,17 @@ export type SpellFxPlan = {
 // REGENER.wav finishes underneath them.
 function stormCircuitFlashPlan(): SpellFxPlan {
   return {
-    affect: [{ key: "storm-circuit-bolt" }, { key: "storm-circuit-crackle", delayMs: 220 }],
+    chainLightningBeam: true,
+    beamWidth: "normal",
     sound: "spells/chain-lightning",
   };
 }
 
-/** Zeestral's damage sides: a thick bolt flies from his seat to each struck unit. */
+/** Zeestral's damage sides: one normal-width horizontal lightning beam. */
 const stormCircuitBoltPlan: SpellFxPlan = {
-  projectile: "storm-circuit-shot-phases",
-  hit: "storm-circuit-bolt",
+  chainLightningBeam: true,
+  beamWidth: "normal",
   sound: "spells/chain-lightning",
-  hitSound: "spells/lightning-bolt",
 };
 
 const regenerationFxPlan: SpellFxPlan = {
@@ -848,18 +864,13 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.zeestral.1": stormCircuitFlashPlan(),
   "specialty.zeestral.4": stormCircuitFlashPlan(),
   "specialty.zeestral.6": stormCircuitFlashPlan(),
-  // Storm Engineer's Arc Discharge: repeated lightning strikes on the target
-  // (chain-lightning style, three bolts) under the Titan's ranged-shot report.
+  // One BIG horizontal lightning zap from the commander to its target.
+  // The beam renderer aims from live board geometry, including for units on
+  // the opposite side of the board.
   "commander.forge.arc-discharge": {
-    affect: [
-      { key: "lightning-bolt" },
-      { key: "lightning-crackle", delayMs: 200 },
-      { key: "lightning-bolt", delayMs: 380 },
-      { key: "lightning-sparks", delayMs: 520 },
-      { key: "lightning-bolt", delayMs: 760 },
-      { key: "lightning-crackle", delayMs: 900 },
-    ],
-    sound: "units/titan-shoot",
+    chainLightningBeam: true,
+    beamWidth: "thick",
+    sound: "spells/chain-lightning",
   },
   "specialty.melodia.1": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "specialty.melodia.4": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
@@ -1640,15 +1651,16 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
     projectile: "war-machine-cannon-projectile", hit: "land-mine-hit",
     sound: "units/cannon-shoot", hitSound: "effects/siege-wall-hit", warMachine: "cannon"
   },
-  // Forge Lightning Generator: the Titan's lightning shot leaves the in-play
-  // generator card and travels to the struck unit, where a bolt lands. The
-  // crackle is the Energy Elemental rank-I ability's sound (Delayed Impact,
-  // "veteran-energy-delay" → custom-ability/electric-impact). Its long electric
-  // tail keeps ringing while combat resumes (presentationMs gate).
+  // Forge Lightning Generator: a volley of four horizontal lightning zaps
+  // leaves the in-play machine card and strikes the selected unit. Keep the
+  // Generator's own electric-impact sound; one WAR_MACHINE_TRIGGERED cue owns
+  // the whole volley so its following damage event cannot replay the shot.
   "war_machine.lightning_generator": {
-    projectile: "titan-shot-phases", hit: "lightning-bolt",
+    chainLightningBeam: true,
+    beamWidth: "thin",
+    beamShots: 4,
+    beamIntervalMs: 200,
     sound: "custom-ability/electric-impact", warMachine: "lightning_generator",
-    presentationMs: 1500
   }
 };
 
@@ -1824,6 +1836,10 @@ export function spellPresentationMs(plan: SpellFxPlan | undefined): number {
   }
   if (plan.presentationMs !== undefined) {
     return Math.min(MAX_PRESENTATION_MS, Math.max(0, plan.presentationMs));
+  }
+  if (plan.chainLightningBeam) {
+    const volleyMs = Math.max(0, (plan.beamShots ?? 1) - 1) * (plan.beamIntervalMs ?? 240);
+    return Math.min(MAX_PRESENTATION_MS, Math.max(700 + volleyMs, soundDurationMs(plan.sound)));
   }
   if (plan.projectile && getFxSheet(plan.projectile)?.projectilePhases) {
     return Math.max(800, 120 + soundDurationMs(plan.sound), 500 + soundDurationMs(plan.hitSound));
