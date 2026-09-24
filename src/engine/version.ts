@@ -1478,7 +1478,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v173: Mech Princess (Forge commander) rename, neutral-only phantom offer,
 // Arc Discharge ends her activation (hold only), Rune Keeper +1 Rune on move
 // only, Eikthurn IV Runes-only, Bulwark Sieidi/Altar costs.
-export const ENGINE_PROTOCOL_VERSION = 173;
+// v174: Rune Keeper keeps +3 Runes when attacked; moving gives 1 Rune (was 3).
+export const ENGINE_PROTOCOL_VERSION = 174;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

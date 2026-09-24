@@ -1769,7 +1769,8 @@ export function applyCommanderCombatStart(state: GameState): void {
         player.combatStats.commanderManaCharges = 2;
         break;
       // Rune Keeper's Rune Ritual is NOT a combat-start grant — it triggers
-      // when the commander moves (applyCommanderRuneOnMove).
+      // when the commander moves or is attacked (applyCommanderRuneOnMove /
+      // applyCommanderRuneRitual).
       case "succubus":
         applyCharming(state, playerId, unit);
         break;
@@ -1806,11 +1807,34 @@ export function applyCommanderCombatStart(state: GameState): void {
 }
 
 /**
- * Rune Keeper commander — Rune Ritual: every time the commander MOVES, its owner
- * gains 1 Rune (USER RULING 2026-09-24: moving is the ONLY trigger; being
- * attacked grants nothing). Called from moveUnit after a Rune Keeper commander's
- * move resolves; a no-op for any other unit. A commander moves at most once per
- * activation, so this is naturally bounded to one grant per turn.
+ * Rune Keeper commander — Rune Ritual (attack half): EVERY time the commander is
+ * attacked in a combat, its owner gains 3 Runes. Called from the attack resolution
+ * with the attack's DEFENDER; a no-op unless that defender is a living Rune Keeper
+ * commander. `isRetaliation` is the incoming attack's flag — a retaliation's
+ * "defender" is the original attacker (the commander striking back is not "being
+ * attacked"), so those are skipped. There is NO once-per-combat cap: each incoming
+ * attack banks 3 Runes (the move half is applyCommanderRuneOnMove).
+ */
+export function applyCommanderRuneRitual(state: GameState, defender: CombatUnitState, isRetaliation: boolean): void {
+  if (isRetaliation || defender.commanderSlug !== "bulwark" || defender.damage >= defender.maxHealth) {
+    return;
+  }
+  gainRunes(state, defender.controllerId, 3);
+  emitSpecialty(
+    state,
+    defender.controllerId,
+    "bulwark",
+    "rune-ritual",
+    `The Rune Keeper's ritual answers the attack — +3 Runes.`
+  );
+}
+
+/**
+ * Rune Keeper commander — Rune Ritual (move half): every time the commander
+ * MOVES, its owner gains ONLY 1 Rune (USER RULING 2026-09-24, was 3). Called from
+ * moveUnit after a Rune Keeper commander's move resolves; a no-op for any other
+ * unit. A commander moves at most once per activation, so this is naturally
+ * bounded to one grant per turn.
  */
 export function applyCommanderRuneOnMove(state: GameState, unit: CombatUnitState): void {
   if (unit.commanderSlug !== "bulwark" || unit.damage >= unit.maxHealth) {

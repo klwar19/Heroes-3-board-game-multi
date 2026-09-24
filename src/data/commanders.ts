@@ -1092,7 +1092,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "rune-ritual",
       name: "Rune Ritual",
-      text: "Gain +1 Rune every time the commander MOVES. At Rune Level 1, the commander gains +1 additional Attack beyond the army-wide +1 Attack."
+      text: "Gain +1 Rune every time the commander MOVES, and +3 Runes every time it is attacked. At Rune Level 1, the commander gains +1 additional Attack beyond the army-wide +1 Attack."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
   },

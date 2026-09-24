@@ -557,6 +557,7 @@ import {
   applyLionRoundStartBarrage,
   commanderAdjacentAllies,
   applyCommanderRuneOnMove,
+  applyCommanderRuneRitual,
   commandersModuleEnabled,
   maybeOpenSoulLinkChoice,
   commanderCastCandidates,
@@ -9375,6 +9376,8 @@ function finishResolvedAttack(
       abilityName: azureCharge.abilityName,
     });
   }
+  // Rune Keeper commander: +3 Runes whenever it is attacked and survives.
+  applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
   gainCommanderActionPoint(state, details.attacker, "attacking");
   gainCommanderActionPoint(state, details.defender, "being attacked");
 
@@ -36404,7 +36407,7 @@ function moveUnit(
   neutralTownMovement(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
 
-  // Rune Keeper commander (Rune Ritual): +1 Rune whenever it moves (its only trigger).
+  // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
   applyCommanderRuneOnMove(state, unit);
   gainCommanderActionPoint(state, unit, "moving");
 
