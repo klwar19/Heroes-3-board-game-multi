@@ -2095,6 +2095,14 @@
     "src": "/sounds/units/crystal-dragon-move.mp3",
     "repeat": 2
   },
+  "units/cyberbrute-move": {
+    "src": "/sounds/units/crystal-dragon-move.mp3",
+    "note": "Forge Cyberbrutes move: the Crystal Dragon stride played once (the Crystal Dragon entry repeats it)"
+  },
+  "units/cyber-zombie-chainsaw-attack": {
+    "src": "/sounds/units/cyber-zombie-chainsaw-attack.mp3",
+    "note": "Forge Cyber Zombies chainsaw strike: first 2.5 s of freesound_community 'chainsaw cutting' (#14560, supplied by the player) mixed with DOOM dssawhit"
+  },
   "units/cyclops-attack": {
     "src": "/sounds/units/cyclops-attack.mp3"
   },

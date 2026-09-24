@@ -11,6 +11,8 @@ import {
   rankAbilityTrackFor,
   scheduleAbilityCount,
   unitStatStepsFor,
+  effectiveRankScheduleSide,
+  type RankScheduleSide,
   type RankStep,
   type UnitRankStatBonus
 } from "@/data/units/experience";
@@ -119,14 +121,15 @@ export function unitRankStatBonusesFor(
   unitDefId: string,
   tier: UnitTier,
   rank: number,
-  job?: MgqJob
+  job?: MgqJob,
+  scheduleSide: RankScheduleSide = "faction"
 ): UnitRankStatBonus {
   if (rank <= 0) return ZERO_FOLD;
   const steps = unitStatStepsFor(unitDefId, tier);
   let total = ZERO_FOLD;
   let statsIndex = 0;
   for (let r = 1; r <= Math.min(rank, MAX_UNIT_RANK); r++) {
-    const step = unitRankStep(unitDefId, r, job);
+    const step = unitRankStep(unitDefId, r, job, scheduleSide);
     if (!step) continue;
     if (step.kind === "stats") {
       const delta = step.stats ?? steps[statsIndex] ?? ZERO_FOLD;
@@ -139,23 +142,55 @@ export function unitRankStatBonusesFor(
   return total;
 }
 
-/** The schedule step at a given rank (stats | ability | hybrid). */
-export function unitRankStep(unitDefId: string, rank: number, job?: MgqJob): RankStep | null {
+/**
+ * The schedule step at a given rank (stats | ability | hybrid).
+ *
+ * `scheduleSide` picks the unit's Neutral-side track ("neutral") when it owns
+ * one — see `combatUnitRankScheduleSide` / `armyCardRankScheduleSide` for who
+ * follows it. Units without a Neutral-side track resolve identically either way.
+ */
+export function unitRankStep(
+  unitDefId: string,
+  rank: number,
+  job?: MgqJob,
+  scheduleSide: RankScheduleSide = "faction"
+): RankStep | null {
   if (rank < 1 || rank > MAX_UNIT_RANK) return null;
+  const schedule = rankScheduleFor(unitDefId, scheduleSide);
   if (job) {
     const signature = mgqJobSignatureAbilityId(job);
-    if (rank === 1) return rankScheduleFor(unitDefId)[1];
-    if (rank === 2) return rankScheduleFor(unitDefId)[2];
+    if (rank === 1) return schedule[1];
+    if (rank === 2) return schedule[2];
     if (rank === 3 && signature) {
-      const baseStep = rankScheduleFor(unitDefId)[3];
+      const baseStep = schedule[3];
       return {
         kind: "ability",
         choices: [signature, ...(baseStep.kind === "stats" ? ["veteran-steady-aim"] : baseStep.choices)]
       };
     }
-    return rankScheduleFor(unitDefId)[rank as 1 | 2 | 3 | 4];
+    return schedule[rank as 1 | 2 | 3 | 4];
   }
-  return rankScheduleFor(unitDefId)[rank as 1 | 2 | 3 | 4] ?? null;
+  return schedule[rank as 1 | 2 | 3 | 4] ?? null;
+}
+
+/**
+ * Which veteran track a COMBAT unit follows: its Neutral-side track when it is
+ * owned by the Neutral guard player (field guards, Random Town / designer Pack
+ * and Few slots, bank defenders, wave invaders) or fights on its printed
+ * Neutral side (a player's recruited Neutral card). A player's won Creature
+ * Bank card fights with variant "neutral" but trains on its faction track, like
+ * its army card (side "bank").
+ */
+export function combatUnitRankScheduleSide(
+  unit: Partial<Pick<CombatUnitState, "variant" | "controllerId" | "bankUnit">>
+): RankScheduleSide {
+  if (unit.controllerId === NEUTRAL_PLAYER_ID) return "neutral";
+  return unit.variant === "neutral" && !unit.bankUnit ? "neutral" : "faction";
+}
+
+/** Which veteran track a player's ARMY card follows (its printed Neutral side → Neutral track). */
+export function armyCardRankScheduleSide(armyUnit: Pick<ArmyUnitState, "side">): RankScheduleSide {
+  return armyUnit.side === "neutral" ? "neutral" : "faction";
 }
 
 export function printedAbilityIdsOf(unitDefId: string): ReadonlySet<string> {
@@ -247,14 +282,19 @@ function grantWouldBeStrictNoOp(abilityId: string, existing: Iterable<string>): 
  * answered by the unit's printed kit (or by an earlier rank's grant) would be a
  * strict no-op, so the rank falls through to the next choice in the rotation.
  */
-export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob): string[] {
+export function unitRankAbilityIds(
+  unitDefId: string,
+  rank: number,
+  job?: MgqJob,
+  scheduleSide: RankScheduleSide = "faction"
+): string[] {
   if (rank <= 0) return [];
   const printed = printedAbilityIdsOf(unitDefId);
   const granted: string[] = [];
   const already = new Set<string>(printed);
 
   for (let r = 1; r <= Math.min(rank, MAX_UNIT_RANK); r++) {
-    const step = unitRankStep(unitDefId, r, job);
+    const step = unitRankStep(unitDefId, r, job, scheduleSide);
     if (!step) continue;
     if (step.kind !== "ability" && step.kind !== "hybrid") continue;
     for (const abilityId of step.choices) {
@@ -275,12 +315,17 @@ export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob
 }
 
 /** Ability gained exactly at this rank (empty if the rank is a stats rank). */
-export function unitRankAbilityGainsAt(unitDefId: string, rank: number, job?: MgqJob): string[] {
+export function unitRankAbilityGainsAt(
+  unitDefId: string,
+  rank: number,
+  job?: MgqJob,
+  scheduleSide: RankScheduleSide = "faction"
+): string[] {
   if (rank <= 0) return [];
-  const step = unitRankStep(unitDefId, rank, job);
+  const step = unitRankStep(unitDefId, rank, job, scheduleSide);
   if (!step || (step.kind !== "ability" && step.kind !== "hybrid")) return [];
-  const before = new Set(unitRankAbilityIds(unitDefId, rank - 1, job));
-  return unitRankAbilityIds(unitDefId, rank, job).filter((id) => !before.has(id));
+  const before = new Set(unitRankAbilityIds(unitDefId, rank - 1, job, scheduleSide));
+  return unitRankAbilityIds(unitDefId, rank, job, scheduleSide).filter((id) => !before.has(id));
 }
 
 /** Stat delta gained exactly at this rank (zeros if the rank is an ability rank). */
@@ -288,13 +333,14 @@ export function unitRankStatGainsAt(
   unitDefId: string,
   tier: UnitTier,
   rank: number,
-  job?: MgqJob
+  job?: MgqJob,
+  scheduleSide: RankScheduleSide = "faction"
 ): UnitRankStatBonus {
   if (rank <= 0) return ZERO_FOLD;
-  const step = unitRankStep(unitDefId, rank, job);
+  const step = unitRankStep(unitDefId, rank, job, scheduleSide);
   if (!step || (step.kind !== "stats" && step.kind !== "hybrid")) return ZERO_FOLD;
-  const after = unitRankStatBonusesFor(unitDefId, tier, rank, job);
-  const before = unitRankStatBonusesFor(unitDefId, tier, rank - 1, job);
+  const after = unitRankStatBonusesFor(unitDefId, tier, rank, job, scheduleSide);
+  const before = unitRankStatBonusesFor(unitDefId, tier, rank - 1, job, scheduleSide);
   return {
     attack: after.attack - before.attack,
     defense: after.defense - before.defense,
@@ -318,13 +364,14 @@ export function unitRankFold(
   unitDefId: string,
   tier: UnitTier,
   experience: number,
-  job?: MgqJob
+  job?: MgqJob,
+  scheduleSide: RankScheduleSide = "faction"
 ): UnitRankFold {
   const rank = unitRankForExperience(tier, experience);
   if (rank <= 0) return ZERO_RANK_FOLD;
-  const abilityIds = unitRankAbilityIds(unitDefId, rank, job);
+  const abilityIds = unitRankAbilityIds(unitDefId, rank, job, scheduleSide);
   return {
-    ...unitRankStatBonusesFor(unitDefId, tier, rank, job),
+    ...unitRankStatBonusesFor(unitDefId, tier, rank, job, scheduleSide),
     rank,
     abilityIds,
     abilityId: abilityIds[0] ?? null
@@ -333,7 +380,8 @@ export function unitRankFold(
 
 /**
  * Rank fold for an already-built combat unit (mid-combat side recomputes in
- * applyUnitCurrentSide). Reads the XP mirrored onto the unit at build time.
+ * applyUnitCurrentSide). Reads the XP mirrored onto the unit at build time and
+ * follows the unit's Neutral-side track when `combatUnitRankScheduleSide` says so.
  */
 export function combatUnitRankFold(unit: CombatUnitState): UnitRankFold {
   const xp = unit.unitExperience ?? 0;
@@ -344,7 +392,7 @@ export function combatUnitRankFold(unit: CombatUnitState): UnitRankFold {
   if (!def) {
     return ZERO_RANK_FOLD;
   }
-  return unitRankFold(unit.unitDefId, def.tier, xp, unit.job);
+  return unitRankFold(unit.unitDefId, def.tier, xp, unit.job, combatUnitRankScheduleSide(unit));
 }
 
 /**
@@ -514,7 +562,13 @@ const RANK_INFO_CACHE = new Map<string, ArmyUnitRankInfo>();
 const RANK_INFO_CACHE_CAP = 4096;
 
 export function armyUnitRankInfo(
-  armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience" | "job" | "companion">
+  armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience" | "job" | "companion">,
+  /**
+   * The track to report. Defaults to the army card's own (its printed Neutral
+   * side → Neutral track); combat views pass `combatUnitRankScheduleSide(unit)`
+   * so a Neutral guard's ladder matches what the engine folded.
+   */
+  scheduleSide: RankScheduleSide = armyCardRankScheduleSide(armyUnit)
 ): ArmyUnitRankInfo | null {
   // A won Creature Bank reward card (side "bank") trains on the SAME veteran
   // track as every other card (USER RULE 2026-08-15), keyed off its underlying
@@ -528,10 +582,11 @@ export function armyUnitRankInfo(
   // fight/objective evaluation — thousands of times per decision — and the
   // uncached build (four ranks of ability-chain resolution) dominated AI CPU.
   // The summary is read-only data for the UI and the policy alike.
-  const cacheKey = `${armyUnit.unitDefId}|${experience}|${job ?? ""}`;
+  const side = effectiveRankScheduleSide(armyUnit.unitDefId, scheduleSide);
+  const cacheKey = `${armyUnit.unitDefId}|${experience}|${job ?? ""}|${side}`;
   const cached = RANK_INFO_CACHE.get(cacheKey);
   if (cached) return cached;
-  const info = buildArmyUnitRankInfo(armyUnit.unitDefId, def.tier, experience, job);
+  const info = buildArmyUnitRankInfo(armyUnit.unitDefId, def.tier, experience, job, side);
   if (RANK_INFO_CACHE.size >= RANK_INFO_CACHE_CAP) RANK_INFO_CACHE.clear();
   RANK_INFO_CACHE.set(cacheKey, info);
   return info;
@@ -541,33 +596,34 @@ function buildArmyUnitRankInfo(
   unitDefId: string,
   tier: UnitTier,
   experience: number,
-  job: MgqJob | undefined
+  job: MgqJob | undefined,
+  side: RankScheduleSide
 ): ArmyUnitRankInfo {
   const armyUnit = { unitDefId };
   const def = { tier };
   const rank = unitRankForExperience(def.tier, experience);
   const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
-  const schedule = rankScheduleFor(armyUnit.unitDefId);
-  const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank, job);
+  const schedule = rankScheduleFor(armyUnit.unitDefId, side);
+  const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank, job, side);
   const abilitiesByRank: Record<number, string[]> = {};
   const stepKindByRank: Record<number, "stats" | "ability" | "hybrid"> = {};
   const statGainsByRank: Record<number, UnitRankStatBonus> = {};
   for (let r = 1; r <= MAX_UNIT_RANK; r++) {
-    const step = unitRankStep(armyUnit.unitDefId, r, job) ?? schedule[r as 1 | 2 | 3 | 4];
+    const step = unitRankStep(armyUnit.unitDefId, r, job, side) ?? schedule[r as 1 | 2 | 3 | 4];
     stepKindByRank[r] = step.kind;
-    abilitiesByRank[r] = unitRankAbilityGainsAt(armyUnit.unitDefId, r, job);
-    statGainsByRank[r] = unitRankStatGainsAt(armyUnit.unitDefId, def.tier, r, job);
+    abilitiesByRank[r] = unitRankAbilityGainsAt(armyUnit.unitDefId, r, job, side);
+    statGainsByRank[r] = unitRankStatGainsAt(armyUnit.unitDefId, def.tier, r, job, side);
   }
   return {
     experience,
     rank,
     rankName: UNIT_RANK_NAMES[rank] ?? "",
-    bonus: unitRankStatBonusesFor(armyUnit.unitDefId, def.tier, rank, job),
+    bonus: unitRankStatBonusesFor(armyUnit.unitDefId, def.tier, rank, job, side),
     nextThreshold: rank >= MAX_UNIT_RANK ? null : thresholds[rank],
-    trackId: job ? `mgq-job-${job}` : rankAbilityTrackFor(armyUnit.unitDefId),
+    trackId: job ? `mgq-job-${job}` : rankAbilityTrackFor(armyUnit.unitDefId, side),
     abilityBudget: job ? 1 : scheduleAbilityCount(schedule),
     eliteAbilityId:
-      activeIds[0] ?? unitRankAbilityIds(armyUnit.unitDefId, MAX_UNIT_RANK, job)[0] ?? null,
+      activeIds[0] ?? unitRankAbilityIds(armyUnit.unitDefId, MAX_UNIT_RANK, job, side)[0] ?? null,
     eliteActive: activeIds.length > 0,
     legendAbilityId: null,
     legendActive: false,

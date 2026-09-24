@@ -773,16 +773,16 @@ export function effectiveTownBuildingCost(
   state: Pick<GameState, "ruleset" | "adventure">,
   building: Pick<TownBuildingDefinition, "id" | "cost">,
 ): ResourceCost {
-  if (
+  const base: ResourceCost = (
     !houseRuleEnabled(state, "side-buildings-materials-only") ||
     !isSideTownBuilding(building)
-  ) {
-    return building.cost;
-  }
-  return {
+  ) ? building.cost : {
     buildingMaterials:
       (building.cost.buildingMaterials ?? 0) + (building.cost.valuables ?? 0),
   };
+  return state.adventure?.astrologers?.activeCardId === "astrologers.construction"
+    ? { ...base, gold: Math.max(0, (base.gold ?? 0) - 3) }
+    : base;
 }
 
 /**

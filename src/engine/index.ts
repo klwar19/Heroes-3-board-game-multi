@@ -407,6 +407,8 @@ export {
 } from "./adventure";
 export {
   armyUnitRankInfo,
+  armyCardRankScheduleSide,
+  combatUnitRankScheduleSide,
   unitExperienceActive,
   unitRankAbilityGainsAt,
   unitRankAbilityIds,

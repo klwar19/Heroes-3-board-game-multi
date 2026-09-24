@@ -346,7 +346,7 @@ export function openElementalChoice(
     const request = combat.elementalChoices.shift()!;
     const unit = combat.units[request.unitId];
     const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
-    if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst")) continue;
+    if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst" && request.abilityId !== "dace-minotaurs-pack-break")) continue;
     if (request.kind === "nest-return") {
       const nest = combat.units[request.targetId!];
       if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) continue;
@@ -526,7 +526,9 @@ export function openElementalChoice(
             ]
           : enemies(state, unit);
       // Splash keeps the struck space as its anchor even when the hit was lethal.
-      if (anchor && (request.anchorId !== undefined || alive(anchor)))
+      // Dace's Minotaurs IV still resolves when the attacker fell in the exchange
+      // (the unit-alive gate above exempts it for the same reason).
+      if (anchor && (request.anchorId !== undefined || alive(anchor) || request.abilityId === "dace-minotaurs-pack-break"))
         for (const target of candidates) {
           if (request.kind === "link" && target.id === anchor.id) continue;
           if (request.excludeTargetId && target.id === request.excludeTargetId) continue;
@@ -596,7 +598,7 @@ export function openElementalChoice(
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId: chooser,
-      prompt: `${unit.cardName}: ${unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
+      prompt: `${unit.cardName}: ${request.abilityId === "dace-minotaurs-pack-break" ? "Minotaurs IV" : unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
       options: labels.map((label) => ({ label })),
       context: "elemental-veterancy",
       elementalChoice: { request, picks },
@@ -856,7 +858,7 @@ function executeElementalPick(
       unit,
       pick.targetId!,
       request.abilityId,
-      unitAbilities[request.abilityId]?.name ?? "Elemental ability",
+      request.abilityId === "dace-minotaurs-pack-break" ? "Minotaurs IV" : unitAbilities[request.abilityId]?.name ?? "Elemental ability",
       request.amount!,
     );
   else if (request.kind === "solidify") {

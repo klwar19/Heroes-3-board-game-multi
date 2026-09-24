@@ -11,7 +11,7 @@
  * (never a second ladder of its own), so the rank thresholds, the per-rank stat
  * deltas and the per-rank ability names are the ones the engine folded.
  */
-import { armyUnitRankInfo, type CombatUnitState } from "@/engine";
+import { armyUnitRankInfo, combatUnitRankScheduleSide, type CombatUnitState } from "@/engine";
 import type { UnitRankStatBonus } from "@/data/units/experience-rank-abilities";
 import type { UnitTier } from "@/data/factions/types";
 import {
@@ -71,7 +71,8 @@ function statGainText(gain: UnitRankStatBonus): string {
  * those two fields when a rule folded a rank).
  */
 export function combatUnitVeterancy(
-  unit: Pick<CombatUnitState, "unitDefId" | "unitExperience" | "unitRank" | "job" | "bankUnit">
+  unit: Pick<CombatUnitState, "unitDefId" | "unitExperience" | "unitRank" | "job" | "bankUnit"> &
+    Partial<Pick<CombatUnitState, "variant" | "controllerId">>
 ): UnitVeterancyView | null {
   if (!unit.unitDefId) {
     return null;
@@ -84,14 +85,16 @@ export function combatUnitVeterancy(
   // A combat unit carries no `side` / `companion`; the two are read only by the
   // MGQ job gate, which keys off the definition's faction OR a companion flag.
   // A mirrored `job` is the honest proxy for that flag, and `bankUnit` is the
-  // one side value the gate itself looks at.
+  // one side value the gate itself looks at. The veteran TRACK is passed
+  // explicitly from the unit's owner/variant, the same rule combatUnitRankFold
+  // folds with, so a Neutral guard shows its Neutral-side ladder.
   const info = armyUnitRankInfo({
     unitDefId: unit.unitDefId,
     side: unit.bankUnit ? "bank" : "few",
     experience,
     job: unit.job,
     companion: unit.job !== undefined
-  });
+  }, combatUnitRankScheduleSide(unit));
   if (!info) {
     return null;
   }

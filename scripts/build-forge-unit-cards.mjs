@@ -41,12 +41,12 @@ const units = [
     pack: { stats: [3, 0, 3, 4], text: ["{unit_attack}", "You can reroll every \"0\" on this unit's Attack die."] },
     neutral: { stats: [3, 0, 3, 4], cost: [5], text: ["{unit_attack}", "You can reroll every \"0\" on this unit's Attack die."] } },
   { slug: "cyber_zombies", name: "Cyber Zombies", tier: "bronze", type: "ground", focus: "north",
-    few: { stats: [3, 0, 3, 3], cost: [4], upgrade: [6], text: ["{unit_passive}", "Double the Attack die's outcome."] },
+    few: { stats: [3, 1, 3, 3], cost: [4], upgrade: [6], text: ["{unit_passive}", "Double the Attack die's outcome."] },
     pack: { stats: [3, 1, 4, 4], text: ["{unit_passive}", "Double the Attack die's outcome.", "\n", "{unit_attack}", "The target has -1", "{defense}", "during this attack."] },
     neutral: { stats: [3, 0, 4, 4], cost: [6], text: ["{unit_passive}", "Double the Attack die's outcome."] } },
   { slug: "watchers", name: "Watchers", tier: "bronze", type: "ranged", focus: "north",
-    few: { stats: [3, 0, 3, 4], cost: [5], upgrade: [8], text: ["{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round."] },
-    pack: { stats: [3, 1, 4, 5], text: ["{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round.", "\n", "{unit_passive}", "Reduce any", "{damage}", "from", "{spell}", "by 1."] },
+    few: { stats: [3, 0, 4, 4], cost: [5], upgrade: [7], text: ["{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round."] },
+    pack: { stats: [3, 1, 5, 5], text: ["{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round.", "\n", "{unit_passive}", "Reduce any", "{damage}", "from", "{spell}", "by 1."] },
     neutral: { stats: [3, 0, 4, 5], cost: [8], text: ["{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round."] } },
   { slug: "bruisers", name: "Bruisers", tier: "silver", type: "ranged", focus: "north",
     few: { stats: [3, 1, 4, 4], cost: [7], upgrade: [12], text: ["{unit_attack}", "When target of attack is not adjacent to Bruisers, deal 1", "{damage}", "to a unit adjacent to the target of attack."] },
@@ -57,14 +57,55 @@ const units = [
     pack: { stats: [5, 1, 6, 5], text: ["{unit_passive}", "At the start of each Combat round, roll the Attack die: on 0 or +1, this unit gains +3", "{initiative}", "this round."] },
     neutral: { stats: [4, 1, 6, 5], cost: [17], text: ["{unit_passive}", "At the start of each Combat round, roll the Attack die: on +1, this unit gains +3", "{initiative}", "this round."] } },
   { slug: "tanks", name: "Tanks", tier: "golden", type: "ranged", focus: "centre",
-    few: { stats: [6, 2, 7, 4], cost: [14], upgrade: [22, 1], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 2."] },
-    pack: { stats: [7, 2, 8, 5], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 3."] },
+    few: { stats: [6, 2, 7, 4], cost: [14], upgrade: [23, 1], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 2."] },
+    pack: { stats: [6, 2, 8, 5], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 3."] },
     neutral: { stats: [6, 2, 8, 5], cost: [20, 1], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 2."] } },
   { slug: "cyberbrutes", name: "Cyberbrutes", tier: "golden", type: "ground", focus: "centre",
     few: { stats: [8, 2, 7, 6], cost: [22, 1], upgrade: [35, 2], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0)."] },
     pack: { stats: [8, 2, 9, 7], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0).", "\n", "{unit_passive}", "Each time this unit kills a unit, it heals 1", "{health}", "."] },
     neutral: { tier: "azure", art: "cyberbrutes-azure", out: "units-neutral-azure-cyberbrutes", stats: [8, 3, 9, 7], cost: [38, 2], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0).", "\n", "{unit_passive}", "Each time this unit kills a unit, it heals 1", "{health}", "."] } }
 ];
+
+// ---- Bulwark Few + Pack + Neutral faces (same printed format, 2026-09-24) --
+// The official-design art masters (<slug>-official.png: Codex image_gen from
+// the official Bulwark key art) live with the other Bulwark masters. All three
+// faces (Few with its recruit/upgrade cost cells, Pack, Neutral) share that one
+// illustration, like the physical cards. `artTop` places the art-window crop on
+// the tall portrait master (0 = top .. 1 = bottom of the spare height).
+// Values must match src/data/factions/units.ts (bulwark.* few / pack / neutral).
+const BW_MASTERS = "generated-session-art/bulwark/cards/raw";
+const bw = (u) => ({ faction: "bulwark", masters: BW_MASTERS, art: `${u.slug}-official`, ...u,
+  neutral: { out: `units-neutral-${u.tier}-${u.slug}`, ...u.neutral } });
+units.push(
+  bw({ slug: "kobolds", name: "Kobolds", tier: "bronze", type: "ground", artTop: 0.4,
+    few: { stats: [2, 0, 3, 4], cost: [0], upgrade: [2], text: [] },
+    pack: { stats: [2, 1, 4, 5], text: ["{map_effect}", "At the beginning of each Resource round, gain 1 gold."] },
+    neutral: { stats: [2, 0, 4, 4], cost: [3], text: ["{map_effect}", "At the beginning of each Resource round, gain 1 gold."] } }),
+  bw({ slug: "mountain_rams", name: "Mountain Rams", tier: "bronze", type: "ground", artTop: 0.25,
+    few: { stats: [2, 1, 4, 8], cost: [2], upgrade: [4], text: [] },
+    pack: { stats: [2, 1, 5, 10], text: ["{unit_passive}", "Reduce any", "{damage}", "from", "{spell}", "by 1."] },
+    neutral: { stats: [2, 0, 5, 9], cost: [5], text: ["{unit_passive}", "Reduce any", "{damage}", "from", "{spell}", "by 1."] } }),
+  bw({ slug: "snow_elves", name: "Snow Elves", tier: "bronze", type: "ranged", artTop: 0.3,
+    few: { stats: [3, 0, 4, 4], cost: [3], upgrade: [6], text: ["{unit_passive}", "No penalty for attacking an adjacent unit."] },
+    pack: { stats: [3, 1, 4, 5], text: ["{unit_passive}", "No penalty for attacking an adjacent unit.", "\n", "{unit_attack}", "Its attacks provoke no Retaliation Attack."] },
+    neutral: { stats: [3, 0, 4, 4], cost: [7], text: ["{unit_passive}", "No penalty for attacking an adjacent unit.", "\n", "{unit_attack}", "Its attacks provoke no Retaliation Attack."] } }),
+  bw({ slug: "yetis", name: "Yetis", tier: "silver", type: "ground", artTop: 0.05,
+    few: { stats: [3, 2, 4, 6], cost: [6], upgrade: [10], text: [] },
+    pack: { stats: [3, 2, 5, 8], text: ["{unit_passive}", "At the start of its activation, this unit recovers from all negative effects."] },
+    neutral: { stats: [3, 2, 4, 6], cost: [11], text: ["{unit_passive}", "Enemy", "{ongoing}", "effects on this unit last for only one round."] } }),
+  bw({ slug: "shamans", name: "Shamans", tier: "silver", type: "ranged", artTop: 0.35,
+    few: { stats: [3, 1, 5, 5], cost: [7], upgrade: [11], text: ["{unit_passive}", "+1", "{defense}", "against ranged attackers."] },
+    pack: { stats: [3, 1, 6, 6], text: ["{unit_passive}", "+1", "{defense}", "against ranged attackers.", "\n", "{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round."] },
+    neutral: { stats: [3, 0, 5, 5], cost: [12], text: ["{unit_passive}", "+1", "{defense}", "against ranged attackers.", "\n", "{unit_attack}", "After the attack, the target has -2", "{initiative}", "next round."] } }),
+  bw({ slug: "mammoths", name: "Mammoths", tier: "golden", type: "ground", artTop: 0.2,
+    few: { stats: [5, 2, 7, 5], cost: [12], upgrade: [20, 1], text: [] },
+    pack: { stats: [5, 2, 8, 6], text: ["{unit_passive}", "+1", "{defense}", "while this unit is defending."] },
+    neutral: { stats: [4, 2, 6, 5], cost: [18], text: ["{unit_passive}", "+1", "{defense}", "while this unit is defending."] } }),
+  bw({ slug: "jotunns", name: "Jotunns", tier: "golden", type: "ground", artTop: 0.25,
+    few: { stats: [6, 2, 9, 8], cost: [22, 1], upgrade: [30, 2], text: ["{unit_passive}", "Enemy", "{unit_flying}", "units have -1", "{initiative}", "."] },
+    pack: { stats: [7, 2, 10, 11], text: ["At the start of its activation, you may teleport one of your other units to an empty space, then act as normal.", "\n", "{unit_passive}", "Enemy", "{unit_flying}", "units have -2", "{initiative}", "."] },
+    neutral: { stats: [5, 2, 6, 8], cost: [21], text: ["{unit_passive}", "Enemy", "{unit_flying}", "units have -2", "{initiative}", "."] } })
+);
 
 // ---- template geometry (1x, measured on the real scans) --------------------
 const FEW = {
@@ -218,9 +259,22 @@ async function upscale(file) {
   return sharp(readFileSync(file)).resize(743, 1040, { fit: "fill" }).resize(W, H, { kernel: "lanczos3" }).png().toBuffer();
 }
 const typeGlyphName = { ground: "unit_ground", ranged: "unit_ranged", flying: "unit_flying" };
-async function artOp(u, geo, artName = u.slug) {
-  const file = `${MASTERS}/${artName}.png`;
-  const input = await sharp(readFileSync(file)).resize(k(geo.art.width), k(geo.art.height), { fit: "cover", position: u.focus }).png().toBuffer();
+async function artOp(u, geo, artName = u.art ?? u.slug) {
+  const file = `${u.masters ?? MASTERS}/${artName}.png`;
+  const width = k(geo.art.width), height = k(geo.art.height);
+  let input;
+  if (u.artTop !== undefined) {
+    // Aspect crop placed at artTop of the spare height (keeps a raised weapon
+    // or the feet of a tall portrait master in frame).
+    const meta = await sharp(readFileSync(file)).metadata();
+    let cw = meta.width, ch = Math.round(meta.width * height / width);
+    if (ch > meta.height) { ch = meta.height; cw = Math.round(meta.height * width / height); }
+    input = await sharp(readFileSync(file))
+      .extract({ left: Math.round((meta.width - cw) / 2), top: Math.round((meta.height - ch) * u.artTop), width: cw, height: ch })
+      .resize(width, height, { fit: "fill" }).png().toBuffer();
+  } else {
+    input = await sharp(readFileSync(file)).resize(width, height, { fit: "cover", position: u.focus }).png().toBuffer();
+  }
   return { input, left: k(geo.art.left), top: k(geo.art.top) };
 }
 async function typeGlyphOp(u, geo) {
@@ -339,7 +393,7 @@ async function buildNeutral(u, tpl, parts) {
 }
 
 // ---- main -------------------------------------------------------------------
-for (const u of units) if ((!filter || u.slug.includes(filter)) && !existsSync(`${MASTERS}/${u.slug}.png`)) throw new Error(`missing art master ${MASTERS}/${u.slug}.png`);
+for (const u of units) if ((!filter || u.slug.includes(filter)) && !existsSync(`${u.masters ?? MASTERS}/${u.art ?? u.slug}.png`)) throw new Error(`missing art master ${u.masters ?? MASTERS}/${u.art ?? u.slug}.png`);
 mkdirSync("public/assets", { recursive: true });
 const crystal = await crystalIcon();
 const frames = {};
@@ -369,8 +423,8 @@ const nParts = { crystal, nHand: await iconCrop(neutralTpl, nIcons[0].left, nIco
 for (const u of units) {
   if (filter && !u.slug.includes(filter)) continue;
   const f = frames[u.tier];
-  for (const side of ["few", "pack"]) {
-    const out = `public/assets/units-forge-${u.tier}-${u.slug}-${side}.webp`;
+  for (const side of u.sides ?? ["few", "pack"]) {
+    const out = `public/assets/units-${u.faction ?? "forge"}-${u.tier}-${u.slug}-${side}.webp`;
     writeFileSync(out, await buildFewPack(u, side, f.img, { ...parts, ...f }));
     console.log("wrote", out);
   }

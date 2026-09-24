@@ -184,6 +184,18 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Isra's Necromancy fetch lists Ability/Specialty cards from the searching
+  // player's hidden deck: private to that player, like any own-deck search.
+  if (choice.type === "OPTION_CHOICE" && choice.context === "isra-fetch-card" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      israFetchCard: choice.israFetchCard
+        ? { candidates: choice.israFetchCard.candidates.map(({ source }) => ({ cardId: "hidden", source })) }
+        : undefined
+    };
+  }
+
   // Visions scry: the Neutral Unit cards lifted off the shared deck are revealed
   // only to the scrying player; opponents just see that a scry is happening.
   if (choice.type === "OPTION_CHOICE" && choice.context === "visions-scry" && choice.playerId !== viewerPlayerId) {
@@ -456,6 +468,11 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         ...player,
         hand: playerId === viewerPlayerId ? [...player.hand] : [],
         handCount: player.hand.length,
+        // Pending Pre-Order cards are outside the hand/deck until delivery;
+        // keep their identities private under the same ownership rule.
+        preOrderWarMachines: playerId === viewerPlayerId
+          ? [...(player.preOrderWarMachines ?? [])]
+          : hiddenCards((player.preOrderWarMachines ?? []).length),
         // Nobody, including the owner, may read the draw pile order.
         deck: [],
         deckCount: player.deck.length,

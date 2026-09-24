@@ -1,7 +1,7 @@
-import { townVeterancy } from "./town-veterancy";
+import { townNagaMend, townVeterancy } from "./town-veterancy";
 import { neutralTownVeterancy } from "./neutral-town-veterancy";
 import { isAdjacent } from "./battlefield";
-import { expireEffectsForCombatEnd, makeActiveEffect } from "./active-effects";
+import { effectAppliesToUnit, expireEffectsForCombatEnd, makeActiveEffect } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { combatFightingHasBegun } from "./combat-timing";
 import { elementalVeterancy } from "./elemental-veterancy";
@@ -112,7 +112,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   const spellMend = factionVeterancy(unit, "medusa-mend");
   finalizeUnitRemoval(state, unit, hit?.kind === "attack");
   if (unit.townVeterancy) delete unit.townVeterancy.damageSourceId;
-  if (hit?.kind === "spell" && hit.amount > 0 && townVeterancy(unit, "naga-mend")) veteranHeal(state, unit, 1, "town-naga-mend");
+  if (hit?.kind === "spell" && hit.amount > 0) townNagaMend(state, unit);
   if (hit?.kind === "spell" && hit.amount > 0 && spellMend && unit.damage < unit.maxHealth) veteranHeal(state, unit, 2, "veteran-medusa-mend");
   if (hit && revenge && unit.damage >= unit.maxHealth && hit.source.type === "unit") {
     const killer = state.combat?.units[hit.source.unitId];
@@ -155,6 +155,25 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
       playerId: unit.controllerId
     });
     removeLinkedClones(state, unit.id);
+    return;
+  }
+
+  // Isra VI intercepts the lethal assignment before a Pack flip, Stack loss,
+  // transform removal, or casualty bookkeeping can change the army card.
+  if (unit.damage >= unit.maxHealth && !unit.israDeathSaveUsedThisCombat &&
+      state.activeEffects.some((effect) =>
+        effect.controllerId === unit.controllerId &&
+        effect.target?.type === "unit" && effect.target.unitId === unit.id &&
+        effectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "ISRA_DEATH_SAVE"))) {
+    unit.israDeathSaveUsedThisCombat = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: "specialty.isra.6",
+      message: `${unit.cardName} survives at 1 Health through Isra's Necromancy.`,
+    });
     return;
   }
 

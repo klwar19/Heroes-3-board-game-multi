@@ -7,6 +7,8 @@ import { isGrailUtopiaModeField } from "./map-design-features";
 import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./computer/unit-ability-value";
 import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation, devilLuckSource, spendDevilLuck } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
+import { drawAfterSpellCast } from "./kastore-sorcery";
+import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
 import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
 import { veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranTrigger } from "./faction-veterancy";
 import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, elementalActivation, elementalMovement, elementalAfterAttack, elementalFinishActivation, openElementalChoice, resolveElementalChoice, queueElementalChoice, noteElementalSpellCast } from "./elemental-veterancy";
@@ -110,6 +112,7 @@ import {
   openMarket,
   openWanderingMerchant,
   buyWanderingMerchant,
+  astrologersCardGames,
   openSharedDeckSearch,
   maybeOpenPostSearchOffers,
   openDiscardTopPick,
@@ -127,6 +130,7 @@ import {
   finishNeutralPlacement,
   placeCommanderUnit,
   finishCommanderPlacement,
+  resumeCombatStartAfterCommanderPlacement,
   autoNeutralPlacement,
   placeTile,
   placeObservatoryTile,
@@ -455,6 +459,7 @@ import {
   unitAttackRollDisadvantaged,
   unitAttackRollFixedMinusOne,
   unitImmuneToSpellSchoolsByEffect,
+  advanceCasterEffectsAtActivationStart,
   expireEffectsForActivationEnd,
   expireEffectsForActivationStart,
   expireEffectsForCombatRoundEnd,
@@ -553,12 +558,14 @@ import {
   applyCommanderRuneOnMove,
   applyCommanderRuneRitual,
   commandersModuleEnabled,
+  maybeOpenSoulLinkChoice,
   commanderCastCandidates,
   commanderCastOf,
   commanderCastPower,
   commanderCastRuneCost,
   commanderCastUsedThisRound,
   commanderDefenseReactionUnit,
+  commanderLethalCancelReactionUnit,
   commanderPrecisionReactionUnit,
   commanderPrecisionReactionAmount,
   commanderPrecisionIgnoresRangedPenalty,
@@ -571,6 +578,7 @@ import {
   latchCommanderFrontLineAttack,
   sonyaBondDefenseBonus,
   commanderRunePool,
+  commanderEnemyDamageAmount,
 } from "./commanders";
 import {
   digFromOwnDeckTop,
@@ -637,6 +645,7 @@ import {
   payablePowerCardIds,
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
+  ulandInstantPlays,
   prophecyPreRollAvailable,
   reflectableAttackInstantForPlayer,
   mapSpellPowerBankAvailable,
@@ -2455,13 +2464,16 @@ function playerHasLethalSave(
   defenderId: UnitId,
   cards: CardLibrary,
   stackLayerOnly = false,
+  // The attacker matters to Factory Emergency Repair (enemy attacks only);
+  // card/unit saves ignore it, so the old "" default keeps their behaviour.
+  attackerId: UnitId = "",
 ): boolean {
   const reactions = getLegalReactionsForTrigger(
     state,
     {
       id: "lethal-check",
       type: "UNIT_LETHAL_HIT",
-      attackerId: "",
+      attackerId,
       defenderId,
       ...(stackLayerOnly ? { stackLayerOnly: true } : {}),
     },
@@ -2999,20 +3011,7 @@ function noteSpellCast(
   // bonus lands on whichever spell is genuinely cast first, exactly once.
   player.combatStats.anySpellCastThisRound = true;
 
-  let draws = 0;
-  for (const effect of state.activeEffects) {
-    if (effect.controllerId !== player.id) {
-      continue;
-    }
-    for (const modifier of effect.modifiers) {
-      if (modifier.type === "DRAW_ON_SPELL_CAST") {
-        draws += modifier.amount;
-      }
-    }
-  }
-  if (draws > 0) {
-    drawCardsForPlayer(state, player.id, draws, { inFlightCardIds });
-  }
+  drawAfterSpellCast(state, player.id, inFlightCardIds);
 }
 
 function castInFlightCardIds(
@@ -4296,7 +4295,11 @@ function tryDeferSpecialtyDamageForHeals(
   // Anyone about to take damage who still has a pre-hit heal to play.
   let someoneCanHeal = false;
   for (const playerId of threatenedPlayers) {
-    if (preHitHealReactions(state, playerId, cards).length > 0) {
+    // Uland's Cure I is offered through ulandInstantPlays (not the pre-hit heal
+    // package, to avoid a duplicate offer) but is a pre-hit heal all the same.
+    if (preHitHealReactions(state, playerId, cards).length > 0 ||
+        ulandInstantPlays(state, playerId).some((offer) =>
+          offer.action.type === "PLAY_REACTION" && offer.action.cardId === "specialty.uland.1")) {
       someoneCanHeal = true;
       break;
     }
@@ -4892,7 +4895,7 @@ function applyAttackDamageFromCandidate(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
-  lethalCancel?: { grade: UnitGrade },
+  lethalCancel?: { grade: UnitGrade; commanderUnitId?: UnitId },
   ignoreDefense = false,
   noDie = false,
   dieCancelled = false,
@@ -4941,6 +4944,46 @@ function applyAttackDamageFromCandidate(
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus, defenseFractionCut } =
     preview;
+  // Factory Artificer "Emergency Repair": the owner chose, in the lethal-hit
+  // window, to cancel this whole attack. It is cancelled OUTRIGHT (no lethal
+  // re-check) and BEFORE any one-shot defender shields/armour are consumed, so
+  // a cancelled blow spends nothing on the protected unit. The caller treats
+  // `cancelled` exactly like Resurrection: no damage, no on-attack effects, no
+  // Retaliation Attack.
+  if (lethalCancel?.commanderUnitId) {
+    appendEvent(state, {
+      type: "ATTACK_ROLLED",
+      attackerId: attacker.id,
+      defenderId: defender.id,
+      rolls: candidate.rolls,
+      roll: candidate.roll,
+      ...(dieMultiplier !== 1 ? { dieMultiplier } : {}),
+      ...(noDie || dieCancelled ? { noDie: true } : {}),
+      ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
+      ...(defendRoll !== undefined ? { defendRoll } : {}),
+      ...(mightRolls.length > 0 ? { mightRolls } : {}),
+      rollMode,
+      attackBonus: attackBonus + dieAttackBonus,
+      defenseBonus: defenseBonus + defendBonus + dieDefenseBonus - defenseFractionCut,
+      attackValue,
+      defenseValue,
+      damage: 0,
+      isRetaliation,
+    });
+    applyCommanderEmergencyRepairCancel(
+      state,
+      lethalCancel.commanderUnitId,
+      attacker,
+      defender,
+    );
+    return {
+      damage: 0,
+      roll: candidate.roll,
+      cancelled: true,
+      defeatedSideOrLayer: false,
+      damageCapOverflow: 0,
+    };
+  }
   // Spend the previous victory before damage can earn a fresh one on a kill.
   if (attacker.townVeterancy) delete (attacker.townVeterancy as Record<string, unknown>).victoryAttackReady;
   if (preview.neutralTownDamageReduced) neutralTownCommitAttackReduction(state, defender);
@@ -5158,10 +5201,16 @@ function applyAttackDamageFromCandidate(
   const delayAmount = delayedImpactAmount(state, defender, state.combat.round);
   const deferred = damage > 0 && attacker.controllerId !== defender.controllerId ? Math.min(delayAmount, damage) : 0;
   damage -= deferred;
+  const soulLinkCommander = Object.values(state.combat.units).find(unit =>
+    unit.commanderSlug === "soul_eater" && unit.controllerId === defender.controllerId &&
+    unit.soulLinkTargetId === defender.id && isUnitAlive(unit) &&
+    unit.soulLinkUsedRound !== state.combat!.round
+  );
+  const anticipatedDamage = veteranInterceptPreview(state, attacker, defender, damage);
   if (
     lethalCancel &&
     damage > 0 &&
-    defender.damage + veteranInterceptPreview(state, attacker, defender, damage) >= defender.maxHealth &&
+    defender.damage + (soulLinkCommander ? Math.floor(anticipatedDamage / 2) : anticipatedDamage) >= defender.maxHealth &&
     bankAwareTierGateRank(
       defender,
       "CANCEL_LETHAL_ATTACK",
@@ -5227,7 +5276,7 @@ function applyAttackDamageFromCandidate(
   // Damage is not capped at the pack's health: the rulebook carries any
   // excess over onto the Few side when the pack flips.
   damage = veteranIntercept(state, attacker, defender, damage);
-  const defeatedSideOrLayer = damage > 0 && defender.damage + damage >= defender.maxHealth;
+  let defeatedSideOrLayer = damage > 0 && defender.damage + damage >= defender.maxHealth;
   if (factionVeterancy(defender, "mark") && !attacker.factionVeterancy?.marked) {
     (attacker.factionVeterancy ??= {}).marked = true;
     veteranTrigger(state, defender, "veteran-dragon-mark", attacker, `${attacker.cardName} is marked for this combat.`);
@@ -5297,7 +5346,7 @@ function applyAttackDamageFromCandidate(
   }
 
   if (damage > 0) {
-    appendEvent(state, {
+    const assigned = appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
       source: {
         type: "unit",
@@ -5308,6 +5357,10 @@ function applyAttackDamageFromCandidate(
       amount: damage,
       damageKind: "attack",
     });
+    if (soulLinkCommander?.soulLinkUsedRound === state.combat.round) {
+      damage = assigned.amount;
+      defeatedSideOrLayer = damage > 0 && defender.damage >= defender.maxHealth;
+    }
   }
 
   // Being attacked clears Paralysis even when Defense and the die reduce the
@@ -5412,6 +5465,15 @@ function applyAttackDamageFromCandidate(
   }
   if (defenderWasAlive && !isUnitAlive(defender)) {
     applyWogOnKillEffects(state, attacker, defender);
+    if (isUnitAlive(attacker) && attacker.damage > 0) {
+      for (const active of state.activeEffects) {
+        if (active.controllerId !== attacker.controllerId) continue;
+        const heal = active.modifiers.find(modifier => modifier.type === "VERDISH_KILL_HEAL");
+        if (heal?.type === "VERDISH_KILL_HEAL") {
+          healUnitDamage(state, active.source, { type: "unit", unitId: attacker.id }, heal.amount);
+        }
+      }
+    }
   }
   // Factory Sandworms (Pack): "Place a faction cube on this unit whenever it
   // defeats an enemy unit." A real removal (not a Pack→Few flip) banks a cube;
@@ -5754,7 +5816,7 @@ function getAttackStackDetails(
   // Shaman's Puppet (option A) forces the attacker to roll two dice and keep the
   // lower. That is not a ranged penalty, so the Precision/Golden Bow waiver above
   // must never lift it — re-assert disadvantage here for a puppeted attacker.
-  if (attacker.commanderArtifactAttackDisadvantage || unitAttackRollDisadvantaged(state, attacker) || (attacker.type === "ranged" && denseFogThisRound(combat))) {
+  if (attacker.commanderArtifactAttackDisadvantage || unitAttackRollDisadvantaged(state, attacker) || (attacker.type === "ranged" && denseFogThisRound(combat)) || state.activeEffects.some(effect => effectAppliesToUnit(effect, defender) && effect.modifiers.some(modifier => modifier.type === "INCOMING_ATTACK_DISADVANTAGE"))) {
     rollMode = "disadvantage";
   }
 
@@ -7663,7 +7725,8 @@ function resolveBalanceSpellChoice(
     const requested = picked + 1;
     const maximum =
       healTarget && sacrifice
-        ? Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage)
+        ? Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage,
+            payload.cardId === "specialty.verdish.4" ? 3 : Number.POSITIVE_INFINITY)
         : 0;
     if (
       !healTarget ||
@@ -8108,7 +8171,8 @@ function resolveDefendBonus(
   const guardedOnZero =
     townVeterancy(details.defender, "golem-shield") ||
     townVeterancy(details.defender, "nix-guarded");
-  const tokenBonus = ((roll === 1 || (roll === 0 && guardedOnZero)) ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
+  const commanderGuardedOnZero = details.defender.commanderSlug && (details.defender.commanderGrades?.defense ?? 0) >= 3;
+  const tokenBonus = ((roll === 1 || (roll === 0 && (guardedOnZero || commanderGuardedOnZero))) ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
   // Mammoths' Thick Hide: a flat extra Defense the unit gets while it is
   // defending (holding a Defense token), on top of the Defend die.
   const defendAbilityBonus = getDefendBonus(details.defender);
@@ -8549,6 +8613,11 @@ function finishResolvedAttack(
           roll: minimumAttackDie,
         }
       : uncappedCandidate;
+  if (!dieCancelled && !details.ignoreAttackDie && resolvedCandidate.roll === 1 &&
+    state.activeEffects.some(effect => effectAppliesToUnit(effect, details.defender) &&
+      effect.modifiers.some(modifier => modifier.type === "DARKSTORN_PLUS_ONE_DEFENSE"))) {
+    details.defenseBonus += 1;
+  }
   if (!details.isRetaliation && !dieCancelled && !details.ignoreAttackDie && townVeterancy(details.attacker, "gremlin-die")) {
     resolvedCandidate = { ...resolvedCandidate, roll: 1, rolls: resolvedCandidate.rolls.map(() => 1) };
   }
@@ -8584,6 +8653,11 @@ function finishResolvedAttack(
   rollNotes.push(...(stackItem.modifiers.defendRollNotes ?? []));
   if (rollNotes.length > 0) {
     resolvedCandidate = { ...resolvedCandidate, modifierNotes: rollNotes };
+  }
+  if (!dieCancelled && !details.ignoreAttackDie && resolvedCandidate.roll === -1 &&
+      details.attacker.commanderSlug && (details.attacker.commanderGrades?.attack ?? 0) >= 2) {
+    details.attackBonus += 1;
+    (resolvedCandidate.modifierNotes ??= []).push({ source: "Commander Attack", text: "+1 Attack on a -1 roll" });
   }
 
   // Die-conditioned armor pierce (MGQ Hunter, Rust Dragon Acid Breath, etc.).
@@ -8652,13 +8726,29 @@ function finishResolvedAttack(
       details.defender,
       preview.damage,
     );
+    // Soul Link moves half of the blow onto the linked Soul Eater (once per
+    // round), so the lethal-save window uses the share the defender keeps —
+    // the same halving the resolution-time lethal re-check applies.
+    const lethalRound = state.combat?.round;
+    const soulLinked = Object.values(state.combat?.units ?? {}).some(unit =>
+      unit.commanderSlug === "soul_eater" && unit.controllerId === details.defender.controllerId &&
+      unit.soulLinkTargetId === details.defender.id && isUnitAlive(unit) &&
+      unit.soulLinkUsedRound !== lethalRound
+    );
+    const landedDamage = soulLinked ? Math.floor(preview.damage / 2) : preview.damage;
     if (
       preview.damage > 0 &&
-      details.defender.damage + preview.damage >= details.defender.maxHealth &&
+      details.defender.damage + landedDamage >= details.defender.maxHealth &&
       // A Polish stack layer is lethal to that layer even though it is not yet
       // lethal to the unit card. Unit saves such as Archangel may prevent it;
       // card-based Resurrection is filtered out for this trigger.
-      playerHasLethalSave(state, details.defender.id, cards, stackLayerOnly)
+      playerHasLethalSave(
+        state,
+        details.defender.id,
+        cards,
+        stackLayerOnly,
+        details.attacker.id,
+      )
     ) {
       stackItem.modifiers.rolledCandidate = candidate;
       stackItem.modifiers.lethalSaveOffered = true;
@@ -8795,7 +8885,12 @@ function finishResolvedAttack(
   const cancelLethal = stackItem.modifiers.cancelLethal;
   const lethalCancel =
     cancelLethal && cancelLethal.unitId === details.defender.id
-      ? { grade: cancelLethal.grade }
+      ? {
+          grade: cancelLethal.grade,
+          ...(cancelLethal.commanderUnitId
+            ? { commanderUnitId: cancelLethal.commanderUnitId }
+            : {}),
+        }
       : undefined;
 
   // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved Attack earns
@@ -8812,6 +8907,8 @@ function finishResolvedAttack(
   // earned-by-acting loop and a cancelled strike stay exactly as before.
   const willBeLethallyCancelled =
     lethalCancel !== undefined &&
+    // Factory Emergency Repair cancels the attack outright (no lethal re-check).
+    (lethalCancel.commanderUnitId !== undefined ||
     (() => {
       const preview = getAttackDamagePreview(
         details.attacker,
@@ -8845,7 +8942,7 @@ function finishResolvedAttack(
           houseRuleEnabled(state, "polish-bank-unit-spells"),
         ) <= gradeRank(lethalCancel.grade)
       );
-    })();
+    })());
   if (!willBeLethallyCancelled) {
     const runeContext = {
       attacker: details.attacker,
@@ -8912,6 +9009,15 @@ function finishResolvedAttack(
     details.ignorePlusOneDie,
     details.defenseFraction?.fraction,
   );
+  if (!attackResult.cancelled && devourTargetVariant === "pack" &&
+    details.defender.variant === "few") {
+    for (const effect of state.activeEffects) {
+      if (effect.controllerId !== details.attacker.controllerId ||
+        !effect.modifiers.some(modifier => modifier.type === "DACE_PACK_BREAK")) continue;
+      queueElementalChoice(state, { kind: "damage", unitId: details.attacker.id,
+        abilityId: "dace-minotaurs-pack-break", amount: 1, enemiesOnly: true });
+    }
+  }
   if (
     !details.isRetaliation &&
     !details.abilityAttack &&
@@ -9553,7 +9659,7 @@ function openPostAttackVeterancyChoice(state: GameState): boolean {
   // Salvo uses the shared damage picker, but belongs to this hit's continuation:
   // it must resolve before retaliation, just like Cleave and Spectral Escape.
   return Boolean(state.combat?.elementalChoices?.some(choice =>
-    choice.kind.startsWith("veteran-") || choice.kind.startsWith("town-") || choice.abilityId === "veteran-cyber-splash"
+    choice.kind.startsWith("veteran-") || choice.kind.startsWith("town-") || choice.abilityId === "veteran-cyber-splash" || choice.abilityId === "dace-minotaurs-pack-break"
   )) && openElementalChoice(state, elementalHooks);
 }
 
@@ -10134,7 +10240,9 @@ function applyFireShieldDamage(
         if (sourceCard?.kind === "spell") {
           spellTotal += modifier.amount;
         } else {
-          nonSpellTotal += modifier.amount;
+          const laterDamage = modifier.amountAfterFirstCasterActivation ?? modifier.amountAfterFirstRound;
+          nonSpellTotal += laterDamage !== undefined && (modifier.casterActivationsSinceCast ?? 0) >= 1
+            ? laterDamage : modifier.amount;
         }
       }
     }
@@ -10504,7 +10612,20 @@ function applyOnAttackDieDraw(
   if (isRetaliation) {
     return;
   }
-  for (const draw of getOnAttackDieDraw(attacker)) {
+  const attackDraws = getOnAttackDieDraw(attacker);
+  const daceMastery = attackDraws.some(draw => draw.abilityId === "minotaur-draw-on-miss") &&
+    state.activeEffects.some(
+    effect => effectAppliesToUnit(effect, attacker) &&
+      effect.modifiers.some(modifier => modifier.type === "DACE_MINOTAUR_DRAW"),
+  );
+  if (daceMastery && attackRoll === 0) {
+    drawCardsForPlayer(state, attacker.controllerId, 1, {
+      inFlightCardIds: stackInFlightCardIds(state, state.stack.at(-1), attacker.controllerId),
+    });
+    appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: attacker.id,
+      abilityId: "dace-minotaurs-zero", message: `${attacker.cardName} draws 1 card on a 0 Attack die (Minotaurs VI).` });
+  }
+  for (const draw of attackDraws) {
     // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
     if (
       !forceRoll &&
@@ -10526,7 +10647,8 @@ function applyOnAttackDieDraw(
       attacker.attackDieDraws = (attacker.attackDieDraws ?? 0) + 1;
       attacker.attackDieDrawRound = state.combat?.round;
     }
-    drawCardsForPlayer(state, attacker.controllerId, draw.amount, {
+    const amount = daceMastery && attackRoll === -1 && draw.abilityId === "minotaur-draw-on-miss" ? 2 : draw.amount;
+    drawCardsForPlayer(state, attacker.controllerId, amount, {
       inFlightCardIds: stackInFlightCardIds(
         state,
         state.stack.at(-1),
@@ -10537,7 +10659,7 @@ function applyOnAttackDieDraw(
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: draw.abilityId,
-      message: `${attacker.name} draws ${draw.amount} card${draw.amount === 1 ? "" : "s"} (${draw.abilityName}).`,
+      message: `${attacker.name} draws ${amount} card${amount === 1 ? "" : "s"} (${draw.abilityName}).`,
     });
   }
 }
@@ -11150,6 +11272,31 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
 
   combat.attackSequence = null;
   if (attacker) {
+    if (defender && isUnitAlive(defender) &&
+        getPermanentCardIds(state, attacker.controllerId).includes("specialty.korbac.4")) {
+      // The trigger is "after YOUR UNIT attacks": the Dragon Flies' own attack
+      // never re-triggers them (otherwise they would chain turns endlessly).
+      const dragonFlies = Object.values(combat.units).find(unit =>
+        unit.id !== attacker.id &&
+        unit.controllerId === attacker.controllerId &&
+        unit.unitDefId === "fortress.dragon_flies" && isUnitAlive(unit));
+      if (dragonFlies) {
+        delete attacker.bombardment;
+        markActivatedThisRound(attacker);
+        appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
+        appendEvent(state, { type: "UNIT_ACTIVATION_ENDED", playerId: attacker.controllerId, unitId: attacker.id });
+        dragonFlies.activatedThisRound = false;
+        dragonFlies.waitPending = undefined;
+        dragonFlies.waitToken = undefined;
+        state.phase = "combat";
+        state.priorityPlayerId = null;
+        setActiveUnit(state, dragonFlies.id);
+        appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: dragonFlies.id,
+          abilityId: "specialty.korbac.4", targetUnitId: defender.id,
+          message: `${dragonFlies.cardName} immediately starts another turn after ${defender.cardName} survives an attack.` });
+        return;
+      }
+    }
     concludeAttackerActivation(state, attacker);
   } else {
     state.phase = "combat";
@@ -14084,6 +14231,13 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   const waitedReactivation = Boolean(
     state.combat.waitPhase && activeUnit?.waitPending,
   );
+  if (!waitedReactivation && (activeUnit.commanderSlug === "succubus" || activeUnit.commanderSlug === "brute")) {
+    appendExpiredEffectEvents(
+      state,
+      advanceCasterEffectsAtActivationStart(state, activeUnit.id),
+      "activation-started",
+    );
+  }
 
   if (!waitedReactivation && (neutralTownDelayedDamageAtActivation(state, activeUnit) || applyNeutralBurnAtActivation(state, activeUnit))) {
     if (finishCombatIfNeeded(state)) return;
@@ -14257,6 +14411,9 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
 
   if (activeUnit.defenseToken) {
     activeUnit.defenseToken = false;
+    if (state.combat?.darkstornRoundDefenseTokenIds) {
+      state.combat.darkstornRoundDefenseTokenIds = state.combat.darkstornRoundDefenseTokenIds.filter(id => id !== activeUnit.id);
+    }
   }
 
   appendEvent(state, {
@@ -16958,8 +17115,8 @@ function shouldRetaliate(
       (attackKind === "ranged" && townAllowsRangedRetaliation(defender))) &&
     (unstoppable || (
       !ignoreRetaliationOverride &&
-      !(townVeterancy(attacker, "angel-safe") && state?.combat && state.combat.round % 2 === 1 && ["ground", "flying"].includes(defender.type)) &&
       !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
+      !(townVeterancy(attacker, "champion-two-space-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round && (attacker.townVeterancy?.movedSpacesRound ?? 0) >= 2) &&
       !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
       !(attacker.movedThisActivation && hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")) &&
       !(hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") && !defender.activatedThisRound) &&
@@ -16983,7 +17140,9 @@ function shouldRetaliate(
  * melee attack (it "also retaliates against non-adjacent units"), so any attack
  * on the Bounty Hunter provokes it. Still once per round (the pre-emptive strike
  * spends the retaliation) and still cancelled by the attacker's own
- * ignore-retaliation.
+ * ignore-retaliation. A `nonAdjacentOnly` copy (the printed Neutral card) is
+ * provoked only by a NON-adjacent attacker; an adjacent attack falls through to
+ * the ordinary retaliation path.
  */
 function qualifiesForPreemptiveRetaliation(
   attacker: CombatUnitState,
@@ -16994,13 +17153,13 @@ function qualifiesForPreemptiveRetaliation(
 ): boolean {
   const unstoppable = Boolean(state && unitHasUnstoppableRetaliationEffect(state, defender));
   return (
-    Boolean(getPreemptiveRetaliation(defender)) &&
+    Boolean(getPreemptiveRetaliation(defender, attacker.position)) &&
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
     (unstoppable || (
       !ignoreRetaliationOverride &&
-      !(townVeterancy(attacker, "angel-safe") && state?.combat && state.combat.round % 2 === 1 && ["ground", "flying"].includes(defender.type)) &&
       !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
+      !(townVeterancy(attacker, "champion-two-space-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round && (attacker.townVeterancy?.movedSpacesRound ?? 0) >= 2) &&
       !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
       !(attacker.movedThisActivation && hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")) &&
       !(hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") && !defender.activatedThisRound) &&
@@ -17211,7 +17370,8 @@ function resolveAttackStackItem(
     stackItem.status = "resolved";
     state.stack.pop();
     // Release any held Knowledge/Mysticism recall on the dropped attack.
-    processDeferredSpellRecalls(state, stackItem);
+  processDeferredSpellRecalls(state, stackItem);
+
     if (finishCombatIfNeeded(state)) {
       return;
     }
@@ -17262,7 +17422,7 @@ function resolveAttackStackItem(
     )
   ) {
     stackItem.modifiers.preemptiveRetaliationTriggered = true;
-    const preempt = getPreemptiveRetaliation(details.defender);
+    const preempt = getPreemptiveRetaliation(details.defender, details.attacker.position);
     if (preempt) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
@@ -23200,6 +23360,9 @@ function applyReactionPlayCore(
   // opens at most an OPTION_CHOICE — the nested shape
   // advanceReactionWindowAfterPlay pauses on and the CHOOSE_OPTION tail resumes.
   if (state.combat && !state.combat.prep) {
+    if (effect.type === "ISRA_FETCH_CARD") {
+      openIsraFetchChoice(state, playerId, play.cardId, cards);
+    }
     if (effect.type === "DECK_DIG_KEEP_ONE") {
       resolveDeckDigKeepOne(
         state,
@@ -24420,6 +24583,12 @@ function applyReactionPlayCore(
       // drawn cards may pay it (see drawRiderThenDiscard).
       applyDrawRiderThenDiscard(state, playerId, effect, card.name);
     }
+  }
+
+  if (effect.type === "HEAL_TWO_UNITS" && state.combat) {
+    const candidates = Object.values(state.combat.units).filter(isUnitAlive).map((unit) => unit.id);
+    if (candidates.length < 2) throw new Error("Cure IV requires two living units.");
+    openUlandCureChoice(state, playerId, card.id, "first-unit", candidates, effect.amount);
   }
 
   // Damage-producing combat-anytime cards are real reactions, not merely
@@ -25649,6 +25818,105 @@ function applyUnitResurrection(
 }
 
 /**
+ * Factory Artificer "Emergency Repair" — arm the cancel from the lethal-hit
+ * window. Re-validates through the SAME gate the offer used
+ * (commanderLethalCancelReactionUnit: enemy attack, protected unitDefId at the
+ * current Power, commander alive/on board/not paralyzed, unused this combat),
+ * then marks the pending attack. The cost (Paralysis + the once-per-combat
+ * stamp) and the events are applied when the attack resolves and is actually
+ * cancelled (applyCommanderEmergencyRepairCancel), which is immediately after
+ * this window closes. Arming also shuts further lethal saves on this attack
+ * (getLethalSaveReactions returns only take-backs once cancelLethal is set).
+ */
+function armCommanderEmergencyRepair(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_COMMANDER_CAST_REACTION" }>,
+  trigger: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
+): void {
+  const combat = state.combat;
+  const commander = combat?.units[action.commanderUnitId];
+  const defender = combat?.units[trigger.defenderId];
+  const attacker = combat?.units[trigger.attackerId];
+  // The lethal-hit window belongs to the TOP-most attack (a preemptive
+  // retaliation can sit above the attack that provoked it).
+  const pendingAttack = [...state.stack].reverse().find(
+    (item) =>
+      item.action.type === "ATTACK_UNIT" ||
+      item.action.type === "MOVE_AND_ATTACK_UNIT",
+  );
+  if (
+    !combat ||
+    !commander ||
+    !defender ||
+    !pendingAttack ||
+    pendingAttack.modifiers.cancelLethal ||
+    commander.controllerId !== action.playerId ||
+    action.targetUnitId !== defender.id
+  ) {
+    throw new Error("That commander reaction cannot be used now.");
+  }
+  const legal = commanderLethalCancelReactionUnit(
+    state,
+    defender,
+    attacker,
+    Boolean(trigger.stackLayerOnly),
+  );
+  if (!legal || legal.id !== commander.id) {
+    throw new Error("That commander reaction cannot be used now.");
+  }
+  pendingAttack.modifiers.cancelLethal = {
+    unitId: defender.id,
+    grade: defender.grade,
+    commanderUnitId: commander.id,
+  };
+}
+
+/**
+ * Factory Artificer "Emergency Repair" — the attack armed above is being
+ * cancelled now: spend the once-per-combat use, PARALYZE the commander with a
+ * real Paralysis token (it skips its next activation exactly like the Spell's
+ * token — and, like any Paralysis token, being attacked clears it), and emit
+ * the log/FX events. The UNIT_ABILITY_TRIGGERED "commander-cast-factory" event
+ * targets the PROTECTED unit so the repair FX + SFX play on it.
+ */
+function applyCommanderEmergencyRepairCancel(
+  state: GameState,
+  commanderUnitId: UnitId,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+): void {
+  const combat = state.combat;
+  const commander = combat?.units[commanderUnitId];
+  if (!combat || !commander) {
+    return;
+  }
+  const cast = commanderCastOf(commander);
+  const castName = cast?.name ?? "Emergency Repair";
+  const power = commanderCastPower(state, commander);
+  commander.commanderCastRound = combat.round;
+  commander.commanderCastCount = (commander.commanderCastCount ?? 0) + 1;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: commander.id,
+    abilityId: cast?.abilityId ?? "commander-cast-factory",
+    targetUnitId: defender.id,
+    message: `${commander.cardName} rushes ${castName} to ${defender.cardName}.`,
+  });
+  appendEvent(state, {
+    type: "COMMANDER_ATTACK_CANCELLED",
+    playerId: commander.controllerId,
+    commanderSlug: commander.commanderSlug ?? "",
+    commanderUnitId: commander.id,
+    protectedUnitId: defender.id,
+    attackerUnitId: attacker.id,
+    castName,
+    power,
+    message: `${commander.cardName}'s ${castName} (Power ${power}) cancels ${attacker.cardName}'s attack on ${defender.cardName}. ${commander.cardName} is Paralyzed.`,
+  });
+  placeCombatToken(state, commander, "paralysis", 0, castName);
+}
+
+/**
  * WOG Commanders — instant-reaction defend buff (Hierophant's Shield / Ogre
  * Leader's Stone Skin). Played in an open attack window on one of the reacting
  * player's units: it buffs the attacked unit's Defense (a current-combat-round
@@ -25663,6 +25931,16 @@ function applyCommanderCastReaction(
   cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
+  // Factory Emergency Repair is played in the LETHAL-HIT window instead.
+  if (
+    window &&
+    window.triggerEvent.type === "UNIT_LETHAL_HIT" &&
+    window.priorityPlayerId === action.playerId
+  ) {
+    armCommanderEmergencyRepair(state, action, window.triggerEvent);
+    advanceReactionWindowAfterPlay(state, action.playerId, cards);
+    return;
+  }
   if (
     !window ||
     window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
@@ -27649,6 +27927,16 @@ function playCard(
     throw new Error(`${card.name} needs a chosen option.`);
   }
   const selectedOption = getChosenOption(card, action.optionIndex);
+  if (effect.type === "VERDISH_TRANSFER_DAMAGE") {
+    const source = action.target?.type === "unit" ? state.combat?.units[action.target.unitId] : undefined;
+    const recipient = source && Object.values(state.combat?.units ?? {}).some(unit =>
+      unit.id !== source.id && unit.controllerId === action.playerId &&
+      isUnitAlive(unit) && unit.damage < unit.maxHealth);
+    if (!source || source.controllerId !== action.playerId || !isUnitAlive(source) ||
+        source.damage <= 0 || !recipient) {
+      throw new Error("First Aid IV needs a wounded unit and another living friendly unit to receive its damage.");
+    }
+  }
   if (
     state.combat &&
     !ongoingCombatPlayWindowOpen(
@@ -28958,6 +29246,20 @@ function playCard(
   if (effect.type === "GRANT_DEFENSE_TOKENS" && state.combat) {
     grantDefenseTokensToAll(state, action.playerId, card);
   }
+  if (effect.type === "DARKSTORN_STONE_SKIN_ROUND" && state.combat) {
+    const newlyGranted = Object.values(state.combat.units).filter(unit =>
+      unit.controllerId === action.playerId && isUnitAlive(unit) && !unit.defenseToken &&
+      !unitIgnoresCardNonDamage(unit, card, state)).map(unit => unit.id);
+    grantDefenseTokensToAll(state, action.playerId, card);
+    state.combat.darkstornRoundDefenseTokenIds = [
+      ...new Set([...(state.combat.darkstornRoundDefenseTokenIds ?? []), ...newlyGranted]),
+    ];
+    createActiveEffect(state, {
+      name: card.name, scope: "player", duration: { type: "current-combat-round" },
+      polarity: "positive", removable: false,
+      modifiers: [{ type: "DARKSTORN_PLUS_ONE_DEFENSE" }],
+    }, { type: "card", cardId: card.id, controllerId: action.playerId }, action.playerId);
+  }
 
   // Merist's Stone Skin VI: place a Defense token on all your units AND, for the
   // rest of the Combat, make those tokens pay out on a "0" as well as a "+1"
@@ -29948,6 +30250,28 @@ function playCard(
     });
   }
 
+  // Ladybird of Luck (ongoing side): the card lies on the chosen empty space as
+  // a Wall for the rest of this Combat. Blocking lives in getBlockedSpaces; the
+  // attack-removal (+gold) in attackFortification. Re-check emptiness here so a
+  // stale target can never stack the Wall onto a unit, obstacle or token.
+  if (
+    effect.type === "PLACE_ARTIFACT_WALL" &&
+    state.combat &&
+    action.target?.type === "space"
+  ) {
+    const position = action.target.position;
+    if (isSpaceBlockedForSummon(state.combat, position)) {
+      throw new Error(`${card.name} must be placed on an empty space.`);
+    }
+    addBattlefieldToken(state, {
+      kind: "artifact_wall",
+      position,
+      controllerId: action.playerId,
+      sourceArtifactCardId: card.id,
+      goldOnAttackRemoval: effect.goldOnAttackRemoval,
+    });
+  }
+
   // Deemer's Meteor Shower IV (one option): shuffle the discard pile back into
   // the deck FIRST, then draw — and the Meteor Shower IV card itself is discarded
   // AFTER the shuffle. It was moved to the discard before this effect ran, so it
@@ -30087,6 +30411,75 @@ function playCard(
     ) {
       activateBallistas(state, action.playerId, 1);
     }
+  }
+
+  if (effect.type === "ISRA_FETCH_CARD") {
+    openIsraFetchChoice(state, action.playerId, action.cardId, cards);
+  }
+
+  if (effect.type === "HEAL_TWO_UNITS" && state.combat) {
+    const candidates = Object.values(state.combat.units).filter(isUnitAlive).map((unit) => unit.id);
+    if (candidates.length < 2) throw new Error("Cure IV requires two living units.");
+    openUlandCureChoice(state, action.playerId, card.id, "first-unit", candidates, effect.amount);
+  }
+
+  if (effect.type === "CREATE_URFTIN_CUBES" && state.combat) {
+    const active = createActiveEffect(state, {
+      name: "Dwarves VI (0 cubes)", scope: "player", duration: { type: "combat" },
+      polarity: "positive", removable: false, appliesOnlyToUnitNames: ["Dwarves"], modifiers: [],
+    }, { type: "card", cardId: card.id, controllerId: action.playerId }, action.playerId);
+    active.urftinCubes = 0;
+  }
+
+  if (effect.type === "CREATE_ULAND_CURE" && nonDamageTarget && state.combat) {
+    const active = createActiveEffect(state, {
+      name: "Cure VI", scope: "unit", duration: { type: "combat" },
+      polarity: "positive", removable: false, modifiers: [],
+    }, { type: "card", cardId: card.id, controllerId: action.playerId }, action.playerId, nonDamageTarget);
+    active.ulandCure = { amount: effect.amount };
+  }
+
+  if (effect.type === "CREATE_VERDISH_ROUND_HEAL" && nonDamageTarget && state.combat) {
+    createActiveEffect(state, {
+      name: card.name, scope: "unit", duration: { type: "combat" },
+      polarity: "positive", removable: true,
+      modifiers: [{ type: "VERDISH_ROUND_HEAL", amount: 1 }],
+    }, { type: "card", cardId: card.id, controllerId: action.playerId }, action.playerId, nonDamageTarget);
+  }
+
+  if (effect.type === "CREATE_VERDISH_KILL_HEAL" && state.combat) {
+    createActiveEffect(state, {
+      name: card.name, scope: "player", duration: { type: "combat" },
+      polarity: "positive", removable: true,
+      modifiers: [{ type: "VERDISH_KILL_HEAL", amount: 1 }],
+    }, { type: "card", cardId: card.id, controllerId: action.playerId }, action.playerId);
+  }
+
+  if (effect.type === "VERDISH_TRANSFER_DAMAGE" && nonDamageTarget && state.combat) {
+    const wounded = state.combat.units[nonDamageTarget.unitId];
+    const candidates = wounded && wounded.damage > 0
+      ? Object.values(state.combat.units).filter(unit =>
+          unit.id !== wounded.id && unit.controllerId === action.playerId && isUnitAlive(unit) &&
+          unit.maxHealth > unit.damage)
+      : [];
+    if (wounded && candidates.length) {
+      const choiceId = `choice_${nextEventNumber(state)}`;
+      state.pendingChoice = {
+        id: choiceId, type: "ABILITY_TARGET_CHOICE", playerId: action.playerId,
+        kind: "sacrifice-transfer", abilityId: card.id, abilityName: card.name,
+        prompt: `${card.name}: choose which of your units takes up to 3 damage from ${wounded.cardName}.`,
+        sourceUnitId: wounded.id, anchorUnitId: wounded.id,
+        candidateUnitIds: candidates.map(unit => unit.id), optional: false,
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = action.playerId;
+      appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId,
+        choiceType: "ABILITY_TARGET_CHOICE", playerId: action.playerId,
+        sourceEffectIds: [], message: `${card.name} chooses a damage recipient.` });
+    }
+  }
+  if (effect.type === "ISRA_RETURN_UNIT") {
+    openIsraReturnChoice(state, action.playerId);
   }
 
   // Solmyr's Chain Lightning IV: dig the top of your own deck, keep 1, discard
@@ -31645,6 +32038,161 @@ function applyUnitAbilityAction(
   state.priorityPlayerId = null;
 }
 
+function openIsraFetchChoice(state: GameState, playerId: PlayerId, sourceCardId: CardId, cards: CardLibrary): void {
+  const candidates = israFetchCandidates(state, playerId, sourceCardId);
+  if (!candidates.length) throw new Error("No Ability or Specialty card can be taken.");
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId, type: "OPTION_CHOICE", playerId,
+    prompt: "Choose an Ability or Specialty card to put into your hand.",
+    options: candidates.map(({ cardId, source }) => ({ label: `${cards[cardId]?.name ?? cardId} (${source})` })),
+    context: "isra-fetch-card", israFetchCard: { candidates },
+    returnPhase: state.combat ? "combat" : "player-turn",
+  };
+  appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId, choiceType: "OPTION_CHOICE", playerId,
+    sourceEffectIds: [], message: "Choose a card for Isra's Necromancy." });
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+function openUlandCureChoice(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  kind: "first-unit" | "second-unit" | "round-end",
+  unitIds: UnitId[],
+  amount: number,
+  effectId?: string,
+  /** round-end: the seat that advanced the round, handed back on resume. */
+  byPlayerId?: PlayerId,
+): void {
+  const combat = state.combat;
+  if (!combat) throw new Error("Cure requires Combat.");
+  const options = unitIds.map((unitId) => ({ label: `Heal ${combat.units[unitId]?.cardName ?? unitId}` }));
+  if (kind === "round-end") options.push({ label: "Skip healing" });
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId, type: "OPTION_CHOICE", playerId,
+    prompt: kind === "round-end" ? "Cure VI: heal up to 2 damage at round end?" : `Cure IV: select ${kind === "first-unit" ? "the first" : "the second"} unit.`,
+    options, context: "uland-cure",
+    ulandCure: { kind, unitIds, cardId, effectId, amount, removeParalysis: kind !== "round-end", ...(byPlayerId ? { byPlayerId } : {}) },
+    returnPhase: "combat",
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId, choiceType: "OPTION_CHOICE", playerId, sourceEffectIds: effectId ? [effectId] : [], message: "Uland's Cure awaits a unit choice." });
+}
+
+function resolveUlandCureChoice(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "uland-cure" || !choice.ulandCure || choice.id !== action.choiceId || choice.playerId !== action.playerId) throw new Error("No Cure choice is pending.");
+  const cure = choice.ulandCure;
+  const selectedId = cure.unitIds[action.optionIndex];
+  if (action.optionIndex < 0 || action.optionIndex >= choice.options.length) throw new Error("Invalid Cure choice.");
+  const unit = selectedId ? state.combat?.units[selectedId] : undefined;
+  if (selectedId && (!unit || !isUnitAlive(unit))) throw new Error("That unit cannot be cured now.");
+  appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId, selectedIndex: action.optionIndex });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  if (unit) {
+    healUnitDamage(state, { type: "card", cardId: cure.cardId, controllerId: action.playerId }, { type: "unit", unitId: unit.id }, cure.amount);
+    if (cure.removeParalysis && hasToken(unit, "paralysis")) removeToken(state, unit, "paralysis", "dispelled");
+  }
+  if (cure.kind === "first-unit") {
+    const others = Object.values(state.combat?.units ?? {}).filter((candidate) => candidate.id !== selectedId && isUnitAlive(candidate)).map((candidate) => candidate.id);
+    if (others.length > 0) openUlandCureChoice(state, action.playerId, cure.cardId, "second-unit", others, cure.amount);
+  } else if (cure.kind === "round-end") {
+    advanceCombatRound(state, cure.byPlayerId ?? action.playerId);
+  }
+}
+
+function resolveIsraFetchChoice(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "isra-fetch-card" ||
+      choice.id !== action.choiceId || choice.playerId !== action.playerId || !choice.israFetchCard) {
+    throw new Error("There is no Isra card choice to resolve.");
+  }
+  const selected = choice.israFetchCard.candidates[action.optionIndex];
+  const player = state.players[action.playerId];
+  if (!selected || !player) throw new Error("Invalid Isra card choice.");
+  const pile = player[selected.source];
+  const index = pile.indexOf(selected.cardId);
+  if (index < 0) throw new Error("That card is no longer available.");
+  pile.splice(index, 1);
+  player.hand.push(selected.cardId);
+  appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
+    selectedIndex: action.optionIndex });
+  appendEvent(state, { type: "EVENT_NOTE", message: `${player.name} takes ${cardLibrary[selected.cardId]?.name ?? selected.cardId} into hand.` });
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+}
+
+function openIsraReturnChoice(state: GameState, playerId: PlayerId): void {
+  const units = israRemovedUnits(state, playerId);
+  if (!units.length || !israEmptyPositions(state).length) return;
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId, type: "OPTION_CHOICE", playerId,
+    prompt: "Choose a removed Few unit to return.",
+    options: units.map((unit) => ({ label: unit.cardName })),
+    context: "isra-return-unit", israReturnUnit: { unitIds: units.map((unit) => unit.id) },
+    returnPhase: "combat",
+  };
+  appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId, choiceType: "OPTION_CHOICE", playerId,
+    sourceEffectIds: [], message: "Choose a unit for Isra's Necromancy." });
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+function resolveIsraReturnChoice(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "isra-return-unit" ||
+      choice.id !== action.choiceId || choice.playerId !== action.playerId || !choice.israReturnUnit || !state.combat) {
+    throw new Error("There is no Isra unit choice to resolve.");
+  }
+  const data = choice.israReturnUnit;
+  if (!data.selectedUnitId) {
+    const unitId = data.unitIds[action.optionIndex];
+    if (!unitId || !israRemovedUnits(state, action.playerId).some((unit) => unit.id === unitId)) {
+      throw new Error("That unit cannot return.");
+    }
+    const positions = israEmptyPositions(state);
+    const nextId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      ...choice, id: nextId,
+      prompt: `Choose an empty space for ${state.combat.units[unitId].cardName}.`,
+      options: positions.map((position) => ({ label: getBattlefieldLabel(position) })),
+      israReturnUnit: { unitIds: data.unitIds, selectedUnitId: unitId, positions },
+    };
+    appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
+      selectedIndex: action.optionIndex });
+    appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId: nextId, choiceType: "OPTION_CHOICE",
+      playerId: action.playerId, sourceEffectIds: [], message: "Choose an empty space for the returning unit." });
+    return;
+  }
+  const position = data.positions?.[action.optionIndex];
+  const unit = state.combat.units[data.selectedUnitId];
+  if (position === undefined || !unit || isSpaceBlockedForSummon(state.combat, position) ||
+      !israRemovedUnits(state, action.playerId).some((candidate) => candidate.id === unit.id)) {
+    throw new Error("That placement is no longer available.");
+  }
+  unit.position = position;
+  unit.damage = 0;
+  unit.activatedThisRound = true;
+  // A unit returning from removal comes back fresh: tokens it carried when it
+  // fell (Paralysis, Morale, ...) do not survive the trip.
+  unit.tokens = [];
+  appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
+    selectedIndex: action.optionIndex });
+  appendEvent(state, { type: "COMBAT_UNIT_PLACED", playerId: action.playerId, unitId: unit.id, position });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  openIsraReturnChoice(state, action.playerId);
+}
+
 /**
  * A combat space cannot host a summoned unit when it is off the board, holds a
  * living unit, an obstacle token, or a siege Wall/Gate. Shared by the Summon
@@ -32423,6 +32971,13 @@ function attackFortification(
   const combat = state.combat;
   const siege = combat?.siege;
   const unit = combat?.units[action.attackerId];
+  if (action.target.kind === "artifact-wall") {
+    if (!combat || !unit || unit.controllerId !== action.playerId) {
+      throw new Error("There is no Wall to attack.");
+    }
+    attackArtifactWall(state, unit, action.target.tokenId);
+    return;
+  }
   if (!combat || !siege || !unit || unit.controllerId !== action.playerId) {
     throw new Error("There is no siege fortification to attack.");
   }
@@ -32477,6 +33032,72 @@ function attackFortification(
       action.target.kind,
       action.target.position,
     );
+  }
+
+  // The demolition replaces the unit's attack for this activation.
+  unit.attackedThisActivation = true;
+  unit.attacksThisActivation = (unit.attacksThisActivation ?? 0) + 1;
+  finishCombatIfNeeded(state);
+  if (!state.combat?.outcome) {
+    concludeAttackerActivation(state, unit);
+  }
+}
+
+/**
+ * Ladybird of Luck lying on the board as a Wall: an adjacent ground/flying unit
+ * (or a Cyclops-style demolisher at range) tears it down as its attack —
+ * automatically successful, no die, no cards, like a siege Wall. "If this card
+ * is removed by an attack, you gain 2 gold and discard this card": the card
+ * already sits in the owner's discard (it went there when played, like every
+ * ongoing card), so removal pays the gold and lifts the token.
+ */
+function attackArtifactWall(
+  state: GameState,
+  unit: CombatUnitState,
+  tokenId: string,
+): void {
+  const combat = state.combat;
+  const token = combat?.battlefieldTokens?.find(
+    (candidate) => candidate.id === tokenId && candidate.kind === "artifact_wall",
+  );
+  if (!combat || !token) {
+    throw new Error("That Wall is already gone.");
+  }
+  if (
+    combat.activeUnitId !== unit.id ||
+    unit.activatedThisRound ||
+    unit.attackedThisActivation
+  ) {
+    throw new Error(
+      "Only the active unit may attack a Wall, before its attack.",
+    );
+  }
+  if (!getDemolishAbility(unit)) {
+    if (unit.type === "ranged") {
+      throw new Error(
+        "Ranged units cannot tear down walls (the Cyclops' ability is the exception).",
+      );
+    }
+    if (!isAdjacent(unit.position, token.position)) {
+      throw new Error("The unit must be adjacent to the Wall.");
+    }
+  }
+
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter(
+    (candidate) => candidate.id !== token.id,
+  );
+  const cardName = cardLibrary[token.sourceArtifactCardId ?? ""]?.name ?? "Ladybird of Luck";
+  appendEvent(state, {
+    type: "FORTIFICATION_DESTROYED",
+    playerId: unit.controllerId,
+    byUnitId: unit.id,
+    kind: "wall",
+    position: token.position,
+    message: `${unit.cardName} tears down ${cardName} (a Wall) at ${getBattlefieldLabel(token.position)}.`,
+  });
+  const gold = token.goldOnAttackRemoval ?? 0;
+  if (gold > 0) {
+    gainResources(state, token.controllerId, { gold }, `${cardName} removed by an attack`);
   }
 
   // The demolition replaces the unit's attack for this activation.
@@ -33208,52 +33829,27 @@ function resolveCommanderCast(
 
   const effect = cast.effect;
   switch (effect.kind) {
-    case "heal":
-      healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
-      break;
-    case "repair-buff": {
-      const immediate = effect.immediateHealByPower[tier];
-      if (immediate > 0) {
-        healUnitDamage(state, source, targetRef, immediate);
-      }
-      const delayedAmount = effect.roundHealByPower[tier];
-      const delayedRounds = effect.roundsByPower[tier];
-      if (delayedAmount > 0 && delayedRounds > 0) {
-        createActiveEffect(
-          state,
-          {
-            name: `${cast.name} (${caster.cardName})`,
-            scope: "unit",
-            duration: { type: "combat" },
-            polarity: "positive",
-            removable: true,
-            modifiers: [{
-              type: "REPAIR_HEAL_AT_COMBAT_ROUND_START",
-              amount: delayedAmount,
-              remainingRounds: delayedRounds
-            }]
-          },
-          source,
-          caster.controllerId,
-          targetRef,
-        );
-      }
+    case "heal": {
+      const priorHeals = caster.commanderCastCount ?? (caster.commanderCastRound !== undefined ? 1 : 0);
+      const amount = caster.commanderSlug === "soul_eater" && tier >= 2 && priorHeals > 0
+        ? 2
+        : caster.commanderSlug === "bulwark" && tier >= 2 && priorHeals >= 2
+          ? 2 : effect.healByPower[tier];
+      healUnitDamage(state, source, targetRef, amount);
       break;
     }
+    // Factory Emergency Repair is a lethal-hit-window reaction, never resolved
+    // here (armCommanderEmergencyRepair / applyCommanderEmergencyRepairCancel).
+    case "lethal-cancel":
+      throw new Error(`${cast.name} is used when an enemy attack would destroy a protected unit.`);
     // Belfast "Royal Salvo" (Azur Lane): flat EFFECT damage to the chosen enemy
     // — the shared ability-damage path (no Retaliation, ignores Defense and the
     // per-attack caps, spell wards don't apply), lethal routes through the
     // normal removal path. The commander-cast chooser runs finishCombatIfNeeded
     // after this resolves, so a killing salvo ends the combat cleanly.
     case "enemy-damage":
-      applyFlatAbilityDamage(
-        state,
-        caster,
-        target.id,
-        cast.abilityId,
-        cast.name,
-        effect.damageByPower[tier],
-      );
+      applyFlatAbilityDamage(state, caster, target.id, cast.abilityId, cast.name,
+        commanderEnemyDamageAmount(caster, target, effect.damageByPower, tier));
       break;
     case "heal-cleanse": {
       healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
@@ -33340,19 +33936,32 @@ function resolveCommanderCast(
       break;
     }
     case "attack-buff":
+      // Only Dungeon Brute uses caster-activation duration and the Black Dragon
+      // cap. Other commanders sharing this effect kind keep their printed rules.
       createActiveEffect(
         state,
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
           duration:
-            effect.duration === "two-rounds"
+            effect.duration === "caster-two-activations"
+              ? { type: "combat" }
+              : effect.duration === "two-rounds"
               ? { type: "combat-rounds", rounds: 2 }
               : { type: "current-combat-round" },
+          ...(effect.duration === "caster-two-activations" ? { casterActivationsUntilExpiry: 2 } : {}),
           polarity: "positive",
           removable: true,
           modifiers: [
-            { type: "ATTACK_BONUS", amount: effect.amountByPower[tier] },
+            { type: "ATTACK_BONUS", amount:
+              tier >= 2 && effect.blackDragonPower2Cap !== undefined &&
+              (target.unitDefId === "dungeon.black_dragons" || target.unitDefId === "neutral.black_dragons")
+                ? Math.min(effect.amountByPower[tier], effect.blackDragonPower2Cap)
+                : effect.amountByPower[tier] },
+            ...(effect.advantageAtPower === tier ||
+              (tier >= 2 && effect.blackDragonAdvantageAtPower2 &&
+                (target.unitDefId === "dungeon.black_dragons" || target.unitDefId === "neutral.black_dragons"))
+              ? [{ type: "ATTACK_ROLL_ADVANTAGE" as const }] : []),
           ],
         },
         source,
@@ -33367,6 +33976,8 @@ function resolveCommanderCast(
           type: "FIRE_SHIELD",
           amount: effect.damageByPower[tier],
           includesRanged: true,
+          ...(span === "caster-two-activations"
+            ? { amountAfterFirstCasterActivation: 1, casterActivationsSinceCast: 0 } : {}),
         },
       ];
       if (
@@ -33381,7 +33992,9 @@ function resolveCommanderCast(
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
           duration:
-            span === "combat"
+            span === "caster-two-activations"
+              ? { type: "combat" }
+              : span === "combat"
               ? { type: "combat" }
               : span === "three-rounds"
                 ? { type: "combat-rounds", rounds: 3 }
@@ -33570,9 +34183,9 @@ function resolveCommanderCast(
   caster.commanderCastRound = combat.round;
   if (!commanderUsesActionPoints(caster.commanderSlug)) {
     // Older combat saves may have only the round stamp. Preserve that spent
-    // Precision use when enforcing its three-use combat limit.
+    // commander cast when enforcing a per-combat cap or first-use effect.
     caster.commanderCastCount = (caster.commanderCastCount ??
-      (caster.commanderSlug === "temple_guardian" && priorCommanderCastRound !== undefined ? 1 : 0)) + 1;
+      ((caster.commanderSlug === "temple_guardian" || caster.commanderSlug === "succubus" || caster.commanderSlug === "soul_eater" || caster.commanderSlug === "bulwark" || caster.commanderSlug === "forge" || caster.commanderSlug === "ogre_leader" || caster.commanderSlug === "paladin" || caster.commanderSlug === "brute") && priorCommanderCastRound !== undefined ? 1 : 0)) + 1;
   }
   if (commanderUsesActionPoints(caster.commanderSlug)) {
     if (commanderActionPoints(caster) < COMMANDER_AP_CAST_COST)
@@ -33696,6 +34309,25 @@ function chooseAbilityTarget(
     if (state.reactionWindow) {
       advanceReactionWindowAfterPlay(state, action.playerId, cards);
     }
+    return;
+  }
+
+  if (choice.kind === "commander-soul-link") {
+    const commander = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    if (isSkip && commander?.commanderSlug === "soul_eater") {
+      commander.soulLinkSelectionDone = true;
+      if (state.adventure && !combat.commanderCombatStartResolved) resumeCombatStartAfterCommanderPlacement(state);
+      return;
+    }
+    const target = combat.units[action.targetUnitId];
+    if (!commander || commander.commanderSlug !== "soul_eater" || !isUnitAlive(commander) ||
+        !target || !isUnitAlive(target) || target.controllerId !== commander.controllerId || target.id === commander.id) {
+      throw new Error("That Soul Link target is no longer available.");
+    }
+    commander.soulLinkTargetId = target.id;
+    commander.soulLinkSelectionDone = true;
+    appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} links with ${target.cardName}.` });
+    if (state.adventure && !combat.commanderCombatStartResolved) resumeCombatStartAfterCommanderPlacement(state);
     return;
   }
 
@@ -33966,6 +34598,7 @@ function chooseAbilityTarget(
       const maximum = Math.min(
         healTarget.damage,
         sacrifice.maxHealth - sacrifice.damage,
+        choice.abilityId === "specialty.verdish.4" ? 3 : Number.POSITIVE_INFINITY,
       );
       if (maximum > 0) {
         openBalanceSpellChoice(
@@ -33977,7 +34610,7 @@ function chooseAbilityTarget(
             unitId: healTarget.id,
             sacrificeUnitId: sacrifice.id,
           },
-          `Sacrifice: how much HP should ${healTarget.cardName} recover?`,
+          `${choice.abilityName ?? "Sacrifice"}: how much damage should ${healTarget.cardName} transfer?`,
           Array.from({ length: maximum }, (_, index) => ({
             label: `Heal ${index + 1} HP — transfer ${index + 1} damage to ${sacrifice.cardName}`,
           })),
@@ -34990,6 +35623,7 @@ const BATTLEFIELD_TOKEN_CARD_ID: Record<BattlefieldTokenKind, CardId> = {
   quicksand: "spell.quicksand",
   land_mine: "spell.land_mine",
   factory_trap: "commander.factory.mechanical_trap",
+  artifact_wall: "artifact.ladybird_of_luck",
 };
 
 /**
@@ -35681,6 +36315,13 @@ function moveUnit(
       ? { sourceAbilityId: "veteran-magma-teleport-strike" }
       : {}),
   });
+  if (unit.type !== "flying" && enteredSpaces && finalPosition !== from) {
+    const enteredCount = enteredSpaces.indexOf(finalPosition) + 1;
+    const directDistance = getBattlefieldDistance(from, finalPosition);
+    if (enteredCount > directDistance) {
+      (unit.townVeterancy ??= {}).movedSpacesRound = (unit.townVeterancy?.movedSpacesRound ?? 0) + enteredCount - directDistance;
+    }
+  }
   applyCouatlMomentumHeal(state, unit, getBattlefieldDistance(from, finalPosition));
   gainSectQiAfterMove(state, unit, from, finalPosition);
   elementalMovement(state, unit, elementalHooks);
@@ -35797,7 +36438,12 @@ function defendUnit(
   advanceActiveUnit(state);
 }
 
-/** Resolve the delayed charges created by Factory Artificer's Field Repair. */
+/**
+ * Resolve delayed REPAIR_HEAL_AT_COMBAT_ROUND_START charges. The retired
+ * Artificer "Field Repair" cast created them; it was replaced by Emergency
+ * Repair, so this only drains charges carried by a mid-combat save from before
+ * the change.
+ */
 function applyRepairBuffsAtCombatRoundStart(state: GameState): void {
   const combat = state.combat;
   if (!combat) return;
@@ -35878,6 +36524,15 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   }
 
   const finishedRound = state.combat.round;
+  for (const active of state.activeEffects) {
+    if (!active.ulandCure || active.ulandCure.lastOfferedRound === finishedRound || active.target?.type !== "unit") continue;
+    active.ulandCure.lastOfferedRound = finishedRound;
+    const unit = state.combat.units[active.target.unitId];
+    if (!unit || !isUnitAlive(unit) || unit.damage <= 0) continue;
+    if (active.source.type !== "card") continue;
+    openUlandCureChoice(state, active.controllerId, active.source.cardId, "round-end", [unit.id], active.ulandCure.amount, active.id, byPlayerId);
+    return;
+  }
   for (const unit of Object.values(state.combat.units)) {
     const debt = unit.elementalVeterancy;
     if (!debt?.deferredDamage || debt.deferredRound !== finishedRound || !isUnitAlive(unit)) continue;
@@ -35891,6 +36546,11 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   }
   state.combat.elementalLinks = [];
   if (finishCombatIfNeeded(state)) return;
+  for (const unitId of state.combat.darkstornRoundDefenseTokenIds ?? []) {
+    const unit = state.combat.units[unitId];
+    if (unit) unit.defenseToken = false;
+  }
+  delete state.combat.darkstornRoundDefenseTokenIds;
   expireHeroGradeFamiliars(state, finishedRound);
   state.combat.round += 1;
   resetCombatRound(state.combat);
@@ -35950,6 +36610,16 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     round: state.combat.round,
     activeUnitId: null,
   });
+
+  // Verdish I follows its chosen unit through the combat and heals at the
+  // beginning of each later round. A removed unit is never restored.
+  for (const active of [...state.activeEffects]) {
+    const heal = active.modifiers.find(modifier => modifier.type === "VERDISH_ROUND_HEAL");
+    if (!heal || heal.type !== "VERDISH_ROUND_HEAL" || active.target?.type !== "unit") continue;
+    const unit = state.combat.units[active.target.unitId];
+    if (!unit || !isUnitAlive(unit) || unit.damage <= 0) continue;
+    healUnitDamage(state, active.source, { type: "unit", unitId: unit.id }, heal.amount);
+  }
 
   // Field Repair's delayed charges resolve before other round-start effects, so
   // a repaired machine enters the round at its new health before a war machine
@@ -37116,6 +37786,8 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       continue;
     }
 
+    if (maybeOpenSoulLinkChoice(state)) break;
+
     if (
       combat &&
       !combat.outcome &&
@@ -37403,6 +38075,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "MULLIGAN_CARD",
   "OPENING_HAND_MULLIGAN",
   "ASTROLOGERS_HERO_EMPOWER",
+  "ASTROLOGERS_CARD_GAMES",
   "REVISIT_FIELD",
   "OFFER_ALLY_TRANSFER",
   "BUILD_GRAIL",
@@ -38080,6 +38753,9 @@ function applyActionInContext(
         case "ASTROLOGERS_HERO_EMPOWER":
           astrologersHeroEmpower(nextState, action);
           break;
+        case "ASTROLOGERS_CARD_GAMES":
+          astrologersCardGames(nextState, action);
+          break;
         case "MOVE_SPELL_TO_SPELL_BOOK":
           moveSpellToSpellBook(nextState, action, cards);
           break;
@@ -38446,6 +39122,15 @@ function applyActionInContext(
           // handled by the adventure reducer.
           if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
             resolveTarnumSearch(nextState, action, cards);
+          } else if (nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "isra-fetch-card") {
+            resolveIsraFetchChoice(nextState, action);
+          } else if (nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "isra-return-unit") {
+            resolveIsraReturnChoice(nextState, action);
+          } else if (nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "uland-cure") {
+            resolveUlandCureChoice(nextState, action);
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             (nextState.pendingChoice.context === "disrupting-ray-mode" ||
@@ -38752,6 +39437,7 @@ function applyActionInContext(
     // Combat-sandbox combats (and any post-war-machine round start) have no
     // adventure pump to hand out the activation slot, so settle it here: open the
     // next unit, or the tied-order choice that picks it.
+    maybeOpenSoulLinkChoice(nextState);
     ensureCombatActivation(nextState);
 
     // Interactive Blue Archive combat-start abilities resolve in deterministic

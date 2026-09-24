@@ -390,7 +390,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         fire_wall: "Fire Wall",
         quicksand: "Quicksand",
         land_mine: "Land Mine",
-        factory_trap: "Mechanical Trap"
+        factory_trap: "Mechanical Trap",
+        artifact_wall: "Ladybird of Luck — it counts as a Wall until the end of the combat —"
       };
       return `${playerName(state, event.playerId)} places ${names[event.kind]} at ${getBattlefieldLabel(event.position)}.`;
     }
@@ -661,6 +662,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "FACTION_MECHANIC_TRIGGERED":
       return event.message;
     case "COMMANDER_CAST_USED":
+    case "COMMANDER_ATTACK_CANCELLED":
     case "COMMANDER_POINTS_AWARDED":
     case "COMMANDER_GRADED_UP":
     case "COMMANDER_DIED":
@@ -831,7 +833,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "TRADE_EXECUTED":
       return `${playerName(state, event.playerId)} trades ${event.rateLabel}.`;
     case "WAR_MACHINE_BOUGHT":
-      return `${playerName(state, event.playerId)} buys the ${cardName(event.cardId)} for ${formatCost(event.cost)} (${event.at === "factory" ? "War Machine Factory" : "Trading Post"}).`;
+      return `${playerName(state, event.playerId)} ${event.deferred ? "orders" : "buys"} the ${cardName(event.cardId)} for ${formatCost(event.cost)} (${event.at === "factory" ? "War Machine Factory" : "Trading Post"})${event.deferred ? "; delivery at the start of their next turn" : ""}.`;
     case "PERMANENT_PLAYED":
       return `${playerName(state, event.playerId)} puts ${cardName(event.cardId)} into play${event.replacedCardId ? `, discarding ${cardName(event.replacedCardId)}` : ""}.`;
     case "PERMANENT_DISCARDED":

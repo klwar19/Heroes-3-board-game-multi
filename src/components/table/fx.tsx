@@ -298,6 +298,54 @@ function centerOf(rect: DOMRect): { x: number; y: number } {
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
+/**
+ * Plays an authored atlas at the display rate instead of hard-stepping it.
+ * The sprite's image moves onto two stacked child layers that cross-dissolve
+ * each frame into the next, so 16-32 painted frames flow like 60. The sprite
+ * keeps its size, transform, filter and blend mode, which then apply once to
+ * the combined layers. Both layers stay fully opaque around the midpoint, so
+ * the blend never turns the effect see-through.
+ */
+function frameBlender(sprite: HTMLElement, cols: number, rows: number) {
+  const image = sprite.style.backgroundImage;
+  sprite.style.backgroundImage = "none";
+  const layers = [0, 1].map(() => {
+    const layer = document.createElement("div");
+    layer.style.cssText = "position:absolute;inset:0;background-repeat:no-repeat;pointer-events:none";
+    layer.style.backgroundImage = image;
+    sprite.appendChild(layer);
+    return layer;
+  });
+  /** `position` is a fractional frame index, blended only within [first, last]. */
+  return (position: number, first: number, last: number, cellWidth: number, cellHeight: number) => {
+    const clamped = Math.max(first, Math.min(last, position));
+    const base = Math.floor(clamped);
+    const frames = [base, Math.min(last, base + 1)];
+    const mix = clamped - base;
+    const opacities = [Math.min(1, 2 * (1 - mix)), Math.min(1, 2 * mix)];
+    layers.forEach((layer, index) => {
+      const frame = frames[index];
+      layer.style.backgroundSize = `${cellWidth * cols}px ${cellHeight * rows}px`;
+      layer.style.backgroundPosition = `-${(frame % cols) * cellWidth}px -${Math.floor(frame / cols) * cellHeight}px`;
+      layer.style.opacity = String(opacities[index]);
+    });
+  };
+}
+
+/** Fractional frame at `progress` through `count` frames: each frame peaks mid-slot, keeping the stepped timing. */
+function blendPosition(progress: number, first: number, count: number): number {
+  return first + Math.max(0, Math.min(count - 1, progress * count - 0.5));
+}
+
+// Element-coloured halos; the shared gold glow suits only fire.
+const breathGlow: Record<string, string> = {
+  "azure-ice-breath-animated": "drop-shadow(0 0 9px rgb(150 210 255 / 60%))",
+  "crystal-red-strike-animated": "drop-shadow(0 0 8px rgb(255 70 95 / 55%))",
+  "rust-acid-breath-animated": "drop-shadow(0 0 8px rgb(185 215 60 / 50%))",
+  "faerie-rainbow-breath-animated": "drop-shadow(0 0 8px rgb(225 175 255 / 55%))",
+  "dragon-fierce-breath-animated": "brightness(1.07) saturate(1.15) drop-shadow(0 0 8px rgb(255 218 130 / 62%))",
+};
+
 function makeCardFaceElement(cardId: string | undefined): HTMLElement {
   const card = cardId ? cardLibrary[cardId] : undefined;
   const src = card?.assets?.cardImage;
@@ -763,10 +811,12 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   sprite.style.top = `${centerY - height / 2}px`;
   sprite.style.transformOrigin = "center";
   sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
-  if (cue.fxKey === "dragon-fierce-breath-animated")
-    sprite.style.filter = "brightness(1.07) saturate(1.15) drop-shadow(0 0 8px rgb(255 218 130 / 62%))";
+  if (breathGlow[cue.fxKey]) sprite.style.filter = breathGlow[cue.fxKey];
+  const paintFrame = frameBlender(sprite, sheet.cols, sheet.rows);
   stage.appendChild(sprite);
   const playbackMs = (sheet.frames / sheet.fps) * 1000;
+  // The last painted frames fade out gently instead of vanishing on removal.
+  const tailMs = Math.min(90, playbackMs * 0.14);
   if (cue.sound) playLibrarySound(cue.sound);
   else if (["melee-bite-snap-animated", "hydra-multi-bite", "haspid-poison-bite"].includes(cue.fxKey)) {
     playLibrarySound("mgq/effects/bite");
@@ -786,8 +836,8 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
         if (!stage.isConnected) { resolve(); return; }
         const elapsed = now - started;
         if (elapsed >= playbackMs) { resolve(); return; }
-        const frame = Math.min(sheet.frames - 1, Math.floor(elapsed / playbackMs * sheet.frames));
-        sprite.style.backgroundPosition = `-${frame % sheet.cols * width}px -${Math.floor(frame / sheet.cols) * height}px`;
+        paintFrame(blendPosition(elapsed / playbackMs, 0, sheet.frames), 0, sheet.frames - 1, width, height);
+        sprite.style.opacity = String(Math.min(1, (playbackMs - elapsed) / tailMs));
         window.requestAnimationFrame(tick);
       };
       tick(started);
@@ -954,6 +1004,7 @@ async function runBeamProjectile(
   sprite.style.top = `${(start.y + end.y) / 2 - height / 2}px`;
   sprite.style.transformOrigin = "center";
   sprite.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+  const paintFrame = frameBlender(sprite, sheet.cols, sheet.rows);
   stage.appendChild(sprite);
   const started = performance.now();
   let playedShot = false;
@@ -963,20 +1014,21 @@ async function runBeamProjectile(
       const tick = (now: number) => {
         if (!stage.isConnected) { resolve(); return; }
         const elapsed = now - started;
-        let frame: number;
+        let range: [number, number];
+        let progress: number;
         if (elapsed < launchMs) {
-          frame = Math.min(3, Math.floor(elapsed / launchMs * 4));
+          range = [0, 4]; progress = elapsed / launchMs;
         } else if (elapsed < launchMs + flightMs) {
           if (!playedShot) { playedShot = true; if (cue.sound) playLibrarySound(cue.sound); }
-          frame = 4 + Math.min(6, Math.floor((elapsed - launchMs) / flightMs * 7));
+          range = [4, 7]; progress = (elapsed - launchMs) / flightMs;
         } else if (elapsed < launchMs + flightMs + fadeMs) {
           if (!playedImpact) {
             playedImpact = true;
             if (cue.hitSound && !cue.hitFxKey) playLibrarySound(cue.hitSound);
           }
-          frame = 11 + Math.min(4, Math.floor((elapsed - launchMs - flightMs) / fadeMs * 5));
+          range = [11, 5]; progress = (elapsed - launchMs - flightMs) / fadeMs;
         } else { resolve(); return; }
-        sprite.style.backgroundPosition = `-${(frame % sheet.cols) * width}px -${Math.floor(frame / sheet.cols) * height}px`;
+        paintFrame(blendPosition(progress, range[0], range[1]), range[0], range[0] + range[1] - 1, width, height);
         window.requestAnimationFrame(tick);
       };
       tick(started);
@@ -1125,6 +1177,8 @@ async function runSprite(
       );
       return;
     }
+    // Authored sequential atlases flow; unordered classic sheets keep stepping.
+    const paintFrame = sheet.sequentialFrames ? frameBlender(sprite, sheet.cols, sheet.rows) : null;
     await new Promise<void>((resolve) => {
       const startTime = performance.now();
       const totalMs = playbackMs ?? (sheet.frames / sheet.fps) * 1000;
@@ -1132,6 +1186,11 @@ async function runSprite(
         const elapsed = now - startTime;
         if (elapsed >= totalMs) {
           resolve();
+          return;
+        }
+        if (paintFrame) {
+          paintFrame(blendPosition(elapsed / totalMs, 0, sheet.frames), 0, sheet.frames - 1, sheet.frameWidth, sheet.frameHeight);
+          requestAnimationFrame(step);
           return;
         }
         const frame = Math.min(sheet.frames - 1, Math.floor((elapsed / totalMs) * sheet.frames));
@@ -1182,6 +1241,7 @@ async function runPhasedProjectile(
   // compositing through the fixed stage or its ancestors' stacking contexts.
   sprite.style.filter = "none";
   sprite.style.transformOrigin = "center";
+  const paintFrame = frameBlender(sprite, sheet.cols, sheet.rows);
   stage.appendChild(sprite);
   const paint = (
     range: [number, number],
@@ -1191,12 +1251,10 @@ async function runPhasedProjectile(
     width: number,
     transform: string,
   ) => {
-    const frame = range[0] + Math.min(range[1] - 1, Math.floor(progress * range[1]));
     const height = width * sheet.frameHeight / sheet.frameWidth;
     sprite.style.width = `${width}px`;
     sprite.style.height = `${height}px`;
-    sprite.style.backgroundSize = `${width * sheet.cols}px ${height * sheet.rows}px`;
-    sprite.style.backgroundPosition = `-${(frame % sheet.cols) * width}px -${Math.floor(frame / sheet.cols) * height}px`;
+    paintFrame(blendPosition(progress, range[0], range[1]), range[0], range[0] + range[1] - 1, width, height);
     sprite.style.left = `${x - width / 2}px`;
     sprite.style.top = `${y - height / 2}px`;
     sprite.style.transform = transform;

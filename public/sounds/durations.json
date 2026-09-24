@@ -1744,6 +1744,8 @@
   "units/crystal-dragon-defend": 914,
   "units/crystal-dragon-hurt": 862,
   "units/crystal-dragon-move": 993,
+  "units/cyberbrute-move": 993,
+  "units/cyber-zombie-chainsaw-attack": 2500,
   "units/cyclops-attack": 836,
   "units/cyclops-death": 784,
   "units/cyclops-defend": 601,

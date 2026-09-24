@@ -9,7 +9,8 @@ export type {
   UnitRankStatBonus,
   RankSchedule,
   RankStep,
-  RankAbilityTrackId
+  RankAbilityTrackId,
+  RankScheduleSide
 } from "./experience-rank-abilities";
 
 export {
@@ -24,6 +25,8 @@ export {
   WUXIA_RANK_ABILITY_ICONS,
   UNIT_RANK_TRACK_OVERRIDES,
   UNIT_STAT_STEPS,
+  effectiveRankScheduleSide,
+  hasNeutralSideRankSchedule,
   hasUniqueRankSchedule,
   inferFlavour,
   inferRankAbilityTrack,

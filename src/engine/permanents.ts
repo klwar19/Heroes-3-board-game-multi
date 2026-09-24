@@ -1248,7 +1248,10 @@ export function startWarMachineRound(state: GameState): void {
       ? [{ playerId, cardId: HENRIETTA_HALFLINGS_ID, henriettaHalflings: true }]
       : []),
     // Dark Mullich Overclock I / IV "may also be played at the beginning of
-    // the combat": asked once, in combat round 1 before any unit acts.
+    // the combat": asked once, in combat round 1 before any unit acts. For
+    // Overclock I only the +2 Initiative option may be played here — its +1
+    // Attack option is an Instant attack buff (user ruling 2026-09-24), played
+    // from hand when the holder's unit attacks.
     ...([1, 4] as const)
       .filter((level) => playerCanStartOverclockAtCombatStart(state, playerId, level))
       .map((level) => ({ playerId, cardId: overclockStartCardId(level), forgeOverclockStart: level })),
@@ -1471,9 +1474,10 @@ function playerCanStartOverclockAtCombatStart(state: GameState, playerId: Player
  * Resolves a combat-start Overclock I / IV on the chosen friendly unit: the
  * card leaves the hand for the discard (an Instant, exactly like the
  * from-hand play) and its unit-scoped effect is created.
- *  I  - +2 Initiative until the end of the round, or +1 Attack until the end
- *       of the round (the combat-start form of the attack reaction); either
- *       doubles on a GROUND unit.
+ *  I  - +2 Initiative until the end of the round (doubles on a GROUND unit).
+ *       Only the Initiative option may be played at the beginning of the
+ *       combat; the +1 Attack option is an Instant attack buff that is played
+ *       from hand in the attack window (UNIT_ATTACK_DECLARED), never here.
  *  IV - +1 Attack and +3 Initiative for this round and the next.
  */
 function applyOverclockAtCombatStart(state: GameState, playerId: PlayerId, targetUnitId: UnitId): void {
@@ -1491,19 +1495,14 @@ function applyOverclockAtCombatStart(state: GameState, playerId: PlayerId, targe
   player.hand.splice(player.hand.indexOf(cardId), 1);
   player.discard.push(cardId);
   const factor = level === 1 && target.type === "ground" ? 2 : 1;
-  const attackSide = level === 1 && head.forgeOverclockOption === "attack";
   const modifiers =
     level === 4
       ? [{ type: "INITIATIVE_BONUS" as const, amount: 3 }, { type: "ATTACK_BONUS" as const, amount: 1 }]
-      : attackSide
-        ? [{ type: "ATTACK_BONUS" as const, amount: 1 * factor }]
-        : [{ type: "INITIATIVE_BONUS" as const, amount: 2 * factor }];
+      : [{ type: "INITIATIVE_BONUS" as const, amount: 2 * factor }];
   const optionLabel =
     level === 4
       ? "Beginning of combat: +1 Attack and +3 Initiative for this round and the next"
-      : attackSide
-        ? `Beginning of combat: +${factor} Attack until the end of the round`
-        : `Beginning of combat: +${2 * factor} Initiative until the end of the round`;
+      : `Beginning of combat: +${2 * factor} Initiative until the end of the round`;
   const effect = makeActiveEffect(
     state,
     {
@@ -1982,13 +1981,15 @@ export function processWarMachineRound(state: GameState): void {
         continue;
       }
       if (head.forgeOverclockStart === 1) {
+        // Only the Initiative option is offered: Overclock I's +1 Attack is an
+        // Instant attack buff (played when your unit attacks), not a
+        // beginning-of-combat play. Skipping keeps the card in hand for it.
         openWarMachineOffer(
           state,
           playerId,
-          "Overclock I (beginning of the combat): overclock one of your units? The effect doubles for a ground unit.",
+          "Overclock I (beginning of the combat): give one of your units +2 Initiative until the end of the round (doubles for a ground unit)? Skip to keep the card for its +1 Attack Instant when your unit attacks.",
           "+2 Initiative until the end of the round",
           "Skip",
-          ["+1 Attack until the end of the round"],
         );
       } else {
         openWarMachineOffer(
@@ -2211,11 +2212,18 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
       processWarMachineRound(state);
       return;
     }
+    if (optionIndex !== 0) {
+      // Only "use" (0) and "skip" (1) exist: Overclock I's +1 Attack option is
+      // an Instant attack buff and cannot be played at the beginning of the
+      // combat (a stale pre-ruling offer's index 2 lands here too).
+      throw new Error(
+        overclockStart.forgeOverclockStart === 1
+          ? "Overclock I's +1 Attack is an Instant played when your unit attacks, not at the beginning of the combat."
+          : "That Overclock option does not exist.",
+      );
+    }
     if (!playerCanStartOverclockAtCombatStart(state, playerId, overclockStart.forgeOverclockStart)) {
       throw new Error("Overclock cannot be played right now.");
-    }
-    if (overclockStart.forgeOverclockStart === 1) {
-      overclockStart.forgeOverclockOption = optionIndex === 2 ? "attack" : "initiative";
     }
     const candidates = friendlyBoardUnits(state, playerId);
     if (candidates.length === 1) {
@@ -2606,6 +2614,7 @@ export function playerOwnsWarMachine(state: GameState, playerId: PlayerId, cardI
   }
   return (
     player.hand.includes(cardId) ||
+    (player.preOrderWarMachines ?? []).includes(cardId) ||
     player.deck.includes(cardId) ||
     player.discard.includes(cardId) ||
     getPermanentCardIds(state, playerId).includes(cardId)

@@ -234,9 +234,19 @@ function SpecificModePanel({
         </small>
       )}
       <small className="mapPresetHint">
-        A specific setting overrides the map-wide one for that tile; fields left unset fall back to it.
+        {kind === "mine" || kind === "obelisk"
+          ? `Picking a tile saves its ${kind === "mine" ? "Mine" : "Obelisk"} as INDIVIDUAL right away (starting from the current global values) — the global settings then no longer apply to it. ${kind === "mine" ? "Town (Ⅰ) tiles and face-down" : "Face-down"} draws that may carry one can be picked too.`
+          : "A specific setting overrides the map-wide one for that tile; fields left unset fall back to it."}
       </small>
     </div>
+  );
+}
+
+/** Whether a map-wide Mine config still carries any setting (else it collapses to undefined). */
+function mineConfigHasValue(config: NonNullable<CustomMapPreset["mines"]>): boolean {
+  return Boolean(
+    config.guard || config.reward || config.vp || config.combatRoundLimit || config.breakField ||
+      config.persistentGuard || config.unlimitedRounds || config.noExperience
   );
 }
 
@@ -2761,12 +2771,13 @@ export function MapPresetEditor({
         <div className="mapPresetSectionLabel">⛏ Mines (all types)</div>
         {modeTabs("mine")}
         {objectMode("mine") === "specific"
-          ? specificPanel("mine", "No placed tile carries a Mine yet — pin a mine tile (or a face-down Secret mine) first.")
+          ? specificPanel("mine", "No placed tile can carry a Mine yet — place a Town (Ⅰ) tile or a supply tile first (the scenario's default S1/S2… seats are not editable tiles until you place Town tiles).")
           : null}
         <div className="mapObjectConfigStack" hidden={objectMode("mine") !== "global"}>
         <small className="mapPresetHint">
           Optional guard and PC-style break options on every Mine. Persistent army leaves survivors after a
-          lost or retreated fight.
+          lost or retreated fight. A Mine picked under 📍 Specific (marked ⛏✎ on the board) keeps its own
+          individual settings and ignores these.
         </small>
         <ObjectConfigHeading kind="encounter">Encounter &amp; defense</ObjectConfigHeading>
         <GuardLevelChips
@@ -2779,7 +2790,7 @@ export function MapPresetEditor({
             else delete next.guard;
             patch({
               mines:
-                next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
+                mineConfigHasValue(next)
                   ? next
                   : undefined
             });
@@ -2803,7 +2814,7 @@ export function MapPresetEditor({
                 else next[key] = true;
                 patch({
                   mines:
-                    next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds || next.noExperience
+                    mineConfigHasValue(next)
                       ? next
                       : undefined
                 });
@@ -2827,7 +2838,7 @@ export function MapPresetEditor({
                 ? "unlimited"
                 : Number(selected) as 1 | 2 | 3;
               patch({
-                mines: next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard
+                mines: mineConfigHasValue(next)
                   ? next
                   : undefined
               });
@@ -2850,7 +2861,7 @@ export function MapPresetEditor({
             if (reward) next.reward = reward;
             else delete next.reward;
             patch({
-              mines: next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
+              mines: mineConfigHasValue(next)
                 ? next
                 : undefined
             });
@@ -2861,7 +2872,7 @@ export function MapPresetEditor({
             if (vp) next.vp = vp;
             else delete next.vp;
             patch({
-              mines: next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
+              mines: mineConfigHasValue(next)
                 ? next
                 : undefined
             });

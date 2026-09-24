@@ -64,7 +64,7 @@ export function attackOpportunityValue(state: GameState, unit: CombatUnitState, 
   const actor = { ...unit, position, movedThisActivation: unit.movedThisActivation || position !== unit.position };
   const board = { ...state, combat: { ...state.combat!, units: { ...state.combat!.units, [unit.id]: actor } } };
   const damage = strikeValue(board, actor, target);
-  const retaliation = damage >= unitRemovalHealth(target) && !getPreemptiveRetaliation(target)
+  const retaliation = damage >= unitRemovalHealth(target) && !getPreemptiveRetaliation(target, position)
     ? 0 : retaliationValue(board, actor, target);
   return abilityDamageValue(target, damage) - retaliation * 0.8 - (retaliation >= hp(unit) ? unitThreatValue(unit) / 25 : 0);
 }

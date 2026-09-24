@@ -1,5 +1,6 @@
 "use client";
 import { WanderingMerchantNotice } from "@/components/adventure/wandering-merchant-notice";
+import { CardGamesNotice } from "@/components/adventure/card-games-notice";
 import { isParallelWatchOnly, parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
 import { ParallelBattleSwitcher } from "@/components/table/parallel-battle-switcher";
 
@@ -3610,7 +3611,7 @@ export default function Home() {
               // Shield / Stone Skin instant reaction both emit this. Reuse the
               // matching H3 spell's sprite + sound over the buffed/healed target
               // so every commander cast animates and sounds (Bloodlust tints red,
-              // Animate Dead falls back to a heal shimmer).
+              // Animate Dead uses its resurrection sheet and spell sound).
               const plan = commanderCastFxPlan(event.commanderSlug, event.castName);
               queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.targetUnitId);
               if (inCombat) {
@@ -4137,6 +4138,10 @@ export default function Home() {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 400);
                 }
+              } else if (event.kind === "artifact_wall") {
+                // Ladybird of Luck laid on the board as a Wall: a visible drop cue.
+                cues.push({ kind: "floater", id: `${event.id}-place`, at: `cell:${event.position}`, text: "Wall", tone: "info", delayMs: at });
+                timeline = at + 400;
               } else {
                 const soundKey = event.kind === "land_mine" || event.kind === "factory_trap" ? "spells/land-mine" : "spells/quicksand";
                 window.setTimeout(() => playLibrarySound(soundKey), at);
@@ -7897,6 +7902,7 @@ export default function Home() {
           ) : null}
 
           {isSeated ? <WanderingMerchantNotice state={state} viewerPlayerId={viewerPlayerId} onAction={submitAction} /> : null}
+          {isSeated ? <CardGamesNotice state={state} viewerPlayerId={viewerPlayerId} legalActions={legalActions} onAction={submitAction} /> : null}
           <AdventureEventFeed
             items={feedItems}
             onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}

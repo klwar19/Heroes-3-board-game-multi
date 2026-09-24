@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Build the fourteen Bulwark Few/Pack unit-card faces from approved art. */
+/**
+ * LEGACY Bulwark Few builder (SVG overlay on the blank frame). Superseded: all
+ * Bulwark faces are built by scripts/build-forge-unit-cards.mjs. Guarded by
+ * --legacy-few below.
+ */
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,14 +38,14 @@ const cards = [
     few: { stats: [3, 2, 4, 6], cost: { gold: 6 }, text: "" },
     pack: { stats: [3, 2, 5, 8], cost: { gold: 10 }, text: "At activation start, recover from all negative effects." } },
   { slug: "shamans", name: "Shamans", tier: "silver", type: "RANGED", art: { few: "shamans-few.png", pack: "shamans-pack.png" },
-    few: { stats: [3, 0, 5, 5], cost: { gold: 7 }, text: "+1 Defense against ranged attackers (Air Shield)." },
+    few: { stats: [3, 1, 5, 5], cost: { gold: 7 }, text: "+1 Defense against ranged attackers (Air Shield)." },
     pack: { stats: [3, 1, 6, 6], cost: { gold: 11 }, text: "+1 Defense vs ranged. After attacking, target gets −2 Initiative next round (Freezing Shot)." } },
   { slug: "mammoths", name: "Mammoths", tier: "golden", type: "GROUND", art: { few: "mammoths-few.png", pack: "mammoths-pack.png" },
     few: { stats: [5, 2, 7, 5], cost: { gold: 12 }, text: "" },
     pack: { stats: [5, 2, 8, 6], cost: { gold: 20, valuables: 1 }, text: "+1 Defense while defending (War Mammoth)." } },
   { slug: "jotunns", name: "Jotunns", tier: "golden", type: "GROUND", art: { few: "jotunns-few.png", pack: "jotunns-pack.png" },
-    few: { stats: [5, 3, 8, 7], cost: { gold: 18, valuables: 1 }, text: "" },
-    pack: { stats: [6, 3, 9, 9], cost: { gold: 32, valuables: 2 }, text: "At activation start, may teleport one of your other units to an empty space, then act normally." } },
+    few: { stats: [6, 2, 9, 8], cost: { gold: 22, valuables: 1 }, text: "Enemy Flying units have -1 Initiative." },
+    pack: { stats: [7, 2, 10, 11], cost: { gold: 30, valuables: 2 }, text: "At activation start, may teleport one of your other units to an empty space, then act normally. Enemy Flying units have -2 Initiative." } },
 ];
 
 const esc = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -59,9 +63,12 @@ function wrap(text, max = 52) {
 
 function costMarkup(cost, x) {
   if (!cost.valuables) return `<text x="${x}" y="813" class="cost">${cost.gold}</text>`;
-  return `<text x="${x - 16}" y="813" class="cost">${cost.gold}</text>
-    <image href="${valuableIcon}" x="${x + 4}" y="783" width="30" height="36"/>
-    <text x="${x + 45}" y="813" class="cost">${cost.valuables}</text>`;
+  // Gold sits clear of the frame's printed coin icon, then the valuables
+  // crystal and its count (the old x-16 / x+4 / x+45 layout overprinted the
+  // coin, making "20 + 1" read as "201").
+  return `<text x="${x + 7}" y="813" class="cost">${cost.gold}</text>
+    <image href="${valuableIcon}" x="${x + 27}" y="783" width="30" height="36"/>
+    <text x="${x + 71}" y="813" class="cost">${cost.valuables}</text>`;
 }
 
 function typeBadge(type) {
@@ -106,9 +113,20 @@ async function build(card, side) {
   return output;
 }
 
+// SUPERSEDED (2026-09-24): every Bulwark face (Few, Pack, Neutral) is now built
+// in the real printed format from the official-design masters by
+// scripts/build-forge-unit-cards.mjs. This legacy SVG-overlay Few builder would
+// overwrite those Few faces, so it only runs when explicitly asked.
+if (!process.argv.includes("--legacy-few")) {
+  console.error("Bulwark cards are built by scripts/build-forge-unit-cards.mjs <slug>; pass --legacy-few to run this old builder.");
+  process.exit(1);
+}
 await mkdir(REVIEW, { recursive: true });
 const outputs = [];
-for (const card of cards) for (const side of ["few", "pack"]) outputs.push(await build(card, side));
+for (const card of cards) outputs.push(await build(card, "few"));
+// Review sheet: the Few faces built here + the Pack faces built by
+// scripts/build-forge-unit-cards.mjs (read as they are on disk).
+for (const card of cards) outputs.push(path.join(OUT, `units-bulwark-${card.tier}-${card.slug}-pack.webp`));
 const thumbW = 223, thumbH = 312, gap = 8, cols = 7;
 const thumbs = await Promise.all(outputs.map((file) => sharp(file).resize(thumbW, thumbH, { fit: "fill" }).png().toBuffer()));
 const contact = path.join(REVIEW, "bulwark-unit-cards-contact-sheet.webp");

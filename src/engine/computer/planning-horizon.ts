@@ -355,7 +355,7 @@ function projectReply(state: GameState, combat: CombatState, reply: Reply): Comb
   if (!defender) return board;
   // Preemptive retaliation changes the order of damage. Let the existing
   // specialty-aware policy judge it rather than applying the ordinary order.
-  if (getPreemptiveRetaliation(defender)) return null;
+  if (getPreemptiveRetaliation(defender, reply.from)) return null;
   board = projectDamage(state, board, defender.id, reply.damage);
   const survivor = board?.units[defender.id];
   if (!board || !survivor || unitRemainingHealth(survivor) <= 0 || survivor.retaliatedThisRound || isParalyzed(survivor) ||

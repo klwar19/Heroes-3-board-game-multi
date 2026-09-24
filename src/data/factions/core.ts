@@ -54,6 +54,36 @@ function heroSource(slug: string) {
   };
 }
 
+const necropolisHeroPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board preview; specialty rules supplied by the player. Portrait art generated for this adaptation.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/d76b614d-bca0-4e55-8b03-171b64c78007.png",
+};
+
+const dungeonHeroPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board and specialty card preview supplied by the player; portraits generated from that visual reference.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/a565e509-cf66-4b09-9071-e0ae6525c4bb.png",
+};
+
+const piquedramPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board from the supplied preview; portrait generated from that visual reference. Specialty wording supplied by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/6d000ec9-a0b8-4808-8974-fd368c771d2e.png",
+};
+
+const cuthbertPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board from the supplied preview; portrait generated from that visual reference. Specialty wording supplied by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/f6676220-af26-4ed6-913c-346163d9ec91.png",
+};
+
+const fortressHeroPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero identities and stats from the WIP preview; specialty rules supplied by the player. Portraits generated for this adaptation.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/ba0a72f3-ad32-46a1-ae1f-95bc7ee3c041.png",
+};
+
 const bulwarkExpansionPreviewUrl =
   "https://imgcdn.gamefound.com/richtextimage/richtext/33b4a241-f645-41d3-aa35-0417606e9732.png";
 
@@ -1104,7 +1134,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "bulwark.citadel",
     name: "Citadel",
     faction: "bulwark",
-    cost: { gold: 8, buildingMaterials: 5, valuables: 1 },
+    cost: { gold: 8, buildingMaterials: 4, valuables: 1 },
     effect: { type: "UNLOCK_REINFORCE" },
     implementationStatus: "implemented",
     source: townSource("bulwark")
@@ -1142,7 +1172,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "bulwark.dwelling_gold",
     name: "Glacial Halls",
     faction: "bulwark",
-    cost: { gold: 10, buildingMaterials: 9, valuables: 4 },
+    cost: { gold: 10, buildingMaterials: 8, valuables: 4 },
     prerequisites: ["bulwark.dwelling_silver"],
     effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" },
     implementationStatus: "implemented",
@@ -1362,7 +1392,8 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "forge.toxic_moat",
     name: "Toxic Moat",
     faction: "forge",
-    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
+    // 4 gold + 2 building materials, no valuables (user ruling 2026-09-24).
+    cost: { gold: 4, buildingMaterials: 2 },
     prerequisites: ["forge.citadel"],
     effect: { type: "TOXIC_MOAT", wallDamage: 1, warMachineCardId: "war_machine.lightning_generator" },
     implementationStatus: "implemented",
@@ -1408,8 +1439,8 @@ for (const spec of Object.values(townBoardSpecs)) {
     if (bar.length < 2) {
       continue;
     }
-    // Bulwark's physical art shares one strip between Glacial Halls and the
-    // Sieidi. They remain independent builds; the Altar requires the Sieidi.
+    // Bulwark's physical art shares one strip between the Sieidi and the
+    // Altar; the Altar already requires the Sieidi, so no extra order rule.
     if (spec.factionId === "bulwark") {
       continue;
     }
@@ -1499,6 +1530,51 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-tamika.webp",
     boardScan: "/assets/heroes-necropolis-might-tamika.webp",
     source: heroSource("tamika")
+  },
+  cuthbert: {
+    id: "cuthbert",
+    name: "Cuthbert",
+    faction: "castle",
+    class: "Cleric",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.estates",
+    specialtyCardIds: { 1: "specialty.cuthbert.1", 4: "specialty.cuthbert.4", 6: "specialty.cuthbert.6" },
+    portrait: "/assets/hero_boardart-cuthbert.webp",
+    boardScan: "/assets/heroes-castle-magic-cuthbert.webp",
+    source: cuthbertPreviewSource
+  },
+  kastore: {
+    id: "kastore",
+    name: "Kastore",
+    faction: "necropolis",
+    class: "Necromancer",
+    type: "magic",
+    startingStats: { attack: 1, defense: 0, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.kastore.1",
+      4: "specialty.kastore.4",
+      6: "specialty.kastore.6"
+    },
+    portrait: "/game-tokens/necropolis-heroes/hero_boardart-kastore.webp",
+    source: necropolisHeroPreviewSource
+  },
+  isra: {
+    id: "isra",
+    name: "Isra",
+    faction: "necropolis",
+    class: "Death Knight",
+    type: "might",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.necromancy",
+    specialtyCardIds: {
+      1: "specialty.isra.1",
+      4: "specialty.isra.4",
+      6: "specialty.isra.6"
+    },
+    portrait: "/game-tokens/necropolis-heroes/hero_boardart-isra.webp",
+    source: necropolisHeroPreviewSource
   },
   moandor: {
     id: "moandor",
@@ -1756,6 +1832,20 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-mutare.webp",
     boardScan: "/assets/heroes-dungeon-might-mutare.webp",
     source: heroSource("mutare")
+  },
+  dace: {
+    id: "dace", name: "Dace", faction: "dungeon", class: "Overlord", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.dace.1", 4: "specialty.dace.4", 6: "specialty.dace.6" },
+    portrait: "/assets/hero_boardart-dace.webp", source: dungeonHeroPreviewSource,
+  },
+  darkstorn: {
+    id: "darkstorn", name: "Darkstorn", faction: "dungeon", class: "Warlock", type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 3, knowledge: 2 },
+    startingAbilityCardId: "ability.learning",
+    specialtyCardIds: { 1: "specialty.darkstorn.1", 4: "specialty.darkstorn.4", 6: "specialty.darkstorn.6" },
+    portrait: "/assets/hero_boardart-darkstorn.webp", source: dungeonHeroPreviewSource,
   },
 
   // ---- Tower (expansion) -------------------------------------------------
@@ -2022,6 +2112,35 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-wystan.webp",
     boardScan: "/assets/heroes-fortress-might-wystan.webp",
     source: heroSource("wystan")
+  },
+  piquedram: {
+    id: "piquedram",
+    name: "Piquedram",
+    faction: "tower",
+    class: "Alchemist",
+    type: "might",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.scouting",
+    specialtyCardIds: { 1: "specialty.piquedram.1", 4: "specialty.piquedram.4", 6: "specialty.piquedram.6" },
+    portrait: "/assets/hero_boardart-piquedram.webp",
+    boardScan: "/assets/heroes-tower-might-piquedram.webp",
+    source: piquedramPreviewSource
+  },
+  korbac: {
+    id: "korbac", name: "Korbac", faction: "fortress", class: "Beastmaster", type: "might",
+    startingStats: { attack: 0, defense: 4, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: { 1: "specialty.korbac.1", 4: "specialty.korbac.4", 6: "specialty.korbac.6" },
+    portrait: "/assets/hero_boardart-korbac.webp",
+    source: fortressHeroPreviewSource
+  },
+  verdish: {
+    id: "verdish", name: "Verdish", faction: "fortress", class: "Witch", type: "magic",
+    startingStats: { attack: 0, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.verdish.1", 4: "specialty.verdish.4", 6: "specialty.verdish.6" },
+    portrait: "/assets/hero_boardart-verdish.webp",
+    source: fortressHeroPreviewSource
   },
 
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
@@ -2466,6 +2585,38 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-rampart-magic-melodia.webp",
     source: stretchGoalHeroSource("melodia")
   },
+  urftin: {
+    id: "urftin",
+    name: "Urftin",
+    faction: "rampart",
+    class: "Ranger",
+    type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.luck",
+    specialtyCardIds: {
+      1: "specialty.urftin.1",
+      4: "specialty.urftin.4",
+      6: "specialty.urftin.6"
+    },
+    portrait: "/assets/hero_boardart-urftin.webp",
+    source: { product: "Heroes of Might and Magic III: The Board Game", credit: "Archon preview board; specialty rules clarified by the player. Portrait generated for this game.", url: "https://imgcdn.gamefound.com/productimage/projects/8492/46a576c6-47ee-4bc2-94a8-5cc5e171eb42.png" }
+  },
+  uland: {
+    id: "uland",
+    name: "Uland",
+    faction: "rampart",
+    class: "Druid",
+    type: "magic",
+    startingStats: { attack: 0, defense: 2, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.uland.1",
+      4: "specialty.uland.4",
+      6: "specialty.uland.6"
+    },
+    portrait: "/assets/hero_boardart-uland.webp",
+    source: { product: "Heroes of Might and Magic III: The Board Game", credit: "Archon preview board; specialty rules clarified by the player. Portrait generated for this game.", url: "https://imgcdn.gamefound.com/productimage/projects/8492/46a576c6-47ee-4bc2-94a8-5cc5e171eb42.png" }
+  },
   // Tarnum (Rampart): the Ranger variant — the Sharpshooters specialist. Its own
   // class portrait (heroes.thelazy.net Tarnum (Ranger)).
   tarnum_rampart: {
@@ -2860,7 +3011,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Castle",
     color: "#2f6fd0",
     startingTileId: "S3",
-    heroes: ["catherine", "rion", "adelaide", "lord_haart", "valeska", "ingham", "tarnum_castle"],
+    heroes: ["catherine", "cuthbert", "rion", "adelaide", "lord_haart", "valeska", "ingham", "tarnum_castle"],
     buildings: buildingsOfFaction("castle"),
     units: unitsOfFaction("castle"),
     townImage: "/assets/towns-castle-empty.webp",
@@ -2871,7 +3022,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Rampart",
     color: "#2e9e57",
     startingTileId: "S4",
-    heroes: ["gelu", "gem", "clancy", "mephala", "ivor", "melodia", "tarnum_rampart"],
+    heroes: ["gelu", "gem", "clancy", "mephala", "ivor", "melodia", "tarnum_rampart", "urftin", "uland"],
     buildings: buildingsOfFaction("rampart"),
     units: unitsOfFaction("rampart"),
     townImage: "/assets/towns-rampart-empty.webp",
@@ -2904,7 +3055,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Necropolis",
     color: "#7c4dbe",
     startingTileId: "S1",
-    heroes: ["sandro", "tamika", "moandor", "vidomina", "septienna", "lord_haart_necropolis"],
+    heroes: ["sandro", "tamika", "kastore", "isra", "moandor", "vidomina", "septienna", "lord_haart_necropolis"],
     buildings: buildingsOfFaction("necropolis"),
     units: unitsOfFaction("necropolis"),
     ignoresMorale: true,
@@ -2916,7 +3067,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Dungeon",
     color: "#c0392b",
     startingTileId: "S2",
-    heroes: ["alamar", "deemer", "mutare", "jeddite", "lorelei", "tarnum_dungeon", "sephinroth"],
+    heroes: ["alamar", "deemer", "mutare", "dace", "darkstorn", "jeddite", "lorelei", "tarnum_dungeon", "sephinroth"],
     buildings: buildingsOfFaction("dungeon"),
     units: unitsOfFaction("dungeon"),
     townImage: "/assets/towns-dungeon-empty.webp",
@@ -2927,7 +3078,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Tower",
     color: "#2bb3c0",
     startingTileId: "#S1",
-    heroes: ["cyra", "dracon", "iona", "josephine", "solmyr", "torosar"],
+    heroes: ["cyra", "dracon", "iona", "josephine", "piquedram", "solmyr", "torosar"],
     buildings: buildingsOfFaction("tower"),
     units: unitsOfFaction("tower"),
     townImage: "/assets/towns-tower-empty.webp",
@@ -2938,7 +3089,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Fortress",
     color: "#6b8e23",
     startingTileId: "S5",
-    heroes: ["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf", "tarnum_fortress"],
+    heroes: ["bron", "wystan", "korbac", "tazar", "adrienne", "merist", "verdish", "gerwulf", "tarnum_fortress"],
     buildings: buildingsOfFaction("fortress"),
     units: unitsOfFaction("fortress"),
     source: townSource("fortress")

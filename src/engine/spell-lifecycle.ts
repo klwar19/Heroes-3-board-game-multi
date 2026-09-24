@@ -1,8 +1,8 @@
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
 import { markEquipmentFirstSpellCast } from "./anime-equipment";
-import { drawCardsForPlayer } from "./decks";
 import { appendEvent } from "./events";
 import { markPolishSpellRefreshedThisRound } from "./polish-spell-book";
+import { drawAfterSpellCast } from "./kastore-sorcery";
 import type { CardId, GameState, PlayerId } from "./state";
 
 /**
@@ -23,20 +23,7 @@ export function noteMapSpellCast(
   markEquipmentFirstSpellCast(state, playerId);
   player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
 
-  let draws = 0;
-  for (const effect of state.activeEffects) {
-    if (effect.controllerId !== playerId) {
-      continue;
-    }
-    for (const modifier of effect.modifiers) {
-      if (modifier.type === "DRAW_ON_SPELL_CAST") {
-        draws += modifier.amount;
-      }
-    }
-  }
-  if (draws > 0) {
-    drawCardsForPlayer(state, playerId, draws, { inFlightCardIds });
-  }
+  drawAfterSpellCast(state, playerId, inFlightCardIds);
 }
 
 /**

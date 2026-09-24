@@ -5,7 +5,7 @@ import { FxStage, type FxCue } from "@/components/table/fx";
 import { assetUrl } from "@/lib/asset-url";
 
 type Direction = "right" | "left" | "diagonal";
-type Attacker = "black" | "gold" | "gorgon" | "efreet" | "fire" | "faerie";
+type Attacker = "black" | "gold" | "gorgon" | "efreet" | "fire" | "faerie" | "azure" | "crystal" | "rust";
 
 const attackers: Record<Attacker, { name: string; image: string; fxKey: string }> = {
   black: { name: "Black Dragon", image: "/assets/units-dungeon-golden-black_dragons-pack.webp", fxKey: "dragon-fierce-breath-animated" },
@@ -14,6 +14,9 @@ const attackers: Record<Attacker, { name: string; image: string; fxKey: string }
   efreet: { name: "Efreet", image: "/assets/units-inferno-golden-efreet-pack.webp", fxKey: "dragon-small-breath-animated" },
   fire: { name: "Fire Elemental", image: "/assets/units-conflux-bronze-fire_elementals-pack.webp", fxKey: "dragon-small-breath-animated" },
   faerie: { name: "Faerie Dragon", image: "/assets/units-neutral-azure-faerie_dragons.webp", fxKey: "faerie-rainbow-breath-animated" },
+  azure: { name: "Azure Dragon", image: "/assets/units-neutral-azure-azure_dragons.webp", fxKey: "azure-ice-breath-animated" },
+  crystal: { name: "Crystal Dragon", image: "/assets/units-neutral-azure-crystal_dragons.webp", fxKey: "crystal-red-strike-animated" },
+  rust: { name: "Rust Dragon", image: "/assets/units-neutral-azure-rust_dragons.webp", fxKey: "rust-acid-breath-animated" },
 };
 
 const positions: Record<Direction, { dragon: number; target: number }> = {

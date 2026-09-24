@@ -3,11 +3,11 @@ import { balanceCardLibrary } from "../community-balance-cards";
 import { chainBoltValue } from "./chain-planning";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { commanderCastTierIndex, commanderValuesMagicGrade } from "@/data/commanders";
-import { commanderCastOf, commanderCastPower } from "../commanders";
+import { commanderCastOf, commanderCastPower, commanderEnemyDamageAmount } from "../commanders";
 import { farTileChoiceValue } from "./far-tile-policy";
 import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
 import { getEnchanterActivationAbility } from "../unit-abilities";
-import type { GameAction, GameState, PendingChoice } from "../state";
+import type { CombatUnitState, GameAction, GameState, PendingChoice } from "../state";
 import { isAdjacent } from "../battlefield";
 import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
 import {
@@ -337,12 +337,14 @@ function commanderCastEnemyDamage(
   observation: ComputerObservation,
   sourceUnitId: string | null | undefined,
   abilityId: string | null | undefined,
+  target: CombatUnitState,
 ): number {
   const state = observation.state as unknown as GameState;
   const source = sourceUnitId ? state.combat?.units[sourceUnitId] : undefined;
   const cast = source ? commanderCastOf(source, abilityId ?? undefined) : null;
   if (!source || cast?.effect.kind !== "enemy-damage") return 0;
-  return cast.effect.damageByPower[commanderCastTierIndex(commanderCastPower(state, source))];
+  return commanderEnemyDamageAmount(source, target, cast.effect.damageByPower,
+    commanderCastTierIndex(commanderCastPower(state, source)));
 }
 
 function scoreAbilityTarget(
@@ -369,6 +371,12 @@ function scoreAbilityTarget(
   if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.sourceUnitId) {
     const source = combat.units[choice.sourceUnitId];
     const state = observation.state as unknown as GameState;
+    if (source && choice.kind === "sacrifice-transfer" &&
+        choice.abilityId === "specialty.verdish.4") {
+      const moved = Math.min(3, source.damage, remaining);
+      return CHOICE_BASE + moved * 18 - Math.min(100, unitThreatValue(unit)) -
+        (moved >= remaining ? 45 : 0);
+    }
     if (source && (choice.kind === "couatl-invulnerability" || choice.kind === "automaton-cube")) {
       const value = activationUtilityValue(state, source, choice.kind);
       return value > 0 ? CHOICE_BASE + 10 + value * 8 : CHOICE_BASE - 60;
@@ -393,6 +401,14 @@ function scoreAbilityTarget(
     }
     if (source && choice.kind === "enchanter-activation") {
       return CHOICE_BASE + 10 + abilityHealValue(state, unit, getEnchanterActivationAbility(source)?.healAmount ?? 0) * 8;
+    }
+    if (source && choice.kind === "commander-soul-link") {
+      // Protect the ally whose survival matters most; the commander will absorb
+      // only one hit each round, so link value grows with the ally's threat and
+      // with how close it is to losing its current side.
+      return source.controllerId === unit.controllerId
+        ? CHOICE_BASE + 20 + Math.min(65, Math.round(unitThreatValue(unit) / 2)) + Math.max(0, 8 - remaining) * 3
+        : CHOICE_BASE - 80;
     }
   }
   const isDamagePick =
@@ -472,7 +488,7 @@ function scoreAbilityTarget(
             (choice.kind === "war-machine" && choice.abilityId === "war_machine.lightning_generator")
           ? (choice.amount ?? 0)
           : choice.kind === "commander-cast"
-            ? commanderCastEnemyDamage(observation, choice.sourceUnitId, choice.abilityId)
+            ? commanderCastEnemyDamage(observation, choice.sourceUnitId, choice.abilityId, unit)
             : 0
       : 0;
   const removesNow = abilityDamage > 0 && abilityDamage >= remaining;
@@ -598,6 +614,27 @@ function scorePositionOption(
   const choice = pendingChoiceOf(observation);
   if (!choice || choice.type !== "OPTION_CHOICE") {
     return CHOICE_BASE + (optionIndex === 0 ? 5 : 0);
+  }
+
+  if (context === "uland-cure" && choice.ulandCure) {
+    const unitId = choice.ulandCure.unitIds[optionIndex];
+    const unit = unitId ? observation.state.combat?.units[unitId] : undefined;
+    if (!unit) return CHOICE_BASE + 1; // optional round-end skip
+    const own = unit.controllerId === observation.playerId;
+    const paralysis = (unit.tokens ?? []).some((token) => token.kind === "paralysis");
+    return CHOICE_BASE + (own ? 50 : -50) + Math.min(20, unit.damage * 5) + (paralysis ? 15 : 0);
+  }
+  if (context === "sacrifice-transfer-amount" &&
+      choice.balanceSpellChoice?.cardId === "specialty.verdish.4") {
+    const payload = choice.balanceSpellChoice;
+    const combat = observation.state.combat;
+    const source = payload.unitId ? combat?.units[payload.unitId] : undefined;
+    const recipient = payload.sacrificeUnitId ? combat?.units[payload.sacrificeUnitId] : undefined;
+    if (!source || !recipient) return CHOICE_BASE;
+    const amount = optionIndex + 1;
+    const recipientHealth = unitRemainingHealth(recipient);
+    return CHOICE_BASE + amount * 18 -
+      (amount >= recipientHealth ? 65 + Math.min(50, unitThreatValue(recipient) / 2) : 0);
   }
 
   if (context === "dimension-door" && choice.dimensionDoor) {
@@ -871,6 +908,23 @@ function scorePositionOption(
     if (!cardId) return CHOICE_BASE;
     return acquisitionScore(acquisitionValue(cardId, observation));
   }
+  if (context === "isra-fetch-card" && choice.israFetchCard) {
+    const candidate = choice.israFetchCard.candidates[optionIndex];
+    return candidate ? acquisitionScore(acquisitionValue(candidate.cardId, observation)) : CHOICE_BASE;
+  }
+  if (context === "isra-return-unit" && choice.israReturnUnit) {
+    const returnChoice = choice.israReturnUnit;
+    if (returnChoice.positions) {
+      const position = returnChoice.positions[optionIndex];
+      const combat = observation.state.combat;
+      if (position === undefined || !combat) return CHOICE_BASE;
+      const distance = distanceToNearestEnemy(combat, observation.playerId, position);
+      return CHOICE_BASE + (distance === null ? 10 : Math.max(0, 20 - distance));
+    }
+    const unitId = returnChoice.unitIds[optionIndex];
+    const unit = unitId ? observation.state.combat?.units[unitId] : undefined;
+    return unit ? CHOICE_BASE + Math.min(80, unitThreatValue(unit)) : CHOICE_BASE;
+  }
 
   if (context === "spell-deck-pick" && choice.spellDeckPick) {
     // The Tome's "which Spell deck?" pick. A computer seat has no model for what
@@ -930,19 +984,22 @@ function scorePositionOption(
   if (context === "war-machine") {
     // Prefer taking a free war machine over declining.
     const label = optionLabel(choice, optionIndex);
-    if (looksLikeDecline(label)) return CHOICE_BASE + 5;
-    // Overclock I at the beginning of the combat: both sides double on a
-    // ground unit. With a ground body on the field the round-long +2 Attack
-    // is the stronger play; an all-ranged/flying army takes the Initiative
-    // (shooting first) instead.
+    // Overclock I at the beginning of the combat offers ONLY its +2 Initiative
+    // option (index 0, x2 on a ground unit) or Skip (index 1): the +1 Attack
+    // option is an Instant attack buff played from hand when a unit attacks
+    // (user ruling 2026-09-24). With a ground body on the field, keep the card
+    // for that doubled (+2) Attack Instant (handAttackBoostFor / the
+    // attack-reaction planner read it); an all-ranged/flying army takes the
+    // Initiative now (shooting first). Any other index is illegal here.
     if (choice.prompt?.startsWith("Overclock I (")) {
       const combat = observation.state.combat;
       const hasGround = Object.values(combat?.units ?? {}).some((unit) =>
         unit.controllerId === observation.playerId && unit.position >= 0 &&
         unit.damage < unit.maxHealth && unit.type === "ground");
-      const wantsAttack = hasGround;
-      return CHOICE_BASE + 25 + ((optionIndex === 2) === wantsAttack ? 10 : 0);
+      if (optionIndex === 1) return CHOICE_BASE + (hasGround ? 35 : 5);
+      return optionIndex === 0 ? CHOICE_BASE + 25 : CHOICE_BASE - 100;
     }
+    if (looksLikeDecline(label)) return CHOICE_BASE + 5;
     return CHOICE_BASE + 25;
   }
 

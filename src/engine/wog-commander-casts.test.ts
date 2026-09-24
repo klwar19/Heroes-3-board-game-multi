@@ -1020,50 +1020,137 @@ describe("commander casts — Rune Keeper's Rune Mend", () => {
   });
 });
 
-describe("commander casts — Artificer's Field Repair", () => {
-  it("supports two charges per combat and creates the correct delayed repair", () => {
-    function withMachine(state: GameState, position: number): GameState {
-      const machine = state.combat!.units.unit_p1_crusaders;
-      machine.unitDefId = "factory.automatons"; // the engine's mechanical trait
-      machine.position = position;
-      machine.damage = 3;
-      machine.maxHealth = 5;
-      return state;
+describe("commander casts — Artificer's Emergency Repair (lethal-cancel reaction)", () => {
+  /** p1's marksmen re-skinned as a protected Factory unit at cell 1, 2 Health, Defense 0. */
+  function protectedUnderFire(
+    grades: Partial<Record<CommanderStatKey, number>>,
+    unitDefId: string,
+    variant: "few" | "pack" = "few"
+  ): GameState {
+    const state = castState("factory", grades);
+    const target = state.combat!.units.unit_p1_marksmen;
+    target.abilities = [];
+    target.unitDefId = unitDefId;
+    target.variant = variant;
+    target.defense = 0;
+    target.maxHealth = 2;
+    target.damage = 0;
+    target.retaliatedThisRound = true; // no retaliation noise
+    target.position = 1;
+    return state;
+  }
+
+  /** Pass every earlier window until the lethal-hit window (or nothing) is open. */
+  function toLethalWindow(state: GameState): GameState {
+    let current = state;
+    let safety = 40;
+    while (safety > 0 && (current.reactionWindow || current.pendingChoice?.type === "ATTACK_DIE_REROLL")) {
+      safety -= 1;
+      if (current.reactionWindow?.triggerEvent.type === "UNIT_LETHAL_HIT") {
+        return current;
+      }
+      if (current.reactionWindow) {
+        current = apply(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+        continue;
+      }
+      const choice = current.pendingChoice;
+      if (choice?.type === "ATTACK_DIE_REROLL") {
+        current = apply(current, {
+          type: "CHOOSE_PENDING_ROLL",
+          playerId: choice.playerId,
+          choiceId: choice.id,
+          candidateIndex: choice.candidates.length - 1
+        });
+      }
     }
+    return current;
+  }
 
-    // A wounded NON-mechanical unit never qualifies (the cast is not offered).
-    const flesh = castState("factory");
-    flesh.combat!.units.unit_p1_marksmen.maxHealth = 9;
-    flesh.combat!.units.unit_p1_marksmen.damage = 2;
-    expect(castOffer(flesh, "factory")).toBeUndefined();
-
-    // Pow 0: adjacent only (commander at 9; the machine at 10 qualifies)…
-    let near = withMachine(castState("factory"), 10);
-    near.combat!.units.unit_p2_skeletons.position = 13; // free cell 10 first
-    near = castOn(near, "factory", "unit_p1_crusaders");
-    expect(near.combat!.units.unit_p1_crusaders.damage).toBe(2);
-    expect(castOffer(near, "factory"), "Field Repair has a second combat charge").toBeTruthy();
-    near = castOn(near, "factory", "unit_p1_crusaders");
-    expect(near.combat!.units.unit_p1_crusaders.damage).toBe(1);
-    expect(castOffer(near, "factory"), "Field Repair is exhausted after two charges").toBeUndefined();
-
-    // …a distant machine is NOT offered below Pow 2…
-    const far = withMachine(castState("factory"), 17);
-    expect(castOffer(far, "factory")).toBeUndefined();
-
-    // …but at Pow 2 the repair reaches anywhere and removes 2.
-    let reach = withMachine(castState("factory", { magic: 3 }), 17);
-    reach = castOn(reach, "factory", "unit_p1_crusaders");
-    expect(reach.combat!.units.unit_p1_crusaders.damage).toBe(1);
-    const repair = reach.activeEffects.find((effect) =>
-      effect.target?.type === "unit" &&
-      effect.target.unitId === "unit_p1_crusaders" &&
-      effect.modifiers.some((modifier) => modifier.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START"),
+  function repairOffer(state: GameState) {
+    if (state.reactionWindow?.triggerEvent.type !== "UNIT_LETHAL_HIT") {
+      return undefined;
+    }
+    return (state.reactionWindow.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "USE_COMMANDER_CAST_REACTION"
     );
-    expect(repair, "Power 2 creates a delayed repair buff").toBeTruthy();
-    const modifier = repair?.modifiers.find((candidate) => candidate.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START");
-    expect(modifier?.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START" ? modifier.amount : 0).toBe(2);
-    expect(modifier?.type === "REPAIR_HEAL_AT_COMBAT_ROUND_START" ? modifier.remainingRounds : 0).toBe(2);
+  }
+
+  it("cancels a lethal enemy attack on Engineers, paralyzes the commander, once per combat", () => {
+    const commanderId = commanderUnitId("p1");
+
+    // CONTROL: passing the lethal window lets the 3-damage blow destroy the 2-Health Engineers.
+    const passed = settle(toLethalWindow(
+      declareEnemyAttack(protectedUnderFire({}, "factory.mechanics"), "unit_p2_skeletons", 2, "unit_p1_marksmen")
+    ));
+    expect(passed.combat!.units.unit_p1_marksmen.damage).toBeGreaterThanOrEqual(2);
+
+    // Emergency Repair: the same blow is cancelled — no damage at all.
+    let s = toLethalWindow(
+      declareEnemyAttack(protectedUnderFire({}, "factory.mechanics"), "unit_p2_skeletons", 2, "unit_p1_marksmen")
+    );
+    const offer = repairOffer(s);
+    expect(offer, "Emergency Repair offered in the lethal-hit window (Power 0, Engineers, anywhere)").toBeTruthy();
+    s = settle(apply(s, offer!.action));
+    expect(s.combat!.units.unit_p1_marksmen.damage).toBe(0);
+    expect(s.combat!.units[commanderId].tokens?.some((token) => token.kind === "paralysis")).toBe(true);
+    const cancelled = s.eventLog.find((event) => event.type === "COMMANDER_ATTACK_CANCELLED");
+    expect(cancelled?.type === "COMMANDER_ATTACK_CANCELLED" ? cancelled.protectedUnitId : null).toBe("unit_p1_marksmen");
+    expect(cancelled?.type === "COMMANDER_ATTACK_CANCELLED" ? cancelled.attackerUnitId : null).toBe("unit_p2_skeletons");
+
+    // Once per combat: even with the Paralysis token gone, a second lethal blow is not offered.
+    const commander = s.combat!.units[commanderId];
+    commander.tokens = (commander.tokens ?? []).filter((token) => token.kind !== "paralysis");
+    s.combat!.units.unit_p2_vampires.abilities = [];
+    const second = toLethalWindow(declareEnemyAttack(s, "unit_p2_vampires", 0, "unit_p1_marksmen"));
+    expect(repairOffer(second)).toBeUndefined();
+  });
+
+  it("is not offered while the commander is Paralyzed", () => {
+    const state = protectedUnderFire({}, "factory.mechanics");
+    state.combat!.units[commanderUnitId("p1")].tokens = [
+      { id: "token_test", kind: "paralysis", amount: 0, sourceName: "Test" }
+    ];
+    const s = toLethalWindow(declareEnemyAttack(state, "unit_p2_skeletons", 2, "unit_p1_marksmen"));
+    expect(repairOffer(s)).toBeUndefined();
+  });
+
+  it("protects Automatons from Power 1 and Juggernauts only at Power 2", () => {
+    const offered = (grades: Partial<Record<CommanderStatKey, number>>, unitDefId: string) =>
+      Boolean(repairOffer(toLethalWindow(
+        declareEnemyAttack(protectedUnderFire(grades, unitDefId), "unit_p2_skeletons", 2, "unit_p1_marksmen")
+      )));
+    // Magic grade 0 → Power 0; grade 2 → Power 1; grade 3 → Power 2.
+    expect(offered({}, "factory.automatons")).toBe(false);
+    expect(offered({ magic: 2 }, "factory.automatons")).toBe(true);
+    expect(offered({ magic: 2 }, "factory.dreadnoughts")).toBe(false);
+    expect(offered({ magic: 3 }, "factory.dreadnoughts")).toBe(true);
+    // A non-protected unit is never offered.
+    expect(offered({ magic: 3 }, "castle.marksmen")).toBe(false);
+  });
+
+  it("cancels a Pack→Few flip of Engineers (the Pack keeps its side)", () => {
+    // CONTROL: passing lets the lethal blow land — the untouched Pack is gone
+    // (flipped to its Few side, or damaged/removed).
+    const passed = settle(toLethalWindow(
+      declareEnemyAttack(protectedUnderFire({}, "factory.mechanics", "pack"), "unit_p2_skeletons", 2, "unit_p1_marksmen")
+    ));
+    const hit = passed.combat!.units.unit_p1_marksmen;
+    expect(hit.variant === "pack" && hit.damage === 0).toBe(false);
+
+    let s = toLethalWindow(
+      declareEnemyAttack(protectedUnderFire({}, "factory.mechanics", "pack"), "unit_p2_skeletons", 2, "unit_p1_marksmen")
+    );
+    const offer = repairOffer(s);
+    expect(offer, "offered on a Pack→Few flip").toBeTruthy();
+    s = settle(apply(s, offer!.action));
+    expect(s.combat!.units.unit_p1_marksmen.variant).toBe("pack");
+    expect(s.combat!.units.unit_p1_marksmen.damage).toBe(0);
+  });
+
+  it("is never an activation cast", () => {
+    const state = protectedUnderFire({ magic: 3 }, "factory.automatons");
+    state.combat!.units.unit_p1_marksmen.damage = 1;
+    expect(castOffer(state, "factory")).toBeUndefined();
   });
 });
 

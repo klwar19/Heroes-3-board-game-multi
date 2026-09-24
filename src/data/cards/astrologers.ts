@@ -19,8 +19,9 @@
  * Multilingual Bron (ability-roll reroll) and Disruption (state-preserving
  * rotate-in-place), plus Whirlpool's toll-free travel and chosen exit.
  * The `effect` field is the single source of truth for what the engine runs;
- * `text` is the printed card wording. Most cards carry a real card scan in
- * `image`; a few render through the app's text card-face while their scan is
+ * `text` is the card wording. Existing cards carry a real card scan in
+ * `image`; preview cards use generated, typeset faces.
+ * A few future cards may render through the app's text card-face while a scan is
  * unavailable upstream (ART_LESS_PROCLAMATIONS) or not yet fetched
  * (ART_PENDING_PROCLAMATIONS). ASTROLOGERS_NOT_IMPLEMENTED records any future
  * omissions instead of adding inert effects to the deck.
@@ -35,6 +36,9 @@ export type AstrologersEffect =
   | { type: "REMOVE_BLACK_CUBES" }
   | { type: "NEXT_RESOURCE_ROUND"; gold?: number; valuables?: number }
   | { type: "MOVEMENT_MODIFIER"; amount: number }
+  | { type: "COMBAT_GROUND_FLYING_SLOW"; amount: number; minimum: number }
+  | { type: "BUILDING_GOLD_DISCOUNT"; amount: number }
+  | { type: "FREE_NON_DWELLING_BUILD_ALL" }
   // Offense: every positive Defense value printed by a card is interpreted as
   // the same Attack value while this proclamation remains face up.
   | { type: "DEFENSE_TO_ATTACK" }
@@ -162,6 +166,9 @@ export type AstrologersEffect =
   // for the ability's controller. Read at each ability-roll site (reducer.ts /
   // the Satyr map roll in adventure-reducer.ts).
   | { type: "ABILITY_ROLL_REROLL" }
+  | { type: "PAID_CARD_DRAW"; gold: number }
+  | { type: "SEARCH_SPELL_OR_ARTIFACT"; count: number }
+  | { type: "DEFER_WAR_MACHINE" }
   // Disruption: starting from the first player, each player may rotate one
   // hero-less, already-revealed tile in place (state-preserving permutation of
   // its six ring fields); no tile twice. Resolved at draw through per-player
@@ -194,11 +201,11 @@ export type AstrologersCardDefinition = {
   /** Boxed set / expansion this card belongs to. */
   expansion: AstrologersExpansion;
   /**
-   * Local card scan. Empty string ONLY for a card the fan wiki publishes with no
+   * Local card face (scan or generated preview face). Empty string ONLY for a card the fan wiki publishes with no
    * front scan (back side only) — those must be declared in
    * `ART_LESS_PROCLAMATIONS` and render through the app's honest text card-face
    * fallback, never a faked/placeholder scan (CLAUDE.md). Every other card
-   * carries a real, locally-shipped scan.
+   * carries a real, locally-shipped scan or a typeset preview face.
    */
   image: string;
   source: { product: string; credit: string; url: string };
@@ -246,12 +253,60 @@ function source(slug: string, expansion: AstrologersExpansion) {
   };
 }
 
-/** Local scan path for a proclamation slug (fetched by scripts/fetch-astrologers-art.py). */
+const gamefoundPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Stretch Goals preview)",
+  credit: "Card wording transcribed from the Gamefound preview; artwork generated for this game.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/56f4c314-b6ba-4dd1-9721-2fa3c0debbce.png"
+};
+
+const suppliedPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (preview)",
+  credit: "Card wording from the supplied reference photo; card face generated and typeset for this game.",
+  url: ""
+};
+
+/** Local card-face path for a proclamation slug. */
 function image(slug: string): string {
   return `/assets/astrologers_proclaim-${slug}.webp`;
 }
 
 export const astrologersCardDefinitions: Record<string, AstrologersCardDefinition> = {
+  "astrologers.slow": {
+    id: "astrologers.slow", name: "Slow",
+    text: "Until the next Astrologers' round: all Ground and Flying units have -1 Movement during Combat, to a minimum of 1.",
+    ongoing: true, effect: { type: "COMBAT_GROUND_FLYING_SLOW", amount: -1, minimum: 1 },
+    expansion: "Stretch Goals", image: "/game-tokens/astrologers/slow.webp", source: suppliedPreviewSource
+  },
+  "astrologers.construction": {
+    id: "astrologers.construction", name: "Construction",
+    text: "Until the next Astrologers' round: when you build a new building, it costs 3 gold less (minimum 0).",
+    ongoing: true, effect: { type: "BUILDING_GOLD_DISCOUNT", amount: 3 },
+    expansion: "Stretch Goals", image: "/game-tokens/astrologers/construction.webp", source: suppliedPreviewSource
+  },
+  "astrologers.new_buildings": {
+    id: "astrologers.new_buildings", name: "New Buildings",
+    text: "Each player may choose one unbuilt building that is not a Unit Dwelling and build it without paying its cost.",
+    ongoing: false, effect: { type: "FREE_NON_DWELLING_BUILD_ALL" },
+    expansion: "Stretch Goals", image: "/game-tokens/astrologers/new_buildings.webp", source: suppliedPreviewSource
+  },
+  "astrologers.card_games": {
+    id: "astrologers.card_games", name: "Card Games",
+    text: "Until the next Astrologers' round: during their turn, each player may pay 2 gold to draw a card. This cannot be used during combat and can be used only once per round.",
+    ongoing: true, effect: { type: "PAID_CARD_DRAW", gold: 2 }, expansion: "Stretch Goals",
+    image: image("card_games"), source: gamefoundPreviewSource
+  },
+  "astrologers.oscillating_overloader": {
+    id: "astrologers.oscillating_overloader", name: "Oscillating Overloader",
+    text: "Each player may Search (2) the Spell or Artifact deck.",
+    ongoing: false, effect: { type: "SEARCH_SPELL_OR_ARTIFACT", count: 2 }, expansion: "Stretch Goals",
+    image: image("oscillating_overloader"), source: gamefoundPreviewSource
+  },
+  "astrologers.pre_order": {
+    id: "astrologers.pre_order", name: "Pre-Order",
+    text: "Until the next Astrologers' round: when you acquire War Machines, you receive them at the start of your next turn.",
+    ongoing: true, effect: { type: "DEFER_WAR_MACHINE" }, expansion: "Stretch Goals",
+    image: image("pre_order"), source: gamefoundPreviewSource
+  },
   "astrologers.ammo_cart": {
     id: "astrologers.ammo_cart",
     name: "Ammo Cart",

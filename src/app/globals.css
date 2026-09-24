@@ -20704,14 +20704,44 @@ button.setupHubNavItem:hover {
 .merchantNoticeChip > img { width: 62px; height: 46px; border-radius: 7px; object-fit: cover; }
 .merchantNoticeChip > span { display: grid; gap: 4px; text-align: left; }
 .merchantNoticeChip strong { font-size: 12px; color: #f2cd80; }
+.cardGamesNotice, .cardGamesChip {
+  position: fixed;
+  right: 18px;
+  bottom: 112px;
+  z-index: 62;
+  border: 2px solid #d6ad68;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #34251b, #101c22);
+  color: #fff0ce;
+  box-shadow: 0 12px 40px #000b;
+}
+.cardGamesNotice { width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 140px); overflow-y: auto; }
+.cardGamesNotice.cardGamesReady, .cardGamesChip.cardGamesReady { animation: marketTabBlink 1.8s ease-in-out infinite; }
+.cardGamesNotice:hover, .cardGamesNotice:focus-within, .cardGamesChip:hover, .cardGamesChip:focus-visible { animation-play-state: paused; }
+.cardGamesArt { display: block; width: 100%; aspect-ratio: 1040 / 743; object-fit: cover; }
+.cardGamesBody { display: grid; gap: 9px; padding: 14px 17px 17px; }
+.cardGamesBody > strong { color: #ffe1a0; font-size: 23px; }
+.cardGamesBody p { margin: 0; line-height: 1.4; }
+.cardGamesBody > small { color: #d9c39e; }
+.cardGamesBody > button:not(.cardGamesMinimize) { min-height: 43px; border: 1px solid #ffe1a0; border-radius: 8px; background: linear-gradient(#f3cc74, #b67b2b); color: #261605; font-weight: 800; cursor: pointer; }
+.cardGamesBody > button:disabled { opacity: .55; cursor: default; }
+.cardGamesMinimize { justify-self: end; border: 0; background: transparent; color: #e5ca9a; text-decoration: underline; cursor: pointer; }
+.cardGamesChip { display: flex; align-items: center; gap: 10px; max-width: min(320px, calc(100vw - 24px)); padding: 10px 14px; cursor: pointer; text-align: left; }
+.cardGamesChip > span:first-child { font-size: 25px; }
+.cardGamesChip > span:last-child { display: grid; gap: 3px; }
+.cardGamesChip small { color: #d9c39e; }
+.cardGamesNotice button:focus-visible, .cardGamesChip:focus-visible { outline: 3px solid #fff1ba; outline-offset: 3px; }
 @media (max-width: 600px) {
   .merchantNotice { right: 12px; bottom: 90px; max-height: calc(100dvh - 112px); }
   .merchantNoticeArt > img { aspect-ratio: 2.6 / 1; }
   .merchantNoticeBody { padding: 12px 16px; gap: 8px; }
   .merchantNoticeChip { right: 12px; bottom: 90px; max-width: calc(100vw - 24px); }
+  .cardGamesNotice, .cardGamesChip { right: 12px; bottom: 90px; }
+  .cardGamesNotice { max-height: calc(100dvh - 112px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .merchantNotice, .merchantNoticeChip { animation: none; }
+  .cardGamesNotice, .cardGamesChip { animation: none !important; }
 }
 
 @keyframes marketTabBlink {
@@ -24126,6 +24156,19 @@ img.cardBack {
   color: #d9f5dc;
   font-size: 12.5px;
 }
+/* The pick CONFIRMATION sits left of the docked tile panel (top-right, up to
+   340px wide) so the panel never hides it. */
+.designerPickBanner.confirm {
+  left: 10px;
+  max-width: calc(100% - 370px);
+  transform: none;
+}
+@media (max-width: 720px) {
+  .designerPickBanner.confirm {
+    max-width: calc(100% - 20px);
+    z-index: 45;
+  }
+}
 
 /* Designer-only markers: SPECIFIC per-tile settings (⚔/🏁⚔) and hidden hex
    events (⚡ + dashed ring). Never rendered on the in-game map. */
@@ -25570,6 +25613,10 @@ img.cardBack {
   left: auto;
   display: grid;
   align-content: start;
+  /* Rows take their content's height. With plain auto rows, a panel taller
+     than the board shrank every overflow:hidden section (the collapsible
+     groups) to ~2px — an opened Mine / Obelisk section was invisible. */
+  grid-auto-rows: max-content;
   gap: 8px;
   width: 248px;
   max-width: calc(100% - 16px);
@@ -29108,76 +29155,152 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 /* Factory's photographed board uses a near-black frame, green rule-card
    headings, and a three-over-two card arrangement below the seven strips. */
 .tbBoard.faction-factory,
-.tbBoard.faction-forge {
+.tbBoard.faction-forge,
+.tbBoard.faction-bulwark {
   border-radius: 0;
 }
 
 .tbBoard.faction-factory .tbDesignedBase,
-.tbBoard.faction-forge .tbDesignedBase {
+.tbBoard.faction-forge .tbDesignedBase,
+.tbBoard.faction-bulwark .tbDesignedBase {
   background: #211b16;
 }
 
 .tbBoard.faction-factory .tbDesignedBase::after,
-.tbBoard.faction-forge .tbDesignedBase::after {
+.tbBoard.faction-forge .tbDesignedBase::after,
+.tbBoard.faction-bulwark .tbDesignedBase::after {
   display: none;
 }
 
 .tbBoard.faction-factory .tbDesignedWindow,
-.tbBoard.faction-forge .tbDesignedWindow {
+.tbBoard.faction-forge .tbDesignedWindow,
+.tbBoard.faction-bulwark .tbDesignedWindow {
   border-radius: 0;
   box-shadow: inset 0 0 0 0.12cqw #45301c;
 }
 
 .tbBoard.faction-factory .tbEmptyBar,
 .tbBoard.faction-forge .tbEmptyBar,
+.tbBoard.faction-bulwark .tbEmptyBar,
 .tbBoard.faction-factory .tbBar.built,
 .tbBoard.faction-forge .tbBar.built,
+.tbBoard.faction-bulwark .tbBar.built,
 .tbBoard.faction-factory .tbFill,
 .tbBoard.faction-forge .tbFill,
+.tbBoard.faction-bulwark .tbFill,
 .tbBoard.faction-factory .tbLittleBustersPhysicalTile,
-.tbBoard.faction-forge .tbLittleBustersPhysicalTile {
+.tbBoard.faction-forge .tbLittleBustersPhysicalTile,
+.tbBoard.faction-bulwark .tbLittleBustersPhysicalTile {
   background: transparent;
   box-shadow: none;
   animation: none;
 }
 
 .tbBoard.faction-factory .tbFill.partial > img,
-.tbBoard.faction-forge .tbFill.partial > img {
+.tbBoard.faction-forge .tbFill.partial > img,
+.tbBoard.faction-bulwark .tbFill.partial > img {
   filter: none;
 }
 
 .tbBoard.faction-factory .tbBar.partial::after,
-.tbBoard.faction-forge .tbBar.partial::after {
+.tbBoard.faction-forge .tbBar.partial::after,
+.tbBoard.faction-bulwark .tbBar.partial::after {
   display: none;
 }
 
 .tbBoard.faction-factory .tbEmptyBar,
-.tbBoard.faction-forge .tbEmptyBar {
+.tbBoard.faction-forge .tbEmptyBar,
+.tbBoard.faction-bulwark .tbEmptyBar {
   padding-top: 5%;
+}
+
+/* Printed face boards (Factory, Forge, Bulwark), as on the physical board
+   (see the Castle scans): an UNBUILT slot is the bare empty townscape, blurred
+   and dimmed exactly like a scan board's unbuilt bar, under its crisp name +
+   cost plate(s); a BUILT slot is its crisp tile with the round green building
+   icon(s) at its foot and no cost. */
+.tbBoard.printedFace .tbEmptyBar.printed {
+  background: rgb(8 5 3 / 22%);
+  backdrop-filter: blur(1.7px) saturate(0.68) brightness(0.8);
+  -webkit-backdrop-filter: blur(1.7px) saturate(0.68) brightness(0.8);
+}
+
+.tbBoard.printedFace .tbEmptyBar.printed.buildable {
+  box-shadow: inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.55);
+}
+
+.tbPrintedIcons {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5%;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 0.6cqw;
+  pointer-events: none;
+}
+
+.tbPrintedIcons img {
+  width: 3.1cqw;
+  height: 3.1cqw;
+  border-radius: 50%;
+  box-shadow: 0 0.12cqw 0.4cqw rgb(0 0 0 / 55%);
+}
+
+/* The shared tile's still-unbuilt half: its icon greyed out. */
+.tbPrintedIcons img.missing {
+  filter: grayscale(1) blur(0.5px) brightness(0.72);
+  opacity: 0.7;
+}
+
+/* Printed face boards: the buildable hint sits in the slot's lower right corner so it
+   never covers a name/cost plate. */
+.tbBoard.printedFace .tbBuildBadge {
+  top: auto;
+  right: 6%;
+  bottom: 5%;
 }
 
 .tbFactoryBarPlates {
   position: absolute;
-  top: 5%;
-  left: 10%;
+  top: 4.5%;
+  left: 6%;
   z-index: 2;
   display: grid;
-  gap: 0.28cqw;
-  width: 80%;
+  gap: 0.45cqw;
+  width: 88%;
   pointer-events: none;
 }
 
 .tbBoard.faction-factory .tbPlate,
-.tbBoard.faction-forge .tbPlate {
+.tbBoard.faction-forge .tbPlate,
+.tbBoard.faction-bulwark .tbPlate {
   width: 100%;
-  border-color: #b99a60;
-  border-radius: 0;
+  border: 0.14cqw solid #c9a864;
+  border-radius: 0.2cqw;
+  box-shadow: 0 0.25cqw 0.7cqw rgb(0 0 0 / 60%), inset 0 0 0 0.08cqw rgb(0 0 0 / 55%);
+}
+
+/* Printed name plate: the name (up to two lines) on the green band, the cost
+   on a dark band below — sized from the board width so it reads at any
+   window size, like the plaques on the physical board. */
+.tbBoard.faction-factory .tbPlate b,
+.tbBoard.faction-forge .tbPlate b,
+.tbBoard.faction-bulwark .tbPlate b {
+  padding: 0.38cqw 0.3cqw 0.32cqw;
+  font-size: clamp(8px, 1.2cqw, 15px);
+  line-height: 1.1;
+  text-shadow: 0 0.08cqw 0.12cqw rgb(0 0 0 / 70%);
+  overflow-wrap: anywhere;
 }
 
 .tbBoard.faction-factory .tbPlate b,
 .tbBoard.faction-forge .tbPlate b,
+.tbBoard.faction-bulwark .tbPlate b,
 .tbBoard.faction-factory .tbMiniCard b,
-.tbBoard.faction-forge .tbMiniCard b {
+.tbBoard.faction-forge .tbMiniCard b,
+.tbBoard.faction-bulwark .tbMiniCard b {
   background: linear-gradient(#40764b, #274b2f);
   color: #f2dfad;
   font-family: Georgia, serif;
@@ -29186,41 +29309,61 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 }
 
 .tbBoard.faction-factory .tbPlate .tbCost,
-.tbBoard.faction-forge .tbPlate .tbCost {
-  background: #342a23;
+.tbBoard.faction-forge .tbPlate .tbCost,
+.tbBoard.faction-bulwark .tbPlate .tbCost {
+  gap: 0.5cqw;
+  padding: 0.26cqw 0.2cqw;
+  background: linear-gradient(180deg, #3b3027, #2a211b);
+  color: #f3e6c6;
+  font-family: Georgia, serif;
+  font-size: clamp(8px, 1.15cqw, 14px);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .tbBoard.faction-factory .tbPlate .tbCost span,
-.tbBoard.faction-forge .tbPlate .tbCost span {
+.tbBoard.faction-forge .tbPlate .tbCost span,
+.tbBoard.faction-bulwark .tbPlate .tbCost span {
   gap: 0.08cqw;
 }
 
 .tbBoard.faction-factory .tbPlate .tbCost img,
-.tbBoard.faction-forge .tbPlate .tbCost img {
-  width: 1.12cqw;
-  height: 1.12cqw;
+.tbBoard.faction-forge .tbPlate .tbCost img,
+.tbBoard.faction-bulwark .tbPlate .tbCost img {
+  width: 1.4cqw;
+  height: 1.4cqw;
+  min-width: 10px;
+  min-height: 10px;
 }
 
 .tbBoard.faction-factory .tbUnbuiltPlaque,
-.tbBoard.faction-forge .tbUnbuiltPlaque {
+.tbBoard.faction-forge .tbUnbuiltPlaque,
+.tbBoard.faction-bulwark .tbUnbuiltPlaque {
   display: none;
 }
 
 .tbBoard.faction-factory .tbTilePlaque,
-.tbBoard.faction-forge .tbTilePlaque {
+.tbBoard.faction-forge .tbTilePlaque,
+.tbBoard.faction-bulwark .tbTilePlaque {
   display: none;
 }
 
 .tbBoard.faction-factory .tbFactoryDefs,
-.tbBoard.faction-forge .tbFactoryDefs {
+.tbBoard.faction-forge .tbFactoryDefs,
+.tbBoard.faction-bulwark .tbFactoryDefs {
   inset: 0;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-template-rows: 1fr 1fr;
   gap: 2.5%;
+  /* The whole rule-card block is one size container: every card's title and
+     text share ONE size scaled to the printed block, so they read evenly and
+     fit their printed cards at any window size. */
+  container-type: size;
 }
 
 .tbBoard.faction-factory .tbDefsHit,
-.tbBoard.faction-forge .tbDefsHit {
+.tbBoard.faction-forge .tbDefsHit,
+.tbBoard.faction-bulwark .tbDefsHit {
   border: none;
   border-radius: 0;
   background: transparent;
@@ -29228,7 +29371,8 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 }
 
 .tbBoard.faction-factory .tbFactoryDefs .tbMiniCard,
-.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard {
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard,
+.tbBoard.faction-bulwark .tbFactoryDefs .tbMiniCard {
   grid-column: span 2;
   gap: 0;
   padding: 0;
@@ -29238,45 +29382,58 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 }
 
 .tbBoard.faction-factory .tbFactoryDefs .tbMiniCard:nth-child(n + 4),
-.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard:nth-child(n + 4) {
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard:nth-child(n + 4),
+.tbBoard.faction-bulwark .tbFactoryDefs .tbMiniCard:nth-child(n + 4) {
   grid-column: span 3;
 }
 
 .tbBoard.faction-factory .tbFactoryDefs .tbMiniCard b,
-.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard b {
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard b,
+.tbBoard.faction-bulwark .tbFactoryDefs .tbMiniCard b {
   display: grid;
   flex: 0 0 16%;
   place-items: center;
-  padding: 0 0.25cqw;
+  padding: 0 3%;
+  overflow: hidden;
   border: none;
   background: transparent;
-  font-size: clamp(7px, 1.02cqw, 13px);
+  font-size: clamp(7px, min(3.5cqh, 2.3cqw), 16px);
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 70%);
 }
 
 .tbBoard.faction-factory .tbFactoryDefs .tbMiniCard small,
-.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard small {
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard small,
+.tbBoard.faction-bulwark .tbFactoryDefs .tbMiniCard small {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.25cqw;
-  padding: 0.35cqw 0.48cqw;
-  color: #f1e4c7;
+  gap: 1.1cqh;
+  min-height: 0;
+  padding: 1.2cqh 5%;
+  overflow: hidden;
+  color: #f4e8cc;
   font-family: Georgia, serif;
-  font-size: clamp(6px, 0.83cqw, 10px);
+  font-size: clamp(7px, min(3.5cqh, 2.35cqw), 15px);
   line-height: 1.22;
   text-align: center;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 65%);
   -webkit-line-clamp: unset;
 }
 
 .tbBoard.faction-factory .tbTrackIcon,
-.tbBoard.faction-forge .tbTrackIcon {
+.tbBoard.faction-forge .tbTrackIcon,
+.tbBoard.faction-bulwark .tbTrackIcon {
   display: none;
 }
 
 .tbBoard.faction-factory .tbTrackCell,
-.tbBoard.faction-forge .tbTrackCell {
+.tbBoard.faction-forge .tbTrackCell,
+.tbBoard.faction-bulwark .tbTrackCell {
   background: transparent;
   box-shadow: none;
   color: #e8d7ae;
@@ -29286,7 +29443,8 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 }
 
 .tbBoard.faction-factory .tbFactoryDefs .tbMiniCard small > span,
-.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard small > span {
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniCard small > span,
+.tbBoard.faction-bulwark .tbFactoryDefs .tbMiniCard small > span {
   display: block;
 }
 
@@ -29298,13 +29456,15 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 }
 
 .tbFactoryGold img {
-  width: 1cqw;
-  height: 1cqw;
+  width: 1.1em;
+  height: 1.1em;
   object-fit: contain;
+  vertical-align: -0.18em;
 }
 
 .tbBoard.faction-factory .tbFactoryDefs .tbMiniMore,
-.tbBoard.faction-forge .tbFactoryDefs .tbMiniMore {
+.tbBoard.faction-forge .tbFactoryDefs .tbMiniMore,
+.tbBoard.faction-bulwark .tbFactoryDefs .tbMiniMore {
   display: none;
 }
 

@@ -148,12 +148,12 @@ describe("card-values — id hygiene", () => {
     expect(CARD_TIER["ability.necromancy"]).toBeUndefined();
   });
 
-  it("every HERO_TIER key resolves to a hero definition (all 28 list entries)", () => {
+  it("every HERO_TIER key resolves to a hero definition (all 30 list entries)", () => {
     const missing = Object.keys(HERO_TIER).filter(
       (id) => !coreHeroDefinitions[id],
     );
     expect(missing).toEqual([]);
-    expect(Object.keys(HERO_TIER).length).toBe(28);
+    expect(Object.keys(HERO_TIER).length).toBe(30);
     // The two printed Lord Haarts land on the two distinct defIds.
     expect(coreHeroDefinitions.lord_haart.faction).toBe("castle");
     expect(coreHeroDefinitions.lord_haart_necropolis.faction).toBe(

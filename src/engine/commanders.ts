@@ -36,7 +36,7 @@ import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import { availableRunes, gainRunes } from "./runes";
 import { createSeededRandom } from "./random";
-import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
+import { hasToken, noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import { isMechanicalUnit } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
@@ -314,7 +314,7 @@ export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatU
  *  - Damage grade 1/2/3: +1/+2/+3 bonus damage on its attacks;
  *  - every unlocked combination skill (one stat of the pair at grade 3, the
  *    other at 2+) — Sharpshooter has no ability id (it is the type flip);
- *  - the "Undead" specialty's paralysis immunity (Soul Eater, Demon Ancestor);
+ *  - the "Undead" specialty's paralysis immunity (Demon Ancestor);
  *  - the commander's command ability (the once-per-round cast).
  */
 export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
@@ -337,10 +337,9 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
     ids.push("titan-ignore-ongoing");
   }
 
-  // Defense grade II ("+1 def when attacked"): a permanent Defense token — the
-  // commander rolls the Defend die when attacked. Grade III is a reliable flat
-  // Defense 3 with no die, so ONLY grade II carries it.
-  if (grades.defense === COMMANDER_DEFENSE_TOKEN_GRADE) {
+  // Defense grades II and III retain a permanent Defense token. Grade III also
+  // pays its +1 Defense bonus on a 0 roll (resolved in reducer.ts).
+  if (grades.defense >= COMMANDER_DEFENSE_TOKEN_GRADE) {
     ids.push("commander-defense-token");
   }
 
@@ -363,16 +362,13 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
     }
   }
 
-  // Specialty-borne combat passive. The "Undead" Paralysis-token immunity is
-  // keyed off the SPECIALTY id (not the "soul_eater" slug), the Belfast
-  // first-aid precedent — so any future Undead commander (the Heavenly Demon
-  // "Undying Demon Body") gets it too.
+  // Other commanders using the Undead specialty retain its paralysis immunity.
+  // Soul Eater keeps undead identity for Holy Steel and kill gates, while its
+  // specialty is now the selected damage-transfer link.
   if (definition?.specialty.id === "undead") {
-    // `wog-undead` is the shared identity marker read by Holy Steel and every
-    // non-Undead kill gate. Keep `ignore-paralysis` as the specialty's stated
-    // gameplay benefit; identity and immunity are intentionally separate.
     ids.push("wog-undead", "ignore-paralysis");
   }
+  if (commander.slug === "soul_eater") ids.push("wog-undead");
 
   // The command ability itself (offered as a USE_UNIT_ABILITY during its
   // activation; see legal-actions/reducer).
@@ -924,6 +920,25 @@ export function commanderCastOf(unit: CombatUnitState, abilityId?: string): Comm
 }
 
 /**
+ * Damage an `enemy-damage` commander cast deals to `target` at `tier`. Forge
+ * Arc Discharge at Power 2 deals 3 on its first use and 2 to a Gold/Azure unit
+ * on every later use; every other cast reads its printed ladder. Shared by the
+ * reducer and the AI so the AI never counts on a kill the engine won't deal.
+ */
+export function commanderEnemyDamageAmount(
+  caster: CombatUnitState,
+  target: CombatUnitState,
+  damageByPower: readonly number[],
+  tier: number,
+): number {
+  if (caster.commanderSlug === "forge" && tier >= 2) {
+    const subsequentCast = (caster.commanderCastCount ?? (caster.commanderCastRound !== undefined ? 1 : 0)) > 0;
+    return subsequentCast && (target.grade === "gold" || target.grade === "azure") ? 2 : 3;
+  }
+  return damageByPower[tier];
+}
+
+/**
  * Power the cast resolves at (from the owner's Magic grade), plus the WOG
  * Commander-Artifact Pendant of Sorcery bonus (+1 when bound). Folded here — the
  * ONE cast-Power site — so the higher effective Power lifts the cast tier and
@@ -956,6 +971,17 @@ const TIER_RANK: Record<string, number> = { bronze: 0, silver: 1, gold: 2, azure
 
 /** Whether this commander's ability-specific cast budget is exhausted now. */
 export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitState): boolean {
+  if (unit.commanderSlug === "brute") {
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    return uses >= 3 || unit.commanderCastRound === state.combat?.round;
+  }
+  // Castle Cure keeps its once-per-round timing; at Power 2 its third use is
+  // the last cast available in this combat.
+  if (unit.commanderSlug === "paladin") {
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    return (commanderCastPower(state, unit) >= 2 && uses >= 3) ||
+      unit.commanderCastRound === state.combat?.round;
+  }
   // Rampart Shield: Power 0 is once per combat; Power 1/2 is once per round,
   // with a maximum of two uses in the combat.
   if (unit.commanderSlug === "hierophant") {
@@ -972,22 +998,30 @@ export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitSta
     const limit = commanderCastPower(state, unit) >= 2 ? 4 : 2;
     return uses >= limit || unit.commanderCastRound === state.combat?.round;
   }
+  if (unit.commanderSlug === "succubus") {
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    return uses >= 2 || unit.commanderCastRound === state.combat?.round;
+  }
+  if (unit.commanderSlug === "soul_eater") {
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    const limit = commanderCastPower(state, unit) >= 2 ? 4 : commanderCastPower(state, unit) >= 1 ? 3 : Infinity;
+    return uses >= limit || unit.commanderCastRound === state.combat?.round;
+  }
   // Stronghold Stone Skin (nerf): Power 0 is once per combat; Power 1 is once per
-  // round with a maximum of two uses in the combat; Power 2 is once per round with
-  // no per-combat cap (its amount decays after round 1 instead — see the
-  // defense-buff resolution in reducer.ts).
+  // round with a maximum of two uses in the combat; Power 2 is once per round
+  // with a maximum of four uses (its amount decays after round 1).
   if (unit.commanderSlug === "ogre_leader") {
     const power = commanderCastPower(state, unit);
     const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
     if (power <= 0) return uses >= 1;
     if (power === 1) return uses >= 2 || unit.commanderCastRound === state.combat?.round;
-    return unit.commanderCastRound === state.combat?.round;
+    return uses >= 4 || unit.commanderCastRound === state.combat?.round;
   }
-  // Factory Field Repair is a two-charge combat resource, not a once-per-round
-  // command. The legacy round stamp is folded into the count for old saves.
+  // Factory Emergency Repair is ONCE PER COMBAT (not per round). The legacy
+  // round stamp is folded into the count for old saves.
   if (unit.commanderSlug === "factory") {
     const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
-    return uses >= 2;
+    return uses >= 1;
   }
   return unit.commanderCastRound !== undefined && unit.commanderCastRound === state.combat?.round;
 }
@@ -1251,14 +1285,109 @@ export function commanderPrecisionReactionAmount(state: GameState, commander: Co
   }
   const tier = commanderCastTierIndex(commanderCastPower(state, commander));
   const priorCasts = commander.commanderCastCount ?? (commander.commanderCastRound !== undefined ? 1 : 0);
-  if (tier === 2 && priorCasts >= 3) return cast.effect.fourthCastAmountAtPower2;
+  if (tier === 2 && priorCasts >= 2) return cast.effect.fourthCastAmountAtPower2;
   return priorCasts > 0 ? cast.effect.secondCastAmountByPower[tier] : cast.effect.amountByPower[tier];
 }
 
-/** Only Power 2 loses Precision's ranged-penalty waiver after its first use. */
+/**
+ * Factory Artificer "Emergency Repair" (lethal-cancel): the living commander
+ * that may cancel `attackerUnit`'s attack on `defenderUnit`, or null. The CALLER
+ * guarantees the hit is lethal to the unit or flips it Pack→Few (it is offered
+ * only from the UNIT_LETHAL_HIT window, which opens on exactly that preview).
+ * Conditions:
+ *  - an ENEMY attack (the attacker is controlled by another seat), incl. a
+ *    Retaliation Attack — every attack funnels through the same lethal window;
+ *  - the defender is controlled by the commander's owner and its unitDefId is
+ *    protected at the commander's current cast Power (0: Engineers; 1: +
+ *    Automatons; 2: + every mechanical unit, i.e. Juggernauts). unitDefId is
+ *    used — like isMechanicalUnit — so a player-owned neutral-variant copy of
+ *    those units counts too;
+ *  - the commander is alive, on the board (anywhere — no range), NOT paralyzed,
+ *    and has not used the ability this combat (commanderCastUsedThisRound's
+ *    factory branch is a once-per-combat budget);
+ *  - a Polish Stack layer loss (stackLayerOnly) is neither a kill nor a
+ *    Pack→Few flip, so it is never offered.
+ */
+export function commanderLethalCancelReactionUnit(
+  state: GameState,
+  defenderUnit: CombatUnitState,
+  attackerUnit: CombatUnitState | undefined,
+  stackLayerOnly = false
+): CombatUnitState | null {
+  const combat = state.combat;
+  if (
+    !combat ||
+    stackLayerOnly ||
+    !attackerUnit ||
+    attackerUnit.controllerId === defenderUnit.controllerId ||
+    defenderUnit.controllerId === NEUTRAL_PLAYER_ID ||
+    defenderUnit.position < 0 ||
+    defenderUnit.damage >= defenderUnit.maxHealth ||
+    defenderUnit.cloneOfUnitId
+  ) {
+    return null;
+  }
+  const commander = findCommanderUnit(state, defenderUnit.controllerId);
+  if (
+    !commander ||
+    commander.id === defenderUnit.id ||
+    commander.position < 0 ||
+    commander.damage >= commander.maxHealth ||
+    hasToken(commander, "paralysis")
+  ) {
+    return null;
+  }
+  const cast = commanderCastOf(commander);
+  if (!cast || cast.effect.kind !== "lethal-cancel" || commanderCastUsedThisRound(state, commander)) {
+    return null;
+  }
+  const tier = commanderCastTierIndex(commanderCastPower(state, commander));
+  const protectedIds = cast.effect.protectedUnitDefIdsByPower[tier];
+  if (!defenderUnit.unitDefId || !protectedIds.includes(defenderUnit.unitDefId)) {
+    return null;
+  }
+  return commander;
+}
+
+/** Select Soul Eater's protected ally before combat-start damage and war machines. */
+export function maybeOpenSoulLinkChoice(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || !commandersModuleEnabled(state) || combat.outcome || combat.setup || combat.awaitingContinue || combat.round !== 1 ||
+      (combat.pendingCommanderPlacement?.length ?? 0) > 0 || state.pendingChoice ||
+      state.reactionWindow || state.stack.length > 0 ||
+      Object.values(combat.units).some(unit => unit.activatedThisRound)) return false;
+  for (const commander of Object.values(combat.units)) {
+    if (commander.commanderSlug !== "soul_eater" || commander.damage >= commander.maxHealth || commander.soulLinkSelectionDone) continue;
+    const candidates = Object.values(combat.units).filter(unit => unit.id !== commander.id && unit.controllerId === commander.controllerId && unit.damage < unit.maxHealth);
+    if (candidates.length === 0) {
+      commander.soulLinkSelectionDone = true;
+      continue;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: commander.controllerId,
+      kind: "commander-soul-link",
+      abilityId: "commander-soul-link",
+      abilityName: "Soul Link",
+      prompt: `${commander.cardName}: choose a friendly unit to share damage with this combat.`,
+      sourceUnitId: commander.id,
+      anchorUnitId: null,
+      candidateUnitIds: candidates.map(unit => unit.id),
+      optional: false,
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = commander.controllerId;
+    appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId, choiceType: "ABILITY_TARGET_CHOICE", playerId: commander.controllerId, sourceEffectIds: [], message: state.pendingChoice.prompt });
+    return true;
+  }
+  return false;
+}
+
+/** Every Precision reaction is a nonadjacent shot and ignores ranged penalties. */
 export function commanderPrecisionIgnoresRangedPenalty(state: GameState, commander: CombatUnitState): boolean {
-  if (commanderCastPower(state, commander) < 2) return true;
-  return (commander.commanderCastCount ?? (commander.commanderCastRound !== undefined ? 1 : 0)) === 0;
+  return commanderCastOf(commander)?.effect.kind === "precision-instant";
 }
 
 /** The Magic Arrow spell card the Tower's combat-start fetch pulls. */
@@ -1302,22 +1431,20 @@ export function commanderMagicArrowFetchOption(
 }
 
 /**
- * Fortress Shaman begin-of-match Haste eligibility for `playerId`: only in combat
- * round 1, only a living Shaman standing in this combat, and only with at least
- * one legal Haste target. Returns the commander unit and the legal target ids, or
- * null. (Gated to the Shaman slug — the might_guy / sonya Haste reuses do NOT get
- * the begin-of-match option.)
+ * Optional combat-start cast for Fortress Shaman and Dungeon Brute. Other
+ * commanders sharing their cast ability IDs do not receive this option.
  */
 export function commanderBeginCastOption(
   state: GameState,
   playerId: PlayerId
 ): { commander: CombatUnitState; targetUnitIds: string[] } | null {
   const combat = state.combat;
-  if (!combat || combat.round !== 1 || !commandersModuleEnabled(state)) {
+  if (!combat || combat.outcome || combat.round !== 1 || !commandersModuleEnabled(state)) {
     return null;
   }
   const commander = findCommanderUnit(state, playerId);
-  if (commander?.commanderSlug !== "shaman" || commander.damage >= commander.maxHealth) {
+  if (!commander || (commander.commanderSlug !== "shaman" && commander.commanderSlug !== "brute") ||
+      commander.damage >= commander.maxHealth || commanderCastUsedThisRound(state, commander)) {
     return null;
   }
   const targets = commanderCastCandidates(state, commander);
@@ -1328,6 +1455,48 @@ export function commanderBeginCastOption(
     commander,
     targetUnitIds: targets.map((unit) => unit.id).sort((a, b) => a.localeCompare(b))
   };
+}
+
+/** Brute's optional combat-start Bloodlust: one round of +1 Attack at every Power. */
+export function applyCommanderBeginCastBloodlust(
+  state: GameState,
+  commander: CombatUnitState,
+  target: CombatUnitState
+): void {
+  const cast = commanderCastOf(commander);
+  if (commander.commanderSlug !== "brute" || !cast || cast.effect.kind !== "attack-buff" ||
+      commanderCastUsedThisRound(state, commander) ||
+      !commanderCastCandidates(state, commander).some((candidate) => candidate.id === target.id)) {
+    throw new Error("That opening Bloodlust target is no longer legal.");
+  }
+  const source = { type: "unit" as const, unitId: commander.id, controllerId: commander.controllerId };
+  const active = makeActiveEffect(
+    state,
+    {
+      name: `Opening ${cast.name} (${commander.cardName})`,
+      scope: "unit",
+      duration: { type: "current-combat-round" },
+      polarity: "positive",
+      removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
+    },
+    source,
+    commander.controllerId,
+    { type: "unit", unitId: target.id }
+  );
+  state.activeEffects.push(active);
+  commander.commanderCastRound = state.combat?.round;
+  commander.commanderCastCount = (commander.commanderCastCount ?? 0) + 1;
+  commander.activatedThisRound = true;
+  appendEvent(state, {
+    type: "COMMANDER_CAST_USED",
+    playerId: commander.controllerId,
+    commanderSlug: "brute",
+    castName: cast.name,
+    power: commanderCastPower(state, commander),
+    targetUnitId: target.id,
+    message: `${commander.cardName} casts opening ${cast.name} on ${target.cardName} for +1 Attack this round and skips its round-1 turn.`
+  });
 }
 
 /**

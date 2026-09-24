@@ -8,6 +8,7 @@ import {
   getBattlefieldCoordinates,
   getBattlefieldDistance,
   getOrthogonalNeighbors,
+  isAdjacent,
 } from "../battlefield";
 import { cancelSpellAllowsSchoolAndLevel, deathRippleReachesUnit, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
@@ -20,6 +21,8 @@ import { resolvedSpellPowerForStackItem, standingSpellPower } from "../legal-act
 import { baseCardId, isPhantomCardId } from "../phantom-cards";
 import { chainLightningValue } from "./chain-planning";
 import { NEUTRAL_PLAYER_ID } from "../state";
+import { commanderCastOf, commanderCastPower } from "../commanders";
+import { commanderCastTierIndex } from "@/data/commanders";
 import type {
   CardDefinition,
   CardPlayMode,
@@ -132,6 +135,8 @@ const COMBAT_BUFF_EFFECTS = new Set<EffectDefinition["type"]>([
   "HEAL_DAMAGE",
   "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
   "GRANT_DEFENSE_TOKENS",
+  // Darkstorn IV: Defense tokens for the whole army (+1 Defense on an enemy +1 roll).
+  "DARKSTORN_STONE_SKIN_ROUND",
   "STONE_SKIN_AURA",
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
@@ -212,6 +217,7 @@ const MAP_SEARCH_EFFECTS = new Set<EffectDefinition["type"]>([
   "SEARCH_DECK_THEN_RESHUFFLE",
   "DECK_DIG_KEEP_ONE",
   "DECK_DIG_KEEP_MATCHING",
+  "ISRA_FETCH_CARD",
   "DRAW_TOP_ARTIFACT",
   "EAGLE_EYE_DIG",
   "TAKE_FROM_DISCARD",
@@ -892,6 +898,13 @@ function scoreStatReaction(
   mode: CardPlayMode | undefined,
   effect: EffectDefinition,
 ): number {
+  if (card.id === "specialty.cuthbert.1") {
+    const pending = pendingAttackValues(observation);
+    if (!pending || pending.defender.controllerId !== observation.playerId || pending.damage <= 0) return 1_020;
+    const survives = pending.damage >= unitRemainingHealth(pending.defender) &&
+      Math.max(0, pending.damage - 2) < unitRemainingHealth(pending.defender);
+    return survives ? 1_150 : 1_075 + Math.min(30, unitThreatValue(pending.defender) / 3);
+  }
   // Attack/Defense statistic cards and similar combat-stat reactions. High
   // value because they only appear when legal (an attack window is open).
   let amount =
@@ -1283,6 +1296,12 @@ export function scholarRetrievalValue(cardId: string, observation: ComputerObser
 
 function permanentUtility(observation: ComputerObservation, card: CardDefinition): number {
   const state = observation.state as unknown as GameState;
+  if (card.id === "specialty.korbac.4") {
+    const flies = Object.values(state.combat?.units ?? {}).find(unit =>
+      unit.controllerId === observation.playerId && unit.unitDefId === "fortress.dragon_flies" &&
+      unitRemainingHealth(unit) > 0);
+    return flies ? 180 : 0;
+  }
   const school = card.permanentEffect?.schoolBonus?.school;
   if (school) {
     const matching = readySpells(state, observation.playerId).filter(spell =>
@@ -1390,6 +1409,56 @@ function scoreSaveReaction(
     return 1_120 + modeBonus(mode);
   }
   return 1_110 + modeBonus(mode);
+}
+
+/**
+ * Factory Artificer "Emergency Repair" in the lethal-hit window: cancel the
+ * blow, but the commander is Paralyzed and it is ONCE per combat. The engine
+ * only offers it when the hit really kills a protected unit or flips it
+ * Pack→Few, so:
+ *  - an outright KILL (not a Pack) is always worth a commander activation —
+ *    save it (above PASS 1_050 and just above a Resurrection card, so the free
+ *    commander save is spent before a hand card);
+ *  - a Pack→Few FLIP of a Silver/Gold machine is a big swing — save it;
+ *  - a Pack→Few flip of a Bronze unit is marginal: keep the single use when a
+ *    higher-tier protected unit (Automatons/Juggernauts at this Power) is still
+ *    fighting, otherwise take the save.
+ */
+function emergencyRepairReactionScore(
+  observation: ComputerObservation,
+  commanderUnitId: string,
+  targetUnitId: string,
+): ComputerActionScore {
+  const state = observation.state as unknown as GameState;
+  const combat = state.combat;
+  const target = combat?.units[targetUnitId];
+  const commander = combat?.units[commanderUnitId];
+  const cast = commander ? commanderCastOf(commander) : null;
+  if (!combat || !target || !commander || cast?.effect.kind !== "lethal-cancel") {
+    return { score: 1_000, policy: "card.emergency-repair-hold" };
+  }
+  const threatBonus = Math.min(20, Math.round(unitThreatValue(target) / 4));
+  const flipOnly = target.variant === "pack";
+  if (!flipOnly) {
+    return { score: 1_165 + threatBonus, policy: "card.emergency-repair-save-unit" };
+  }
+  if (target.grade !== "bronze") {
+    return { score: 1_120 + threatBonus, policy: "card.emergency-repair-save-pack" };
+  }
+  const protectedIds =
+    cast.effect.protectedUnitDefIdsByPower[commanderCastTierIndex(commanderCastPower(state, commander))];
+  const biggerMachineFighting = Object.values(combat.units).some(
+    (unit) =>
+      unit.id !== target.id &&
+      unit.controllerId === target.controllerId &&
+      unit.grade !== "bronze" &&
+      unitRemainingHealth(unit) > 0 &&
+      unit.position >= 0 &&
+      Boolean(unit.unitDefId && protectedIds.includes(unit.unitDefId)),
+  );
+  return biggerMachineFighting
+    ? { score: 1_000, policy: "card.emergency-repair-keep-for-machine" }
+    : { score: 1_070 + threatBonus, policy: "card.emergency-repair-save-pack" };
 }
 
 function scoreMapEconomy(
@@ -1521,6 +1590,33 @@ function scoreEffect(
 
   const state = observation.state as unknown as GameState;
   if (!isReaction) {
+    // Ladybird of Luck's Wall side: worth it only as a shield for one of our
+    // shooters (a Wall beside it closes an approach lane for enemy melee);
+    // otherwise the instant +1 Morale side is the better use of the card.
+    if (effect.type === "PLACE_ARTIFACT_WALL") {
+      const combat = state.combat;
+      if (!combat || target?.type !== "space") return 150;
+      const alive = (unit: { damage: number; maxHealth: number }) => unit.damage < unit.maxHealth;
+      const shielded = Object.values(combat.units).some(
+        (unit) =>
+          unit.controllerId === observation.playerId &&
+          unit.type === "ranged" &&
+          alive(unit) &&
+          isAdjacent(unit.position, target.position),
+      );
+      const enemyMelee = Object.values(combat.units).some(
+        (unit) => unit.controllerId !== observation.playerId && unit.type === "ground" && alive(unit),
+      );
+      return shielded && enemyMelee ? 560 + modeBonus(mode) : 150;
+    }
+    if (effect.type === "ISRA_RETURN_UNIT") {
+      const removed = Object.values(state.combat?.units ?? {}).filter((unit) =>
+        unit.controllerId === observation.playerId && unit.armyUnitId &&
+        unit.variant === "few" && unit.damage >= unit.maxHealth &&
+        state.players[observation.playerId]?.army.some((card) => card.id === unit.armyUnitId && card.side === "few") &&
+        ["bronze", "silver"].includes((unit.unitDefId ? coreUnitDefinitions[unit.unitDefId]?.tier : undefined) ?? ""));
+      return removed.length ? 730 + Math.min(80, removed.length * 25) : 180;
+    }
     if (effect.type === "HELLSTORM_SIX_UNITS") {
       const player = state.players[observation.playerId];
       const available = player?.army.length ?? 0;
@@ -1590,6 +1686,39 @@ function scoreEffect(
       target,
       680 + modeBonus(mode),
     );
+  }
+
+  if (effect.type === "CREATE_URFTIN_CUBES") {
+    const dwarves = Object.values(observation.state.combat?.units ?? {}).filter((unit) => unit.controllerId === observation.playerId && unit.name === "Dwarves" && unitRemainingHealth(unit) > 0);
+    return dwarves.length > 0 ? 710 + Math.min(55, dwarves.length * 20) : 130;
+  }
+  if (effect.type === "CREATE_ULAND_CURE") {
+    const patient = combatUnitFromTarget(observation, target);
+    return patient?.controllerId === observation.playerId ? 695 + Math.min(40, unitThreatValue(patient) / 3) : 130;
+  }
+  if (effect.type === "CREATE_VERDISH_ROUND_HEAL") {
+    const patient = combatUnitFromTarget(observation, target);
+    return patient?.controllerId === observation.playerId
+      ? 685 + Math.min(75, unitThreatValue(patient) / 2) + Math.min(35, patient.damage * 7)
+      : 180;
+  }
+  if (effect.type === "VERDISH_TRANSFER_DAMAGE") {
+    const patient = combatUnitFromTarget(observation, target);
+    const recipients = Object.values(state.combat?.units ?? {}).filter(unit =>
+      unit.id !== patient?.id && unit.controllerId === observation.playerId &&
+      unitRemainingHealth(unit) > 0);
+    return patient?.damage && recipients.length
+      ? 670 + Math.min(90, unitThreatValue(patient) / 2) + Math.min(45, patient.damage * 12)
+      : 180;
+  }
+  if (effect.type === "CREATE_VERDISH_KILL_HEAL") {
+    const wounded = Object.values(state.combat?.units ?? {}).filter(unit =>
+      unit.controllerId === observation.playerId && unitRemainingHealth(unit) > 0 && unit.damage > 0);
+    return wounded.length ? 710 + Math.min(50, wounded.length * 15) : 620;
+  }
+  if (effect.type === "HEAL_TWO_UNITS") {
+    const patients = Object.values(observation.state.combat?.units ?? {}).filter((unit) => unit.controllerId === observation.playerId && unitRemainingHealth(unit) > 0 && (unit.damage > 0 || (unit.tokens ?? []).some((token) => token.kind === "paralysis")));
+    return patients.length > 0 ? 675 + Math.min(50, patients.length * 20) : 130;
   }
 
   // A medic heal instant played OUTSIDE combat is the map draw-only play (Rion's
@@ -1737,6 +1866,39 @@ function scoreEffect(
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    if (card.id === "specialty.dace.4") {
+      const hasEnemyPack = Object.values(state.combat?.units ?? {}).some(unit =>
+        unit.controllerId !== observation.playerId && unit.variant === "pack" && unitRemainingHealth(unit) > 0);
+      return hasEnemyPack ? 705 : 430;
+    }
+    if (card.id === "specialty.dace.6") {
+      const minotaurs = Object.values(state.combat?.units ?? {}).filter(unit =>
+        unit.controllerId === observation.playerId && unit.name === "Minotaurs" && unitRemainingHealth(unit) > 0);
+      return minotaurs.length ? 730 + Math.min(60, minotaurs.length * 20) : 180;
+    }
+    if (card.id === "specialty.darkstorn.1" || card.id === "specialty.darkstorn.6") {
+      const unit = combatUnitFromTarget(observation, target);
+      return unit ? scoreBuffTarget(observation, target, 700) : 180;
+    }
+    if (card.id === "specialty.cuthbert.4") {
+      const enemy = combatUnitFromTarget(observation, target);
+      return enemy && enemy.controllerId !== observation.playerId
+        ? 680 + Math.min(90, unitThreatValue(enemy) / 2)
+        : 180;
+    }
+    if (card.id === "specialty.cuthbert.6") {
+      const combat = state.combat;
+      const enemies = combat ? Object.values(combat.units).filter((unit) =>
+        unit.controllerId !== observation.playerId && unitRemainingHealth(unit) > 0) : [];
+      return enemies.length ? 650 + Math.min(75, enemies.length * 15) : 180;
+    }
+    if (card.id === "specialty.kastore.4") {
+      return readySpells(state, observation.playerId).some((spell) => spell.timing !== "map") ? 735 : 350;
+    }
+    if (card.id === "specialty.isra.6") {
+      const unit = combatUnitFromTarget(observation, target);
+      return unit ? 700 + Math.min(85, unitThreatValue(unit) / 2) : 180;
+    }
     if (card.id === "specialty.henrietta.6") {
       return observation.state.combat ? 735 : 180;
     }
@@ -2464,6 +2626,10 @@ export function scoreCardAction(
       // Archangel-style lethal save ability — always take over PASS.
       return { score: 1_170, policy: "card.unit-resurrection" };
     case "USE_COMMANDER_CAST_REACTION":
+      // Factory Emergency Repair is offered only in the lethal-hit window.
+      if (observation.state.reactionWindow?.triggerEvent.type === "UNIT_LETHAL_HIT") {
+        return emergencyRepairReactionScore(observation, action.commanderUnitId, action.targetUnitId);
+      }
       // Shield / Stone Skin reaction — buff defense before the hit.
       return { score: 1_130, policy: "card.commander-defense-reaction" };
     case "USE_HERO_SKILL_REACTION":

@@ -16,7 +16,7 @@
  * CLAUDE.md §2: every ability id is already-implemented.
  */
 
-import { CUSTOM_VETERANCY_OVERRIDES } from "./custom-experience-overrides";
+import { CUSTOM_VETERANCY_OVERRIDES, NEUTRAL_SIDE_VETERANCY_OVERRIDES } from "./custom-experience-overrides";
 import type { UnitTier } from "@/data/factions/types";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
@@ -447,6 +447,10 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
     "neutral.halberdiers": "ntv-set-the-spear", "neutral.centaurs": "ntv-skirmisher-step",
   };
   if (neutralTownR2[unitDefId]) return A(neutralTownR2[unitDefId]!);
+  // Neutral Grenadiers: a grenade splash instead of the second Twin Attack Dice
+  // (their printed own-attack Twin Dice already covers most of it), so they no
+  // longer share Halflings' R2.
+  if (unitDefId === "neutral.grenadiers") return A("ntv-scattering-flame");
   if (unitDefId === "neutral.air_elementals") return A("bulwark-air-shield");
   if (unitDefId === "neutral.earth_elementals") return A("veteran-earth-defense-token");
   if (unitDefId === "wog.lava_sharpshooter") return A("veteran-lava-ongoing-immunity");
@@ -474,6 +478,7 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "castle.crusaders") return A("town-crusader-undead");
   if (unitDefId === "tower.iron_golems") return A("town-golem-shield");
   if (unitDefId === "tower.nagas") return A("town-naga-mend");
+  if (unitDefId === "dungeon.black_dragons") return A("town-black-dragon-guard");
   if (unitDefId === "rampart.dwarves") return A("town-dwarf-backlash");
   if (unitDefId === "rampart.gold_dragons") return A("town-dragon-snare");
   if (unitDefId === "rampart.unicorns") return A("town-unicorn-die");
@@ -517,7 +522,7 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "neutral.boars") return H({ ...Z, defense: 1 }, "veteran-boar-brace");
   if (unitDefId === "wog.dracolich") return H({ ...Z, health: 1 }, "veteran-dracolich-death-heal");
   if (unitDefId === "tower.gargoyles") return H({ ...Z, health: 2 }, "veteran-earth-defense-token");
-  if (unitDefId === "tower.titans") return H({ ...Z, health: 1 }, "veteran-earth-defense-token");
+  if (unitDefId === "tower.titans") return A("veteran-earth-defense-token");
   if (unitDefId === "necropolis.skeletons") return S({ ...Z, health: 2 });
   if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-teleport-strike", "veteran-magma-attack-after-move");
   const neutralTownR3: Record<string, string> = {
@@ -567,7 +572,7 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "rampart.centaurs") return H({ ...Z, health: 1 }, "imperium-shock-assault");
   if (unitDefId === "rampart.elves") return A("town-elf-guard");
   if (unitDefId === "rampart.pegasi") return A("town-pegasus-guard");
-  if (unitDefId === "rampart.gold_dragons") return A("town-dragon-hunter");
+  if (unitDefId === "rampart.gold_dragons") return A("town-gold-dragon-dominion");
   if (unitDefId === "rampart.unicorns") return A("titan-ignore-ongoing");
   if (unitDefId === "inferno.pit_lords") return H({ ...Z, health: 1 }, "town-pit-mend");
   if (unitDefId === "inferno.efreet") return A("town-efreet-mend");
@@ -626,6 +631,9 @@ function explicitRankFour(unitDefId: string): RankStep | null {
     ));
   }
   if (unitDefId === "neutral.boars") return A("veteran-boar-pierce");
+  // Neutral Grenadiers' capstone is an incendiary shot (works for any owner),
+  // not the card draw Halflings keep.
+  if (unitDefId === "neutral.grenadiers") return A("veteran-lava-burn");
   if (unitDefId === "neutral.nomads") return A("veteran-nomad-aura");
   if (unitDefId === "neutral.mummies") return A("veteran-mummy-last-stand");
   if (unitDefId === "tower.gargoyles") return A("veteran-defense-pierce-2");
@@ -668,7 +676,8 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "castle.marksmen") return A("town-marksman-survival");
   if (unitDefId === "castle.zealots") return A("town-zealot-loss");
   if (unitDefId === "castle.archangels") return A("town-angel-safe");
-  if (unitDefId === "castle.champions") return A("town-champion-safe");
+  if (unitDefId === "castle.champions") return A("town-champion-two-space-safe");
+  if (unitDefId === "rampart.gold_dragons" || unitDefId === "stronghold.behemoths") return A("veteran-regeneration-1");
   if (unitDefId === "tower.gremlins") return A("town-gremlin-recover");
   if (unitDefId === "tower.titans") return A("town-titan-bolt");
   if (unitDefId === "stronghold.goblins") return A("town-goblin-save");
@@ -728,12 +737,39 @@ function explicitRankFour(unitDefId: string): RankStep | null {
 const RANK_SCHEDULE_CACHE = new Map<string, RankSchedule>();
 
 /**
+ * Which veteran track a stack follows. "neutral" is used for a stack fighting
+ * on its printed Neutral side or owned by the Neutral guard player; it only
+ * differs from "faction" for units that own a NEUTRAL_SIDE_VETERANCY_OVERRIDES
+ * entry (Bulwark / Factory / Forge Neutral sides).
+ */
+export type RankScheduleSide = "faction" | "neutral";
+
+/** True when this unit's Neutral side has its own veteran track. */
+export function hasNeutralSideRankSchedule(unitDefId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(NEUTRAL_SIDE_VETERANCY_OVERRIDES, unitDefId);
+}
+
+/**
+ * The track that actually resolves for (unit, side): "neutral" only when the
+ * unit owns a Neutral-side track, so callers can key caches on the result.
+ */
+export function effectiveRankScheduleSide(unitDefId: string, side: RankScheduleSide | undefined): RankScheduleSide {
+  return side === "neutral" && hasNeutralSideRankSchedule(unitDefId) ? "neutral" : "faction";
+}
+
+/**
  * Memoized: the schedule is a pure function of the unit definition and the
  * static override tables, yet it was recomputed (flavour inference included)
  * for every unit on every army-strength read — measured at ~50% of all AI
  * CPU on a live table. Callers treat the schedule as read-only data.
+ *
+ * `side` selects the Neutral-side track when the unit has one; every other
+ * unit (and every faction-side stack) resolves exactly as before.
  */
-export function rankScheduleFor(unitDefId: string): RankSchedule {
+export function rankScheduleFor(unitDefId: string, side: RankScheduleSide = "faction"): RankSchedule {
+  if (effectiveRankScheduleSide(unitDefId, side) === "neutral") {
+    return NEUTRAL_SIDE_VETERANCY_OVERRIDES[unitDefId]!;
+  }
   const cached = RANK_SCHEDULE_CACHE.get(unitDefId);
   if (cached) return cached;
   const schedule = computeRankSchedule(unitDefId);
@@ -777,7 +813,8 @@ export function hasUniqueRankSchedule(unitDefId: string): boolean {
 
 export type RankAbilityTrackId = Flavour;
 
-export function rankAbilityTrackFor(unitDefId: string): string {
+export function rankAbilityTrackFor(unitDefId: string, side: RankScheduleSide = "faction"): string {
+  if (effectiveRankScheduleSide(unitDefId, side) === "neutral") return "neutral-veterancy";
   const faction = unitDefId.split(".")[0] ?? "";
   if (CUSTOM_VETERANCY_FACTIONS.has(faction)) return `${faction}-veterancy`;
   return inferFlavour(unitDefId);
@@ -806,6 +843,7 @@ export const RANK_ABILITY_TRACK_LABELS: Record<string, string> = {
   "blue_archive-veterancy": "Academy training",
   "mgq-veterancy": "Adventurer growth",
   "imperium-veterancy": "Battle honours",
+  "neutral-veterancy": "Wild veteran",
   // legacy aliases
   melee_line: "Shield wall",
   ranged_line: "Sharpshooter",
@@ -883,17 +921,20 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-jotunn-rune-bolt": "/game-tokens/rank-ability/town-revisions/jotunn-rune-bolt.webp",
   "town-mammoth-rune-mend": "/game-tokens/rank-ability/town-revisions/mammoth-rune-mend.webp",
   "town-marksman-mark": "/assets/ui/rank-ability/precision.webp",
-  "town-angel-safe": "/assets/ui/rank-ability/no-retaliation.webp",
+  "town-angel-safe": "/game-tokens/rank-ability/veterancy/dragon-fly-retaliation-penalty-2.webp",
   "town-champion-safe": "/assets/ui/rank-ability/charge.webp",
+  "town-champion-two-space-safe": "/assets/ui/rank-ability/charge.webp",
   "town-gremlin-recover": "/assets/ui/rank-ability/low-roll-insight.webp",
   "town-gremlin-die": "/assets/ui/rank-ability/sure-shot.webp",
   "town-golem-shield": "/assets/ui/rank-ability/guarded.webp",
   "town-magi-recover": "/assets/ui/rank-ability/low-roll-insight.webp",
   "town-naga-mend": "/assets/ui/rank-ability/regeneration-2.webp",
+  "town-black-dragon-guard": "/assets/ui/rank-ability/guarded-stance.webp",
   "town-cyclops-splash": "/assets/ui/rank-ability/double-strike.webp",
   "town-elf-guard": "/assets/ui/rank-ability/air-shield.webp",
   "town-pegasus-guard": "/assets/ui/rank-ability/guarded.webp",
   "town-dragon-hunter": "/assets/ui/rank-ability/speed-hunter.webp",
+  "town-gold-dragon-dominion": "/assets/ui/rank-ability/speed-hunter.webp",
   "town-unicorn-die": "/assets/ui/rank-ability/sure-shot.webp",
   "town-familiar-backlash": "/assets/ui/rank-ability/spell-sunder.webp",
   "town-familiar-pierce": "/assets/ui/rank-ability/defense-pierce.webp",
@@ -1087,6 +1128,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-soul-feast": "/assets/ui/rank-ability/soul-feast.webp",
   "veteran-speed-hunter": "/assets/ui/rank-ability/speed-hunter.webp",
   "veteran-regeneration-2": "/assets/ui/rank-ability/regeneration-2.webp",
+  "veteran-regeneration-1": "/assets/ui/rank-ability/regeneration-2.webp",
   "veteran-flying-movement": "/assets/ui/rank-ability/flying-movement.webp",
   "veteran-fear-aura": "/assets/ui/rank-ability/fear-aura.webp",
   "veteran-azure-fear-aura": "/assets/ui/rank-ability/fear-aura.webp",
@@ -1350,8 +1392,8 @@ export const ELITE_UNIT_RANK_ABILITIES: Record<string, string> = {};
 export const LEGEND_UNIT_RANK_ABILITIES: Record<string, string> = {};
 export const UNIT_RANK_TRACK_OVERRIDES: Record<string, string> = {};
 
-export function rankAbilityScheduleFor(unitDefId: string): RankSchedule {
-  return rankScheduleFor(unitDefId);
+export function rankAbilityScheduleFor(unitDefId: string, side: RankScheduleSide = "faction"): RankSchedule {
+  return rankScheduleFor(unitDefId, side);
 }
 export function inferRankAbilityTrack(unitDefId: string): string {
   return rankAbilityTrackFor(unitDefId);

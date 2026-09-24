@@ -3911,6 +3911,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // A designer may draw yellow borders on a starting Town tile too.
     if (startPlan) {
       applyDesignedBorders(tile, startPlan);
+      // SPECIFIC per-mine settings on this starting POSITION (every starting
+      // tile prints a mine in its flower, whichever faction sits here). Stamped
+      // on the instance so every later re-materialize (opening rotation,
+      // Disruption) keeps folding it onto the printed mine; re-materialized
+      // now, before the town flag / hero below are placed on the fresh fields.
+      const startObjectPlans = sanitizeObjectPlans(startPlan.objectPlans);
+      if (startObjectPlans) {
+        tile.objectPlans = startObjectPlans;
+        materializeTileFields(adventure, tile);
+      }
     }
     const townFieldId = Object.values(adventure.fields).find(
       (field) => field.tileInstanceId === tile.id && field.slot === 0

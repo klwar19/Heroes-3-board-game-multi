@@ -20,6 +20,44 @@ function heroSource(slug: string) {
   };
 }
 
+const piquedramPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Specialty wording supplied by the player; portrait generated from the supplied preview.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/6d000ec9-a0b8-4808-8974-fd368c771d2e.png",
+};
+
+const cuthbertPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Specialty wording supplied by the player; portrait generated from the supplied preview.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/f6676220-af26-4ed6-913c-346163d9ec91.png",
+};
+
+function rampartPreviewHeroSource() {
+  return {
+    product: "Heroes of Might and Magic III: The Board Game",
+    credit: "Archon preview image; specialty wording clarified by the player.",
+    url: "https://imgcdn.gamefound.com/productimage/projects/8492/46a576c6-47ee-4bc2-94a8-5cc5e171eb42.png",
+  };
+}
+
+const necropolisHeroPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Specialty rules supplied by the player; card emblems generated for this adaptation.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/d76b614d-bca0-4e55-8b03-171b64c78007.png",
+};
+
+const dungeonHeroPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Specialty rules supplied by the player; hero portraits generated from the supplied board preview.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/a565e509-cf66-4b09-9071-e0ae6525c4bb.png",
+};
+
+const fortressHeroPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Specialty rules supplied by the player; portraits generated for this adaptation. Specialty art uses existing Dragon Flies and First Aid Tent assets.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/ba0a72f3-ad32-46a1-ae1f-95bc7ee3c041.png",
+};
+
 const bulwarkExpansionPreviewUrl =
   "https://imgcdn.gamefound.com/richtextimage/richtext/33b4a241-f645-41d3-aa35-0417606e9732.png";
 
@@ -1995,6 +2033,38 @@ export const adventureCards: CardLibrary = {
     1,
     "Crusaders",
   ),
+  "specialty.cuthbert.1": {
+    id: "specialty.cuthbert.1", name: "Weakness I", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "cuthbert", "Instant: The selected attacking unit gets -2 Attack (to a minimum of 0)."],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: -2 },
+    implementationStatus: "implemented", source: cuthbertPreviewSource,
+  },
+  "specialty.cuthbert.4": {
+    id: "specialty.cuthbert.4", name: "Weakness IV", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "ongoing", "cuthbert", "Ongoing: Until the end of Combat, the selected enemy unit gets -1 Attack (to a minimum of 0)."],
+    target: { type: "enemy-unit" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Weakness IV", scope: "unit", duration: { type: "combat" },
+      polarity: "negative", removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount: -1 }],
+    } },
+    implementationStatus: "implemented", source: cuthbertPreviewSource,
+  },
+  "specialty.cuthbert.6": {
+    id: "specialty.cuthbert.6", name: "Weakness VI", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "ongoing", "cuthbert", "Ongoing: For this combat round, all enemy units suffer -1 Attack during retaliation (to a minimum of 0)."],
+    target: { type: "none" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Weakness VI", scope: "global", duration: { type: "current-combat-round" },
+      polarity: "negative", removable: false, appliesOnlyToEnemies: true,
+      modifiers: [{ type: "RETALIATION_ATTACK_BONUS", amount: -1 }],
+    } },
+    implementationStatus: "implemented", source: cuthbertPreviewSource,
+  },
   // Tamika (Death Knight): the Dread Knights specialist (same I/IV/VI shape).
   "specialty.tamika.1": mightSpecialtyOne(
     "tamika",
@@ -2183,9 +2253,12 @@ export const adventureCards: CardLibrary = {
   // Dark Mullich (Cyborg) — "Overclock", the speed specialist:
   //  I  — Instant: +2 Initiative until the end of the combat round (a
   //       round-scoped CREATE_INITIATIVE_BUFF on a friendly unit) OR the
-  //       standard +1 Attack attack reaction; BOTH double on a GROUND unit
-  //       (doubleForUnitType "ground"). Also offered at the beginning of the
-  //       combat (src/engine/permanents.ts forgeOverclockStart).
+  //       standard +1 Attack Instant attack buff (UNIT_ATTACK_DECLARED, played
+  //       when your unit attacks); BOTH double on a GROUND unit
+  //       (doubleForUnitType "ground"). Only the Initiative option may also be
+  //       played at the beginning of the combat (src/engine/permanents.ts
+  //       forgeOverclockStart); the +1 Attack is never offered there (user
+  //       ruling 2026-09-24).
   //  IV — Instant: one friendly unit gains +3 Initiative AND +1 Attack for this
   //       combat round and the next (combat-rounds 2). Also offered at the
   //       beginning of the combat.
@@ -2197,7 +2270,7 @@ export const adventureCards: CardLibrary = {
     id: "specialty.dark_mullich.1", name: "Overclock I", kind: "hero-specialty",
     timing: "instant", phaseLimit: ["reaction", "combat"],
     tags: ["hero-specialty", "instant", "dark_mullich",
-      "Instant: Your selected unit gains +2 Initiative until the end of the round. — OR — Instant: Your selected unit gains +1 Attack. The effect doubles for ground units. May also be played at the beginning of the combat."],
+      "Instant: Your selected unit gains +2 Initiative until the end of the round (this option may also be played at the beginning of the combat). — OR — Instant: When your unit attacks, it gains +1 Attack. The effect doubles for ground units."],
     target: { type: "friendly-unit" },
     effect: { type: "CHOOSE_ONE", options: [
       {
@@ -2563,6 +2636,97 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("rion"),
+  },
+  "specialty.kastore.1": {
+    id: "specialty.kastore.1",
+    name: "Sorcery I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "kastore", "Instant: +1 Power and draw 1 card."],
+    trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+    effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 },
+    implementationStatus: "implemented",
+    source: necropolisHeroPreviewSource,
+  },
+  "specialty.kastore.4": {
+    id: "specialty.kastore.4",
+    name: "Sorcery IV",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "kastore", "Ongoing: For this Combat, draw 1 card after each Spell you play (maximum 3 cards)."],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Sorcery IV",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1, maxPerCombat: 3 }],
+      },
+    },
+    implementationStatus: "implemented",
+    source: necropolisHeroPreviewSource,
+  },
+  "specialty.kastore.6": {
+    id: "specialty.kastore.6",
+    name: "Sorcery VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "kastore", "Instant: +4 Power."],
+    trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+    effect: { type: "ADD_SPELL_POWER", amount: 4 },
+    implementationStatus: "implemented",
+    source: necropolisHeroPreviewSource,
+  },
+  "specialty.isra.1": {
+    id: "specialty.isra.1",
+    name: "Necromancy I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: ["hero-specialty", "instant", "isra", "Instant: Choose an Ability or Specialty card from your deck or discard pile and put it into your hand."],
+    target: { type: "none" },
+    effect: { type: "ISRA_FETCH_CARD" },
+    implementationStatus: "implemented",
+    source: necropolisHeroPreviewSource,
+  },
+  "specialty.isra.4": {
+    id: "specialty.isra.4",
+    name: "Necromancy IV",
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "isra", "When: On your turn, return your units removed during this Combat to empty spaces (except Pack, Gold, and Neutral units)."],
+    target: { type: "none" },
+    effect: { type: "ISRA_RETURN_UNIT" },
+    implementationStatus: "implemented",
+    source: necropolisHeroPreviewSource,
+  },
+  "specialty.isra.6": {
+    id: "specialty.isra.6",
+    name: "Necromancy VI",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: ["hero-specialty", "isra", "Ongoing: The selected unit gains a once-per-Combat save: when its HP reaches 0 or it would flip, set its HP to 1 instead."],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Necromancy VI",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "ISRA_DEATH_SAVE" }],
+      },
+    },
+    implementationStatus: "implemented",
+    source: necropolisHeroPreviewSource,
   },
   "specialty.sandro.1": {
     id: "specialty.sandro.1",
@@ -3435,11 +3599,75 @@ export const adventureCards: CardLibrary = {
     2,
     "Lizardmen",
   ),
+  "specialty.korbac.1": {
+    ...mightSpecialtyOne("korbac", "Dragon Flies", "Dragon Flies"),
+    assets: undefined,
+    source: fortressHeroPreviewSource,
+  },
+  "specialty.korbac.4": {
+    id: "specialty.korbac.4", name: "Dragon Flies IV", kind: "hero-specialty",
+    timing: "ongoing", permanent: true, phaseLimit: ["combat"],
+    tags: ["hero-specialty", "permanent", "korbac", "After your unit attacks and the enemy unit survives, immediately start a turn with your Dragon Flies, even if they already acted this round."],
+    target: { type: "none" }, effect: { type: "ENTER_PLAY" },
+    implementationStatus: "implemented", source: fortressHeroPreviewSource,
+  },
+  "specialty.korbac.6": {
+    ...mightSpecialtyOne("korbac", "Dragon Flies", "Dragon Flies"),
+    id: "specialty.korbac.6", name: "Dragon Flies VI",
+    tags: ["hero-specialty", "instant", "korbac", "Instant: +2 Attack or +2 Defense, doubled for Dragon Flies."],
+    effect: { type: "CHOOSE_ONE", options: [
+      { label: "+2 Attack (+4 for Dragon Flies)", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" }, effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, doubleForUnitName: "Dragon Flies" } },
+      { label: "+2 Defense (+4 for Dragon Flies)", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" }, effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2, doubleForUnitName: "Dragon Flies" } },
+    ] },
+    assets: undefined,
+    source: fortressHeroPreviewSource,
+  },
+  "specialty.verdish.1": {
+    id: "specialty.verdish.1", name: "First Aid I", kind: "hero-specialty", timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "verdish", "Select one of your units. At the start of each Combat round, remove 1 damage from it."],
+    target: { type: "friendly-unit" }, effect: { type: "CREATE_VERDISH_ROUND_HEAL" },
+    implementationStatus: "implemented", source: fortressHeroPreviewSource,
+  },
+  "specialty.verdish.4": {
+    id: "specialty.verdish.4", name: "First Aid IV", kind: "hero-specialty", timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "verdish", "On your turn, move up to 3 damage from one of your units to another of your units."],
+    target: { type: "friendly-unit", damagedOnly: true }, effect: { type: "VERDISH_TRANSFER_DAMAGE" },
+    implementationStatus: "implemented", source: fortressHeroPreviewSource,
+  },
+  "specialty.verdish.6": {
+    id: "specialty.verdish.6", name: "First Aid VI", kind: "hero-specialty", timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "verdish", "For this Combat, when one of your units removes an enemy unit, remove 1 damage from the attacking unit."],
+    target: { type: "none" }, effect: { type: "CREATE_VERDISH_KILL_HEAL" },
+    implementationStatus: "implemented", source: fortressHeroPreviewSource,
+  },
 
   // ---- Tower heroes ------------------------------------------------------
   // Iona (Alchemist): the Genies specialist. I = +1 HP for the combat; IV =
   // +1 attack/defence; VI = +2 defence — all doubled for a Genies unit.
   "specialty.iona.1": towerHealthSpecialty("iona", "Genies", 1, 1, "Genies"),
+  "specialty.piquedram.1": {
+    ...towerHealthSpecialty("piquedram", "Gargoyles", 1, 1, "Gargoyles"),
+    assets: undefined,
+    source: piquedramPreviewSource,
+  },
+  "specialty.piquedram.4": {
+    id: "specialty.piquedram.4", name: "Gargoyles IV", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "piquedram", "Instant: Draw 2 cards and remove a Paralysis token from your selected unit."],
+    target: { type: "friendly-unit" },
+    effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 2 },
+    implementationStatus: "implemented", source: piquedramPreviewSource,
+  },
+  "specialty.piquedram.6": {
+    ...towerAttackOrDefenseSpecialty("piquedram", "Gargoyles", 6, "Gargoyles"),
+    assets: undefined,
+    source: piquedramPreviewSource,
+    tags: ["hero-specialty", "instant", "piquedram", "Instant: Your selected unit gains +2 Attack or +2 Defense for this attack. Double the chosen bonus for Gargoyles."],
+    effect: { type: "CHOOSE_ONE", options: [
+      { label: "+2 Attack (+4 for Gargoyles)", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" }, effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, doubleForUnitName: "Gargoyles" } },
+      { label: "+2 Defense (+4 for Gargoyles)", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" }, effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2, doubleForUnitName: "Gargoyles" } },
+    ] },
+  },
   "specialty.iona.4": towerAttackOrDefenseSpecialty(
     "iona",
     "Genies",
@@ -5544,6 +5772,76 @@ export const adventureCards: CardLibrary = {
     source: heroSource("merist"),
   }),
 
+  "specialty.dace.1": withoutArt({
+    id: "specialty.dace.1", name: "Minotaurs I", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "dace", "For this Combat, your selected unit gains +1 maximum Health, or +2 if it is Minotaurs."],
+    target: { type: "friendly-unit" },
+    effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Minotaurs" },
+    implementationStatus: "implemented", source: dungeonHeroPreviewSource,
+  }),
+  "specialty.dace.4": withoutArt({
+    id: "specialty.dace.4", name: "Minotaurs IV", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "dace", "For this Combat, whenever your attack flips an enemy Pack to Few, deal 1 damage to an enemy unit you choose. Or draw 1 card."],
+    target: { type: "none" },
+    effect: { type: "CHOOSE_ONE", options: [
+      { label: "Pack to Few: choose an enemy for 1 damage", combatAnytime: true,
+        effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+          name: "Minotaurs IV", scope: "player", duration: { type: "combat" },
+          polarity: "positive", removable: false,
+          modifiers: [{ type: "DACE_PACK_BREAK" }],
+        } } },
+      { label: "Draw 1 card", combatAnytime: true,
+        effect: { type: "DRAW_CARDS", amount: 1 } },
+    ] },
+    implementationStatus: "implemented", source: dungeonHeroPreviewSource,
+  }),
+  "specialty.dace.6": withoutArt({
+    id: "specialty.dace.6", name: "Minotaurs VI", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "dace", "For this Combat, your Minotaurs gain +2 Attack. They draw 1 card on a 0 Attack die result, and draw 2 instead of 1 on a -1."],
+    target: { type: "none" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Minotaurs VI", scope: "player", duration: { type: "combat" },
+      polarity: "positive", removable: false, appliesOnlyToUnitNames: ["Minotaurs"],
+      modifiers: [{ type: "ATTACK_BONUS", amount: 2 }, { type: "DACE_MINOTAUR_DRAW" }],
+    } },
+    implementationStatus: "implemented", source: dungeonHeroPreviewSource,
+  }),
+  "specialty.darkstorn.1": withoutArt({
+    id: "specialty.darkstorn.1", name: "Stone Skin I", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "darkstorn", "Select a friendly unit. For this Combat, attacks against it roll at disadvantage."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Stone Skin I", scope: "unit", duration: { type: "combat" },
+      polarity: "positive", removable: false,
+      modifiers: [{ type: "INCOMING_ATTACK_DISADVANTAGE" }],
+    } },
+    implementationStatus: "implemented", source: dungeonHeroPreviewSource,
+  }),
+  "specialty.darkstorn.4": withoutArt({
+    id: "specialty.darkstorn.4", name: "Stone Skin IV", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "darkstorn", "For this Combat round, all your units gain a Defense token and +1 Defense when the enemy rolls +1."],
+    target: { type: "none" },
+    effect: { type: "DARKSTORN_STONE_SKIN_ROUND" },
+    implementationStatus: "implemented", source: dungeonHeroPreviewSource,
+  }),
+  "specialty.darkstorn.6": withoutArt({
+    id: "specialty.darkstorn.6", name: "Stone Skin VI", kind: "hero-specialty",
+    timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "darkstorn", "The selected friendly unit gains +1 Defense for this Combat."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
+      name: "Stone Skin VI", scope: "unit", duration: { type: "combat" },
+      polarity: "positive", removable: false,
+      modifiers: [{ type: "DEFENSE_BONUS", amount: 1 }],
+    } },
+    implementationStatus: "implemented", source: dungeonHeroPreviewSource,
+  }),
+
   // ---- Additional heroes, batch 5 ---------------------------------------
   // Eight "Regular Stretch Goals 2024" heroes that complete every already-playable
   // Town's roster on the fan wiki. Their pages used to show only the deck-back
@@ -6263,6 +6561,32 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("tarnum_rampart"),
   }),
+
+  "specialty.urftin.1": { ...mightSpecialtyOne("urftin", "Dwarves", "Dwarves"), implementationStatus: "implemented", source: rampartPreviewHeroSource(), assets: undefined },
+  "specialty.urftin.4": { ...unitHealthSpecialty("urftin", "Dwarves", 4, 1, "Dwarves"), timing: "ongoing", tags: ["hero-specialty", "ongoing", "urftin", "health", "For this Combat, your selected unit gains +1 maximum Health (doubled to +2 for Dwarves)."], implementationStatus: "implemented", source: rampartPreviewHeroSource(), assets: undefined },
+  "specialty.urftin.6": {
+    id: "specialty.urftin.6", name: "Dwarves VI", kind: "hero-specialty", timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "urftin", "dwarves", "This Combat, each time your Dwarves remove an enemy unit from Combat, place a faction cube on this card. Your Dwarves gain +1 Attack, +1 Defense and +1 Initiative for each cube."],
+    target: { type: "none" }, effect: { type: "CREATE_URFTIN_CUBES" }, implementationStatus: "implemented", source: rampartPreviewHeroSource(),
+  },
+  "specialty.uland.1": {
+    id: "specialty.uland.1", name: "Cure I", kind: "hero-specialty", timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "uland", "cure", "Remove 1 damage from your selected unit."],
+    target: { type: "friendly-unit", damagedOnly: true }, effect: { type: "HEAL_DAMAGE", amount: 1 },
+    implementationStatus: "implemented", source: rampartPreviewHeroSource(),
+  },
+  "specialty.uland.4": {
+    id: "specialty.uland.4", name: "Cure IV", kind: "hero-specialty", timing: "instant", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "instant", "uland", "cure", "Select any 2 units. Remove 1 damage and Paralysis from each."],
+    target: { type: "none" }, effect: { type: "HEAL_TWO_UNITS", amount: 1, removeParalysis: true },
+    implementationStatus: "implemented", source: rampartPreviewHeroSource(),
+  },
+  "specialty.uland.6": {
+    id: "specialty.uland.6", name: "Cure VI", kind: "hero-specialty", timing: "ongoing", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "ongoing", "uland", "cure", "Select your unit. At the end of each Combat round this Combat, you may remove up to 2 damage from it."],
+    target: { type: "friendly-unit" }, effect: { type: "CREATE_ULAND_CURE", amount: 2 },
+    implementationStatus: "implemented", source: rampartPreviewHeroSource(),
+  },
 
   // ---- Cove (expansion) specialties --------------------------------------
   // Only the two Cove heroes whose specialties are fully engine-wired are

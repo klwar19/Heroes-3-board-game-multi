@@ -129,6 +129,7 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
   const markingUnits = Object.values(state.combat?.units ?? {}).filter(source => source.damage < source.maxHealth && source.townVeterancy?.markedTargets?.includes(unit.id));
   if (markingUnits.length) townIcon("town-marksman-mark", `Sighted Target: attacks by ${markingUnits.map(source => source.cardName).join(", ")} pierce 1 Defense for this combat.`);
   if (townVeterancy(unit, "champion-safe") && unit.townVeterancy?.movedRound === state.combat?.round) townIcon("town-champion-safe", "Unanswered Charge: attacks do not provoke retaliation for the rest of this round.");
+  if (townVeterancy(unit, "champion-two-space-safe") && unit.townVeterancy?.movedRound === state.combat?.round && (unit.townVeterancy?.movedSpacesRound ?? 0) >= 2) townIcon("town-champion-two-space-safe", "Unanswered Charge: attacks do not provoke retaliation for the rest of this round.");
   for (const effect of state.activeEffects.filter(e => effectAppliesToUnit(e, unit))) {
     const dust = effect.modifiers.some(m => m.type === "NEUTRAL_BLIND_DUST");
     const snare = effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT");

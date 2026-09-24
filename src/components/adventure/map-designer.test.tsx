@@ -4806,7 +4806,7 @@ describe("MapDesigner — specific object plans & hex events", () => {
         ]}
         onChange={() => {}}
         onPickResolved={onPickResolved}
-        pickRequest={{ kind: "object-plan", objectKind: "mine" }}
+        pickRequest={{ kind: "object-plan", objectKind: "obelisk" }}
         scenarioId="skirmish"
       />
     );
@@ -4815,7 +4815,7 @@ describe("MapDesigner — specific object plans & hex events", () => {
     expect(container.querySelector(".designerFlowerOutline.pickEligible")).toBeTruthy();
     expect(container.querySelector(".designerFlowerOutline.pickDim")).toBeTruthy();
 
-    // Clicking the INELIGIBLE starting tile does nothing.
+    // Clicking the INELIGIBLE starting tile (no seat tile prints an Obelisk) does nothing.
     const hexes = container.querySelectorAll(".designerHexPlan");
     fireEvent.pointerDown(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
     fireEvent.pointerUp(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
@@ -4826,6 +4826,35 @@ describe("MapDesigner — specific object plans & hex events", () => {
     fireEvent.pointerUp(hexes[7], { button: 0, pointerId: 2, clientX: 40, clientY: 40 });
     expect(onPickResolved).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".designerPopover")).toBeTruthy();
+  });
+
+  it("a Mine pick on a STARTING tile or a face-down Secret Obelisk slot commits an individual plan seeded from the global Mine settings", () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <MapDesigner
+        customMap={[
+          { row: town.row, col: town.col, group: "starting", faceDown: false },
+          { row: n15.row, col: n15.col, group: "near", faceDown: true, secretFeatures: ["obelisk"] }
+        ]}
+        mapWideTokenBreaks={{ mines: { guard: { level: 4 }, breakField: true } }}
+        onChange={onChange}
+        onPickResolved={() => {}}
+        pickRequest={{ kind: "object-plan", objectKind: "mine" }}
+        scenarioId="skirmish"
+      />
+    );
+    // Both tiles are eligible now (seat tile prints a Mine; a Secret Obelisk draw may carry one).
+    expect(container.querySelector(".designerFlowerOutline.pickDim")).toBeNull();
+    const hexes = container.querySelectorAll(".designerHexPlan");
+    fireEvent.pointerDown(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(hexes[0], { button: 0, pointerId: 1, clientX: 40, clientY: 40 });
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        group: "starting",
+        objectPlans: { mine: { individual: true, guard: { level: 4 }, breakField: true, breakFromGlobal: true } }
+      }),
+      expect.objectContaining({ group: "near" })
+    ]);
   });
 
   it("a tile with a specific plan wears the ⚔ badge (🏁⚔ when a win condition is set)", () => {

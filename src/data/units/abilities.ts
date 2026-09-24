@@ -28,7 +28,7 @@ export type NeutralTownVeterancyMechanic =
   | "flowing-assault" | "boarding-formation" | "return-fire" | "raking-dive" | "bewitching-bolt" | "scaled-intercept" | "toxic-counter"
   | "lucky-ricochet" | "victory-command" | "ally-blind-instinct" | "core-suppression" | "mountain-stillness" | "water-air-damper";
 
-export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd-hunter" | "halberd-aura" | "marksman-mark" | "marksman-survival" | "crusader-undead" | "zealot-loss" | "angel-safe" | "champion-safe" | "gremlin-recover" | "golem-cap" | "golem-shield" | "magi-recover" | "naga-mend" | "titan-bolt" | "goblin-save" | "orc-discard" | "ogre-guard" | "bird-lightning" | "cyclops-splash" | "dwarf-backlash" | "elf-guard" | "pegasus-guard" | "dragon-snare" | "dragon-hunter" | "unicorn-die" | "familiar-backlash" | "demon-paralyze" | "pit-mend" | "devil-slow" | "devil-luck" | "devil-draw" | "efreet-mend"
+export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd-hunter" | "halberd-aura" | "marksman-mark" | "marksman-survival" | "crusader-undead" | "zealot-loss" | "angel-safe" | "champion-safe" | "champion-two-space-safe" | "gremlin-recover" | "golem-cap" | "golem-shield" | "magi-recover" | "naga-mend" | "black-dragon-guard" | "titan-bolt" | "goblin-save" | "orc-discard" | "ogre-guard" | "bird-lightning" | "cyclops-splash" | "dwarf-backlash" | "elf-guard" | "pegasus-guard" | "dragon-snare" | "dragon-hunter" | "gold-dragon-dominion" | "unicorn-die" | "familiar-backlash" | "demon-paralyze" | "pit-mend" | "devil-slow" | "devil-luck" | "devil-draw" | "efreet-mend"
   | "dragon-fly-landing" | "gnoll-gold" | "lizard-spell-draw" | "gorgon-stare-reroll" | "gorgon-armored-prey"
   | "hydra-forced-reroll" | "hydra-round-mend" | "wyvern-potent-poison" | "sea-dog-ranged-retaliation"
   | "seaman-survival-gold" | "ayssid-slow" | "sorceress-ranged-mend" | "sorceress-artifact-tax"
@@ -396,6 +396,28 @@ export type UnitAbilityEffectDefinition =
       /** MGQ Lisa: living adjacent enemies suffer the signed Initiative shift. */
       type: "ADJACENT_ENEMY_INITIATIVE_AURA";
       amount: number;
+    }
+  | {
+      /**
+       * Bulwark Jotunns: "Enemy [flying] units have -1/-2 [initiative]." While
+       * this unit is alive on the battlefield, every ENEMY unit of `unitType`
+       * (any distance) suffers the signed Initiative shift. Read live in
+       * effectiveInitiative (no stored effect), so it ends the moment the
+       * carrier dies or leaves the field.
+       */
+      type: "ENEMY_UNIT_TYPE_INITIATIVE_AURA";
+      amount: number;
+      unitType: "ground" | "ranged" | "flying";
+    }
+  | {
+      /**
+       * Bulwark Yetis (Neutral card): "Enemy [ongoing] effects on this unit last
+       * for only one round." Every ongoing effect an ENEMY played directly on
+       * this unit (unit-scoped, targeting it) ends at the end of the combat
+       * round in which it is active (expireEffectsForCombatRoundEnd), whatever
+       * its printed duration.
+       */
+      type: "ENEMY_ONGOING_EFFECTS_LAST_ONE_ROUND";
     }
   | {
       /**
@@ -1711,8 +1733,14 @@ export type UnitAbilityEffectDefinition =
        * cancel the incoming attack — and it retaliates against ranged
        * (non-adjacent) attackers too, not only adjacent ones. Still only once per
        * round (the pre-emptive strike spends its retaliation).
+       *
+       * `nonAdjacentOnly` (the printed Factory Neutral card: "When attacked by a
+       * non-adjacent [ranged] unit, retaliate before the incoming attack"): only
+       * an attacker that is NOT adjacent provokes the pre-emptive counter; an
+       * adjacent attacker meets the ordinary retaliation rules instead.
        */
       type: "PREEMPTIVE_RETALIATION";
+      nonAdjacentOnly?: boolean;
     }
   | {
       /**
@@ -2319,6 +2347,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "PREEMPTIVE_RETALIATION" },
     implementationStatus: "implemented"
   },
+  // Factory Bounty Hunters Neutral card as printed on the official Factory product
+  // sheet: only a NON-adjacent attacker provokes the pre-emptive counter-shot.
+  "bounty-hunter-ranged-preemptive": {
+    id: "bounty-hunter-ranged-preemptive",
+    name: "Preemptive Shot",
+    text: "[unit_passive] When attacked by a non-adjacent [unit_ranged] unit, retaliate before the incoming attack.",
+    effect: { type: "PREEMPTIVE_RETALIATION", nonAdjacentOnly: true },
+    implementationStatus: "implemented"
+  },
   "teleport-move": {
     id: "teleport-move",
     name: "Teleport",
@@ -2367,6 +2404,33 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Teleport",
     text: "[activation] At the start of its activation this unit may teleport one of your other units (a friendly unit, never itself or an enemy) to an empty space — optional, and it still acts as normal afterwards.",
     effect: { type: "TELEPORT_ANY_AT_ACTIVATION" },
+    implementationStatus: "implemented"
+  },
+  // Printed Jotunns rider (Bulwark product sheet): "[unit_passive] Enemy
+  // [flying] units have -1 [initiative]" on the Few, -2 on the Pack and the
+  // Neutral card. A live aura over every enemy Flying unit while the Jotunns
+  // stand on the battlefield.
+  "bulwark-jotunn-flyer-slow-1": {
+    id: "bulwark-jotunn-flyer-slow-1",
+    name: "Frozen Skies",
+    text: "[unit_passive] Enemy Flying units have -1 Initiative while this unit is alive on the battlefield.",
+    effect: { type: "ENEMY_UNIT_TYPE_INITIATIVE_AURA", amount: -1, unitType: "flying" },
+    implementationStatus: "implemented"
+  },
+  "bulwark-jotunn-flyer-slow-2": {
+    id: "bulwark-jotunn-flyer-slow-2",
+    name: "Frozen Skies",
+    text: "[unit_passive] Enemy Flying units have -2 Initiative while this unit is alive on the battlefield.",
+    effect: { type: "ENEMY_UNIT_TYPE_INITIATIVE_AURA", amount: -2, unitType: "flying" },
+    implementationStatus: "implemented"
+  },
+  // Printed Yeti NEUTRAL card rider (Bulwark product sheet): "Enemy [ongoing]
+  // effects on this unit last for only one round."
+  "bulwark-yeti-shrug-off": {
+    id: "bulwark-yeti-shrug-off",
+    name: "Shrug Off",
+    text: "[unit_passive] Enemy ongoing effects on this unit last for only one round (they end at the end of the current combat round).",
+    effect: { type: "ENEMY_ONGOING_EFFECTS_LAST_ONE_ROUND" },
     implementationStatus: "implemented"
   },
   // ---- Forge (expansion) unit abilities ----------------------------------
@@ -4155,9 +4219,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-defense-token": {
     id: "commander-defense-token",
     name: "Guarded",
-    // WOG commander Defense grade II ("+1 def when attacked"): a permanent
-    // Defense token (unlike the bank sibling, NOT gated on Stacked). Grade III
-    // is a flat Defense 3 with no die and does NOT carry this.
+    // WOG commander Defense grades II/III: a permanent Defense token (unlike
+    // the bank sibling, NOT gated on Stacked). Grade III extends it to 0 rolls.
     // Shared by WOG commanders AND printed unit sides (anime Sect Protectors),
     // so the text is unit-neutral.
     text: "[unit_passive] This unit is always treated as if it had a Defense token — it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).",
@@ -4206,13 +4269,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-marksman-survival": { id: "town-marksman-survival", name: "Last Stand", text: "When changing from Pack to Few, gain +3 maximum HP and +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "marksman-survival" }, implementationStatus: "implemented" },
   "town-crusader-undead": { id: "town-crusader-undead", name: "Holy Steel", text: "+1 Attack against undead units. Undead units have -1 Attack when attacking this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "crusader-undead" }, implementationStatus: "implemented" },
   "town-zealot-loss": { id: "town-zealot-loss", name: "Martyr Zeal", text: "Whenever another ally dies, loses a Stack, or changes from Pack to Few, gain +1 Attack for this combat, up to +2.", effect: { type: "TOWN_VETERANCY", mechanic: "zealot-loss" }, implementationStatus: "implemented" },
-  "town-angel-safe": { id: "town-angel-safe", name: "Heavenly Assault", text: "During odd-numbered combat rounds, attacks against ground and flying units do not provoke retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "angel-safe" }, implementationStatus: "implemented" },
+  "town-angel-safe": { id: "town-angel-safe", name: "Heavenly Assault", text: "Enemies retaliating against this unit have -3 Attack in every combat round.", effect: { type: "TOWN_VETERANCY", mechanic: "angel-safe" }, implementationStatus: "implemented" },
   "town-champion-safe": { id: "town-champion-safe", name: "Unanswered Charge", text: "After moving, attacks do not provoke retaliation for the rest of that combat round.", effect: { type: "TOWN_VETERANCY", mechanic: "champion-safe" }, implementationStatus: "implemented" },
+  "town-champion-two-space-safe": { id: "town-champion-two-space-safe", name: "Unanswered Charge", text: "After moving at least 2 spaces this combat round, this unit's attacks do not provoke retaliation for the rest of the round.", effect: { type: "TOWN_VETERANCY", mechanic: "champion-two-space-safe" }, implementationStatus: "implemented" },
   "town-gremlin-recover": { id: "town-gremlin-recover", name: "Salvaged Magic", text: "At the start of combat, you may take one Spell from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "gremlin-recover" }, implementationStatus: "implemented" },
   "town-golem-cap": { id: "town-golem-cap", name: "Tempered Iron", text: "In the first combat round, take at most 1 damage from each attack.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-cap" }, implementationStatus: "implemented" },
   "town-golem-shield": { id: "town-golem-shield", name: "Iron Guard", text: "Always treated as having a Defense token. Its Defense roll grants +1 Defense on 0 or +1.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-shield" }, implementationStatus: "implemented" },
   "town-magi-recover": { id: "town-magi-recover", name: "Arcane Recovery", text: "After this unit's own Attack die resolves -1 or 0, take one card from your discard pile into your hand, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "magi-recover" }, implementationStatus: "implemented" },
-  "town-naga-mend": { id: "town-naga-mend", name: "Renewing Coils", text: "After being attacked or damaged by a Spell, heal 1 HP if still alive.", effect: { type: "TOWN_VETERANCY", mechanic: "naga-mend" }, implementationStatus: "implemented" },
+  "town-naga-mend": { id: "town-naga-mend", name: "Renewing Coils", text: "Once per combat round, after being attacked or damaged by a Spell, heal 1 HP if still alive.", effect: { type: "TOWN_VETERANCY", mechanic: "naga-mend" }, implementationStatus: "implemented" },
+  "town-black-dragon-guard": { id: "town-black-dragon-guard", name: "Odd-Hour Guard", text: "On odd-numbered combat rounds, gain +1 Defense when attacked, but not against Retaliation Attacks.", effect: { type: "TOWN_VETERANCY", mechanic: "black-dragon-guard" }, implementationStatus: "implemented" },
   "town-titan-bolt": { id: "town-titan-bolt", name: "Thunderbolt", text: "After attacking or retaliating against an adjacent unit, roll an extra die: on -1 or 0, deal 2 additional damage.", effect: { type: "TOWN_VETERANCY", mechanic: "titan-bolt" }, implementationStatus: "implemented" },
   "town-goblin-save": { id: "town-goblin-save", name: "Defiant Survivor", text: "Once per combat when an attack would defeat this unit, survive at 1 HP and you may give a unit +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "goblin-save" }, implementationStatus: "implemented" },
   "town-orc-discard": { id: "town-orc-discard", name: "Plunder", text: "After attacking an enemy, its controller discards one random card.", effect: { type: "TOWN_VETERANCY", mechanic: "orc-discard" }, implementationStatus: "implemented" },
@@ -4226,6 +4291,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-pegasus-guard": { id: "town-pegasus-guard", name: "Wingmate Guard", text: "+1 Defense while adjacent to another ally.", effect: { type: "TOWN_VETERANCY", mechanic: "pegasus-guard" }, implementationStatus: "implemented" },
   "town-dragon-snare": { id: "town-dragon-snare", name: "Golden Roots", text: "After an adjacent unit attacks this unit, it takes 1 damage and cannot move while this unit remains alive and adjacent.", effect: { type: "TOWN_VETERANCY", mechanic: "dragon-snare" }, implementationStatus: "implemented" },
   "town-dragon-hunter": { id: "town-dragon-hunter", name: "Dominion", text: "+1 Attack against ground and flying units.", effect: { type: "TOWN_VETERANCY", mechanic: "dragon-hunter" }, implementationStatus: "implemented" },
+  "town-gold-dragon-dominion": { id: "town-gold-dragon-dominion", name: "Dominion", text: "+1 Attack against ground units, including retaliation; +1 Attack against flying units only when retaliating.", effect: { type: "TOWN_VETERANCY", mechanic: "gold-dragon-dominion" }, implementationStatus: "implemented" },
   "town-unicorn-die": { id: "town-unicorn-die", name: "Fortunate Horn", text: "Treat a -1 Attack die result as +1.", effect: { type: "TOWN_VETERANCY", mechanic: "unicorn-die" }, implementationStatus: "implemented" },
   "town-familiar-backlash": { id: "town-familiar-backlash", name: "Impish Backlash", text: "Whenever an enemy casts a Spell, deal 1 damage to a random enemy unit.", effect: { type: "TOWN_VETERANCY", mechanic: "familiar-backlash" }, implementationStatus: "implemented" },
   "town-demon-paralyze": { id: "town-demon-paralyze", name: "Petrifying Hide", text: "After an adjacent attacker resolves +1 on its Attack die, paralyze it.", effect: { type: "TOWN_VETERANCY", mechanic: "demon-paralyze" }, implementationStatus: "implemented" },
@@ -4492,6 +4558,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 2 },
     implementationStatus: "implemented"
   },
+  "veteran-regeneration-1": {
+    id: "veteran-regeneration-1",
+    name: "Regeneration",
+    text: "When this unit activates, remove up to 1 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
   "veteran-flying-movement": {
     id: "veteran-flying-movement",
     name: "Winged Advance",
@@ -4648,7 +4721,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-paladin": {
     id: "commander-cast-paladin",
     name: "Cure",
-    text: "[activation] Once per combat round: remove 1 damage from a friendly unit (Power 1: also remove its negative tokens and effects; Power 2: remove 2 damage instead). Does not end the activation.",
+    text: "[activation] Once per combat round: remove 1 damage from a friendly unit (Power 1: also remove its negative tokens and effects; Power 2: remove 2 damage instead and may be cast at most 3 times per combat). Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
@@ -4662,35 +4735,35 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-temple_guardian": {
     id: "commander-cast-temple_guardian",
     name: "Precision",
-    text: "[instant] When a friendly ranged unit attacks a nonadjacent target, buff that attack once per combat round. Power 0/1: first use +1/+2 Attack, second +1; both ignore ranged penalties, up to twice per combat. Power 2: +2 Attack on uses 1-3, then +1 on use 4; only use 1 ignores ranged penalties.",
+    text: "[instant] When a friendly ranged unit attacks a nonadjacent target, buff that attack once per combat round. Power 0/1: first use +1/+2 Attack, second +1; both ignore ranged penalties, up to twice per combat. Power 2: +2 Attack on uses 1-2, then +1 on uses 3-4; all four ignore ranged penalties.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
   "commander-cast-succubus": {
     id: "commander-cast-succubus",
     name: "Fire Shield",
-    text: "[activation] Once per combat round: a friendly unit gains a Fire Shield — Power 0: attackers and retaliators take 1 damage for 2 rounds; Power 1: they take 2 damage for 2 rounds; Power 2: they take 2 damage for 3 rounds and the unit gets +1 Defense against only the first attack after receiving the shield. Does not end the activation.",
+    text: "[activation] Once per combat round, at most twice per combat: a friendly unit gains a Fire Shield. Power 0: attackers and retaliators take 1 damage for 2 combat rounds. Power 1/2: they take 2 damage until the commander's next activation, then 1 until its following activation, when the shield ends. Power 2 also grants +1 Defense against only the first attack after receiving the shield. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
   "commander-cast-brute": {
     id: "commander-cast-brute",
     name: "Bloodlust",
-    text: "[activation] Once per combat round, on the commander's turn: a friendly melee unit gains +1/+1/+2 Attack (Power 0/1/2) for 2 combat rounds. At Power 0 the target must be adjacent; from Power 1 it may be anywhere. Does not end the activation.",
+    text: "[activation] Once per combat round, buff one friendly melee unit's Attack. Range, amount, duration, and any combat-start option follow this commander's card. Does not end the activation when cast during the commander's turn.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
   "commander-cast-soul_eater": {
     id: "commander-cast-soul_eater",
     name: "Animate Dead",
-    text: "[activation] Once per combat round: remove 1/2/3 damage (Power 0/1/2) from any friendly unit. Does not end the activation.",
+    text: "[activation] Once per combat round: Power 0 removes 1 damage; Power 1 removes 2 damage (3 uses per combat); Power 2 removes 3 damage on the first use, then 2 damage (4 uses per combat). Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
   "commander-cast-ogre_leader": {
     id: "commander-cast-ogre_leader",
     name: "Stone Skin",
-    text: "[activation] Once per combat round: a friendly unit gains +1/+2/+3 Defense (Power 0/1/2) against all attacks this round. Does not end the activation.",
+    text: "[instant] When a friendly unit is attacked, grant it Defense against all attacks this round: Power 0 gives +1 once per combat; Power 1 gives +1 up to twice per combat; Power 2 gives +2 in round 1, then +1 from round 2 on, up to four times per combat. At most once per combat round.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
@@ -4724,22 +4797,22 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   "commander-cast-factory": {
     id: "commander-cast-factory",
-    name: "Field Repair",
-    text: "[activation] Once per combat round: remove 1 damage from an adjacent friendly mechanical unit (Power 1: 2 damage; Power 2: 2 damage at any range). Does not end the activation.",
+    name: "Emergency Repair",
+    text: "[instant] Once per Combat, anywhere on the battlefield: when an enemy attack would destroy a friendly Engineers unit or flip it from Pack to Few, cancel that attack (Power 1: also Automatons; Power 2: also every mechanical unit, including Juggernauts). The commander is then Paralyzed and skips its next activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
   "commander-cast-bulwark": {
     id: "commander-cast-bulwark",
     name: "Rune Mend",
-    text: "[activation] Once per combat round: spend 1/2/2 Runes (Power 0/1/2) to remove 1/2/3 damage from a friendly unit. Does not end the activation.",
+    text: "[activation] Once per combat round: spend 1/2/2 Runes (Power 0/1/2). Heal 1/2 at Power 0/1; at Power 2, heal 3 on the first two uses, then 2. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
   "commander-cast-forge": {
     id: "commander-cast-forge",
     name: "Arc Discharge",
-    text: "[activation] Once per combat round: deal 1/2/3 damage (Power 0/1/2) to an enemy unit anywhere. Effect damage: no Retaliation, not reduced by Defense. Does not end the activation.",
+    text: "[activation] Once per combat round: choose 1 enemy. Power 0/1 deals 1/2 damage. Power 2 deals 3 on its first use; later uses deal 3 to bronze/silver or 2 to gold/azure. No Retaliation; ignores Defense. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

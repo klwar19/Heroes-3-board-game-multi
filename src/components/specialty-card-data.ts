@@ -25,6 +25,12 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  * Factory and anime heroes still render natively.
  */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
+  korbac: "/assets/units-fortress-bronze-dragon_flies-few.webp",
+  verdish: "/assets/war_machines-first_aid_tent.webp",
+  piquedram: "/assets/units-tower-bronze-gargoyles-few.webp",
+  cuthbert: "/assets/spells-weakness.webp",
+  kastore: "/game-tokens/necropolis-heroes/specialty-kastore-sorcery.webp",
+  isra: "/game-tokens/necropolis-heroes/specialty-isra-necromancy.webp",
   emperor_of_mankind: "/assets/warhammer/icons/specialty-emperor-protects.webp",
   roboute_guilliman: "/assets/warhammer/icons/specialty-codex-astartes.webp",
   rogal_dorn: "/assets/warhammer/icons/specialty-praetorian-bulwark.webp",
@@ -47,10 +53,13 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   casmetra: "/assets/units-sorceress-portrait.webp", // Sorceresses (Cove)
   cassiopeia: "/assets/units-oceanid-portrait.webp", // Oceanids (Cove)
   lorelei: "/assets/units-harpy-portrait.webp", // Harpies (Dungeon)
+  dace: "/assets/specialty-card/icon-dace-minotaur.webp", // Minotaur from the game's Dungeon unit card
+  darkstorn: "/assets/specialty-card/icon-stone_skin.webp", // Stone Skin spell
   tarnum_dungeon: "/assets/units-black_dragon-portrait.webp", // Dragons (Dungeon)
   tarnum_fortress: "/assets/units-basilisk-portrait.webp", // Basilisks (Fortress)
   tarnum_rampart: "/assets/units-sharpshooter-portrait.webp", // Sharpshooters (Rampart)
   ivor: "/assets/units-grand_elf-portrait.webp", // Elves (Rampart)
+  urftin: "/assets/units-rampart-bronze-dwarves-few.webp", // Dwarves (Rampart)
   tarnum_conflux: "/assets/units-enchanter-portrait.webp", // Enchanters
   // Conflux Planeswalker unit specialists — the creature's own wiki portrait
   // (scripts/fetch-conflux-elemental-portraits.py). Their cards used to reference
@@ -166,6 +175,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // heroes.thelazy.net, same script) — not the First Aid Tent war-machine emblem
   // (abilities-first_aid.webp) she used to (wrongly) borrow.
   astra: "/assets/specialty-card/icon-cure.webp", // Cure spell icon
+  uland: "/assets/specialty-card/icon-cure.webp", // Cure spell icon
   // Aoko's Leyline Mending IS a heal/cleanse set (the generic medic wiring), so
   // she shares the Cure SPELL icon like Astra.
   aoko: "/assets/specialty-card/icon-cure.webp",

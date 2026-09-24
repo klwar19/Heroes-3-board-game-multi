@@ -2904,6 +2904,13 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    const freeBuilding = option.steps.find((inner) => inner.type === "ASTROLOGERS_FREE_BUILD");
+    if (freeBuilding?.type === "ASTROLOGERS_FREE_BUILD") {
+      const definition = coreBuildingDefinitions[freeBuilding.buildingId];
+      const cost: ResourceCost = definition ? effectiveTownBuildingCost(state, definition) : {};
+      return 1_110 + Math.round(buildingScore(state, playerId, freeBuilding.buildingId, memoryOf(observation)) / 12) +
+        (cost.gold ?? 0) + (cost.buildingMaterials ?? 0) * 2 + (cost.valuables ?? 0) * 4;
+    }
     // Polish Cards of Prophecy pre-roll question on a map Resource/Treasure die:
     // the card's other half is a lasting combat buff and it also pre-rolls an
     // attack die, so the AI keeps it for combat and rolls the map die normally.
@@ -3669,6 +3676,16 @@ export function scoreMapAction(
         return { score: 220, policy: "card.keep-gold-over-hero-empower" };
       }
       return { score: 700 + statisticEmpowerPreference(action.cardId), policy: "card.empower-statistic" };
+    }
+    case "ASTROLOGERS_CARD_GAMES": {
+      const player = state.players[observation.playerId];
+      const reserves = developmentResourceTargets(state, observation.playerId);
+      // An extra unknown card is useful, but never spend gold reserved for the
+      // next planned build/recruit or the emergency reserve to get it.
+      if (!player || player.resources.gold - 2 < Math.max(GOLD_RESERVE, reserves.gold)) {
+        return { score: 180, policy: "card.games-preserve-development-gold" };
+      }
+      return { score: 610, policy: "card.games-surplus-draw" };
     }
     case "CRACK_PERMANENT": {
       const card = cardLibrary[action.cardId];

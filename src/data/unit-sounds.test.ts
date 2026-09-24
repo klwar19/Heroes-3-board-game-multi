@@ -197,8 +197,10 @@ describe("unit combat voices", () => {
     // + clip, so any other borrow — including a new unit that merely shares one
     // of these bare names — still fails the guard.
     const deliberateForgeBorrows = new Set([
-      "forge.cyber_zombies: attack -> doom/dssawhit",
+      "forge.watchers: attack -> units/doom-cacodemon-attack",
+      "forge.watchers: hurt -> doom/dspepain",
       "forge.watchers: death -> doom/dspedth",
+      "forge.tanks: hurt -> doom/dsvipain",
       "forge.watchers: move -> units/doom-pain-elemental-move",
       "forge.jump_troopers: move -> doom/dsskeatk",
       "forge.cyberbrutes: death -> doom/dscybdth",

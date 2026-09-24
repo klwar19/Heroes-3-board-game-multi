@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState } from "./index";
-import { effectiveInitiative, makeActiveEffect } from "./active-effects";
+import { effectiveInitiative, expireEffectsForCombatRoundEnd, makeActiveEffect } from "./active-effects";
 import { getSelfAttackerTypeDefenseBonus } from "./unit-abilities";
 import { hasToken, placeCombatToken } from "./tokens";
 import { gainResources, getArmyMapAbilities } from "./adventure";
@@ -411,7 +411,7 @@ describe("Bulwark units — roster & ability wiring", () => {
   it("every ability tag on a Bulwark unit is a real, implemented engine ability", () => {
     for (const id of ids) {
       const unit = coreUnitDefinitions[id];
-      for (const side of [unit.few, unit.pack]) {
+      for (const side of [unit.few, unit.pack, unit.neutral]) {
         for (const abilityId of side?.abilities ?? []) {
           const ability = unitAbilities[abilityId];
           expect(ability, `${id}: ability ${abilityId} must exist`).toBeTruthy();
@@ -439,9 +439,11 @@ describe("Bulwark units — roster & ability wiring", () => {
     // Recovery is the Yeti Runemaster (Pack) only; the Yeti (Few) is a no-op now.
     expect(coreUnitDefinitions["bulwark.yetis"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["bulwark.yetis"].pack?.abilities).toEqual(["bulwark-yeti-recover"]);
-    // Teleport is the Jotunn Warlord (Pack) only; the Jotunn (Few) is a no-op now.
-    expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toEqual([]);
-    expect(coreUnitDefinitions["bulwark.jotunns"].pack?.abilities).toEqual(["bulwark-jotunn-teleport"]);
+    // Teleport is the Jotunn Warlord (Pack) only (house rule). The printed
+    // "Enemy [flying] units have -1/-2 [initiative]" rider: -1 Few, -2 Pack/Neutral.
+    expect(coreUnitDefinitions["bulwark.jotunns"].few?.abilities).toEqual(["bulwark-jotunn-flyer-slow-1"]);
+    expect(coreUnitDefinitions["bulwark.jotunns"].pack?.abilities).toEqual(["bulwark-jotunn-teleport", "bulwark-jotunn-flyer-slow-2"]);
+    expect(coreUnitDefinitions["bulwark.jotunns"].neutral?.abilities).toEqual(["bulwark-jotunn-flyer-slow-2"]);
   });
 
   it("carries the revised printed stats across every affected unit", () => {
@@ -461,7 +463,7 @@ describe("Bulwark units — roster & ability wiring", () => {
       health: 5
     });
     const shamans = coreUnitDefinitions["bulwark.shamans"];
-    expect(shamans.few?.defense).toBe(0); // Shaman defense lowered to 0
+    expect({ defense: shamans.few?.defense, initiative: shamans.few?.initiative }).toEqual({ defense: 1, initiative: 5 }); // 2026-09-24 ruling
     // Great Shaman (Pack): attack lowered to 3, health raised to 6.
     expect({ attack: shamans.pack?.attack, health: shamans.pack?.health }).toEqual({ attack: 3, health: 6 });
     const mammoths = coreUnitDefinitions["bulwark.mammoths"];
@@ -471,13 +473,13 @@ describe("Bulwark units — roster & ability wiring", () => {
     // War Mammoth (Pack): attack lowered to 5, health raised to 8.
     expect({ attack: mammoths.pack?.attack, health: mammoths.pack?.health }).toEqual({ attack: 5, health: 8 });
     const jotunns = coreUnitDefinitions["bulwark.jotunns"];
-    // Jotunn (Few): attack lowered to 5, no ability. Jotunn Warlord (Pack): 6 atk / 9 hp.
-    expect({ attack: jotunns.few?.attack, health: jotunns.few?.health }).toEqual({ attack: 5, health: 8 });
-    expect({ attack: jotunns.pack?.attack, defense: jotunns.pack?.defense, health: jotunns.pack?.health }).toEqual({
-      attack: 6,
-      defense: 3,
-      health: 9
-    });
+    // 2026-09-24 ruling: Jotunn (Few) 6/2/9/8 for 22 gold + 1 valuable; Jotunn
+    // Warlord (Pack) 7/2/10/11 for 30 gold + 2 valuables. Mammoth Pack 20 + 1.
+    expect(jotunns.few).toMatchObject({ attack: 6, defense: 2, health: 9, initiative: 8, cost: { gold: 22, valuables: 1 } });
+    expect(jotunns.pack).toMatchObject({ attack: 7, defense: 2, health: 10, initiative: 11, cost: { gold: 30, valuables: 2 } });
+    expect(mammoths.pack?.cost).toEqual({ gold: 20, valuables: 1 });
+    // Printed Jotunns Neutral card (Bulwark product sheet).
+    expect(jotunns.neutral).toMatchObject({ attack: 5, defense: 2, health: 6, initiative: 8, cost: { gold: 21 } });
   });
 
   it("Kobold gold income is a Resource-round map gain of 1 gold", () => {
@@ -577,5 +579,65 @@ describe("Bulwark units — Kobold gold PvP / multiplayer scoping", () => {
     }
     expect(state.players.p1.resources.gold - p1Before).toBe(1); // Pack owner earns
     expect(state.players.p2.resources.gold - p2Before).toBe(0); // Few owner earns nothing
+  });
+});
+
+describe("Bulwark units — Frozen Skies (Jotunns): enemy Flying units have -1/-2 Initiative", () => {
+  /** Initiative of the p2 Skeletons (re-typed) while the p1 Marksmen carry the given abilities. */
+  function targetInitiative(sourceAbilities: string[], targetType: "flying" | "ground", allied = false): number {
+    const state = createInitialGameState();
+    const source = state.combat!.units.unit_p1_marksmen;
+    const target = state.combat!.units.unit_p2_skeletons;
+    source.abilities = sourceAbilities;
+    target.abilities = [];
+    target.type = targetType;
+    if (allied) target.controllerId = source.controllerId;
+    return effectiveInitiative(target, state.activeEffects, state.combat);
+  }
+
+  it("Few -1 / Pack and Neutral -2 on an enemy Flying unit, at any distance", () => {
+    const control = targetInitiative([], "flying");
+    expect(targetInitiative(["bulwark-jotunn-flyer-slow-1"], "flying")).toBe(control - 1);
+    expect(targetInitiative(["bulwark-jotunn-flyer-slow-2"], "flying")).toBe(control - 2);
+  });
+
+  it("CONTROL: a non-Flying enemy and an allied Flyer are untouched", () => {
+    expect(targetInitiative(["bulwark-jotunn-flyer-slow-2"], "ground")).toBe(targetInitiative([], "ground"));
+    expect(targetInitiative(["bulwark-jotunn-flyer-slow-2"], "flying", true)).toBe(targetInitiative([], "flying", true));
+  });
+});
+
+describe("Bulwark units — Shrug Off (Yetis Neutral): enemy ongoing effects last one round", () => {
+  /** Lays a whole-combat Slow on the p2 Skeletons and runs the round-end expiry. */
+  function slowSurvivesRoundEnd(targetAbilities: string[], castBy: "p1" | "p2"): boolean {
+    const state = createInitialGameState();
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.abilities = targetAbilities;
+    const effect = makeActiveEffect(
+      state,
+      {
+        name: "Slow",
+        scope: "unit",
+        modifiers: [{ type: "INITIATIVE_BONUS", amount: -2 }],
+        duration: { type: "combat" },
+        polarity: "negative",
+        removable: true
+      },
+      { type: "system" },
+      castBy,
+      { type: "unit", unitId: target.id }
+    );
+    state.activeEffects.push(effect);
+    expireEffectsForCombatRoundEnd(state, state.combat!.round);
+    return state.activeEffects.some((candidate) => candidate.id === effect.id);
+  }
+
+  it("an enemy's whole-combat effect on the Yeti ends at the round end", () => {
+    expect(slowSurvivesRoundEnd(["bulwark-yeti-shrug-off"], "p1")).toBe(false);
+  });
+
+  it("CONTROL: without the ability, or when cast by its own side, the effect stays", () => {
+    expect(slowSurvivesRoundEnd([], "p1")).toBe(true);
+    expect(slowSurvivesRoundEnd(["bulwark-yeti-shrug-off"], "p2")).toBe(true);
   });
 });

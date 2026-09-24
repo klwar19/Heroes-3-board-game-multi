@@ -157,6 +157,45 @@ export const artifactCards: CardLibrary = {
       credit: "User-provided Helm of Chaos card image; HD restoration generated from that card.",
     },
   },
+  // Ladybird of Luck (Stretch Goals 150/227). ⟳ ongoing side: the card itself
+  // lies on an empty Combat space and "counts as a Wall until the end of the
+  // combat" (`artifact_wall` battlefield token: an obstacle for every unit,
+  // torn down by an adjacent ground/flying unit's attack like a siege Wall);
+  // an attack removal pays its owner 2 gold. ⚡ instant side: gain a positive
+  // Morale token (map or Combat).
+  "artifact.ladybird_of_luck": {
+    id: "artifact.ladybird_of_luck",
+    name: "Ladybird of Luck",
+    kind: "artifact",
+    timing: "instant",
+    artifactTier: "minor",
+    tags: [
+      "artifact",
+      "minor",
+      "Ongoing: Place this card on an empty space. It counts as a Wall until the end of the combat. If this card is removed by an attack, you gain 2 gold and discard this card. — OR — Instant: Gain a positive morale token.",
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Place this card on an empty space as a Wall for this combat",
+          combatOnly: true,
+          target: { type: "empty-space" },
+          effect: { type: "PLACE_ARTIFACT_WALL", goldOnAttackRemoval: 2 },
+        },
+        {
+          label: "Gain a positive morale token",
+          effect: { type: "GAIN_MORALE", amount: 1 },
+        },
+      ],
+    },
+    assets: { cardImage: "/game-tokens/ladybird-of-luck.webp", imageAlt: "Ladybird of Luck artifact card" },
+    implementationStatus: "implemented",
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game",
+      credit: "Stretch Goals Ladybird of Luck (150/227); card face rebuilt on a real minor-artifact frame with Codex-painted HD art.",
+    },
+  },
   "artifact.armor_of_wonder": {
     id: "artifact.armor_of_wonder",
     name: "Armor of Wonder",
@@ -3534,6 +3573,7 @@ export const artifactDeckLegacy: string[] = [
   ...Array(4).fill("artifact.spell_scroll"),
   "artifact.armor_of_wonder",
   "artifact.helm_of_chaos",
+  "artifact.ladybird_of_luck",
   "artifact.breastplate_of_petrified_wood",
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
@@ -3644,6 +3684,7 @@ export const artifactDeckBinhMinor: string[] = [
   ...Array(4).fill("artifact.spell_scroll"),
   "artifact.armor_of_wonder",
   "artifact.helm_of_chaos",
+  "artifact.ladybird_of_luck",
   "artifact.breastplate_of_petrified_wood",
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",

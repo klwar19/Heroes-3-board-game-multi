@@ -84,6 +84,7 @@ export const CARD_TIER: Record<string, CardValueTier> = {
   "artifact.glyph_of_gallantry": "A",
   "artifact.everflowing_crystal_cloak": "A",
   "artifact.crest_of_valor": "A",
+  "artifact.ladybird_of_luck": "A",
   "artifact.ambassadors_sash": "A",
   "artifact.helm_of_chaos": "A",
   "artifact.hellstorm_helmet": "A",
@@ -227,6 +228,8 @@ export const HERO_TIER: Record<string, CardValueTier> = {
   xyron: "C",
   bron: "C",
   mutare: "C",
+  dace: "B",
+  darkstorn: "B",
   wystan: "D",
 };
 

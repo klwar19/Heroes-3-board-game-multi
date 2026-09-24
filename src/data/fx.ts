@@ -64,6 +64,14 @@ for (const key of customVeterancyFxKeys) {
     anchor: "center", coverage: 1.15, sourceDef: `imagegen-ctv-${key}`, sequentialFrames: true, blendMode: "screen",
   };
 }
+// Artificer (Factory commander) Emergency Repair: wrench + hammer strike a
+// bolt, welding sparks burst, a brass gear-ring locks — Codex image_gen sheet
+// (tmp/gen/factory-repair-fx), black background composited with screen blend.
+sheets["factory-emergency-repair"] = {
+  src: "/fx/custom-town/emergency-repair.webp", label: "Emergency Repair", group: "custom-town-veterancy", role: "affect",
+  frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 16,
+  anchor: "center", coverage: 1.2, sourceDef: "imagegen-factory-emergency-repair", sequentialFrames: true, blendMode: "screen",
+};
 sheets["town-dwarf-backlash"] = {
   src: "/fx/town-dwarf-backlash.webp", label: "Runic Backlash", group: "town-veterancy", role: "affect",
   frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 20,
@@ -364,6 +372,13 @@ for (const name of ["evil-eye", "magi"] as const) {
     sourceDef: `imagegen-${name}-beam-animated`,
   };
 }
+// Forge Watchers: the Evil Eye beam's exact frames recoloured to a light,
+// pale blue-white plasma (scripts/build-watcher-plasma-beam.mjs).
+sheets["forge-watcher-plasma-shot-phases"] = {
+  ...sheets["evil-eye-shot-phases"],
+  src: "/fx/forge-watcher-plasma-beam.webp", label: "Watcher plasma beam",
+  sourceDef: "scripts/build-watcher-plasma-beam.mjs",
+};
 sheets["factory-dreadnought-laser-beam"] = {
   src: "/fx/factory-dreadnought-laser-beam.webp", label: "Dreadnought laser beam",
   group: "factory", role: "projectile", frames: 16, cols: 4, rows: 4,
@@ -643,7 +658,7 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
     sound: "spells/cure"
   },
   "commander.factory.repair": {
-    affect: [{ key: "ctv-field-repair" }],
+    affect: [{ key: "factory-emergency-repair" }],
     sound: "spells/repair"
   },
   "commander.lion-slash": {
@@ -1241,6 +1256,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "troll-heal-3": regenerationFxPlan,
   "commander-regeneration": regenerationFxPlan,
   "veteran-boar-regeneration": regenerationFxPlan,
+  "veteran-regeneration-1": regenerationFxPlan,
   "veteran-regeneration-2": regenerationFxPlan,
   "mgq-giga-regeneration": regenerationFxPlan,
   // --- Factory (expansion) gold / cube abilities -----------------------------
@@ -1264,7 +1280,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "factory-bounty-hunter-cover": { affect: [{ key: "factory-bounty-hunter-mark" }], sound: "units/gunslinger-special" },
   // Artificer's immediate and delayed Field Repair use the Factory repair art
   // and the native REPAIR clip, rather than the generic Cure presentation.
-  "commander-cast-factory": { affect: [{ key: "ctv-field-repair" }], sound: "spells/repair" },
+  "commander-cast-factory": { affect: [{ key: "factory-emergency-repair" }], sound: "spells/repair" },
   // Automaton (Few) faction cube: a mechanical whir as a cube is armed onto the
   // unit ("Overcharge"), then the DETONATE explosion — a fireball burst + the
   // Automaton's signature blast. The fixed-amount Detonates (the boxed
@@ -1282,6 +1298,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // shimmer over the guard as it fires back FIRST (the retaliation attack itself
   // is the shot animation/sound; this cues the special pre-emptive timing).
   "bounty-hunter-preemptive": { affect: [{ key: "counterstrike" }], sound: "units/gunslinger-special" },
+  "bounty-hunter-ranged-preemptive": { affect: [{ key: "counterstrike" }], sound: "units/gunslinger-special" },
   // --- Additional monster ability cues (only ids that fire on the real effect) -
   // Cove Sorceresses' Weakness token (activation place OR on-attack): the same
   // Weakness glyph + cry the Weakness spell uses.
@@ -1379,12 +1396,14 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   spider_overmind: { projectile: "plasma-shot-phases" },
   // Forge shooters (the creature's own voice rides the "shoot" action in
   // unit-sounds.ts; the weapon report is the plan's sound):
-  //  Grunts   — DOOM plasma rifle bolt (Arachnotron plasma).
-  //  Watchers — the Evil Eye's psionic beam, a mind-blast (Forgetfulness) on impact.
+  //  Grunts   — a burst of DOOM plasma rifle bolts, one after another, each
+  //             with its own plasma report (Arachnotron plasma).
+  //  Watchers — a light plasma beam (the Evil Eye's ray, recoloured), a
+  //             mind-blast (Forgetfulness) on impact.
   //  Bruisers — DOOM rocket launch, rocket, and a fireball blast on impact.
   //  Tanks    — cannon shell with the cannon report and a DOOM barrel blast.
-  grunts: { projectile: "plasma-shot-phases", sound: "doom/dsplasma" },
-  watchers: { projectile: "evil-eye-shot-phases", hit: "forgetfulness", hitSound: "spells/forgetfulness" },
+  grunts: { projectile: "plasma-shot-phases", projectileCount: 3, projectileIntervalMs: 110, sound: "doom/dsplasma" },
+  watchers: { projectile: "forge-watcher-plasma-shot-phases", hit: "forgetfulness", hitSound: "spells/forgetfulness" },
   bruisers: { projectile: "rocket-shot-phases", hit: "fireball", sound: "doom/dsrlaunc", hitSound: "doom/dsbarexp" },
   tanks: { projectile: "war-machine-cannon-projectile", hit: "land-mine-hit", sound: "units/cannon-shoot", hitSound: "doom/dsbarexp" },
   santa_gremlin: {

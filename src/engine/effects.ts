@@ -19,6 +19,12 @@ export const implementedCardEffectTypes = [
   "DEAL_DAMAGE",
   "HEAL_DAMAGE",
   "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
+  "HEAL_TWO_UNITS",
+  "CREATE_ULAND_CURE",
+  "CREATE_URFTIN_CUBES",
+  "CREATE_VERDISH_ROUND_HEAL",
+  "VERDISH_TRANSFER_DAMAGE",
+  "CREATE_VERDISH_KILL_HEAL",
   "CANCEL_SPELL",
   "CANCEL_INSTANT",
   "DRAW_CARDS",
@@ -119,6 +125,8 @@ export const implementedCardEffectTypes = [
   "ARTILLERY_BALLISTA_VOLLEY",
   "FIRST_AID_TENT_VOLLEY",
   "DECK_DIG_KEEP_ONE",
+  "ISRA_FETCH_CARD",
+  "ISRA_RETURN_UNIT",
   "DECK_DIG_KEEP_MATCHING",
   "DRAW_TOP_ARTIFACT",
   "SEARCH_DECK_THEN_RESHUFFLE",
@@ -155,12 +163,14 @@ export const implementedCardEffectTypes = [
   "PLACE_FORCE_FIELD",
   "PLACE_FIRE_WALL",
   "PLACE_FIRE_WALL_FIXED",
+  "PLACE_ARTIFACT_WALL",
   "PLACE_HIDDEN_TOKENS",
   "REMOVE_ACTIVE_EFFECT",
   "TARNUM_OVERLIMIT_SEARCH",
   "PANDORA_VISIT",
   "PANDORA_SCRY",
   "PANDORA_SILVER_REFRESH",
+  "DARKSTORN_STONE_SKIN_ROUND",
   // Azur Lane Naval Base hero specialties (Nagato / Sirius / Akashi).
   "BOMBARDMENT_ATTACK",
   "INTERCEPT_DECLARED_ATTACK",
@@ -1192,6 +1202,12 @@ export function effectCreatesLastingEffect(effect: EffectDefinition): boolean {
       durationIsLasting(effect.effect.duration) ||
       durationIsLasting(effect.expertEffect?.duration)
     );
+  }
+  if (effect.type === "CREATE_URFTIN_CUBES" ||
+      effect.type === "CREATE_ULAND_CURE" ||
+      effect.type === "CREATE_VERDISH_ROUND_HEAL" ||
+      effect.type === "CREATE_VERDISH_KILL_HEAL") {
+    return true;
   }
   return "duration" in effect && durationIsLasting(effect.duration);
 }

@@ -12,6 +12,7 @@ import {
   TOWN_TOKEN_ICONS,
   townBoardSpecs,
   townBoardTileArt,
+  townBoardTileIconUrl,
   townBoardUnbuiltTileArt,
   townIconUrl,
   type TownBoardSpec,
@@ -75,9 +76,10 @@ function FactoryGold({ amount }: { amount: number }) {
   return <span className="tbFactoryGold">{amount}<img alt="Gold" src={assetUrl(RESOURCE_ICONS.gold)} /></span>;
 }
 
-/** Boards drawn from ONE generated whole face with blank plaques/rule cards. */
+/** Boards drawn from ONE whole printed face (Factory, Forge, Bulwark): the
+ *  view writes the live plates and rule cards onto it. */
 function usesPrintedFaceBoard(factionId: string): boolean {
-  return factionId === "factory" || factionId === "forge";
+  return Boolean(townBoardSpecs[factionId]?.boardFaceImage);
 }
 
 /** Forge printed-card text; null falls back to the Factory/generic layout. */
@@ -102,13 +104,35 @@ function forgeBoardDescription(building: TownBuildingDefinition): ReactNode | nu
   return null;
 }
 
+/** Bulwark printed-card text (the official board's short wording, engine-true);
+ *  the Rune Tracker panel and the building modal carry the full rune rules. */
+function bulwarkBoardDescription(building: TownBuildingDefinition): ReactNode | null {
+  const effect = building.effect;
+  if (building.id === "bulwark.city_hall" && effect?.type === "RESOURCE_ROUND_CHOICE") {
+    const income = effect.options.find((option) => option.gold !== undefined);
+    const runes = effect.options.find((option) => option.runesNextCombats !== undefined);
+    return <><span>At the beginning of each Resource round, choose:</span><span><FactoryGold amount={income?.gold ?? 0} /> OR</span><span>Until the next Resource round, start combats with +{runes?.runesNextCombats ?? 0} Runes.</span></>;
+  }
+  if (effect?.type === "RUNE_ALTAR" && (building.id === "bulwark.sieidi" || building.id === "bulwark.altar")) {
+    const bonus = effect.levelCap >= 3 ? "+1 Defense" : "+3 Initiative";
+    return <><span>Unlocks Rune Level {effect.levelCap} ({bonus}) on the Rune Tracker.</span><span>At the start of combat against neutral units, gain {effect.neutralStartingRunes} {building.id === "bulwark.altar" ? "more " : ""}Runes.</span></>;
+  }
+  return null;
+}
+
 /** Compact printed-card layout; the modal retains the full rule text. */
 function factoryBoardDescription(building: TownBuildingDefinition): ReactNode {
-  const forge = forgeBoardDescription(building);
+  const forge = forgeBoardDescription(building) ?? bulwarkBoardDescription(building);
   if (forge) {
     return forge;
   }
   const effect = building.effect;
+  if (building.id === "bulwark.citadel" && effect?.type === "UNLOCK_REINFORCE") {
+    return <><span>Unlocks Reinforcing units.</span><span>When under siege, add 3 Walls, 1 Gate and 1 Arrow Tower to the combat board.</span></>;
+  }
+  if (building.id === "bulwark.mage_guild" && effect?.type === "MAGE_GUILD") {
+    return <><span>When built: Search (2) Spell twice.</span><span>After built, once per round: pay <FactoryGold amount={building.spellBookCost ?? 5} /> to Search (2) Spell.</span></>;
+  }
   if (building.id === "factory.city_hall" && effect?.type === "RESOURCE_ROUND_CHOICE") {
     const income = effect.options.find((option) => option.gold !== undefined);
     const freeUnit = effect.options.find((option) => option.freeRecruitOrReinforceUnitDefId);
@@ -869,7 +893,7 @@ export function TownBoardView({
     <section className={`tbRoot theme-${factionVisualRegister(faction.id)} faction-${faction.id}`} aria-label={`${faction.name} town board`}>
       {factionMechanicStatus ? <small className="tbPanelHint" role="status">{factionMechanicStatus}</small> : null}
       <div
-        className={`tbBoard ${isScan ? "scan" : "designed"} faction-${faction.id}`}
+        className={`tbBoard ${isScan ? "scan" : "designed"} ${spec.boardFaceImage ? "printedFace" : ""} faction-${faction.id}`}
         style={{ aspectRatio: `${geometry.aspect[0]} / ${geometry.aspect[1]}`, "--tb-faction": faction.color } as CSSProperties}
       >
         {isScan ? (
@@ -993,7 +1017,7 @@ export function TownBoardView({
                     <LoadedImg
                       className="tbBarTileArt tbTownArtTopAligned"
                       src={spec.barTileImages[index]}
-                      style={spec.physicalPanoramaTiles && partial
+                      style={spec.physicalPanoramaTiles && partial && !spec.tileIcons
                         ? { clipPath: builtIds[0] === bar[0] ? "inset(0 50% 0 0)" : "inset(0 0 0 50%)" }
                         : undefined}
                     />
@@ -1001,7 +1025,26 @@ export function TownBoardView({
                       <Check aria-hidden="true" size={12} />
                       {builtIds.map((buildingId) => coreBuildingDefinitions[buildingId]?.name ?? buildingId).join(" + ")}
                     </span>
-                    {partial ? (
+                    {spec.tileIcons ? (
+                      // The printed tile's round building symbols (both on the
+                      // shared tile). A still-unbuilt half keeps its icon greyed
+                      // and its name/cost plate stays up (tbFactoryBarPlates).
+                      <span className="tbPrintedIcons" aria-hidden="true">
+                        {bar.map((buildingId) => {
+                          const icon = spec.tileIcons?.[buildingId];
+                          return icon ? (
+                            <img
+                              alt=""
+                              className={built(buildingId) ? undefined : "missing"}
+                              draggable={false}
+                              key={buildingId}
+                              src={assetUrl(townBoardTileIconUrl(icon))}
+                            />
+                          ) : null;
+                        })}
+                      </span>
+                    ) : null}
+                    {partial && !spec.tileIcons ? (
                       <span className="tbSharedMissing">
                         Not built: {missingIds.map((buildingId) => coreBuildingDefinitions[buildingId]?.name ?? buildingId).join(" + ")}
                       </span>
@@ -1062,7 +1105,7 @@ export function TownBoardView({
                 // boards get, now for EVERY designed board (bulwark, the anime /
                 // wuxia towns, and any future designed town). Keyed off the board
                 // spec's built art, never the faction/theme, so it is generic.
-                <div className={`tbEmptyBar ${anyBuildable ? "buildable" : ""}`}>
+                <div className={`tbEmptyBar ${anyBuildable ? "buildable" : ""} ${spec.boardFaceImage ? "printed" : ""}`}>
                   {!spec.physicalPanoramaTiles && faction.id !== "little_busters" && spec.barTileImages?.[index] ? (
                     <LoadedImg className="tbEmptyPreview" src={spec.barTileImages[index]} />
                   ) : null}
@@ -1090,9 +1133,11 @@ export function TownBoardView({
                   </span>
                 </div>
               )}
-              {usesPrintedFaceBoard(faction.id) ? (
+              {/* Like the printed board: only an UNBUILT building shows its name
+                  + cost plate; a built tile covers the slot and carries no cost. */}
+              {usesPrintedFaceBoard(faction.id) && missingIds.length > 0 ? (
                 <div className="tbFactoryBarPlates" aria-hidden="true">
-                  {bar.map((buildingId) => {
+                  {missingIds.map((buildingId) => {
                     const building = coreBuildingDefinitions[buildingId];
                     return building ? <DesignedPlate building={building} cost={buildingCost(building)} showZeros key={buildingId} /> : null;
                   })}

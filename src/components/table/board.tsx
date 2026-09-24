@@ -411,7 +411,9 @@ const BATTLEFIELD_TOKEN_VIEW: Record<
   fire_wall: { sprite: "fire-wall-e", glyph: "🔥", label: "Fire Wall" },
   quicksand: { sprite: "quicksand", glyph: "🌀", label: "Quicksand" },
   land_mine: { sprite: "land-mine-b", glyph: "💣", label: "Land Mine" },
-  factory_trap: { sprite: "land-mine-b", glyph: "⚙️", label: "Mechanical Trap" }
+  factory_trap: { sprite: "land-mine-b", glyph: "⚙️", label: "Mechanical Trap" },
+  // Drawn as a Wall card by the fortification branch, never as a token mark.
+  artifact_wall: { sprite: "", glyph: "🐞", label: "Ladybird of Luck" }
 };
 
 /**
@@ -513,6 +515,10 @@ function BattlefieldTokenMark({
   // Mechanical Traps are secret until sprung: the opponent gets no marker,
   // label, DOM hint or fallback glyph at their position.
   if (token.kind === "factory_trap" && token.controllerId !== viewerPlayerId) {
+    return null;
+  }
+  // Ladybird of Luck lies on the board as a Wall card (fortification branch).
+  if (token.kind === "artifact_wall") {
     return null;
   }
   const view = BATTLEFIELD_TOKEN_VIEW[token.kind];
@@ -956,7 +962,13 @@ export function BattlefieldBoard({
   const fortAbilityTargetByPosition = new Map<number, LegalAction>();
 
   const siege = combat?.siege ?? null;
-  const wallPositions = new Set(siege?.walls ?? []);
+  // Ladybird of Luck placed as a Wall — drawn and demolished like a siege Wall.
+  const artifactWallByPosition = new Map(
+    (combat?.battlefieldTokens ?? [])
+      .filter((token) => token.kind === "artifact_wall")
+      .map((token) => [token.position, token] as const)
+  );
+  const wallPositions = new Set([...(siege?.walls ?? []), ...artifactWallByPosition.keys()]);
   const gatePosition = siege?.gatePosition ?? null;
   const arrowTower = siege?.arrowTowerUnitId ? combat?.units[siege.arrowTowerUnitId] : null;
 
@@ -1613,19 +1625,31 @@ export function BattlefieldBoard({
             // An adjacent unit's melee demolish, or — during a Catapult target
             // pick — the bombardment shot. Either makes the Wall/Gate clickable.
             const fortAction = fortificationActionsByPosition.get(index) ?? fortAbilityTargetByPosition.get(index);
+            const artifactWall = isGate ? undefined : artifactWallByPosition.get(index);
+            const artifactWallOwner = artifactWall
+              ? (state.players[artifactWall.controllerId]?.name ?? artifactWall.controllerId)
+              : "";
             const label = isGate
               ? "Gate — open to the defender, an obstacle to the attacker. Adjacent ground/flying units may tear it down as their attack."
-              : "Wall — a combat obstacle. Adjacent ground/flying units may tear it down as their attack; defenders in its column take 1 less ranged damage.";
+              : artifactWall
+                ? `Ladybird of Luck (${artifactWallOwner}) — counts as a Wall until the end of the combat: no unit may stop on or walk through it. Adjacent ground/flying units may tear it down as their attack; if an attack removes it, ${artifactWallOwner} gains ${artifactWall.goldOnAttackRemoval ?? 0} gold.`
+                : "Wall — a combat obstacle. Adjacent ground/flying units may tear it down as their attack; defenders in its column take 1 less ranged damage.";
             const content = (
-              <span className={`fortMark ${isGate ? "gate" : "wall"}`}>
+              <span className={`fortMark ${isGate ? "gate" : "wall"}${artifactWall ? " artifactWall" : ""}`}>
                 <img
-                  alt={isGate ? "Gate card" : "Wall card"}
+                  alt={isGate ? "Gate card" : artifactWall ? "Ladybird of Luck card, placed as a Wall" : "Wall card"}
                   className="fortCardImg"
                   loading="eager"
                   referrerPolicy="no-referrer"
-                  src={assetUrl(isGate ? "/assets/structures-gate.webp" : "/assets/structures-wall.webp")}
+                  src={assetUrl(
+                    isGate
+                      ? "/assets/structures-gate.webp"
+                      : artifactWall
+                        ? "/game-tokens/ladybird-of-luck.webp"
+                        : "/assets/structures-wall.webp"
+                  )}
                 />
-                <small>{isGate ? "Gate" : "Wall"}</small>
+                <small>{isGate ? "Gate" : artifactWall ? "Ladybird Wall" : "Wall"}</small>
               </span>
             );
             // The defender's legal gate move takes precedence over demolition.

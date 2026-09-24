@@ -9,6 +9,8 @@ import {
   factionVeterancy,
   getUnitAbilityDefinitions,
   getAdjacentEnemyInitiativeAuraDelta,
+  getEnemyUnitTypeInitiativeAuraDelta,
+  hasEnemyOngoingEffectsLastOneRound,
   getFriendlyAdjacentInitiativeAuraAmount,
   hasAmplifyInitiativeIncrease,
   hasIgnoreOngoingEffects,
@@ -860,6 +862,8 @@ export function effectiveInitiative(
   const amplified = bonus > 0 && hasAmplifyInitiativeIncrease(unit) ? bonus + 1 : bonus;
 
   const adjacentEnemyAura = combat ? getAdjacentEnemyInitiativeAuraDelta(combat, unit) : 0;
+  // Bulwark Jotunns: "Enemy [flying] units have -1/-2 [initiative]" (any distance).
+  const enemyTypeAura = combat ? getEnemyUnitTypeInitiativeAuraDelta(combat, unit) : 0;
   // MGQ Maid is evaluated from current board positions on every read. Nothing
   // is cached or written into activeEffects, so moving apart removes +2
   // immediately and moving adjacent restores it without stale modifiers.
@@ -890,7 +894,7 @@ export function effectiveInitiative(
       ability.effect.mechanic === "werewolf-astral-hunt"
     ) ? 3 : 0;
   const battlefieldShift = combat?.battlefieldCondition?.id === "raining-ash" && unit.type === "flying" ? -2 : 0;
-  return unit.initiative + amplified + adjacentEnemyAura + maidAura + forgeTempo + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0) + battlefieldShift;
+  return unit.initiative + amplified + adjacentEnemyAura + enemyTypeAura + maidAura + forgeTempo + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0) + battlefieldShift;
 }
 
 /**
@@ -1271,10 +1275,67 @@ export function expireEffectsForActivationStart(state: GameState, unitId: UnitId
   return expired;
 }
 
+/** Advance effects whose duration is measured by their caster's activations. */
+export function advanceCasterEffectsAtActivationStart(state: GameState, casterUnitId: UnitId): ActiveEffectState[] {
+  const expired: ActiveEffectState[] = [];
+  state.activeEffects = state.activeEffects.filter((effect) => {
+    if (effect.source.type !== "unit" || effect.source.unitId !== casterUnitId) return true;
+    if (effect.casterActivationsUntilExpiry !== undefined) {
+      if (effect.casterActivationsUntilExpiry <= 1) {
+        expired.push(effect);
+        return false;
+      }
+      effect.casterActivationsUntilExpiry -= 1;
+      return true;
+    }
+    const shield = effect.modifiers.find((modifier) =>
+      modifier.type === "FIRE_SHIELD" &&
+      (modifier.amountAfterFirstCasterActivation !== undefined || modifier.amountAfterFirstRound !== undefined));
+    if (!shield || shield.type !== "FIRE_SHIELD") return true;
+    if ((shield.casterActivationsSinceCast ?? 0) >= 1) {
+      expired.push(effect);
+      return false;
+    }
+    shield.casterActivationsSinceCast = 1;
+    return true;
+  });
+  return expired;
+}
+
 export function expireEffectsForCombatRoundEnd(state: GameState, round: number): ActiveEffectState[] {
-  const expired = state.activeEffects.filter((effect) => effect.expiresAtCombatRoundEnd === round);
+  // Bulwark Yetis (Neutral card): "Enemy ongoing effects on this unit last for
+  // only one round" — an ENEMY's unit-scoped effect played directly on such a
+  // unit ends at this round end whatever its printed duration. Units without
+  // the ability are untouched (empty set → identical to the plain expiry).
+  const shortenedUnitIds = new Set(
+    Object.values(state.combat?.units ?? {})
+      .filter((unit) => hasEnemyOngoingEffectsLastOneRound(unit))
+      .map((unit) => unit.id)
+  );
+  const endsNow = (effect: ActiveEffectState): boolean => {
+    if (effect.expiresAtCombatRoundEnd === round && !effect.modifiers.some((modifier) =>
+      modifier.type === "FIRE_SHIELD" &&
+      (modifier.amountAfterFirstCasterActivation !== undefined || modifier.amountAfterFirstRound !== undefined))) {
+      return true;
+    }
+    // Durations counted in the CASTER's activations (Brute Bloodlust, Succubus
+    // Fire Shield) can never tick down once the caster is gone: they end at
+    // the first round end after the caster is removed.
+    if (effect.source.type === "unit" && (effect.casterActivationsUntilExpiry !== undefined ||
+        effect.modifiers.some((modifier) => modifier.type === "FIRE_SHIELD" &&
+          (modifier.amountAfterFirstCasterActivation !== undefined || modifier.amountAfterFirstRound !== undefined)))) {
+      const caster = state.combat?.units[effect.source.unitId];
+      if (!caster || caster.damage >= caster.maxHealth) return true;
+    }
+    if (shortenedUnitIds.size === 0 || effect.scope !== "unit" || effect.target?.type !== "unit") {
+      return false;
+    }
+    const unit = state.combat?.units[effect.target.unitId];
+    return Boolean(unit && shortenedUnitIds.has(unit.id) && effect.controllerId !== unit.controllerId);
+  };
+  const expired = state.activeEffects.filter(endsNow);
   if (expired.length > 0) {
-    state.activeEffects = state.activeEffects.filter((effect) => effect.expiresAtCombatRoundEnd !== round);
+    state.activeEffects = state.activeEffects.filter((effect) => !endsNow(effect));
   }
 
   return expired;

@@ -7,6 +7,7 @@ import { applyForgeRoundStartInitiativeRolls, forgeCombatRoundStart } from "./fo
 import { placeRandomTownFormation } from "./random-town-tactics";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { cardLibrary } from "@/data/cards/library";
+import { deferPreOrderWarMachine } from "./astrologers-pre-order";
 import { neutralCombatStart } from "./neutral-veterancy";
 import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
@@ -265,7 +266,7 @@ import {
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
 import { openDeckCardPlacementChoice, resolveDeckCardPlacementChoice } from "./deck-card-placement";
-import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
+import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT, getBattlefieldDistance, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -295,6 +296,7 @@ import {
 import {
   applyCommanderArtifactCombatRoundStart,
   applyLionRoundStartBarrage,
+  applyCommanderBeginCastBloodlust,
   applyCommanderBeginCastHaste,
   applyCommanderCombatStart,
   collectFirstAidCandidates,
@@ -308,6 +310,7 @@ import {
   commanderMarchesWithHero,
   commanderPreCombatSortAvailable,
   commandersModuleEnabled,
+  maybeOpenSoulLinkChoice,
   commanderStandsInCurrentCombat,
   commanderUnitId,
   finalizeCommandersAfterCombat,
@@ -802,7 +805,8 @@ const BATTLEFIELD_TOKEN_LABELS: Record<string, string> = {
   force_field: "Force Field",
   fire_wall: "Fire Wall",
   quicksand: "Quicksand",
-  land_mine: "Land Mine"
+  land_mine: "Land Mine",
+  artifact_wall: "Ladybird of Luck Wall"
 };
 
 /**
@@ -2811,11 +2815,12 @@ export function resolveGrailFreeBuilding(state: GameState, playerId: PlayerId, o
  * Construct one Town building at no cost and without consuming the Build token.
  * Still fires STRUCTURE_BUILT and Mage Guild / cube side-effects.
  */
-function grantFreeTownBuilding(
+export function grantFreeTownBuilding(
   state: GameState,
   playerId: PlayerId,
   townId: string,
-  buildingId: string
+  buildingId: string,
+  source: "Grail" | "New Buildings" = "Grail"
 ): void {
   const player = state.players[playerId];
   const town = state.towns[townId];
@@ -2849,7 +2854,7 @@ function grantFreeTownBuilding(
   appendEvent(state, {
     type: "EVENT_NOTE",
     playerId,
-    message: `The Grail builds ${building.name} for free.`
+    message: `${source} builds ${building.name} for free.`
   });
 
   if (building.effect?.type === "MAGE_GUILD") {
@@ -2889,11 +2894,12 @@ function grantToxicMoatWarMachine(state: GameState, playerId: PlayerId, building
     return;
   }
   player.hand.push(effect.warMachineCardId);
+  const deferred = deferPreOrderWarMachine(state, playerId, effect.warMachineCardId);
   appendEvent(state, {
     type: "TOWN_BUILDING_USED",
     playerId,
     buildingId,
-    message: `${coreBuildingDefinitions[buildingId]?.name ?? "Toxic Moat"}: gained the ${cardLibrary[effect.warMachineCardId]?.name ?? "war machine"} card.`
+    message: `${coreBuildingDefinitions[buildingId]?.name ?? "Toxic Moat"}: ${deferred ? "ordered" : "gained"} the ${cardLibrary[effect.warMachineCardId]?.name ?? "war machine"} card${deferred ? " for delivery next turn" : ""}.`
   });
 }
 
@@ -12532,6 +12538,22 @@ export function resolveWayfarerParalysisChoice(state: GameState, playerId: Playe
   finalizeCombatStart(state);
 }
 
+export function astrologersCardGames(state: GameState, action: Extract<GameAction, { type: "ASTROLOGERS_CARD_GAMES" }>): void {
+  const player = state.players[action.playerId];
+  const effect = getActiveAstrologersCard(state)?.effect;
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertNoPendingInput(state);
+  if (!player || effect?.type !== "PAID_CARD_DRAW" || state.phase !== "player-turn" || state.combat ||
+      player.cardGamesUsedRound === state.round || !hasResources(player, { gold: effect.gold }) ||
+      player.deck.length + player.discard.length === 0) {
+    throw new Error("Card Games is not available on this turn.");
+  }
+  spendResources(state, action.playerId, { gold: effect.gold }, "Card Games");
+  player.cardGamesUsedRound = state.round;
+  drawCardsForPlayer(state, action.playerId, 1);
+}
+
 /** Offer the Dungeon Brute's optional card purchase before neutral combat starts. */
 function maybeOpenBruteCombatDraw(state: GameState): boolean {
   const combat = state.combat;
@@ -12728,7 +12750,7 @@ function finalizeCombatStart(state: GameState): void {
  * this package without re-entering (and thus double-firing) the non-idempotent
  * steps below (Charming/Scourge damage, war machines).
  */
-function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
+export function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   const combat = state.combat;
   if (!combat) {
     return;
@@ -12737,6 +12759,7 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   combat.pendingCommanderPlacement = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
+  if (maybeOpenSoulLinkChoice(state)) return;
 
   // Won Creature-Bank reward cards roll their RANDOM Stack Token now (idempotent),
   // before any start-of-combat stat read. See rollRandomBankRewardStackTokens.
@@ -13887,6 +13910,24 @@ function applyComputerCommanderCombatStart(state: GameState, playerId: PlayerId)
     }
     (state.combat!.commanderArtifactStartResolvedPlayerIds ??= []).push(playerId);
   }
+  // An opening Bloodlust costs Brute's entire first activation. Use it only
+  // when an earlier allied melee unit can engage soon and Brute cannot.
+  const begin = commanderBeginCastOption(state, playerId);
+  if (begin?.commander.commanderSlug === "brute" && state.combat) {
+    const enemies = Object.values(state.combat.units).filter((unit) =>
+      unit.controllerId !== playerId && unit.damage < unit.maxHealth && unit.position >= 0);
+    const bruteNearEnemy = enemies.some((enemy) =>
+      getBattlefieldDistance(begin.commander.position, enemy.position) <= 3);
+    if (!bruteNearEnemy) {
+      const target = begin.targetUnitIds
+        .map((unitId) => state.combat?.units[unitId])
+        .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
+        .filter((unit) => unit.initiative > begin.commander.initiative &&
+          enemies.some((enemy) => getBattlefieldDistance(unit.position, enemy.position) <= 3))
+        .sort((left, right) => right.attack - left.attack || right.initiative - left.initiative)[0];
+      if (target) applyCommanderBeginCastBloodlust(state, begin.commander, target);
+    }
+  }
   // Computer seats are handed a phantom Magic Arrow every combat
   // (COMPUTER_PHANTOM_COMBAT_CARDS, granted after this gate runs) — discarding a
   // real card to fetch a duplicate would be a pure loss.
@@ -14008,10 +14049,12 @@ function openCommanderCombatStartChoice(
   }
   const begin = commanderBeginCastOption(state, playerId);
   if (begin) {
+    const bruteOpening = begin.commander.commanderSlug === "brute";
+    const castName = bruteOpening ? "Bloodlust" : "Haste";
     const options = begin.targetUnitIds.map((unitId) => {
       const unit = combat.units[unitId];
       return {
-        label: `Cast Haste on ${unit?.cardName ?? "unit"} (${getBattlefieldLabel(unit?.position ?? -1)}) now — the commander skips its round-1 turn`
+        label: `Cast ${castName} on ${unit?.cardName ?? "unit"} (${getBattlefieldLabel(unit?.position ?? -1)}) now — ${bruteOpening ? "+1 Attack for round 1; " : ""}the commander skips its round-1 turn`
       };
     });
     options.push({ label: "Skip — save the commander's turn" });
@@ -14019,7 +14062,9 @@ function openCommanderCombatStartChoice(
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
-      prompt: "Shaman: cast Haste before combat begins? The commander then forgoes its round-1 turn.",
+      prompt: bruteOpening
+        ? "Brute: cast Bloodlust before combat begins for +1 Attack this round? This uses one of three casts and skips the Brute's round-1 turn."
+        : "Shaman: cast Haste before combat begins? The commander then forgoes its round-1 turn.",
       options,
       context: "commander-begin-cast",
       commanderBeginCast: {
@@ -14147,23 +14192,27 @@ function resolveCommanderBeginCastChoice(
     choice.playerId !== playerId ||
     !data
   ) {
-    throw new Error("There is no begin-of-match Haste choice to resolve.");
+    throw new Error("There is no commander combat-start cast choice to resolve.");
   }
-  // The trailing option is Skip; each earlier index is a legal Haste target.
+  // The trailing option is Skip; each earlier index is a legal cast target.
   if (optionIndex >= 0 && optionIndex < data.targetUnitIds.length) {
     const commander = combat.units[data.commanderUnitId];
     const target = combat.units[data.targetUnitIds[optionIndex]];
     if (
       !commander ||
-      commander.commanderSlug !== "shaman" ||
+      (commander.commanderSlug !== "shaman" && commander.commanderSlug !== "brute") ||
       commander.damage >= commander.maxHealth ||
       !target ||
       target.damage >= target.maxHealth ||
       target.controllerId !== playerId
     ) {
-      throw new Error("Choose one of your living units to Haste.");
+      throw new Error("Choose a legal living unit for that commander cast.");
     }
-    applyCommanderBeginCastHaste(state, commander, target);
+    if (commander.commanderSlug === "brute") {
+      applyCommanderBeginCastBloodlust(state, commander, target);
+    } else {
+      applyCommanderBeginCastHaste(state, commander, target);
+    }
   }
   advanceCommanderCombatStartChain(state, data.remainingPlayerIds);
 }

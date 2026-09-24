@@ -1466,7 +1466,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Hall named Armadillo recruit, Succubus/Shaman/Charming commander redesigns.
 // v170: Forge faction (units, buildings, S12 tile), City Hall opponent-discard
 // option, Resource Silo die, Toxic Moat wall damage, Lightning Generator.
-export const ENGINE_PROTOCOL_VERSION = 170;
+// v171: ten new heroes (Cuthbert, Kastore, Isra, Dace, Darkstorn, Piquedram,
+// Korbac, Verdish, Urftin, Uland) with new effect types and choices, Soul Link /
+// Emergency Repair commander casts (commander-soul-link choice, cancelLethal
+// commander marker, COMMANDER_ATTACK_CANCELLED), Astrologers Card Games /
+// Pre-Order / New Buildings (ASTROLOGERS_CARD_GAMES action, free-build visit
+// steps), Ladybird of Luck wall token, neutral-side veteran tracks.
+export const ENGINE_PROTOCOL_VERSION = 171;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

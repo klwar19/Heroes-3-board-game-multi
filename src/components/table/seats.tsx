@@ -179,7 +179,8 @@ export function PermanentSlot({
   const ongoingCards = state.players[playerId]?.ongoingCards ?? [];
   // Spell Scrolls: map-side permanent tray (not hand). Public; opponents see them.
   const scrolls = state.players[playerId]?.scrolls ?? [];
-  const empty = cardIds.length === 0 && ongoingCards.length === 0 && scrolls.length === 0;
+  const preOrders = state.players[playerId]?.preOrderWarMachines ?? [];
+  const empty = cardIds.length === 0 && ongoingCards.length === 0 && scrolls.length === 0 && preOrders.length === 0;
   if (empty && !showEmpty) {
     return null;
   }
@@ -313,6 +314,16 @@ export function PermanentSlot({
           </div>
         );
       })}
+      {preOrders.map((cardId, index) => (
+        <div
+          className={`permanentSlot cardOnly ${compact ? "compact" : ""}`}
+          key={`pre-order-${cardId}-${index}`}
+          aria-label={`${cardId === "hidden" ? "War Machine" : cardLibrary[cardId]?.name ?? cardId}: arrives at the start of the next turn`}
+        >
+          <span className="factoryMachineStatus reserve">Arrives next turn</span>
+          {cardId === "hidden" ? <CardBack deckId="cards" className="permanentCardImage" /> : <CardFrame cardId={cardId} className="permanentCardImage" />}
+        </div>
+      ))}
       {ongoingCards.map((held, index) => {
         const card = cardLibrary[held.cardId];
         const discard = discardOngoingActionFor(held.cardId);

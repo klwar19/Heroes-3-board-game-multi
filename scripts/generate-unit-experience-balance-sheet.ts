@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { coreUnitDefinitions } from "../src/data/factions/units";
-import { UNIT_RANK_THRESHOLDS } from "../src/data/units/experience";
+import { UNIT_RANK_THRESHOLDS, hasNeutralSideRankSchedule, type RankScheduleSide } from "../src/data/units/experience";
 import { unitAbilities } from "../src/data/units/abilities";
 import { MGQ_JOB_LABELS, mgqJobsForUnit } from "../src/engine/mgq-jobs";
 import type { MgqJob } from "../src/engine/state";
@@ -31,23 +31,23 @@ function sideStats(side: { attack: number; defense: number; health: number; init
   return side ? `${side.attack}/${side.defense}/${side.health}/${side.initiative}` : "—";
 }
 
-function reward(unitDefId: string, rank: number, job?: MgqJob): string {
+function reward(unitDefId: string, rank: number, job?: MgqJob, side: RankScheduleSide = "faction"): string {
   const def = coreUnitDefinitions[unitDefId]!;
-  const stat = unitRankStatGainsAt(unitDefId, def.tier, rank, job);
+  const stat = unitRankStatGainsAt(unitDefId, def.tier, rank, job, side);
   const statParts = [
     stat.attack ? `+${stat.attack} Attack` : "",
     stat.defense ? `+${stat.defense} Defense` : "",
     stat.health ? `+${stat.health} HP` : "",
     stat.initiative ? `+${stat.initiative} Initiative` : ""
   ].filter(Boolean);
-  const abilityParts = unitRankAbilityGainsAt(unitDefId, rank, job).map((abilityId) => {
+  const abilityParts = unitRankAbilityGainsAt(unitDefId, rank, job, side).map((abilityId) => {
     const ability = unitAbilities[abilityId];
     return ability
       ? `**${md(ability.name)}** — ${md(ability.text)}`
       : `**Missing ability: ${md(abilityId)}**`;
   });
   const parts = [...statParts, ...abilityParts];
-  const step = unitRankStep(unitDefId, rank, job);
+  const step = unitRankStep(unitDefId, rank, job, side);
   return parts.length > 0 ? parts.join("<br>") : `⚠ No new reward (${step?.kind ?? "missing"} step)`;
 }
 
@@ -81,6 +81,18 @@ for (const faction of [...new Set(units.map((unit) => unit.faction))]) {
   }
   lines.push("");
 }
+
+const neutralSideUnits = units.filter((unit) => unit.neutral && hasNeutralSideRankSchedule(unit.id));
+lines.push("## Neutral-side veteran tracks", "");
+lines.push("A stack fighting on its printed Neutral side, or owned by the Neutral guard player (field guards, Random Town and designer slots, bank defenders, wave invaders), follows these tracks instead of the faction tracks above. Guards rank up to Elite (R3); R4 is reachable only by a player-owned Neutral-side card. Every reward resolves for the Neutral AI without Runes, faction cubes, cards, Spells or resources.", "");
+lines.push("| Unit | Tier | Printed Neutral | R1 | R2 | R3 | R4 |");
+lines.push("|---|---:|---|---|---|---|---|");
+for (const unit of neutralSideUnits) {
+  lines.push(
+    `| ${md(unit.name)} \`${unit.id}\` | ${unit.tier} | ${sideStats(unit.neutral)} | ${rankNumbers.map((rank) => reward(unit.id, rank, undefined, "neutral")).join(" | ")} |`
+  );
+}
+lines.push("");
 
 const mgqUnits = units.filter((unit) => unit.faction === "mgq");
 lines.push("## MGQ job-specific paths", "");

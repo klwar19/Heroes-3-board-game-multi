@@ -141,3 +141,50 @@ export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
   "imperium.dreadnought": ranks("ctv-clear-mind", "imperium-marked-volley-all-attacks", "town-lizard-spell-draw", "ntv-return-fire"),
   "imperium.titan": ranks("town-ram-spell-draw", "ntv-arcane-plating", "imperium-titan-damage-fury", H({ health: 1 }, "ntv-deep-roots")),
 };
+
+/**
+ * NEUTRAL-SIDE veteran tracks. A stack follows one of these instead of its
+ * faction track when it fights on its printed Neutral side or is owned by the
+ * Neutral guard player (resolved by `rankScheduleFor(id, "neutral")`). The
+ * faction track of the same unit is untouched.
+ *
+ * Why a separate track: guards have no Runes, faction cubes, hand, Spell
+ * casting or resources, so faction ranks built on those (Rune Bolt, Runes from
+ * Pain, Rune-Tipped Strike, Runic Inspiration, card draws) did nothing for
+ * them. Every reward below resolves automatically for the Neutral AI: passive
+ * modifiers, automatic triggers, or a queued choice whose first pick the engine
+ * takes for an unoperated guard (first adjacent enemy / first damaged ally /
+ * return to origin). No Runes, cubes, cards, Spells or resources.
+ *
+ * Guards rank up to Elite (R3). R4 is only reachable by a player-owned
+ * Neutral-side card (recruited Neutral, sandbox seat), so it still has to work.
+ * Calibrated against the classic neutral.* tracks: a small R1, a themed R2 and a
+ * signature R3; stat steps name their exact amounts (no fallback ladder).
+ */
+export const NEUTRAL_SIDE_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
+  // Bulwark — frost-land wildlings.
+  "bulwark.kobolds": ranks(S({ health: 1 }), "ntv-bone-wall", "town-kobold-armored-prey", "ntv-marsh-scavenger"),
+  "bulwark.mountain_rams": ranks("ntv-stone-landing", S({ attack: 1, health: 1 }), "ntv-full-gallop", "town-champion-safe"),
+  "bulwark.snow_elves": ranks(S({ initiative: 1 }), "ntv-first-volley", "veteran-arctic-slow-shot", "ignore-all-combat-penalties"),
+  "bulwark.yetis": ranks(S({ attack: 1 }), "ntv-barbed-revenge", "wog-nightmare-fear", S({ health: 2 })),
+  "bulwark.shamans": ranks("ntv-arcane-plating", "ntv-consecrated-shot", "ntv-mana-turbulence", "veteran-water-damper"),
+  "bulwark.mammoths": ranks(S({ health: 1 }), "town-ram-trample", "ntv-crushing-claws", "town-mammoth-last-stand"),
+  "bulwark.jotunns": ranks("veteran-flying-guard", "ntv-ageing-breath", "veteran-ice-bolt", S({ attack: 1, health: 1 })),
+
+  // Factory — wild machines, desert beasts and outlaws.
+  "factory.mechanics": ranks(S({ health: 1 }), "town-naga-pierce", "ntv-blood-tribute", "ntv-labyrinth-cleave"),
+  "factory.armadillos": ranks("veteran-guarded-stance", S({ health: 1, initiative: 1 }), "ntv-hellish-endurance", "veteran-boar-brace"),
+  "factory.automatons": ranks(S({ health: 1 }), "wog-fire-shield-1", "forge-vet-tank-death-burst", "commander-defense-token"),
+  "factory.sandworms": ranks(S({ health: 1, initiative: 1 }), "veteran-magma-hunter", "ntv-putrid-grasp", "ntv-searing-passage"),
+  "factory.gunslingers": ranks("ntv-predators-mark", "ntv-venom-arrow", "veteran-double-attack-low-roll", "veteran-sharpshooter-mastery"),
+  "factory.couatls": ranks("ntv-raking-dive", "veteran-sprite-spell-block", "ntv-guardian-angel", "veteran-azure-mending-scales"),
+  "factory.dreadnoughts": ranks("town-golem-cap", "ntv-set-the-spear", "veteran-magic-splash", "unlimited-retaliation"),
+
+  // Forge — scavenged war-tech without a commander behind it.
+  "forge.grunts": ranks(S({ health: 1 }), "ntv-suppressing-shot", "town-marksman-mark", "ignore-all-combat-penalties"),
+  "forge.cyber_zombies": ranks(S({ health: 1 }), "zombie-resilience-weak", "ntv-potent-venom", "veteran-rebirth"),
+  "forge.watchers": ranks(S({ initiative: 1 }), "ntv-disrupting-gaze", "ntv-petrifying-aim", "ntv-bewitching-bolt"),
+  "forge.bruisers": ranks(S({ health: 1, initiative: 1 }), "ntv-marked-volley", "ntv-boulder-crash", "veteran-defense-pierce"),
+  "forge.jump_troopers": ranks("ntv-disorienting-landing", S({ attack: 1, health: 1 }), "ntv-strike-and-return", "veteran-sprite-landing"),
+  "forge.tanks": ranks("veteran-storm-guard", "veteran-distant-storm", "veteran-earth-defense-token", "veteran-fire-damage-cap"),
+};

@@ -482,6 +482,7 @@ describe("Factory Bounty Hunters (Neutral) — Preemptive Shot", () => {
     attackerType?: "ground" | "ranged";
     attackerHealth?: number;
     guardAttack?: number;
+    abilityId?: string;
   }): GameState {
     const state = createInitialGameState(`bounty-preempt-${options.preemptive}-${options.attackerPosition}`);
     Object.assign(state.combat!.units.unit_p2_skeletons, {
@@ -495,7 +496,7 @@ describe("Factory Bounty Hunters (Neutral) — Preemptive Shot", () => {
       damage: 0,
       defenseToken: false,
       position: 5,
-      abilities: options.preemptive ? ["bounty-hunter-preemptive"] : []
+      abilities: options.preemptive ? [options.abilityId ?? "bounty-hunter-preemptive"] : []
     });
     Object.assign(state.combat!.units.unit_p1_griffins, {
       type: options.attackerType ?? "ground",
@@ -574,6 +575,25 @@ describe("Factory Bounty Hunters (Neutral) — Preemptive Shot", () => {
       guardAttack: 5
     });
     expect(control.combat!.units.unit_p1_griffins.damage, "a bare guard never retaliates against a shooter").toBe(0);
+  });
+
+  it("the printed Neutral card (bounty-hunter-ranged-preemptive) pre-empts ONLY a non-adjacent attacker", () => {
+    const ranged = "bounty-hunter-ranged-preemptive";
+    // Non-adjacent shooter: the counter-shot fires (a bare guard's is 0, above).
+    const far = underAttack({ preemptive: true, abilityId: ranged, attackerPosition: 17, attackerType: "ranged", attackerHealth: 20, guardAttack: 5 });
+    expect(far.combat!.units.unit_p1_griffins.damage, "the shooter is shot back first").toBeGreaterThan(0);
+    expect(triggeredAbilities(far, ranged).length, "the Preemptive Shot event fires").toBe(1);
+
+    // Adjacent 1-HP melee attacker: NO pre-emptive shot — the blow lands first
+    // (guard takes 4) exactly like the bare-guard control, and no event fires.
+    const near = underAttack({ preemptive: true, abilityId: ranged, attackerPosition: 1, attackerHealth: 1, guardAttack: 5 });
+    expect(near.combat!.units.unit_p2_skeletons.damage, "adjacent attack is not pre-empted").toBe(4);
+    expect(triggeredAbilities(near, ranged).length, "no Preemptive Shot vs an adjacent attacker").toBe(0);
+
+    // CONTROL where the rules diverge: the unrestricted Preemptive Shot DOES
+    // pre-empt the same adjacent attacker (guard takes 0).
+    const unrestricted = underAttack({ preemptive: true, attackerPosition: 1, attackerHealth: 1, guardAttack: 5 });
+    expect(unrestricted.combat!.units.unit_p2_skeletons.damage, "unrestricted copy pre-empts adjacent attacks").toBe(0);
   });
 
   it("still only retaliates once — a second attack in the same round draws no counter", () => {

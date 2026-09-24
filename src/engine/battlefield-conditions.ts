@@ -7,7 +7,7 @@ import {
 } from "@/data/battlefield-conditions";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { appendEvent } from "./events";
+import { appendEvent, transferUnloggedSoulLinkDamage } from "./events";
 import { houseRuleEnabled } from "./house-rules";
 import { createSeededRandom } from "./random";
 import type { CombatState, GameState } from "./state";
@@ -56,6 +56,7 @@ export function applyBattlefieldConditionAtCombatStart(state: GameState): void {
       // body; never resolve that removal a second time.
       if (unit.damage >= unit.maxHealth) continue;
       unit.damage += 1;
+      transferUnloggedSoulLinkDamage(state, unit.id, 1);
       markUnitRemovedIfNeeded(state, unit);
     }
     finishCombatIfNeeded(state);

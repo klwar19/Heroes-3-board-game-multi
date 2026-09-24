@@ -17,11 +17,10 @@
  *    levels give 2 (levels 3 & 6 for everyone; the Castle Paladin's Wise
  *    milestones are levels 2 & 5). A grade's bonus over the base is NOT
  *    additive with the previous grades — it IS the value shown (+1 / +2 at
- *    grade I/II; grade III is adjusted per spec: Attack +3, Health +4, Speed +5).
- *  - Defense is the exception: base line 1/2/2/3, and grade II additionally
- *    grants a permanent Defense token (the commander rolls the Defend die when
- *    attacked → +1 Defense on a "+1" face). Grade III is a reliable flat 3
- *    with no die (see commanderAbilityIds / the DEFEND spec).
+ *    grade I/II; grade III is adjusted per spec for Health and Speed).
+ *  - Attack is 2/3/3/4: from grade II, a -1 Attack die grants +1 Attack.
+ *  - Defense is 1/2/2/2: grade II grants a permanent Defense token (+1 Defense
+ *    on a +1 roll); grade III also pays that bonus on a 0 roll.
  *  - Damage is a DICE bonus, not a flat one: at Damage grade N the commander
  *    rolls N ADDITIONAL attack dice alongside its normal attack die on each of
  *    its attacks; every extra "+1" face raises the attack, and at most one "−1"
@@ -103,12 +102,10 @@ export function commanderComboSiteIcon(tag: string): string {
 /**
  * Stat value at grade 0/1/2/3 (index = grade). Grade 0 is the starting base
  * line; each grade's bonus over that base REPLACES the previous grade's
- * bonus (+1 / +2 at grade I/II, grade III adjusted per the module spec:
- * Attack +3, Health +4, Speed +5).
+ * bonus. Attack and Defense carry die riders at higher grades.
  *  - attack/health/speed are the unit's printed statistics (speed = Initiative).
- *  - defense is the printed Defense (1/2/2/3); grade II ALSO grants a Defense
- *    token — the "+1 def when attacked" rider (commanderAbilityIds wires
- *    `commander-defense-token`), grade III is the reliable flat 3.
+ *  - defense is the printed Defense (1/2/2/2); grades II and III grant a
+ *    Defense token. Grade III also pays +1 Defense on a 0 Defend roll.
  *  - damage is the NUMBER OF ADDITIONAL attack dice the commander rolls on each
  *    of its attacks (0/1/2/3). It is not a flat damage bonus — see the Might
  *    dice pool in reducer.ts (every extra "+1" raises the attack; at most one
@@ -118,8 +115,8 @@ export function commanderComboSiteIcon(tag: string): string {
  *    first Power step, grade 3 the top). Cast tiers cap at Power 2.
  */
 export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number, number]> = {
-  attack: [2, 3, 4, 5],
-  defense: [1, 2, 2, 3],
+  attack: [2, 3, 3, 4],
+  defense: [1, 2, 2, 2],
   health: [4, 5, 6, 8],
   damage: [0, 1, 2, 3],
   magic: [0, 0, 1, 2],
@@ -128,8 +125,7 @@ export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, 
 
 /**
  * Defense grade that grants the "+1 def when attacked" Defense token (the
- * commander rolls the Defend die when attacked). Exactly grade II — grade III
- * is a reliable flat 3 with no die. Consumed by commanderAbilityIds and the
+ * commander rolls the Defend die when attacked). Grade III retains it. Consumed by commanderAbilityIds and the
  * stats UI so the single source of truth is here.
  */
 export const COMMANDER_DEFENSE_TOKEN_GRADE = 2;
@@ -463,12 +459,18 @@ export interface CommanderCastTargeting {
 export type CommanderCastEffect =
   | { kind: "heal-cleanse"; healByPower: readonly [number, number, number]; cleanseFromPower: number }
   | {
-      /** Factory Field Repair: heal now, then consume one repair charge at the
-       * start of each of the next `roundsByPower` combat rounds. */
-      kind: "repair-buff";
-      immediateHealByPower: readonly [number, number, number];
-      roundHealByPower: readonly [number, number, number];
-      roundsByPower: readonly [number, number, number];
+      /**
+       * Factory Artificer "Emergency Repair": an INSTANT REACTION played in the
+       * lethal-hit window (UNIT_LETHAL_HIT) when an ENEMY attack would destroy a
+       * protected friendly unit or flip it from Pack to Few. It cancels that
+       * whole attack (no damage, no on-attack effects, no Retaliation), anywhere
+       * on the battlefield. Once per combat; the commander is then PARALYZED
+       * (a real Paralysis token — it skips its next activation). The protected
+       * units are listed by unitDefId per Power tier. Offered by
+       * commanderLethalCancelReactionUnit, resolved in applyAttackDamageFromCandidate.
+       */
+      kind: "lethal-cancel";
+      protectedUnitDefIdsByPower: readonly [readonly string[], readonly string[], readonly string[]];
     }
   | {
       kind: "defense-buff";
@@ -504,12 +506,18 @@ export type CommanderCastEffect =
       kind: "attack-buff";
       amountByPower: readonly [number, number, number];
       /** How long this commander's buff lasts; kept per cast because other commanders reuse this effect kind. */
-      duration: "round" | "two-rounds";
+      duration: "round" | "two-rounds" | "caster-two-activations";
+      /** Dungeon Brute Power 2: Black Dragons receive at most this Attack bonus. */
+      blackDragonPower2Cap?: number;
+      /** Dungeon Brute Power 2: Black Dragons also roll Attack dice with advantage. */
+      blackDragonAdvantageAtPower2?: boolean;
+      /** Dungeon Brute only: the Power tier that also grants Attack die advantage. */
+      advantageAtPower?: number;
     }
   | {
       kind: "fire-shield";
       damageByPower: readonly [number, number, number];
-      durationByPower: readonly ["round" | "combat" | "two-rounds" | "three-rounds", "round" | "combat" | "two-rounds" | "three-rounds", "round" | "combat" | "two-rounds" | "three-rounds"];
+      durationByPower: readonly ["round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations", "round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations", "round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations"];
       /** Add +1 Defense against only the first attack after this shield is applied at Power 2. */
       firstAttackDefenseFromPower?: number;
     }
@@ -591,6 +599,7 @@ export interface CommanderSpecialtyDefinition {
     | "mana-magician"
     | "charming"
     | "soul-reformer"
+    | "soul-link"
     | "undead"
     | "ballista-master"
     | "superior-combat"
@@ -775,7 +784,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       tierText: [
         "Remove 1 damage from a friendly unit.",
         "Remove 1 damage from a friendly unit and remove its negative tokens and effects.",
-        "Remove 2 damage from a friendly unit and remove its negative tokens and effects."
+        "At most 3 casts per combat. Remove 2 damage from a friendly unit and remove its negative tokens and effects."
       ]
     },
     specialty: {
@@ -816,14 +825,14 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       icon: "/assets/spell-icons/precision.png",
       // Redesigned (user spec): an INSTANT-REACTION buff played through the attack
       // window when one of your RANGED units attacks a NONADJACENT target.
-      // Power 0/1 retain their original two-use ladder. Power 2 gives +2 Attack
-      // on uses 1-3 and +1 on use 4; only use 1 ignores ranged penalties.
+      // Power 0/1 retain their two-use ladder. Power 2 gives +2 Attack on
+      // uses 1-2 and +1 on uses 3-4. Every use ignores ranged penalties.
       targeting: { side: "friendly", unitType: "ranged", canTargetSelf: false },
       effect: { kind: "precision-instant", amountByPower: [1, 2, 2], secondCastAmountByPower: [1, 1, 2], fourthCastAmountAtPower2: 1 },
       tierText: [
         "Instant, when your ranged unit attacks a nonadjacent target: +1 Attack and ignore ranged penalties for that attack. Once per round, twice per combat; the second use gives +1 Attack and ignores ranged penalties.",
         "Instant, when your ranged unit attacks a nonadjacent target: +2 Attack and ignore ranged penalties for that attack. Once per round, twice per combat; the second use gives +1 Attack and ignores ranged penalties.",
-        "Instant, when your ranged unit attacks a nonadjacent target: +2 Attack for the first three uses, then +1 Attack on the fourth. Only the first use ignores ranged penalties. Once per round, four times per combat."
+        "Instant, when your ranged unit attacks a nonadjacent target: +2 Attack for the first two uses, then +1 Attack for the third and fourth. Every use ignores ranged penalties. Once per round, four times per combat."
       ]
     },
     specialty: {
@@ -843,13 +852,13 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       effect: {
         kind: "fire-shield",
         damageByPower: [1, 2, 2],
-        durationByPower: ["two-rounds", "two-rounds", "three-rounds"],
+        durationByPower: ["two-rounds", "caster-two-activations", "caster-two-activations"],
         firstAttackDefenseFromPower: 2
       },
       tierText: [
-        "A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 1 damage. Lasts 2 combat rounds.",
-        "A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage. Lasts 2 combat rounds.",
-        "A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage for 3 combat rounds. It also gets +1 Defense against only the first attack after receiving the shield."
+        "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 1 damage. Lasts 2 combat rounds.",
+        "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage until the commander's next activation, then 1 damage until its following activation, when the shield ends.",
+        "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage until the commander's next activation, then 1 damage until its following activation, when the shield ends. It also gets +1 Defense against only the first attack after receiving the shield."
       ]
     },
     specialty: {
@@ -867,13 +876,13 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       icon: "/assets/spell-icons/bloodlust.png",
       // Power ladder (user spec): Pow 0 = +1 but the melee unit must be adjacent
       // to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere. Cast on the
-      // Brute's activation and lasting for this combat round and the next.
+      // Brute's activation and lasting until its second following activation.
       targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
+      effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "caster-two-activations", blackDragonPower2Cap: 1, blackDragonAdvantageAtPower2: true, advantageAtPower: 1 },
       tierText: [
-        "On the commander's activation, a friendly melee unit ADJACENT to the commander gains +1 Attack for 2 combat rounds.",
-        "On the commander's activation, a friendly melee unit anywhere gains +1 Attack for 2 combat rounds.",
-        "On the commander's activation, a friendly melee unit anywhere gains +2 Attack for 2 combat rounds."
+        "At most 3 casts per combat. On the Brute's activation, an adjacent friendly melee unit gains +1 Attack until the Brute's second following activation. You may instead cast at combat start for +1 Attack until the end of round 1 and skip the Brute's round-1 turn.",
+        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +1 Attack and rolls Attack dice with advantage until the Brute's second following activation. You may instead cast at combat start for +1 Attack only until the end of round 1 and skip the Brute's round-1 turn.",
+        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +2 Attack (Black Dragons gain only +1 Attack and roll Attack dice with advantage) until the Brute's second following activation. You may instead cast at combat start for +1 Attack only until the end of round 1 and skip the Brute's round-1 turn."
       ]
     },
     specialty: {
@@ -901,14 +910,14 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       effect: { kind: "heal", healByPower: [1, 2, 3] },
       tierText: [
         "Remove 1 damage from any friendly unit.",
-        "Remove 2 damage from any friendly unit.",
-        "Remove 3 damage from any friendly unit."
+        "Remove 2 damage from any friendly unit. At most 3 times per combat.",
+        "First use: remove 3 damage. Later uses: remove 2 damage. At most 4 times per combat."
       ]
     },
     specialty: {
-      id: "undead",
-      name: "Undead",
-      text: "The commander is undead: it can never gain a Paralysis token."
+      id: "soul-link",
+      name: "Soul Link",
+      text: "At combat start, choose another friendly unit. Once per combat round, when it takes damage, the commander takes half that damage, rounded up, and the chosen unit takes the rest."
     },
     cardImage: "/assets/units-commander-soul_eater.webp"
   },
@@ -925,7 +934,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       //  - Power 0: +1 Defense, only ONCE per combat.
       //  - Power 1: +1 Defense, once per round and at most TWICE per combat.
       //  - Power 2: +2 Defense in combat round 1, then +1 from round 2 on, once
-      //    per round with no per-combat cap (decayedAmountByPower supplies the
+      //    per round with at most four casts per combat (decayedAmountByPower supplies the
       //    round-2+ amount; the budget lives in commanderCastUsedThisRound).
       effect: {
         kind: "defense-buff",
@@ -938,7 +947,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       tierText: [
         "Instant reaction, once per combat: when your unit is attacked, it gains +1 Defense vs all attacks this round.",
         "Instant reaction, once per combat round and at most twice per combat: when your unit is attacked, it gains +1 Defense vs all attacks this round.",
-        "Instant reaction, once per combat round: when your unit is attacked, it gains +2 Defense vs all attacks this round in round 1, then +1 from round 2 on."
+        "Instant reaction, once per combat round and at most four times per combat: when your unit is attacked, it gains +2 Defense vs all attacks this round in round 1, then +1 from round 2 on."
       ]
     },
     specialty: {
@@ -1034,25 +1043,24 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     slug: "factory", name: "Artificer", faction: "Factory", original: true,
     cast: {
       abilityId: "commander-cast-factory",
-      name: "Field Repair",
+      name: "Emergency Repair",
       icon: "/assets/spell-icons/cure.png",
       targeting: {
         side: "friendly",
-        mechanical: true,
-        damagedOnly: true,
-        adjacentBelowPower: 2,
         canTargetSelf: false
       },
       effect: {
-        kind: "repair-buff",
-        immediateHealByPower: [1, 2, 2],
-        roundHealByPower: [1, 1, 2],
-        roundsByPower: [1, 1, 2]
+        kind: "lethal-cancel",
+        protectedUnitDefIdsByPower: [
+          ["factory.mechanics"],
+          ["factory.mechanics", "factory.automatons"],
+          ["factory.mechanics", "factory.automatons", "factory.dreadnoughts"]
+        ]
       },
       tierText: [
-        "Place a Repair buff on an adjacent friendly mechanical unit: remove 1 damage now and 1 more at the start of the next Combat round.",
-        "Place a Repair buff on an adjacent friendly mechanical unit: remove 2 damage now and 1 more at the start of the next Combat round.",
-        "Place a Repair buff on a friendly mechanical unit: remove 2 damage now and 2 more at the start of each of the next 2 Combat rounds."
+        "Instant, anywhere, once per Combat: cancel an enemy attack that would destroy your Engineers or flip them from Pack to Few. The commander is then Paralyzed.",
+        "Instant, anywhere, once per Combat: cancel an enemy attack that would destroy your Engineers or Automatons, or flip them from Pack to Few. The commander is then Paralyzed.",
+        "Instant, anywhere, once per Combat: cancel an enemy attack that would destroy your Engineers or any mechanical unit (Automatons, Juggernauts), or flip them from Pack to Few. The commander is then Paralyzed."
       ]
     },
     specialty: {
@@ -1078,7 +1086,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       tierText: [
         "Spend 1 Rune: remove 1 damage from a friendly unit.",
         "Spend 2 Runes: remove 2 damage from a friendly unit.",
-        "Spend 2 Runes: remove 3 damage from a friendly unit."
+        "Spend 2 Runes: remove 3 damage on each of the first 2 heals this combat, then 2 damage on later heals."
       ]
     },
     specialty: {
@@ -1207,8 +1215,8 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
         "An allied melee demon-cultivator anywhere gains +2 Attack for 2 combat rounds."
       ]
     },
-    // Specialty: REUSE `undead` (Paralysis-token immunity) — the SAME id the
-    // Necropolis Soul Eater carries. The engine gate keys off the specialty id
+    // Specialty: REUSE `undead` (Paralysis-token immunity) — the id the
+    // Necropolis Soul Eater carried before its Soul Link redesign. The engine gate keys off the specialty id
     // (not the "soul_eater" slug), the Belfast first-aid precedent — so the
     // paralysis immunity applies to the Demon Ancestor too. Thematically the
     // demon-blood body cannot be petrified.
@@ -1349,9 +1357,8 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   forge: {
     slug: "forge", name: "Storm Engineer", faction: "Forge", original: true,
     // Cast: "Arc Discharge" — REUSES Belfast's `enemy-damage` kind (flat EFFECT
-    // damage to an enemy unit: no Retaliation, ignores Defense, resolved in
-    // resolveCommanderCast's enemy-damage branch) at 1/2/3 by Power tier, with
-    // no adjacency gate (a lightning arc reaches across the field).
+    // damage to one chosen enemy: no Retaliation, ignores Defense. At Power 2,
+    // after its first use, gold and azure targets take 2 instead of 3.
     cast: {
       abilityId: "commander-cast-forge",
       name: "Arc Discharge",
@@ -1361,7 +1368,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       tierText: [
         "Deal 1 damage to an enemy unit (no Retaliation, ignores Defense).",
         "Deal 2 damage to an enemy unit (no Retaliation, ignores Defense).",
-        "Deal 3 damage to an enemy unit (no Retaliation, ignores Defense)."
+        "Choose 1 enemy. First use: deal 3 damage. Later uses: deal 3 to a bronze or silver enemy, or 2 to a gold or azure enemy. No Retaliation; ignores Defense."
       ]
     },
     // Specialty: automatic after-combat reward (finalizeAdventureCombat in
@@ -1453,5 +1460,10 @@ export function commanderCastIsInstantReaction(cast: CommanderCastDefinition): b
   // The DEFENDER-side defend buffs (Hierophant Shield, Ogre Stone Skin) and the
   // ATTACKER-side Tower Precision are all played through the attack window, never
   // as an activation cast.
-  return cast.effect.kind === "defense-buff" || cast.effect.kind === "precision-instant";
+  // Factory Emergency Repair is a lethal-hit-window reaction (never an activation cast).
+  return (
+    cast.effect.kind === "defense-buff" ||
+    cast.effect.kind === "precision-instant" ||
+    cast.effect.kind === "lethal-cancel"
+  );
 }

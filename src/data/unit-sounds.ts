@@ -704,11 +704,12 @@ const moveSoundOverrides: Record<string, string> = {
   // Pain Elemental; Jump Troopers blast off with the Revenant's rocket whoosh
   // (jetpack thrust); Tanks roll on the Factory Juggernaut's clanking treads;
   // Cyberbrutes (Forge gold and the azure neutral) move with the Crystal
-  // Dragon's heavy crystalline stride (user direction).
+  // Dragon's heavy crystalline stride, played once (user direction; the
+  // Crystal Dragon's own entry plays it twice).
   watchers: "units/doom-pain-elemental-move",
   jump_troopers: "doom/dsskeatk",
   tanks: "units/dreadnought-move",
-  cyberbrutes: "units/crystal-dragon-move"
+  cyberbrutes: "units/cyberbrute-move"
 };
 
 const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
@@ -717,13 +718,15 @@ const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundActio
   // Forge per-action mixes. Shooters keep their creature's voice on "shoot"
   // (goblin / ogre / naga yell) while the weapon report rides the shot plan in
   // fx.ts (plasma zap, rocket launch + blast, twin cannon), so it is never
-  // doubled. Cyber Zombies strike with the DOOM chainsaw (the zombie groan is
-  // layered under it as a flourish); Watchers die with the Pain Elemental's
-  // burst; Tanks break apart like the Juggernaut; Cyberbrutes strike with the
-  // Behemoth's own attack (user direction) and die with the Cyberdemon's roar.
-  cyber_zombies: { attack: "doom/dssawhit" },
-  watchers: { death: "doom/dspedth" },
-  tanks: { death: "units/dreadnought-death" },
+  // doubled. Cyber Zombies strike with a real chainsaw cut under the DOOM
+  // saw-bite (the zombie groan is layered under it as a flourish); Watchers
+  // bite in melee like the Cacodemon, wince and die like the Pain Elemental;
+  // Tanks wince with the Arch-Vile's pain cry and break apart like the
+  // Juggernaut; Cyberbrutes strike with the Behemoth's own attack (user
+  // direction) and die with the Cyberdemon's roar.
+  cyber_zombies: { attack: "units/cyber-zombie-chainsaw-attack" },
+  watchers: { attack: "units/doom-cacodemon-attack", hurt: "doom/dspepain", death: "doom/dspedth" },
+  tanks: { hurt: "doom/dsvipain", death: "units/dreadnought-death" },
   cyberbrutes: { attack: "units/behemoth-attack", death: "doom/dscybdth" }
 };
 

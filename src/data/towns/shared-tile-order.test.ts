@@ -30,9 +30,9 @@ describe("shared-tile build order — every town", () => {
     let sharedTiles = 0;
     for (const [faction, spec] of Object.entries(townBoardSpecs)) {
       const shared = spec.bars.filter((bar) => bar.length > 1);
-      // Bulwark's physical art only SHARES A STRIP between the Glacial Halls
-      // (gold dwelling) and the Sieidi; they stay independent builds (pinned by
-      // the Bulwark CONTROL below), so the main→special gate does not apply.
+      // Bulwark's official board shares one tile between two SPECIAL buildings
+      // (Sieidi + Altar of the Runes), not a core main + special, so the core-
+      // main check does not apply (pinned by the Bulwark CONTROL below).
       if (faction === "bulwark") {
         expect(shared.length, "bulwark: shared art strips").toBe(1);
         sharedTiles++;
@@ -82,13 +82,13 @@ describe("shared-tile build order — every town", () => {
     }
   });
 
-  it("CONTROL: Bulwark's shared Glacial Halls/Sieidi strip stays independent; the Altar requires only the Sieidi", () => {
+  it("CONTROL: Bulwark's shared tile is the Sieidi + Altar (official board); the Altar requires only the Sieidi", () => {
     const bulwarkShared = townBoardSpecs.bulwark.bars.filter((bar) => bar.length > 1);
-    expect(bulwarkShared).toEqual([["bulwark.dwelling_gold", "bulwark.sieidi"]]);
-    // Independent builds: neither building of the shared strip gates the other.
+    expect(bulwarkShared).toEqual([["bulwark.sieidi", "bulwark.altar"]]);
+    // The Glacial Halls stand on their own tile and never gate the Sieidi.
     expect(coreBuildingDefinitions["bulwark.sieidi"].prerequisites ?? []).not.toContain("bulwark.dwelling_gold");
-    expect(coreBuildingDefinitions["bulwark.dwelling_gold"].prerequisites ?? []).not.toContain("bulwark.sieidi");
-    // The Altar keeps its own Sieidi requirement (and no longer rides a dwelling strip).
+    // Like Factory's Mage Guild + Artifact Merchants, the tile's second
+    // building (the Altar) requires its first (the Sieidi).
     const altar = coreBuildingDefinitions["bulwark.altar"];
     expect(altar.prerequisites).toEqual(["bulwark.sieidi"]);
   });

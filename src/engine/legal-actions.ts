@@ -4,6 +4,7 @@ import { townBound } from "./town-veterancy";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
+import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
 import { isParallelWatchOnly, parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
@@ -172,6 +173,7 @@ import {
   commanderCastPower,
   commanderCastRuneCost,
   commanderDefenseReactionUnit,
+  commanderLethalCancelReactionUnit,
   commanderPrecisionReactionUnit,
   commanderPrecisionReactionAmount,
   commanderPrecisionIgnoresRangedPenalty,
@@ -1513,10 +1515,16 @@ export function getUnitMoveRange(
   unit: CombatUnitState,
   state?: GameState,
 ): number {
+  const astrologersSlow = state ? getActiveAstrologersCard(state)?.effect : undefined;
+  const applyAstrologersSlow = (range: number): number =>
+    astrologersSlow?.type === "COMBAT_GROUND_FLYING_SLOW" &&
+      (unit.type === "ground" || unit.type === "flying") && range > 0
+      ? Math.max(astrologersSlow.minimum, range + astrologersSlow.amount)
+      : range;
   const condition = state?.combat?.battlefieldCondition?.id;
   const battlefieldMoveShift = condition === "sinking-mud" && unit.type === "ground" ? -1
     : condition === "tail-wind" && unit.type === "flying" ? 1 : 0;
-  if (state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) return Math.max(0, 1 + Math.min(0, battlefieldMoveShift));
+  if (state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) return applyAstrologersSlow(Math.max(0, 1 + Math.min(0, battlefieldMoveShift)));
   const townLimit = state?.activeEffects.filter(e => effectAppliesToUnit(e, unit)).flatMap(e => e.modifiers.filter(m => m.type === "TOWN_MOVE_LIMIT").map(m => m.amount));
   const moveCap = townLimit?.length ? Math.min(...townLimit) : Infinity;
   const rooted = neutralTownDeepRooted(state, unit);
@@ -1591,7 +1599,7 @@ export function getUnitMoveRange(
       Math.max(1, base + armadilloMomentum + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
       moveCap,
     );
-    return conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty));
+    return applyAstrologersSlow(conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty)));
   }
   let bonus = 0;
   for (const effect of state.activeEffects) {
@@ -1623,7 +1631,7 @@ export function getUnitMoveRange(
     moveCap,
     Math.max(1, base + armadilloMomentum + bonus + commanderMoveBonus + artifactMoveBonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)),
   );
-  return conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty));
+  return applyAstrologersSlow(conditionMovement(Math.max(0, unrestrictedRange + artifactMovePenalty)));
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -1642,6 +1650,13 @@ export function getForceFieldPositions(combat: CombatState): number[] {
     .map((token) => token.position);
 }
 
+/** Spaces holding an artifact placed as a Wall (Ladybird of Luck). */
+export function getArtifactWallPositions(combat: CombatState): number[] {
+  return (combat.battlefieldTokens ?? [])
+    .filter((token) => token.kind === "artifact_wall")
+    .map((token) => token.position);
+}
+
 /**
  * Every unit card and obstacle token on the board is a Combat Obstacle.
  * They block movement paths for non-flying units and nobody can stop on them.
@@ -1653,6 +1668,12 @@ export function getBlockedSpaces(
   const blocked = new Set<number>(getCombatObstacles(combat));
 
   for (const position of getForceFieldPositions(combat)) {
+    blocked.add(position);
+  }
+
+  // An artifact lying on the board as a Wall (Ladybird of Luck) is a Combat
+  // Obstacle to EVERY unit, like a siege Wall.
+  for (const position of getArtifactWallPositions(combat)) {
     blocked.add(position);
   }
 
@@ -2131,6 +2152,10 @@ export function getAttackRollMode(
   // asserts it after the Precision/Golden Bow waiver). Needs `state` to read the
   // active effect.
   if (state && unitAttackRollDisadvantaged(state, attacker)) {
+    return "disadvantage";
+  }
+  if (state?.activeEffects.some(effect => effectAppliesToUnit(effect, defender) &&
+    effect.modifiers.some(modifier => modifier.type === "INCOMING_ATTACK_DISADVANTAGE"))) {
     return "disadvantage";
   }
 
@@ -4252,6 +4277,9 @@ function addPlayableCardActions(
     if (!ongoingCombatPlayWindowOpen(state, playerId, card.effect)) {
       continue;
     }
+    if (card.id === "specialty.urftin.4" && !ownActivationOpen) {
+      continue;
+    }
 
     if (card.effect.type === "TRANSFORM_UNIT") {
       for (const target of getTransformTargets(state, playerId, card.effect)) {
@@ -4271,6 +4299,10 @@ function addPlayableCardActions(
 
     // Necromancy is a map ability played after a combat win, never during one.
     if (card.effect.type === "NECROMANCY_REINFORCE") {
+      continue;
+    }
+    if ((card.effect.type === "ISRA_RETURN_UNIT" || card.effect.type === "ISRA_FETCH_CARD" || card.effect.type === "HEAL_TWO_UNITS") &&
+        !isOptionEffectPlayable(state, playerId, card.effect, "combat", cardId)) {
       continue;
     }
 
@@ -4305,18 +4337,22 @@ function addPlayableCardActions(
     // `damagedOnly` targets, so with NOTHING wounded the loop above yields ZERO
     // offers and the card was simply unplayable in combat — even though its
     // printed "…, then draw N cards" rider is exactly what the holder wants.
-    // Offered ONLY when the real play has no target at all, so it can never be
-    // a strictly-worse trap twin of a heal (a heal draws too). This SUPERSEDES
+    // Usually offered only when the real play has no target at all. Piquedram IV
+    // explicitly permits the draw-only instant even while a unit is available.
+    // This SUPERSEDES
     // the earlier "a HEAL_DAMAGE face is deliberately excluded from the
     // draw-only PLAY_CARD twin" scope note.
     if (
-      ownActivationOpen &&
+      (ownActivationOpen || card.id === "specialty.piquedram.4") &&
       (actions.length === offersBeforeTargets ||
-        card.effect.type === "SUMMON_CAMPUS_CATS") &&
+        card.effect.type === "SUMMON_CAMPUS_CATS" ||
+        card.id === "specialty.piquedram.4") &&
       healDrawOnlyRider(card.effect) > 0
     ) {
       actions.push({
-        label: `Play ${card.name} (draw ${healDrawOnlyRider(card.effect)}, no unit to heal)`,
+        label: card.id === "specialty.piquedram.4"
+          ? `Play ${card.name} (draw ${healDrawOnlyRider(card.effect)} only)`
+          : `Play ${card.name} (draw ${healDrawOnlyRider(card.effect)}, no unit to heal)`,
         action: {
           type: "PLAY_CARD",
           playerId,
@@ -4364,6 +4400,25 @@ export function getOffTurnCombatReactions(
   // their `combatAnytime` sides here.
   addCombatAnytimeSpecialtyPlays(actions, state, playerId, cards);
   return actions;
+}
+
+export function ulandInstantPlays(state: GameState, playerId: PlayerId): LegalAction[] {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || combat.outcome || combat.setup || !player || isHandLockedInCombat(state, playerId)) return [];
+  const out: LegalAction[] = [];
+  if (player.hand.includes("specialty.uland.1")) {
+    for (const unit of Object.values(combat.units)) {
+      if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) continue;
+      // windowJoinOnly: a held Cure joins windows others open (and still opens
+      // an attack window) but never pauses every activation / cast by itself.
+      out.push({ label: `Play Cure I on ${unit.cardName}`, windowJoinOnly: true, action: { type: "PLAY_REACTION", playerId, cardId: "specialty.uland.1", mode: "basic", target: { type: "unit", unitId: unit.id } } });
+    }
+  }
+  if (player.hand.includes("specialty.uland.4") && Object.values(combat.units).filter(isUnitAlive).length >= 2) {
+    out.push({ label: "Play Cure IV (choose 2 units)", windowJoinOnly: true, action: { type: "PLAY_REACTION", playerId, cardId: "specialty.uland.4", mode: "basic", target: { type: "none" } } });
+  }
+  return out;
 }
 
 /**
@@ -4584,6 +4639,11 @@ function isOptionEffectPlayable(
   excludeCardId?: CardId,
 ): boolean {
   switch (effect.type) {
+    case "ISRA_FETCH_CARD":
+      return israFetchCandidates(state, playerId, excludeCardId).length > 0;
+    case "ISRA_RETURN_UNIT":
+      return context === "combat" && israRemovedUnits(state, playerId).length > 0 &&
+        israEmptyPositions(state).length > 0;
     case "CANCEL_INSTANT":
       // This face needs the particular enemy Instant that is paused in the
       // Helm counter window. Ordinary combat/map card offers have no target.
@@ -4624,6 +4684,13 @@ function isOptionEffectPlayable(
     // NON-ranged active unit's activation, before it attacks, and only once.
     case "BOMBARDMENT_ATTACK":
       return context === "combat" && bombardmentArmable(state, playerId);
+    case "VERDISH_TRANSFER_DAMAGE":
+      return context === "combat" && Boolean(state.combat) &&
+        Object.values(state.combat!.units).some(source =>
+          source.controllerId === playerId && isUnitAlive(source) && source.damage > 0 &&
+          Object.values(state.combat!.units).some(recipient =>
+            recipient.id !== source.id && recipient.controllerId === playerId &&
+            isUnitAlive(recipient) && recipient.damage < recipient.maxHealth));
     case "BIND_COMMANDER_ARTIFACT": {
       // WOG Commander Artifact bind (Task 2): a map-only play, offered only when
       // the Commanders module is on, the player has a commander (a DEAD one is
@@ -4873,6 +4940,14 @@ function isOptionEffectPlayable(
     case "HEAL_DAMAGE":
     // Shaman's Puppet (option B): a Cure-style cleanse, played in combat on a unit.
     case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
+      return context === "combat" && Boolean(state.combat);
+    case "HEAL_TWO_UNITS":
+      return context === "combat" && state.combat != null && Object.values(state.combat.units).filter((unit) => isUnitAlive(unit)).length >= 2;
+    case "CREATE_URFTIN_CUBES":
+    case "CREATE_ULAND_CURE":
+    case "CREATE_VERDISH_ROUND_HEAL":
+    case "DARKSTORN_STONE_SKIN_ROUND":
+    case "CREATE_VERDISH_KILL_HEAL":
     case "MGQ_DRAW_AND_SPECIALTY_IMMUNITY":
     case "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS":
     case "AREA_DAMAGE_ALL_ADJACENT":
@@ -4906,6 +4981,8 @@ function isOptionEffectPlayable(
     // Luna's Fire Wall specialty (I/VI): place a Fire Wall token on an empty
     // space — a combat play (its empty-space targets are generated generically).
     case "PLACE_FIRE_WALL_FIXED":
+    // Ladybird of Luck's ongoing side: lay the card on an empty space as a Wall.
+    case "PLACE_ARTIFACT_WALL":
       return context === "combat" && Boolean(state.combat);
     case "GAIN_RUNES":
       // Kriv (Bulwark): bank Runes mid-combat — only a Bulwark caster benefits.
@@ -5198,6 +5275,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_ATTACK_BUFF" ||
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
+    effect.type === "CREATE_ULAND_CURE" ||
     effect.type === "MOVE_UNIT_ADJACENT" ||
     effect.type === "HEAL_DAMAGE" ||
     // Shaman's Puppet (option B): a Cure-style cleanse placed on a chosen unit.
@@ -5218,6 +5296,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     // Tarnum (Dungeon)'s Dragons IV: the option targets any battlefield space,
     // which identifies its five-space row/column.
     effect.type === "DAMAGE_BATTLEFIELD_LINE" ||
+    // Ladybird of Luck: the option's own empty-space target (where the Wall lands).
+    effect.type === "PLACE_ARTIFACT_WALL" ||
     effect.type === "PLACE_PARALYSIS" ||
     // Zilare's Forgetfulness specialty (the chosen enemy cannot attack next activation).
     effect.type === "FORGETFULNESS" ||
@@ -5766,6 +5846,7 @@ export function instantDrawOnlyRider(
  */
 function isDeckGainReactionUtility(effect: ConcreteEffect): boolean {
   return (
+    effect.type === "ISRA_FETCH_CARD" ||
     effect.type === "DECK_DIG_KEEP_ONE" ||
     effect.type === "DECK_DIG_KEEP_MATCHING" ||
     effect.type === "DRAW_TOP_ARTIFACT" ||
@@ -7342,7 +7423,7 @@ export function preHitHealReactions(
   return [
     ...firstAidHealActions(state, playerId),
     ...firstAidCardHealReactions(state, playerId),
-    ...instantHealSpellReactions(state, playerId, cards),
+    ...instantHealSpellReactions(state, playerId, cards).filter((offer) => offer.action.type !== "PLAY_REACTION" || offer.action.cardId !== "specialty.uland.1"),
   ];
 }
 
@@ -7884,12 +7965,41 @@ function addFortificationActions(
   activeUnit: CombatUnitState,
 ): void {
   const combat = state.combat;
-  const siege = combat?.siege;
-  if (!combat || !siege || activeUnit.attackedThisActivation) {
+  if (!combat || activeUnit.attackedThisActivation) {
     return;
   }
 
   const demolish = getDemolishAbility(activeUnit);
+
+  // Ladybird of Luck lying on the board "counts as a Wall" in ANY combat: the
+  // same demolition rule as a siege Wall (adjacent ground/flying unit, or a
+  // Cyclops-style demolisher at range; either side, "even by your own units").
+  for (const token of combat.battlefieldTokens ?? []) {
+    if (token.kind !== "artifact_wall") {
+      continue;
+    }
+    const adjacentDemolisher =
+      activeUnit.type !== "ranged" &&
+      isAdjacent(activeUnit.position, token.position);
+    if (!adjacentDemolisher && !demolish) {
+      continue;
+    }
+    const owner = state.players[token.controllerId]?.name ?? "its owner";
+    actions.push({
+      label: `${activeUnit.cardName} destroy the Ladybird of Luck Wall at ${getBattlefieldLabel(token.position)} (${owner} gains ${token.goldOnAttackRemoval ?? 0} gold)`,
+      action: {
+        type: "ATTACK_FORTIFICATION",
+        playerId,
+        attackerId: activeUnit.id,
+        target: { kind: "artifact-wall", position: token.position, tokenId: token.id },
+      },
+    });
+  }
+
+  const siege = combat.siege;
+  if (!siege) {
+    return;
+  }
   const targets: { kind: "wall" | "gate"; position: number }[] = [
     ...siege.walls.map((position) => ({ kind: "wall" as const, position })),
     ...(siege.gatePosition !== null
@@ -9390,6 +9500,8 @@ function getLegalActionsCore(
                         ? "Place a faction cube on"
                         : choice.kind === "commander-cast"
                           ? `${choice.abilityName}: cast on`
+                          : choice.kind === "commander-soul-link"
+                            ? `${choice.abilityName}: link with`
                           : choice.kind === "flat-damage" ||
                               choice.kind === "spell-splash" ||
                               choice.kind === "ballistics-splash" ||
@@ -10454,6 +10566,32 @@ function getLethalSaveReactions(
         type: "USE_UNIT_RESURRECTION",
         playerId,
         savingUnitId: unit.id,
+      },
+    });
+  }
+
+  // Factory Artificer "Emergency Repair": once per Combat, anywhere, cancel an
+  // ENEMY attack that would destroy a protected unit (Power 0 Engineers; 1 +
+  // Automatons; 2 + every mechanical unit) or flip it Pack→Few. Not a Deck
+  // card, so a hand lock never blocks it. The commander is Paralyzed on use.
+  const lethalCancelAttacker = combat.units[triggerEvent.attackerId];
+  const lethalCancelCommander = commanderLethalCancelReactionUnit(
+    state,
+    defender,
+    lethalCancelAttacker,
+    Boolean(triggerEvent.stackLayerOnly),
+  );
+  const lethalCancelCast = lethalCancelCommander
+    ? commanderCastOf(lethalCancelCommander)
+    : null;
+  if (lethalCancelCommander && lethalCancelCast && lethalCancelAttacker) {
+    reactions.push({
+      label: `${lethalCancelCommander.cardName}: ${lethalCancelCast.name} (Power ${commanderCastPower(state, lethalCancelCommander)}) — cancel ${lethalCancelAttacker.cardName}'s attack on ${defender.cardName}; the commander becomes Paralyzed (once per Combat)`,
+      action: {
+        type: "USE_COMMANDER_CAST_REACTION",
+        playerId,
+        commanderUnitId: lethalCancelCommander.id,
+        targetUnitId: defender.id,
       },
     });
   }
@@ -12359,6 +12497,15 @@ function getLegalReactionsForTriggerCore(
       addMoraleActions(reactions, state, player.id);
     }
 
+    for (const offer of ulandInstantPlays(state, player.id)) {
+      if (!reactions.some((existing) =>
+        existing.action.type === "PLAY_REACTION" &&
+        offer.action.type === "PLAY_REACTION" &&
+        existing.action.cardId === offer.action.cardId &&
+        JSON.stringify(existing.action.target) === JSON.stringify(offer.action.target))) {
+        reactions.push(offer);
+      }
+    }
     if (reactions.length > 0) {
       result[player.id] = reactions;
     }
@@ -13686,6 +13833,10 @@ export function isEffectLegalForTrigger(
       !state.combat.prep &&
       player.deck.length + player.discard.length > 0,
     );
+  }
+  if (effect.type === "ISRA_FETCH_CARD") {
+    return Boolean(state.combat && !state.combat.prep &&
+      israFetchCandidates(state, playerId, sourceCardId).length > 0);
   }
   if (effect.type === "DRAW_TOP_ARTIFACT") {
     if (!state.combat || state.combat.prep) {
@@ -16281,7 +16432,6 @@ function getParallelBystanderActions(
     });
     return actions;
   }
-
   // First-round opening Mulligan (option ON) — optional, non-blocking.
   if (player.canOpeningMulligan) {
     actions.push({
@@ -17013,6 +17163,18 @@ function getAdventureLegalActions(
       });
     }
     return actions;
+  }
+
+  const cardGames = getActiveAstrologersCard(state)?.effect;
+  if (cardGames?.type === "PAID_CARD_DRAW" && state.phase === "player-turn" &&
+      !state.pendingChoice && !state.reactionWindow &&
+      player.cardGamesUsedRound !== state.round &&
+      player.resources.gold >= cardGames.gold &&
+      player.deck.length + player.discard.length > 0) {
+    actions.push({
+      label: `Card Games: pay ${cardGames.gold} gold to draw 1 card`,
+      action: { type: "ASTROLOGERS_CARD_GAMES", playerId },
+    });
   }
 
   // First-round opening-hand Mulligan (option ON): after fill-to-limit, optional

@@ -804,11 +804,13 @@ export function CommanderStatsPanel({
                 )}
               </span>
             );
+          } else if (key === "attack" && gradeIndex >= 2) {
+            detail = <><b style={{ color: GOLD }}>+1 Attack on a “−1” Attack die roll</b>{stanceLift ? " · +1 stance" : ""}</>;
           } else if (key === "defense") {
-            detail = gradeIndex === COMMANDER_DEFENSE_TOKEN_GRADE
-              ? <><b style={{ color: GOLD }}>+1 def when attacked</b> — rolls the Defend die (a “+1” face gives +1 Defense).</>
-              : gradeIndex >= 3
-                ? <span style={{ opacity: 0.85 }}>Reliable flat Defense (no die).</span>
+            detail = gradeIndex >= 3
+              ? <><b style={{ color: GOLD }}>Defense token</b> — +1 Defense on a “0” or “+1” Defend roll.</>
+              : gradeIndex === COMMANDER_DEFENSE_TOKEN_GRADE
+                ? <><b style={{ color: GOLD }}>+1 def when attacked</b> — rolls the Defend die (a “+1” face gives +1 Defense).</>
                 : <span style={{ opacity: 0.7 }}>{bonusOverBase > 0 ? `+${bonusOverBase} over base ${base}.` : `Base ${base}.`}</span>;
           } else {
             detail = (
@@ -1503,6 +1505,9 @@ export function CommanderLevelUpOverlay({
 
 function gradeValueLabel(key: CommanderStatKey, grade: CommanderGrade): string {
   const value = COMMANDER_GRADE_VALUES[key][grade];
+  if (key === "attack" && grade >= 2) {
+    return `${value} (+1 on −1 roll)`;
+  }
   if (key === "damage") {
     // Damage grade = number of extra attack dice rolled (not a flat bonus).
     return value === 0 ? "no dice" : `${value} ${value === 1 ? "die" : "dice"}`;
@@ -1515,9 +1520,8 @@ function gradeValueLabel(key: CommanderStatKey, grade: CommanderGrade): string {
     const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grade];
     return value > 0 ? `Power ${value}, −${ward} ward` : `−${ward} ward, immune`;
   }
-  if (key === "defense" && grade === COMMANDER_DEFENSE_TOKEN_GRADE) {
-    // Grade II is Defense 2 PLUS the "+1 when attacked" Defense token.
-    return `${value} +token`;
+  if (key === "defense" && grade >= COMMANDER_DEFENSE_TOKEN_GRADE) {
+    return grade >= 3 ? `${value} +token (0/+1)` : `${value} +token`;
   }
   return `${value}`;
 }
@@ -1532,6 +1536,8 @@ function gradeUpBenefit(key: CommanderStatKey, grade: CommanderGrade): string {
   const value = COMMANDER_GRADE_VALUES[key][grade];
   switch (key) {
     case "attack":
+      if (grade === 2) return `Attack ${value}; +1 Attack on a −1 Attack die roll`;
+      if (grade >= 3) return `Attack ${value}; keeps +1 Attack on a −1 roll`;
       return `Attack ${value} (+${value - base} over base)`;
     case "health":
       return `Health ${value} (+${value - base} over base)`;
@@ -1546,7 +1552,7 @@ function gradeUpBenefit(key: CommanderStatKey, grade: CommanderGrade): string {
       if (grade === COMMANDER_DEFENSE_TOKEN_GRADE) {
         return `Defense ${value} + a "+1 when attacked" Defend die`;
       }
-      return grade >= 3 ? `Defense ${value} (reliable, no die)` : `Defense ${value}`;
+      return grade >= 3 ? `Defense ${value} + Defense token (+1 Defense on a 0 or +1 roll)` : `Defense ${value}`;
     case "damage":
       return `Roll ${value} extra attack ${value === 1 ? "die" : "dice"} on every attack (Might)`;
     case "magic":

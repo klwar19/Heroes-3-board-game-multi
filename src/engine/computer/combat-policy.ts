@@ -4,7 +4,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
 import { adventurePvpTroopLoss, getUnitSide } from "../adventure";
-import { commanderAdjacentAllies, commanderCastCandidates, commanderCastOf, commanderCastPower } from "../commanders";
+import { commanderAdjacentAllies, commanderCastCandidates, commanderCastOf, commanderCastPower, commanderEnemyDamageAmount } from "../commanders";
 import { commanderApSkillOf, commanderCastTierIndex, commanderValuesMagicGrade } from "@/data/commanders";
 import {
   ATTACKER_BACKLINE,
@@ -1788,10 +1788,11 @@ function commanderCastScore(
       // reachable enemy is a real swing; otherwise it is a free chip worth
       // taking over idling. Reads the engine's own candidate list + tier.
       const state = observation.state as unknown as GameState;
-      const amount =
-        cast.effect.damageByPower[commanderCastTierIndex(commanderCastPower(state, unit))];
+      const tier = commanderCastTierIndex(commanderCastPower(state, unit));
+      const damageByPower = cast.effect.damageByPower;
       const targets = commanderCastCandidates(state, unit, cast.abilityId);
-      const lethal = targets.some((target) => unitRemainingHealth(target) <= amount);
+      const lethal = targets.some((target) =>
+        unitRemainingHealth(target) <= commanderEnemyDamageAmount(unit, target, damageByPower, tier));
       const bestThreat = targets.reduce((best, target) => Math.max(best, unitThreatValue(target)), 0);
       base = lethal ? 700 : 590 + Math.min(40, Math.round(bestThreat / 3));
       swing = lethal;
@@ -2116,6 +2117,28 @@ export function scoreCombatAction(
     case "ATTACK_FORTIFICATION": {
       const breacher = combat.units[action.attackerId];
       const siege = combat.siege;
+      // Ladybird of Luck Wall: tearing it down pays its OWNER 2 gold. Our own
+      // Wall is a free 2 gold only when this unit has no enemy to hit; an
+      // enemy's Wall is only worth breaking when nothing else is in reach (it
+      // gifts them gold), well below a real attack.
+      if (action.target.kind === "artifact-wall") {
+        const wallToken = combat.battlefieldTokens?.find(
+          (token) => token.id === (action.target as { tokenId: string }).tokenId,
+        );
+        const enemyInReach =
+          breacher &&
+          livingEnemyUnits(combat, breacher.controllerId).some(
+            (enemy) =>
+              breacher.type === "ranged" ||
+              isAdjacent(breacher.position, enemy.position),
+          );
+        if (enemyInReach) {
+          return { score: -200, policy: "combat.artifact-wall-skip" };
+        }
+        return wallToken?.controllerId === breacher?.controllerId
+          ? { score: 450, policy: "combat.artifact-wall-cash-in" }
+          : { score: 120, policy: "combat.artifact-wall-breach" };
+      }
       // NEVER tear down our OWN Walls/Gate. The printed rule allows it ("even
       // by your own defending units", see `attackFortification`) and the offer
       // is deliberately left legal for a human, but a computer defending its

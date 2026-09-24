@@ -1969,12 +1969,21 @@ export function getSpendCubeAttackAgain(
 /**
  * Factory Bounty Hunters (Neutral): the "Preemptive Shot" retaliation — retaliate
  * before the attacker's blow lands, and against non-adjacent attackers too.
+ *
+ * `attackerPosition` (when known) filters out a `nonAdjacentOnly` copy (the
+ * printed Neutral card: only a NON-adjacent attacker provokes it) for an
+ * adjacent attacker. Without a position every copy counts — the conservative
+ * read for callers that cannot yet say where the attack comes from.
  */
 export function getPreemptiveRetaliation(
-  unit: CombatUnitState
+  unit: CombatUnitState,
+  attackerPosition?: number
 ): { abilityId: string; abilityName: string } | null {
   for (const ability of getAbilitiesWithEffect(unit, "PREEMPTIVE_RETALIATION")) {
     if (ability.effect?.type === "PREEMPTIVE_RETALIATION") {
+      if (ability.effect.nonAdjacentOnly && attackerPosition !== undefined && isAdjacent(attackerPosition, unit.position)) {
+        continue;
+      }
       return { abilityId: ability.id, abilityName: ability.name };
     }
   }
@@ -2141,6 +2150,48 @@ export function getAdjacentEnemyInitiativeAuraDelta(
       )
     );
   }, 0);
+}
+
+/**
+ * Bulwark Jotunns "Enemy [flying] units have -1/-2 [initiative]": signed live
+ * Initiative delta imposed on `unit` by living ENEMY carriers on the
+ * battlefield whose aura names `unit`'s type. Any distance; read from current
+ * board state on every call (nothing cached), so the shift ends immediately
+ * when the carrier dies.
+ */
+export function getEnemyUnitTypeInitiativeAuraDelta(
+  combat: CombatState,
+  unit: CombatUnitState
+): number {
+  if (unit.position < 0) {
+    return 0;
+  }
+  return Object.values(combat.units).reduce((total, source) => {
+    if (
+      source.id === unit.id ||
+      source.controllerId === unit.controllerId ||
+      !isAlive(source) ||
+      source.position < 0
+    ) {
+      return total;
+    }
+    return (
+      total +
+      getAbilitiesWithEffect(source, "ENEMY_UNIT_TYPE_INITIATIVE_AURA").reduce(
+        (sum, ability) =>
+          sum +
+          (ability.effect?.type === "ENEMY_UNIT_TYPE_INITIATIVE_AURA" && ability.effect.unitType === unit.type
+            ? ability.effect.amount
+            : 0),
+        0
+      )
+    );
+  }, 0);
+}
+
+/** Bulwark Yetis (Neutral): enemy ongoing effects on this unit last only one round. */
+export function hasEnemyOngoingEffectsLastOneRound(unit: CombatUnitState): boolean {
+  return hasUnitAbilityEffect(unit, "ENEMY_ONGOING_EFFECTS_LAST_ONE_ROUND");
 }
 
 /** MGQ combat-start morale grants, returned individually for precise event logs. */

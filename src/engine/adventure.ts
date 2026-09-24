@@ -1,4 +1,5 @@
 import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/data/cards/astrologers";
+import { grantFreeTownBuilding } from "./adventure-reducer";
 import { eventCardDefinitions, type EventCardDefinition } from "@/data/cards/events";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { spellDeckBinhExpert } from "@/data/cards/spells";
@@ -50,6 +51,7 @@ import {
   applyAnimeFactionResourceRoundPenalty
 } from "./anime-faction-penalties";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { deliverPreOrderWarMachines } from "./astrologers-pre-order";
 import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
   gainGradeProgress,
@@ -252,6 +254,7 @@ import { combatScriptEffectLines } from "@/data/map/combat-scripts";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   applyUnderdogUnitExperience,
+  combatUnitRankScheduleSide,
   diluteUnitExperienceForUpgrade,
   grantArmyUnitExperience,
   neutralBankMirrorXp,
@@ -1320,8 +1323,10 @@ export function materializeTileFields(
     if (field.location === "obelisk") {
       // SPECIFIC (per-tile) plan overrides the map-wide config field-by-field
       // (an unset field falls back — the settlement-plan fallback semantic).
-      const obelisks = adventure.mapPreset?.obelisks;
+      // An INDIVIDUAL per-tile plan replaces the map-wide config outright
+      // (unset = printed rules); the Obelisk ROLE itself stays map-wide.
       const perTile = tile.objectPlans?.obelisk;
+      const obelisks = perTile?.individual ? undefined : adventure.mapPreset?.obelisks;
       applyCustomGuardToField(field, perTile?.guard ?? obelisks?.guard);
       applyBreakFieldOptions(field, withPerTileBreakGate(mergeObjectBreakFlags(perTile, obelisks), perTile));
       stampDesignerFieldReward(field, perTile?.reward ?? obelisks?.reward, perTile?.vp ?? obelisks?.vp);
@@ -1329,8 +1334,10 @@ export function materializeTileFields(
         field.designerWinCondition = true;
       }
     } else if (field.location === "mine") {
-      const mines = adventure.mapPreset?.mines;
       const perTile = tile.objectPlans?.mine;
+      // INDIVIDUAL mine: the per-tile plan replaces the map-wide Mine config
+      // outright (unset = printed rules), so it can also switch a global flag OFF.
+      const mines = perTile?.individual ? undefined : adventure.mapPreset?.mines;
       // Only OVERRIDE when a designer guard is set; printed mine difficulty stays.
       const guard = perTile?.guard ?? mines?.guard;
       if (guard) {
@@ -1490,12 +1497,15 @@ export function materializeTileFields(
  */
 function withPerTileBreakGate(
   merged: ReturnType<typeof mergeObjectBreakFlags>,
-  perTile: { breakField?: boolean } | undefined
+  perTile: { breakField?: boolean; breakFromGlobal?: boolean } | undefined
 ): (NonNullable<ReturnType<typeof mergeObjectBreakFlags>> & { breakTileGate?: boolean }) | undefined {
   if (!merged) {
     return undefined;
   }
-  return { ...merged, breakTileGate: perTile?.breakField === true };
+  // A Break the designer copied from the map-wide flag (breakFromGlobal) stays
+  // per-field, exactly like the map-wide flag itself — only a Break ticked on
+  // the tile seals the whole tile.
+  return { ...merged, breakTileGate: perTile?.breakField === true && perTile.breakFromGlobal !== true };
 }
 
 function mergeObjectBreakFlags(
@@ -11141,6 +11151,45 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       }
+      case "ASTROLOGERS_FREE_BUILD_OFFER": {
+        if (getActiveAstrologersCard(state)?.effect.type !== "FREE_NON_DWELLING_BUILD_ALL") break;
+        const player = state.players[visit.playerId];
+        const candidates = Object.values(state.towns)
+          .filter((town) => town.controllerId === visit.playerId)
+          .flatMap((town) => (coreFactionDefinitions[town.factionId ?? player?.factionId ?? ""]?.buildings ?? [])
+            .filter((buildingId) => !buildingId.includes(".dwelling_"))
+            .flatMap((buildingId) => {
+              const building = coreBuildingDefinitions[buildingId];
+              return building?.implementationStatus === "implemented" &&
+                !town.buildings.includes(building.id) &&
+                (building.prerequisites ?? []).every((id) => town.buildings.includes(id))
+                  ? [{ town, building }] : [];
+            }));
+        if (candidates.length === 0) break;
+        const ownsSeveralTowns = new Set(candidates.map(({ town }) => town.id)).size > 1;
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: "New Buildings: choose one non-Dwelling building to construct for free",
+          options: [
+            ...candidates.map(({ town, building }) => ({
+              label: ownsSeveralTowns
+                ? `Build ${building.name} in the ${coreFactionDefinitions[town.factionId ?? player?.factionId ?? ""]?.name ?? "captured"} town (free)`
+                : `Build ${building.name} (free)`,
+              steps: [{ type: "ASTROLOGERS_FREE_BUILD" as const, townId: town.id, buildingId: building.id }]
+            })),
+            { label: "Skip", steps: [] }
+          ]
+        });
+        break;
+      }
+      case "ASTROLOGERS_FREE_BUILD": {
+        const town = state.towns[step.townId];
+        const factionBuildings = coreFactionDefinitions[town?.factionId ?? state.players[visit.playerId]?.factionId ?? ""]?.buildings ?? [];
+        if (getActiveAstrologersCard(state)?.effect.type !== "FREE_NON_DWELLING_BUILD_ALL" ||
+          step.buildingId.includes(".dwelling_") || !factionBuildings.includes(step.buildingId)) break;
+        grantFreeTownBuilding(state, visit.playerId, step.townId, step.buildingId, "New Buildings");
+        break;
+      }
       case "DISRUPTION_ROTATE_TILE": {
         // The picked tile: choose its new orientation (any of the five others —
         // "freely rotate"), or back out to the tile pick.
@@ -19258,7 +19307,15 @@ export function makeCombatUnitFromArmy(
   // Creature Bank card (side "bank") trains too (USER RULE 2026-08-15).
   const unitExperience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
   const effectiveJob = mgqEffectiveJob(armyUnit);
-  const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience, effectiveJob);
+  // The same track the applyUnitCurrentSide recompute folds (combatUnitRankFold):
+  // a Neutral-owned or printed-Neutral-side stack follows its Neutral-side track.
+  const rankFold = unitRankFold(
+    armyUnit.unitDefId,
+    def.tier,
+    unitExperience,
+    effectiveJob,
+    combatUnitRankScheduleSide({ variant, controllerId, bankUnit: armyUnit.side === "bank" })
+  );
   // Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory): a
   // rulebook Stack Token baked onto this army card folds one stat bonus (+1
   // Attack/Defense/Health or +2 Initiative) into the printed side, like
@@ -20476,6 +20533,7 @@ export function migrateParallelEventRewards(state: GameState): void {
     const identified = reward.steps.some((step) => isEventStep(step) ||
       (astro && "prompt" in step && typeof step.prompt === "string" && step.prompt.startsWith(`${astro.name}:`)) ||
       (step.type === "DISRUPTION_ROTATE_OFFER" && astro?.effect.type === "ROTATE_TILE_EACH") ||
+      (step.type === "ASTROLOGERS_FREE_BUILD_OFFER" && astro?.effect.type === "FREE_NON_DWELLING_BUILD_ALL") ||
       (step.type === "REINFORCE_FREE" && astro?.effect.type === "FIRST_COMBAT_GROUND_ATTACK") ||
       (step.type === "WAR_MACHINE_GRANT_OFFER" && astro?.effect.type === "GRANT_WAR_MACHINE_CHOICE") ||
       (step.type === "NEUTRAL_RECRUIT_OFFER" && astro?.effect.type === "RECRUIT_NEUTRAL_DRAW") ||
@@ -22002,6 +22060,15 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
     return;
   }
 
+  // Delivery is due at this player's next start, even if Pre-Order has since
+  // left the proclamation slot. It precedes the hand refresh and its limit.
+  for (const cardId of deliverPreOrderWarMachines(state, playerId)) {
+    appendEvent(state, {
+      type: "EVENT_NOTE", playerId,
+      message: `Pre-Order delivers ${cardLibrary[cardId]?.name ?? cardId} to ${player.name}'s hand.`
+    });
+  }
+
   // Turn-scoped ongoing cards (Logistics, Scouting…) last until their owner's
   // next turn starts. Round-scoped cards such as Luck are handled at round end.
   const expired = expireEffectsForTurnEnd(state, playerId);
@@ -22610,6 +22677,8 @@ function resolveAstrologersCardCore(state: GameState, card: AstrologersCardDefin
     case "DEFEND_FLAT_BONUS":
     case "EVENT_DRAW_PICK":
     case "ABILITY_ROLL_REROLL":
+    case "PAID_CARD_DRAW":
+    case "DEFER_WAR_MACHINE":
       // Passive while the card stays face up (read where the effect applies:
       // Sanctuary's PvP ban in startPlayerCombat via pvpAttacksBanned; the Spells
       // Search widening in openSharedDeckSearch; Pirates' combat-win die in
@@ -22626,6 +22695,21 @@ function resolveAstrologersCardCore(state: GameState, card: AstrologersCardDefin
       // Plastic Tray's flat Defend payout in resolveDefendBonus (reducer.ts);
       // Forty Thieves' 2-card Event draw in drawEventCard; Multilingual Bron's
       // ability-roll reroll at each roll site via abilityRollRerollActive).
+      break;
+    case "SEARCH_SPELL_OR_ARTIFACT":
+      for (const playerId of playerIds) {
+        adventure.rewardQueue.push({
+          playerId, kind: "visit-steps", steps: [{
+            type: "CHOOSE_ONE",
+            prompt: "Oscillating Overloader: Search (2) the Spell or Artifact deck?",
+            options: [
+              { label: "Search (2) Spell deck", steps: [{ type: "SEARCH_SHARED_DECK", deckId: "spells", count: card.effect.count }] },
+              { label: "Search (2) Artifact deck", steps: [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: card.effect.count }] },
+              { label: "Skip", steps: [] }
+            ]
+          }]
+        });
+      }
       break;
     case "FIRST_COMBAT_GROUND_ATTACK": {
       // Crag Hack: the ground +1 latches onto the round's first combat in
@@ -22725,6 +22809,14 @@ function resolveAstrologersCardCore(state: GameState, card: AstrologersCardDefin
       // Tokens already refreshed this round: apply the delta immediately.
       for (const hero of Object.values(state.heroes)) {
         hero.movementPoints = Math.max(0, hero.movementPoints + card.effect.amount);
+      }
+      break;
+    case "COMBAT_GROUND_FLYING_SLOW":
+    case "BUILDING_GOLD_DISCOUNT":
+      break;
+    case "FREE_NON_DWELLING_BUILD_ALL":
+      for (const playerId of playerIds) {
+        adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps: [{ type: "ASTROLOGERS_FREE_BUILD_OFFER" }] });
       }
       break;
     case "RESHUFFLE_ARTIFACTS_SPELLS":

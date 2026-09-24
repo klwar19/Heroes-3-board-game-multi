@@ -16,7 +16,13 @@ import { MGQ_TOWN_BOARD_BARS } from "@/data/anime/mgq";
  *    lives in `geometry` as fractions of the scan size, measured once from the
  *    shared Archon die-cut.
  *
- *  - DESIGNED boards (bulwark, factory): the view draws the same die-cut layout
+ *  - PRINTED FACE boards (factory, forge, bulwark): one plaque-free empty face
+ *    (frame, rule cards, tracks, wells) plus seven aligned built tiles from
+ *    scripts/build-town-board-print.mjs. Like the physical board, an unbuilt
+ *    bar shows its name + cost plate(s) over the (blurred) empty slot; a built
+ *    bar shows its tile with the printed building icon(s) and no cost.
+ *
+ *  - DESIGNED boards (anime/wuxia towns): the view draws the same die-cut layout
  *    in CSS: seven aligned built inserts over an empty townscape, definition
  *    cards in the bottom-left corner, and the AUTHENTIC printed resource-track
  *    + token-well panel (`panelImage`, cropped from the Stronghold fan scan by
@@ -61,6 +67,32 @@ export type TownBoardGeometry = {
    */
   panel?: { left: number; top: number; right: number; bottom: number };
 };
+
+/** The round green building symbols printed on the physical building tiles,
+ *  cut from the real Castle full scan (public/factory-cards/town-board/). */
+export type TownBoardTileIcon =
+  | "tent"
+  | "cityhall"
+  | "gears"
+  | "citadel"
+  | "mageguild"
+  | "star-bronze"
+  | "star-silver"
+  | "star-gold";
+
+export function townBoardTileIconUrl(icon: TownBoardTileIcon): string {
+  return `/factory-cards/town-board/icon-${icon}.webp`;
+}
+
+/** Printed face boards (Factory, Forge, Bulwark) built by
+ *  scripts/build-town-board-print.mjs: a plaque-free empty face plus seven
+ *  aligned built tiles. */
+const printedFace = (factionId: string) => ({
+  boardFaceImage: `/factory-cards/town-board/${factionId}-board-empty.webp`,
+  physicalPanoramaTiles: true,
+  barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/factory-cards/town-board/${factionId}-built-${slot}.webp`),
+  printedPanelInBase: true
+});
 
 export type TownBoardSpec = {
   factionId: string;
@@ -109,6 +141,13 @@ export type TownBoardSpec = {
     /** Printed face shown when BOTH of the pair are built. */
     bothBuiltImage: string;
   };
+  /**
+   * Printed built-tile icons (face boards): the round green building symbol
+   * each built tile carries at its foot, per building id. The view overlays
+   * them on the built tile — both icons on the shared tile, the not-yet-built
+   * half greyed — exactly like the physical tiles (see the Castle full scan).
+   */
+  tileIcons?: Readonly<Record<string, TownBoardTileIcon>>;
   /** Seven bars, left to right; the one two-entry bar is the shared bar. */
   bars: readonly (readonly string[])[];
   geometry: TownBoardGeometry;
@@ -489,32 +528,49 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   bulwark: {
     factionId: "bulwark",
-    // Official physical board composition, redrawn as aligned unbuilt scenery
-    // and seven matching built inserts. Each completed bar reveals one strip.
-    panoramaImage: "/assets/town-board/bulwark-panorama-unbuilt.webp",
-    physicalPanoramaTiles: true,
-    barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/assets/town-board/bulwark-panorama-tile-${slot}.webp`),
-    panelImage: DESIGNED_PANEL_IMAGE,
+    // Printed face in the official format: the generic Archon frame + rule
+    // cards + tracks with the Bulwark unbuilt panorama in the window; built
+    // tiles are aligned crops of the fully-built panorama.
+    ...printedFace("bulwark"),
+    tileIcons: {
+      "bulwark.city_hall": "cityhall",
+      "bulwark.citadel": "citadel",
+      "bulwark.dwelling_bronze": "star-bronze",
+      "bulwark.dwelling_silver": "star-silver",
+      "bulwark.dwelling_gold": "star-gold",
+      "bulwark.sieidi": "tent",
+      "bulwark.altar": "gears",
+      "bulwark.mage_guild": "mageguild"
+    },
+    // The official Bulwark board's order (Kickstarter component sheet): the
+    // Sieidi and its Altar share one tile; the Bronze dwelling sits last.
     bars: [
       ["bulwark.city_hall"],
       ["bulwark.citadel"],
-      ["bulwark.dwelling_bronze"],
       ["bulwark.dwelling_silver"],
-      ["bulwark.dwelling_gold", "bulwark.sieidi"],
-      ["bulwark.altar"],
-      ["bulwark.mage_guild"]
+      ["bulwark.dwelling_gold"],
+      ["bulwark.sieidi", "bulwark.altar"],
+      ["bulwark.mage_guild"],
+      ["bulwark.dwelling_bronze"]
     ],
-    geometry: DESIGNED_GEOMETRY
+    geometry: FACTORY_GEOMETRY
   },
   factory: {
     factionId: "factory",
     // The whole face, not just a townscape: blank plaques and rule cards receive
     // live names, costs and rules in the view; each built strip is an aligned
     // crop of this face's built counterpart.
-    boardFaceImage: "/factory-cards/factory-board-empty.webp",
-    physicalPanoramaTiles: true,
-    barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/factory-cards/factory-board-built-strip-${slot}.webp`),
-    printedPanelInBase: true,
+    ...printedFace("factory"),
+    tileIcons: {
+      "factory.bank": "tent",
+      "factory.city_hall": "cityhall",
+      "factory.mage_guild": "mageguild",
+      "factory.artifact_merchants": "gears",
+      "factory.dwelling_bronze": "star-bronze",
+      "factory.citadel": "citadel",
+      "factory.dwelling_silver": "star-silver",
+      "factory.dwelling_gold": "star-gold"
+    },
     bars: [
       ["factory.bank"],
       ["factory.city_hall"],
@@ -530,10 +586,17 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
     factionId: "forge",
     // Same whole-face treatment as Factory: live names/costs/rules are drawn
     // onto the blank plaques and rule cards; built strips are aligned crops.
-    boardFaceImage: "/assets/town-board/forge-board-empty.webp",
-    physicalPanoramaTiles: true,
-    barTileImages: [1, 2, 3, 4, 5, 6, 7].map((slot) => `/assets/town-board/forge-board-built-strip-${slot}.webp`),
-    printedPanelInBase: true,
+    ...printedFace("forge"),
+    tileIcons: {
+      "forge.city_hall": "cityhall",
+      "forge.mage_guild": "mageguild",
+      "forge.resource_silo": "tent",
+      "forge.dwelling_bronze": "star-bronze",
+      "forge.dwelling_silver": "star-silver",
+      "forge.citadel": "citadel",
+      "forge.toxic_moat": "gears",
+      "forge.dwelling_gold": "star-gold"
+    },
     bars: [
       ["forge.city_hall"],
       ["forge.mage_guild"],

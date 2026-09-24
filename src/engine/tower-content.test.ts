@@ -92,7 +92,7 @@ describe("Tower content", () => {
       valuables: 1
     });
 
-    expect(faction.heroes).toEqual(["cyra", "dracon", "iona", "josephine", "solmyr", "torosar"]);
+    expect(faction.heroes).toEqual(["cyra", "dracon", "iona", "josephine", "piquedram", "solmyr", "torosar"]);
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, heroId).toBeDefined();

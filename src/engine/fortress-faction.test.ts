@@ -82,7 +82,7 @@ describe("Fortress faction wiring", () => {
     // Bron/Wystan/Tazar/Adrienne ship board art; Merist (batch 4), Gerwulf
     // (batch 5, the Ballista Beastmaster) and Tarnum (batch 6, the Basilisks
     // Beastmaster) are placeholder-art PC-portrait heroes.
-    expect(fortress.heroes).toEqual(["bron", "wystan", "tazar", "adrienne", "merist", "gerwulf", "tarnum_fortress"]);
+    expect(fortress.heroes).toEqual(["bron", "wystan", "korbac", "tazar", "adrienne", "merist", "verdish", "gerwulf", "tarnum_fortress"]);
     // 7 creatures (3 bronze, 2 silver, 2 gold) and 8 buildings (6 standard + 2 special).
     expect(fortress.units).toHaveLength(7);
     expect(fortress.buildings).toHaveLength(8);

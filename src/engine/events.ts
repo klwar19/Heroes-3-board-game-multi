@@ -1,4 +1,4 @@
-import { townVeterancy, townAllyLost, townArtifactUsed } from "./town-veterancy";
+import { townVeterancy, townAllyLost, townArtifactUsed, townNagaMend } from "./town-veterancy";
 import { neutralTownAllyLost, neutralTownCardDamageReduction, neutralTownCardDamageResolved } from "./neutral-town-veterancy";
 import type { GameEvent, GameState, SourceRef } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -13,12 +13,35 @@ import {
   getSpecialtyDamageReduction,
   getSpellAndSpecialtyDamageReductionAura,
 } from "./unit-abilities";
-import { isAdjacent } from "./battlefield";
+import { getBattlefieldDistance, isAdjacent } from "./battlefield";
 import { cardLibrary } from "@/data/cards/library";
 import { forgeTankDied, forgeUnitMoved, forgeVeterancy } from "./forge";
 import { veteranTrigger } from "./faction-veterancy";
+import { markUnitRemovedIfNeeded } from "./combat-units";
+import { deferPreOrderWarMachine } from "./astrologers-pre-order";
 
 type EventDraft = Omit<GameEvent, "id">;
+
+/** Scorching Earth places a damage token without a normal damage event. */
+export function transferUnloggedSoulLinkDamage(state: GameState, targetId: string, amount: number): void {
+  const combat = state.combat;
+  const target = combat?.units[targetId];
+  if (!combat || !target || amount <= 0) return;
+  const commander = Object.values(combat.units).find(unit =>
+    unit.commanderSlug === "soul_eater" && unit.controllerId === target.controllerId &&
+    unit.soulLinkTargetId === target.id && unit.damage < unit.maxHealth &&
+    unit.soulLinkUsedRound !== combat.round
+  );
+  if (!commander) return;
+  const transferred = Math.ceil(amount / 2);
+  target.damage = Math.max(0, target.damage - transferred);
+  commander.damage += transferred;
+  commander.soulLinkUsedRound = combat.round;
+  appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} takes ${transferred} damage for ${target.cardName}.` });
+  const assigned = appendEvent(state, { type: "DAMAGE_ASSIGNED", source: { type: "system" }, target: { type: "unit", unitId: commander.id }, amount: transferred, damageKind: "effect", soulLinkTransfer: true });
+  noteUnitDamagedForTokens(state, commander, assigned.amount);
+  markUnitRemovedIfNeeded(state, commander);
+}
 
 /**
  * Forge Cyberbrutes (HEAL_PER_KILL): "Each time this unit kills a unit, it
@@ -273,6 +296,14 @@ export function appendEvent<T extends EventDraft>(
   event: T,
 ): Extract<GameEvent, { type: T["type"] }> {
   let eventDraft: EventDraft = event;
+  // Every normal acquisition path emits this after adding the card to hand:
+  // markets, War Machine hexes, McGiver, and played specialties all converge here.
+  if (event.type === "WAR_MACHINE_BOUGHT") {
+    const bought = event as unknown as { playerId: string; cardId: string };
+    if (deferPreOrderWarMachine(state, bought.playerId, bought.cardId)) {
+      eventDraft = { ...event, deferred: true } as EventDraft;
+    }
+  }
   let damageReduction:
     | { unitId: string; amount: number; abilityId: string }
     | undefined;
@@ -284,10 +315,12 @@ export function appendEvent<T extends EventDraft>(
     amount?: number;
     source?: SourceRef;
     damageKind?: string;
+    soulLinkTransfer?: boolean;
   };
+  const directSoulLinkDamage = damageEvent.soulLinkTransfer === true;
   const payingDebt = Boolean(damageEvent.target?.unitId && state.combat?.units[damageEvent.target.unitId]?.elementalVeterancy?.payingDebt);
   if (
-    !payingDebt && damageEvent.type === "DAMAGE_ASSIGNED" &&
+    !payingDebt && !directSoulLinkDamage && damageEvent.type === "DAMAGE_ASSIGNED" &&
     damageEvent.target?.type === "unit" &&
     damageEvent.target.unitId &&
     (damageEvent.amount ?? 0) > 0
@@ -322,7 +355,7 @@ export function appendEvent<T extends EventDraft>(
     }
   }
   if (
-    !payingDebt && damageEvent.type === "DAMAGE_ASSIGNED" &&
+    !payingDebt && !directSoulLinkDamage && damageEvent.type === "DAMAGE_ASSIGNED" &&
     damageEvent.target?.unitId &&
     damageEvent.source
   ) {
@@ -344,7 +377,7 @@ export function appendEvent<T extends EventDraft>(
     }
   }
 
-  if (!payingDebt && damageEvent.type === "DAMAGE_ASSIGNED" && damageEvent.target?.unitId) {
+  if (!payingDebt && !directSoulLinkDamage && damageEvent.type === "DAMAGE_ASSIGNED" && damageEvent.target?.unitId) {
     const unit = state.combat?.units[damageEvent.target.unitId];
     let amount = (eventDraft as { amount?: number }).amount ?? 0;
     if (unit?.elementalVeterancy?.solidifyUntilRound !== undefined && amount > 0 && damageEvent.damageKind !== "attack") {
@@ -375,6 +408,25 @@ export function appendEvent<T extends EventDraft>(
     }
   }
 
+  let soulLinkTransfer: { commanderId: string; targetId: string; amount: number } | undefined;
+  if (!directSoulLinkDamage && damageEvent.type === "DAMAGE_ASSIGNED" && damageEvent.target?.type === "unit" && state.combat) {
+    const target = state.combat.units[damageEvent.target.unitId ?? ""];
+    const commander = target && Object.values(state.combat.units).find(unit =>
+      unit.commanderSlug === "soul_eater" && unit.controllerId === target.controllerId &&
+      unit.soulLinkTargetId === target.id && unit.damage < unit.maxHealth &&
+      unit.soulLinkUsedRound !== state.combat!.round
+    );
+    const amount = (eventDraft as { amount?: number }).amount ?? 0;
+    if (target && commander && amount > 0 && target.damage - amount < target.maxHealth) {
+      const transferred = Math.ceil(amount / 2);
+      target.damage = Math.max(0, target.damage - transferred);
+      commander.damage += transferred;
+      commander.soulLinkUsedRound = state.combat.round;
+      eventDraft = { ...eventDraft, amount: amount - transferred } as EventDraft;
+      soulLinkTransfer = { commanderId: commander.id, targetId: target.id, amount: transferred };
+    }
+  }
+
   const nextEvent = {
     id: `evt_${nextEventNumber(state)}`,
     ...(state.turn?.mode === "parallel" && state.combat
@@ -384,6 +436,16 @@ export function appendEvent<T extends EventDraft>(
   } as unknown as Extract<GameEvent, { type: T["type"] }>;
 
   state.eventLog.push(nextEvent);
+  if (soulLinkTransfer && state.combat) {
+    const commander = state.combat.units[soulLinkTransfer.commanderId];
+    const target = state.combat.units[soulLinkTransfer.targetId];
+    if (commander && target) {
+      appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} takes ${soulLinkTransfer.amount} damage for ${target.cardName}.` });
+      const transferredHit = appendEvent(state, { type: "DAMAGE_ASSIGNED", source: (nextEvent as Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }>).source, target: { type: "unit", unitId: commander.id }, amount: soulLinkTransfer.amount, damageKind: "effect", soulLinkTransfer: true });
+      noteUnitDamagedForTokens(state, commander, transferredHit.amount);
+      markUnitRemovedIfNeeded(state, commander);
+    }
+  }
   if (nextEvent.type === "CARD_PLAYED" && state.combat) {
     const played = nextEvent as Extract<GameEvent, { type: "CARD_PLAYED" }>;
     if (cardLibrary[played.cardId]?.kind === "artifact") {
@@ -439,6 +501,23 @@ export function appendEvent<T extends EventDraft>(
   }
   if (nextEvent.type === "UNIT_REMOVED" && state.combat) {
     const removedEvent = nextEvent as Extract<GameEvent, { type: "UNIT_REMOVED" }>;
+    const fallenForUrftin = state.combat.units[removedEvent.unitId];
+    const killerId = fallenForUrftin?.townVeterancy?.damageSourceId ?? fallenForUrftin?.neutralLastDamageSourceId;
+    const killerForUrftin = killerId ? state.combat.units[killerId] : undefined;
+    if (fallenForUrftin && fallenForUrftin.damage >= fallenForUrftin.maxHealth && killerForUrftin?.name === "Dwarves" && killerForUrftin.controllerId !== fallenForUrftin.controllerId) {
+      for (const active of state.activeEffects) {
+        if (active.source.type !== "card" || active.source.cardId !== "specialty.urftin.6" || active.controllerId !== killerForUrftin.controllerId || active.urftinCubes === undefined) continue;
+        active.urftinCubes += 1;
+        const cubes = active.urftinCubes;
+        active.name = `Dwarves VI (${cubes} cube${cubes === 1 ? "" : "s"})`;
+        active.modifiers = [
+          { type: "ATTACK_BONUS", amount: cubes },
+          { type: "DEFENSE_BONUS", amount: cubes },
+          { type: "INITIATIVE_BONUS", amount: cubes },
+        ];
+        appendEvent(state, { type: "EVENT_NOTE", playerId: active.controllerId, message: `Urftin places a faction cube on Dwarves VI (${cubes}).` });
+      }
+    }
     // A defeated dragon releases its snare permanently, even if it later revives.
     for (const target of Object.values(state.combat.units)) {
       if (target.townVeterancy?.boundBy) {
@@ -466,7 +545,11 @@ export function appendEvent<T extends EventDraft>(
     const moved = nextEvent as Extract<GameEvent, { type: "UNIT_MOVED" }>;
     const unit = state.combat.units[moved.unitId];
     if (unit && moved.from !== moved.to) forgeUnitMoved(state);
-    if (unit && moved.from !== moved.to) (unit.townVeterancy ??= {}).movedRound = state.combat.round;
+    if (unit && moved.from >= 0 && moved.to >= 0 && moved.from !== moved.to) {
+      const memory = (unit.townVeterancy ??= {});
+      memory.movedSpacesRound = (memory.movedRound === state.combat.round ? memory.movedSpacesRound ?? 0 : 0) + getBattlefieldDistance(moved.from, moved.to);
+      memory.movedRound = state.combat.round;
+    }
     for (const target of Object.values(state.combat.units)) {
       if (target.townVeterancy?.boundBy) target.townVeterancy.boundBy = target.townVeterancy.boundBy.filter(id => {
         const source = state.combat!.units[id];
@@ -491,6 +574,7 @@ export function appendEvent<T extends EventDraft>(
     // Record every hit so the removal chokepoint can distinguish attacks from spells.
     if (target) {
       (target.factionVeterancy ??= {}).lastDamage = { kind: hit.damageKind, source: hit.source, amount: hit.amount };
+      if (hit.damageKind === "spell" && hit.amount > 0) townNagaMend(state, target);
       if (hit.amount > 0 && forgeVeterancy(target, "cyberbrute-mend") &&
           (hit.damageKind === "spell" || (hit.source.type === "card" && cardLibrary[hit.source.cardId]?.kind === "hero-specialty"))) {
         // The damage event precedes removal. Repair can therefore save a unit

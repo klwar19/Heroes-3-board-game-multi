@@ -258,7 +258,7 @@ The open decisions below were settled by the user's board-game spec and the
 module is engine-wired end to end:
 
 - **Roster renames**: Cove "Corsair" → **Sea Marshal** (Slow + Battle Stance),
-  Factory "Engineer" → **Artificer** (Field Repair + Tinkerer), Bulwark
+  Factory "Engineer" → **Artificer** (Emergency Repair — formerly Field Repair — + Tinkerer), Bulwark
   "Frost Warlord" → **Rune Keeper** (Rune Mend + Rune Ritual). Slugs and art
   assets unchanged.
 - **Superior Combat / Battle Stance** (Shaman & Sea Marshal): the owner chooses
@@ -271,12 +271,12 @@ module is engine-wired end to end:
 - **Stats**: six stats at grade 0–3 (`COMMANDER_GRADE_VALUES`) replacing §4's
   5-tier tracks. Every stat STARTS at grade 0 (the base A2/D1/H4/dmg0/Pow0/
   Spd5); grade bonuses are the value shown, never summed (+1/+2 at grade I/II;
-  grade III adjusted per user spec: Attack +3, Health +4, Speed +5): Attack
-  2/3/4/5, Health 4/5/6/8, Speed (Initiative) 5/6/7/10, Magic = Power 0/1/2/3
+  grade III adjusted per user spec): Attack
+  2/3/3/4 (from grade II, +1 Attack on a -1 Attack die), Health 4/5/6/8, Speed (Initiative) 5/6/7/10, Magic = Power 0/1/2/3
   with -1/-1/-2/-3 Spell damage + ongoing-effect immunity from grade 0. **Defense
-  = 1/2/2/3**: grade II is Defense 2 PLUS a permanent Defense token (rolls the
-  Defend die when attacked — the user's "+1 def when attacked"), grade III a
-  reliable flat 3 (no die). **Damage = extra ATTACK DICE**: at grade N the
+  = 1/2/2/2**: grade II is Defense 2 PLUS a permanent Defense token (rolls the
+  Defend die when attacked, +1 Defense on +1); grade III retains the token and
+  also gains +1 Defense on a 0 roll. **Damage = extra ATTACK DICE**: at grade N the
   commander rolls N additional attack dice per attack (each "+1" raises the
   attack, at most one "−1" counts) — NOT a flat on-hit bonus. Grade-up picks
   (two DIFFERENT stats each) at hero level 2, 4 & 6 — the Paladin's Wise: 2,3&5.

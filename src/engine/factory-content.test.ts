@@ -133,7 +133,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     const spec = townBoardSpecs.factory;
     // One complete printed face carries the plaques, rule cards, tracks and
     // token wells; the view writes live names/costs/rules onto it.
-    expect(spec.boardFaceImage, "factory board uses the whole printed face").toBe("/factory-cards/factory-board-empty.webp");
+    expect(spec.boardFaceImage, "factory board uses the whole printed face").toBe("/factory-cards/town-board/factory-board-empty.webp");
     expect(spec.printedPanelInBase, "tracks/wells are printed in the face").toBe(true);
     expect(spec.physicalPanoramaTiles, "built bars reveal aligned strips").toBe(true);
     // The retired per-building tile / panorama / pasted-panel design is gone.
@@ -152,7 +152,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       ["factory.dwelling_gold"]
     ]);
     // Seven distinct built strips, one per bar slot, all shipped with the code.
-    expect(spec.barTileImages).toEqual([1, 2, 3, 4, 5, 6, 7].map((slot) => `/factory-cards/factory-board-built-strip-${slot}.webp`));
+    expect(spec.barTileImages).toEqual([1, 2, 3, 4, 5, 6, 7].map((slot) => `/factory-cards/town-board/factory-built-${slot}.webp`));
     for (const image of [spec.boardFaceImage!, ...spec.barTileImages!]) {
       expect(existsSync(fileURLToPath(new URL(`../../public${image}`, import.meta.url))), `${image} ships in public/`).toBe(true);
     }
@@ -254,10 +254,9 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(u["factory.mechanics"].pack?.abilities, "engineers pack").toEqual(["mechanics-repair-2"]);
     expect(u["factory.mechanics"].neutral?.abilities, "mechanics neutral").toEqual(["mechanics-line-attack-1"]);
     // Automatons: the Pack "Ignore Retaliation" and the single-cost NEUTRAL guard's
-    // 1-damage on-death Detonate are wired. (The faction Few's cube-scaled Detonate
-    // is not yet wired — display-only, pinned by the next test.)
+    // printed 2-damage on-removal Detonate (official product sheet) are wired.
     expect(u["factory.automatons"].pack?.abilities, "automatons pack").toEqual(["ignores-retaliation"]);
-    expect(u["factory.automatons"].neutral?.abilities, "automatons neutral").toEqual(["automaton-detonate-1"]);
+    expect(u["factory.automatons"].neutral?.abilities, "automatons neutral").toEqual(["automaton-detonate"]);
     // Sandworms: printed wing icon → flying; NEUTRAL guard strikes adjacent again.
     expect(u["factory.sandworms"].type, "sandworms flying").toBe("flying");
     expect(u["factory.sandworms"].neutral?.abilities, "sandworms neutral").toEqual(["sandworm-strike-again"]);
@@ -268,7 +267,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(u["factory.gunslingers"].pack?.abilities, "bounty hunters pack").toEqual(["bounty-hunter-mark-2"]);
     for (const abilityId of [
       "attack-roll-advantage", "halfling-precise-shot", "mechanics-line-attack-1", "mechanics-line-attack-2",
-      "mechanics-repair-1", "mechanics-repair-2", "ignores-retaliation", "automaton-detonate-1",
+      "mechanics-repair-1", "mechanics-repair-2", "ignores-retaliation", "automaton-detonate",
       "sandworm-strike-again", "armadillo-initiative-amplify", "bounty-hunter-mark-1", "bounty-hunter-mark-2"
     ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");
@@ -314,7 +313,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       "sandworm-cube-attack"
     ]);
     expect(u["factory.gunslingers"].neutral?.abilities, "bounty hunter neutral preemptive").toEqual([
-      "bounty-hunter-preemptive"
+      "bounty-hunter-ranged-preemptive"
     ]);
     expect(u["factory.couatls"].few?.abilities, "couatl few invuln").toEqual(["couatl-invulnerability-few"]);
     expect(u["factory.couatls"].pack?.abilities, "couatl pack invuln").toEqual(["couatl-invulnerability-pack"]);
@@ -323,7 +322,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(u["factory.dreadnoughts"].neutral?.abilities, "juggernaut neutral splash").toEqual(["dreadnought-splash-neutral"]);
     for (const abilityId of [
       "automaton-place-cube", "automaton-detonate-cubes", "sandworm-cube-gain", "sandworm-cube-attack",
-      "bounty-hunter-preemptive", "couatl-invulnerability-few", "couatl-invulnerability-pack",
+      "bounty-hunter-ranged-preemptive", "couatl-invulnerability-few", "couatl-invulnerability-pack",
       "dreadnought-splash-1", "dreadnought-splash-2", "dreadnought-splash-neutral"
     ]) {
       expect(unitAbilities[abilityId]?.implementationStatus, `${abilityId} implemented`).toBe("implemented");

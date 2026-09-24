@@ -143,7 +143,7 @@ export function neutralRecruitUtility(
 /** War Machine cards the seat already has in play or waiting in hand. */
 export function ownedWarMachineIds(state: GameState, playerId: PlayerId): CardId[] {
   const player = state.players[playerId];
-  const held = [...getPermanentCardIds(state, playerId), ...(player?.hand ?? [])];
+  const held = [...getPermanentCardIds(state, playerId), ...(player?.hand ?? []), ...(player?.preOrderWarMachines ?? [])];
   return held.filter((cardId) => cardId.startsWith("war_machine."));
 }
 

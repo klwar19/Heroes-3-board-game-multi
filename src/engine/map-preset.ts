@@ -1427,11 +1427,13 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
     reward?: unknown;
     vp?: unknown;
     breakField?: unknown;
+    breakFromGlobal?: unknown;
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
     noExperience?: unknown;
     combatRoundLimit?: unknown;
     winCondition?: unknown;
+    individual?: unknown;
   };
   const plan: CustomObjectFieldPlan = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
@@ -1446,11 +1448,15 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
     plan.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
   }
   if (raw.breakField === true) plan.breakField = true;
+  if (raw.breakField === true && raw.breakFromGlobal === true) plan.breakFromGlobal = true;
   if (raw.persistentGuard === true) plan.persistentGuard = true;
   if (raw.unlimitedRounds === true) plan.unlimitedRounds = true;
   if (raw.noExperience === true) plan.noExperience = true;
   if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") plan.combatRoundLimit = raw.combatRoundLimit;
   if (raw.winCondition === true) plan.winCondition = true;
+  // An individual plan with no other value is still meaningful: it detaches the
+  // object from the map-wide config (printed rules), so it survives on its own.
+  if (raw.individual === true) plan.individual = true;
   return Object.keys(plan).length > 0 ? plan : undefined;
 }
 

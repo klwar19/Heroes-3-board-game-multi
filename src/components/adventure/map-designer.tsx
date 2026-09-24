@@ -206,7 +206,22 @@ function PopoverGroup({
   useEffect(() => {
     if (!focus) return;
     setOpen(true);
-    detailsRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    // Scroll AFTER the section has opened, bringing its head to the top of the
+    // docked panel (a long panel — e.g. a Town tile — otherwise leaves the
+    // freshly opened section below the fold).
+    const frame = window.requestAnimationFrame(() => {
+      const el = detailsRef.current;
+      const box = el?.closest(".designerPopover");
+      if (el && box && typeof box.scrollTo === "function") {
+        box.scrollTo({
+          top: el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 8,
+          behavior: "smooth"
+        });
+      } else {
+        el?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [focus]);
   return (
     <details
@@ -448,10 +463,13 @@ function nextObjectPlan(
     "reward",
     "vp",
     "breakField",
+    "breakFromGlobal",
     "persistentGuard",
     "unlimitedRounds",
     "combatRoundLimit",
-    "winCondition"
+    "noExperience",
+    "winCondition",
+    "individual"
   ] as const) {
     if (!next[key]) {
       delete next[key];
@@ -493,7 +511,10 @@ function planDefHasLocation(plan: CustomMapTilePlan, location: "obelisk" | "mine
  */
 function planEligibleForObjectKind(plan: CustomMapTilePlan, kind: "obelisk" | "mine"): boolean {
   if (plan.group === "starting") {
-    return false;
+    // Every seat's home tile prints a Mine in its flower (whichever faction
+    // takes the position); setup folds the plan onto it. No starting tile
+    // prints an Obelisk.
+    return kind === "mine" && startingTilesPrintLocation("mine");
   }
   if (plan.tileDefId) {
     return planDefHasLocation(plan, kind);
@@ -506,20 +527,74 @@ function planEligibleForObjectKind(plan: CustomMapTilePlan, kind: "obelisk" | "m
   if (!plan.faceDown) {
     return false;
   }
-  const secrets = [
-    ...(plan.secretFeatures ?? []),
-    ...(plan.secretFeature ? [plan.secretFeature] : [])
-  ];
-  if (kind === "mine") {
-    return secrets.some(
-      (feature) =>
-        feature === "gold_mine" ||
-        feature === "valuables_mine" ||
-        feature === "materials_mine" ||
-        feature === "any_mine"
+  // Face-down draw (pure random, or a Secret landmark of ANY kind, e.g. a
+  // Secret Obelisk tile that also prints a Mine): eligible when at least one
+  // tile this slot can draw prints the object. Setup carries the plan onto the
+  // drawn tile and materialize folds it onto that tile's object on discovery;
+  // a draw without one leaves the plan inert.
+  return planPossibleDraws(plan).some((def) => def.fields.some((field) => field.location === kind));
+}
+
+/** Tile definitions a face-down slot may draw (group + band + landmark filters). */
+function planPossibleDraws(plan: CustomMapTilePlan): TileDefinition[] {
+  const allowed = planAllowedSecretFeatures(plan);
+  const excluded = planExcludedSecretFeatures(plan);
+  return Object.values(allTileDefinitions).filter(
+    (def) =>
+      def.group === plan.group &&
+      (plan.group !== "sea" || !plan.seaBand || seaTileBand(def) === plan.seaBand) &&
+      (plan.group !== "subterranean" || !plan.subBand || subterraneanTileBand(def) === plan.subBand) &&
+      tilePassesSecretFilters(def, allowed, excluded)
+  );
+}
+
+/** Whether any starting (seat) tile prints this location. */
+function startingTilesPrintLocation(kind: "obelisk" | "mine"): boolean {
+  return Object.values(allTileDefinitions).some(
+    (def) => def.group === "starting" && def.fields.some((field) => field.location === kind)
+  );
+}
+
+/**
+ * Does this plan's object of `kind` only MAYBE exist (random / secret / one-of
+ * draw, or a seat tile whose faction is chosen later)? Drives the "applies when
+ * the tile drawn here has a Mine" wording.
+ */
+function planObjectIsConditional(plan: CustomMapTilePlan, kind: "obelisk" | "mine"): boolean {
+  if (plan.group === "starting") {
+    return !Object.values(allTileDefinitions).every(
+      (def) => def.group !== "starting" || def.fields.some((field) => field.location === kind)
     );
   }
-  return secrets.includes("obelisk");
+  return !plan.tileDefId;
+}
+
+/**
+ * The per-tile plan a SPECIFIC pick commits for an obelisk / mine that has none
+ * yet: an INDIVIDUAL plan seeded with the current map-wide values, so the pick
+ * itself is saved (listed, badged) and later edits — including switching a
+ * global flag OFF — change only this object.
+ */
+function seedIndividualObjectPlan(
+  global:
+    | (Partial<Pick<CustomObjectFieldPlan, "guard" | "reward" | "vp" | "breakField" | "persistentGuard" | "unlimitedRounds" | "combatRoundLimit" | "noExperience">>)
+    | undefined
+): CustomObjectFieldPlan {
+  const plan: CustomObjectFieldPlan = { individual: true };
+  if (global?.guard) plan.guard = global.guard;
+  if (global?.reward) plan.reward = global.reward;
+  if (global?.vp) plan.vp = global.vp;
+  // A Break copied from the map-wide flag keeps the map-wide per-field meaning
+  // (breakFromGlobal): it must not turn into a whole-tile seal.
+  if (global?.breakField) {
+    plan.breakField = true;
+    plan.breakFromGlobal = true;
+  }
+  if (global?.persistentGuard) plan.persistentGuard = true;
+  if (global?.unlimitedRounds) plan.unlimitedRounds = true;
+  if (global?.combatRoundLimit !== undefined) plan.combatRoundLimit = global.combatRoundLimit;
+  if (global?.noExperience) plan.noExperience = true;
+  return plan;
 }
 
 /** The object kinds the SPECIFIC pick flow may target on a tile. */
@@ -557,10 +632,13 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
           unlimitedRounds?: boolean;
           combatRoundLimit?: 1 | 2 | 3 | "unlimited";
           flaggableDragonUtopia?: boolean;
+          noExperience?: boolean;
+          individual?: boolean;
         }
       | undefined
   ) => {
     if (!p) return;
+    if (p.individual) bits.push("individual (ignores global)");
     if (p.guard) {
       bits.push(
         p.guard.units?.length
@@ -577,6 +655,7 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     if (p.combatRoundLimit !== undefined) bits.push(p.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${p.combatRoundLimit} free round${p.combatRoundLimit === 1 ? "" : "s"}, then pay MP`);
     else if (p.unlimitedRounds) bits.push("unlimited rounds");
     if (p.flaggableDragonUtopia) bits.push("flaggable Utopia + Azure recruit");
+    if (p.noExperience) bits.push("no experience");
   };
   if (kind === "obelisk" || kind === "mine") {
     fold(plan.objectPlans?.[kind]);
@@ -610,11 +689,23 @@ function planPositionLabel(plan: CustomMapTilePlan): string {
 }
 
 /** The confirmation shown right after a SPECIFIC pick lands on a tile. */
-function specificPickMessage(plan: CustomMapTilePlan, kind: SpecificPickKind): string {
+function specificPickMessage(
+  plan: CustomMapTilePlan,
+  kind: SpecificPickKind,
+  committed: "created" | "existing" | "none" = "none"
+): string {
   const drawn =
-    (kind === "mine" || kind === "obelisk") && !plan.tileDefId
-      ? ` Applies when the tile drawn here has a${kind === "obelisk" ? "n Obelisk" : " Mine"}.`
+    (kind === "mine" || kind === "obelisk") && planObjectIsConditional(plan, kind)
+      ? plan.group === "starting"
+        ? " Applies to the Mine printed on whichever town tile starts here."
+        : ` Applies when the tile drawn here has a${kind === "obelisk" ? "n Obelisk" : " Mine"}.`
       : "";
+  if (committed === "created") {
+    return `✔ ${SPECIFIC_KIND_LABEL[kind]} on ${planPositionLabel(plan)} now has INDIVIDUAL settings (saved in the map, copied from the global ${SPECIFIC_KIND_LABEL[kind]} settings) — edit them in the tile panel; the global settings no longer apply to it.${drawn}`;
+  }
+  if (committed === "existing") {
+    return `✔ ${SPECIFIC_KIND_LABEL[kind]} on ${planPositionLabel(plan)} selected — it already has specific settings; edit them in the tile panel.${drawn}`;
+  }
   const listed = describeTileSpecificPlan(plan, kind).length > 0
     ? ""
     : " It joins the Specific list once you set a value.";
@@ -754,7 +845,8 @@ function legalTokenSlotsForPlan(
       return true;
     }
     const perTile = plan.objectPlans?.[location];
-    const global = mapWideBreaks?.[location === "mine" ? "mines" : "obelisks"];
+    // An INDIVIDUAL plan replaces the map-wide config (engine twin in materialize).
+    const global = perTile?.individual ? undefined : mapWideBreaks?.[location === "mine" ? "mines" : "obelisks"];
     return (perTile?.breakField ?? global?.breakField) !== true;
   });
 }
@@ -1386,7 +1478,7 @@ export function MapDesigner({
   const [pickConfirm, setPickConfirm] = useState<string | null>(null);
   useEffect(() => {
     if (!pickConfirm) return;
-    const timer = window.setTimeout(() => setPickConfirm(null), 6000);
+    const timer = window.setTimeout(() => setPickConfirm(null), 15000);
     return () => window.clearTimeout(timer);
   }, [pickConfirm]);
   const [popoverAt, setPopoverAt] = useState<{ x: number; y: number } | null>(null);
@@ -1807,7 +1899,13 @@ export function MapDesigner({
       setTilePickFilter("all");
       setPopoverAt({ x: 0, y: 0 });
       setSpecificFocus({ index, group: SPECIFIC_POPOVER_GROUP[kind], kind, n: Date.now() });
-      setPickConfirm(specificPickMessage(plan, kind));
+      setPickConfirm(
+        specificPickMessage(
+          plan,
+          kind,
+          (kind === "mine" || kind === "obelisk") && plan.objectPlans?.[kind] ? "existing" : "none"
+        )
+      );
       onPickResolved?.();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -3114,6 +3212,195 @@ export function MapDesigner({
   /** Focus token for one tile-popover section (see {@link specificFocus}). */
   const popoverFocusFor = (group: string): number | undefined =>
     specificFocus && specificFocus.index === selectedIndex && specificFocus.group === group ? specificFocus.n : undefined;
+  /**
+   * The tile panel's per-tile Obelisk & Mine editor — shared by every tile kind
+   * that can host the object, including a seat's starting town tile (its
+   * printed Mine) and face-down draws that MAY carry one.
+   */
+  const renderObjectPlanGroup = (): ReactNode => {
+    if (!selected || selectedIndex === null) {
+      return null;
+    }
+    return (
+      <>
+      {/* SPECIFIC (per-tile) object plans — obelisk / mine on THIS tile.
+          Shown only when the tile can host the object (a face-up def
+          printing it, a seat tile's printed Mine, or a face-down / one-of
+          draw that MAY carry it). An INDIVIDUAL plan replaces the map-wide
+          config (unset = printed rules); a legacy plan overrides it
+          field-by-field (unset falls back). */}
+      {planEligibleForObjectKind(selected, "obelisk") || planEligibleForObjectKind(selected, "mine") ? (
+        <PopoverGroup focus={popoverFocusFor("Obelisk & Mine (this tile)")} title="Obelisk & Mine (this tile)" active={Boolean(selected.objectPlans)}>
+      {/* The picked kind first, so a Mine pick lands straight on the Mine editor. */}
+      {(specificFocus?.kind === "obelisk" ? (["obelisk", "mine"] as const) : (["mine", "obelisk"] as const)).map((objectKind) =>
+        planEligibleForObjectKind(selected, objectKind) ? (
+          <div
+            className="popoverObjectPlan popoverSection"
+            aria-label={`Special ${objectKind} (this tile)`}
+            data-object-plan={objectKind}
+            key={objectKind}
+          >
+            <div className="popoverSectionLabel">
+              {objectKind === "obelisk" ? "⚱ Obelisk (this tile)" : "⛏ Mine (this tile)"}
+            </div>
+            {planObjectIsConditional(selected, objectKind) ? (
+              <small className="popoverHint">
+                {selected.group === "starting"
+                  ? "Applies to the Mine printed on whichever town tile starts at this position."
+                  : `Applies when the tile drawn here has a${objectKind === "obelisk" ? "n Obelisk" : " Mine"} (inert otherwise).`}
+              </small>
+            ) : null}
+            <label
+              className="popoverCheckRow"
+              title={`Individual: this ${objectKind} ignores the global ${objectKind === "mine" ? "Mine" : "Obelisk"} settings entirely — anything left unset here uses the printed rules. Off: each unset value falls back to the global setting.`}
+            >
+              <input
+                aria-label={`Individual ${objectKind} settings (ignore global)`}
+                checked={Boolean(selected.objectPlans?.[objectKind]?.individual)}
+                data-testid={`designer-individual-${objectKind}`}
+                onChange={(event) =>
+                  updateTile(selectedIndex as number, {
+                    objectPlans: nextObjectPlans(
+                      selected.objectPlans,
+                      objectKind,
+                      event.target.checked && !selected.objectPlans?.[objectKind]
+                        ? seedIndividualObjectPlan(
+                            mapWideTokenBreaks?.[objectKind === "mine" ? "mines" : "obelisks"]
+                          )
+                        : nextObjectPlan(selected.objectPlans?.[objectKind], {
+                            individual: event.target.checked || undefined
+                          })
+                    )
+                  })
+                }
+                type="checkbox"
+              />
+              <span>✎ Individual settings for this {objectKind === "mine" ? "Mine" : "Obelisk"}</span>
+            </label>
+            <small className="popoverHint">
+              {selected.objectPlans?.[objectKind]?.individual
+                ? `Individual: the global ${objectKind} settings do NOT apply here — a value left unset uses the printed rules.`
+                : selected.objectPlans?.[objectKind]
+                  ? `Overrides the global ${objectKind} settings for THIS tile only — a value left unset falls back to the global one.`
+                  : `Uses the global ${objectKind} settings. Tick Individual (or set any value below) to customize this one.`}
+            </small>
+            <div className="popoverSubLabel">Guard</div>
+            <GuardSpecEditor
+              guard={selected.objectPlans?.[objectKind]?.guard}
+              noneLabel={selected.objectPlans?.[objectKind]?.individual ? "Printed" : "Map-wide / printed"}
+              onChange={(guard) =>
+                updateTile(selectedIndex as number, {
+                  objectPlans: nextObjectPlans(
+                    selected.objectPlans,
+                    objectKind,
+                    nextObjectPlan(selected.objectPlans?.[objectKind], { guard })
+                  )
+                })
+              }
+            />
+            <div className="popoverSubLabel">First-clear reward</div>
+            <FieldRewardEditor
+              ariaLabel={`${objectKind} first-clear reward`}
+              reward={selected.objectPlans?.[objectKind]?.reward}
+              onChange={(reward) =>
+                updateTile(selectedIndex as number, {
+                  objectPlans: nextObjectPlans(
+                    selected.objectPlans,
+                    objectKind,
+                    nextObjectPlan(selected.objectPlans?.[objectKind], { reward })
+                  )
+                })
+              }
+              vp={selected.objectPlans?.[objectKind]?.vp}
+              onVpChange={(vp) =>
+                updateTile(selectedIndex as number, {
+                  objectPlans: nextObjectPlans(
+                    selected.objectPlans,
+                    objectKind,
+                    nextObjectPlan(selected.objectPlans?.[objectKind], { vp })
+                  )
+                })
+              }
+            />
+          <label className="popoverSubLabel">Combat round limit
+              <select title="Free combat rounds before the normal continue-or-retreat window: after that many rounds each further round costs movement points as usual. Unlimited never asks. Default keeps the printed field rules." aria-label="Combat round limit" value={selected.objectPlans?.[objectKind]?.combatRoundLimit ?? (selected.objectPlans?.[objectKind]?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { objectPlans: nextObjectPlans(selected.objectPlans, objectKind, nextObjectPlan(selected.objectPlans?.[objectKind], { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined })) })}>
+                <option value="default">Default rules</option>
+                <option value="1">1 free round, then pay MP</option><option value="2">2 free rounds, then pay MP</option><option value="3">3 free rounds, then pay MP</option><option value="unlimited">Unlimited</option>
+              </select>
+            </label>
+            <div className="popoverGuardRow" role="group" aria-label={`${objectKind} break options`}>
+              {(
+                [
+                  { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through — must fight to enter. Ticked HERE (per tile) it also gates the whole tile: no other hex of it can be entered until this Break falls. The map-wide Mine/Obelisk Break flag stays per-field only." },
+                  { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves the living guards for a re-fight." },
+                  { key: "noExperience", label: "No experience", hint: "Beating this guard grants the hero no experience." }
+                ] as const
+              ).map((flag) => (
+                <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>
+                  <input
+                    aria-label={`${objectKind} ${flag.label}`}
+                    checked={Boolean(selected.objectPlans?.[objectKind]?.[flag.key])}
+                    onChange={(event) =>
+                      updateTile(selectedIndex as number, {
+                        objectPlans: nextObjectPlans(
+                          selected.objectPlans,
+                          objectKind,
+                          nextObjectPlan(selected.objectPlans?.[objectKind], {
+                            [flag.key]: event.target.checked || undefined,
+                            // Ticking Break HERE makes it the per-tile Break (tile seal).
+                            ...(flag.key === "breakField" ? { breakFromGlobal: undefined } : {})
+                          })
+                        )
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  <span>{flag.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="popoverSubLabel">Marked scenario objective — this exact {objectKind} at this location</div>
+            <label className="popoverCheckRow" title={`The first player to clear / flag THIS ${objectKind} wins the game immediately.`}>
+              <input
+                aria-label={`First clear of this ${objectKind} wins the game`}
+                checked={Boolean(selected.objectPlans?.[objectKind]?.winCondition)}
+                onChange={(event) =>
+                  updateTile(selectedIndex as number, {
+                    objectPlans: nextObjectPlans(
+                      selected.objectPlans,
+                      objectKind,
+                      nextObjectPlan(selected.objectPlans?.[objectKind], {
+                        winCondition: event.target.checked || undefined
+                      })
+                    )
+                  })
+                }
+                type="checkbox"
+              />
+              <span>🏁 First clear wins the game</span>
+            </label>
+            {selected.objectPlans?.[objectKind] ? (
+              <button
+                className="popoverIconButton"
+                onClick={() =>
+                  updateTile(selectedIndex as number, {
+                    objectPlans: nextObjectPlans(selected.objectPlans, objectKind, undefined)
+                  })
+                }
+                title={`Remove this tile's specific ${objectKind} settings — it goes back to the global ones.`}
+                type="button"
+              >
+                Back to global {objectKind} settings
+              </button>
+            ) : null}
+          </div>
+        ) : null
+      )}
+        </PopoverGroup>
+      ) : null}
+      </>
+    );
+  };
   // A tile id may only be used once — face-up OR exact secret face-down pin.
   const usedPinnedIds = new Set(
     customMap.filter((plan) => plan.tileDefId).map((plan) => plan.tileDefId as string)
@@ -4246,6 +4533,7 @@ export function MapDesigner({
         const objectPlan = planFor(kind);
         if (objectPlan) {
           const bits: string[] = [];
+          if (objectPlan.individual) bits.push("individual (global ignored)");
           if (objectPlan.guard) {
             bits.push(
               objectPlan.guard.units?.length
@@ -4309,6 +4597,42 @@ export function MapDesigner({
           </text>
         );
       }
+      // Per-OBJECT marker: WHICH mine / obelisk carries its own settings. Drawn
+      // on the object's printed hex when the tile identity is known (exact pin),
+      // else beside the tile (random / secret / one-of draw, or a seat tile
+      // whose faction — and so mine hex — is chosen at game start).
+      const knownDef = !isStart && plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+      (["mine", "obelisk"] as const).forEach((kind, kindIndex) => {
+        const objectPlan = plan.objectPlans?.[kind];
+        if (!objectPlan) return;
+        const slot = knownDef ? knownDef.fields.findIndex((field) => field.location === kind) : -1;
+        const cell = slot >= 0 ? tileFootprint(center, plan.rotation ?? 0)[slot] : undefined;
+        const point = cell
+          ? hexToPixel(cell, size)
+          : { x: centerPixel.x + size * (0.9 - kindIndex * 0.55), y: centerPixel.y - size * 1.15 };
+        const glyph = kind === "mine" ? "⛏" : "⚱";
+        const summary = describeTileSpecificPlan(plan, kind) || "custom";
+        labelLayer.push(
+          <text
+            className="designerSpecificBadge designerObjectPlanBadge"
+            data-object-plan-badge={kind}
+            data-individual={objectPlan.individual ? "true" : undefined}
+            key={`plan-object-${kind}-${index}`}
+            textAnchor="middle"
+            x={point.x}
+            y={cell ? point.y - size * 0.35 : point.y}
+          >
+            <title>{`${kind === "mine" ? "Mine" : "Obelisk"} with ${objectPlan.individual ? "INDIVIDUAL" : "specific"} settings — ${summary}.${
+              cell
+                ? ""
+                : isStart
+                  ? " Applies to the Mine printed on whichever town tile starts here."
+                  : ` Applies when the tile drawn here has a${kind === "obelisk" ? "n Obelisk" : " Mine"}.`
+            } Click the tile to edit.`}</title>
+            {`${glyph}✎`}
+          </text>
+        );
+      });
     }
 
     // "One of these tiles" random set — a badge with the count, so the
@@ -5610,7 +5934,7 @@ export function MapDesigner({
 
       <div className="designerBoardWrap" ref={wrapRef}>
         {!pickRequest && pickConfirm ? (
-          <div className="designerPickBanner" role="status" aria-label="Specific tile selected" data-testid="designer-pick-confirm">
+          <div className="designerPickBanner confirm" role="status" aria-label="Specific tile selected" data-testid="designer-pick-confirm">
             <span aria-hidden="true">✎</span>
             <strong>{pickConfirm}</strong>
             <button className="commandButton ghost" onClick={() => setPickConfirm(null)} type="button">
@@ -5774,12 +6098,29 @@ export function MapDesigner({
                 const plan = customMap[press.index];
                 if (plan && planEligibleForPick(plan, pickRequest.objectKind)) {
                   const kind = pickRequest.objectKind;
+                  // Picking a Mine / Obelisk COMMITS it as an individual object
+                  // (seeded from the map-wide values) so the choice is saved,
+                  // listed under Specific and badged on the board right away.
+                  let committed: "created" | "existing" | "none" = "none";
+                  if (kind === "mine" || kind === "obelisk") {
+                    if (plan.objectPlans?.[kind]) {
+                      committed = "existing";
+                    } else {
+                      committed = "created";
+                      const seeded = seedIndividualObjectPlan(
+                        mapWideTokenBreaks?.[kind === "mine" ? "mines" : "obelisks"]
+                      );
+                      updateTile(press.index, {
+                        objectPlans: nextObjectPlans(plan.objectPlans, kind, seeded)
+                      });
+                    }
+                  }
                   closeAllPanels();
                   setSelectedIndex(press.index);
                   setTilePickFilter("all");
                   setPopoverAt({ x: event.clientX, y: event.clientY });
                   setSpecificFocus({ index: press.index, group: SPECIFIC_POPOVER_GROUP[kind], kind, n: Date.now() });
-                  setPickConfirm(specificPickMessage(plan, kind));
+                  setPickConfirm(specificPickMessage(plan, kind, committed));
                   onPickResolved?.();
                 }
                 return;
@@ -6074,6 +6415,7 @@ export function MapDesigner({
                   The chosen faction&apos;s tile rotates to put its blocked field on this edge and skips opening rotation.
                   Saved degree-based orientations remain unchanged until you choose an edge.
                 </small>
+                {renderObjectPlanGroup()}
               </>
             ) : (
               <>
@@ -7059,139 +7401,7 @@ export function MapDesigner({
                   </PopoverGroup>
                 ) : null}
 
-                {/* SPECIFIC (per-tile) object plans — obelisk / mine on THIS tile.
-                    Shown only when the tile can actually host the object (a
-                    face-up def printing it, or a face-down secret landmark
-                    guaranteeing a mine), so the popover never bloats with inert
-                    sections. A set field OVERRIDES the map-wide config; unset
-                    fields fall back to it. */}
-                {planEligibleForObjectKind(selected, "obelisk") || planEligibleForObjectKind(selected, "mine") ? (
-                  <PopoverGroup focus={popoverFocusFor("Obelisk & Mine (this tile)")} title="Obelisk & Mine (this tile)" active={Boolean(selected.objectPlans)}>
-                {(["obelisk", "mine"] as const).map((objectKind) =>
-                  planEligibleForObjectKind(selected, objectKind) ? (
-                    <div
-                      className="popoverObjectPlan popoverSection"
-                      aria-label={`Special ${objectKind} (this tile)`}
-                      data-object-plan={objectKind}
-                      key={objectKind}
-                    >
-                      <div className="popoverSectionLabel">
-                        {objectKind === "obelisk" ? "⚱ Obelisk (this tile)" : "⛏ Mine (this tile)"}
-                      </div>
-                      <small className="popoverHint">
-                        Overrides the map-wide {objectKind} setting for THIS tile only — a field you leave
-                        unset falls back to the map-wide value.
-                      </small>
-                      <div className="popoverSubLabel">Guard</div>
-                      <GuardSpecEditor
-                        guard={selected.objectPlans?.[objectKind]?.guard}
-                        noneLabel="Map-wide / printed"
-                        onChange={(guard) =>
-                          updateTile(selectedIndex as number, {
-                            objectPlans: nextObjectPlans(
-                              selected.objectPlans,
-                              objectKind,
-                              nextObjectPlan(selected.objectPlans?.[objectKind], { guard })
-                            )
-                          })
-                        }
-                      />
-                      <div className="popoverSubLabel">First-clear reward</div>
-                      <FieldRewardEditor
-                        ariaLabel={`${objectKind} first-clear reward`}
-                        reward={selected.objectPlans?.[objectKind]?.reward}
-                        onChange={(reward) =>
-                          updateTile(selectedIndex as number, {
-                            objectPlans: nextObjectPlans(
-                              selected.objectPlans,
-                              objectKind,
-                              nextObjectPlan(selected.objectPlans?.[objectKind], { reward })
-                            )
-                          })
-                        }
-                        vp={selected.objectPlans?.[objectKind]?.vp}
-                        onVpChange={(vp) =>
-                          updateTile(selectedIndex as number, {
-                            objectPlans: nextObjectPlans(
-                              selected.objectPlans,
-                              objectKind,
-                              nextObjectPlan(selected.objectPlans?.[objectKind], { vp })
-                            )
-                          })
-                        }
-                      />
-                    <label className="popoverSubLabel">Combat round limit
-                        <select title="Free combat rounds before the normal continue-or-retreat window: after that many rounds each further round costs movement points as usual. Unlimited never asks. Default keeps the printed field rules." aria-label="Combat round limit" value={selected.objectPlans?.[objectKind]?.combatRoundLimit ?? (selected.objectPlans?.[objectKind]?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { objectPlans: nextObjectPlans(selected.objectPlans, objectKind, nextObjectPlan(selected.objectPlans?.[objectKind], { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined })) })}>
-                          <option value="default">Default rules</option>
-                          <option value="1">1 free round, then pay MP</option><option value="2">2 free rounds, then pay MP</option><option value="3">3 free rounds, then pay MP</option><option value="unlimited">Unlimited</option>
-                        </select>
-                      </label>
-                      <div className="popoverGuardRow" role="group" aria-label={`${objectKind} break options`}>
-                        {(
-                          [
-                            { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through — must fight to enter. Ticked HERE (per tile) it also gates the whole tile: no other hex of it can be entered until this Break falls. The map-wide Mine/Obelisk Break flag stays per-field only." },
-                            { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves the living guards for a re-fight." }
-                          ] as const
-                        ).map((flag) => (
-                          <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>
-                            <input
-                              aria-label={`${objectKind} ${flag.label}`}
-                              checked={Boolean(selected.objectPlans?.[objectKind]?.[flag.key])}
-                              onChange={(event) =>
-                                updateTile(selectedIndex as number, {
-                                  objectPlans: nextObjectPlans(
-                                    selected.objectPlans,
-                                    objectKind,
-                                    nextObjectPlan(selected.objectPlans?.[objectKind], {
-                                      [flag.key]: event.target.checked || undefined
-                                    })
-                                  )
-                                })
-                              }
-                              type="checkbox"
-                            />
-                            <span>{flag.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <div className="popoverSubLabel">Marked scenario objective — this exact {objectKind} at this location</div>
-                      <label className="popoverCheckRow" title={`The first player to clear / flag THIS ${objectKind} wins the game immediately.`}>
-                        <input
-                          aria-label={`First clear of this ${objectKind} wins the game`}
-                          checked={Boolean(selected.objectPlans?.[objectKind]?.winCondition)}
-                          onChange={(event) =>
-                            updateTile(selectedIndex as number, {
-                              objectPlans: nextObjectPlans(
-                                selected.objectPlans,
-                                objectKind,
-                                nextObjectPlan(selected.objectPlans?.[objectKind], {
-                                  winCondition: event.target.checked || undefined
-                                })
-                              )
-                            })
-                          }
-                          type="checkbox"
-                        />
-                        <span>🏁 First clear wins the game</span>
-                      </label>
-                      {selected.objectPlans?.[objectKind] ? (
-                        <button
-                          className="popoverIconButton"
-                          onClick={() =>
-                            updateTile(selectedIndex as number, {
-                              objectPlans: nextObjectPlans(selected.objectPlans, objectKind, undefined)
-                            })
-                          }
-                          type="button"
-                        >
-                          Clear special {objectKind}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null
-                )}
-                  </PopoverGroup>
-                ) : null}
+                {renderObjectPlanGroup()}
 
                 {selected.group === "sea" ? (
                   <PopoverGroup focus={popoverFocusFor("Temple of the Sea (this tile)")} title="Temple of the Sea (this tile)" active={Boolean(selected.objectPlans?.temple_of_the_sea)}>

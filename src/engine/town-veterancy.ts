@@ -99,8 +99,11 @@ export function townAttackBonus(
     (townVeterancy(defender, "crusader-undead") && isUndeadUnit(attacker)
       ? 1
       : 0) +
-    (townVeterancy(attacker, "dragon-hunter") &&
-    ["ground", "flying"].includes(defender.type)
+    (townVeterancy(attacker, "dragon-hunter") && ["ground", "flying"].includes(defender.type)
+      ? 1
+      : 0) +
+    (townVeterancy(attacker, "gold-dragon-dominion") &&
+    (defender.type === "ground" || (retaliation && defender.type === "flying"))
       ? 1
       : 0) +
     (townVeterancy(attacker, "gorgon-armored-prey") && currentDefense >= 2
@@ -110,7 +113,8 @@ export function townAttackBonus(
       ? 1
       : 0) +
     (townVeterancy(attacker, "kobold-armored-prey") && currentDefense >= 2 ? 2 : 0) -
-    (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0) +
+    (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0) -
+    (retaliation && attacker.controllerId !== defender.controllerId && townVeterancy(defender, "angel-safe") ? 3 : 0) +
     (!retaliation && townVeterancy(attacker, "haspid-aggressive-drill") ? 1 : 0) +
     (townVeterancy(attacker, "pit-demon-bond") &&
     Object.values(state.combat?.units ?? {}).some(
@@ -135,6 +139,7 @@ export function townDefenseBonus(
   return (
     forgeDefenseBonus(state, attacker, defender) +
     (!isRetaliation && state.combat?.round !== undefined && state.combat.round % 2 === 1 && townVeterancy(defender, "behemoth-odd-defense") ? 1 : 0) +
+    (!isRetaliation && state.combat?.round !== undefined && state.combat.round % 2 === 1 && townVeterancy(defender, "black-dragon-guard") ? 1 : 0) +
     (townVeterancy(defender, "elf-guard") &&
     ["ranged", "flying"].includes(attacker.type)
       ? 1
@@ -377,8 +382,7 @@ export function townAfterAttack(
       }
     }
   }
-  if (townVeterancy(defender, "naga-mend"))
-    veteranHeal(state, defender, 1, "town-naga-mend");
+  townNagaMend(state, defender);
   if (retaliation && townVeterancy(defender, "efreet-mend"))
     veteranHeal(state, defender, 1, "town-efreet-mend");
   if (isAdjacent(attacker.position, defender.position)) {
@@ -398,6 +402,15 @@ export function townAfterAttack(
       veteranDamage(state, defender, attacker, 1, "town-dragon-snare");
     }
   }
+}
+
+/** Renewing Coils shares one round budget between attacks and damaging Spells. */
+export function townNagaMend(state: GameState, unit: CombatUnitState): void {
+  const round = state.combat?.round;
+  if (round === undefined || !alive(unit) || !townVeterancy(unit, "naga-mend") || unit.townVeterancy?.nagaMendRound === round) return;
+  if (unit.damage <= 0) return;
+  (unit.townVeterancy ??= {}).nagaMendRound = round;
+  veteranHeal(state, unit, 1, "town-naga-mend");
 }
 
 export function townCombatStart(state: GameState): void {

@@ -1155,6 +1155,18 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   // display flavour. Card art is the creature's wiki portrait composed onto a
   // card canvas by scripts/build-bulwark-unit-cards.mjs from approved,
   // creature-reference-guided illustrations.
+  // Neutral sides (Factory/Forge precedent: designer/random guards, sandbox;
+  // never in the Neutral Units decks). The official Bulwark product sheet
+  // prints the Jotunns Neutral card (5/2/6/8, 21 gold, "Enemy [flying] units
+  // have -2 [initiative]") and the Yeti Neutral's cost (11) and ability; every
+  // other value follows the Castle Few/Pack → Neutral pattern: Attack = Few
+  // (Gold: Few - 1); Defense 1 → 0, 2 stays, 3+ → 2; Health = Pack (Bronze: the classic
+  // bronze neutrals average Pack health, Castle alone runs ~+1),
+  // Few (Silver), Few - 1 (Gold); Initiative = Pack - 1 (Bronze), Few (Silver/
+  // Gold); cost gold-only = Pack + 1 (Bronze/Silver), Pack gold - 2 (Gold); the
+  // Pack's combat abilities (Castle Marksmen/Zealots/Griffins). Pack + Neutral
+  // faces: scripts/build-forge-unit-cards.mjs (Bulwark entries, official-design
+  // Codex art masters <slug>-official.png); Few faces: build-bulwark-unit-cards.mjs.
   "bulwark.kobolds": {
     id: "bulwark.kobolds",
     name: "Kobolds",
@@ -1166,6 +1178,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // true no-op rather than a decorative gold-income claim.
     few: { attack: 2, defense: 0, health: 3, initiative: 4, cost: { gold: 0 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
     pack: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold] (Kobold Foreman).", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 4, cost: { gold: 3 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-neutral-bronze-kobolds.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Kobold",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1183,6 +1196,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // magic-resistance translation only (reduce-spell-damage-1).
     few: { attack: 2, defense: 1, health: 4, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
     pack: { attack: 2, defense: 1, health: 5, initiative: 10, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
+    neutral: { attack: 2, defense: 0, health: 5, initiative: 9, cost: { gold: 5 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1.", cardImage: "/assets/units-neutral-bronze-mountain_rams.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mountain_Ram_and_Argali",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1201,6 +1215,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // (ignores-retaliation).
     few: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
     pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
+    neutral: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 7 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack.", cardImage: "/assets/units-neutral-bronze-snow_elves.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf_and_Steel_Elf",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1217,6 +1232,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // engine: Few (Yeti) has no wired ability; Pack (Yeti Runemaster) keeps Recovery.
     few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
     pack: { attack: 3, defense: 2, health: 5, initiative: 8, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-yeti-shrug-off"], abilityText: "[unit_passive] Enemy [ongoing] effects on this unit last for only one round.", cardImage: "/assets/units-neutral-silver-yetis.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Yeti_and_Yeti_Runemaster",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1231,8 +1247,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     // engine: Few carries Air Shield only; Pack (Great Shaman) adds Freezing Shot.
-    few: { attack: 3, defense: 0, health: 5, initiative: 5, cost: { gold: 7 }, abilities: ["bulwark-air-shield"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield).", cardImage: "/assets/units-bulwark-silver-shamans-few.webp" },
+    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 7 }, abilities: ["bulwark-air-shield"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield).", cardImage: "/assets/units-bulwark-silver-shamans-few.webp" },
     pack: { attack: 3, defense: 1, health: 6, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-air-shield", "bulwark-freezing-shot"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield). [unit_attack] After the attack, reduce the target's Initiative by 2 next round (Freezing Shot).", cardImage: "/assets/units-bulwark-silver-shamans-pack.webp" },
+    neutral: { attack: 3, defense: 0, health: 5, initiative: 5, cost: { gold: 12 }, abilities: ["bulwark-air-shield", "bulwark-freezing-shot"], abilityText: "[unit_passive] +1 Defense against ranged attackers (Air Shield). [unit_attack] After the attack, reduce the target's Initiative by 2 next round (Freezing Shot).", cardImage: "/assets/units-neutral-silver-shamans.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Shaman_and_Great_Shaman",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1249,6 +1266,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // engine: Few (Mammoth) has no wired ability; Pack (War Mammoth) adds Thick Hide.
     few: { attack: 5, defense: 2, health: 7, initiative: 5, cost: { gold: 12 }, abilities: [], cardImage: "/assets/units-bulwark-golden-mammoths-few.webp" },
     pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 20, valuables: 1 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +1 Defense while this unit is defending (War Mammoth).", cardImage: "/assets/units-bulwark-golden-mammoths-pack.webp" },
+    neutral: { attack: 4, defense: 2, health: 6, initiative: 5, cost: { gold: 18 }, abilities: ["bulwark-thick-hide"], abilityText: "[unit_passive] +1 Defense while this unit is defending.", cardImage: "/assets/units-neutral-golden-mammoths.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mammoth_and_War_Mammoth",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1263,13 +1281,16 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ground",
     // engine: only the Pack (Jotunn Warlord) carries the Teleport ability
-    // (bulwark-jotunn-teleport); the Few (Jotunn) has no wired ability. House
+    // (bulwark-jotunn-teleport); the Few (Jotunn) does not teleport. House
     // rule (per the owner): at the START of its activation the Warlord may
     // teleport one of its OTHER OWN units — a friendly unit, NEVER itself and
     // NEVER an enemy — to an empty space like the Teleport Spell, optionally, and
-    // still act normally afterwards. The printed enemy-flying-slow rider is NOT wired.
-    few: { attack: 5, defense: 3, health: 8, initiative: 7, cost: { gold: 18, valuables: 1 }, abilities: [], cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
-    pack: { attack: 6, defense: 3, health: 9, initiative: 9, cost: { gold: 32, valuables: 2 }, abilities: ["bulwark-jotunn-teleport"], abilityText: "[activation] At the start of its activation, this unit may teleport one of your other units to an empty space, then act as normal (Teleport).", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
+    // still act normally afterwards. The printed rider "Enemy [flying] units have
+    // -1/-2 [initiative]" is wired on every side (bulwark-jotunn-flyer-slow-1 on the
+    // Few, -2 on the Pack and Neutral → ENEMY_UNIT_TYPE_INITIATIVE_AURA).
+    few: { attack: 6, defense: 2, health: 9, initiative: 8, cost: { gold: 22, valuables: 1 }, abilities: ["bulwark-jotunn-flyer-slow-1"], abilityText: "[unit_passive] Enemy [unit_flying] units have -1 [initiative].", cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
+    pack: { attack: 7, defense: 2, health: 10, initiative: 11, cost: { gold: 30, valuables: 2 }, abilities: ["bulwark-jotunn-teleport", "bulwark-jotunn-flyer-slow-2"], abilityText: "[activation] At the start of its activation, this unit may teleport one of your other units to an empty space, then act as normal (Teleport). [unit_passive] Enemy [unit_flying] units have -2 [initiative].", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
+    neutral: { attack: 5, defense: 2, health: 6, initiative: 8, cost: { gold: 21 }, abilities: ["bulwark-jotunn-flyer-slow-2"], abilityText: "[unit_passive] Enemy [unit_flying] units have -2 [initiative].", cardImage: "/assets/units-neutral-golden-jotunns.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Jotunn_and_Jotunn_Warlord",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
@@ -1309,8 +1330,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // the penalty's lower. The Pack ALSO carries halfling-precise-shot: on a "+1"
     // resolved Attack die it drops a Corrosion token on the target (-1 Defense,
     // min 0) — both halves are now wired.
-    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 2 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/factory-cards/units-factory-bronze-halflings-few-imagegen.webp" },
-    pack: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["attack-roll-advantage", "halfling-precise-shot"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0).", cardImage: "/factory-cards/units-factory-bronze-halflings-pack-imagegen.webp" },
+    few: { attack: 2, defense: 0, health: 2, initiative: 4, cost: { gold: 2 }, abilities: ["attack-roll-advantage"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one.", cardImage: "/assets/units-factory-bronze-halflings-few.webp" },
+    pack: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["attack-roll-advantage", "halfling-precise-shot"], abilityText: "[unit_attack] Roll 2 Attack dice and resolve the higher one. If you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense] (to a minimum of 0).", cardImage: "/assets/units-factory-bronze-halflings-pack.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
@@ -1327,9 +1348,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Only the Few Engineer's line attack is printed on the faction cards.
     // The Pack repairs an adjacent mechanical unit or gains Attack. The
     // separate Neutral guard retains its line attack.
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["mechanics-line-attack-1"], abilityText: "Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/factory-cards/units-factory-bronze-mechanics-few-imagegen.webp" },
-    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 5 }, abilities: ["mechanics-repair-2"], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack].", cardImage: "/factory-cards/units-factory-bronze-mechanics-pack-imagegen.webp" },
-    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: ["mechanics-line-attack-1"], abilityText: "[activation] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 3 }, abilities: ["mechanics-line-attack-1"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-few.webp" },
+    pack: { attack: 2, defense: 1, health: 4, initiative: 7, cost: { gold: 5 }, abilities: ["mechanics-repair-2"], abilityText: "[activation] Remove up to 2 [damage] from an adjacent [mechanical] unit, or gain +1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-pack.webp" },
+    neutral: { attack: 2, defense: 0, health: 4, initiative: 6, cost: { gold: 5 }, abilities: ["mechanics-line-attack-1"], abilityText: "[unit_attack] Attack 2 spaces in a line. The first attack resolves normally, and the second has 1 [attack].", cardImage: "/assets/units-factory-bronze-mechanics-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
@@ -1347,7 +1368,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // unit's Initiative is increased by an effect, increase it by an additional 1"
     // is wired (armadillo-initiative-amplify → AMPLIFY_INITIATIVE_INCREASE). The
     // prior armadillo-curl (+2 Defense) was a fabrication — no such text on the card.
-    few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 4 }, abilities: [], cardImage: "/factory-cards/units-factory-bronze-armadillos-few-imagegen.webp" },
+    few: { attack: 2, defense: 1, health: 4, initiative: 4, cost: { gold: 4 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-few.webp" },
     pack: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 6 }, abilities: ["armadillo-initiative-amplify"], abilityText: "[unit_passive] Whenever this unit's [initiative] is increased by an effect, increase it by an additional 1.", cardImage: "/assets/units-factory-bronze-armadillos-pack.webp" },
     neutral: { attack: 2, defense: 1, health: 4, initiative: 6, cost: { gold: 5 }, abilities: [], cardImage: "/assets/units-factory-bronze-armadillos-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Armadillo",
@@ -1364,18 +1385,20 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ground",
     // engine: the Pack's "Ignore Retaliation Attacks" is wired (ignores-retaliation).
-    // The NEUTRAL guard's "when defeated, deal 1 damage to all adjacent units" is
-    // wired via automaton-detonate-1 (ON_REMOVAL_DAMAGE_ADJACENT amount 1). The
+    // The NEUTRAL guard's printed "when this unit is removed, deal 2 damage to each
+    // adjacent unit" (official Factory product sheet, 12 gold) is wired via
+    // automaton-detonate (ON_REMOVAL_DAMAGE_ADJACENT amount 2). Its Attack /
+    // Defense / Health / Initiative are hidden on the sheet and kept as-is. The
     // FEW's cube-scaled Detonate is now wired: automaton-place-cube (activation:
     // bank up to 2 faction cubes) + automaton-detonate-cubes (on removal, deal
     // factionCubes damage to every adjacent unit — the perCube ON_REMOVAL detonate).
-    few: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 6 }, abilities: ["automaton-place-cube", "automaton-detonate-cubes"], abilityText: "[activation] You may place a faction cube on this unit (up to 2). [unit_passive] When defeated, remove them to inflict that much [damage] to all adjacent units.", cardImage: "/factory-cards/units-factory-silver-automatons-few-imagegen.webp" },
+    few: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 6 }, abilities: ["automaton-place-cube", "automaton-detonate-cubes"], abilityText: "[activation] You may place a faction cube on this unit (up to 2). [unit_passive] When defeated, remove them to inflict that much [damage] to all adjacent units.", cardImage: "/assets/units-factory-silver-automatons-few.webp" },
     pack: { attack: 4, defense: 1, health: 4, initiative: 9, cost: { gold: 8 }, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation Attacks.", cardImage: "/assets/units-factory-silver-automatons-pack.webp" },
-    neutral: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 10 }, abilities: ["automaton-detonate-1"], abilityText: "[unit_passive] When this unit is defeated, deal 1 [damage] to all adjacent units.", cardImage: "/assets/units-factory-silver-automatons-neutral.webp" },
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 12 }, abilities: ["automaton-detonate"], abilityText: "[unit_passive] When this unit is removed, deal 2 [damage] to each adjacent unit.", cardImage: "/assets/units-factory-silver-automatons-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Automaton",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Pack ignores-retaliation, Neutral automaton-detonate-1, and Few cube-scaled Detonate (place-cube + perCube detonate) all wired.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack). Neutral cost 12 and 2-damage Detonate printed on the official Factory product sheet. Pack ignores-retaliation, Neutral automaton-detonate, and Few cube-scaled Detonate (place-cube + perCube detonate) all wired.",
       url: "https://heroes.thelazy.net/index.php/Automaton"
     }
   },
@@ -1394,8 +1417,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // The Pack's cube-fuelled extra attack is now wired via the faction-cube
     // subsystem: sandworm-cube-gain (bank a cube on every kill) + sandworm-cube-
     // attack (spend a cube to attack again, chaining while cubes remain).
-    few: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 7 }, abilities: [], cardImage: "/factory-cards/units-factory-silver-sandworms-few-imagegen.webp" },
-    pack: { attack: 5, defense: 1, health: 6, initiative: 10, cost: { gold: 12 }, abilities: ["sandworm-cube-gain", "sandworm-cube-attack"], abilityText: "[unit_passive] Place a faction cube on this unit whenever it defeats an enemy unit. [activation] You may remove a faction cube from this unit in order to attack again.", cardImage: "/factory-cards/units-factory-silver-sandworms-pack-imagegen.webp" },
+    few: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 7 }, abilities: [], cardImage: "/assets/units-factory-silver-sandworms-few.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 10, cost: { gold: 12 }, abilities: ["sandworm-cube-gain", "sandworm-cube-attack"], abilityText: "[unit_passive] Place a faction cube on this unit whenever it defeats an enemy unit. [activation] You may remove a faction cube from this unit in order to attack again.", cardImage: "/assets/units-factory-silver-sandworms-pack.webp" },
     neutral: { attack: 3, defense: 1, health: 4, initiative: 8, cost: { gold: 15 }, abilities: ["sandworm-strike-again"], abilityText: "[unit_attack] If the target is an adjacent unit, attack this target again.", cardImage: "/assets/units-factory-silver-sandworms-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Sandworm",
     source: {
@@ -1416,18 +1439,20 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // engine: the "Mark" mechanic is wired on BOTH faction sides (bounty-hunter-
     // mark-1/2 → MARK_AND_HUNT): at Combat start the strongest enemy is Marked, and
     // a Bounty Hunter attacking a Marked unit gains +1 (Few) / +2 (Pack) Attack.
-    // The single-cost NEUTRAL guard's DIFFERENT ability — pre-emptive + ranged
-    // retaliation — is now wired (bounty-hunter-preemptive, PREEMPTIVE_RETALIATION):
-    // it retaliates BEFORE the attacker's blow lands and against non-adjacent
-    // (ranged) attackers too. The prior double-shot was a fabrication — the
-    // physical card carries the Mark ability (faction sides) instead.
-    few: { attack: 5, defense: 1, health: 5, initiative: 7, cost: { gold: 11 }, abilities: ["bounty-hunter-mark-1"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units.", cardImage: "/factory-cards/units-factory-golden-gunslingers-few-imagegen.webp" },
+    // The single-cost NEUTRAL guard (official Factory product sheet: 4/1/5/7,
+    // 16 gold, "When attacked by a non-adjacent [ranged] unit, retaliate before
+    // the incoming attack") is wired via bounty-hunter-ranged-preemptive
+    // (PREEMPTIVE_RETALIATION nonAdjacentOnly): only a NON-adjacent attacker
+    // provokes the pre-emptive (and otherwise impossible) counter-shot; an
+    // adjacent attacker gets the ordinary retaliation. The prior double-shot was
+    // a fabrication — the physical card carries the Mark ability (faction sides).
+    few: { attack: 5, defense: 1, health: 5, initiative: 7, cost: { gold: 11 }, abilities: ["bounty-hunter-mark-1"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units.", cardImage: "/assets/units-factory-golden-gunslingers-few.webp" },
     pack: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 16, valuables: 1 }, abilities: ["bounty-hunter-mark-2"], abilityText: "[unit_passive] At the start of Combat, place a Mark token on an enemy unit. Bounty Hunters gain +1 [attack] against Marked units.", cardImage: "/assets/units-factory-golden-gunslingers-pack.webp" },
-    neutral: { attack: 5, defense: 1, health: 6, initiative: 8, cost: { gold: 17 }, abilities: ["bounty-hunter-preemptive"], abilityText: "[unit_passive] Retaliate before an opponent's attack. This unit also retaliates against non-adjacent units.", cardImage: "/assets/units-factory-golden-gunslingers-neutral.webp" },
+    neutral: { attack: 4, defense: 1, health: 5, initiative: 7, cost: { gold: 16 }, abilities: ["bounty-hunter-ranged-preemptive"], abilityText: "[unit_passive] When attacked by a non-adjacent [unit_ranged] unit, retaliate before the incoming attack.", cardImage: "/assets/units-factory-golden-gunslingers-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Gunslinger",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack titled \"Bounty Hunters\" + single-cost Neutral scan). Mark (faction sides) and the Neutral Preemptive Shot retaliation all wired; prior double-shot removed as fabricated.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack titled \"Bounty Hunters\"); Neutral card values and text printed on the official Factory product sheet. Mark (faction sides) and the Neutral ranged Preemptive Shot retaliation all wired; prior double-shot removed as fabricated.",
       url: "https://heroes.thelazy.net/index.php/Gunslinger"
     }
   },
@@ -1439,10 +1464,13 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "flying",
     // Flying is the unit type. Few can spend its first-round activation for
     // targeting protection; Pack has that protection automatically in round 1.
-    // Neutral has neither ability.
-    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: ["couatl-invulnerability-few"], abilityText: "[activation] During the first round, you may end this unit's activation. If you do, it cannot be targeted by attacks or Spells until the round ends. Retaliation Attacks still work.", cardImage: "/factory-cards/units-factory-golden-couatls-few-first-round-castle-icons.webp" },
-    pack: { attack: 7, defense: 3, health: 8, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: ["couatl-invulnerability-pack"], abilityText: "[unit_passive] This unit cannot be targeted by attacks or Spells during the first round, including by Neutral units. Retaliation Attacks still work.", cardImage: "/factory-cards/units-factory-golden-couatls-pack-first-round.webp" },
-    neutral: { attack: 5, defense: 2, health: 8, initiative: 13, cost: { gold: 18, valuables: 1 }, abilities: [], cardImage: "/assets/units-factory-golden-couatls-neutral.webp" },
+    // Neutral has neither ability. The Neutral is a GOLD-tier neutral (no azure
+    // Couatl card is printed or supported): gold-only price like every gold
+    // Neutral Unit card (Pack gold − 2 = 28, the Tower Nagas rule); its combat
+    // values are kept.
+    few: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: ["couatl-invulnerability-few"], abilityText: "[activation] During the first round, you may end this unit's activation. If you do, it cannot be targeted by attacks or Spells until the round ends. Retaliation Attacks still work.", cardImage: "/assets/units-factory-golden-couatls-few.webp" },
+    pack: { attack: 7, defense: 3, health: 8, initiative: 16, cost: { gold: 30, valuables: 2 }, abilities: ["couatl-invulnerability-pack"], abilityText: "[unit_passive] This unit cannot be targeted by attacks or Spells during the first round, including by Neutral units. Retaliation Attacks still work.", cardImage: "/assets/units-factory-golden-couatls-pack.webp" },
+    neutral: { attack: 5, defense: 2, health: 8, initiative: 13, cost: { gold: 28 }, abilities: [], cardImage: "/assets/units-factory-golden-couatls-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Couatl",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
@@ -1462,14 +1490,19 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // ATTACK (Few dreadnought-splash-1 = up to 3 units, 2/1/1; Pack
     // dreadnought-splash-2 = up to 3 units, 3/2/1; Neutral remains 2/1/1). A flat allocation, so it never
     // provokes a retaliation. (The prior ignores-retaliation was a fabrication.)
-    // The single-cost NEUTRAL guard is the azure-tier version (same splash).
-    few: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 19, valuables: 1 }, abilities: ["dreadnought-splash-1"], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 [damage], starting with the first selected unit. Stop when done.", cardImage: "/factory-cards/units-factory-golden-dreadnoughts-few-imagegen.webp" },
-    pack: { attack: 7, defense: 3, health: 10, initiative: 7, cost: { gold: 30, valuables: 2 }, abilities: ["dreadnought-splash-2"], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 3/2/1 [damage], starting with the first selected unit. Stop when done.", cardImage: "/factory-cards/units-factory-golden-dreadnoughts-pack-imagegen.webp" },
-    neutral: { attack: 6, defense: 3, health: 10, initiative: 6, cost: { gold: 32, valuables: 2 }, abilities: ["dreadnought-splash-neutral"], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 [damage], starting with the first selected unit (azure-tier Neutral).", cardImage: "/assets/units-factory-golden-dreadnoughts-neutral.webp" },
+    // The single-cost NEUTRAL guard is a GOLD-tier Neutral (it was priced like
+    // an azure card: 6/3/10/6, 32 gold + 2 valuables). Its values follow the
+    // gold Neutral pattern (Tower Nagas; Castle/Necropolis/Dungeon top-gold
+    // neutrals; Bulwark Jotunns): Attack = Few − 1, Defense 3 → 2, Health =
+    // Few − 1, Initiative = Few, gold-only cost = Pack gold − 2 → 5/2/7/6, 28
+    // gold. Same 2/1/1 splash as the Few.
+    few: { attack: 6, defense: 3, health: 8, initiative: 6, cost: { gold: 19, valuables: 1 }, abilities: ["dreadnought-splash-1"], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 [damage], starting with the first selected unit. Stop when done.", cardImage: "/assets/units-factory-golden-dreadnoughts-few.webp" },
+    pack: { attack: 7, defense: 3, health: 10, initiative: 7, cost: { gold: 30, valuables: 2 }, abilities: ["dreadnought-splash-2"], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 3/2/1 [damage], starting with the first selected unit. Stop when done.", cardImage: "/assets/units-factory-golden-dreadnoughts-pack.webp" },
+    neutral: { attack: 5, defense: 2, health: 7, initiative: 6, cost: { gold: 28 }, abilities: ["dreadnought-splash-neutral"], abilityText: "[activation] Instead of attacking, select up to 3 units adjacent to this one. Allocate 2/1/1 [damage], starting with the first selected unit. Stop when done.", cardImage: "/assets/units-factory-golden-dreadnoughts-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Dreadnought_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Factory card artwork with updated Few/Pack values and a three-target splash allocation. Neutral keeps its separate printed values.",
+      credit: "Factory card artwork with updated Few/Pack values and a three-target splash allocation. Neutral is a gold-tier Neutral derived from the gold Neutral pattern (not printed on the product sheet).",
       url: "https://heroes.thelazy.net/index.php/Dreadnought_(Factory)"
     }
   },
@@ -1502,7 +1535,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "forge",
     tier: "bronze",
     type: "ground",
-    few: { attack: 3, defense: 0, health: 3, initiative: 3, cost: { gold: 4 }, abilities: ["forge-double-attack-die"], abilityText: "[unit_passive] Double the Attack die's outcome.", cardImage: "/assets/units-forge-bronze-cyber_zombies-few.webp" },
+    few: { attack: 3, defense: 1, health: 3, initiative: 3, cost: { gold: 4 }, abilities: ["forge-double-attack-die"], abilityText: "[unit_passive] Double the Attack die's outcome.", cardImage: "/assets/units-forge-bronze-cyber_zombies-few.webp" },
     pack: { attack: 3, defense: 1, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["forge-double-attack-die", "forge-chainsaw-shred"], abilityText: "[unit_passive] Double the Attack die's outcome. [unit_attack] The target has -1 [defense] during this attack.", cardImage: "/assets/units-forge-bronze-cyber_zombies-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 6 }, abilities: ["forge-double-attack-die"], abilityText: "[unit_passive] Double the Attack die's outcome.", cardImage: "/assets/units-forge-bronze-cyber_zombies-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
@@ -1518,8 +1551,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "forge",
     tier: "bronze",
     type: "ranged",
-    few: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["forge-psionic-daze"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round.", cardImage: "/assets/units-forge-bronze-watchers-few.webp" },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 8 }, abilities: ["forge-psionic-daze", "reduce-spell-damage-1"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round. [unit_passive] Reduce any [damage] from [spell] by 1.", cardImage: "/assets/units-forge-bronze-watchers-pack.webp" },
+    few: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 5 }, abilities: ["forge-psionic-daze"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round.", cardImage: "/assets/units-forge-bronze-watchers-few.webp" },
+    pack: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 7 }, abilities: ["forge-psionic-daze", "reduce-spell-damage-1"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round. [unit_passive] Reduce any [damage] from [spell] by 1.", cardImage: "/assets/units-forge-bronze-watchers-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 4, initiative: 5, cost: { gold: 8 }, abilities: ["forge-psionic-daze"], abilityText: "[unit_attack] After the attack, the target has -2 [initiative] next round.", cardImage: "/assets/units-forge-bronze-watchers-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
@@ -1567,12 +1600,12 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ranged",
     few: { attack: 6, defense: 2, health: 7, initiative: 4, cost: { gold: 14 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-few.webp" },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 5, cost: { gold: 22, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
+    pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 23, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
     neutral: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 20, valuables: 1 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
-      credit: "Forge spec (Faction Focus: Forge). Attack-2 follow-up printed; recruit 14 gold / upgrade 22 gold + 1 valuable per the user's 2026-09-23 balance ruling. The optional follow-up reuses the Lich Death Cloud second-attack path.",
+      credit: "Forge spec (Faction Focus: Forge). Attack-2 follow-up printed; recruit 14 gold / upgrade 23 gold + 1 valuable per the user's 2026-09-23 balance ruling (Pack upgrade 22 → 23 gold and Pack Attack 7 → 6 per the 2026-09-24 ruling). The optional follow-up reuses the Lich Death Cloud second-attack path.",
       url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
     }
   },
@@ -1784,8 +1817,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   },
   // Neutral Grenadiers (user design, 2026-09-23): the Neutral-deck twin of the
   // Factory Grenadiers PACK — same stats and abilities (roll 2 Attack dice keep
-  // the higher; Precise Shot Corrosion on a "+1"), one more Initiative (7), own
-  // art. One copy in the bronze Neutral deck (it joins neutralUnitIdsByTier by
+  // the higher; Precise Shot Corrosion on a "+1"), one more Initiative (7), the
+  // Factory Grenadiers' art on the Neutral frame. One copy in the bronze Neutral deck (it joins neutralUnitIdsByTier by
   // tier automatically). Henrietta's Halflings I/IV count it by printed name.
   // Recruit cost mirrors the neutral Halflings (Few 2 + Pack 3 = 5 gold).
   "neutral.grenadiers": {
@@ -1798,7 +1831,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     wikiUrl: "https://heroes.thelazy.net/index.php/Halfling_(Factory)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion, fan-made neutral card)",
-      credit: "User design: the Factory Grenadiers Pack stats/abilities with +1 Initiative as a bronze Neutral Unit card; art generated with Codex image_gen.",
+      credit: "User design: the Factory Grenadiers Pack stats/abilities with +1 Initiative as a bronze Neutral Unit card; art is the Factory Grenadiers master (Codex image_gen from the official Factory key art), card built by scripts/build-factory-unit-cards.mjs.",
       url: "https://heroes.thelazy.net/index.php/Halfling_(Factory)"
     }
   },

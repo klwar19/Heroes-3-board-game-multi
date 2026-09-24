@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hasMediaFile } from "@/lib/media-manifest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   ART_LESS_PROCLAMATIONS,
   ART_PENDING_PROCLAMATIONS,
@@ -13,7 +15,7 @@ import {
 
 /**
  * Guards that keep the Astrologers deck honest (CLAUDE.md rules #1-#3):
- *  - every dealt card has a real, locally-shipped card scan;
+ *  - every dealt card has a locally-published card face;
  *  - every card's `effect` is a type the engine actually handles, so a new card
  *    with an unwired effect fails CI instead of shipping as inert text;
  *  - the "not implemented" registry stays disjoint from the live deck, so an
@@ -30,6 +32,9 @@ const WIRED_EFFECT_TYPES = {
   REMOVE_BLACK_CUBES: true,
   NEXT_RESOURCE_ROUND: true,
   MOVEMENT_MODIFIER: true,
+  COMBAT_GROUND_FLYING_SLOW: true,
+  BUILDING_GOLD_DISCOUNT: true,
+  FREE_NON_DWELLING_BUILD_ALL: true,
   DEFENSE_TO_ATTACK: true,
   HAND_LIMIT_MODIFIER: true,
   RESHUFFLE_ARTIFACTS_SPELLS: true,
@@ -64,6 +69,9 @@ const WIRED_EFFECT_TYPES = {
   EVENT_DRAW_PICK: true,
   FIRST_COMBAT_GROUND_ATTACK: true,
   ABILITY_ROLL_REROLL: true,
+  PAID_CARD_DRAW: true,
+  SEARCH_SPELL_OR_ARTIFACT: true,
+  DEFER_WAR_MACHINE: true,
   ROTATE_TILE_EACH: true
 } satisfies Record<AstrologersEffect["type"], true>;
 
@@ -138,7 +146,7 @@ describe("astrologers deck data integrity", () => {
     expect(astrologersDeckCardIds).toContain("astrologers.friendly_beaver");
   });
 
-  it("ships a real local card scan for every proclamation (or declares it art-less / art-pending)", () => {
+  it("ships a local card face for every proclamation (or declares it art-less / art-pending)", () => {
     for (const [id, card] of Object.entries(astrologersCardDefinitions)) {
       if (ART_LESS_PROCLAMATIONS.has(id) || ART_PENDING_PROCLAMATIONS.has(id)) {
         // A card with no local front scan — either the fan wiki publishes none
@@ -148,10 +156,14 @@ describe("astrologers deck data integrity", () => {
         expect(card.image, `${id} should have an empty image`).toBe("");
         continue;
       }
+      if (card.image.startsWith("/game-tokens/astrologers/")) {
+        expect(existsSync(join(process.cwd(), "public", card.image.slice(1))), `${id} code-shipped card face missing`).toBe(true);
+        continue;
+      }
       expect(card.image, `${id} image path`).toMatch(/^\/assets\/astrologers_proclaim-[a-z0-9_]+\.webp$/);
       expect(
         hasMediaFile(card.image),
-        `${id} scan unpublished at ${card.image} (run: npm run media:publish)`
+        `${id} card face unpublished at ${card.image} (run: npm run media:publish)`
       ).toBe(true);
     }
   });
@@ -193,6 +205,10 @@ describe("astrologers deck data integrity", () => {
       ...Object.values(astrologersCardDefinitions).map((card) => card.name),
       ...ASTROLOGERS_NOT_IMPLEMENTED.map((entry) => entry.name)
     ]);
-    expect(accountedFor).toEqual(new Set(WIKI_ASTROLOGERS_CARD_NAMES));
+    expect(accountedFor).toEqual(new Set([
+      ...WIKI_ASTROLOGERS_CARD_NAMES,
+      "Card Games", "Oscillating Overloader", "Pre-Order",
+      "Slow", "Construction", "New Buildings"
+    ]));
   });
 });

@@ -910,6 +910,10 @@ export type ActiveEffectModifier =
        */
       type: "DEFENSE_TOKEN_ON_ZERO";
     }
+  | { type: "INCOMING_ATTACK_DISADVANTAGE" }
+  | { type: "DACE_PACK_BREAK" }
+  | { type: "DACE_MINOTAUR_DRAW" }
+  | { type: "DARKSTORN_PLUS_ONE_DEFENSE" }
   | {
       type: "RANGED_ATTACK_BONUS";
       amount: number;
@@ -1009,8 +1013,14 @@ export type ActiveEffectModifier =
       /** A chosen-ally heal cannot target the unit that supplies the effect. */
       excludeSourceUnitId?: UnitId;
     }
+  | { type: "VERDISH_ROUND_HEAL"; amount: number }
+  | { type: "VERDISH_KILL_HEAL"; amount: number }
   | {
-      /** Factory Field Repair: one automatic heal charge at each round start. */
+      /**
+       * Retired Factory Field Repair: one automatic heal charge at each round
+       * start. Nothing creates it any more; kept so mid-combat saves still load
+       * and drain their remaining charges.
+       */
       type: "REPAIR_HEAL_AT_COMBAT_ROUND_START";
       amount: number;
       remainingRounds: number;
@@ -1284,6 +1294,12 @@ export type ActiveEffectModifier =
       amount: number;
       /** Commander Fire Shield variant that also burns ranged attackers. */
       includesRanged?: boolean;
+      /** Legacy saved shields used combat rounds; read as caster cycles on load. */
+      amountAfterFirstRound?: number;
+      /** Damage after the caster's first subsequent activation. */
+      amountAfterFirstCasterActivation?: number;
+      /** Number of the caster's subsequent activations already reached. */
+      casterActivationsSinceCast?: number;
     }
   | {
       /** Succubus Power 2: +1 Defense against the first attack after the shield is applied. */
@@ -1425,6 +1441,12 @@ export type ActiveEffectModifier =
        */
       type: "DRAW_ON_SPELL_CAST";
       amount: number;
+      /** Kastore IV: stop drawing from this effect after three casts. */
+      maxPerCombat?: number;
+    }
+  | {
+      /** Isra VI: preserve the chosen unit's current side at 1 HP once. */
+      type: "ISRA_DEATH_SAVE";
     }
   | {
       /**
@@ -1649,6 +1671,8 @@ export type ActiveEffectDefinition = {
   scope: "player" | "unit" | "global";
   modifiers: ActiveEffectModifier[];
   duration: EffectDurationDefinition;
+  /** Caster activation starts still covered by this effect; consumed on later activations. */
+  casterActivationsUntilExpiry?: number;
   polarity?: "positive" | "negative" | "neutral";
   removable?: boolean;
   /**
@@ -2369,6 +2393,14 @@ export type EffectDefinition =
       allowInCombat?: boolean;
     }
   | {
+      /** Isra I: choose an Ability or own Specialty from deck or discard. */
+      type: "ISRA_FETCH_CARD";
+    }
+  | {
+      /** Isra IV: return one defeated bronze/silver Few army unit to Combat. */
+      type: "ISRA_RETURN_UNIT";
+    }
+  | {
       /**
        * Scholar (expert): two independent "up to N" phases matching the printed
        * card — (1) remove up to `count` Statistic cards from hand or discard,
@@ -2703,6 +2735,12 @@ export type EffectDefinition =
       /** Apply the bonus to this health bar only, not later Stack/Pack/Few bars. */
       currentUnitLifeOnly?: boolean;
     }
+  | { type: "CREATE_URFTIN_CUBES" }
+  | { type: "CREATE_VERDISH_ROUND_HEAL" }
+  | { type: "VERDISH_TRANSFER_DAMAGE" }
+  | { type: "CREATE_VERDISH_KILL_HEAL" }
+  | { type: "HEAL_TWO_UNITS"; amount: number; removeParalysis: boolean }
+  | { type: "CREATE_ULAND_CURE"; amount: number }
   | {
       /** Fireball: spell damage to the target and one unit adjacent to it. */
       type: "AREA_DAMAGE_ADJACENT";
@@ -3181,6 +3219,7 @@ export type EffectDefinition =
        */
       type: "GRANT_DEFENSE_TOKENS";
     }
+  | { type: "DARKSTORN_STONE_SKIN_ROUND" }
   | {
       /**
        * Merist's Stone Skin VI: an ongoing combat effect. When played it places a
@@ -3723,6 +3762,19 @@ export type EffectDefinition =
        */
       type: "PLACE_FIRE_WALL_FIXED";
       damage: number;
+    }
+  | {
+      /**
+       * Ladybird of Luck (ongoing side): "Place this card on an empty space. It
+       * counts as a Wall until the end of the combat. If this card is removed by
+       * an attack, you gain 2 gold and discard this card." Drops an
+       * `artifact_wall` battlefield token: a Combat Obstacle like a siege Wall
+       * (no unit may stop on or walk through it; flyers may fly over), torn down
+       * by an adjacent ground/flying unit's attack (ATTACK_FORTIFICATION, auto
+       * success). An attack removal pays the card's owner `goldOnAttackRemoval`.
+       */
+      type: "PLACE_ARTIFACT_WALL";
+      goldOnAttackRemoval: number;
     }
   | {
       /**
@@ -5203,6 +5255,7 @@ type GameActionPayload =
       playerId: PlayerId;
       cardId: CardId;
     }
+  | { type: "ASTROLOGERS_CARD_GAMES"; playerId: PlayerId }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
   | {
       /** Offer one resource or one hand Artifact to an allied player. */
@@ -5685,7 +5738,9 @@ type GameActionPayload =
       attackerId: UnitId;
       target:
         | { kind: "wall" | "gate"; position: number }
-        | { kind: "arrow-tower" };
+        | { kind: "arrow-tower" }
+        /** An artifact placed as a Wall (Ladybird of Luck) — any combat, not only sieges. */
+        | { kind: "artifact-wall"; position: number; tokenId: string };
     }
   | {
       /**
@@ -6631,6 +6686,8 @@ type GameEventPayload =
       target: TargetRef;
       amount: number;
       damageKind: DamageKind;
+      /** Soul Link's assigned share is direct damage and cannot be redirected again. */
+      soulLinkTransfer?: boolean;
     }
   | {
       id: string;
@@ -7442,6 +7499,23 @@ type GameEventPayload =
       message: string;
     }
   | {
+      /**
+       * Factory Artificer "Emergency Repair": the commander cancelled an enemy
+       * attack that would have destroyed `protectedUnitId` or flipped it
+       * Pack→Few. The commander is Paralyzed (a COMBAT_TOKEN_PLACED follows).
+       */
+      id: string;
+      type: "COMMANDER_ATTACK_CANCELLED";
+      playerId: PlayerId;
+      commanderSlug: string;
+      commanderUnitId: UnitId;
+      protectedUnitId: UnitId;
+      attackerUnitId: UnitId;
+      castName: string;
+      power: number;
+      message: string;
+    }
+  | {
       /** WOG commander: killed in combat (stays dead until revived). */
       id: string;
       type: "COMMANDER_DIED";
@@ -8101,6 +8175,8 @@ type GameEventPayload =
       cardId: CardId;
       cost: ResourceCost;
       at: "factory" | "trading-post";
+      /** Pre-Order leaves the machine in transit until this player's next turn. */
+      deferred?: boolean;
     }
   | {
       /** A permanent card entered play (the previous one went to discard). */
@@ -8729,8 +8805,11 @@ export type ResolutionStackItem = {
     /**
      * Alamar's Resurrection armed on this attack: if it would reduce the named
      * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
+     * `commanderUnitId` = armed by Factory Artificer's Emergency Repair: the
+     * attack is cancelled OUTRIGHT and that commander pays (Paralysis + its
+     * once-per-combat use) when it resolves.
      */
-    cancelLethal?: { unitId: UnitId; grade: UnitGrade };
+    cancelLethal?: { unitId: UnitId; grade: UnitGrade; commanderUnitId?: UnitId };
     /**
      * The attack die outcome rolled before pausing for the lethal-save window,
      * reused when the attack resumes so the die is not rerolled.
@@ -8983,11 +9062,17 @@ export type ReactionWindow = {
 
 export type ActiveEffectState = ActiveEffectDefinition & {
   id: string;
+  /** Number of draws already paid by a capped spell-cast draw effect. */
+  spellCastDrawsUsed?: number;
   source: SourceRef;
   controllerId: PlayerId;
   target?: TargetRef;
   startedRound: number;
   startedCombatRound?: number;
+  /** Urftin VI: combat-scoped cubes on the specialty card. */
+  urftinCubes?: number;
+  /** Uland VI: offered once per round for the bound unit. */
+  ulandCure?: { amount: number; lastOfferedRound?: number };
   /** Riki I/IV: refresh the entire bonus through the following round on an army loss. */
   fallenBond?: {
     base: number;
@@ -9487,6 +9572,9 @@ export type CommanderPlayerState = {
 export type PlayerState = {
   id: PlayerId;
   name: string;
+  /** Pre-Order keeps acquired machines out of every playable card zone until this player's next turn. */
+  preOrderWarMachines?: CardId[];
+  cardGamesUsedRound?: number;
   /** Hellstorm Helmet: six army units may deploy in each combat of this game round. */
   hellstormSixUnitRound?: number;
   /** Adventure mode: chosen faction and main hero definition ids. */
@@ -10119,7 +10207,8 @@ export type BattlefieldTokenKind =
   | "fire_wall"
   | "quicksand"
   | "land_mine"
-  | "factory_trap";
+  | "factory_trap"
+  | "artifact_wall";
 
 /**
  * A token (or card) occupying a Combat-board space, placed by a Spell:
@@ -10143,6 +10232,11 @@ export type BattlefieldTokenKind =
  *  - factory_trap — the Factory commander's secret one-shot mechanical trap;
  *    it is omitted from an opponent's player view until sprung, deals 2 flat
  *    effect damage to the first unit that enters, then is removed.
+ *  - artifact_wall — an artifact card placed on the board that "counts as a
+ *    Wall until the end of the combat" (Ladybird of Luck): a Combat Obstacle for
+ *    EVERY unit (no stopping, no walking through; flyers fly over), destroyed
+ *    by any adjacent ground/flying unit's attack exactly like a siege Wall. An
+ *    attack removal pays the controller `goldOnAttackRemoval`.
  */
 export type BattlefieldTokenState = {
   id: string;
@@ -10170,6 +10264,10 @@ export type BattlefieldTokenState = {
   sourceAbilityId?: string;
   /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
   expiresAtCombatRoundEnd?: number;
+  /** artifact_wall: the artifact card lying on the board as this Wall. */
+  sourceArtifactCardId?: CardId;
+  /** artifact_wall: gold paid to the controller when an attack removes it. */
+  goldOnAttackRemoval?: number;
 };
 
 /** A Stack Token modifies exactly one statistic of a Creature Bank unit card. */
@@ -10364,6 +10462,8 @@ export type CombatUnitState = {
   keyAuthorityCancelledAbilityIds?: string[];
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /** Isra VI: this unit has spent its one lethal save this combat. */
+  israDeathSaveUsedThisCombat?: boolean;
   /**
    * Set ONLY while the `phoenix-pack-rebirth` house rule is on, and only by the
    * printed SELF_REBIRTH_ONCE save: the card side ("pack") that spent the latch.
@@ -10379,6 +10479,8 @@ export type CombatUnitState = {
     defense?: number;
     zeal?: number;
     movedRound?: number;
+    movedSpacesRound?: number;
+    nagaMendRound?: number;
     markedTargets?: string[];
     forgeBruiserBreakTargets?: string[];
     forgeWoundSources?: string[];
@@ -10658,6 +10760,10 @@ export type CombatUnitState = {
   commanderCastRound?: number;
   /** Total non-AP command casts made in this combat; used by ability-specific combat caps. */
   commanderCastCount?: number;
+  /** Necropolis Soul Eater's combat-start Soul Link. */
+  soulLinkTargetId?: UnitId;
+  soulLinkSelectionDone?: boolean;
+  soulLinkUsedRound?: number;
   /**
    * An ACTION-POINT commander's persistent per-combat command resource (Blue
    * Archive Ibuki, Little Busters Kyousuke). Starts at 1; read through
@@ -10943,6 +11049,8 @@ export type CombatState = {
   neutralBountyGold?: Record<PlayerId, number>;
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
+  /** Defense tokens specifically granted by Darkstorn IV, expiring at round end. */
+  darkstornRoundDefenseTokenIds?: UnitId[];
   elementalChoices?: Array<{
     kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
@@ -11237,11 +11345,11 @@ export type CombatState = {
       /**
        * Dark Mullich Overclock I / IV: the BEGINNING-OF-COMBAT offer (combat
        * round 1, before any unit acts) to play the specialty from hand on one
-       * of the holder's units. The level identifies the card.
+       * of the holder's units. The level identifies the card. Overclock I
+       * offers only its +2 Initiative option here; its +1 Attack option is an
+       * Instant attack buff played from hand when the holder's unit attacks.
        */
       forgeOverclockStart?: 1 | 4;
-      /** Overclock I at combat start: the side picked before the unit choice. */
-      forgeOverclockOption?: "initiative" | "attack";
     }[];
     firstTargetUnitId?: UnitId | null;
     /**
@@ -12971,6 +13079,8 @@ export type VisitStep =
        */
       type: "DISRUPTION_ROTATE_OFFER";
     }
+  | { type: "ASTROLOGERS_FREE_BUILD_OFFER" }
+  | { type: "ASTROLOGERS_FREE_BUILD"; townId: TownId; buildingId: BuildingId }
   | {
       /** Disruption: the picked tile — opens the rotation choice (or backs out). */
       type: "DISRUPTION_ROTATE_TILE";
@@ -16737,12 +16847,26 @@ export type CustomObjectFieldPlan = {
   reward?: CustomFieldReward;
   vp?: number;
   breakField?: boolean;
+  /**
+   * The Break was SEEDED from the map-wide Mine / Obelisk flag when this object
+   * was picked: it stays a per-field Break (like the map-wide flag) and does not
+   * seal the whole tile. Ticking Break on the tile itself clears this marker.
+   */
+  breakFromGlobal?: boolean;
   persistentGuard?: boolean;
   unlimitedRounds?: boolean;
   /** Winning this object's guard grants the hero no experience (see field.noExperience). */
   noExperience?: boolean;
   /** First player to clear / flag THIS object wins the game immediately. */
   winCondition?: boolean;
+  /**
+   * INDIVIDUAL object: this plan fully REPLACES the map-wide Mine / Obelisk
+   * config for this tile's object (guard, reward, VP, break / round / experience
+   * flags). An unset field then means the PRINTED rule, never the map-wide value,
+   * so a single mine can switch a global flag OFF. Absent (legacy plans) keeps
+   * the field-by-field fallback to the map-wide config.
+   */
+  individual?: boolean;
 };
 
 /**
@@ -17615,6 +17739,8 @@ export type PendingChoice =
         | "hand-discard"
         | "eagle-eye"
         | "own-deck-pick"
+        | "isra-fetch-card"
+        | "isra-return-unit"
         | "artifact-deck-pick"
         | "spell-deck-pick"
         | "deck-card-placement"
@@ -17635,6 +17761,7 @@ export type PendingChoice =
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
+        | "uland-cure"
         | "kivotos-prophetic-dream"
         | "kivotos-explosive-prank"
         | "elemental-veterancy"
@@ -17704,6 +17831,8 @@ export type PendingChoice =
         | "factory-war-machine-select"
         | "factory-commander-traps"
         | "polish-spell-or-cast";
+      israFetchCard?: { candidates: { cardId: CardId; source: "deck" | "discard" }[] };
+      israReturnUnit?: { unitIds: UnitId[]; selectedUnitId?: UnitId; positions?: number[] };
       commanderArtifactOffer?: {
         cardIds: CardId[];
         cost: number;
@@ -17722,8 +17851,8 @@ export type PendingChoice =
         remainingPlayerIds: PlayerId[];
       };
       /**
-       * Fortress Shaman begin-of-match Haste (round 1 only): each option except
-       * the trailing Skip is a legal ally target; casting Haste on it now skips
+       * Fortress Shaman Haste or Dungeon Brute Bloodlust at combat start: each
+       * option except the trailing Skip is a legal ally target; casting now skips
        * the commander's own round-1 activation. `remainingPlayerIds` chains the
        * decision to the other seat when both have a combat-start commander choice.
        */
@@ -17888,6 +18017,8 @@ export type PendingChoice =
        * plays that ability's teleport sound; absent for the Spell.
        */
       teleport?: { unitId: UnitId; positions: number[]; abilityId?: string };
+      /** Uland IV's second distinct unit, or Uland VI's optional round-end heal. */
+      ulandCure?: { kind: "first-unit" | "second-unit" | "round-end"; unitIds: UnitId[]; cardId: CardId; effectId?: string; amount: number; removeParalysis?: boolean; byPlayerId?: PlayerId };
       /** Prophetic Dream cards held outside the deck until one is selected. */
       propheticDream?: { sourceUnitId: UnitId; abilityId: string; abilityName: string; cardIds: CardId[] };
       /** Explosive Prank's adjacent empty placement cells. */
@@ -18757,6 +18888,7 @@ export type PendingChoice =
         // WOG commander command ability: pick the unit the cast lands on
         // (free during the commander's activation, once per combat round).
         | "commander-cast"
+        | "commander-soul-link"
         // Pendant/Talisman Power-3 overflow: pick any living unit for 1 damage.
         | "commander-overflow-zap";
       abilityId: string | null;

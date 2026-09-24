@@ -62,11 +62,12 @@ export function bestDamage(state: GameState, unit: CombatUnitState, target: Comb
 
 export function retaliationValue(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): number {
   if (unitHasCannotRetaliateEffect(state, defender) ||
-      (!isAdjacent(attacker.position, defender.position) && !townAllowsRangedRetaliation(defender) && !getPreemptiveRetaliation(defender))) return 0;
+      (!isAdjacent(attacker.position, defender.position) && !townAllowsRangedRetaliation(defender) && !getPreemptiveRetaliation(defender, attacker.position))) return 0;
   if (defender.retaliatedThisRound && !hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") &&
       !unitHasUnlimitedRetaliationEffect(state, defender) && !townHasUnstoppableRetaliation(defender)) return 0;
   if (!townHasUnstoppableRetaliation(defender) && !unitHasUnstoppableRetaliationEffect(state, defender) && (
-      (townVeterancy(attacker, "angel-safe") && (state.combat?.round ?? 0) % 2 === 1 && ["ground", "flying"].includes(defender.type)) ||
+      (townVeterancy(attacker, "champion-safe") && attacker.townVeterancy?.movedRound === state.combat?.round) ||
+      (townVeterancy(attacker, "champion-two-space-safe") && attacker.townVeterancy?.movedRound === state.combat?.round && (attacker.townVeterancy?.movedSpacesRound ?? 0) >= 2) ||
       hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") ||
       hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") ||
       hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION") ||
@@ -151,7 +152,7 @@ export function planRandomTownActivation(state: GameState, combat: CombatState, 
       // credited as damage to a Pack's Few side or another Stack layer.
       const damage = Math.min(health(enemy), randomTownStrikeValue(projected, actor, enemy));
       const removed = damage >= unitRemovalHealth(enemy);
-      const retaliation = removed && !getPreemptiveRetaliation(enemy) ? 0 : retaliationValue(projected, actor, enemy);
+      const retaliation = removed && !getPreemptiveRetaliation(enemy, actor.position) ? 0 : retaliationValue(projected, actor, enemy);
       const allies = living(projected.combat!).filter(ally => ally.controllerId === unit.controllerId && ally.id !== unit.id && !ally.activatedThisRound);
       const followUp = allies.reduce((sum, ally) => sum + Math.min(health(enemy), bestDamage(projected, ally, enemy)), 0);
       const finish = removed ? 45 + Math.min(35, unitThreatValue(enemy) / 2) :
