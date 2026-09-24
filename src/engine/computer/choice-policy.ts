@@ -1293,7 +1293,7 @@ function scorePositionOption(
     const resources = observation.state.players[observation.playerId]?.resources;
     const pvp = observation.state.combat?.context.kind === "player";
     const affordable = pvp
-      ? (resources?.valuables ?? 0) - 1 >= Math.max(1, goldLadderValuablesReserve(observation.state, observation.playerId))
+      ? (resources?.valuables ?? 0) - 1 >= Math.max(1, goldLadderValuablesReserve(observation.state as unknown as GameState, observation.playerId))
       : (resources?.buildingMaterials ?? 0) >= 2;
     return (optionIndex === 0) === affordable ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
