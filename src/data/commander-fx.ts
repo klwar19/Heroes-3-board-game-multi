@@ -72,7 +72,7 @@ export const COMMANDER_SPECIALTY_SOUND: Record<string, string> = {
   charming: "spells/curse", // Succubus: a hex seizes an enemy
   "elemental-scourge": "spells/death-ripple", // Astral Spirit: sears every neutral
   "rune-ritual": "effects/rune", // Rune Keeper: a rune is carved
-  "storm-salvage": "units/automaton-move" // Storm Engineer: servos haul scrap off the field
+  "storm-salvage": "units/automaton-move" // Mech Princess: servos haul scrap off the field
 };
 
 /** The specialty sting sound for a trigger event, or undefined if none applies. */

@@ -1184,7 +1184,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "bulwark.sieidi",
     name: "Sieidi of the Runes",
     faction: "bulwark",
-    cost: { gold: 6, buildingMaterials: 4, valuables: 1 },
+    cost: { gold: 4, buildingMaterials: 3 },
     effect: { type: "RUNE_ALTAR", neutralStartingRunes: 4, levelCap: 2 },
     implementationStatus: "implemented",
     source: townSource("bulwark")
@@ -1194,7 +1194,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "bulwark.altar",
     name: "Altar of the Runes",
     faction: "bulwark",
-    cost: { gold: 6, buildingMaterials: 4, valuables: 2 },
+    cost: { gold: 4, buildingMaterials: 3, valuables: 1 },
     prerequisites: ["bulwark.sieidi"],
     effect: { type: "RUNE_ALTAR", neutralStartingRunes: 2, levelCap: 3 },
     implementationStatus: "implemented",

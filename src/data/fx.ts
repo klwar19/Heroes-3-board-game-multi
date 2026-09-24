@@ -1482,7 +1482,7 @@ const commanderShotFxPlans: Record<string, SpellFxPlan> = {
   },
   "commander:lion_el_jonson": { projectile: "commander-spirit-blade-shot-phases" },
   "commander:sonya": { projectile: "magi-shot-phases" },
-  // Forge Storm Engineer: the Titan's lightning bolt.
+  // Forge Mech Princess: the Titan's lightning bolt.
   "commander:forge": { projectile: "titan-shot-phases" },
 };
 

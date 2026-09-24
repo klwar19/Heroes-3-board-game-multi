@@ -25,9 +25,10 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  * Factory and anime heroes still render natively.
  */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
-  korbac: "/assets/units-fortress-bronze-dragon_flies-few.webp",
-  verdish: "/assets/war_machines-first_aid_tent.webp",
-  piquedram: "/assets/units-tower-bronze-gargoyles-few.webp",
+  // Just the picture cropped from the real card (scripts/build-new-hero-specialty-icons.mjs).
+  korbac: "/assets/specialty-card/icon-korbac-dragon_flies.webp", // Dragon Flies
+  verdish: "/assets/specialty-card/icon-verdish-first_aid_tent.webp", // First Aid Tent
+  piquedram: "/assets/specialty-card/icon-piquedram-gargoyles.webp", // Gargoyles
   cuthbert: "/assets/spells-weakness.webp",
   kastore: "/game-tokens/necropolis-heroes/specialty-kastore-sorcery.webp",
   isra: "/game-tokens/necropolis-heroes/specialty-isra-necromancy.webp",
@@ -59,7 +60,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   tarnum_fortress: "/assets/units-basilisk-portrait.webp", // Basilisks (Fortress)
   tarnum_rampart: "/assets/units-sharpshooter-portrait.webp", // Sharpshooters (Rampart)
   ivor: "/assets/units-grand_elf-portrait.webp", // Elves (Rampart)
-  urftin: "/assets/units-rampart-bronze-dwarves-few.webp", // Dwarves (Rampart)
+  urftin: "/assets/specialty-card/icon-urftin-dwarves.webp", // Dwarves (Rampart)
   tarnum_conflux: "/assets/units-enchanter-portrait.webp", // Enchanters
   // Conflux Planeswalker unit specialists — the creature's own wiki portrait
   // (scripts/fetch-conflux-elemental-portraits.py). Their cards used to reference

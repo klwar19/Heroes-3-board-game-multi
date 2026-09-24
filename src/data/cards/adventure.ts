@@ -5066,15 +5066,18 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "eikthurn",
-      "Instant: your attacking unit gains +1 Attack for this attack and you gain 4 Runes — both effects are doubled (+2 Attack and 8 Runes) for Mountain Rams.",
+      "Instant: When your unit attacks, you gain 3 Runes. For Mountain Rams, gain 6 Runes instead.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     target: { type: "none" },
+    // USER RULING 2026-09-24: Runes only (no Attack bonus) — 3, doubled to 6
+    // when the attacking unit is Mountain Rams (the ADD_COMBAT_STAT reaction's
+    // shared signature-unit multiplier; amount 0 adds no Attack).
     effect: {
       type: "ADD_COMBAT_STAT",
       stat: "attack",
-      amount: 1,
-      gainRunes: 4,
+      amount: 0,
+      gainRunes: 3,
       doubleForUnitName: "Mountain Rams",
     },
     assets: { cardImage: specialtyCardImage("eikthurn", 4), imageAlt: "Eikthurn Mountain Rams IV specialty card" },

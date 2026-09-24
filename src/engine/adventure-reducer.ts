@@ -12664,14 +12664,14 @@ function resolveBruteCombatDraw(state: GameState, playerId: PlayerId, optionInde
 }
 
 /**
- * Forge Storm Engineer: at the start of EVERY combat (neutral, PvP, siege, bank),
- * each side whose Storm Engineer takes the field may pay 1 building material for
- * a phantom Chain Lightning. Asked one seat at a time (attacker first); resolving
- * re-enters finalizeCombatStart, which asks the next seat.
+ * Forge Mech Princess: at the start of a combat against NEUTRAL units (field
+ * guards, Creature Banks — never PvP or a player's town) a side whose Mech
+ * Princess takes the field may pay 1 building material for a phantom Chain
+ * Lightning. Asked one seat at a time; resolving re-enters finalizeCombatStart.
  */
 function maybeOpenForgeChainLightning(state: GameState): boolean {
   const combat = state.combat;
-  if (!combat) return false;
+  if (!combat || combat.context.kind !== "neutral") return false;
   const offered = (combat.forgeChainLightningOffered ??= []);
   for (const playerId of [...new Set([combat.attackerPlayerId, combat.defenderPlayerId])]) {
     if (offered.includes(playerId)) continue;
@@ -12683,7 +12683,7 @@ function maybeOpenForgeChainLightning(state: GameState): boolean {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
-      prompt: "Storm Engineer: pay 1 building material for a phantom Chain Lightning this combat? (It disappears after the fight.)",
+      prompt: "Mech Princess: pay 1 building material for a phantom Chain Lightning this combat? (It disappears after the fight.)",
       options: [{ label: "Pay 1 building material: gain a phantom Chain Lightning" }, { label: "Keep the building material" }],
       context: "forge-phantom-chain-lightning",
       returnPhase: "combat"
@@ -12700,16 +12700,16 @@ function resolveForgeChainLightning(state: GameState, playerId: PlayerId, option
   const combat = state.combat;
   if (!combat || choice?.type !== "OPTION_CHOICE" || choice.context !== "forge-phantom-chain-lightning" ||
       choice.playerId !== playerId || (optionIndex !== 0 && optionIndex !== 1)) {
-    throw new Error("There is no Storm Engineer Chain Lightning decision to make.");
+    throw new Error("There is no Mech Princess Chain Lightning decision to make.");
   }
   state.pendingChoice = null;
   if (optionIndex === 0) {
     const player = state.players[playerId];
     if (!player || player.resources.buildingMaterials < 1 || !playerHasLivingCommander(state, playerId, "forge") ||
         !commanderStandsInCurrentCombat(state, playerId)) {
-      throw new Error("The Storm Engineer's Chain Lightning is no longer available.");
+      throw new Error("The Mech Princess's Chain Lightning is no longer available.");
     }
-    spendResources(state, playerId, { buildingMaterials: 1 }, "Storm Engineer phantom Chain Lightning");
+    spendResources(state, playerId, { buildingMaterials: 1 }, "Mech Princess phantom Chain Lightning");
     // The card itself is handed out in finalizeCombatStart, AFTER the computer
     // seats' phantom grant (which only runs while computerPhantomCards is unset).
     (combat.forgeChainLightningPaid ??= []).push(playerId);
@@ -12718,7 +12718,7 @@ function resolveForgeChainLightning(state: GameState, playerId: PlayerId, option
 }
 
 /**
- * Hands each paying Storm Engineer seat its phantom Chain Lightning: a distinct
+ * Hands each paying Mech Princess seat its phantom Chain Lightning: a distinct
  * phantom id (phantom-cards.ts) that casts exactly like the real Spell, tracked
  * on computerPhantomCards so the shared combat-end cleanup removes it from every
  * pile, whatever happened to it. Under the Polish Spell Book rule (owned Spells
@@ -12747,7 +12747,7 @@ function grantForgePhantomChainLightning(state: GameState): void {
       playerId,
       commanderSlug: "forge",
       specialtyId: "storm-salvage",
-      message: "The Storm Engineer pays 1 building material: a phantom Chain Lightning joins this combat."
+      message: "The Mech Princess pays 1 building material: a phantom Chain Lightning joins this combat."
     });
   }
 }
@@ -12988,7 +12988,7 @@ export function resumeCombatStartAfterCommanderPlacement(state: GameState): void
   // every computer seat (attacker and/or defender), in EVERY combat kind incl.
   // PvP — removed again at combat end (finalizeAdventureCombat). See combat-boost.ts.
   applyComputerPhantomCards(state);
-  // Forge Storm Engineer: the phantom Chain Lightning(s) paid for above join the
+  // Forge Mech Princess: the phantom Chain Lightning(s) paid for above join the
   // same tracked phantom list (after the computer grant, which it must not block).
   grantForgePhantomChainLightning(state);
   // FO redesign wave 2 — Đài Luyện Khí "Temper the body": a fighting player who
@@ -16149,9 +16149,9 @@ export function finalizeAdventureCombat(state: GameState): void {
     });
   }
 
-  // Forge Storm Engineer "Storm Salvage": +1 building material after every
+  // Forge Mech Princess "Storm Salvage": +1 building material after every
   // combat its owner WINS (neutral, PvP, siege or bank alike) — provided the
-  // Storm Engineer took the field for the winner in that combat (surviving is
+  // Mech Princess took the field for the winner in that combat (surviving is
   // not required; a commander who stayed home earns nothing).
   if (
     outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID &&
@@ -16173,7 +16173,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       playerId: outcome.winnerPlayerId,
       commanderSlug: "forge",
       specialtyId: "storm-salvage",
-      message: "The Storm Engineer salvages the battlefield — +1 building material."
+      message: "The Mech Princess salvages the battlefield — +1 building material."
     });
   }
 

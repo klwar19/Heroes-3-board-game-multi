@@ -1475,7 +1475,10 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v172: CAST_SCROLL_MAP_SPELL action, neutral-target-wall choice (neutrals tear
 // down Ladybird Walls), Ladybird card held in play, Necromancy Amplifier fetch
 // per copy, Forge Storm Engineer phantom Chain Lightning combat-start choice.
-export const ENGINE_PROTOCOL_VERSION = 172;
+// v173: Mech Princess (Forge commander) rename, neutral-only phantom offer,
+// Arc Discharge ends her activation (hold only), Rune Keeper +1 Rune on move
+// only, Eikthurn IV Runes-only, Bulwark Sieidi/Altar costs.
+export const ENGINE_PROTOCOL_VERSION = 173;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -11427,7 +11427,7 @@ export type CombatState = {
   /** Dungeon Brute's optional 2-gold draw has been offered this combat. */
   bruteCombatDrawOffered?: boolean;
   /**
-   * Forge Storm Engineer's combat-start offer (pay 1 building material for a
+   * Forge Mech Princess's combat-start offer (pay 1 building material for a
    * phantom Chain Lightning): seats already asked this combat, and seats that
    * paid and still await the card (granted in finalizeCombatStart).
    */

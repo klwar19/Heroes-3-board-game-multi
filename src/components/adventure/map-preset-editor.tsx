@@ -87,6 +87,15 @@ const MAP_DESIGN_ART = {
 
 type MapObjectPanel = "breaks" | "center" | "obelisk" | "mine" | "random-town" | "settlement";
 
+/** The Global | Specific kind each object panel's mode tabs drive ("breaks" has none). */
+const MAP_OBJECT_PANEL_KIND: Record<Exclude<MapObjectPanel, "breaks">, SpecificPickKind> = {
+  center: "center",
+  obelisk: "obelisk",
+  mine: "mine",
+  "random-town": "center",
+  settlement: "settlement"
+};
+
 const MAP_OBJECT_CARDS: { id: MapObjectPanel; title: string; description: string; images: string[]; glyph?: string }[] = [
   { id: "center", title: "Center objectives", description: "Grail, Dragon Utopia and other Ⅶ fields", images: ["vii-grail.webp", "vii-dragon-utopia.webp"] },
   { id: "obelisk", title: "Obelisks", description: "Role, guard and first-clear reward", images: ["obelisk.webp"] },
@@ -196,7 +205,7 @@ function SpecificModePanel({
                   objectKind: kind,
                   target: { row: plan.row, col: plan.col }
                 })}
-                title="Jump to this tile on the map and open its options."
+                title="Edit THIS object only: jumps to the tile on the map and opens its own settings in the tile panel."
                 type="button"
               >
                 {planTileArt(plan) ? (
@@ -235,8 +244,8 @@ function SpecificModePanel({
       )}
       <small className="mapPresetHint">
         {kind === "mine" || kind === "obelisk"
-          ? `Picking a tile saves its ${kind === "mine" ? "Mine" : "Obelisk"} as INDIVIDUAL right away (starting from the current global values) — the global settings then no longer apply to it. ${kind === "mine" ? "Town (Ⅰ) tiles and face-down" : "Face-down"} draws that may carry one can be picked too.`
-          : "A specific setting overrides the map-wide one for that tile; fields left unset fall back to it."}
+          ? `Picking a tile saves its ${kind === "mine" ? "Mine" : "Obelisk"} as INDIVIDUAL right away (starting from the current global values) and opens ITS settings in the tile panel — edit them there; each picked ${kind === "mine" ? "Mine" : "Obelisk"} keeps its own values and the global settings (Global tab) no longer apply to it. ${kind === "mine" ? "Town (Ⅰ) tiles and face-down" : "Face-down"} draws that may carry one can be picked too.`
+          : "Picking a tile opens ITS settings in the tile panel — edit them there. A specific setting overrides the map-wide one for that tile only; fields left unset fall back to it."}
       </small>
     </div>
   );
@@ -2467,7 +2476,13 @@ export function MapPresetEditor({
               </span>
               <div>
                 <strong>{MAP_OBJECT_CARDS.find((card) => card.id === activeMapObject)?.title}</strong>
-                <small>{activeMapObject === "breaks" ? "Map-wide entry and team-scope rules" : "Map-wide settings · choose Specific to edit a placed object"}</small>
+                <small>
+                  {activeMapObject === "breaks"
+                    ? "Map-wide entry and team-scope rules"
+                    : objectMode(MAP_OBJECT_PANEL_KIND[activeMapObject]) === "specific"
+                      ? "Specific · pick a placed object — its OWN settings open in the tile panel; the map-wide values are not edited here"
+                      : "Map-wide settings · choose Specific to edit a placed object"}
+                </small>
               </div>
               <button className="mapObjectDialogClose" aria-label="Minimize object settings" onClick={() => setActiveMapObject(null)} type="button">− <span>Minimize</span></button>
             </div>

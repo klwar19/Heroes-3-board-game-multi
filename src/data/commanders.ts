@@ -1092,7 +1092,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "rune-ritual",
       name: "Rune Ritual",
-      text: "Gain +3 Runes every time the commander MOVES, and +3 Runes every time it is attacked. At Rune Level 1, the commander gains +1 additional Attack beyond the army-wide +1 Attack."
+      text: "Gain +1 Rune every time the commander MOVES. At Rune Level 1, the commander gains +1 additional Attack beyond the army-wide +1 Attack."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
   },
@@ -1355,14 +1355,15 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cardImage: "/assets/units-commander-sonya.webp"
   },
   forge: {
-    slug: "forge", name: "Storm Engineer", faction: "Forge", original: true,
+    slug: "forge", name: "Mech Princess", faction: "Forge", original: true,
     // Cast: "Arc Discharge" — REUSES Belfast's `enemy-damage` kind (flat EFFECT
     // damage to one chosen enemy: no Retaliation, ignores Defense. At Power 2,
     // after its first use, gold and azure targets take 2 instead of 3.
     cast: {
       abilityId: "commander-cast-forge",
       name: "Arc Discharge",
-      icon: "/assets/spell-icons/disrupting_ray.png",
+      // Codex medallion (generated-session-art/forge/icons/arc-discharge.png).
+      icon: "/assets/commander-icons/forge-arc-discharge.webp",
       targeting: { side: "enemy", canTargetSelf: false },
       effect: { kind: "enemy-damage", damageByPower: [1, 2, 3] },
       tierText: [
@@ -1372,12 +1373,12 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       ]
     },
     // Specialty: automatic after-combat reward (finalizeAdventureCombat in
-    // src/engine/adventure-reducer.ts). The Storm Engineer must have taken the
+    // src/engine/adventure-reducer.ts). The Mech Princess must have taken the
     // field on the WINNING side of that combat (alive or fallen).
     specialty: {
       id: "storm-salvage",
       name: "Storm Salvage",
-      text: "At the start of each combat, you may pay 1 building material to gain a phantom Chain Lightning card (it disappears after the combat). After every combat you win, gain 1 building material."
+      text: "At the start of a combat against neutral units (including Creature Banks), you may pay 1 building material to gain a phantom Chain Lightning card (it disappears after the combat). After every combat you win, gain 1 building material."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

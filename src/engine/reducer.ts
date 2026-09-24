@@ -557,7 +557,6 @@ import {
   applyLionRoundStartBarrage,
   commanderAdjacentAllies,
   applyCommanderRuneOnMove,
-  applyCommanderRuneRitual,
   commandersModuleEnabled,
   maybeOpenSoulLinkChoice,
   commanderCastCandidates,
@@ -9376,8 +9375,6 @@ function finishResolvedAttack(
       abilityName: azureCharge.abilityName,
     });
   }
-  // Rune Keeper commander: +3 Runes whenever it is attacked and survives.
-  applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
   gainCommanderActionPoint(state, details.attacker, "attacking");
   gainCommanderActionPoint(state, details.defender, "being attacked");
 
@@ -34265,6 +34262,12 @@ function resolveCommanderCast(
     spendCommanderActionPoints(caster, COMMANDER_AP_CAST_COST);
     caster.movementLockedThisActivation = true;
   }
+  // Forge Mech Princess: Arc Discharge cast on her own activation IS her action —
+  // afterwards she may only hold position (no move, no Defend, no attack).
+  if (caster.commanderSlug === "forge" && combat.activeUnitId === caster.id) {
+    caster.movementLockedThisActivation = true;
+    caster.attackedThisActivation = true;
+  }
   appendEvent(state, {
     type: "COMMANDER_CAST_USED",
     playerId: caster.controllerId,
@@ -36401,7 +36404,7 @@ function moveUnit(
   neutralTownMovement(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
 
-  // Rune Keeper commander (Rune Ritual, move half): +3 Runes whenever it moves.
+  // Rune Keeper commander (Rune Ritual): +1 Rune whenever it moves (its only trigger).
   applyCommanderRuneOnMove(state, unit);
   gainCommanderActionPoint(state, unit, "moving");
 
