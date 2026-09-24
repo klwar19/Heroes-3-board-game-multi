@@ -197,7 +197,12 @@ describe("Deemer's Meteor Shower — playable during the enemy's turn", () => {
     expect(findPlay(state, "p1", cardId), "still offered after the enemy move").toBeTruthy();
   });
 
-  it("Melodia I can draw before an enemy attack, and the draw really enters the hand", () => {
+  // 2026-09-24 USER RULING ("must match card image"): Melodia I is ONLY the
+  // printed Instant "Gain a positive morale token and 1 gold" (the old extra
+  // draw side is gone). As an Instant it plays in combat too — here inside the
+  // enemy's attack window — and BOTH gains land at once (the map reward queue
+  // is frozen during a fight, so a queued gold would never arrive in time).
+  it("Melodia I plays before an enemy attack, and its morale token and gold really land", () => {
     const state = p2TurnState(["specialty.melodia.1"]);
     const skeletons = state.combat!.units.unit_p2_skeletons;
     skeletons.position = 9;
@@ -209,21 +214,22 @@ describe("Deemer's Meteor Shower — playable during the enemy's turn", () => {
       attackerId: skeletons.id,
       defenderId: "unit_p1_marksmen"
     });
-    const draw = getLegalActions(declared, "p1").find(
+    const fortune = getLegalActions(declared, "p1").find(
       (legal) =>
         legal.action.type === "PLAY_CARD" &&
         legal.action.cardId === "specialty.melodia.1" &&
-        legal.action.optionIndex === 1
+        legal.action.optionIndex === 0
     );
-    expect(draw, "Fortune I draw opens before attack damage").toBeTruthy();
-    const resolved = applyOk(declared, draw!.action);
+    expect(fortune, "Fortune I opens before attack damage").toBeTruthy();
+    const fortuneCard = adventureCards["specialty.melodia.1"];
+    expect(fortuneCard.effect.type === "CHOOSE_ONE" && fortuneCard.effect.options.length,
+      "no invented draw side").toBe(1);
+    const goldBefore = declared.players.p1.resources.gold;
+    const moraleBefore = declared.players.p1.morale;
+    const resolved = applyOk(declared, fortune!.action);
     expect(resolved.players.p1.hand).not.toContain("specialty.melodia.1");
-    expect(resolved.players.p1.hand.length, "the replacement card was drawn").toBe(1);
-    expect(
-      resolved.eventLog.some(
-        (event) => event.type === "CARD_PLAYED" && event.cardId === "specialty.melodia.1"
-      )
-    ).toBe(true);
+    expect(resolved.players.p1.resources.gold, "the printed 1 gold lands at once").toBe(goldBefore + 1);
+    expect(resolved.players.p1.morale, "the printed positive morale token lands").toBe(moraleBefore + 1);
   });
 });
 

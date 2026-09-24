@@ -1117,10 +1117,11 @@ function assertLegal(
                 isAdjacent(unit.position, center.position),
             ).length
           : 0;
-      if (adjacent < effect.adjacentPicks) {
+      const requiredAdjacent = effect.minAdjacentPicks ?? effect.adjacentPicks;
+      if (adjacent < requiredAdjacent) {
         return {
           code: "ACTION_NOT_LEGAL",
-          message: `${card.name} requires the selected unit to have ${effect.adjacentPicks} living adjacent target${effect.adjacentPicks === 1 ? "" : "s"}.`,
+          message: `${card.name} requires the selected unit to have ${requiredAdjacent} living adjacent target${requiredAdjacent === 1 ? "" : "s"}.`,
         };
       }
     }
@@ -4419,6 +4420,8 @@ function applyAreaPickAdjacentPlay(
     amount,
     effect.includeCenter,
     effect.adjacentPicks,
+    effect.centerAmount,
+    effect.minAdjacentPicks,
   );
 }
 
@@ -4461,8 +4464,11 @@ function openAreaPickChoice(
   candidateUnitIds: UnitId[],
   picksRemaining: number,
   amount: number,
+  minPicksRemaining?: number,
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
+  // Zeestral IV / VI: once the required picks are made the caster may stop.
+  const mayStop = minPicksRemaining !== undefined && minPicksRemaining <= 0;
   state.pendingChoice = {
     id: choiceId,
     type: "ABILITY_TARGET_CHOICE",
@@ -4470,14 +4476,20 @@ function openAreaPickChoice(
     kind: "area-pick",
     abilityId: card?.id ?? null,
     abilityName: card?.name ?? "Area blast",
-    prompt: `${card?.name ?? "Area blast"}: pick ${picksRemaining} more adjacent unit${
-      picksRemaining === 1 ? "" : "s"
-    } to take ${amount} damage (friend or foe).`,
+    prompt: mayStop
+      ? `${card?.name ?? "Area blast"}: you may pick up to ${picksRemaining} more adjacent unit${
+          picksRemaining === 1 ? "" : "s"
+        } to take ${amount} damage (friend or foe), or stop.`
+      : `${card?.name ?? "Area blast"}: pick ${picksRemaining} more adjacent unit${
+          picksRemaining === 1 ? "" : "s"
+        } to take ${amount} damage (friend or foe).`,
     sourceUnitId: null,
     anchorUnitId: null,
     candidateUnitIds,
     amount,
     picksRemaining,
+    ...(minPicksRemaining !== undefined ? { minPicksRemaining } : {}),
+    ...(mayStop ? { optional: true, skipLabel: "Stop (no more targets)" } : {}),
     sourceCardId: card?.id,
   };
   state.phase = "choice";
@@ -4504,6 +4516,7 @@ function applyAdjacentPicks(
   candidateUnitIds: UnitId[],
   picks: number,
   amount: number,
+  minPicks?: number,
 ): void {
   const combat = state.combat;
   if (!combat || picks <= 0) {
@@ -4513,6 +4526,20 @@ function applyAdjacentPicks(
   const alive = candidateUnitIds.filter((id) => isUnitAlive(combat.units[id]));
   if (alive.length === 0) {
     delete state.combat?.pendingCardDamageTransfers;
+    return;
+  }
+  if (minPicks !== undefined) {
+    // "At least minPicks, then may stop": when no more candidates stand than
+    // the picks still REQUIRED they are all hit (no real choice); otherwise the
+    // caster picks one at a time, the choice turning optional at the minimum.
+    if (alive.length <= Math.max(0, minPicks)) {
+      for (const id of alive) {
+        dealAreaCardDamage(state, playerId, card, combat.units[id], amount);
+      }
+      delete state.combat?.pendingCardDamageTransfers;
+      return;
+    }
+    openAreaPickChoice(state, playerId, card, alive, picks, amount, Math.max(0, minPicks));
     return;
   }
   if (alive.length <= picks) {
@@ -4540,6 +4567,8 @@ function resolveAreaPickDamage(
   amount: number,
   includeCenter: boolean,
   adjacentPicks: number,
+  centerAmount?: number,
+  minAdjacentPicks?: number,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -4553,7 +4582,7 @@ function resolveAreaPickDamage(
       (unit) => isUnitAlive(unit) && unit.position === centerPosition,
     );
     if (centre) {
-      dealAreaCardDamage(state, playerId, card, centre, amount);
+      dealAreaCardDamage(state, playerId, card, centre, centerAmount ?? amount);
     }
   }
 
@@ -4571,6 +4600,7 @@ function resolveAreaPickDamage(
     candidates.map((unit) => unit.id),
     adjacentPicks,
     amount,
+    minAdjacentPicks,
   );
 }
 
@@ -5466,6 +5496,14 @@ function applyAttackDamageFromCandidate(
   }
   if (defenderWasAlive && !isUnitAlive(defender)) {
     applyWogOnKillEffects(state, attacker, defender);
+  }
+  // Verdish's First Aid VI (USER RULING 2026-09-24): "when your unit brings an
+  // enemy unit's HP to 0" — a Pack→Few flip and a Polish stack-layer loss count
+  // exactly like a final removal (defeatedSideOrLayer), not only the removal.
+  if (
+    defenderWasAlive &&
+    (defeatedSideOrLayer || !isUnitAlive(defender))
+  ) {
     if (isUnitAlive(attacker) && attacker.damage > 0) {
       for (const active of state.activeEffects) {
         if (active.controllerId !== attacker.controllerId) continue;
@@ -9010,8 +9048,11 @@ function finishResolvedAttack(
     details.ignorePlusOneDie,
     details.defenseFraction?.fraction,
   );
-  if (!attackResult.cancelled && devourTargetVariant === "pack" &&
-    details.defender.variant === "few") {
+  // Dace's Minotaurs IV (USER RULING 2026-09-24): fires whenever your attack
+  // brings an enemy unit's HP to 0 — a Pack→Few flip, a Polish stack-layer
+  // loss AND a Few unit killed outright (defeatedSideOrLayer covers all three).
+  if (!attackResult.cancelled && attackResult.defeatedSideOrLayer &&
+    details.defender.controllerId !== details.attacker.controllerId) {
     for (const effect of state.activeEffects) {
       if (effect.controllerId !== details.attacker.controllerId ||
         !effect.modifiers.some(modifier => modifier.type === "DACE_PACK_BREAK")) continue;
@@ -29562,7 +29603,16 @@ function playCard(
         count: effect.rollResourceDice,
       });
     }
-    if (effect.gold) {
+    if (
+      effect.gold &&
+      !effect.rollResourceDice &&
+      state.combat &&
+      !state.combat.prep
+    ) {
+      // Melodia I played in combat (its Instant side): the map reward queue is
+      // frozen during a fight, so the gold lands at once, like the morale.
+      gainResources(state, action.playerId, { gold: effect.gold }, `played ${card.name}`);
+    } else if (effect.gold) {
       fortuneSteps.push({ type: "GAIN_RESOURCES", gold: effect.gold });
     }
     if (fortuneSteps.length > 0) {
@@ -32259,6 +32309,10 @@ function resolveIsraReturnChoice(state: GameState, action: Extract<GameAction, {
   appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
     selectedIndex: action.optionIndex });
   appendEvent(state, { type: "COMBAT_UNIT_PLACED", playerId: action.playerId, unitId: unit.id, position });
+  // Presentation + log line only: the Animate Dead rise plays over the unit
+  // Isra's Necromancy IV just returned (abilityFxPlans["specialty.isra.4"]).
+  appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, abilityId: "specialty.isra.4",
+    message: `${unit.cardName} rises again through Isra's Necromancy.` });
   state.pendingChoice = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -34404,7 +34458,7 @@ function chooseAbilityTarget(
     }
     commander.soulLinkTargetId = target.id;
     commander.soulLinkSelectionDone = true;
-    appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} links with ${target.cardName}.` });
+    appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} links with ${target.cardName}.`, unitId: commander.id, targetUnitId: target.id });
     if (state.adventure && !combat.commanderCombatStartResolved) resumeCombatStartAfterCommanderPlacement(state);
     return;
   }
@@ -34532,14 +34586,22 @@ function chooseAbilityTarget(
     const rest = choice.candidateUnitIds.filter(
       (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id]),
     );
-    applyAdjacentPicks(
-      state,
-      choice.playerId,
-      blastCard,
-      rest,
-      (choice.picksRemaining ?? 1) - 1,
-      amount,
-    );
+    if (isSkip && choice.optional) {
+      // Zeestral IV / VI: the caster stopped after the required picks.
+      delete state.combat?.pendingCardDamageTransfers;
+    } else {
+      applyAdjacentPicks(
+        state,
+        choice.playerId,
+        blastCard,
+        rest,
+        (choice.picksRemaining ?? 1) - 1,
+        amount,
+        choice.minPicksRemaining === undefined
+          ? undefined
+          : choice.minPicksRemaining - 1,
+      );
+    }
     finishCombatIfNeeded(state);
     // Resume tail for a blast fired INSIDE a reaction window (Meteor Shower /
     // Frost Ring played before an attack/retaliation). The window was paused

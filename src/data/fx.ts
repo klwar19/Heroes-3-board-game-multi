@@ -562,6 +562,54 @@ export function getFxSheet(key: string): FxSheet | undefined {
  */
 export const LIGHTNING_BEAM_SHEET = { src: "/fx/lightning-beam-sheet.webp", frames: 4 } as const;
 
+/**
+ * How long a beam cue grows (the bolt head races source → target), holds
+ * (crackling on the target) and fades. The renderer (runLightningBeam) and the
+ * presentation gate (spellPresentationMs) both read these, so the damage number
+ * always lands after the bolt it belongs to.
+ */
+export type BeamTiming = { growMs: number; holdMs: number; fadeMs: number };
+
+/** The quick zap (Lightning Generator volley, Forge commander Arc Discharge). */
+export const DEFAULT_BEAM_TIMING: BeamTiming = { growMs: 170, holdMs: 190, fadeMs: 150 };
+
+/**
+ * Zeestral's Storm Circuit primary bolt (caster's hand → struck unit): slow
+ * enough to SEE the bolt travel the whole length, then a long crackle on the
+ * target before it fades.
+ */
+export const STORM_CIRCUIT_BEAM_TIMING: BeamTiming = { growMs: 380, holdMs: 560, fadeMs: 260 };
+
+/** Storm Circuit's chain arc (struck centre → an adjacent unit): a shorter hop. */
+export const STORM_CIRCUIT_HOP_TIMING: BeamTiming = { growMs: 300, holdMs: 420, fadeMs: 220 };
+
+export function beamTotalMs(timing: BeamTiming): number {
+  return timing.growMs + timing.holdMs + timing.fadeMs;
+}
+
+/**
+ * Necropolis Soul Eater "Soul Link" tether: FRAMES rows stacked vertically, each
+ * a spectral soul-chain running left → right, SEAMLESSLY TILEABLE along x (built
+ * by scripts/build-soul-link-fx.mjs from the Codex master), screen-blended.
+ * `aspect` = frame width / frame height, so the renderer can repeat the chain at
+ * its natural proportions along a tether of any length.
+ */
+export const SOUL_LINK_SHEET = { src: "/fx/soul-link-sheet.webp", frames: 4, aspect: 960 / 160 } as const;
+
+/**
+ * A damage transfer along the Soul Link (linked unit → commander): the chain
+ * reaches the commander, then a soul orb rides it across during the hold. The
+ * commander's "−N" and health drop land at `resultMs` (end of the hold).
+ */
+export const SOUL_LINK_TRANSFER_TIMING: BeamTiming = { growMs: 420, holdMs: 760, fadeMs: 320 };
+export const SOUL_LINK_TRANSFER_RESULT_MS = SOUL_LINK_TRANSFER_TIMING.growMs + SOUL_LINK_TRANSFER_TIMING.holdMs;
+/** The lighter tether when the link is chosen at combat start (commander → unit). */
+export const SOUL_LINK_BIND_TIMING: BeamTiming = { growMs: 380, holdMs: 420, fadeMs: 360 };
+/** H3 Vampire drain — the linked unit's wound is drawn into the commander. */
+export const SOUL_LINK_TRANSFER_SOUND = "effects/drain-life";
+/** H3 Sacrifice — the soul bond is sealed at combat start. */
+export const SOUL_LINK_BIND_SOUND = "spells/sacrifice";
+
 export function listFxSheets(): Record<string, FxSheet> {
   return sheets;
 }
@@ -584,6 +632,10 @@ export type SpellFxPlan = {
   beamWidth?: "thin" | "normal" | "thick";
   beamShots?: number;
   beamIntervalMs?: number;
+  /** Grow/hold/fade of each beam (default DEFAULT_BEAM_TIMING). */
+  beamTiming?: BeamTiming;
+  /** Impact sprite crackling on the target as the beam lands (default lightning-crackle). */
+  beamImpactFx?: string;
   projectile?: string;
   /** Number of visual rounds in one rapid-fire attack (game damage is unchanged). */
   projectileCount?: number;
@@ -627,16 +679,46 @@ function stormCircuitFlashPlan(): SpellFxPlan {
   return {
     chainLightningBeam: true,
     beamWidth: "normal",
+    beamTiming: STORM_CIRCUIT_BEAM_TIMING,
+    beamImpactFx: "storm-circuit-crackle",
     sound: "spells/chain-lightning",
   };
 }
 
-/** Zeestral's damage sides: one normal-width horizontal lightning beam. */
+/**
+ * Zeestral's damage sides: one normal-width horizontal lightning beam from the
+ * caster's hand, slow enough to read (STORM_CIRCUIT_BEAM_TIMING). The gate is
+ * the bolt itself plus a short settle — the Chain Lightning sound tail keeps
+ * ringing under the next hop instead of stalling the chain.
+ */
 const stormCircuitBoltPlan: SpellFxPlan = {
   chainLightningBeam: true,
   beamWidth: "normal",
+  beamTiming: STORM_CIRCUIT_BEAM_TIMING,
+  beamImpactFx: "storm-circuit-crackle",
   sound: "spells/chain-lightning",
+  presentationMs: beamTotalMs(STORM_CIRCUIT_BEAM_TIMING) + 120,
 };
+
+/**
+ * Storm Circuit IV/VI chain arc: each adjacent hit jumps FROM the struck centre
+ * unit to its neighbour (page.tsx remembers the centre across state batches) —
+ * a thinner, quicker bolt with a short thunder crack.
+ */
+export const stormCircuitChainHopPlan: SpellFxPlan = {
+  chainLightningBeam: true,
+  beamWidth: "thin",
+  beamTiming: STORM_CIRCUIT_HOP_TIMING,
+  sound: "mgq/effects/thunder4",
+  presentationMs: beamTotalMs(STORM_CIRCUIT_HOP_TIMING) + 100,
+};
+
+/** Cards whose multi-target plays present as a chain from their first (centre) hit. */
+export const CHAIN_FROM_CENTRE_CARD_IDS: ReadonlySet<string> = new Set([
+  "specialty.zeestral.1",
+  "specialty.zeestral.4",
+  "specialty.zeestral.6",
+]);
 
 const regenerationFxPlan: SpellFxPlan = {
   affect: [{ key: "regeneration" }],
@@ -857,10 +939,10 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.enterprise.1": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.enterprise.4": { sound: "azur-lane/voices/enterprise/ability" },
   "specialty.enterprise.6": { sound: "azur-lane/voices/enterprise/ability" },
-  // Zeestral's Storm Circuit: every play — damage, ranged buff, draw —
-  // flashes the THICK chain-lightning bolt + crackle with the Chain Lightning
-  // cast (over the buffed unit, or centre stage over the card for a draw).
-  // The damage sides present per struck unit via cardSpellFxPlans instead.
+  // Zeestral's Storm Circuit: a non-damage play (the ranged +Attack side)
+  // flashes the slow chain-lightning bolt + crackle with the Chain Lightning
+  // cast. The damage sides present per struck unit via cardSpellFxPlans
+  // instead (centre bolt from the hand, then arcs from the centre).
   "specialty.zeestral.1": stormCircuitFlashPlan(),
   "specialty.zeestral.4": stormCircuitFlashPlan(),
   "specialty.zeestral.6": stormCircuitFlashPlan(),
@@ -882,7 +964,34 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // flashes the red battle-rage wash at centre stage with the bloodlust cast roar.
   "specialty.ash.1": { tint: "bloodlust", sound: "spells/bloodlust" },
   "specialty.ash.4": { tint: "bloodlust", sound: "spells/bloodlust" },
-  "specialty.ash.6": { tint: "bloodlust", sound: "spells/bloodlust" }
+  "specialty.ash.6": { tint: "bloodlust", sound: "spells/bloodlust" },
+  // USER RULING 2026-09-24: Darkstorn's Stone Skin specialties show the Stone
+  // Skin spell sprite + sound, Cuthbert's Weakness specialties the Weakness
+  // spell's — on the unit(s) each one lands on (SPECIALTY_PLAY_FX_ANCHOR).
+  "specialty.darkstorn.1": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "specialty.darkstorn.4": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "specialty.darkstorn.6": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "specialty.cuthbert.1": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "specialty.cuthbert.4": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "specialty.cuthbert.6": { affect: [{ key: "weakness" }], sound: "spells/weakness" }
+};
+
+/**
+ * Where a played specialty's `spellFxPlans` sprite lands when its CARD_PLAYED
+ * event carries no `targetUnitId` (a plain combat play, not a Spell reaction):
+ *  - "effect-target": the unit the ongoing effect this play created targets;
+ *  - "own-units" / "enemy-units": every living unit of that side, at once;
+ *  - "window-attacker": the attacker of the attack window it was played into.
+ * Cards absent here keep the centre-stage flash.
+ */
+export type SpecialtyPlayFxAnchor = "effect-target" | "own-units" | "enemy-units" | "window-attacker";
+export const SPECIALTY_PLAY_FX_ANCHOR: Record<string, SpecialtyPlayFxAnchor> = {
+  "specialty.darkstorn.1": "effect-target",
+  "specialty.darkstorn.4": "own-units",
+  "specialty.darkstorn.6": "effect-target",
+  "specialty.cuthbert.1": "window-attacker",
+  "specialty.cuthbert.4": "effect-target",
+  "specialty.cuthbert.6": "enemy-units"
 };
 
 /** Played at center stage when a spell is countered. */
@@ -924,6 +1033,19 @@ const neutralTownAbilityFxPlans: Record<string, SpellFxPlan> = Object.fromEntrie
 ] as Array<[string, SpellFxPlan]>);
 
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
+  // Dace's Minotaurs IV: the 1 damage it deals when your attack brings an enemy
+  // to 0 HP — a crescent axe-slash on the chosen enemy with the heavy strike
+  // sound, before that enemy's "−1" lands.
+  "dace-minotaurs-pack-break": { affect: [{ key: "melee-crescent-slash" }], sound: "effects/death-blow" },
+  // Korbac's Dragon Flies IV: the Dragon Flies start another turn — the Mirth
+  // (positive morale) shimmer over the Dragon Flies with the good-morale sound.
+  // page.tsx anchors it on the Dragon Flies (event.unitId), not the survivor.
+  "specialty.korbac.4": { affect: [{ key: "mirth" }], sound: "effects/good-morale" },
+  // Isra's Necromancy (USER RULING 2026-09-24): IV raises each returned unit
+  // and VI's once-per-combat save lands only when it actually fires — both
+  // with the Animate Dead rise + sound over that unit.
+  "specialty.isra.4": { affect: [{ key: "resurrection" }], sound: "spells/animate-dead" },
+  "specialty.isra.6": { affect: [{ key: "resurrection" }], sound: "spells/animate-dead" },
   "ctv-mountain-break": { affect: [{ key: "ctv-break-cover" }], sound: "custom-veterancy/break-cover" },
   "ctv-mountain-break-heal": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "ntv-mountain-stillness": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
@@ -1625,7 +1747,19 @@ export const healFxPlans: Record<string, SpellFxPlan> = {
   // The First Aid ability card (basic side) removes 1 damage from a chosen
   // unit. It heals outside the spell flow too — its DAMAGE_HEALED carries the
   // card id as the source — so it would otherwise float a bare "+1" in silence.
-  "ability.first_aid": regenerationFxPlan
+  "ability.first_aid": regenerationFxPlan,
+  // USER RULING 2026-09-24: Verdish's First Aid specialties heal with the
+  // First Aid Tent's regeneration orb + sound (I: round-start heal, IV: the
+  // transferred-away damage, VI: the heal on bringing an enemy to 0 HP).
+  "specialty.verdish.1": regenerationFxPlan,
+  "specialty.verdish.4": regenerationFxPlan,
+  "specialty.verdish.6": regenerationFxPlan,
+  // Uland's Cure specialties heal with the Cure spell's own sprite + sound.
+  // They are specialty plays (no Cure SPELL cast animates them), so there is no
+  // double cue.
+  "specialty.uland.1": spellFxPlans["spell.cure"],
+  "specialty.uland.4": spellFxPlans["spell.cure"],
+  "specialty.uland.6": spellFxPlans["spell.cure"]
 };
 
 /**
@@ -1839,7 +1973,10 @@ export function spellPresentationMs(plan: SpellFxPlan | undefined): number {
   }
   if (plan.chainLightningBeam) {
     const volleyMs = Math.max(0, (plan.beamShots ?? 1) - 1) * (plan.beamIntervalMs ?? 240);
-    return Math.min(MAX_PRESENTATION_MS, Math.max(700 + volleyMs, soundDurationMs(plan.sound)));
+    // Each beam's grow + hold + fade, plus a short settle (the default 510 ms
+    // quick zap keeps its historical 700 ms floor).
+    const beamMs = Math.max(700, beamTotalMs(plan.beamTiming ?? DEFAULT_BEAM_TIMING) + 120);
+    return Math.min(MAX_PRESENTATION_MS, Math.max(beamMs + volleyMs, soundDurationMs(plan.sound)));
   }
   if (plan.projectile && getFxSheet(plan.projectile)?.projectilePhases) {
     return Math.max(800, 120 + soundDurationMs(plan.sound), 500 + soundDurationMs(plan.hitSound));

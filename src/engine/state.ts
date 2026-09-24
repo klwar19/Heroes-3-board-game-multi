@@ -2789,6 +2789,20 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       includeCenter: boolean;
       adjacentPicks: number;
+      /**
+       * Zeestral (Forge) Storm Circuit IV / VI (USER RULING 2026-09-24): the
+       * centre unit takes this instead of `amount` (VI: 2; the picks keep
+       * `amount`). Absent = the centre takes `amount` like every pick.
+       */
+      centerAmount?: number;
+      /**
+       * Zeestral IV / VI: an "at least N, then may stop" pick. The centre needs
+       * only this many living adjacent units (instead of `adjacentPicks`), the
+       * caster picks adjacent units (friend or foe) one at a time and, once this
+       * many are picked, may stop (the area-pick choice becomes optional) or keep
+       * picking up to `adjacentPicks`. Absent = the exact Meteor Shower pick.
+       */
+      minAdjacentPicks?: number;
     }
   | {
       /**
@@ -7559,6 +7573,13 @@ type GameEventPayload =
       commanderSlug: string;
       specialtyId: string;
       message: string;
+      /**
+       * Presentation only (optional): the commander unit that fired, and the
+       * unit it acted on — Soul Link: the linked unit (link chosen, or whose
+       * damage the commander just took).
+       */
+      unitId?: UnitId;
+      targetUnitId?: UnitId;
     }
   | {
       /** Sonya: Unbreakable Bond's persistent army-card target changed. */
@@ -18970,6 +18991,12 @@ export type PendingChoice =
        * damage; the choice re-opens until this reaches 0 or the candidates run out.
        */
       picksRemaining?: number;
+      /**
+       * "area-pick" with a minimum (Zeestral IV / VI): picks still REQUIRED
+       * before the caster may stop. At 0 the choice is `optional` (skip = stop).
+       * Absent = every remaining pick is required (Meteor Shower / Frost Ring).
+       */
+      minPicksRemaining?: number;
       /** Card the area-pick damage is sourced from (for damage reduction). */
       sourceCardId?: CardId;
     }

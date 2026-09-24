@@ -27625,6 +27625,58 @@ img.cardBack {
   justify-content: center;
 }
 
+/* Printed-style face (SPECIALTY_FACE_TEXT): timing glyph + stat glyphs inline,
+   "— OR —" divider and paragraph gaps, like the scanned specialty cards. */
+.scDesc.scFace {
+  flex-direction: column;
+  gap: 0.6cqw;
+}
+
+.scFaceLine {
+  margin: 0;
+}
+
+.scFaceGap {
+  display: block;
+  height: 1.6cqw;
+}
+
+.scFaceOr {
+  display: flex;
+  align-items: center;
+  gap: 1.6cqw;
+  width: 62%;
+  font-size: 0.8em;
+  letter-spacing: 0.08em;
+}
+
+.scFaceOr::before,
+.scFaceOr::after {
+  content: "";
+  flex: 1;
+  height: 0.35cqw;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+.scGlyph {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.05em;
+  margin: 0 0.14em;
+  vertical-align: -0.18em;
+  color: #efe3c2;
+  filter: drop-shadow(0 0.25cqw 0.3cqw rgba(0, 0, 0, 0.7));
+}
+
+/* The printed timing glyphs are gold, like the level-I lightning bolt. */
+.scGlyph-instant,
+.scGlyph-ongoing,
+.scGlyph-permanent {
+  color: #e8c95e;
+  margin-left: 0;
+}
+
 .scPortrait {
   grid-area: 2 / 1 / 3 / 2;
   background-size: cover;

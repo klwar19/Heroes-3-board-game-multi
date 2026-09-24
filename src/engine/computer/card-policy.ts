@@ -563,15 +563,29 @@ function areaDamageUnits(
     );
   }
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+    // Mirror the engine (resolveAreaPickDamage): every living neighbour is a
+    // candidate, friend or foe. With no more candidates than picks they are ALL
+    // hit (a forced friendly hit must be scored); otherwise the caster picks
+    // enemies first (highest threat), then the least valuable ally if forced.
+    // An "at least N, then may stop" pick (Zeestral IV / VI) is only forced up
+    // to N: past that the caster stops rather than hit its own unit.
     const adjacent = new Set(getOrthogonalNeighbors(center));
-    const picked = living
-      .filter(
-        (unit) =>
-          adjacent.has(unit.position) &&
-          unit.controllerId !== observation.playerId,
-      )
-      .sort((a, b) => unitThreatValue(b) - unitThreatValue(a))
-      .slice(0, effect.adjacentPicks);
+    const ordered = living
+      .filter((unit) => adjacent.has(unit.position) && unit.position !== center)
+      .sort((a, b) => {
+        const aOwn = a.controllerId === observation.playerId ? 1 : 0;
+        const bOwn = b.controllerId === observation.playerId ? 1 : 0;
+        if (aOwn !== bOwn) return aOwn - bOwn;
+        return aOwn
+          ? unitThreatValue(a) - unitThreatValue(b)
+          : unitThreatValue(b) - unitThreatValue(a);
+      });
+    const forced = effect.minAdjacentPicks ?? effect.adjacentPicks;
+    const enemyCount = ordered.filter((unit) => unit.controllerId !== observation.playerId).length;
+    const picked = ordered.slice(
+      0,
+      Math.min(effect.adjacentPicks, Math.max(forced, enemyCount)),
+    );
     if (effect.includeCenter) {
       const centerUnit = living.find((unit) => unit.position === center);
       if (centerUnit) picked.push(centerUnit);
@@ -632,7 +646,8 @@ function scoreDamageEffect(
       : areaDamageAmount(card, effect);
     // Zeestral VI hits its chosen centre harder than the ring (2 vs 1).
     const centreDamage =
-      effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.centerAmount !== undefined
+      (effect.type === "AREA_DAMAGE_ALL_ADJACENT" || effect.type === "AREA_DAMAGE_PICK_ADJACENT") &&
+      effect.centerAmount !== undefined
         ? effect.centerAmount
         : damage;
     const centrePosition =
@@ -1297,7 +1312,15 @@ export function scholarRetrievalValue(cardId: string, observation: ComputerObser
 function permanentUtility(observation: ComputerObservation, card: CardDefinition): number {
   const state = observation.state as unknown as GameState;
   if (card.id === "specialty.korbac.4") {
-    const flies = Object.values(state.combat?.units ?? {}).find(unit =>
+    if (!state.combat) {
+      // A permanent: worth entering play on the map once the army carries
+      // Dragon Flies, so it is already live when the next fight starts.
+      const armyFlies = state.players[observation.playerId]?.army.some(
+        (unit) => unit.unitDefId === "fortress.dragon_flies",
+      );
+      return armyFlies ? 140 : 0;
+    }
+    const flies = Object.values(state.combat.units).find(unit =>
       unit.controllerId === observation.playerId && unit.unitDefId === "fortress.dragon_flies" &&
       unitRemainingHealth(unit) > 0);
     return flies ? 180 : 0;
@@ -1867,9 +1890,12 @@ function scoreEffect(
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     if (card.id === "specialty.dace.4") {
-      const hasEnemyPack = Object.values(state.combat?.units ?? {}).some(unit =>
-        unit.controllerId !== observation.playerId && unit.variant === "pack" && unitRemainingHealth(unit) > 0);
-      return hasEnemyPack ? 705 : 430;
+      // Fires on every enemy HP-to-0 (Pack→Few, a Polish layer, or a kill), so
+      // it pays off more the more enemy bodies/sides are left to break.
+      const enemySides = Object.values(state.combat?.units ?? {})
+        .filter(unit => unit.controllerId !== observation.playerId && unitRemainingHealth(unit) > 0)
+        .reduce((total, unit) => total + (unit.variant === "pack" ? 2 : 1), 0);
+      return enemySides >= 2 ? 705 : enemySides === 1 ? 560 : 430;
     }
     if (card.id === "specialty.dace.6") {
       const minotaurs = Object.values(state.combat?.units ?? {}).filter(unit =>

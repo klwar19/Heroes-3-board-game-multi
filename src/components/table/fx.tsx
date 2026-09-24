@@ -4,7 +4,13 @@ import { useEffect, useRef } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
-import { getFxSheet, LIGHTNING_BEAM_SHEET } from "@/data/fx";
+import {
+  DEFAULT_BEAM_TIMING,
+  getFxSheet,
+  LIGHTNING_BEAM_SHEET,
+  SOUL_LINK_SHEET,
+  type BeamTiming,
+} from "@/data/fx";
 import { RUNE_BURST_ART, runeWordForLevel } from "@/data/rune-words";
 import {
   playCardPlace,
@@ -114,7 +120,33 @@ export type FxCue =
     }
   | { kind: "line"; id: string; fxKey: string; from: string; to: string; delayMs?: number; sound?: string }
   /** A horizontal lightning beam from `from` to `to` (LIGHTNING_BEAM_SHEET). */
-  | { kind: "beam"; id: string; from: string; to: string; width: "thin" | "normal" | "thick"; delayMs?: number; sound?: string }
+  | {
+      kind: "beam";
+      id: string;
+      from: string;
+      to: string;
+      width: "thin" | "normal" | "thick";
+      delayMs?: number;
+      sound?: string;
+      /** Grow/hold/fade (default DEFAULT_BEAM_TIMING, the quick zap). */
+      timing?: BeamTiming;
+    }
+  | {
+      /**
+       * Necropolis Soul Link: a spectral soul-chain (SOUL_LINK_SHEET) reaches
+       * from `from` to `to` (rotated to the live board geometry), pulses while a
+       * soul orb rides it across, then fades. `intensity` < 1 is the lighter
+       * link-chosen tether.
+       */
+      kind: "tether";
+      id: string;
+      from: string;
+      to: string;
+      timing: BeamTiming;
+      intensity?: number;
+      delayMs?: number;
+      sound?: string;
+    }
   | { kind: "floater"; id: string; at: string; text: string; tone: "damage" | "heal" | "info"; delayMs?: number }
   | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number }
   | {
@@ -849,8 +881,9 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
 
 /**
  * Beam FRAME height as a share of the smaller card's height (the bolt core with
- * its glow fills about a third of a frame): Zeestral's specialty thin, the
- * Lightning Generator normal, the Forge commander's Arc Discharge thick.
+ * its glow fills about a third of a frame): the Lightning Generator volley and
+ * Storm Circuit's chain arcs thin, Storm Circuit's centre bolt normal, the Forge
+ * commander's Arc Discharge thick.
  */
 const BEAM_WIDTH_FACTOR = { thin: 0.26, normal: 0.36, thick: 0.62 } as const;
 
@@ -904,10 +937,10 @@ async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: 
   stage.appendChild(head);
 
   const started = performance.now();
-  const growMs = 170;
-  const holdMs = 190;
-  const fadeMs = 150;
-  const frameMs = 45;
+  const { growMs, holdMs, fadeMs } = cue.timing ?? DEFAULT_BEAM_TIMING;
+  // A slow, readable bolt (Storm Circuit) crackles a touch slower so each
+  // painted shape registers; the quick zap keeps its 45 ms strobe.
+  const frameMs = holdMs >= 400 ? 60 : 45;
   let shownFrame = -1;
   try {
     await new Promise<void>((resolve) => {
@@ -921,7 +954,12 @@ async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: 
         beam.style.width = `${reach}px`;
         head.style.left = `${from.x + Math.cos(angle) * reach - headSize / 2}px`;
         head.style.top = `${from.y + Math.sin(angle) * reach - headSize / 2}px`;
-        head.style.opacity = grown < 1 ? "1" : String(Math.max(0, 1 - (elapsed - growMs) / 120));
+        // Once it lands the head stays as a flaring contact glow on the target
+        // for the first part of the hold, then dies away.
+        const contactMs = Math.max(120, holdMs * 0.6);
+        head.style.opacity = grown < 1
+          ? "1"
+          : String(Math.max(0, 1 - (elapsed - growMs) / contactMs) * (cue.timing ? 0.75 + Math.random() * 0.25 : 1));
         const tickIndex = Math.floor(elapsed / frameMs);
         if (tickIndex !== shownFrame) {
           shownFrame = tickIndex;
@@ -942,6 +980,144 @@ async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: 
   } finally {
     beam.remove();
     head.remove();
+  }
+}
+
+/** Soul-chain thickness as a share of the smaller card's height. */
+const TETHER_WIDTH_FACTOR = 0.46;
+
+/** A ghost-green soul orb (the tether's growing tip, its rider, its end glows). */
+function soulOrb(stage: HTMLElement, size: number): HTMLDivElement {
+  const orb = document.createElement("div");
+  orb.className = "fxSprite";
+  orb.style.width = `${size}px`;
+  orb.style.height = `${size}px`;
+  orb.style.borderRadius = "50%";
+  orb.style.background =
+    "radial-gradient(circle, rgba(240,255,248,.95) 0%, rgba(150,255,205,.8) 26%, rgba(40,200,160,.35) 52%, rgba(20,120,110,0) 72%)";
+  orb.style.mixBlendMode = "screen";
+  orb.style.opacity = "0";
+  stage.appendChild(orb);
+  return orb;
+}
+
+/**
+ * Necropolis Soul Link. A spectral soul-chain (SOUL_LINK_SHEET, tiled at its
+ * natural proportions — never stretched) reaches from `from` to `to`, rotated to
+ * the live board geometry, behind a glowing soul orb. While it holds, the chain
+ * links creep toward the target, a second layer of ghost wisps drifts faster
+ * over it, the whole tether pulses, and a soul orb rides the chain across and
+ * flares on arrival (the moment the transferred damage lands). Then it fades.
+ */
+async function runSoulTether(stage: HTMLElement, cue: Extract<FxCue, { kind: "tether" }>): Promise<void> {
+  const fromRect = resolveAnchorRect(cue.from);
+  const toRect = resolveAnchorRect(cue.to);
+  if (cue.sound) playLibrarySound(cue.sound);
+  if (!fromRect || !toRect) return;
+  const from = centerOf(fromRect);
+  const to = centerOf(toRect);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return;
+
+  const intensity = Math.max(0.2, Math.min(1, cue.intensity ?? 1));
+  const thickness = Math.max(
+    10,
+    Math.min(fromRect.height, toRect.height) * TETHER_WIDTH_FACTOR * (0.75 + 0.25 * intensity),
+  );
+  const frames = SOUL_LINK_SHEET.frames;
+  const tileW = thickness * SOUL_LINK_SHEET.aspect;
+  const angle = Math.atan2(dy, dx);
+
+  // The rotated tether: it grows by revealing (overflow) — never stretching.
+  const wrap = document.createElement("div");
+  wrap.className = "fxSprite";
+  wrap.style.left = `${from.x}px`;
+  wrap.style.top = `${from.y - thickness / 2}px`;
+  wrap.style.height = `${thickness}px`;
+  wrap.style.width = "0px";
+  wrap.style.overflow = "hidden";
+  wrap.style.transformOrigin = "0 50%";
+  wrap.style.transform = `rotate(${angle}rad)`;
+  wrap.style.mixBlendMode = "screen";
+  wrap.style.filter = `drop-shadow(0 0 ${Math.round(6 + 6 * intensity)}px rgba(80, 255, 190, .8))`;
+  wrap.style.opacity = "0";
+  const layer = (frame: number, mirrored: boolean): HTMLDivElement => {
+    const el = document.createElement("div");
+    el.style.position = "absolute";
+    el.style.left = "0";
+    el.style.top = "0";
+    el.style.width = `${distance}px`;
+    el.style.height = `${thickness}px`;
+    el.style.backgroundImage = `url(${assetUrl(SOUL_LINK_SHEET.src)})`;
+    el.style.backgroundRepeat = "repeat-x";
+    el.style.backgroundSize = `${tileW}px ${thickness * frames}px`;
+    el.style.backgroundPositionY = `${-frame * thickness}px`;
+    if (mirrored) el.style.transform = "scaleY(-1)";
+    wrap.appendChild(el);
+    return el;
+  };
+  const chain = layer(0, false);
+  const wisps = layer(2, true);
+  stage.appendChild(wrap);
+
+  const orbSize = thickness * 1.5;
+  const sourceGlow = soulOrb(stage, orbSize * 0.9);
+  const tip = soulOrb(stage, orbSize);
+  const rider = soulOrb(stage, orbSize * 0.85);
+  const place = (orb: HTMLDivElement, along: number, size: number) => {
+    orb.style.left = `${from.x + Math.cos(angle) * along - size / 2}px`;
+    orb.style.top = `${from.y + Math.sin(angle) * along - size / 2}px`;
+  };
+  place(sourceGlow, 0, orbSize * 0.9);
+
+  const { growMs, holdMs, fadeMs } = cue.timing;
+  const total = growMs + holdMs + fadeMs;
+  // The rider crosses in the first 85% of the hold, then flares on the target.
+  const rideMs = holdMs * 0.85;
+  const started = performance.now();
+  try {
+    await new Promise<void>((resolve) => {
+      const tick = (now: number) => {
+        if (!stage.isConnected) { resolve(); return; }
+        const elapsed = now - started;
+        if (elapsed >= total) { resolve(); return; }
+        const grown = Math.min(1, elapsed / growMs);
+        const reach = distance * (1 - (1 - grown) ** 2);
+        wrap.style.width = `${reach}px`;
+        // Links creep toward the target; the wisp layer drifts faster.
+        chain.style.backgroundPositionX = `${(elapsed / 1500) * tileW}px`;
+        wisps.style.backgroundPositionX = `${(elapsed / 820) * tileW}px`;
+        wisps.style.opacity = String(0.35 + 0.3 * Math.sin(elapsed / 140));
+        const pulse = 0.82 + 0.18 * Math.sin(elapsed / 95);
+        const fade = elapsed > growMs + holdMs ? Math.max(0, 1 - (elapsed - growMs - holdMs) / fadeMs) : 1;
+        wrap.style.opacity = String(intensity * pulse * fade * Math.min(1, elapsed / 90));
+        sourceGlow.style.opacity = String(intensity * 0.7 * pulse * fade);
+        place(tip, reach, orbSize);
+        tip.style.opacity = grown < 1
+          ? String(intensity)
+          : String(intensity * Math.max(0, 1 - (elapsed - growMs) / Math.max(160, holdMs * 0.4)));
+        const riding = elapsed - growMs;
+        if (riding >= 0 && riding < holdMs + fadeMs) {
+          const t = Math.min(1, riding / rideMs);
+          const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+          const flare = t >= 1 ? 1 + 0.9 * Math.min(1, (riding - rideMs) / 160) : 1;
+          const size = orbSize * 0.85 * flare;
+          rider.style.width = `${size}px`;
+          rider.style.height = `${size}px`;
+          place(rider, distance * eased, size);
+          rider.style.opacity = String(intensity * (t >= 1 ? fade * Math.max(0, 1 - (riding - rideMs) / (holdMs - rideMs + fadeMs)) : 1));
+        }
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
+  } finally {
+    wrap.remove();
+    sourceGlow.remove();
+    tip.remove();
+    rider.remove();
   }
 }
 
@@ -1957,6 +2133,11 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
         const preload = new Image();
         preload.src = assetUrl(LIGHTNING_BEAM_SHEET.src);
       }
+      if (cue.kind === "tether" && !preloadedFxSources.has(SOUL_LINK_SHEET.src)) {
+        preloadedFxSources.add(SOUL_LINK_SHEET.src);
+        const preload = new Image();
+        preload.src = assetUrl(SOUL_LINK_SHEET.src);
+      }
       if (["projectile", "line", "slash", "sprite"].includes(cue.kind)) {
         const fxKey = "fxKey" in cue ? cue.fxKey : undefined;
         const sheet = fxKey ? getFxSheet(fxKey) : undefined;
@@ -1981,6 +2162,8 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runThrust(stage, { fxKey: cue.fxKey, from: cue.from, at: cue.to, sound: cue.sound });
           case "beam":
             return runLightningBeam(stage, cue);
+          case "tether":
+            return runSoulTether(stage, cue);
           case "floater":
             return runFloater(stage, cue);
           case "pulse":

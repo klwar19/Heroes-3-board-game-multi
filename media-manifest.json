@@ -2,7 +2,7 @@
   "version": 1,
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["assets","sounds"],
-  "count": 5972,
+  "count": 5973,
   "files": {
     "assets/abilities-air_magic-empowered.webp": { "md5": "f47398ae1322d34b22b6a213fe7f8549", "bytes": 135374, "width": 743, "height": 1040 },
     "assets/abilities-air_magic.webp": { "md5": "7f73e9cfeed567196c9b66122c3ad83a", "bytes": 137732, "width": 743, "height": 1040 },
@@ -2172,6 +2172,7 @@
     "assets/specialty-card/icon-verdish-first_aid_tent.webp": { "md5": "33f229632fdb99f688adf8aa3b2fdc61", "bytes": 44668, "width": 512, "height": 512 },
     "assets/specialty-card/icon-voice_of_angel.webp": { "md5": "1031fd6dab18e23c403601703bad5a52", "bytes": 45786, "width": 512, "height": 512 },
     "assets/specialty-card/icon-water_magic.webp": { "md5": "83228043d3858e7802f66d6dbf7d2ae4", "bytes": 116650, "width": 512, "height": 512 },
+    "assets/specialty-card/icon-weakness.webp": { "md5": "6c265da2765510751f20f6d3be624ae1", "bytes": 38840, "width": 640, "height": 458 },
     "assets/specialty-card/leather.webp": { "md5": "df86e6d60b5fd9c175ec710bacb60163", "bytes": 63772, "width": 700, "height": 633 },
     "assets/specialty-card/level-art-factory.webp": { "md5": "d694081f27620b52418de0123acfef30", "bytes": 66924, "width": 1100, "height": 500 },
     "assets/specialty-card/level-art-forge.webp": { "md5": "d958fea537957608fa38a646713cf26a", "bytes": 85840, "width": 1100, "height": 500 },

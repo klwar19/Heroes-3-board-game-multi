@@ -282,7 +282,11 @@ export function getCardMetaLabels(card: CardDefinition): string[] {
     card.timing === "instant" &&
     optionEffects.some((option) => !option.lasting || option.anytime);
   labels.push(
-    card.timing === "instant" && hasTurnOnlyOngoing
+    // A permanent hero specialty (Korbac's Dragon Flies IV) stays in play:
+    // label it by what it IS, not by its "ongoing" play-window timing.
+    card.permanent && card.kind === "hero-specialty"
+      ? "Permanent"
+      : card.timing === "instant" && hasTurnOnlyOngoing
       ? hasInstantArm
         ? "Instant / Ongoing"
         : "Ongoing"

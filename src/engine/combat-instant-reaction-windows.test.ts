@@ -667,7 +667,9 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.jeremy.4", optionIndex: 1 },
   { cardId: "specialty.jeremy.6", optionIndex: 0 },
   { cardId: "specialty.jeremy.6", optionIndex: 1 },
-  { cardId: "specialty.melodia.1", optionIndex: 1 },
+  // Melodia I (2026-09-24, matches the printed card): its single Instant face
+  // "gain a positive morale token and 1 gold" (the old extra draw side is gone).
+  { cardId: "specialty.melodia.1", optionIndex: 0 },
   { cardId: "specialty.promestein.6", optionIndex: 0 },
   { cardId: "specialty.rin_natsume.6", optionIndex: 0 },
   { cardId: "specialty.yuiko_kurugaya.1", optionIndex: 0 },
@@ -687,9 +689,9 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.torosar.6", optionIndex: 0 },
   // Forge — Zeestral's Storm Circuit: each level's printed "Instant: Deal N
   // damage to an enemy unit" side follows the anytime-damage precedent
-  // (Adelaide / Glacius). Storm Circuit I's +Attack side is a printed
-  // UNIT_ATTACK_DECLARED reaction and IV's Draw 2 is a plain instant, so
-  // neither belongs here.
+  // (Adelaide / Glacius); IV / VI also chain to the adjacent units the caster
+  // picks. Storm Circuit I's +Attack side is a printed UNIT_ATTACK_DECLARED
+  // reaction, so it does not belong here.
   { cardId: "specialty.zeestral.1", optionIndex: 0 },
   { cardId: "specialty.zeestral.4", optionIndex: 0 },
   { cardId: "specialty.zeestral.6", optionIndex: 0 }

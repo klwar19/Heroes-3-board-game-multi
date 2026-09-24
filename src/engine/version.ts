@@ -1479,7 +1479,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Arc Discharge ends her activation (hold only), Rune Keeper +1 Rune on move
 // only, Eikthurn IV Runes-only, Bulwark Sieidi/Altar costs.
 // v174: Rune Keeper keeps +3 Runes when attacked; moving gives 1 Rune (was 3).
-export const ENGINE_PROTOCOL_VERSION = 174;
+// v175: Zeestral IV/VI pick-then-stop adjacent zaps (AREA_DAMAGE_PICK_ADJACENT
+// minAdjacentPicks/centerAmount, area-pick minPicksRemaining), Dace IV hybrid
+// Ongoing/Instant, Melodia I printed Instant (combat play), Octavia I/VI anytime
+// draws, Korbac IV plain permanent, Verdish VI counts flips/stack layers.
+export const ENGINE_PROTOCOL_VERSION = 175;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

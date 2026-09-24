@@ -2326,45 +2326,43 @@ export const adventureCards: CardLibrary = {
   // Zeestral (Techno Pagan) — "Storm Circuit", the lightning-rite specialist:
   //  I  — Instant (any time in Combat): 1 effect damage to an enemy unit, OR the
   //       +1 Attack attack reaction limited to a RANGED attacker (unitTypes).
-  //  IV — Instant: 2 effect damage to an enemy unit, OR draw 2 cards (the draw
-  //       side has no target and no combat gate, so it is playable purely to
-  //       draw — on the map or in combat).
-  //  VI — Instant (any time in Combat): 2 damage to the chosen enemy unit and 1
-  //       damage to each ENEMY unit orthogonally adjacent to it
-  //       (AREA_DAMAGE_ALL_ADJACENT with centerAmount + adjacentEnemiesOnly —
-  //       friendly neighbours are spared).
+  //  IV / VI — USER RULINGS 2026-09-24 (IV replaced the old "2 damage — OR —
+  //       draw 2 cards" face; VI replaced "each adjacent enemy"). Instant (any
+  //       time in Combat): select an enemy unit with at least 1 living unit
+  //       adjacent to it — it takes 1 (IV) / 2 (VI) damage — then pick adjacent
+  //       units ONE AT A TIME, friend or foe, 1 damage each: the first pick is
+  //       required, after it the caster may STOP or keep picking (IV: up to 2,
+  //       VI: up to every neighbour). AREA_DAMAGE_PICK_ADJACENT with
+  //       minAdjacentPicks 1 (+ centerAmount 2 for VI).
   "specialty.zeestral.1": stormCircuitSpecialty(1, 1),
   "specialty.zeestral.4": {
     id: "specialty.zeestral.4", name: "Storm Circuit IV", kind: "hero-specialty",
-    timing: "instant",
+    timing: "instant", phaseLimit: ["combat"],
     tags: ["hero-specialty", "instant", "zeestral",
-      "Instant: Deal 2 damage to an enemy unit. — OR — Instant: Draw 2 cards."],
-    effect: { type: "CHOOSE_ONE", options: [
-      {
-        label: "Deal 2 damage to an enemy unit",
-        combatAnytime: true,
-        target: { type: "enemy-unit" },
-        effect: { type: "DEAL_DAMAGE", amount: 2, damageKind: "effect" },
+      "Instant: Deal 1 damage to an enemy unit and 1 damage to up to 2 units adjacent to it (friend or foe)."],
+    target: { type: "enemy-unit" },
+    effect: { type: "CHOOSE_ONE", options: [{
+      label: "1 damage to an enemy unit and 1 damage to up to 2 units adjacent to it",
+      combatAnytime: true, target: { type: "enemy-unit" },
+      effect: {
+        type: "AREA_DAMAGE_PICK_ADJACENT", amount: 1,
+        includeCenter: true, adjacentPicks: 2, minAdjacentPicks: 1,
       },
-      {
-        label: "Draw 2 cards",
-        effect: { type: "DRAW_CARDS", amount: 2 },
-      },
-    ] },
+    }] },
     implementationStatus: "implemented", source: forgeSpecialtySource("Zeestral"),
   },
   "specialty.zeestral.6": {
     id: "specialty.zeestral.6", name: "Storm Circuit VI", kind: "hero-specialty",
     timing: "instant", phaseLimit: ["combat"],
     tags: ["hero-specialty", "instant", "zeestral",
-      "Instant: Deal 2 damage to an enemy unit and 1 damage to each enemy unit adjacent to it."],
+      "Instant: Deal 2 damage to an enemy unit and 1 damage to any number of units adjacent to it (friend or foe)."],
     target: { type: "enemy-unit" },
     effect: { type: "CHOOSE_ONE", options: [{
-      label: "2 damage to an enemy unit and 1 damage to each enemy unit adjacent to it",
+      label: "2 damage to an enemy unit and 1 damage to units adjacent to it",
       combatAnytime: true, target: { type: "enemy-unit" },
       effect: {
-        type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1, centerAmount: 2,
-        includeCenter: true, adjacentEnemiesOnly: true,
+        type: "AREA_DAMAGE_PICK_ADJACENT", amount: 1, centerAmount: 2,
+        includeCenter: true, adjacentPicks: 4, minAdjacentPicks: 1,
       },
     }] },
     implementationStatus: "implemented", source: forgeSpecialtySource("Zeestral"),
@@ -3606,7 +3604,12 @@ export const adventureCards: CardLibrary = {
   },
   "specialty.korbac.4": {
     id: "specialty.korbac.4", name: "Dragon Flies IV", kind: "hero-specialty",
-    timing: "ongoing", permanent: true, phaseLimit: ["combat"],
+    // A real PERMANENT (USER RULING 2026-09-24), played exactly like the other
+    // permanents: on your map turn or during one of your units' activations; it
+    // stays in play (always on — the reducer's attack-sequence hook reads
+    // getPermanentCardIds) until another permanent replaces it under the shared
+    // one-permanent limit, or its owner discards it.
+    timing: "ongoing", permanent: true,
     tags: ["hero-specialty", "permanent", "korbac", "After your unit attacks and the enemy unit survives, immediately start a turn with your Dragon Flies, even if they already acted this round."],
     target: { type: "none" }, effect: { type: "ENTER_PLAY" },
     implementationStatus: "implemented", source: fortressHeroPreviewSource,
@@ -3636,7 +3639,7 @@ export const adventureCards: CardLibrary = {
   },
   "specialty.verdish.6": {
     id: "specialty.verdish.6", name: "First Aid VI", kind: "hero-specialty", timing: "ongoing", phaseLimit: ["combat"],
-    tags: ["hero-specialty", "ongoing", "verdish", "For this Combat, when one of your units removes an enemy unit, remove 1 damage from the attacking unit."],
+    tags: ["hero-specialty", "ongoing", "verdish", "For this Combat, when one of your units brings an enemy unit's HP to 0, remove 1 damage from that unit."],
     target: { type: "none" }, effect: { type: "CREATE_VERDISH_KILL_HEAL" },
     implementationStatus: "implemented", source: fortressHeroPreviewSource,
   },
@@ -5785,17 +5788,26 @@ export const adventureCards: CardLibrary = {
   }),
   "specialty.dace.4": withoutArt({
     id: "specialty.dace.4", name: "Minotaurs IV", kind: "hero-specialty",
-    timing: "combat", phaseLimit: ["combat"],
-    tags: ["hero-specialty", "ongoing", "dace", "For this Combat, whenever your attack flips an enemy Pack to Few, deal 1 damage to an enemy unit you choose. Or draw 1 card."],
+    // USER RULING 2026-09-24: a hybrid face — the "HP to 0" arm (Pack→Few,
+    // Few killed or a Polish stack layer lost — reducer DACE_PACK_BREAK) is ONGOING (a
+    // turn play: one of your own units' activations, before it attacks — the
+    // shared ongoingCombatPlayWindowOpen gate), the Draw arm is INSTANT (the
+    // engine's timing-free draw rule: your turn, off-turn, every instant window
+    // and the map — no combatAnytime marker, which would list it twice). The card-wide
+    // "instant" timing is what lets the draw arm be played off-turn, inside an
+    // instant (reaction) window and on the MAP turn; the ongoing arm is
+    // combatOnly so it never reaches the map.
+    timing: "instant",
+    tags: ["hero-specialty", "ongoing", "instant", "dace", "Ongoing: For this Combat, whenever your attack brings an enemy unit's HP to 0, deal 1 damage to an enemy unit you choose. — OR — Instant: Draw 1 card."],
     target: { type: "none" },
     effect: { type: "CHOOSE_ONE", options: [
-      { label: "Pack to Few: choose an enemy for 1 damage", combatAnytime: true,
+      { label: "Enemy HP to 0: choose an enemy for 1 damage", combatOnly: true,
         effect: { type: "CREATE_ACTIVE_EFFECT", effect: {
           name: "Minotaurs IV", scope: "player", duration: { type: "combat" },
           polarity: "positive", removable: false,
           modifiers: [{ type: "DACE_PACK_BREAK" }],
         } } },
-      { label: "Draw 1 card", combatAnytime: true,
+      { label: "Draw 1 card",
         effect: { type: "DRAW_CARDS", amount: 1 } },
     ] },
     implementationStatus: "implemented", source: dungeonHeroPreviewSource,
@@ -6352,10 +6364,15 @@ export const adventureCards: CardLibrary = {
   }),
 
   // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —
-  // single-option (no OR) economic map plays. I grants a positive morale token +
-  // 1 gold; IV rolls 2 Resource dice and resolves one + 1 gold; VI is a
-  // current-turn buff (LOCATION_DICE_BONUS) raising the dice rolled & resolved at
-  // locations by 1 + 1 gold. All routed through RESOURCE_FORTUNE_PLAY.
+  // single-option (no OR) economic plays, EXACTLY as printed (USER RULINGS
+  // 2026-09-24 "must match card image" / "only I should be instant window"):
+  // I is the Instant — playable on the map, on your own combat turn and inside
+  // any instant (reaction) window (combatAnytime); its morale token and gold
+  // land at once. IV (roll 2 Resource dice, resolve one, + 1 gold) stays a map
+  // play. VI prints the Map-effect glyph: a current-turn buff
+  // (LOCATION_DICE_BONUS) raising the dice rolled & resolved at locations by
+  // 1 + 1 gold. All routed through RESOURCE_FORTUNE_PLAY. (The old extra "draw
+  // 1 card in combat" side on I was not on the printed card and is gone.)
   "specialty.melodia.1": withSpecialtyArt({
     id: "specialty.melodia.1",
     name: "Fortune I",
@@ -6366,7 +6383,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "melodia",
       "fortune",
-      "Gain a positive morale token and 1 gold. — OR — During Combat, draw 1 card as an Instant.",
+      "Instant: Gain a positive morale token and 1 gold.",
     ],
     target: { type: "none" },
     effect: {
@@ -6374,14 +6391,8 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Gain a positive morale token and 1 gold",
-          mapOnly: true,
-          effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 },
-        },
-        {
-          label: "Draw 1 card",
-          combatOnly: true,
           combatAnytime: true,
-          effect: { type: "DRAW_CARDS", amount: 1 },
+          effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 },
         },
       ],
     },
@@ -6422,13 +6433,14 @@ export const adventureCards: CardLibrary = {
     id: "specialty.melodia.6",
     name: "Fortune VI",
     kind: "hero-specialty",
-    timing: "instant",
+    // Printed with the Map-effect glyph (not ⚡ Instant): a map-turn play only.
+    timing: "map",
     tags: [
       "hero-specialty",
-      "instant",
+      "map",
       "melodia",
       "fortune",
-      "During this turn, +1 die rolled and resolved at locations. Gain 1 gold.",
+      "Map: During this turn, the number of dice you roll and resolve at locations is increased by 1. Gain 1 gold.",
     ],
     target: { type: "none" },
     effect: {

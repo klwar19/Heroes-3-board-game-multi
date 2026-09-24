@@ -13,8 +13,23 @@ import {
   LEVEL_STYLE,
   SPECIALTY_ICON_BY_HERO,
   parseSpecialtyCardId,
-  specialtyEffectText
+  specialtyEffectText,
+  specialtyFaceLines
 } from "./specialty-card-data";
+import { CARD_GLYPH_PATHS } from "./card-glyph-paths";
+import type { CardGlyphName } from "./card-glyph-paths";
+
+/** One real printed-card glyph, inline at text size (currentColor + its own fixed fills). */
+function CardGlyph({ name }: { name: CardGlyphName }) {
+  const glyph = CARD_GLYPH_PATHS[name];
+  return (
+    <svg aria-label={name.replace("_points", "")} className={`scGlyph scGlyph-${name}`} role="img" viewBox={glyph.viewBox}>
+      {glyph.paths.map((path, index) => (
+        <path d={path.d} fill={path.fill ?? "currentColor"} key={index} />
+      ))}
+    </svg>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Native hero-specialty card renderer (the FRAME, title, level badge and effect
@@ -42,6 +57,7 @@ export function SpecialtyCard({ cardId, className }: { cardId: string; className
   }
 
   const level = LEVEL_STYLE[parsed.level];
+  const faceLines = specialtyFaceLines(cardId);
   const iconSrc = SPECIALTY_ICON_BY_HERO[parsed.slug];
   const accent = FACTION_ACCENT[hero.faction] ?? "#3a3a3a";
   // The printed cards paint the level panel with a faction picture (Castle's
@@ -67,7 +83,29 @@ export function SpecialtyCard({ cardId, className }: { cardId: string; className
             ) : null}
           </div>
           <h3 className="scName">{card.name}</h3>
-          <p className="scDesc">{specialtyEffectText(cardId)}</p>
+          {faceLines ? (
+            <div className="scDesc scFace">
+              {faceLines.map((line, index) =>
+                line.kind === "gap" ? (
+                  <span className="scFaceGap" key={index} />
+                ) : line.kind === "or" ? (
+                  <span className="scFaceOr" key={index}>OR</span>
+                ) : (
+                  <p className="scFaceLine" key={index}>
+                    {line.tokens.map((token, tokenIndex) =>
+                      token.kind === "glyph" ? (
+                        <CardGlyph key={tokenIndex} name={token.glyph} />
+                      ) : (
+                        <span key={tokenIndex}>{token.text}</span>
+                      )
+                    )}
+                  </p>
+                )
+              )}
+            </div>
+          ) : (
+            <p className="scDesc">{specialtyEffectText(cardId)}</p>
+          )}
         </div>
         <div
           className="scPortrait"

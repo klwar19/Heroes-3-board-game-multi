@@ -250,8 +250,18 @@ import {
   cancelFx,
   cardShotFxPlans,
   cardSpellFxPlans,
+  CHAIN_FROM_CENTRE_CARD_IDS,
+  DEFAULT_BEAM_TIMING,
   healFxPlans,
   getFxSheet,
+  SOUL_LINK_BIND_SOUND,
+  SOUL_LINK_BIND_TIMING,
+  SOUL_LINK_TRANSFER_RESULT_MS,
+  SOUL_LINK_TRANSFER_SOUND,
+  SOUL_LINK_TRANSFER_TIMING,
+  beamTotalMs,
+  stormCircuitChainHopPlan,
+  SPECIALTY_PLAY_FX_ANCHOR,
   spellFxPlans,
   spellPresentationMs,
   spriteDurationMs,
@@ -386,7 +396,11 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "ENEMY_FORCE_CARD_PLAYED",
   // Includes the Hierophant's off-turn Shield: the reducer emits this only
   // after the instant command resolves, with the protected unit as target.
-  "COMMANDER_CAST_USED"
+  "COMMANDER_CAST_USED",
+  // In-combat commander specialty stings (Charming, Rune Ritual…) and the
+  // Soul Eater's Soul Link tether. Without this entry the FX switch's
+  // COMMANDER_SPECIALTY_TRIGGERED case never ran.
+  "COMMANDER_SPECIALTY_TRIGGERED"
 ]);
 
 const MAX_PRESENTATION_MS = DEFAULT_MAX_PRESENTATION_MS;
@@ -738,6 +752,60 @@ function makeSpellDiceCue(
  * `to`, `beamIntervalMs` apart, each with a crackle on the target as it lands.
  * The plan's sound plays once, with the first beam.
  */
+/**
+ * Where a CARD_PLAYED sprite lands. A Spell reaction names its unit
+ * (targetUnitId); a specialty listed in SPECIALTY_PLAY_FX_ANCHOR resolves its
+ * unit(s) from the post-play state (Darkstorn / Cuthbert); everything else keeps
+ * centre stage over the card flight.
+ */
+function playedCardFxAnchors(
+  event: Extract<GameEvent, { type: "CARD_PLAYED" }>,
+  state: GameState,
+  inCombat: boolean
+): string[] {
+  if (!inCombat) {
+    return ["center"];
+  }
+  if (event.targetUnitId) {
+    return [`unit:${event.targetUnitId}`];
+  }
+  const mode = SPECIALTY_PLAY_FX_ANCHOR[event.cardId];
+  const combat = state.combat;
+  if (!mode || !combat) {
+    return ["center"];
+  }
+  if (mode === "effect-target") {
+    const created = [...state.activeEffects].reverse().find(
+      (effect) =>
+        effect.source.type === "card" &&
+        effect.source.cardId === event.cardId &&
+        effect.target?.type === "unit"
+    );
+    const unitId = created?.target?.type === "unit" ? created.target.unitId : undefined;
+    return unitId && combat.units[unitId] ? [`unit:${unitId}`] : ["center"];
+  }
+  if (mode === "window-attacker") {
+    const index = state.eventLog.findIndex((candidate) => candidate.id === event.id);
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const candidate = state.eventLog[cursor];
+      if (candidate.type === "UNIT_ATTACK_DECLARED") {
+        return combat.units[candidate.attackerId] ? [`unit:${candidate.attackerId}`] : ["center"];
+      }
+      if (candidate.type === "COMBAT_ROUND_STARTED") {
+        break;
+      }
+    }
+    return ["center"];
+  }
+  const side = Object.values(combat.units).filter(
+    (unit) =>
+      unit.position >= 0 &&
+      unit.damage < unit.maxHealth &&
+      (mode === "own-units" ? unit.controllerId === event.playerId : unit.controllerId !== event.playerId)
+  );
+  return side.length > 0 ? side.map((unit) => `unit:${unit.id}`) : ["center"];
+}
+
 function pushLightningBeamCues(
   cues: FxCue[],
   plan: SpellFxPlan,
@@ -748,6 +816,7 @@ function pushLightningBeamCues(
 ): void {
   const shots = Math.max(1, plan.beamShots ?? 1);
   const intervalMs = plan.beamIntervalMs ?? 240;
+  const timing = plan.beamTiming ?? DEFAULT_BEAM_TIMING;
   for (let shot = 0; shot < shots; shot += 1) {
     const at = start + shot * intervalMs;
     cues.push({
@@ -756,16 +825,29 @@ function pushLightningBeamCues(
       from,
       to,
       width: plan.beamWidth ?? "normal",
+      ...(plan.beamTiming ? { timing: plan.beamTiming } : {}),
       ...(shot === 0 && plan.sound ? { sound: plan.sound } : {}),
       delayMs: at
     });
+    // The crackle bursts as the bolt head reaches the target (the quick zap
+    // keeps its historical 150 ms beat); a long hold crackles a second time.
+    const landsAt = plan.beamTiming ? timing.growMs - 30 : 150;
     cues.push({
       kind: "sprite",
       id: `${eventId}-lightning-beam-impact-${shot}`,
-      fxKey: "lightning-crackle",
+      fxKey: plan.beamImpactFx ?? "lightning-crackle",
       at: to,
-      delayMs: at + 150
+      delayMs: at + landsAt
     });
+    if (plan.beamTiming && timing.holdMs >= 400) {
+      cues.push({
+        kind: "sprite",
+        id: `${eventId}-lightning-beam-impact-${shot}-b`,
+        fxKey: "lightning-crackle",
+        at: to,
+        delayMs: at + timing.growMs + Math.round(timing.holdMs * 0.5)
+      });
+    }
   }
 }
 
@@ -1210,6 +1292,15 @@ export default function Home() {
   const seenStructureIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
+  // Storm Circuit chain origin, keyed `${playerId}|${cardId}`: the centre unit a
+  // play struck first (and its cell, in case it has since fallen). An area-pick
+  // hit arrives in a LATER snapshot than the centre hit; its arc starts here.
+  // The event log is the primary source (chainCentreFor); this is the fallback
+  // when that play's CARD_PLAYED is no longer in the log. Expires after 10 min
+  // and never crosses into another combat.
+  const stormChainCentreRef = useRef<
+    Map<string, { unitId: string; position: number; combatId?: string; at: number }>
+  >(new Map());
   // Morale-card events already popped as the big MoraleCardOverlay — one pop
   // per event, never replayed on reconnect.
   const seenMoraleCueIdsRef = useRef<Set<string>>(new Set());
@@ -1602,7 +1693,14 @@ export default function Home() {
         // not pop "joined" on every refresh.
         (event.type !== "ROOM_MEMBER_JOINED" || event.newMember === true)
     );
-    const fxEvents = presentationEvents.filter((event) => FX_EVENT_TYPES.has(event.type));
+    const fxEvents = presentationEvents.filter(
+      (event) =>
+        FX_EVENT_TYPES.has(event.type) &&
+        // COMMANDER_SPECIALTY_TRIGGERED joined the FX pass for Soul Link's
+        // tether only; every other commander specialty keeps its previous
+        // (silent) presentation — no newly-audible stings.
+        (event.type !== "COMMANDER_SPECIALTY_TRIGGERED" || event.specialtyId === "soul-link")
+    );
     const moraleCardEvents = presentationEvents.filter((event) => isMoraleCardEvent(event));
     const enemyForceEvents = presentationEvents.filter((event) => isEnemyForcePlayEvent(event));
 
@@ -2736,6 +2834,87 @@ export default function Home() {
         const leadingSpellDamageAt = new Map<string, number>();
         // Extra-shot damage follows its own projectile, after the primary hit.
         const extraShotDamageAt = new Map<string, number>();
+        // unitId -> when its latest "−N" lands this batch (a Soul Link tether
+        // leaves the linked unit only once its own wound has shown).
+        const damageLandAt = new Map<string, number>();
+        // commander unitId -> when its Soul Link share lands (the soul orb's
+        // arrival), set by the tether cue and consumed by that transfer's
+        // DAMAGE_ASSIGNED.
+        const soulLinkDamageAt = new Map<string, number>();
+        const isStormChainHit = (candidate: GameEvent, playerId: string, cardId: string) =>
+          candidate.type === "DAMAGE_ASSIGNED" &&
+          candidate.soulLinkTransfer !== true &&
+          candidate.target.type === "unit" &&
+          candidate.source.type === "card" &&
+          candidate.source.cardId === cardId &&
+          candidate.source.controllerId === playerId;
+        /**
+         * Storm Circuit chain origin for one card-sourced hit: undefined for the
+         * play's CENTRE hit (its bolt leaves the caster's hand), otherwise the
+         * anchor of the centre unit the arc jumps from. Derived from the event
+         * log — the latest CARD_PLAYED of this card by this player before the hit,
+         * then its `targetUnitId` or, failing that, the first hit of that play —
+         * so an area-pick hit that arrives snapshots later still finds its
+         * centre. Falls back to the remembered centre (stormChainCentreRef) when
+         * that play has scrolled out of the log.
+         */
+        const stormChainOrigin = (
+          damageEventId: string,
+          playerId: string,
+          cardId: string,
+          targetId: string
+        ): string | undefined => {
+          const key = `${playerId}|${cardId}`;
+          const log = nextState.eventLog;
+          const hitIndex = log.findIndex((candidate) => candidate.id === damageEventId);
+          const combatId = nextState.combat?.id;
+          let centreId: string | undefined;
+          let resolvedFromLog = false;
+          for (let index = hitIndex - 1; hitIndex > 0 && index >= 0 && hitIndex - index <= 800; index -= 1) {
+            const candidate = log[index];
+            if (candidate.type !== "CARD_PLAYED" || candidate.cardId !== cardId || candidate.playerId !== playerId) {
+              continue;
+            }
+            resolvedFromLog = true;
+            centreId = candidate.targetUnitId;
+            for (let next = index + 1; !centreId && next <= hitIndex; next += 1) {
+              const hit = log[next];
+              if (isStormChainHit(hit, playerId, cardId) && hit.type === "DAMAGE_ASSIGNED" && hit.target.type === "unit") {
+                centreId = hit.target.unitId;
+              }
+            }
+            break;
+          }
+          const remembered = stormChainCentreRef.current.get(key);
+          if (!resolvedFromLog) {
+            const fresh =
+              remembered &&
+              remembered.combatId === combatId &&
+              Date.now() - remembered.at < 10 * 60 * 1000;
+            centreId = fresh ? remembered.unitId : undefined;
+          }
+          if (!centreId || centreId === targetId) {
+            // This IS the centre hit: remember it (and where it stands) for the
+            // arcs a later area-pick snapshot will draw from it.
+            const centre = nextState.combat?.units[targetId];
+            stormChainCentreRef.current.set(key, {
+              unitId: targetId,
+              position: centre?.position ?? -1,
+              combatId,
+              at: Date.now()
+            });
+            return undefined;
+          }
+          const centreUnit = nextState.combat?.units[centreId];
+          if (centreUnit && centreUnit.position >= 0) {
+            return `unit:${centreId}`;
+          }
+          // The centre fell to its own hit: arc from the cell it stood on.
+          if (remembered?.unitId === centreId && remembered.position >= 0) {
+            return `cell:${remembered.position}`;
+          }
+          return undefined;
+        };
         // True once any spell/ability has queued damage, a heal or a death in
         // combat — holds the victory notice and the next guard's prompt until the
         // effect (and the death it caused) has played out, exactly like a strike.
@@ -3386,8 +3565,13 @@ export default function Home() {
               // A damage side whose struck units each carry their own card-damage
               // presentation (Zeestral's Storm Circuit bolts, cardSpellFxPlans)
               // is shown on those DAMAGE_ASSIGNED beats, not flashed here too.
+              // Recognised by its damage label, or — for a side printed without a
+              // CHOOSE_ONE label — by the play's own card-sourced hit in this
+              // snapshot (Storm Circuit I/IV/VI all strike their centre at once).
               const presentedPerHit =
-                Boolean(cardSpellFxPlans[event.cardId]) && /damage/iu.test(event.optionLabel ?? "");
+                Boolean(cardSpellFxPlans[event.cardId]) &&
+                (/damage/iu.test(event.optionLabel ?? "") ||
+                  freshFx.some((candidate) => isStormChainHit(candidate, event.playerId, event.cardId)));
               const playedPlan = isPowerBoost || presentedPerHit ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
@@ -3395,8 +3579,8 @@ export default function Home() {
                 // (Curse on the defender, Bloodlust on the attacker). Anchor the
                 // H3 sprite/tint there; map spells and untargeted plays stay
                 // centre-stage over the card flight.
-                const anchor =
-                  event.targetUnitId && inCombat ? `unit:${event.targetUnitId}` : "center";
+                const anchors = playedCardFxAnchors(event, nextState, inCombat);
+                const anchor = anchors[0];
                 const affectKey = playedPlan.affect?.[0]?.key;
                 if (playedPlan.projectile) {
                   cues.push({
@@ -3415,13 +3599,17 @@ export default function Home() {
                   // presentation until the complete projectile/impact sequence.
                   timeline = Math.max(timeline, at + spellPresentationMs(playedPlan));
                 } else if (affectKey) {
-                  cues.push({
-                    kind: "sprite",
-                    id: `${event.id}-played-fx`,
-                    fxKey: affectKey,
-                    at: anchor,
-                    sound: playedPlan.sound,
-                    delayMs: at
+                  // One sprite per anchored unit (Darkstorn IV's whole army,
+                  // Cuthbert VI's every enemy); the sound plays once.
+                  anchors.forEach((unitAnchor, anchorIndex) => {
+                    cues.push({
+                      kind: "sprite",
+                      id: anchorIndex === 0 ? `${event.id}-played-fx` : `${event.id}-played-fx-${anchorIndex}`,
+                      fxKey: affectKey,
+                      at: unitAnchor,
+                      sound: anchorIndex === 0 ? playedPlan.sound : undefined,
+                      delayMs: at
+                    });
                   });
                 } else if (playedPlan.tint) {
                   // Bloodlust: no sprite in H3 — red battle-rage wash on the
@@ -3457,7 +3645,7 @@ export default function Home() {
                   const soundKey = playedPlan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
                 }
-                if (inCombat && event.targetUnitId) {
+                if (inCombat && anchor !== "center") {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(
                     combatPresentationEnd,
@@ -3668,6 +3856,72 @@ export default function Home() {
               break;
             }
             case "COMMANDER_SPECIALTY_TRIGGERED": {
+              if (event.specialtyId === "soul-link" && inCombat) {
+                // Necropolis Soul Eater — Soul Link. The event carries the
+                // commander + linked unit (older servers: resolve them from state).
+                const units = nextState.combat?.units ?? {};
+                const commander =
+                  (event.unitId ? units[event.unitId] : undefined) ??
+                  Object.values(units).find(
+                    (unit) => unit.commanderSlug === "soul_eater" && unit.controllerId === event.playerId
+                  );
+                const linkedId = event.targetUnitId ?? commander?.soulLinkTargetId;
+                if (!commander || !linkedId) {
+                  break;
+                }
+                // A damage transfer is logged immediately before the commander's
+                // own soulLinkTransfer DAMAGE_ASSIGNED; the link being chosen at
+                // combat start is not.
+                const logIndex = nextState.eventLog.findIndex((candidate) => candidate.id === event.id);
+                const following = logIndex >= 0 ? nextState.eventLog[logIndex + 1] : undefined;
+                const transfer =
+                  following?.type === "DAMAGE_ASSIGNED" &&
+                  following.soulLinkTransfer === true &&
+                  following.target.type === "unit" &&
+                  following.target.unitId === commander.id;
+                if (transfer) {
+                  // The wound shows on the linked unit first, THEN the chain
+                  // carries its share to the commander, whose "−N" and health
+                  // drop land as the soul orb arrives (soulLinkDamageAt).
+                  const start = Math.max(timeline, damageLandAt.get(linkedId) ?? 0);
+                  cues.push({
+                    kind: "tether",
+                    id: `${event.id}-soul-link`,
+                    from: `unit:${linkedId}`,
+                    to: `unit:${commander.id}`,
+                    timing: SOUL_LINK_TRANSFER_TIMING,
+                    sound: SOUL_LINK_TRANSFER_SOUND,
+                    delayMs: start
+                  });
+                  const landsAt = start + SOUL_LINK_TRANSFER_RESULT_MS;
+                  soulLinkDamageAt.set(commander.id, landsAt);
+                  timeline = Math.max(timeline, landsAt);
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(
+                    combatPresentationEnd,
+                    start + beamTotalMs(SOUL_LINK_TRANSFER_TIMING) + 300
+                  );
+                } else {
+                  // Link chosen: a lighter tether from the commander to its bond.
+                  const start = timeline;
+                  cues.push({
+                    kind: "tether",
+                    id: `${event.id}-soul-bind`,
+                    from: `unit:${commander.id}`,
+                    to: `unit:${linkedId}`,
+                    timing: SOUL_LINK_BIND_TIMING,
+                    intensity: 0.65,
+                    sound: SOUL_LINK_BIND_SOUND,
+                    delayMs: start
+                  });
+                  timeline = start + SOUL_LINK_BIND_TIMING.growMs + SOUL_LINK_BIND_TIMING.holdMs;
+                  combatPresentationEnd = Math.max(
+                    combatPresentationEnd,
+                    start + beamTotalMs(SOUL_LINK_BIND_TIMING)
+                  );
+                }
+                break;
+              }
               // A themed sting for an in-combat commander specialty (Charming,
               // Elemental Scourge, Rune Ritual). No single unit to anchor a sprite
               // on, so the sound plays on the timeline; the specialty's own
@@ -3758,18 +4012,29 @@ export default function Home() {
               }
               if (event.target.type === "unit" && event.amount > 0) {
                 const targetId = event.target.unitId;
+                // Soul Link: the commander's share of a linked unit's wound lands
+                // as the soul orb reaches it along the tether queued by the
+                // preceding COMMANDER_SPECIALTY_TRIGGERED (consumed once).
+                const soulLinkAt =
+                  leadAt === undefined && event.soulLinkTransfer === true
+                    ? soulLinkDamageAt.get(targetId)
+                    : undefined;
+                if (soulLinkAt !== undefined) {
+                  soulLinkDamageAt.delete(targetId);
+                }
                 // Fire Shield burn: its cue queued a reveal beat for this attacker
                 // (after the flare). Consume it once so the burn number/health
                 // land after the animation, and the attacker's later retaliation
                 // strike still pins to its own beat below.
-                const burnAt = leadAt === undefined ? fireShieldBurnAt.get(targetId) : undefined;
+                const burnAt =
+                  leadAt === undefined && soulLinkAt === undefined ? fireShieldBurnAt.get(targetId) : undefined;
                 // A battlefield-token burn (Fire Wall / Land Mine, damageKind
                 // "effect") sprung by THIS unit's move: hold its "−N" until the
                 // card has glided onto the token's cell, so it lands as the unit
                 // arrives — not at t=0, before the glide. Only effect damage on a
                 // unit that moved this batch; attacks pin to their strike beat.
                 const tokenMoveAt =
-                  leadAt === undefined && burnAt === undefined && event.damageKind === "effect"
+                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && event.damageKind === "effect"
                     ? moveArrivalByUnit.get(targetId)
                     : undefined;
                 // Attack damage lands on its strike beat; spell/ability damage
@@ -3780,10 +4045,10 @@ export default function Home() {
                     ? attackImpactBeforeEvent(event.id, targetId)
                     : undefined;
                 const attackBeat =
-                  leadAt === undefined && burnAt === undefined && tokenMoveAt === undefined
+                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && tokenMoveAt === undefined
                     ? exactAttackBeat ?? impactByTarget.get(targetId)
                     : undefined;
-                let at = leadAt ?? burnAt ?? tokenMoveAt ?? attackBeat ?? timeline;
+                let at = leadAt ?? soulLinkAt ?? burnAt ?? tokenMoveAt ?? attackBeat ?? timeline;
                 if (burnAt !== undefined) {
                   fireShieldBurnAt.delete(targetId);
                 }
@@ -3794,7 +4059,10 @@ export default function Home() {
                 // first — exactly like a war machine's WAR_MACHINE_TRIGGERED shot.
                 // Only on non-attack card damage: an attack already carries its
                 // own strike sfx pinned to the impact beat.
-                const cardSource = event.source.type === "card" ? event.source : null;
+                // A Soul Link transfer copies the original hit's source, but it is
+                // presented by its tether, never as a second shot/bolt.
+                const cardSource =
+                  event.source.type === "card" && event.soulLinkTransfer !== true ? event.source : null;
                 const alreadyPresentedAsWarMachine =
                   cardSource !== null &&
                   freshFx.some(
@@ -3826,8 +4094,19 @@ export default function Home() {
                   : undefined;
                 if (specialtySpellPlan && cardSource) {
                   timeline = Math.max(timeline, at);
-                  queueBoardFx(specialtySpellPlan, `${event.id}-specialty-spell`,
-                    `hand:${cardSource.controllerId}`, targetId);
+                  // Storm Circuit reads as a CHAIN: the play's centre is struck
+                  // from the caster's hand; every later hit of the same play
+                  // (auto-hit neighbours now, area-pick picks in later
+                  // snapshots) arcs FROM that centre unit to its neighbour.
+                  const chainOrigin = CHAIN_FROM_CENTRE_CARD_IDS.has(cardSource.cardId)
+                    ? stormChainOrigin(event.id, cardSource.controllerId, cardSource.cardId, targetId)
+                    : undefined;
+                  if (chainOrigin) {
+                    queueBoardFx(stormCircuitChainHopPlan, `${event.id}-specialty-chain`, chainOrigin, targetId);
+                  } else {
+                    queueBoardFx(specialtySpellPlan, `${event.id}-specialty-spell`,
+                      `hand:${cardSource.controllerId}`, targetId);
+                  }
                   at = timeline;
                   if (inCombat) {
                     combatFxActive = true;
@@ -3843,6 +4122,7 @@ export default function Home() {
                   tone: "damage",
                   delayMs: at
                 });
+                damageLandAt.set(targetId, Math.max(damageLandAt.get(targetId) ?? 0, at));
                 // Spell/ability hit (not a strike): freeze the struck unit's
                 // pre-hit health on the board so a wound — or a death — never
                 // shows before its spell finished. Revealed a beat after the
@@ -4104,6 +4384,17 @@ export default function Home() {
                 playUnitSound(unitVoice(event.unitId), "defend", start, unitVariant(event.unitId));
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, start + spellPresentationMs(plan) + 400);
+                break;
+              }
+              if (event.abilityId === "specialty.korbac.4") {
+                // Korbac's Dragon Flies IV: the Dragon Flies (event.unitId) start
+                // another turn — the morale shimmer plays over THEM, not over the
+                // enemy that survived (event.targetUnitId).
+                queueBoardFx(plan, `${event.id}-ability`, `unit:${event.unitId}`, event.unitId);
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
+                }
                 break;
               }
               // A bolt only flies when there's a separate target to fly to;

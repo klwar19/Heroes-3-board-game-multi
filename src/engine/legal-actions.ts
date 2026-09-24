@@ -4801,10 +4801,20 @@ function isOptionEffectPlayable(
       return context === "map"
         ? Boolean(state.adventure)
         : heroMovementTopUpHeroId(state, playerId) !== null;
-    case "DISCOVER_TILE_CARD":
-    // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
-    // and the location-dice buff are all resolved through a queued map visit.
     case "RESOURCE_FORTUNE_PLAY":
+      // Melodia I (USER RULING 2026-09-24): the printed Instant "gain a
+      // positive morale token and 1 gold" also plays in combat (own turn and
+      // instant windows) — both land at once there. Only that dice-free,
+      // buff-free form; every roll / location-dice face stays a map play.
+      if (
+        context === "combat" &&
+        !effect.rollResourceDice &&
+        !effect.locationDiceBonusTurn
+      ) {
+        return Boolean(state.combat && !state.combat.prep);
+      }
+      return context === "map" && Boolean(state.adventure);
+    case "DISCOVER_TILE_CARD":
     // Pandora's Box map plays: a queued main-hero visit-steps reward, and the
     // "peek a deck" scry — both resolve on the map through the adventure queues.
     case "PANDORA_VISIT":
@@ -5593,7 +5603,9 @@ function addOptionPlays(
       option.effect.type === "AREA_DAMAGE_PICK_ADJACENT" &&
       option.effect.includeCenter
     ) {
-      const adjacentPicks = option.effect.adjacentPicks;
+      // Zeestral IV / VI ("at least N, then may stop") need only N neighbours.
+      const adjacentPicks =
+        option.effect.minAdjacentPicks ?? option.effect.adjacentPicks;
       targets = targets.filter((target) =>
         targetHasAdjacentUnits(state, target, adjacentPicks),
       );

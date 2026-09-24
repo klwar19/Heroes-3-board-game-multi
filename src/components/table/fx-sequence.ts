@@ -25,6 +25,18 @@ const RESULT_EVENT_TYPES = new Set<GameEvent["type"]>([
   "UNIT_REMOVED"
 ]);
 
+/**
+ * A commander specialty trigger rides in the damage run it belongs to: a Soul
+ * Link transfer logs [linked unit DAMAGE_ASSIGNED, COMMANDER_SPECIALTY_TRIGGERED
+ * soul-link, commander DAMAGE_ASSIGNED] inside the hit. Buffering the trigger
+ * with the results keeps that run together (in log order) behind the spell that
+ * caused it, instead of the trigger flushing the linked unit's damage out ahead
+ * of the spell sprite. A trigger never re-orders any other event.
+ */
+function isResultEvent(event: { type: GameEvent["type"] }): boolean {
+  return RESULT_EVENT_TYPES.has(event.type) || event.type === "COMMANDER_SPECIALTY_TRIGGERED";
+}
+
 export function orderFxEventsForPresentation<T extends { type: GameEvent["type"] }>(events: T[]): T[] {
   const ordered: T[] = [];
   // Damage / heal / removal events buffered until we know whether they belong
@@ -33,7 +45,7 @@ export function orderFxEventsForPresentation<T extends { type: GameEvent["type"]
   let pendingResults: T[] = [];
 
   for (const event of events) {
-    if (RESULT_EVENT_TYPES.has(event.type)) {
+    if (isResultEvent(event)) {
       pendingResults.push(event);
       continue;
     }

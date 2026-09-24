@@ -37,7 +37,7 @@ export function transferUnloggedSoulLinkDamage(state: GameState, targetId: strin
   target.damage = Math.max(0, target.damage - transferred);
   commander.damage += transferred;
   commander.soulLinkUsedRound = combat.round;
-  appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} takes ${transferred} damage for ${target.cardName}.` });
+  appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} takes ${transferred} damage for ${target.cardName}.`, unitId: commander.id, targetUnitId: target.id });
   const assigned = appendEvent(state, { type: "DAMAGE_ASSIGNED", source: { type: "system" }, target: { type: "unit", unitId: commander.id }, amount: transferred, damageKind: "effect", soulLinkTransfer: true });
   noteUnitDamagedForTokens(state, commander, assigned.amount);
   markUnitRemovedIfNeeded(state, commander);
@@ -440,7 +440,7 @@ export function appendEvent<T extends EventDraft>(
     const commander = state.combat.units[soulLinkTransfer.commanderId];
     const target = state.combat.units[soulLinkTransfer.targetId];
     if (commander && target) {
-      appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} takes ${soulLinkTransfer.amount} damage for ${target.cardName}.` });
+      appendEvent(state, { type: "COMMANDER_SPECIALTY_TRIGGERED", playerId: commander.controllerId, commanderSlug: "soul_eater", specialtyId: "soul-link", message: `${commander.cardName} takes ${soulLinkTransfer.amount} damage for ${target.cardName}.`, unitId: commander.id, targetUnitId: target.id });
       const transferredHit = appendEvent(state, { type: "DAMAGE_ASSIGNED", source: (nextEvent as Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }>).source, target: { type: "unit", unitId: commander.id }, amount: soulLinkTransfer.amount, damageKind: "effect", soulLinkTransfer: true });
       noteUnitDamagedForTokens(state, commander, transferredHit.amount);
       markUnitRemovedIfNeeded(state, commander);

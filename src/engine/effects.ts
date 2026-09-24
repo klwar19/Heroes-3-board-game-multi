@@ -1300,7 +1300,7 @@ export function getCardEffectAmount(
 export function describePermanentEffect(card: CardDefinition): string {
   const permanent = card.permanentEffect;
   if (!permanent) {
-    return "permanent";
+    return permanentProseText(card) ?? "permanent";
   }
 
   const parts: string[] = [];
@@ -1366,7 +1366,19 @@ export function describePermanentEffect(card: CardDefinition): string {
     parts.push(`your hand limit is increased by ${permanent.handLimitBonus}`);
   }
 
-  return parts.join("; ") || "permanent";
+  return parts.join("; ") || permanentProseText(card) || "permanent";
+}
+
+/**
+ * A permanent whose always-on behaviour lives in the engine rather than in a
+ * `permanentEffect` (Korbac's Dragon Flies IV) reads its printed prose tag, so
+ * it never degrades to a bare "Permanent — permanent".
+ */
+function permanentProseText(card: CardDefinition): string | undefined {
+  return card.tags
+    .filter((tag) => /\s/.test(tag))
+    .sort((left, right) => right.length - left.length)[0]
+    ?.replace(/^Permanent:\s*/u, "");
 }
 
 export function describeCardEffect(card: CardDefinition): string {

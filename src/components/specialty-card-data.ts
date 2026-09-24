@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
+import type { CardGlyphName } from "./card-glyph-paths";
 
 // ---------------------------------------------------------------------------
 // Pure data + helpers for the native hero-specialty card. Kept out of the
@@ -29,7 +30,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   korbac: "/assets/specialty-card/icon-korbac-dragon_flies.webp", // Dragon Flies
   verdish: "/assets/specialty-card/icon-verdish-first_aid_tent.webp", // First Aid Tent
   piquedram: "/assets/specialty-card/icon-piquedram-gargoyles.webp", // Gargoyles
-  cuthbert: "/assets/spells-weakness.webp",
+  // Cuthbert's specialty IS the Weakness spell: its SPELL SYMBOL in the same
+  // cartouche format as Stone Skin / Cure (scripts/build-cuthbert-weakness-icon.mjs),
+  // never the whole Weakness spell card.
+  cuthbert: "/assets/specialty-card/icon-weakness.webp",
   kastore: "/game-tokens/necropolis-heroes/specialty-kastore-sorcery.webp",
   isra: "/game-tokens/necropolis-heroes/specialty-isra-necromancy.webp",
   emperor_of_mankind: "/assets/warhammer/icons/specialty-emperor-protects.webp",
@@ -325,4 +329,92 @@ export function specialtyEffectText(cardId: string): string {
       .join("   —  OR  —   ");
   }
   return "";
+}
+
+/**
+ * Printed-style rules text for native specialty cards, in the printed cards'
+ * format (Catherine's scans): each ability opens with its TIMING glyph —
+ * {instant} (lightning), {ongoing} (circular arrow), {permanent} (infinity);
+ * no glyph = played on your own turn — and the stats print as glyphs ({attack}
+ * {defense} {health}). A line holding just "OR" is the printed "— OR —"
+ * divider; an empty line starts a new paragraph. SpecialtyCard draws these
+ * with the real card glyphs (card-glyph-paths.ts); specialtyEffectText keeps
+ * returning plain prose for tooltips and the zoom caption. The wording and
+ * timing of every entry match the card's engine definition (adventure.ts).
+ */
+export const SPECIALTY_FACE_TEXT: Record<string, string> = {
+  "specialty.korbac.1": "{instant} Your selected unit gains +1 {attack}.\nOR\n{instant} Your selected unit gains +1 {defense}.\n\nThe effect doubles for the Dragon Flies unit.",
+  "specialty.korbac.4": "{permanent} After your unit attacks and the enemy unit survives, your Dragon Flies immediately start a turn, even if they already acted this round.",
+  "specialty.korbac.6": "{instant} Your selected unit gains +2 {attack}.\nOR\n{instant} Your selected unit gains +2 {defense}.\n\nThe effect doubles for the Dragon Flies unit.",
+  "specialty.verdish.1": "{ongoing} Select one of your units. At the start of each Combat round, remove 1 damage from it.",
+  "specialty.verdish.4": "On your turn, move up to 3 damage from one of your units to another of your units.",
+  "specialty.verdish.6": "{ongoing} For this Combat, when one of your units brings an enemy unit's HP to 0, remove 1 damage from that unit.",
+  "specialty.dace.1": "{ongoing} For this Combat, your selected unit's {health} is increased by 1.\n\nThe effect doubles for the Minotaurs unit.",
+  "specialty.dace.4": "{ongoing} For this Combat, whenever your attack brings an enemy unit's HP to 0, deal 1 damage to an enemy unit you choose.\nOR\n{instant} Draw 1 card.",
+  "specialty.dace.6": "{ongoing} For this Combat, your Minotaurs gain +2 {attack}. They draw 1 card on a 0 Attack die result, and 2 cards on a -1.",
+  "specialty.darkstorn.1": "{ongoing} Select a friendly unit. For this Combat, attacks against it roll at disadvantage.",
+  "specialty.darkstorn.4": "{ongoing} For this Combat round, all your units gain a Defense token and +1 {defense} when the enemy rolls +1.",
+  "specialty.darkstorn.6": "{ongoing} For this Combat, the selected friendly unit gains +1 {defense}.",
+  "specialty.urftin.1": "{instant} Your selected unit gains +1 {attack}.\nOR\n{instant} Your selected unit gains +1 {defense}.\n\nThe effect doubles for the Dwarves unit.",
+  "specialty.urftin.4": "{ongoing} For this Combat, your selected unit's {health} is increased by 1.\n\nThe effect doubles for the Dwarves unit.",
+  "specialty.urftin.6": "{ongoing} This Combat, each time your Dwarves remove an enemy unit from Combat, place a faction cube on this card. Your Dwarves gain +1 {attack}, +1 {defense} and +1 Initiative for each cube.",
+  "specialty.uland.1": "{instant} Remove 1 damage from your selected unit.",
+  "specialty.uland.4": "{instant} Select any 2 units. Remove 1 damage and Paralysis from each.",
+  "specialty.uland.6": "{ongoing} Select your unit. At the end of each Combat round this Combat, you may remove up to 2 damage from it.",
+  "specialty.cuthbert.1": "{instant} The selected attacking unit gets -2 {attack} (to a minimum of 0).",
+  "specialty.cuthbert.4": "{ongoing} Until the end of Combat, the selected enemy unit gets -1 {attack} (to a minimum of 0).",
+  "specialty.cuthbert.6": "{ongoing} For this Combat round, all enemy units suffer -1 {attack} during retaliation (to a minimum of 0).",
+  "specialty.zeestral.1": "{instant} Deal 1 damage to an enemy unit.\nOR\n{instant} Your selected ranged unit gains +1 {attack}.",
+  "specialty.zeestral.4": "{instant} Deal 1 damage to an enemy unit and 1 damage to up to 2 units adjacent to it (friend or foe).",
+  "specialty.zeestral.6": "{instant} Deal 2 damage to an enemy unit and 1 damage to any number of units adjacent to it (friend or foe)."
+};
+
+const FACE_GLYPHS: Record<string, CardGlyphName> = {
+  instant: "instant",
+  ongoing: "ongoing",
+  permanent: "permanent",
+  attack: "attack",
+  defense: "defense",
+  health: "health_points"
+};
+
+export type SpecialtyFaceToken = { kind: "text"; text: string } | { kind: "glyph"; glyph: CardGlyphName };
+/** One printed line: its tokens, the "— OR —" divider, or a paragraph gap. */
+export type SpecialtyFaceLine =
+  | { kind: "line"; tokens: SpecialtyFaceToken[] }
+  | { kind: "or" }
+  | { kind: "gap" };
+
+/** The printed face lines for a native specialty card, or null when it has none. */
+export function specialtyFaceLines(cardId: string): SpecialtyFaceLine[] | null {
+  const text = SPECIALTY_FACE_TEXT[cardId];
+  if (!text) {
+    return null;
+  }
+  return text.split("\n").map((raw): SpecialtyFaceLine => {
+    const line = raw.trim();
+    if (!line) {
+      return { kind: "gap" };
+    }
+    if (line === "OR") {
+      return { kind: "or" };
+    }
+    const tokens: SpecialtyFaceToken[] = [];
+    let last = 0;
+    for (const match of line.matchAll(/\{(\w+)\}/gu)) {
+      const glyph = FACE_GLYPHS[match[1]];
+      if (!glyph) {
+        throw new Error(`Unknown specialty face glyph {${match[1]}} in ${cardId}`);
+      }
+      if (match.index > last) {
+        tokens.push({ kind: "text", text: line.slice(last, match.index) });
+      }
+      tokens.push({ kind: "glyph", glyph });
+      last = match.index + match[0].length;
+    }
+    if (last < line.length) {
+      tokens.push({ kind: "text", text: line.slice(last) });
+    }
+    return { kind: "line", tokens };
+  });
 }
