@@ -15,7 +15,7 @@ import {
 } from "./unit-abilities";
 import { getBattlefieldDistance, isAdjacent } from "./battlefield";
 import { cardLibrary } from "@/data/cards/library";
-import { forgeTankDied, forgeUnitMoved, forgeVeterancy } from "./forge";
+import { forgeDamageTaken, forgeTankDied, forgeUnitMoved, forgeVeterancy } from "./forge";
 import { veteranTrigger } from "./faction-veterancy";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { deferPreOrderWarMachine } from "./astrologers-pre-order";
@@ -589,6 +589,7 @@ export function appendEvent<T extends EventDraft>(
     // Follow-up damage may remove the target recursively. Preserve this hit's
     // bookkeeping first so the outer event cannot restore stale lethal state.
     if (target) neutralTownCardDamageResolved(state, target, hit.source, hit.damageKind, hit.amount, neutralTownPrevented);
+    if (target && hit.amount > 0) forgeDamageTaken(state, target, hit.amount, hit.damageKind);
   }
   if (nextEvent.type === "UNIT_REMOVED" && state.combat) {
     const lost =

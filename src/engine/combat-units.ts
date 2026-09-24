@@ -214,6 +214,18 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
     return;
   }
 
+  // Forge Cyber Zombies R4 saves the current health bar before a Pack→Few
+  // flip or Stack-token loss. The latch survives later side changes.
+  if (!unit.townVeterancy?.forgeZombieFullRebirthUsed &&
+      getUnitAbilityDefinitions(unit).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "FORGE_VETERANCY" && ability.effect.mechanic === "zombie-full-rebirth")) {
+    const memory = (unit.townVeterancy ??= {});
+    memory.forgeZombieFullRebirthUsed = true;
+    memory.attack = (memory.attack ?? 0) + 1;
+    unit.damage = 0;
+    veteranTrigger(state, unit, "forge-vet-zombie-full-rebirth", unit, `${unit.cardName} revives at full HP and gains +1 Attack for this combat.`);
+    return;
+  }
+
   if (attackDamage && neutralTownVeterancy(unit, "cowards-luck") && !unit.townVeterancy?.saveUsed) {
     (unit.townVeterancy ??= {}).saveUsed = true;
     const roll = createSeededRandom(`${state.seed}#cowards-luck#${unit.id}#${state.eventCounter ?? state.eventLog.length}`).nextInt(-1, 1);

@@ -1287,10 +1287,15 @@ function scorePositionOption(
   }
 
   if (context === "forge-phantom-chain-lightning") {
-    // A free Chain Lightning for the fight is worth 1 building material when a
-    // spare one is on hand; keep the last one for building.
-    const materials = observation.state.players[observation.playerId]?.resources.buildingMaterials ?? 0;
-    return (optionIndex === 0) === (materials >= 2) ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+    // Preserve the last scarce purchase resource when possible; PvP pays a
+    // Valuable (never below the Gold-ladder reserve), while neutral fights pay
+    // a building material.
+    const resources = observation.state.players[observation.playerId]?.resources;
+    const pvp = observation.state.combat?.context.kind === "player";
+    const affordable = pvp
+      ? (resources?.valuables ?? 0) - 1 >= Math.max(1, goldLadderValuablesReserve(observation.state, observation.playerId))
+      : (resources?.buildingMaterials ?? 0) >= 2;
+    return (optionIndex === 0) === affordable ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
   if (context === "brute-combat-draw") {

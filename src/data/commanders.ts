@@ -1378,7 +1378,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "storm-salvage",
       name: "Storm Salvage",
-      text: "At the start of a combat against neutral units (including Creature Banks), you may pay 1 building material to gain a phantom Chain Lightning card (it disappears after the combat). After every combat you win, gain 1 building material."
+      text: "At combat start, you may pay 1 building material against neutral units (including Creature Banks), or 1 Valuable in PvP, to gain a phantom Chain Lightning card (it disappears after combat). After every combat you win, gain 1 building material."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

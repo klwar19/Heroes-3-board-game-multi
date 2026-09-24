@@ -36776,7 +36776,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   applyAnimeCombatRoundPenalties(state);
   townCombatRoundStart(state);
   forgeCombatRoundStart(state);
-  // Forge Jump Troopers: round-start Attack-die roll for +3 Initiative.
+  // Forge Jump Troopers: resolve round-start dice before the first activation.
   applyForgeRoundStartInitiativeRolls(state);
   if (finishCombatIfNeeded(state)) {
     return;
@@ -36798,6 +36798,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   applyPermanentCombatEffectsForPlayer(state, state.combat.attackerPlayerId);
   applyPermanentCombatEffectsForPlayer(state, state.combat.defenderPlayerId);
   applyCommanderArtifactCombatRoundStart(state);
+  if (state.combat.elementalChoices?.some(choice => choice.kind === "forge-jump-round")) {
+    state.combat.forgeJumpRoundAwaitingWarMachines = true;
+    return;
+  }
   startWarMachineRound(state);
   if (finishCombatIfNeeded(state)) {
     return;
@@ -36819,6 +36823,7 @@ function ensureCombatActivation(state: GameState): void {
     combat.setup ||
     combat.awaitingContinue ||
     combat.warMachineRound ||
+    combat.forgeJumpRoundAwaitingWarMachines ||
     combat.activeUnitId ||
     // WOG Commanders pre-combat sort: hold activation while an owner repositions
     // their commander (the deferred start-of-combat package has not run yet).
@@ -36832,6 +36837,28 @@ function ensureCombatActivation(state: GameState): void {
   }
 
   advanceActiveUnit(state);
+}
+
+/**
+ * Forge Jump Troopers' Combat Calibration targets are chosen at round start,
+ * before war machines fire or any unit activates. Opens the next queued pick;
+ * once none remain, starts the deferred war-machine round. True while a pick
+ * is still open.
+ */
+function settleForgeJumpRoundStart(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat?.forgeJumpRoundAwaitingWarMachines || state.pendingChoice || state.reactionWindow || state.stack.length) return false;
+  if (combat.outcome) {
+    delete combat.forgeJumpRoundAwaitingWarMachines;
+    return false;
+  }
+  openElementalChoice(state, elementalHooks);
+  if (combat.outcome) return false;
+  if (state.pendingChoice || state.reactionWindow || state.stack.length) return true;
+  delete combat.forgeJumpRoundAwaitingWarMachines;
+  startWarMachineRound(state);
+  finishCombatIfNeeded(state);
+  return false;
 }
 
 function endCombatRound(
@@ -38025,6 +38052,9 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     }
 
     if (maybeOpenSoulLinkChoice(state)) break;
+    // Round-start Combat Calibration picks settle before war machines and the
+    // first activation.
+    if (settleForgeJumpRoundStart(state)) break;
 
     if (
       combat &&
@@ -39683,6 +39713,7 @@ function applyActionInContext(
     // Combat-sandbox combats (and any post-war-machine round start) have no
     // adventure pump to hand out the activation slot, so settle it here: open the
     // next unit, or the tied-order choice that picks it.
+    settleForgeJumpRoundStart(nextState);
     maybeOpenSoulLinkChoice(nextState);
     ensureCombatActivation(nextState);
 

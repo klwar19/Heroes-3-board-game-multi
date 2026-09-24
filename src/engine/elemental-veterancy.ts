@@ -23,7 +23,7 @@ import {
 } from "@/data/units/abilities";
 import { cardLibrary } from "@/data/cards/library";
 import { balanceCardLibrary } from "./community-balance-cards";
-import { effectiveInitiative } from "./active-effects";
+import { effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { appendEvent, nextEventNumber } from "./events";
 import { applyNeutralDebuff } from "./neutral-veterancy";
 import { availableRunes, spendRunes } from "./runes";
@@ -346,7 +346,7 @@ export function openElementalChoice(
     const request = combat.elementalChoices.shift()!;
     const unit = combat.units[request.unitId];
     const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
-    if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst" && request.abilityId !== "dace-minotaurs-pack-break")) continue;
+    if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst" && request.abilityId !== "dace-minotaurs-pack-break" && request.abilityId !== "forge-vet-cyberbrute-shock")) continue;
     if (request.kind === "nest-return") {
       const nest = combat.units[request.targetId!];
       if (!nest || !alive(nest) || nest.elementalVeterancy?.nestOwnerId !== unit.id) continue;
@@ -400,7 +400,16 @@ export function openElementalChoice(
         combat.siege?.gatePosition !== p &&
         !Object.values(combat.units).some((t) => alive(t) && t.position === p),
     );
-    if (request.kind === "forge-death-burst") {
+    if (request.kind === "forge-jump-round") {
+      if (request.round !== combat.round || (request.amount !== -1 && request.amount !== 1)) continue;
+      for (const target of Object.values(combat.units)) {
+        if (!alive(target) || target.position < 0 || target.id === unit.id) continue;
+        if (request.amount === -1 && target.controllerId === unit.controllerId) continue;
+        if (request.amount === 1 && target.controllerId !== unit.controllerId) continue;
+        picks.push({ targetId: target.id });
+        labels.push(`${target.cardName}: ${request.amount === -1 ? "-1 Defense" : "+6 Initiative"} this round`);
+      }
+    } else if (request.kind === "forge-death-burst") {
       for (const target of Object.values(combat.units)) {
         if (!alive(target) || target.controllerId === unit.controllerId || request.excludedTargetIds?.includes(target.id)) continue;
         picks.push({ targetId: target.id }); labels.push(target.cardName);
@@ -578,7 +587,7 @@ export function openElementalChoice(
       );
     }
     if (!picks.length) continue;
-    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
+    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "forge-jump-round" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
       picks.push({ skip: true });
       labels.push("Skip");
     }
@@ -630,7 +639,23 @@ function executeElementalPick(
   const combat = state.combat!;
   const unit = combat.units[request.unitId];
   const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
-  if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst")) return;
+  if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst" && request.abilityId !== "forge-vet-cyberbrute-shock")) return;
+  if (request.kind === "forge-jump-round") {
+    const target = combat.units[pick.targetId!];
+    if (request.round !== combat.round || (request.amount !== -1 && request.amount !== 1) || !target || !alive(target) || target.position < 0 || target.id === unit.id ||
+        (request.amount === -1 && target.controllerId === unit.controllerId) ||
+        (request.amount === 1 && target.controllerId !== unit.controllerId)) throw new Error("Choose a valid Combat Calibration target.");
+    const negative = request.amount === -1;
+    const effect = makeActiveEffect(state, {
+      name: "Combat Calibration", scope: "unit",
+      modifiers: [{ type: negative ? "DEFENSE_BONUS" : "INITIATIVE_BONUS", amount: negative ? -1 : 6 }],
+      duration: { type: "current-combat-round" }, polarity: negative ? "negative" : "positive", removable: true,
+    }, { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, unit.controllerId, { type: "unit", unitId: target.id });
+    state.activeEffects.push(effect);
+    appendEvent(state, { type: "ACTIVE_EFFECT_CREATED", effectId: effect.id, controllerId: effect.controllerId, name: effect.name, duration: effect.duration });
+    veteranTrigger(state, unit, request.abilityId, target, `${target.cardName} ${negative ? "loses 1 Defense" : "gains 6 Initiative"} for this combat round.`);
+    return;
+  }
   if (request.kind === "forge-death-burst") {
     const target = combat.units[pick.targetId!];
     if (!target || !alive(target) || target.controllerId === unit.controllerId || request.excludedTargetIds?.includes(target.id)) throw new Error("Choose an unhit enemy for Death Burst.");

@@ -12664,27 +12664,29 @@ function resolveBruteCombatDraw(state: GameState, playerId: PlayerId, optionInde
 }
 
 /**
- * Forge Mech Princess: at the start of a combat against NEUTRAL units (field
- * guards, Creature Banks — never PvP or a player's town) a side whose Mech
- * Princess takes the field may pay 1 building material for a phantom Chain
- * Lightning. Asked one seat at a time; resolving re-enters finalizeCombatStart.
+ * Forge Mech Princess: at combat start, a side fielding its commander may buy
+ * a phantom Chain Lightning for 1 building material against neutrals or
+ * 1 Valuable against another player. Asked one seat at a time.
  */
 function maybeOpenForgeChainLightning(state: GameState): boolean {
   const combat = state.combat;
-  if (!combat || combat.context.kind !== "neutral") return false;
+  if (!combat || (combat.context.kind !== "neutral" && combat.context.kind !== "player")) return false;
+  const pvp = combat.context.kind === "player";
+  const costName = pvp ? "Valuable" : "building material";
   const offered = (combat.forgeChainLightningOffered ??= []);
   for (const playerId of [...new Set([combat.attackerPlayerId, combat.defenderPlayerId])]) {
     if (offered.includes(playerId)) continue;
     offered.push(playerId);
     const player = state.players[playerId];
     if (!player || !playerHasLivingCommander(state, playerId, "forge") ||
-        !commanderStandsInCurrentCombat(state, playerId) || player.resources.buildingMaterials < 1) continue;
+        !commanderStandsInCurrentCombat(state, playerId) ||
+        (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1)) continue;
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
-      prompt: "Mech Princess: pay 1 building material for a phantom Chain Lightning this combat? (It disappears after the fight.)",
-      options: [{ label: "Pay 1 building material: gain a phantom Chain Lightning" }, { label: "Keep the building material" }],
+      prompt: `Mech Princess: pay 1 ${costName} for a phantom Chain Lightning this combat? (It disappears after the fight.)`,
+      options: [{ label: `Pay 1 ${costName}: gain a phantom Chain Lightning` }, { label: `Keep the ${costName}` }],
       context: "forge-phantom-chain-lightning",
       returnPhase: "combat"
     };
@@ -12705,11 +12707,14 @@ function resolveForgeChainLightning(state: GameState, playerId: PlayerId, option
   state.pendingChoice = null;
   if (optionIndex === 0) {
     const player = state.players[playerId];
-    if (!player || player.resources.buildingMaterials < 1 || !playerHasLivingCommander(state, playerId, "forge") ||
+    const pvp = combat.context.kind === "player";
+    if (!player || (combat.context.kind !== "neutral" && !pvp) ||
+        (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1) ||
+        !playerHasLivingCommander(state, playerId, "forge") ||
         !commanderStandsInCurrentCombat(state, playerId)) {
       throw new Error("The Mech Princess's Chain Lightning is no longer available.");
     }
-    spendResources(state, playerId, { buildingMaterials: 1 }, "Mech Princess phantom Chain Lightning");
+    spendResources(state, playerId, pvp ? { valuables: 1 } : { buildingMaterials: 1 }, "Mech Princess phantom Chain Lightning");
     // The card itself is handed out in finalizeCombatStart, AFTER the computer
     // seats' phantom grant (which only runs while computerPhantomCards is unset).
     (combat.forgeChainLightningPaid ??= []).push(playerId);
@@ -12747,7 +12752,7 @@ function grantForgePhantomChainLightning(state: GameState): void {
       playerId,
       commanderSlug: "forge",
       specialtyId: "storm-salvage",
-      message: "The Mech Princess pays 1 building material: a phantom Chain Lightning joins this combat."
+      message: `The Mech Princess pays 1 ${combat.context.kind === "player" ? "Valuable" : "building material"}: a phantom Chain Lightning joins this combat.`
     });
   }
 }
@@ -13018,6 +13023,10 @@ export function resumeCombatStartAfterCommanderPlacement(state: GameState): void
   forgeCombatRoundStart(state);
   applyForgeRoundStartInitiativeRolls(state);
   applyCommanderArtifactCombatRoundStart(state);
+  if (state.combat?.elementalChoices?.some(choice => choice.kind === "forge-jump-round")) {
+    state.combat.forgeJumpRoundAwaitingWarMachines = true;
+    return;
+  }
   startWarMachineRound(state);
 }
 

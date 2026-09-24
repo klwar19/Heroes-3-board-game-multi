@@ -10516,6 +10516,8 @@ export type CombatUnitState = {
     nagaMendRound?: number;
     markedTargets?: string[];
     forgeBruiserBreakTargets?: string[];
+    forgeBruiserDraws?: number;
+    forgeZombieFullRebirthUsed?: boolean;
     forgeWoundSources?: string[];
     forgeZombieHealRound?: number;
     forgeZombieHealUses?: number;
@@ -11082,14 +11084,17 @@ export type CombatState = {
   neutralBountyGold?: Record<PlayerId, number>;
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
+  /** Round-start Jump Trooper target choices resolve before war machines fire. */
+  forgeJumpRoundAwaitingWarMachines?: boolean;
   /** Defense tokens specifically granted by Darkstorn IV, expiring at round end. */
   darkstornRoundDefenseTokenIds?: UnitId[];
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
     remaining?: number;
+    round?: number;
     excludedTargetIds?: string[];
     targetId?: string;
     anchorId?: string;
@@ -11448,8 +11453,8 @@ export type CombatState = {
   /** Dungeon Brute's optional 2-gold draw has been offered this combat. */
   bruteCombatDrawOffered?: boolean;
   /**
-   * Forge Mech Princess's combat-start offer (pay 1 building material for a
-   * phantom Chain Lightning): seats already asked this combat, and seats that
+   * Forge Mech Princess's combat-start offer (1 building material in neutral
+   * fights, 1 Valuable in PvP): seats already asked this combat, and seats that
    * paid and still await the card (granted in finalizeCombatStart).
    */
   forgeChainLightningOffered?: PlayerId[];

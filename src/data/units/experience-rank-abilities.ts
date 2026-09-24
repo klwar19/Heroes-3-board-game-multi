@@ -429,11 +429,6 @@ function rankOneStepFor(unitDefId: string): RankStep {
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "factory.mechanics") return A("factory-engineer-attack-support");
-  // Forge: the psionic skull-drone keeps its beholder heritage (no ranged
-  // penalties, immune to enemy ongoing effects); the Cyberbrute's generated R2
-  // duplicated its R1 own-attack reward, so it takes the Behemoth hide instead.
-  if (unitDefId === "forge.watchers") return A("veteran-eye-immunity");
-  if (unitDefId === "forge.cyberbrutes") return A("veteran-behemoth-odd-defense");
   if (unitDefId === "factory.armadillos") return A("reduce-spell-and-specialty-damage-1");
   if (unitDefId === "factory.sandworms") return A("factory-sandworm-burrow");
   if (unitDefId === "neutral.boars") return A("veteran-boar-armor-break");
@@ -513,7 +508,6 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "factory.armadillos") return A("factory-armadillo-momentum");
   // Forge: the Cyber Zombie shields its neighbours; the Jump Troopers' jet
   // packs carry them one extra space.
-  if (unitDefId === "forge.cyber_zombies") return A("veteran-zombie-intercept");
   if (unitDefId === "forge.jump_troopers") return A("veteran-mobility-1");
   if (unitDefId === "factory.automatons") return A("factory-automaton-round-blast");
   if (unitDefId === "factory.gunslingers") return H({ ...Z, health: 1 }, "factory-bounty-hunter-cover");
@@ -619,10 +613,6 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   // gunners sight their mark, the chainsaw shreds armour, rockets splash, the
   // naga tank's coils pierce, and the Cyberbrute's lightning arcs on a low roll.
   if (unitDefId === "forge.grunts") return A("town-marksman-mark");
-  if (unitDefId === "forge.cyber_zombies") return A("veteran-defense-pierce");
-  if (unitDefId === "forge.bruisers") return A("veteran-cyber-splash");
-  if (unitDefId === "forge.tanks") return A("town-naga-pierce");
-  if (unitDefId === "forge.cyberbrutes") return A("town-titan-bolt");
   if (unitDefId === "factory.automatons") return A("factory-automaton-detonation-repair");
   if (unitDefId === "factory.dreadnoughts") return A("factory-dreadnought-guarded");
   if (unitDefId === "rampart.elves") {
@@ -1344,6 +1334,13 @@ export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJo
     "ntv-core-suppression": "ctv-meridian-exchange", "ntv-victory-command": "ntv-infernal-command",
     "ntv-ally-blind-instinct": "ctv-clear-mind", "ntv-water-air-damper": "veteran-water-damper",
     "veteran-phoenix-rising-nest": "veteran-phoenix-nest",
+    "forge-vet-zombie-full-rebirth": "veteran-rebirth",
+    "forge-vet-watcher-ground-air-guard": "town-elf-guard",
+    "forge-vet-bruiser-die-reward": "veteran-low-roll-insight",
+    "forge-vet-cyberbrute-odd-guard": "veteran-behemoth-odd-defense",
+    "forge-vet-cyberbrute-shock": "veteran-cyber-splash",
+    "forge-vet-tank-ground-air-guard": "town-elf-guard",
+    "forge-vet-jump-round-die": "forge-vet-jump-guard",
   };
   if (revisedIconSources[abilityId]) return unitRankAbilityIcon(revisedIconSources[abilityId]!, unitDefId, mgqJob);
   // These are ability-specific images. Old faction portraits must not mask the

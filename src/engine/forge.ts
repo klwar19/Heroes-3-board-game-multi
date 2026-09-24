@@ -11,6 +11,7 @@ import { getUnitAbilityDefinitions, isUnitDamageImmune } from "./unit-abilities"
 import type { ForgeVeterancyMechanic } from "@/data/units/abilities";
 import { veteranDamage, veteranHeal, veteranTrigger } from "./faction-veterancy";
 import { queueElementalChoice } from "./elemental-veterancy";
+import { drawCardsForPlayer } from "./decks";
 
 function alive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
@@ -25,9 +26,27 @@ export function forgeDefenseBonus(state: GameState, attacker: CombatUnitState, d
   const bruiserBreak = Object.values(combat?.units ?? {}).reduce((amount, source) =>
     amount + (source.townVeterancy?.forgeBruiserBreakTargets?.includes(defender.id) ? 1 : 0), 0);
   return (forgeVeterancy(defender, "bruiser-guard") && (attacker.type === "ranged" || attacker.type === "flying") ? 1 : 0)
+    + (forgeVeterancy(defender, "watcher-ground-air-guard") && (attacker.type === "ground" || attacker.type === "flying") ? 1 : 0)
+    + (forgeVeterancy(defender, "tank-ground-air-guard") && (attacker.type === "flying" || attacker.type === "ground") ? 1 : 0)
+    + (combat?.round !== undefined && combat.round % 2 === 1 && forgeVeterancy(defender, "cyberbrute-odd-guard") ? 1 : 0)
     + (combat && defender.townVeterancy?.forgeJumpGuardRound === combat.round ? 1 : 0)
     - bruiserBreak
     - (forgeVeterancy(attacker, "grunt-mark") && attacker.townVeterancy?.markedTargets?.includes(defender.id) ? 3 : 0);
+}
+
+/** Resolve the shock from the final assigned damage, before a lethal removal closes combat. */
+export function forgeDamageTaken(state: GameState, unit: CombatUnitState, damage: number, damageKind: string): void {
+  if (damageKind !== "attack" || damage <= 3 || !forgeVeterancy(unit, "cyberbrute-shock")) return;
+  const enemies = Object.values(state.combat?.units ?? {})
+    .filter(target => alive(target) && target.controllerId !== unit.controllerId && target.position >= 0 && unit.position >= 0 && isAdjacent(target.position, unit.position))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (!enemies.length) return;
+  if (enemies.length === 1) {
+    veteranDamage(state, unit, enemies[0]!, 1, "forge-vet-cyberbrute-shock");
+    return;
+  }
+  // Anchored on itself so the pick still opens after a lethal hit removes it.
+  queueElementalChoice(state, { kind: "damage", unitId: unit.id, anchorId: unit.id, abilityId: "forge-vet-cyberbrute-shock", amount: 1, adjacent: true, enemiesOnly: true });
 }
 
 export function forgeDefenseToken(state: GameState, defender: CombatUnitState): boolean {
@@ -36,6 +55,17 @@ export function forgeDefenseToken(state: GameState, defender: CombatUnitState): 
 
 export function forgeAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation: boolean, roll: number, dieCancelled: boolean): void {
   if (attacker.controllerId === defender.controllerId) return;
+  if (forgeVeterancy(attacker, "bruiser-die-reward") && !dieCancelled && alive(attacker)) {
+    if (roll === -1 || roll === 1) veteranHeal(state, attacker, 1, "forge-vet-bruiser-die-reward");
+    if (roll === 0 && (attacker.townVeterancy?.forgeBruiserDraws ?? 0) < 2) {
+      const drawn = drawCardsForPlayer(state, attacker.controllerId, 1);
+      if (drawn > 0) {
+        const memory = (attacker.townVeterancy ??= {});
+        memory.forgeBruiserDraws = (memory.forgeBruiserDraws ?? 0) + drawn;
+        veteranTrigger(state, attacker, "forge-vet-bruiser-die-reward", attacker, `${attacker.cardName} draws ${drawn} card (${memory.forgeBruiserDraws}/2 this combat).`);
+      }
+    }
+  }
   if (forgeVeterancy(attacker, "open-wound") && alive(defender)) {
     const wounds = ((defender.townVeterancy ??= {}).forgeWoundSources ??= []);
     if (!wounds.includes(attacker.id)) wounds.push(attacker.id);
@@ -109,12 +139,7 @@ function rollCombatAttackDie(state: GameState): number {
   return faces[createSeededRandom(`${dice.seed}#${rollIndex}`, { salt: false }).nextInt(0, faces.length - 1)] ?? 0;
 }
 
-/**
- * Forge Jump Troopers (ROUND_START_INITIATIVE_ROLL): at the start of every
- * Combat round each living unit with the ability rolls an Attack die; on a
- * face >= minRoll it gains +amount Initiative until the round ends. Runs
- * before the round's first activation is chosen, so the bonus reorders it.
- */
+/** Resolve Forge round-start dice before the first activation and war machines. */
 export function applyForgeRoundStartInitiativeRolls(state: GameState): void {
   const combat = state.combat;
   if (!combat || combat.outcome) {
@@ -129,6 +154,14 @@ export function applyForgeRoundStartInitiativeRolls(state: GameState): void {
       const success = roll >= 0;
       if (success) (unit.townVeterancy ??= {}).forgeJumpGuardRound = combat.round;
       appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, abilityId: "forge-vet-jump-guard", message: `${unit.cardName} rolls ${roll > 0 ? "+" : ""}${roll} for Aerial Guard${success ? " and gains +1 Defense this round" : ""}.`, dice: { rolls: [roll], success, label: "Aerial Guard", caption: success ? "+1 Defense this round" : "No effect." } });
+    }
+    if (forgeVeterancy(unit, "jump-round-die")) {
+      const roll = rollCombatAttackDie(state);
+      const hasTarget = roll === 0 || Object.values(combat.units).some(target => alive(target) && target.position >= 0 && target.id !== unit.id && (roll === -1 ? target.controllerId !== unit.controllerId : target.controllerId === unit.controllerId));
+      const caption = !hasTarget ? "No eligible target" : roll === 0 ? "Heal 1 HP" : roll === -1 ? "Choose an enemy: -1 Defense this round" : "Choose an ally: +6 Initiative this round";
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: unit.id, abilityId: "forge-vet-jump-round-die", message: `${unit.cardName} rolls ${roll > 0 ? "+" : ""}${roll} for Combat Calibration: ${caption}.`, dice: { rolls: [roll], success: hasTarget, label: "Combat Calibration", caption } });
+      if (roll === 0) veteranHeal(state, unit, 1, "forge-vet-jump-round-die");
+      if (roll !== 0 && hasTarget) queueElementalChoice(state, { kind: "forge-jump-round", unitId: unit.id, abilityId: "forge-vet-jump-round-die", amount: roll, round: combat.round });
     }
     for (const ability of getUnitAbilityDefinitions(unit)) {
       if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ROUND_START_INITIATIVE_ROLL") {

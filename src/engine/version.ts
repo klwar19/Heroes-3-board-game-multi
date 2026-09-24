@@ -1483,7 +1483,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // minAdjacentPicks/centerAmount, area-pick minPicksRemaining), Dace IV hybrid
 // Ongoing/Instant, Melodia I printed Instant (combat play), Octavia I/VI anytime
 // draws, Korbac IV plain permanent, Verdish VI counts flips/stack layers.
-export const ENGINE_PROTOCOL_VERSION = 175;
+// v176: Forge veterancy redesign (Zombie Full Rebirth, Watcher/Tank ground-air
+// guard, Cyberbrute odd guard + Damage Shock, Bruiser Combat Salvage, Jump
+// Trooper Combat Calibration round-start choice before war machines), Mech
+// Princess pays 1 Valuable in PvP.
+export const ENGINE_PROTOCOL_VERSION = 176;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
