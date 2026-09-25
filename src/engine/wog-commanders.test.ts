@@ -241,6 +241,19 @@ function intoNeutralFight(state: GameState, difficulty = 2): GameState {
   return apply(current, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 }
 
+/** Puts `ids` on top of a Neutral tier deck, drawn in the listed order. */
+function pinNeutralDeckTop(state: GameState, tier: "bronze" | "silver" | "gold" | "azure", ids: string[]): void {
+  const deck = state.decks[`neutral-${tier}`]!;
+  const rest = [...deck.drawPile];
+  for (const id of ids) {
+    const index = rest.lastIndexOf(id);
+    expect(index, `${id} in the ${tier} deck`).toBeGreaterThanOrEqual(0);
+    rest.splice(index, 1);
+  }
+  // drawFromNeutralDeck pops from the END of the draw pile.
+  deck.drawPile = [...rest, ...[...ids].reverse()];
+}
+
 function intoNeutralDeployment(state: GameState, difficulty = 2): GameState {
   let current = state;
   if (current.players.p1.needsHandRefresh || current.players.p1.canMulligan) {
@@ -1212,6 +1225,13 @@ describe("WOG commanders — specialties", () => {
 
   it("Charming (Succubus): one random neutral defender opens the fight Paralyzed", () => {
     const state = adventureWithCommanders("cmd-charm", "inferno", undefined);
+    // Pin the pre-v178 seeded guard army (Lizardmen, Air Elementals,
+    // Sharpshooters). v178 put the expansion Neutral sides into the shared
+    // decks; the reshuffled seed swapped the Sharpshooters for Mummies, which
+    // left the charmed Air Elementals the FASTEST guard — its Paralysis was
+    // then already spent (token removed) on the first activation.
+    pinNeutralDeckTop(state, "bronze", ["neutral.lizardmen", "neutral.air_elementals"]);
+    pinNeutralDeckTop(state, "silver", ["neutral.sharpshooters"]);
     const fight = intoNeutralFight(state);
     const paralyzed = Object.values(fight.combat!.units).filter(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.tokens?.some((token) => token.kind === "paralysis")

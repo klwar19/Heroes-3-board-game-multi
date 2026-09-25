@@ -1487,7 +1487,33 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // guard, Cyberbrute odd guard + Damage Shock, Bruiser Combat Salvage, Jump
 // Trooper Combat Calibration round-start choice before war machines), Mech
 // Princess pays 1 Valuable in PvP.
-export const ENGINE_PROTOCOL_VERSION = 176;
+// v177: optional `hex-battlefield` house rule — CombatState.geometry "hex" (13×9
+// Battlefield-Expansion board, initiative movement, 8-hex ranged penalty),
+// combat.hexObstacleTokens, SiegeState.hexTokens, UNIT_MOVED.path.
+// v178: Mech Princess's paid Chain Lightning scroll is tracked and removed at
+// combat end; Bulwark, Factory and Forge neutral sides enter the shared decks.
+// v179: Grunts' round-one Tempo Field target choice resolves before initiative
+// order and war machines; round-two aura remains position-based.
+// v180: Mech Princess's phantom Scroll holds Chain Lightning and Stone Skin;
+// Storm Salvage pays only when a spell remains in that Scroll after a win.
+// v181: Mech Princess Power-2 Arc Discharge damage follows combat round and
+// target tier rather than cast count; commander and bank-unit exceptions apply.
+// v182: hex battlefield — start-of-combat Tactics is a re-sort within the first
+// four hex columns (combat.tacticsSortSpentBy, window stays open until
+// FINISH_TACTICS); two-hex tails spring battlefield tokens, breath lines start
+// at the attacker's nearest hex, whole-obstacle Sprite moves; mode presets keep
+// the combat-board choice.
+// v183: hex battlefield — PC-size wall tokens (BattlefieldTokenState.extraCells:
+// Force Field / Fire Wall 2 hexes, 3 Expert; Ladybird Wall 2), sea hexes of the
+// ship battle never movable/removable, heal-window threat reads card-damage
+// immunity + Zeestral VI caster sides, HotA/Forge two-hex creatures.
+// v184: hex obstacles capped at the scaled PC maximum (3-6 hexes), Balance-Pack
+// "+N Initiative and N spaces" reprints count once on hex, teleporters carry no
+// walked path; an own-faction Settlement never turns a built Dwelling recruit
+// into a Neutral card, and a Neutral-side card and the Few/Pack card of one
+// expansion unit are different cards; Mech Princess phantom Scroll spells never
+// enter the removed pile; the AI hunts an enemy hero on its own tile I.
+export const ENGINE_PROTOCOL_VERSION = 184;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

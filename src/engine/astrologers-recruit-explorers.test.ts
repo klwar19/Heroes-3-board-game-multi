@@ -627,8 +627,9 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     }
   });
 
+  // Bulwark and Forge left this list at v178: their Neutral sides entered the
+  // shared decks, so they now search their own roster's Neutral cards.
   it.each([
-    "bulwark",
     "imperium",
     "blue_archive",
     "fuyuki",
@@ -637,8 +638,7 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     "little_busters",
     "mgq",
     "azure_breeze",
-    "heavenly_demon",
-    "forge"
+    "heavenly_demon"
   ])(
     "offers %s a random Dwelling-eligible Neutral Unit instead of no effect",
     (factionId) => {

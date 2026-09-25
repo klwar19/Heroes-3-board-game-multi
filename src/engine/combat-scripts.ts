@@ -32,6 +32,9 @@ import {
 import { animeEnabled, animeModuleEnabled } from "./anime";
 import { isPveEncounterCombat } from "./combat-board-art";
 import { createSeededRandom } from "./random";
+import { combatGeometry, getBattlefieldPositions, isHexPosition } from "./battlefield";
+import { unitCells } from "./hex-footprint";
+import { hexEquivalentOfGridCell } from "./hex-battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { appendEvent } from "./events";
 import { noteUnitDamagedForTokens } from "./tokens";
@@ -214,7 +217,7 @@ function applyScriptObstacles(combat: CombatState, cells: number[], count: numbe
   const occupied = new Set<number>(combat.obstacles ?? []);
   for (const unit of Object.values(combat.units)) {
     if (unit.damage < unit.maxHealth) {
-      occupied.add(unit.position);
+      for (const cell of unitCells(combat, unit)) occupied.add(cell);
     }
   }
   // Scripts are neutral-only (never a siege), so units + existing obstacles are
@@ -222,11 +225,15 @@ function applyScriptObstacles(combat: CombatState, cells: number[], count: numbe
   const placed = new Set<number>(combat.obstacles ?? []);
   const limit = count ?? cells.length;
   let added = 0;
-  for (const cell of cells) {
+  const hex = combatGeometry(combat) === "hex";
+  for (const scriptCell of cells) {
     if (added >= limit) {
       break;
     }
-    if (cell < 0 || cell >= COMBAT_BOARD_CELLS) {
+    // Scripts name 4×5 cells; the hex board uses each cell's hex equivalent
+    // (random-obstacle picks already come as hexes).
+    const cell = hex && !isHexPosition(scriptCell) ? hexEquivalentOfGridCell(scriptCell) : scriptCell;
+    if (cell === null || (hex ? !isHexPosition(cell) : cell < 0 || cell >= COMBAT_BOARD_CELLS)) {
       continue;
     }
     if (occupied.has(cell) || placed.has(cell)) {
@@ -292,11 +299,11 @@ function applyScriptRandomObstacles(combat: CombatState, count: number): void {
   const occupied = new Set<number>(combat.obstacles ?? []);
   for (const unit of Object.values(combat.units)) {
     if (unit.damage < unit.maxHealth) {
-      occupied.add(unit.position);
+      for (const cell of unitCells(combat, unit)) occupied.add(cell);
     }
   }
   const empty: number[] = [];
-  for (let cell = 0; cell < COMBAT_BOARD_CELLS; cell += 1) {
+  for (const cell of getBattlefieldPositions(combatGeometry(combat))) {
     if (!occupied.has(cell)) {
       empty.push(cell);
     }

@@ -1,4 +1,4 @@
-import { getBattlefieldDistance, isAdjacent } from "./battlefield";
+import { unitDistance, unitsAdjacent } from "./hex-footprint";
 import type { CombatState, CombatUnitState, EffectDefinition, PlayerId } from "./state";
 
 /**
@@ -35,7 +35,7 @@ export function alliesAdjacentToTarget(
       unit.id !== defender.id &&
       unit.controllerId === attacker.controllerId &&
       alive(unit) &&
-      isAdjacent(unit.position, defender.position),
+      unitsAdjacent(combat, unit, defender),
   ).length;
 }
 
@@ -77,6 +77,7 @@ export function unitAttacksAsRanged(unit: CombatUnitState): boolean {
 export function bombardmentReaches(
   attacker: CombatUnitState,
   defender: CombatUnitState,
+  combat?: CombatState | null,
 ): boolean {
   const bombardment = attacker.bombardment;
   if (!bombardment) {
@@ -86,7 +87,7 @@ export function bombardmentReaches(
     return true;
   }
   return (
-    getBattlefieldDistance(attacker.position, defender.position) <=
+    unitDistance(combat, attacker, defender) <=
     bombardment.range
   );
 }
@@ -124,7 +125,7 @@ export function interceptCandidates(
         unit.id !== attacker.id &&
         unit.controllerId === defender.controllerId &&
         alive(unit) &&
-        isAdjacent(unit.position, defender.position),
+        unitsAdjacent(combat, unit, defender),
     )
     .sort((left, right) => left.id.localeCompare(right.id));
 }

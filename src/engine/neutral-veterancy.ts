@@ -3,7 +3,7 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 import { getUnitAbilityDefinitions, isUnitDamageImmune } from "./unit-abilities";
 import { effectAppliesToUnit, makeActiveEffect } from "./active-effects";
 import { appendEvent } from "./events";
-import { isAdjacent } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { queueElementalChoice } from "./elemental-veterancy";
 import type { UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { markUnitRemovedIfNeeded, finishCombatIfNeeded } from "./combat-units";
@@ -80,7 +80,7 @@ export function applyNeutralDebuff(state: GameState, source: CombatUnitState, ta
 export function neutralAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation: boolean, roll: number, dieCancelled: boolean, attackKind: "melee" | "ranged"): void {
   state.activeEffects = state.activeEffects.filter(e => !(e.target?.type === "unit" && e.target.unitId === attacker.id && e.modifiers.some(m => m.type === "NEUTRAL_NEXT_ATTACK_PENALTY")));
   if (attacker.controllerId !== defender.controllerId && attacker.damage < attacker.maxHealth) {
-    const adjacent = neutralVeterancy(defender, "adjacent-enfeeble") && isAdjacent(attacker.position, defender.position);
+    const adjacent = neutralVeterancy(defender, "adjacent-enfeeble") && unitsAdjacent(state.combat, attacker, defender);
     if (adjacent || neutralVeterancy(defender, "unicorn-enfeeble")) applyNeutralDebuff(state, defender, attacker,
       adjacent ? "veteran-adjacent-enfeeble" : "veteran-unicorn-enfeeble", "Next attack: -1 Attack", { type: "NEUTRAL_NEXT_ATTACK_PENALTY", amount: 1 });
   }

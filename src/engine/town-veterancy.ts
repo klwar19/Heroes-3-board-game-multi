@@ -1,7 +1,7 @@
 import type { TownVeterancyMechanic } from "@/data/units/abilities";
 import type { CombatUnitState, GameState } from "./state";
 import { getUnitAbilityDefinitions, isUndeadUnit } from "./unit-abilities";
-import { isAdjacent } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import {
   veteranDamage,
   veteranHeal,
@@ -122,7 +122,7 @@ export function townAttackBonus(
         alive(unit) &&
         unit.id !== attacker.id &&
         unit.controllerId === attacker.controllerId &&
-        isAdjacent(unit.position, attacker.position) &&
+        unitsAdjacent(state.combat, unit, attacker) &&
         (unit.unitDefId?.endsWith(".demons") || /^(demons?)$/i.test(unit.name)),
     )
       ? 1
@@ -144,13 +144,14 @@ export function townDefenseBonus(
     ["ranged", "flying"].includes(attacker.type)
       ? 1
       : 0) +
+    (townVeterancy(defender, "grenadier-guard-heal") && ["ranged", "flying"].includes(attacker.type) ? 1 : 0) +
     (townVeterancy(defender, "pegasus-guard") &&
     Object.values(state.combat?.units ?? {}).some(
       (t) =>
         alive(t) &&
         t.id !== defender.id &&
         t.controllerId === defender.controllerId &&
-        isAdjacent(t.position, defender.position),
+        unitsAdjacent(state.combat, t, defender),
     )
       ? 1
       : 0) -
@@ -173,7 +174,7 @@ export function townDefenseToken(
       (t) =>
         alive(t) &&
         t.id !== defender.id &&
-        isAdjacent(t.position, defender.position) &&
+        unitsAdjacent(state.combat, t, defender) &&
         townVeterancy(t, "halberd-aura"),
     )
   );
@@ -186,7 +187,7 @@ export function townBound(
   return (unit.townVeterancy?.boundBy ?? []).some((id) => {
     const source = state?.combat?.units[id];
     return (
-      source && alive(source) && isAdjacent(source.position, unit.position)
+      source && alive(source) && unitsAdjacent(state?.combat, source, unit)
     );
   });
 }
@@ -244,6 +245,10 @@ export function townAfterAttack(
   kind: "melee" | "ranged",
 ): void {
   forgeAfterAttack(state, attacker, defender, retaliation, roll, dieCancelled);
+  if (attacker.controllerId !== defender.controllerId && !dieCancelled && roll >= 0 &&
+      alive(defender) && townVeterancy(defender, "grenadier-guard-heal")) {
+    veteranHeal(state, defender, 1, "factory-grenadier-guard-heal");
+  }
   if (!retaliation && alive(attacker) && townVeterancy(attacker, "sandworm-burrow")) {
     const memory = (attacker.townVeterancy ??= {});
     if ((memory.sandwormBurrowUses ?? 0) < 2) {
@@ -252,7 +257,7 @@ export function townAfterAttack(
       attacker.initiative += 3;
       veteranTrigger(state, attacker, "factory-sandworm-burrow", attacker, `${attacker.cardName} gains +3 Initiative (${memory.sandwormBurrowUses}/2).`);
     }
-    queueElementalChoice(state, { kind: "veteran-teleport", unitId: attacker.id, abilityId: "factory-sandworm-burrow", optional: true });
+    queueElementalChoice(state, { kind: "veteran-teleport", unitId: attacker.id, abilityId: "factory-sandworm-burrow", maxDistance: 2, optional: true });
   }
   if (!retaliation && attacker.movedThisActivation && getUnitAbilityDefinitions(attacker).some(a => a.id === "veteran-magma-attack-after-move")) {
     (attacker.townVeterancy ??= {}).attackAfterMoveUsed = true;
@@ -385,7 +390,7 @@ export function townAfterAttack(
   townNagaMend(state, defender);
   if (retaliation && townVeterancy(defender, "efreet-mend"))
     veteranHeal(state, defender, 1, "town-efreet-mend");
-  if (isAdjacent(attacker.position, defender.position)) {
+  if (unitsAdjacent(state.combat, attacker, defender)) {
     if (
       !dieCancelled &&
       roll === 1 &&

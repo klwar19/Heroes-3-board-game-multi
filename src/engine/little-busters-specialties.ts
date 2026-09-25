@@ -1,10 +1,16 @@
 import {
-  BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
+  combatGeometry,
   getBattlefieldCoordinates,
-  isAdjacent
+  getBattlefieldDistance,
+  getBattlefieldPositions,
+  getHexCellBehind,
+  hexTranslate,
+  isAdjacent,
+  isHexPosition
 } from "./battlefield";
+import { nearestUnitCellTo, unitAdjacentToCell, unitCells, unitsAdjacent } from "./hex-footprint";
 import { arrowTowerRefusesEffect } from "./siege";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
@@ -45,8 +51,32 @@ function alive(unit: CombatUnitState): boolean {
  */
 export function knockbackCellBehind(
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
+  /** The combat, for double-wide footprints on the hex board. */
+  combat?: CombatState | null
 ): number | null {
+  if (isHexPosition(attacker.position) || isHexPosition(defender.position)) {
+    if (!unitsAdjacent(combat, attacker, defender)) {
+      return null;
+    }
+    // The push runs from the attacker's hex that faces the target (a
+    // double-wide attacker's tail when only the tail touches it; head first on
+    // ties — cellBehindTarget's rule) through the target's nearest hex; a
+    // double-wide target moves as a whole, so its HEAD shifts by that step.
+    let from = attacker.position;
+    let through = nearestUnitCellTo(combat, defender, attacker.position);
+    for (const cell of unitCells(combat, attacker).slice(1)) {
+      const nearest = nearestUnitCellTo(combat, defender, cell);
+      if (getBattlefieldDistance(cell, nearest) < getBattlefieldDistance(from, through)) {
+        from = cell;
+        through = nearest;
+      }
+    }
+    const beyond = getHexCellBehind(from, through);
+    return beyond === null || through === defender.position
+      ? beyond
+      : hexTranslate(defender.position, through, beyond);
+  }
   const from = getBattlefieldCoordinates(attacker.position);
   const at = getBattlefieldCoordinates(defender.position);
   const rowStep = at.row - from.row;
@@ -99,11 +129,10 @@ export function homeRunOutcome(
   if (unitRefusesRelocation(defender) || unitRefusesRelocation(attacker)) {
     return { kind: "damage" };
   }
-  const destination = knockbackCellBehind(attacker, defender);
+  const destination = knockbackCellBehind(attacker, defender, combat);
   if (destination === null || spaceIsBlocked(destination)) {
     return { kind: "damage" };
   }
-  void combat;
   return { kind: "push", destination };
 }
 
@@ -129,7 +158,7 @@ export function catLandingIsAnchored(
     return true;
   }
   return Object.values(combat.units).some(
-    (unit) => unit.controllerId === playerId && alive(unit) && isAdjacent(unit.position, position)
+    (unit) => unit.controllerId === playerId && alive(unit) && unitAdjacentToCell(combat, unit, position)
   );
 }
 
@@ -154,7 +183,10 @@ export function campusCatPositions(
     positions.push(firstPosition);
     taken.add(firstPosition);
   }
-  for (let position = 0; position < BATTLEFIELD_CELL_COUNT && positions.length < count; position += 1) {
+  for (const position of getBattlefieldPositions(combatGeometry(combat))) {
+    if (positions.length >= count) {
+      break;
+    }
     if (
       taken.has(position) ||
       spaceIsBlocked(position) ||

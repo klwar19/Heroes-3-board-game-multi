@@ -589,6 +589,7 @@ export function CombatSandboxSetupScreen({
     obstacles?: number[];
     moraleCards?: boolean;
     battlefieldConditions?: boolean;
+    hexBattlefield?: boolean;
     wog?: Partial<WogModOptions>;
     playMode?: CombatSandboxPlayMode;
   }) => onAction({ type: "SANDBOX_SET_OPTIONS", playerId: actorId, options });
@@ -685,6 +686,14 @@ export function CombatSandboxSetupScreen({
               type="checkbox"
             />
             Battlefield Conditions (roll two dice)
+          </label>
+          <label className="sandboxToggle">
+            <input
+              checked={Boolean(setup.hexBattlefield)}
+              onChange={(event) => setOptions({ hexBattlefield: event.target.checked })}
+              type="checkbox"
+            />
+            Hex Battlefield (Battlefield Expansion)
           </label>
           <label className="sandboxToggle">
             <input

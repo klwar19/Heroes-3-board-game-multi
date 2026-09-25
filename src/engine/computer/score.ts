@@ -1,5 +1,5 @@
 import { unitAbilities } from "@/data/units/abilities";
-import { getBattlefieldDistance, isAdjacent } from "../battlefield";
+import { unitCellDistance, unitDistanceAt, unitsAdjacent } from "../hex-footprint";
 import { getUnitSide } from "../adventure";
 import type { CombatState, CombatUnitState, PlayerId, UnitGrade } from "../state";
 import { dealsElementalStrike } from "./strike-value";
@@ -204,7 +204,7 @@ export function pendingIncomingDamage(
   return livingEnemyUnits(combat, playerId).reduce((sum, enemy) => {
     if (enemy.activatedThisRound) return sum;
     const reaches =
-      enemy.type === "ranged" || isAdjacent(enemy.position, unit.position);
+      enemy.type === "ranged" || unitsAdjacent(combat, enemy, unit);
     return reaches ? sum + expectedAttackDamage(enemy, unit) : sum;
   }, 0);
 }
@@ -224,12 +224,22 @@ export function distanceToNearestEnemy(
   combat: CombatState,
   playerId: PlayerId,
   position: number,
+  /**
+   * The body standing on `position` (its head there): a double-wide unit on
+   * the hex board is judged by its nearest hex. Omitted: the single cell. The
+   * 4×5 grid reads the same position distance either way.
+   */
+  body?: CombatUnitState,
 ): number | null {
   const enemies = livingEnemyUnits(combat, playerId);
   if (enemies.length === 0) return null;
   return enemies.reduce(
     (nearest, enemy) =>
-      Math.min(nearest, getBattlefieldDistance(position, enemy.position)),
+      // Any hex of a double-wide enemy counts (hex board).
+      Math.min(
+        nearest,
+        body ? unitDistanceAt(combat, body, position, enemy) : unitCellDistance(combat, enemy, position),
+      ),
     Number.POSITIVE_INFINITY,
   );
 }

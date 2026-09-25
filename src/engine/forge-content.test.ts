@@ -58,9 +58,35 @@ describe("Forge registration", () => {
     expect(coreBuildingDefinitions["forge.toxic_moat"]!.prerequisites).toContain("forge.citadel");
   });
 
-  it("never adds a Forge unit to the Neutral Units decks (Factory precedent)", () => {
+  it("puts every Forge Neutral side into the shared Neutral Units decks (v178 ruling)", () => {
+    // Protocol v178 ruling: Bulwark, Factory and Forge Neutral sides enter the
+    // shared decks under the same unit id as Few/Pack (isRecruitableNeutralUnit).
+    const forgeUnits = Object.values(coreUnitDefinitions).filter((unit) => unit.faction === "forge");
+    const withNeutral = forgeUnits.filter((unit) => unit.neutral && !unit.summonOnly);
+    expect(withNeutral.length).toBeGreaterThan(0);
+    for (const unit of withNeutral) {
+      const tierDeck = neutralUnitIdsByTier[unit.tier as keyof typeof neutralUnitIdsByTier];
+      expect(tierDeck, unit.id).toBeDefined();
+      // Exactly once, and only in its own tier's deck.
+      expect(tierDeck!.filter((id) => id === unit.id), unit.id).toHaveLength(1);
+      for (const [tier, ids] of Object.entries(neutralUnitIdsByTier)) {
+        if (tier !== unit.tier) expect(ids, `${unit.id} in ${tier}`).not.toContain(unit.id);
+      }
+    }
     for (const ids of Object.values(neutralUnitIdsByTier)) {
-      expect(ids.some((id) => id.startsWith("forge."))).toBe(false);
+      expect(new Set(ids).size, "no duplicate deck entries").toBe(ids.length);
+      for (const id of ids) expect(coreUnitDefinitions[id]?.summonOnly, id).not.toBe(true);
+    }
+    // CONTROL: a Forge unit WITHOUT a Neutral side (Cyberbrutes — its Neutral
+    // card is the separate azure neutral.cyberbrutes) never enters any deck.
+    expect(coreUnitDefinitions["forge.cyberbrutes"]!.neutral).toBeUndefined();
+    for (const ids of Object.values(neutralUnitIdsByTier)) {
+      expect(ids).not.toContain("forge.cyberbrutes");
+    }
+    // CONTROL: summon-only units with a Neutral side stay out of the decks too.
+    const summonOnly = Object.values(coreUnitDefinitions).filter((unit) => unit.summonOnly && unit.neutral);
+    for (const unit of summonOnly) {
+      for (const ids of Object.values(neutralUnitIdsByTier)) expect(ids, unit.id).not.toContain(unit.id);
     }
   });
 });

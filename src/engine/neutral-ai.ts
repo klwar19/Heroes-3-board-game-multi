@@ -1,18 +1,24 @@
 import { unitIsBerserk } from "./active-effects";
-import { getBattlefieldDistance } from "./battlefield";
+import {
+  battlefieldTokenCells,
+  unitAdjacentToToken,
+  unitCellDistance,
+  unitDistance,
+  unitDistanceAt,
+  unitsAdjacent,
+  unitsAdjacentAt,
+} from "./hex-footprint";
 import { houseRuleEnabled } from "./house-rules";
 import { planRandomTownActivation } from "./random-town-tactics";
 import { getDemolishAbility } from "./siege";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./computer/unit-ability-value";
+import { canStrikeFromLegalLanding } from "./computer/opponent-reply";
 import {
   canUnitAttack,
-  canUnitMoveAndAttack,
-  canUnitMoveTo,
   getBerserkNearestTargets,
   getLegalMoveDestinations,
   getAutomaticNeutralAbilityActions,
   getPathDistances,
-  isAdjacent,
   isUnitAlive
 } from "./legal-actions";
 import type { BattlefieldTokenState, CombatState, CombatUnitState, GameAction, GameState, UnitGrade, UnitId } from "./state";
@@ -160,12 +166,12 @@ function neutralMoveDistanceToTarget(
 ): number {
   // A shooter fires from where it stands — count the straight line, not a walk.
   if (attacker.type === "ranged") {
-    return getBattlefieldDistance(attacker.position, target.position);
+    return unitDistance(combat, attacker, target);
   }
   const field = getPathDistances(combat, attacker, target.position);
   return (
     field.get(attacker.position) ??
-    getBattlefieldDistance(attacker.position, target.position) + BATTLEFIELD_PATH_PENALTY
+    unitDistance(combat, attacker, target) + BATTLEFIELD_PATH_PENALTY
   );
 }
 
@@ -203,7 +209,7 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
   // Engaged ranged units must attack an adjacent enemy. This is a hard
   // restriction, not a tier preference, so it binds gradeless bank guards too.
   if (attacker.type === "ranged") {
-    const adjacent = enemies.filter((unit) => isAdjacent(attacker.position, unit.position));
+    const adjacent = enemies.filter((unit) => unitsAdjacent(combat, attacker, unit));
     if (adjacent.length > 0) {
       return sortNeutralTargetCandidates(combat, attacker, adjacent);
     }
@@ -332,7 +338,8 @@ function attackableTargetPool(
       return false;
     }
     return reachSpaces.some(
-      (space) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, attacker, space, target, state)
+      (space) => unitsAdjacentAt(combat, attacker, space, target) &&
+        canStrikeFromLegalLanding(combat, attacker, space, target, state.activeEffects ?? [])
     );
   });
   return coordinatedRandomTownDefense(state, combat)
@@ -629,7 +636,8 @@ function attackOrReach(
   }
 
   const attackSpots = getLegalMoveDestinations(combat, unit, state).filter(
-    (space) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, unit, space, target, state)
+    (space) => unitsAdjacentAt(combat, unit, space, target) &&
+      canStrikeFromLegalLanding(combat, unit, space, target, state.activeEffects ?? [])
   );
   if (attackSpots.length === 0) {
     return null;
@@ -667,8 +675,8 @@ function attackOrReach(
     const destination = [...attackSpots].sort(
       (left, right) =>
         (importantAlly
-          ? getBattlefieldDistance(left, importantAlly.position) -
-            getBattlefieldDistance(right, importantAlly.position)
+          ? unitDistanceAt(combat, unit, left, importantAlly) -
+            unitDistanceAt(combat, unit, right, importantAlly)
           : 0) || left - right
     )[0];
     return { kind: "move-and-attack", destination, defenderId: target.id };
@@ -701,14 +709,17 @@ function attackOrReachWall(
   if (unit.attackedThisActivation) {
     return null;
   }
-  if (getDemolishAbility(unit) || (unit.type !== "ranged" && isAdjacent(unit.position, wall.position))) {
+  // Adjacent to ANY hex of a two-hex Wall (hex board); its one space on the grid.
+  if (getDemolishAbility(unit) || (unit.type !== "ranged" && unitAdjacentToToken(combat, unit, wall))) {
     return { kind: "attack-wall", tokenId: wall.id };
   }
   if (unit.type === "ranged") {
     return null;
   }
+  // Every listed space is already a legal move (canUnitMoveTo would only
+  // re-run the same move search per space).
   const spots = getLegalMoveDestinations(combat, unit, state).filter(
-    (space) => isAdjacent(space, wall.position) && canUnitMoveTo(combat, unit, space, state)
+    (space) => unitAdjacentToToken(combat, { ...unit, position: space }, wall)
   );
   if (spots.length === 0) {
     return null;
@@ -735,11 +746,15 @@ function attackableArtifactWalls(
   return enemyArtifactWalls(combat, unit)
     .filter((token) => attackOrReachWall(state, combat, unit, token) !== null)
     .map((token) => {
-      const distance =
-        unit.type === "ranged"
-          ? getBattlefieldDistance(unit.position, token.position)
-          : getPathDistances(combat, unit, token.position).get(unit.position) ??
-            getBattlefieldDistance(unit.position, token.position) + BATTLEFIELD_PATH_PENALTY;
+      // Nearest hex of a two-hex Wall (hex board); the grid reads its one space.
+      const distance = Math.min(
+        ...battlefieldTokenCells(token).map((cell) =>
+          unit.type === "ranged"
+            ? unitCellDistance(combat, unit, cell)
+            : getPathDistances(combat, unit, cell).get(unit.position) ??
+              unitCellDistance(combat, unit, cell) + BATTLEFIELD_PATH_PENALTY
+        )
+      );
       return { token, distance };
     })
     .sort((left, right) => left.distance - right.distance || left.token.position - right.token.position);
@@ -779,9 +794,10 @@ function bestStepTowards(
   unit: CombatUnitState,
   target: CombatUnitState
 ): number | null {
-  const destinations = getLegalMoveDestinations(combat, unit, state).filter((destination) =>
-    canUnitMoveTo(combat, unit, destination, state)
-  );
+  // Every listed destination is already a legal move; re-checking each with
+  // canUnitMoveTo re-ran the whole move search per square (~100 hexes on the
+  // hex battlefield) for the same answer.
+  const destinations = getLegalMoveDestinations(combat, unit, state);
   if (destinations.length === 0) {
     return null;
   }
@@ -793,7 +809,7 @@ function bestStepTowards(
   // them this matches the straight-line distance.
   const field = getPathDistances(combat, unit, target.position);
   const distanceTo = (position: number): number =>
-    field.get(position) ?? getBattlefieldDistance(position, target.position) + BATTLEFIELD_PATH_PENALTY;
+    field.get(position) ?? unitDistanceAt(combat, unit, position, target) + BATTLEFIELD_PATH_PENALTY;
 
   const here = distanceTo(unit.position);
   const best = destinations
@@ -801,7 +817,7 @@ function bestStepTowards(
     .sort(
       (left, right) =>
         distanceTo(left) - distanceTo(right) ||
-        getBattlefieldDistance(left, target.position) - getBattlefieldDistance(right, target.position) ||
+        unitDistanceAt(combat, unit, left, target) - unitDistanceAt(combat, unit, right, target) ||
         left - right
     )[0];
 

@@ -1,7 +1,7 @@
 import type { ActiveEffectState, CombatUnitState, GameState } from "./state";
 import type { CustomTownVeterancyMechanic } from "@/data/units/abilities";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
-import { isAdjacent } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { queueElementalChoice, breakCoverTargets } from "./elemental-veterancy";
 import { veteranHeal, veteranTrigger } from "./faction-veterancy";
 import { applyNeutralDebuff } from "./neutral-veterancy";
@@ -22,10 +22,10 @@ function spendRound(state: GameState, unit: CombatUnitState, mechanic: CustomTow
 export function customTownActivation(state: GameState, unit: CombatUnitState, removeEffect: (effect: ActiveEffectState) => void): void {
   if (!alive(unit)) return;
   const units = Object.values(state.combat?.units ?? {});
-  if (has(unit, "rescue-step") && units.some(t => alive(t) && t.id !== unit.id && t.controllerId === unit.controllerId && isAdjacent(t.position, unit.position) && units.some(e => alive(e) && e.controllerId !== t.controllerId && isAdjacent(e.position, t.position))) && spendRound(state, unit, "rescue-step")) {
+  if (has(unit, "rescue-step") && units.some(t => alive(t) && t.id !== unit.id && t.controllerId === unit.controllerId && unitsAdjacent(state.combat, t, unit) && units.some(e => alive(e) && e.controllerId !== t.controllerId && unitsAdjacent(state.combat, e, t))) && spendRound(state, unit, "rescue-step")) {
     queueElementalChoice(state, { kind: "move-ally-one", unitId: unit.id, abilityId: "ctv-rescue-step", adjacent: true, engagedOnly: true, optional: true });
   }
-  if (units.some(t => alive(t) && t.controllerId !== unit.controllerId && isAdjacent(t.position, unit.position))) return;
+  if (units.some(t => alive(t) && t.controllerId !== unit.controllerId && unitsAdjacent(state.combat, t, unit))) return;
   if (has(unit, "clear-mind") && unit.customVeterancyRounds?.["clear-mind"] === undefined) {
     const effect = state.activeEffects.find(e => e.polarity === "negative" && e.removable && e.target?.type === "unit" && e.target.unitId === unit.id);
     if (effect) {
@@ -35,7 +35,7 @@ export function customTownActivation(state: GameState, unit: CombatUnitState, re
     }
   }
   if (!has(unit, "field-repair")) return;
-  if (!units.some(t => alive(t) && t.id !== unit.id && t.controllerId === unit.controllerId && t.damage > 0 && isAdjacent(t.position, unit.position))) return;
+  if (!units.some(t => alive(t) && t.id !== unit.id && t.controllerId === unit.controllerId && t.damage > 0 && unitsAdjacent(state.combat, t, unit))) return;
   if (spendRound(state, unit, "field-repair"))
     queueElementalChoice(state, { kind: "heal", unitId: unit.id, abilityId: "ctv-field-repair", amount: 1, alliesOnly: true, adjacent: true });
 }
@@ -44,7 +44,7 @@ export function customTownActivation(state: GameState, unit: CombatUnitState, re
 export function customTownAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation: boolean, roll: number, dieCancelled: boolean, kind: "melee" | "ranged", damage: number, removeEffect: (effect: ActiveEffectState) => void): void {
   if (!state.combat || attacker.controllerId === defender.controllerId) return;
   if (dieCancelled) roll = NaN;
-  if (alive(defender) && isAdjacent(attacker.position, defender.position) && (roll === -1 || roll === 0) && spendRound(state, defender, "muscle-reversal")) {
+  if (alive(defender) && unitsAdjacent(state.combat, attacker, defender) && (roll === -1 || roll === 0) && spendRound(state, defender, "muscle-reversal")) {
     queueElementalChoice(state, { kind: "damage", unitId: defender.id, abilityId: "ctv-muscle-reversal", amount: 1, adjacent: true, enemiesOnly: true, optional: true });
   }
   if (!alive(attacker)) return;
@@ -64,7 +64,7 @@ export function customTownAfterAttack(state: GameState, attacker: CombatUnitStat
       veteranHeal(state, attacker, 1, "ctv-mountain-break-heal");
     }
   }
-  if (damage > 0 && kind === "ranged" && !isAdjacent(attacker.position, defender.position) && spendRound(state, attacker, "covering-extraction")) {
+  if (damage > 0 && kind === "ranged" && !unitsAdjacent(state.combat, attacker, defender) && spendRound(state, attacker, "covering-extraction")) {
     queueElementalChoice(state, { kind: "move-ally-one", unitId: attacker.id, abilityId: "ctv-covering-extraction", optional: true });
   }
   if (damage > 0 && roll === 0 && alive(defender) && spendRound(state, attacker, "meridian-exchange")) {

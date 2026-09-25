@@ -2,7 +2,7 @@ import type { CombatUnitState, GameState } from "./state";
 import { factionVeterancy, getUnitAbilityDefinitions, isUnitDamageImmune } from "./unit-abilities";
 import { appendEvent, eventSeedNumber } from "./events";
 import { createSeededRandom } from "./random";
-import { isAdjacent } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { queueElementalChoice } from "./elemental-veterancy";
@@ -70,7 +70,7 @@ export function veteranAfterAttack(state: GameState, attacker: CombatUnitState, 
 function veteranGuard(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, amount: number): CombatUnitState | undefined {
   const combat = state.combat;
   if (!combat || amount <= 0 || attacker.controllerId === defender.controllerId) return undefined;
-  return Object.values(combat.units).find(t => alive(t) && t.id !== defender.id && t.controllerId === defender.controllerId && isAdjacent(t.position, defender.position) && factionVeterancy(t, "intercept") && t.factionVeterancy?.guardRound !== combat.round);
+  return Object.values(combat.units).find(t => alive(t) && t.id !== defender.id && t.controllerId === defender.controllerId && unitsAdjacent(combat, t, defender) && factionVeterancy(t, "intercept") && t.factionVeterancy?.guardRound !== combat.round);
 }
 
 export function veteranInterceptPreview(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, amount: number): number {

@@ -1,4 +1,4 @@
-import { getBattlefieldDistance } from "../battlefield";
+import { unitDistance } from "../hex-footprint";
 import { previewSpellDamage } from "../reducer";
 import type { CardDefinition, CombatUnitState, GameState } from "../state";
 import { unitRemainingHealth, unitRemovalHealth, unitThreatValue } from "./score";
@@ -32,7 +32,7 @@ export function chainLightningValue(state: GameState, playerId: string, card: Ca
   if (primary.controllerId !== playerId && living.filter(unit => unit.controllerId !== playerId).length === 1 &&
       previewSpellDamage(state, primary, card, damages[0] ?? 0) >= unitRemovalHealth(primary)) return value;
   const others = living.filter(unit => unit.id !== primaryId).map(unit => ({ unit,
-    distance: getBattlefieldDistance(primary.position, unit.position) }))
+    distance: unitDistance(combat, primary, unit) }))
     .sort((a, b) => a.distance - b.distance || a.unit.id.localeCompare(b.unit.id));
   const boundary = others[1]?.distance ?? Infinity;
   const pool = others.filter(entry => entry.distance <= boundary).map(entry => entry.unit);

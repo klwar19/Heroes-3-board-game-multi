@@ -5,6 +5,7 @@ import { appendEvent, nextEventNumber } from "./events";
 import { heroHasGradeNode, playerMainHeroInCombat } from "./anime-hero-grades";
 import { noteUnitDamagedForTokens } from "./tokens";
 import type { CombatUnitState, GameState, PlayerId } from "./state";
+import { unitCells, unitOccupiesCell } from "./hex-footprint";
 
 export const STARWIND_FAMILIAR_CARD_IMAGE = "/assets/anime/units/starwind-familiar-card.webp";
 export const STARWIND_FAMILIAR_ARMY_UNIT_PREFIX = "hero_grade_starwind_familiar_";
@@ -62,7 +63,7 @@ export function injectHeroGradeFamiliar(
     (unit) => unit.controllerId === playerId && unit.heroGradeExpiresAfterRound === 1
   );
   if (existing) return existing;
-  const occupied = new Set(Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position));
+  const occupied = new Set(Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).flatMap((unit) => unitCells(combat, unit)));
   const position = preferredCells.find((cell) => !occupied.has(cell));
   if (position === undefined) return null;
   const familiar = createStarwindFamiliar(state, playerId, position, "hero-grade");
@@ -87,7 +88,7 @@ export function injectCommanderArtifactSpirit(
     !combat ||
     combat.round !== 1 ||
     Object.values(combat.units).some(
-      (unit) => unit.damage < unit.maxHealth && unit.position === position,
+      (unit) => unit.damage < unit.maxHealth && unitOccupiesCell(combat, unit, position),
     )
   ) return null;
   const familiar = createStarwindFamiliar(state, playerId, position, "commander-artifact");

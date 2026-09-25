@@ -1191,6 +1191,28 @@ export function nextGoldLadderStep(
   return null;
 }
 
+/** Dungeon's remaining mandatory spend through Black Dragons Pack. Optional
+ * purchases may use only resources above this amount until the Pack exists. */
+export function dungeonBlackDragonPackBudget(
+  state: GameState,
+  playerId: PlayerId,
+): Required<ResourceCost> | null {
+  const player = state.players[playerId];
+  if (player?.factionId !== "dungeon" ||
+      player.army.some(unit => unit.unitDefId === "dungeon.black_dragons" && unit.side === "pack")) return null;
+  const dragon = player.army.find(unit => unit.unitDefId === "dungeon.black_dragons" && unit.side === "few");
+  const toPack = dragon
+    ? reinforceCostFor(state, playerId, dragon.id, false, false, false) ??
+      coreUnitDefinitions["dungeon.black_dragons"].pack!.cost
+    : coreUnitDefinitions["dungeon.black_dragons"].pack!.cost;
+  const toFew = dragon ? null : firstGoldMilestoneCost(state, playerId);
+  return {
+    gold: (toFew?.gold ?? 0) + (toPack.gold ?? 0),
+    buildingMaterials: (toFew?.buildingMaterials ?? 0) + (toPack.buildingMaterials ?? 0),
+    valuables: (toFew?.valuables ?? 0) + (toPack.valuables ?? 0),
+  };
+}
+
 export type ResourceUrgency = Record<"gold" | "buildingMaterials" | "valuables", number>;
 
 /**
@@ -1319,6 +1341,10 @@ export function developmentResourceTargets(
   playerId: PlayerId,
 ): Required<ResourceCost> {
   const profile = armyDevelopmentProfile(state, playerId);
+  const dragonBudget = dungeonBlackDragonPackBudget(state, playerId);
+  if (dragonBudget && profile.goldUnlocked) {
+    return { ...dragonBudget, gold: dragonBudget.gold + 5 };
+  }
   if (needsPremiumSilverBreakthrough(state, playerId) && !needsNecromancyVampire(state, playerId)) {
     const recruit = premiumSilverCost(state, playerId) ?? {};
     const dwelling = nextDevelopmentBuildingCost(state, playerId) ?? {};

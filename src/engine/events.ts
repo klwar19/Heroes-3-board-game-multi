@@ -13,7 +13,8 @@ import {
   getSpecialtyDamageReduction,
   getSpellAndSpecialtyDamageReductionAura,
 } from "./unit-abilities";
-import { getBattlefieldDistance, isAdjacent } from "./battlefield";
+import { getBattlefieldDistance } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { cardLibrary } from "@/data/cards/library";
 import { forgeDamageTaken, forgeTankDied, forgeUnitMoved, forgeVeterancy } from "./forge";
 import { veteranTrigger } from "./faction-veterancy";
@@ -237,7 +238,7 @@ export function transferPendingDamage(
     const aura = Object.values(state.combat!.units).reduce(
       (sum, unit) =>
         unit.damage < unit.maxHealth &&
-        (unit.id === target.id || isAdjacent(unit.position, target.position))
+        (unit.id === target.id || unitsAdjacent(state.combat!, unit, target))
           ? sum + getSpellAndSpecialtyDamageReductionAura(unit)
           : sum,
       0,
@@ -553,7 +554,7 @@ export function appendEvent<T extends EventDraft>(
     for (const target of Object.values(state.combat.units)) {
       if (target.townVeterancy?.boundBy) target.townVeterancy.boundBy = target.townVeterancy.boundBy.filter(id => {
         const source = state.combat!.units[id];
-        return source && source.damage < source.maxHealth && isAdjacent(source.position, target.position);
+        return source && source.damage < source.maxHealth && unitsAdjacent(state.combat!, source, target);
       });
     }
   }

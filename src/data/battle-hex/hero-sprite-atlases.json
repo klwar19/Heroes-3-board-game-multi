@@ -1,0 +1,1052 @@
+{
+  "flag-left": {
+    "image": "/assets/battle-hex/heroes/flag-left.webp",
+    "frameWidth": 17,
+    "frameHeight": 15,
+    "columns": 6,
+    "anchorX": 8,
+    "anchorY": 7,
+    "tint": true,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 6
+      }
+    }
+  },
+  "flag-right": {
+    "image": "/assets/battle-hex/heroes/flag-right.webp",
+    "frameWidth": 17,
+    "frameHeight": 15,
+    "columns": 6,
+    "anchorX": 8,
+    "anchorY": 7,
+    "tint": true,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 6
+      }
+    }
+  },
+  "hero-bulwark-magic-female": {
+    "image": "/assets/battle-hex/heroes/hero-bulwark-magic-female.webp",
+    "frameWidth": 57,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 24,
+    "anchorY": 110,
+    "originX": 30,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-bulwark-magic-male": {
+    "image": "/assets/battle-hex/heroes/hero-bulwark-magic-male.webp",
+    "frameWidth": 60,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 27,
+    "anchorY": 110,
+    "originX": 33,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-bulwark-might-female": {
+    "image": "/assets/battle-hex/heroes/hero-bulwark-might-female.webp",
+    "frameWidth": 59,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 26,
+    "anchorY": 110,
+    "originX": 32,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-bulwark-might-male": {
+    "image": "/assets/battle-hex/heroes/hero-bulwark-might-male.webp",
+    "frameWidth": 60,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 27,
+    "anchorY": 110,
+    "originX": 33,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-castle-female": {
+    "image": "/assets/battle-hex/heroes/hero-castle-female.webp",
+    "frameWidth": 69,
+    "frameHeight": 112,
+    "columns": 11,
+    "anchorX": 34,
+    "anchorY": 110,
+    "originX": 39,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-castle-male": {
+    "image": "/assets/battle-hex/heroes/hero-castle-male.webp",
+    "frameWidth": 77,
+    "frameHeight": 112,
+    "columns": 11,
+    "anchorX": 42,
+    "anchorY": 110,
+    "originX": 47,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-conflux-magic": {
+    "image": "/assets/battle-hex/heroes/hero-conflux-magic.webp",
+    "frameWidth": 73,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 38,
+    "anchorY": 110,
+    "originX": 43,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-conflux-might": {
+    "image": "/assets/battle-hex/heroes/hero-conflux-might.webp",
+    "frameWidth": 72,
+    "frameHeight": 119,
+    "columns": 11,
+    "anchorX": 37,
+    "anchorY": 116,
+    "originX": 42,
+    "originY": 58,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-cove-magic-female": {
+    "image": "/assets/battle-hex/heroes/hero-cove-magic-female.webp",
+    "frameWidth": 57,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 24,
+    "anchorY": 110,
+    "originX": 30,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-cove-magic-male": {
+    "image": "/assets/battle-hex/heroes/hero-cove-magic-male.webp",
+    "frameWidth": 61,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 28,
+    "anchorY": 110,
+    "originX": 34,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-cove-might-female": {
+    "image": "/assets/battle-hex/heroes/hero-cove-might-female.webp",
+    "frameWidth": 57,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 24,
+    "anchorY": 110,
+    "originX": 30,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-cove-might-male": {
+    "image": "/assets/battle-hex/heroes/hero-cove-might-male.webp",
+    "frameWidth": 60,
+    "frameHeight": 111,
+    "columns": 18,
+    "anchorX": 27,
+    "anchorY": 110,
+    "originX": 33,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 18
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-dungeon-female": {
+    "image": "/assets/battle-hex/heroes/hero-dungeon-female.webp",
+    "frameWidth": 72,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 36,
+    "anchorY": 110,
+    "originX": 41,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-dungeon-male": {
+    "image": "/assets/battle-hex/heroes/hero-dungeon-male.webp",
+    "frameWidth": 78,
+    "frameHeight": 112,
+    "columns": 11,
+    "anchorX": 41,
+    "anchorY": 110,
+    "originX": 46,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-factory-magic-female": {
+    "image": "/assets/battle-hex/heroes/hero-factory-magic-female.webp",
+    "frameWidth": 57,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 24,
+    "anchorY": 110,
+    "originX": 30,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-factory-magic-male": {
+    "image": "/assets/battle-hex/heroes/hero-factory-magic-male.webp",
+    "frameWidth": 60,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 27,
+    "anchorY": 110,
+    "originX": 33,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-factory-might-female": {
+    "image": "/assets/battle-hex/heroes/hero-factory-might-female.webp",
+    "frameWidth": 57,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 24,
+    "anchorY": 110,
+    "originX": 30,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-factory-might-male": {
+    "image": "/assets/battle-hex/heroes/hero-factory-might-male.webp",
+    "frameWidth": 60,
+    "frameHeight": 111,
+    "columns": 11,
+    "anchorX": 27,
+    "anchorY": 110,
+    "originX": 33,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-forge-magic": {
+    "image": "/assets/battle-hex/heroes/hero-forge-magic.webp",
+    "frameWidth": 99,
+    "frameHeight": 132,
+    "columns": 8,
+    "anchorX": 41,
+    "anchorY": 115,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 8
+      },
+      "4": {
+        "row": 3,
+        "frames": 8
+      }
+    }
+  },
+  "hero-forge-might": {
+    "image": "/assets/battle-hex/heroes/hero-forge-might.webp",
+    "frameWidth": 99,
+    "frameHeight": 132,
+    "columns": 8,
+    "anchorX": 41,
+    "anchorY": 116,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 8
+      },
+      "4": {
+        "row": 3,
+        "frames": 8
+      }
+    }
+  },
+  "hero-fortress-female": {
+    "image": "/assets/battle-hex/heroes/hero-fortress-female.webp",
+    "frameWidth": 71,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 36,
+    "anchorY": 111,
+    "originX": 41,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-fortress-male": {
+    "image": "/assets/battle-hex/heroes/hero-fortress-male.webp",
+    "frameWidth": 74,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 36,
+    "anchorY": 110,
+    "originX": 41,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-inferno-female": {
+    "image": "/assets/battle-hex/heroes/hero-inferno-female.webp",
+    "frameWidth": 75,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 40,
+    "anchorY": 111,
+    "originX": 45,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-inferno-male": {
+    "image": "/assets/battle-hex/heroes/hero-inferno-male.webp",
+    "frameWidth": 74,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 39,
+    "anchorY": 110,
+    "originX": 44,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-necropolis-female": {
+    "image": "/assets/battle-hex/heroes/hero-necropolis-female.webp",
+    "frameWidth": 83,
+    "frameHeight": 114,
+    "columns": 11,
+    "anchorX": 48,
+    "anchorY": 112,
+    "originX": 52,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-necropolis-male": {
+    "image": "/assets/battle-hex/heroes/hero-necropolis-male.webp",
+    "frameWidth": 71,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 36,
+    "anchorY": 111,
+    "originX": 40,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-rampart-female": {
+    "image": "/assets/battle-hex/heroes/hero-rampart-female.webp",
+    "frameWidth": 70,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 35,
+    "anchorY": 110,
+    "originX": 40,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-rampart-male": {
+    "image": "/assets/battle-hex/heroes/hero-rampart-male.webp",
+    "frameWidth": 69,
+    "frameHeight": 117,
+    "columns": 11,
+    "anchorX": 35,
+    "anchorY": 115,
+    "originX": 40,
+    "originY": 57,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-stronghold-female": {
+    "image": "/assets/battle-hex/heroes/hero-stronghold-female.webp",
+    "frameWidth": 68,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 33,
+    "anchorY": 110,
+    "originX": 38,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-stronghold-male": {
+    "image": "/assets/battle-hex/heroes/hero-stronghold-male.webp",
+    "frameWidth": 69,
+    "frameHeight": 117,
+    "columns": 11,
+    "anchorX": 34,
+    "anchorY": 114,
+    "originX": 39,
+    "originY": 56,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-tower-female": {
+    "image": "/assets/battle-hex/heroes/hero-tower-female.webp",
+    "frameWidth": 69,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 34,
+    "anchorY": 110,
+    "originX": 39,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-tower-male": {
+    "image": "/assets/battle-hex/heroes/hero-tower-male.webp",
+    "frameWidth": 70,
+    "frameHeight": 113,
+    "columns": 11,
+    "anchorX": 35,
+    "anchorY": 110,
+    "originX": 40,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 1
+      },
+      "1": {
+        "row": 1,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  }
+}

@@ -355,7 +355,10 @@ export type HouseRuleId =
   | "level-seven-one-level"
   // BINH shop-price rule: Ballista costs 3 gold at a War Machine Factory and
   // 6 gold at a Trading Post. Kept separate from either card-balance pack.
-  | "binh-ballista-cost-3-6";
+  | "binh-ballista-cost-3-6"
+  // Battlefield Expansion "in regular games": every combat is fought on the
+  // 13×9 hex board (CombatState.geometry "hex") instead of the 4×5 grid.
+  | "hex-battlefield";
 
 /** Shared presentation/army theme for the optional wave, boss and dungeon modules. */
 export type PveEncounterTheme = "classic" | "doom" | "random";
@@ -5168,6 +5171,7 @@ type GameActionPayload =
       options: {
         boardArtId?: CombatBoardArtId | "random";
         battlefieldConditions?: boolean;
+        hexBattlefield?: boolean;
         obstacles?: number[];
         moraleCards?: boolean;
         wog?: Partial<WogModOptions>;
@@ -6523,6 +6527,12 @@ type GameEventPayload =
       from: number;
       to: number;
       sourceAbilityId?: string;
+      /**
+       * Spaces a walking unit ENTERED, in order (start exclusive, `to` last) —
+       * the same convention as MOVE_UNIT.path. Informational (animation only);
+       * absent for flights, teleports, knock-backs and forced relocations.
+       */
+      path?: number[];
     }
   | {
       /** A Spell placed an Obstacle / Effect / face-down trap on a board space. */
@@ -10274,7 +10284,15 @@ export type BattlefieldTokenKind =
 export type BattlefieldTokenState = {
   id: string;
   kind: BattlefieldTokenKind;
+  /** The token's anchor space (a hex wall's first hex). */
   position: number;
+  /**
+   * Hex board only: the further hexes a wall token covers beyond `position`
+   * (Force Field / Fire Wall 2 hexes, 3 when cast Expert; Ladybird Wall 2).
+   * One token, several hexes — it blocks / burns on each and is removed whole.
+   * Absent on the 4×5 grid and for every one-hex token.
+   */
+  extraCells?: number[];
   controllerId: PlayerId;
   /** Spell card that placed this token. Absent for specialties and unit abilities. */
   sourceSpellCardId?: CardId;
@@ -10536,6 +10554,9 @@ export type CombatUnitState = {
     /** Sandworms' +3 Initiative gains after their own attacks (hard-capped at 2). */
     sandwormBurrowUses?: number;
     sandwormInitiativeBonus?: number;
+    /** Forge Grunts R1: the single round-1 Tempo Field recipient. */
+    forgeTempoRoundOneTargetId?: UnitId;
+    forgeTempoRoundOneOffered?: boolean;
     /** Imperium Titan R3: actual damage assigned across this combat, even after healing or a side flip. */
     damageSuffered?: number;
     /** Imperium Titan R3: Attack already earned from damage thresholds (max 2). */
@@ -10976,6 +10997,40 @@ export type SiegeState = {
   gatePosition: number | null;
   /** Arrow Tower combat unit id while it stands. */
   arrowTowerUnitId: UnitId | null;
+  /**
+   * Hex battlefield only: the standing Wall / Gate tokens (one card each, may
+   * cover several hexes). `walls` still lists every standing Wall hex and
+   * `gatePosition` the Gate's anchor hex (E11); destroying any hex of a token
+   * removes the whole token. Absent on the 4×5 board.
+   */
+  hexTokens?: SiegeHexToken[];
+};
+
+export type SiegeHexToken = {
+  /** Printed token number: "wall-1", "wall-2", "gate", "wall-4", "wall-5". */
+  id: string;
+  kind: "wall" | "gate";
+  cells: number[];
+};
+
+/**
+ * Hex battlefield backdrop: one of the Heroes 3 combat backgrounds (CmBk<id>),
+ * picked per fight from its board art and the armies' factions.
+ */
+export type HexBattlefieldId =
+  | "bch" | "boat" | "cf" | "cur" | "deck" | "des" | "drdd" | "drmt" | "drtr" | "ef" | "ff" | "grmt"
+  | "grtr" | "hg" | "lava" | "lp" | "mag" | "mc" | "rgh" | "rk" | "snmt" | "sntr" | "sub" | "swmp";
+
+/** A Heroes 3 battlefield obstacle id (PC_OBSTACLES in hex-pc-obstacles.ts). */
+export type HexObstacleTokenKind = string;
+
+export type HexObstacleToken = {
+  id: string;
+  kind: HexObstacleTokenKind;
+  /** Hexes the token covers (all also listed in `combat.obstacles`). */
+  cells: number[];
+  /** The obstacle's anchor hex (its art is drawn from here). */
+  anchor: number;
 };
 
 export type CombatSetupState = {
@@ -11084,12 +11139,12 @@ export type CombatState = {
   neutralBountyGold?: Record<PlayerId, number>;
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
-  /** Round-start Jump Trooper target choices resolve before war machines fire. */
+  /** Forge round-start target choices resolve before war machines fire. */
   forgeJumpRoundAwaitingWarMachines?: boolean;
   /** Defense tokens specifically granted by Darkstorn IV, expiring at round end. */
   darkstornRoundDefenseTokenIds?: UnitId[];
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "forge-grunt-tempo" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
@@ -11453,12 +11508,16 @@ export type CombatState = {
   /** Dungeon Brute's optional 2-gold draw has been offered this combat. */
   bruteCombatDrawOffered?: boolean;
   /**
-   * Forge Mech Princess's combat-start offer (1 building material in neutral
-   * fights, 1 Valuable in PvP): seats already asked this combat, and seats that
-   * paid and still await the card (granted in finalizeCombatStart).
+   * Forge Mech Princess's combat-start offer: seats already asked and paid
+   * purchases still awaiting a scroll (granted in finalizeCombatStart).
    */
   forgeChainLightningOffered?: PlayerId[];
+  /** Legacy paid entries, and new purchases of the two-spell scroll. */
   forgeChainLightningPaid?: PlayerId[];
+  /** Purchases of the Chain Lightning-only scroll awaiting combat start. */
+  forgeChainOnlyPaid?: PlayerId[];
+  /** Mech Princess scrolls granted for this combat; remove them at combat end. */
+  forgeChainLightningScrolls?: Array<{ playerId: PlayerId; scrollId: string }>;
   /**
    * Player-vs-player pre-battle preparation window, presented on the adventure
    * MAP (not the battlefield) so both sides can see their towns, resources and
@@ -11484,6 +11543,12 @@ export type CombatState = {
    * Combat round 1 begins (finalizeCombatStart) only once the queue drains.
    */
   pendingTacticsSwaps?: PlayerId[] | null;
+  /**
+   * Hex board Tactics re-sort: the window's head who has already spent their
+   * Tactics card on a first move/switch. Their window stays open (further moves
+   * and switches are free) until FINISH_TACTICS; cleared when the queue moves on.
+   */
+  tacticsSortSpentBy?: PlayerId | null;
   /** Factory Tinkerer owners who must choose which of their two machines is active at combat start. */
   factoryWarMachineChoiceQueue?: PlayerId[];
   /** Factory commander owners still entitled to place their Power-scaled opening traps. */
@@ -11614,6 +11679,19 @@ export type CombatState = {
    * not land on them. Unit cards themselves also count as combat obstacles.
    */
   obstacles?: number[];
+  /**
+   * Board this combat is fought on: "hex" = the Battlefield Expansion 13×9 hex
+   * board (`hex-battlefield` house rule); absent = the classic 4×5 grid.
+   */
+  geometry?: "hex";
+  /** Hex board only: which Heroes 3 battlefield this fight is fought on. */
+  hexBattlefield?: HexBattlefieldId;
+  /**
+   * Hex board only: the random obstacle tokens placed at combat start, for
+   * rendering. Their hexes are also in `obstacles` (which drives blocking);
+   * a hex later removed from `obstacles` no longer blocks.
+   */
+  hexObstacleTokens?: HexObstacleToken[];
   /**
    * Spell-placed board tokens (Force Field, Fire Wall, Quicksand, Land Mine).
    * Force Field tokens additionally count as Combat Obstacles (folded into the
@@ -14635,6 +14713,8 @@ export type PendingFarTileFlip = {
 
 export type AdventureState = {
   difficulty: GameDifficulty;
+  /** Existing-save refresh for Bulwark, Factory and Forge Neutral deck cards. */
+  expansionNeutralDecksInitialized?: boolean;
   /** Scenario this map was built from (data/map/scenarios). */
   scenarioId?: string;
   /** Stable id of the shared designed map, when this game uses one. */
@@ -17322,6 +17402,11 @@ export type CombatSandboxPlayMode = "binh" | "legacy" | "tournament";
 export type CombatSandboxSetupState = {
   /** Optional ordered two-die Battlefield Conditions; absent means disabled. */
   battlefieldConditions?: boolean;
+  /**
+   * Fight on the Battlefield Expansion hex board; the 0–19 `obstacles` are
+   * placed on their hex equivalents. Absent = the 4×5 board.
+   */
+  hexBattlefield?: boolean;
   seats: Record<PlayerId, CombatSandboxSeatConfig>;
   /** Forced board art, or "random" (currently resolves to classic). */
   boardArtId: CombatBoardArtId | "random";
@@ -17769,6 +17854,9 @@ export type PendingChoice =
       playerId: PlayerId;
       prompt: string;
       options: { label: string }[];
+      /** Index-aligned Mech Princess scroll offers; absent on older in-flight saves. */
+      forgeScrollOptions?: Array<"chain-only" | "both" | "decline">;
+      forgeScrollGoldCost?: number;
       context:
         | "city-hall"
         | "satyr-swap"

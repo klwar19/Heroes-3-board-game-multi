@@ -36,7 +36,7 @@ export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd
   | "snow-elf-rune-strike" | "jotunn-rune-hide" | "jotunn-rune-bolt" | "mammoth-rune-mend"
   | "mammoth-hunter" | "mammoth-last-stand" | "centaur-retaliation" | "behemoth-odd-defense" | "minotaur-last-stand" | "skeleton-last-stand"
   | "basilisk-lower-roll" | "nix-guarded" | "pit-demon-bond" | "haspid-aggressive-drill"
-  | "engineer-attack-support" | "armadillo-momentum" | "sandworm-burrow" | "automaton-round-blast" | "automaton-detonation-repair";
+  | "engineer-attack-support" | "armadillo-momentum" | "sandworm-burrow" | "grenadier-guard-heal" | "automaton-round-blast" | "automaton-detonation-repair";
 export type ForgeVeterancyMechanic = "cyberbrute-mend" | "open-wound" | "tank-reposition" | "tank-death-burst" | "jump-guard" | "bruiser-guard" | "bruiser-break" | "zombie-repair" | "grunt-tempo" | "grunt-cover" | "grunt-mark" | "watcher-ground-air-guard" | "bruiser-die-reward" | "cyberbrute-odd-guard" | "cyberbrute-shock" | "tank-ground-air-guard" | "zombie-full-rebirth" | "jump-round-die";
 
 export type CustomTownVeterancyMechanic = "muscle-reversal" | "returning-edge" | "covering-extraction" | "meridian-exchange" | "rule-unravel" | "field-repair" | "break-cover" | "clear-mind" | "rescue-step" | "blood-price";
@@ -2484,7 +2484,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "forge-vet-bruiser-guard": { id: "forge-vet-bruiser-guard", name: "Flak Armor", text: "+1 Defense against ranged and flying units.", effect: { type: "FORGE_VETERANCY", mechanic: "bruiser-guard" }, implementationStatus: "implemented" },
   "forge-vet-bruiser-break": { id: "forge-vet-bruiser-break", name: "Armor Break", text: "When this unit attacks with a -1 or 0 Attack die, the enemy loses 1 Defense until this unit's next activation.", effect: { type: "FORGE_VETERANCY", mechanic: "bruiser-break" }, implementationStatus: "implemented" },
   "forge-vet-zombie-repair": { id: "forge-vet-zombie-repair", name: "Motion Scavenger", text: "Whenever a unit moves, heal 1 HP; at most twice per combat round.", effect: { type: "FORGE_VETERANCY", mechanic: "zombie-repair" }, implementationStatus: "implemented" },
-  "forge-vet-grunt-tempo": { id: "forge-vet-grunt-tempo", name: "Tempo Field", text: "This unit and all surrounding units gain +2 Initiative.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-tempo" }, implementationStatus: "implemented" },
+  "forge-vet-grunt-tempo": { id: "forge-vet-grunt-tempo", name: "Tempo Field", text: "In combat round 1, this unit and one chosen adjacent unit gain +2 Initiative. From round 2 onward, this unit and all surrounding units gain +2 Initiative.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-tempo" }, implementationStatus: "implemented" },
   "forge-vet-grunt-cover": { id: "forge-vet-grunt-cover", name: "Cover Field", text: "All surrounding units are treated as having a Defend token.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-cover" }, implementationStatus: "implemented" },
   "forge-vet-grunt-mark": { id: "forge-vet-grunt-mark", name: "Target Lock", text: "Attacking an enemy marks it. This unit's later attacks against it ignore 3 Defense for the rest of combat.", effect: { type: "FORGE_VETERANCY", mechanic: "grunt-mark" }, implementationStatus: "implemented" },
   "forge-jetpack-surge-1": {
@@ -4426,7 +4426,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "factory-automaton-reroll": { id: "factory-automaton-reroll", name: "Calibrated Core", text: "Once during each of this unit's own attacks, it may reroll a -1 Attack die result; the new result must be used.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 }, implementationStatus: "implemented" },
   "factory-automaton-round-blast": { id: "factory-automaton-round-blast", name: "Pulse Discharge", text: "At the start of each combat round, deal 1 damage to a chosen adjacent enemy.", effect: { type: "TOWN_VETERANCY", mechanic: "automaton-round-blast" }, implementationStatus: "implemented" },
   "factory-automaton-detonation-repair": { id: "factory-automaton-detonation-repair", name: "Restorative Detonation", text: "When this unit detonates, choose one unit to heal 2 HP after the blast resolves.", effect: { type: "TOWN_VETERANCY", mechanic: "automaton-detonation-repair" }, implementationStatus: "implemented" },
-  "factory-sandworm-burrow": { id: "factory-sandworm-burrow", name: "Burrowing Assault", text: "After each of this unit's own attacks, it gains +3 Initiative for this combat (maximum twice), then may move to any empty space before retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "sandworm-burrow" }, implementationStatus: "implemented" },
+  "factory-sandworm-burrow": { id: "factory-sandworm-burrow", name: "Burrowing Assault", text: "After each of this unit's own attacks, it gains +3 Initiative for this combat (maximum twice), then may move up to 2 spaces before retaliation. If it cannot move, it stays in place and can be retaliated against.", effect: { type: "TOWN_VETERANCY", mechanic: "sandworm-burrow" }, implementationStatus: "implemented" },
+  "factory-grenadier-guard-heal": { id: "factory-grenadier-guard-heal", name: "Blast Shelter", text: "+1 Defense against ranged and flying units. After an enemy attacks this unit and resolves 0 or +1 on its Attack die, heal this unit 1 HP if it survives.", effect: { type: "TOWN_VETERANCY", mechanic: "grenadier-guard-heal" }, implementationStatus: "implemented" },
   "commander-artifact-warding-aura": {
     id: "commander-artifact-warding-aura",
     name: "The Quiet Orbit",
@@ -4819,7 +4820,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-forge": {
     id: "commander-cast-forge",
     name: "Arc Discharge",
-    text: "[activation] Once per combat round: choose 1 enemy. Power 0/1 deals 1/2 damage. Power 2 deals 3 on its first use; later uses deal 3 to bronze/silver or 2 to gold/azure. No Retaliation; ignores Defense. Does not end the activation.",
+    text: "[activation] Once per combat round: choose 1 enemy. Power 0/1 deals 1/2 damage. Power 2 deals 3 to any unit in rounds 1-3; from round 4, deal 4 to bronze, 3 to silver, commanders or Creature Bank units, or 2 to gold/azure. No Retaliation; ignores Defense. Ends this unit's activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

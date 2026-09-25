@@ -2,6 +2,10 @@ import { makeCombatUnitFromArmy, getMainHero } from "./adventure";
 import { makeActiveEffect } from "./active-effects";
 import { playerMainHeroInCombat } from "./anime-hero-grades";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
+import { combatGeometry } from "./battlefield";
+import { battlefieldTokenCells, unitCells } from "./hex-footprint";
+import { hexDeploymentLine, HEX_CREATURE_BANK_ATTACKER_CELLS } from "./hex-battlefield";
+import { intactFortificationPositions } from "./siege";
 import type { GameState, MgqSpirit, PlayerId } from "./state";
 
 export const MGQ_SPIRITS: readonly MgqSpirit[] = ["sylph", "gnome", "undine", "salamander"];
@@ -44,16 +48,22 @@ export function mgqCanSelectSpirit(state: GameState, playerId: PlayerId, spirit:
 function firstFreeSpiritCell(state: GameState, playerId: PlayerId): number | undefined {
   const combat = state.combat;
   if (!combat) return undefined;
-  const cells = playerId === combat.attackerPlayerId
-    ? [16, 17, 18, 19, 12, 13, 14, 15, 9, 10, 5, 6]
-    : [0, 1, 2, 3, 4, 5, 6, 7];
+  const hexSide = playerId === combat.attackerPlayerId ? "attacker" : "defender";
+  const cells = combatGeometry(combat) === "hex"
+    ? [
+        ...hexDeploymentLine(hexSide, "back"),
+        ...hexDeploymentLine(hexSide, "front"),
+        ...(hexSide === "attacker" ? HEX_CREATURE_BANK_ATTACKER_CELLS : [])
+      ]
+    : playerId === combat.attackerPlayerId
+      ? [16, 17, 18, 19, 12, 13, 14, 15, 9, 10, 5, 6]
+      : [0, 1, 2, 3, 4, 5, 6, 7];
   const occupied = new Set(
-    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position)
+    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).flatMap((unit) => unitCells(combat, unit))
   );
   for (const obstacle of combat.obstacles ?? []) occupied.add(obstacle);
-  for (const token of combat.battlefieldTokens ?? []) occupied.add(token.position);
-  for (const wall of combat.siege?.walls ?? []) occupied.add(wall);
-  if (combat.siege?.gatePosition != null) occupied.add(combat.siege.gatePosition);
+  for (const token of combat.battlefieldTokens ?? []) for (const cell of battlefieldTokenCells(token)) occupied.add(cell);
+  for (const wall of combat.siege ? intactFortificationPositions(combat.siege) : []) occupied.add(wall);
   return cells.find((cell) => !occupied.has(cell));
 }
 

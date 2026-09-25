@@ -1,6 +1,6 @@
 import { townNagaMend, townVeterancy } from "./town-veterancy";
 import { neutralTownVeterancy } from "./neutral-town-veterancy";
-import { isAdjacent } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { effectAppliesToUnit, expireEffectsForCombatEnd, makeActiveEffect } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { combatFightingHasBegun } from "./combat-timing";
@@ -234,7 +234,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
   }
 
   if (attackDamage && state.combat) {
-    const guardian = Object.values(state.combat.units).find(candidate => candidate.id !== unit.id && candidate.controllerId === unit.controllerId && candidate.damage < candidate.maxHealth && isAdjacent(candidate.position, unit.position) && neutralTownVeterancy(candidate, "guardian-angel") && !candidate.townVeterancy?.saveUsed);
+    const guardian = Object.values(state.combat.units).find(candidate => candidate.id !== unit.id && candidate.controllerId === unit.controllerId && candidate.damage < candidate.maxHealth && unitsAdjacent(state.combat, candidate, unit) && neutralTownVeterancy(candidate, "guardian-angel") && !candidate.townVeterancy?.saveUsed);
     if (guardian) {
       (guardian.townVeterancy ??= {}).saveUsed = true;
       unit.damage = Math.max(0, unit.maxHealth - 1);
@@ -277,7 +277,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
     unit.damage = Math.max(0, unit.maxHealth - 1);
     veteranTrigger(state, unit, "veteran-hell-steed-last-stand", unit, `${unit.cardName} survives at 1 Health and erupts.`);
     const surroundingEnemies = Object.values(state.combat?.units ?? {}).filter(target =>
-      target.id !== unit.id && target.controllerId !== unit.controllerId && target.damage < target.maxHealth && isAdjacent(target.position, unit.position));
+      target.id !== unit.id && target.controllerId !== unit.controllerId && target.damage < target.maxHealth && unitsAdjacent(state.combat, target, unit));
     for (const target of surroundingEnemies) veteranDamage(state, unit, target, 1, "veteran-hell-steed-last-stand", false);
     return;
   }

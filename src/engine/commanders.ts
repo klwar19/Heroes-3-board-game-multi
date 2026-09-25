@@ -30,7 +30,9 @@ import {
   equipmentGrantsCommanderSort
 } from "./anime-equipment";
 import { makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
-import { getBattlefieldDistance, isAdjacent } from "./battlefield";
+import { combatGeometry } from "./battlefield";
+import { unitCells, unitDistance, unitsAdjacent } from "./hex-footprint";
+import { hexDeploymentLine, HEX_CREATURE_BANK_FRONT_CELLS } from "./hex-battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
@@ -569,7 +571,8 @@ export function injectCommanderIntoCombat(
   const occupied = new Set<number>();
   for (const unit of Object.values(combat.units)) {
     if (unit.damage < unit.maxHealth) {
-      occupied.add(unit.position);
+      // Double-wide tails (hex board) hold their hex too.
+      for (const cell of unitCells(combat, unit)) occupied.add(cell);
     }
   }
   for (const obstacle of combat.obstacles ?? []) {
@@ -715,14 +718,17 @@ function commanderFrontLineCells(state: GameState, unit: CombatUnitState): reado
   }
   // Bank fights: only the attacker deploys (in the central cells), so the bank
   // front-line reading applies whatever side flag the commander carries.
+  // Hex battlefield: the zone column nearer the enemy (bank: the outer ring of
+  // the attacker's centre block).
+  const hex = combatGeometry(combat) === "hex";
   if (combat.context.kind === "neutral" && combat.context.bankId) {
-    return COMMANDER_BANK_FRONT_CELLS;
+    return hex ? HEX_CREATURE_BANK_FRONT_CELLS : COMMANDER_BANK_FRONT_CELLS;
   }
   if (unit.controllerId === combat.defenderPlayerId) {
-    return COMMANDER_DEFENDER_FRONT_CELLS;
+    return hex ? hexDeploymentLine("defender", "front") : COMMANDER_DEFENDER_FRONT_CELLS;
   }
   // Attacker (the neutral fighter, or a PvP/sandbox attacker) — the default.
-  return COMMANDER_ATTACKER_FRONT_CELLS;
+  return hex ? hexDeploymentLine("attacker", "front") : COMMANDER_ATTACKER_FRONT_CELLS;
 }
 
 /** Whether the commander unit currently stands on its own front line. */
@@ -923,19 +929,22 @@ export function commanderCastOf(unit: CombatUnitState, abilityId?: string): Comm
 
 /**
  * Damage an `enemy-damage` commander cast deals to `target` at `tier`. Forge
- * Arc Discharge at Power 2 deals 3 on its first use and 2 to a Gold/Azure unit
- * on every later use; every other cast reads its printed ladder. Shared by the
- * reducer and the AI so the AI never counts on a kill the engine won't deal.
+ * Arc Discharge at Power 2 deals 3 through combat round 3; from round 4 it
+ * deals 4 to Bronze, 3 to Silver/commanders/bank creatures, and 2 to Gold/Azure.
+ * Shared by the reducer and AI so their kill estimates match resolution.
  */
 export function commanderEnemyDamageAmount(
   caster: CombatUnitState,
   target: CombatUnitState,
   damageByPower: readonly number[],
   tier: number,
+  combatRound: number,
 ): number {
   if (caster.commanderSlug === "forge" && tier >= 2) {
-    const subsequentCast = (caster.commanderCastCount ?? (caster.commanderCastRound !== undefined ? 1 : 0)) > 0;
-    return subsequentCast && (target.grade === "gold" || target.grade === "azure") ? 2 : 3;
+    if (combatRound <= 3) return 3;
+    if (target.commanderSlug || target.bankUnit) return 3;
+    if (target.grade === "bronze") return 4;
+    return target.grade === "gold" || target.grade === "azure" ? 2 : 3;
   }
   return damageByPower[tier];
 }
@@ -1109,13 +1118,13 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
     if (
       targeting.adjacentBelowPower !== undefined &&
       power < targeting.adjacentBelowPower &&
-      !isAdjacent(unit.position, target.position)
+      !unitsAdjacent(combat, unit, target)
     ) {
       return false;
     }
     if (
       targeting.maxDistance !== undefined &&
-      getBattlefieldDistance(unit.position, target.position) > targeting.maxDistance
+      unitDistance(combat, unit, target) > targeting.maxDistance
     ) {
       return false;
     }
@@ -1168,16 +1177,20 @@ export function commanderCastAvailable(state: GameState, unit: CombatUnitState, 
  * resolution and the AI's score, so the three can never disagree.
  */
 export function commanderAdjacentAllies(
-  combat: Pick<CombatState, "units">,
+  combat: Pick<CombatState, "units"> & Partial<Pick<CombatState, "attackerPlayerId" | "geometry">>,
   unit: CombatUnitState
 ): CombatUnitState[] {
+  // A double-wide ally's tail counts (hex board, when the combat is known).
+  const footprintCombat = combat.attackerPlayerId !== undefined
+    ? { attackerPlayerId: combat.attackerPlayerId, geometry: combat.geometry }
+    : null;
   return Object.values(combat.units).filter(
     (other) =>
       other.id !== unit.id &&
       other.controllerId === unit.controllerId &&
       other.damage < other.maxHealth &&
       other.position >= 0 &&
-      isAdjacent(unit.position, other.position)
+      unitsAdjacent(footprintCombat, unit, other)
   );
 }
 
@@ -1253,7 +1266,7 @@ export function commanderPrecisionReactionUnit(
 ): CombatUnitState | null {
   const combat = state.combat;
   if (!combat || !defenderUnit || attackerUnit.position < 0 || defenderUnit.position < 0 ||
-      isAdjacent(attackerUnit.position, defenderUnit.position) ||
+      unitsAdjacent(combat, attackerUnit, defenderUnit) ||
       attackerUnit.type !== "ranged" || attackerUnit.damage >= attackerUnit.maxHealth) {
     return null;
   }

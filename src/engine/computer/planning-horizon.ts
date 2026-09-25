@@ -1,6 +1,6 @@
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { locationDefinitions } from "@/data/map/locations";
-import { isAdjacent } from "../battlefield";
+import { unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
 import { effectiveInitiative } from "../active-effects";
 import { getUnitSide, heroMovementMax } from "../adventure";
 import { effectiveTownBuildingCost } from "../house-rules";
@@ -17,7 +17,6 @@ import {
 } from "../unit-abilities";
 import {
   canUnitAttack,
-  canUnitMoveAndAttack,
   getLegalMoveDestinations,
   getActivationStep,
   isUnitAlive,
@@ -42,6 +41,7 @@ import {
   unitThreatValue,
 } from "./score";
 import { estimatedStrikeDamage } from "./strike-value";
+import { canStrikeFromLegalLanding } from "./opponent-reply";
 import { plannedAttackFaces } from "./battlefield-conditions";
 
 /** Public, bounded planning horizons. Keeping these small makes live turns fast. */
@@ -262,11 +262,11 @@ function nextReply(state: GameState, combat: CombatState, budget: CombatPlanning
     for (const defender of Object.values(board.units)) {
       if (defender.controllerId === attacker.controllerId || defender.position < 0 || unitRemainingHealth(defender) <= 0) continue;
       for (const from of [attacker.position, ...destinations]) {
-        if (attacker.type !== "ranged" && !attacker.bombardment && !isAdjacent(from, defender.position)) continue;
+        if (attacker.type !== "ranged" && !attacker.bombardment && !unitsAdjacentAt(board, attacker, from, defender)) continue;
         if (--budget.remaining < 0) return null;
         const legal = from === attacker.position
           ? canUnitAttack(board, attacker, defender, state.activeEffects ?? [])
-          : canUnitMoveAndAttack(board, attacker, from, defender, view);
+          : canStrikeFromLegalLanding(board, attacker, from, defender, view.activeEffects ?? []);
         if (!legal) continue;
         const outcomes = strikeOutcomes(view, attacker, defender, from);
         const utility = outcomes.reduce((sum, damage) => sum + strikeUtility(defender, damage), 0) / outcomes.length;
@@ -321,7 +321,7 @@ function projectDamage(state: GameState, combat: CombatState, id: string, damage
         removalTriggerPresent(combat, unit) ||
         getSelfRebirthAbility(unit) || getSelfRebirthRollAbility(unit) || getOnRemovalDetonation(unit) ||
         Object.values(combat.units).some(other => other.cloneOfUnitId === id ||
-          isAdjacent(other.position, unit.position) && getReapOnAdjacentRemoval(other)) ||
+          unitsAdjacent(combat, other, unit) && getReapOnAdjacentRemoval(other)) ||
         (state.activeEffects ?? []).some(effect => effect.target?.type === "unit" && effect.target.unitId === id)) return null;
     while ((unit.armyStacks ?? 0) > 0 && unit.damage >= unit.maxHealth) {
       unit.damage -= unit.maxHealth;
@@ -355,11 +355,11 @@ function projectReply(state: GameState, combat: CombatState, reply: Reply): Comb
   if (!defender) return board;
   // Preemptive retaliation changes the order of damage. Let the existing
   // specialty-aware policy judge it rather than applying the ordinary order.
-  if (getPreemptiveRetaliation(defender, reply.from)) return null;
+  if (getPreemptiveRetaliation(defender, reply.from, combat, attacker)) return null;
   board = projectDamage(state, board, defender.id, reply.damage);
   const survivor = board?.units[defender.id];
   if (!board || !survivor || unitRemainingHealth(survivor) <= 0 || survivor.retaliatedThisRound || isParalyzed(survivor) ||
-      attacker.abilities?.includes("ignores-retaliation") || !isAdjacent(reply.from, survivor.position)) return board;
+      attacker.abilities?.includes("ignores-retaliation") || !unitsAdjacentAt(board, moved, reply.from, survivor)) return board;
   board = { ...board, units: { ...board.units, [survivor.id]: { ...survivor, retaliatedThisRound: true } } };
   return projectDamage(state, board, attacker.id, estimatedStrikeDamage(survivor, moved, survivor.position, true));
 }

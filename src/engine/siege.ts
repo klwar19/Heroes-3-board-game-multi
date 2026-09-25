@@ -1,9 +1,10 @@
 import { ignoresAllRangedCombatPenalties } from "./active-effects";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
-import { BATTLEFIELD_COLUMNS, BATTLEFIELD_CROSSING_ROW } from "./battlefield";
+import { BATTLEFIELD_COLUMNS, BATTLEFIELD_CROSSING_ROW, getBattlefieldCoordinates, hexPosition, isHexPosition } from "./battlefield";
+import { unitInCells } from "./hex-footprint";
 import { appendEvent } from "./events";
 import { applyToxicMoatWallDamage } from "./forge";
-import type { CombatState, CombatUnitState, GameState, PlayerId, SiegeState, UnitId } from "./state";
+import type { CombatState, CombatUnitState, GameState, PlayerId, SiegeHexToken, SiegeState, UnitId } from "./state";
 
 /**
  * Siege combat (town with a Citadel): 3 Wall cards and 1 Gate card fill the
@@ -89,9 +90,90 @@ export function arrowTowerRefusesEffect(
   return Boolean(unit) && isArrowTowerUnit(unit!) && effectRelocatesUnitOnBoard(effect);
 }
 
+/**
+ * Hex battlefield siege (Battlefield Expansion p.13, defender on the right):
+ * five printed tokens along hex column 11 — Wall 1 A11+B11, Wall 2 C11, the
+ * Gate D11+E10+E11+F11, Wall 4 G11, Wall 5 H11+I11. Each token is one card.
+ */
+export function makeHexSiegeTokens(): SiegeHexToken[] {
+  const at = (column: number, row: number): number => hexPosition(column - 1, row)!;
+  return [
+    { id: "wall-1", kind: "wall", cells: [at(11, 0), at(11, 1)] },
+    { id: "wall-2", kind: "wall", cells: [at(11, 2)] },
+    { id: "gate", kind: "gate", cells: [at(11, 3), at(10, 4), at(11, 4), at(11, 5)] },
+    { id: "wall-4", kind: "wall", cells: [at(11, 6)] },
+    { id: "wall-5", kind: "wall", cells: [at(11, 7), at(11, 8)] }
+  ];
+}
+
+/** A fresh hex siege layout: every token standing, the Gate anchored on E11. */
+export function makeHexSiegeFortifications(): Pick<SiegeState, "walls" | "gatePosition" | "hexTokens"> {
+  const hexTokens = makeHexSiegeTokens();
+  return {
+    walls: hexTokens.filter((token) => token.kind === "wall").flatMap((token) => token.cells).sort((a, b) => a - b),
+    gatePosition: hexPosition(10, 4),
+    hexTokens
+  };
+}
+
+/** The standing hex Wall/Gate token covering `position`, if any. */
+export function siegeHexTokenAt(siege: SiegeState, position: number): SiegeHexToken | null {
+  return siege.hexTokens?.find((token) => token.cells.includes(position)) ?? null;
+}
+
+/** Every space the standing Gate covers (one square on 4×5, four hexes on hex). */
+export function siegeGatePositions(siege: SiegeState): number[] {
+  if (siege.gatePosition === null) {
+    return [];
+  }
+  const token = siege.hexTokens?.find((candidate) => candidate.kind === "gate");
+  return token ? [...token.cells] : [siege.gatePosition];
+}
+
+/** Whether a standing Wall or the Gate covers this space. */
+export function isFortificationPosition(siege: SiegeState | null | undefined, position: number): boolean {
+  return Boolean(siege) && (siege!.walls.includes(position) || siegeGatePositions(siege!).includes(position));
+}
+
+/** "wall" / "gate" for a space a standing fortification covers, else null. */
+export function fortificationKindAt(siege: SiegeState | null | undefined, position: number): "wall" | "gate" | null {
+  if (!siege) {
+    return null;
+  }
+  if (siegeGatePositions(siege).includes(position)) {
+    return "gate";
+  }
+  return siege.walls.includes(position) ? "wall" : null;
+}
+
 /** Fortification positions that still stand (walls plus gate). */
 export function intactFortificationPositions(siege: SiegeState): number[] {
+  if (siege.hexTokens) {
+    return [...siege.walls, ...siegeGatePositions(siege)];
+  }
   return [...siege.walls, ...(siege.gatePosition !== null ? [siege.gatePosition] : [])];
+}
+
+/**
+ * One position per standing fortification CARD, for effects that count cards
+ * (Earthquake / Ballistics / Remove Obstacle / Catapult picks). On 4×5 every
+ * Wall/Gate is one square; on hex each token is listed once, by its first
+ * standing hex (the Gate by `gatePosition`).
+ */
+export function fortificationPickPositions(siege: SiegeState): number[] {
+  if (!siege.hexTokens) {
+    return intactFortificationPositions(siege);
+  }
+  const picks: number[] = [];
+  for (const token of siege.hexTokens) {
+    if (token.kind === "gate") {
+      if (siege.gatePosition !== null) picks.push(siege.gatePosition);
+      continue;
+    }
+    const anchor = token.cells.find((cell) => siege.walls.includes(cell));
+    if (anchor !== undefined) picks.push(anchor);
+  }
+  return picks;
 }
 
 /**
@@ -119,7 +201,10 @@ export function parseFortificationTargetId(targetId: string): { kind: "wall" | "
 export function fortificationTargets(
   siege: SiegeState
 ): { id: string; kind: "wall" | "gate"; position: number }[] {
-  const targets: { id: string; kind: "wall" | "gate"; position: number }[] = siege.walls.map((position) => ({
+  const wallPositions = siege.hexTokens
+    ? fortificationPickPositions(siege).filter((position) => position !== siege.gatePosition)
+    : siege.walls;
+  const targets: { id: string; kind: "wall" | "gate"; position: number }[] = wallPositions.map((position) => ({
     id: fortificationTargetId("wall", position),
     kind: "wall",
     position
@@ -155,6 +240,15 @@ export function enemyFortificationsInCells(
   }
   const cellSet = cells instanceof Set ? cells : new Set(cells);
   const hits: { kind: "wall" | "gate"; position: number }[] = [];
+  if (siege.hexTokens) {
+    // One hit per token: a covered hex fells its whole Wall/Gate card.
+    for (const token of siege.hexTokens) {
+      const hit = token.cells.find((cell) => cellSet.has(cell) &&
+        (token.kind === "gate" ? siege.gatePosition !== null : siege.walls.includes(cell)));
+      if (hit !== undefined) hits.push({ kind: token.kind, position: hit });
+    }
+    return hits;
+  }
   for (const position of siege.walls) {
     if (cellSet.has(position)) {
       hits.push({ kind: "wall", position });
@@ -189,10 +283,14 @@ export function defenderOnFortification(
   siege: SiegeState,
   position: number
 ): CombatUnitState | null {
+  // Hex: the Gate is one card over four hexes — a defender on any of them shields it.
+  const covered = siege.hexTokens && siegeGatePositions(siege).includes(position)
+    ? siegeGatePositions(siege)
+    : [position];
   for (const unit of Object.values(combat.units)) {
     if (
       unit.controllerId === siege.townPlayerId &&
-      unit.position === position &&
+      unitInCells(combat, unit, covered) &&
       unit.damage < unit.maxHealth
     ) {
       return unit;
@@ -261,6 +359,26 @@ export function siegeRangedDamageReduction(
     return 0;
   }
 
+  if (isHexPosition(defender.position) || isHexPosition(attacker.position)) {
+    if (!isHexPosition(defender.position) || !isHexPosition(attacker.position)) {
+      return 0;
+    }
+    // Hex: the defender stands east of (behind) the standing Wall/Gate hexes of
+    // its own hex row and the shooter west of them.
+    const row = getBattlefieldCoordinates(defender.position).row;
+    const lineColumns = intactFortificationPositions(siege)
+      .map((position) => getBattlefieldCoordinates(position))
+      .filter((coordinates) => coordinates.row === row)
+      .map((coordinates) => coordinates.column);
+    if (lineColumns.length === 0) {
+      return 0;
+    }
+    return getBattlefieldCoordinates(defender.position).column > Math.max(...lineColumns) &&
+      getBattlefieldCoordinates(attacker.position).column < Math.min(...lineColumns)
+      ? 1
+      : 0;
+  }
+
   const defenderRow = Math.floor(defender.position / BATTLEFIELD_COLUMNS);
   const attackerRow = Math.floor(attacker.position / BATTLEFIELD_COLUMNS);
   const defenderOnOwnSide = defenderRow < BATTLEFIELD_CROSSING_ROW;
@@ -308,7 +426,19 @@ export function destroyFortification(
     return;
   }
 
-  if (kind === "wall") {
+  const hexToken = siege.hexTokens ? siegeHexTokenAt(siege, position) : null;
+  if (siege.hexTokens && !hexToken) {
+    // Hex: that token is already gone (e.g. a second hex of a felled card).
+    return;
+  }
+  if (hexToken) {
+    // Hex: the whole Wall/Gate token (one card) leaves the board.
+    siege.hexTokens = siege.hexTokens!.filter((token) => token !== hexToken);
+    siege.walls = siege.walls.filter((candidate) => !hexToken.cells.includes(candidate));
+    if (hexToken.kind === "gate") {
+      siege.gatePosition = null;
+    }
+  } else if (kind === "wall") {
     siege.walls = siege.walls.filter((candidate) => candidate !== position);
   } else if (siege.gatePosition === position) {
     siege.gatePosition = null;

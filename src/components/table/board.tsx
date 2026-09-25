@@ -18,7 +18,6 @@ import { getFxSheet } from "@/data/fx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   combatUnitDecisionOwnerId,
@@ -49,7 +48,7 @@ import {
   commanderUnitId,
   tokenAttackBonus,
   tokenDefenseDelta,
-  neutralFormationCellsForGuard,
+  neutralGuardFormationHeads,
   playerSpellCastsIgnoreLimit,
   spellCastRestrictionNotices,
   tacticsCombatOfferIsExpert,
@@ -89,6 +88,21 @@ import { useCardZoom } from "./zoom";
 import { ArtifactSetPowerMenu, artifactSetPowerGroups, useArtifactSetArming } from "./artifact-set-powers";
 import { UnitEffectIcons } from "./unit-effect-icons";
 import { PveFieldEffectOverlay } from "./pve-field-effect-overlay";
+import {
+  HEX_BOARD_HEIGHT,
+  HEX_BOARD_WIDTH,
+  HexBattlefieldBackdrop,
+  HexCommandBar,
+  hexCellCenter,
+  hexCellStyle,
+  isHexCombat
+} from "./hex-battlefield";
+import { getBattlefieldPositions, isHexPosition } from "@/engine/battlefield";
+import { battlefieldTokenCovers, unitCells, unitTailCell } from "@/engine/hex-footprint";
+import { siegeGatePositions, siegeHexTokenAt } from "@/engine/siege";
+import { previewActionTargets, type ActionTargetPreview } from "@/engine/target-preview";
+import { HexUnitsLayer } from "./hex-figures";
+import { HexHeroesLayer } from "./hex-heroes";
 import { BattleMetric, signedMorale } from "./battle-metrics";
 
 /** Short label for a Creature Bank defender's Stack Token (+1 stat, +2 initiative). */
@@ -743,7 +757,8 @@ function RepositionPreview({
   destinationPosition,
   movingImage,
   swapBackImage,
-  flipped
+  flipped,
+  hex = false
 }: {
   kind: "move" | "swap";
   sourcePosition: number;
@@ -751,6 +766,8 @@ function RepositionPreview({
   movingImage?: string;
   swapBackImage?: string;
   flipped: boolean;
+  /** Hex battlefield: same overlay drawn in the hex board's 800x556 units. */
+  hex?: boolean;
 }) {
   // The field renders horizontally (engine rows → visual columns); this overlay
   // shares the same transposed, flip-aware map as the cells. Visual grid:
@@ -762,10 +779,17 @@ function RepositionPreview({
     return { col: gridColumn - 1, row: gridRow - 1 };
   };
   const center = (position: number) => {
+    if (hex) {
+      return hexCellCenter(position, flipped);
+    }
     const { col, row } = visualCell(position);
     return { x: col + 0.5, y: row + 0.5 };
   };
   const ghostStyle = (position: number): React.CSSProperties => {
+    if (hex) {
+      const { left, top, width, height } = hexCellStyle(position, flipped);
+      return { left, top, width, height };
+    }
     const { col, row } = visualCell(position);
     return {
       left: `${(col / cols) * 100}%`,
@@ -776,20 +800,26 @@ function RepositionPreview({
   };
   const from = center(sourcePosition);
   const to = center(destinationPosition);
+  // Marker size in the SVG's user units: one cell on the grid, one hex width on hex.
+  const arrowUnit = hex ? 52 : 1;
   return (
     <div className="repositionOverlay" aria-hidden="true">
-      <svg className="repositionArrowSvg" viewBox={`0 0 ${cols} ${rows}`} preserveAspectRatio="none">
+      <svg
+        className="repositionArrowSvg"
+        viewBox={hex ? `0 0 ${HEX_BOARD_WIDTH} ${HEX_BOARD_HEIGHT}` : `0 0 ${cols} ${rows}`}
+        preserveAspectRatio="none"
+      >
         <defs>
           <marker
             id="repositionArrowHead"
             markerUnits="userSpaceOnUse"
-            markerWidth="0.6"
-            markerHeight="0.6"
-            refX="0.45"
-            refY="0.3"
+            markerWidth={0.6 * arrowUnit}
+            markerHeight={0.6 * arrowUnit}
+            refX={0.45 * arrowUnit}
+            refY={0.3 * arrowUnit}
             orient="auto"
           >
-            <path d="M0,0 L0.6,0.3 L0,0.6 Z" fill="currentColor" />
+            <path d={`M0,0 L${0.6 * arrowUnit},${0.3 * arrowUnit} L0,${0.6 * arrowUnit} Z`} fill="currentColor" />
           </marker>
         </defs>
         <line
@@ -845,8 +875,13 @@ export function BattlefieldBoard({
   onInspect: (unitId: string) => void;
 }) {
   const combat = state.combat;
-  const flipped = isBoardFlipped(state, viewerPlayerId);
+  // Hex Battlefield mode: same cells, interactions and actions, laid out on the
+  // 13x9 hex board with PC-style creature figures. As in the PC game, your own
+  // army always stands on the left (only the defender's seat is mirrored).
+  const hex = isHexCombat(combat);
+  const flipped = hex ? viewerPlayerId === combat?.defenderPlayerId : isBoardFlipped(state, viewerPlayerId);
   const boardArt = useMemo(() => pickCombatBoardArt(state), [state]);
+  const cellPositions = getBattlefieldPositions(hex ? "hex" : "grid");
   // Repositioning UI state (Tactics swap / Necklace of Swiftness move):
   //  - swapSelection: the first unit picked for a Tactics swap (click-to-select).
   //  - hoverDestination: the candidate cell under the cursor, for the ghost+arrow.
@@ -858,6 +893,18 @@ export function BattlefieldBoard({
   const [expertSwapArmed, setExpertSwapArmed] = useState(false);
   const [hoverDestination, setHoverDestination] = useState<number | null>(null);
   const [flashCells, setFlashCells] = useState<readonly number[]>([]);
+  // Hex board: the creature figures carry no card, so hovering a unit's hex
+  // shows a small info card beside it (display only — pointer-events none, so
+  // it can never swallow an attack / spell / ability click). Right-click opens
+  // the full card; so does a plain click where the click has no other use.
+  const { zoomUnit } = useCardZoom();
+  const [hexHoverUnitId, setHexHoverUnitId] = useState<string | null>(null);
+  const hexHoverTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(hexHoverTimer.current), []);
+  // Hex board "who will be affected": the cell under the cursor. When that cell
+  // would dispatch a targeted action, every unit / hex the action reaches is
+  // marked (display only — the marks never take the pointer).
+  const [hexAimCell, setHexAimCell] = useState<number | null>(null);
   // The Neutral guard currently being drag-sorted (Manual guard control): while
   // it is held, only that guard's legal cells light up — a shooter shows just
   // the back row, so a shooter can never be dropped onto the front line.
@@ -940,6 +987,10 @@ export function BattlefieldBoard({
   // otherwise its true damage. A unit reads as alive while its shown damage is
   // below its max, so a killing blow keeps the card on the board until impact.
   const shownDamage = (unit: CombatUnitState) => damageDisplay?.get(unit.id) ?? unit.damage;
+  // The hovered creature, only while it still stands on the board.
+  const hexHoverUnit = hexHoverUnitId && combat?.units[hexHoverUnitId] && shownDamage(combat.units[hexHoverUnitId]!) < combat.units[hexHoverUnitId]!.maxHealth
+    ? combat.units[hexHoverUnitId]!
+    : null;
   const unitsByPosition = new Map<number, CombatUnitState>();
   const obstacles = new Set(combat?.obstacles ?? []);
   const moveActionsByDestination = new Map<number, GameAction>();
@@ -968,7 +1019,18 @@ export function BattlefieldBoard({
       .filter((token) => token.kind === "artifact_wall")
       .map((token) => [token.position, token] as const)
   );
-  const wallPositions = new Set([...(siege?.walls ?? []), ...artifactWallByPosition.keys()]);
+  // Hex board: a multi-hex wall token's extra hexes answer for its anchor hex
+  // (its demolish / Dispel / Remove Obstacle offers all target the anchor), so
+  // clicking any hex of the wall does what clicking the anchor does.
+  const tokenAnchorByCell = new Map<number, number>();
+  for (const token of combat?.battlefieldTokens ?? []) {
+    for (const cell of token.extraCells ?? []) tokenAnchorByCell.set(cell, token.position);
+  }
+  const wallPositions = new Set([
+    ...(siege?.walls ?? []),
+    ...artifactWallByPosition.keys(),
+    ...[...tokenAnchorByCell].filter(([, anchor]) => artifactWallByPosition.has(anchor)).map(([cell]) => cell)
+  ]);
   const gatePosition = siege?.gatePosition ?? null;
   const arrowTower = siege?.arrowTowerUnitId ? combat?.units[siege.arrowTowerUnitId] : null;
 
@@ -976,6 +1038,12 @@ export function BattlefieldBoard({
     for (const unit of Object.values(combat.units)) {
       if (shownDamage(unit) < unit.maxHealth && unit.position >= 0) {
         unitsByPosition.set(unit.position, unit);
+        // Hex board: a two-hex creature's tail hex is that creature too
+        // (clicks, targeting and hover on either hex reach it).
+        const tail = unitTailCell(combat, unit);
+        if (tail !== null) {
+          unitsByPosition.set(tail, unit);
+        }
       }
     }
   }
@@ -987,6 +1055,8 @@ export function BattlefieldBoard({
   // CHOOSE_OPTION so the empty cell lights up and lands the unit when clicked
   // (works in both views).
   const teleportActionsByPosition = new Map<number, GameAction>();
+  /** The unit an empty-space pick relocates (its own tail hex counts as empty for it). */
+  let teleportUnitId: string | null = null;
   const teleportChoice = state.pendingChoice;
   if (combat && teleportChoice?.type === "OPTION_CHOICE" && teleportChoice.playerId === viewerPlayerId) {
     const destinationPositions =
@@ -997,6 +1067,14 @@ export function BattlefieldBoard({
           : teleportChoice.context === "neutral-destination"
             ? teleportChoice.neutralDestination?.positions
             : undefined;
+    teleportUnitId =
+      teleportChoice.context === "combat-teleport"
+        ? teleportChoice.teleport?.unitId ?? null
+        : teleportChoice.context === "combat-step"
+          ? teleportChoice.step?.unitId ?? null
+          : teleportChoice.context === "neutral-destination"
+            ? teleportChoice.neutralDestination?.unitId ?? null
+            : null;
     destinationPositions?.forEach((position, optionIndex) => {
       teleportActionsByPosition.set(position, {
         type: "CHOOSE_OPTION",
@@ -1185,7 +1263,8 @@ export function BattlefieldBoard({
   const sortDraggedGuard = sorting && sortDragUnitId ? combat?.units[sortDragUnitId] : undefined;
   const sortCells = sorting
     ? sortDraggedGuard
-      ? neutralFormationCellsForGuard(state, sortDraggedGuard)
+      ? // Its legal HEADS (a double-wide guard's whole footprint must fit, hex board).
+        neutralGuardFormationHeads(state, sortDraggedGuard)
       : neutralFormationCellsFor(state)
     : [];
   const ownRows = placing
@@ -1238,6 +1317,24 @@ export function BattlefieldBoard({
       }
     }
   }
+  /** The unit a MOVE_UNIT offer to this cell would move. */
+  const moveUnitIdAt = (cell: number): string | undefined => {
+    const move = moveActionsByDestination.get(cell);
+    return move?.type === "MOVE_UNIT" ? move.unitId : undefined;
+  };
+  /**
+   * Hex siege: a demolish / Catapult offer on ANY hex of a Wall or Gate token
+   * (the engine keys it by one of them — the hex the attacker touches, or the
+   * token's first hex), so every hex of the piece takes the click.
+   */
+  const fortActionOnToken = (cell: number): LegalAction | undefined => {
+    const token = hex && siege ? siegeHexTokenAt(siege, cell) : null;
+    for (const other of token?.cells ?? []) {
+      const found = fortificationActionsByPosition.get(other) ?? fortAbilityTargetByPosition.get(other);
+      if (found) return found;
+    }
+    return undefined;
+  };
 
   // Auto-disarm expert Tactics once it is no longer offered — most importantly
   // the instant the swap is made (the expert use is spent), but also if the
@@ -1320,7 +1417,7 @@ export function BattlefieldBoard({
     !plannedPath.includes(cell) &&
     isAdjacent(routeEnd, cell);
   const plannedFireWallDamage = (combat?.battlefieldTokens ?? [])
-    .filter((token) => token.kind === "fire_wall" && plannedPath.includes(token.position))
+    .filter((token) => token.kind === "fire_wall" && plannedPath.some((cell) => battlefieldTokenCovers(token, cell)))
     .reduce((sum, token) => sum + (token.damage ?? 0), 0);
   const walkRoute = () => {
     if (!activeMover || plannedPath.length === 0) {
@@ -1335,6 +1432,11 @@ export function BattlefieldBoard({
     });
     setRoutePlan(null);
   };
+  // Hex board: the action each cell's click dispatches, recorded by the cell
+  // loop below as it builds the buttons. The "affected" marks are rendered after
+  // that loop (later in the same children list, so the map is complete by then)
+  // and preview exactly what a click on the hovered cell would do.
+  const hexCellDispatch = new Map<number, GameAction>();
 
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
@@ -1421,7 +1523,12 @@ export function BattlefieldBoard({
           )}
         </div>
       ) : null}
-      <div className="battlefieldFrame" data-board-art={boardArt.id} data-fx-anchor="battlefield" title={boardArt.label}>
+      <div
+        className={hex ? "battlefieldFrame hexFrame" : "battlefieldFrame"}
+        data-board-art={boardArt.id}
+        data-fx-anchor="battlefield"
+        title={boardArt.label}
+      >
         {boardArt.id === "pve-calamity-classic" || boardArt.id === "pve-calamity-doom" ? (
           <div className="pveBattlefieldTitle" aria-hidden="true">
             <span>Calamity encounter</span>
@@ -1430,13 +1537,15 @@ export function BattlefieldBoard({
             </strong>
           </div>
         ) : null}
-        <img
-          alt=""
-          aria-hidden="true"
-          className="battlefieldScenery"
-          referrerPolicy="no-referrer"
-          src={assetUrl(boardArt.scenery)}
-        />
+        {hex ? null : (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="battlefieldScenery"
+            referrerPolicy="no-referrer"
+            src={assetUrl(boardArt.scenery)}
+          />
+        )}
         {/* PvE FIELD EFFECTS: the animated environment layer for every script
             the engine selected for this fight. Anchored HERE (inside the frame,
             not the viewport) so it inherits the board's box on the desktop HUD
@@ -1447,7 +1556,46 @@ export function BattlefieldBoard({
         {/* BATTLEFIELD CONDITIONS, sky plane: fog, ash, embers, leaves and the
             colour grade paint ABOVE the unit cards. */}
         <BattlefieldEnvironment boardArtId={boardArt.id} plane="sky" state={state} />
-        <div className="battlefield">
+        <div
+          className={hex ? "battlefield hexBattlefield" : "battlefield"}
+          {...(hex && combat
+            ? {
+                onPointerOver: (event: React.PointerEvent<HTMLDivElement>) => {
+                  if (event.pointerType === "touch") return;
+                  const aimCell = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-cell]")?.dataset.fxCell;
+                  setHexAimCell(aimCell === undefined ? null : Number(aimCell));
+                  const unitId = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-unit]")?.dataset.fxUnit ?? null;
+                  window.clearTimeout(hexHoverTimer.current);
+                  if (!unitId) {
+                    setHexHoverUnitId(null);
+                    return;
+                  }
+                  // A short settle so sweeping the cursor across the board does not flicker cards.
+                  hexHoverTimer.current = window.setTimeout(() => setHexHoverUnitId(unitId), 180);
+                },
+                onPointerLeave: () => {
+                  window.clearTimeout(hexHoverTimer.current);
+                  setHexHoverUnitId(null);
+                  setHexAimCell(null);
+                },
+                onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => {
+                  const unitId = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-unit]")?.dataset.fxUnit;
+                  const target = unitId ? combat.units[unitId] : undefined;
+                  if (!target) return;
+                  // Right-click never dispatches anything: it only reads the card.
+                  event.preventDefault();
+                  zoomUnit(target, state.ruleset);
+                }
+              }
+            : {})}
+        >
+          {hex && combat ? (
+            <>
+              <HexBattlefieldBackdrop boardArtId={boardArt.id} combat={combat} flipped={flipped} />
+              <BattlefieldEnvironment boardArtId={boardArt.id} plane="ground" state={state} />
+            </>
+          ) : (
+          <>
           {/* Terrain art is a landscape 5x4 board, so it lines up directly with
               the transposed cells and only mirrors for the seat-relative flip. */}
           <img
@@ -1521,8 +1669,22 @@ export function BattlefieldBoard({
               );
             })}
           </div>
-        {Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, index) => {
-          const unit = unitsByPosition.get(index);
+          </>
+          )}
+        {cellPositions.map((index) => {
+          const occupant = unitsByPosition.get(index);
+          // Hex board: a two-hex unit may step back onto its own TAIL hex (the
+          // engine offers it: a mover's own hexes never block it). For that
+          // relocation the tail cell reads as the empty destination it is.
+          const ownTailDestination = Boolean(
+            hex &&
+              occupant &&
+              index !== occupant.position &&
+              (moveUnitIdAt(index) === occupant.id ||
+                (teleportUnitId === occupant.id && teleportActionsByPosition.has(index)) ||
+                (activeSwapSelection === occupant.id && tacticsMoveDestinations.has(index)))
+          );
+          const unit = ownTailDestination ? undefined : occupant;
           const terrain = getBattlefieldTerrain(index);
           const isObstacle = obstacles.has(index);
           const moveAction = moveActionsByDestination.get(index);
@@ -1532,7 +1694,10 @@ export function BattlefieldBoard({
           // centred on a space that HOLDS a unit, so this is resolved for every
           // cell — occupied or not — not just empty ones. (Populated only while a
           // space-target card is selected, so it never shadows attack/move.)
-          const spaceCardAction = spaceCardActionsByPosition.get(index);
+          const tokenAnchor = tokenAnchorByCell.get(index);
+          const spaceCardAction =
+            spaceCardActionsByPosition.get(index) ??
+            (tokenAnchor !== undefined ? spaceCardActionsByPosition.get(tokenAnchor) : undefined);
           // Teleport moves a unit to an EMPTY destination space.
           const teleportAction = !unit ? teleportActionsByPosition.get(index) : undefined;
           // Quicksand / Land Mine placement targets an EMPTY space.
@@ -1547,7 +1712,9 @@ export function BattlefieldBoard({
           // the set-powers window, its legal units glow and a click uses it.
           const setPowerAction = unit ? armedSetPower?.targets.get(unit.id) : undefined;
           // Remove Obstacle: this cell holds a removable obstacle/wall/gate/token.
-          const removeObstacleTarget = removeObstacleTargets.get(index);
+          const removeObstacleTarget =
+            removeObstacleTargets.get(index) ??
+            (tokenAnchor !== undefined ? removeObstacleTargets.get(tokenAnchor) : undefined);
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
           // Deployment: empty own-row cells only. Formation sort: empty cells OR
@@ -1586,7 +1753,7 @@ export function BattlefieldBoard({
           const isRepositionCandidate = repositionKind !== null && repositionCandidates.includes(index);
           const isFlashing = flashCells.includes(index);
           const isShipObstacle = isObstacle && boardArt.id === "ship-battle";
-          const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
+          const className = `battleCell ${hex ? "hexBattleCell " : ""}${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? `obstacle${isShipObstacle ? " seaObstacle" : ""}` : ""
           } ${(moveAction || tacticsMoveAction) && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
@@ -1598,7 +1765,7 @@ export function BattlefieldBoard({
           // Place the cell on the transposed horizontal grid (see
           // `battlefieldCellPlacement`). DOM order stays in engine order so
           // `data-fx-cell` lookups and tests are unaffected.
-          const cellStyle = battlefieldCellPlacement(index, flipped);
+          const cellStyle = hex ? hexCellStyle(index, flipped) : battlefieldCellPlacement(index, flipped);
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
           const attackTotal = unit ? displayedCombatAttack(state, unit) : 0;
           const defenseTotal = unit ? unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit) : 0;
@@ -1620,12 +1787,21 @@ export function BattlefieldBoard({
           // stands there this branch is skipped so the unit renders normally
           // (and shields the Gate from being destroyed).
           const isWall = wallPositions.has(index);
-          const isGate = gatePosition === index;
+          // Hex board: the Gate token covers four hexes; every one is the Gate.
+          const isGate = hex && siege ? siegeGatePositions(siege).includes(index) : gatePosition === index;
           if ((isWall || isGate) && !unit) {
             // An adjacent unit's melee demolish, or — during a Catapult target
             // pick — the bombardment shot. Either makes the Wall/Gate clickable.
-            const fortAction = fortificationActionsByPosition.get(index) ?? fortAbilityTargetByPosition.get(index);
-            const artifactWall = isGate ? undefined : artifactWallByPosition.get(index);
+            const fortAction =
+              fortificationActionsByPosition.get(index) ??
+              fortAbilityTargetByPosition.get(index) ??
+              (tokenAnchor !== undefined
+                ? fortificationActionsByPosition.get(tokenAnchor) ?? fortAbilityTargetByPosition.get(tokenAnchor)
+                : undefined) ??
+              fortActionOnToken(index);
+            const artifactWall = isGate
+              ? undefined
+              : artifactWallByPosition.get(index) ?? (tokenAnchor !== undefined ? artifactWallByPosition.get(tokenAnchor) : undefined);
             const artifactWallOwner = artifactWall
               ? (state.players[artifactWall.controllerId]?.name ?? artifactWall.controllerId)
               : "";
@@ -1634,7 +1810,12 @@ export function BattlefieldBoard({
               : artifactWall
                 ? `Ladybird of Luck (${artifactWallOwner}) — counts as a Wall until the end of the combat: no unit may stop on or walk through it. Adjacent ground/flying units may tear it down as their attack; if an attack removes it, ${artifactWallOwner} gains ${artifactWall.goldOnAttackRemoval ?? 0} gold.`
                 : "Wall — a combat obstacle. Adjacent ground/flying units may tear it down as their attack; defenders in its column take 1 less ranged damage.";
-            const content = (
+            // Hex board: siege Wall / Gate tokens are painted by the board art
+            // layer across all of their hexes; the cell keeps only its hex face.
+            // A wall's extra hexes are painted by the hex art layer too.
+            const content = hex && (!artifactWall || tokenAnchor !== undefined) ? (
+              <span aria-hidden="true" className="hexFortMark" />
+            ) : (
               <span className={`fortMark ${isGate ? "gate" : "wall"}${artifactWall ? " artifactWall" : ""}`}>
                 <img
                   alt={isGate ? "Gate card" : artifactWall ? "Ladybird of Luck card, placed as a Wall" : "Wall card"}
@@ -1714,6 +1895,10 @@ export function BattlefieldBoard({
                 style={cellStyle}
                 title="Combat Obstacle — ground and ranged units must go around; flying units pass over"
               >
+                {hex ? (
+                  // Hex board: the obstacle token art spans its hexes on the art layer.
+                  <span aria-hidden="true" className="hexObstacleMark" />
+                ) : (
                 <span className="obstacleMark">
                   <Mountain aria-hidden="true" className="obstacleFallback" size={26} />
                   <img
@@ -1731,6 +1916,7 @@ export function BattlefieldBoard({
                     }}
                   />
                 </span>
+                )}
               </div>
             );
           }
@@ -1750,7 +1936,11 @@ export function BattlefieldBoard({
           // counter-attack, so the table can see it will NOT strike back if hit in
           // melee now (a unit with unlimited retaliation is never flagged).
           const retaliationSpent = Boolean(unit && retaliationStatus(state, unit) === "used");
-          const content = unit ? (
+          const content = unit && hex && combat ? (
+            // Hex board: the creature itself is drawn by the figure layer
+            // (HexUnitsLayer); its hex keeps only the click face and tokens.
+            tokenMark ?? <span className="emptyBoardMark" aria-hidden="true" />
+          ) : unit ? (
             <article
               className={`boardCard ${unit.controllerId} ${unit.heroUnit ? "heroBattleCardPiece" : ""} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
                 isClone ? "cloneCard" : ""
@@ -2070,6 +2260,7 @@ export function BattlefieldBoard({
           // offer, looked up fresh this render.
           if (unit && setPowerAction && armedSetPower) {
             const setPowerLabel = `${armedSetPower.setName}: use on ${unit.name}`;
+            if (hex) hexCellDispatch.set(index, setPowerAction);
             return (
               <button
                 aria-label={setPowerLabel}
@@ -2208,6 +2399,7 @@ export function BattlefieldBoard({
               placeTokenAction ||
               tacticsMoveAction)
           ) {
+            if (hex) hexCellDispatch.set(index, interactiveAction);
             const label = activationOrderAction
               ? `Choose ${unit?.name} to activate first`
               : abilityAction
@@ -2272,7 +2464,15 @@ export function BattlefieldBoard({
                 // never drop targets.
                 data-drop-cell={placedUnitDraggable ? "true" : undefined}
                 key={index}
-                onClick={() => onInspect(unit.id)}
+                onClick={() => {
+                  onInspect(unit.id);
+                  // Hex board: this cell has no action to take, so a click reads
+                  // the full card (the figure itself carries none). Deployment
+                  // keeps its drag/drop handling untouched.
+                  if (hex && !placedUnitDraggable && !combat?.setup) {
+                    zoomUnit(unit, state.ruleset);
+                  }
+                }}
                 onMouseEnter={() => onInspect(unit.id)}
                 title={placedUnitDraggable ? `Drag to move — or drop another unit here to switch (${unit.name})` : `Inspect ${unit.name}`}
                 type="button"
@@ -2297,6 +2497,39 @@ export function BattlefieldBoard({
             </div>
           );
         })}
+        {hex && combat && hexAimCell !== null ? (
+          <HexAffectedMarks
+            combat={combat}
+            flipped={flipped}
+            preview={(() => {
+              const aimed = hexCellDispatch.get(hexAimCell);
+              return aimed ? previewActionTargets(state, aimed) : null;
+            })()}
+          />
+        ) : null}
+        {hex && combat ? (
+          <HexUnitsLayer
+            combat={combat}
+            flipped={flipped}
+            healthOf={(shown) => Math.max(0, shown.maxHealth - shownDamage(shown))}
+            state={state}
+            statDeltasOf={(shown) => ({
+              attack: displayedCombatAttack(state, shown) - shown.attack,
+              defense: getActiveDefenseBonus(state, shown) + tokenDefenseDelta(shown),
+              initiative: effectiveInitiative(shown, state.activeEffects, combat) - shown.initiative
+            })}
+            units={[...new Set(unitsByPosition.values())]}
+          />
+        ) : null}
+        {hex && combat ? <HexHeroesLayer combat={combat} flipped={flipped} state={state} /> : null}
+        {hex && combat && hexHoverUnit && isHexPosition(hexHoverUnit.position) ? (
+          <HexUnitHoverCard
+            flipped={flipped}
+            health={Math.max(0, hexHoverUnit.maxHealth - shownDamage(hexHoverUnit))}
+            state={state}
+            unit={hexHoverUnit}
+          />
+        ) : null}
         {repositionKind && repositionSourcePosition !== null && hoverDestination !== null ? (
           <RepositionPreview
             destinationPosition={hoverDestination}
@@ -2304,11 +2537,15 @@ export function BattlefieldBoard({
             kind={repositionKind}
             movingImage={repositionGhostImage}
             sourcePosition={repositionSourcePosition}
+            hex={hex}
             swapBackImage={hoveredSwapPartnerUnit?.assets?.cardImage}
           />
         ) : null}
         </div>
       </div>
+      {hex && combat ? (
+        <HexCommandBar legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      ) : null}
       {arrowTower && isUnitAlive(arrowTower) ? (
         <ArrowTowerCard
           legalActions={legalActions}
@@ -2470,6 +2707,133 @@ function UnitFlipSideNote({ state, unit }: { state: GameState; unit: CombatUnitS
         <Shield aria-hidden="true" size={10} /> {flip.defense} · ♥ {flip.health} · init {flip.initiative}
         {typeChanged ? ` · ${flip.type}` : ""}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Hex board "who will be affected" marks for the action the hovered cell would
+ * dispatch (engine `previewActionTargets`): a hex rim on every affected hex — a
+ * two-hex creature's head AND tail — strongest on the primary target, amber for
+ * the acting side's own units (friendly fire), dashed for a unit a later pick,
+ * a die face or the Power still to be paid decides, faint for the bare area.
+ * Pure display: aria-hidden and pointer-events none, so a click still reaches
+ * the hex underneath and dispatches exactly what it did before.
+ */
+function HexAffectedMarks({
+  combat,
+  flipped,
+  preview
+}: {
+  combat: NonNullable<GameState["combat"]>;
+  flipped: boolean;
+  preview: ActionTargetPreview | null;
+}) {
+  if (!preview) {
+    return null;
+  }
+  const marks = new Map<number, { rank: number; className: string }>();
+  const put = (cell: number, rank: number, className: string) => {
+    if (!isHexPosition(cell)) {
+      return;
+    }
+    const existing = marks.get(cell);
+    if (!existing || existing.rank < rank) {
+      marks.set(cell, { rank, className });
+    }
+  };
+  const markUnits = (unitIds: readonly string[], rank: number, kind: string) => {
+    for (const unitId of unitIds) {
+      const unit = combat.units[unitId];
+      if (!unit) {
+        continue;
+      }
+      const friendly = unit.controllerId === preview.actingControllerId ? " hexAffectedFriendly" : "";
+      for (const cell of unitCells(combat, unit)) {
+        put(cell, rank, `${kind}${friendly}`);
+      }
+    }
+  };
+  for (const cell of preview.cells) {
+    put(cell, 0, "hexAffectedArea");
+  }
+  markUnits(preview.possibleUnitIds, 1, "hexAffectedPossible");
+  markUnits(preview.splashUnitIds, 2, "hexAffectedSplash");
+  markUnits(preview.primaryUnitIds, 3, "hexAffectedPrimary");
+  return (
+    <>
+      {[...marks].map(([cell, mark]) => (
+        <span
+          aria-hidden="true"
+          className={`hexAffected ${mark.className}`}
+          key={`affected-${cell}`}
+          style={hexCellStyle(cell, flipped)}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Hex board hover card: the hovered creature's card art, live totals and effect
+ * icons, drawn beside its hex. Pure display (pointer-events none) — targeting
+ * clicks pass straight through to the hex underneath.
+ */
+function HexUnitHoverCard({
+  state,
+  unit,
+  health,
+  flipped
+}: {
+  state: GameState;
+  unit: CombatUnitState;
+  health: number;
+  flipped: boolean;
+}) {
+  const center = hexCellCenter(unit.position, flipped);
+  const attack = displayedCombatAttack(state, unit);
+  const defense = unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit);
+  const init = effectiveInitiative(unit, state.activeEffects, state.combat);
+  const retaliation = retaliationStatus(state, unit);
+  const toLeft = center.x > HEX_BOARD_WIDTH / 2;
+  const vertical = center.y < HEX_BOARD_HEIGHT * 0.33 ? "-12%" : center.y > HEX_BOARD_HEIGHT * 0.7 ? "-88%" : "-50%";
+  const stat = (value: number, base: number) => (
+    <b className={value > base ? "statUp" : value < base ? "statDown" : undefined}>{value}</b>
+  );
+  const sideLabel = unit.variant === "pack" ? "Pack" : unit.variant === "few" ? "Few" : "Neutral";
+  return (
+    <div
+      aria-hidden="true"
+      className={`hexHoverCard ${unit.controllerId === state.combat?.attackerPlayerId ? "attackerSide" : "defenderSide"}`}
+      style={{
+        left: `${(center.x / HEX_BOARD_WIDTH) * 100}%`,
+        top: `${(center.y / HEX_BOARD_HEIGHT) * 100}%`,
+        transform: `translate(${toLeft ? "calc(-100% - 34px)" : "34px"}, ${vertical})`
+      }}
+    >
+      {unit.assets?.cardImage ? (
+        <img alt="" className="hexHoverCardArt" draggable={false} src={assetUrl(unit.assets.cardImage)} />
+      ) : null}
+      <div className="hexHoverCardBody">
+        <strong>{unit.cardName}</strong>
+        <span className="hexHoverCardKind">
+          {sideLabel} · {unit.grade} {unit.type}
+        </span>
+        <span className="hexHoverCardStats">
+          <span>⚔ {stat(attack, unit.attack)}</span>
+          <span>
+            <Shield aria-hidden="true" size={11} /> {stat(defense, unit.defense)}
+          </span>
+          <span>» {stat(init, unit.initiative)}</span>
+          <span>♥ {health}/{unit.maxHealth}</span>
+        </span>
+        <span className={`hexHoverCardRetaliation ${retaliation}`}>
+          Retaliation: {retaliation === "used" ? "spent" : retaliation}
+          {unit.defenseToken ? " · defending" : ""}
+        </span>
+        <UnitEffectIcons state={state} unit={unit} />
+        <small>Right-click for the full card</small>
+      </div>
     </div>
   );
 }

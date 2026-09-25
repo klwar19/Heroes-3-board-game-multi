@@ -11,10 +11,11 @@ import {
   spendResources
 } from "./adventure";
 import { isAdjacent } from "./battlefield";
+import { unitCells } from "./hex-footprint";
 import { combatRoundStartWindowOpen, combatStartWindowOpen } from "./combat-timing";
 import { isHandLockedInCombat } from "./legal-actions";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
+import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId, siegeHexTokenAt } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { abilityExpertIsCrownFree, canPlayExpertMode, expertUsesAvailable } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
@@ -30,6 +31,7 @@ import type {
   GameState,
   PlayerId,
   ResourceCost,
+  SiegeState,
   SpellSchool,
   UnitId,
   WarMachineRoundStartDefinition
@@ -1117,12 +1119,18 @@ export function isLowestInitiativeEnemy(state: GameState, playerId: PlayerId, un
  * and the Gate. Each target is reduced to an id + board position so adjacency is
  * uniform across units and fortifications.
  */
-type SplashTarget = { id: UnitId; position: number };
+/** `cells`: every hex the target covers (a double-wide unit's tail too, hex board). */
+type SplashTarget = { id: UnitId; position: number; cells: number[] };
+
+/** Any cell of one target orthogonally/hex adjacent to any cell of the other. */
+function splashCellsTouch(left: readonly number[], right: readonly number[]): boolean {
+  return left.some((cell) => right.some((other) => isAdjacent(cell, other)));
+}
 
 function splashTargets(state: GameState): SplashTarget[] {
   const targets: SplashTarget[] = livingUnits(state)
     .filter((unit) => unit.position >= 0)
-    .map((unit) => ({ id: unit.id, position: unit.position }));
+    .map((unit) => ({ id: unit.id, position: unit.position, cells: unitCells(state.combat, unit) }));
   const combat = state.combat;
   const siege = combat?.siege;
   if (combat && siege) {
@@ -1133,17 +1141,25 @@ function splashTargets(state: GameState): SplashTarget[] {
       if (defenderOnFortification(combat, siege, fort.position)) {
         continue;
       }
-      targets.push({ id: fort.id, position: fort.position });
+      targets.push({ id: fort.id, position: fort.position, cells: fortificationCells(siege, fort.position) });
     }
   }
   return targets;
+}
+
+/**
+ * Every space a Wall / the Gate covers: its whole printed token on the hex
+ * board (a two-hex Wall, the four-hex Gate), the one square on the 4×5 board.
+ */
+function fortificationCells(siege: SiegeState, position: number): number[] {
+  return siegeHexTokenAt(siege, position)?.cells.slice() ?? [position];
 }
 
 /** Catapult first targets: any unit/Wall/Gate with at least one adjacent target. */
 function splashFirstTargets(state: GameState): SplashTarget[] {
   const targets = splashTargets(state);
   return targets.filter((target) =>
-    targets.some((other) => other.id !== target.id && isAdjacent(other.position, target.position))
+    targets.some((other) => other.id !== target.id && splashCellsTouch(other.cells, target.cells))
   );
 }
 
@@ -2534,6 +2550,16 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
     // BEFORE the hit (the piece may be felled / the unit removed), strike it,
     // then offer the second target adjacent to that same spot.
     const firstPosition = splashTargetPosition(state, targetUnitId);
+    // Every hex of a first-target unit (a double-wide tail too, hex board).
+    const firstUnit = state.combat?.units[targetUnitId];
+    // A Wall / Gate first target: its whole token, read before the hit fells it.
+    const firstCells = firstPosition === null
+      ? []
+      : firstUnit && firstUnit.position === firstPosition
+        ? unitCells(state.combat, firstUnit)
+        : state.combat?.siege
+          ? fortificationCells(state.combat.siege, firstPosition)
+          : [firstPosition];
     queue.firstTargetUnitId = targetUnitId;
     // `volleyShots` is 1 for every ordinary Catapult shot; the Balance Pack's
     // Ballistics expert sets 2, so BOTH chosen targets take the doubled hit (the
@@ -2546,7 +2572,7 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
       firstPosition === null
         ? []
         : splashTargets(state).filter(
-            (target) => target.id !== targetUnitId && isAdjacent(target.position, firstPosition)
+            (target) => target.id !== targetUnitId && splashCellsTouch(target.cells, firstCells)
           );
 
     if (neighbors.length === 0) {

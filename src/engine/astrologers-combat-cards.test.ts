@@ -266,7 +266,18 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
   });
 
   it("opens a keep / redraw offer; KEEPING reveals the drawn army unchanged", () => {
-    const state = placeAndFinish(neutralSetup("jd-keep", "astrologers.judge_dread"));
+    const setup = neutralSetup("jd-keep", "astrologers.judge_dread");
+    // Pin the two Bronze guards (the pre-v178 seeded draw). v178 put the
+    // expansion Neutral sides into the shared decks, which reshuffled this seed
+    // into a same-Initiative pair whose activation-order tie-break prompt would
+    // legitimately follow the reveal; this test is about Judge Dread's KEEP only.
+    const bronze = setup.decks[NEUTRAL_DECK_IDS.bronze]!;
+    bronze.drawPile = [
+      ...bronze.drawPile.filter((id) => id !== "neutral.gremlins" && id !== "neutral.rogues"),
+      "neutral.rogues",
+      "neutral.gremlins"
+    ];
+    const state = placeAndFinish(setup);
 
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
     const choice = state.pendingChoice;

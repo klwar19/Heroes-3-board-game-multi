@@ -28,6 +28,9 @@ import {
   type EquipmentContextRequirement
 } from "@/data/anime/equipment";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { isHexPosition } from "./battlefield";
+import { hexDeploymentLine } from "./hex-battlefield";
+import { unitInCells } from "./hex-footprint";
 import type { AnimeEquipmentSlot, AttackRerollSource, CombatUnitState, GameState, HeroState, PlayerId } from "./state";
 
 /** Whether the Equipment module is on (implies anime master enabled). */
@@ -449,8 +452,15 @@ export function equipmentRowDefenseBonus(state: GameState, unit: CombatUnitState
   const combat = state.combat;
   if (!combat || unit.type !== "ground" || !playerMainHeroInCombat(state, unit.controllerId)) return 0;
   const attackerSide = unit.controllerId === combat.attackerPlayerId;
-  const backline = attackerSide ? unit.position >= 16 && unit.position <= 19 : unit.position >= 0 && unit.position <= 3;
-  const frontline = attackerSide ? unit.position >= 12 && unit.position <= 15 : unit.position >= 4 && unit.position <= 7;
+  // Hex battlefield: the own zone's edge column is the backline, the next the
+  // frontline; a double-wide unit stands on a line with either of its hexes.
+  const hexSide = attackerSide ? "attacker" : "defender";
+  const backline = isHexPosition(unit.position)
+    ? unitInCells(combat, unit, hexDeploymentLine(hexSide, "back"))
+    : attackerSide ? unit.position >= 16 && unit.position <= 19 : unit.position >= 0 && unit.position <= 3;
+  const frontline = isHexPosition(unit.position)
+    ? unitInCells(combat, unit, hexDeploymentLine(hexSide, "front"))
+    : attackerSide ? unit.position >= 12 && unit.position <= 15 : unit.position >= 4 && unit.position <= 7;
   if (backline && playerHasAnyEquipment(state, unit.controllerId, BACKLINE_DEFENSE_ITEMS)) return 1;
   if (frontline && combat.round === 1 && playerHasAnyEquipment(state, unit.controllerId, FRONTLINE_ROUND1_DEFENSE_ITEMS)) return 1;
   return 0;

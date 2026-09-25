@@ -3184,10 +3184,12 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
   }
 };
 
-/** Whether an id is a genuine single-sided Neutral Unit card. */
+/** Whether an id has a deck-backed Neutral Unit card. The three expansion
+ * rosters print their Neutral sides under the same unit id as Few/Pack. */
 export function isRecruitableNeutralUnit(unitDefId: string): boolean {
   const unit = coreUnitDefinitions[unitDefId];
-  return Boolean(unit && unit.faction === "neutral" && unit.neutral && !unit.summonOnly);
+  return Boolean(unit && unit.neutral && !unit.summonOnly &&
+    (unit.faction === "neutral" || unit.faction === "bulwark" || unit.faction === "factory" || unit.faction === "forge"));
 }
 
 /** Neutral unit definition ids grouped by tier, used to build the four neutral decks. */
@@ -3224,6 +3226,7 @@ export function neutralCounterpartId(factionUnitId: string): string | undefined 
   if (!unit) {
     return undefined;
   }
+  if (isRecruitableNeutralUnit(factionUnitId)) return factionUnitId;
   return Object.values(coreUnitDefinitions).find(
     (candidate) =>
       candidate.faction === "neutral" &&

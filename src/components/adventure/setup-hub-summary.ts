@@ -318,8 +318,9 @@ export function advancedSettingsChanged(options: GameSetupOptions): { changed: b
   if (scenario.startingBuildings.length === 0) {
     baseline.startingBuildings = [...DEFAULT_SETUP_STARTING_BUILDINGS];
   }
-  const currentRules = resolveHouseRules(options);
-  const baselineRules = resolveHouseRules(baseline);
+  // The combat board is owned by the Game-mode box, not an Advanced deviation.
+  const currentRules = { ...resolveHouseRules(options), "hex-battlefield": false };
+  const baselineRules = { ...resolveHouseRules(baseline), "hex-battlefield": false };
   if (!sameOptionValue(currentRules, baselineRules)) {
     return { changed: true, label: "Customized" };
   }

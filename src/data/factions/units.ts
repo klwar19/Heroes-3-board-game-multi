@@ -1511,8 +1511,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   // Transcribed from the Forge faction spec (tmp/forge/FORGE-SPEC.md): Archon/
   // Gamefound Faction Focus previews + WIP card screenshots. High Attack, low
   // Initiative, four ranged units. Every printed ability is engine-wired.
-  // Neutral sides follow Factory's precedent: the faction units never enter
-  // the Neutral Units decks (those are faction === "neutral" only).
+  // Neutral sides enter the shared Neutral Units decks under the same id
+  // (v178 ruling, isRecruitableNeutralUnit in src/data/factions/core.ts).
   "forge.grunts": {
     id: "forge.grunts",
     name: "Grunts",

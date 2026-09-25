@@ -262,7 +262,9 @@ export function buildCoachTip(
       return {
         id: "tactics",
         headline: "Tactics",
-        detail: "Swap two of your units on the board if you like, then Keep positions to start.",
+        detail: combat.geometry === "hex" && hasAction(legalActions, "TACTICS_MOVE_UNIT")
+          ? "Re-sort your army within your first four hex columns: click a unit, then an empty hex or another unit. Finish when done."
+          : "Swap two of your units on the board if you like, then Keep positions to start.",
         tone: "go"
       };
     }

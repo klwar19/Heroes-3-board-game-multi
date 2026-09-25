@@ -155,6 +155,16 @@ describe("computer combat boost (temp Empowered Attack/Defense cards)", () => {
     // Zero crowns: an Expert reaction can ONLY come from the Empower mark.
     state.players.p1.limits.expertUses = 0;
     state = beginGuardFight(state);
+    // Pin the pre-v178 seeded guard (Familiars, Initiative 7 — it strikes
+    // first, so the seat must defend with the injected cards). v178 put the
+    // expansion Neutral sides into the shared decks; the reshuffled seed drew
+    // Skeletons, which the AI legitimately kills with Magic Arrow before any
+    // statistic reaction is ever needed.
+    const bronze = state.decks["neutral-bronze"]!;
+    const familiars = bronze.drawPile.lastIndexOf("neutral.familiars");
+    expect(familiars, "Familiars in the bronze deck").toBeGreaterThanOrEqual(0);
+    bronze.drawPile.splice(familiars, 1);
+    bronze.drawPile.push("neutral.familiars"); // drawFromNeutralDeck pops the END
     state = deployAndReveal(state);
 
     const run = driveComputerPlayers(state);

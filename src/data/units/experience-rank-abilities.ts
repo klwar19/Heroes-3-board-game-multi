@@ -505,6 +505,7 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 }
 
 function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "factory.halflings") return A("factory-grenadier-guard-heal");
   if (unitDefId === "factory.armadillos") return A("factory-armadillo-momentum");
   // Forge: the Cyber Zombie shields its neighbours; the Jump Troopers' jet
   // packs carry them one extra space.
@@ -1070,6 +1071,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "factory-dreadnought-speed-hunter": "/game-tokens/rank-ability/veterancy/factory-dreadnought-speed-hunter.webp",
   "factory-dreadnought-guarded": "/game-tokens/rank-ability/veterancy/factory-dreadnought-guarded.webp",
   "factory-engineer-attack-support": "/game-tokens/rank-ability/veterancy/factory-engineer-attack-support.webp",
+  "factory-grenadier-guard-heal": "/game-tokens/rank-ability/forge/forge-vet-bruiser-guard.webp",
   "factory-grenadier-high-roll": "/game-tokens/rank-ability/veterancy/factory-grenadier-high-roll.webp",
   "factory-sandworm-burrow": "/game-tokens/rank-ability/veterancy/factory-sandworm-burrow.webp",
   "bulwark-thick-hide": "/assets/ui/rank-ability/thick-hide.webp",

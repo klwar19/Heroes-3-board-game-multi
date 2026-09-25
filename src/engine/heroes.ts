@@ -1,6 +1,7 @@
 import { coreHeroDefinitions } from "@/data/factions/core";
 import type { HeroDefinition } from "@/data/factions/types";
 import type { CombatUnitState, GameState, HeroId, HeroState, PlayerId } from "./state";
+import { unitCells } from "./hex-footprint";
 
 /** Battlefield id of a hero. Kept separate from army cards and commanders. */
 export function heroUnitId(heroId: HeroId): string {
@@ -172,7 +173,8 @@ export function injectHeroIntoCombat(
   const combat = state.combat;
   const hero = state.heroes[heroId];
   if (!combat || !hero || combat.units[heroUnitId(heroId)]) return null;
-  const occupied = new Set(Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position));
+  // Double-wide tails (hex board) hold their hex too.
+  const occupied = new Set(Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).flatMap((unit) => unitCells(combat, unit)));
   for (const obstacle of combat.obstacles ?? []) occupied.add(obstacle);
   const cell = preferredCells.find((candidate) => !occupied.has(candidate));
   if (cell === undefined) return null;

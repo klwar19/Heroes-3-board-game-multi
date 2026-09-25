@@ -266,7 +266,36 @@ import {
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
 import { openDeckCardPlacementChoice, resolveDeckCardPlacementChoice } from "./deck-card-placement";
-import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT, getBattlefieldDistance, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
+import { ATTACK_DIE_FACES, BATTLEFIELD_CELL_COUNT, combatGeometry, getBattlefieldDistance, getBattlefieldLabel, getBattlefieldPositions, getOrthogonalNeighbors, isHexPosition } from "./battlefield";
+import {
+  battlefieldTokenCells,
+  battlefieldTokenCovers,
+  footprintAt,
+  footprintHeadsIn,
+  relocationFits,
+  settleHexFootprints,
+  unitAdjacentToCell,
+  unitAtCell,
+  unitCells,
+  unitDistance,
+  unitOccupiesCell,
+  unitsAdjacent,
+  unitStepSpaces,
+  unitTailOffset,
+} from "./hex-footprint";
+import {
+  hexDeploymentLine,
+  hexStandardDeploymentZones,
+  hexTacticsSortZone,
+  HEX_BLACK_TOWER_GUARD_CELLS,
+  HEX_BOARD_CENTER,
+  HEX_CREATURE_BANK_ATTACKER_CELLS,
+  HEX_CREATURE_BANK_GUARD_CORNERS,
+  HEX_CREATURE_BANK_GUARD_OVERFLOW_CELLS,
+  HEX_GRAVEYARD_EXTRA_GUARD_CELLS,
+  movableObstacleCells,
+  placeHexObstacleTokens
+} from "./hex-battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -349,7 +378,7 @@ import {
   unitDealsElementalDamage
 } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
-import { applyCombatScriptCombatStart } from "./combat-scripts";
+import { applyCombatScriptCombatStart, combatScriptsActiveForCombat } from "./combat-scripts";
 import {
   cardCanBoostPower,
   cardCanBoostPowerForSpellSchools,
@@ -367,9 +396,12 @@ import {
 import { bakeEntropy, createSeededRandom } from "./random";
 import {
   destroyFortification,
+  fortificationPickPositions,
   intactFortificationPositions,
   isArrowTowerUnit,
+  isFortificationPosition,
   makeArrowTowerUnit,
+  makeHexSiegeFortifications,
   SIEGE_ROW_POSITIONS
 } from "./siege";
 import {
@@ -718,7 +750,8 @@ export function openSiegeDemolishChoice(state: GameState, playerId: PlayerId, re
     return;
   }
 
-  const positions = intactFortificationPositions(siege);
+  // One option per fortification card (a hex Wall/Gate token counts once).
+  const positions = fortificationPickPositions(siege);
   if (positions.length === 0) {
     return;
   }
@@ -729,9 +762,11 @@ export function openSiegeDemolishChoice(state: GameState, playerId: PlayerId, re
     playerId,
     prompt: `Choose a fortification to destroy${remaining > 1 ? ` (${remaining} left)` : ""}`,
     options: positions.map((position) => ({
-      label: siege.gatePosition === position
-        ? `Destroy the Gate (column ${String.fromCharCode(65 + (position % 4))})`
-        : `Destroy the Wall at column ${String.fromCharCode(65 + (position % 4))}`
+      label: siege.hexTokens
+        ? `Destroy the ${siege.gatePosition === position ? "Gate" : "Wall"} at ${getBattlefieldLabel(position)}`
+        : siege.gatePosition === position
+          ? `Destroy the Gate (column ${String.fromCharCode(65 + (position % 4))})`
+          : `Destroy the Wall at column ${String.fromCharCode(65 + (position % 4))}`
     })),
     context: "siege-demolish",
     siegeDemolish: { positions, remaining },
@@ -783,7 +818,15 @@ function removableObstacleItems(
   combat: CombatState
 ): { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[] {
   const items: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[] = [];
-  for (const position of combat.obstacles ?? []) {
+  // Hex: a multi-hex obstacle token is one obstacle, listed by its first hex.
+  const listedHexTokens = new Set<string>();
+  // A hex ship battle's sea hexes are the water, not a liftable obstacle.
+  for (const position of movableObstacleCells(combat)) {
+    const hexToken = combat.hexObstacleTokens?.find((token) => token.cells.includes(position));
+    if (hexToken) {
+      if (listedHexTokens.has(hexToken.id)) continue;
+      listedHexTokens.add(hexToken.id);
+    }
     items.push({ position, kind: "obstacle" });
   }
   for (const token of combat.battlefieldTokens ?? []) {
@@ -791,7 +834,9 @@ function removableObstacleItems(
   }
   const siege = combat.siege;
   if (siege) {
-    for (const position of siege.walls) {
+    for (const position of siege.hexTokens
+      ? fortificationPickPositions(siege).filter((candidate) => siege.walls.includes(candidate))
+      : siege.walls) {
       items.push({ position, kind: "wall" });
     }
     if (siege.gatePosition !== null) {
@@ -827,12 +872,15 @@ export function openRemoveObstacleChoice(state: GameState, playerId: PlayerId, c
   }
 
   const labelFor = (item: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }): string => {
-    const where = `column ${columnLetter(item.position)}, row ${Math.floor(item.position / 4) + 1}`;
+    const hex = isHexPosition(item.position);
+    const where = hex
+      ? getBattlefieldLabel(item.position)
+      : `column ${columnLetter(item.position)}, row ${Math.floor(item.position / 4) + 1}`;
     if (item.kind === "gate") {
-      return `Remove the Gate (column ${columnLetter(item.position)})`;
+      return hex ? `Remove the Gate at ${where}` : `Remove the Gate (column ${columnLetter(item.position)})`;
     }
     if (item.kind === "wall") {
-      return `Remove the Wall at column ${columnLetter(item.position)}`;
+      return hex ? `Remove the Wall at ${where}` : `Remove the Wall at column ${columnLetter(item.position)}`;
     }
     if (item.kind === "token") {
       const token = combat.battlefieldTokens?.find((candidate) => candidate.id === item.tokenId);
@@ -875,7 +923,13 @@ export function resolveRemoveObstacleChoice(state: GameState, playerId: PlayerId
   state.priorityPlayerId = null;
 
   if (item.kind === "obstacle") {
-    combat.obstacles = (combat.obstacles ?? []).filter((position) => position !== item.position);
+    // Hex: lifting a token clears every hex it covers.
+    const hexToken = combat.hexObstacleTokens?.find((token) => token.cells.includes(item.position));
+    const lifted = hexToken ? hexToken.cells : [item.position];
+    combat.obstacles = (combat.obstacles ?? []).filter((position) => !lifted.includes(position));
+    if (hexToken) {
+      combat.hexObstacleTokens = combat.hexObstacleTokens!.filter((token) => token !== hexToken);
+    }
     appendEvent(state, {
       type: "COMBAT_OBSTACLE_REMOVED",
       playerId,
@@ -1111,6 +1165,15 @@ export const CREATURE_BANK_GUARD_OVERFLOW_CELLS = Array.from({ length: 20 }, (_,
   (cell) => !CREATURE_BANK_GUARD_CORNERS.includes(cell) && !CREATURE_BANK_ATTACKER_CELLS.includes(cell)
 );
 
+/**
+ * Tie-break for automatic start-of-combat placements (traps, barriers): how far
+ * a cell is from the middle of the board — grid cell 8 on the 4×5 board
+ * (unchanged), E7 on the hex board (hex cell numbers are not a line).
+ */
+function distanceFromBoardCentre(combat: CombatState | null | undefined, cell: number): number {
+  return combatGeometry(combat) === "hex" ? getBattlefieldDistance(cell, HEX_BOARD_CENTER) : Math.abs(cell - 8);
+}
+
 /** New marker plus the legacy `bankId` fallback for combats saved mid-setup. */
 function usesBankFormation(combat: CombatState): boolean {
   return (
@@ -1125,9 +1188,78 @@ function usesBlackTowerFormation(combat: CombatState): boolean {
 
 /** Black Tower keeps the ordinary attacker-side two rows; other banks use the central six. */
 function bankAttackerDeploymentCells(combat: CombatState): readonly number[] {
+  if (combatGeometry(combat) === "hex") {
+    return usesBlackTowerFormation(combat)
+      ? [...hexDeploymentLine("attacker", "front"), ...hexDeploymentLine("attacker", "back")]
+      : HEX_CREATURE_BANK_ATTACKER_CELLS;
+  }
   return usesBlackTowerFormation(combat)
     ? [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE]
     : CREATURE_BANK_ATTACKER_CELLS;
+}
+
+/**
+ * One deployment line of a side on this combat's board: the 4×5 rows above, or
+ * on the hex board the zone column (back = board edge), middle row first.
+ */
+export function combatDeploymentLine(
+  combat: CombatState,
+  side: "attacker" | "defender",
+  line: "front" | "back"
+): number[] {
+  if (combatGeometry(combat) === "hex") {
+    return hexDeploymentLine(side, line);
+  }
+  if (side === "attacker") {
+    return line === "front" ? [...ATTACKER_FRONTLINE] : [...ATTACKER_BACKLINE];
+  }
+  return line === "front" ? [...DEFENDER_FRONTLINE] : [...DEFENDER_BACKLINE];
+}
+
+/** A pinned neutral boss's cell: back-centre of the defender side. */
+function neutralBossCell(combat: CombatState | null | undefined): number {
+  return combat && combatGeometry(combat) === "hex"
+    ? hexDeploymentLine("defender", "back")[0]!
+    : DEFENDER_BACKLINE[1]!;
+}
+
+function bankGuardCorners(combat: CombatState): readonly number[] {
+  return combatGeometry(combat) === "hex" ? HEX_CREATURE_BANK_GUARD_CORNERS : CREATURE_BANK_GUARD_CORNERS;
+}
+
+function blackTowerGuardCells(combat: CombatState): readonly number[] {
+  return combatGeometry(combat) === "hex" ? HEX_BLACK_TOWER_GUARD_CELLS : BLACK_TOWER_GUARD_CELLS;
+}
+
+/**
+ * Hex battlefield: the random obstacle tokens of an open-field fight (never a
+ * siege — only Walls and the Gate — never a preset board such as the ship
+ * battle, and never a scripted fight whose own obstacles ARE its board layout),
+ * kept clear of every deployment hex of this fight.
+ */
+function placeCombatHexObstacles(state: GameState, combat: CombatState): void {
+  if (combatGeometry(combat) !== "hex" || combat.siege ||
+    (combat.context.kind === "player" && combat.context.siege) ||
+    combat.boardArtId === "ship-battle") {
+    return;
+  }
+  const scriptedObstacles = combatScriptsActiveForCombat(state, combat).some((script) =>
+    script.events.some((event) =>
+      event.effects.some((effect) => effect.kind === "place-obstacles" || effect.kind === "random-obstacle")
+    )
+  );
+  if (scriptedObstacles) {
+    return;
+  }
+  const keepClear = usesBankFormation(combat)
+    ? [
+        ...bankAttackerDeploymentCells(combat),
+        ...(usesBlackTowerFormation(combat)
+          ? hexDeploymentLine("defender", "back")
+          : [...HEX_CREATURE_BANK_GUARD_CORNERS, ...HEX_CREATURE_BANK_GUARD_OVERFLOW_CELLS.slice(0, 12), ...HEX_GRAVEYARD_EXTRA_GUARD_CELLS])
+      ]
+    : hexStandardDeploymentZones();
+  placeHexObstacleTokens(combat, keepClear);
 }
 
 function requireAdventure(state: GameState) {
@@ -6097,7 +6229,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       seed: bakeEntropy(`${state.seed}-combat-${eventSeedNumber(state)}`),
       rollCount: 0
     },
-    units: {}
+    units: {},
+    // Battlefield Expansion house rule: every real combat is fought on the hex board.
+    ...(houseRuleEnabled(state, "hex-battlefield") ? { geometry: "hex" as const } : {})
   };
   initializeCultivationFactionCombat(state, shell);
   initializeBattlefieldCondition(state, shell);
@@ -6614,23 +6748,33 @@ function beginNeutralCombatPlacement(
     // from the rule here (never stamped by setup), so a game with the rule off
     // gets Walls + Gate alone. The deterministic gate keeps every client/replay
     // on the same board without consuming a gameplay random stream.
-    const gatePosition = createSeededRandom(
-      `${state.seed}#random-town-gate#${field.spaceId}`
-    ).pick([...SIEGE_ROW_POSITIONS]);
     const towerUnit = houseRuleEnabled(state, "random-town-veteran-defense")
       ? makeArrowTowerUnit(`random_town_tower_${nextEventNumber(state)}`, NEUTRAL_PLAYER_ID)
       : null;
     if (towerUnit) {
       combat.units[towerUnit.id] = towerUnit;
     }
-    combat.siege = {
-      townPlayerId: NEUTRAL_PLAYER_ID,
-      walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
-      gatePosition,
-      arrowTowerUnitId: towerUnit?.id ?? null
-    };
+    if (combatGeometry(combat) === "hex") {
+      // Hex board: the printed Wall/Gate layout (the Gate is fixed mid-line).
+      combat.siege = {
+        townPlayerId: NEUTRAL_PLAYER_ID,
+        ...makeHexSiegeFortifications(),
+        arrowTowerUnitId: towerUnit?.id ?? null
+      };
+    } else {
+      const gatePosition = createSeededRandom(
+        `${state.seed}#random-town-gate#${field.spaceId}`
+      ).pick([...SIEGE_ROW_POSITIONS]);
+      combat.siege = {
+        townPlayerId: NEUTRAL_PLAYER_ID,
+        walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
+        gatePosition,
+        arrowTowerUnitId: towerUnit?.id ?? null
+      };
+    }
   }
   assignCombatBoardArt(state, combat);
+  placeCombatHexObstacles(state, combat);
   combat.setup = {
     pendingPlayerIds: [playerId],
     placedUnitIds: { [playerId]: [] },
@@ -9934,9 +10078,20 @@ export function revealNeutralArmy(
     state.adventure?.fields[combat.context.fieldId]?.location === "random_town" &&
     houseRuleEnabled(state, "random-town-veteran-defense")
   ) {
-    placeRandomTownFormation(state, combat, neutralUnits, DEFENDER_FRONTLINE, DEFENDER_BACKLINE);
+    placeRandomTownFormation(
+      state,
+      combat,
+      neutralUnits,
+      combatDeploymentLine(combat, "defender", "front"),
+      combatDeploymentLine(combat, "defender", "back")
+    );
   } else {
-    placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+    placeNeutralUnits(
+      neutralUnits,
+      combatDeploymentLine(combat, "defender", "back"),
+      combatDeploymentLine(combat, "defender", "front"),
+      combat
+    );
   }
   // A pre-minted extra (a boss) keeps its pinned back-center cell: any drawn
   // guard the auto-placement dropped there steps aside to the next free
@@ -9945,7 +10100,10 @@ export function revealNeutralArmy(
     const collided = neutralUnits.find((unit) => unit.position === extra.position);
     if (collided) {
       const taken = new Set([...neutralUnits.map((unit) => unit.position), extra.position]);
-      const free = [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE].find((cell) => !taken.has(cell));
+      const free = [
+        ...combatDeploymentLine(combat, "defender", "back"),
+        ...combatDeploymentLine(combat, "defender", "front")
+      ].find((cell) => !taken.has(cell));
       if (free !== undefined) {
         collided.position = free;
       }
@@ -9954,6 +10112,8 @@ export function revealNeutralArmy(
   for (const unit of [...neutralUnits, ...extraUnits]) {
     combat.units[unit.id] = unit;
   }
+  // Hex board: a double-wide guard the fixed layout could not fit moves over.
+  settleCombatFootprints(combat);
 
   // Calamity Waves: each numbered wave carries a visible battle event. A hero
   // who previously visited the Calamity Gate is prepared and cancels the
@@ -10129,7 +10289,7 @@ function mintWaveMiniBoss(state: GameState, wave: number): CombatUnitState | nul
     def,
     waveMiniBossLayers(wave, def.layers),
     `wave_boss_${def.id}`,
-    DEFENDER_BACKLINE[1]
+    neutralBossCell(state.combat)
   );
 }
 
@@ -10294,7 +10454,7 @@ function revealRaidBossArmy(state: GameState, bossInstanceId: string): void {
     revealNeutralArmy(state, []);
     return;
   }
-  const bossUnit = makeRaidBossCombatUnit(def, boss.layersLeft, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
+  const bossUnit = makeRaidBossCombatUnit(def, boss.layersLeft, `boss_${def.id}`, neutralBossCell(state.combat));
   const minions =
     themedEscortDraws(state, def, `raid-${bossInstanceId}`) ??
     drawPveThemedArmy(
@@ -10316,7 +10476,7 @@ function revealDungeonFloorArmy(state: GameState, floor: number): void {
   const bossId = dungeonBossId(state, floor);
   const def = bossId ? resolveBossDefinition(state, bossId) : null;
   if (def) {
-    const bossUnit = makeRaidBossCombatUnit(def, def.layers, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
+    const bossUnit = makeRaidBossCombatUnit(def, def.layers, `boss_${def.id}`, neutralBossCell(state.combat));
     // §D1 applies here too; §D2 (escort Stack Tokens) deliberately does NOT —
     // the Dungeon deals fair, so no augment callback is passed.
     const minions =
@@ -10388,12 +10548,12 @@ export function neutralFormationCellsFor(state: GameState): number[] {
   }
   if (usesBankFormation(combat)) {
     if (usesBlackTowerFormation(combat)) {
-      return [...BLACK_TOWER_GUARD_CELLS];
+      return [...blackTowerGuardCells(combat)];
     }
-    return [...CREATURE_BANK_GUARD_CORNERS];
+    return [...bankGuardCorners(combat)];
   }
   // Field fight: any cell on the defender side (both rows).
-  return [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE];
+  return [...combatDeploymentLine(combat, "defender", "back"), ...combatDeploymentLine(combat, "defender", "front")];
 }
 
 /**
@@ -10425,9 +10585,32 @@ export function neutralFormationCellsForGuard(state: GameState, guard: CombatUni
   }
   const isBank = usesBankFormation(combat);
   if (!isBank && guard.type === "ranged" && neutralPlacementIsManual(state)) {
-    return [...DEFENDER_BACKLINE];
+    return combatDeploymentLine(combat, "defender", "back");
   }
   return cells;
+}
+
+/**
+ * The HEADS a guard may take in the pre-battle sort. Normally exactly
+ * {@link neutralFormationCellsForGuard}; a double-wide guard on the hex board
+ * may put its head on any hex whose whole footprint stays inside the formation
+ * zone and still touches the guard's own cells (a restricted shooter keeps a
+ * hex on the back line); a bank guard only has to keep covering its corner.
+ */
+export function neutralGuardFormationHeads(state: GameState, guard: CombatUnitState): number[] {
+  const cells = neutralFormationCellsForGuard(state, guard);
+  const combat = state.combat;
+  if (!combat || unitTailOffset(combat, guard) === 0) {
+    return cells;
+  }
+  const zone = new Set(neutralFormationCellsFor(state));
+  const isBank = usesBankFormation(combat);
+  return getBattlefieldPositions("hex").filter((head) => {
+    const footprint = footprintAt(combat, guard, head);
+    if (!footprint) return false;
+    if (isBank) return footprint.some((cell) => cells.includes(cell));
+    return footprint.every((cell) => zone.has(cell)) && footprint.some((cell) => cells.includes(cell));
+  });
 }
 
 /**
@@ -10450,7 +10633,7 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
   // its two printed Dragon cells.
   const isBank = usesBankFormation(combat);
   const shooterRestricted = !isBank && guard.type === "ranged" && neutralPlacementIsManual(state);
-  if (!neutralFormationCellsForGuard(state, guard).includes(action.position)) {
+  if (!neutralGuardFormationHeads(state, guard).includes(action.position)) {
     throw new Error(
       isBank
         ? usesBlackTowerFormation(combat)
@@ -10466,8 +10649,11 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
     throw new Error("That space is blocked.");
   }
 
-  const occupant = Object.values(combat.units).find(
-    (unit) => unit.position === action.position && unit.id !== guard.id
+  // The unit holding that space (head, or a double-wide tail on the hex board).
+  const occupant = unitAtCell(
+    combat,
+    action.position,
+    Object.values(combat.units).filter((unit) => unit.id !== guard.id)
   );
   if (occupant) {
     // Only another guard may be swapped with — an Arrow Tower or a stray unit
@@ -10477,9 +10663,21 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
     }
     // A swap must also respect the partner's own rule: a shooter cannot be
     // pushed to the front row (its destination is the mover's old cell).
-    if (!neutralFormationCellsForGuard(state, occupant).includes(guard.position)) {
+    if (!neutralGuardFormationHeads(state, occupant).includes(guard.position)) {
       throw new Error("A shooter must stay on the defender's back row.");
     }
+  }
+  // Hex board: both footprints (a double-wide guard's head + tail) must fit
+  // after the move / swap. Always true on the 4×5 grid.
+  if (!relocationFits(
+    combat,
+    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth),
+    new Map<string, number>([[guard.id, action.position], ...(occupant ? [[occupant.id, guard.position] as [string, number]] : [])]),
+    new Set(combat.obstacles ?? [])
+  )) {
+    throw new Error("That space is taken.");
+  }
+  if (occupant) {
     occupant.position = guard.position;
     appendEvent(state, {
       type: "COMBAT_UNIT_PLACED",
@@ -10525,8 +10723,14 @@ function resetNeutralFormationToAuto(state: GameState): void {
   if (usesBankFormation(combat)) {
     placeCreatureBankGuards(state, guards);
   } else {
-    placeNeutralUnits(guards, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+    placeNeutralUnits(
+      guards,
+      combatDeploymentLine(combat, "defender", "back"),
+      combatDeploymentLine(combat, "defender", "front"),
+      combat
+    );
   }
+  settleCombatFootprints(combat);
   for (const guard of guards) {
     appendEvent(state, {
       type: "COMBAT_UNIT_PLACED",
@@ -10577,12 +10781,14 @@ function placeCreatureBankGuards(state: GameState, units: CombatUnitState[]): vo
   if (combat && usesBlackTowerFormation(combat)) {
     // With human Neutral control the placement window can move the Dragon to
     // either printed space. With AI control this seeded choice is authoritative.
+    const cells = blackTowerGuardCells(combat);
     if (units[0]) {
-      units[0].position = BLACK_TOWER_GUARD_CELLS[random.nextInt(0, BLACK_TOWER_GUARD_CELLS.length - 1)]!;
+      units[0].position = cells[random.nextInt(0, cells.length - 1)]!;
     }
     return;
   }
-  const corners = [...CREATURE_BANK_GUARD_CORNERS];
+  const hex = Boolean(combat && combatGeometry(combat) === "hex");
+  const corners = [...(hex ? HEX_CREATURE_BANK_GUARD_CORNERS : CREATURE_BANK_GUARD_CORNERS)];
   for (let index = corners.length - 1; index > 0; index -= 1) {
     const swapIndex = random.nextInt(0, index);
     [corners[index], corners[swapIndex]] = [corners[swapIndex]!, corners[index]!];
@@ -10591,9 +10797,13 @@ function placeCreatureBankGuards(state: GameState, units: CombatUnitState[]): vo
     // The four corners first; a larger party (Dragon Utopia / designer exact
     // army) spills onto the free non-attacker cells so no guard is left at the
     // minted default cell 0.
-    const overflow = bankId === "graveyard"
-      ? GRAVEYARD_EXTRA_GUARD_CELLS
-      : CREATURE_BANK_GUARD_OVERFLOW_CELLS;
+    const overflow = hex
+      ? (bankId === "graveyard"
+          ? HEX_GRAVEYARD_EXTRA_GUARD_CELLS
+          : HEX_CREATURE_BANK_GUARD_OVERFLOW_CELLS.filter((cell) => !(combat?.obstacles ?? []).includes(cell)))
+      : bankId === "graveyard"
+        ? GRAVEYARD_EXTRA_GUARD_CELLS
+        : CREATURE_BANK_GUARD_OVERFLOW_CELLS;
     const cell = index < corners.length ? corners[index] : overflow[index - corners.length];
     if (cell !== undefined) {
       unit.position = cell;
@@ -11648,6 +11858,7 @@ export function startPlayerCombat(
     ...(arenaDuel ? { arenaDuel } : {})
   };
   assignCombatBoardArt(state, combat);
+  placeCombatHexObstacles(state, combat);
   combat.setup = {
     pendingPlayerIds: [attacker.controllerId, defenderPlayerId],
     placedUnitIds: { [attacker.controllerId]: [], [defenderPlayerId]: [] },
@@ -11990,14 +12201,82 @@ export function placementCellsFor(state: GameState, playerId: PlayerId): number[
   }
 
   if (playerId !== combat.attackerPlayerId) {
-    return [...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE];
+    return [...combatDeploymentLine(combat, "defender", "front"), ...combatDeploymentLine(combat, "defender", "back")];
   }
 
   if (usesBankFormation(combat)) {
     return [...bankAttackerDeploymentCells(combat)];
   }
 
-  return [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE];
+  return [...combatDeploymentLine(combat, "attacker", "front"), ...combatDeploymentLine(combat, "attacker", "back")];
+}
+
+/**
+ * Hex board safety net after an automatic placement (guard formations, fixed
+ * bank/scripted layouts, injected commanders and heroes): moves any double-wide
+ * unit whose footprint does not fit to the nearest head that does (see
+ * settleHexFootprints). Blocked: obstacles, Force Fields, artifact Walls and
+ * standing siege Walls/Gate. No-op on the 4×5 grid.
+ */
+export function settleCombatFootprints(combat: CombatState): void {
+  if (combatGeometry(combat) !== "hex") {
+    return;
+  }
+  const blocked = new Set<number>(combat.obstacles ?? []);
+  for (const token of combat.battlefieldTokens ?? []) {
+    if (token.kind === "force_field" || token.kind === "artifact_wall") {
+      for (const cell of battlefieldTokenCells(token)) blocked.add(cell);
+    }
+  }
+  for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
+    blocked.add(position);
+  }
+  settleHexFootprints(combat, blocked, (unit) => unit.damage < unit.maxHealth);
+}
+
+/**
+ * The deployment HEADS for one unit card: {@link placementCellsFor}, narrowed
+ * on the hex board for a double-wide card to the heads whose tail is in the
+ * zone too (attacker head column 1 + tail 0, defender head 11 + tail 12).
+ * Occupancy is not filtered here (PLACE_COMBAT_UNIT checks it).
+ */
+export function placementHeadsFor(state: GameState, playerId: PlayerId, unitDefId?: string): number[] {
+  const cells = placementCellsFor(state, playerId);
+  const combat = state.combat;
+  if (!combat || !unitDefId) {
+    return cells;
+  }
+  return footprintHeadsIn(combat, { position: cells[0] ?? 0, controllerId: playerId, unitDefId }, cells);
+}
+
+/**
+ * Hex board deployment: whether the move / swap / new placement in `relocated`
+ * (unit id -> head) keeps every footprint on the board, apart, off obstacles
+ * and wholly inside the player's zone (a double-wide tail too). `extra` is a
+ * not-yet-placed body. Always true on the 4×5 grid.
+ */
+function deploymentFootprintsFit(
+  combat: CombatState,
+  relocated: Map<string, number>,
+  zone: readonly number[],
+  extra?: { id: string; position: number; controllerId: PlayerId; unitDefId?: string }
+): boolean {
+  if (combatGeometry(combat) !== "hex") {
+    return true;
+  }
+  const inZone = new Set(zone);
+  const bodies: Array<{ id: string; position: number; controllerId: PlayerId; unitDefId?: string; heroUnit?: boolean; commanderSlug?: string }> =
+    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth);
+  if (extra) {
+    bodies.push(extra);
+  }
+  return relocationFits(
+    combat,
+    bodies,
+    relocated,
+    new Set(combat.obstacles ?? []),
+    (_unit, cells) => cells.every((cell) => inZone.has(cell))
+  );
 }
 
 export function placeCombatUnit(state: GameState, action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }>): void {
@@ -12016,12 +12295,14 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     throw new Error("It is not that player's turn to place units.");
   }
 
-  if (!placementCellsFor(state, action.playerId).includes(action.position)) {
+  const zoneCells = placementCellsFor(state, action.playerId);
+  if (!zoneCells.includes(action.position)) {
     throw new Error("Units must start on your back or front line.");
   }
 
   const placed = setup.placedUnitIds[action.playerId] ?? [];
-  const occupant = Object.values(combat.units).find((unit) => unit.position === action.position);
+  // The unit holding that space — its head, or a double-wide tail (hex board).
+  const occupant = unitAtCell(combat, action.position);
   const familiar = Object.values(combat.units).find(
     (unit) =>
       unit.controllerId === action.playerId &&
@@ -12035,6 +12316,15 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
   // deployment limit, and cannot be taken back; it can move or swap freely
   // inside its owner's legal setup rows.
   if (familiar) {
+    const partner = occupant && occupant.id !== familiar.id ? occupant : undefined;
+    if (partner && partner.controllerId !== action.playerId) throw new Error("That space is already taken.");
+    if (!deploymentFootprintsFit(
+      combat,
+      new Map<string, number>([[familiar.id, action.position], ...(partner ? [[partner.id, familiar.position] as [string, number]] : [])]),
+      zoneCells
+    )) {
+      throw new Error("That space is already taken.");
+    }
     if (occupant && occupant.id !== familiar.id) {
       if (occupant.controllerId !== action.playerId) throw new Error("That space is already taken.");
       const from = familiar.position;
@@ -12065,6 +12355,18 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     const existing = Object.values(combat.units).find((unit) => unit.armyUnitId === armyUnit.id);
     if (!existing) {
       throw new Error("That unit is not on the board.");
+    }
+    const partner = occupant && occupant.id !== existing.id ? occupant : undefined;
+    if (partner && partner.controllerId !== action.playerId) {
+      throw new Error("That space is already taken.");
+    }
+    // Hex board: both footprints must fit after the move / swap.
+    if (!deploymentFootprintsFit(
+      combat,
+      new Map<string, number>([[existing.id, action.position], ...(partner ? [[partner.id, existing.position] as [string, number]] : [])]),
+      zoneCells
+    )) {
+      throw new Error("That space is already taken.");
     }
     if (occupant && occupant.id !== existing.id) {
       // Only your own units may trade places; an enemy-held cell stays blocked.
@@ -12102,6 +12404,15 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
   // A brand-new placement (a unit not yet on the board) may not land on a taken
   // cell — there is nothing to swap with.
   if (occupant) {
+    throw new Error("That space is already taken.");
+  }
+  // Hex board: a double-wide card needs its tail free and inside the zone too.
+  if (!deploymentFootprintsFit(
+    combat,
+    new Map<string, number>([["__placing__", action.position]]),
+    zoneCells,
+    { id: "__placing__", position: action.position, controllerId: action.playerId, unitDefId: armyUnit.unitDefId }
+  )) {
     throw new Error("That space is already taken.");
   }
 
@@ -12269,6 +12580,11 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   // Siege: "the defender adds the Wall, Gate and Arrow Tower cards after
   // placing their units" — the defender first chooses the Gate's column.
   if (combat.context.kind === "player" && combat.context.siege) {
+    if (combatGeometry(combat) === "hex") {
+      // Hex board: the printed layout fixes the Gate — nothing to choose.
+      resolveSiegeGateChoice(state, combat.defenderPlayerId, 0);
+      return;
+    }
     openSiegeGateChoice(state, combat.defenderPlayerId);
     return;
   }
@@ -12663,16 +12979,30 @@ function resolveBruteCombatDraw(state: GameState, playerId: PlayerId, optionInde
   finalizeCombatStart(state);
 }
 
-/**
- * Forge Mech Princess: at combat start, a side fielding its commander may buy
- * a phantom Chain Lightning for 1 building material against neutrals or
- * 1 Valuable against another player. Asked one seat at a time.
- */
+/** Extra gold for the two-spell offer, based on the actual encounter. */
+function forgeScrollGoldCost(state: GameState): number {
+  const context = state.combat?.context;
+  if (!context || context.kind === "player") return 4;
+  if (context.kind !== "neutral") return 0;
+  if (context.bankId) {
+    const field = state.adventure?.fields[context.fieldId];
+    const tile = field ? state.adventure?.tiles[field.tileInstanceId] : undefined;
+    const tier = tile ? creatureBankTierForTile(state, tile) : null;
+    if (tier) return tier === "near" ? 3 : 2;
+    if (isCreatureBankId(context.bankId)) {
+      return getCreatureBankDefinition(context.bankId, houseRuleEnabled(state, "polish-creature-banks")).tier === "near" ? 3 : 2;
+    }
+  }
+  return context.difficulty >= 4 ? 3 : 2;
+}
+
+/** Ask each eligible Mech Princess seat before combat begins. */
 function maybeOpenForgeChainLightning(state: GameState): boolean {
   const combat = state.combat;
   if (!combat || (combat.context.kind !== "neutral" && combat.context.kind !== "player")) return false;
   const pvp = combat.context.kind === "player";
-  const costName = pvp ? "Valuable" : "building material";
+  const costName = pvp ? "Valuable" : "ore";
+  const goldCost = forgeScrollGoldCost(state);
   const offered = (combat.forgeChainLightningOffered ??= []);
   for (const playerId of [...new Set([combat.attackerPlayerId, combat.defenderPlayerId])]) {
     if (offered.includes(playerId)) continue;
@@ -12681,12 +13011,20 @@ function maybeOpenForgeChainLightning(state: GameState): boolean {
     if (!player || !playerHasLivingCommander(state, playerId, "forge") ||
         !commanderStandsInCurrentCombat(state, playerId) ||
         (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1)) continue;
+    const forgeScrollOptions: Array<"chain-only" | "both" | "decline"> = ["chain-only"];
+    if (player.resources.gold >= goldCost) forgeScrollOptions.push("both");
+    forgeScrollOptions.push("decline");
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
-      prompt: `Mech Princess: pay 1 ${costName} for a phantom Chain Lightning this combat? (It disappears after the fight.)`,
-      options: [{ label: `Pay 1 ${costName}: gain a phantom Chain Lightning` }, { label: `Keep the ${costName}` }],
+      prompt: "Mech Princess: choose a phantom Spell Scroll for this combat. Any remaining spells disappear after combat.",
+      options: forgeScrollOptions.map(option => ({ label: option === "chain-only"
+        ? `Pay 1 ${costName}: Chain Lightning`
+        : option === "both" ? `Pay 1 ${costName} and ${goldCost} gold: Chain Lightning + Stone Skin`
+        : "Do not buy a Scroll" })),
+      forgeScrollOptions,
+      forgeScrollGoldCost: goldCost,
       context: "forge-phantom-chain-lightning",
       returnPhase: "combat"
     };
@@ -12701,58 +13039,56 @@ function resolveForgeChainLightning(state: GameState, playerId: PlayerId, option
   const choice = state.pendingChoice;
   const combat = state.combat;
   if (!combat || choice?.type !== "OPTION_CHOICE" || choice.context !== "forge-phantom-chain-lightning" ||
-      choice.playerId !== playerId || (optionIndex !== 0 && optionIndex !== 1)) {
+      choice.playerId !== playerId || optionIndex < 0 || optionIndex >= choice.options.length) {
     throw new Error("There is no Mech Princess Chain Lightning decision to make.");
   }
-  state.pendingChoice = null;
-  if (optionIndex === 0) {
+  // A v176 saved choice offered Chain Lightning alone at index 0.
+  const selected = choice.forgeScrollOptions?.[optionIndex] ?? (optionIndex === 0 ? "chain-only" : "decline");
+  if (selected !== "decline") {
     const player = state.players[playerId];
     const pvp = combat.context.kind === "player";
+    const goldCost = selected === "both" ? (choice.forgeScrollGoldCost ?? 0) : 0;
     if (!player || (combat.context.kind !== "neutral" && !pvp) ||
         (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1) ||
+        player.resources.gold < goldCost ||
         !playerHasLivingCommander(state, playerId, "forge") ||
         !commanderStandsInCurrentCombat(state, playerId)) {
       throw new Error("The Mech Princess's Chain Lightning is no longer available.");
     }
-    spendResources(state, playerId, pvp ? { valuables: 1 } : { buildingMaterials: 1 }, "Mech Princess phantom Chain Lightning");
-    // The card itself is handed out in finalizeCombatStart, AFTER the computer
-    // seats' phantom grant (which only runs while computerPhantomCards is unset).
-    (combat.forgeChainLightningPaid ??= []).push(playerId);
+    spendResources(state, playerId, pvp ? { valuables: 1, gold: goldCost } : { buildingMaterials: 1, gold: goldCost }, "Mech Princess Spell Scroll");
+    // Grant at the combat-start seam so the scroll is available in this fight.
+    (selected === "both" ? (combat.forgeChainLightningPaid ??= []) : (combat.forgeChainOnlyPaid ??= [])).push(playerId);
   }
+  state.pendingChoice = null;
   finalizeCombatStart(state);
 }
 
 /**
- * Hands each paying Mech Princess seat its phantom Chain Lightning: a distinct
- * phantom id (phantom-cards.ts) that casts exactly like the real Spell, tracked
- * on computerPhantomCards so the shared combat-end cleanup removes it from every
- * pile, whatever happened to it. Under the Polish Spell Book rule (owned Spells
- * are cast from the Book) it goes to the Book, otherwise to the hand.
+ * Give each paying Mech Princess seat the purchased combat-scoped Scroll.
+ * Casting uses ordinary scroll rules, including Power 0; any remaining spells
+ * disappear after the combat reward is resolved.
  */
-function grantForgePhantomChainLightning(state: GameState): void {
+function grantForgeChainLightningScroll(state: GameState): void {
   const combat = state.combat;
-  const paid = combat?.forgeChainLightningPaid;
-  if (!combat || !paid?.length) return;
+  const paid = combat?.forgeChainLightningPaid ?? [];
+  const chainOnlyPaid = combat?.forgeChainOnlyPaid ?? [];
+  if (!combat || (!paid.length && !chainOnlyPaid.length)) return;
   combat.forgeChainLightningPaid = [];
-  for (const playerId of paid) {
+  combat.forgeChainOnlyPaid = [];
+  for (const [playerId, both] of [...paid.map(id => [id, true] as const), ...chainOnlyPaid.map(id => [id, false] as const)]) {
     const player = state.players[playerId];
     if (!player) continue;
-    const phantomId = toPhantomCardId("spell.chain_lightning");
-    if (polishSpellBookEnabled(state)) {
-      player.spellBook.push(phantomId);
-    } else {
-      player.hand.push(phantomId);
-    }
-    const grants = (combat.computerPhantomCards ??= []);
-    const tracked = grants.find((entry) => entry.playerId === playerId);
-    if (tracked) tracked.cardIds.push(phantomId);
-    else grants.push({ playerId, cardIds: [phantomId] });
+    const scrollId = `scroll_${nextEventNumber(state)}`;
+    const spellCardIds = both ? ["spell.chain_lightning", "spell.stone_skin"] : ["spell.chain_lightning"];
+    (player.scrolls ??= []).push({ id: scrollId, spellCardIds: [...spellCardIds] });
+    (combat.forgeChainLightningScrolls ??= []).push({ playerId, scrollId });
+    appendEvent(state, { type: "SPELL_SCROLL_GAINED", playerId, scrollId, spellCardIds: [...spellCardIds] });
     appendEvent(state, {
       type: "COMMANDER_SPECIALTY_TRIGGERED",
       playerId,
       commanderSlug: "forge",
       specialtyId: "storm-salvage",
-      message: `The Mech Princess pays 1 ${combat.context.kind === "player" ? "Valuable" : "building material"}: a phantom Chain Lightning joins this combat.`
+      message: `The Mech Princess receives a phantom Spell Scroll containing ${both ? "Chain Lightning and Stone Skin" : "Chain Lightning"} for this combat.`
     });
   }
 }
@@ -12868,6 +13204,8 @@ function finalizeCombatStart(state: GameState): void {
 
   combat.setup = null;
   combat.pendingTacticsSwaps = null;
+  // Deleted, not nulled: grid combats never carry the hex-only key.
+  delete combat.tacticsSortSpentBy;
   state.phase = "combat";
   state.priorityPlayerId = null;
 
@@ -12884,6 +13222,8 @@ function finalizeCombatStart(state: GameState): void {
   // commander onto the board (auto-placed on the first free cell of its own
   // backline, then frontline; bank fights use the six central attacker cells).
   injectCombatCommanders(state);
+  // Hex board: every double-wide footprint fits before the battle starts.
+  settleCombatFootprints(combat);
   // WOG Commanders pre-combat SORT (Vanguard Marshal, future equipment): now the
   // commanders are placed, offer eligible OWNERS a reposition window before the
   // battle's start-of-combat effects (Runes/Charming/war machines) fire. This is
@@ -12993,9 +13333,9 @@ export function resumeCombatStartAfterCommanderPlacement(state: GameState): void
   // every computer seat (attacker and/or defender), in EVERY combat kind incl.
   // PvP — removed again at combat end (finalizeAdventureCombat). See combat-boost.ts.
   applyComputerPhantomCards(state);
-  // Forge Mech Princess: the phantom Chain Lightning(s) paid for above join the
-  // same tracked phantom list (after the computer grant, which it must not block).
-  grantForgePhantomChainLightning(state);
+  // Forge Mech Princess: grant the paid phantom scrolls after computer
+  // phantom cards are set up so both reward systems remain independent.
+  grantForgeChainLightningScroll(state);
   // FO redesign wave 2 — Đài Luyện Khí "Temper the body": a fighting player who
   // banked `pendingCombatAttackBoost` on the map spends it HERE. Idempotent across
   // finalizeCombatStart re-entries because the flag is consumed.
@@ -13023,7 +13363,7 @@ export function resumeCombatStartAfterCommanderPlacement(state: GameState): void
   forgeCombatRoundStart(state);
   applyForgeRoundStartInitiativeRolls(state);
   applyCommanderArtifactCombatRoundStart(state);
-  if (state.combat?.elementalChoices?.some(choice => choice.kind === "forge-jump-round")) {
+  if (state.combat?.elementalChoices?.some(choice => choice.kind === "forge-jump-round" || choice.kind === "forge-grunt-tempo")) {
     state.combat.forgeJumpRoundAwaitingWarMachines = true;
     return;
   }
@@ -13349,7 +13689,7 @@ function emptyFactoryTrapPositions(state: GameState): number[] {
   const combat = state.combat;
   if (!combat) return [];
   const positions: number[] = [];
-  for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+  for (const position of getBattlefieldPositions(combatGeometry(combat))) {
     if (!commanderArtifactSpaceBlocked(combat, position)) positions.push(position);
   }
   return positions;
@@ -13441,9 +13781,13 @@ export function maybeOpenFactoryCommanderTrapChoice(state: GameState): boolean {
       );
       if (commander) {
         const candidates = emptyFactoryTrapPositions(state).sort((left, right) => {
-          const leftAdjacent = enemies.some((enemy) => getOrthogonalNeighbors(enemy.position).includes(left)) ? 0 : 1;
-          const rightAdjacent = enemies.some((enemy) => getOrthogonalNeighbors(enemy.position).includes(right)) ? 0 : 1;
-          return leftAdjacent - rightAdjacent || Math.abs(left - 8) - Math.abs(right - 8) || left - right;
+          // Hex board: a double-wide enemy's tail counts too.
+          const touches = (enemy: CombatUnitState, cell: number) => combatGeometry(combat) === "hex"
+            ? unitAdjacentToCell(combat, enemy, cell)
+            : getOrthogonalNeighbors(enemy.position).includes(cell);
+          const leftAdjacent = enemies.some((enemy) => touches(enemy, left)) ? 0 : 1;
+          const rightAdjacent = enemies.some((enemy) => touches(enemy, right)) ? 0 : 1;
+          return leftAdjacent - rightAdjacent || distanceFromBoardCentre(combat, left) - distanceFromBoardCentre(combat, right) || left - right;
         });
         for (const position of candidates.slice(0, factoryCommanderTrapLimit(state, playerId))) {
           placeFactoryCommanderTrap(state, playerId, commander.id, position);
@@ -13697,12 +14041,12 @@ function commanderArtifactUnitAlive(unit: { damage: number; maxHealth: number })
 }
 
 function commanderArtifactSpaceBlocked(combat: NonNullable<GameState["combat"]>, position: number): boolean {
-  return position < 0 || position >= BATTLEFIELD_CELL_COUNT ||
+  return (combatGeometry(combat) === "hex" ? !isHexPosition(position) : position < 0 || position >= BATTLEFIELD_CELL_COUNT) ||
     (combat.obstacles ?? []).includes(position) ||
-    (combat.battlefieldTokens ?? []).some((token) => token.position === position) ||
-    Boolean(combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) ||
+    (combat.battlefieldTokens ?? []).some((token) => battlefieldTokenCovers(token, position)) ||
+    isFortificationPosition(combat.siege, position) ||
     Object.values(combat.units).some(
-      (unit) => commanderArtifactUnitAlive(unit) && unit.position === position,
+      (unit) => commanderArtifactUnitAlive(unit) && unitOccupiesCell(combat, unit, position),
     );
 }
 
@@ -13729,7 +14073,7 @@ function unresolvedCommanderArtifactStart(
   const resolved = combat.commanderArtifactStartResolvedKeys ?? [];
   const emptyPositions = (): number[] => {
     const result: number[] = [];
-    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    for (const position of getBattlefieldPositions(combatGeometry(combat))) {
       if (!commanderArtifactSpaceBlocked(combat, position)) result.push(position);
     }
     return result;
@@ -13765,7 +14109,10 @@ function commanderArtifactSpellReduction(state: GameState, target: NonNullable<G
     }
   }
   for (const unit of Object.values(state.combat?.units ?? {})) {
-    if (!commanderArtifactUnitAlive(unit) || (unit.id !== target.id && !getOrthogonalNeighbors(target.position).includes(unit.position))) continue;
+    const beside = combatGeometry(state.combat) === "hex"
+      ? unitsAdjacent(state.combat, unit, target)
+      : getOrthogonalNeighbors(target.position).includes(unit.position);
+    if (!commanderArtifactUnitAlive(unit) || (unit.id !== target.id && !beside)) continue;
     if (unit.controllerId === target.controllerId) reduction += getSpellDamageReductionAura(unit);
     reduction += getSpellAndSpecialtyDamageReductionAura(unit);
   }
@@ -14036,7 +14383,7 @@ function applyComputerCommanderCombatStart(state: GameState, playerId: PlayerId)
       if (enemyScore > friendlyScore) applyCounterfeitCataclysm(state, start.commander.id, start.amount);
     } else {
       const position = start.positions.sort((left, right) =>
-        Math.abs(left - 8) - Math.abs(right - 8) || left - right,
+        distanceFromBoardCentre(state.combat, left) - distanceFromBoardCentre(state.combat, right) || left - right,
       )[0];
       if (position !== undefined) placeCommanderArtifactBarrier(state, start.commander.id, position, start.amount);
     }
@@ -14079,13 +14426,13 @@ function applyComputerCommanderCombatStart(state: GameState, playerId: PlayerId)
     const enemies = Object.values(state.combat.units).filter((unit) =>
       unit.controllerId !== playerId && unit.damage < unit.maxHealth && unit.position >= 0);
     const bruteNearEnemy = enemies.some((enemy) =>
-      getBattlefieldDistance(begin.commander.position, enemy.position) <= 3);
+      unitDistance(state.combat, begin.commander, enemy) <= 3);
     if (!bruteNearEnemy) {
       const target = begin.targetUnitIds
         .map((unitId) => state.combat?.units[unitId])
         .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
         .filter((unit) => unit.initiative > begin.commander.initiative &&
-          enemies.some((enemy) => getBattlefieldDistance(unit.position, enemy.position) <= 3))
+          enemies.some((enemy) => unitDistance(state.combat, unit, enemy) <= 3))
         .sort((left, right) => right.attack - left.attack || right.initiative - left.initiative)[0];
       if (target) applyCommanderBeginCastBloodlust(state, begin.commander, target);
     }
@@ -14442,9 +14789,9 @@ export function commanderDeploymentCellsFor(state: GameState, playerId: PlayerId
     return [...bankAttackerDeploymentCells(combat)];
   }
   if (playerId === combat.defenderPlayerId && playerId !== combat.attackerPlayerId) {
-    return [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE];
+    return [...combatDeploymentLine(combat, "defender", "back"), ...combatDeploymentLine(combat, "defender", "front")];
   }
-  return [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE];
+  return [...combatDeploymentLine(combat, "attacker", "back"), ...combatDeploymentLine(combat, "attacker", "front")];
 }
 
 /**
@@ -14473,21 +14820,36 @@ export function placeCommanderUnit(state: GameState, action: Extract<GameAction,
   if (!deploymentCells.includes(moving.position)) {
     throw new Error("That allied unit is outside your deployment zone.");
   }
-  if (!deploymentCells.includes(action.position)) {
+  // A double-wide body (hex board) needs its tail inside the zone too.
+  if (!footprintHeadsIn(combat, moving, deploymentCells).includes(action.position)) {
     throw new Error("The formation must stay in your own deployment zone.");
   }
   if ((combat.obstacles ?? []).includes(action.position)) {
     throw new Error("That space is blocked.");
   }
 
-  const occupant = Object.values(combat.units).find(
-    (unit) => unit.position === action.position && unit.id !== moving.id
+  const occupant = unitAtCell(
+    combat,
+    action.position,
+    Object.values(combat.units).filter((unit) => unit.id !== moving.id)
   );
   if (occupant) {
     // Only one of the player's OWN units may be swapped with.
     if (occupant.controllerId !== action.playerId || occupant.damage >= occupant.maxHealth) {
       throw new Error("That space is taken.");
     }
+  }
+  const zone = new Set(deploymentCells);
+  if (!relocationFits(
+    combat,
+    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth),
+    new Map<string, number>([[moving.id, action.position], ...(occupant ? [[occupant.id, moving.position] as [string, number]] : [])]),
+    new Set(combat.obstacles ?? []),
+    (_unit, cells) => cells.every((cell) => zone.has(cell))
+  )) {
+    throw new Error("That space is taken.");
+  }
+  if (occupant) {
     occupant.position = moving.position;
     appendEvent(state, {
       type: "COMBAT_UNIT_PLACED",
@@ -14551,26 +14913,26 @@ function injectCombatCommanders(state: GameState, onlyPlayerIds?: ReadonlySet<Pl
       playerId: heroBrings(context.heroId),
       cells: usesBankFormation(combat)
         ? bankAttackerDeploymentCells(combat)
-        : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+        : [...combatDeploymentLine(combat, "attacker", "back"), ...combatDeploymentLine(combat, "attacker", "front")]
     });
   } else if (context.kind === "player") {
     sides.push({
       playerId: heroBrings(context.attackerHeroId),
-      cells: [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+      cells: [...combatDeploymentLine(combat, "attacker", "back"), ...combatDeploymentLine(combat, "attacker", "front")]
     });
     sides.push({
       playerId: heroBrings(context.defenderHeroId),
-      cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE]
+      cells: [...combatDeploymentLine(combat, "defender", "back"), ...combatDeploymentLine(combat, "defender", "front")]
     });
   } else if (context.kind === "sandbox") {
     // Battle Test: both seats bring main heroes, so both get their commander.
     sides.push({
       playerId: combat.attackerPlayerId,
-      cells: [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+      cells: [...combatDeploymentLine(combat, "attacker", "back"), ...combatDeploymentLine(combat, "attacker", "front")]
     });
     sides.push({
       playerId: combat.defenderPlayerId,
-      cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE]
+      cells: [...combatDeploymentLine(combat, "defender", "back"), ...combatDeploymentLine(combat, "defender", "front")]
     });
   }
 
@@ -14594,9 +14956,9 @@ function injectCombatHeroes(state: GameState): void {
       playerId: combat.attackerPlayerId,
       cells: usesBankFormation(combat)
         ? bankAttackerDeploymentCells(combat)
-        : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+        : [...combatDeploymentLine(combat, "attacker", "back"), ...combatDeploymentLine(combat, "attacker", "front")]
     },
-    { playerId: combat.defenderPlayerId, cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE] }
+    { playerId: combat.defenderPlayerId, cells: [...combatDeploymentLine(combat, "defender", "back"), ...combatDeploymentLine(combat, "defender", "front")] }
   ];
   for (const side of sides) {
     if (side.playerId === NEUTRAL_PLAYER_ID) continue;
@@ -14654,6 +15016,10 @@ function eligibleForTacticsSetup(state: GameState, combat: CombatState, playerId
     return false;
   }
   const units = swappableTacticsUnits(combat, playerId);
+  // Hex board: the window is a re-sort, so a lone unit with room to move counts.
+  if (hexTacticsSortZoneOf(combat, playerId)) {
+    return units.length >= 2 || units.some((unit) => hexTacticsSortSpaces(combat, unit).length > 0);
+  }
   if (houseRuleEnabled(state, "polish-card-balance")) {
     return units.some((unit) => tacticsMoveDestinations(combat, unit).length > 0) || units.length >= 2;
   }
@@ -14669,9 +15035,9 @@ function injectHeroGradeFamiliars(state: GameState): void {
       playerId: combat.attackerPlayerId,
       cells: usesBankFormation(combat)
         ? bankAttackerDeploymentCells(combat)
-        : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+        : [...combatDeploymentLine(combat, "attacker", "back"), ...combatDeploymentLine(combat, "attacker", "front")]
     },
-    { playerId: combat.defenderPlayerId, cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE] }
+    { playerId: combat.defenderPlayerId, cells: [...combatDeploymentLine(combat, "defender", "back"), ...combatDeploymentLine(combat, "defender", "front")] }
   ];
   for (const side of sides) {
     if (side.playerId !== NEUTRAL_PLAYER_ID) {
@@ -14723,6 +15089,8 @@ function advanceTacticsSetupQueue(state: GameState): void {
     return;
   }
   const remaining = (combat.pendingTacticsSwaps ?? []).slice(1);
+  // Deleted, not nulled: grid combats never carry the hex-only key.
+  delete combat.tacticsSortSpentBy;
   if (remaining.length > 0) {
     combat.pendingTacticsSwaps = remaining;
     state.phase = "combat-setup";
@@ -14743,22 +15111,74 @@ export function tacticsMoveDestinations(combat: CombatState, unit: CombatUnitSta
   const blocked = new Set<number>();
   for (const other of Object.values(combat.units)) {
     if (other.damage < other.maxHealth) {
-      blocked.add(other.position);
+      for (const cell of unitCells(combat, other)) blocked.add(cell);
     }
   }
   for (const position of combat.obstacles ?? []) {
     blocked.add(position);
   }
   for (const token of combat.battlefieldTokens ?? []) {
-    blocked.add(token.position);
+    for (const cell of battlefieldTokenCells(token)) blocked.add(cell);
   }
-  for (const position of combat.siege?.walls ?? []) {
+  for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
     blocked.add(position);
   }
-  if (combat.siege?.gatePosition != null) {
-    blocked.add(combat.siege.gatePosition);
+  // A double-wide unit (hex board) steps its head; the tail must fit too.
+  return unitStepSpaces(combat, unit, blocked);
+}
+
+/**
+ * Hex board Tactics: the re-sort zone `playerId` may use at the start of
+ * combat — the first four hex columns of their side — or null where the
+ * printed one-swap window applies (the 4×5 grid, or a Creature Bank attacker,
+ * who forms up in the centre block instead of at an edge).
+ */
+export function hexTacticsSortZoneOf(combat: CombatState, playerId: PlayerId): number[] | null {
+  if (combatGeometry(combat) !== "hex") {
+    return null;
   }
-  return getOrthogonalNeighbors(unit.position).filter((position) => !blocked.has(position));
+  const attacker = playerId === combat.attackerPlayerId;
+  if (!attacker && playerId !== combat.defenderPlayerId) {
+    return null;
+  }
+  if (attacker && usesBankFormation(combat)) {
+    return null;
+  }
+  return hexTacticsSortZone(attacker ? "attacker" : "defender");
+}
+
+/** The open start-of-combat window of `playerId` is a hex re-sort (see hexTacticsSortZoneOf). */
+export function inHexTacticsSortWindow(combat: CombatState, playerId: PlayerId): boolean {
+  return combat.pendingTacticsSwaps?.[0] === playerId && hexTacticsSortZoneOf(combat, playerId) !== null;
+}
+
+/**
+ * Hex board Tactics re-sort: every empty head in the owner's sort zone where
+ * `unit`'s whole footprint fits (a two-hex creature's tail inside the zone
+ * too), clear of the other living units, obstacles, battlefield tokens and the
+ * standing Walls / Gate. Shared by the offer and the resolution.
+ */
+export function hexTacticsSortSpaces(combat: CombatState, unit: CombatUnitState): number[] {
+  const zone = hexTacticsSortZoneOf(combat, unit.controllerId);
+  if (!zone) {
+    return [];
+  }
+  const inZone = new Set(zone);
+  const blocked = new Set<number>(combat.obstacles ?? []);
+  for (const token of combat.battlefieldTokens ?? []) {
+    for (const cell of battlefieldTokenCells(token)) blocked.add(cell);
+  }
+  for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
+    blocked.add(position);
+  }
+  const living = Object.values(combat.units).filter((other) => other.damage < other.maxHealth);
+  return zone.filter(
+    (head) =>
+      head !== unit.position &&
+      relocationFits(combat, living, new Map([[unit.id, head]]), blocked, (_moved, cells) =>
+        cells.every((cell) => inZone.has(cell))
+      )
+  );
 }
 
 /**
@@ -14774,7 +15194,10 @@ export function tacticsMoveUnit(
   if (!combat) {
     throw new Error("There is no combat in progress.");
   }
-  if (!houseRuleEnabled(state, "polish-card-balance")) {
+  // Hex board: the start-of-combat window is a free re-sort within the first
+  // four columns (any rules pack); elsewhere the Balance Pack's one-space arm.
+  const sortWindow = inHexTacticsSortWindow(combat, action.playerId);
+  if (!sortWindow && !houseRuleEnabled(state, "polish-card-balance")) {
     throw new Error("Tactics only moves a unit under the Balanced cards rule.");
   }
   const unit = combat.units[action.unitId];
@@ -14784,12 +15207,18 @@ export function tacticsMoveUnit(
   if (unit.damage >= unit.maxHealth || isArrowTowerUnit(unit)) {
     throw new Error("That unit cannot be repositioned.");
   }
-  if (!tacticsMoveDestinations(combat, unit).includes(action.position)) {
+  if (sortWindow) {
+    if (!hexTacticsSortSpaces(combat, unit).includes(action.position)) {
+      throw new Error("Tactics re-sorts your units onto empty hexes within your first four columns.");
+    }
+  } else if (!tacticsMoveDestinations(combat, unit).includes(action.position)) {
     throw new Error("Tactics moves a unit one space, onto an empty adjacent space.");
   }
 
   const player = state.players[action.playerId];
-  if (!player || !player.hand.includes("ability.tactics")) {
+  // A re-sort already paid for by this window's first move/switch is free.
+  const alreadySpent = sortWindow && combat.tacticsSortSpentBy === action.playerId;
+  if (!player || (!alreadySpent && !player.hand.includes("ability.tactics"))) {
     throw new Error("Tactics is not available to move a unit.");
   }
 
@@ -14816,6 +15245,17 @@ export function tacticsMoveUnit(
   const from = unit.position;
   unit.position = action.position;
 
+  if (alreadySpent) {
+    // Later steps of the same hex re-sort: the card was played on the first.
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: action.playerId,
+      unitId: unit.id,
+      position: action.position
+    });
+    return;
+  }
+
   spendTacticsCard(state, action.playerId);
   if (mode === "expert" && !abilityExpertIsCrownFree(player, "ability.tactics")) {
     player.combatStats.expertUsesSpentThisRound += 1;
@@ -14830,7 +15270,10 @@ export function tacticsMoveUnit(
     optionLabel: `Tactics: move ${unit.cardName} from ${getBattlefieldLabel(from)} to ${getBattlefieldLabel(action.position)}`
   });
 
-  if (isSetupWindow) {
+  if (sortWindow) {
+    // The hex re-sort stays open until FINISH_TACTICS.
+    combat.tacticsSortSpentBy = action.playerId;
+  } else if (isSetupWindow) {
     advanceTacticsSetupQueue(state);
   }
 }
@@ -14856,6 +15299,32 @@ function spendTacticsCard(state: GameState, playerId: PlayerId): void {
  *    acted: spends the Tactics card and one expert use, combat continues.
  * Either way it switches the board positions of two of the player's own units.
  */
+/**
+ * Hex board: whether a Tactics switch of `unitA` and `unitB` leaves both
+ * footprints on the board and clear (a double-wide unit taking a one-hex
+ * unit's space needs its tail free too). Always true on the 4×5 grid.
+ */
+export function tacticsSwapFits(combat: CombatState, unitA: CombatUnitState, unitB: CombatUnitState): boolean {
+  if (combatGeometry(combat) !== "hex") {
+    return true;
+  }
+  const blocked = new Set<number>(combat.obstacles ?? []);
+  for (const token of combat.battlefieldTokens ?? []) {
+    if (token.kind === "force_field" || token.kind === "artifact_wall") {
+      for (const cell of battlefieldTokenCells(token)) blocked.add(cell);
+    }
+  }
+  for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
+    blocked.add(position);
+  }
+  return relocationFits(
+    combat,
+    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth),
+    new Map<string, number>([[unitA.id, unitB.position], [unitB.id, unitA.position]]),
+    blocked
+  );
+}
+
 export function swapCombatUnits(state: GameState, action: Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>): void {
   const combat = state.combat;
   if (!combat) {
@@ -14879,7 +15348,10 @@ export function swapCombatUnits(state: GameState, action: Extract<GameAction, { 
   }
 
   const player = state.players[action.playerId];
-  if (!player || !player.hand.includes("ability.tactics")) {
+  // Hex board re-sort: switches after the window's first move/switch are free.
+  const sortWindow = inHexTacticsSortWindow(combat, action.playerId);
+  const alreadySpent = sortWindow && combat.tacticsSortSpentBy === action.playerId;
+  if (!player || (!alreadySpent && !player.hand.includes("ability.tactics"))) {
     throw new Error("Tactics is not available to switch units.");
   }
 
@@ -14916,11 +15388,16 @@ export function swapCombatUnits(state: GameState, action: Extract<GameAction, { 
     throw new Error("There is no Tactics swap available right now.");
   }
 
+  if (!tacticsSwapFits(combat, unitA, unitB)) {
+    throw new Error("Those units cannot switch places: a two-hex unit would not fit there.");
+  }
   const positionA = unitA.position;
   unitA.position = unitB.position;
   unitB.position = positionA;
 
-  spendTacticsCard(state, action.playerId);
+  if (!alreadySpent) {
+    spendTacticsCard(state, action.playerId);
+  }
   // An Empowered Tactics spends no crown for its Expert use.
   if (mode === "expert" && !abilityExpertIsCrownFree(player, "ability.tactics")) {
     player.combatStats.expertUsesSpentThisRound += 1;
@@ -14934,7 +15411,10 @@ export function swapCombatUnits(state: GameState, action: Extract<GameAction, { 
     mode
   });
 
-  if (isSetupWindow) {
+  if (sortWindow) {
+    // The hex re-sort stays open until FINISH_TACTICS.
+    combat.tacticsSortSpentBy = action.playerId;
+  } else if (isSetupWindow) {
     advanceTacticsSetupQueue(state);
   }
 }
@@ -15082,18 +15562,20 @@ export function resolveSiegeGateChoice(state: GameState, playerId: PlayerId, opt
 
   const towerUnit = makeArrowTowerUnit(`siege_tower_${nextEventNumber(state)}`, playerId);
   combat.units[towerUnit.id] = towerUnit;
-  combat.siege = {
-    townPlayerId: playerId,
-    walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
-    gatePosition,
-    arrowTowerUnitId: towerUnit.id
-  };
+  combat.siege = combatGeometry(combat) === "hex"
+    ? { townPlayerId: playerId, ...makeHexSiegeFortifications(), arrowTowerUnitId: towerUnit.id }
+    : {
+        townPlayerId: playerId,
+        walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
+        gatePosition,
+        arrowTowerUnitId: towerUnit.id
+      };
 
   appendEvent(state, {
     type: "SIEGE_FORTIFICATIONS_PLACED",
     playerId,
     wallPositions: combat.siege.walls,
-    gatePosition
+    gatePosition: combat.siege.gatePosition ?? gatePosition
   });
 
   beginPlayerCombatRounds(state);
@@ -15916,7 +16398,6 @@ export function finalizeAdventureCombat(state: GameState): void {
   // Phantom Power + Magic Arrow cards are likewise removed before any outcome
   // branch — never kept past the battle, in any combat kind.
   removeComputerPhantomCards(state);
-
   // Pirates (Astrologers): reward the winner one Resource die (both the neutral
   // and PvP branches below share this one hook). A no-op unless Pirates is up.
   queuePiratesResourceDie(state, outcome.winnerPlayerId);
@@ -16012,15 +16493,12 @@ export function finalizeAdventureCombat(state: GameState): void {
     // afterwards" — return its card to its tier's Neutral discard pile (whether it
     // lived or died) and never write it back to the army (it carries no army card).
     //
-    // Only a genuine NEUTRAL-faction card goes home to a Neutral deck. A temporary
-    // body minted from a FACTION definition (Rin's summoned cats, the MGQ spirits)
-    // has no card in any deck, and pushing its id into the bronze Neutral discard
-    // pile would inject a faction unit into the shared Neutral decks — it simply
-    // vanishes with the combat instead.
+    // Only a deck-backed Neutral card goes home. This includes Bulwark,
+    // Factory and Forge neutral-side cards, but excludes minted summons.
     if (
       unit.temporary &&
       unit.unitDefId &&
-      coreUnitDefinitions[unit.unitDefId]?.faction === "neutral"
+      isRecruitableNeutralUnit(unit.unitDefId)
     ) {
       const def = unit.grade === "gold" ? "gold" : unit.grade;
       const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
@@ -16158,12 +16636,15 @@ export function finalizeAdventureCombat(state: GameState): void {
     });
   }
 
-  // Forge Mech Princess "Storm Salvage": +1 building material after every
-  // combat its owner WINS (neutral, PvP, siege or bank alike) — provided the
-  // Mech Princess took the field for the winner in that combat (surviving is
-  // not required; a commander who stayed home earns nothing).
+  // Forge Mech Princess "Storm Salvage": winning pays 1 building material only
+  // if her phantom Scroll still contains at least one spell at combat end.
+  // The commander must have taken the field, but need not have survived.
+  const forgeScrollSurvived = (combat.forgeChainLightningScrolls ?? []).some(({ playerId, scrollId }) =>
+    playerId === outcome.winnerPlayerId &&
+    state.players[playerId]?.scrolls?.some(scroll => scroll.id === scrollId && scroll.spellCardIds.length > 0));
   if (
     outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID &&
+    forgeScrollSurvived &&
     Object.values(combat.units).some(
       (unit) => unit.commanderSlug === "forge" && unit.controllerId === outcome.winnerPlayerId
     )
@@ -16182,9 +16663,16 @@ export function finalizeAdventureCombat(state: GameState): void {
       playerId: outcome.winnerPlayerId,
       commanderSlug: "forge",
       specialtyId: "storm-salvage",
-      message: "The Mech Princess salvages the battlefield — +1 building material."
+      message: "The Mech Princess's phantom Scroll survives the fight — +1 building material."
     });
   }
+  // The reward has been checked. Remove each tracked phantom Scroll regardless
+  // of winner, including scrolls with one remaining spell after a partial cast.
+  for (const { playerId, scrollId } of combat.forgeChainLightningScrolls ?? []) {
+    const player = state.players[playerId];
+    if (player?.scrolls) player.scrolls = player.scrolls.filter(scroll => scroll.id !== scrollId);
+  }
+  combat.forgeChainLightningScrolls = [];
 
   // Anime Hero Grades Bounty Hunter's Eye (tier 1, §3.11): +1 gold after each
   // combat the player wins. Gated on the node; no-op when the module is off /
@@ -17980,7 +18468,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       }
       // Without the optional copy rule, a type already in the army (Few or
       // Pack) must be reinforced rather than recruited again.
-      if ((recruitSide === "neutral" || !houseRuleEnabled(state, "duplicate-unit-recruitment")) && armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId)) {
+      if ((recruitSide === "neutral" || !houseRuleEnabled(state, "duplicate-unit-recruitment")) && armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId && (unit.side === "neutral") === (recruitSide === "neutral"))) {
         throw new Error(
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
         );

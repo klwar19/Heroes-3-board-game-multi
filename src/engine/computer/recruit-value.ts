@@ -3,6 +3,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { getPermanentCardIds } from "../permanents";
 import type { CardId, GameState, PlayerId, ResourceCost } from "../state";
 import {
+  dungeonBlackDragonPackBudget,
   goldArmyAllowsBronzePurchase,
   hasReachedGoldArmy,
   nextGoldLadderStep,
@@ -124,6 +125,17 @@ export function neutralRecruitUtility(
   const cost = free ? undefined : (options.cost ?? side.cost);
   if (army >= 8 || (army >= 7 && !premium && !free)) return -100;
   if (!free) {
+    // Dungeon takes at most one paid Gold Neutral while the choice is open,
+    // including offers from different Event sites in later rounds.
+    if (player?.factionId === "dungeon" && tier === "gold" && player.army.some(unit =>
+      unit.side === "neutral" && coreUnitDefinitions[unit.unitDefId]?.tier === "gold")) return -100;
+    const dragonBudget = dungeonBlackDragonPackBudget(state, playerId);
+    if (dragonBudget) {
+      // Any paid Event recruit may spend genuine surplus, but cannot spend
+      // the remaining Black Dragon Few/Pack fund.
+      if ((["gold", "buildingMaterials", "valuables"] as const).some(resource =>
+        player.resources[resource] - (cost?.[resource] ?? 0) < dragonBudget[resource])) return -100;
+    }
     if (!goldArmyAllowsBronzePurchase(state, playerId, unitDefId, "recruit")) return -100;
     if (!premium && spendsGoldLadderFund(state, playerId, cost)) return -100;
     if (goldAfter(state, playerId, cost) < (premium ? 0 : GOLD_RESERVE)) return -100;

@@ -2,9 +2,9 @@ import { locationDefinitions } from "@/data/map/locations";
 import { cardLibrary } from "@/data/cards/library";
 import { isFieldGuarded } from "../adventure";
 import { effectiveInitiative } from "../active-effects";
-import { isAdjacent } from "../battlefield";
+import { unitsAdjacentAt } from "../hex-footprint";
 import { getSpellDamageAmount } from "../effects";
-import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations, standingSpellPower } from "../legal-actions";
+import { canUnitAttack, getLegalMoveDestinations, standingSpellPower } from "../legal-actions";
 import { baseCardId } from "../phantom-cards";
 import { previewSpellDamage } from "../reducer";
 import { spellLimitFor } from "../ruleset";
@@ -16,6 +16,7 @@ import { playersAreAllied } from "./control";
 import { ATTACK_CEIL, ATTACK_FLOOR } from "./combat-policy";
 import { isParalyzed, unitRemainingHealth, unitRemovalHealth, unitThreatValue } from "./score";
 import { estimatedStrikeDamage } from "./strike-value";
+import { canStrikeFromLegalLanding } from "./opponent-reply";
 import {
   combatHorizonAdjustment,
   strikeOutcomes,
@@ -106,7 +107,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
   const usefulDamage = (ally: CombatUnitState, enemy: CombatUnitState, from: number): number => {
     const damage = estimatedStrikeDamage(ally, enemy, from);
     if (damage <= 0) return 0;
-    if (damage < unitRemovalHealth(enemy) && isAdjacent(from, enemy.position) &&
+    if (damage < unitRemovalHealth(enemy) && unitsAdjacentAt(combat, ally, from, enemy) &&
         !enemy.retaliatedThisRound && !ally.abilities?.includes("ignores-retaliation") &&
         estimatedStrikeDamage(enemy, ally, enemy.position, true) >= unitRemainingHealth(ally)) return 0;
     return damage;
@@ -147,7 +148,7 @@ export function refinePvpCombatSpellRound(observation: ComputerObservation, rank
         }
         if (best < unitRemovalHealth(enemy)) {
           for (const destination of getLegalMoveDestinations(combat, ally, state)) {
-            if (canUnitMoveAndAttack(combat, ally, destination, enemy, state)) {
+            if (canStrikeFromLegalLanding(combat, ally, destination, enemy, state.activeEffects ?? [])) {
               const damage = usefulDamage(ally, enemy, destination);
               const minimum = guaranteedDamage(ally, enemy, destination);
               if (damage > best || damage === best && minimum > reliable) { best = damage; reliable = minimum; }

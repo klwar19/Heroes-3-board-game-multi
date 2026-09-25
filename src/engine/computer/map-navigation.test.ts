@@ -1633,8 +1633,7 @@ describe("sticky primary + explore objectives", () => {
     // User: get all 3 items on tile 1 EVERY game before expanding. Conquest
     // victory scoring used to yank the hero off mid-sweep — the pool restriction
     // keeps primary inside tile Ⅰ until MINE, TREASURE, and RESOURCE are gone.
-    // The sweep window is rounds 1–2 (commits e940332d / 4019226e): from round 3
-    // a FAR doorway legitimately outranks whatever is left at home.
+    // The home commitment persists until all three objects are resolved.
     const state = game();
     const hero = p2Hero(state);
     establishP2PackCore(state);
@@ -1671,11 +1670,9 @@ describe("sticky primary + explore objectives", () => {
     expect(released?.kind).toBe("victory");
   });
 
-  it("drains the home-tile items through round 2, then releases the hero", () => {
-    // The home-tile drain window is rounds 1–2 (commits e940332d / 4019226e):
-    // while the hero stands on tile Ⅰ inside that window it finishes the local
-    // payoffs before expanding; from round 3 the FAR doorway outranks them. The
-    // traditional opening still fights the near guard first inside the window.
+  it("keeps tile-I items ahead of expansion after round 2", () => {
+    // The traditional opening fights the near guard first. A later round does
+    // not release a still-unclaimed tile-I object.
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
@@ -1687,11 +1684,10 @@ describe("sticky primary + explore objectives", () => {
     const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
 
-    // CONTROL: past the window the same board no longer forces the sweep — the
-    // home leftovers stay objectives, they just stop owning the primary pick.
+    // The same live objects remain the main objective in round 3.
     state.round = 3;
-    const released = primaryMapObjective({ ...state } as GameState, hero);
-    expect(released?.spaceId).not.toBe(RESOURCE);
+    const stillHome = primaryMapObjective({ ...state } as GameState, hero);
+    expect([MINE, TREASURE, RESOURCE]).toContain(stillHome?.spaceId);
     expect(collectMapObjectives(state, hero).map((o) => o.spaceId)).toEqual(
       expect.arrayContaining([MINE, TREASURE, RESOURCE]),
     );
@@ -2496,13 +2492,18 @@ describe("current-tile sweep — drain the tile's payoffs before marching on", (
     expect(primary?.spaceId).toBe(localPayoff);
   });
 
-  it("CONTROL: standing on the OTHER tile, the bonus follows the hero", () => {
-    const { state, hero, distantPrize, arm } = sweepFixture();
+  it("standing on the OTHER tile, a live tile-Ⅰ payoff keeps the lead (CONTROL: once it is resolved the bonus follows the hero)", () => {
+    const { state, hero, localPayoff, distantPrize, arm } = sweepFixture();
     // Same map, hero now stands on the ghost tile: the Hill Fort is the
     // same-tile payoff and the temple is the off-tile one.
     hero.spaceId = arm[0];
-    const primary = primaryMapObjective(state, hero);
-    expect(primary?.spaceId).toBe(distantPrize);
+    // New rule: own tile-Ⅰ payoffs are collected before expanding, and the
+    // commitment persists after departure — the temple sits on tile Ⅰ, so it
+    // stays primary (the old off-tile read followed the hero to the Hill Fort).
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(localPayoff);
+    // CONTROL: with the tile-Ⅰ temple resolved, the bonus follows the hero.
+    state.adventure!.fields[localPayoff].blackCube = true;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(distantPrize);
   });
 });
 
@@ -2648,6 +2649,17 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
       heroId: hero.id,
       tileInstanceId: discoverTile.id,
     } as const;
+    // New rule: own tile-Ⅰ payoffs are collected before expanding. On this
+    // fixture the two-step guard lands on tile Ⅰ, so it is finished first.
+    expect(twoSteps!.tileInstanceId).toBe(state.adventure!.fields[TOWN].tileInstanceId);
+    const home = scoreMapAction(observe(state), action);
+    expect(home?.policy).toBe("map.finish-home-before-discover");
+    expect(home!.score).toBeLessThan(700);
+
+    // The expansion push is about a leftover on a LATER tile: the same guard,
+    // stamped onto an off-home tile instance (unknown ids read as unsealed).
+    twoSteps!.tileInstanceId = "tile_ghost_later";
+    expect(distanceFromHeroTo(state, hero, twoSteps!.spaceId)).toBe(2);
     const scored = scoreMapAction(observe(state), action);
     expect(scored!.score).toBeGreaterThan(710);
 
@@ -3993,7 +4005,7 @@ describe("enter-first-opened-tile boost — safe entries only", () => {
    * rounds-≤3 window. An unsafe entry falls through to the normal scoring
    * (which refuses an unbeatable guard below END_TURN).
    */
-  function placedTileEntry(seed: string) {
+  function placedTileEntry(seed: string, clearHomeTile = true) {
     const state = createAdventureGameState({
       startingBuildings: [],
       seed,
@@ -4004,6 +4016,18 @@ describe("enter-first-opened-tile boost — safe entries only", () => {
     const hero = p2Hero(state);
     hero.level = 1;
     hero.spaceId = TOWN; // on the home tile
+    if (clearHomeTile) {
+      // The boost is for entering new land once tile Ⅰ is done (new rule: own
+      // tile-Ⅰ payoffs are collected before expanding). Resolve the fixture's
+      // default mine / treasure / resource so these tests pin entry safety.
+      const fields = state.adventure!.fields;
+      fields[MINE].flagOwnerId = "p2";
+      fields[MINE].everFlagged = true;
+      delete fields[MINE].difficulty;
+      fields[TREASURE].blackCube = true;
+      delete fields[TREASURE].difficulty;
+      fields[RESOURCE].blackCube = true;
+    }
     const homeTile = state.adventure!.fields[TOWN].tileInstanceId;
     const center = tileLatticeNeighbors(
       parseHexSpaceId(
@@ -4043,6 +4067,20 @@ describe("enter-first-opened-tile boost — safe entries only", () => {
     });
     expect(scored?.policy).toBe("map.enter-first-opened-tile");
     expect(scored?.score).toBe(930);
+  });
+
+  it("CONTROL: live tile-Ⅰ payoffs withhold the boost", () => {
+    // New rule: own tile-Ⅰ payoffs are collected before expanding — the same
+    // safe entry is not boosted while the stock mine / treasure / resource
+    // remain actionable (the pre-rule opening boosted it anyway).
+    const { state, hero, entry } = placedTileEntry("enter-opened-safe", false);
+    const scored = scoreMapAction(observe(state), {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: hero.id,
+      to: entry,
+    });
+    expect(scored?.policy).not.toBe("map.enter-first-opened-tile");
   });
 
   it("does not rearm the first-entry boost after walking back home", () => {
@@ -4856,6 +4894,21 @@ describe("route waste — repeated steps and unspent movement", () => {
     expect(primaryMapObjective(state, hero)?.spaceId).toBe(MINE);
 
     const memory = emptyComputerMemory(state.round);
+    // New rule: own tile-Ⅰ payoffs are collected before expanding, in any
+    // round. On this fixture both symbols sit on tile Ⅰ, so BOTH are taken
+    // above END_TURN — including the receding one the pre-rule round-4 premium
+    // hold refused.
+    expect(scoreMove(state, memory, hero, alongside).score).toBeGreaterThan(300);
+    expect(scoreMove(state, memory, hero, away).score).toBeGreaterThan(300);
+
+    // The leftover-movement rule governs a premium target on a LATER tile:
+    // stamp the mine and both symbols onto an off-home tile instance and spend
+    // the fixture's last default tile-Ⅰ leftover (the resource symbol).
+    for (const id of [MINE, alongside, away]) {
+      state.adventure!.fields[id].tileInstanceId = "tile_ghost_later";
+    }
+    state.adventure!.fields[RESOURCE].blackCube = true;
+    expect(primaryMapObjective(state, hero)?.spaceId).toBe(MINE);
     // The free symbol beside the mine costs the route nothing — take it.
     const scooped = scoreMove(state, memory, hero, alongside);
     expect(scooped.score).toBeGreaterThan(300);

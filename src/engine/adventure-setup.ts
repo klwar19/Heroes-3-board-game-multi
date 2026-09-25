@@ -975,7 +975,7 @@ function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptio
     ].filter(isRecruitableNeutralUnit);
     // The decks are shared by the table. Only the explicitly listed physical
     // duplicates get two cards, Enchanters get their three physical cards, and
-    // every other core/expansion, WOG and Doom unit stays at one copy.
+    // every other core/expansion, WOG and Doom neutral-side card stays at one copy.
     decks[deckId] = {
       id: deckId,
       drawPile: shuffleCards(unitIds, `${seed}#neutral#${tier}`),
@@ -3438,6 +3438,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 
   const adventure: AdventureState = {
     difficulty,
+    expansionNeutralDecksInitialized: true,
     scenarioId: scenario.id,
     ...(setupOptions.customMap && setupOptions.customMapId ? { customMapId: setupOptions.customMapId } : {}),
     ...(mapPreset ? { mapPreset } : {}),
@@ -5328,6 +5329,18 @@ function sanitizeResources(value: {
  * starting units and pre-built buildings. Any seated player may adjust them
  * until the adventure starts.
  */
+/**
+ * A mode switch clears the house-rule overrides (soft preset), but the combat
+ * board picked in the Game-mode window (`hex-battlefield`) is a separate
+ * choice, not part of any mode preset: it survives the reset.
+ */
+function boardChoiceOverrides(
+  houseRules: Partial<Record<HouseRuleId, boolean>> | undefined
+): Partial<Record<HouseRuleId, boolean>> | undefined {
+  const board = houseRules?.["hex-battlefield"];
+  return board === undefined ? undefined : { "hex-battlefield": board };
+}
+
 export function setGameOptions(state: GameState, action: Extract<GameAction, { type: "SET_GAME_OPTIONS" }>): void {
   const lobby = state.setupLobby;
   if (!lobby || state.phase !== "setup") {
@@ -5423,7 +5436,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     // every toggle reverts to the new mode's default (all ON in BINH, OFF in
     // Legacy). Players may then re-flip any rule — Legacy does NOT lock them.
     if (next.houseRules === undefined) {
-      lobby.options.houseRules = undefined;
+      lobby.options.houseRules = boardChoiceOverrides(lobby.options.houseRules);
     }
     // Spell Book follows the mode default unless this same action overrides it.
     if (next.spellBook === undefined) {
@@ -5482,7 +5495,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       lobby.options.ruleset = "binh";
       state.ruleset = "binh";
       if (next.houseRules === undefined && next.ruleset === undefined) {
-        lobby.options.houseRules = undefined;
+        lobby.options.houseRules = boardChoiceOverrides(lobby.options.houseRules);
       }
       if (next.spellBook === undefined) {
         lobby.options.spellBook = true;
@@ -5506,7 +5519,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       lobby.options.ruleset = "binh";
       state.ruleset = "binh";
       if (next.houseRules === undefined && next.ruleset === undefined) {
-        lobby.options.houseRules = undefined;
+        lobby.options.houseRules = boardChoiceOverrides(lobby.options.houseRules);
       }
       if (next.spellBook === undefined) {
         lobby.options.spellBook = true;

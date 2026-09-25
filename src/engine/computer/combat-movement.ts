@@ -71,7 +71,15 @@ export function premiumCombatMovementReserve(state: GameState, hero: HeroState, 
   // (TWO_MOVE_GUARD_CAP) needs a full three-point attack turn: one for entry
   // and two paid continuations. At or below the cap one continuation is kept,
   // so a short approach can still lead to an attack that same turn.
-  const reserve = (field.difficulty ?? 0) > twoMoveGuardCap(state, hero.controllerId, field) ? 2 : 1;
+  const gridReserve = (field.difficulty ?? 0) > twoMoveGuardCap(state, hero.controllerId, field) ? 2 : 1;
+  // Hex battlefield: the default Round limit counts after 3 rounds (rounds 1-3
+  // are free), and the armies spend about one round closing the 10 hexes
+  // between them — so the fight a grid turn pays 1 + N rounds for needs one
+  // paid continuation fewer there. A designer's numeric limit keeps its own
+  // count (no hex free rounds apply to it).
+  const reserve = houseRuleEnabled(state, "hex-battlefield") && !designerPaidRounds
+    ? Math.max(0, gridReserve - 1)
+    : gridReserve;
   // ALWAYS capped by a refreshed turn's actual capacity after paying entry: a
   // Secondary Hero (2 MP) or a main hero under the -1 Astrologers movement
   // event can never reach 1 + 2, so an uncapped reserve made every entry score

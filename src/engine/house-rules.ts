@@ -545,6 +545,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "hex-battlefield",
+    label: "Hex Battlefield (Battlefield Expansion)",
+    description:
+      "Every combat is fought on the Battlefield Expansion's 13×9 hex board: units move up to their Initiative in hexes, ranged units suffer the penalty against adjacent targets or at 8+ hexes, random Heroes 3 obstacles of the fight's battlefield block about as much of the field as on the PC (3–6 hexes) outside the deployment zones, and sieges use the printed Walls and Gate. Units may Wait (the Polish Wait rule is always on here), and a neutral fight's default Round limit is counted after 3 rounds instead of 1. Printed distances (\"within N spaces\", Bombardment range, \"moved 2+ spaces\") count hexes literally; Force Field and Fire Wall cover 2 hexes (3 when cast Expert) and a Ladybird Wall 2. Off: the classic 4×5 combat board.",
+    category: "combat",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "multi-demon-summon",
     label: "Pit Lords: multiple Demons",
     description:
@@ -753,6 +762,16 @@ export function houseRuleEnabled(
     return frozen[id]!;
   }
   return houseRuleDefaultFor(state.ruleset ?? "legacy", id);
+}
+
+/**
+ * Whether combat units may Wait: the Polish Wait house rule, and ALWAYS in a
+ * hex battlefield combat (user ruling 2026-09-25 — the PC board has Wait).
+ */
+export function combatWaitEnabled(
+  state: Pick<GameState, "ruleset" | "adventure" | "combat">,
+): boolean {
+  return houseRuleEnabled(state, "polish-wait") || state.combat?.geometry === "hex";
 }
 
 /** The two faction-specific building slots, excluding the four core roles. */

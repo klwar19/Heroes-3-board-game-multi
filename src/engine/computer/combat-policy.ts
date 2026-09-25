@@ -13,10 +13,15 @@ import {
   DEFENDER_FRONTLINE,
 } from "../adventure-reducer";
 import {
+  HEX_BATTLEFIELD_COLUMNS,
+  HEX_BATTLEFIELD_ROWS,
+  combatGeometry,
+  getBattlefieldCoordinates,
   getBattlefieldDistance,
   getOrthogonalNeighbors,
-  isAdjacent,
+  isHexPosition,
 } from "../battlefield";
+import { unitAtCell, unitDistance, unitDistanceAt, unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
 import type { CombatState, CombatUnitState, GameAction, GameState } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
@@ -34,11 +39,11 @@ import {
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
-import { coordinatedReplyDamage } from "./opponent-reply";
+import { canStrikeFromLegalLanding, coordinatedReplyDamage } from "./opponent-reply";
 import { estimatedStrikeDamage, dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
 import { unitSideStrength } from "./army-strength";
-import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations } from "../legal-actions";
+import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations, getUnitMoveRange } from "../legal-actions";
 import { getPermanentCardIds } from "../permanents";
 import { effectiveInitiative } from "../active-effects";
 import { conditionExpectedStrikeDamage, conditionInitiativePrecedes } from "./battlefield-conditions";
@@ -278,6 +283,23 @@ const WAIT_BAIT_SCORE = 555;
 // Board distance at which an enemy that has not yet activated is expected to
 // close onto us on its own activation (1 = already adjacent).
 const WAIT_BAIT_MAX_DISTANCE = 2;
+
+/**
+ * A "this enemy is about to arrive" distance tuned on the 4×5 grid, where a
+ * ground unit moves 3 spaces and `gridSpaces` sits one step inside that. On the
+ * hex battlefield a unit moves its initiative in hexes, so the same margin is
+ * the enemy's own move range less one (never tighter than the grid value).
+ * Grid combats read `gridSpaces` unchanged.
+ */
+function nearThreatDistance(
+  combat: CombatState,
+  enemy: CombatUnitState,
+  gridSpaces: number,
+  state: GameState,
+): number {
+  if (combatGeometry(combat) !== "hex") return gridSpaces;
+  return Math.max(gridSpaces, getUnitMoveRange(enemy, { ...state, activeEffects: state.activeEffects ?? [] }) - 1);
+}
 // A besieger with a living enemy BODY in reach should hit the body, not the
 // masonry (a Wall/Gate deals no damage and takes no activation from the enemy).
 // Below the attack floor (560) and the two "bad attack" scores (545/548), above
@@ -298,7 +320,7 @@ function surroundOpportunityBonus(
   position: number,
 ): number {
   const adjacentEnemies = livingEnemyUnits(combat, playerId).filter((enemy) =>
-    isAdjacent(position, enemy.position),
+    unitsAdjacentAt(combat, unit, position, enemy),
   ).length;
   if (adjacentEnemies < 2) return 0;
 
@@ -340,10 +362,10 @@ function positionalExposurePenalty(
 ): number {
   const enemies = livingEnemyUnits(combat, playerId).filter(
     (enemy) =>
-      enemy.id !== removedEnemyId && isAdjacent(position, enemy.position),
+      enemy.id !== removedEnemyId && unitsAdjacentAt(combat, unit, position, enemy),
   );
   const support = livingFriendlies(combat, playerId).filter(
-    (friend) => friend.id !== unit.id && isAdjacent(position, friend.position),
+    (friend) => friend.id !== unit.id && unitsAdjacentAt(combat, unit, position, friend),
   ).length;
   // Multi-headed attackers deliberately accept one extra adjacent enemy: it is
   // a second target, not merely exposure. A third/fourth body remains danger.
@@ -371,6 +393,8 @@ function provokesRetaliation(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackFromPosition: number,
+  /** The combat, so double-wide footprints count (hex board). */
+  combat?: CombatState | null,
 ): boolean {
   if (defender.retaliatedThisRound) return false;
   if (attacker.abilities?.includes("ignores-retaliation")) return false;
@@ -378,7 +402,7 @@ function provokesRetaliation(
   // strike (adjacent after any move) does. Move-and-attack always lands adjacent.
   if (
     attacker.type === "ranged" &&
-    !isAdjacent(attackFromPosition, defender.position)
+    !unitsAdjacentAt(combat, attacker, attackFromPosition, defender)
   ) {
     return false;
   }
@@ -455,14 +479,14 @@ function enemyStrikeHorizon(
       // Adjacency prefilter keeps the (BFS-backed) move-and-attack check to the
       // few landing/target pairs that could possibly strike.
       if (landings.some((landing) => ours.some((unit) =>
-        isAdjacent(landing, unit.position) && canUnitMoveAndAttack(board, fresh, landing, unit, state)))) {
+        unitsAdjacentAt(board, fresh, landing, unit) && canStrikeFromLegalLanding(board, fresh, landing, unit, activeEffects)))) {
         horizon = 0;
       } else {
         for (const landing of landings) {
           const moved: CombatUnitState = { ...fresh, position: landing };
           const movedBoard: CombatState = { ...board, units: { ...board.units, [enemy.id]: moved } };
           if (getLegalMoveDestinations(movedBoard, moved, state).some((cell) =>
-            ours.some((unit) => isAdjacent(cell, unit.position)))) {
+            ours.some((unit) => unitsAdjacentAt(movedBoard, moved, cell, unit)))) {
             horizon = 1;
             break;
           }
@@ -533,15 +557,15 @@ function retaliationSoakFollowUp(
       return false;
     }
     // A shooter at range draws no retaliation, so nothing is soaked for it.
-    if (ally.type === "ranged" && !isAdjacent(ally.position, defender.position)) return false;
+    if (ally.type === "ranged" && !unitsAdjacent(board, ally, defender)) return false;
     if (estimatedStrikeDamage(defender, ally, defender.position, true) < SOAK_FOLLOW_UP_MIN_RETALIATION) return false;
     if (estimatedStrikeDamage(ally, defender, ally.position) < 2) return false;
     if (canUnitAttack(board, ally, defender, activeEffects)) return true;
     if (ally.type === "ranged") return false;
     return getLegalMoveDestinations(board, ally, state).some((landing) =>
-      isAdjacent(landing, defender.position) &&
+      unitsAdjacentAt(board, ally, landing, defender) &&
       estimatedStrikeDamage(ally, defender, landing) >= 2 &&
-      canUnitMoveAndAttack(board, ally, landing, defender, state));
+      canStrikeFromLegalLanding(board, ally, landing, defender, activeEffects));
   });
 }
 
@@ -692,7 +716,7 @@ function attackScore(
   // 2026-09-15: a no-retaliation attacker always attacks; chipping is never a bad
   // trade when nothing hits back — Hydra Pack in particular wants to be surrounded
   // and swing at everyone, rewarded by surroundOpportunityBonus).
-  const drawsRetaliation = provokesRetaliation(attacker, defender, attackFromPosition);
+  const drawsRetaliation = provokesRetaliation(attacker, defender, attackFromPosition, combat);
   let quality: number;
   if (lethal) {
     // A kill is permanent, so only half of its threat premium follows the reach
@@ -788,7 +812,7 @@ function attackScore(
       defender.retaliatedThisRound &&
       !attacker.abilities?.includes("ignores-retaliation") &&
       (attacker.type !== "ranged" ||
-        isAdjacent(attackFromPosition, defender.position))
+        unitsAdjacentAt(combat, attacker, attackFromPosition, defender))
     ) {
       // A melee target that already counter-attacked is a brief, concrete
       // opening. Make that safe hit matter even when another target is a little
@@ -945,7 +969,7 @@ function attackScore(
           enemy.type === "ranged" &&
           enemy.position >= 0 &&
           enemy.id !== defender.id &&
-          isAdjacent(attackFromPosition, enemy.position),
+          unitsAdjacentAt(combat, attacker, attackFromPosition, enemy),
       );
       return Math.max(
         result,
@@ -985,7 +1009,7 @@ function attackScore(
         enemy.type === "ranged" &&
         enemy.position >= 0 &&
         enemy.id !== defender.id &&
-        isAdjacent(attackFromPosition, enemy.position) &&
+        unitsAdjacentAt(combat, attacker, attackFromPosition, enemy) &&
         !shooterThreatSurvivesJam(enemy),
     )
   ) {
@@ -994,7 +1018,22 @@ function attackScore(
   return result;
 }
 
+/**
+ * Hex battlefield: how many columns `position` stands from its side's own edge
+ * (the attacker deploys on the left edge, column 0; the defender on the right,
+ * column 12). The two-column deployment zone's back line is depth 0 and its
+ * front line depth 1 — the hex reading of the 4×5 back/front deployment rows.
+ */
+function hexDepthFromOwnEdge(combat: CombatState, playerId: string, position: number): number | null {
+  if (!isHexPosition(position)) return null;
+  const { column } = getBattlefieldCoordinates(position);
+  return playerId === combat.attackerPlayerId ? column : HEX_BATTLEFIELD_COLUMNS - 1 - column;
+}
+
 function isBacklineCell(combat: CombatState, playerId: string, position: number): boolean {
+  if (combatGeometry(combat) === "hex") {
+    return hexDepthFromOwnEdge(combat, playerId, position) === 0;
+  }
   if (playerId === combat.attackerPlayerId) {
     return ATTACKER_BACKLINE.includes(position);
   }
@@ -1002,14 +1041,43 @@ function isBacklineCell(combat: CombatState, playerId: string, position: number)
 }
 
 function isFrontlineCell(combat: CombatState, playerId: string, position: number): boolean {
+  if (combatGeometry(combat) === "hex") {
+    return hexDepthFromOwnEdge(combat, playerId, position) === 1;
+  }
   if (playerId === combat.attackerPlayerId) {
     return ATTACKER_FRONTLINE.includes(position);
   }
   return DEFENDER_FRONTLINE.includes(position);
 }
 
+/**
+ * The lane (file) a space sits in: the line running from one army to the
+ * other. On the 4×5 grid that is the engine column (`position % 4`); on the hex
+ * battlefield, where the armies face each other across columns, it is the hex
+ * ROW (0..8).
+ */
 function cellColumn(position: number): number {
+  if (isHexPosition(position)) return getBattlefieldCoordinates(position).row;
   return position % 4;
+}
+
+/** An outermost lane — the board's side edge (grid columns 0/3, hex rows 0/8). */
+function isEdgeLane(position: number): boolean {
+  const lane = cellColumn(position);
+  return isHexPosition(position)
+    ? lane === 0 || lane === HEX_BATTLEFIELD_ROWS - 1
+    : lane === 0 || lane === 3;
+}
+
+/**
+ * A central lane — the inner half of the board's width (grid columns 1/2; hex
+ * rows 2..6, every row but the two outermost on each side).
+ */
+function isCentralLane(position: number): boolean {
+  const lane = cellColumn(position);
+  return isHexPosition(position)
+    ? lane >= 2 && lane <= HEX_BATTLEFIELD_ROWS - 3
+    : lane === 1 || lane === 2;
 }
 
 type UnitRole = "ranged" | "melee" | "flying";
@@ -1042,7 +1110,7 @@ function friendlyLaneChange(combat: CombatState, mover: CombatUnitState, positio
       let damage = canUnitAttack(board, ally, enemy, projectedState.activeEffects)
         ? estimatedStrikeDamage(ally, enemy) : 0;
       for (const destination of destinations) {
-        if (canUnitMoveAndAttack(board, ally, destination, enemy, projectedState)) {
+        if (canStrikeFromLegalLanding(board, ally, destination, enemy, projectedState.activeEffects)) {
           damage = Math.max(damage, estimatedStrikeDamage(ally, enemy, destination));
         }
       }
@@ -1078,6 +1146,9 @@ export function formationFitScore(
   unitDefId?: string,
 ): number {
   let score = 0;
+  // The scored body on `position` (two hexes on the hex board when its card is
+  // double-wide) for footprint adjacency; the grid reads the single space.
+  const candidateBody = { position, controllerId: playerId, unitDefId };
   const front = isFrontlineCell(combat, playerId, position);
   const back = isBacklineCell(combat, playerId, position);
   const self = selfId ? combat.units[selfId] : undefined;
@@ -1097,7 +1168,9 @@ export function formationFitScore(
     // corners first, leaving the square directly in front free for a screen.
     // This outweighs both the generic central-column reach bonus and a screen
     // that happened to be placed centrally before the shooter took its cell.
-    if (back && (cellColumn(position) === 0 || cellColumn(position) === 3)) {
+    // On the hex battlefield the corners are the board's own corner hexes (the
+    // back column of the top/bottom row).
+    if (back && isEdgeLane(position)) {
       score += 25;
     }
   } else if (role === "melee") {
@@ -1118,8 +1191,7 @@ export function formationFitScore(
     if (front && combat.context?.kind !== "player" &&
         (tankTier === "silver" || tankTier === "gold" || tankTier === "azure")) {
       score += 8;
-      const tankCol = cellColumn(position);
-      if (tankCol === 0 || tankCol === 3) score += 12;
+      if (isEdgeLane(position)) score += 12;
     }
   } else {
     // Flyer deployment. In a NEUTRAL fight the guard party routinely fields
@@ -1143,10 +1215,11 @@ export function formationFitScore(
       : (back ? 55 : front ? -45 : 10);
   }
 
-  // Prefer central columns (1,2) for reach / less edge waste. Ranged units get
-  // a larger protected-corner bonus above and therefore still choose corners.
+  // Prefer central columns (1,2) for reach / less edge waste (hex: the inner
+  // rows). Ranged units get a larger protected-corner bonus above and
+  // therefore still choose corners.
   const col = cellColumn(position);
-  score += col === 1 || col === 2 ? 4 : 0;
+  score += isCentralLane(position) ? 4 : 0;
 
   const friends = livingFriendlies(combat, playerId).filter(
     (unit) => unit.id !== selfId,
@@ -1154,8 +1227,9 @@ export function formationFitScore(
   // Castle opening formation (user ruling): Griffins hold the front line and a
   // Halberdier stands on the front line directly ABOVE its Griffin — the cell
   // one row up in the same visual file, which is one lower engine column (`col`
-  // is `position % 4`). Reward that pairing so the two group up front together
-  // while the Marksmen keep the protected back row.
+  // is `position % 4`; on the hex battlefield it is the hex row, so "above" is
+  // the adjacent front-column hex one row up). Reward that pairing so the two
+  // group up front together while the Marksmen keep the protected back row.
   if (castleGriffin && front && friends.some(unit =>
       unit.unitDefId === "castle.halberdiers" && isFrontlineCell(combat, playerId, unit.position) &&
       cellColumn(unit.position) === col - 1)) score += 60;
@@ -1172,7 +1246,8 @@ export function formationFitScore(
     const screened = friends.some(
       (unit) =>
         unitRole(unit) === "melee" &&
-        isAdjacent(unit.position, position) &&
+        // Hex board: nearest hexes of two-hex bodies (grid: isAdjacent).
+        unitsAdjacentAt(combat, candidateBody, position, unit) &&
         isFrontlineCell(combat, playerId, unit.position),
     );
     if (screened) score += 14 + Math.min(10, Math.round(priority / 5));
@@ -1183,7 +1258,7 @@ export function formationFitScore(
     const coversRanged = friends.some(
       (unit) =>
         (unitRole(unit) === "ranged" || unitRole(unit) === "flying") &&
-        isAdjacent(unit.position, position),
+        unitsAdjacentAt(combat, candidateBody, position, unit),
     );
     if (coversRanged) score += 12;
   }
@@ -1235,7 +1310,7 @@ function outputThreatDeploymentRisk(
     if (enemy.position < 0 || enemy.activatedThisRound || isParalyzed(enemy) || !hasOutputAbility(enemy)) continue;
     const reaches = canUnitAttack(projected, enemy, body, activeEffects) ||
       getLegalMoveDestinations(projected, enemy, state).some((destination) =>
-        canUnitMoveAndAttack(projected, enemy, destination, body, state));
+        canStrikeFromLegalLanding(projected, enemy, destination, body, activeEffects));
     if (!reaches) continue;
     const enemyInitiative = effectiveInitiative(enemy, activeEffects, projected);
     const threatActsFirst = conditionInitiativePrecedes(enemyInitiative, bodyInitiative, projected) ||
@@ -1296,7 +1371,8 @@ function placeScore(
       const current = candidate.units[unit.id];
       return sum + placedUnitFit(observation.state as unknown as GameState, candidate, current);
     }, 0);
-    const occupant = allies.find(unit => unit.id !== existing.id && unit.position === action.position);
+    // The unit holding that space — head or a double-wide tail (hex), as the engine reads it.
+    const occupant = unitAtCell(combat, action.position, allies.filter(unit => unit.id !== existing.id));
     const units = { ...combat.units, [existing.id]: { ...existing, position: action.position } };
     if (occupant) units[occupant.id] = { ...occupant, position: existing.position };
     const gain = formationValue({ ...combat, units }) - formationValue(combat);
@@ -1371,8 +1447,11 @@ function neutralPlacementScore(
     (unit) =>
       unit.controllerId === guard.controllerId && unitRemainingHealth(unit) > 0,
   );
-  const occupant = guards.find(
-    (unit) => unit.id !== guard.id && unit.position === action.position,
+  // The guard holding that space — head or a double-wide tail (hex), as the engine reads it.
+  const occupant = unitAtCell(
+    combat,
+    action.position,
+    guards.filter((unit) => unit.id !== guard.id),
   );
 
   const formationScore = (candidate: CombatState): number =>
@@ -1428,6 +1507,50 @@ function swapScore(
   return 905 + Math.min(40, gain);
 }
 
+/** Formation value before a re-sort step, per observed combat object (so two
+ * tables in one process never share it) and keyed by the board's placement. */
+const tacticsSortBaselines = new WeakMap<object, { key: string; value: number }>();
+
+/**
+ * Hex board Tactics re-sort (start-of-combat window on the hex battlefield):
+ * move a unit to another hex of the first four columns only when the WHOLE
+ * formation strictly improves — the same measure the swap uses, so every step
+ * the AI takes raises one bounded score and the window always ends with
+ * FINISH_TACTICS (900). Elsewhere (the Balance Pack's one-space arm) the move
+ * keeps its previous, unscored handling.
+ */
+function tacticsSortMoveScore(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "TACTICS_MOVE_UNIT" }>,
+): number | null {
+  const combat = observation.state.combat;
+  if (!combat || combat.geometry !== "hex" || combat.pendingTacticsSwaps?.[0] !== observation.playerId) {
+    return null;
+  }
+  const unit = combat.units[action.unitId];
+  if (!unit || unit.controllerId !== observation.playerId) return 800;
+  const state = observation.state as unknown as GameState;
+  const formationValue = (candidate: CombatState) => Object.values(candidate.units)
+    .filter(ally => ally.controllerId === observation.playerId && ally.position >= 0)
+    .reduce((sum, ally) => sum + placedUnitFit(state, candidate, ally), 0);
+  // Every offer of one decision shares the same "before"; the key is the whole
+  // board's placement, so a moved unit (or another combat) recomputes it.
+  const key = `${combat.id}|${observation.playerId}|${Object.values(combat.units)
+    .map(other => `${other.id}@${other.position}:${other.damage}`).join(",")}`;
+  let baseline = tacticsSortBaselines.get(combat);
+  if (baseline?.key !== key) {
+    baseline = { key, value: formationValue(combat as CombatState) };
+    tacticsSortBaselines.set(combat, baseline);
+  }
+  const before = baseline.value;
+  const after = formationValue({
+    ...combat,
+    units: { ...combat.units, [unit.id]: { ...unit, position: action.position } },
+  } as CombatState);
+  const gain = after - before;
+  return gain > 0 ? 905 + Math.min(40, gain) : 870;
+}
+
 /**
  * Multi-unit movement: close on enemies, screen friendly ranged, keep ranged
  * out of melee when they already have a shot, and cluster toward focus targets.
@@ -1442,8 +1565,8 @@ function moveUnitScore(
   if (!mover) return null;
 
   if (bronzeArmyNeedsWithdrawal(observation.state as unknown as GameState, observation.playerId, combat)) {
-    const before = distanceToNearestEnemy(combat, mover.controllerId, mover.position) ?? 0;
-    const after = distanceToNearestEnemy(combat, mover.controllerId, action.destination) ?? 0;
+    const before = distanceToNearestEnemy(combat, mover.controllerId, mover.position, mover) ?? 0;
+    const after = distanceToNearestEnemy(combat, mover.controllerId, action.destination, mover) ?? 0;
     const beforeIncoming = coordinatedReplyDamage(combat, mover, mover.position, undefined, observation.state as unknown as GameState);
     const afterIncoming = coordinatedReplyDamage(combat, mover, action.destination, undefined, observation.state as unknown as GameState);
     // A stationary ranged guard can remain the nearest enemy on every safe
@@ -1452,11 +1575,11 @@ function moveUnitScore(
     const melee = livingEnemyUnits(combat, mover.controllerId).filter(enemy =>
       enemy.type !== "ranged" && !enemy.activatedThisRound && enemy.position >= 0);
     const meleeDistance = (position: number) => melee.reduce((sum, enemy) =>
-      sum + getBattlefieldDistance(position, enemy.position), 0);
+      sum + unitDistanceAt(combat, mover, position, enemy), 0);
     const meleeGain = meleeDistance(action.destination) - meleeDistance(mover.position);
     const spacing = (position: number) => livingEnemyUnits(combat, mover.controllerId)
       .filter(enemy => !enemy.activatedThisRound && enemy.position >= 0)
-      .reduce((sum, enemy) => sum + getBattlefieldDistance(position, enemy.position), 0);
+      .reduce((sum, enemy) => sum + unitDistanceAt(combat, mover, position, enemy), 0);
     const spacingGain = spacing(action.destination) - spacing(mover.position);
     // Preserve the formation, not just the active unit. A retreating flyer
     // may need to block a charge lane until the slower shooter can withdraw.
@@ -1489,8 +1612,8 @@ function moveUnitScore(
   // counted its own guards as "enemies" and every distance read was noise).
   const side = mover.controllerId;
 
-  const current = distanceToNearestEnemy(combat, side, mover.position);
-  const next = distanceToNearestEnemy(combat, side, action.destination);
+  const current = distanceToNearestEnemy(combat, side, mover.position, mover);
+  const next = distanceToNearestEnemy(combat, side, action.destination, mover);
   if (current === null || next === null) return null;
 
   const role = unitRole(mover);
@@ -1525,7 +1648,10 @@ function moveUnitScore(
 
   let landingAttack = 0;
   if (!mover.attackedThisActivation && mover.type !== "ranged") {
+    // A non-bombarding strike needs an adjacent landing; skip the engine's
+    // move search for every other enemy (a hex board offers ~100 landings).
     const attacks = livingEnemyUnits(combat, side).filter(enemy=>
+      (mover.bombardment || unitsAdjacentAt(combat, mover, action.destination, enemy)) &&
       canUnitMoveAndAttack(combat, mover, action.destination, enemy, state));
     const canBait = pendingIncomingDamage(combat, side, mover) === 0 && observation.legalActions.some(legal =>
       legal.action.type === "WAIT_UNIT" && legal.action.unitId === mover.id);
@@ -1534,7 +1660,7 @@ function moveUnitScore(
       // When Wait is actually offered, do not spend a safe initiative lead on
       // an even chip trade. A kill, favorable hit or exhausted enemy still goes.
       if (canBait && !enemy.activatedThisRound && damage < unitRemovalHealth(enemy) &&
-          provokesRetaliation(mover, enemy, action.destination) &&
+          provokesRetaliation(mover, enemy, action.destination, combat) &&
           damage <= estimatedStrikeDamage(enemy, mover, enemy.position, true)) return 0;
       return attackScore(combat,side,mover,enemy,action.destination,state);
     }));
@@ -1548,10 +1674,10 @@ function moveUnitScore(
   if (role === "ranged") {
     const enemies = livingEnemyUnits(combat, side);
     const wouldTouch = enemies.some((enemy) =>
-      isAdjacent(action.destination, enemy.position),
+      unitsAdjacentAt(combat, mover, action.destination, enemy),
     );
     const alreadyTouch = enemies.some((enemy) =>
-      isAdjacent(mover.position, enemy.position),
+      unitsAdjacent(combat, mover, enemy),
     );
     if (wouldTouch && !alreadyTouch) {
       score -= 80;
@@ -1579,10 +1705,11 @@ function moveUnitScore(
       // the intended "enemies within 2 of this ally". Distance ≤ 2 already
       // subsumes adjacency (adjacent = distance 1).
       const enemiesNearRanged = livingEnemyUnits(combat, side).filter(
-        (enemy) => getBattlefieldDistance(enemy.position, ranged.position) <= 2,
+        (enemy) => unitDistance(combat, enemy, ranged) <=
+          nearThreatDistance(combat, enemy, 2, state),
       );
       if (enemiesNearRanged.length === 0) continue;
-      if (isAdjacent(action.destination, ranged.position)) {
+      if (unitsAdjacentAt(combat, mover, action.destination, ranged)) {
         score += 25;
       }
       // An occupied orthogonal landing square physically screens a shooter
@@ -1592,7 +1719,9 @@ function moveUnitScore(
       );
       if (
         flyingThreat &&
-        getOrthogonalNeighbors(ranged.position).includes(action.destination)
+        // Hex board: any hex of the mover's landing footprint beside any hex
+        // of the shooter (grid: the orthogonal neighbour test).
+        unitsAdjacentAt(combat, mover, action.destination, ranged)
       ) {
         score += 18;
       }
@@ -1600,8 +1729,8 @@ function moveUnitScore(
       // linear cell-index difference (the board is a 4-wide grid — index diff is
       // not distance and can reward a move that increases real distance).
       for (const threat of enemiesNearRanged) {
-        const before = getBattlefieldDistance(mover.position, threat.position);
-        const after = getBattlefieldDistance(action.destination, threat.position);
+        const before = unitDistance(combat, mover, threat);
+        const after = unitDistanceAt(combat, mover, action.destination, threat);
         if (after < before) score += 8;
       }
     }
@@ -1621,8 +1750,8 @@ function moveUnitScore(
         targetPriority(b) - targetPriority(a) ||
         unitRemainingHealth(a) - unitRemainingHealth(b),
     )[0];
-    const before = getBattlefieldDistance(mover.position, focus.position);
-    const after = getBattlefieldDistance(action.destination, focus.position);
+    const before = unitDistance(combat, mover, focus);
+    const after = unitDistanceAt(combat, mover, action.destination, focus);
     if (after < before) score += FOCUS_MARCH_BONUS;
     if (shooters.length && after < before && !mover.attackedThisActivation) score += 65;
     else if (after > before) score -= FOCUS_MARCH_AWAY_PENALTY;
@@ -1668,6 +1797,7 @@ function moveUnitScore(
             // Only reward MOVING to reach the shooter; a shot available from the
             // current cell is an ATTACK_UNIT and must not be out-bid by a move.
             !canUnitAttack(combat, mover, enemy, state.activeEffects ?? []) &&
+            (mover.bombardment || unitsAdjacentAt(combat, mover, action.destination, enemy)) &&
             canUnitMoveAndAttack(combat, mover, action.destination, enemy, state),
         )
         .map((enemy) =>
@@ -1727,7 +1857,7 @@ function commanderCastScore(
   const playerId = observation.playerId;
   const enemies = livingEnemyUnits(combat, playerId);
   const hasAdjacentEnemy = enemies.some((enemy) =>
-    isAdjacent(unit.position, enemy.position),
+    unitsAdjacent(combat, unit, enemy),
   );
   // A melee commander with no adjacent enemy must still WALK to fight; casting
   // now forfeits that walk. A ranged commander, one already engaged, or one with
@@ -1783,7 +1913,8 @@ function commanderCastScore(
       base = 560;
       break;
     case "enemy-damage": {
-      // Flat effect damage (Forge Arc Discharge 1/2/3, Belfast Royal Salvo): it
+      // Flat effect damage (Forge Arc Discharge's round-scaled Power 2,
+      // Belfast Royal Salvo): it
       // ignores Defense and draws no Retaliation, so a cast that FINISHES a
       // reachable enemy is a real swing; otherwise it is a free chip worth
       // taking over idling. Reads the engine's own candidate list + tier.
@@ -1792,7 +1923,7 @@ function commanderCastScore(
       const damageByPower = cast.effect.damageByPower;
       const targets = commanderCastCandidates(state, unit, cast.abilityId);
       const lethal = targets.some((target) =>
-        unitRemainingHealth(target) <= commanderEnemyDamageAmount(unit, target, damageByPower, tier));
+        unitRemainingHealth(target) <= commanderEnemyDamageAmount(unit, target, damageByPower, tier, state.combat?.round ?? 1));
       const bestThreat = targets.reduce((best, target) => Math.max(best, unitThreatValue(target)), 0);
       base = lethal ? 700 : 590 + Math.min(40, Math.round(bestThreat / 3));
       swing = lethal;
@@ -1877,6 +2008,10 @@ export function scoreCombatAction(
         score: swapScore(observation, action),
         policy: "combat.tactics-swap",
       };
+    case "TACTICS_MOVE_UNIT": {
+      const sortScore = tacticsSortMoveScore(observation, action);
+      return sortScore === null ? null : { score: sortScore, policy: "combat.tactics-sort" };
+    }
     case "FINISH_TACTICS":
       // Finish once no improving swap remains (swaps score 905+ when useful,
       // 870 when not — finish at 900 wins over no-op swaps).
@@ -1926,7 +2061,7 @@ export function scoreCombatAction(
       if (actor && apSkill && apSkill.target === "none") {
         const enemies = livingEnemyUnits(combat, actor.controllerId);
         const engaged = enemies.some((enemy) =>
-          isAdjacent(actor.position, enemy.position),
+          unitsAdjacent(combat, actor, enemy),
         );
         const strands =
           enemies.length > 0 &&
@@ -2030,13 +2165,14 @@ export function scoreCombatAction(
         const canCounterApproach = enemies.some((enemy) =>
           !enemy.activatedThisRound && enemy.type !== "ranged" && !isParalyzed(enemy) &&
           getLegalMoveDestinations(combat, enemy, state).some((destination) => {
-            if (!screens.some((screen) => canUnitMoveAndAttack(combat, enemy, destination, screen, state))) return false;
+            if (!screens.some((screen) =>
+              canStrikeFromLegalLanding(combat, enemy, destination, screen, state.activeEffects ?? []))) return false;
             const moved = { ...enemy, position: destination };
             const board = { ...combat, units: { ...combat.units, [enemy.id]: moved } };
             const projected = { ...state, combat: board };
             return canUnitAttack(board, waiter, moved, state.activeEffects) ||
               getLegalMoveDestinations(board, waiter, projected).some((reply) =>
-                canUnitMoveAndAttack(board, waiter, reply, moved, projected));
+                canStrikeFromLegalLanding(board, waiter, reply, moved, projected.activeEffects ?? []));
           }));
         if (canCounterApproach) return { score: 590, policy: "combat.wait-screen-counter" };
       }
@@ -2054,8 +2190,8 @@ export function scoreCombatAction(
           enemy.type !== "ranged" &&
           !isParalyzed(enemy) &&
           enemy.position >= 0 &&
-          getBattlefieldDistance(waiter.position, enemy.position) <=
-            WAIT_BAIT_MAX_DISTANCE,
+          unitDistance(combat, waiter, enemy) <=
+            nearThreatDistance(combat, enemy, WAIT_BAIT_MAX_DISTANCE, state),
       );
       return baited
         ? { score: WAIT_BAIT_SCORE, policy: "combat.wait-bait" }
@@ -2089,12 +2225,12 @@ export function scoreCombatAction(
         ? coordinatedReplyDamage(combat, defender, defender.position, undefined, observation.state as unknown as GameState)
         : pendingIncomingDamage(combat, defenderSide, defender);
       const adjacentEnemies = livingEnemyUnits(combat, defenderSide).filter(
-        (enemy) => isAdjacent(enemy.position, defender.position),
+        (enemy) => unitsAdjacent(combat, enemy, defender),
       ).length;
       const adjacentSupport = livingFriendlies(combat, defenderSide).filter(
         (friend) =>
           friend.id !== defender.id &&
-          isAdjacent(friend.position, defender.position),
+          unitsAdjacent(combat, friend, defender),
       ).length;
       if (incoming > 0 && adjacentEnemies > adjacentSupport + 1) {
         score += 45 + Math.min(30, (adjacentEnemies - adjacentSupport - 1) * 15);
@@ -2130,7 +2266,7 @@ export function scoreCombatAction(
           livingEnemyUnits(combat, breacher.controllerId).some(
             (enemy) =>
               breacher.type === "ranged" ||
-              isAdjacent(breacher.position, enemy.position),
+              unitsAdjacent(combat, breacher, enemy),
           );
         if (enemyInReach) {
           return { score: -200, policy: "combat.artifact-wall-skip" };
@@ -2158,7 +2294,7 @@ export function scoreCombatAction(
         livingEnemyUnits(combat, breacher.controllerId).some(
           (enemy) =>
             breacher.type === "ranged" ||
-            isAdjacent(breacher.position, enemy.position),
+            unitsAdjacent(combat, breacher, enemy),
         );
       return {
         score: reachableEnemy

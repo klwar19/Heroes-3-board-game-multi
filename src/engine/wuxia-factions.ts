@@ -1,5 +1,5 @@
 import { EQUIPMENT_IDS } from "@/data/anime/equipment";
-import { isAdjacent } from "./battlefield";
+import { unitAdjacentToCell, unitCells } from "./hex-footprint";
 import { playerHasEquipment } from "./anime-equipment";
 import { cultivationRealmOf, type CultivationRealm } from "./anime-cultivation";
 import { appendEvent, nextEventNumber } from "./events";
@@ -84,7 +84,7 @@ function livingAdjacentAllies(
       candidate.id !== unit.id &&
       candidate.controllerId === unit.controllerId &&
       candidate.damage < candidate.maxHealth &&
-      isAdjacent(at, candidate.position)
+      unitAdjacentToCell(combat, candidate, at)
   );
 }
 
@@ -131,7 +131,7 @@ export function gainSectQiAfterMove(
       candidate.damage < candidate.maxHealth
   );
   const formedNewLink = allies.some(
-    (ally) => isAdjacent(to, ally.position) && !isAdjacent(from, ally.position)
+    (ally) => unitAdjacentToCell(combat, ally, to) && !unitAdjacentToCell(combat, ally, from)
   );
   const capacity = sectQiCapacity(state, unit.controllerId);
   if (!formedNewLink || record.sectQiGainedRound === combat.round || (record.sectQi ?? 0) >= capacity) return;
@@ -318,7 +318,7 @@ export function injectSoulBannerShade(
   );
   if (existing) return existing;
   const occupied = new Set(
-    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position)
+    Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth).flatMap((unit) => unitCells(combat, unit))
   );
   const position = preferredCells.find((cell) => !occupied.has(cell));
   if (position === undefined) return null;

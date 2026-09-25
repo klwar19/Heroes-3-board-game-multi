@@ -91,6 +91,7 @@ import {
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  dungeonBlackDragonPackBudget,
   goldPurchaseReachable,
   purchaseLandingRounds,
   hasGoldArmy,
@@ -132,10 +133,11 @@ import {
   homeTileInstanceId,
   objectiveDistanceField,
   needsFarValuablesReveal,
+  homeOpeningSavedForRoundTwo,
+  nearestRevealedFarPayoff,
   premiumEconomyResourceBonus,
   premiumRecruitMarketVisit,
   primaryMapObjective,
-  roundTwoFarOpeningReady,
   seatHoldsFarSupplyTile,
   startTileRotationOpensFarExpansion,
   type MapObjective,
@@ -299,6 +301,21 @@ function buildingScore(
   if (state.combat?.prep && !state.combat.prep.accepted.includes(playerId) &&
       effect?.type !== "UNLOCK_RECRUIT_TIER") {
     return 200;
+  }
+  // Optional buildings may spend only what lies above the Black Dragons Pack
+  // budget, and only once Gold is unlocked (developmentResourceTargets' gate);
+  // before that the normal scoring (City Hall by round 4 etc.) applies.
+  if (development.goldUnlocked && effect?.type !== "UNLOCK_RECRUIT_TIER" && effect?.type !== "UNLOCK_REINFORCE") {
+    const dragonBudget = dungeonBlackDragonPackBudget(state, playerId);
+    const building = coreBuildingDefinitions[buildingId];
+    const resources = state.players[playerId]?.resources;
+    if (dragonBudget && building && resources) {
+      const cost = effectiveTownBuildingCost(state, building);
+      if ((["gold", "buildingMaterials", "valuables"] as const).some((key) =>
+        (resources[key] ?? 0) - (cost[key] ?? 0) < dragonBudget[key])) {
+        return 180;
+      }
+    }
   }
   if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold" &&
       needsPremiumSilverBreakthrough(state, playerId)) return 240;
@@ -757,6 +774,11 @@ function populationScore(
   const player = state.players[observation.playerId];
   const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
+  const dragonBudget = dungeonBlackDragonPackBudget(state, observation.playerId);
+  if (dragonBudget &&
+      action.purchases.some(purchase => purchase.kind === "recruit" &&
+        coreUnitDefinitions[purchase.unitDefId]?.neutral &&
+        coreUnitDefinitions[purchase.unitDefId]?.tier === "gold")) return 180;
   // PvP pre-battle preparation: the fight is NOW, so every saving plan below
   // yields to the largest combat gain this Population token can still buy (a
   // missing Gold body first, else the best Pack upgrade or body). Measured: the
@@ -991,6 +1013,11 @@ function populationScore(
       score = Math.max(score, 900);
     }
   }
+  if (dragonBudget && action.purchases.some(purchase =>
+      purchase.kind === "recruit" && coreUnitDefinitions[purchase.unitDefId]?.neutral) &&
+      (gold - spentGold < dragonBudget.gold ||
+        player.resources.buildingMaterials - spentMaterials < dragonBudget.buildingMaterials ||
+        player.resources.valuables - spentValuables < dragonBudget.valuables)) return 180;
   // Combat gain per weighted resource breaks same-stage ties intelligently.
   const efficiency = totalCostWeight > 0 ? totalGain / totalCostWeight : totalGain;
   score += Math.min(40, Math.round(totalGain * 1.5 + efficiency));
@@ -1195,12 +1222,11 @@ const OBJECTIVE_ENTER_SCORE: Record<MapObjectiveKind, number> = {
   visitable: 810,
   explore: 720,
 };
-// A step LANDING on a home-tile sweep payoff that is not the marched primary
-// this turn (rounds 1-2 opening). Ranked above exploration (720) and END_TURN
+// A step LANDING on a home-tile payoff that is not the marched primary.
+// Ranked above exploration (720) and END_TURN
 // (300) so an offered home object is always taken over opening more map, yet
 // below every real objective ENTER (visitable 810+) so it never re-aims the
-// hero off the fights-first primary ordering that saves the doorway object for
-// round 2. Only the terminal step onto the object earns it (it is not a march
+// hero off the primary ordering. Only the terminal step onto the object earns it (it is not a march
 // distance-field source), so the route direction is unchanged.
 const HOME_SWEEP_PAYOFF_SCORE = 760;
 // A step that shrinks the distance to the sticky primary objective without
@@ -1234,6 +1260,24 @@ const FETCH_ENABLING_GOLD_SCORE = 965;
 // qualifying rotation always wins, per the user rule. See
 // `startTileFarDoorwayScore`.
 const START_TILE_FAR_DOORWAY_SCORE = 240;
+
+/** A live, reachable payoff on this seat's tile Ⅰ takes precedence over new
+ * land, even in round 3+ or after a previous route left the tile. */
+function hasActionableHomeTileObject(state: GameState, hero: HeroState): boolean {
+  return collectMapObjectives(state, hero).some((objective) => {
+    if (!isHomeTileSweepObjective(state, hero, objective)) return false;
+    const field = state.adventure?.fields[objective.spaceId];
+    if (field && isFieldGuarded(field) && !canBeatGuardedField(state, hero, field)) return false;
+    return distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined;
+  });
+}
+
+function hasNearbyRevealedFarPayoff(state: GameState, hero: HeroState, exceptTileId?: string | null): boolean {
+  const objectives = collectMapObjectives(state, hero).filter(objective => !exceptTileId ||
+    state.adventure?.fields[objective.spaceId]?.tileInstanceId !== exceptTileId);
+  const revealed = nearestRevealedFarPayoff(state, hero, objectives);
+  return Boolean(revealed && revealed.distance <= heroMovementMax(state, hero));
+}
 
 function moveScore(
   observation: ComputerObservation,
@@ -1294,11 +1338,9 @@ function moveScore(
       premiumPrimary ? 0 : MARCH_SCOOP_DETOUR_SLACK,
       !premiumPrimary,
     );
-    const openingFar = primary.kind === "explore" && roundTwoFarOpeningReady(state, hero);
+    const homePending = isHomeTileSweepObjective(state, hero, primary);
     for (const objective of scoopable) {
-      if (openingFar && objective.spaceId !== primary.spaceId &&
-          state.adventure?.fields[objective.spaceId]?.tileInstanceId ===
-            homeTileInstanceId(state, observation.playerId)) continue;
+      if (homePending && !isHomeTileSweepObjective(state, hero, objective)) continue;
       if (seen.has(objective.spaceId)) continue;
       seen.add(objective.spaceId);
       marchTargets.push(objective);
@@ -1401,15 +1443,17 @@ function moveScore(
       ? 935 : OBJECTIVE_ENTER_SCORE[arriving.kind];
   }
 
-  // ROUNDS 1-2 HOME SWEEP: a step LANDING on a home-tile payoff that is not the
-  // marched target this turn still collects real value — the two-turn opening
-  // banks every home object, and the fights-first ordering deliberately leaves
-  // the third (often the doorway) for round 2. Rank such an arrival above
+  // HOME SWEEP: a step LANDING on a home-tile payoff that is not the marched
+  // target this turn still collects real value. Rank such an arrival above
   // exploration / END_TURN so an offered home object is never passed over to
   // open more map, but below a real ENTER so it never re-aims the hero off the
   // sticky primary. Kept as a terminal-step bonus (not a march source) so the
   // route direction is untouched. Beatable-guard gate mirrors the block above.
-  if (action.to !== primary?.spaceId && !gateSlipHop && hero.spaceId) {
+  // The opening planner saves one tile-Ⅰ object (beside the Far doorway) for
+  // round two. Landing on it early would spend this turn's movement off that
+  // plan, so it earns no landing bonus until it is the plan's next object.
+  if (action.to !== primary?.spaceId && !gateSlipHop && hero.spaceId &&
+      action.to !== homeOpeningSavedForRoundTwo(state, hero)) {
     const homePayoff = objectives.find(
       (objective) =>
         objective.spaceId === action.to &&
@@ -1630,8 +1674,8 @@ function returnsWithoutGain(
  * within this turn's marching reach, collecting it beats spending movement on
  * opening more tiles ("hit the home-tile objects first"). But when every known
  * payoff is a long trek away, flipping the adjacent face-down tile or dropping
- * a fresh Ⅱ–Ⅲ supply tile is the better tempo play — new land next door beats
- * a multi-turn march to a distant leftover. This is the conversion loop the
+ * a fresh Ⅱ–Ⅲ supply tile is the better tempo play after tile Ⅰ is clear — new
+ * land next door beats a multi-turn march to a distant later-tile leftover. This is the conversion loop the
  * old fixed 830 discovery score lacked: explore -> identify value -> collect
  * it -> develop the army -> expand again.
  */
@@ -2294,7 +2338,8 @@ function eventNeutralUnitUtility(
 ): number {
   // Shared golden-rule pricing (recruit-value.ts): Bronze rule, Gold-ladder
   // fund, gold reserve, body cap; `cost` is the real priced cost when known.
-  return neutralRecruitUtility(state, playerId, unitDefId, { cost });
+  return neutralRecruitUtility(state, playerId, unitDefId,
+    { cost: cost ?? neutralRecruitCost(state, playerId, unitDefId) });
 }
 
 function visitStepsUtility(
@@ -2835,6 +2880,11 @@ function rejectsPaidBronzeSteps(state: GameState, playerId: PlayerId, steps: Rea
     // Gold-ladder fund, the reserve and the body cap — a non-positive worth
     // means "Recruit none" must win (utility alone can never drop below Done).
     if (step.type === "EVENT_NEUTRAL_BUY") return eventNeutralUnitUtility(state, playerId, step.unitDefId) <= 0;
+    if (step.type === "USE_LEGION_RECRUIT_DISCOUNT" &&
+        state.players[playerId]?.factionId === "dungeon" &&
+        coreUnitDefinitions[step.unitDefId]?.tier === "gold" &&
+        state.players[playerId].army.some(unit =>
+          unit.side === "neutral" && coreUnitDefinitions[unit.unitDefId]?.tier === "gold")) return true;
     if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(step.recruit) &&
       eventNeutralUnitUtility(state, playerId, step.recruit!.unitDefId,
         neutralRecruitCost(state, playerId, step.recruit!.unitDefId)) <= 0;
@@ -3246,12 +3296,12 @@ export function scoreMapAction(
       }
       if (
         hero &&
-        collectMapObjectives(state, hero).some((objective) =>
-          isHomeTileOpeningObjective(state, hero, objective) &&
-          distanceFromHeroTo(state, hero, objective.spaceId) !== undefined,
-        )
+        hasActionableHomeTileObject(state, hero)
       ) {
         return { score: 100, policy: "map.finish-home-before-discover" };
+      }
+      if (hero && tile?.group === "far" && hasNearbyRevealedFarPayoff(state, hero)) {
+        return { score: 675, policy: "map.convert-revealed-far-before-discover" };
       }
       if (
         hero?.spaceId &&
@@ -3352,22 +3402,26 @@ export function scoreMapAction(
       }
       if (
         hero &&
-        collectMapObjectives(state, hero).some((objective) =>
-          isHomeTileOpeningObjective(state, hero, objective) &&
-          distanceFromHeroTo(state, hero, objective.spaceId) !== undefined,
-        )
+        hasActionableHomeTileObject(state, hero)
       ) {
         return { score: 100, policy: "map.finish-home-before-place" };
       }
-      const objectives = hero ? collectMapObjectives(state, hero) : [];
       // Spend the opening's held supply by rounds 2–3 so settlement income
       // can be chosen with both Far rewards visible. This is a legal placement
       // only: empty supply and sealed geometry never invent an exploration job.
+      // It is decided BEFORE the revealed-Far conversion demotion below: a
+      // legal placement from where the hero stands walks nowhere, so it is not
+      // the "walk back to open another doorway" that conversion rule forbids,
+      // and deferring the second opening tile cost the round-four Far III.
       if (hero?.kind === "main" && state.round >= 2 && state.round <= 3 &&
           seatHoldsFarSupplyTile(state, observation.playerId) &&
           (state.adventure?.farTilesOpenedByPlayer?.[observation.playerId] ?? 0) < 2) {
         return { score: 945, policy: "map.reveal-opening-far-supply" };
       }
+      if (hero && hasNearbyRevealedFarPayoff(state, hero)) {
+        return { score: 675, policy: "map.convert-revealed-far-before-place" };
+      }
+      const objectives = hero ? collectMapObjectives(state, hero) : [];
       const hasFight = objectives.some(
         (objective) =>
           objective.kind === "guard" ||
@@ -3410,6 +3464,11 @@ export function scoreMapAction(
       }
       const enterHero = state.heroes[action.heroId];
       const enterField = state.adventure?.fields[action.to];
+      const homeObjectPending = Boolean(enterHero && hasActionableHomeTileObject(state, enterHero));
+      // Stepping onto the tile just opened walks TOWARD its payoffs; only a
+      // payoff left on ANOTHER revealed Far tile withholds the entry boosts.
+      const revealedFarPayoffPending = Boolean(enterHero && hasNearbyRevealedFarPayoff(state, enterHero,
+        latestPlacedTileId(state, observation.playerId)));
       const combatReserve = enterHero && enterField
         ? premiumCombatMovementReserve(state, enterHero, enterField) : 0;
       if (enterHero && enterField && isFieldGuarded(enterField) &&
@@ -3421,7 +3480,7 @@ export function scoreMapAction(
         // banks with free continuations and unlimited fights are exempt.
         return { score: 250, policy: "map.save-guard-continuation" };
       }
-      const premium = scorePremiumApproach(state, action, memory);
+      const premium = homeObjectPending ? null : scorePremiumApproach(state, action, memory);
       // The premium commitment clamp (`map.premium-keep-commitment`, 200) stops
       // the hero WANDERING off a committed income route — it must not also bank
       // the leftover movement next to free value. A pickup step that does not
@@ -3443,6 +3502,7 @@ export function scoreMapAction(
               locationDefinitions[destination.location]?.category === "flaggable"))) return premium;
       }
       if (
+        !homeObjectPending && !revealedFarPayoffPending &&
         (state.round ?? 0) <= 3 &&
         enterHero?.spaceId &&
         !visitedThisTurn(memory, action.to) &&
@@ -3464,6 +3524,7 @@ export function scoreMapAction(
         return { score: 930, policy: "map.enter-first-opened-tile" };
       }
       if (
+        !homeObjectPending && !revealedFarPayoffPending &&
         (state.round ?? 0) <= 3 &&
         enterHero?.spaceId &&
         state.adventure?.fields[enterHero.spaceId]?.tileInstanceId ===

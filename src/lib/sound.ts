@@ -248,6 +248,74 @@ export function playUnitSound(
   }
 }
 
+/**
+ * One manifest clip looped for exactly `durationMs`, then faded out: a hex
+ * battlefield walk lasts as long as its route, so its footsteps must too (a
+ * single `repeat`-sized burst would stop mid-walk or run on after arrival).
+ * Random entries loop one member; sequence entries (a teleport's out/in pair)
+ * play once as authored.
+ */
+function playLibrarySoundFor(key: string, volume: number, durationMs: number): void {
+  const entry = soundLibrary[key];
+  if (entry?.random?.length) {
+    playLibrarySoundFor(entry.random[Math.floor(Math.random() * entry.random.length)], volume, durationMs);
+    return;
+  }
+  if (entry?.sequence?.length) {
+    playSequence(entry.sequence, volume, 0, undefined, entry.sequenceDelayMs);
+    return;
+  }
+  const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
+  audio.volume = volume;
+  audio.loop = true;
+  playAudioElement(audio);
+  const fadeMs = Math.min(160, durationMs / 3);
+  window.setTimeout(() => {
+    const started = performance.now();
+    const fade = window.setInterval(() => {
+      const left = 1 - (performance.now() - started) / fadeMs;
+      if (left <= 0) {
+        window.clearInterval(fade);
+        audio.loop = false;
+        audio.pause();
+        return;
+      }
+      audio.volume = volume * left;
+    }, 30);
+  }, Math.max(0, durationMs - fadeMs));
+}
+
+/**
+ * playUnitSound held for `durationMs` (a creature walking the hex battlefield:
+ * its move clip loops for the whole walk). Same keys, layer and silence rules.
+ */
+export function playUnitSoundFor(
+  unitDefId: string | undefined,
+  action: UnitSoundAction,
+  delayMs: number,
+  durationMs: number,
+  variant?: UnitSoundVariant
+): void {
+  if (!unitDefId || typeof window === "undefined") {
+    return;
+  }
+  const key = unitSoundKey(unitDefId, action, variant);
+  const layerKey = unitSoundLayerKey(unitDefId, action);
+  if (!key && !layerKey) {
+    return;
+  }
+  const play = () => {
+    if (muted) return;
+    if (key) playLibrarySoundFor(key, 0.55, durationMs);
+    if (layerKey) playLibrarySoundFor(layerKey, 0.55, durationMs);
+  };
+  if (delayMs > 0) {
+    window.setTimeout(play, delayMs);
+  } else {
+    play();
+  }
+}
+
 type NoiseShape = {
   durationMs: number;
   /** Bandpass sweep, in Hz. */

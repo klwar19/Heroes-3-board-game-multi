@@ -1,7 +1,8 @@
 import { isCreatureBankId } from "./adventure";
 import { isPveEncounterCombat } from "./pve-encounter";
 import { createSeededRandom } from "./random";
-import { NEUTRAL_PLAYER_ID, type CombatBoardArtId, type CombatState, type GameState } from "./state";
+import { HEX_SHIP_BATTLE_OBSTACLES } from "./hex-battlefield";
+import { NEUTRAL_PLAYER_ID, type CombatBoardArtId, type CombatState, type GameState, type HexBattlefieldId } from "./state";
 
 // The predicate itself lives in the leaf `pve-encounter.ts` so the
 // dependency-light `neutral-control.ts` can share it (this module imports
@@ -166,13 +167,63 @@ export function applyCombatBoardArtObstacles(combat: CombatState): void {
   }
 
   const obstacles = new Set(combat.obstacles ?? []);
-  for (const position of SHIP_BATTLE_OBSTACLES) {
+  for (const position of combat.geometry === "hex" ? HEX_SHIP_BATTLE_OBSTACLES : SHIP_BATTLE_OBSTACLES) {
     obstacles.add(position);
   }
   combat.obstacles = [...obstacles].sort((left, right) => left - right);
 }
 
+/**
+ * Hex battlefield: the Heroes 3 battlefields each board art stands for. A siege
+ * uses its own castle backdrop (no entry); an open-field ("classic") fight also
+ * draws from the battlefields of the fighting factions' home terrain.
+ */
+const HEX_BATTLEFIELDS_BY_ART: Readonly<Record<CombatBoardArtId, readonly HexBattlefieldId[]>> = {
+  classic: ["grmt", "grtr", "drdd", "drmt", "drtr", "rgh", "des"],
+  frozen: ["snmt", "sntr"],
+  "hell-necro": ["lava", "ff", "cur", "ef"],
+  "jungle-fortress": ["swmp"],
+  "creature-bank-dungeon": ["sub"],
+  "pve-calamity-classic": ["cur", "ef", "mc"],
+  "pve-calamity-doom": ["ff", "lava"],
+  "castle-siege": ["grmt"],
+  "ship-battle": ["boat"]
+};
+
+const HEX_FACTION_BATTLEFIELDS: Readonly<Record<string, readonly HexBattlefieldId[]>> = {
+  castle: ["grmt", "grtr", "hg"],
+  rampart: ["grtr", "cf", "lp"],
+  tower: ["snmt", "sntr"],
+  inferno: ["lava", "ff"],
+  necropolis: ["cur", "ef"],
+  dungeon: ["sub"],
+  stronghold: ["rgh", "des", "drmt"],
+  fortress: ["swmp"],
+  conflux: ["mc", "mag", "lp"],
+  cove: ["bch"]
+};
+
+export function hexBattlefieldsForBoardArt(boardArtId: CombatBoardArtId): readonly HexBattlefieldId[] {
+  return HEX_BATTLEFIELDS_BY_ART[boardArtId] ?? HEX_BATTLEFIELDS_BY_ART.classic;
+}
+
+function pickHexBattlefield(state: GameState, combat: CombatState): HexBattlefieldId {
+  const boardArtId = combat.boardArtId ?? "classic";
+  const pool = [...hexBattlefieldsForBoardArt(boardArtId)];
+  if (boardArtId === "classic") {
+    for (const faction of combatFactionIds(state, combat)) {
+      for (const battlefield of HEX_FACTION_BATTLEFIELDS[faction] ?? []) {
+        pool.push(battlefield, battlefield);
+      }
+    }
+  }
+  return createSeededRandom(`${state.seed}:${combat.id}:hex-battlefield`).pick(pool);
+}
+
 export function assignCombatBoardArt(state: GameState, combat: CombatState): void {
   combat.boardArtId = pickCombatBoardArtId(state, combat);
+  if (combat.geometry === "hex") {
+    combat.hexBattlefield = pickHexBattlefield(state, combat);
+  }
   applyCombatBoardArtObstacles(combat);
 }

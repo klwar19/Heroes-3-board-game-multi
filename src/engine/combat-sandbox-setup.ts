@@ -32,6 +32,14 @@ import {
 } from "./adventure-setup";
 import { prepareIntegratedCombatDeployment } from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import {
+  hexEquivalentOfGridCell,
+  hexStandardDeploymentZones,
+  HEX_SHIP_BATTLE_OBSTACLES,
+  placeHexObstacleTokens
+} from "./hex-battlefield";
+import { hexBattlefieldsForBoardArt } from "./combat-board-art";
+import { createSeededRandom } from "./random";
 import { initializeBattlefieldCondition } from "./battlefield-conditions";
 import { makeInitialCommanderState } from "./commanders";
 import { shuffleCards } from "./decks";
@@ -87,6 +95,14 @@ const DEFAULT_BOARD_ART_IDS: readonly CombatBoardArtId[] = [
 /** All battlefields a tester may force in the combat sandbox (including specials). */
 export function sandboxBattlefieldChoices(): readonly CombatBoardArtId[] {
   return DEFAULT_BOARD_ART_IDS;
+}
+
+/** The Battle Test arena's default obstacle cells (4×5 board). */
+const DEFAULT_SANDBOX_OBSTACLES: readonly number[] = [8, 11];
+
+/** Same cells, any order. */
+function sameCells(left: readonly number[], right: readonly number[]): boolean {
+  return left.length === right.length && left.every((cell) => right.includes(cell));
 }
 
 function makeSharedDeck(id: string, cardIds: string[], seed: string): DeckState {
@@ -306,7 +322,7 @@ function classicDefaultSetup(): CombatSandboxSetupState {
       }
     },
     boardArtId: "classic",
-    obstacles: [8, 11],
+    obstacles: [...DEFAULT_SANDBOX_OBSTACLES],
     moraleCards: false,
     wog: { ...DEFAULT_WOG_OPTIONS },
     playMode: "binh"
@@ -563,6 +579,9 @@ export function sandboxSetOptions(
   if (opts.battlefieldConditions !== undefined) {
     setup.battlefieldConditions = Boolean(opts.battlefieldConditions);
   }
+  if (opts.hexBattlefield !== undefined) {
+    setup.hexBattlefield = Boolean(opts.hexBattlefield);
+  }
   if (opts.boardArtId !== undefined) {
     if (opts.boardArtId !== "random" && !DEFAULT_BOARD_ART_IDS.includes(opts.boardArtId)) {
       throw new Error(`Unknown battlefield ${opts.boardArtId}.`);
@@ -779,13 +798,28 @@ export function sandboxBeginCombat(
     Object.assign(state.decks, makeMoraleDecks(state.seed));
   }
 
-  const obstacles = new Set<number>(setup.obstacles ?? []);
+  const hex = Boolean(setup.hexBattlefield);
+  // Hex board: each chosen 4×5 obstacle cell lands on its hex equivalent. The
+  // untouched default pair (the 4×5 arena's two rocks) is not a choice: a hex
+  // Battle Test scatters its battlefield's own random obstacles instead.
+  const chosenObstacles = hex && sameCells(setup.obstacles ?? [], DEFAULT_SANDBOX_OBSTACLES)
+    ? []
+    : (setup.obstacles ?? []);
+  const obstacles = new Set<number>(
+    hex
+      ? chosenObstacles.flatMap((cell) => {
+          const position = hexEquivalentOfGridCell(cell);
+          return position === null ? [] : [position];
+        })
+      : (setup.obstacles ?? [])
+  );
   // Ship-battle art always carries the two mast obstacles.
   const boardArtId: CombatBoardArtId =
     setup.boardArtId === "random" ? "classic" : (setup.boardArtId ?? "classic");
   if (boardArtId === "ship-battle") {
-    obstacles.add(9);
-    obstacles.add(10);
+    for (const mast of hex ? HEX_SHIP_BATTLE_OBSTACLES : [9, 10]) {
+      obstacles.add(mast);
+    }
   }
 
   // Empty board + combat-setup: same shape as startPlayerCombat for a PvP fight.
@@ -812,8 +846,19 @@ export function sandboxBeginCombat(
       rollCount: 0
     },
     units: {},
-    obstacles: [...obstacles].sort((a, b) => a - b)
+    obstacles: [...obstacles].sort((a, b) => a - b),
+    ...(hex ? { geometry: "hex" as const } : {})
   };
+  if (hex) {
+    // Hex board: fight on one of this board art's Heroes 3 battlefields; with
+    // no hand-placed obstacles (and not on the ship), that battlefield's own
+    // obstacles are scattered like any other hex fight.
+    state.combat.hexBattlefield = createSeededRandom(`${state.seed}:${state.combat.id}:hex-battlefield`)
+      .pick([...hexBattlefieldsForBoardArt(boardArtId)]);
+    if (obstacles.size === 0 && boardArtId !== "ship-battle") {
+      placeHexObstacleTokens(state.combat, hexStandardDeploymentZones());
+    }
+  }
 
   // Same preparation the two ADVENTURE combat-start paths run
   // (startNeutralEncounter / startPlayerCombat): a seat whose commander is

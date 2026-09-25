@@ -5,9 +5,11 @@ import { factionVeterancy } from "./unit-abilities";
 import { veteranHeal, veteranRandom, veteranDamage, veteranTrigger } from "./faction-veterancy";
 import {
   isAdjacent,
-  BATTLEFIELD_CELL_COUNT,
+  combatGeometry,
   getBattlefieldLabel,
   getBattlefieldDistance,
+  getBattlefieldPositions,
+  hexTranslate,
 } from "./battlefield";
 import type {
   CombatUnitState,
@@ -28,20 +30,60 @@ import { appendEvent, nextEventNumber } from "./events";
 import { applyNeutralDebuff } from "./neutral-veterancy";
 import { availableRunes, spendRunes } from "./runes";
 import { noteUnitDamagedForTokens } from "./tokens";
-import { destroyFortification, defenderOnFortification } from "./siege";
+import {
+  battlefieldTokenCovers,
+  footprintAt,
+  unitAdjacentToCell,
+  unitOccupiesCell,
+  unitsAdjacent,
+  unitTailOffset,
+} from "./hex-footprint";
+import { isHexSeaCell, movableObstacleCells } from "./hex-battlefield";
+import {
+  destroyFortification,
+  defenderOnFortification,
+  fortificationKindAt,
+  intactFortificationPositions,
+  isFortificationPosition,
+} from "./siege";
+
+/** Whether `position` is a space of this combat's board (4×5 or hex). */
+function onCombatBoard(combat: CombatState, position: number): boolean {
+  return getBattlefieldPositions(combatGeometry(combat)).includes(position);
+}
+
+/**
+ * Whether `mover` may land with its head on `position`: a space of this board
+ * with no obstacle, spell token, fortification or other living unit. A
+ * double-wide mover (hex board) needs its whole footprint free, its own hexes
+ * excepted. Grid / one-hex: exactly the single-space test.
+ */
+function elementalLandingFree(combat: CombatState, mover: CombatUnitState, position: number): boolean {
+  const cells = footprintAt(combat, mover, position);
+  if (!cells) return false;
+  const wide = cells.length > 1;
+  if (wide && position === mover.position) return false;
+  return cells.every((cell) =>
+    onCombatBoard(combat, cell) &&
+    !(combat.obstacles ?? []).includes(cell) &&
+    !(combat.battlefieldTokens ?? []).some((t) => battlefieldTokenCovers(t, cell)) &&
+    !isFortificationPosition(combat.siege, cell) &&
+    !Object.values(combat.units).some((t) => alive(t) && (!wide || t.id !== mover.id) && unitOccupiesCell(combat, t, cell))
+  );
+}
 
 type Request = NonNullable<CombatState["elementalChoices"]>[number];
 export function breakCoverTargets(state: GameState, target: CombatUnitState, includeFortifications: boolean): number[] {
   const combat = state.combat;
   if (!combat) return [];
   const siege = combat.siege;
-  const positions = [...(combat.obstacles ?? [])];
+  // A hex ship battle's sea hexes are the water, not cover to break.
+  const positions = [...movableObstacleCells(combat)];
   if (includeFortifications && siege) {
-    positions.push(...siege.walls);
-    if (siege.gatePosition !== null) positions.push(siege.gatePosition);
+    positions.push(...intactFortificationPositions(siege));
   }
-  return [...new Set(positions)].filter(p => isAdjacent(p, target.position) && !(combat.battlefieldTokens ?? []).some(t => t.position === p) &&
-    (includeFortifications ? !siege || !defenderOnFortification(combat, siege, p) : !siege?.walls.includes(p) && siege?.gatePosition !== p));
+  return [...new Set(positions)].filter(p => unitAdjacentToCell(combat, target, p) && !(combat.battlefieldTokens ?? []).some(t => battlefieldTokenCovers(t, p)) &&
+    (includeFortifications ? !siege || !defenderOnFortification(combat, siege, p) : !isFortificationPosition(siege, p)));
 }
 export type ElementalHooks = {
   returnFire?(state: GameState, unit: CombatUnitState, targetId: string, accept: boolean): void;
@@ -233,7 +275,7 @@ export function elementalMovement(
     )
       continue;
     const other = combat.units[link.left === unit.id ? link.right : link.left];
-    if (!other || !alive(other) || isAdjacent(unit.position, other.position))
+    if (!other || !alive(other) || unitsAdjacent(combat, unit, other))
       continue;
     combat.elementalLinks = combat.elementalLinks!.filter((l) => l !== link);
     const source = combat.units[link.source];
@@ -284,7 +326,7 @@ export function elementalAfterAttack(
   if (
     elementalVeterancy(unit, "link") &&
     damage > 0 &&
-    !isAdjacent(unit.position, target.position) &&
+    !unitsAdjacent(state.combat, unit, target) &&
     !unit.elementalVeterancy?.linkUsed &&
     alive(target)
   ) {
@@ -389,18 +431,27 @@ export function openElementalChoice(
       >["elementalChoice"]
     >["picks"] = [];
     const labels: string[] = [];
-    const empty = Array.from(
-      { length: BATTLEFIELD_CELL_COUNT },
-      (_, i) => i,
-    ).filter(
+    const empty = getBattlefieldPositions(combatGeometry(combat)).filter(
       (p) =>
         !(combat.obstacles ?? []).includes(p) &&
-        !(combat.battlefieldTokens ?? []).some((t) => t.position === p) &&
-        !combat.siege?.walls.includes(p) &&
-        combat.siege?.gatePosition !== p &&
-        !Object.values(combat.units).some((t) => alive(t) && t.position === p),
+        !(combat.battlefieldTokens ?? []).some((t) => battlefieldTokenCovers(t, p)) &&
+        !isFortificationPosition(combat.siege, p) &&
+        !Object.values(combat.units).some((t) => alive(t) && unitOccupiesCell(combat, t, p)),
     );
-    if (request.kind === "forge-jump-round") {
+    // Landing heads for a mover: a double-wide one (hex board) may put its head
+    // on a hex its own tail covers now (elementalLandingFree checks the whole
+    // footprint); a one-hex unit / the 4×5 grid keeps the empty spaces.
+    const landingHeads = (mover: CombatUnitState): number[] =>
+      unitTailOffset(combat, mover) !== 0 ? getBattlefieldPositions("hex") : empty;
+    if (request.kind === "forge-grunt-tempo") {
+      if (request.round !== 1 || combat.round !== 1) continue;
+      for (const target of Object.values(combat.units).sort((a, b) =>
+        Number(b.controllerId === unit.controllerId) - Number(a.controllerId === unit.controllerId) || a.id.localeCompare(b.id))) {
+        if (!alive(target) || target.position < 0 || target.id === unit.id || !unitsAdjacent(combat, unit, target)) continue;
+        picks.push({ targetId: target.id });
+        labels.push(`Give ${target.cardName} +2 Initiative this round`);
+      }
+    } else if (request.kind === "forge-jump-round") {
       if (request.round !== combat.round || (request.amount !== -1 && request.amount !== 1)) continue;
       for (const target of Object.values(combat.units)) {
         if (!alive(target) || target.position < 0 || target.id === unit.id) continue;
@@ -419,7 +470,7 @@ export function openElementalChoice(
       if (!target || !alive(target) || isUnitDamageImmune(target) || target.controllerId === unit.controllerId || unit.customVeterancyRounds?.[request.kind] !== undefined) continue;
       if (request.kind === "break-cover") {
         for (const obstacle of breakCoverTargets(state, target, request.abilityId === "ctv-mountain-break")) {
-          const kind = combat.siege?.gatePosition === obstacle ? "gate" : combat.siege?.walls.includes(obstacle) ? "wall" : "obstacle";
+          const kind = fortificationKindAt(combat.siege, obstacle) ?? "obstacle";
           picks.push({ obstacle }); labels.push(`Destroy ${kind} at ${getBattlefieldLabel(obstacle)}; deal 1 damage to ${target.cardName}`);
         }
       } else if (unit.maxHealth - unit.damage >= 2) {
@@ -437,48 +488,48 @@ export function openElementalChoice(
       for (const target of Object.values(combat.units)) if (alive(target)) { picks.push({ targetId: target.id }); labels.push(target.cardName); }
     } else if (request.kind === "engineer-buff") {
       for (const target of Object.values(combat.units)) {
-        if (alive(target) && target.id !== unit.id && target.controllerId === unit.controllerId && isAdjacent(unit.position, target.position)) {
+        if (alive(target) && target.id !== unit.id && target.controllerId === unit.controllerId && unitsAdjacent(combat, unit, target)) {
           picks.push({ targetId: target.id }); labels.push(`${target.cardName}: +1 Attack on its next attack`);
         }
       }
     } else if (request.kind === "move-one") {
       if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
       const maxDistance = request.maxDistance ?? 1;
-      for (const position of empty.filter(p => getBattlefieldDistance(p, unit.position) <= maxDistance)) {
+      for (const position of landingHeads(unit).filter(p => getBattlefieldDistance(p, unit.position) <= maxDistance && elementalLandingFree(combat, unit, p))) {
         picks.push({ position }); labels.push(`Move to ${getBattlefieldLabel(position)}`);
       }
     } else if (request.kind === "move-ally-one") {
       for (const target of Object.values(combat.units)) {
         if (!alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target) || neutralTownDeepRooted(state, target)) continue;
-        if (request.adjacent && !isAdjacent(unit.position, target.position)) continue;
-        if (request.engagedOnly && !Object.values(combat.units).some(e => alive(e) && e.controllerId !== target.controllerId && isAdjacent(e.position, target.position))) continue;
-        for (const position of empty.filter(p => isAdjacent(p, target.position))) {
+        if (request.adjacent && !unitsAdjacent(combat, unit, target)) continue;
+        if (request.engagedOnly && !Object.values(combat.units).some(e => alive(e) && e.controllerId !== target.controllerId && unitsAdjacent(combat, e, target))) continue;
+        for (const position of landingHeads(target).filter(p => isAdjacent(p, target.position) && elementalLandingFree(combat, target, p))) {
           picks.push({ targetId: target.id, position });
           labels.push(`Move ${target.cardName} to ${getBattlefieldLabel(position)}`);
         }
       }
     } else if (request.kind === "return-origin") {
       if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
-      if (request.position !== undefined && empty.includes(request.position)) {
+      if (request.position !== undefined && landingHeads(unit).includes(request.position) && elementalLandingFree(combat, unit, request.position)) {
         picks.push({ position: request.position }); labels.push(`Return to ${getBattlefieldLabel(request.position)}`);
       }
     } else if (request.kind === "heal") {
       for (const target of Object.values(combat.units)) {
         if (!alive(target) || target.damage <= 0 || (request.alliesOnly && target.controllerId !== unit.controllerId)) continue;
-        if (request.adjacent && !isAdjacent(unit.position, target.position)) continue;
-        if (request.adjacentOrSelf && target.id !== unit.id && !isAdjacent(unit.position, target.position)) continue;
+        if (request.adjacent && !unitsAdjacent(combat, unit, target)) continue;
+        if (request.adjacentOrSelf && target.id !== unit.id && !unitsAdjacent(combat, unit, target)) continue;
         picks.push({ targetId: target.id }); labels.push(target.cardName);
       }
     } else if (request.kind === "veteran-teleport") {
       if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
-      for (const position of empty) {
+      for (const position of landingHeads(unit).filter(p => (request.maxDistance === undefined || getBattlefieldDistance(p, unit.position) <= request.maxDistance) && elementalLandingFree(combat, unit, p))) {
         picks.push({ position });
         labels.push(`Teleport to ${getBattlefieldLabel(position)}`);
       }
     } else if (request.kind === "veteran-cleave") {
       const anchor = combat.units[request.targetId!];
       if (anchor) for (const target of Object.values(combat.units)) {
-        if (alive(target) && target.id !== anchor.id && target.id !== unit.id && isAdjacent(anchor.position, target.position)) {
+        if (alive(target) && target.id !== anchor.id && target.id !== unit.id && unitsAdjacent(combat, anchor, target)) {
           picks.push({ targetId: target.id });
           labels.push(target.cardName);
         }
@@ -545,7 +596,7 @@ export function openElementalChoice(
           if (request.alliesOnly && target.controllerId !== unit.controllerId) continue;
           if (
             (request.adjacent || request.kind === "link") &&
-            !isAdjacent(anchor.position, target.position)
+            !unitsAdjacent(combat, anchor, target)
           )
             continue;
           if (request.runeScaling) {
@@ -562,8 +613,33 @@ export function openElementalChoice(
           }
         }
     } else if (request.kind === "debuff-attack") {
-      for (const target of enemies(state, unit)) if ((!request.adjacent || isAdjacent(unit.position, target.position))) {
+      for (const target of enemies(state, unit)) if ((!request.adjacent || unitsAdjacent(combat, unit, target))) {
         picks.push({ targetId: target.id }); labels.push(target.cardName);
+      }
+    } else if (request.kind === "obstacle" && combatGeometry(combat) === "hex") {
+      // Hex: an obstacle token is one piece (as Break Cover / Remove Obstacle
+      // read it) — it moves whole, every hex shifted by the same step, listed
+      // once by its first hex; a loose obstacle hex moves alone.
+      const emptySet = new Set(empty);
+      const listed = new Set<string>();
+      // A ship battle's sea hexes are the water, never a movable obstacle.
+      for (const obstacle of movableObstacleCells(combat)) {
+        const token = combat.hexObstacleTokens?.find((candidate) => candidate.cells.includes(obstacle));
+        if (token) {
+          if (listed.has(token.id)) continue;
+          listed.add(token.id);
+        }
+        const cells = token ? token.cells : [obstacle];
+        for (const position of getBattlefieldPositions("hex")) {
+          if (position === obstacle || (token && hexTranslate(token.anchor, obstacle, position) === null)) continue;
+          const moved = cells.map((cell) => hexTranslate(cell, obstacle, position));
+          if (moved.every((cell) => cell !== null && (emptySet.has(cell) || cells.includes(cell)))) {
+            picks.push({ obstacle, position });
+            labels.push(
+              `Move ${getBattlefieldLabel(obstacle)} obstacle to ${getBattlefieldLabel(position)}`,
+            );
+          }
+        }
       }
     } else if (request.kind === "obstacle") {
       for (const obstacle of combat.obstacles ?? [])
@@ -575,7 +651,7 @@ export function openElementalChoice(
         }
     } else if (request.kind === "nest") {
       for (const position of empty.filter((p) =>
-        isAdjacent(p, unit.position),
+        unitAdjacentToCell(combat, unit, p),
       )) {
         picks.push({ position });
         labels.push(`Nest at ${getBattlefieldLabel(position)}`);
@@ -587,7 +663,7 @@ export function openElementalChoice(
       );
     }
     if (!picks.length) continue;
-    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "forge-jump-round" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
+    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "forge-jump-round" && request.kind !== "forge-grunt-tempo" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
       picks.push({ skip: true });
       labels.push("Skip");
     }
@@ -640,6 +716,15 @@ function executeElementalPick(
   const unit = combat.units[request.unitId];
   const postDetonationRepair = request.abilityId === "factory-automaton-detonation-repair";
   if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst" && request.abilityId !== "forge-vet-cyberbrute-shock")) return;
+  if (request.kind === "forge-grunt-tempo") {
+    const target = combat.units[pick.targetId!];
+    if (request.round !== 1 || combat.round !== 1 || !target || !alive(target) || target.position < 0 || target.id === unit.id || !unitsAdjacent(combat, unit, target)) {
+      throw new Error("Choose a unit adjacent to the Grunt for Tempo Field.");
+    }
+    (unit.townVeterancy ??= {}).forgeTempoRoundOneTargetId = target.id;
+    veteranTrigger(state, unit, request.abilityId, target, `${unit.cardName} and ${target.cardName} gain +2 Initiative in round 1.`);
+    return;
+  }
   if (request.kind === "forge-jump-round") {
     const target = combat.units[pick.targetId!];
     if (request.round !== combat.round || (request.amount !== -1 && request.amount !== 1) || !target || !alive(target) || target.position < 0 || target.id === unit.id ||
@@ -679,6 +764,8 @@ function executeElementalPick(
     nest.damage = nest.maxHealth;
     if (pick.skip || (request.abilityId === "veteran-phoenix-rising-nest-return" &&
       (townBound(state, unit) || neutralTownDeepRooted(state, unit)))) return;
+    // A double-wide owner (hex board) returns only when its whole footprint fits.
+    if (unitTailOffset(combat, unit) !== 0 && !elementalLandingFree(combat, unit, nest.position)) return;
     const from = unit.position;
     unit.position = nest.position;
     const canHeal = request.abilityId !== "veteran-phoenix-rising-nest-return" ||
@@ -705,8 +792,12 @@ function executeElementalPick(
     if (!target || !alive(target) || isUnitDamageImmune(target) || target.controllerId === unit.controllerId || unit.customVeterancyRounds?.[request.kind] !== undefined || !getUnitAbilityDefinitions(unit).some(a => a.id === request.abilityId)) throw new Error("That combat ability is no longer available.");
     if (request.kind === "break-cover") {
       if (pick.obstacle === undefined || !breakCoverTargets(state, target, request.abilityId === "ctv-mountain-break").includes(pick.obstacle)) throw new Error("Choose eligible cover adjacent to the enemy.");
-      if (combat.siege?.walls.includes(pick.obstacle) || combat.siege?.gatePosition === pick.obstacle) destroyFortification(state, unit, combat.siege.gatePosition === pick.obstacle ? "gate" : "wall", pick.obstacle);
-      combat.obstacles = (combat.obstacles ?? []).filter(p => p !== pick.obstacle);
+      const fortKind = fortificationKindAt(combat.siege, pick.obstacle);
+      if (fortKind) destroyFortification(state, unit, fortKind, pick.obstacle);
+      // Hex: an obstacle token is one piece — breaking any hex clears all of it.
+      const hexToken = combat.hexObstacleTokens?.find(token => token.cells.includes(pick.obstacle!));
+      if (hexToken) combat.hexObstacleTokens = combat.hexObstacleTokens!.filter(token => token !== hexToken);
+      combat.obstacles = (combat.obstacles ?? []).filter(p => p !== pick.obstacle && !hexToken?.cells.includes(p));
     } else {
       if (unit.maxHealth - unit.damage < 2) throw new Error("Blood Price requires at least 2 remaining HP.");
       unit.damage += 1;
@@ -754,7 +845,7 @@ function executeElementalPick(
   }
   if (request.kind === "engineer-buff") {
     const target = combat.units[pick.targetId!];
-    if (!target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || !isAdjacent(unit.position, target.position)) {
+    if (!target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || !unitsAdjacent(combat, unit, target)) {
       throw new Error("Choose an adjacent allied unit.");
     }
     target.engineerNextAttackBonus = (target.engineerNextAttackBonus ?? 0) + (request.amount ?? 1);
@@ -763,12 +854,10 @@ function executeElementalPick(
   }
   if (request.kind === "move-one" || request.kind === "return-origin") {
     const position = pick.position!;
-    const blocked = !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT ||
+    const blocked = !onCombatBoard(combat, position) ||
       (request.kind === "move-one" && getBattlefieldDistance(unit.position, position) > (request.maxDistance ?? 1)) ||
       (request.kind === "return-origin" && position !== request.position) ||
-      (combat.obstacles ?? []).includes(position) || (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
-      Boolean(combat.siege?.walls.includes(position)) || combat.siege?.gatePosition === position ||
-      Object.values(combat.units).some(t => alive(t) && t.position === position);
+      !elementalLandingFree(combat, unit, position);
     if (blocked) throw new Error("That movement space is not available.");
     const from = unit.position; unit.position = position;
     veteranTrigger(state, unit, request.abilityId);
@@ -779,12 +868,10 @@ function executeElementalPick(
     const target = combat.units[pick.targetId!];
     const position = pick.position!;
     const blocked = !target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target) || neutralTownDeepRooted(state, target) ||
-      (request.adjacent && !isAdjacent(unit.position, target.position)) ||
-      (request.engagedOnly && !Object.values(combat.units).some(e => alive(e) && e.controllerId !== target.controllerId && isAdjacent(e.position, target.position))) ||
-      !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT || !isAdjacent(target.position, position) ||
-      (combat.obstacles ?? []).includes(position) || (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
-      Boolean(combat.siege?.walls.includes(position)) || combat.siege?.gatePosition === position ||
-      Object.values(combat.units).some(t => alive(t) && t.position === position);
+      (request.adjacent && !unitsAdjacent(combat, unit, target)) ||
+      (request.engagedOnly && !Object.values(combat.units).some(e => alive(e) && e.controllerId !== target.controllerId && unitsAdjacent(combat, e, target))) ||
+      !onCombatBoard(combat, position) || !isAdjacent(target.position, position) ||
+      !elementalLandingFree(combat, target, position);
     if (blocked) throw new Error("Choose an allied unit and an adjacent empty space.");
     const from = target.position; target.position = position;
     veteranTrigger(state, unit, request.abilityId === "ntv-victory-command" ? "ntv-victory-command-move" : request.abilityId, target);
@@ -794,21 +881,20 @@ function executeElementalPick(
   if (request.kind === "heal") {
     const target = combat.units[pick.targetId!];
     if (!target || !alive(target) || target.damage <= 0 || (!postDetonationRepair && target.controllerId !== unit.controllerId) ||
-      (request.adjacent && !isAdjacent(unit.position, target.position)) ||
-      (request.adjacentOrSelf && target.id !== unit.id && !isAdjacent(unit.position, target.position))) throw new Error("Choose a damaged allied unit in range.");
+      (request.adjacent && !unitsAdjacent(combat, unit, target)) ||
+      (request.adjacentOrSelf && target.id !== unit.id && !unitsAdjacent(combat, unit, target))) throw new Error("Choose a damaged allied unit in range.");
     veteranHeal(state, target, request.amount ?? 1, request.abilityId, unit); return;
   }
   if (request.kind === "debuff-attack") {
     const target = combat.units[pick.targetId!];
-    if (!target || !alive(target) || target.controllerId === unit.controllerId || request.adjacent && !isAdjacent(unit.position, target.position)) throw new Error("Choose an eligible enemy.");
+    if (!target || !alive(target) || target.controllerId === unit.controllerId || request.adjacent && !unitsAdjacent(combat, unit, target)) throw new Error("Choose an eligible enemy.");
     applyNeutralDebuff(state, unit, target, request.abilityId, unitAbilities[request.abilityId]?.name ?? "Disoriented", { type: "ATTACK_BONUS", amount: -(request.amount ?? 1) }); return;
   }
   if (request.kind === "veteran-teleport") {
     const position = pick.position!;
-    if (position < 0 || position >= BATTLEFIELD_CELL_COUNT || (combat.obstacles ?? []).includes(position) ||
-        combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position ||
-        (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
-        Object.values(combat.units).some(t => alive(t) && t.position === position)) throw new Error("That teleport space is occupied.");
+    if (!onCombatBoard(combat, position) ||
+        (request.maxDistance !== undefined && getBattlefieldDistance(position, unit.position) > request.maxDistance) ||
+        !elementalLandingFree(combat, unit, position)) throw new Error("That teleport space is occupied.");
     const from = unit.position;
     unit.position = position;
     veteranTrigger(state, unit, request.abilityId);
@@ -818,7 +904,7 @@ function executeElementalPick(
   if (request.kind === "veteran-cleave") {
     const target = combat.units[pick.targetId!];
     const anchor = combat.units[request.targetId!];
-    if (!target || !anchor || !alive(target) || target.id === unit.id || target.id === anchor.id || !isAdjacent(anchor.position, target.position)) throw new Error("Choose a unit adjacent to the attack target.");
+    if (!target || !anchor || !alive(target) || target.id === unit.id || target.id === anchor.id || !unitsAdjacent(combat, anchor, target)) throw new Error("Choose a unit adjacent to the attack target.");
     veteranDamage(state, unit, target, 1, request.abilityId);
     return;
   }
@@ -899,6 +985,26 @@ function executeElementalPick(
       source: unit.id,
       round: combat.round,
     });
+  } else if (request.kind === "obstacle" && isHexSeaCell(combat, pick.obstacle!)) {
+    // The hex ship battle's sea is not an obstacle token (the offer never lists it).
+    throw new Error("The sea cannot be moved.");
+  } else if (
+    request.kind === "obstacle" &&
+    combatGeometry(combat) === "hex" &&
+    combat.hexObstacleTokens?.some((token) => token.cells.includes(pick.obstacle!))
+  ) {
+    // Hex: the whole obstacle token moves (the offer only lists fitting shifts).
+    const tokens = combat.hexObstacleTokens ?? [];
+    const token = tokens.find((candidate) => candidate.cells.includes(pick.obstacle!))!;
+    const shift = (cell: number): number => hexTranslate(cell, pick.obstacle!, pick.position!) ?? cell;
+    const cells = token.cells.map(shift).sort((a, b) => a - b);
+    combat.obstacles = [
+      ...(combat.obstacles ?? []).filter((p) => !token.cells.includes(p)),
+      ...cells,
+    ].sort((a, b) => a - b);
+    combat.hexObstacleTokens = tokens.map((candidate) =>
+      candidate === token ? { ...candidate, cells, anchor: shift(candidate.anchor) } : candidate,
+    );
   } else if (request.kind === "obstacle") {
     combat.obstacles = (combat.obstacles ?? []).map((p) =>
       p === pick.obstacle ? pick.position! : p,
@@ -990,7 +1096,7 @@ export function elementalAttackBonus(
   if (retaliation) return bonus;
   if (
     elementalVeterancy(attacker, "distant-attack") &&
-    !isAdjacent(attacker.position, defender.position)
+    !unitsAdjacent(state.combat, attacker, defender)
   )
     bonus++;
   if (

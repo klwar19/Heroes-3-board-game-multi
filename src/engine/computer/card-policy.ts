@@ -5,11 +5,20 @@ import { cardLibrary } from "@/data/cards/library";
 import { unitAbilities } from "@/data/units/abilities";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  combatGeometry,
   getBattlefieldCoordinates,
-  getBattlefieldDistance,
+  getHexRowPositions,
   getOrthogonalNeighbors,
-  isAdjacent,
+  isHexPosition,
 } from "../battlefield";
+import {
+  areaAround,
+  unitAdjacentToCell,
+  unitAtCell,
+  unitDistance,
+  unitInCells,
+  unitOccupiesCell,
+} from "../hex-footprint";
 import { cancelSpellAllowsSchoolAndLevel, deathRippleReachesUnit, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
@@ -17,7 +26,7 @@ import { dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
 import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
 import { balanceCardLibrary } from "../community-balance-cards";
-import { resolvedSpellPowerForStackItem, standingSpellPower } from "../legal-actions";
+import { getUnitMoveRange, resolvedSpellPowerForStackItem, standingSpellPower, wallPlacementCells } from "../legal-actions";
 import { baseCardId, isPhantomCardId } from "../phantom-cards";
 import { chainLightningValue } from "./chain-planning";
 import { NEUTRAL_PLAYER_ID } from "../state";
@@ -536,6 +545,12 @@ function areaDamageUnits(
   if (center === undefined) return null;
 
   if (effect.type === "DAMAGE_BATTLEFIELD_LINE") {
+    // Hex battlefield: "the line" is the target's hex ROW (the line running
+    // from one army's edge to the other, like a 4×5 column).
+    if (isHexPosition(center)) {
+      const line = new Set(getHexRowPositions(getBattlefieldCoordinates(center).row));
+      return living.filter((unit) => line.has(unit.position));
+    }
     const column = getBattlefieldCoordinates(center).column;
     return living.filter(
       (unit) => getBattlefieldCoordinates(unit.position).column === column,
@@ -547,18 +562,26 @@ function areaDamageUnits(
     effect.type === "INFERNO" ||
     effect.type === "METEOR_SHOWER_SPELL"
   ) {
-    const positions = new Set([
-      ...(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false ? [] : [center]),
-      ...getOrthogonalNeighbors(center),
-    ]);
+    // A unit centre is ringed as a whole (double-wide on the hex board), like
+    // the engine; Inferno / Meteor Shower keep their fixed space area.
+    const centreBody = target.type === "unit"
+      ? combat.units[target.unitId]
+      : effect.type === "INFERNO" || effect.type === "METEOR_SHOWER_SPELL"
+        ? undefined
+        : unitAtCell(combat, center, living);
+    const positions = areaAround(
+      combat,
+      centreBody ?? center,
+      !(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false),
+    );
     // Zeestral VI spares friendly neighbours (the engine filters on the caster).
     const enemiesOnly =
       effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.adjacentEnemiesOnly === true;
     return living.filter(
       (unit) =>
-        positions.has(unit.position) &&
+        unitInCells(combat, unit, positions) &&
         (!enemiesOnly ||
-          unit.position === center ||
+          unitOccupiesCell(combat, unit, center) ||
           unit.controllerId !== observation.playerId),
     );
   }
@@ -569,9 +592,10 @@ function areaDamageUnits(
     // enemies first (highest threat), then the least valuable ally if forced.
     // An "at least N, then may stop" pick (Zeestral IV / VI) is only forced up
     // to N: past that the caster stops rather than hit its own unit.
-    const adjacent = new Set(getOrthogonalNeighbors(center));
+    const centreBody = target.type === "unit" ? combat.units[target.unitId] : unitAtCell(combat, center, living);
+    const adjacent = areaAround(combat, centreBody ?? center, false);
     const ordered = living
-      .filter((unit) => adjacent.has(unit.position) && unit.position !== center)
+      .filter((unit) => unitInCells(combat, unit, adjacent) && !unitOccupiesCell(combat, unit, center) && unit !== centreBody)
       .sort((a, b) => {
         const aOwn = a.controllerId === observation.playerId ? 1 : 0;
         const bOwn = b.controllerId === observation.playerId ? 1 : 0;
@@ -587,7 +611,7 @@ function areaDamageUnits(
       Math.min(effect.adjacentPicks, Math.max(forced, enemyCount)),
     );
     if (effect.includeCenter) {
-      const centerUnit = living.find((unit) => unit.position === center);
+      const centerUnit = living.find((unit) => unitOccupiesCell(combat, unit, center));
       if (centerUnit) picked.push(centerUnit);
     }
     return picked;
@@ -661,7 +685,7 @@ function scoreDamageEffect(
       const remaining = unitRemainingHealth(unit);
       const threat = unitThreatValue(unit);
       const lethal =
-        (unit.position === centrePosition ? centreDamage : damage) >= remaining;
+        (centrePosition !== undefined && unitOccupiesCell(observation.state.combat, unit, centrePosition) ? centreDamage : damage) >= remaining;
       if (unit.controllerId === observation.playerId) {
         // User ruling (2026-09-15): an AoE damage spell (Fireball / Frost Ring /
         // Meteor Shower) must AVOID catching our OWN gold lvl-7 bodies — never hit
@@ -846,6 +870,18 @@ export function knowledgeExtraCastUseful(observation: ComputerObservation): bool
 const MELEE_REACH_HORIZON = 5;
 
 /**
+ * MELEE_REACH_HORIZON for this combat: the grid constant is two 3-space ground
+ * moves ending adjacent (3 + 3 − 1). On the hex battlefield a unit moves its
+ * initiative in hexes, so the same two activations span twice its own move
+ * range less one.
+ */
+function meleeReachHorizon(observation: ComputerObservation, enemy: CombatUnitState): number {
+  if (combatGeometry(observation.state.combat) !== "hex") return MELEE_REACH_HORIZON;
+  const state = observation.state as unknown as GameState;
+  return 2 * getUnitMoveRange(enemy, { ...state, activeEffects: state.activeEffects ?? [] }) - 1;
+}
+
+/**
  * "Calculate ahead": is a gold/azure ally genuinely threatened over the rest of
  * THIS combat, for the purpose of deciding whether to hoard a scarce Defense card
  * for it? (User ruling 2026-09-18 — don't just look at one unit; weigh reach,
@@ -876,7 +912,7 @@ function goldAllyThreatened(
     const reaches =
       enemy.type === "ranged" ||
       enemy.type === "flying" ||
-      getBattlefieldDistance(enemy.position, gold.position) <= MELEE_REACH_HORIZON;
+      unitDistance(combat, enemy, gold) <= meleeReachHorizon(observation, enemy);
     if (!reaches) continue;
     if (damage * 3 >= goldHealth) return true; // one meaningful hit is enough to hoard for
     aggregate += damage;
@@ -1619,13 +1655,17 @@ function scoreEffect(
     if (effect.type === "PLACE_ARTIFACT_WALL") {
       const combat = state.combat;
       if (!combat || target?.type !== "space") return 150;
+      const wallCells = wallPlacementCells(combat, "artifact_wall", target.position) ?? [target.position];
       const alive = (unit: { damage: number; maxHealth: number }) => unit.damage < unit.maxHealth;
       const shielded = Object.values(combat.units).some(
         (unit) =>
           unit.controllerId === observation.playerId &&
           unit.type === "ranged" &&
           alive(unit) &&
-          isAdjacent(unit.position, target.position),
+          // Hex board: the Wall lands on the same two-hex run the offer
+          // checked; a shooter beside ANY of its hexes is shielded (grid: the
+          // one space).
+          wallCells.some((cell) => unitAdjacentToCell(combat, unit, cell)),
       );
       const enemyMelee = Object.values(combat.units).some(
         (unit) => unit.controllerId !== observation.playerId && unit.type === "ground" && alive(unit),
@@ -2004,7 +2044,7 @@ function pendingSpellBoostImpact(
     const blast = new Set([target.position, ...getOrthogonalNeighbors(target.position)]);
     if (!Object.values(combat.units).some((unit) =>
       unit.controllerId !== observation.playerId &&
-      unitRemainingHealth(unit) > 0 && blast.has(unit.position))) return "no-ladder-step";
+      unitRemainingHealth(unit) > 0 && unitInCells(combat, unit, blast))) return "no-ladder-step";
     const power = resolvedSpellPowerForStackItem(publicState, top, cards);
     if (power >= 4) return "no-ladder-step";
     const nextRung = power < 2 ? 2 : 4;

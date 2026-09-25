@@ -60,6 +60,7 @@ import {
   currentArmyCoversGuardField,
   armyTierCoversGuardField,
   canBeatCreatureBank,
+  creatureBankMatchupRatio,
   isPremiumEconomyField,
   playerArmyStrength,
   premiumEconomyWorthStaging,
@@ -631,16 +632,13 @@ function canBeatGuardedFieldUncached(
     (state.players[hero.controllerId]?.army.filter(
       (unit) => unit.side !== "bank",
     ).length ?? 0) >= 3;
-  // Home-tile difficulty-1/2 guards (the income mine + treasure) stay engageable
-  // while the hero is still on tile Ⅰ — drain all three opening items before
-  // any establish-core / bronze-rush refusal can abandon them.
+  // Own tile-Ⅰ difficulty-1/2 guards remain opening work even if an older
+  // route already led the hero away. Returning to finish them must not turn
+  // off the same fight allowance that applied before departure.
   const homeTileId = homeTileInstanceId(state, hero.controllerId);
-  const heroOnHome =
-    Boolean(homeTileId) &&
-    hero.spaceId != null &&
-    state.adventure?.fields[hero.spaceId]?.tileInstanceId === homeTileId;
   const homeOpeningGuard =
-    heroOnHome &&
+    hero.kind === "main" &&
+    Boolean(homeTileId) &&
     field.tileInstanceId === homeTileId &&
     fieldDifficulty > 0 &&
     fieldDifficulty <= HOME_TILE_SWEEP_MAX_DIFFICULTY;
@@ -697,6 +695,14 @@ function canBeatGuardedFieldUncached(
     if (fieldDifficulty >= 3 && otherFarIncome && !silver) return false;
   }
   if (repeatsFailedFight(state, hero.controllerId, field.spaceId)) return false;
+  // A bank has a known public defender card and never Quick Combats. If the
+  // deployed army has a clear margin, take its reward instead of applying the
+  // generic neutral's tier/bronze-rush refusal to a fight we can assess.
+  // Marginal bank fights still pass through all the ordinary preparation gates.
+  if (hero.kind === "main" && field.location === "creature_bank" &&
+      creatureBankMatchupRatio(state, hero.controllerId, field) >= 1.2) {
+    return humanNeutralFormationReady;
+  }
   // An opening full Bronze core can earn income/XP from ordinary level II
   // guards instead of waiting exclusively for the much harder Far III.
   if (hero.kind === "main" && fieldDifficulty === 2 &&
@@ -742,6 +748,7 @@ function canBeatGuardedFieldUncached(
   const bronzeCoreCannotMatchGuard =
     hero.kind === "main" &&
     !field.flagOwnerId &&
+    !homeOpeningGuard &&
     fieldDifficulty >= 2 &&
     heroBattleLevel <= fieldDifficulty &&
     rushProfile.bronzePacks >= rushProfile.corePackTarget &&
@@ -1531,22 +1538,22 @@ const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
 ]);
 
 /**
- * HOME-TILE SWEEP (a strong human's tempo). While the hero still stands on its
- * OWN starting tile (tile Ⅰ), local payoffs — the free resource symbol, the
- * guarded (difficulty 1) treasure, and the guarded (difficulty 1) income mine
- * — drive the first-round route. After two are collected, round 2 can instead
- * open a reachable Ⅱ–Ⅲ tile from either open corner. Measurement of the
- * stock policy showed the fresh hero grabbing only the unguarded symbol and
- * abandoning the mine + treasure; conquest bronze-rush victory values also used
- * to outrank home payoffs and yank the hero away mid-sweep.
+ * HOME-TILE SWEEP. The own starting tile (tile Ⅰ) contains local payoffs:
+ * the free resource symbol, guarded treasure, and guarded income mine. These
+ * must be collected before expanding. This commitment persists across
+ * rounds and after departure, so an older save with leftovers returns for them
+ * — but never from Far land: the opening (round 1 two objects, round 2 the
+ * third plus the first Far tile, Far III by round 4) finishes tile Ⅰ before the
+ * hero reaches a Far tile, and a return trip from there would only cost the Far
+ * timeline. On a Far tile, or once the seat already holds Far income (the
+ * expansion the commitment precedes has happened), the leftovers are ordinary
+ * objectives.
  *
- * Levers (scoped to the home tile while the hero is still on it):
+ * Levers (scoped to objectives on the own starting tile):
  *  1. the not-ready guard penalty is LIFTED for a level-coverable difficulty-1/2
  *     guard on the home tile (opening play, not a fair fight to postpone),
- *  2. a decisive sweep bonus keeps home payoffs above off-tile prizes until
- *     the round-2 Far opening is ready, and
- *  3. `primaryMapObjective` restricts the pool to home payoffs during that sweep.
- * The bonuses switch off when the hero leaves the tile.
+ *  2. a decisive sweep bonus keeps home payoffs above off-tile prizes, and
+ *  3. `primaryMapObjective` restricts the pool to actionable home payoffs.
  */
 const HOME_TILE_SWEEP_MAX_DIFFICULTY = 2;
 const HOME_TILE_SWEEP_BONUS = 320;
@@ -1556,41 +1563,18 @@ const HOME_OPENING_LOCATIONS: ReadonlySet<string> = new Set([
   "treasure_symbol",
 ]);
 
-/** After two tile-I rewards, spend round 2 reaching an actual Far doorway. */
-export function roundTwoFarOpeningReady(state: GameState, hero: HeroState): boolean {
-  return mapScoringCached(state, `round-two-far|${heroCacheKey(hero)}`, () =>
-    roundTwoFarOpeningReadyUncached(state, hero));
-}
-
-function roundTwoFarOpeningReadyUncached(state: GameState, hero: HeroState): boolean {
-  if (state.round !== 2 || hero.kind !== "main" || !hero.spaceId) return false;
-  const adventure = state.adventure;
-  if (!adventure) return false;
-  const homeTile = homeTileInstanceId(state, hero.controllerId);
-  if (!homeTile || adventure.fields[hero.spaceId]?.tileInstanceId !== homeTile) return false;
-  // A Necropolis hero still looking for Necromancy may need the Amplifier's
-  // next search and a home fight before leaving the starting tile.
-  if (state.players[hero.controllerId]?.factionId === "necropolis" &&
-      !hasNecromancyPlan(state, hero.controllerId)) return false;
-  const sites = Object.values(adventure.fields).filter(field =>
-    field.tileInstanceId === homeTile && HOME_OPENING_LOCATIONS.has(field.location));
-  if (sites.length !== 3 || sites.filter(field => objectiveKind(state, hero, field) !== null).length !== 1) {
-    return false;
-  }
-  return collectExploreObjectives(state, hero).some(objective =>
-    objective.opensFarTile &&
-    adventure.fields[objective.spaceId]?.tileInstanceId === homeTile &&
-    distanceFromHeroTo(state, hero, objective.spaceId) !== undefined);
-}
-
 /** The tile instance carrying this player's own faction town, if any. */
 export function homeTileInstanceId(
   state: GameState,
   playerId: string,
 ): string | null {
   for (const field of Object.values(state.adventure?.fields ?? {})) {
+    // A town captured on a KNOWN non-starting tile is not tile Ⅰ. A field
+    // whose tile record is absent keeps the pre-group-check reading.
+    const group = state.adventure?.tiles[field.tileInstanceId ?? ""]?.group;
     if (
       locationDefinitions[field.location]?.category === "town" &&
+      (group === undefined || group === "starting") &&
       field.flagOwnerId === playerId
     ) {
       return field.tileInstanceId ?? null;
@@ -1600,10 +1584,8 @@ export function homeTileInstanceId(
 }
 
 /**
- * Whether this objective qualifies for the home-tile sweep: a sweepable payoff
- * on the hero's OWN starting tile, while the hero still stands on that tile.
- * Round 2 releases the sweep after two rewards when an open Far doorway is
- * reachable. Returning home later must not restart the opening.
+ * Whether this objective is an unclaimed payoff on the hero's own starting
+ * tile. Its priority persists until the payoff is actually resolved.
  * Pure public-state reads (town flag, tile ids) — never touches the
  * guaranteed-win house rule.
  */
@@ -1613,18 +1595,25 @@ export function isHomeTileSweepObjective(
   objective: MapObjective,
   field: MapFieldState | undefined = state.adventure?.fields[objective.spaceId],
 ): boolean {
-  if (state.round > 2) return false;
+  if (hero.kind !== "main") return false;
   if (!SWEEPABLE_KINDS.has(objective.kind)) return false;
-  if (roundTwoFarOpeningReady(state, hero)) return false;
+  if (objective.kind === "enemy-hero") return false;
+  // Never pulled back from Far land for a leftover (see HOME-TILE SWEEP).
+  const heroTileId = hero.spaceId ? state.adventure?.fields[hero.spaceId]?.tileInstanceId : undefined;
+  if (heroTileId && state.adventure?.tiles[heroTileId]?.group === "far") return false;
+  if (mapScoringCached(state, `far-economy|${hero.controllerId}`,
+    () => hasOpenedFarEconomy(state, hero.controllerId))) return false;
+  // Revisitable shops do not become permanent mandatory pickups.
+  if (objective.kind === "visitable" && field &&
+      (isMarketLocation(field.location) ||
+        field.location === "anime.ren_binh_cac" ||
+        field.location === "anime.adventurer_outfitter")) return false;
   const homeTile = homeTileInstanceId(state, hero.controllerId);
   if (!homeTile) return false;
-  const heroTile = hero.spaceId
-    ? state.adventure?.fields[hero.spaceId]?.tileInstanceId
-    : undefined;
-  return heroTile === homeTile && field?.tileInstanceId === homeTile;
+  return field?.tileInstanceId === homeTile;
 }
 
-/** The three stock tile-I objects governed by the two-turn opening route. */
+/** The three stock tile-I objects that use the traditional opening order. */
 export function isHomeTileOpeningObjective(
   state: GameState,
   hero: HeroState,
@@ -1766,6 +1755,7 @@ export function objectiveStrategicValue(
       const difficulty = field?.difficulty ?? 0;
       const battleLevel = neutralBattleLevel(state, hero);
       const guaranteedQuickWin =
+        field?.location !== "creature_bank" &&
         difficulty > 0 && battleLevel > difficulty;
       // Home-tile opening sweep lifts the not-ready penalty for a level-
       // coverable difficulty-1/2 guard (the income mine / the guarded treasure
@@ -1836,9 +1826,17 @@ export function objectiveStrategicValue(
       // Secondary heroes receive no combat Experience. Keep a useful premium-
       // army cleanup possible, but rank that real fight below a free pickup.
       if (hero.kind === "secondary" && !guaranteedQuickWin) value -= 140;
-      // Experience discipline: while a hostile main hero out-levels ours, a
-      // bank (no experience) ranks below an experience-paying guard field of
-      // the same readiness. No level deficit ⇒ unchanged (see the constant).
+      // Favor a bank whose visible defenders the deployed army exceeds by a
+      // comfortable margin. Its gold, valuables, artifacts or recruited unit
+      // can fund the next power spike; a marginal bank gets no such promotion.
+      if (hero.kind === "main" && field?.location === "creature_bank" &&
+          creatureBankMatchupRatio(state, hero.controllerId, field) >= 1.2) {
+        const unitReward = field.bankId === "dragon_fly_hive" ||
+          field.bankId === "griffin_conservatory";
+        value = Math.max(value, unitReward ? 875 : 840);
+      }
+      // Banks give no experience. Preserve the existing XP catch-up preference
+      // after the reward bonus, so it still matters when an enemy outlevels us.
       if (
         hero.kind === "main" &&
         field?.location === "creature_bank" &&
@@ -1952,12 +1950,10 @@ export function objectiveStrategicValue(
     const heroTile = hero.spaceId
       ? state.adventure?.fields[hero.spaceId]?.tileInstanceId
       : undefined;
-    if (heroTile && field?.tileInstanceId === heroTile) {
-      // Own starting tile in the opening rounds: a decisive bonus keeps every
-      // local payoff above anything off the tile until it is drained. Any other
-      // tile keeps the ordinary same-tile sweep nudge.
-      value += homeSweep ? HOME_TILE_SWEEP_BONUS : SAME_TILE_SWEEP_BONUS;
-    }
+    // The home commitment survives a previous departure. Other tiles retain
+    // only the small local routing nudge.
+    if (homeSweep) value += HOME_TILE_SWEEP_BONUS;
+    else if (heroTile && field?.tileInstanceId === heroTile) value += SAME_TILE_SWEEP_BONUS;
   }
   // Co-op invaders press the human alliance once the army reads ready —
   // a human hero / enemy town then outranks another neutral pickup.
@@ -2051,6 +2047,34 @@ export function freeSeizuresWithinReach(
     const distance = distanceFromHeroTo(state, hero, objective.spaceId);
     return distance !== undefined && distance <= mp;
   });
+}
+
+/** Known, collectible work on an already revealed Ⅱ–Ⅲ tile. A face-down
+ * doorway and an unbeatable guard are not work that can be converted now. */
+export function nearestRevealedFarPayoff(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective>,
+): { objective: MapObjective; distance: number } | null {
+  let nearest: { objective: MapObjective; distance: number } | null = null;
+  for (const objective of objectives) {
+    if (objective.kind !== "guard" && !isFreeSeizeObjective(objective, state)) continue;
+    const field = state.adventure?.fields[objective.spaceId];
+    const tile = field?.tileInstanceId && state.adventure?.tiles[field.tileInstanceId];
+    if (!field || !tile || tile.group !== "far" || tile.faceDown || tile.awaitingRotation) continue;
+    if (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field)) continue;
+    // The special convert-before-reveal route is for easy banks. A marginal
+    // bank still competes under ordinary objective scoring and safety gates.
+    if (field.location === "creature_bank" &&
+        creatureBankMatchupRatio(state, hero.controllerId, field) < 1.2) continue;
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId, true);
+    if (distance === undefined) continue;
+    if (!nearest || distance < nearest.distance ||
+        (distance === nearest.distance && objective.spaceId.localeCompare(nearest.objective.spaceId) < 0)) {
+      nearest = { objective, distance };
+    }
+  }
+  return nearest;
 }
 
 /** Extra steps a march may spend to scoop a free pickup beside its route. */
@@ -2579,8 +2603,44 @@ function bestHomeOpeningObjective(
   hero: HeroState,
   remaining: ReadonlyArray<MapObjective>,
 ): MapObjective | null {
+  return bestHomeOpeningPlan(state, hero, remaining)?.order[0] ?? null;
+}
+
+/** The chosen opening order and how many of its objects this turn banks. */
+function bestHomeOpeningPlan(
+  state: GameState,
+  hero: HeroState,
+  remaining: ReadonlyArray<MapObjective>,
+): { order: MapObjective[]; banked: number } | null {
   if (remaining.length < 2 || remaining.length > 3 || !hero.spaceId) return null;
   const movement = Math.max(0, hero.movementPoints ?? 0);
+  // Round two must finish the last object AND still reach the first Far tile
+  // (USER RULING: round 1 two tile-Ⅰ objects, round 2 the third plus the first
+  // Far tile, Far III by round 4). Measure each candidate last object's walk to
+  // the nearest tile-Ⅰ doorway that opens a Far (Ⅱ–Ⅲ) tile, so round two keeps
+  // the object from which that doorway is still in reach. A doorway that only
+  // exposes deferred higher-band land is not the opening's expansion.
+  const homeTile = homeTileInstanceId(state, hero.controllerId);
+  const doorwayCells = homeTile
+    ? collectExploreObjectives(state, hero)
+      .filter(objective => objective.opensFarTile &&
+        state.adventure?.fields[objective.spaceId]?.tileInstanceId === homeTile)
+      .map(objective => objective.spaceId)
+    : [];
+  const doorwayDistanceFrom = new Map<MapSpaceId, number>();
+  const doorwayDistance = (spaceId: MapSpaceId): number => {
+    let known = doorwayDistanceFrom.get(spaceId);
+    if (known === undefined) {
+      known = Infinity;
+      for (const cell of doorwayCells) {
+        const leg = cell === spaceId ? 0 : distanceBetweenHomeFields(state, hero, spaceId, cell);
+        if (leg !== undefined && leg < known) known = leg;
+      }
+      doorwayDistanceFrom.set(spaceId, known);
+    }
+    return known;
+  };
+  const turnMovement = heroMovementMax(state, hero);
   let best: MapObjective[] | null = null;
   let bestScore = Number.NEGATIVE_INFINITY;
   let bestBanked = 0;
@@ -2607,9 +2667,18 @@ function bestHomeOpeningObjective(
     // Objects this order walks onto with the CURRENT movement points, honouring
     // each guarded stop's combat movement reserve (reserve-aware count).
     const banked = bankableHomeObjectives(state, hero, order, movement);
+    // Round two: reach the last object, walk to a Far doorway, and open it
+    // (one point). Without any known Far doorway the established
+    // exactly-on-a-doorway preference is unchanged.
+    const toDoorway = doorwayDistance(final.spaceId);
+    const roundTwoOpens = Number.isFinite(toDoorway) &&
+      futureDistance + toDoorway + 1 <= turnMovement;
+    const doorwayTerm = doorwayCells.length > 0
+      ? (roundTwoOpens ? 10_000 : 0) + (finalIsDoorway ? 1_000 : 0)
+      : finalIsDoorway ? 10_000 : 0;
     const score =
       banked * 20_000 +
-      (finalIsDoorway ? 10_000 : 0) -
+      doorwayTerm -
       futureDistance * 100 -
       (firstDistance + secondDistance) * 5;
     if (
@@ -2625,7 +2694,29 @@ function bestHomeOpeningObjective(
   // The three-object opening must be able to bank the first two this turn;
   // otherwise the general planner picks (unchanged fallback).
   if (!best || (remaining.length === 3 && bestBanked < 2)) return null;
-  return best[0];
+  return { order: best, banked: bestBanked };
+}
+
+/**
+ * The tile-Ⅰ opening object the current plan deliberately leaves for ROUND
+ * TWO (next to the Far doorway), or null when no such plan is in force. A
+ * move that lands on it early would spend this turn's movement off the plan.
+ */
+export function homeOpeningSavedForRoundTwo(state: GameState, hero: HeroState): MapSpaceId | null {
+  return mapScoringCached(state, `home-saved|${heroCacheKey(hero)}`, () => {
+    const home = collectMapObjectives(state, hero).filter(objective => {
+      if (!isHomeTileSweepObjective(state, hero, objective)) return false;
+      const field = state.adventure?.fields[objective.spaceId];
+      if (field && (isFieldGuarded(field) || field.location === "creature_bank") &&
+          !canBeatGuardedField(state, hero, field)) return false;
+      return distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined;
+    });
+    const opening = home.filter(objective => isHomeTileOpeningObjective(state, hero, objective));
+    if (opening.length === 0 || opening.length !== home.length) return null;
+    const plan = bestHomeOpeningPlan(state, hero, opening);
+    if (!plan || plan.banked >= plan.order.length) return null;
+    return plan.order[plan.order.length - 1].spaceId;
+  });
 }
 
 /**
@@ -2712,6 +2803,56 @@ function primaryMapObjectiveUncached(
   objectives: ReadonlyArray<MapObjective>,
   stickySpaceId: MapSpaceId | null | undefined,
 ): MapObjective | null {
+  const context: { actionable?: ReadonlyArray<MapObjective> } = {};
+  const chosen = primaryMapObjectiveRanked(state, hero, objectives, stickySpaceId, context);
+  // During the opening, convert a reachable reward on a face-up Far tile
+  // before walking back to another doorway. The conversion replaces only an
+  // EXPLORE choice (the walk to open more land): a known income capture, a
+  // committed target, an XP fight or a funding pickup chosen by the ranking
+  // above is already work and keeps its own order (Far III timeline, income
+  // commitment and post-Far growth rulings). It never holds the hero at an
+  // unbeatably guarded tile: nearestRevealedFarPayoff excludes it.
+  if (chosen?.kind !== "explore" || hero.kind !== "main" || !context.actionable ||
+      !(state.round <= 5 || !hasOpenedFarEconomy(state, hero.controllerId)) ||
+      !walksBackToOpen(state, hero, chosen)) return chosen;
+  return revealedFarConversion(state, hero, context.actionable, stickySpaceId) ?? chosen;
+}
+
+/** The hero stands on a revealed Far tile and this doorway lies on another
+ * tile: opening it means walking away from the Far tile (the down-up-down
+ * loop). Opening land from the Far tile itself is not a walk back. */
+function walksBackToOpen(state: GameState, hero: HeroState, doorway: MapObjective): boolean {
+  const heroTileId = hero.spaceId ? state.adventure?.fields[hero.spaceId]?.tileInstanceId : undefined;
+  const heroTile = heroTileId ? state.adventure?.tiles[heroTileId] : undefined;
+  if (!heroTile || heroTile.group !== "far" || heroTile.faceDown) return false;
+  return state.adventure?.fields[doorway.spaceId]?.tileInstanceId !== heroTileId;
+}
+
+/** A reachable revealed-Far payoff within one turn's movement: the committed
+ * (sticky) one when it qualifies, otherwise the best-ranked of them. */
+function revealedFarConversion(
+  state: GameState,
+  hero: HeroState,
+  actionable: ReadonlyArray<MapObjective>,
+  stickySpaceId: MapSpaceId | null | undefined,
+): MapObjective | null {
+  const reach = heroMovementMax(state, hero);
+  const within = actionable.filter(objective => {
+    const payoff = nearestRevealedFarPayoff(state, hero, [objective]);
+    return payoff !== null && payoff.distance <= reach;
+  });
+  if (within.length === 0) return null;
+  return within.find(objective => objective.spaceId === stickySpaceId) ??
+    bestObjectiveOf(state, hero, within, true);
+}
+
+function primaryMapObjectiveRanked(
+  state: GameState,
+  hero: HeroState,
+  objectives: ReadonlyArray<MapObjective>,
+  stickySpaceId: MapSpaceId | null | undefined,
+  context: { actionable?: ReadonlyArray<MapObjective> },
+): MapObjective | null {
   if (objectives.length === 0) {
     return null;
   }
@@ -2757,10 +2898,12 @@ function primaryMapObjectiveUncached(
       }
     }
   }
+  context.actionable = actionable;
   const available = actionable.length > 0 ? actionable : reachable;
-  // During rounds 1–2, sweep reachable home rewards before expanding. Later
-  // returns retain normal reward value without restarting the opening.
-  const homeRemaining = available.filter((objective) =>
+  // Finish every reachable, currently actionable object on our own tile Ⅰ.
+  // Unbeatable or sealed objects cannot strand the hero; after the army grows
+  // or the route opens, the still-live objective becomes mandatory again.
+  const homeRemaining = actionable.filter((objective) =>
     isHomeTileSweepObjective(state, hero, objective),
   );
   const pool = homeRemaining.length > 0 ? homeRemaining : available;
@@ -2771,18 +2914,23 @@ function primaryMapObjectiveUncached(
     ? bestHomeOpeningObjective(state, hero, openingRemaining)
     : null;
 
-  if (roundTwoFarOpeningReady(state, hero)) {
-    // A doorway may itself carry the one remaining object, in which case
-    // collectMapObjectives lists the payoff instead of an explore objective.
-    const safeSpaces = new Set(actionable.map(objective => objective.spaceId));
-    const doorways = collectExploreObjectives(state, hero).filter(objective =>
-      objective.opensFarTile &&
-      safeSpaces.has(objective.spaceId) &&
-      state.adventure?.fields[objective.spaceId]?.tileInstanceId ===
-        homeTileInstanceId(state, hero.controllerId) &&
-      distanceFromHeroTo(state, hero, objective.spaceId) !== undefined);
-    const doorway = bestObjectiveOf(state, hero, doorways, false);
-    if (doorway) return doorway;
+  if (homeRemaining.length > 0) {
+    // An enemy hero standing on our tile Ⅰ is an invader, not a pickup: it is
+    // about to take these same payoffs and, unlike a static guard, will not
+    // wait. collectMapObjectives lists it only when beatable and the
+    // unfavourable-encounter filter above already shaped `actionable`, so the
+    // hunt never strands the sweep behind a fight we cannot take.
+    const homeTile = homeTileInstanceId(state, hero.controllerId);
+    const invaders = actionable.filter((objective) =>
+      objective.kind === "enemy-hero" &&
+      state.adventure?.fields[objective.spaceId]?.tileInstanceId === homeTile);
+    if (invaders.length > 0) {
+      return invaders.find(objective => objective.spaceId === stickySpaceId) ??
+        bestObjectiveOf(state, hero, invaders, true);
+    }
+    return openingObjective ??
+      homeRemaining.find(objective => objective.spaceId === stickySpaceId) ??
+      bestObjectiveOf(state, hero, homeRemaining, true);
   }
 
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
@@ -2807,6 +2955,11 @@ function primaryMapObjectiveUncached(
       (guardField.difficulty ?? 0) > 0 &&
       canBeatGuardedField(state, hero, guardField));
   });
+  // Revealed-Far conversion before another doorway: see the wrapper
+  // (primaryMapObjectiveUncached) and the opening doorway hunt just below.
+  const nearbyRevealedFar = hero.kind === "main"
+    ? nearestRevealedFarPayoff(state, hero, actionable)
+    : null;
   if (hero.kind === "main" && homeRemaining.length === 0 && state.round >= 2 && state.round <= 3 &&
       !beatablePremiumGuardReachable &&
       seatHoldsFarSupplyTile(state, hero.controllerId) &&
@@ -2814,6 +2967,17 @@ function primaryMapObjectiveUncached(
     const doorways = actionable.filter(objective => objective.kind === "explore" && objective.opensFarTile &&
       (distanceFromHeroTo(state, hero, objective.spaceId) ?? Infinity) < heroMovementMax(state, hero));
     const doorway = bestObjectiveOf(state, hero, doorways, false);
+    // Do not walk away from the nearer, ALREADY REVEALED Far tile just to open
+    // another back. This was the down-up-down opening loop: the doorway hunt
+    // returned before the revealed-tile sweep below could choose its payoff.
+    const revealed = nearbyRevealedFar;
+    const doorwayDistance = doorway
+      ? distanceFromHeroTo(state, hero, doorway.spaceId, true) ?? Infinity
+      : Infinity;
+    if (revealed && doorway && walksBackToOpen(state, hero, doorway) &&
+        revealed.distance <= Math.max(heroMovementMax(state, hero), doorwayDistance + 2)) {
+      return revealedFarConversion(state, hero, actionable, stickySpaceId) ?? revealed.objective;
+    }
     if (doorway) return doorway;
   }
 
@@ -3082,8 +3246,6 @@ function primaryMapObjectiveUncached(
     }
   }
 
-  if (openingObjective) return openingObjective;
-
   // The post-Gold collector consumes existing leftovers before opening more
   // land. It must not chase the main hero's current objective.
   if (hero.kind === "secondary" && hasReachedGoldArmy(state, hero.controllerId)) {
@@ -3100,8 +3262,8 @@ function primaryMapObjectiveUncached(
     if (leftovers.length > 0) return bestObjectiveOf(state, hero, leftovers, false);
   }
 
-  // After the two-turn home opening, find income land before spending another
-  // turn on home leftovers. A known attainable FAR capture returned above.
+  // Once home is clear, find income land. A known attainable FAR capture
+  // returned above.
   if (hero.kind === "main" && state.round >= 3 && !hasOpenedFarEconomy(state, hero.controllerId)) {
     const incomeDoorways = available.filter(objective => objective.kind === "explore" && objective.opensFarTile);
     if (incomeDoorways.length > 0) {

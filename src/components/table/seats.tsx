@@ -5,7 +5,8 @@
 import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { playSpellBookOpen } from "@/lib/sound";
-import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { HAND_OPEN_CARD_EVENT, HAND_OPEN_SPELL_BOOK_EVENT } from "./hex-battlefield";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
 import { activeWarMachineCardId, isWarMachineCard } from "@/engine/permanents";
@@ -675,6 +676,28 @@ export function HandFan({
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [shelfOpen, setShelfOpen] = useState<"book" | "scroll" | null>(null);
+  // Hex battlefield Spellbook button: open the chosen Spell exactly as if its
+  // hand card were clicked (same targeting / popover / confirm flow).
+  useEffect(() => {
+    const openCard = (event: Event) => {
+      const cardId = (event as CustomEvent<{ cardId?: string }>).detail?.cardId;
+      if (!cardId) return;
+      const button = document.querySelector<HTMLButtonElement>(`[data-hand-card-id="${CSS.escape(cardId)}"]`);
+      button?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      button?.click();
+    };
+    // ...and its "Open Spell Book" entry opens this shelf's own Book window.
+    const openBook = () => {
+      setShelfOpen("book");
+      playSpellBookOpen();
+    };
+    window.addEventListener(HAND_OPEN_CARD_EVENT, openCard);
+    window.addEventListener(HAND_OPEN_SPELL_BOOK_EVENT, openBook);
+    return () => {
+      window.removeEventListener(HAND_OPEN_CARD_EVENT, openCard);
+      window.removeEventListener(HAND_OPEN_SPELL_BOOK_EVENT, openBook);
+    };
+  }, []);
   const subscribeShelfHost = useCallback((notify: () => void) => {
     const observer = new MutationObserver(notify);
     observer.observe(document.body, { childList: true, subtree: true });
@@ -1250,6 +1273,7 @@ export function HandFan({
             ) : null}
             <button
               aria-pressed={open || selected}
+              data-hand-card-id={entry.cardId}
               className={`fanCard ${playable ? "playable" : ""} ${selected ? "selected" : ""} ${
                 !playable && helperCoach.enabled ? "helperBlocked" : ""
               } ${inFlightCardIds?.has(entry.cardId) ? "cardInFlight" : ""}`}

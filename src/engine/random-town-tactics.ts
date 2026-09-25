@@ -1,8 +1,10 @@
 import { effectiveInitiative, getActiveAttackBonus, getActiveDefenseBonus, getActiveRetaliationAttackBonus, getAttackerTypeDefenseBonus, getConditionalAttackBonus, getConditionalDefenseBonus, unitHasCannotRetaliateEffect, unitHasUnlimitedRetaliationEffect, unitHasUnstoppableRetaliationEffect } from "./active-effects";
-import { getBattlefieldDistance, getOrthogonalNeighbors, isAdjacent } from "./battlefield";
+import { getOrthogonalNeighbors, isAdjacent } from "./battlefield";
+import { relocationFits, unitDistance, unitDistanceAt, unitsAdjacent } from "./hex-footprint";
 import { commanderLiveAttackBonus, commanderLiveDefenseBonus } from "./commanders";
-import { canUnitAttack, canUnitMoveAndAttack, getAttackRollMode, getLegalMoveDestinations, getPathDistances, isUnitAlive } from "./legal-actions";
+import { canUnitAttack, getAttackRollMode, getLegalMoveDestinations, getPathDistances, isUnitAlive } from "./legal-actions";
 import { unitRemovalHealth, unitThreatValue } from "./computer/score";
+import { canStrikeFromLegalLanding } from "./computer/opponent-reply";
 import { tokenAttackBonus, tokenDefenseDelta } from "./tokens";
 import { getAttackBonusAfterMove, getAttackBonusOnAttackDie, getDefenseBonusOnAttackDie, getAttackDefenseReductionAbility, getDamageCapPerAttack, getDefendBonus, getFlatDefenseWhenAttacked, getIgnoreTargetCardDefenseAbility, getInnateFlatAttackBonus, getRetaliationAttackBonus, getSelfAttackerTypeDefenseBonus, getUnitAbilityDefinitions, hasUnitAbilityEffect, isUnitDamageImmune, getPreemptiveRetaliation } from "./unit-abilities";
 import { townAllowsRangedRetaliation, townAttackBonus, townDefenseBonus, townHasUnstoppableRetaliation, townVeterancy } from "./town-veterancy";
@@ -19,7 +21,7 @@ const living = (combat: CombatState) => Object.values(combat.units).filter(isUni
 export function randomTownStrikeValue(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation = false): number {
   if (isUnitDamageImmune(defender)) return 0;
   const attack = attacker.attack + tokenAttackBonus(attacker) +
-    getActiveAttackBonus(state, { attacker, defender, attackKind: attacker.type === "ranged" && !isAdjacent(attacker.position, defender.position) ? "ranged" : "melee" }) + getConditionalAttackBonus(state, attacker, defender) +
+    getActiveAttackBonus(state, { attacker, defender, attackKind: attacker.type === "ranged" && !unitsAdjacent(state.combat, attacker, defender) ? "ranged" : "melee" }) + getConditionalAttackBonus(state, attacker, defender) +
     getInnateFlatAttackBonus(attacker, retaliation) + commanderLiveAttackBonus(state, attacker) +
     townAttackBonus(state, attacker, defender, retaliation) + (retaliation ? getRetaliationAttackBonus(attacker) + getActiveRetaliationAttackBonus(state, attacker) : 0) +
     (!retaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0);
@@ -49,8 +51,10 @@ function projectedState(state: GameState, combat: CombatState, unit: CombatUnitS
 
 function attackPositions(state: GameState, combat: CombatState, unit: CombatUnitState, target: CombatUnitState): number[] {
   const positions = canUnitAttack(combat, unit, target, state.activeEffects) ? [unit.position] : [];
+  // Landings come from this same move search, so skip the engine's per-landing
+  // re-search (canUnitMoveAndAttack) — a hex battlefield offers ~100 landings.
   if (unit.type !== "ranged") positions.push(...getLegalMoveDestinations(combat, unit, state)
-    .filter(position => canUnitMoveAndAttack(combat, unit, position, target, state)));
+    .filter(position => canStrikeFromLegalLanding(combat, unit, position, target, state.activeEffects ?? [])));
   return positions;
 }
 
@@ -62,7 +66,7 @@ export function bestDamage(state: GameState, unit: CombatUnitState, target: Comb
 
 export function retaliationValue(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): number {
   if (unitHasCannotRetaliateEffect(state, defender) ||
-      (!isAdjacent(attacker.position, defender.position) && !townAllowsRangedRetaliation(defender) && !getPreemptiveRetaliation(defender, attacker.position))) return 0;
+      (!unitsAdjacent(state.combat, attacker, defender) && !townAllowsRangedRetaliation(defender) && !getPreemptiveRetaliation(defender, attacker.position, state.combat, attacker))) return 0;
   if (defender.retaliatedThisRound && !hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") &&
       !unitHasUnlimitedRetaliationEffect(state, defender) && !townHasUnstoppableRetaliation(defender)) return 0;
   if (!townHasUnstoppableRetaliation(defender) && !unitHasUnstoppableRetaliationEffect(state, defender) && (
@@ -94,7 +98,7 @@ export function randomTownTokenValue(state: GameState, source: CombatUnitState, 
   const friendly = source.controllerId === target.controllerId;
   if (!isUnitAlive(target) || (effect.targets === "enemy" && friendly) || (effect.targets === "friendly" && !friendly) ||
       (effect.targets !== "enemy" && target.position < 0) ||
-      (effect.adjacentOnly && !isAdjacent(source.position, target.position)) ||
+      (effect.adjacentOnly && !unitsAdjacent(state.combat, source, target)) ||
       (effect.targetTypes && !effect.targetTypes.includes(target.type))) return 0;
   const existing = target.tokens?.find(token => token.kind === effect.token);
   // Weakness keeps the MILDER token; reapplying cannot strengthen it. Do not
@@ -129,7 +133,7 @@ function positionValue(state: GameState, unit: CombatUnitState): number {
     const next = { ...ally, activatedThisRound: false, movedThisActivation: false, attackedThisActivation: false };
     const enemies = living(combat).filter(enemy => enemy.controllerId !== ally.controllerId);
     const canExit = enemies.some(enemy => attackPositions(state, combat, next, enemy).length > 0);
-    if (!canExit && isAdjacent(unit.position, ally.position) &&
+    if (!canExit && unitsAdjacent(combat, unit, ally) &&
         (combat.battlefieldCondition?.id === "fey-trickery"
           ? effectiveInitiative(unit, state.activeEffects, combat) >= effectiveInitiative(ally, state.activeEffects, combat)
           : effectiveInitiative(unit, state.activeEffects, combat) <= effectiveInitiative(ally, state.activeEffects, combat))) score -= 18;
@@ -182,8 +186,8 @@ export function planRandomTownActivation(state: GameState, combat: CombatState, 
     const actor = projected.combat!.units[unit.id];
     const next = { ...actor, activatedThisRound: false, movedThisActivation: false, attackedThisActivation: false };
     const opportunity = Math.max(0, ...enemies.map(enemy => bestDamage(projected, next, enemy)));
-    const beforeDistance = Math.min(...distances.map((field, index) => field.get(unit.position) ?? 100 + getBattlefieldDistance(unit.position, enemies[index].position)));
-    const afterDistance = Math.min(...distances.map((field, index) => field.get(destination) ?? 100 + getBattlefieldDistance(destination, enemies[index].position)));
+    const beforeDistance = Math.min(...distances.map((field, index) => field.get(unit.position) ?? 100 + unitDistance(combat, unit, enemies[index])));
+    const afterDistance = Math.min(...distances.map((field, index) => field.get(destination) ?? 100 + unitDistanceAt(combat, unit, destination, enemies[index])));
     consider({ kind: "move", destination }, positionValue(projected, actor) + (opportunity - currentOpportunity) * 3 +
       Math.max(-3, Math.min(3, beforeDistance - afterDistance)) * 2 - 3);
   }
@@ -199,6 +203,10 @@ export function placeRandomTownFormation(state: GameState, combat: CombatState, 
   const score = (layout: number[]) => {
     const placed = ordered.map((unit, index) => ({ ...unit, position: layout[index] }));
     const board = { ...combat, units: { ...combat.units, ...Object.fromEntries(placed.map(unit => [unit.id, unit])) } };
+    // Hex board: a layout whose double-wide footprints leave the formation or
+    // overlap is (almost) never picked. No double-wide units on the 4×5 grid.
+    const footprintPenalty = relocationFits(board, Object.values(board.units).filter(unit => unit.damage < unit.maxHealth), new Map(placed.map(unit => [unit.id, unit.position] as [string, number])), new Set(combat.obstacles ?? []),
+      (_unit, footprint) => footprint.every(cell => cells.includes(cell))) ? 0 : -1000;
     const initiative = (index: number) => effectiveInitiative(placed[index], state.activeEffects, board) * (board.battlefieldCondition?.id === "fey-trickery" ? -1 : 1);
     let total = 0;
     for (let index = 0; index < ordered.length; index++) {
@@ -227,7 +235,7 @@ export function placeRandomTownFormation(state: GameState, combat: CombatState, 
         }
       }
     }
-    return total;
+    return total + footprintPenalty;
   };
   for (let pass = 0; pass < cells.length; pass++) {
     let best = score(positions);

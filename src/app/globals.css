@@ -8957,6 +8957,19 @@ button.hbSlot:disabled {
   object-fit: contain;
 }
 
+.promptRewardCard.scrollPair {
+  width: 202px;
+}
+
+.promptRewardCard.scrollPair .promptRewardArtWrap {
+  width: 190px;
+  gap: 4px;
+}
+
+.promptRewardCard.scrollPair img {
+  width: 90px;
+}
+
 .promptRewardCard.resourceReward {
   width: 94px;
   justify-content: center;
@@ -49251,3 +49264,629 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .helmCounterCards figure { margin: 0; width: 42%; }
 .helmCounterCards .trayCardImage { width: 100%; height: auto; }
 .helmCounterCards figcaption { margin-top: .35rem; }
+
+/* ==========================================================================
+   Hex Battlefield (Battlefield Expansion board, PC-style presentation).
+   Cells keep BattlefieldBoard's classes and interaction branches; on the hex
+   board each cell's ::before is its hex face (the click target and the state
+   tint), creature figures overflow upward and never take the pointer.
+   ========================================================================== */
+
+.battlefield.hexBattlefield {
+  display: block;
+  aspect-ratio: 800 / 556;
+  background: #26311d;
+  container-type: inline-size;
+}
+
+.hexBackdropWrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hexBackdropWrap.flipped {
+  transform: scaleX(-1);
+}
+
+.hexBackdrop {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+}
+
+/* The PC siege backdrop's moat is stretched under the hex wall line. */
+.hexBackdrop.siegeBackdrop {
+  transform: scaleX(1.12); /* moat under the wall column of the 55-unit hex grid */
+  transform-origin: 0 50%;
+}
+
+.hexGrid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  /* The PC grid's lines sit on the ground with a faint dark edge. Static
+     layer: the shadow is rasterised once, not per frame. */
+  filter: drop-shadow(0 1px 0 rgb(0 0 0 / 45%));
+}
+
+/* PC Heroes III grid: thin yellow-green hex outlines over the backdrop. */
+.hexGridCell {
+  fill: none;
+  stroke: rgb(186 212 84 / 62%);
+  stroke-width: 1.15;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.hexGridCell.deployZone {
+  fill: rgb(0 0 0 / 18%);
+}
+
+.hexBoardArt,
+.hexFallenLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hexTokenArt,
+.hexSiegePiece {
+  position: absolute;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hexTokenArt {
+  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 45%));
+}
+
+/* --- Cells ---------------------------------------------------------------- */
+
+.hexBattlefield .battleCell.hexBattleCell {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.hexBattlefield .battleCell.hexBattleCell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+  animation: none;
+  background: transparent;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  pointer-events: auto;
+  transition: background-color 120ms ease;
+}
+
+.hexBattlefield .battleCell.hexBattleCell::after {
+  display: none;
+}
+
+/* Reachable hexes are shaded like the PC game's movement range. */
+.hexBattlefield .battleCell.hexBattleCell.moveTarget::before {
+  background: rgb(0 0 0 / 30%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.moveTarget:hover::before,
+.hexBattlefield .battleCell.hexBattleCell.routeNext:hover::before {
+  background: rgb(255 232 150 / 36%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.attackTarget::before {
+  background: rgb(200 60 40 / 30%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.attackTarget:hover::before {
+  background: rgb(230 80 50 / 48%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.cardTarget::before {
+  background: rgb(90 150 220 / 32%);
+  animation: pulseTarget 1.2s ease-in-out infinite;
+}
+
+.hexBattlefield .battleCell.hexBattleCell.abilityTarget::before,
+.hexBattlefield .battleCell.hexBattleCell.activationOrderTarget::before,
+.hexBattlefield .battleCell.hexBattleCell.artifactSetTarget::before {
+  background: rgb(186 124 220 / 34%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.healTarget::before {
+  background: rgb(120 210 130 / 34%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.dropTarget::before {
+  background: rgb(124 186 110 / 22%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.dropTarget:hover::before,
+.hexBattlefield .battleCell.hexBattleCell.dropTarget.dropHover::before {
+  background: rgb(154 226 134 / 42%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.swapSource::before,
+.hexBattlefield .battleCell.hexBattleCell.swapTarget::before {
+  background: rgb(90 200 210 / 30%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.swapSelected::before,
+.hexBattlefield .battleCell.hexBattleCell.repositionSource::before,
+.hexBattlefield .battleCell.hexBattleCell.routeStep::before {
+  background: rgb(255 212 121 / 40%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.active::before {
+  background: rgb(255 224 110 / 26%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.removeObstacleTarget::before {
+  background: rgb(230 150 60 / 38%);
+}
+
+.hexBattlefield .battleCell.hexBattleCell.cardTarget:hover::before,
+.hexBattlefield .battleCell.hexBattleCell.abilityTarget:hover::before,
+.hexBattlefield .battleCell.hexBattleCell.healTarget:hover::before,
+.hexBattlefield .battleCell.hexBattleCell.swapSource:hover::before,
+.hexBattlefield .battleCell.hexBattleCell.swapTarget:hover::before {
+  filter: brightness(1.5);
+}
+
+.hexObstacleMark,
+.hexFortMark {
+  display: none;
+}
+
+/* Battlefield tokens (Fire Wall, Force Field, traps) keep their own mark. */
+.hexBattlefield .battleCell.hexBattleCell > .battlefieldToken {
+  position: absolute;
+  inset: 8%;
+  pointer-events: none;
+}
+
+/* "Who will be affected": while the cursor rests on a target hex, every hex the
+   action would reach gets a hex rim (board.tsx HexAffectedMarks). Red/orange for
+   enemies, amber for friendly fire, strongest on the primary target, dashed for a
+   unit a later pick / die / Power decides, faint for the bare area. Marks are
+   placed with the cells' own geometry and never take the pointer. */
+.hexBattlefield .hexAffected {
+  display: block;
+  pointer-events: none;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.hexBattlefield .hexAffected.hexAffectedArea {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(255,150,80,0.14)' stroke='rgba(255,182,120,0.6)' stroke-width='1.25' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+}
+
+.hexBattlefield .hexAffected.hexAffectedPossible {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(226,120,60,0.12)' stroke='rgb(255,160,100)' stroke-width='2' stroke-dasharray='5 4' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+}
+
+.hexBattlefield .hexAffected.hexAffectedSplash {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(226,104,44,0.24)' stroke='rgb(255,140,70)' stroke-width='2.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+}
+
+.hexBattlefield .hexAffected.hexAffectedPrimary {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(232,64,36,0.36)' stroke='rgb(255,98,64)' stroke-width='3.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  filter: drop-shadow(0 0 4px rgb(255 96 56 / 60%));
+  animation: hexAffectedPulse 1.1s ease-in-out infinite;
+}
+
+.hexBattlefield .hexAffected.hexAffectedPossible.hexAffectedFriendly {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(240,176,32,0.12)' stroke='rgb(255,216,120)' stroke-width='2' stroke-dasharray='5 4' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+}
+
+.hexBattlefield .hexAffected.hexAffectedSplash.hexAffectedFriendly {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(240,176,32,0.26)' stroke='rgb(255,210,90)' stroke-width='2.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+}
+
+.hexBattlefield .hexAffected.hexAffectedPrimary.hexAffectedFriendly {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpolygon points='50,2 98,26 98,74 50,98 2,74 2,26' fill='rgba(240,176,32,0.38)' stroke='rgb(255,206,64)' stroke-width='3.5' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  filter: drop-shadow(0 0 4px rgb(255 200 64 / 60%));
+}
+
+@keyframes hexAffectedPulse {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hexBattlefield .hexAffected.hexAffectedPrimary {
+    animation: none;
+  }
+}
+
+.hexBattlefield .repositionArrowSvg line {
+  stroke-width: 5.5;
+}
+
+/* --- Creature figures ----------------------------------------------------- */
+
+/* Figures sit on their own layer (no stacking context, so they interleave
+   with the hex rows by z-index) and never take the pointer. */
+.hexUnitsLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A figure is a zero-size point at the creature's feet. */
+.hexFigure {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Native-size atlas frame, scaled by the GPU around the foot anchor. */
+.hexSprite {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background-repeat: no-repeat;
+  will-change: transform, background-position;
+  pointer-events: none;
+}
+
+.hexFigure.active .hexSprite {
+  filter: drop-shadow(0 0 1px #ffe98a) drop-shadow(0 0 1px #ffe98a);
+}
+
+/* A unit without a PC sprite stands as its card art on a small base. */
+.hexToken {
+  position: absolute;
+  overflow: hidden;
+  border: 2px solid #c9b27a;
+  border-radius: 6px 6px 40% 40% / 6px 6px 16% 16%;
+  background: #1c1710;
+  box-shadow: 0 4px 6px rgb(0 0 0 / 55%);
+}
+
+.hexFigure.attackerSide .hexToken {
+  border-color: #6aa6e8;
+}
+
+.hexFigure.defenderSide .hexToken {
+  border-color: #e26b55;
+}
+
+.hexFigure.active .hexToken {
+  border-color: #ffe98a;
+  box-shadow: 0 0 8px #ffd84a, 0 4px 6px rgb(0 0 0 / 55%);
+}
+
+.hexToken img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  user-select: none;
+}
+
+.hexToken span {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #f4e6bf;
+  font-weight: 800;
+}
+
+.hexFallen.token {
+  animation: hexTokenFall 700ms ease-in forwards;
+}
+
+@keyframes hexTokenFall {
+  to {
+    opacity: 0;
+    transform: translateY(12%) scale(0.9);
+  }
+}
+
+.hexUnitBody {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* PC-style stack plate at the hex's lower right. */
+.hexUnitPlate {
+  position: absolute;
+  min-width: 2.2em;
+  padding: 0 0.25em;
+  border: 1px solid #e3cf8f;
+  background: linear-gradient(#7a4fb0, #4b2c78);
+  color: #fff;
+  font-family: "Times New Roman", serif;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  text-shadow: 0 1px 1px #000;
+  white-space: nowrap;
+}
+
+.hexFigure.defenderSide .hexUnitPlate {
+  background: linear-gradient(#b0503f, #702a1f);
+}
+
+/* --- Command bar ---------------------------------------------------------- */
+
+.hexCommandBar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px;
+  border: 2px solid #8a6d35;
+  border-radius: 3px;
+  background: linear-gradient(#3a2f22, #1d170f);
+  box-shadow: inset 0 0 0 1px rgb(255 226 150 / 18%), 0 3px 8px rgb(0 0 0 / 45%);
+}
+
+.hexBarGroup {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.hexBarButton {
+  position: relative;
+  width: clamp(34px, 4.6vw, 52px);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid #c9a55a;
+  border-radius: 2px;
+  background: #2a2117;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 60%);
+}
+
+.hexBarButton img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hexBarButton:hover:not(:disabled) {
+  border-color: #ffe7a0;
+  filter: brightness(1.15);
+}
+
+.hexBarButton:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.85) brightness(0.55);
+}
+
+.hexBarLog {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 2px 8px;
+  border: 1px solid #6d5630;
+  background: #120e09;
+  color: #f1dfae;
+  font: 600 clamp(10px, 1.05vw, 13px) / 1.3 "Times New Roman", serif;
+  text-align: center;
+}
+
+.hexBarLog span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hexBarBook {
+  position: relative;
+  display: inline-flex;
+}
+
+.hexBookMenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 180px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #c9a55a;
+  background: #1d170f;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 60%);
+}
+
+.hexBookMenu button {
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid rgb(201 165 90 / 25%);
+  background: none;
+  color: #f1dfae;
+  font: 600 13px/1.2 "Times New Roman", serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hexBookMenu button:hover {
+  background: rgb(201 165 90 / 20%);
+}
+
+/* Heroes 3 battlefield obstacles, drawn on the hexes they block. */
+.hexPcObstacle {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* --- Combat board picker (Classic 4x5 / Hex battlefield), under the game mode cards --- */
+@media (min-width: 560px) {
+  .modePresetGrid.battlefieldBoardGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.battlefieldBoardCard .modePresetIcon {
+  width: 52px;
+  height: 52px;
+}
+
+/* Stack plate extras: Few / Pack glyph and live stat chevrons (hex board). */
+.hexPlateSide {
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.15em;
+  vertical-align: -0.1em;
+  stroke-width: 2.6;
+  opacity: 0.9;
+}
+
+.hexPlateStats {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  display: flex;
+  gap: 0.1em;
+  margin-bottom: 0.1em;
+}
+
+.hexPlateStat {
+  display: inline-grid;
+  place-items: center;
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 55%);
+}
+
+.hexPlateStat svg {
+  width: 0.85em;
+  height: 0.85em;
+  stroke-width: 3.4;
+}
+
+.hexPlateStat.attack {
+  color: #ff695c;
+}
+
+.hexPlateStat.defense {
+  color: #6ba7ff;
+}
+
+.hexPlateStat.speed {
+  color: #65d487;
+}
+
+/* Hover info card beside a hovered creature (display only). */
+.hexHoverCard {
+  position: absolute;
+  z-index: 60;
+  display: flex;
+  gap: 7px;
+  width: 232px;
+  padding: 6px;
+  border: 1px solid #c9a860;
+  border-radius: 6px;
+  background: linear-gradient(rgb(40 30 18 / 96%), rgb(20 14 8 / 96%));
+  box-shadow: 0 6px 16px rgb(0 0 0 / 60%);
+  color: #ecdcb4;
+  font-size: 11px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.hexHoverCard.attackerSide {
+  border-left: 3px solid #6aa6e8;
+}
+
+.hexHoverCard.defenderSide {
+  border-left: 3px solid #e26b55;
+}
+
+.hexHoverCardArt {
+  flex: 0 0 auto;
+  width: 74px;
+  height: auto;
+  align-self: flex-start;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.hexHoverCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hexHoverCardBody strong {
+  color: #ffe6a6;
+  font-size: 12px;
+}
+
+.hexHoverCardKind {
+  color: #c7ab74;
+  text-transform: capitalize;
+}
+
+.hexHoverCardStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.hexHoverCardStats b {
+  color: #fff3d0;
+}
+
+.hexHoverCardStats .statUp {
+  color: #7be08e;
+}
+
+.hexHoverCardStats .statDown {
+  color: #ff7b6b;
+}
+
+.hexHoverCardRetaliation.used {
+  color: #ff9b86;
+}
+
+.hexHoverCardBody small {
+  color: #9c8660;
+  font-size: 10px;
+}
+
+/* The live-effect rail sits inline inside the hex hover card. */
+.hexHoverCard .boardCardEffectIcons {
+  position: static;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 1px 0 0;
+}

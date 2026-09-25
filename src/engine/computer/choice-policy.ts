@@ -8,7 +8,7 @@ import { farTileChoiceValue } from "./far-tile-policy";
 import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
 import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { CombatUnitState, GameAction, GameState, PendingChoice } from "../state";
-import { isAdjacent } from "../battlefield";
+import { unitsAdjacent } from "../hex-footprint";
 import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
 import {
   armyReadyForContestedFight,
@@ -344,7 +344,7 @@ function commanderCastEnemyDamage(
   const cast = source ? commanderCastOf(source, abilityId ?? undefined) : null;
   if (!source || cast?.effect.kind !== "enemy-damage") return 0;
   return commanderEnemyDamageAmount(source, target, cast.effect.damageByPower,
-    commanderCastTierIndex(commanderCastPower(state, source)));
+    commanderCastTierIndex(commanderCastPower(state, source)), state.combat?.round ?? 1);
 }
 
 function scoreAbilityTarget(
@@ -438,7 +438,7 @@ function scoreAbilityTarget(
             .filter((candidateId) => candidateId !== action.targetUnitId)
             .map((candidateId) => combat.units[candidateId])
             .filter((candidate): candidate is NonNullable<typeof candidate> =>
-              Boolean(candidate && isAdjacent(candidate.position, unit.position))
+              Boolean(candidate && unitsAdjacent(combat, candidate, unit))
             )
             .map((candidate) => (candidate.controllerId === observation.playerId ? -100 : 100));
           return adjustments.length > 0 ? Math.max(...adjustments) : 0;
@@ -744,7 +744,8 @@ function scorePositionOption(
     if (pos === undefined) return CHOICE_BASE;
     const combat = observation.state.combat;
     if (!combat) return CHOICE_BASE + 10;
-    const dist = distanceToNearestEnemy(combat, observation.playerId, pos);
+    // A double-wide guard (hex board) is judged by its nearest hex.
+    const dist = distanceToNearestEnemy(combat, observation.playerId, pos, combat.units[choice.neutralDestination.unitId]);
     if (dist === null) return CHOICE_BASE + 10;
     // Closer is better for the attacking player controlling the landing.
     return CHOICE_BASE + Math.max(0, 20 - dist);
@@ -755,7 +756,7 @@ function scorePositionOption(
     if (pos === undefined) return CHOICE_BASE;
     const combat = observation.state.combat;
     if (!combat) return CHOICE_BASE + 10;
-    const dist = distanceToNearestEnemy(combat, observation.playerId, pos);
+    const dist = distanceToNearestEnemy(combat, observation.playerId, pos, combat.units[choice.teleport.unitId]);
     if (dist === null) return CHOICE_BASE + 10;
     return CHOICE_BASE + Math.max(0, 20 - dist);
   }
@@ -768,7 +769,7 @@ function scorePositionOption(
     if (!combat) return CHOICE_BASE + 10;
     const unit = combat.units[choice.knockback.unitId];
     const owner = unit?.controllerId ?? observation.playerId;
-    const dist = distanceToNearestEnemy(combat, owner, pos);
+    const dist = distanceToNearestEnemy(combat, owner, pos, unit);
     if (dist === null) return CHOICE_BASE + 10;
     return CHOICE_BASE + Math.min(30, dist * 3);
   }
@@ -786,7 +787,7 @@ function scorePositionOption(
           enemy.controllerId !== unit.controllerId &&
           enemy.type === "ranged" &&
           (enemy.maxHealth ?? 0) - (enemy.damage ?? 0) > 0 &&
-          isAdjacent(enemy.position, unit.position),
+          unitsAdjacent(combat, enemy, unit),
       );
       if (pinsShooter) return optionIndex === 1 ? CHOICE_BASE + 45 : CHOICE_BASE + 5;
       return optionIndex === 0 ? CHOICE_BASE + 30 : CHOICE_BASE + 10;
@@ -1287,15 +1288,29 @@ function scorePositionOption(
   }
 
   if (context === "forge-phantom-chain-lightning") {
-    // Preserve the last scarce purchase resource when possible; PvP pays a
-    // Valuable (never below the Gold-ladder reserve), while neutral fights pay
-    // a building material.
+    // Prefer the two-spell scroll when it leaves gold for development, and
+    // preserve a scarce building material or Valuable for the town plan.
     const resources = observation.state.players[observation.playerId]?.resources;
     const pvp = observation.state.combat?.context.kind === "player";
-    const affordable = pvp
+    const reserveMet = pvp
       ? (resources?.valuables ?? 0) - 1 >= Math.max(1, goldLadderValuablesReserve(observation.state as unknown as GameState, observation.playerId))
       : (resources?.buildingMaterials ?? 0) >= 2;
-    return (optionIndex === 0) === affordable ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+    const offer = choice?.type === "OPTION_CHOICE"
+      ? choice.forgeScrollOptions?.[optionIndex] ?? (optionIndex === 0 ? "chain-only" : "decline")
+      : "decline";
+    const goldCost = choice?.type === "OPTION_CHOICE" ? choice.forgeScrollGoldCost ?? 0 : 0;
+    if (offer === "both") return CHOICE_BASE + (reserveMet && (resources?.gold ?? 0) >= goldCost + 3 ? 55 : 15);
+    if (offer === "chain-only") return CHOICE_BASE + (reserveMet ? 45 : 15);
+    return CHOICE_BASE + (reserveMet ? 10 : 40);
+  }
+
+  if (context === "elemental-veterancy" && choice?.type === "OPTION_CHOICE" &&
+      choice.elementalChoice?.request.kind === "forge-grunt-tempo") {
+    const pick = choice.elementalChoice.picks[optionIndex];
+    const source = observation.state.combat?.units[choice.elementalChoice.request.unitId];
+    const target = pick?.targetId ? observation.state.combat?.units[pick.targetId] : undefined;
+    if (!source || !target) return CHOICE_BASE;
+    return CHOICE_BASE + (target.controllerId === source.controllerId ? 35 + unitThreatValue(target) / 10 : 2);
   }
 
   if (context === "brute-combat-draw") {

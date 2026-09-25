@@ -1,4 +1,35 @@
 import type { GameEvent } from "@/engine";
+import { unitAbilities, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
+
+/**
+ * Unit ability effects that ARE the unit casting at something — an activation /
+ * "other action" it performs itself, not a passive, aura or on-hit rider. On
+ * the hex battlefield their UNIT_ABILITY_TRIGGERED plays the caster's H3 cast
+ * animation. (A commander's cast arrives as COMMANDER_CAST_USED, and the
+ * delayed Field Repair re-fires "commander-cast-factory" rounds later, so
+ * COMMANDER_CAST is deliberately not listed.)
+ */
+const UNIT_CAST_EFFECT_TYPES = new Set<UnitAbilityEffectDefinition["type"]>([
+  "ON_ACTIVATION_DAMAGE_SPELL",
+  "ON_ACTIVATION_DAMAGE_ENEMY",
+  "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+  "ON_ACTIVATION_INVULNERABILITY",
+  "ON_ACTIVATION_DISCARD_ENEMY_CARD",
+  "ON_ACTIVATION_DISCARD_ENEMY_MORALE",
+  "PLACE_TOKEN_ACTION",
+  "PLACE_ADJACENT_OBSTACLE_ACTION",
+  "SUMMON_OR_REINFORCE_DEMONS",
+  "CANCEL_LETHAL_UNIT_ABILITY",
+  "DECK_DISCARD_TAKE_SPELL",
+  "MGQ_MAGE_MAGIC_ARROW_ACTION",
+  "MGQ_WHITE_MAGIC_ACTION"
+]);
+
+/** Whether a triggered unit ability is its unit casting (see UNIT_CAST_EFFECT_TYPES). */
+export function unitAbilityCastsOnHex(abilityId: string): boolean {
+  const type = unitAbilities[abilityId]?.effect?.type;
+  return type !== undefined && UNIT_CAST_EFFECT_TYPES.has(type);
+}
 
 /**
  * Pure presentation-ordering helper for the combat FX timeline.
@@ -74,6 +105,8 @@ export type ActivationSpellCast = {
   abilityId: string;
   unitId: string;
   targetUnitId: string;
+  /** When the caster starts its cast animation (hex battlefield); equals castStart on the card board. */
+  windUpStart: number;
   /** When this cast's projectile/sprite begins, measured from the snapshot start. */
   castStart: number;
   /** When its damage lands (the bolt's burst, end of the cast) — held to here. */
@@ -107,7 +140,11 @@ export function planActivationSpellPreamble<
 >(
   events: readonly E[],
   leadingAbilityIds: ReadonlySet<string>,
-  timingFor: (abilityId: string) => { castMs: number; holdMs: number }
+  /**
+   * `windUpMs` (hex battlefield: the caster's cast animation before the spell
+   * leaves it; 0 / omitted on the card board) is reserved ahead of each cast.
+   */
+  timingFor: (abilityId: string) => { castMs: number; holdMs: number; windUpMs?: number }
 ): ActivationSpellPreamble {
   let clock = 0;
   const casts: ActivationSpellCast[] = [];
@@ -119,17 +156,18 @@ export function planActivationSpellPreamble<
     ) {
       continue;
     }
-    const { castMs, holdMs } = timingFor(event.abilityId);
-    const castStart = clock;
+    const { castMs, holdMs, windUpMs = 0 } = timingFor(event.abilityId);
+    const castStart = clock + windUpMs;
     casts.push({
       eventId: event.id,
       abilityId: event.abilityId,
       unitId: event.unitId ?? "",
       targetUnitId: event.targetUnitId ?? event.unitId ?? "",
+      windUpStart: clock,
       castStart,
       damageAt: castStart + castMs
     });
-    clock += castMs + holdMs;
+    clock += windUpMs + castMs + holdMs;
   }
   return { leadMs: clock, casts };
 }
@@ -154,7 +192,8 @@ export function planActivationSpellPreamble<
 export function planApproachAttackPreDelays(
   approachMoves: readonly { unitId: string; neutral: boolean }[],
   rolls: readonly { attackerId: string }[],
-  glideMs: number,
+  /** One glide length, or per unit (the hex board walks for as long as the route). */
+  glideMs: number | ((unitId: string) => number),
   neutralPauseMs: number
 ): Map<string, number> {
   const attackerIds = new Set(rolls.map((roll) => roll.attackerId));
@@ -165,7 +204,8 @@ export function planApproachAttackPreDelays(
     if (!attackerIds.has(move.unitId) || delays.has(move.unitId)) {
       continue;
     }
-    delays.set(move.unitId, glideMs + (move.neutral ? neutralPauseMs : 0));
+    const glide = typeof glideMs === "number" ? glideMs : glideMs(move.unitId);
+    delays.set(move.unitId, glide + (move.neutral ? neutralPauseMs : 0));
   }
   return delays;
 }
@@ -284,7 +324,8 @@ export function planReturnMoveDelays(
 export function planMoveArrivalBeats(
   approachMoves: readonly { unitId: string }[],
   delays: readonly number[],
-  combatMoveMs: number
+  /** One glide length, or per move index (the hex board walks for as long as the route). */
+  combatMoveMs: number | ((index: number) => number)
 ): Map<string, number> {
   const arrivals = new Map<string, number>();
   approachMoves.forEach((move, index) => {
@@ -292,7 +333,7 @@ export function planMoveArrivalBeats(
     if (start === undefined) {
       return;
     }
-    const arrival = start + combatMoveMs;
+    const arrival = start + (typeof combatMoveMs === "number" ? combatMoveMs : combatMoveMs(index));
     arrivals.set(move.unitId, Math.max(arrivals.get(move.unitId) ?? arrival, arrival));
   });
   return arrivals;

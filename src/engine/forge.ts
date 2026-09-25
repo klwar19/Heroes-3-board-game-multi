@@ -1,6 +1,7 @@
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { makeActiveEffect } from "./active-effects";
-import { ATTACK_DIE_FACES, isAdjacent } from "./battlefield";
+import { ATTACK_DIE_FACES } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { appendEvent } from "./events";
 import { createSeededRandom } from "./random";
@@ -38,7 +39,7 @@ export function forgeDefenseBonus(state: GameState, attacker: CombatUnitState, d
 export function forgeDamageTaken(state: GameState, unit: CombatUnitState, damage: number, damageKind: string): void {
   if (damageKind !== "attack" || damage <= 3 || !forgeVeterancy(unit, "cyberbrute-shock")) return;
   const enemies = Object.values(state.combat?.units ?? {})
-    .filter(target => alive(target) && target.controllerId !== unit.controllerId && target.position >= 0 && unit.position >= 0 && isAdjacent(target.position, unit.position))
+    .filter(target => alive(target) && target.controllerId !== unit.controllerId && target.position >= 0 && unit.position >= 0 && unitsAdjacent(state.combat, target, unit))
     .sort((a, b) => a.id.localeCompare(b.id));
   if (!enemies.length) return;
   if (enemies.length === 1) {
@@ -50,7 +51,7 @@ export function forgeDamageTaken(state: GameState, unit: CombatUnitState, damage
 }
 
 export function forgeDefenseToken(state: GameState, defender: CombatUnitState): boolean {
-  return Object.values(state.combat?.units ?? {}).some(source => alive(source) && source.position >= 0 && defender.position >= 0 && source.id !== defender.id && forgeVeterancy(source, "grunt-cover") && isAdjacent(source.position, defender.position));
+  return Object.values(state.combat?.units ?? {}).some(source => alive(source) && source.position >= 0 && defender.position >= 0 && source.id !== defender.id && forgeVeterancy(source, "grunt-cover") && unitsAdjacent(state.combat, source, defender));
 }
 
 export function forgeAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation: boolean, roll: number, dieCancelled: boolean): void {
@@ -119,6 +120,16 @@ export function forgeTankDied(state: GameState, tank: CombatUnitState): void {
 }
 
 export function forgeCombatRoundStart(state: GameState): void {
+  const combat = state.combat;
+  if (combat?.round === 1) {
+    for (const unit of Object.values(combat.units)) {
+      if (!alive(unit) || unit.position < 0 || !forgeVeterancy(unit, "grunt-tempo")) continue;
+      const memory = (unit.townVeterancy ??= {});
+      if (memory.forgeTempoRoundOneOffered) continue;
+      memory.forgeTempoRoundOneOffered = true;
+      queueElementalChoice(state, { kind: "forge-grunt-tempo", unitId: unit.id, abilityId: "forge-vet-grunt-tempo", round: 1 });
+    }
+  }
   for (const unit of Object.values(state.combat?.units ?? {})) {
     if (!alive(unit)) continue;
     for (const sourceId of unit.townVeterancy?.forgeWoundSources ?? []) {

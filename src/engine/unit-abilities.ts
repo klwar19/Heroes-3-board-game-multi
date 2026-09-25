@@ -2,6 +2,7 @@ import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefini
 import { hasToken } from "./tokens";
 import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, GameState, SpellSchool, UnitId, UnitType } from "./state";
 import { isAdjacent } from "./battlefield";
+import { unitsAdjacent, unitsAdjacentAt } from "./hex-footprint";
 
 export type UnitAbilityDamageEffect = {
   abilityId: string;
@@ -191,7 +192,9 @@ export function getUnitAttackRerollSources(
    * printed [unit_attack] (own declared attack only, a distinct symbol from
    * retaliation per the rules legend), so none is offered on a retaliation. */
   isRetaliation = false,
-  defender?: CombatUnitState
+  defender?: CombatUnitState,
+  /** The combat, so a double-wide target's tail counts as adjacent (hex board). */
+  combat?: CombatState | null
 ): { name: string; abilityId: string; rerolls: number; onlyOnRoll?: number; drawIfRerollResult?: number; drawCount?: number; healIfRerollResult?: number; healCount?: number }[] {
   if (isRetaliation) {
     return [];
@@ -200,7 +203,7 @@ export function getUnitAttackRerollSources(
     ability.effect?.type === "ATTACK_DIE_REROLL" &&
     ability.effect.rerollsPerAttack > 0 &&
     (!ability.effect.requiresMoved || moved) &&
-    (!ability.effect.requiresNonAdjacentTarget || Boolean(defender && !isAdjacent(unit.position, defender.position)))
+    (!ability.effect.requiresNonAdjacentTarget || Boolean(defender && !unitsAdjacent(combat, unit, defender)))
       ? [{
           name: ability.name,
           abilityId: ability.id,
@@ -583,9 +586,10 @@ export function getAttackBonusVsMarked(attacker: CombatUnitState, defender: Comb
 export function getSagittaMortisDefenseReduction(
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  combatRound: number
+  combatRound: number,
+  combat?: CombatState | null
 ): { abilityId: string; abilityName: string; amount: number } | null {
-  if (isAdjacent(attacker.position, defender.position) || attacker.sagittaMortisUsedRound === combatRound) return null;
+  if (unitsAdjacent(combat, attacker, defender) || attacker.sagittaMortisUsedRound === combatRound) return null;
   for (const ability of getAbilitiesWithEffect(attacker, "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND")) {
     if (ability.effect?.type === "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND") {
       return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
@@ -614,8 +618,8 @@ export function getVanitasAttackBonus(attacker: CombatUnitState, defender: Comba
 }
 
 /** Iori Prefect Snipe: +Attack only against a damaged target at range. */
-export function getDamagedNonAdjacentAttackBonus(attacker: CombatUnitState, defender: CombatUnitState): number {
-  if (defender.damage <= 0 || isAdjacent(attacker.position, defender.position)) return 0;
+export function getDamagedNonAdjacentAttackBonus(attacker: CombatUnitState, defender: CombatUnitState, combat?: CombatState | null): number {
+  if (defender.damage <= 0 || unitsAdjacent(combat, attacker, defender)) return 0;
   return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT").reduce(
     (total, ability) =>
       total + (ability.effect?.type === "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT" ? ability.effect.amount : 0),
@@ -690,7 +694,7 @@ export function getTeaPartyDefenseSources(
       source.controllerId !== defender.controllerId ||
       !isAlive(source) ||
       source.teaPartyOrderUsedThisCombat ||
-      !isAdjacent(source.position, defender.position)
+      !unitsAdjacent(combat, source, defender)
     ) {
       return [];
     }
@@ -712,7 +716,7 @@ export function getAbyssalShieldSource(
     if (
       source.controllerId !== defender.controllerId ||
       !isAlive(source) ||
-      (source.id !== defender.id && !isAdjacent(source.position, defender.position))
+      (source.id !== defender.id && !unitsAdjacent(combat, source, defender))
     ) {
       continue;
     }
@@ -1046,7 +1050,7 @@ export function getFlatDamageFollowUps(
     // — attackKind alone used to miss the splash if the unit's type drifted.
     if (
       ability.effect.requiresNonAdjacentTarget &&
-      isAdjacent(attacker.position, defender.position)
+      unitsAdjacent(combat, attacker, defender)
     ) {
       continue;
     }
@@ -1060,7 +1064,7 @@ export function getFlatDamageFollowUps(
         unit.id !== attacker.id &&
         (!enemiesOnly || unit.controllerId !== attacker.controllerId) &&
         isAlive(unit) &&
-        isAdjacent(unit.position, defender.position)
+        unitsAdjacent(combat, unit, defender)
     );
     if (candidates.length > 0) {
       followUps.push({
@@ -1085,7 +1089,7 @@ export function getFlatDamageFollowUps(
         unit.id !== attacker.id &&
         unit.controllerId !== attacker.controllerId &&
         isAlive(unit) &&
-        isAdjacent(unit.position, attacker.position)
+        unitsAdjacent(combat, unit, attacker)
     );
     if (candidates.length > 0) {
       followUps.push({
@@ -1107,7 +1111,7 @@ export function getFlatDamageFollowUps(
           unit.id !== attacker.id &&
           unit.controllerId !== attacker.controllerId &&
           isAlive(unit) &&
-          isAdjacent(unit.position, defender.position)
+          unitsAdjacent(combat, unit, defender)
       );
       if (candidates.length > 0) {
         followUps.push({
@@ -1141,7 +1145,7 @@ export function getSecondAttackCandidates(
       (unit) =>
         unit.id !== defender.id &&
         isAlive(unit) &&
-        isAdjacent(unit.position, defender.position) &&
+        unitsAdjacent(combat, unit, defender) &&
         (!enemiesOnly || unit.controllerId !== attacker.controllerId)
     )
     .map((unit) => unit.id);
@@ -1977,11 +1981,17 @@ export function getSpendCubeAttackAgain(
  */
 export function getPreemptiveRetaliation(
   unit: CombatUnitState,
-  attackerPosition?: number
+  attackerPosition?: number,
+  /** With the attacking unit: double-wide footprints count (hex board). */
+  combat?: CombatState | null,
+  attacker?: CombatUnitState
 ): { abilityId: string; abilityName: string } | null {
   for (const ability of getAbilitiesWithEffect(unit, "PREEMPTIVE_RETALIATION")) {
     if (ability.effect?.type === "PREEMPTIVE_RETALIATION") {
-      if (ability.effect.nonAdjacentOnly && attackerPosition !== undefined && isAdjacent(attackerPosition, unit.position)) {
+      if (
+        ability.effect.nonAdjacentOnly && attackerPosition !== undefined &&
+        (attacker ? unitsAdjacentAt(combat, attacker, attackerPosition, unit) : isAdjacent(attackerPosition, unit.position))
+      ) {
         continue;
       }
       return { abilityId: ability.id, abilityName: ability.name };
@@ -1993,7 +2003,7 @@ export function getPreemptiveRetaliation(
 /** Living units orthogonally adjacent to `unit`'s board position (friend and foe). */
 export function getUnitsAdjacentTo(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
   return Object.values(combat.units).filter(
-    (other) => other.id !== unit.id && isAlive(other) && isAdjacent(other.position, unit.position)
+    (other) => other.id !== unit.id && isAlive(other) && unitsAdjacent(combat, other, unit)
   );
 }
 
@@ -2136,7 +2146,7 @@ export function getAdjacentEnemyInitiativeAuraDelta(
       source.id === unit.id ||
       source.controllerId === unit.controllerId ||
       !isAlive(source) ||
-      !isAdjacent(source.position, unit.position)
+      !unitsAdjacent(combat, source, unit)
     ) {
       return total;
     }
@@ -2357,7 +2367,7 @@ export function getDefenseBonusWhenAttackedByAttack(defender: CombatUnitState, a
 
 export function getAdjacentNeutralAttackPenalty(state: GameState, attacker: CombatUnitState): number {
   return Object.values(state.combat?.units ?? {}).reduce((total, source) =>
-    total + (source.id !== attacker.id && source.controllerId !== attacker.controllerId && isAlive(source) && isAdjacent(source.position, attacker.position) && getUnitAbilityDefinitions(source).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "nomad-aura") ? 1 : 0), 0);
+    total + (source.id !== attacker.id && source.controllerId !== attacker.controllerId && isAlive(source) && unitsAdjacent(state.combat, source, attacker) && getUnitAbilityDefinitions(source).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "nomad-aura") ? 1 : 0), 0);
 }
 
 export function getApplyBothDiceCount(unit: CombatUnitState): number {

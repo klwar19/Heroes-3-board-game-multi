@@ -1,6 +1,6 @@
 import { townDefenseToken } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
-import { isAdjacent } from "./battlefield";
+import { unitsAdjacent } from "./hex-footprint";
 import { combatRoundStartWindowOpen, intelligenceCastWindowClosed } from "./combat-timing";
 import { appendEvent, nextEventNumber } from "./events";
 import { houseRuleEnabled } from "./house-rules";
@@ -715,7 +715,7 @@ export function getActiveAttackBonus(state: GameState, context: AttackContext): 
           return modifierTotal;
         }
 
-        if (modifier.nonAdjacentOnly && isAdjacent(context.attacker.position, context.defender.position)) {
+        if (modifier.nonAdjacentOnly && unitsAdjacent(state.combat, context.attacker, context.defender)) {
           return modifierTotal;
         }
 
@@ -808,7 +808,7 @@ export function hasActiveIgnoresDefense(state: GameState, unit: CombatUnitState,
     (effect) =>
       effectAppliesToUnit(effect, unit) &&
       effect.modifiers.some((modifier) => modifier.type === "IGNORES_DEFENSE" &&
-        (!modifier.nonAdjacentOnly || (defender !== undefined && !isAdjacent(unit.position, defender.position))))
+        (!modifier.nonAdjacentOnly || (defender !== undefined && !unitsAdjacent(state.combat, unit, defender))))
   );
 }
 
@@ -873,7 +873,7 @@ export function effectiveInitiative(
           candidate.id === unit.id ||
           candidate.controllerId !== unit.controllerId ||
           candidate.damage >= candidate.maxHealth ||
-          !isAdjacent(candidate.position, unit.position)
+          !unitsAdjacent(combat, candidate, unit)
         ) {
           return best;
         }
@@ -883,7 +883,9 @@ export function effectiveInitiative(
   const forgeTempo = combat
     ? Object.values(combat.units).reduce((total, candidate) =>
         total + (candidate.damage < candidate.maxHealth && candidate.position >= 0 && unit.position >= 0 &&
-          (candidate.id === unit.id || isAdjacent(candidate.position, unit.position)) &&
+          (combat.round <= 1
+            ? candidate.id === unit.id || candidate.townVeterancy?.forgeTempoRoundOneTargetId === unit.id
+            : candidate.id === unit.id || unitsAdjacent(combat, candidate, unit)) &&
           getUnitAbilityDefinitions(candidate).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "FORGE_VETERANCY" && ability.effect.mechanic === "grunt-tempo") ? 2 : 0), 0)
     : 0;
   const astralHunt =

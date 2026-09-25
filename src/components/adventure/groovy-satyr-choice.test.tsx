@@ -55,7 +55,24 @@ function openSatyrSwap(difficulty: number): GameState {
   return state;
 }
 
-function openJudgeDread(difficulty: number): GameState {
+/** Top-of-deck ids per Neutral tier, drawn first in the listed order. */
+type DeckPin = Partial<Record<"bronze" | "silver" | "gold" | "azure", string[]>>;
+
+function pinNeutralDecks(state: GameState, pin: DeckPin): void {
+  for (const [tier, ids] of Object.entries(pin)) {
+    const deck = state.decks[`neutral-${tier}`]!;
+    const rest = [...deck.drawPile];
+    for (const id of ids!) {
+      const index = rest.lastIndexOf(id);
+      expect(index, `${id} in the ${tier} deck`).toBeGreaterThanOrEqual(0);
+      rest.splice(index, 1);
+    }
+    // drawFromNeutralDeck pops from the END of the draw pile.
+    deck.drawPile = [...rest, ...[...ids!].reverse()];
+  }
+}
+
+function openJudgeDread(difficulty: number, pin?: DeckPin): GameState {
   let state = createAdventureGameState({
     seed: `judge-dread-${difficulty}`,
     difficulty: "normal",
@@ -73,6 +90,7 @@ function openJudgeDread(difficulty: number): GameState {
   const hero = getMainHero(state, "p1")!;
   const field = state.adventure!.fields[hero.spaceId!];
   field.difficulty = difficulty;
+  if (pin) pinNeutralDecks(state, pin);
   startNeutralEncounter(state, hero, field);
   const place = getLegalActions(state, "p1").find(
     (legal) => legal.action.type === "PLACE_COMBAT_UNIT",
@@ -200,10 +218,21 @@ describe("Groovy Satyr neutral-card choice", () => {
 
 describe("Judge Dread whole-army choice", () => {
   it.each([
-    { difficulty: 5, tiers: ["bronze", "silver", "gold"] },
-    { difficulty: 7, tiers: ["azure"] },
-  ])("shows every drawn Neutral card, including $tiers tiers, with two whole-army actions", ({ difficulty, tiers }) => {
-    const state = openJudgeDread(difficulty);
+    // Pinned to the pre-v178 seeded draw: v178 put the expansion Neutral sides
+    // into the shared decks, and the reshuffled seed now draws both printed
+    // Magi copies, which this per-card text lookup cannot tell apart.
+    {
+      difficulty: 5,
+      tiers: ["bronze", "silver", "gold"],
+      pin: {
+        bronze: ["neutral.marksmen"],
+        silver: ["neutral.energy_elementals", "neutral.magi"],
+        gold: ["neutral.diamond_golems"],
+      } as DeckPin | undefined,
+    },
+    { difficulty: 7, tiers: ["azure"], pin: undefined as DeckPin | undefined },
+  ])("shows every drawn Neutral card, including $tiers tiers, with two whole-army actions", ({ difficulty, tiers, pin }) => {
+    const state = openJudgeDread(difficulty, pin);
     const draws = state.combat!.pendingNeutralDraws ?? [];
     expect(new Set(draws.map((draw) => draw.tier))).toEqual(new Set(tiers));
 

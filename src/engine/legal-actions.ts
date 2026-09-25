@@ -108,6 +108,7 @@ import {
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
   neutralFormationCellsForGuard,
+  neutralGuardFormationHeads,
   neutralPlacementIsManual,
   canMulliganStartingHand,
   getHeroMoveDestinations,
@@ -126,6 +127,9 @@ import {
   observatoryRevealTargets,
   removableHandCards,
   tacticsMoveDestinations,
+  tacticsSwapFits,
+  hexTacticsSortSpaces,
+  inHexTacticsSortWindow,
   scrollMapSpellTier,
 } from "./adventure-reducer";
 import {
@@ -145,6 +149,8 @@ import {
   unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk,
   spellCreatesDirectUnitOngoingEffect,
+  cardDamageNullified,
+  specialtyImmunityActive,
 } from "./active-effects";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -197,16 +203,42 @@ import {
   commanderForgeCandidates,
 } from "./commander-artifacts";
 import {
-  BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
+  combatGeometry,
   getBattlefieldDistance,
   getBattlefieldLabel,
+  getBattlefieldPositions,
   getOrthogonalNeighbors,
   getReachableDestinations,
+  HEX_RANGED_PENALTY_DISTANCE,
   isAdjacent,
   isBattlefieldPosition,
+  isHexPosition,
 } from "./battlefield";
+import {
+  areaAround,
+  battlefieldTokenCells,
+  cloneTokenSpaces,
+  footprintFits,
+  hexWallCells,
+  hexWallSize,
+  unitAdjacentToToken,
+  footprintHeadsIn,
+  relocationFits,
+  unitAdjacentToCell,
+  unitAtCell,
+  unitCells,
+  unitDistance,
+  unitDistanceAt,
+  unitInCells,
+  unitOccupiesCell,
+  unitsAdjacent,
+  unitsAdjacentAt,
+  unitStepSpaces,
+  unitTailOffset,
+} from "./hex-footprint";
+import { movableObstacleCells } from "./hex-battlefield";
 import {
   ballisticsOpeningBombardAvailable,
   polishBallistaOfferOpen,
@@ -342,6 +374,7 @@ import {
 } from "./ruleset";
 import {
   armyUnitStacksActive,
+  combatWaitEnabled,
   effectiveTownBuildingCost,
   houseRuleEnabled,
 } from "./house-rules";
@@ -420,6 +453,7 @@ import {
   unitHasAttackRollAdvantage,
   unitImmuneToSpellSchools,
   couatlCannotBeTargeted,
+  hasImmuneToSpecialtyDamage,
 } from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -1323,13 +1357,13 @@ export function spellRedirectTargets(
   );
 }
 
-/** Living units standing on any of `positions`. */
+/** Living units standing (any of their hexes) on any of `positions`. */
 function unitsOnPositions(
   combat: CombatState,
   positions: Set<number>,
 ): UnitId[] {
   return Object.values(combat.units)
-    .filter((unit) => isUnitAlive(unit) && positions.has(unit.position))
+    .filter((unit) => isUnitAlive(unit) && unitInCells(combat, unit, positions))
     .map((unit) => unit.id);
 }
 
@@ -1386,7 +1420,7 @@ export function spellPotentialBlastUnitIds(
         (unit) =>
           isUnitAlive(unit) &&
           (unit.id === primary.id ||
-            isAdjacent(unit.position, primary.position)),
+            unitsAdjacent(combat, unit, primary)),
       )
       .map((unit) => unit.id);
   }
@@ -1403,10 +1437,12 @@ export function spellPotentialBlastUnitIds(
     if (centre === undefined) {
       return [];
     }
-    const blast = new Set<number>(getOrthogonalNeighbors(centre));
-    if (effect.includeCenter) {
-      blast.add(centre);
-    }
+    // The centre body (the target, or whoever covers the space): a double-wide
+    // centre (hex board) is ringed as a whole. Grid: the centre cell.
+    const centreUnit = target.type === "unit"
+      ? combat.units[target.unitId]
+      : unitAtCell(combat, centre, Object.values(combat.units).filter(isUnitAlive));
+    const blast = areaAround(combat, centreUnit ?? centre, Boolean(effect.includeCenter));
     return unitsOnPositions(combat, blast);
   }
 
@@ -1531,7 +1567,12 @@ export function getUnitMoveRange(
   const rooted = neutralTownDeepRooted(state, unit);
   const conditionMovement = (range: number): number => battlefieldMoveShift === 0 ? range
     : Math.max(0, Math.min(moveCap, range + (rooted ? Math.min(0, battlefieldMoveShift) : battlefieldMoveShift)));
-  const baseRange = unit.type === "ranged" ? 1 : 3;
+  // Hex battlefield (Battlefield Expansion): every unit moves up to its
+  // effective Initiative in hexes, so Initiative buffs/debuffs already move it.
+  const hex = state?.combat ? combatGeometry(state.combat) === "hex" : isHexPosition(unit.position);
+  const baseRange = hex
+    ? effectiveInitiative(unit, state?.activeEffects ?? [], state?.combat)
+    : unit.type === "ranged" ? 1 : 3;
   const base = baseRange + (rooted ? Math.min(0, getUnitAbilityMoveRangeBonus(unit)) : getUnitAbilityMoveRangeBonus(unit));
   const armadilloMomentum = !rooted && state && hasPositiveInitiativeEffect(state, unit) &&
     getUnitAbilityDefinitions(unit).some((ability) => ability.id === "factory-armadillo-momentum") ? 1 : 0;
@@ -1583,9 +1624,10 @@ export function getUnitMoveRange(
   // switch the classic rider on for cards it does not reprint. A reprint's own
   // amount REPLACES the ±1 rider (initiativeBuffMovementModifiers), so nothing
   // double-counts when both rules are on.
+  // On hex the Initiative shift already IS movement: no ±1 rider on top.
   const classicRider = Boolean(
     state && houseRuleEnabled(state, "combat-move-initiative"),
-  );
+  ) && !hex;
   const balancePrinted = Boolean(
     state && houseRuleEnabled(state, "polish-card-balance"),
   );
@@ -1614,7 +1656,10 @@ export function getUnitMoveRange(
       (communityPrinted &&
         effect.source.type === "card" &&
         COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS.includes(effect.source.cardId));
-    if (!classicRider && !printedByReprint) {
+    // On hex the reprints' "+N Initiative and N more spaces" is one speed buff:
+    // the Initiative half already moves the unit, so the spaces half would
+    // count it twice.
+    if (!classicRider && (!printedByReprint || hex)) {
       continue;
     }
     for (const modifier of effect.modifiers) {
@@ -1646,16 +1691,75 @@ export function getCombatObstacles(combat: CombatState): number[] {
  * NOT block — units enter them so the wall can burn or the trap can spring.
  */
 export function getForceFieldPositions(combat: CombatState): number[] {
+  // Every hex of a multi-hex Force Field (hex board); one space on the grid.
   return (combat.battlefieldTokens ?? [])
     .filter((token) => token.kind === "force_field")
-    .map((token) => token.position);
+    .flatMap((token) => battlefieldTokenCells(token));
 }
 
-/** Spaces holding an artifact placed as a Wall (Ladybird of Luck). */
+/** Spaces holding an artifact placed as a Wall (Ladybird of Luck) — every hex of it. */
 export function getArtifactWallPositions(combat: CombatState): number[] {
   return (combat.battlefieldTokens ?? [])
     .filter((token) => token.kind === "artifact_wall")
-    .map((token) => token.position);
+    .flatMap((token) => battlefieldTokenCells(token));
+}
+
+/**
+ * Spaces that are not "empty" for an empty-space placement (a summon, a spell
+ * token, a Wall): every hex of a living unit, the obstacles, every hex of a
+ * battlefield token and the standing siege Walls / Gate. Mirrors
+ * isSpaceBlockedForSummon in the reducer.
+ */
+export function getEmptySpaceBlockedCells(combat: CombatState): Set<number> {
+  const blocked = new Set<number>();
+  for (const unit of Object.values(combat.units)) {
+    if (isUnitAlive(unit)) {
+      for (const cell of unitCells(combat, unit)) blocked.add(cell);
+    }
+  }
+  for (const position of combat.obstacles ?? []) {
+    blocked.add(position);
+  }
+  for (const token of combat.battlefieldTokens ?? []) {
+    for (const cell of battlefieldTokenCells(token)) blocked.add(cell);
+  }
+  for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
+    blocked.add(position);
+  }
+  return blocked;
+}
+
+/**
+ * The hexes a wall token (Force Field / Fire Wall / Ladybird Wall) anchored on
+ * `anchor` would cover on the hex board, clear of every non-empty space — the
+ * footprint the offer, the preview, the AI and the resolution all read (see
+ * hexWallCells for the orientation rule). Null when it does not fit. On the
+ * 4×5 grid, and for every other token kind, the single `anchor` space (when
+ * empty).
+ */
+export function wallPlacementCells(
+  combat: CombatState,
+  kind: string,
+  anchor: number,
+  expert = false,
+  blocked: ReadonlySet<number> = getEmptySpaceBlockedCells(combat),
+): number[] | null {
+  return hexWallCells(anchor, hexWallSize(combat, kind, expert), (cell) => blocked.has(cell));
+}
+
+/** The wall token kind an empty-space placement effect drops, if any. */
+export function wallKindOfEffectType(effectType: string | undefined): "force_field" | "fire_wall" | "artifact_wall" | null {
+  switch (effectType) {
+    case "PLACE_FORCE_FIELD":
+      return "force_field";
+    case "PLACE_FIRE_WALL":
+    case "PLACE_FIRE_WALL_FIXED":
+      return "fire_wall";
+    case "PLACE_ARTIFACT_WALL":
+      return "artifact_wall";
+    default:
+      return null;
+  }
 }
 
 /**
@@ -1680,7 +1784,8 @@ export function getBlockedSpaces(
 
   for (const unit of Object.values(combat.units)) {
     if (isUnitAlive(unit) && unit.id !== movingUnit?.id) {
-      blocked.add(unit.position);
+      // Both hexes of a double-wide unit (hex board); one cell otherwise.
+      for (const cell of unitCells(combat, unit)) blocked.add(cell);
     }
   }
 
@@ -1709,12 +1814,23 @@ export function getPathDistances(
 ): Map<number, number> {
   const blocked = getBlockedSpaces(combat, mover);
   // The origin (the target's own square) seeds the flood even though it is
-  // occupied — we want the distance to stand *next to* the target.
-  blocked.delete(origin);
+  // occupied — we want the distance to stand *next to* the target. A
+  // double-wide target (hex board) seeds from both of its hexes.
+  const originUnit = unitAtCell(
+    combat,
+    origin,
+    Object.values(combat.units).filter((unit) => isUnitAlive(unit) && unit.id !== mover.id),
+  );
+  const seeds = originUnit ? unitCells(combat, originUnit) : [origin];
+  for (const seed of seeds) blocked.delete(seed);
   const ignoresObstacles = mover.type === "flying";
+  // A double-wide mover's head may only stand where its tail fits too.
+  const tailOffset = unitTailOffset(combat, mover);
+  const passable = (position: number): boolean =>
+    tailOffset === 0 ? !blocked.has(position) : footprintFits(combat, mover, position, blocked);
 
-  const distances = new Map<number, number>([[origin, 0]]);
-  let frontier = [origin];
+  const distances = new Map<number, number>(seeds.map((seed) => [seed, 0] as [number, number]));
+  let frontier = [...seeds];
   let step = 0;
   while (frontier.length > 0) {
     step += 1;
@@ -1723,7 +1839,7 @@ export function getPathDistances(
       for (const neighbor of getOrthogonalNeighbors(position)) {
         if (
           distances.has(neighbor) ||
-          (!ignoresObstacles && blocked.has(neighbor))
+          (!ignoresObstacles && !passable(neighbor))
         ) {
           continue;
         }
@@ -1776,7 +1892,7 @@ function isBoundByAdjacentEnemy(
       binder.controllerId !== unit.controllerId &&
       isUnitAlive(binder) &&
       hasBindAdjacentEnemies(binder) &&
-      isAdjacent(binder.position, unit.position),
+      unitsAdjacent(combat, binder, unit),
   );
 }
 
@@ -1792,8 +1908,11 @@ export function getLegalMoveDestinations(
     (unit.activatedThisRound && !waitedReactivation) ||
     unit.movedThisActivation ||
     // Ranged units step 1 after shooting; a Magma Elemental whose Solidify just
-    // ended "may move again" (elementalAfterAttack sets solidifyCanMove).
-    (unit.attackedThisActivation && unit.type !== "ranged" && !unit.elementalVeterancy?.solidifyCanMove)
+    // ended "may move again" (elementalAfterAttack sets solidifyCanMove). On the
+    // hex battlefield a ranged unit "can either move or attack" — no step after.
+    (unit.attackedThisActivation &&
+      (unit.type !== "ranged" || combatGeometry(combat) === "hex") &&
+      !unit.elementalVeterancy?.solidifyCanMove)
   ) {
     return [];
   }
@@ -1818,11 +1937,8 @@ export function getLegalMoveDestinations(
   // Arch Devils teleport: a regular move may land on any empty space.
   if (hasUnitAbilityEffect(unit, "MOVE_ANYWHERE") && !neutralTownDeepRooted(state, unit) && !state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) {
     const limited = state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "TOWN_MOVE_LIMIT"));
-    return Array.from(
-      { length: BATTLEFIELD_CELL_COUNT },
-      (_, position) => position,
-    ).filter(
-      (position) => position !== unit.position && !blocked.has(position) && (!limited || getBattlefieldDistance(unit.position, position) <= getUnitMoveRange(unit, state)),
+    return getBattlefieldPositions(combatGeometry(combat)).filter(
+      (position) => position !== unit.position && footprintFits(combat, unit, position, blocked) && (!limited || getBattlefieldDistance(unit.position, position) <= getUnitMoveRange(unit, state)),
     );
   }
 
@@ -1831,6 +1947,7 @@ export function getLegalMoveDestinations(
     getUnitMoveRange(unit, state),
     blocked,
     unit.type === "flying",
+    unitTailOffset(combat, unit),
   ).filter(isBattlefieldPosition);
 }
 
@@ -2049,13 +2166,15 @@ function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
     (candidate) =>
       candidate.controllerId !== unit.controllerId &&
       isUnitAlive(candidate) &&
-      isAdjacent(candidate.position, unit.position),
+      unitsAdjacent(combat, candidate, unit),
   );
 }
 
 export function getAttackKind(
   attacker: CombatUnitState,
   defender: CombatUnitState,
+  /** The combat, so a double-wide unit's tail counts as adjacent (hex board). */
+  combat?: CombatState | null,
 ): "melee" | "ranged" {
   // `unitAttacksAsRanged` is the ONE read: a printed ranged unit, OR a unit
   // Nagato's Big Seven Bombardment armed for this activation. Everything that
@@ -2063,12 +2182,15 @@ export function getAttackKind(
   // (shouldRetaliate), the ranged combat penalties, the behind-Wall damage
   // reduction — therefore covers the bombardment automatically.
   return unitAttacksAsRanged(attacker) &&
-    !isAdjacent(attacker.position, defender.position)
+    !unitsAdjacent(combat, attacker, defender)
     ? "ranged"
     : "melee";
 }
 
 function isBackRow(position: number): boolean {
+  if (isHexPosition(position)) {
+    return false;
+  }
   const row = Math.floor(position / BATTLEFIELD_COLUMNS);
   return row === 0 || row === BATTLEFIELD_ROWS - 1;
 }
@@ -2131,19 +2253,23 @@ export function getAttackRollMode(
   // shooting from its own Backline into the enemy's Backline. Computed here but
   // NOT returned immediately — the "resolve the higher" advantage below overrides
   // it (see the ATTACK_ROLL_ADVANTAGE block).
-  const attackKind = getAttackKind(attacker, defender);
+  const attackKind = getAttackKind(attacker, defender, state?.combat);
   const hasMeleePenalty =
     // A bombarding battleship (Nagato's specialty) takes the adjacent-target
     // penalty exactly like a printed shooter — same shared read as getAttackKind.
     unitAttacksAsRanged(attacker) &&
     attackKind === "melee" &&
     !ignoresMeleePenalty;
+  // Hex battlefield: the long-range penalty is a shot of 8 or more hexes
+  // (the back-row-to-back-row rule is the 4×5 board's).
   const hasLongRangePenalty =
     attackKind === "ranged" &&
     !ignoresAllPenalties &&
-    isBackRow(attacker.position) &&
-    isBackRow(defender.position) &&
-    isOppositeBackRow(attacker.position, defender.position);
+    (isHexPosition(attacker.position) && isHexPosition(defender.position)
+      ? unitDistance(state?.combat, attacker, defender) >= HEX_RANGED_PENALTY_DISTANCE
+      : isBackRow(attacker.position) &&
+        isBackRow(defender.position) &&
+        isOppositeBackRow(attacker.position, defender.position));
   const hasCombatPenalty = hasMeleePenalty || hasLongRangePenalty;
 
   // Shaman's Puppet (option A): the puppeted unit rolls two Attack dice and
@@ -2307,7 +2433,7 @@ export function canUnitAttack(
   // melee. A ranged unit shooting at a distance is what this refuses.
   if (
     attacker.type === "ranged" &&
-    !isAdjacent(attacker.position, defender.position) &&
+    !unitsAdjacent(combat, attacker, defender) &&
     activeEffects.some(
       (effect) =>
         effectAppliesToUnit(effect, attacker) &&
@@ -2327,8 +2453,8 @@ export function canUnitAttack(
   // lock the target (a battleship's guns do not jam).
   if (attacker.type !== "ranged" && attacker.bombardment) {
     return (
-      isAdjacent(attacker.position, defender.position) ||
-      bombardmentReaches(attacker, defender)
+      unitsAdjacent(combat, attacker, defender) ||
+      bombardmentReaches(attacker, defender, combat)
     );
   }
 
@@ -2340,13 +2466,13 @@ export function canUnitAttack(
     }
 
     if (hasAdjacentEnemy(combat, attacker)) {
-      return isAdjacent(attacker.position, defender.position);
+      return unitsAdjacent(combat, attacker, defender);
     }
 
     return true;
   }
 
-  return isAdjacent(attacker.position, defender.position);
+  return unitsAdjacent(combat, attacker, defender);
 }
 
 export function canUnitMoveAndAttack(
@@ -2403,12 +2529,12 @@ export function getBerserkNearestTargets(
   }
   const nearest = Math.min(
     ...others.map((candidate) =>
-      getBattlefieldDistance(unit.position, candidate.position),
+      unitDistance(combat, unit, candidate),
     ),
   );
   return others.filter(
     (candidate) =>
-      getBattlefieldDistance(unit.position, candidate.position) === nearest,
+      unitDistance(combat, unit, candidate) === nearest,
   );
 }
 
@@ -2517,6 +2643,12 @@ export function getTargetsForCard(
    * carries its own `target`, it is used instead of the card-level one.
    */
   overrideTarget?: TargetDefinition,
+  /**
+   * The CHOOSE_ONE option's own effect type, when the target comes from an
+   * option (Ladybird of Luck's Wall side) — lets the empty-space offer apply
+   * that effect's hex wall footprint.
+   */
+  optionEffectType?: string,
 ): TargetRef[] {
   const card = cards[cardId];
   // Self-resolving effects (Leadership's morale token, active effects) never
@@ -2565,37 +2697,39 @@ export function getTargetsForCard(
     if (!combat) {
       return [];
     }
-    const blocked = new Set<number>();
-    for (const unit of Object.values(combat.units)) {
-      if (isUnitAlive(unit)) {
-        blocked.add(unit.position);
-      }
-    }
-    for (const position of combat.obstacles ?? []) {
-      blocked.add(position);
-    }
-    // A space already holding any spell token (Force Field / Fire Wall /
-    // Quicksand / Land Mine) is not "empty" for placing another one or summoning.
-    for (const token of combat.battlefieldTokens ?? []) {
-      blocked.add(token.position);
-    }
-    for (const position of combat.siege?.walls ?? []) {
-      blocked.add(position);
-    }
-    if (combat.siege?.gatePosition != null) {
-      blocked.add(combat.siege.gatePosition);
-    }
+    // Every hex of a living unit (a double-wide tail too, hex board), the
+    // obstacles, every hex of a spell token (Force Field / Fire Wall /
+    // Quicksand / Land Mine — not "empty" for placing another one or
+    // summoning) and the standing Walls / Gate.
+    const blocked = getEmptySpaceBlockedCells(combat);
+    // Hex board: a wall token (Force Field / Fire Wall / Ladybird Wall) needs
+    // its whole base footprint on empty hexes (wallPlacementCells — the same
+    // run the resolution lays down). The 4×5 grid keeps the single space.
+    const wallKind = combatGeometry(combat) === "hex"
+      ? wallKindOfEffectType(optionEffectType ?? card?.effect.type)
+      : null;
 
     // Rin "Cat Corps" is the one empty-space play whose printed card adds "next
     // to one of your units". Read through the SAME catLandingIsAnchored the
     // resolution takes, so an offered space is always one the reducer will use.
     const anchoredOnly = card?.effect.type === "SUMMON_CAMPUS_CATS";
+    // A summoned double-wide Elemental (hex board) needs its whole footprint
+    // empty, as placeSummonedUnit requires.
+    const summonBody = card?.effect.type === "SUMMON_ELEMENTAL"
+      ? { position: -1, controllerId: playerId, unitDefId: card.effect.unitDefId }
+      : null;
     const spaces: TargetRef[] = [];
-    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    for (const position of getBattlefieldPositions(combatGeometry(combat))) {
       if (blocked.has(position)) {
         continue;
       }
+      if (summonBody && !footprintFits(combat, summonBody, position, blocked)) {
+        continue;
+      }
       if (anchoredOnly && !catLandingIsAnchored(combat, playerId, position)) {
+        continue;
+      }
+      if (wallKind && !wallPlacementCells(combat, wallKind, position, false, blocked)) {
         continue;
       }
       spaces.push({ type: "space", position });
@@ -2610,7 +2744,7 @@ export function getTargetsForCard(
       return [];
     }
     const spaces: TargetRef[] = [];
-    for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+    for (const position of getBattlefieldPositions(combatGeometry(state.combat))) {
       spaces.push({ type: "space", position });
     }
     return spaces;
@@ -2717,17 +2851,14 @@ export function getTargetsForCard(
     const blocked = new Set<number>();
     for (const unit of Object.values(combat.units)) {
       if (isUnitAlive(unit)) {
-        blocked.add(unit.position);
+        for (const cell of unitCells(combat, unit)) blocked.add(cell);
       }
     }
     for (const position of combat.obstacles ?? []) {
       blocked.add(position);
     }
-    for (const position of combat.siege?.walls ?? []) {
+    for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
       blocked.add(position);
-    }
-    if (combat.siege?.gatePosition != null) {
-      blocked.add(combat.siege.gatePosition);
     }
     targets = targets.filter((candidate) => {
       if (candidate.type !== "unit") {
@@ -2737,9 +2868,8 @@ export function getTargetsForCard(
       if (!unit || !unit.unitDefId) {
         return false;
       }
-      return getOrthogonalNeighbors(unit.position).some(
-        (position) => !blocked.has(position),
-      );
+      // The Clone Token keeps the card's footprint (double-wide on hex).
+      return cloneTokenSpaces(combat, unit, blocked).length > 0;
     });
   }
 
@@ -2815,7 +2945,7 @@ function targetHasAdjacentUnits(
         unit.id !== center.id &&
         unit.position >= 0 &&
         isUnitAlive(unit) &&
-        isAdjacent(unit.position, center.position),
+        unitsAdjacent(state.combat!, unit, center),
     ).length >= required
   );
 }
@@ -3803,7 +3933,8 @@ function addSpellActions(
     // standing siege Wall or Gate.
     if (card.effect.type === "REMOVE_OBSTACLE") {
       const siege = combat?.siege;
-      const hasObstacleMarker = (combat?.obstacles ?? []).length > 0;
+      // A hex ship battle's sea hexes are not a liftable obstacle.
+      const hasObstacleMarker = combat ? movableObstacleCells(combat).length > 0 : false;
       const hasToken = (combat?.battlefieldTokens ?? []).length > 0;
       const hasFortification = Boolean(
         siege && (siege.walls.length > 0 || siege.gatePosition !== null),
@@ -3820,26 +3951,10 @@ function addSpellActions(
       if (!combat) {
         continue;
       }
-      const blocked = new Set<number>();
-      for (const unit of Object.values(combat.units)) {
-        if (isUnitAlive(unit)) {
-          blocked.add(unit.position);
-        }
-      }
-      for (const position of combat.obstacles ?? []) {
-        blocked.add(position);
-      }
-      for (const token of combat.battlefieldTokens ?? []) {
-        blocked.add(token.position);
-      }
-      for (const position of combat.siege?.walls ?? []) {
-        blocked.add(position);
-      }
-      if (combat.siege?.gatePosition != null) {
-        blocked.add(combat.siege.gatePosition);
-      }
+      // Every hex of a hex-board wall token counts as taken too.
+      const blocked = getEmptySpaceBlockedCells(combat);
       let hasEmpty = false;
-      for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+      for (const position of getBattlefieldPositions(combatGeometry(combat))) {
         if (!blocked.has(position)) {
           hasEmpty = true;
           break;
@@ -3967,6 +4082,7 @@ function addChooseOneSpellInstantCasts(
       cardId,
       cards,
       option.target,
+      option.effect.type,
     ).filter(
       (candidate) => !sameTargetRef(candidate, originalEagleEyeTarget),
     )) {
@@ -4189,7 +4305,16 @@ function addPlayableCardActions(
     }
 
     const needsOwnActivation = card.timing !== "instant";
-    if (needsOwnActivation && !ownActivationOpen) {
+    // A start-window option is playable before anyone activates, including
+    // when the opponent owns the first activation slot. Keep the exception on
+    // that option alone; other sides still need their normal play window.
+    const startWindowOptionOpen =
+      card.effect.type === "CHOOSE_ONE" &&
+      card.effect.options.some((option) =>
+        (option.combatStartOnly && combatStartWindowOpen(combat)) ||
+        (option.combatRoundStartOnly && combatRoundStartWindowOpen(combat))
+      );
+    if (needsOwnActivation && !ownActivationOpen && !startWindowOptionOpen) {
       continue;
     }
 
@@ -4259,7 +4384,12 @@ function addPlayableCardActions(
       }
       // Options with a trigger wait for their reaction window; the rest play
       // directly when their effect makes sense in combat.
-      addOptionPlays(actions, state, playerId, card, cardId, "combat", cards);
+      addOptionPlays(
+        actions, state, playerId, card, cardId, "combat", cards,
+        needsOwnActivation && !ownActivationOpen
+          ? (option) => Boolean(option.combatStartOnly || option.combatRoundStartOnly)
+          : undefined,
+      );
       // NOTE (2026-08-08): the medic draw-only twin below is deliberately NOT
       // mirrored per CHOOSE_ONE option. Every shipped CHOOSE_ONE medic face
       // (Rion IV/VI and their clones) targets ANY friendly unit, so its options
@@ -5585,7 +5715,7 @@ function addOptionPlays(
         : ["basic"];
 
     let targets = optionNeedsUnitTarget(option.effect)
-      ? getTargetsForCard(state, playerId, cardId, cards, option.target)
+      ? getTargetsForCard(state, playerId, cardId, cards, option.target, option.effect.type)
       : [{ type: "none" } as TargetRef];
 
     // Meteor Shower is an exact multi-target effect, not an "up to" blast: it
@@ -5660,17 +5790,14 @@ function addOptionPlays(
       const blocked = new Set<number>();
       for (const unit of Object.values(combat.units)) {
         if (isUnitAlive(unit)) {
-          blocked.add(unit.position);
+          for (const cell of unitCells(combat, unit)) blocked.add(cell);
         }
       }
       for (const position of combat.obstacles ?? []) {
         blocked.add(position);
       }
-      for (const position of combat.siege?.walls ?? []) {
+      for (const position of combat.siege ? intactFortificationPositions(combat.siege) : []) {
         blocked.add(position);
-      }
-      if (combat.siege?.gatePosition != null) {
-        blocked.add(combat.siege.gatePosition);
       }
       targets = targets.filter((candidate) => {
         if (candidate.type !== "unit") {
@@ -5679,9 +5806,7 @@ function addOptionPlays(
         const unit = combat.units[candidate.unitId];
         return (
           Boolean(unit) &&
-          getOrthogonalNeighbors(unit!.position).some(
-            (position) => !blocked.has(position),
-          )
+          unitStepSpaces(combat, unit!, blocked).length > 0
         );
       });
     }
@@ -7328,6 +7453,8 @@ export function playerThreatenedByPendingDamage(
       state,
       effect!,
       stackItem.action.target,
+      card,
+      stackItem.action.playerId,
     ).some((unitId) => combat.units[unitId]?.controllerId === playerId);
   }
 
@@ -7335,18 +7462,80 @@ export function playerThreatenedByPendingDamage(
 }
 
 /**
+ * Azure Dragons / Black Dragons (Pack): a unit that takes NO damage from this
+ * card — "immune to all Spells" blocks every Spell, "immune to Specialty
+ * damage" blocks Hero Specialty cards. Non-damage Specialty effects are applied
+ * elsewhere and are unaffected. The Spell-targeting filter already keeps an
+ * all-school-immune unit from being targeted/splashed; this closes the
+ * remaining area-damage paths that bypass that filter. (The reducer's
+ * unitIgnoresCardDamage delegates here.)
+ */
+export function cardDamageIgnoredByUnit(
+  state: GameState,
+  unit: CombatUnitState,
+  card: CardDefinition | undefined,
+): boolean {
+  if (!card) {
+    return false;
+  }
+  // Orb of Inhibition (option A): for the rest of the Combat every Spell and
+  // Hero-Specialty CARD deals 0 damage to every unit. Checked at this shared
+  // card-damage predicate so the direct, area, Xyron and Chain Lightning paths
+  // (all of which gate on this function) are covered for both armies at once.
+  if (
+    cardDamageNullified(state) &&
+    (card.kind === "spell" || card.kind === "hero-specialty")
+  ) {
+    return true;
+  }
+  if (card.kind === "hero-specialty") {
+    return (
+      hasImmuneToSpecialtyDamage(unit) || specialtyImmunityActive(state, unit)
+    );
+  }
+  if (card.kind === "spell") {
+    // Pendant of Negativity (option B): an artifact-granted school immunity also
+    // turns the spell aside. Unlike printed immunity it is NOT lifted by Orb of
+    // Vulnerability (an artifact effect, like Anti-Magic).
+    if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
+      return true;
+    }
+    // Orb of Vulnerability negates printed spell-school immunity, so the unit
+    // takes the spell like any other.
+    return (
+      !spellAbilitiesSuppressed(state) &&
+      unitImmuneToSpellSchools(unit, card.spellSchools)
+    );
+  }
+  return false;
+}
+
+/**
  * Living unit ids a damage effect would (or could) hit from its chosen target.
  * Used for specialty pre-hit heal windows and the threat gate above.
+ *
+ * With the `card` and its `casterId` it reads exactly what the resolution
+ * reads: an area blast never threatens a unit that ignores this card's damage
+ * (the resolvers drop it from the Frost Ring picks and deal it 0 elsewhere),
+ * and Zeestral VI spares the CASTER's own units beside the centre.
  */
 export function unitIdsThreatenedByDamageEffect(
   state: GameState,
   effect: ConcreteEffectDef,
   target: TargetRef | undefined,
+  card?: CardDefinition,
+  casterId?: PlayerId,
 ): UnitId[] {
   const combat = state.combat;
   if (!combat || !target) {
     return [];
   }
+  // Area blasts resolve through reducedCardDamage / the pick candidates, both
+  // of which skip a unit that ignores the card's damage.
+  const hurtable = (unitId: UnitId): boolean => {
+    const unit = combat.units[unitId];
+    return unit !== undefined && !cardDamageIgnoredByUnit(state, unit, card);
+  };
 
   if (effect.type === "CHAIN_LIGHTNING" && target.type === "unit") {
     const primary = combat.units[target.unitId];
@@ -7358,7 +7547,7 @@ export function unitIdsThreatenedByDamageEffect(
       )
       .map((unit) => ({
         id: unit.id,
-        distance: getBattlefieldDistance(primary.position, unit.position),
+        distance: unitDistance(combat, primary, unit),
       }))
       .sort((a, b) => a.distance - b.distance);
     const boundary = others[1]?.distance ?? Infinity;
@@ -7390,7 +7579,7 @@ export function unitIdsThreatenedByDamageEffect(
         (unit) =>
           isUnitAlive(unit) &&
           (unit.id === primary.id ||
-            isAdjacent(unit.position, primary.position)),
+            unitsAdjacent(combat, unit, primary)),
       )
       .map((unit) => unit.id);
   }
@@ -7405,24 +7594,48 @@ export function unitIdsThreatenedByDamageEffect(
     if (center === undefined) {
       return [];
     }
+    // A unit centre surrounds its whole footprint (double-wide on hex); Inferno /
+    // Meteor Shower keep their fixed space area.
+    const centreUnit = target.type === "unit"
+      ? combat.units[target.unitId]
+      : effect.type === "AREA_DAMAGE_ALL_ADJACENT"
+        ? unitAtCell(combat, center, Object.values(combat.units).filter(isUnitAlive))
+        : undefined;
     const hit = unitsOnPositions(
       combat,
-      new Set([
-        ...(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false ? [] : [center]),
-        ...getOrthogonalNeighbors(center),
-      ]),
-    );
-    // Zeestral VI: only the chosen enemy and ITS side's neighbours are hit —
-    // friendly units beside the target are spared (the reducer filters on the
-    // caster; here the centre unit's controller stands in for "the enemy").
-    if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.adjacentEnemiesOnly) {
-      const centreController = Object.values(combat.units).find(
-        (unit) => isUnitAlive(unit) && unit.position === center,
-      )?.controllerId;
+      areaAround(
+        combat,
+        centreUnit ?? center,
+        !(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false),
+      ),
+    ).filter(hurtable);
+    // Zeestral VI: the centre (the chosen enemy) is always hit, the neighbours
+    // only when they are the CASTER's enemies — the reducer's own filter
+    // (applyAreaAllAdjacentPlay).
+    if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.adjacentEnemiesOnly && casterId !== undefined) {
       return hit.filter((unitId) => {
         const unit = combat.units[unitId];
         return unit !== undefined &&
-          (unit.position === center || unit.controllerId === centreController);
+          (unitOccupiesCell(combat, unit, center) || unit.controllerId !== casterId);
+      });
+    }
+    // No caster known (legacy callers): the centre unit's controller stands in
+    // for "the enemy".
+    if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.adjacentEnemiesOnly) {
+      const centreHolder = centreUnit ?? unitAtCell(
+        combat,
+        center,
+        Object.values(combat.units).filter((unit) => isUnitAlive(unit)),
+      );
+      const centreController = centreHolder && isUnitAlive(centreHolder)
+        ? centreHolder.controllerId
+        : Object.values(combat.units).find(
+            (unit) => isUnitAlive(unit) && unit.position === center,
+          )?.controllerId;
+      return hit.filter((unitId) => {
+        const unit = combat.units[unitId];
+        return unit !== undefined &&
+          (unitOccupiesCell(combat, unit, center) || unit.controllerId === centreController);
       });
     }
     return hit;
@@ -7438,11 +7651,14 @@ export function unitIdsThreatenedByDamageEffect(
     if (center === undefined) {
       return [];
     }
-    const blast = new Set<number>(getOrthogonalNeighbors(center));
-    if (effect.includeCenter) {
-      blast.add(center);
-    }
-    return unitsOnPositions(combat, blast);
+    const centreUnit = target.type === "unit"
+      ? combat.units[target.unitId]
+      : unitAtCell(combat, center, Object.values(combat.units).filter(isUnitAlive));
+    // resolveAreaPickDamage: the centre body (when included) and the ring's
+    // candidates — a unit ignoring this card's damage is never a candidate and
+    // takes 0 as the centre.
+    const blast = areaAround(combat, centreUnit ?? center, Boolean(effect.includeCenter));
+    return unitsOnPositions(combat, blast).filter(hurtable);
   }
 
   return [];
@@ -7506,7 +7722,7 @@ export function getAutomaticNeutralAbilityActions(state: GameState, unit: Combat
   addUnitAbilityActions(actions, state, unit.controllerId, actor);
   const splash = getSplashAllocationAttack(unit);
   if (splash && Object.values(combat.units).some(target => isUnitAlive(target) &&
-      target.controllerId !== unit.controllerId && isAdjacent(unit.position, target.position) && !isArrowTowerUnit(target))) {
+      target.controllerId !== unit.controllerId && unitsAdjacent(combat, unit, target) && !isArrowTowerUnit(target))) {
     actions.push({ label: `${unit.name}: ${splash.abilityName}`, action: {
       type: "USE_UNIT_ABILITY", playerId: unit.controllerId, unitId: unit.id,
       abilityId: splash.abilityId, target: { type: "none" },
@@ -7557,7 +7773,7 @@ function addUnitAbilityActions(
         if (
           target.controllerId === activeUnit.controllerId ||
           !isUnitAlive(target) ||
-          getBattlefieldDistance(activeUnit.position, target.position) >
+          unitDistance(combat, activeUnit, target) >
             ability.effect.range
         ) {
           continue;
@@ -7621,14 +7837,9 @@ function addUnitAbilityActions(
 
       // Summon: place a Few of Demons on an empty adjacent space.
       if (canSummonNew && getUnitSide(demonDefId, "few")) {
-        const occupied = new Set<number>(
-          Object.values(combat.units)
-            .filter(isUnitAlive)
-            .map((candidate) => candidate.position),
-        );
-        for (const position of combat.obstacles ?? []) {
-          occupied.add(position);
-        }
+        // An EMPTY adjacent space: no unit, obstacle, spell token or standing
+        // Wall / Gate (the reducer's isSpaceBlockedForSummon).
+        const occupied = getEmptySpaceBlockedCells(combat);
         for (const position of getOrthogonalNeighbors(activeUnit.position)) {
           if (!isBattlefieldPosition(position) || occupied.has(position)) {
             continue;
@@ -7722,7 +7933,7 @@ function addUnitAbilityActions(
           // tower. Matches the enforcement in reducer.ts.
           (effect.targets === "enemy" || !isArrowTowerUnit(target)) &&
           (!effect.adjacentOnly ||
-            isAdjacent(activeUnit.position, target.position)) &&
+            unitsAdjacent(combat, activeUnit, target)) &&
           (!effect.targetTypes || effect.targetTypes.includes(target.type))
         );
       });
@@ -7754,7 +7965,7 @@ function addUnitAbilityActions(
     ) {
       const blocked = getBlockedSpaces(combat);
       for (const token of combat.battlefieldTokens ?? []) {
-        blocked.add(token.position);
+        for (const cell of battlefieldTokenCells(token)) blocked.add(cell);
       }
       if (combat.siege) {
         for (const position of intactFortificationPositions(combat.siege)) {
@@ -7792,7 +8003,7 @@ function addUnitAbilityActions(
           target.controllerId !== playerId ||
           !isUnitAlive(target) ||
           isArrowTowerUnit(target) ||
-          !isAdjacent(activeUnit.position, target.position)
+          !unitsAdjacent(combat, activeUnit, target)
         ) {
           continue;
         }
@@ -7913,16 +8124,19 @@ function addUnitAbilityActions(
           push(`${prefix}${detail}`, { type: "unit", unitId: target.id });
         }
       } else if (apSkill.target === "empty-space") {
-        const occupied = new Set(
-          Object.values(combat.units)
-            .filter(isUnitAlive)
-            .map((unit) => unit.position),
-        );
-        for (
-          let position = 0;
-          position < BATTLEFIELD_CELL_COUNT;
-          position += 1
-        ) {
+        // Hex board: a truly EMPTY space — no living unit (tails too),
+        // obstacle, spell token or standing Wall / Gate (the reducer's
+        // isSpaceBlockedForSummon). The classic grid keeps its original rule:
+        // only a living unit's space is refused (reducer "teleport-splash").
+        const occupied =
+          combatGeometry(combat) === "hex"
+            ? getEmptySpaceBlockedCells(combat)
+            : new Set(
+                Object.values(combat.units)
+                  .filter(isUnitAlive)
+                  .map((unit) => unit.position),
+              );
+        for (const position of getBattlefieldPositions(combatGeometry(combat))) {
           if (!occupied.has(position))
             push(`${prefix}teleport to ${getBattlefieldLabel(position)}`, {
               type: "space",
@@ -8018,7 +8232,8 @@ function addFortificationActions(
     }
     const adjacentDemolisher =
       activeUnit.type !== "ranged" &&
-      isAdjacent(activeUnit.position, token.position);
+      // Any hex of a two-hex Ladybird Wall (hex board); its one space on the grid.
+      unitAdjacentToToken(combat, activeUnit, token);
     if (!adjacentDemolisher && !demolish) {
       continue;
     }
@@ -8038,17 +8253,32 @@ function addFortificationActions(
   if (!siege) {
     return;
   }
-  const targets: { kind: "wall" | "gate"; position: number }[] = [
-    ...siege.walls.map((position) => ({ kind: "wall" as const, position })),
-    ...(siege.gatePosition !== null
-      ? [{ kind: "gate" as const, position: siege.gatePosition }]
-      : []),
-  ];
+  // Hex: one offer per Wall/Gate token (one card), aimed at a hex of it the
+  // unit stands next to when there is one.
+  const targets: { kind: "wall" | "gate"; position: number }[] = siege.hexTokens
+    ? siege.hexTokens.flatMap((token) => {
+        const standing = token.kind === "gate"
+          ? (siege.gatePosition !== null ? token.cells : [])
+          : token.cells.filter((cell) => siege.walls.includes(cell));
+        if (standing.length === 0) {
+          return [];
+        }
+        const adjacentCell = activeUnit.type !== "ranged"
+          ? standing.find((cell) => unitAdjacentToCell(combat, activeUnit, cell))
+          : undefined;
+        return [{ kind: token.kind, position: adjacentCell ?? standing[0]! }];
+      })
+    : [
+        ...siege.walls.map((position) => ({ kind: "wall" as const, position })),
+        ...(siege.gatePosition !== null
+          ? [{ kind: "gate" as const, position: siege.gatePosition }]
+          : []),
+      ];
 
   for (const target of targets) {
     const adjacentDemolisher =
       activeUnit.type !== "ranged" &&
-      isAdjacent(activeUnit.position, target.position);
+      unitAdjacentToCell(combat, activeUnit, target.position);
     if (!adjacentDemolisher && !demolish) {
       continue;
     }
@@ -8087,12 +8317,13 @@ function berserkApproachSquares(
   unit: CombatUnitState,
   nearest: CombatUnitState[],
   moveDestinations: number[],
+  combat?: CombatState,
 ): number[] {
   return moveDestinations.filter((space) =>
     nearest.some(
       (target) =>
-        getBattlefieldDistance(space, target.position) <
-        getBattlefieldDistance(unit.position, target.position),
+        unitDistanceAt(combat, unit, space, target) <
+        unitDistance(combat, unit, target),
     ),
   );
 }
@@ -8166,7 +8397,7 @@ function addBerserkUnitActions(
   for (const target of nearest) {
     for (const space of moveDestinations) {
       if (
-        isAdjacent(space, target.position) &&
+        unitsAdjacentAt(combat, activeUnit, space, target) &&
         canUnitMoveAndAttack(combat, activeUnit, space, target, state)
       ) {
         strikeSquares.add(space);
@@ -8203,6 +8434,7 @@ function addBerserkUnitActions(
     activeUnit,
     nearest,
     moveDestinations,
+    combat,
   );
   if (approaches.length === 0) {
     actions.push(hold);
@@ -8402,7 +8634,7 @@ function addControlledNeutralUnitActions(
   const strikeCells = attacks.length > 0 && quicksandOnBoard ? [] : moveDestinations.filter((space) =>
     enemies.some(
       (target) =>
-        isAdjacent(space, target.position) &&
+        unitsAdjacentAt(combat, activeUnit, space, target) &&
         canUnitMoveAndAttack(combat, activeUnit, space, target, state),
     ),
   );
@@ -8700,7 +8932,7 @@ function addUnitActions(
           candidate.id !== activeUnit.id &&
           isUnitAlive(candidate) &&
           !isArrowTowerUnit(candidate) &&
-          isAdjacent(candidate.position, activeUnit.position),
+          unitsAdjacent(combat, candidate, activeUnit),
       )
     ) {
       actions.push({
@@ -8763,7 +8995,7 @@ function addUnitActions(
   // move/attack yet), the unit may take a Wait token and re-activate later.
   // Not offered during the Waited re-activation phase itself.
   if (
-    houseRuleEnabled(state, "polish-wait") &&
+    combatWaitEnabled(state) &&
     !combat.waitPhase &&
     !alreadyAttacked &&
     !activeUnit.movedThisActivation &&
@@ -8791,7 +9023,7 @@ function maybeAddControlledNeutralWait(
   const combat = state.combat;
   if (
     !combat ||
-    !houseRuleEnabled(state, "polish-wait") ||
+    !combatWaitEnabled(state) ||
     combat.waitPhase ||
     activeUnit.attackedThisActivation ||
     activeUnit.movedThisActivation ||
@@ -10982,7 +11214,7 @@ export function damageTransferReactions(
                 optionIndex ?? undefined,
               );
             return effect && event.target
-              ? unitIdsThreatenedByDamageEffect(state, effect, event.target)
+              ? unitIdsThreatenedByDamageEffect(state, effect, event.target, card, event.playerId)
               : [];
           })()
         : [];
@@ -14157,7 +14389,7 @@ export function isEffectLegalForTrigger(
 
         return (
           !modifier.nonAdjacentOnly ||
-          !isAdjacent(attacker.position, defender.position)
+          !unitsAdjacent(combat, attacker, defender)
         );
       });
     }
@@ -14839,9 +15071,13 @@ function addCombatSetupActions(
 
   const placed = setup.placedUnitIds[playerId] ?? [];
   const cells = placementCellsFor(state, playerId);
-  const takenPositions = new Set(
-    Object.values(combat.units).map((unit) => unit.position),
-  );
+  // Every held cell, double-wide tails included (hex board) — and on the hex
+  // board the obstacle hexes, which placeCombatUnit rejects there (a sandbox
+  // or scripted obstacle can sit inside a deployment zone).
+  const takenPositions = new Set([
+    ...Object.values(combat.units).flatMap((unit) => unitCells(combat, unit)),
+    ...(combatGeometry(combat) === "hex" ? combat.obstacles ?? [] : []),
+  ]);
 
   if (placed.length < combatSetupUnitLimit(state, playerId)) {
     const placedFormation = placed.flatMap((armyUnitId) => {
@@ -14868,8 +15104,15 @@ function addCombatSetupActions(
 
       const unitName =
         coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
-      for (const position of cells) {
+      // A double-wide card (hex board) only offers heads whose tail is in the
+      // zone and free too; every cell otherwise.
+      const body = { position: cells[0] ?? 0, controllerId: playerId, unitDefId: armyUnit.unitDefId };
+      const wide = unitTailOffset(combat, body) !== 0;
+      for (const position of wide ? footprintHeadsIn(combat, body, cells) : cells) {
         if (takenPositions.has(position)) {
+          continue;
+        }
+        if (wide && !footprintFits(combat, body, position, takenPositions)) {
           continue;
         }
 
@@ -14956,6 +15199,8 @@ function addTacticsSetupActions(
   const units = tacticsSwappableUnits(combat, playerId);
   for (let i = 0; i < units.length; i += 1) {
     for (let j = i + 1; j < units.length; j += 1) {
+      // Hex board: a double-wide unit must fit the space it switches into.
+      if (!tacticsSwapFits(combat, units[i], units[j])) continue;
       actions.push({
         label: `Tactics: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
         action: {
@@ -14966,6 +15211,27 @@ function addTacticsSetupActions(
         },
       });
     }
+  }
+
+  // Hex board: the window is a free re-sort within the first four columns —
+  // every empty hex there is offered for every unit, under any rules pack, and
+  // the window stays open until the player finishes.
+  if (inHexTacticsSortWindow(combat, playerId)) {
+    for (const unit of units) {
+      for (const position of hexTacticsSortSpaces(combat, unit)) {
+        actions.push({
+          label: `Tactics: move ${unit.cardName} to ${getBattlefieldLabel(position)}`,
+          action: { type: "TACTICS_MOVE_UNIT", playerId, unitId: unit.id, position },
+        });
+      }
+    }
+    actions.push({
+      label: combat.tacticsSortSpentBy === playerId
+        ? "Tactics: done sorting"
+        : "Tactics: keep your current positions",
+      action: { type: "FINISH_TACTICS", playerId },
+    });
+    return;
   }
 
   addTacticsMoveActions(actions, state, playerId, units, "Tactics");
@@ -15039,14 +15305,27 @@ function addNeutralPlacementActions(
   }
 
   const obstacles = new Set(combat.obstacles ?? []);
+  // Hex board: a double-wide guard's tail also holds its hex.
+  const hexBoard = combatGeometry(combat) === "hex";
+  const living = hexBoard ? Object.values(combat.units).filter(isUnitAlive) : [];
+  if (hexBoard) {
+    for (const unit of Object.values(combat.units)) {
+      for (const cell of unitCells(combat, unit)) {
+        if (!occupantAt.has(cell)) occupantAt.set(cell, unit);
+      }
+    }
+  }
   for (const guard of guards) {
     // Field = defender's two rows (a shooter is limited to the back row under
     // Manual guard control); Creature Bank = the four corners.
-    for (const position of neutralFormationCellsForGuard(state, guard)) {
+    for (const position of neutralGuardFormationHeads(state, guard)) {
       if (position === guard.position || obstacles.has(position)) {
         continue;
       }
-      const occupant = occupantAt.get(position);
+      let occupant = occupantAt.get(position);
+      if (occupant?.id === guard.id) {
+        occupant = undefined;
+      }
       // An empty cell (move) or a fellow guard (swap); anything else stays blocked.
       if (
         occupant &&
@@ -15059,7 +15338,18 @@ function addNeutralPlacementActions(
       // off the back row (it would land on the mover's old cell).
       if (
         occupant &&
-        !neutralFormationCellsForGuard(state, occupant).includes(guard.position)
+        !neutralGuardFormationHeads(state, occupant).includes(guard.position)
+      ) {
+        continue;
+      }
+      if (
+        hexBoard &&
+        !relocationFits(
+          combat,
+          living,
+          new Map<string, number>([[guard.id, position], ...(occupant ? [[occupant.id, guard.position] as [string, number]] : [])]),
+          obstacles,
+        )
       ) {
         continue;
       }
@@ -15126,6 +15416,17 @@ function addCommanderPlacementActions(
       occupantAt.set(unit.position, unit);
     }
     const obstacles = new Set(combat.obstacles ?? []);
+    // Hex board: double-wide tails hold their hex; footprints stay in the zone.
+    const hexBoard = combatGeometry(combat) === "hex";
+    const zone = new Set(cells);
+    const living = hexBoard ? Object.values(combat.units).filter(isUnitAlive) : [];
+    if (hexBoard) {
+      for (const unit of Object.values(combat.units)) {
+        for (const cell of unitCells(combat, unit)) {
+          if (!occupantAt.has(cell)) occupantAt.set(cell, unit);
+        }
+      }
+    }
     const movers = Object.values(combat.units).filter(
       (unit) =>
         unit.controllerId === playerId &&
@@ -15133,14 +15434,29 @@ function addCommanderPlacementActions(
         cells.includes(unit.position),
     );
     for (const moving of movers) {
-      for (const position of cells) {
+      for (const position of footprintHeadsIn(combat, moving, cells)) {
         if (position === moving.position || obstacles.has(position)) {
           continue;
         }
-        const occupant = occupantAt.get(position);
+        let occupant = occupantAt.get(position);
+        if (occupant?.id === moving.id) {
+          occupant = undefined;
+        }
         if (
           occupant &&
           (occupant.controllerId !== playerId || !isUnitAlive(occupant))
+        ) {
+          continue;
+        }
+        if (
+          hexBoard &&
+          !relocationFits(
+            combat,
+            living,
+            new Map<string, number>([[moving.id, position], ...(occupant ? [[occupant.id, moving.position] as [string, number]] : [])]),
+            obstacles,
+            (_unit, footprint) => footprint.every((cell) => zone.has(cell)),
+          )
         ) {
           continue;
         }
@@ -15242,6 +15558,8 @@ function addTacticsCombatActions(
   const units = tacticsSwappableUnits(combat, playerId);
   for (let i = 0; i < units.length; i += 1) {
     for (let j = i + 1; j < units.length; j += 1) {
+      // Hex board: a double-wide unit must fit the space it switches into.
+      if (!tacticsSwapFits(combat, units[i], units[j])) continue;
       actions.push({
         label: `${sideLabel}: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
         action: {

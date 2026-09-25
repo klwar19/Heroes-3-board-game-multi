@@ -22,7 +22,7 @@ export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
   "forge.bruisers": ranks(S({ health: 1 }), "forge-vet-bruiser-guard", "forge-vet-bruiser-die-reward", "forge-vet-bruiser-break"),
   "forge.cyber_zombies": ranks(H({ health: 1 }, "forge-vet-zombie-repair"), "zombie-resilience", "veteran-zombie-intercept", "forge-vet-zombie-full-rebirth"),
   "forge.watchers": ranks(S({ health: 1 }), "veteran-eye-immunity", "forge-vet-watcher-ground-air-guard", "ranged-extra-shot-on-low-roll"),
-  "forge.grunts": ranks("forge-vet-grunt-tempo", S({ attack: 1 }), H({ defense: 1 }, "forge-vet-grunt-cover"), "forge-vet-grunt-mark"),
+  "forge.grunts": ranks(H({ health: 1 }, "forge-vet-grunt-tempo"), S({ attack: 1 }), H({ defense: 1 }, "forge-vet-grunt-cover"), "forge-vet-grunt-mark"),
   // Fuyuki: duelists gain utility; existing multi-hit kits get restrained payoffs.
   "fuyuki.assassins": ranks("ntv-first-volley", "ntv-strike-and-return", S({ attack: 1, health: 1 }), "ctv-returning-edge"),
   "fuyuki.riders": ranks(S({ health: 1, initiative: 1 }), "ntv-predators-mark", "ntv-bone-wall", "veteran-troll-snare"),

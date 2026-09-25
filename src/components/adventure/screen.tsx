@@ -7159,6 +7159,8 @@ export function TownPanel({
 
 type VisitRewardArt = {
   image?: string;
+  /** Second printed spell face for a two-spell scroll offer. */
+  secondaryCardId?: string;
   name: string;
   /**
    * The card whose printed face this art IS, when the option really shows one —
@@ -8655,8 +8657,25 @@ export function PromptTray({
         caption: grailScryDef?.id ?? grailScryDefId ?? "hidden",
       }
     : null;
+  const forgeScrollOffer = choice?.type === "OPTION_CHOICE" &&
+    choice.context === "forge-phantom-chain-lightning" &&
+    choice.playerId === viewerPlayerId ? choice.forgeScrollOptions : null;
   const rewardOptions =
-    chooseOneOptions && !teleport
+    forgeScrollOffer
+      ? body.map((legal) => {
+          const optionIndex = legal.action.type === "CHOOSE_OPTION" ? legal.action.optionIndex : undefined;
+          const offer = optionIndex !== undefined ? forgeScrollOffer[optionIndex] : undefined;
+          const cardId = offer === "chain-only" || offer === "both" ? "spell.chain_lightning" : undefined;
+          const art: VisitRewardArt | null = cardId ? {
+            name: "Spell Scroll",
+            image: cardLibrary[cardId]?.assets?.cardImage,
+            cardId,
+            ...(offer === "both" ? { secondaryCardId: "spell.stone_skin" } : {}),
+            caption: legal.label,
+          } : null;
+          return { legal, art };
+        })
+    : chooseOneOptions && !teleport
       ? body.map((legal) => {
           const optionIndex =
             legal.action.type === "RESOLVE_VISIT_STEP" &&
@@ -9769,7 +9788,7 @@ export function PromptTray({
             <button
               aria-label={legal.label}
               aria-pressed={isCommanderPurchase ? isSelected : undefined}
-              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}${isSelected ? " selected" : ""}`}
+              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}${art.secondaryCardId ? " scrollPair" : ""}${isSelected ? " selected" : ""}`}
               key={key}
               onClick={() =>
                 isCommanderPurchase
@@ -9802,6 +9821,18 @@ export function PromptTray({
                       src={assetUrl(rewardArtImage(balanceArt, art))}
                     />
                   </CardSetFrame>
+                  {art.secondaryCardId ? (
+                    <CardSetFrame cardId={art.secondaryCardId}>
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        src={assetUrl(resolveCardFaceImage(balanceArt, art.secondaryCardId, false) ?? cardLibrary[art.secondaryCardId]?.assets?.cardImage)}
+                      />
+                    </CardSetFrame>
+                  ) : null}
                 </span>
               ) : (
                 <span className="marketCardFallback">{art.name}</span>
@@ -12928,8 +12959,12 @@ function HouseRulesSection({
     null,
   );
 
-  const binhRules = HOUSE_RULES.filter((rule) =>
-    (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category),
+  // The combat board (hex-battlefield) has its own picker beside the game
+  // mode, so the group toggles here never flip the board by accident.
+  const binhRules = HOUSE_RULES.filter(
+    (rule) =>
+      rule.id !== "hex-battlefield" &&
+      (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category),
   );
   const globalRules = HOUSE_RULES.filter((rule) =>
     (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category),
@@ -13195,6 +13230,84 @@ function TableModeSection({
   );
 }
 
+/**
+ * The combat-board choice (the `hex-battlefield` house rule): the classic 4×5
+ * card board or the Battlefield Expansion hex board with PC-style creatures.
+ * It is asked in the Game-mode window and repeated beside the game mode in the
+ * Advanced settings (both render GameModeSection, one option, never out of
+ * sync). Mode presets keep it (see boardChoiceOverrides in the engine).
+ */
+const BATTLEFIELD_BOARD_CARDS: {
+  id: "grid" | "hex";
+  label: string;
+  blurb: string;
+  hint: string;
+  iconSrc: string;
+}[] = [
+  {
+    id: "grid",
+    label: "Classic board",
+    blurb: "4×5 card battlefield",
+    hint: "The printed combat board: unit cards on a 4×5 grid.",
+    iconSrc: "/assets/ui/battlefield-grid-crest.webp",
+  },
+  {
+    id: "hex",
+    label: "Hex battlefield",
+    blurb: "13×9 PC-style hexes",
+    hint: "Battlefield Expansion board: units move up to their Initiative in hexes, animated Heroes 3 creatures, random obstacles, two-hex creatures.",
+    iconSrc: "/assets/ui/battlefield-hex-crest.webp",
+  },
+];
+
+function BattlefieldBoardRow({
+  hexOn,
+  onPick,
+}: {
+  hexOn: boolean;
+  onPick: (hex: boolean) => void;
+}) {
+  const current = hexOn ? "hex" : "grid";
+  return (
+    <div className="optionRow modePresetRow battlefieldBoardRow">
+      <small title="Which board every combat of this game is fought on">
+        Combat board
+      </small>
+      <div
+        aria-label="Combat board"
+        className="modePresetGrid battlefieldBoardGrid"
+        role="group"
+      >
+        {BATTLEFIELD_BOARD_CARDS.map((card) => (
+          <button
+            aria-pressed={current === card.id}
+            className={`modePresetCard battlefieldBoardCard board-${card.id} ${current === card.id ? "selected" : ""}`}
+            key={card.id}
+            onClick={() => {
+              if (current !== card.id) onPick(card.id === "hex");
+            }}
+            title={card.hint}
+            type="button"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              className="modePresetIcon"
+              decoding="async"
+              src={assetUrl(card.iconSrc)}
+            />
+            <span className="modePresetCardText">
+              <strong>{card.label}</strong>
+              <span>{card.blurb}</span>
+              <small>{card.hint}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** High-level setup modes shown as a card row (SetupModeId lives in setup-hub-summary.ts). */
 const SETUP_MODE_CARDS: {
   id: SetupModeId;
@@ -13341,6 +13454,7 @@ function GameModeSection({
 
   /** Which big mode card is highlighted from the current options. */
   const activeSetupMode = deriveActiveSetupMode(options);
+  const hexBoardOn = resolveHouseRules(options)["hex-battlefield"];
 
   const applySetupMode = (mode: SetupModeId) => {
     if (mode === "custom") {
@@ -13375,6 +13489,11 @@ function GameModeSection({
     // package. Neutrals default to human control (next player clockwise).
     send({
       ...MODE_PRESET_PAYLOADS.tournament,
+      // The combat board is its own choice, not part of the preset.
+      houseRules: {
+        ...MODE_PRESET_PAYLOADS.tournament.houseRules,
+        "hex-battlefield": hexBoardOn,
+      },
       wog: { ...wog, enabled: false },
       anime: { ...anime, enabled: false },
     });
@@ -13432,6 +13551,11 @@ function GameModeSection({
                 : RULESET_DESCRIPTIONS.binh}
         </small>
       </div>
+
+      <BattlefieldBoardRow
+        hexOn={hexBoardOn}
+        onPick={(hex) => send({ houseRules: { "hex-battlefield": hex } })}
+      />
 
       {modeNotice ? (
         <div className="modeNoticeBanner" role="status">
@@ -18240,6 +18364,7 @@ function SetupHub({
   const mode = deriveActiveSetupMode(options);
   const wogOn = options.wog?.enabled === true;
   const animeOn = options.anime?.enabled === true;
+  const hexOn = resolveHouseRules(options)["hex-battlefield"];
   const heroes = heroesSummary(state, viewerPlayerId);
   const map = mapSummary(state);
   const advanced = advancedSettingsChanged(options);
@@ -18251,7 +18376,7 @@ function SetupHub({
         aria-haspopup="dialog"
         className="setupHubBox setupHubBox--mode"
         onClick={() => onOpen("mode")}
-        title="Pick a game mode preset and toggle the WOG / Anime mods"
+        title="Pick a game mode preset, the combat board (classic or hex) and the WOG / Anime mods"
         type="button"
       >
         <SetupHubBoxArt id="mode" />
@@ -18261,10 +18386,11 @@ function SetupHub({
             <span className="setupHubBoxLine">
               {SETUP_HUB_MODE_NAMES[mode]}
             </span>
-            {wogOn || animeOn ? (
+            {wogOn || animeOn || hexOn ? (
               <span className="setupHubBoxLine setupHubChips">
                 {wogOn ? <span className="setupHubChip">WOG</span> : null}
                 {animeOn ? <span className="setupHubChip">Anime</span> : null}
+                {hexOn ? <span className="setupHubChip">Hex battlefield</span> : null}
               </span>
             ) : null}
           </span>

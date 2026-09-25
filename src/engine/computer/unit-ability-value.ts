@@ -1,10 +1,11 @@
 import type { CombatUnitState, GameAction, GameState } from "../state";
 import { getUnitAbilityDefinitions, isUnitDamageImmune, getInvulnerabilityActivation, getPlaceFactionCubeActivation, getOnRemovalDetonation, getPreemptiveRetaliation } from "../unit-abilities";
 import { isArrowTowerUnit } from "../siege";
-import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations, isUnitAlive } from "../legal-actions";
-import { isAdjacent } from "../battlefield";
+import { canUnitAttack, getLegalMoveDestinations, isUnitAlive } from "../legal-actions";
+import { unitsAdjacent } from "../hex-footprint";
 import { bestDamage, randomTownStrikeValue as strikeValue, randomTownTokenValue as tokenValue, retaliationValue } from "../random-town-tactics";
 import { unitRemovalHealth, unitThreatValue } from "./score";
+import { canStrikeFromLegalLanding } from "./opponent-reply";
 import { getUnitSide } from "../adventure";
 
 export type AbilityValue = { value: number; free: boolean; targetUnitId?: string };
@@ -26,10 +27,10 @@ export function activationUtilityValue(state: GameState, actor: CombatUnitState,
   if (!cube || (actor.factionCubes ?? 0) >= cube.maxCubes) return 0;
   const before = getOnRemovalDetonation(actor)?.amount ?? 0;
   const after = getOnRemovalDetonation({ ...actor, factionCubes: (actor.factionCubes ?? 0) + 1 })?.amount ?? 0;
-  const gain = alive(state).filter(unit => unit.id !== actor.id && isAdjacent(unit.position, actor.position)).reduce((sum, unit) =>
+  const gain = alive(state).filter(unit => unit.id !== actor.id && unitsAdjacent(state.combat, unit, actor)).reduce((sum, unit) =>
     sum + (unit.controllerId === actor.controllerId ? -1 : 1) * (abilityDamageValue(unit, after) - abilityDamageValue(unit, before)), 0);
   // Preserve a free future detonation when not currently threatening allies.
-  return gain || (alive(state).some(unit => unit.id !== actor.id && unit.controllerId === actor.controllerId && isAdjacent(unit.position, actor.position)) ? 0 : 0.5);
+  return gain || (alive(state).some(unit => unit.id !== actor.id && unit.controllerId === actor.controllerId && unitsAdjacent(state.combat, unit, actor)) ? 0 : 0.5);
 }
 
 /** Common units of value for ability effects and the attack being given up.
@@ -64,7 +65,7 @@ export function attackOpportunityValue(state: GameState, unit: CombatUnitState, 
   const actor = { ...unit, position, movedThisActivation: unit.movedThisActivation || position !== unit.position };
   const board = { ...state, combat: { ...state.combat!, units: { ...state.combat!.units, [unit.id]: actor } } };
   const damage = strikeValue(board, actor, target);
-  const retaliation = damage >= unitRemovalHealth(target) && !getPreemptiveRetaliation(target, position)
+  const retaliation = damage >= unitRemovalHealth(target) && !getPreemptiveRetaliation(target, position, state.combat, unit)
     ? 0 : retaliationValue(board, actor, target);
   return abilityDamageValue(target, damage) - retaliation * 0.8 - (retaliation >= hp(unit) ? unitThreatValue(unit) / 25 : 0);
 }
@@ -77,7 +78,7 @@ export function bestAttackOpportunity(state: GameState, unit: CombatUnitState): 
   for (const target of alive(state).filter(enemy => enemy.controllerId !== unit.controllerId)) {
     if (canUnitAttack(combat, unit, target, state.activeEffects)) best = Math.max(best, attackOpportunityValue(state, unit, target, unit.position));
     if (unit.type !== "ranged") for (const position of positions) {
-      if (canUnitMoveAndAttack(combat, unit, position, target, state)) best = Math.max(best, attackOpportunityValue(state, unit, target, position));
+      if (canStrikeFromLegalLanding(combat, unit, position, target, state.activeEffects ?? [])) best = Math.max(best, attackOpportunityValue(state, unit, target, position));
     }
   }
   return best;
@@ -150,7 +151,7 @@ export function evaluateUnitAbility(state: GameState, action: GameAction): Abili
     }
     case "SPLASH_ALLOCATION_ATTACK": {
       const candidates = alive(state).filter(enemy => enemy.controllerId !== actor.controllerId &&
-        !isArrowTowerUnit(enemy) && isAdjacent(actor.position, enemy.position));
+        !isArrowTowerUnit(enemy) && unitsAdjacent(state.combat, actor, enemy));
       // Greedy allocation mirrors the sequential picker and stops before any
       // optional friendly fire. Different targets cannot receive the same slot.
       let value = 0;

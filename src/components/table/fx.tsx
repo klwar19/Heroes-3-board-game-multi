@@ -12,6 +12,8 @@ import {
   type BeamTiming,
 } from "@/data/fx";
 import { RUNE_BURST_ART, runeWordForLevel } from "@/data/rune-words";
+import { HEX_UNIT_CUE_EVENT, HEX_UNIT_PENDING_MOVE_EVENT, type HexUnitCueDetail } from "./hex-battlefield";
+import { HEX_HERO_CUE_EVENT, type HexHeroCueDetail, type HexHeroPose } from "./hex-heroes";
 import {
   playCardPlace,
   playCardSwish,
@@ -64,6 +66,15 @@ export type FxCue =
       to: string;
       cardImage?: string;
       teleport?: boolean;
+      /**
+       * Hex battlefield: the spaces the unit walked through (start-exclusive,
+       * destination last), so its figure follows the real route hex by hex.
+       */
+      path?: number[];
+      /** Hex battlefield: the space this move ends on (a unit may move twice in one snapshot). */
+      toPosition?: number;
+      /** Hex battlefield: the timeline slot the walk must fill (the figure paces itself to it). */
+      durationMs?: number;
       teleportFxKey?: string;
       /** The card reads upside-down on the board (p1 / flipped view). */
       flip?: boolean;
@@ -151,6 +162,58 @@ export type FxCue =
   | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number }
   | {
       /**
+       * A unit striking a pose on the hex battlefield (its H3 defend stance when
+       * it Defends). Card boards have no pose, so the cue is a no-op there.
+       */
+      kind: "pose";
+      id: string;
+      unitId: string;
+      pose: "defend";
+      delayMs?: number;
+    }
+  | {
+      /**
+       * Hex battlefield: a unit re-placed from one hex to another without
+       * moving across the board (re-placed during deployment, the Tactics
+       * re-sort, a Tactics move or swap). The figure never walks: it blinks —
+       * a short fade out where it stood, straight onto its new hex, a short
+       * fade in. Card boards have no figure: a no-op.
+       */
+      kind: "place";
+      id: string;
+      unitId: string;
+      delayMs?: number;
+    }
+  | {
+      /**
+       * A creature casting on the hex battlefield (Ogre Magi Bloodlust,
+       * Enchanters, Faerie Dragons, a commander's cast…): its figure turns
+       * toward `to` and plays its H3 spell-casting rows, releasing the spell
+       * `releaseMs` after the cue starts — the beat the page times the spell's
+       * own FX to. Card boards have no figure, so the cue is a no-op there.
+       */
+      kind: "cast";
+      id: string;
+      unitId: string;
+      /** Cell anchor ("cell:<n>" / "unit:<id>") the caster faces; omitted = cast straight ahead. */
+      to?: string;
+      releaseMs?: number;
+      delayMs?: number;
+    }
+  | {
+      /**
+       * Hex battlefield: a side's HERO figure plays its H3 cast (the spell
+       * leaves it HERO_CAST_RELEASE_MS in, from its `hero:<playerId>` anchor),
+       * victory or defeat pose. No figure (card boards, heroless side) = no-op.
+       */
+      kind: "hero";
+      id: string;
+      playerId: string;
+      pose: HexHeroPose;
+      delayMs?: number;
+    }
+  | {
+      /**
        * The attacking unit's own card thrusts at its target (melee) or kicks
        * back as it looses a shot (ranged). Animates the real board card so it
        * reads as the unit itself moving; `to` points the lunge at the
@@ -181,6 +244,11 @@ export type FxCue =
       scaleMultiplier?: number;
       sound?: string;
       delayMs?: number;
+      /**
+       * Hex battlefield: how long after the cue starts the figure's blow lands,
+       * so the contact sound plays on that beat instead of as the slash starts.
+       */
+      impactDelayMs?: number;
     }
   | {
       /** A placeholder ranged projectile flying from one cell to another. */
@@ -189,6 +257,8 @@ export type FxCue =
       from: string;
       to: string;
       delayMs?: number;
+      /** Flight time (default BOLT_FLIGHT_MS); the hex board releases later, so it flies shorter. */
+      flightMs?: number;
     }
   | {
       /**
@@ -242,6 +312,13 @@ const GLOW_MS = 900;
  */
 export const ATTACK_IMPACT_MS = 500;
 export const RANGED_RELEASE_MS = 120;
+/**
+ * Hex battlefield: a casting creature's spell leaves it this long after its
+ * cast cue starts (the figure's wind-up). The page holds the spell's FX / sound
+ * until then; the value lives with the sprite timings.
+ */
+export { HEX_CAST_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
+import { HEX_CAST_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
 const BOLT_FLIGHT_MS = ATTACK_IMPACT_MS - RANGED_RELEASE_MS;
 /**
  * Time reserved for one unit's whole strike to play out (lunge in, hit, recover)
@@ -285,7 +362,9 @@ function resolveAnchorElement(anchor: string): Element | null {
     return null;
   }
   if (anchor.startsWith("war-machine:")) {
-    return firstVisibleAnchor(`[data-fx-anchor="${anchor}"]`);
+    // Hex battlefield: the machine itself stands on the field; fire from it.
+    return firstVisibleAnchor(`[data-hex-war-machine][data-fx-anchor="${anchor}"]`) ??
+      firstVisibleAnchor(`[data-fx-anchor="${anchor}"]`);
   }
   const [kind, value] = anchor.split(":", 2);
   return kind === "unit"
@@ -304,9 +383,20 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
     const h = window.innerHeight;
     return new DOMRect(w / 2 - 70, h / 2 - 98, 140, 196);
   }
+  if (anchor.startsWith("area:")) {
+    return resolveHexAreaRect(anchor);
+  }
   const element = resolveAnchorElement(anchor);
   if (element) {
-    const rect = element.getBoundingClientRect();
+    // Hex battlefield: a unit's effects aim at its creature's body (drawn on
+    // the figure layer), not at the hex floor.
+    const bodyUnitId = anchor.startsWith("unit:") || anchor.startsWith("cell:")
+      ? element.getAttribute("data-fx-unit")
+      : null;
+    const body = bodyUnitId
+      ? document.querySelector(`[data-hex-unit="${CSS.escape(bodyUnitId)}"] [data-fx-body]`)
+      : null;
+    const rect = (body ?? element).getBoundingClientRect();
     if (anchor.startsWith("hand:") &&
       (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth)) {
       return resolveAnchorRect("center");
@@ -320,6 +410,11 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
     const [, playerId] = anchor.split(":", 3);
     return resolveAnchorElement(`hand:${playerId}`)?.getBoundingClientRect() ?? resolveAnchorRect("center");
   }
+  // Hex battlefield: a spell leaves its caster's hero figure; a side with no
+  // hero figure (no PC sprite for its town) launches from the hand as before.
+  if (anchor.startsWith("hero:")) {
+    return resolveAnchorRect(`hand:${anchor.slice("hero:".length)}`);
+  }
   // Opponent hands may live in a closed info panel, especially on phones.
   // Spell flight must still launch when that hand has no rendered anchor.
   if (anchor.startsWith("hand:")) {
@@ -330,6 +425,72 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
 
 function centerOf(rect: DOMRect): { x: number; y: number } {
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+/** The hex battlefield is on screen (only it draws the hex grid). */
+function hexBoardShown(): boolean {
+  return typeof document !== "undefined" && document.querySelector("svg.hexGrid") !== null;
+}
+
+/** The rendered battle cells a unit stands on: two for a two-hex creature. */
+function unitCellRects(unitId: string): DOMRect[] {
+  return Array.from(document.querySelectorAll(`[data-fx-cell][data-fx-unit="${CSS.escape(unitId)}"]`))
+    .map((cell) => cell.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+}
+
+/**
+ * Hex battlefield: where a two-hex creature's shot / breath / bolt leaves it —
+ * its end nearer the target (the body rect slid over that hex), not the middle
+ * of its two hexes. Every other anchor (and the whole 4x5 board, which has no
+ * figures) keeps `rect`.
+ */
+function hexLaunchRect(anchor: string, rect: DOMRect, toward: { x: number; y: number }): DOMRect {
+  if (!anchor.startsWith("unit:") && !anchor.startsWith("cell:")) return rect;
+  const unitId = resolveAnchorElement(anchor)?.getAttribute("data-fx-unit");
+  if (!unitId || !hexUnitFigure(unitId)) return rect;
+  const cells = unitCellRects(unitId).map(centerOf);
+  if (cells.length < 2) return rect;
+  const distance = (point: { x: number; y: number }) => Math.hypot(point.x - toward.x, point.y - toward.y);
+  const near = cells.reduce((best, cell) => (distance(cell) < distance(best) ? cell : best));
+  return new DOMRect(near.x - rect.width / 2, rect.top, rect.width, rect.height);
+}
+
+/**
+ * Hex battlefield area anchor `area:<centre anchor>|<unitId>,<unitId>…`: a
+ * square centred on the blast's centre hex (or centre unit) just large enough
+ * to cover every hex of the units that blast struck (engine DAMAGE_ASSIGNED
+ * targets, resolved to their live cells) — so a Fireball / Inferno / Frost
+ * Ring burst draws over exactly what it hit, never a 4x5-sized cell.
+ */
+function resolveHexAreaRect(anchor: string): DOMRect | null {
+  const [centreAnchor, struckList = ""] = anchor.slice("area:".length).split("|");
+  const centreCells = centreAnchor.startsWith("unit:")
+    ? unitCellRects(centreAnchor.slice("unit:".length))
+    : [resolveAnchorElement(centreAnchor)?.getBoundingClientRect()].filter(
+        (rect): rect is DOMRect => Boolean(rect && rect.width > 0)
+      );
+  if (centreCells.length === 0) {
+    return null;
+  }
+  const centres = centreCells.map(centerOf);
+  const centre = {
+    x: centres.reduce((sum, point) => sum + point.x, 0) / centres.length,
+    y: centres.reduce((sum, point) => sum + point.y, 0) / centres.length
+  };
+  const cellWidth = centreCells[0].width;
+  // Never smaller than the burst a single hex drew before (about 1.7 hexes).
+  let radius = cellWidth * 0.85;
+  for (const point of centres) {
+    radius = Math.max(radius, Math.hypot(point.x - centre.x, point.y - centre.y) + cellWidth / 2);
+  }
+  for (const unitId of struckList.split(",").filter(Boolean)) {
+    for (const rect of unitCellRects(unitId)) {
+      const point = centerOf(rect);
+      radius = Math.max(radius, Math.hypot(point.x - centre.x, point.y - centre.y) + rect.width / 2);
+    }
+  }
+  return new DOMRect(centre.x - radius, centre.y - radius, radius * 2, radius * 2);
 }
 
 /**
@@ -609,7 +770,100 @@ async function runTeleport(stage: HTMLElement, cue: Extract<FxCue, { kind: "move
   }
 }
 
+/**
+ * Hex battlefield: units are PC-style figures that animate themselves (walk the
+ * route, swing, recoil, pose) on the same cue beats. Returns the figure of a
+ * unit standing on a hex board, or null on the card boards.
+ */
+function hexUnitFigure(unitId: string): HTMLElement | null {
+  const el = document.querySelector(`[data-hex-unit="${CSS.escape(unitId)}"]`);
+  return el instanceof HTMLElement ? el : null;
+}
+
+/** Hand a pose to a hex battlefield hero figure; resolves when it has played it (at once when there is none). */
+function playHexHeroCue(playerId: string, pose: HexHeroPose): Promise<void> {
+  const figure = document.querySelector(`[data-hex-hero="${CSS.escape(playerId)}"]`);
+  if (!(figure instanceof HTMLElement)) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const detail: HexHeroCueDetail = { pose, done: () => resolve() };
+    figure.dispatchEvent(new CustomEvent(HEX_HERO_CUE_EVENT, { detail }));
+    if (!detail.accepted) {
+      resolve();
+    }
+  });
+}
+
+/** Hand one cue to a hex figure; resolves when the figure has played it. */
+function playHexUnitCue(figure: HTMLElement, cue: HexUnitCueDetail["cue"]): Promise<void> {
+  return new Promise((resolve) => {
+    const detail: HexUnitCueDetail = { cue, done: () => resolve() };
+    figure.dispatchEvent(new CustomEvent(HEX_UNIT_CUE_EVENT, { detail }));
+    // A figure mid-remount has no listener yet: nothing will call done().
+    if (!detail.accepted) {
+      resolve();
+    }
+  });
+}
+
+/** Blink duration of a hex figure's placement relocation (fade out + in). */
+const HEX_PLACE_BLINK_MS = 260;
+
+/**
+ * Hex battlefield re-placement (deployment, Tactics re-sort / move / swap):
+ * the figure never walks. It fades out on the hex it is still held on, is
+ * dropped straight onto its new hex at the blink's dark beat — a `move` cue
+ * with no `from` cell makes the figure release its hold and stand on its own
+ * hex, with no route and so no walk — and fades back in.
+ */
+async function runHexPlace(cue: Extract<FxCue, { kind: "place" }>): Promise<void> {
+  const figure = hexUnitFigure(cue.unitId);
+  if (!figure) {
+    return;
+  }
+  const blink = figure.animate(
+    [{ opacity: 1 }, { opacity: 0, offset: 0.4 }, { opacity: 0, offset: 0.55 }, { opacity: 1 }],
+    { duration: HEX_PLACE_BLINK_MS }
+  );
+  const drop = new Promise<void>((resolve) => {
+    window.setTimeout(() => {
+      void playHexUnitCue(figure, { kind: "move", from: "" }).then(resolve);
+    }, Math.round(HEX_PLACE_BLINK_MS * 0.45));
+  });
+  await Promise.all([blink.finished.catch(() => undefined), drop]);
+}
+
 async function runMove(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>): Promise<void> {
+  const hexFigure = hexUnitFigure(cue.unitId);
+  if (hexFigure) {
+    const walk = playHexUnitCue(hexFigure, {
+      kind: "move",
+      from: cue.from,
+      toPosition: cue.toPosition,
+      teleport: cue.teleport,
+      path: cue.path,
+      holdMs: cue.holdMs,
+      durationMs: cue.durationMs
+    });
+    if (!cue.teleport) {
+      return walk;
+    }
+    // A teleport strike / nest return blinks: the figure vanishes and
+    // reappears itself, but the blink's flare and sound (runTeleport's on the
+    // card board) must still play — without them the hex blink is silent.
+    playLibrarySound("spells/teleport");
+    const teleportFxKey = cue.teleportFxKey ?? "magma-teleport-animated";
+    await Promise.all([
+      walk,
+      runSprite(stage, teleportFxKey, cue.from, undefined, 300),
+      cue.toPosition !== undefined
+        ? new Promise<void>((resolve) => window.setTimeout(resolve, 300)).then(() =>
+            runSprite(stage, teleportFxKey, `cell:${cue.toPosition}`, undefined, 340))
+        : Promise.resolve()
+    ]);
+    return;
+  }
   if (cue.teleport) return runTeleport(stage, cue);
   const fromRect = resolveAnchorRect(cue.from);
   // Size and land on the real card so the ghost lines up exactly when it stops.
@@ -720,6 +974,10 @@ function boardCardFor(unitId: string): HTMLElement | null {
  * ended) or a missing target consumes the cue silently.
  */
 async function runLunge(cue: Extract<FxCue, { kind: "lunge" }>): Promise<void> {
+  const hexFigure = hexUnitFigure(cue.attackerId);
+  if (hexFigure) {
+    return playHexUnitCue(hexFigure, { kind: "lunge", to: cue.to, attackKind: cue.attackKind });
+  }
   const card = boardCardFor(cue.attackerId);
   const targetRect = resolveAnchorRect(cue.to);
   if (!card || !targetRect) {
@@ -793,6 +1051,10 @@ async function runLunge(cue: Extract<FxCue, { kind: "lunge" }>): Promise<void> {
  * cell and its death cry carry the hit instead.
  */
 async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
+  const hexFigure = hexUnitFigure(cue.unitId);
+  if (hexFigure) {
+    return playHexUnitCue(hexFigure, { kind: "shake" });
+  }
   const card = boardCardFor(cue.unitId);
   if (!card || card.getBoundingClientRect().width === 0) {
     return;
@@ -813,10 +1075,14 @@ async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
 }
 
 /** The long thrust grows from the attacking unit and ends at the defender. */
-async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string; at: string; sound?: string }): Promise<void> {
+async function runThrust(
+  stage: HTMLElement,
+  cue: { fxKey: string; from: string; at: string; sound?: string; impactDelayMs?: number }
+): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
-  const fromRect = resolveAnchorRect(cue.from);
   const toRect = resolveAnchorRect(cue.at);
+  const sourceRect = resolveAnchorRect(cue.from);
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (!sheet || !fromRect || !toRect) return;
   const from = centerOf(fromRect);
   const to = centerOf(toRect);
@@ -830,7 +1096,16 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   // center. Efreet and Fire Elementals launch from the near edge and stop at
   // the target instead, making the same frames visibly smaller and shorter.
   const sourceInset = compactBreath ? fromRect.width * 0.24 : 0;
-  const targetOverrun = compactBreath ? toRect.width * 0.12 : dragonBreath ? toRect.width * 0.58 : 0;
+  // Hex battlefield: a dragon's breath carries on through the hex behind its
+  // target, as in the PC game (the target rect is only the creature's body).
+  const hexBreathOverrun = dragonBreath && !compactBreath && hexBoardShown()
+    ? resolveAnchorElement(cue.at)?.getBoundingClientRect().width
+    : undefined;
+  const targetOverrun = compactBreath
+    ? toRect.width * 0.12
+    : dragonBreath
+      ? hexBreathOverrun ?? toRect.width * 0.58
+      : 0;
   const width = Math.max(distance * 0.6, distance - sourceInset + targetOverrun);
   const height = Math.min(fromRect.height, toRect.height) * (compactBreath ? 0.67 : dragonBreath ? 1.14 : 0.88);
   const centerX = from.x + dx / distance * (sourceInset + width / 2);
@@ -851,18 +1126,21 @@ async function runThrust(stage: HTMLElement, cue: { fxKey: string; from: string;
   const playbackMs = (sheet.frames / sheet.fps) * 1000;
   // The last painted frames fade out gently instead of vanishing on removal.
   const tailMs = Math.min(90, playbackMs * 0.14);
+  // Hex battlefield: a bite / thrust contact sounds on the figure's blow.
+  const contactMs = cue.impactDelayMs ?? 0;
+  const atContact = (play: () => void) => (contactMs > 0 ? window.setTimeout(play, contactMs) : play());
   if (cue.sound) playLibrarySound(cue.sound);
   else if (["melee-bite-snap-animated", "hydra-multi-bite", "haspid-poison-bite"].includes(cue.fxKey)) {
-    playLibrarySound("mgq/effects/bite");
+    atContact(() => playLibrarySound("mgq/effects/bite"));
     if (cue.fxKey === "haspid-poison-bite") {
-      window.setTimeout(() => playLibrarySound("spells/poison", 0.45), Math.round(playbackMs * 0.5));
+      window.setTimeout(() => playLibrarySound("spells/poison", 0.45), Math.round(playbackMs * 0.5) + contactMs);
     }
   }
-  else if (cue.fxKey === "thunderbird-trident-zap-animated") playLibrarySound("mgq/effects/thunder4");
+  else if (cue.fxKey === "thunderbird-trident-zap-animated") atContact(() => playLibrarySound("mgq/effects/thunder4"));
   else if (cue.fxKey.includes("breath") || cue.fxKey === "phoenix-flame-flow-animated") {
     playWhoosh();
     playMeleeImpact(Math.round(playbackMs * 0.55));
-  } else playMeleeImpact();
+  } else playMeleeImpact(contactMs);
   const started = performance.now();
   try {
     await new Promise<void>((resolve) => {
@@ -897,8 +1175,9 @@ const BEAM_WIDTH_FACTOR = { thin: 0.26, normal: 0.36, thick: 0.62 } as const;
  * bolt shapes) with a brightness flicker — and fades.
  */
 async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: "beam" }>): Promise<void> {
-  const fromRect = resolveAnchorRect(cue.from);
   const toRect = resolveAnchorRect(cue.to);
+  const sourceRect = resolveAnchorRect(cue.from);
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (cue.sound) playLibrarySound(cue.sound);
   if (!fromRect || !toRect) return;
   const from = centerOf(fromRect);
@@ -1124,8 +1403,9 @@ async function runSoulTether(stage: HTMLElement, cue: Extract<FxCue, { kind: "te
 /** Compact claw marks flash over the defender; they never fly like a projectile. */
 async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
-  const fromRect = resolveAnchorRect(cue.from);
   const toRect = resolveAnchorRect(cue.at);
+  const sourceRect = resolveAnchorRect(cue.from);
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (!sheet || !fromRect || !toRect) return;
   const attacker = centerOf(fromRect);
   const target = centerOf(toRect);
@@ -1148,7 +1428,11 @@ async function runClawSwipe(stage: HTMLElement, cue: Extract<FxCue, { kind: "sla
   sprite.style.transformOrigin = "center";
   sprite.style.transform = `rotate(${forwardAngle}deg) scale(${firesLeft ? -scale : scale}, ${scale})`;
   stage.appendChild(sprite);
-  playLibrarySound("mgq/effects/slash6");
+  if (cue.impactDelayMs && cue.impactDelayMs > 0) {
+    window.setTimeout(() => playLibrarySound("mgq/effects/slash6"), cue.impactDelayMs);
+  } else {
+    playLibrarySound("mgq/effects/slash6");
+  }
   const playbackMs = (sheet.frames / sheet.fps) * 1000;
   const started = performance.now();
   try {
@@ -1180,8 +1464,9 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
     "azure-ice-breath-animated", "crystal-red-strike-animated", "rust-acid-breath-animated",
   ].includes(cue.fxKey)) return runThrust(stage, cue);
   const sheet = getFxSheet(cue.fxKey);
-  const fromRect = resolveAnchorRect(cue.from);
   const rect = resolveAnchorRect(cue.at);
+  const sourceRect = resolveAnchorRect(cue.from);
+  const fromRect = sourceRect && rect ? hexLaunchRect(cue.from, sourceRect, centerOf(rect)) : sourceRect;
   if (!sheet || !fromRect || !rect) {
     return;
   }
@@ -1208,7 +1493,9 @@ async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" 
   sprite.style.transform = `rotate(${forwardAngle}deg) scale(${firesLeft ? -scale : scale}, ${scale})`;
   sprite.style.transformOrigin = "center";
   stage.appendChild(sprite);
-  playMeleeImpact();
+  // The slash reaches the target 56% of the way through (see `advance`); on
+  // the hex board the contact sound waits for the figure's blow.
+  playMeleeImpact(cue.impactDelayMs ?? 0);
 
   try {
     await new Promise<void>((resolve) => {
@@ -1341,8 +1628,9 @@ async function runProjectileImpact(stage: HTMLElement, point: { x: number; y: nu
  * this flight without touching the rest of the pipeline.
  */
 async function runBolt(stage: HTMLElement, cue: Extract<FxCue, { kind: "bolt" }>): Promise<void> {
-  const fromRect = resolveAnchorRect(cue.from);
   const toRect = resolveAnchorRect(cue.to);
+  const sourceRect = resolveAnchorRect(cue.from);
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (!fromRect || !toRect) {
     return;
   }
@@ -1369,7 +1657,7 @@ async function runBolt(stage: HTMLElement, cue: Extract<FxCue, { kind: "bolt" }>
         { transform: `translate(${dx * 0.1}px, ${dy * 0.1}px) rotate(${angle}deg) scaleX(1)`, opacity: 1, offset: 0.12 },
         { transform: `translate(${dx}px, ${dy}px) rotate(${angle}deg) scaleX(1)`, opacity: 1, offset: 1 }
       ],
-      { duration: BOLT_FLIGHT_MS, easing: "cubic-bezier(0.45, 0.15, 0.85, 0.55)", fill: "forwards" }
+      { duration: cue.flightMs ?? BOLT_FLIGHT_MS, easing: "cubic-bezier(0.45, 0.15, 0.85, 0.55)", fill: "forwards" }
     );
   } finally {
     bolt.remove();
@@ -1395,10 +1683,13 @@ async function runSprite(
 
   // Unit effects stay compact; battlefield effects cover the complete board
   // and are clipped to its ornate frame rather than spilling across the HUD.
-  let scale = fit === "battlefield"
+  // A hex area anchor (see resolveHexAreaRect) is sized to the struck hexes:
+  // the burst covers it, like a battlefield effect covers the board.
+  const areaFit = at.startsWith("area:");
+  let scale = fit === "battlefield" || areaFit
     ? Math.max(rect.width / sheet.frameWidth, rect.height / sheet.frameHeight)
     : rect.width / 90;
-  if (fit !== "battlefield") {
+  if (fit !== "battlefield" && !areaFit) {
     scale = Math.min(scale, (rect.height * 2.4) / sheet.frameHeight, (rect.width * 2.4) / sheet.frameWidth);
   }
   scale *= sheet.scaleMultiplier ?? 1;
@@ -1579,8 +1870,9 @@ async function runPhasedProjectile(
 
 async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "projectile" }>): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
-  const fromRect = resolveAnchorRect(cue.from);
   const toRect = resolveAnchorRect(cue.to);
+  const sourceRect = resolveAnchorRect(cue.from);
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (!sheet || !fromRect || !toRect) {
     // A layout change can remove a visual anchor while a delayed cue waits.
     // Missing geometry must not also swallow the spell's sound.
@@ -1626,7 +1918,10 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
   }
 
   const launcher = resolveAnchorElement(cue.from) as HTMLElement | null;
-  if (launcher && cue.recoil) {
+  if (launcher?.hasAttribute("data-hex-war-machine")) {
+    // A war machine on the hex battlefield plays its own firing frames.
+    void playHexUnitCue(launcher, { kind: "lunge", to: cue.to, attackKind: "ranged", releaseMs: 0 });
+  } else if (launcher && cue.recoil) {
     const recoilPx = cue.recoil === "cannon" ? 11 : cue.recoil === "catapult" ? 8 : 5;
     const unitX = distance > 0 ? dx / distance : 1;
     const unitY = distance > 0 ? dy / distance : 0;
@@ -2125,6 +2420,13 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
         continue;
       }
       startedRef.current.add(cue.id);
+      // Hex battlefield: tell the moving figure right away that its walk is
+      // queued, so it stays on the hex it left instead of snapping ahead.
+      if (cue.kind === "move") {
+        document
+          .querySelector(`[data-hex-unit="${CSS.escape(cue.unitId)}"]`)
+          ?.dispatchEvent(new CustomEvent(HEX_UNIT_PENDING_MOVE_EVENT, { detail: { delayMs: cue.delayMs ?? 0 } }));
+      }
 
       // Start fetching phase art while the dice/card presentation is still
       // running, rather than waiting until its first launch frame is due.
@@ -2174,6 +2476,20 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runLunge(cue);
           case "shake":
             return runShake(cue);
+          case "pose": {
+            const hexFigure = hexUnitFigure(cue.unitId);
+            return hexFigure ? playHexUnitCue(hexFigure, { kind: "pose", pose: cue.pose }) : undefined;
+          }
+          case "place":
+            return runHexPlace(cue);
+          case "cast": {
+            const hexFigure = hexUnitFigure(cue.unitId);
+            return hexFigure
+              ? playHexUnitCue(hexFigure, { kind: "cast", to: cue.to, releaseMs: cue.releaseMs ?? HEX_CAST_RELEASE_MS })
+              : undefined;
+          }
+          case "hero":
+            return playHexHeroCue(cue.playerId, cue.pose);
           case "slash":
             return runSlash(stage, cue);
           case "bolt":

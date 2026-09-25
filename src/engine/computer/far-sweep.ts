@@ -11,10 +11,19 @@ export function securedFarTileIds(state: GameState, playerId: string): Set<strin
 }
 
 export function secondFarFightNeedsSilver(state: GameState, playerId: string, field: MapFieldState): boolean {
+  if ((field.difficulty ?? 0) < 3 || !field.tileInstanceId ||
+      state.adventure?.tiles[field.tileInstanceId]?.group !== "far") return false;
   const secured = securedFarTileIds(state, playerId);
-  return (field.difficulty ?? 0) >= 3 && Boolean(field.tileInstanceId &&
-    state.adventure?.tiles[field.tileInstanceId]?.group === "far" &&
-    secured.size > 0 && !secured.has(field.tileInstanceId));
+  if (secured.size > 0 && !secured.has(field.tileInstanceId)) return true;
+  // The paid-Bronze opening already spent its Far III attempt when that fight
+  // was LOST on another Far tile (not a pristine armored-guard scouting
+  // withdrawal): the next Far III elsewhere also waits for Silver.
+  return (state.computerMemory?.[playerId]?.failedFields ?? []).some(entry => {
+    if (entry.scoutedRetreat) return false;
+    const failed = state.adventure?.fields[entry.fieldId];
+    return Boolean(failed && failed.tileInstanceId && failed.tileInstanceId !== field.tileInstanceId &&
+      (failed.difficulty ?? 0) >= 3 && state.adventure?.tiles[failed.tileInstanceId]?.group === "far");
+  });
 }
 
 /** Two-nearest-Far-tile ids per (adventure, player). Tile centers never move,

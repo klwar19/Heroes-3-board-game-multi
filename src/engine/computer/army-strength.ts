@@ -380,9 +380,19 @@ export function canBeatCreatureBank(
   playerId: PlayerId,
   field: MapFieldState,
 ): boolean {
-  if (field.location !== "creature_bank") return false;
+  return creatureBankMatchupRatio(state, playerId, field) >= BANK_ENGAGE_RATIO;
+}
+
+/** Public army-to-bank strength ratio. A favorable margin can justify taking
+ * a bank before the ordinary side-fight preparation gates would allow it. */
+export function creatureBankMatchupRatio(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState,
+): number {
+  if (field.location !== "creature_bank") return 0;
   const bankId = field.bankId;
-  if (!bankId) return false;
+  if (!bankId) return 0;
   const difficultyOrSize =
     field.bankSize ??
     ((state.adventure?.difficulty as keyof typeof STACK_TOKENS_BY_DIFFICULTY) ??
@@ -392,8 +402,8 @@ export function canBeatCreatureBank(
     difficultyOrSize,
     Boolean(state.adventure?.houseRules?.["polish-creature-banks"]),
   );
-  if (!Number.isFinite(bankStr) || bankStr <= 0) return false;
-  return deployedArmyStrength(state, playerId) >= bankStr * BANK_ENGAGE_RATIO;
+  if (!Number.isFinite(bankStr) || bankStr <= 0) return 0;
+  return deployedArmyStrength(state, playerId) / bankStr;
 }
 
 // ---------------------------------------------------------------------------

@@ -316,12 +316,21 @@ describe("AUDIT: strict activePlayerId gates in parallel mode (Commander Forge)"
 describe("parallel turns — combat path regressions (already correct)", () => {
   it("a bystander's neutral fight leaves every other seat's parallel turn open and wraps the round normally", () => {
     let state = openNeutralFightForP2("audit-fight-then-round");
+    // Pin the pre-v178 seeded guard (Dragon Flies). v178 put the expansion
+    // Neutral sides into the shared decks; the reshuffled seed drew Sprites,
+    // which p2 beats, so p2's hero legitimately stays on the guard field.
+    const bronze = state.decks["neutral-bronze"]!;
+    const flies = bronze.drawPile.lastIndexOf("neutral.dragon_flies");
+    expect(flies, "Dragon Flies in the bronze deck").toBeGreaterThanOrEqual(0);
+    bronze.drawPile.splice(flies, 1);
+    bronze.drawPile.push("neutral.dragon_flies"); // drawFromNeutralDeck pops the END
     const startHex = state.heroes.hero_p2.spaceId!;
     const p1Target = emptyFieldNextTo(state, "hero_p1");
     state = driveFight(state, ["p2"]);
     expect(state.combat).toBeNull();
     expect(state.turn.mode).toBe("parallel");
-    // The fight was attributed to the fighter: p2's hero advanced onto the cleared field.
+    // The fight was attributed to the fighter: its resolution moved p2's hero
+    // (with the pinned guard p2 loses and the hero is pushed off the field).
     expect(state.heroes.hero_p2.spaceId).not.toBe(startHex);
 
     // p1 and p3 still have open turns: p1 moves, then all three end and the round wraps.

@@ -494,13 +494,30 @@ describe("Calamity Waves — the wave round", () => {
     expect(state.round).toBe(3); // cadence 3 → wave 1 fires at this round start
     expect(state.combat?.attackerPlayerId).toBe("p1");
 
-    const settleReal = (winner: PlayerId) => {
+    // Each wave army is pinned to its pre-v178 seeded Bronze draw (Gargoyles +
+    // Griffins, then Halflings + Evil Eyes). v178 put the expansion Neutral
+    // sides into the shared decks; the reshuffled seed drew Initiative-4 guards
+    // for seat 1's wave, which lost the speed tie to p1's Initiative-4 unit, so
+    // no NEUTRAL activation happened — this test needs a neutral to act first.
+    const pinBronzeDraws = (ids: string[]) => {
+      const deck = state.decks["neutral-bronze"]!;
+      const rest = [...deck.drawPile];
+      for (const id of ids) {
+        const index = rest.lastIndexOf(id);
+        expect(index, `${id} in the bronze deck`).toBeGreaterThanOrEqual(0);
+        rest.splice(index, 1);
+      }
+      // drawFromNeutralDeck pops from the END of the draw pile.
+      deck.drawPile = [...rest, ...[...ids].reverse()];
+    };
+    const settleReal = (winner: PlayerId, pinnedBronze: string[]) => {
       const fighter = state.combat!.attackerPlayerId;
       const placement = getLegalActions(state, fighter).find(
         (entry) => entry.action.type === "PLACE_COMBAT_UNIT"
       );
       expect(placement, `placement offer for ${fighter}`).toBeTruthy();
       state = apply(state, placement!.action);
+      pinBronzeDraws(pinnedBronze);
       state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: fighter });
       // Answer any activation-order tie so the fight really begins — a neutral
       // activation then publishes the NEUTRAL seat as activePlayerId (the bug's
@@ -534,9 +551,9 @@ describe("Calamity Waves — the wave round", () => {
       }
     };
 
-    settleReal("p1");
+    settleReal("p1", ["neutral.gargoyles", "neutral.griffins"]);
     expect(state.combat?.attackerPlayerId).toBe("p2");
-    settleReal("p2");
+    settleReal("p2", ["neutral.halflings", "neutral.evil_eyes"]);
 
     // The table is handed back to the round's first player…
     expect(state.combat).toBeNull();

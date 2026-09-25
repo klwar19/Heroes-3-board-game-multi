@@ -324,6 +324,10 @@ import {
   UNOPENED_FAR_TILE
 } from "./state";
 import type { CustomMapObeliskBonus, CustomMapObeliskConfig } from "./state";
+import type { CombatState } from "./state";
+import { footprintAt, unitTailOffset } from "./hex-footprint";
+import { combatGeometry, getBattlefieldCoordinates } from "./battlefield";
+import { hexLooseFormationRows } from "./hex-battlefield";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
 import { ANIME_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/anime/field-overrides";
@@ -13061,7 +13065,8 @@ export function processPendingVisit(state: GameState): void {
       }
       case "FACTION_RECRUIT_OFFER": {
         // Unexpected Reinforcements: established factions search for an associated
-        // neutral counterpart. Custom Anime/Wuxia/Bulwark factions instead get an
+        // neutral counterpart (Bulwark/Factory/Forge: their own units' Neutral
+        // sides). Custom Anime/Wuxia factions instead get an
         // optional seeded-random neutral from a built Dwelling tier. Recruited onto
         // the single-sided Neutral side, so it can never be reinforced to a Pack.
         // Only copies still in the deck are offered. A faction's top-tier
@@ -17155,6 +17160,23 @@ function drawDragonUtopiaArmy(
 
 /** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
 export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" | "gold" | "azure"): string | undefined {
+  // Old saves retain their original deck snapshots. Add the expansion cards
+  // once before the next draw; a card already drawn, recruited or discarded is
+  // not duplicated. New games set this flag when their decks are built.
+  if (state.adventure && !state.adventure.expansionNeutralDecksInitialized) {
+    for (const expansionTier of ["bronze", "silver", "gold", "azure"] as const) {
+      const expansionDeck = state.decks[NEUTRAL_DECK_IDS[expansionTier]];
+      if (!expansionDeck) continue;
+      for (const unitDefId of neutralUnitIdsByTier[expansionTier]) {
+        if (coreUnitDefinitions[unitDefId]?.faction === "neutral") continue;
+        const alreadyHeld = expansionDeck.drawPile.includes(unitDefId) || expansionDeck.discardPile.includes(unitDefId) ||
+          Object.values(state.players).some(player => player.army.some(unit => unit.unitDefId === unitDefId && unit.side === "neutral")) ||
+          Object.values(state.combat?.units ?? {}).some(unit => unit.unitDefId === unitDefId && unit.variant === "neutral");
+        if (!alreadyHeld) expansionDeck.drawPile.unshift(unitDefId);
+      }
+    }
+    state.adventure.expansionNeutralDecksInitialized = true;
+  }
   const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
   if (!deck) {
     return undefined;
@@ -17517,11 +17539,18 @@ export function neutralDeckHas(
   if (!deck) {
     return false;
   }
-  if (deck.drawPile.includes(unitDefId) || deck.discardPile.includes(unitDefId)) {
+  // Computer seats score on `getPlayerView` (cast back to GameState), whose
+  // decks carry `drawCount` INSTEAD of a draw pile. Reading `drawPile` there
+  // threw, crashing the AI's Legion-discount scoring every tick and freezing
+  // single-player turns. A missing pile is masked, like the placeholders below.
+  const drawPile = (deck as { drawPile?: readonly string[] }).drawPile;
+  const drawCount = (deck as { drawCount?: number }).drawCount;
+  if (drawPile?.includes(unitDefId) || deck.discardPile.includes(unitDefId)) {
     return true;
   }
-  if (!deck.drawPile.includes(HIDDEN_CARD_ID)) {
-    // A real, unmasked pile: absence is proof of absence.
+  if (drawPile ? !drawPile.includes(HIDDEN_CARD_ID) : drawCount === 0) {
+    // A real, unmasked pile (or a provably empty masked one): absence is
+    // proof of absence.
     return false;
   }
   return !Object.values(state.players).some((player) =>
@@ -18981,7 +19010,15 @@ export function playerRecruitUnitSide(
   playerId: PlayerId,
   unitDefId: string
 ): "few" | "neutral" | null {
-  if (settlementNeutralRecruitUnitIds(state, playerId).includes(unitDefId)) {
+  // Bulwark/Factory/Forge print their Neutral side under the Few/Pack id, so a
+  // Settlement stamped with the owner's own faction lists the owner's roster
+  // too. The owner's Dwelling recruit (tier built) stays the Few card.
+  const def = coreUnitDefinitions[unitDefId];
+  const ownFew = Boolean(def && def.faction === state.players[playerId]?.factionId && getUnitSide(unitDefId, "few"));
+  if (
+    settlementNeutralRecruitUnitIds(state, playerId).includes(unitDefId) &&
+    !(ownFew && unlockedRecruitTiers(state, playerId).has(def!.tier))
+  ) {
     return "neutral";
   }
   return getUnitSide(unitDefId, "few") ? "few" : null;
@@ -19382,7 +19419,13 @@ export function makeCombatUnitFromArmy(
  * first, then ground and flying units in the frontline, left to right in
  * descending initiative; ties place the higher tier first.
  */
-export function placeNeutralUnits(units: CombatUnitState[], backline: number[], frontline: number[]): void {
+export function placeNeutralUnits(
+  units: CombatUnitState[],
+  backline: number[],
+  frontline: number[],
+  /** Hex board: a double-wide guard takes a whole footprint (head + tail) from the two lines. */
+  combat?: CombatState | null
+): void {
   const tierOrder = { azure: 3, gold: 2, silver: 1, bronze: 0 } as const;
   const sorted = [...units].sort((left, right) => {
     if (right.initiative !== left.initiative) {
@@ -19392,10 +19435,41 @@ export function placeNeutralUnits(units: CombatUnitState[], backline: number[], 
     return tierOrder[right.grade] - tierOrder[left.grade];
   });
 
+  // Hex board: the PC's loose formation — one stack per row, spread over the
+  // field's height (never bunched in the middle rows). Ranged still stand in
+  // the back column, everyone else in the front one; a double-wide guard's
+  // head stands in front with its tail behind it in the same row.
+  if (combat && combatGeometry(combat) === "hex" && placeNeutralUnitsLoose(sorted, backline, frontline, combat)) {
+    return;
+  }
+
   const back = [...backline];
   const front = [...frontline];
 
+  // Double-wide guard (hex board only): the first head, in this line order,
+  // whose whole footprint is still free inside the two lines; both hexes are
+  // then taken. One-hex units keep the plain shift below.
+  const placeWide = (unit: CombatUnitState, order: number[]): boolean => {
+    if (unitTailOffset(combat, unit) === 0) return false;
+    const free = new Set([...back, ...front]);
+    for (const head of order) {
+      const cells = footprintAt(combat, unit, head);
+      if (cells && cells.every((cell) => free.has(cell))) {
+        unit.position = head;
+        for (const cell of cells) {
+          const inBack = back.indexOf(cell);
+          if (inBack >= 0) back.splice(inBack, 1);
+          const inFront = front.indexOf(cell);
+          if (inFront >= 0) front.splice(inFront, 1);
+        }
+        return true;
+      }
+    }
+    return false;
+  };
+
   for (const unit of sorted.filter((candidate) => candidate.type === "ranged")) {
+    if (placeWide(unit, [...back, ...front])) continue;
     const position = back.shift() ?? front.shift();
     if (position !== undefined) {
       unit.position = position;
@@ -19403,11 +19477,48 @@ export function placeNeutralUnits(units: CombatUnitState[], backline: number[], 
   }
 
   for (const unit of sorted.filter((candidate) => candidate.type !== "ranged")) {
+    if (placeWide(unit, [...front, ...back])) continue;
     const position = front.shift() ?? back.shift();
     if (position !== undefined) {
       unit.position = position;
     }
   }
+}
+
+/**
+ * placeNeutralUnits' hex branch: `sorted` (placement priority order) takes the
+ * loose-formation rows most-central first. Returns false — placing nothing —
+ * when the count or the given lines don't fit the formation (the caller then
+ * uses the plain line fill).
+ */
+function placeNeutralUnitsLoose(
+  sorted: CombatUnitState[],
+  backline: readonly number[],
+  frontline: readonly number[],
+  combat: CombatState
+): boolean {
+  const rows = hexLooseFormationRows(sorted.length);
+  if (!rows) return false;
+  const cellInRow = (line: readonly number[], row: number) =>
+    line.find((cell) => getBattlefieldCoordinates(cell).row === row);
+  const plan: Array<[CombatUnitState, number]> = [];
+  for (const [index, unit] of sorted.entries()) {
+    const row = rows[index]!;
+    const back = cellInRow(backline, row);
+    const front = cellInRow(frontline, row);
+    const wide = unitTailOffset(combat, unit) !== 0;
+    // A double-wide head in front puts its tail on the back hex of its row.
+    const head = wide ? front : unit.type === "ranged" ? back ?? front : front ?? back;
+    if (head === undefined) return false;
+    if (wide) {
+      const cells = footprintAt(combat, unit, head);
+      const zone = new Set([...backline, ...frontline]);
+      if (!cells || !cells.every((cell) => zone.has(cell))) return false;
+    }
+    plan.push([unit, head]);
+  }
+  for (const [unit, head] of plan) unit.position = head;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -19474,7 +19585,7 @@ export function playerCanRecruitFewNow(state: GameState, playerId: PlayerId, uni
   if (!playerRecruitTierUnlocked(state, playerId, unitDefId)) {
     return false;
   }
-  if ((recruitSide === "neutral" || !houseRuleEnabled(state, "duplicate-unit-recruitment")) && player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId)) {
+  if ((recruitSide === "neutral" || !houseRuleEnabled(state, "duplicate-unit-recruitment")) && player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId && (unit.side === "neutral") === (recruitSide === "neutral"))) {
     return false;
   }
   if (recruitSide === "few" && factoryGoldUnitConflict(player.army, unitDefId)) {
@@ -21692,7 +21803,8 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
   // duplicate Few cards (a Conflux player starts with a Sprites Few, so the
   // unconditional recruit duplicated it). When already owned, the only free
   // action is reinforcing the Few you have to a Pack.
-  const owned = player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  // A Neutral-side card of the same id (Bulwark/Factory/Forge) is a different card.
+  const owned = player.army.some((unit) => unit.side !== "bank" && unit.side !== "neutral" && unit.unitDefId === unitDefId);
   if (!owned && getUnitSide(unitDefId, "few")) {
     options.push({ label: `Recruit ${def.name} (free)`, steps: [{ type: "RECRUIT_FREE", unitDefId }] });
   }
@@ -21751,7 +21863,8 @@ export function queueFreeUnitRecruitOrReinforce(
   if (!player || !def || !adventure) return;
 
   const options: { label: string; steps: VisitStep[] }[] = [];
-  const owned = player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  // A Neutral-side card of the same id (Bulwark/Factory/Forge) is a different card.
+  const owned = player.army.some((unit) => unit.side !== "bank" && unit.side !== "neutral" && unit.unitDefId === unitDefId);
   if (!owned && getUnitSide(unitDefId, "few")) {
     options.push({ label: `Recruit ${def.name} (free)`, steps: [{ type: "RECRUIT_FREE", unitDefId }] });
   }
@@ -21780,7 +21893,7 @@ export function hasFreeUnitRecruitOrReinforceTarget(
 ): boolean {
   const player = state.players[playerId];
   if (!player || !getUnitSide(unitDefId, "few")) return false;
-  const owned = player.army.filter((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  const owned = player.army.filter((unit) => unit.side !== "bank" && unit.side !== "neutral" && unit.unitDefId === unitDefId);
   return owned.length === 0 || owned.some((unit) => unit.side === "few" && Boolean(getUnitSide(unitDefId, "pack")));
 }
 
@@ -23199,7 +23312,7 @@ function randomUnexpectedReinforcementCandidates(state: GameState, playerId: Pla
 /**
  * Unexpected Reinforcements (Astrologers): queue a free recruit offer over the
  * Neutral Units deck cards associated with the player's faction. Custom
- * Anime/Wuxia/Bulwark factions instead receive an optional random recruit from
+ * Anime/Wuxia factions instead receive an optional random recruit from
  * the Dwelling tiers they have built. Only queued when an eligible card remains.
  */
 export function queueFactionRecruitOffer(state: GameState, playerId: PlayerId): void {

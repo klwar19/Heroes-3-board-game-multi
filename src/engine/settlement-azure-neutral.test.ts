@@ -120,3 +120,38 @@ describe("BINH settlement Neutral recruitment — azure signature creature", () 
     expect(playerRecruitUnitIds(state, "p1")).not.toContain("neutral.titans");
   });
 });
+
+// v178: Bulwark/Factory/Forge print their Neutral side under the Few/Pack id,
+// so an own-faction Settlement lists the owner's roster ids as Neutral cards.
+describe("expansion faction owning its own Settlement", () => {
+  function forgeReady(): GameState {
+    const state = ready();
+    state.players.p1.factionId = "forge";
+    const t = town(state);
+    t.factionId = "forge";
+    t.buildings = [];
+    const field = settlement(state, "forge");
+    flagField(state, "p1", field);
+    expect(field.settlementRecruitFactionId).toBe("forge");
+    return state;
+  }
+
+  it("recruits the Few card at its own built Dwelling, the Neutral card otherwise", () => {
+    const state = forgeReady();
+    expect(neutralUnitIdsByFaction.forge).toContain("forge.grunts");
+    // CONTROL: no bronze Dwelling → only the Settlement's Neutral card is on offer.
+    expect(playerRecruitUnitSide(state, "p1", "forge.grunts")).toBe("neutral");
+    town(state).buildings.push("forge.dwelling_bronze");
+    expect(playerRecruitUnitSide(state, "p1", "forge.grunts")).toBe("few");
+  });
+
+  it("treats an owned Neutral-side card and the Few card as different cards", () => {
+    const state = forgeReady();
+    town(state).buildings.push("forge.dwelling_bronze");
+    state.players.p1.army = [{ id: "army_neutral_grunts", unitDefId: "forge.grunts", side: "neutral" }];
+    expect(playerCanRecruitFewNow(state, "p1", "forge.grunts")).toBe(true);
+    // CONTROL: owning the Few card still blocks a second Few (no copy rule).
+    state.players.p1.army = [{ id: "army_few_grunts", unitDefId: "forge.grunts", side: "few" }];
+    expect(playerCanRecruitFewNow(state, "p1", "forge.grunts")).toBe(false);
+  });
+});

@@ -19,7 +19,11 @@ function apply(state: GameState, action: GameAction): GameState {
 
 /** Sets up a real Neutral guard fight for p1, with `hand` in the player's hand,
  *  driven to the moment right after placement (finalizeCombatStart). */
-function neutralGuardFightAfterPlacement(seed: string, hand: string[]): GameState {
+function neutralGuardFightAfterPlacement(
+  seed: string,
+  hand: string[],
+  pin?: Partial<Record<"bronze" | "silver" | "gold" | "azure", string[]>>
+): GameState {
   let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
   state =
     state.players.p1.needsHandRefresh || state.players.p1.canMulligan
@@ -44,6 +48,19 @@ function neutralGuardFightAfterPlacement(seed: string, hand: string[]): GameStat
     settlementResource: null
   };
 
+  // Optional top-of-deck pin per Neutral tier, drawn in the listed order
+  // (drawFromNeutralDeck pops from the END of the draw pile).
+  for (const [tier, ids] of Object.entries(pin ?? {})) {
+    const deck = state.decks[`neutral-${tier}`]!;
+    const rest = [...deck.drawPile];
+    for (const id of ids!) {
+      const index = rest.lastIndexOf(id);
+      expect(index, `${id} in the ${tier} deck`).toBeGreaterThanOrEqual(0);
+      rest.splice(index, 1);
+    }
+    deck.drawPile = [...rest, ...[...ids!].reverse()];
+  }
+
   startNeutralEncounter(state, hero, state.adventure!.fields["guard-field"]);
   const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
   state = apply(state, place!.action);
@@ -52,7 +69,14 @@ function neutralGuardFightAfterPlacement(seed: string, hand: string[]): GameStat
 
 describe("Ring of the Wayfarer — paralyse a Neutral unit AT START of combat", () => {
   it("opens the paralysis decision right after placement — before any unit acts — and paralyses the chosen guard", () => {
-    const state = neutralGuardFightAfterPlacement("wayfarer-e2e-paralyse", ["artifact.ring_of_the_wayfarer"]);
+    // Pinned to the pre-v178 seeded guard army (Goblins, Griffins, Magi). v178
+    // put the expansion Neutral sides into the shared decks; the reshuffled seed
+    // drew Cerberi first — the FASTEST guard, whose Paralysis is then already
+    // spent on its first activation before this test can observe the token.
+    const state = neutralGuardFightAfterPlacement("wayfarer-e2e-paralyse", ["artifact.ring_of_the_wayfarer"], {
+      bronze: ["neutral.goblins", "neutral.griffins"],
+      silver: ["neutral.magi"]
+    });
 
     // The decision is open before the first activation.
     const choice = state.pendingChoice;

@@ -1,7 +1,8 @@
 import type { NeutralTownVeterancyMechanic } from "@/data/units/abilities";
 import type { ActiveEffectState, CombatUnitState, DamageKind, GameState, SourceRef } from "./state";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
-import { getBattlefieldDistance, isAdjacent } from "./battlefield";
+import { getBattlefieldDistance } from "./battlefield";
+import { unitAdjacentToCell, unitsAdjacent } from "./hex-footprint";
 import { effectAppliesToUnit, makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
 import { queueElementalChoice } from "./elemental-veterancy";
 import { veteranDamage, veteranHeal, veteranRandom, veteranTrigger } from "./faction-veterancy";
@@ -19,14 +20,14 @@ export function neutralTownVeterancy(unit: CombatUnitState, mechanic: NeutralTow
 }
 
 export function neutralTownDeepRooted(state: GameState | undefined, unit: CombatUnitState): boolean {
-  return Boolean(state?.combat && Object.values(state.combat.units).some(source => alive(source) && source.controllerId !== unit.controllerId && neutralTownVeterancy(source, "deep-roots") && isAdjacent(source.position, unit.position)));
+  return Boolean(state?.combat && Object.values(state.combat.units).some(source => alive(source) && source.controllerId !== unit.controllerId && neutralTownVeterancy(source, "deep-roots") && unitsAdjacent(state.combat, source, unit)));
 }
 
 export function neutralTownAttackBonus(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, currentDefense = defender.defense): number {
   const allies = Object.values(state.combat?.units ?? {});
   return Number(neutralTownVeterancy(attacker, "righteous-pursuit") && defender.damage > 0)
     + Number(neutralTownVeterancy(attacker, "first-volley") && !defender.activatedThisRound && state.combat?.activeUnitId !== defender.id)
-    + Number(neutralTownVeterancy(attacker, "pack-rush") && allies.some(u => alive(u) && u.id !== attacker.id && u.controllerId === attacker.controllerId && isAdjacent(u.position, defender.position)))
+    + Number(neutralTownVeterancy(attacker, "pack-rush") && allies.some(u => alive(u) && u.id !== attacker.id && u.controllerId === attacker.controllerId && unitsAdjacent(state.combat, u, defender)))
     + Number(neutralTownVeterancy(attacker, "armoured-prey") && currentDefense >= 2)
     + Number(neutralTownVeterancy(attacker, "blind-instinct") && state.activeEffects.some(e => e.polarity === "negative" && effectAppliesToUnit(e, attacker, true)))
     + Number(neutralTownVeterancy(attacker, "ally-blind-instinct") && allies.some(u => alive(u) && u.controllerId === attacker.controllerId && state.activeEffects.some(e => e.polarity === "negative" && effectAppliesToUnit(e, u, true))))
@@ -39,11 +40,11 @@ export function neutralTownAttackBonus(state: GameState, attacker: CombatUnitSta
 
 export function neutralTownDefenseBonus(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, currentDefense = defender.defense): number {
   const allies = Object.values(state.combat?.units ?? {});
-  let bonus = Number(neutralTownVeterancy(defender, "bone-wall") && allies.some(u => alive(u) && u.id !== defender.id && u.controllerId === defender.controllerId && isAdjacent(u.position, defender.position)))
-    + Number(neutralTownVeterancy(defender, "boarding-formation") && allies.some(u => alive(u) && u.id !== defender.id && u.controllerId === defender.controllerId && u.type === "ranged" && isAdjacent(u.position, defender.position)))
+  let bonus = Number(neutralTownVeterancy(defender, "bone-wall") && allies.some(u => alive(u) && u.id !== defender.id && u.controllerId === defender.controllerId && unitsAdjacent(state.combat, u, defender)))
+    + Number(neutralTownVeterancy(defender, "boarding-formation") && allies.some(u => alive(u) && u.id !== defender.id && u.controllerId === defender.controllerId && u.type === "ranged" && unitsAdjacent(state.combat, u, defender)))
     + Number((memory(defender).stoneUntilActivation as boolean | undefined) === true);
   bonus += Number(memory(defender).wishDefense === true);
-  bonus += Number(neutralTownVeterancy(defender, "set-the-spear") && attacker.movedThisActivation && isAdjacent(attacker.position, defender.position));
+  bonus += Number(neutralTownVeterancy(defender, "set-the-spear") && attacker.movedThisActivation && unitsAdjacent(state.combat, attacker, defender));
   if (neutralTownVeterancy(attacker, "full-gallop") && memory(attacker).movedTwo) bonus -= 1;
   if (neutralTownVeterancy(attacker, "raking-dive") && memory(attacker).movedTwo) bonus -= 1;
   if (neutralTownVeterancy(attacker, "crushing-claws") && currentDefense >= 2) bonus -= 1;
@@ -73,7 +74,7 @@ export function neutralTownMovement(state: GameState, unit: CombatUnitState, fro
   if (neutralTownVeterancy(unit, "stone-landing") && distance >= 2) { mem.stoneUntilActivation = true; veteranTrigger(state, unit, "ntv-stone-landing"); }
   if ((neutralTownVeterancy(unit, "full-gallop") || neutralTownVeterancy(unit, "raking-dive")) && distance >= 2) mem.movedTwo = true;
   if (neutralTownVeterancy(unit, "searing-passage")) {
-    const nearBefore = Object.values(combat.units).some(e => alive(e) && e.controllerId !== unit.controllerId && isAdjacent(from, e.position));
+    const nearBefore = Object.values(combat.units).some(e => alive(e) && e.controllerId !== unit.controllerId && unitAdjacentToCell(combat, e, from));
     if (nearBefore) mem.searingReady = true;
   }
   if (neutralTownVeterancy(unit, "disorienting-landing") && distance >= 2)
@@ -130,7 +131,7 @@ export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitSta
   const combat = state.combat; if (!combat) return;
   // A cancelled/ignored die supplies no face for any rank trigger.
   if (dieCancelled) roll = NaN;
-  const mem = memory(attacker); const round = combat.round; const nonAdjacent = !isAdjacent(attacker.position, defender.position);
+  const mem = memory(attacker); const round = combat.round; const nonAdjacent = !unitsAdjacent(combat, attacker, defender);
   // Moving charges only the next attack; another move may re-arm it.
   delete mem.movedTwo;
   if (memory(defender).volleyMarkedRound === round && !memory(defender).volleyConsumed) memory(defender).volleyConsumed = true;
@@ -180,7 +181,7 @@ export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitSta
   if (longRiposte || (retaliation && neutralTownVeterancy(attacker, "winged-riposte")) || (!retaliation && kind === "ranged" && nonAdjacent && neutralTownVeterancy(attacker, "skirmisher-step")) || (!retaliation && attacker.movedThisActivation && neutralTownVeterancy(attacker, "flowing-assault")))
     queueElementalChoice(state, { kind: "move-one", unitId: attacker.id, abilityId: longRiposte ? "imperium-winged-riposte-3" : retaliation ? "ntv-winged-riposte" : neutralTownVeterancy(attacker, "skirmisher-step") ? "ntv-skirmisher-step" : "ntv-flowing-assault", optional: true, ...(longRiposte ? { maxDistance: 3 } : {}) });
   if (!retaliation && neutralTownVeterancy(attacker, "strike-and-return") && typeof mem.activationOrigin === "number") queueElementalChoice(state, { kind: "return-origin", unitId: attacker.id, abilityId: "ntv-strike-and-return", position: mem.activationOrigin as number, optional: true });
-  if (neutralTownVeterancy(defender, "barbed-revenge") && alive(defender) && isAdjacent(attacker.position, defender.position) && !usedThisRound(defender, "barbRound", round)) { markRound(defender, "barbRound", round); veteranDamage(state, defender, attacker, 1, "ntv-barbed-revenge"); }
+  if (neutralTownVeterancy(defender, "barbed-revenge") && alive(defender) && unitsAdjacent(combat, attacker, defender) && !usedThisRound(defender, "barbRound", round)) { markRound(defender, "barbRound", round); veteranDamage(state, defender, attacker, 1, "ntv-barbed-revenge"); }
   if (neutralTownVeterancy(attacker, "petrifying-aim") && kind === "ranged" && nonAdjacent && roll === 1 && alive(defender) && !unitImmuneToParalysis(state, defender) && !usedThisRound(attacker, "petrifyRound", round)) { markRound(attacker, "petrifyRound", round); placeCombatToken(state, defender, "paralysis", 0, "Petrifying Aim"); veteranTrigger(state, attacker, "ntv-petrifying-aim", defender); }
   if (damage > 0 && neutralTownVeterancy(attacker, "bewitching-bolt") && kind === "ranged" && nonAdjacent && !usedThisRound(attacker, "bewitchRound", round)) { const effect = state.activeEffects.find(e => e.polarity === "positive" && e.removable && e.target?.type === "unit" && e.target.unitId === defender.id); if (effect) { markRound(attacker, "bewitchRound", round); removeEffect(effect); veteranTrigger(state, attacker, "ntv-bewitching-bolt", defender); } }
   if (damage > 0 && neutralTownVeterancy(attacker, "disrupting-gaze") && !usedThisRound(attacker, "disruptRound", round)) {
@@ -249,7 +250,7 @@ export function neutralTownAllyLost(state: GameState, fallen: CombatUnitState, l
   for (const unit of Object.values(state.combat?.units ?? {})) {
     if (!alive(unit) || unit.id === fallen.id) continue;
     if (unit.controllerId === fallen.controllerId && neutralTownVeterancy(unit, "summoned-torment") && !usedThisRound(unit, "tormentRound", round)) { markRound(unit, "tormentRound", round); memory(unit).tormentUntilRound = round; memory(unit).tormentDuringActivation = state.combat?.activeUnitId === unit.id; veteranTrigger(state, unit, "ntv-summoned-torment", fallen); }
-    if (unit.controllerId !== fallen.controllerId && neutralTownVeterancy(unit, "marsh-scavenger") && isAdjacent(unit.position, fallen.position) && !usedThisRound(unit, "scavengeRound", round)) { markRound(unit, "scavengeRound", round); veteranHeal(state, unit, 1, "ntv-marsh-scavenger"); }
+    if (unit.controllerId !== fallen.controllerId && neutralTownVeterancy(unit, "marsh-scavenger") && unitsAdjacent(state.combat, unit, fallen) && !usedThisRound(unit, "scavengeRound", round)) { markRound(unit, "scavengeRound", round); veteranHeal(state, unit, 1, "ntv-marsh-scavenger"); }
   }
   const sourceId = memory(fallen).damageSourceId as string | undefined;
   const source = sourceId ? state.combat?.units[sourceId] : undefined;

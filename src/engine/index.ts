@@ -21,8 +21,48 @@ export {
   getBattlefieldTerrain,
   isBattlefieldPosition
 } from "./battlefield";
+export {
+  hexColumnCells,
+  hexDeploymentLine,
+  hexEquivalentOfGridCell,
+  HEX_BOARD_CENTER,
+  HEX_CREATURE_BANK_ATTACKER_CELLS,
+  HEX_CREATURE_BANK_GUARD_CORNERS,
+  HEX_MIDDLE_OUT_ROWS
+} from "./hex-battlefield";
+export { hexFootprintTail, hexTranslate } from "./battlefield";
+export {
+  areaAround,
+  cloneTokenSpaces,
+  footprintAt,
+  footprintFits,
+  footprintHeadsIn,
+  HEX_DOUBLE_WIDE_UNIT_IDS,
+  isHexDoubleWide,
+  nearestUnitCellTo,
+  occupiedCellsOf,
+  relocationFits,
+  unitAdjacentToCell,
+  unitAtCell,
+  unitCellDistance,
+  unitCells,
+  unitCellsAt,
+  unitDistance,
+  unitDistanceAt,
+  unitInCells,
+  unitIsDoubleWide,
+  unitOccupiesCell,
+  unitsAdjacent,
+  unitsAdjacentAt,
+  unitStepSpaces,
+  unitTailCell,
+  unitTailOffset
+} from "./hex-footprint";
+export type { FootprintCombat, FootprintUnit } from "./hex-footprint";
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
 export type { ReducerOptions } from "./reducer";
+export { previewActionTargets } from "./target-preview";
+export type { ActionTargetPreview } from "./target-preview";
 export {
   firstPlayerCeremonyPending,
   resolveManualPlayerOrder,
@@ -831,6 +871,7 @@ export {
   ATTACKER_FRONTLINE,
   COMBAT_UNIT_LIMIT,
   COMMANDER_COMBAT_UNIT_LIMIT,
+  combatDeploymentLine,
   combatUnitLimit,
   combatSetupUnitLimit,
   CREATURE_BANK_ATTACKER_CELLS,
@@ -851,8 +892,11 @@ export {
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
   neutralFormationCellsForGuard,
+  neutralGuardFormationHeads,
   neutralPlacementIsManual,
-  pumpAdventureQueues
+  placementHeadsFor,
+  pumpAdventureQueues,
+  tacticsSwapFits
 } from "./adventure-reducer";
 export { bestMapSpellTier, isMapPowerTierSpell, mapSpellPowerTiers } from "./map-spell-cast";
 export type { MapSpellPowerTiers } from "./map-spell-cast";
@@ -1256,11 +1300,15 @@ export {
   destroyEnemyFortificationsInCells,
   effectRelocatesUnitOnBoard,
   enemyFortificationsInCells,
+  fortificationKindAt,
+  fortificationPickPositions,
   fortificationTargetId,
   getDemolishAbility,
   intactFortificationPositions,
   isArrowTowerUnit,
+  isFortificationPosition,
   makeArrowTowerUnit,
   parseFortificationTargetId,
+  siegeGatePositions,
   SIEGE_ROW_POSITIONS
 } from "./siege";

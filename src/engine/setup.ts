@@ -2,6 +2,7 @@ import { abilityDeckBinh } from "@/data/cards/abilities-extra";
 import { artifactDeckBinhMajor, artifactDeckBinhMinor, artifactDeckBinhRelic } from "@/data/cards/artifacts";
 import { spellDeckBinhBasic, spellDeckBinhExpert } from "@/data/cards/spells";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { hexEquivalentOfGridCell } from "./hex-battlefield";
 import { shuffleCards } from "./decks";
 import { makeCombatUnitFromArmy } from "./adventure";
 import type { CombatUnitState, DeckState, GameRuleset, GameState, PlayerState } from "./state";
@@ -133,17 +134,22 @@ function makeSimPlayer(config: SimPlayerConfig): PlayerState {
  * specialty, statistics, an artifact, a spell and an ability, fighting over
  * a board with two obstacle tokens on the middle row.
  */
-export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
+export function createInitialGameState(
+  seed = "homm3bg-dev-seed",
+  options: { hexBattlefield?: boolean } = {}
+): GameState {
+  // Hex battlefield fixture: every 4×5 cell below moves to its hex equivalent.
+  const at = (cell: number): number => (options.hexBattlefield ? hexEquivalentOfGridCell(cell) ?? cell : cell);
   const units: Record<string, CombatUnitState> = Object.fromEntries(
     [
       // Catherine's Castle army (attacker, rows 1-2).
-      simUnit("unit_p1_marksmen", "p1", "castle.marksmen", "pack", 1),
-      simUnit("unit_p1_griffins", "p1", "castle.griffins", "pack", 5),
-      simUnit("unit_p1_crusaders", "p1", "castle.crusaders", "pack", 6),
+      simUnit("unit_p1_marksmen", "p1", "castle.marksmen", "pack", at(1)),
+      simUnit("unit_p1_griffins", "p1", "castle.griffins", "pack", at(5)),
+      simUnit("unit_p1_crusaders", "p1", "castle.crusaders", "pack", at(6)),
       // Sandro's Necropolis army (defender, rows 4-5).
-      simUnit("unit_p2_skeletons", "p2", "necropolis.skeletons", "pack", 13),
-      simUnit("unit_p2_vampires", "p2", "necropolis.vampires", "pack", 14),
-      simUnit("unit_p2_dread_knights", "p2", "necropolis.dread_knights", "few", 18)
+      simUnit("unit_p2_skeletons", "p2", "necropolis.skeletons", "pack", at(13)),
+      simUnit("unit_p2_vampires", "p2", "necropolis.vampires", "pack", at(14)),
+      simUnit("unit_p2_dread_knights", "p2", "necropolis.dread_knights", "few", at(18))
     ].map((unit) => [unit.id, unit])
   );
 
@@ -275,7 +281,8 @@ export function createInitialGameState(seed = "homm3bg-dev-seed"): GameState {
       units,
       // Two obstacle tokens on the middle row: combat obstacles that block
       // ground and ranged movement; flying units pass over them.
-      obstacles: [8, 11]
+      obstacles: [at(8), at(11)],
+      ...(options.hexBattlefield ? { geometry: "hex" as const } : {})
     },
     // Shared table decks (BINH split-deck layout), stocked with the complete
     // implemented catalog so every Spell, Ability and Artifact is reachable via

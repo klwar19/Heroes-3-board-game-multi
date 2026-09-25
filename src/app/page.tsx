@@ -238,6 +238,7 @@ import {
   FLIGHT_MS,
   FLIGHT_OUT_MS,
   FxStage,
+  HEX_CAST_RELEASE_MS,
   HOLD_CENTER_MS,
   NEUTRAL_ATTACK_PAUSE_MS,
   preloadRuneBurstArt,
@@ -281,8 +282,12 @@ import {
   planApproachMoveDelays,
   planHarpyReturnHolds,
   planMoveArrivalBeats,
-  planReturnMoveDelays
+  planReturnMoveDelays,
+  unitAbilityCastsOnHex
 } from "@/components/table/fx-sequence";
+import { hexMoveEventDurationMs, isHexCombat } from "@/components/table/hex-battlefield";
+import { HEX_RANGED_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
+import { HERO_CAST_RELEASE_MS } from "@/data/battle-hex/hero-sprites";
 import { buildForcedHandFx } from "@/components/table/astrologers-hand-fx";
 import {
   heroMoveSoundKey,
@@ -301,7 +306,8 @@ import {
   playLibrarySoundThen,
   playSpellBookOpen,
   playTableUiClickSound,
-  playUnitSound
+  playUnitSound,
+  playUnitSoundFor
 } from "@/lib/sound";
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
 import { mapMusicContext, useBackgroundMusic, type MusicScene } from "@/lib/music";
@@ -377,6 +383,8 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "HAND_REFRESHED",
   // Creature voices: each unit speaks with its own H3 clips in combat.
   "COMBAT_UNIT_PLACED",
+  // Hex battlefield Tactics swap: both figures blink onto their new hexes.
+  "COMBAT_UNITS_SWAPPED",
   "UNIT_ATTACK_DECLARED",
   "UNIT_MOVED",
   "UNIT_DEFENDED",
@@ -805,6 +813,16 @@ function playedCardFxAnchors(
   );
   return side.length > 0 ? side.map((unit) => `unit:${unit.id}`) : ["center"];
 }
+
+/**
+ * Hex battlefield Chain Lightning hop: one thin bolt from the unit struck
+ * before to the next, with its thunder crack; the struck unit's number and cry
+ * land as the bolt head arrives (`resultAtMs` = the beam's grow).
+ */
+const chainLightningHopPlan: SpellFxPlan = {
+  ...stormCircuitChainHopPlan,
+  resultAtMs: (stormCircuitChainHopPlan.beamTiming ?? DEFAULT_BEAM_TIMING).growMs
+};
 
 function pushLightningBeamCues(
   cues: FxCue[],
@@ -1633,6 +1651,11 @@ export default function Home() {
     // signed-in participant posts once so W/L still records if the PartyKit
     // edge report key is missing. Uses the previous client state as `prev`.
     maybeClaimFinishedMatch(stateRef.current ?? undefined, nextState);
+    // Hex battlefield presentation reads what this frame changed off the
+    // previous combat: which creature's Spell copy / Echo was just spent (the
+    // engine logs that cast under the player, with no unit id) and the hex a
+    // re-sorted or swapped unit stood on.
+    const priorCombat = stateRef.current?.combat ?? null;
     stateRef.current = nextState;
 
     const incomingState = nextState;
@@ -2408,6 +2431,20 @@ export default function Home() {
         nextState.eventLog,
         freshCombatMoves
       );
+      // A Magma teleport strike / Phoenix nest return blinks rather than walks.
+      const isTeleportMove = (event: Extract<GameEvent, { type: "UNIT_MOVED" }>) =>
+        event.sourceAbilityId === "veteran-magma-teleport-strike" ||
+        event.sourceAbilityId === "veteran-phoenix-rising-nest-return" ||
+        event.sourceAbilityId === "veteran-phoenix-nest-return";
+      // How long a move plays: the card glide on the 4x5 board; on the hex board
+      // the unit walks its route hex by hex (or blinks), so every beat after the
+      // move (die, strike, burn) waits for it to actually arrive.
+      const glideMsFor = (event: Extract<GameEvent, { type: "UNIT_MOVED" }>): number =>
+        hexMoveEventDurationMs(nextState.combat, event, isTeleportMove(event), nextState.activeEffects) ?? COMBAT_MOVE_MS;
+      const approachGlideByUnit = new Map<string, number>();
+      for (const move of approachMoves) {
+        if (!approachGlideByUnit.has(move.unitId)) approachGlideByUnit.set(move.unitId, glideMsFor(move));
+      }
       // A Harpy that struck and flies home this snapshot has its real card
       // already committed back on its origin, but its fly-back is held until the
       // enemy's Retaliation Attack has played (see the return-move block below).
@@ -2430,7 +2467,7 @@ export default function Home() {
       const movePreDelayByAttacker = planApproachAttackPreDelays(
         approachMoves.map((move) => ({ unitId: move.unitId, neutral: move.playerId === NEUTRAL_PLAYER_ID })),
         fresh,
-        COMBAT_MOVE_MS,
+        (unitId) => approachGlideByUnit.get(unitId) ?? COMBAT_MOVE_MS,
         NEUTRAL_ATTACK_PAUSE_MS
       );
 
@@ -2453,7 +2490,9 @@ export default function Home() {
           const plan = abilityFxPlans[abilityId];
           return {
             castMs: plan ? spellPresentationMs(plan) : 0,
-            holdMs: plan ? DAMAGE_REVEAL_DELAY_MS : 0
+            holdMs: plan ? DAMAGE_REVEAL_DELAY_MS : 0,
+            // Hex battlefield: the caster's figure winds up its cast first.
+            windUpMs: plan && isHexCombat(nextState.combat) ? HEX_CAST_RELEASE_MS : 0
           };
         }
       );
@@ -2753,6 +2792,9 @@ export default function Home() {
       // and damage floaters, chained on one timeline per snapshot so a cast
       // reads as "card to center -> effect on target -> damage number".
       const freshFx = fxEvents.filter((event) => !seenFxIdsRef.current.has(event.id));
+      // When this snapshot's combat presentation has fully played (hex heroes'
+      // victory / defeat wait for it; set inside the block below).
+      let heroOutcomeAt = 0;
       for (const event of fxEvents) {
         seenFxIdsRef.current.add(event.id);
       }
@@ -2915,6 +2957,93 @@ export default function Home() {
           }
           return undefined;
         };
+        /**
+         * Where a unit stands for an FX anchor: its live figure while it is
+         * still on the board, else the hex it stood on before this frame (it
+         * fell to the very hit being shown).
+         */
+        const standingAnchor = (unitId: string): string | undefined => {
+          const live = nextState.combat?.units[unitId];
+          if (live && live.position >= 0 && live.damage < live.maxHealth) {
+            return `unit:${unitId}`;
+          }
+          const before = priorCombat?.id === nextState.combat?.id ? priorCombat?.units[unitId] : undefined;
+          if (before && before.position >= 0) {
+            return `cell:${before.position}`;
+          }
+          return live && live.position >= 0 ? `unit:${unitId}` : undefined;
+        };
+        /**
+         * Hex battlefield Chain Lightning: the anchor a later hit's bolt jumps
+         * FROM — the unit this same chain struck just before it (the engine logs
+         * every bolt's DAMAGE_ASSIGNED in bounce order, a choice-paused bolt in a
+         * later frame). Undefined for the chain's first hit (the cast's own
+         * strike), found by reaching the cast / play / activation that started
+         * the chain before any earlier bolt.
+         */
+        const chainLightningHopOrigin = (
+          damageEventId: string,
+          playerId: string,
+          cardId: string,
+          targetId: string
+        ): string | undefined => {
+          const log = nextState.eventLog;
+          const hitIndex = log.findIndex((candidate) => candidate.id === damageEventId);
+          for (let index = hitIndex - 1; hitIndex > 0 && index >= 0 && hitIndex - index <= 400; index -= 1) {
+            const candidate = log[index];
+            if (
+              (candidate.type === "SPELL_CAST_STARTED" && candidate.spellCardId === cardId) ||
+              (candidate.type === "CARD_PLAYED" && candidate.cardId === cardId) ||
+              (candidate.type === "UNIT_ABILITY_TRIGGERED" && candidate.abilityId === "veteran-air-chain-lightning") ||
+              candidate.type === "COMBAT_ROUND_STARTED"
+            ) {
+              return undefined;
+            }
+            if (
+              isStormChainHit(candidate, playerId, cardId) &&
+              candidate.type === "DAMAGE_ASSIGNED" &&
+              candidate.target.type === "unit"
+            ) {
+              return candidate.target.unitId === targetId ? undefined : standingAnchor(candidate.target.unitId);
+            }
+          }
+          return undefined;
+        };
+        /**
+         * Hex battlefield Lich Death Cloud: ONE cloud centred on the Lich's
+         * original target, sized over every unit the cloud struck (that target
+         * and the follow-up victim) — `area:<centre>|<unitIds>`. Undefined when
+         * the original target cannot be found (the cloud stays on the victim).
+         */
+        const deathCloudArea = (
+          declaration: Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }>
+        ): string | undefined => {
+          const log = nextState.eventLog;
+          const declaredIndex = log.findIndex((candidate) => candidate.id === declaration.id);
+          for (let index = declaredIndex - 1; declaredIndex > 0 && index >= 0 && declaredIndex - index <= 400; index -= 1) {
+            const candidate = log[index];
+            if (candidate.type === "UNIT_ACTIVATION_STARTED" || candidate.type === "COMBAT_ROUND_STARTED") {
+              return undefined;
+            }
+            if (
+              candidate.type === "UNIT_ATTACK_DECLARED" &&
+              candidate.attackerId === declaration.attackerId &&
+              !candidate.isRetaliation &&
+              !candidate.abilityAttack
+            ) {
+              const primaryId = candidate.defenderId;
+              const centre = standingAnchor(primaryId);
+              if (!centre) {
+                return undefined;
+              }
+              // A struck unit whose hexes are gone from the board simply adds
+              // nothing to the area (the FX stage sizes it from live cells).
+              const struck = primaryId === declaration.defenderId ? [primaryId] : [primaryId, declaration.defenderId];
+              return `area:${centre}|${struck.join(",")}`;
+            }
+          }
+          return undefined;
+        };
         // True once any spell/ability has queued damage, a heal or a death in
         // combat — holds the victory notice and the next guard's prompt until the
         // effect (and the death it caused) has played out, exactly like a strike.
@@ -2942,6 +3071,167 @@ export default function Home() {
         const unitVariant = (unitId: string) =>
           nextState.combat?.units[unitId]?.variant ?? unitVariantsRef.current.get(unitId);
 
+        // Hex battlefield only: creatures are animated figures, so a unit that
+        // casts plays its H3 cast rows, walks its whole route, and so on. Every
+        // helper below is a no-op (returns 0) on the 4x5 card board.
+        const hexCombat = isHexCombat(nextState.combat);
+        /** A unit's hex as a cell anchor (a figure faces / aims at it). */
+        const unitCellAnchor = (unitId: string): string => {
+          const unit = nextState.combat?.units[unitId];
+          return unit && unit.position >= 0 ? `cell:${unit.position}` : `unit:${unitId}`;
+        };
+        /**
+         * The caster's figure turns toward its target and plays its cast; the
+         * spell leaves it HEX_CAST_RELEASE_MS later. Returns how long the
+         * caller holds the spell's FX / sound for that release (0 when the
+         * caster is not a figure on a hex board).
+         */
+        const pushHexCast = (
+          cueId: string,
+          casterId: string | undefined,
+          targetUnitId: string | undefined,
+          at: number
+        ): number => {
+          const caster = casterId ? nextState.combat?.units[casterId] : undefined;
+          if (!hexCombat || !casterId || !caster || caster.position < 0) {
+            return 0;
+          }
+          cues.push({
+            kind: "cast",
+            id: `${cueId}-cast`,
+            unitId: casterId,
+            to: targetUnitId && targetUnitId !== casterId ? unitCellAnchor(targetUnitId) : undefined,
+            releaseMs: HEX_CAST_RELEASE_MS,
+            delayMs: at
+          });
+          return HEX_CAST_RELEASE_MS;
+        };
+        /**
+         * Hex battlefield: a unit re-placed onto another hex without walking
+         * (re-placed while deploying, the Tactics re-sort / move / swap) blinks
+         * straight onto it at `at` instead of holding on the hex it left. A
+         * unit newly set onto the board just appears there (no cue).
+         */
+        const pushHexPlace = (cueId: string, unitId: string, at: number) => {
+          const unit = nextState.combat?.units[unitId];
+          const before = priorCombat && priorCombat.id === nextState.combat?.id ? priorCombat.units[unitId] : undefined;
+          if (!hexCombat || !unit || unit.position < 0 || !before || before.position < 0 || before.position === unit.position) {
+            return;
+          }
+          cues.push({ kind: "place", id: `${cueId}-place`, unitId, delayMs: at });
+        };
+        /**
+         * Hex battlefield: Spells a CREATURE cast this frame rather than its
+         * player — an elemental veteran's "spell-copy" (the copied cast it was
+         * offered, or a saved Spell Echo it spent). The engine logs those casts
+         * under the controller's playerId with no unit id, so the caster is
+         * read off what the action consumed: a `copy` choice pending in the
+         * previous combat that is gone now (and did not become a saved Echo),
+         * or an Echo that left the unit's saved list. Keyed
+         * `<playerId>|<cardId>` → the casting unit.
+         */
+        const creatureSpellCasters = new Map<string, string>();
+        if (hexCombat && priorCombat && nextState.combat && priorCombat.id === nextState.combat.id) {
+          const nextCombat = nextState.combat;
+          const echoCount = (combat: NonNullable<GameState["combat"]>, unitId: string, cardId: string) =>
+            (combat.units[unitId]?.elementalVeterancy?.echoSpells ?? []).filter((id) => id === cardId).length;
+          const stillPending = [...(nextCombat.elementalChoices ?? [])];
+          for (const choice of priorCombat.elementalChoices ?? []) {
+            if (choice.kind !== "copy" || !choice.cardId) {
+              continue;
+            }
+            const kept = stillPending.findIndex((other) =>
+              other.kind === "copy" && other.unitId === choice.unitId && other.cardId === choice.cardId);
+            if (kept >= 0) {
+              stillPending.splice(kept, 1);
+              continue;
+            }
+            const unit = nextCombat.units[choice.unitId];
+            if (unit && echoCount(nextCombat, unit.id, choice.cardId) <= echoCount(priorCombat, unit.id, choice.cardId)) {
+              creatureSpellCasters.set(`${unit.controllerId}|${choice.cardId}`, unit.id);
+            }
+          }
+          for (const unit of Object.values(priorCombat.units)) {
+            for (const cardId of new Set(unit.elementalVeterancy?.echoSpells ?? [])) {
+              const live = nextCombat.units[unit.id];
+              if (live && echoCount(nextCombat, unit.id, cardId) < echoCount(priorCombat, unit.id, cardId)) {
+                creatureSpellCasters.set(`${live.controllerId}|${cardId}`, unit.id);
+              }
+            }
+          }
+        }
+        // A hero's specialty launching its spell FX plays one cast per play.
+        const heroSpecialtyCastKeys = new Set<string>();
+        /**
+         * Hex battlefield: a hero specialty's spell effect (Storm Circuit, Ciele
+         * VI's Magic Arrow…) leaves that side's hero figure — which plays its
+         * H3 cast, released on `releaseAt` — instead of the hand. A side with
+         * no hero figure falls back to the hand through the `hero:` anchor; the
+         * card board keeps the hand.
+         */
+        const heroSpecialtyOrigin = (cueId: string, playerId: PlayerId, cardId: string, releaseAt: number): string => {
+          if (!hexCombat) {
+            return `hand:${playerId}`;
+          }
+          const key = `${playerId}|${cardId}`;
+          if (!heroSpecialtyCastKeys.has(key)) {
+            heroSpecialtyCastKeys.add(key);
+            cues.push({
+              kind: "hero",
+              id: `${cueId}-hero-cast`,
+              playerId,
+              pose: "cast",
+              delayMs: Math.max(0, releaseAt - HERO_CAST_RELEASE_MS)
+            });
+          }
+          return `hero:${playerId}`;
+        };
+        /**
+         * Hex battlefield: a player's Spell (hand, Spell Book or scroll) or hero
+         * specialty card is cast by their hero figure — it plays the H3 cast so
+         * its release frame lands on `releaseAt`, the beat the spell's FX starts
+         * — and the spell leaves the hero (`hero:<playerId>`, which falls back
+         * to the hand when that side has no hero figure). A creature's copied /
+         * echoed Spell leaves that creature instead. Elsewhere the spell leaves
+         * the hand as before.
+         */
+        const heroCastOrigin = (
+          cueId: string,
+          playerId: PlayerId,
+          spellCardId: string,
+          releaseAt: number,
+          targetUnitId?: string
+        ): string => {
+          const castKind = cardLibrary[spellCardId]?.kind;
+          if (!hexCombat || (castKind !== "spell" && castKind !== "hero-specialty")) {
+            return `hand:${playerId}`;
+          }
+          // A creature's copied / echoed Spell leaves that creature's figure,
+          // which plays its own cast (released on `releaseAt`) — not the hero.
+          const creatureCasterId = creatureSpellCasters.get(`${playerId}|${spellCardId}`);
+          const creatureCaster = creatureCasterId ? nextState.combat?.units[creatureCasterId] : undefined;
+          if (creatureCaster && creatureCaster.position >= 0) {
+            pushHexCast(cueId, creatureCaster.id, targetUnitId, Math.max(0, releaseAt - HEX_CAST_RELEASE_MS));
+            return `unit:${creatureCaster.id}`;
+          }
+          cues.push({
+            kind: "hero",
+            id: `${cueId}-hero-cast`,
+            playerId,
+            pose: "cast",
+            delayMs: Math.max(0, releaseAt - HERO_CAST_RELEASE_MS)
+          });
+          return `hero:${playerId}`;
+        };
+        /** A unit's footsteps: the card glide's one clip, or held for the whole hex walk. */
+        const playMoveSound = (event: Extract<GameEvent, { type: "UNIT_MOVED" }>, at: number) => {
+          if (hexCombat) {
+            playUnitSoundFor(unitVoice(event.unitId), "move", at, glideMsFor(event), unitVariant(event.unitId));
+          } else {
+            playUnitSound(unitVoice(event.unitId), "move", at, unitVariant(event.unitId));
+          }
+        };
+
         // Leading activation-spell preamble: present the cast(s) FIRST — at the
         // very front of the timeline — so a neutral Faerie Dragon's Ice Bolt
         // flies and bursts (and its damage lands) BEFORE the dragon glides toward
@@ -2956,6 +3246,11 @@ export default function Home() {
             continue;
           }
           leadingSpellEventIds.add(cast.eventId);
+          // Hex battlefield: the dragon's figure casts first (the preamble
+          // reserved that wind-up), its bolt leaving on the release beat.
+          if (cast.castStart > cast.windUpStart) {
+            pushHexCast(cast.eventId, cast.unitId, cast.targetUnitId, cast.windUpStart);
+          }
           if (plan.projectile) {
             cues.push({
               kind: "projectile",
@@ -3014,10 +3309,22 @@ export default function Home() {
         // cry — is held to this beat (see the BATTLEFIELD_TOKEN_TRIGGERED and
         // DAMAGE_ASSIGNED handlers) so it lands as the card reaches the wall,
         // not at t=0 before it has glided there.
-        const moveArrivalByUnit = planMoveArrivalBeats(approachMoves, approachMoveDelays, COMBAT_MOVE_MS);
+        const moveArrivalByUnit = planMoveArrivalBeats(approachMoves, approachMoveDelays, (index) =>
+          glideMsFor(approachMoves[index])
+        );
+        // Hex battlefield: a walk takes its route hex by hex, so a Fire Wall /
+        // Land Mine sprung PART-WAY along it flares as the figure steps onto
+        // that hex, not at the end of the walk: unitId → the walk's timing.
+        const hexWalkByUnit = new Map<string, { start: number; durationMs: number; path: number[] }>();
+        // unitId → when the token its walk just sprang flares (consumed by the
+        // burn's DAMAGE_ASSIGNED, which follows its BATTLEFIELD_TOKEN_TRIGGERED).
+        const hexTokenSpringAt = new Map<string, number>();
         approachMoves.forEach((event, index) => {
           const unit = nextState.combat?.units[event.unitId];
           const moveDelay = approachMoveDelays[index];
+          if (hexCombat && event.path && event.path.length > 0) {
+            hexWalkByUnit.set(event.unitId, { start: moveDelay, durationMs: glideMsFor(event), path: event.path });
+          }
           const nestReturn = event.sourceAbilityId === "veteran-phoenix-rising-nest-return" ||
             event.sourceAbilityId === "veteran-phoenix-nest-return";
           cues.push({
@@ -3027,6 +3334,10 @@ export default function Home() {
             from: `cell:${event.from}`,
             to: `unit:${event.unitId}`,
             cardImage: unit?.assets?.cardImage,
+            path: event.path,
+            toPosition: event.to,
+            // Hex board: the figure paces its walk to exactly this timeline slot.
+            ...(hexCombat ? { durationMs: glideMsFor(event) } : {}),
             teleport: event.sourceAbilityId === "veteran-magma-teleport-strike" || nestReturn,
             teleportFxKey: nestReturn ? "phoenix-scorch-animated" : undefined,
             // Cards always stand upright now (the seat flip only mirrors cell
@@ -3035,10 +3346,10 @@ export default function Home() {
             delayMs: moveDelay
           });
           if (event.sourceAbilityId !== "veteran-magma-teleport-strike" && !nestReturn) {
-            playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
+            playMoveSound(event, moveDelay);
           }
           if (unit?.unitDefId === "bulwark.mountain_rams" && unit.abilities.includes("town-ram-trample")) {
-            const arrivalAt = moveDelay + COMBAT_MOVE_MS;
+            const arrivalAt = moveDelay + glideMsFor(event);
             cues.push({
               kind: "sprite", id: `${event.id}-earth-spike`, fxKey: "town-ram-earth-spike",
               at: `cell:${event.to}`, delayMs: arrivalAt,
@@ -3056,7 +3367,7 @@ export default function Home() {
         // "fly in → attack window → (after the strike) fly back", never a window
         // popping over a card still sliding across the board.
         const approachMovesEnd = approachMoveDelays.reduce(
-          (latest, delay) => Math.max(latest, delay + COMBAT_MOVE_MS),
+          (latest, delay, index) => Math.max(latest, delay + glideMsFor(approachMoves[index])),
           0
         );
         combatPresentationEnd = Math.max(combatPresentationEnd, approachMovesEnd);
@@ -3074,6 +3385,8 @@ export default function Home() {
         fresh.forEach((roll, index) => {
           const strikeAt = diceDismissAt[index];
           const impactAt = strikeAt + ATTACK_IMPACT_MS;
+          // Hex board figures draw their bow before the shot leaves (same impact beat).
+          const releaseMs = isHexCombat(nextState.combat) ? HEX_RANGED_RELEASE_MS : RANGED_RELEASE_MS;
           impactByRollId.set(roll.id, impactAt);
           impactByTarget.set(roll.defenderId, impactAt);
           const strikeEnd = impactAt + 1200;
@@ -3143,7 +3456,9 @@ export default function Home() {
             playUnitSound(
               attackerVoice,
               dracolichMelee ? "attack" : usesProjectilePresentation ? "shoot" : "attack",
-              strikeAt + (phasedShot && !dracolichMelee ? RANGED_RELEASE_MS : 0),
+              // A phased shot is heard as it leaves its launch frames (the hex
+              // figure's later release moves that beat with it).
+              strikeAt + (phasedShot && !dracolichMelee ? releaseMs : 0),
               unitVariant(roll.attackerId)
             );
           }
@@ -3172,12 +3487,14 @@ export default function Home() {
             attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
           if (lichDeathCloudFollowUp) {
             // Death Cloud's second attack is already the cloud itself: no Lich
-            // card attack motion and no duplicate ranged projectile.
+            // card attack motion and no duplicate ranged projectile. Hex
+            // battlefield: one cloud centred on the Lich's original target,
+            // spread over every unit it struck (each keeps its own number).
             cues.push({
               kind: "sprite",
               id: `${roll.id}-death-cloud`,
               fxKey: "death-cloud",
-              at: defenderCell,
+              at: (hexCombat && attackDeclaration ? deathCloudArea(attackDeclaration) : undefined) ?? defenderCell,
               sound: "spells/death-cloud",
               delayMs: strikeAt
             });
@@ -3190,7 +3507,7 @@ export default function Home() {
               const projectileIntervalMs = shotPlan.projectileIntervalMs ?? 60;
               const flightMs = Math.max(
                 180,
-                ATTACK_IMPACT_MS - RANGED_RELEASE_MS - ((projectileCount - 1) * projectileIntervalMs) / 2,
+                ATTACK_IMPACT_MS - releaseMs - ((projectileCount - 1) * projectileIntervalMs) / 2,
               );
               for (let projectileIndex = 0; projectileIndex < projectileCount; projectileIndex += 1) {
                 cues.push({
@@ -3203,8 +3520,12 @@ export default function Home() {
                   sound: shotPlan.sound,
                   hitSound: shotPlan.hitSound,
                   flightMs,
-                  // Authored sheets include their own 120ms launch phase.
-                  delayMs: strikeAt + (phasedShot ? 0 : RANGED_RELEASE_MS) + projectileIndex * projectileIntervalMs
+                  // Authored sheets include their own 120ms launch phase, so
+                  // they start that much before the release (at the strike on
+                  // the card board; later for a hex figure drawing its bow) and
+                  // still fly on the release and land on the impact beat.
+                  delayMs: strikeAt + (phasedShot ? releaseMs - RANGED_RELEASE_MS : releaseMs) +
+                    projectileIndex * projectileIntervalMs
                 });
               }
               if (dracolichMelee) {
@@ -3216,6 +3537,7 @@ export default function Home() {
                   fxKey: "melee-bite-snap-animated",
                   from: attackerCell,
                   at: defenderCell,
+                  ...(hexCombat ? { impactDelayMs: ATTACK_IMPACT_MS - 276 } : {}),
                   delayMs: strikeAt + 276
                 });
               }
@@ -3225,7 +3547,9 @@ export default function Home() {
                 id: `${roll.id}-bolt`,
                 from: attackerCell,
                 to: defenderCell,
-                delayMs: strikeAt + RANGED_RELEASE_MS
+                // Lands on the impact beat whatever the release (hex: later).
+                ...(hexCombat ? { flightMs: ATTACK_IMPACT_MS - releaseMs } : {}),
+                delayMs: strikeAt + releaseMs
               });
             }
           } else {
@@ -3237,6 +3561,12 @@ export default function Home() {
               (meleeFxKey === "melee-claw-rake-animated" && attackerFxSlug === "behemoths") ||
               meleeFxKey === "cyberbrute-claw-rake-animated";
             const repeats = behemothClaw ? 3 : 1;
+            // Hex battlefield: the figure's own blow lands on the impact beat.
+            // Claw marks flash in place (no travel), so they start on it; a
+            // travelling slash / thrust keeps its start (it reaches the target
+            // on that beat) and holds its contact sound for the blow.
+            const clawSwipe = meleeFxKey === "melee-claw-rake-animated" || meleeFxKey === "cyberbrute-claw-rake-animated";
+            const slashLeadMs = meleeFxKey === "melee-thrust-impact" ? 250 : 276;
             for (let repeat = 0; repeat < repeats; repeat += 1) cues.push(targetOnly ? {
                 kind: "sprite",
                 id: `${roll.id}-melee-${repeat}`,
@@ -3252,7 +3582,8 @@ export default function Home() {
                 scaleMultiplier: behemothClaw ? 1.45 : undefined,
                 // Directional atlases are rotated from the live attacker toward
                 // the live target; Hydra's consecutive bites live in one atlas.
-                delayMs: strikeAt + (meleeFxKey === "melee-thrust-impact" ? 250 : 276) + repeat * 135
+                ...(hexCombat && !clawSwipe ? { impactDelayMs: ATTACK_IMPACT_MS - slashLeadMs } : {}),
+                delayMs: (hexCombat && clawSwipe ? impactAt : strikeAt + slashLeadMs) + repeat * 135
               });
           }
           // The struck unit recoils at the moment of impact.
@@ -3284,6 +3615,9 @@ export default function Home() {
             from: `cell:${event.from}`,
             to: `unit:${event.unitId}`,
             cardImage: unit?.assets?.cardImage,
+            path: event.path,
+            toPosition: event.to,
+            ...(hexCombat ? { durationMs: glideMsFor(event) } : {}),
             flip: false,
             delayMs: held ? 0 : moveDelay,
             ...(held ? { holdMs: moveDelay } : {})
@@ -3292,9 +3626,9 @@ export default function Home() {
           // the same round trip home, so it does not speak a second time. Other
           // after-attack steps keep their move sound.
           if (!isHarpyReturn) {
-            playUnitSound(unitVoice(event.unitId), "move", moveDelay, unitVariant(event.unitId));
+            playMoveSound(event, moveDelay);
           }
-          combatPresentationEnd = Math.max(combatPresentationEnd, moveDelay + COMBAT_MOVE_MS);
+          combatPresentationEnd = Math.max(combatPresentationEnd, moveDelay + glideMsFor(event));
         });
 
         // A struck unit holds its pre-hit health until its blow lands (above for
@@ -3337,7 +3671,9 @@ export default function Home() {
           plan: SpellFxPlan,
           eventId: string,
           fromAnchor: string,
-          targetUnitId: string
+          targetUnitId: string,
+          /** Hex battlefield: where an area burst (`plan.hit`) draws — over every hex it struck. */
+          hitAnchor?: string
         ) => {
           const at = plan.battlefield ? "battlefield" : `unit:${targetUnitId}`;
           const start = timeline;
@@ -3371,7 +3707,7 @@ export default function Home() {
               kind: "sprite",
               id: `${eventId}-hit`,
               fxKey: plan.hit,
-              at,
+              at: hitAnchor ?? at,
               sound: plan.hitSound ?? plan.sound,
               fit: plan.battlefield ? "battlefield" : undefined,
               playbackMs: plan.playbackMs,
@@ -3475,6 +3811,35 @@ export default function Home() {
         // Bulwark-vs-Bulwark opening): stagger their bursts so the words and
         // seal sounds never play on top of each other.
         let runeBeat = 0;
+        /**
+         * Hex battlefield: the units a resolving Spell actually struck — the
+         * engine logs their DAMAGE_ASSIGNED (card source = this cast) before
+         * SPELL_CAST_RESOLVED, so walk this snapshot back to the cast's start.
+         */
+        const struckByCast = (cast: Extract<GameEvent, { type: "SPELL_CAST_RESOLVED" }>): string[] => {
+          const struck: string[] = [];
+          for (let index = freshFx.indexOf(cast) - 1; index >= 0; index -= 1) {
+            const earlier = freshFx[index];
+            if (
+              earlier.type === "SPELL_CAST_STARTED" ||
+              earlier.type === "SPELL_CAST_RESOLVED" ||
+              earlier.type === "CARD_PLAYED"
+            ) {
+              break;
+            }
+            if (
+              earlier.type === "DAMAGE_ASSIGNED" &&
+              earlier.source.type === "card" &&
+              earlier.source.cardId === cast.spellCardId &&
+              earlier.source.controllerId === cast.playerId &&
+              earlier.target.type === "unit" &&
+              !struck.includes(earlier.target.unitId)
+            ) {
+              struck.unshift(earlier.target.unitId);
+            }
+          }
+          return struck;
+        };
         for (const event of orderFxEventsForPresentation(freshFx)) {
           switch (event.type) {
             case "RUNE_LEVEL_REACHED": {
@@ -3553,6 +3918,24 @@ export default function Home() {
                 delayMs: start
               });
               timeline += FLIGHT_MS + HOLD_CENTER_MS + FLIGHT_OUT_MS;
+              // Hex battlefield Tactics move (the first step of a re-sort, or a
+              // setup / round-start move): the event names no unit, so blink
+              // every unit of this player that changed hex without a walk
+              // (no UNIT_MOVED) straight onto its new hex as the card plays.
+              if (
+                hexCombat &&
+                event.cardId === "ability.tactics" &&
+                /^Tactics: move/u.test(event.optionLabel ?? "")
+              ) {
+                for (const unit of Object.values(nextState.combat?.units ?? {})) {
+                  if (
+                    unit.controllerId === event.playerId &&
+                    !freshFx.some((candidate) => candidate.type === "UNIT_MOVED" && candidate.unitId === unit.id)
+                  ) {
+                    pushHexPlace(`${event.id}-${unit.id}`, unit.id, start);
+                  }
+                }
+              }
               // A Spell that resolves through a card play (rather than a spell
               // cast) carries its cue here: map spells (Town Portal, Fly,
               // Visions…) and combat trigger/reaction instants (Weakness,
@@ -3575,6 +3958,11 @@ export default function Home() {
               const playedPlan = isPowerBoost || presentedPerHit ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
+                // Hex battlefield: a Spell played as a card (combat instants,
+                // reactions) is still cast by the hero figure, releasing on `at`.
+                const playedOrigin = inCombat
+                  ? heroCastOrigin(event.id, event.playerId, event.cardId, at, event.targetUnitId)
+                  : `hand:${event.playerId}`;
                 // Attack-window / Sorrow reactions carry the unit they land on
                 // (Curse on the defender, Bloodlust on the attacker). Anchor the
                 // H3 sprite/tint there; map spells and untargeted plays stay
@@ -3587,7 +3975,7 @@ export default function Home() {
                     kind: "projectile",
                     id: `${event.id}-played-projectile`,
                     fxKey: playedPlan.projectile,
-                    from: `hand:${event.playerId}`,
+                    from: playedOrigin,
                     to: anchor,
                     hitFxKey: playedPlan.hit,
                     sound: playedPlan.sound,
@@ -3694,12 +4082,33 @@ export default function Home() {
               break;
             }
             case "SPELL_CAST_RESOLVED": {
+              // Hex battlefield: the caster's hero casts it (release on this
+              // beat), even a Spell with no board effect of its own — or, for a
+              // creature's copied Spell, that creature's figure does.
+              const castOrigin = inCombat
+                ? heroCastOrigin(
+                    event.id,
+                    event.playerId,
+                    event.spellCardId,
+                    timeline,
+                    event.target.type === "unit" ? event.target.unitId : undefined
+                  )
+                : `hand:${event.playerId}`;
               const plan = spellFxPlans[event.spellCardId];
               if (!plan) {
                 break;
               }
               if (event.target.type === "unit") {
-                queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.target.unitId);
+                // Hex battlefield: a burst that also struck other units (a
+                // Fireball on a unit) draws over every hex it hit.
+                const castTargetId = event.target.unitId;
+                const struckAround = hexCombat && plan.hit && !plan.projectile && !plan.battlefield
+                  ? struckByCast(event)
+                  : [];
+                const hexArea = struckAround.some((unitId) => unitId !== castTargetId)
+                  ? `area:unit:${castTargetId}|${struckAround.join(",")}`
+                  : undefined;
+                queueBoardFx(plan, event.id, castOrigin, event.target.unitId, hexArea);
                 // Even a zero-damage/free cast needs its full presentation.
                 // Do not rely on a later damage event to keep the board open.
                 if (inCombat) {
@@ -3714,11 +4123,16 @@ export default function Home() {
                   // damage floaters fire after it. Inferno's roar already played
                   // under SPELL_DICE_ROLLED; a dice-less blast (Frost Ring) rides
                   // its impact sound on the burst here.
+                  // Hex battlefield: the burst covers every hex it struck
+                  // (engine damage events), not just the chosen hex.
+                  const struckUnits = hexCombat ? struckByCast(event) : [];
                   cues.push({
                     kind: "sprite",
                     id: `${event.id}-burst`,
                     fxKey: plan.hit,
-                    at: `cell:${event.target.position}`,
+                    at: struckUnits.length > 0
+                      ? `area:cell:${event.target.position}|${struckUnits.join(",")}`
+                      : `cell:${event.target.position}`,
                     sound: plan.hitSound,
                     delayMs: at
                   });
@@ -3809,6 +4223,8 @@ export default function Home() {
               // singled out (or onto itself for a self-buff / self-heal). The
               // CARD FACE and the words ride the separate EnemyForceCueOverlay.
               const plan = enemyForceFxPlan(event.cardId);
+              // Hex battlefield: the boss's figure casts the card first.
+              timeline += pushHexCast(event.id, event.unitId, event.targetUnitId, timeline);
               queueBoardFx(plan, `${event.id}-enemy-force`, `unit:${event.unitId}`, event.targetUnitId ?? event.unitId);
               if (inCombat) {
                 combatFxActive = true;
@@ -3817,6 +4233,17 @@ export default function Home() {
               break;
             }
             case "COMMANDER_CAST_USED": {
+              // Hex battlefield: the commander's figure casts at its target
+              // first; the cast's slash / sprite / sound leave on the release.
+              const castingCommander = hexCombat
+                ? Object.values(nextState.combat?.units ?? {}).find((unit) =>
+                    unit.commanderSlug === event.commanderSlug &&
+                    unit.controllerId === event.playerId &&
+                    unit.position >= 0)
+                : undefined;
+              if (castingCommander) {
+                timeline += pushHexCast(event.id, castingCommander.id, event.targetUnitId, timeline);
+              }
               if (event.commanderSlug === "lion_el_jonson" && event.castName === "Lion's Slash") {
                 const lion = Object.values(nextState.combat?.units ?? {}).find((unit) =>
                   unit.commanderSlug === "lion_el_jonson" && unit.controllerId === event.playerId);
@@ -3845,9 +4272,12 @@ export default function Home() {
                 ? Object.values(nextState.combat?.units ?? {}).find((unit) =>
                     unit.commanderSlug === "forge" && unit.controllerId === event.playerId)
                 : undefined;
+              // A commander casting from the hex field fires from its figure.
               const sourceAnchor = forgeCommander
                 ? `unit:${forgeCommander.id}`
-                : `hand:${event.playerId}`;
+                : castingCommander
+                  ? `unit:${castingCommander.id}`
+                  : `hand:${event.playerId}`;
               queueBoardFx(plan, event.id, sourceAnchor, event.targetUnitId);
               if (inCombat) {
                 combatFxActive = true;
@@ -4035,8 +4465,11 @@ export default function Home() {
                 // unit that moved this batch; attacks pin to their strike beat.
                 const tokenMoveAt =
                   leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && event.damageKind === "effect"
-                    ? moveArrivalByUnit.get(targetId)
+                    ? hexTokenSpringAt.get(targetId) ?? moveArrivalByUnit.get(targetId)
                     : undefined;
+                if (tokenMoveAt !== undefined) {
+                  hexTokenSpringAt.delete(targetId);
+                }
                 // Attack damage lands on its strike beat; spell/ability damage
                 // lands only once its sprite + sound have finished (the timeline
                 // was just advanced past them by queueBoardFx / the ability cue).
@@ -4104,14 +4537,32 @@ export default function Home() {
                   if (chainOrigin) {
                     queueBoardFx(stormCircuitChainHopPlan, `${event.id}-specialty-chain`, chainOrigin, targetId);
                   } else {
+                    // Hex battlefield: the hero figure casts it (release on
+                    // this beat) and the bolt leaves the hero, not the hand.
                     queueBoardFx(specialtySpellPlan, `${event.id}-specialty-spell`,
-                      `hand:${cardSource.controllerId}`, targetId);
+                      heroSpecialtyOrigin(event.id, cardSource.controllerId, cardSource.cardId, timeline), targetId);
                   }
                   at = timeline;
                   if (inCombat) {
                     combatFxActive = true;
                     combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                   }
+                }
+                // Hex battlefield: Chain Lightning jumps target to target in the
+                // engine's bounce order (its hits are logged in that order). The
+                // first hit is the cast's own strike; every later hit draws one
+                // bolt FROM the unit struck just before it, and its hurt cry and
+                // number land as that hop's bolt arrives.
+                const chainHopFrom =
+                  hexCombat && attackBeat === undefined && cardSource && !specialtySpellPlan && !shotPlan &&
+                  cardLibrary[cardSource.cardId]?.effect?.type === "CHAIN_LIGHTNING"
+                    ? chainLightningHopOrigin(event.id, cardSource.controllerId, cardSource.cardId, targetId)
+                    : undefined;
+                if (chainHopFrom) {
+                  timeline = Math.max(timeline, at);
+                  at = queueBoardFx(chainLightningHopPlan, `${event.id}-chain-hop`, chainHopFrom, targetId).resultAt;
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                 }
                 playUnitSound(unitVoice(targetId), "hurt", at, unitVariant(targetId));
                 cues.push({
@@ -4122,6 +4573,12 @@ export default function Home() {
                   tone: "damage",
                   delayMs: at
                 });
+                // Hex battlefield: a spell / specialty / ability / token hit makes
+                // the struck creature play its H3 hurt clip as the number lands
+                // (an attack's strike already queued its own recoil).
+                if (hexCombat && attackBeat === undefined && inCombat) {
+                  cues.push({ kind: "shake", id: `${event.id}-hurt`, unitId: targetId, delayMs: at });
+                }
                 damageLandAt.set(targetId, Math.max(damageLandAt.get(targetId) ?? 0, at));
                 // Spell/ability hit (not a strike): freeze the struck unit's
                 // pre-hit health on the board so a wound — or a death — never
@@ -4252,6 +4709,17 @@ export default function Home() {
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                 }
               }
+              // Hex battlefield: a unit casting (Ogre Magi Bloodlust, an
+              // Enchanter's heal, a Pit Lord's summon, an Archangel readying a
+              // save…) plays its H3 cast toward its target first; the ability's
+              // FX and sound start on the cast's release beat.
+              if (hexCombat && unitAbilityCastsOnHex(event.abilityId)) {
+                timeline += pushHexCast(event.id, event.unitId, event.targetUnitId, timeline);
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
+                }
+              }
               const plan = abilityFxPlans[event.abilityId];
               if (!plan) {
                 break;
@@ -4259,6 +4727,31 @@ export default function Home() {
               const targetUnitId = event.targetUnitId ?? event.unitId;
               if (event.abilityId === "ranged-extra-shot-on-low-roll") {
                 timeline = Math.max(timeline, (impactByTarget.get(targetUnitId) ?? 0) + 600);
+                // When the shoot cry sounds: the card board's fixed release
+                // after the floater; a hex figure's own release (set below).
+                let extraShotCryAt: number | undefined;
+                if (hexCombat && targetUnitId !== event.unitId && nextState.combat?.units[event.unitId]) {
+                  // Hex battlefield: the shooter's figure draws and looses the
+                  // extra shot; the projectile (and its shoot cry) wait for the
+                  // release like the primary shot's did.
+                  const extraSheet = getFxSheet(unitExtraShotFxPlan(unitVoice(event.unitId)).projectile ?? "");
+                  const extraPhased = Boolean(extraSheet?.projectilePhases || extraSheet?.beamFrames);
+                  cues.push({
+                    kind: "lunge",
+                    id: `${event.id}-extra-shot-lunge`,
+                    attackerId: event.unitId,
+                    to: unitCellAnchor(targetUnitId),
+                    attackKind: "ranged",
+                    flip: false,
+                    delayMs: timeline
+                  });
+                  // The figure looses the shot HEX_RANGED_RELEASE_MS into its
+                  // lunge: the cry lands on that release beat for every shot. A
+                  // phased sheet starts its launch frames RANGED_RELEASE_MS
+                  // earlier, so its timeline sits that much before the release.
+                  extraShotCryAt = timeline + HEX_RANGED_RELEASE_MS;
+                  timeline += HEX_RANGED_RELEASE_MS - (extraPhased ? RANGED_RELEASE_MS : 0);
+                }
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-extra-shot`,
@@ -4270,7 +4763,7 @@ export default function Home() {
                 const shooterId = unitVoice(event.unitId);
                 const extraShotPlan = unitExtraShotFxPlan(shooterId);
                 if (shooterId) {
-                  playUnitSound(shooterId, "shoot", timeline + RANGED_RELEASE_MS, unitVariant(event.unitId));
+                  playUnitSound(shooterId, "shoot", extraShotCryAt ?? timeline + RANGED_RELEASE_MS, unitVariant(event.unitId));
                 }
                 queueBoardFx(extraShotPlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
                 extraShotDamageAt.set(targetUnitId, timeline);
@@ -4415,7 +4908,24 @@ export default function Home() {
             // same timeline so an exchange reads "strike -> wince -> death
             // cry -> retaliation".
             case "COMBAT_UNIT_PLACED": {
+              if (hexCombat) {
+                // Hex battlefield: a placement (deployment, a later step of the
+                // Tactics re-sort) just appears on its hex — no walk and no
+                // footsteps. A unit that already stood on another hex blinks
+                // straight across instead of holding on the hex it left.
+                pushHexPlace(event.id, event.unitId, timeline);
+                break;
+              }
               playUnitSound(unitVoice(event.unitId), "move", timeline, unitVariant(event.unitId));
+              break;
+            }
+            case "COMBAT_UNITS_SWAPPED": {
+              // Hex battlefield Tactics swap: both figures blink onto each
+              // other's hex (the card board redraws the two cards in place).
+              if (hexCombat) {
+                pushHexPlace(`${event.id}-a`, event.unitIdA, timeline);
+                pushHexPlace(`${event.id}-b`, event.unitIdB, timeline);
+              }
               break;
             }
             case "UNIT_ATTACK_DECLARED": {
@@ -4432,6 +4942,10 @@ export default function Home() {
             }
             case "UNIT_DEFENDED": {
               playUnitSound(unitVoice(event.unitId), "defend", timeline, unitVariant(event.unitId));
+              // Hex board: the figure takes its defend stance with the sound.
+              if (isHexCombat(nextState.combat)) {
+                cues.push({ kind: "pose", id: `${event.id}-pose`, unitId: event.unitId, pose: "defend", delayMs: timeline });
+              }
               break;
             }
             case "UNIT_REMOVED": {
@@ -4495,8 +5009,14 @@ export default function Home() {
               // (moveArrivalByUnit) — not t=0, before the unit has arrived; a
               // token sprung with no move (e.g. begun-activation-on-a-wall) has no
               // arrival beat and plays on the running timeline as before.
-              const springArrivalAt =
-                event.unitId !== undefined ? moveArrivalByUnit.get(event.unitId) : undefined;
+              const hexWalk = event.unitId !== undefined ? hexWalkByUnit.get(event.unitId) : undefined;
+              const hexStep = hexWalk ? hexWalk.path.indexOf(event.position) : -1;
+              const springArrivalAt = hexWalk && hexStep >= 0
+                ? hexWalk.start + Math.round((hexWalk.durationMs * (hexStep + 1)) / hexWalk.path.length)
+                : event.unitId !== undefined ? moveArrivalByUnit.get(event.unitId) : undefined;
+              if (hexWalk && hexStep >= 0 && event.unitId !== undefined && springArrivalAt !== undefined) {
+                hexTokenSpringAt.set(event.unitId, springArrivalAt);
+              }
               const at = springArrivalAt ?? timeline;
               if (event.outcome === "decoy") {
                 // An empty decoy: the dull token cue plays as it is removed, no bite.
@@ -4650,6 +5170,7 @@ export default function Home() {
         // breather) and, on the killing blow, the victory/defeat modal.
         // combatPresentationEnd tracks the last effect's full tail; timeline
         // covers trailing cues.
+        heroOutcomeAt = Math.min(MAX_PRESENTATION_MS, Math.max(timeline, combatPresentationEnd));
         if (fresh.length > 0 || combatFxActive || approachMoves.length > 0) {
           const presentationMs = Math.min(MAX_PRESENTATION_MS, Math.max(timeline, combatPresentationEnd));
           if (combatPresentTimerRef.current) {
@@ -4660,6 +5181,26 @@ export default function Home() {
             setCombatPresenting(false);
             combatPresentTimerRef.current = null;
           }, presentationMs);
+        }
+      }
+
+      // Hex battlefield heroes: once the fight is decided and its last blow has
+      // played out, the winner's hero plays its H3 victory, the loser's its
+      // defeat (a side without a hero figure ignores the cue).
+      if (isHexCombat(nextState.combat)) {
+        const heroOutcomeCues: FxCue[] = [];
+        for (const event of presentationEvents) {
+          if (event.type !== "COMBAT_ENDED" || seenFxIdsRef.current.has(event.id)) {
+            continue;
+          }
+          seenFxIdsRef.current.add(event.id);
+          heroOutcomeCues.push(
+            { kind: "hero", id: `${event.id}-hero-victory`, playerId: event.winnerPlayerId, pose: "victory", delayMs: heroOutcomeAt },
+            { kind: "hero", id: `${event.id}-hero-defeat`, playerId: event.defeatedPlayerId, pose: "defeat", delayMs: heroOutcomeAt }
+          );
+        }
+        if (heroOutcomeCues.length > 0) {
+          setFxCues((current) => [...current, ...heroOutcomeCues]);
         }
       }
     }

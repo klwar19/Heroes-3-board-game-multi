@@ -1357,8 +1357,8 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   forge: {
     slug: "forge", name: "Mech Princess", faction: "Forge", original: true,
     // Cast: "Arc Discharge" — REUSES Belfast's `enemy-damage` kind (flat EFFECT
-    // damage to one chosen enemy: no Retaliation, ignores Defense. At Power 2,
-    // after its first use, gold and azure targets take 2 instead of 3.
+    // damage to one chosen enemy: no Retaliation, ignores Defense. Power 2
+    // scales by combat round and target tier (see commanderEnemyDamageAmount).
     cast: {
       abilityId: "commander-cast-forge",
       name: "Arc Discharge",
@@ -1369,7 +1369,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       tierText: [
         "Deal 1 damage to an enemy unit (no Retaliation, ignores Defense).",
         "Deal 2 damage to an enemy unit (no Retaliation, ignores Defense).",
-        "Choose 1 enemy. First use: deal 3 damage. Later uses: deal 3 to a bronze or silver enemy, or 2 to a gold or azure enemy. No Retaliation; ignores Defense."
+        "Choose 1 enemy. Combat rounds 1-3: deal 3 damage to any unit. From round 4: deal 4 to bronze, 3 to silver, commanders or Creature Bank units, or 2 to gold and azure. No Retaliation; ignores Defense."
       ]
     },
     // Specialty: automatic after-combat reward (finalizeAdventureCombat in
@@ -1378,7 +1378,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "storm-salvage",
       name: "Storm Salvage",
-      text: "At combat start, you may pay 1 building material against neutral units (including Creature Banks), or 1 Valuable in PvP, to gain a phantom Chain Lightning card (it disappears after combat). After every combat you win, gain 1 building material."
+      text: "At combat start, choose no Scroll, or buy a phantom Chain Lightning Scroll for 1 ore against neutrals / 1 Valuable in PvP. Add Stone Skin for 2 gold against level I-III neutrals or far-tile banks, 3 gold against level IV+ neutrals or near-tile banks, or 4 gold in PvP. If you win and the Scroll still contains a spell after combat, gain 1 ore, then the Scroll disappears."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

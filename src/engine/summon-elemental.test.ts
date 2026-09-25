@@ -631,8 +631,12 @@ describe("neutral guard elementals are distinct from the summon", () => {
     for (const id of neutralDeckIds) {
       expect(isRecruitableNeutralUnit(id), id).toBe(true);
       expect(coreUnitDefinitions[id].neutral, id).toBeTruthy();
-      expect(coreUnitDefinitions[id].few, `${id} must not use Few`).toBeUndefined();
-      expect(coreUnitDefinitions[id].pack, `${id} must not use Pack`).toBeUndefined();
+      if (coreUnitDefinitions[id].faction === "neutral") {
+        expect(coreUnitDefinitions[id].few, `${id} must not use Few`).toBeUndefined();
+        expect(coreUnitDefinitions[id].pack, `${id} must not use Pack`).toBeUndefined();
+      } else {
+        expect(["bulwark", "factory", "forge"], `${id} has a printed expansion Neutral side`).toContain(coreUnitDefinitions[id].faction);
+      }
     }
   });
 
