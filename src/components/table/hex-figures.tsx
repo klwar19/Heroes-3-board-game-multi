@@ -20,9 +20,10 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronDown, ChevronUp, User, Users } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { getBattlefieldCoordinates, getBattlefieldDistance, isHexPosition } from "@/engine/battlefield";
-import { unitAtCell, unitCells, unitIsDoubleWide, unitTailOffset } from "@/engine/hex-footprint";
+import { getBattlefieldCoordinates, getBattlefieldDistance, hexPosition, isHexPosition } from "@/engine/battlefield";
+import { unitAtCell, unitCells, unitTailOffset } from "@/engine/hex-footprint";
 import { getPermanentCardIds, isWarMachineCard } from "@/engine/permanents";
+import { siegeHexTokenAt } from "@/engine/siege";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "@/engine";
 import { cardLibrary } from "@/data/cards/library";
 import {
@@ -47,10 +48,12 @@ import {
   HEX_BOARD_WIDTH,
   HEX_SPRITE_SCALE,
   HEX_UNIT_CUE_EVENT,
+  HEX_UNIT_HOVER_EVENT,
   HEX_UNIT_PENDING_MOVE_EVENT,
   hexBoardMetrics,
   hexCellCenter,
   parseCellAnchor,
+  siegeKeepGuard,
   type HexUnitCueDetail
 } from "./hex-battlefield";
 
@@ -58,8 +61,25 @@ const { hexWidth: HEX_WIDTH, hexRadius: HEX_RADIUS, rowStep: HEX_ROW_STEP, gridT
 
 /** Creature art scale on this board (see HEX_SPRITE_SCALE). */
 const SPRITE_SCALE = HEX_SPRITE_SCALE;
-/** Feet stand a little below the hex centre, as in the PC game. */
-const FOOT_DROP = HEX_RADIUS * 0.38;
+/**
+ * Feet stand below the hex centre exactly as far as in the PC game: every H3
+ * creature .def is drawn on one 450x400 canvas whose hex centre is (196, 251)
+ * and whose creatures' feet all rest on row ~266 — 15 of the hex's 26 px of
+ * half-height (HEX_RADIUS is that half-height).
+ */
+const FOOT_DROP = HEX_RADIUS * (15 / 26);
+/**
+ * The PC stack-count box, from the hex centre of the stack's front (head) hex,
+ * in PC pixels (VCMI BattleStacksController amount box): it stands in the hex
+ * IN FRONT of the stack — right of a stack facing right, left of one facing
+ * left — and tucks into the stack's own hex when that front hex is taken.
+ */
+const PLATE_OFFSETS = {
+  right: { outside: { x: 24, y: 9 }, inside: { x: -16, y: 9 } },
+  left: { outside: { x: -52, y: -6 }, inside: { x: -12, y: 9 } }
+} as const;
+/** PC pixels -> board units (the board draws the PC's 44 px hexes). */
+const PC_PIXEL = HEX_WIDTH / 44;
 
 /** ATTACK_IMPACT_MS / ATTACK_ANIM_MS mirrored from fx.tsx (fx.tsx imports this module chain). */
 const IMPACT_MS = 500;
@@ -165,6 +185,8 @@ type Controller = {
   pending: (event: Event) => void;
   /** The unit changed hex: hold on the old one until its move cue plays. */
   holdAt: (from: number) => void;
+  /** The mouse came to rest on the creature. */
+  hover: () => void;
   dispose: () => void;
 };
 
@@ -646,6 +668,15 @@ function createController(options: ControllerOptions): Controller {
     }
   };
 
+  /**
+   * The mouse came to rest on this creature: its H3 mouse-over row plays once,
+   * as on the PC — never over a cue (a cue arriving cuts it short).
+   */
+  const hover = () => {
+    if (!atlas || disposed || busy > 0 || frames(SPRITE_GROUP.mouseOver) === 0) return;
+    void playClip(SPRITE_GROUP.mouseOver, even(SPRITE_GROUP.mouseOver, paced(HEX_IDLE_FRAME_MS)));
+  };
+
   const scheduleIdle = () => {
     if (!atlas || disposed || !options.idle) return;
     window.clearTimeout(idleTimer);
@@ -717,6 +748,7 @@ function createController(options: ControllerOptions): Controller {
     handle,
     pending,
     holdAt,
+    hover,
     dispose: () => {
       disposed = true;
       stopClip?.();
@@ -753,8 +785,9 @@ type FigureProps = {
   spriteKey: string;
   unitType: CombatUnitState["type"];
   attackerSide: boolean;
-  doubleWide: boolean;
   tailStep: number;
+  /** The hex in front of the stack is taken (or off the board): its count box tucks into its own hex. */
+  plateInside: boolean;
   variant: CombatUnitState["variant"];
   cardImage: string | undefined;
   name: string;
@@ -773,8 +806,8 @@ const HexUnitFigure = memo(function HexUnitFigure({
   spriteKey,
   unitType,
   attackerSide,
-  doubleWide,
   tailStep,
+  plateInside,
   variant,
   cardImage,
   name,
@@ -854,9 +887,11 @@ const HexUnitFigure = memo(function HexUnitFigure({
     controllerRef.current = controller;
     figure.addEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
     figure.addEventListener(HEX_UNIT_PENDING_MOVE_EVENT, controller.pending);
+    figure.addEventListener(HEX_UNIT_HOVER_EVENT, controller.hover);
     return () => {
       figure.removeEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
       figure.removeEventListener(HEX_UNIT_PENDING_MOVE_EVENT, controller.pending);
+      figure.removeEventListener(HEX_UNIT_HOVER_EVENT, controller.hover);
       controller.dispose();
       controllerRef.current = null;
     };
@@ -911,7 +946,15 @@ const HexUnitFigure = memo(function HexUnitFigure({
           of it. Kept at the feet so they never cover the creature. */}
       <span
         className="hexUnitPlate"
-        style={{ left: px(doubleWide ? 30 : 8), top: px(-4), fontSize: px(11) }}
+        style={(() => {
+          // Offsets are from the head hex's centre; the figure's origin is its feet.
+          const box = PLATE_OFFSETS[attackerSide !== flipped ? "right" : "left"][plateInside ? "inside" : "outside"];
+          return {
+            left: px(center.x + box.x * PC_PIXEL - foot.x),
+            top: px(center.y + box.y * PC_PIXEL - foot.y),
+            fontSize: px(11)
+          };
+        })()}
       >
         {variant === "pack" ? (
           <Users aria-hidden="true" className="hexPlateSide" />
@@ -935,6 +978,20 @@ const HexUnitFigure = memo(function HexUnitFigure({
   );
 });
 
+/**
+ * Whether the hex in front of a stack's head (one column toward the enemy, same
+ * row) is off the board, an obstacle or covered by another standing unit — the
+ * PC then draws its count box inside the stack's own hex.
+ */
+function frontHexTaken(combat: CombatState, unit: CombatUnitState, standing: readonly CombatUnitState[]): boolean {
+  if (!isHexPosition(unit.position)) return false;
+  const { row, column } = getBattlefieldCoordinates(unit.position);
+  const front = hexPosition(column + (unitIsAttackerSide(combat, unit) ? 1 : -1), row);
+  if (front === null || (combat.obstacles ?? []).includes(front)) return true;
+  if (combat.siege && siegeHexTokenAt(combat.siege, front)) return true;
+  return unitAtCell(combat, front, standing.filter((other) => other.id !== unit.id)) !== undefined;
+}
+
 /** Every creature, war machine and corpse on the hex board. */
 export function HexUnitsLayer({
   state,
@@ -942,11 +999,14 @@ export function HexUnitsLayer({
   flipped,
   units,
   healthOf,
-  statDeltasOf
+  statDeltasOf,
+  siegeTown
 }: {
   state: GameState;
   combat: CombatState;
   flipped: boolean;
+  /** The defending town's siege set (its keep guard is the Arrow Tower). */
+  siegeTown?: string;
   /** Units drawn alive on the board (shown health above zero). */
   units: readonly CombatUnitState[];
   healthOf: (unit: CombatUnitState) => number;
@@ -990,7 +1050,6 @@ export function HexUnitsLayer({
               attackerSide={unitIsAttackerSide(combat, unit)}
               cardImage={unit.assets?.cardImage}
               defenseDelta={unitDeltas.defense}
-              doubleWide={unitIsDoubleWide(combat, unit)}
               flipped={flipped}
               health={healthOf(unit)}
               initiativeDelta={unitDeltas.initiative}
@@ -1000,6 +1059,7 @@ export function HexUnitsLayer({
               position={unit.position}
               spriteKey={unitCreatureSprite(unit)?.slug ?? ""}
               tailStep={unitTailOffset(combat, unit)}
+              plateInside={frontHexTaken(combat, unit, units)}
               unitId={unit.id}
               unitType={unit.type}
               variant={unit.variant}
@@ -1007,9 +1067,103 @@ export function HexUnitsLayer({
           );
         })}
       <HexWarMachines combat={combat} flipped={flipped} state={state} />
+      {(() => {
+        // Siege: the standing Arrow Tower is drawn as its town's guard on the keep.
+        const towerId = combat.siege?.arrowTowerUnitId;
+        const tower = towerId ? combat.units[towerId] : undefined;
+        const guard = tower && tower.damage < tower.maxHealth ? siegeKeepGuard(siegeTown) : null;
+        return guard && towerId ? (
+          <HexKeepGuard flipped={flipped} footX={guard.x} footY={guard.y} key={towerId} live={live} slug={guard.slug} unitId={towerId} />
+        ) : null;
+      })()}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Siege: the keep's guard (the Arrow Tower)
+// ---------------------------------------------------------------------------
+
+/**
+ * The Arrow Tower as the PC draws it: its town's siege shooter standing on the
+ * keep. It never walks; it plays the Tower's cues like any figure — the H3
+ * shoot row toward its target (the tower's arrow leaves its body: the Tower
+ * card's fx anchor resolves to this figure's body), its hit row when struck and
+ * its idle fidget. The corner towers are scenery and never shoot.
+ */
+const HexKeepGuard = memo(function HexKeepGuard({
+  live,
+  unitId,
+  slug,
+  footX,
+  footY,
+  flipped
+}: {
+  live: { current: LiveBoard };
+  unitId: string;
+  slug: string;
+  /** Feet on the keep, board units, unmirrored. */
+  footX: number;
+  footY: number;
+  flipped: boolean;
+}) {
+  const atlas = creatureSpriteForSlug(slug);
+  const figureRef = useRef<HTMLDivElement | null>(null);
+  const spriteRef = useRef<HTMLDivElement | null>(null);
+  const point: Point = { x: flipped ? HEX_BOARD_WIDTH - footX : footX, y: footY };
+
+  useLayoutEffect(() => {
+    const figure = figureRef.current;
+    // Rebuilt only for new art / spot (a fresh atlas object every render must not restart it).
+    const atlas = creatureSpriteForSlug(slug);
+    if (!figure || !atlas) return;
+    const rest: Point = { x: flipped ? HEX_BOARD_WIDTH - footX : footX, y: footY };
+    const controller = createController({
+      figure,
+      sprite: spriteRef.current,
+      atlas,
+      unitType: "ranged",
+      idle: true,
+      // The defender's keep: facing the attackers (left, or right on the mirrored seat).
+      facesRight: () => flipped,
+      restPoint: () => rest,
+      pointFor: () => rest,
+      cellPoint: (cell) => cellFootPoint(cell, flipped),
+      ownCells: () => [],
+      targetCells: (cell) => {
+        const combat = live.current.combat;
+        const standing = unitAtCell(
+          combat,
+          cell,
+          Object.values(combat.units).filter((other) => other.damage < other.maxHealth)
+        );
+        return standing ? unitCells(combat, standing) : [cell];
+      },
+      tempo: () => 1,
+      movePlan: () => hexMovePlan({ steps: 0, distance: 0, flying: false, teleport: true })
+    });
+    figure.addEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
+    return () => {
+      figure.removeEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
+      controller.dispose();
+    };
+  }, [slug, flipped, footX, footY, live]);
+
+  if (!atlas) return null;
+  const bodyLift = atlas.anchorY * SPRITE_SCALE * 0.42;
+  return (
+    // z 11: in front of the keep, behind its battlement (z 13, hex-battlefield HexSiegeScene).
+    <div className="hexFigure defenderSide" data-hex-unit={unitId} ref={figureRef} style={pointStyle(point, 11)}>
+      <div className="hexSprite" ref={spriteRef} style={spriteStyle(atlas)} />
+      <span
+        aria-hidden="true"
+        className="hexUnitBody"
+        data-fx-body=""
+        style={{ left: px(-22), top: px(-bodyLift - 26), width: px(44), height: px(52) }}
+      />
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // War machines: the in-play machine cards stand at their army's edge

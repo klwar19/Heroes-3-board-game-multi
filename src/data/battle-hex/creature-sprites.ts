@@ -200,7 +200,7 @@ const WOG_SPRITES: Readonly<Record<string, string>> = {
   "wog.dracolich": "wog-dracolich"
 };
 
-/** WoG town Commanders, by commander slug. */
+/** WoG town Commanders (and the Forge's Mech Princess), by commander slug. */
 const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   paladin: "commander-paladin",
   hierophant: "commander-hierophant",
@@ -210,7 +210,9 @@ const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   brute: "commander-brute",
   ogre_leader: "commander-ogre-leader",
   shaman: "commander-shaman",
-  astral_spirit: "commander-astral-spirit"
+  astral_spirit: "commander-astral-spirit",
+  // Mech Princess: a Codex sheet drawn from her card art (scripts/refit-sheet-sprites.mjs).
+  forge: "commander-forge"
 };
 
 const ATLASES = atlases as Record<string, Omit<CreatureSpriteAtlas, "slug">>;

@@ -356,27 +356,22 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     group: "starting",
     content: "bulwark_expansion",
     terrain: "snow",
-    // The Bulwark town tile is drawn on the SAME snow environment as the Tower
-    // starting tile (#S1, /assets/board/tiles/sx1.webp) — only the central town
-    // building is repainted as the Bulwark (frozen-Norse) town. Because a tile's
-    // field symbols are baked into its art (the engine hides the glyph overlay
-    // once `assets.tileImage` is set — see screen.tsx renderTileArt), S10's hexes
-    // mirror #S1's EXACTLY so the Tower-derived art lines up with the engine:
-    // identical ring arrangement and outer borders, with the town faction swapped
-    // to bulwark. Generation prompt: scripts/bulwark-specialty-cards-runbook.md.
+    // Castle S3's starting-tile route: the NW blocked field lies between the
+    // two open outer approaches (NE and W). Keep the field positions and yellow
+    // border arcs aligned with the printed tile art.
     fields: [
       { location: "town", faction: "bulwark" },
-      { location: "blocked_field" },
       { location: "empty_field" },
-      { location: "treasure_symbol", difficulty: 1 },
       { location: "resource_symbol" },
       { location: "empty_field" },
       { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "blocked_field" },
     ],
-    outerImpassable: [true, false, true, true, true, false],
+    outerImpassable: [false, true, true, true, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Bulwark Expansion)",
-      credit: "Fan-faction starting tile; snow terrain and hex layout mirror the Tower starting tile (#S1), which is the art base. Placeholder art pending; verify against physical tiles before final release.",
+      credit: "Fan-faction snow starting tile with Castle S3's blocked-field and outer-approach layout; verify against physical tiles before final release.",
       url: "https://heroes.thelazy.net/index.php/Bulwark"
     },
     assets: {
@@ -396,10 +391,9 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     // (NW) = blocked_field; a mine cart "↻2" + stone pile + guard I (W) = a
     // buildingMaterials mine (loop 2); a treasure cabin + guard I (SW) =
     // treasure_symbol; a campfire + crossed-pick tools (NE) = a resource_symbol;
-    // the pine-dotted desert (E) and the rocky outcrop (SE) are open ground. The
-    // outerImpassable edges are a best-fit from the art (rocky SE, mine pit W,
-    // treasure SW and the chasm NW seal their outer edges). Verify against the
-    // physical tile before final release.
+    // the pine-dotted desert (E) and the rocky outcrop (SE) are open ground.
+    // As on Castle S3, both passable hexes beside the NW blocked field (NE and
+    // W) have open outer approaches; the chasm alone seals its outer edge.
     fields: [
       { location: "town", faction: "factory" },
       { location: "resource_symbol" },
@@ -409,11 +403,11 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
       { location: "blocked_field" },
     ],
-    outerImpassable: [false, false, true, true, true, true],
+    outerImpassable: [false, true, true, true, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
       credit:
-        "Factory starting tile &S1 — fields transcribed from the physical tile scan (sf1.webp; not on the wiki, field types assigned from the printed art, ring rotation from the scanned icon positions, outer borders a best-fit). Verify against physical tiles before final release.",
+        "Factory starting tile &S1 — field positions transcribed from sf1.webp; outer approach borders follow Castle S3. Verify against physical tiles before final release.",
       url: "https://heroes.thelazy.net/index.php/Factory"
     },
     assets: {
@@ -438,7 +432,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
       { location: "blocked_field" },
     ],
-    outerImpassable: [false, false, true, true, true, true],
+    outerImpassable: [false, true, true, true, false, true],
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
       credit: "Forge starting tile; hex layout mirrors the Factory starting tile &S1 (sf1.webp), the art base. Verify against the physical tile before final release.",

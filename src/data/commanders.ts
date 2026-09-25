@@ -1369,7 +1369,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       tierText: [
         "Deal 1 damage to an enemy unit (no Retaliation, ignores Defense).",
         "Deal 2 damage to an enemy unit (no Retaliation, ignores Defense).",
-        "Choose 1 enemy. Combat rounds 1-3: deal 3 damage to any unit. From round 4: deal 4 to bronze, 3 to silver, commanders or Creature Bank units, or 2 to gold and azure. No Retaliation; ignores Defense."
+        "Choose 1 enemy. Combat rounds 1-2: deal 3 damage to any unit. From round 3: deal 2 to gold and azure, or 3 to other units. No Retaliation; ignores Defense."
       ]
     },
     // Specialty: automatic after-combat reward (finalizeAdventureCombat in
@@ -1378,7 +1378,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "storm-salvage",
       name: "Storm Salvage",
-      text: "At combat start, choose no Scroll, or buy a phantom Chain Lightning Scroll for 1 ore against neutrals / 1 Valuable in PvP. Add Stone Skin for 2 gold against level I-III neutrals or far-tile banks, 3 gold against level IV+ neutrals or near-tile banks, or 4 gold in PvP. If you win and the Scroll still contains a spell after combat, gain 1 ore, then the Scroll disappears."
+      text: "At combat start, choose no Scroll, or buy a phantom Chain Lightning Scroll for 1 building material against neutrals / 1 Valuable in PvP. If you win and the Scroll still contains a spell after combat, gain 1 building material, then the Scroll disappears."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

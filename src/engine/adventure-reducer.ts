@@ -280,7 +280,9 @@ import {
   unitDistance,
   unitOccupiesCell,
   unitsAdjacent,
+  unitIsDoubleWide,
   unitStepSpaces,
+  unitTailCell,
   unitTailOffset,
 } from "./hex-footprint";
 import {
@@ -1069,10 +1071,35 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
     // Alive = not yet lethal; avoid importing isUnitAlive (legal-actions ↔ this
     // module cycle).
     if (combatUnit && combatUnit.variant === "few" && combatUnit.damage < combatUnit.maxHealth) {
+      const combat = state.combat!;
+      const wasDoubleWide = unitIsDoubleWide(combat, combatUnit);
       combatUnit.variant = "pack";
+      // Hex board: an Angel becoming an Archangel grows a tail hex behind it —
+      // only onto a free hex; otherwise it keeps one hex for this combat.
+      if (!wasDoubleWide && unitIsDoubleWide(combat, combatUnit) && !hexTailHexFree(combat, combatUnit)) {
+        combatUnit.hexSingleHex = true;
+      }
       applyUnitCurrentSide(combatUnit, getRuleset(state), unitSideRuleOverrides(state));
     }
   }
+}
+
+/**
+ * Whether the hex a double-wide unit's tail would cover right now is free: on
+ * the board, no obstacle, Wall, Gate or battlefield token on it, and no other
+ * standing unit.
+ */
+function hexTailHexFree(combat: CombatState, unit: CombatUnitState): boolean {
+  const tail = unitTailCell(combat, unit);
+  if (tail === null || (combat.obstacles ?? []).includes(tail) || isFortificationPosition(combat.siege, tail)) {
+    return false;
+  }
+  if ((combat.battlefieldTokens ?? []).some((token) => battlefieldTokenCovers(token, tail))) {
+    return false;
+  }
+  return !Object.values(combat.units).some(
+    (other) => other.id !== unit.id && other.damage < other.maxHealth && other.position >= 0 && unitCells(combat, other).includes(tail)
+  );
 }
 
 /** Attacker rows on the 4x5 board (bottom from the attacker's seat). */
@@ -12240,13 +12267,19 @@ export function settleCombatFootprints(combat: CombatState): void {
  * zone too (attacker head column 1 + tail 0, defender head 11 + tail 12).
  * Occupancy is not filtered here (PLACE_COMBAT_UNIT checks it).
  */
-export function placementHeadsFor(state: GameState, playerId: PlayerId, unitDefId?: string): number[] {
+export function placementHeadsFor(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId?: string,
+  /** The card side placed (the Angels card is one hex as Angel, two as Archangel). */
+  variant?: CombatUnitState["variant"]
+): number[] {
   const cells = placementCellsFor(state, playerId);
   const combat = state.combat;
   if (!combat || !unitDefId) {
     return cells;
   }
-  return footprintHeadsIn(combat, { position: cells[0] ?? 0, controllerId: playerId, unitDefId }, cells);
+  return footprintHeadsIn(combat, { position: cells[0] ?? 0, controllerId: playerId, unitDefId, variant }, cells);
 }
 
 /**
@@ -12259,13 +12292,13 @@ function deploymentFootprintsFit(
   combat: CombatState,
   relocated: Map<string, number>,
   zone: readonly number[],
-  extra?: { id: string; position: number; controllerId: PlayerId; unitDefId?: string }
+  extra?: { id: string; position: number; controllerId: PlayerId; unitDefId?: string; variant?: string }
 ): boolean {
   if (combatGeometry(combat) !== "hex") {
     return true;
   }
   const inZone = new Set(zone);
-  const bodies: Array<{ id: string; position: number; controllerId: PlayerId; unitDefId?: string; heroUnit?: boolean; commanderSlug?: string }> =
+  const bodies: Array<{ id: string; position: number; controllerId: PlayerId; unitDefId?: string; heroUnit?: boolean; commanderSlug?: string; variant?: string; hexSingleHex?: boolean }> =
     Object.values(combat.units).filter((unit) => unit.damage < unit.maxHealth);
   if (extra) {
     bodies.push(extra);
@@ -12411,7 +12444,8 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     combat,
     new Map<string, number>([["__placing__", action.position]]),
     zoneCells,
-    { id: "__placing__", position: action.position, controllerId: action.playerId, unitDefId: armyUnit.unitDefId }
+    // Its side: the Angels card is one hex as Angel, two as Archangel.
+    { id: "__placing__", position: action.position, controllerId: action.playerId, unitDefId: armyUnit.unitDefId, variant: armyUnit.side }
   )) {
     throw new Error("That space is already taken.");
   }
@@ -12979,30 +13013,12 @@ function resolveBruteCombatDraw(state: GameState, playerId: PlayerId, optionInde
   finalizeCombatStart(state);
 }
 
-/** Extra gold for the two-spell offer, based on the actual encounter. */
-function forgeScrollGoldCost(state: GameState): number {
-  const context = state.combat?.context;
-  if (!context || context.kind === "player") return 4;
-  if (context.kind !== "neutral") return 0;
-  if (context.bankId) {
-    const field = state.adventure?.fields[context.fieldId];
-    const tile = field ? state.adventure?.tiles[field.tileInstanceId] : undefined;
-    const tier = tile ? creatureBankTierForTile(state, tile) : null;
-    if (tier) return tier === "near" ? 3 : 2;
-    if (isCreatureBankId(context.bankId)) {
-      return getCreatureBankDefinition(context.bankId, houseRuleEnabled(state, "polish-creature-banks")).tier === "near" ? 3 : 2;
-    }
-  }
-  return context.difficulty >= 4 ? 3 : 2;
-}
-
 /** Ask each eligible Mech Princess seat before combat begins. */
 function maybeOpenForgeChainLightning(state: GameState): boolean {
   const combat = state.combat;
   if (!combat || (combat.context.kind !== "neutral" && combat.context.kind !== "player")) return false;
   const pvp = combat.context.kind === "player";
-  const costName = pvp ? "Valuable" : "ore";
-  const goldCost = forgeScrollGoldCost(state);
+  const costName = pvp ? "Valuable" : "building material";
   const offered = (combat.forgeChainLightningOffered ??= []);
   for (const playerId of [...new Set([combat.attackerPlayerId, combat.defenderPlayerId])]) {
     if (offered.includes(playerId)) continue;
@@ -13011,9 +13027,7 @@ function maybeOpenForgeChainLightning(state: GameState): boolean {
     if (!player || !playerHasLivingCommander(state, playerId, "forge") ||
         !commanderStandsInCurrentCombat(state, playerId) ||
         (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1)) continue;
-    const forgeScrollOptions: Array<"chain-only" | "both" | "decline"> = ["chain-only"];
-    if (player.resources.gold >= goldCost) forgeScrollOptions.push("both");
-    forgeScrollOptions.push("decline");
+    const forgeScrollOptions: Array<"chain-only" | "both" | "decline"> = ["chain-only", "decline"];
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
@@ -13021,10 +13035,8 @@ function maybeOpenForgeChainLightning(state: GameState): boolean {
       prompt: "Mech Princess: choose a phantom Spell Scroll for this combat. Any remaining spells disappear after combat.",
       options: forgeScrollOptions.map(option => ({ label: option === "chain-only"
         ? `Pay 1 ${costName}: Chain Lightning`
-        : option === "both" ? `Pay 1 ${costName} and ${goldCost} gold: Chain Lightning + Stone Skin`
         : "Do not buy a Scroll" })),
       forgeScrollOptions,
-      forgeScrollGoldCost: goldCost,
       context: "forge-phantom-chain-lightning",
       returnPhase: "combat"
     };
@@ -13047,6 +13059,7 @@ function resolveForgeChainLightning(state: GameState, playerId: PlayerId, option
   if (selected !== "decline") {
     const player = state.players[playerId];
     const pvp = combat.context.kind === "player";
+    // Preserve an already-open choice from older saves; new combats never offer this option.
     const goldCost = selected === "both" ? (choice.forgeScrollGoldCost ?? 0) : 0;
     if (!player || (combat.context.kind !== "neutral" && !pvp) ||
         (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1) ||

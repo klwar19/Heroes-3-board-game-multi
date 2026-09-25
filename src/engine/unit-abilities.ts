@@ -1,4 +1,5 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { hasToken } from "./tokens";
 import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, GameState, SpellSchool, UnitId, UnitType } from "./state";
 import { isAdjacent } from "./battlefield";
@@ -1618,13 +1619,23 @@ const NON_NECROPOLIS_UNDEAD_UNIT_IDS = new Set<string>([
   "boss.warden_bone_colossus",
 ]);
 
-export function isUndeadUnit(unit: CombatUnitState): boolean {
-  const unitDefId = unit.unitDefId;
+export function isUndeadUnitDefinition(unitDefId: string): boolean {
+  const def = coreUnitDefinitions[unitDefId];
+  const abilities = [
+    ...(def?.few?.abilities ?? []),
+    ...(def?.pack?.abilities ?? []),
+    ...(def?.neutral?.abilities ?? []),
+  ];
   return (
-    unit.abilities.some((abilityId) => unitAbilities[abilityId]?.effect?.type === "UNDEAD") ||
-    unitDefId?.startsWith("necropolis.") === true ||
-    (unitDefId !== undefined && NON_NECROPOLIS_UNDEAD_UNIT_IDS.has(unitDefId))
+    abilities.some((abilityId) => unitAbilities[abilityId]?.effect?.type === "UNDEAD") ||
+    unitDefId.startsWith("necropolis.") ||
+    NON_NECROPOLIS_UNDEAD_UNIT_IDS.has(unitDefId)
   );
+}
+
+export function isUndeadUnit(unit: CombatUnitState): boolean {
+  return unit.abilities.some((abilityId) => unitAbilities[abilityId]?.effect?.type === "UNDEAD") ||
+    (unit.unitDefId !== undefined && isUndeadUnitDefinition(unit.unitDefId));
 }
 
 export function getOnKillHealthHarvest(

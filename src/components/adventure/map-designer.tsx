@@ -1098,13 +1098,10 @@ const TILE_PICK_FILTERS: {
 type TileSlotMode = "random" | "secret" | "faceup" | "one-of";
 
 function tileSlotMode(plan: CustomMapTilePlan): TileSlotMode {
-  // "One of these tiles" (a designer-named list; the game picks ONE at random)
-  // works BOTH face-up (placed revealed) and face-down (placed hidden until
-  // discovery — even the designer cannot tell which it will be). It takes
-  // precedence over a landmark filter (the list names exact tiles), but an
-  // exact `tileDefId` pin always wins over the list.
+  // A designer-named list is shown in Secret when hidden and One of when
+  // revealed. The same engine draw handles either visibility.
   if (!plan.tileDefId && plan.oneOfTileDefIds && plan.oneOfTileDefIds.length > 0) {
-    return "one-of";
+    return plan.faceDown ? "secret" : "one-of";
   }
   if (!plan.faceDown) {
     // Face-up: an exact chosen tile.
@@ -1736,6 +1733,18 @@ export function MapDesigner({
     });
     return numbers;
   }, [customMap]);
+  const whirlpoolNumberByObjectIndex = useMemo(() => {
+    const numbers = new Map<number, -1 | 0 | 1>();
+    const order: (-1 | 0 | 1)[] = [1, 0, -1];
+    let next = customMap.reduce(
+      (count, plan) => count + planTokens(plan).filter((token) => token.kind === "whirlpool").length,
+      0
+    );
+    objects.forEach((object, index) => {
+      if (object.kind === "whirlpool" && next < order.length) numbers.set(index, order[next++]);
+    });
+    return numbers;
+  }, [customMap, objects]);
 
   // Designer-chosen gate links, decoded from the cavern plans, so the preview
   // draws the designer's connections (and pinned hexes) exactly as the engine
@@ -3525,6 +3534,13 @@ export function MapDesigner({
       return;
     }
     if (mode === "secret") {
+      // A hidden tile list is also a Secret. Keep its exact candidate group
+      // when the designer returns to this mode instead of replacing it with a
+      // landmark filter.
+      if (selected.oneOfTileDefIds?.length && !selected.tileDefId) {
+        updateTile(selectedIndex, { faceDown: true, excludeFeatures: undefined, ...faceDownTokens });
+        return;
+      }
       // Prefer a landmark filter over pinning one tile. Keep the existing set
       // (whatever still matches the pool); otherwise the first available feature.
       const keptSet = planAllowedSecretFeatures(selected).filter((id) =>
@@ -3549,10 +3565,8 @@ export function MapDesigner({
       // (or the fallback) so it is never empty; the designer then toggles more
       // tiles in the grid below. Tokens fold to their face-down (physical-hex)
       // form since the concrete tile — and its printed slots — is unknown here.
-      // Visibility: keep whatever the slot already had when it is ALREADY a
-      // one-of list (re-clicking the mode card must not un-hide a secret list);
-      // default to visible (face-up) when converting from another mode — the
-      // "Always visible" flip below toggles it to hidden-until-discovered.
+      // Visibility: One of is the revealed list. A hidden list is shown (and
+      // kept) under Secret, so choosing One of always places it face-up.
       const seedList =
         selected.oneOfTileDefIds && selected.oneOfTileDefIds.length > 0
           ? selected.oneOfTileDefIds
@@ -3564,9 +3578,8 @@ export function MapDesigner({
       if (seedList.length === 0) {
         return;
       }
-      const keepFaceDown = tileSlotMode(selected) === "one-of" ? selected.faceDown : false;
       updateTile(selectedIndex, {
-        faceDown: keepFaceDown,
+        faceDown: false,
         tileDefId: undefined,
         oneOfTileDefIds: seedList,
         secretFeature: undefined,
@@ -5324,7 +5337,7 @@ export function MapDesigner({
           href={assetUrl(
             designerTokenImage(
               object.kind,
-              object.kind === "whirlpool" ? 0 : undefined,
+              object.kind === "whirlpool" ? whirlpoolNumberByObjectIndex.get(index) : undefined,
               object.pair,
               object.bankId
             )
@@ -6472,15 +6485,50 @@ export function MapDesigner({
                   {selectedMode === "random"
                     ? "Random: any tile from this pool is drawn at game start."
                     : selectedMode === "secret"
-                      ? selectedSecretSet.length > 0
-                        ? `Secret: a random tile matching ${selectedSecretSet.map(secretFeatureFullLabel).join(" OR ")} is drawn face-down at game start — players only see the back until discovery.`
-                        : selected.tileDefId
-                          ? `Exact secret pin: ${selected.tileDefId} stays face-down. Prefer a landmark below so the pool can still vary.`
-                          : "Secret: tap one or more landmarks below. The game draws one random tile matching ANY of them from this pool."
+                      ? selected.oneOfTileDefIds?.length
+                        ? `Secret: one random tile from your group of ${selected.oneOfTileDefIds.length} is placed face-down. Tap tiles below to change the group.`
+                        : selectedSecretSet.length > 0
+                          ? `Secret: a random tile matching ${selectedSecretSet.map(secretFeatureFullLabel).join(" OR ")} is drawn face-down at game start — players only see the back until discovery.`
+                          : selected.tileDefId
+                            ? `Exact secret pin: ${selected.tileDefId} stays face-down. Prefer a landmark or tile group so the pool can still vary.`
+                            : "Secret: tap one or more landmarks below, or choose a group of exact tiles."
                       : selectedMode === "one-of"
                         ? `One of: the game places a RANDOM tile from your list (${(selected.oneOfTileDefIds ?? []).length} selected) ${selected.faceDown ? "FACE-DOWN — hidden until a hero discovers it (even you can't tell which)" : "face-up at game start"}. Tap tiles below to add or remove them; use the visibility toggle below.`
                         : "Face-up: click a tile below. Everyone sees it from the start of the game."}
                 </small>
+
+                {selectedMode === "secret" ? (
+                  <div className="popoverFilterRow" role="group" aria-label="Secret tile selection">
+                    <button
+                      aria-pressed={Boolean(selected.oneOfTileDefIds?.length)}
+                      className={`popoverFilterChip${selected.oneOfTileDefIds?.length ? " active" : ""}`}
+                      onClick={() => {
+                        if (selected.oneOfTileDefIds?.length) return;
+                        const seed = selected.tileDefId ?? pickableTiles.find((tile) => !usedPinnedIds.has(tile.id))?.id;
+                        if (!seed) return;
+                        updateTile(selectedIndex as number, {
+                          faceDown: true, tileDefId: undefined, oneOfTileDefIds: [seed],
+                          secretFeature: undefined, secretFeatures: undefined, excludeFeatures: undefined
+                        });
+                      }}
+                      type="button"
+                    >
+                      Pick a group of tiles
+                    </button>
+                    {selected.oneOfTileDefIds?.length ? (
+                      <button
+                        className="popoverFilterChip"
+                        onClick={() => updateTile(selectedIndex as number, {
+                          oneOfTileDefIds: undefined,
+                          secretFeatures: availableSecretFeatures[0] ? [availableSecretFeatures[0].id] : undefined
+                        })}
+                        type="button"
+                      >
+                        Use landmark filters
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {/* Ⅵ–Ⅶ center: after pinning an exact tile, a one-click flip
                     between "always visible" (face-up) and "hidden until
@@ -6782,13 +6830,13 @@ export function MapDesigner({
                     <div className="popoverSectionLabel">
                       {selectedMode === "faceup"
                         ? "Click the face-up tile"
-                        : selectedMode === "one-of"
+                        : selectedMode === "one-of" || (selectedMode === "secret" && Boolean(selected.oneOfTileDefIds?.length))
                           ? "Tap tiles to include in the random set"
                           : selectedMode === "secret"
                             ? "Advanced: pin one exact tile instead"
                             : "Or pin a specific tile as exact Secret"}
                     </div>
-                    {selectedMode === "secret" || selectedMode === "random" ? (
+                    {(selectedMode === "random" || (selectedMode === "secret" && !selected.oneOfTileDefIds?.length)) ? (
                       <small className="popoverHint">
                         {selectedMode === "secret"
                           ? "Locks one tile id (legacy). Prefer a landmark above so any matching tile can appear."
@@ -6813,7 +6861,8 @@ export function MapDesigner({
                     </div>
                     <div className="popoverTileGrid" role="listbox" aria-label="Tiles in this pool">
                       {filteredPickableTiles.map((tile) => {
-                        const isOneOf = selectedMode === "one-of";
+                        const isOneOf = selectedMode === "one-of" ||
+                          (selectedMode === "secret" && Boolean(selected.oneOfTileDefIds?.length));
                         const taken = usedPinnedIds.has(tile.id) && selected.tileDefId !== tile.id;
                         const isPicked = isOneOf
                           ? (selected.oneOfTileDefIds ?? []).includes(tile.id)

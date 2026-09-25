@@ -414,7 +414,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "map",
       "necropolis-only",
-      "Basic: Play after winning Combat other than Quick Combat. You can Reinforce a bronze or silver unit of your choice for half the gold cost (rounded down). Expert: any unit. Necropolis heroes only — needs no Citadel, Dwelling or Population token.",
+      "Basic: Play after winning Combat other than Quick Combat. You can Reinforce an Undead bronze or silver unit of your choice for half the gold cost (rounded down). Expert: any Undead unit. Necropolis heroes only — needs no Citadel, Dwelling or Population token.",
     ],
     effect: { type: "NECROMANCY_REINFORCE" },
     assets: abilityAssets("necromancy", "Necromancy"),

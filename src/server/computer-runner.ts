@@ -228,116 +228,130 @@ export function driveComputerPlayers(
   let state = initialState;
 
   while (decisions.length < maxSteps) {
-    const playerId = computerDecisionOwner(state);
-    if (!playerId) {
-      return { state, decisions, stalled: false };
-    }
-    state = parallelStateForPlayer(state, playerId);
+    try {
+      const playerId = computerDecisionOwner(state);
+      if (!playerId) {
+        return { state, decisions, stalled: false };
+      }
+      state = parallelStateForPlayer(state, playerId);
 
-    // Refresh multi-round economy / sticky memory before the decision so the
-    // policy sees up-to-date focus and visit thrash guards (persists on state).
-    state = refreshComputerMemory(state, playerId);
-    // Commit the current sticky map objective for this seat's main hero so the
-    // next turn keeps the same march target when it is still valid.
-    const mainHero = Object.values(state.heroes).find(
-      (hero) => hero.controllerId === playerId && hero.kind === "main",
-    );
-    if (mainHero && state.adventure) {
-      const objectives = collectMapObjectives(state, mainHero);
-      const primary = primaryMapObjective(
-        state,
-        mainHero,
-        objectives,
-        state.computerMemory?.[playerId]?.stickyObjectiveSpaceId,
+      // Refresh multi-round economy / sticky memory before the decision so the
+      // policy sees up-to-date focus and visit thrash guards (persists on state).
+      state = refreshComputerMemory(state, playerId);
+      // Commit the current sticky map objective for this seat's main hero so the
+      // next turn keeps the same march target when it is still valid.
+      const mainHero = Object.values(state.heroes).find(
+        (hero) => hero.controllerId === playerId && hero.kind === "main",
       );
-      state = setStickyObjective(state, playerId, primary?.spaceId ?? null);
-    }
+      if (mainHero && state.adventure) {
+        const objectives = collectMapObjectives(state, mainHero);
+        const primary = primaryMapObjective(
+          state,
+          mainHero,
+          objectives,
+          state.computerMemory?.[playerId]?.stickyObjectiveSpaceId,
+        );
+        state = setStickyObjective(state, playerId, primary?.spaceId ?? null);
+      }
 
-    const observation = observeForComputer(state, playerId);
-    const fingerprint = progressFingerprint(state, playerId);
-    const attempted =
-      attemptedAtFingerprint.get(fingerprint) ?? new Set<string>();
-    attemptedAtFingerprint.set(fingerprint, attempted);
-    const available = observation.legalActions.filter(
-      (legal) => !attempted.has(legalityMatchKey(legal.action)),
-    );
-    const policyOptions = options.policy?.(playerId);
-    let decision = chooseComputerAction({
-      ...observation,
-      legalActions: available,
-    }, policyOptions);
-    const reconsidered = reconsiderComputerPlan(state, playerId, available, decision, policyOptions);
-    let decisionState = state;
-    if (reconsidered) {
-      decision = reconsidered.decision;
-      decisionState = reconsidered.state;
-    }
-    if (!decision) {
+      const observation = observeForComputer(state, playerId);
+      const fingerprint = progressFingerprint(state, playerId);
+      const attempted =
+        attemptedAtFingerprint.get(fingerprint) ?? new Set<string>();
+      attemptedAtFingerprint.set(fingerprint, attempted);
+      const available = observation.legalActions.filter(
+        (legal) => !attempted.has(legalityMatchKey(legal.action)),
+      );
+      const policyOptions = options.policy?.(playerId);
+      let decision = chooseComputerAction({
+        ...observation,
+        legalActions: available,
+      }, policyOptions);
+      const reconsidered = reconsiderComputerPlan(state, playerId, available, decision, policyOptions);
+      let decisionState = state;
+      if (reconsidered) {
+        decision = reconsidered.decision;
+        decisionState = reconsidered.state;
+      }
+      if (!decision) {
+        return {
+          state,
+          decisions,
+          stalled: true,
+          reason: `Computer ${playerId} owns the next decision but has no safe legal action.`,
+        };
+      }
+
+      const actionKey = legalityMatchKey(decision.action);
+      if (
+        !observation.legalActions.some(
+          (legal) => legalityMatchKey(legal.action) === actionKey,
+        )
+      ) {
+        return {
+          state,
+          decisions,
+          stalled: true,
+          reason: "Computer policy selected an action outside the legal set.",
+        };
+      }
+      attempted.add(actionKey);
+
+      const result = apply(decisionState, decision.action, playerId);
+      if (result.errors.length > 0) {
+        // Recompute at the same state and try another legal candidate. If none
+        // remain, the next loop returns the explicit stall instead of spinning.
+        continue;
+      }
+      const nextFingerprint = progressFingerprint(result.state, playerId);
+      // CROSS-TICK CYCLE GUARD: the live pump paces ONE action per tick with a
+      // fresh runner each time, so the in-call `attempted` sets cannot see a
+      // loop that spans ticks. Only a zero-cost reversible action can return the
+      // seat to a state it already left this turn (the free Subterranean-Gate
+      // twin hop was measured doing exactly that — an infinite A↔B shuffle on a
+      // live table). Such a candidate is discarded like a no-progress attempt;
+      // the hash trail lives in the seat's persisted memory and clears each turn.
+      if (
+        recentStateHashSeen(state, playerId, fingerprintHash(nextFingerprint))
+      ) {
+        continue;
+      }
+      if (nextFingerprint === fingerprint) {
+        // The action applied cleanly but changed no tracked rule state. The old
+        // code stalled the WHOLE pump here, which froze the AI
+        // turn ("says it's taking its turn and does nothing") whenever such an
+        // action outscored a real one. Instead treat it exactly like a rejected
+        // attempt: it is already in `attempted`, so DISCARD it (keep the pre-
+        // action state) and try the next-best legal candidate. Only when every
+        // candidate is exhausted does the loop reach the explicit "no safe legal
+        // action" stall. `attempted` grows and the legal set shrinks each pass,
+        // so this always terminates (and the maxSteps cap backstops it).
+        continue;
+      }
+      // Persist the departed state's hash for the cross-tick cycle guard FIRST,
+      // then the action notes — an END_TURN note clears the whole per-turn
+      // memory (visit list + hash trail), and the order keeps that wipe final.
+      const previousState = state;
+      state = noteRecentStateHash(
+        result.state,
+        playerId,
+        fingerprintHash(fingerprint),
+      );
+      state = noteComputerAction(state, playerId, decision.action, previousState);
+      decisions.push(decision);
+    } catch (error) {
+      // A throw anywhere in the policy / apply path used to escape the pump:
+      // the alarm re-armed into the same throw forever (and a live human
+      // action settling the computer was rejected). Report a stall instead so
+      // the caller can take its do-least recovery action.
+      console.warn(`[computer-runner] computer decision threw`, error);
       return {
         state,
         decisions,
         stalled: true,
-        reason: `Computer ${playerId} owns the next decision but has no safe legal action.`,
+        reason: `Computer decision threw: ${(error as Error)?.message ?? String(error)}`,
       };
     }
-
-    const actionKey = legalityMatchKey(decision.action);
-    if (
-      !observation.legalActions.some(
-        (legal) => legalityMatchKey(legal.action) === actionKey,
-      )
-    ) {
-      return {
-        state,
-        decisions,
-        stalled: true,
-        reason: "Computer policy selected an action outside the legal set.",
-      };
-    }
-    attempted.add(actionKey);
-
-    const result = apply(decisionState, decision.action, playerId);
-    if (result.errors.length > 0) {
-      // Recompute at the same state and try another legal candidate. If none
-      // remain, the next loop returns the explicit stall instead of spinning.
-      continue;
-    }
-    const nextFingerprint = progressFingerprint(result.state, playerId);
-    // CROSS-TICK CYCLE GUARD: the live pump paces ONE action per tick with a
-    // fresh runner each time, so the in-call `attempted` sets cannot see a
-    // loop that spans ticks. Only a zero-cost reversible action can return the
-    // seat to a state it already left this turn (the free Subterranean-Gate
-    // twin hop was measured doing exactly that — an infinite A↔B shuffle on a
-    // live table). Such a candidate is discarded like a no-progress attempt;
-    // the hash trail lives in the seat's persisted memory and clears each turn.
-    if (
-      recentStateHashSeen(state, playerId, fingerprintHash(nextFingerprint))
-    ) {
-      continue;
-    }
-    if (nextFingerprint === fingerprint) {
-      // The action applied cleanly but changed no tracked rule state. The old
-      // code stalled the WHOLE pump here, which froze the AI
-      // turn ("says it's taking its turn and does nothing") whenever such an
-      // action outscored a real one. Instead treat it exactly like a rejected
-      // attempt: it is already in `attempted`, so DISCARD it (keep the pre-
-      // action state) and try the next-best legal candidate. Only when every
-      // candidate is exhausted does the loop reach the explicit "no safe legal
-      // action" stall. `attempted` grows and the legal set shrinks each pass,
-      // so this always terminates (and the maxSteps cap backstops it).
-      continue;
-    }
-    // Persist the departed state's hash for the cross-tick cycle guard FIRST,
-    // then the action notes — an END_TURN note clears the whole per-turn
-    // memory (visit list + hash trail), and the order keeps that wipe final.
-    const previousState = state;
-    state = noteRecentStateHash(
-      result.state,
-      playerId,
-      fingerprintHash(fingerprint),
-    );
-    state = noteComputerAction(state, playerId, decision.action, previousState);
-    decisions.push(decision);
   }
 
   return {
@@ -517,19 +531,23 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
       // the reaction, the skip-flavoured option, hold the unit) through the
       // normal rules pipeline instead. Progress is required (fingerprint must
       // move) so a no-op recovery can never loop inside this tick.
-      const fallback = computerStallRecoveryDecision(current);
-      if (fallback) {
-        const before = progressFingerprint(current, fallback.playerId);
-        const result = liveApply(current, fallback.action, fallback.playerId);
-        if (
-          result.errors.length === 0 &&
-          progressFingerprint(result.state, fallback.playerId) !== before
-        ) {
-          console.warn(
-            `[computer-runner] stall recovered with default ${fallback.action.type} for ${fallback.playerId} (${peek.reason ?? "no safe legal action"})`,
-          );
-          peek = { state: result.state, decisions: [fallback], stalled: false };
+      try {
+        const fallback = computerStallRecoveryDecision(current);
+        if (fallback) {
+          const before = progressFingerprint(current, fallback.playerId);
+          const result = liveApply(current, fallback.action, fallback.playerId);
+          if (
+            result.errors.length === 0 &&
+            progressFingerprint(result.state, fallback.playerId) !== before
+          ) {
+            console.warn(
+              `[computer-runner] stall recovered with default ${fallback.action.type} for ${fallback.playerId} (${peek.reason ?? "no safe legal action"})`,
+            );
+            peek = { state: result.state, decisions: [fallback], stalled: false };
+          }
         }
+      } catch (error) {
+        console.warn("[computer-runner] stall recovery threw", error);
       }
     }
     if (peek.decisions.length === 0) {
@@ -598,12 +616,19 @@ export function settleComputerForLiveAction(state: GameState): GameState {
   if (computerPlayerIds(state).length === 0) {
     return state;
   }
-  if (computerWorkIsInstantBulk(state)) {
-    return settleComputerWork(state);
-  }
-  // PvP only: answer the human's combat action with one computer beat.
-  if (computerAutoPumpOwed(state)) {
-    return settleComputerVisibleStep(state).state;
+  // Never let computer work reject the human action that triggered it: on a
+  // throw, commit the human's frame and leave the rest to the server pump.
+  try {
+    if (computerWorkIsInstantBulk(state)) {
+      return settleComputerWork(state);
+    }
+    // PvP only: answer the human's combat action with one computer beat.
+    if (computerAutoPumpOwed(state)) {
+      return settleComputerVisibleStep(state).state;
+    }
+  } catch (error) {
+    console.warn("[computer-runner] live settle threw; committing the human action", error);
+    return state;
   }
   // Map: the server pump starts after this action commits. Keeping the state
   // untouched here lets clients render the human-to-computer turn hand-off.
@@ -666,5 +691,10 @@ export function applyHumanComputerAdvance(state: GameState): ComputerRunResult {
       reason: "No computer map step is waiting on human advance.",
     };
   }
-  return settleComputerVisibleStep(state);
+  try {
+    return settleComputerVisibleStep(state);
+  } catch (error) {
+    console.warn("[computer-runner] ADVANCE_COMPUTER step threw", error);
+    return { state, decisions: [], stalled: true, reason: "Computer step threw." };
+  }
 }

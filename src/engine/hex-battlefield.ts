@@ -229,7 +229,10 @@ const HEX_BATTLEFIELD_TERRAIN: Readonly<Record<HexBattlefieldId, { terrain?: str
 };
 
 export function hexBattlefieldObstacles(battlefield: HexBattlefieldId): PcObstacleDefinition[] {
-  const { terrain, special } = HEX_BATTLEFIELD_TERRAIN[battlefield];
+  // An unknown id (a client and room server on different builds) must not throw on every render.
+  const entry = HEX_BATTLEFIELD_TERRAIN[battlefield];
+  if (!entry) return [];
+  const { terrain, special } = entry;
   return PC_OBSTACLES.filter((obstacle) =>
     special ? obstacle.special.includes(special) : Boolean(terrain && obstacle.terrains.includes(terrain))
   );

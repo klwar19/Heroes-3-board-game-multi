@@ -2243,10 +2243,16 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
           alwaysPickable: object.alwaysPickable
         });
       } else if (object.kind === "monolith" || object.kind === "whirlpool") {
-        // Continue the +1/0/-1 numbering across every whirlpool already carved
-        // (the legacy `token` carve runs first).
-        const whirlpoolCount = Object.values(adventure.fields).filter((f) => f.location === "whirlpool").length;
-        const number = object.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[whirlpoolCount] : undefined;
+        // Pending tokens on face-down tiles already own their printed faces.
+        // Count them as well as carved fields, or a legacy object can receive
+        // +1 a second time while the -1 token is still face-down.
+        const assignedWhirlpools =
+          Object.values(adventure.fields).filter((f) => f.location === "whirlpool").length +
+          Object.values(adventure.tiles).reduce(
+            (count, candidate) => count + (candidate.pendingTokens ?? []).filter((token) => token.kind === "whirlpool").length,
+            0
+          );
+        const number = object.kind === "whirlpool" ? WHIRLPOOL_NUMBERS[assignedWhirlpools] : undefined;
         carveMapTokenField(adventure, spaceId, object.kind, number);
         // Two-way exit-pick extras ride a Monolith exactly like a gate's.
         const carvedToken = adventure.fields[spaceId];

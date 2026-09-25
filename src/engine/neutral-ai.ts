@@ -11,6 +11,7 @@ import {
 import { houseRuleEnabled } from "./house-rules";
 import { planRandomTownActivation } from "./random-town-tactics";
 import { getDemolishAbility } from "./siege";
+import { getUnitAbilityDefinitions } from "./unit-abilities";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./computer/unit-ability-value";
 import { canStrikeFromLegalLanding } from "./computer/opponent-reply";
 import {
@@ -63,6 +64,9 @@ import { NEUTRAL_PLAYER_ID } from "./state";
  *   ranged guard still hunts ranged targets first, and an engaged one must hit an
  *   adjacent enemy. Detected from the `bankUnit` flag via isGradelessNeutralAttacker.
  * - Neutral units never defend.
+ * - Ordinary automatic neutrals cannot spend their activation on a non-attack
+ *   "other action" such as Ogres' Bloodlust token; they strike or approach.
+ *   Free abilities can still precede that action.
  * - A Ladybird of Luck Wall (`artifact_wall` token, "counts as a Wall") is torn
  *   down by a graded neutral only when it can attack NO enemy unit this
  *   activation. A gradeless Creature Bank guard ranks it purely by distance with
@@ -448,6 +452,7 @@ export function planNeutralActivation(
   const projected = { ...state, combat };
   const abilities = getAutomaticNeutralAbilityActions(projected, unit);
   if (abilities.length === 0) return planNeutralDefault(state, combat, unit);
+  const coordinated = coordinatedRandomTownDefense(state, combat);
   const attackValue = bestAttackOpportunity(projected, unit);
   let value = Math.max(0.25, attackValue);
   let intent: NeutralIntent | null = null;
@@ -455,6 +460,15 @@ export function planNeutralActivation(
     if (action.type !== "USE_UNIT_ABILITY") continue;
     const evaluated = evaluateUnitAbility(projected, action);
     if (!evaluated || evaluated.value <= 0) continue;
+    // Ordinary guards must strike or advance toward a strike. A token, buff or
+    // obstacle that spends the activation cannot replace that rulebook action,
+    // even when its tactical score exceeds the immediate attack (Ogres' token
+    // was doing exactly that). Free abilities may precede the normal action;
+    // splash allocation is itself an attack. The optional Random Town defense
+    // retains its separate tactical ability policy.
+    if (!coordinated && !evaluated.free &&
+        getUnitAbilityDefinitions(unit).find(ability => ability.id === action.abilityId)?.effect?.type !==
+          "SPLASH_ALLOCATION_ATTACK") continue;
     const candidateValue = evaluated.value + (evaluated.free ? attackValue + 1 : 0);
     if (candidateValue > value) {
       value = candidateValue;

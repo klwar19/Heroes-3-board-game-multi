@@ -883,10 +883,10 @@ export function effectiveInitiative(
   const forgeTempo = combat
     ? Object.values(combat.units).reduce((total, candidate) =>
         total + (candidate.damage < candidate.maxHealth && candidate.position >= 0 && unit.position >= 0 &&
-          (combat.round <= 1
-            ? candidate.id === unit.id || candidate.townVeterancy?.forgeTempoRoundOneTargetId === unit.id
-            : candidate.id === unit.id || unitsAdjacent(combat, candidate, unit)) &&
-          getUnitAbilityDefinitions(candidate).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "FORGE_VETERANCY" && ability.effect.mechanic === "grunt-tempo") ? 2 : 0), 0)
+          (candidate.id === unit.id ||
+            (candidate.townVeterancy?.forgeTempoRoundOffered === combat.round && candidate.townVeterancy?.forgeTempoTargetId === unit.id) ||
+            (combat.round === 1 && candidate.townVeterancy?.forgeTempoRoundOffered === undefined && candidate.townVeterancy?.forgeTempoRoundOneTargetId === unit.id)) &&
+          getUnitAbilityDefinitions(candidate).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "FORGE_VETERANCY" && ability.effect.mechanic === "grunt-tempo") ? 1 : 0), 0)
     : 0;
   const astralHunt =
     (combat?.worldRound ?? 1) % 2 === 0 &&

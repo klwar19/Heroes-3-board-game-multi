@@ -1288,8 +1288,7 @@ function scorePositionOption(
   }
 
   if (context === "forge-phantom-chain-lightning") {
-    // Prefer the two-spell scroll when it leaves gold for development, and
-    // preserve a scarce building material or Valuable for the town plan.
+    // Preserve a scarce building material or Valuable for the town plan.
     const resources = observation.state.players[observation.playerId]?.resources;
     const pvp = observation.state.combat?.context.kind === "player";
     const reserveMet = pvp
@@ -1298,9 +1297,7 @@ function scorePositionOption(
     const offer = choice?.type === "OPTION_CHOICE"
       ? choice.forgeScrollOptions?.[optionIndex] ?? (optionIndex === 0 ? "chain-only" : "decline")
       : "decline";
-    const goldCost = choice?.type === "OPTION_CHOICE" ? choice.forgeScrollGoldCost ?? 0 : 0;
-    if (offer === "both") return CHOICE_BASE + (reserveMet && (resources?.gold ?? 0) >= goldCost + 3 ? 55 : 15);
-    if (offer === "chain-only") return CHOICE_BASE + (reserveMet ? 45 : 15);
+    if (offer === "both" || offer === "chain-only") return CHOICE_BASE + (reserveMet ? 45 : 15);
     return CHOICE_BASE + (reserveMet ? 10 : 40);
   }
 

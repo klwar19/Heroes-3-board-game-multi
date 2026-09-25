@@ -29,7 +29,6 @@ export function forgeDefenseBonus(state: GameState, attacker: CombatUnitState, d
   return (forgeVeterancy(defender, "bruiser-guard") && (attacker.type === "ranged" || attacker.type === "flying") ? 1 : 0)
     + (forgeVeterancy(defender, "watcher-ground-air-guard") && (attacker.type === "ground" || attacker.type === "flying") ? 1 : 0)
     + (forgeVeterancy(defender, "tank-ground-air-guard") && (attacker.type === "flying" || attacker.type === "ground") ? 1 : 0)
-    + (combat?.round !== undefined && combat.round % 2 === 1 && forgeVeterancy(defender, "cyberbrute-odd-guard") ? 1 : 0)
     + (combat && defender.townVeterancy?.forgeJumpGuardRound === combat.round ? 1 : 0)
     - bruiserBreak
     - (forgeVeterancy(attacker, "grunt-mark") && attacker.townVeterancy?.markedTargets?.includes(defender.id) ? 3 : 0);
@@ -121,13 +120,18 @@ export function forgeTankDied(state: GameState, tank: CombatUnitState): void {
 
 export function forgeCombatRoundStart(state: GameState): void {
   const combat = state.combat;
-  if (combat?.round === 1) {
+  if (combat) {
     for (const unit of Object.values(combat.units)) {
       if (!alive(unit) || unit.position < 0 || !forgeVeterancy(unit, "grunt-tempo")) continue;
       const memory = (unit.townVeterancy ??= {});
-      if (memory.forgeTempoRoundOneOffered) continue;
-      memory.forgeTempoRoundOneOffered = true;
-      queueElementalChoice(state, { kind: "forge-grunt-tempo", unitId: unit.id, abilityId: "forge-vet-grunt-tempo", round: 1 });
+      if (combat.round === 1 && memory.forgeTempoRoundOneOffered && memory.forgeTempoRoundOffered === undefined) {
+        memory.forgeTempoRoundOffered = 1;
+        memory.forgeTempoTargetId = memory.forgeTempoRoundOneTargetId;
+      }
+      if (memory.forgeTempoRoundOffered === combat.round) continue;
+      memory.forgeTempoRoundOffered = combat.round;
+      memory.forgeTempoTargetId = undefined;
+      queueElementalChoice(state, { kind: "forge-grunt-tempo", unitId: unit.id, abilityId: "forge-vet-grunt-tempo", round: combat.round });
     }
   }
   for (const unit of Object.values(state.combat?.units ?? {})) {

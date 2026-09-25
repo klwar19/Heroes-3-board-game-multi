@@ -265,7 +265,7 @@ import {
   withRankAbilities
 } from "./unit-experience";
 import { mgqEffectiveJob, withMgqJobAbilities } from "./mgq-jobs";
-import { maxHealthAfterUnitAbilityEffects, movementTypeAfterUnitAbilityEffects } from "./unit-abilities";
+import { isUndeadUnitDefinition, maxHealthAfterUnitAbilityEffects, movementTypeAfterUnitAbilityEffects } from "./unit-abilities";
 import { DRILL_UNIT_GOLD_COST_BY_TIER, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
   ActiveEffectState,
@@ -12104,7 +12104,10 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "REINFORCE_HALF_GOLD": {
-        const upgraded = reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false);
+        const target = state.players[visit.playerId]?.army.find((unit) => unit.id === step.armyUnitId);
+        const upgraded = target && (!step.consumeCardId || isUndeadUnitDefinition(target.unitDefId))
+          ? reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false)
+          : false;
         // Necromancy is spent ONLY on a successful upgrade. The card was held in
         // hand through the play (the discard was deferred); discard it now that a
         // unit was actually reinforced. A failed/declined reinforce leaves it.
@@ -12135,7 +12138,7 @@ export function processPendingVisit(state: GameState): void {
         // built), and the price is RE-DERIVED rather than trusted, so a stale
         // pick is a clean no-op that keeps `consumeCardId` in hand.
         const player = state.players[visit.playerId];
-        if (!player || !playerCanRecruitFewNow(state, visit.playerId, step.unitDefId)) {
+        if (!player || !isUndeadUnitDefinition(step.unitDefId) || !playerCanRecruitFewNow(state, visit.playerId, step.unitDefId)) {
           break;
         }
         const def = coreUnitDefinitions[step.unitDefId];
@@ -12211,6 +12214,7 @@ export function processPendingVisit(state: GameState): void {
         if (
           !player ||
           !unit ||
+          (step.source === "Necromancy" && !isUndeadUnitDefinition(unit.unitDefId)) ||
           !armyUnitStacksActive(state) ||
           !polishArmyUnitCanBuyStack(unit) ||
           !hasRecruitResources(state, visit.playerId, step.cost)
@@ -24369,6 +24373,9 @@ export function reinforcementDiscountCostFor(
   if (!tier || !bank.allowedTiers.includes(tier)) {
     return null;
   }
+  if (bank.source === "necromancy" && !isUndeadUnitDefinition(unit.unitDefId)) {
+    return null;
+  }
 
   let baseCost: ResourceCost | null = null;
   let purchase: RecruitPurchaseRef;
@@ -24725,7 +24732,7 @@ export function queueNecromancyReinforce(
     for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
       const def = coreUnitDefinitions[unitDefId];
       const fewSide = getUnitSide(unitDefId, "few");
-      if (!def || !fewSide || !tierAllowed(def.tier)) {
+      if (!def || !fewSide || !tierAllowed(def.tier) || !isUndeadUnitDefinition(unitDefId)) {
         continue;
       }
       if (!playerCanRecruitFewNow(state, playerId, unitDefId)) {
@@ -24760,7 +24767,7 @@ export function queueNecromancyReinforce(
     }
     const def = coreUnitDefinitions[unit.unitDefId];
     const packSide = getUnitSide(unit.unitDefId, "pack");
-    if (!def || !packSide || !tierAllowed(def.tier)) {
+    if (!def || !packSide || !tierAllowed(def.tier) || !isUndeadUnitDefinition(unit.unitDefId)) {
       continue;
     }
 
@@ -24787,6 +24794,7 @@ export function queueNecromancyReinforce(
   // tier on expert, the same ladder as its reinforce. The card is spent only
   // if the Stack is really added (consumeCardId, like the reinforce options).
   for (const target of stackOfferTargets(state, playerId, allowedTiers.filter(tierAllowed))) {
+    if (!isUndeadUnitDefinition(target.unit.unitDefId)) continue;
     const option = stackOfferOption(
       state,
       playerId,
@@ -24807,8 +24815,8 @@ export function queueNecromancyReinforce(
       {
         type: "CHOOSE_ONE",
         prompt: communityDwellingGate
-          ? "Necromancy: no unit you have the Dwelling for and can afford — the card is kept."
-          : "Necromancy: no unit you can afford to reinforce — the card is kept.",
+          ? "Necromancy: no Undead unit you have the Dwelling for and can afford — the card is kept."
+          : "Necromancy: no Undead unit you can afford to reinforce — the card is kept.",
         options: [{ label: "OK", steps: [] }]
       }
     ]);
@@ -24821,10 +24829,10 @@ export function queueNecromancyReinforce(
     {
       type: "CHOOSE_ONE",
       prompt: communityDwellingGate
-        ? `Necromancy: Recruit or Reinforce a ${
+        ? `Necromancy: Recruit or Reinforce an Undead ${
             mode === "expert" ? "" : "bronze or silver "
           }unit you have the Dwelling for, for half the gold cost (rounded down)`
-        : `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
+        : `Necromancy: reinforce an Undead ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
       options
     }
   ]);

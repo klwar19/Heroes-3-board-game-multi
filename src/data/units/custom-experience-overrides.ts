@@ -17,12 +17,12 @@ const ranks = (r1: string | RankStep, r2: string | RankStep, r3: string | RankSt
 export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
   // Forge experience is authored per unit; keep its combat hooks isolated.
   "forge.cyberbrutes": ranks("forge-vet-cyberbrute-mend", "forge-vet-cyberbrute-odd-guard", H({ health: 1 }, "forge-vet-cyberbrute-shock"), H({ initiative: 3 }, "forge-vet-open-wound")),
-  "forge.tanks": ranks(H({ initiative: 2 }, "forge-vet-tank-reposition"), S({ health: 1 }), "forge-vet-tank-ground-air-guard", "forge-vet-tank-death-burst"),
+  "forge.tanks": ranks(H({ initiative: 1 }, "forge-vet-tank-reposition"), S({ health: 1 }), "forge-vet-tank-ground-air-guard", "forge-vet-tank-death-burst"),
   "forge.jump_troopers": ranks("forge-vet-jump-guard", S({ attack: 1 }), "veteran-mobility-1", "forge-vet-jump-round-die"),
   "forge.bruisers": ranks(S({ health: 1 }), "forge-vet-bruiser-guard", "forge-vet-bruiser-die-reward", "forge-vet-bruiser-break"),
   "forge.cyber_zombies": ranks(H({ health: 1 }, "forge-vet-zombie-repair"), "zombie-resilience", "veteran-zombie-intercept", "forge-vet-zombie-full-rebirth"),
   "forge.watchers": ranks(S({ health: 1 }), "veteran-eye-immunity", "forge-vet-watcher-ground-air-guard", "ranged-extra-shot-on-low-roll"),
-  "forge.grunts": ranks(H({ health: 1 }, "forge-vet-grunt-tempo"), S({ attack: 1 }), H({ defense: 1 }, "forge-vet-grunt-cover"), "forge-vet-grunt-mark"),
+  "forge.grunts": ranks("forge-vet-grunt-tempo", S({ attack: 1 }), H({ defense: 1 }, "forge-vet-grunt-cover"), "forge-vet-grunt-mark"),
   // Fuyuki: duelists gain utility; existing multi-hit kits get restrained payoffs.
   "fuyuki.assassins": ranks("ntv-first-volley", "ntv-strike-and-return", S({ attack: 1, health: 1 }), "ctv-returning-edge"),
   "fuyuki.riders": ranks(S({ health: 1, initiative: 1 }), "ntv-predators-mark", "ntv-bone-wall", "veteran-troll-snare"),

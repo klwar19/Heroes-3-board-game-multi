@@ -9,6 +9,7 @@ import {
   getBattlefieldLabel,
   getBattlefieldDistance,
   getBattlefieldPositions,
+  getOrthogonalNeighbors,
   hexTranslate,
 } from "./battlefield";
 import type {
@@ -70,6 +71,13 @@ function elementalLandingFree(combat: CombatState, mover: CombatUnitState, posit
     !isFortificationPosition(combat.siege, cell) &&
     !Object.values(combat.units).some((t) => alive(t) && (!wide || t.id !== mover.id) && unitOccupiesCell(combat, t, cell))
   );
+}
+
+/** Tank Counterdrive walks at most two open steps; its landing cannot jump over a unit. */
+function tankCounterdriveReachable(combat: CombatState, tank: CombatUnitState, position: number): boolean {
+  return getOrthogonalNeighbors(tank.position).some(first =>
+    elementalLandingFree(combat, tank, first) &&
+    (first === position || getOrthogonalNeighbors(first).includes(position) && elementalLandingFree(combat, tank, position)));
 }
 
 type Request = NonNullable<CombatState["elementalChoices"]>[number];
@@ -444,12 +452,12 @@ export function openElementalChoice(
     const landingHeads = (mover: CombatUnitState): number[] =>
       unitTailOffset(combat, mover) !== 0 ? getBattlefieldPositions("hex") : empty;
     if (request.kind === "forge-grunt-tempo") {
-      if (request.round !== 1 || combat.round !== 1) continue;
+      if (request.round !== combat.round) continue;
       for (const target of Object.values(combat.units).sort((a, b) =>
         Number(b.controllerId === unit.controllerId) - Number(a.controllerId === unit.controllerId) || a.id.localeCompare(b.id))) {
         if (!alive(target) || target.position < 0 || target.id === unit.id || !unitsAdjacent(combat, unit, target)) continue;
         picks.push({ targetId: target.id });
-        labels.push(`Give ${target.cardName} +2 Initiative this round`);
+        labels.push(`Give ${target.cardName} +1 Initiative this round`);
       }
     } else if (request.kind === "forge-jump-round") {
       if (request.round !== combat.round || (request.amount !== -1 && request.amount !== 1)) continue;
@@ -495,7 +503,8 @@ export function openElementalChoice(
     } else if (request.kind === "move-one") {
       if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
       const maxDistance = request.maxDistance ?? 1;
-      for (const position of landingHeads(unit).filter(p => getBattlefieldDistance(p, unit.position) <= maxDistance && elementalLandingFree(combat, unit, p))) {
+      for (const position of landingHeads(unit).filter(p => getBattlefieldDistance(p, unit.position) <= maxDistance && elementalLandingFree(combat, unit, p) &&
+        (request.abilityId !== "forge-vet-tank-reposition" || tankCounterdriveReachable(combat, unit, p)))) {
         picks.push({ position }); labels.push(`Move to ${getBattlefieldLabel(position)}`);
       }
     } else if (request.kind === "move-ally-one") {
@@ -718,11 +727,11 @@ function executeElementalPick(
   if (!unit || (!alive(unit) && !postDetonationRepair && request.kind !== "forge-death-burst" && request.abilityId !== "forge-vet-cyberbrute-shock")) return;
   if (request.kind === "forge-grunt-tempo") {
     const target = combat.units[pick.targetId!];
-    if (request.round !== 1 || combat.round !== 1 || !target || !alive(target) || target.position < 0 || target.id === unit.id || !unitsAdjacent(combat, unit, target)) {
+    if (request.round !== combat.round || !target || !alive(target) || target.position < 0 || target.id === unit.id || !unitsAdjacent(combat, unit, target)) {
       throw new Error("Choose a unit adjacent to the Grunt for Tempo Field.");
     }
-    (unit.townVeterancy ??= {}).forgeTempoRoundOneTargetId = target.id;
-    veteranTrigger(state, unit, request.abilityId, target, `${unit.cardName} and ${target.cardName} gain +2 Initiative in round 1.`);
+    (unit.townVeterancy ??= {}).forgeTempoTargetId = target.id;
+    veteranTrigger(state, unit, request.abilityId, target, `${unit.cardName} and ${target.cardName} gain +1 Initiative in round ${combat.round}.`);
     return;
   }
   if (request.kind === "forge-jump-round") {
@@ -857,7 +866,8 @@ function executeElementalPick(
     const blocked = !onCombatBoard(combat, position) ||
       (request.kind === "move-one" && getBattlefieldDistance(unit.position, position) > (request.maxDistance ?? 1)) ||
       (request.kind === "return-origin" && position !== request.position) ||
-      !elementalLandingFree(combat, unit, position);
+      !elementalLandingFree(combat, unit, position) ||
+      (request.abilityId === "forge-vet-tank-reposition" && !tankCounterdriveReachable(combat, unit, position));
     if (blocked) throw new Error("That movement space is not available.");
     const from = unit.position; unit.position = position;
     veteranTrigger(state, unit, request.abilityId);

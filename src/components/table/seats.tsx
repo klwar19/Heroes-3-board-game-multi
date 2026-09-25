@@ -582,7 +582,7 @@ function SpellShelfPopover({
   title: string;
   subtitle: string;
   spellIds: string[];
-  actions: (LegalAction & { action: CardBoardAction })[];
+  actions: (LegalAction & { action: CardBoardAction | Extract<GameAction, { type: "CAST_SCROLL_MAP_SPELL" }> })[];
   state: GameState;
   trayActive: boolean;
   onAction: (action: GameAction) => void;
@@ -615,9 +615,9 @@ function SpellShelfPopover({
                 {actionsForSpell.map((legal) => {
                   const action = legal.action;
                   const targetLabel =
-                    action.target?.type === "unit"
+                    "target" in action && action.target?.type === "unit"
                       ? ` → ${targetName(state, action.target)}`
-                      : action.target?.type === "space"
+                      : "target" in action && action.target?.type === "space"
                         ? " → space"
                         : "";
                   return (
@@ -789,8 +789,10 @@ export function HandFan({
   // be cast in combat at power 0 (CAST_SPELL with fromScroll); the engine
   // offers a concrete action per legal target.
   const scrolls = player.scrolls ?? [];
-  const scrollCastActions = cardActions.filter(
-    (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromScroll
+  const scrollCastActions = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "CAST_SPELL" | "CAST_SCROLL_MAP_SPELL" }> } =>
+      (legal.action.type === "CAST_SPELL" && Boolean(legal.action.fromScroll)) ||
+      legal.action.type === "CAST_SCROLL_MAP_SPELL"
   );
 
   // Spell Book (house rule): the player's personal Spell library, not in hand.

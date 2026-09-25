@@ -579,9 +579,9 @@ export const spellCards: CardLibrary = {
   // are dealt into the decks below where the rules place them, the rest are
   // library-only stubs.
   // Chain Lightning: an Activation Air spell that reuses the engine's Chain
-  // Lightning machinery (shared with Solmyr's specialty). The selected enemy
-  // takes the first bolt; the rest fork to the units closest to it (friend or
-  // foe), the caster routing them on ties. The allocation scales with Power.
+  // Lightning machinery (shared with Solmyr's specialty). The selected unit
+  // (friend or foe) takes the first bolt; the rest fork to the closest units
+  // (friend or foe), the caster routing them on ties. The allocation scales with Power.
   "spell.chain_lightning": {
     id: "spell.chain_lightning",
     name: "Chain Lightning",
@@ -591,7 +591,7 @@ export const spellCards: CardLibrary = {
     spellLevel: "expert",
     spellSchools: ["air"],
     power: 0,
-    target: { type: "enemy-unit" },
+    target: { type: "any-unit" },
     tags: [
       "spell",
       "expert",

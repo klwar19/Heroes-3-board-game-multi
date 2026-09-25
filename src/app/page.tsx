@@ -334,7 +334,7 @@ import {
   type PendingEchoState
 } from "@/lib/pending-action-echo";
 import { pollTickAllowed } from "@/lib/hidden-tab-poll";
-import { clearCachedRoom, loadCachedRoom, saveCachedRoom } from "@/lib/room-cache";
+import { clearCachedRoom, loadCachedRoom, scheduleCachedRoomSave } from "@/lib/room-cache";
 import { getAccountIdentity, getClientId, getDisplayName, setDisplayName as persistDisplayName } from "@/lib/identity";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
 import {
@@ -5362,7 +5362,7 @@ export default function Home() {
       // Mirror in-progress games for recovery; never cache a bare lobby (that
       // would let a later recycle overwrite a real game).
       if (!isFreshLobbyState(snapshot.state)) {
-        saveCachedRoom(roomId, snapshot.version, snapshot.state);
+        scheduleCachedRoomSave(roomId, snapshot.version, snapshot.state);
       }
       const presentationStart = metricNow();
       ingestServerStateSafely(snapshot.state);

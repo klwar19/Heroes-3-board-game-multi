@@ -883,7 +883,7 @@ import type {
   VisitStep,
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import { applyForgeRoundStartInitiativeRolls, forgeCombatRoundStart } from "./forge";
+import { applyForgeRoundStartInitiativeRolls, forgeCombatRoundStart, forgeVeterancy } from "./forge";
 import { applyCombatRetake, trackCombatRetake } from "./combat-retake";
 
 export type ReducerOptions = {
@@ -4944,7 +4944,7 @@ function applyAttackDamageFromCandidate(
   dieMultiplier = 1,
   baseAttackOverride?: number,
   damageReduction = 0,
-  lethalCancel?: { grade: UnitGrade; commanderUnitId?: UnitId },
+  lethalCancel?: { grade: UnitGrade; unitAbility?: true; commanderUnitId?: UnitId },
   ignoreDefense = false,
   noDie = false,
   dieCancelled = false,
@@ -4993,13 +4993,12 @@ function applyAttackDamageFromCandidate(
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus, defenseFractionCut } =
     preview;
-  // Factory Artificer "Emergency Repair": the owner chose, in the lethal-hit
-  // window, to cancel this whole attack. It is cancelled OUTRIGHT (no lethal
-  // re-check) and BEFORE any one-shot defender shields/armour are consumed, so
-  // a cancelled blow spends nothing on the protected unit. The caller treats
-  // `cancelled` exactly like Resurrection: no damage, no on-attack effects, no
-  // Retaliation Attack.
-  if (lethalCancel?.commanderUnitId) {
+  // The owner chose a unit ability in the lethal-hit window to cancel this
+  // whole attack. Cancel before spending any one-shot defender shields or
+  // armour. A Pack layer is a valid lethal trigger for Archangels, and damage
+  // reductions after the window must not turn their spent save into a partial
+  // hit. The caller skips damage, after-attack effects and retaliation.
+  if (lethalCancel?.commanderUnitId || lethalCancel?.unitAbility) {
     appendEvent(state, {
       type: "ATTACK_ROLLED",
       attackerId: attacker.id,
@@ -5019,12 +5018,21 @@ function applyAttackDamageFromCandidate(
       damage: 0,
       isRetaliation,
     });
-    applyCommanderEmergencyRepairCancel(
-      state,
-      lethalCancel.commanderUnitId,
-      attacker,
-      defender,
-    );
+    if (lethalCancel.commanderUnitId) {
+      applyCommanderEmergencyRepairCancel(
+        state,
+        lethalCancel.commanderUnitId,
+        attacker,
+        defender,
+      );
+    } else {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: "resurrection",
+        message: `The killing blow on ${defender.cardName} is cancelled.`,
+      });
+    }
     return {
       damage: 0,
       roll: candidate.roll,
@@ -5889,6 +5897,9 @@ function getAttackStackDetails(
   // Town Basilisks R4: this is a defender-side "when attacked" rule, so it
   // forces the lower of two dice for ordinary attacks AND retaliation attacks.
   if (townVeterancy(defender, "basilisk-lower-roll")) {
+    rollMode = "disadvantage";
+  }
+  if (combat.round % 2 === 1 && attacker.controllerId !== defender.controllerId && forgeVeterancy(defender, "cyberbrute-odd-guard")) {
     rollMode = "disadvantage";
   }
   if (!isRetaliation && defender.commanderSlug) {
@@ -8880,6 +8891,7 @@ function finishResolvedAttack(
         stackItem.modifiers.cancelLethal = {
           unitId: details.defender.id,
           grade: details.defender.grade,
+          unitAbility: true,
         };
         appendEvent(state, {
           type: "UNIT_ABILITY_TRIGGERED",
@@ -8948,6 +8960,7 @@ function finishResolvedAttack(
     cancelLethal && cancelLethal.unitId === details.defender.id
       ? {
           grade: cancelLethal.grade,
+          ...(cancelLethal.unitAbility ? { unitAbility: true as const } : {}),
           ...(cancelLethal.commanderUnitId
             ? { commanderUnitId: cancelLethal.commanderUnitId }
             : {}),
@@ -8968,8 +8981,8 @@ function finishResolvedAttack(
   // earned-by-acting loop and a cancelled strike stay exactly as before.
   const willBeLethallyCancelled =
     lethalCancel !== undefined &&
-    // Factory Emergency Repair cancels the attack outright (no lethal re-check).
-    (lethalCancel.commanderUnitId !== undefined ||
+    // Unit-ability saves cancel the selected attack outright (no lethal re-check).
+    (lethalCancel.commanderUnitId !== undefined || lethalCancel.unitAbility ||
     (() => {
       const preview = getAttackDamagePreview(
         details.attacker,
@@ -13766,7 +13779,7 @@ function openCloneChoice(
 
   // Around the original's whole footprint; a double-wide Clone (hex board)
   // needs its own footprint clear too. Grid: the orthogonal neighbours.
-  const cloneBody = { id: "__clone__", position: original.position, controllerId: playerId, unitDefId: original.unitDefId };
+  const cloneBody = { id: "__clone__", position: original.position, controllerId: playerId, unitDefId: original.unitDefId, variant: original.variant };
   const positions = [...areaAround(combat, original, false)].filter(
     (position) => !isSpaceBlockedForSummon(combat, position, cloneBody),
   );
@@ -13942,6 +13955,7 @@ function resolveCloneChoice(
       position: destination,
       controllerId: action.playerId,
       unitDefId: original.unitDefId,
+      variant: original.variant,
     })
   ) {
     throw new Error("That clone destination is not available.");
@@ -15048,7 +15062,15 @@ function advanceActiveUnit(state: GameState): void {
     return;
   }
   combat.elementalAwaitingAdvance = false;
-  if (openElementalChoice(state, elementalHooks)) return;
+  if (openElementalChoice(state, elementalHooks)) {
+    // A Neutral's auto-picked choice can leave only a stack or reaction window
+    // (no prompt whose answer would advance). Advance once that settles, or the
+    // slot stays parked on a unit that already acted and nobody can act.
+    if (!state.pendingChoice && (state.stack.length > 0 || state.reactionWindow)) {
+      combat.elementalAwaitingAdvance = true;
+    }
+    return;
+  }
 
   let step = getActivationStep(combat, state.activeEffects);
 
@@ -26052,6 +26074,7 @@ function applyUnitResurrection(
   pendingAttack.modifiers.cancelLethal = {
     unitId: defender.id,
     grade: defender.grade,
+    unitAbility: true,
   };
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -32503,7 +32526,9 @@ export function isSpaceBlockedForSummon(
    * body on the hex board needs its whole footprint clear (its own current
    * hexes excepted); omitted or one-hex = the single space, as always.
    */
-  placing?: Pick<CombatUnitState, "id" | "position" | "controllerId" | "unitDefId" | "heroUnit" | "commanderSlug">,
+  placing?: Pick<CombatUnitState, "id" | "position" | "controllerId" | "unitDefId" | "heroUnit" | "commanderSlug"> &
+    // Its side: the Angels card is one hex as Angel, two as Archangel.
+    Partial<Pick<CombatUnitState, "variant" | "hexSingleHex">>,
 ): boolean {
   if (placing && unitTailOffset(combat, placing) !== 0) {
     const cells = footprintAt(combat, placing, position);
@@ -32610,7 +32635,7 @@ function placeCloneUnit(
   if (
     !combat ||
     // The Clone keeps the card's footprint (double-wide on the hex board).
-    isSpaceBlockedForSummon(combat, position, { id: "__clone__", position, controllerId: playerId, unitDefId: original.unitDefId }) ||
+    isSpaceBlockedForSummon(combat, position, { id: "__clone__", position, controllerId: playerId, unitDefId: original.unitDefId, variant: original.variant }) ||
     !original.unitDefId
   ) {
     return null;
@@ -35399,9 +35424,35 @@ function autoResolveNeutralAbilityChoice(
     !choice ||
     choice.type !== "ABILITY_TARGET_CHOICE" ||
     choice.playerId !== NEUTRAL_PLAYER_ID ||
-    !combat ||
-    !choice.sourceUnitId
+    !combat
   ) {
+    return false;
+  }
+  // A neutral's Chain Lightning fork (e.g. ranked Neutral Air Elementals)
+  // carries no source unit. Aim the bolt for the neutral side — the best
+  // non-neutral target, a neutral only when nothing else is in reach —
+  // otherwise nobody can answer the choice and the table freezes.
+  if (choice.kind === "chain-lightning") {
+    const alive = choice.candidateUnitIds
+      .map((unitId) => combat.units[unitId])
+      .filter((unit): unit is CombatUnitState => Boolean(unit) && isUnitAlive(unit));
+    if (alive.length === 0) {
+      state.pendingChoice = null;
+      state.phase = "combat";
+      return true;
+    }
+    const amount = choice.amount ?? choice.chainRemainingDamages?.[0] ?? 1;
+    const foes = alive.filter((unit) => unit.controllerId !== NEUTRAL_PLAYER_ID);
+    const target = (foes.length > 0 ? foes : alive)
+      .sort((left, right) => abilityDamageValue(right, amount) - abilityDamageValue(left, amount))[0];
+    chooseAbilityTarget(
+      state,
+      { type: "CHOOSE_ABILITY_TARGET", playerId: NEUTRAL_PLAYER_ID, choiceId: choice.id, targetUnitId: target.id },
+      cards,
+    );
+    return true;
+  }
+  if (!choice.sourceUnitId) {
     return false;
   }
 

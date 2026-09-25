@@ -8848,11 +8848,12 @@ export type ResolutionStackItem = {
     /**
      * Alamar's Resurrection armed on this attack: if it would reduce the named
      * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
-     * `commanderUnitId` = armed by Factory Artificer's Emergency Repair: the
-     * attack is cancelled OUTRIGHT and that commander pays (Paralysis + its
-     * once-per-combat use) when it resolves.
+     * `unitAbility` = an Archangel-style save selected in the lethal window:
+     * cancel that attack outright, even when a Pack layer would be lost.
+     * `commanderUnitId` = Factory Artificer's Emergency Repair, which also
+     * cancels outright and pays its cost when the attack resolves.
      */
-    cancelLethal?: { unitId: UnitId; grade: UnitGrade; commanderUnitId?: UnitId };
+    cancelLethal?: { unitId: UnitId; grade: UnitGrade; unitAbility?: true; commanderUnitId?: UnitId };
     /**
      * The attack die outcome rolled before pausing for the lethal-save window,
      * reused when the attack resumes so the die is not rerolled.
@@ -10355,6 +10356,12 @@ export type CombatUnitState = {
   name: string;
   cardName: string;
   variant: "few" | "pack" | "neutral";
+  /**
+   * Hex battlefield: a Pack-only double-wide card (Archangels) reinforced from
+   * Few to Pack mid-combat with no free hex behind it keeps one hex for the
+   * rest of the combat (see hex-footprint.ts).
+   */
+  hexSingleHex?: boolean;
   /** Exact alternate Creature-Bank face used by a Polish guardian/reward card. */
   bankSideKey?: string;
   /**
@@ -10554,9 +10561,12 @@ export type CombatUnitState = {
     /** Sandworms' +3 Initiative gains after their own attacks (hard-capped at 2). */
     sandwormBurrowUses?: number;
     sandwormInitiativeBonus?: number;
-    /** Forge Grunts R1: the single round-1 Tempo Field recipient. */
+    /** Legacy Forge Grunts R1 round-one selection, retained for saved combats. */
     forgeTempoRoundOneTargetId?: UnitId;
     forgeTempoRoundOneOffered?: boolean;
+    forgeTempoRoundOffered?: number;
+    forgeTempoTargetId?: UnitId;
+    forgeCyberbruteMendRound?: number;
     /** Imperium Titan R3: actual damage assigned across this combat, even after healing or a side flip. */
     damageSuffered?: number;
     /** Imperium Titan R3: Attack already earned from damage thresholds (max 2). */

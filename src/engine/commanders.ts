@@ -929,8 +929,8 @@ export function commanderCastOf(unit: CombatUnitState, abilityId?: string): Comm
 
 /**
  * Damage an `enemy-damage` commander cast deals to `target` at `tier`. Forge
- * Arc Discharge at Power 2 deals 3 through combat round 3; from round 4 it
- * deals 4 to Bronze, 3 to Silver/commanders/bank creatures, and 2 to Gold/Azure.
+ * Arc Discharge at Power 2 deals 3 through combat round 2; from round 3 it
+ * deals 2 to Gold/Azure and 3 to all other targets.
  * Shared by the reducer and AI so their kill estimates match resolution.
  */
 export function commanderEnemyDamageAmount(
@@ -941,9 +941,7 @@ export function commanderEnemyDamageAmount(
   combatRound: number,
 ): number {
   if (caster.commanderSlug === "forge" && tier >= 2) {
-    if (combatRound <= 3) return 3;
-    if (target.commanderSlug || target.bankUnit) return 3;
-    if (target.grade === "bronze") return 4;
+    if (combatRound <= 2) return 3;
     return target.grade === "gold" || target.grade === "azure" ? 2 : 3;
   }
   return damageByPower[tier];

@@ -17,9 +17,10 @@ import {
  * game" (user ruling 2026-09-25). A unit CARD is double-wide for the whole
  * combat when its creatures are double-wide in Heroes III (VCMI / HotA
  * `doubleWide`, checked 2026-09-25); Neutral cards follow the town card of the
- * same name. Every Few/Pack pair shares its size except Angel (one hex on the
- * PC) / Archangel (two): the Angels card is TWO hexes on both sides, Neutral
- * Angels too (user ruling 2026-09-25).
+ * same name. Every Few/Pack pair shares its size except Angel / Archangel, as on
+ * the PC: the Angels card is ONE hex on its Few side (Angel, and the Neutral
+ * Angels, which always show the Angel) and TWO hexes on its Pack side
+ * (Archangel) — user ruling 2026-09-26, replacing "two hexes on both sides".
  *
  * `unit.position` stays the HEAD hex; the TAIL is the hex directly behind it
  * in the same row — attacker side one column west, defender side one column
@@ -56,7 +57,6 @@ export const HEX_DOUBLE_WIDE_UNIT_IDS: ReadonlySet<string> = new Set([
   "conflux.water_elementals",
   "neutral.griffins",
   "neutral.champions",
-  "neutral.archangels",
   "neutral.centaurs",
   "neutral.pegasi",
   "neutral.unicorns",
@@ -109,7 +109,15 @@ export const HEX_DOUBLE_WIDE_UNIT_IDS: ReadonlySet<string> = new Set([
   "forge.cyberbrutes"
 ]);
 
-/** Whether a unit card is double-wide on the hex battlefield. */
+/**
+ * Cards whose Pack side only is double-wide (Archangel; the Few side's Angel is
+ * one hex). A Pack flipping to Few mid-combat drops its tail; a Few reinforced
+ * to a Pack mid-combat takes its tail only when that hex is free, otherwise it
+ * stays one hex for the rest of the combat (`hexSingleHex`).
+ */
+export const HEX_PACK_ONLY_DOUBLE_WIDE_UNIT_IDS: ReadonlySet<string> = new Set(["castle.archangels"]);
+
+/** Whether a unit card is (or, for a Pack-only card, can be) double-wide on the hex battlefield. */
 export function isHexDoubleWide(unitDefId: string | null | undefined): boolean {
   return typeof unitDefId === "string" && HEX_DOUBLE_WIDE_UNIT_IDS.has(unitDefId);
 }
@@ -127,6 +135,10 @@ export type FootprintUnit = {
   unitDefId?: string;
   heroUnit?: boolean;
   commanderSlug?: string;
+  /** The card's current side (a Pack-only double-wide card is one hex on its Few side). */
+  variant?: string;
+  /** Set when a mid-combat Few→Pack reinforce found no free tail hex: stays one hex. */
+  hexSingleHex?: boolean;
 };
 
 /**
@@ -143,7 +155,8 @@ export function unitIsDoubleWide(
     combatGeometry(combat) === "hex" &&
     !unit.heroUnit &&
     !unit.commanderSlug &&
-    isHexDoubleWide(unit.unitDefId);
+    isHexDoubleWide(unit.unitDefId) &&
+    (!HEX_PACK_ONLY_DOUBLE_WIDE_UNIT_IDS.has(unit.unitDefId!) || (unit.variant === "pack" && !unit.hexSingleHex));
 }
 
 /**

@@ -1,5 +1,6 @@
 import { unitMatchesSpecialtyName as matchesUnitName } from "./specialty-unit-name";
 import { denseFogThisRound } from "./battlefield-condition-fog";
+import { forgeVeterancy } from "./forge";
 import { townBound } from "./town-veterancy";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { neutralTownDeepRooted } from "./neutral-town-veterancy";
@@ -2215,6 +2216,9 @@ export function getAttackRollMode(
   isRetaliation = false,
 ): AttackRollMode {
   if (attacker.commanderArtifactAttackDisadvantage || (attacker.type === "ranged" && denseFogThisRound(state?.combat))) {
+    return "disadvantage";
+  }
+  if (state?.combat && state.combat.round % 2 === 1 && attacker.controllerId !== defender.controllerId && forgeVeterancy(defender, "cyberbrute-odd-guard")) {
     return "disadvantage";
   }
   // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
@@ -15106,7 +15110,8 @@ function addCombatSetupActions(
         coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
       // A double-wide card (hex board) only offers heads whose tail is in the
       // zone and free too; every cell otherwise.
-      const body = { position: cells[0] ?? 0, controllerId: playerId, unitDefId: armyUnit.unitDefId };
+      // Its side matters: the Angels card is one hex as Angel, two as Archangel.
+      const body = { position: cells[0] ?? 0, controllerId: playerId, unitDefId: armyUnit.unitDefId, variant: armyUnit.side };
       const wide = unitTailOffset(combat, body) !== 0;
       for (const position of wide ? footprintHeadsIn(combat, body, cells) : cells) {
         if (takenPositions.has(position)) {

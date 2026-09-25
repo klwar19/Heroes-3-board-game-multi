@@ -11,21 +11,18 @@
 // placement, the unit figure and the art layers.
 //
 // Layout is a virtual 800x556 space (the PC combat backdrop): 13x9 pointy-top
-// hexes, even rows shifted half a hex right, attacker zone on the left. The
-// seat flip mirrors x. Hit testing is by hex (as in the PC game): each cell's
+// hexes shaped like the PC's (taller than a regular hex), even rows shifted
+// half a hex right, attacker zone on the left. The seat flip mirrors x. Hit testing is by hex (as in the PC game): each cell's
 // hex face takes the clicks, creature sprites never do.
 // ---------------------------------------------------------------------------
 
 import { useMemo, useState, type CSSProperties } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import {
-  HEX_BATTLEFIELD_COLUMNS,
-  HEX_BATTLEFIELD_ROWS,
   getBattlefieldCoordinates,
   getBattlefieldDistance,
   getBattlefieldPositions,
   getHexDeploymentZone,
-  hexPosition,
   isHexPosition
 } from "@/engine/battlefield";
 import { hexBattlefieldsForBoardArt } from "@/engine/combat-board-art";
@@ -34,36 +31,46 @@ import { PC_OBSTACLES, type PcObstacleDefinition } from "@/engine/hex-pc-obstacl
 import type { CombatBoardArtId, CombatState, CombatUnitState, GameAction, GameEvent, GameState, LegalAction, PlayerId } from "@/engine";
 import { effectiveInitiative, polishSpellBookEnabled, spellBookRuleEnabled } from "@/engine";
 import { isSpellCard } from "@/engine/ruleset";
+import { isArrowTowerUnit } from "@/engine/siege";
 import { cardLibrary } from "@/data/cards/library";
 import { hexMoveDurationMs } from "@/data/battle-hex/creature-sprites";
 import { getFxSheet } from "@/data/fx";
+import siegeArt from "@/data/battle-hex/siege-art.json";
 import { formatEvent } from "./utils";
 
 export const HEX_BOARD_WIDTH = 800;
 export const HEX_BOARD_HEIGHT = 556;
 /**
- * Flat-to-flat hex width in board units. 55 (was 52, user ruling 2026-09-25:
- * bigger hexes, the creatures a little smaller against them).
+ * The PC board, pixel for pixel (user ruling 2026-09-26: "make it close to PC",
+ * replacing the enlarged 52/55-unit hexes): the board is the PC's 800x556
+ * battlefield, and H3 draws its combat hexes 44 px wide and 52 px tall (tip to
+ * tip) on a 42 px row step — taller than a regular hex, with long upright
+ * sides. The Battlefield Expansion's 13x9 hexes sit on the PC grid's columns
+ * 2-14 and rows 1-9 (PC hex rect: x = 14 + 44·col (+22 on indented rows), y =
+ * 86 + 42·row) — the PC's 15x11 field less its outer ring, starting right
+ * under the heroes — so every hex, creature, obstacle and hero stands at the
+ * PC's size against the whole field.
  */
-const HEX_WIDTH = 55;
-/** Centre-to-corner radius of a regular pointy-top hex. */
-const HEX_RADIUS = HEX_WIDTH / Math.sqrt(3);
-const HEX_ROW_STEP = HEX_RADIUS * 1.5;
-const GRID_LEFT = (HEX_BOARD_WIDTH - HEX_WIDTH * (HEX_BATTLEFIELD_COLUMNS + 0.5)) / 2;
-const GRID_TOP = HEX_BOARD_HEIGHT - (HEX_ROW_STEP * (HEX_BATTLEFIELD_ROWS - 1) + 2 * HEX_RADIUS) - 20;
+const HEX_WIDTH = 44;
+const PC_SCALE = HEX_WIDTH / 44;
+const PC_SCALE_X = PC_SCALE;
+const PC_SCALE_Y = PC_SCALE;
+/** Tip-to-tip height, half of it (centre to top tip), the row step and the height of a pointed cap. */
+const HEX_HEIGHT = 52 * PC_SCALE;
+const HEX_RADIUS = HEX_HEIGHT / 2;
+const HEX_ROW_STEP = 42 * PC_SCALE;
+const HEX_CAP = HEX_HEIGHT - HEX_ROW_STEP;
+/** PC column 2, row 1 (the board indents its even rows). */
+const GRID_LEFT = 14 + 2 * 44;
+const GRID_TOP = 86 + 42;
 
 /**
- * Creature / hero art scale on the hex board. The PC proportion (an H3 pixel
- * at the mean stretch of its 44 px hexes and 42 px rows onto a 52-unit hex)
- * times 0.96, so on the 55-unit hexes a creature stands about 10% smaller
- * against its hex than on the PC while a two-hex creature still spans its two
- * hexes. Obstacles keep the exact PC proportion of the hexes they block.
+ * Creature / hero art scale on the hex board: exactly the PC's — one H3 pixel
+ * per PC pixel of hex (user ruling 2026-09-26, replacing the earlier "10%
+ * smaller"), so creatures, heroes, obstacles and spell effects stand against
+ * the hexes exactly as on the PC and a two-hex creature spans its two hexes.
  */
-export const HEX_SPRITE_SCALE = Math.sqrt((52 / 44) * ((52 / Math.sqrt(3)) * 1.5 / 42)) * 0.96;
-
-/** PC art scale onto this board: H3 hexes are 44 px wide with a 42 px row step. */
-const PC_SCALE_X = HEX_WIDTH / 44;
-const PC_SCALE_Y = HEX_ROW_STEP / 42;
+export const HEX_SPRITE_SCALE = PC_SCALE;
 
 const PC_OBSTACLE_BY_ID = new Map(PC_OBSTACLES.map((obstacle) => [obstacle.id, obstacle]));
 
@@ -91,17 +98,20 @@ export function hexCellStyle(position: number, flipped: boolean): CSSProperties 
     left: `${((x - HEX_WIDTH / 2) / HEX_BOARD_WIDTH) * 100}%`,
     top: `${((y - HEX_RADIUS) / HEX_BOARD_HEIGHT) * 100}%`,
     width: `${(HEX_WIDTH / HEX_BOARD_WIDTH) * 100}%`,
-    height: `${((2 * HEX_RADIUS) / HEX_BOARD_HEIGHT) * 100}%`,
+    height: `${(HEX_HEIGHT / HEX_BOARD_HEIGHT) * 100}%`,
     // Lower rows stand in front (their sprites overlap the rows behind).
     zIndex: 10 + row
   };
 }
 
-function hexPoints(x: number, y: number, radius = HEX_RADIUS): string {
-  return Array.from({ length: 6 }, (_, corner) => {
-    const angle = (Math.PI / 180) * (60 * corner - 90);
-    return `${(x + radius * Math.cos(angle)).toFixed(2)},${(y + radius * Math.sin(angle)).toFixed(2)}`;
-  }).join(" ");
+/** The PC hex outline around a centre: pointed caps, long upright sides. */
+function hexPoints(x: number, y: number): string {
+  const w = HEX_WIDTH / 2;
+  const h = HEX_RADIUS;
+  const side = h - HEX_CAP;
+  return [
+    [x, y - h], [x + w, y - side], [x + w, y + side], [x, y + h], [x - w, y + side], [x - w, y - side]
+  ].map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join(" ");
 }
 
 export function parseCellAnchor(anchor: string | undefined): number | null {
@@ -126,11 +136,14 @@ export function parseCellAnchor(anchor: string | undefined): number | null {
 export function HexBattlefieldBackdrop({
   boardArtId,
   flipped,
-  combat
+  combat,
+  siegeTown
 }: {
   boardArtId: string;
   flipped: boolean;
   combat: CombatState;
+  /** The defending town's siege set (siegeTownOf); only read in a siege. */
+  siegeTown?: string;
 }) {
   const zones = useMemo(
     () => new Set([...getHexDeploymentZone("attacker"), ...getHexDeploymentZone("defender")]),
@@ -155,15 +168,15 @@ export function HexBattlefieldBackdrop({
     (obstacle) => obstacle.tiles.length === 1 && obstacle.tiles[0][0] === 0 && obstacle.tiles[0][1] === 0
   );
   const siege = combat.siege ?? null;
+  const town = siegeArtFor(siegeTown);
   return (
     <>
       <div aria-hidden="true" className={flipped ? "hexBackdropWrap flipped" : "hexBackdropWrap"}>
-        <img
-          alt=""
-          className={siege ? "hexBackdrop siegeBackdrop" : "hexBackdrop"}
-          referrerPolicy="no-referrer"
-          src={assetUrl(siege ? SIEGE_BACKDROP : backdrop)}
-        />
+        {siege ? (
+          <HexSiegeBackdrop town={town} />
+        ) : (
+          <img alt="" className="hexBackdrop" referrerPolicy="no-referrer" src={assetUrl(backdrop)} />
+        )}
       </div>
       <svg
         aria-hidden="true"
@@ -200,7 +213,7 @@ export function HexBattlefieldBackdrop({
             <HexTokenArt art={LOOSE_OBSTACLE_ART} cells={[cell]} flipped={flipped} key={`loose-${cell}`} kind="rocks" />
           )
         )}
-        {siege?.hexTokens ? <HexSiegePieces combat={combat} flipped={flipped} /> : null}
+        {siege?.hexTokens ? <HexSiegeScene combat={combat} flipped={flipped} town={town} /> : null}
         {(combat.battlefieldTokens ?? [])
           .filter((token) => (token.extraCells?.length ?? 0) > 0)
           .map((token) => (
@@ -221,104 +234,184 @@ export function HexBattlefieldBackdrop({
   );
 }
 
-/**
- * PC Castle siege art. The backdrop's moat is stretched under the wall line
- * (column 11); its gate road already runs along row E, the Gate's row.
- */
-const SIEGE_BACKDROP = "/assets/battle-hex/siege/backdrop.webp";
+// ---------------------------------------------------------------------------
+// Siege: the defending town's own PC scene
+// ---------------------------------------------------------------------------
 
-/** The keep stands just past the grid's right edge (behind the defender's zone). */
-const SIEGE_KEEP_X = Math.min(768, GRID_LEFT + HEX_WIDTH * (HEX_BATTLEFIELD_COLUMNS + 0.5) + 4);
+/** One piece of a town's siege scene: its PC position (top-left) and size, in board units. */
+type SiegeArtPiece = { x: number; y: number; width: number; height: number };
 
 /**
- * The printed siege layout (rulebook p.13, defender on the right) — the same
- * five tokens the engine lays out; a token missing from `siege.hexTokens` has
- * been destroyed and shows its rubble piece. Cells are (column, row).
+ * Every town's PC siege scene (scripts/build-siege-art.mjs): backdrop, moat,
+ * background wall, keep, corner towers, walls (intact / ruin), static wall
+ * pieces, gate arch and drawbridge (intact / ruin), at the PC's pixel
+ * positions; plus the keep guard's PC creature position and sprite.
  */
-const SIEGE_PIECES: ReadonlyArray<{ id: string; cells: ReadonlyArray<readonly [number, number]>; intact: string; ruin: string }> = [
-  { id: "wall-1", cells: [[10, 0], [10, 1]], intact: "wall-1", ruin: "wall-1-ruin" },
-  { id: "wall-2", cells: [[10, 2]], intact: "wall-2", ruin: "wall-2-ruin" },
-  { id: "gate", cells: [[10, 3], [9, 4], [10, 4], [10, 5]], intact: "drawbridge", ruin: "drawbridge-broken" },
-  { id: "wall-4", cells: [[10, 6]], intact: "wall-4", ruin: "wall-4-ruin" },
-  { id: "wall-5", cells: [[10, 7], [10, 8]], intact: "wall-5", ruin: "wall-5-ruin" }
-];
+const SIEGE_ART = siegeArt as Readonly<
+  Record<
+    string,
+    {
+      pieces: Readonly<Record<string, SiegeArtPiece>>;
+      /** Top-left of the guard's 450x400 H3 creature canvas (VCMI towers.keep.creature). */
+      keepGuard: { x: number; y: number } | null;
+      guardSprite: string | null;
+    }
+  >
+>;
 
-/** PC art pixel size of each siege piece (1 PC pixel = 1 board unit). */
-const SIEGE_PIECE_SIZE: Readonly<Record<string, readonly [number, number]>> = {
-  "wall-1": [150, 206], "wall-1-ruin": [150, 206],
-  "wall-2": [100, 200], "wall-2-ruin": [100, 200],
-  "wall-4": [100, 200], "wall-4-ruin": [100, 200],
-  "wall-5": [100, 200], "wall-5-ruin": [100, 200],
-  drawbridge: [103, 87], "drawbridge-broken": [103, 87],
-  "gate-arch": [65, 225], keep: [80, 300]
+/** Towns without a PC siege of their own borrow the nearest one. */
+const SIEGE_TOWN_FALLBACK: Readonly<Record<string, string>> = {
+  forge: "factory",
+  azur_lane: "cove",
+  hidden_leaf: "rampart",
+  azure_breeze: "rampart",
+  heavenly_demon: "inferno",
+  blue_archive: "tower",
+  imperium: "castle",
+  fuyuki: "castle",
+  little_busters: "castle",
+  mgq: "castle"
 };
 
-function SiegePiece({ art, x, bottom, row, flipped }: { art: string; x: number; bottom: number; row: number; flipped: boolean }) {
-  const [width, height] = SIEGE_PIECE_SIZE[art] ?? [100, 200];
-  const left = (flipped ? HEX_BOARD_WIDTH - x : x) - width / 2;
+/**
+ * The siege set of the town being defended: the fought-over town field's
+ * faction, else the town owner's, else the defender's; Castle when none has a
+ * set (a neutral Random Town without a faction).
+ */
+export function siegeTownOf(state: GameState, combat: CombatState): string {
+  const fieldId = "fieldId" in combat.context ? combat.context.fieldId : undefined;
+  const faction =
+    (fieldId ? state.adventure?.fields[fieldId]?.faction : undefined) ??
+    (combat.siege ? state.players[combat.siege.townPlayerId]?.factionId : undefined) ??
+    state.players[combat.defenderPlayerId]?.factionId;
+  if (faction && SIEGE_ART[faction]) return faction;
+  const fallback = faction ? SIEGE_TOWN_FALLBACK[faction] : undefined;
+  return fallback && SIEGE_ART[fallback] ? fallback : "castle";
+}
+
+function siegeArtFor(town: string | undefined): string {
+  return town && SIEGE_ART[town] ? town : "castle";
+}
+
+/**
+ * The PC draws its wall one hex column further toward the attacker than the
+ * rulebook board's Wall column (its gate sits on PC columns 10-11, the board's
+ * Gate on 11-12), so the whole scene moves one column (44 px) toward the
+ * defender: the drawbridge then lies on the board's Gate hexes and the wall
+ * pieces on its Wall hexes. The keep stays where the PC stands it.
+ */
+const SIEGE_SCENE_SHIFT = HEX_WIDTH;
+
+/** How far the keep moves left to stand wholly on the board (0 when it already does). */
+function keepShift(pieces: Readonly<Record<string, SiegeArtPiece>>): number {
+  const keep = pieces.keep ?? pieces["keep-ruin"];
+  return keep ? Math.min(0, HEX_BOARD_WIDTH - keep.width - keep.x) : 0;
+}
+
+/**
+ * The keep's guard (the town's siege shooter: Castle Archer, Rampart Wood Elf,
+ * Tower Mage…): the creature the Arrow Tower is drawn as, standing on the keep
+ * where the PC stands it — its feet where an H3 creature's feet fall on its
+ * 450x400 canvas (x 196 mirrored for a left-facing defender, y 266). Board
+ * units, unmirrored (the figure mirrors for the flipped seat); null when the
+ * town has no guard.
+ */
+export function siegeKeepGuard(town: string | undefined): { slug: string; x: number; y: number } | null {
+  const art = SIEGE_ART[siegeArtFor(town)];
+  if (!art?.keepGuard || !art.guardSprite) return null;
+  return { slug: art.guardSprite, x: art.keepGuard.x + (450 - 196) + keepShift(art.pieces), y: art.keepGuard.y + 266 };
+}
+
+/**
+ * The town's siege backdrop, shifted with the scene. The strip it uncovers on
+ * the attacker's edge shows the backdrop's own edge mirrored (seamless ground).
+ */
+function HexSiegeBackdrop({ town }: { town: string }) {
+  const src = assetUrl(`/assets/battle-hex/siege/${town}/back.webp`);
+  const shift = (SIEGE_SCENE_SHIFT / HEX_BOARD_WIDTH) * 100;
   return (
-    <img
-      alt=""
-      className="hexSiegePiece"
-      src={assetUrl(`/assets/battle-hex/siege/${art}.webp`)}
-      style={{
-        left: `${(left / HEX_BOARD_WIDTH) * 100}%`,
-        top: `${((bottom - height) / HEX_BOARD_HEIGHT) * 100}%`,
-        width: `${(width / HEX_BOARD_WIDTH) * 100}%`,
-        height: `${(height / HEX_BOARD_HEIGHT) * 100}%`,
-        zIndex: 10 + row,
-        transform: flipped ? "scaleX(-1)" : undefined
-      }}
-    />
+    <>
+      <img
+        alt=""
+        className="hexBackdrop siegeBackdropFill"
+        referrerPolicy="no-referrer"
+        src={src}
+        style={{ left: `${shift - 100}%` }}
+      />
+      <img alt="" className="hexBackdrop siegeBackdrop" referrerPolicy="no-referrer" src={src} style={{ left: `${shift}%` }} />
+    </>
   );
 }
 
-function HexSiegePieces({ combat, flipped }: { combat: CombatState; flipped: boolean }) {
-  const standing = new Set((combat.siege?.hexTokens ?? []).map((token) => token.id));
-  const towerStands = Boolean(
-    combat.siege?.arrowTowerUnitId && (combat.units[combat.siege.arrowTowerUnitId]?.damage ?? 0) <
-      (combat.units[combat.siege.arrowTowerUnitId]?.maxHealth ?? 0)
-  );
+/**
+ * The town's siege pieces over the board. Each Wall / Gate token of the
+ * printed layout drives the PC piece standing on it (intact while the token
+ * stands, its ruin once destroyed); the keep is the Arrow Tower (standing, or
+ * its ruin once the tower falls; absent when the siege has no tower). Pieces
+ * stack with the hex rows (z 10 + row, like the creatures), so a creature in
+ * front of a wall draws over it; the moat and a broken drawbridge lie on the
+ * ground under everything.
+ */
+function HexSiegeScene({ combat, flipped, town }: { combat: CombatState; flipped: boolean; town: string }) {
+  const art = (SIEGE_ART[town] ?? SIEGE_ART.castle).pieces;
+  const siege = combat.siege;
+  if (!siege) return null;
+  const standing = new Set((siege.hexTokens ?? []).map((token) => token.id));
+  // The engine clears arrowTowerUnitId when the tower falls; its unit stays, so
+  // fall back to it to draw the keep ruin.
+  const tower = siege.arrowTowerUnitId
+    ? combat.units[siege.arrowTowerUnitId]
+    : Object.values(combat.units).find(isArrowTowerUnit);
+  const towerStands = Boolean(tower && tower.damage < tower.maxHealth);
+  const token = (id: string, piece: string) => (standing.has(id) ? piece : `${piece}-ruin`);
+  const GROUND = 5;
+  const pieces: Array<[name: string, z: number]> = [
+    ["moat", GROUND],
+    ["moat-bank", GROUND],
+    ["background-wall", 10],
+    ...(tower
+      ? towerStands
+        ? // The guard (hex-figures HexKeepGuard, z 11) stands between the two.
+          ([["keep", 11], ["keep-battlement", 13]] as Array<[string, number]>)
+        : ([["keep-ruin", 11]] as Array<[string, number]>)
+      : []),
+    // The corner towers are scenery: only the keep's guard shoots.
+    ["tower-upper", 10],
+    ["tower-upper-battlement", 10],
+    [token("wall-1", "wall-upper"), 10],
+    ["static-top", 12],
+    [token("wall-2", "wall-over-gate"), 13],
+    ["gate-arch", 14],
+    standing.has("gate") ? ["gate", 14] : ["gate-ruin", GROUND],
+    [token("wall-4", "wall-below-gate"), 16],
+    ["static-bottom", 17],
+    [token("wall-5", "wall-bottom"), 18],
+    ["tower-bottom", 18],
+    ["tower-bottom-battlement", 18]
+  ];
   return (
     <>
-      {towerStands ? (
-        // The keep the Arrow Tower shoots from, behind the defender's zone.
-        <SiegePiece art="keep" bottom={GRID_TOP + HEX_RADIUS + 2.4 * HEX_ROW_STEP} flipped={false} row={0} x={flipped ? HEX_BOARD_WIDTH - SIEGE_KEEP_X : SIEGE_KEEP_X} />
-      ) : null}
-      {SIEGE_PIECES.map((piece) => {
-        const positions = piece.cells
-          .map(([column, row]) => hexPosition(column, row))
-          .filter((position): position is number => position !== null);
-        // Unflipped centres; SiegePiece mirrors x for the flipped seat.
-        const centers = positions.map((position) => hexCellCenter(position, false));
-        const x = centers.reduce((sum, c) => sum + c.x, 0) / Math.max(1, centers.length);
-        const lowest = Math.max(...centers.map((c) => c.y));
-        const row = Math.max(...piece.cells.map(([, r]) => r));
-        const intact = standing.has(piece.id);
-        if (piece.id === "gate") {
-          const gateCentre = hexCellCenter(hexPosition(10, 4)!, false);
-          const bridgeCentre = hexCellCenter(hexPosition(9, 4)!, false);
-          return (
-            <span key={piece.id}>
-              <SiegePiece art="gate-arch" bottom={lowest + HEX_RADIUS * 0.6} flipped={flipped} row={row} x={gateCentre.x + 8} />
-              <SiegePiece
-                art={intact ? piece.intact : piece.ruin}
-                bottom={bridgeCentre.y + HEX_RADIUS * 0.9}
-                flipped={flipped}
-                row={4}
-                x={bridgeCentre.x}
-              />
-            </span>
-          );
-        }
+      {pieces.map(([name, z]) => {
+        const piece = art[name];
+        if (!piece) return null;
+        const keep = name.startsWith("keep");
+        // The keep keeps its PC spot (fully on the board); the rest moves with the scene.
+        const x = keep ? piece.x + keepShift(art) : piece.x + SIEGE_SCENE_SHIFT;
+        const left = flipped ? HEX_BOARD_WIDTH - x - piece.width : x;
         return (
-          <SiegePiece
-            art={intact ? piece.intact : piece.ruin}
-            bottom={lowest + HEX_RADIUS * 0.7}
-            flipped={flipped}
-            key={piece.id}
-            row={row}
-            x={x}
+          <img
+            alt=""
+            className="hexSiegePiece"
+            key={name}
+            src={assetUrl(`/assets/battle-hex/siege/${town}/${name}.webp`)}
+            style={{
+              left: `${(left / HEX_BOARD_WIDTH) * 100}%`,
+              top: `${(piece.y / HEX_BOARD_HEIGHT) * 100}%`,
+              width: `${(piece.width / HEX_BOARD_WIDTH) * 100}%`,
+              height: `${(piece.height / HEX_BOARD_HEIGHT) * 100}%`,
+              zIndex: z,
+              transform: flipped ? "scaleX(-1)" : undefined
+            }}
           />
         );
       })}
@@ -495,10 +588,13 @@ export type HexUnitCueDetail = {
 export const HEX_UNIT_CUE_EVENT = "hexunitcue";
 /** Sent to a figure as soon as a move cue for it is queued (it keeps holding on its old hex). */
 export const HEX_UNIT_PENDING_MOVE_EVENT = "hexunitpendingmove";
+/** Sent to a figure when the mouse comes to rest on it: it plays its H3 mouse-over row, as on the PC. */
+export const HEX_UNIT_HOVER_EVENT = "hexunithover";
 
 /** Board metrics the figure layer positions creatures with (board units). */
 export const hexBoardMetrics = {
   hexWidth: HEX_WIDTH,
+  /** Half the tip-to-tip height (the PC hex is taller than it is wide). */
   hexRadius: HEX_RADIUS,
   rowStep: HEX_ROW_STEP,
   gridTop: GRID_TOP

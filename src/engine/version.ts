@@ -1513,7 +1513,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // into a Neutral card, and a Neutral-side card and the Few/Pack card of one
 // expansion unit are different cards; Mech Princess phantom Scroll spells never
 // enter the removed pile; the AI hunts an enemy hero on its own tile I.
-export const ENGINE_PROTOCOL_VERSION = 184;
+// v185: Forge Grunt Tempo every round (+1), Cyberbrute odd-round disadvantage and
+// once-per-round repair, Tank Counterdrive path check, Arc Discharge round 3 tier,
+// Storm Salvage Chain Lightning only, Chain Lightning may target a friend first,
+// Necromancy Undead-only, Castle-S3 approaches on Bulwark/Factory/Forge starting
+// tiles, Angel one hex / Archangel two, unit-ability lethal saves cancel outright,
+// neutral Chain Lightning forks auto-aim, parked-activation advance, AI throw guard.
+export const ENGINE_PROTOCOL_VERSION = 185;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

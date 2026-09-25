@@ -94,14 +94,24 @@ import {
   HexBattlefieldBackdrop,
   HexCommandBar,
   hexCellCenter,
+  HEX_UNIT_HOVER_EVENT,
   hexCellStyle,
-  isHexCombat
+  isHexCombat,
+  siegeTownOf
 } from "./hex-battlefield";
 import { getBattlefieldPositions, isHexPosition } from "@/engine/battlefield";
 import { battlefieldTokenCovers, unitCells, unitTailCell } from "@/engine/hex-footprint";
 import { siegeGatePositions, siegeHexTokenAt } from "@/engine/siege";
 import { previewActionTargets, type ActionTargetPreview } from "@/engine/target-preview";
 import { HexUnitsLayer } from "./hex-figures";
+import {
+  hexApproaches,
+  hexAttackCursor,
+  hexAttackIsRanged,
+  hexCursorStyle,
+  hexShootCursor,
+  pickHexApproach
+} from "./hex-cursor";
 import { HexHeroesLayer } from "./hex-heroes";
 import { BattleMetric, signedMorale } from "./battle-metrics";
 
@@ -900,11 +910,70 @@ export function BattlefieldBoard({
   const { zoomUnit } = useCardZoom();
   const [hexHoverUnitId, setHexHoverUnitId] = useState<string | null>(null);
   const hexHoverTimer = useRef(0);
+  /** The creature whose mouse-over row already played for the current visit. */
+  const hexHoverFigure = useRef<string | null>(null);
   useEffect(() => () => window.clearTimeout(hexHoverTimer.current), []);
   // Hex board "who will be affected": the cell under the cursor. When that cell
   // would dispatch a targeted action, every unit / hex the action reaches is
   // marked (display only — the marks never take the pointer).
   const [hexAimCell, setHexAimCell] = useState<number | null>(null);
+  // PC combat cursor: the mouse's direction from the aimed hex's centre (in
+  // 30° steps). It picks the side a melee attack strikes from (hex-cursor.ts).
+  const [hexAimAngle, setHexAimAngle] = useState<number | null>(null);
+  // A PC-style move-then-attack in flight: the MOVE_UNIT to the chosen side was
+  // sent; once the creature stands there, the attack from that hex is sent —
+  // only if the engine then offers exactly that attack. Anything else (it was
+  // stopped short, a prompt opened, its activation ended) drops the follow-up.
+  const hexApproachQueue = useRef<{
+    attackerId: string;
+    defenderId: string;
+    destination: number;
+    /** Where the striker stood, and which activation it was, when queued. */
+    origin: number;
+    round: number;
+    activationStart: number | undefined;
+    sentAt: number;
+    arrivedAt: number | null;
+  } | null>(null);
+  useEffect(() => {
+    const queued = hexApproachQueue.current;
+    if (!queued) return;
+    const now = Date.now();
+    const attacker = state.combat?.units[queued.attackerId];
+    // Only the same activation that sent the move may follow it up (never a
+    // later morale / Wait re-activation that happens to start there).
+    if (
+      !attacker ||
+      state.combat?.activeUnitId !== queued.attackerId ||
+      state.combat?.round !== queued.round ||
+      attacker.activationStartPosition !== queued.activationStart ||
+      attacker.attackedThisActivation ||
+      now - queued.sentAt > 15000
+    ) {
+      hexApproachQueue.current = null;
+      return;
+    }
+    if (attacker.position !== queued.destination) {
+      // Stopped short of the approach hex: drop the follow-up.
+      if (attacker.position !== queued.origin) hexApproachQueue.current = null;
+      return;
+    }
+    const attack = legalActions.find(
+      (legal) =>
+        legal.action.type === "ATTACK_UNIT" &&
+        legal.action.playerId === viewerPlayerId &&
+        legal.action.attackerId === queued.attackerId &&
+        legal.action.defenderId === queued.defenderId &&
+        !legal.action.abilityAttack
+    );
+    if (attack) {
+      hexApproachQueue.current = null;
+      onAction(attack.action);
+      return;
+    }
+    queued.arrivedAt ??= now;
+    if (now - queued.arrivedAt > 4000) hexApproachQueue.current = null;
+  }, [state, legalActions, onAction, viewerPlayerId]);
   // The Neutral guard currently being drag-sorted (Manual guard control): while
   // it is held, only that guard's legal cells light up — a shooter shows just
   // the back row, so a shooter can never be dropped onto the front line.
@@ -1437,6 +1506,15 @@ export function BattlefieldBoard({
   // that loop (later in the same children list, so the map is complete by then)
   // and preview exactly what a click on the hovered cell would do.
   const hexCellDispatch = new Map<number, GameAction>();
+  // PC combat cursor + melee approach: the viewer's active creature, while no
+  // card / route plan / deployment has taken over the board.
+  const hexStriker =
+    hex && combat && activeUnitId && !selectedCardAction && !planning && !combat.setup
+      ? combat.units[activeUnitId]
+      : undefined;
+  const hexStrikerIsViewers = Boolean(
+    hexStriker && combat && combatUnitDecisionOwnerId(state, combat, hexStriker) === viewerPlayerId
+  );
 
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
@@ -1561,22 +1639,55 @@ export function BattlefieldBoard({
           {...(hex && combat
             ? {
                 onPointerOver: (event: React.PointerEvent<HTMLDivElement>) => {
-                  if (event.pointerType === "touch") return;
+                  if (event.pointerType === "touch") {
+                    // A tap must not reuse the last mouse aim (touch laptops).
+                    setHexAimCell(null);
+                    setHexAimAngle(null);
+                    return;
+                  }
                   const aimCell = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-cell]")?.dataset.fxCell;
                   setHexAimCell(aimCell === undefined ? null : Number(aimCell));
                   const unitId = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-unit]")?.dataset.fxUnit ?? null;
                   window.clearTimeout(hexHoverTimer.current);
                   if (!unitId) {
+                    hexHoverFigure.current = null;
                     setHexHoverUnitId(null);
                     return;
                   }
                   // A short settle so sweeping the cursor across the board does not flicker cards.
-                  hexHoverTimer.current = window.setTimeout(() => setHexHoverUnitId(unitId), 180);
+                  hexHoverTimer.current = window.setTimeout(() => {
+                    setHexHoverUnitId(unitId);
+                    // The creature under the resting mouse plays its PC mouse-over row (once per visit).
+                    if (hexHoverFigure.current !== unitId) {
+                      hexHoverFigure.current = unitId;
+                      document
+                        .querySelector(`[data-hex-unit="${CSS.escape(unitId)}"]`)
+                        ?.dispatchEvent(new CustomEvent(HEX_UNIT_HOVER_EVENT));
+                    }
+                  }, 180);
+                },
+                onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+                  if (event.pointerType === "touch") return;
+                  const cell = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-cell]");
+                  // The aim only matters for the viewer's own striker.
+                  if (!cell || !hexStrikerIsViewers) {
+                    setHexAimAngle(null);
+                    return;
+                  }
+                  const rect = cell.getBoundingClientRect();
+                  const angle = Math.atan2(
+                    event.clientY - (rect.top + rect.height / 2),
+                    event.clientX - (rect.left + rect.width / 2)
+                  );
+                  const step = Math.PI / 6;
+                  setHexAimAngle(Math.round(angle / step) * step);
                 },
                 onPointerLeave: () => {
                   window.clearTimeout(hexHoverTimer.current);
+                  hexHoverFigure.current = null;
                   setHexHoverUnitId(null);
                   setHexAimCell(null);
+                  setHexAimAngle(null);
                 },
                 onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => {
                   const unitId = (event.target as HTMLElement).closest<HTMLElement>("[data-fx-unit]")?.dataset.fxUnit;
@@ -1591,7 +1702,12 @@ export function BattlefieldBoard({
         >
           {hex && combat ? (
             <>
-              <HexBattlefieldBackdrop boardArtId={boardArt.id} combat={combat} flipped={flipped} />
+              <HexBattlefieldBackdrop
+                boardArtId={boardArt.id}
+                combat={combat}
+                flipped={flipped}
+                siegeTown={combat.siege ? siegeTownOf(state, combat) : undefined}
+              />
               <BattlefieldEnvironment boardArtId={boardArt.id} plane="ground" state={state} />
             </>
           ) : (
@@ -1753,6 +1869,78 @@ export function BattlefieldBoard({
           const isRepositionCandidate = repositionKind !== null && repositionCandidates.includes(index);
           const isFlashing = flashCells.includes(index);
           const isShipObstacle = isObstacle && boardArt.id === "ship-battle";
+          // PC combat cursor (hex board): only where a plain move / attack / mend
+          // is the click — never over a card, ability, choice or deployment pick.
+          const hexPlainCell =
+            hexStrikerIsViewers &&
+            !activationOrderAction &&
+            !abilityAction &&
+            !cardAction &&
+            !spaceCardAction &&
+            !teleportAction &&
+            !placeTokenAction &&
+            !tacticsMoveAction &&
+            !setPowerAction &&
+            !removeObstacleTarget &&
+            !dropTarget;
+          // The side of the enemy under the mouse the creature strikes from
+          // (the aimed hex only: it follows the mouse inside that hex).
+          const hexApproach =
+            hexPlainCell && combat && hexStriker && unit && hexAimCell === index && unit.id !== hexStriker.id
+              ? pickHexApproach(
+                  hexApproaches({
+                    state,
+                    combat,
+                    attacker: hexStriker,
+                    defender: unit,
+                    aimed: index,
+                    flipped,
+                    attackInPlace: attackAction,
+                    moves: moveActionsByDestination
+                  }),
+                  hexAimAngle
+                )
+              : null;
+          const hexCursor = !hexPlainCell || !combat || !hexStriker
+            ? undefined
+            : hexApproach
+              ? hexCursorStyle(hexAttackCursor(hexApproach))
+              : unit && attackAction && hexAttackIsRanged(combat, hexStriker, unit)
+                ? hexCursorStyle(hexShootCursor(state, hexStriker, unit))
+                : unit && healAction
+                  ? hexCursorStyle("heal")
+                  : !unit && moveAction
+                    ? hexCursorStyle(hexStriker.type === "flying" ? "fly" : "move")
+                    : undefined;
+          const strikeFromHex = (approach: NonNullable<typeof hexApproach>, defender: CombatUnitState) => {
+            if (!approach.move || !hexStriker) return;
+            hexApproachQueue.current = {
+              attackerId: hexStriker.id,
+              defenderId: defender.id,
+              destination: approach.destination,
+              origin: hexStriker.position,
+              round: combat?.round ?? 0,
+              activationStart: hexStriker.activationStartPosition,
+              sentAt: Date.now(),
+              arrivedAt: null
+            };
+            onAction(approach.move);
+          };
+          if (hexApproach && hexStriker && unit) {
+            // "Who will be affected" from the side the strike comes from.
+            hexCellDispatch.set(
+              index,
+              hexApproach.move
+                ? {
+                    type: "MOVE_AND_ATTACK_UNIT",
+                    playerId: viewerPlayerId,
+                    attackerId: hexStriker.id,
+                    destination: hexApproach.destination,
+                    defenderId: unit.id
+                  }
+                : hexApproach.attack!
+            );
+          }
           const className = `battleCell ${hex ? "hexBattleCell " : ""}${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? `obstacle${isShipObstacle ? " seaObstacle" : ""}` : ""
           } ${(moveAction || tacticsMoveAction) && !selectedCardAction && !planning ? "moveTarget" : ""} ${
@@ -2399,8 +2587,11 @@ export function BattlefieldBoard({
               placeTokenAction ||
               tacticsMoveAction)
           ) {
-            if (hex) hexCellDispatch.set(index, interactiveAction);
-            const label = activationOrderAction
+            if (hex && !hexCellDispatch.has(index)) hexCellDispatch.set(index, interactiveAction);
+            const approachMove = hexApproach?.move && interactiveAction === attackAction ? hexApproach : null;
+            const label = approachMove && unit
+              ? `Attack ${unit.name} from ${getBattlefieldLabel(approachMove.destination)}`
+              : activationOrderAction
               ? `Choose ${unit?.name} to activate first`
               : abilityAction
               ? `Ability target: ${unit?.name}`
@@ -2438,11 +2629,36 @@ export function BattlefieldBoard({
                       setExpertSwapArmed(false);
                     }
                   }
+                  if (approachMove && unit) {
+                    strikeFromHex(approachMove, unit);
+                    return;
+                  }
                   onAction(interactiveAction);
                 }}
                 onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
                 {...repositionHoverProps}
-                style={cellStyle}
+                style={hexCursor ? { ...cellStyle, ...hexCursor } : cellStyle}
+                title={label}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          }
+
+          if (unit && hexApproach?.move) {
+            const approach = hexApproach;
+            const label = `Attack ${unit.name} from ${getBattlefieldLabel(approach.destination)}`;
+            return (
+              <button
+                aria-label={label}
+                className={className}
+                data-fx-cell={index}
+                data-fx-unit={unit.id}
+                key={index}
+                onClick={() => strikeFromHex(approach, unit)}
+                onMouseEnter={() => onInspect(unit.id)}
+                style={hexCursor ? { ...cellStyle, ...hexCursor } : cellStyle}
                 title={label}
                 type="button"
               >
@@ -2518,6 +2734,7 @@ export function BattlefieldBoard({
               defense: getActiveDefenseBonus(state, shown) + tokenDefenseDelta(shown),
               initiative: effectiveInitiative(shown, state.activeEffects, combat) - shown.initiative
             })}
+            siegeTown={combat.siege ? siegeTownOf(state, combat) : undefined}
             units={[...new Set(unitsByPosition.values())]}
           />
         ) : null}

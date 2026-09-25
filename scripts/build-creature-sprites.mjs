@@ -25,7 +25,8 @@
  * Every frame is cropped to the union bounding box of ALL frames, so the
  * creature's foot anchor is one constant point for the whole atlas (no
  * per-frame jitter). One atlas row per animation group; groups keep their H3
- * ids (0 move, 1 mouse-over, 2 standing, 3 getting hit, 4 defend, 5 death,
+ * ids (0 move, 1 mouse-over (played when the mouse rests on it, as on the PC),
+ * 2 standing, 3 getting hit, 4 defend, 5 death,
  * 7/8 turn, 11/12/13 attack up/straight/down, 14/15/16 shoot, 20/21 start/stop
  * moving); unused groups are not stored. Palette slots 0 (transparent) and 5 (selection outline) are dropped;
  * shadow slots become translucent black. H3 creatures face RIGHT.
@@ -177,8 +178,8 @@ async function decodeVcmiJson(file) {
 // 0 transparent, 5 selection outline: dropped. 1/6 faint shadow, 4/7 shadow, 2/3 shadow edge.
 const SHADOW_ALPHA = { 1: 64, 2: 96, 3: 96, 4: 128, 6: 64, 7: 128 };
 
-/** H3 groups the hex board animates: move, stand, hit, defend, death, turn L/R, attack x3, shoot x3, start/stop move. */
-const USED_GROUPS = new Set([0, 2, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 16, 20, 21]);
+/** H3 groups the hex board animates: move, mouse-over, stand, hit, defend, death, turn L/R, attack x3, shoot x3, start/stop move. */
+const USED_GROUPS = new Set([0, 1, 2, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 16, 20, 21]);
 /** Spell-casting groups (cast up / straight / down), kept only with --cast. */
 const CAST_GROUPS = [17, 18, 19];
 
@@ -195,7 +196,7 @@ async function main() {
     process.exit(1);
   }
   const decoded = defPath.toLowerCase().endsWith(".json") ? await decodeVcmiJson(defPath) : decodeDef(defPath);
-  // Only the groups the hex board plays are kept (mouse-over, the alternate
+  // Only the groups the hex board plays are kept (the alternate
   // turn pair and — unless --cast — spell-casting rows are dropped to keep the
   // atlas small).
   const used = new Set(USED_GROUPS);

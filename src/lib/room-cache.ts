@@ -37,9 +37,62 @@ export function saveCachedRoom(roomId: string, version: number, state: GameState
   }
 }
 
+/** Minimum gap between two live-snapshot mirrors (each is a multi-MB stringify). */
+const ROOM_CACHE_SAVE_INTERVAL_MS = 4000;
+let pendingRoomSave: { roomId: string; version: number; state: GameState } | null = null;
+let pendingRoomSaveTimer: number | undefined;
+let lastRoomSaveAt = 0;
+let roomSaveFlushBound = false;
+
+function flushPendingRoomSave(): void {
+  if (pendingRoomSaveTimer !== undefined) {
+    window.clearTimeout(pendingRoomSaveTimer);
+    pendingRoomSaveTimer = undefined;
+  }
+  const pending = pendingRoomSave;
+  pendingRoomSave = null;
+  if (pending) {
+    lastRoomSaveAt = Date.now();
+    saveCachedRoom(pending.roomId, pending.version, pending.state);
+  }
+}
+
+/**
+ * Throttled saveCachedRoom for the live snapshot stream: serializing the whole
+ * room on every broadcast frame stalled phones. Saves at most once per
+ * interval (latest state wins) and flushes when the tab is hidden or closed,
+ * which is exactly when the recovery copy matters.
+ */
+export function scheduleCachedRoomSave(roomId: string, version: number, state: GameState): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!roomSaveFlushBound) {
+    roomSaveFlushBound = true;
+    window.addEventListener("pagehide", flushPendingRoomSave);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushPendingRoomSave();
+    });
+  }
+  if (pendingRoomSave && pendingRoomSave.roomId !== roomId) {
+    flushPendingRoomSave();
+  }
+  pendingRoomSave = { roomId, version, state };
+  const wait = ROOM_CACHE_SAVE_INTERVAL_MS - (Date.now() - lastRoomSaveAt);
+  if (wait <= 0) {
+    flushPendingRoomSave();
+  } else if (pendingRoomSaveTimer === undefined) {
+    pendingRoomSaveTimer = window.setTimeout(flushPendingRoomSave, wait);
+  }
+}
+
 export function loadCachedRoom(roomId: string): CachedRoom | null {
   if (typeof window === "undefined") {
     return null;
+  }
+  // A throttled save still waiting is newer than what storage holds.
+  if (pendingRoomSave?.roomId === roomId) {
+    flushPendingRoomSave();
   }
   try {
     const raw = window.localStorage.getItem(ROOM_CACHE_PREFIX + roomId);
@@ -61,10 +114,22 @@ export function loadCachedRoom(roomId: string): CachedRoom | null {
   }
 }
 
+/** Drop a not-yet-written throttled save (for one room, or all). */
+function cancelPendingRoomSave(roomId?: string): void {
+  if (pendingRoomSave && (roomId === undefined || pendingRoomSave.roomId === roomId)) {
+    pendingRoomSave = null;
+    if (pendingRoomSaveTimer !== undefined) {
+      window.clearTimeout(pendingRoomSaveTimer);
+      pendingRoomSaveTimer = undefined;
+    }
+  }
+}
+
 export function clearCachedRoom(roomId: string): void {
   if (typeof window === "undefined") {
     return;
   }
+  cancelPendingRoomSave(roomId);
   try {
     window.localStorage.removeItem(ROOM_CACHE_PREFIX + roomId);
   } catch {
@@ -81,6 +146,7 @@ export function clearAllCachedRooms(): void {
   if (typeof window === "undefined") {
     return;
   }
+  cancelPendingRoomSave();
   try {
     const keys: string[] = [];
     for (let i = 0; i < window.localStorage.length; i += 1) {

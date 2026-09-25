@@ -1,0 +1,82 @@
+{
+  "blocked": {
+    "image": "/assets/battle-hex/cursors/blocked.png",
+    "hotX": 26,
+    "hotY": 26
+  },
+  "move": {
+    "image": "/assets/battle-hex/cursors/move.png",
+    "hotX": 19,
+    "hotY": 25
+  },
+  "fly": {
+    "image": "/assets/battle-hex/cursors/fly.png",
+    "hotX": 25,
+    "hotY": 25
+  },
+  "shoot": {
+    "image": "/assets/battle-hex/cursors/shoot.png",
+    "hotX": 24,
+    "hotY": 24
+  },
+  "query": {
+    "image": "/assets/battle-hex/cursors/query.png",
+    "hotX": 16,
+    "hotY": 26
+  },
+  "attack-ne": {
+    "image": "/assets/battle-hex/cursors/attack-ne.png",
+    "hotX": 43,
+    "hotY": 1
+  },
+  "attack-e": {
+    "image": "/assets/battle-hex/cursors/attack-e.png",
+    "hotX": 63,
+    "hotY": 11
+  },
+  "attack-se": {
+    "image": "/assets/battle-hex/cursors/attack-se.png",
+    "hotX": 43,
+    "hotY": 43
+  },
+  "attack-sw": {
+    "image": "/assets/battle-hex/cursors/attack-sw.png",
+    "hotX": 1,
+    "hotY": 43
+  },
+  "attack-w": {
+    "image": "/assets/battle-hex/cursors/attack-w.png",
+    "hotX": 1,
+    "hotY": 11
+  },
+  "attack-nw": {
+    "image": "/assets/battle-hex/cursors/attack-nw.png",
+    "hotX": 1,
+    "hotY": 1
+  },
+  "attack-n": {
+    "image": "/assets/battle-hex/cursors/attack-n.png",
+    "hotX": 11,
+    "hotY": 1
+  },
+  "attack-s": {
+    "image": "/assets/battle-hex/cursors/attack-s.png",
+    "hotX": 11,
+    "hotY": 63
+  },
+  "shoot-penalty": {
+    "image": "/assets/battle-hex/cursors/shoot-penalty.png",
+    "hotX": 28,
+    "hotY": 15
+  },
+  "heal": {
+    "image": "/assets/battle-hex/cursors/heal.png",
+    "hotX": 24,
+    "hotY": 24
+  },
+  "teleport": {
+    "image": "/assets/battle-hex/cursors/teleport.png",
+    "hotX": 30,
+    "hotY": 31
+  }
+}

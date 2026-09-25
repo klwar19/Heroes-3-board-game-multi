@@ -576,13 +576,15 @@ export function appendEvent<T extends EventDraft>(
     if (target) {
       (target.factionVeterancy ??= {}).lastDamage = { kind: hit.damageKind, source: hit.source, amount: hit.amount };
       if (hit.damageKind === "spell" && hit.amount > 0) townNagaMend(state, target);
-      if (hit.amount > 0 && forgeVeterancy(target, "cyberbrute-mend") &&
+      if (hit.amount > 0 && forgeVeterancy(target, "cyberbrute-mend") && target.townVeterancy?.forgeCyberbruteMendRound !== state.combat.round &&
           (hit.damageKind === "spell" || (hit.source.type === "card" && cardLibrary[hit.source.cardId]?.kind === "hero-specialty"))) {
         // The damage event precedes removal. Repair can therefore save a unit
         // from a hit that would otherwise be exactly lethal.
         if (target.damage > 0) {
           target.damage -= 1;
-          veteranTrigger(state, target, "forge-vet-cyberbrute-mend", target, `${target.cardName} repairs 1 HP after spell or specialty damage.`);
+          const memory = (target.townVeterancy ??= {});
+          memory.forgeCyberbruteMendRound = state.combat.round;
+          veteranTrigger(state, target, "forge-vet-cyberbrute-mend", target, `${target.cardName} repairs 1 HP after spell or specialty damage (once this round).`);
           appendEvent(state, { type: "DAMAGE_HEALED", source: { type: "unit", unitId: target.id, controllerId: target.controllerId }, target: { type: "unit", unitId: target.id }, amount: 1 });
         }
       }

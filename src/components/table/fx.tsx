@@ -12,7 +12,13 @@ import {
   type BeamTiming,
 } from "@/data/fx";
 import { RUNE_BURST_ART, runeWordForLevel } from "@/data/rune-words";
-import { HEX_UNIT_CUE_EVENT, HEX_UNIT_PENDING_MOVE_EVENT, type HexUnitCueDetail } from "./hex-battlefield";
+import {
+  HEX_BOARD_WIDTH,
+  HEX_SPRITE_SCALE,
+  HEX_UNIT_CUE_EVENT,
+  HEX_UNIT_PENDING_MOVE_EVENT,
+  type HexUnitCueDetail
+} from "./hex-battlefield";
 import { HEX_HERO_CUE_EVENT, type HexHeroCueDetail, type HexHeroPose } from "./hex-heroes";
 import {
   playCardPlace,
@@ -430,6 +436,38 @@ function centerOf(rect: DOMRect): { x: number; y: number } {
 /** The hex battlefield is on screen (only it draws the hex grid). */
 function hexBoardShown(): boolean {
   return typeof document !== "undefined" && document.querySelector("svg.hexGrid") !== null;
+}
+
+/** On-screen pixels per hex-board unit (0 when the hex board is not shown). */
+function hexBoardPixelScale(): number {
+  const grid = typeof document !== "undefined" ? document.querySelector("svg.hexGrid") : null;
+  const width = grid?.getBoundingClientRect().width ?? 0;
+  return width > 0 ? width / HEX_BOARD_WIDTH : 0;
+}
+
+/**
+ * Hex battlefield: the box a spell / ability effect is SIZED in when it lands
+ * on a unit or a hex. Effect sheets are sized against a 90 px "cell" (the card
+ * boards' unit cell); on the hex board the anchor is a creature's small body
+ * box, which drew Magic Arrow, Haste, Cure… at a third of their size. This box
+ * is 90 H3 pixels at the creatures' own scale, so every sheet converted from
+ * the Heroes 3 .defs plays exactly as large against the creatures as on the
+ * PC, and authored sheets keep their size relative to a unit. Same centre as
+ * the anchor. Any other anchor (or the card boards) keeps the anchor rect.
+ */
+function hexEffectRect(anchor: string, rect: DOMRect): DOMRect {
+  if (!anchor.startsWith("unit:") && !anchor.startsWith("cell:")) return rect;
+  const pixelScale = hexBoardPixelScale();
+  if (pixelScale <= 0) return rect;
+  const width = 90 * HEX_SPRITE_SCALE * pixelScale;
+  const height = width * 1.2;
+  const centre = centerOf(rect);
+  return new DOMRect(centre.x - width / 2, centre.y - height / 2, width, height);
+}
+
+/** A sheet converted from a Heroes 3 .def (native H3 pixels), not an authored atlas. */
+function isH3NativeSheet(sheet: { sequentialFrames?: boolean; sourceDef: string }): boolean {
+  return !sheet.sequentialFrames && /^[a-z0-9_]+$/i.test(sheet.sourceDef);
 }
 
 /** The rendered battle cells a unit stands on: two for a two-hex creature. */
@@ -1676,10 +1714,11 @@ async function runSprite(
   fit?: "battlefield",
 ): Promise<void> {
   const sheet = getFxSheet(fxKey);
-  const rect = resolveAnchorRect(at);
-  if (!sheet || !rect) {
+  const anchorRect = resolveAnchorRect(at);
+  if (!sheet || !anchorRect) {
     return;
   }
+  const rect = fit === "battlefield" ? anchorRect : hexEffectRect(at, anchorRect);
 
   // Unit effects stay compact; battlefield effects cover the complete board
   // and are clipped to its ornate frame rather than spilling across the HUD.
@@ -1691,6 +1730,11 @@ async function runSprite(
     : rect.width / 90;
   if (fit !== "battlefield" && !areaFit) {
     scale = Math.min(scale, (rect.height * 2.4) / sheet.frameHeight, (rect.width * 2.4) / sheet.frameWidth);
+  }
+  // Hex area bursts (Fireball, Inferno, Frost Ring…) are never drawn smaller
+  // than the PC draws them: an H3 sheet at the creatures' own pixel scale.
+  if (areaFit && isH3NativeSheet(sheet)) {
+    scale = Math.max(scale, HEX_SPRITE_SCALE * hexBoardPixelScale());
   }
   scale *= sheet.scaleMultiplier ?? 1;
 
@@ -1796,7 +1840,7 @@ async function runPhasedProjectile(
   // Impact frames still contain the projectile/remnants, so they must retain
   // the firing side even though the burst itself should no longer be tilted.
   const impactTransform = firesLeft ? "scaleX(-1)" : "none";
-  const cellWidth = Math.min(fromRect.width, toRect.width);
+  const cellWidth = Math.min(hexEffectRect(cue.from, fromRect).width, hexEffectRect(cue.to, toRect).width);
   const launchMs = 120;
   const flightMs = cue.flightMs ?? BOLT_FLIGHT_MS;
   const impactMs = 300;
@@ -1903,7 +1947,7 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
   const mirror = Math.abs(angle) > 90 ? " scaleY(-1)" : "";
 
-  const scale = (toRect.width / 90) * 1.1;
+  const scale = (hexEffectRect(cue.to, toRect).width / 90) * 1.1;
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxProjectile";
   sprite.style.width = `${sheet.frameWidth}px`;
