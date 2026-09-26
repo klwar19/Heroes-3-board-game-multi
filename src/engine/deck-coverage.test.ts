@@ -14,6 +14,7 @@ import { animeEquipmentCardIds } from "@/data/anime/equipment-cards";
 import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { wogArtifactCardIds } from "@/data/wog/artifacts";
 import { wogCommanderArtifactCardIds } from "@/data/wog/commander-artifacts";
+import { wogEraComboCardIds } from "@/data/wog/era";
 import { coreHeroDefinitions } from "@/data/factions/core";
 
 /**
@@ -55,12 +56,14 @@ describe("deck coverage", () => {
   // Wake of Gods artifacts), or NEVER join a deck at all: the Hero Grades
   // Training Manual (`anime.heroGrades`) is bought at a guild shop, never drawn,
   // so it is reachable through the shop only — see `animeNeverDeckedCardIds`.
+  // WoG era Skill Combo cards are forged (FORGE_SKILL_COMBO), never drawn.
   const moduleGated = new Set<string>([
     ...animeXianxiaArtifactCardIds,
     ...animeEquipmentCardIds,
     ...wogArtifactCardIds,
     ...wogCommanderArtifactCardIds,
-    ...animeNeverDeckedCardIds
+    ...animeNeverDeckedCardIds,
+    ...wogEraComboCardIds
   ]);
 
   it("places every implemented artifact, spell and ability in a draw deck", () => {

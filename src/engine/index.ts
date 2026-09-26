@@ -231,7 +231,6 @@ export {
   COMMANDER_FRONT_LINE_SPEED_BONUS,
   COMMANDER_SORT_SPEED_GRADE,
   commanderUnitId,
-  commanderUnitImmuneToOngoing,
   findCommanderUnit,
   isCommanderUnit,
   livingCommanderOf,
@@ -984,7 +983,7 @@ export {
 export { describePermanentEffect } from "./effects";
 export { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 export type { BattlefieldCoordinates, BattlefieldTerrain } from "./battlefield";
-export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, MAX_HEX_EVENTS, NEUTRAL_PLAYER_ID } from "./state";
+export { DEFAULT_OBELISK_BONUS, DEFAULT_WOG_OPTIONS, MAX_CUSTOM_GUARD_UNITS, MAX_HEX_EVENTS, NEUTRAL_PLAYER_ID, SUGGESTED_TEMPLE_OF_THE_SEA_AWARD } from "./state";
 export { DEFAULT_ANIME_OPTIONS, animeEnabled, animeModuleEnabled } from "./anime";
 export {
   CULTIVATION_REALMS,

@@ -11,7 +11,7 @@ import { deferPreOrderWarMachine } from "./astrologers-pre-order";
 import { neutralCombatStart } from "./neutral-veterancy";
 import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
-import { hasParkedParallelInteractions, projectContext, captureParallelContext, replaceEventContext } from "./parallel-combats";
+import { hasParkedParallelInteractions, heroInAnyCombat, projectContext, captureParallelContext, replaceEventContext, parallelEngagementMessage, parallelEngagementOwner, parallelPvpKeeps } from "./parallel-combats";
 import {
   awardUnitExperienceAfterCombat,
   diluteUnitExperienceForUpgrade,
@@ -51,6 +51,22 @@ import {
 } from "./commander-artifacts";
 import type { RaidBossDefinition } from "@/data/anime/bosses";
 import { getCreatureBankDefinition, rollStackTokenStat, type CreatureBankId } from "@/data/map/creature-banks";
+import { KARMIC_TREASURE_DICE } from "@/data/wog/era";
+import {
+  beginWanderingBossAttack,
+  carveMithrilMine,
+  forgeMine,
+  grantDiscoveryMithril,
+  forgeSkillCombo,
+  karmicBattleOffered,
+  mintWanderingBossUnit,
+  repayLoan,
+  resolveWanderingBossVictory,
+  settleWanderingBossCombat,
+  takeLoan,
+  takeTeacherLesson,
+  upgradeWarMachine
+} from "./wog-era";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
 import {
@@ -527,6 +543,7 @@ import {
   parallelTurnStartAlreadyRan,
   parallelWaitMessage,
   remainingParallelPlayerIds,
+  resolveParallelPvp,
   stopParallelTurns
 } from "./parallel-turns";
 import {
@@ -1688,9 +1705,42 @@ export function mulliganCard(state: GameState, action: Extract<GameAction, { typ
 // Map movement
 // ---------------------------------------------------------------------------
 
+/**
+ * Parallel PvP "keep": the refusal message when a step onto `spaceId` would
+ * attack (an enemy hero there) or contest a holding of (its flag owner) a
+ * player who is busy elsewhere — in a battle or answering a choice. Null when
+ * the step is free. Heroes never share a hex in parallel play, so an enemy
+ * hero there always means a battle. Mirrors `resolveParallelPvp`, which is
+ * the handler-side guard for the same rule.
+ */
+function parallelPvpBusyStepMessage(state: GameState, hero: HeroState, spaceId: MapSpaceId): string | null {
+  const enemy = heroAtSpace(state, spaceId, hero.id);
+  const flagOwner = state.adventure?.fields[spaceId]?.flagOwnerId;
+  const targets = [
+    enemy && !playersAreAllied(state, enemy.controllerId, hero.controllerId) ? enemy.controllerId : null,
+    flagOwner && flagOwner !== hero.controllerId && flagOwner !== NEUTRAL_PLAYER_ID &&
+      state.players[flagOwner] && !state.players[flagOwner].eliminated &&
+      !playersAreAllied(state, flagOwner, hero.controllerId)
+      ? flagOwner
+      : null
+  ];
+  for (const target of targets) {
+    if (!target) continue;
+    const engagement = parallelEngagementOwner(state, target, state.parallelCombatOwnerId);
+    if (engagement) return parallelEngagementMessage(state, target, engagement);
+  }
+  return null;
+}
+
 export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapSpaceId[] {
   const adventure = state.adventure;
   if (!adventure || !hero.spaceId || hero.movementHaltedThisTurn) {
+    return [];
+  }
+  // A hero fighting a battle — here or parked in another parallel context —
+  // stays on its battlefield (see heroInAnyCombat; moveHeroAdventure and
+  // moveHeroPathAdventure refuse the same hero).
+  if (heroInAnyCombat(state, hero.id)) {
     return [];
   }
   // Out of movement: the only step left is the FREE Subterranean-Gate crossing
@@ -1708,8 +1758,16 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
   const parallelBlocker = parallelMapInteractionBlocker(state, hero.controllerId);
 
   const movement = getHeroMovementCapabilities(state, hero);
+  // Parallel PvP "keep": a step onto another player's hero / holding stays
+  // legal (the battle or capture resolves between the two of them) unless that
+  // player is busy elsewhere — then it waits, exactly as resolveParallelPvp
+  // would refuse it. Classic tables hold back every such step while ANY
+  // parallel interaction is parked (it would have to stop the mode).
+  const pvpKeepsParallel = parallelPvpKeeps(state);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
-    if (hasParkedParallelInteractions(state)) {
+    if (pvpKeepsParallel) {
+      if (parallelPvpBusyStepMessage(state, hero, spaceId)) return false;
+    } else if (hasParkedParallelInteractions(state)) {
       const enemy = heroAtSpace(state, spaceId, hero.id);
       const flagOwner = adventure.fields[spaceId]?.flagOwnerId;
       const peacefulParking = enemy && canHeroShareSpaceAfterMove(state, hero, spaceId,
@@ -2049,12 +2107,15 @@ function openGarrisonPromptIfNeeded(state: GameState, attacker: HeroState, field
             : "settlement";
 
   // Parallel turns: assaulting another player's town/settlement/mine is PvP —
-  // the mode stops (with the table-wide warning) whether the owner garrisons or
-  // lets it fall, before the garrison decision even opens.
-  stopParallelTurns(
+  // the classic option stops the mode (with the table-wide warning) whether the
+  // owner garrisons or lets it fall, before the garrison decision even opens.
+  // The "keep" option lets it resolve between the two players unless the owner
+  // is busy elsewhere (then the step is refused).
+  resolveParallelPvp(
     state,
     "pvp-battle",
     attacker.controllerId,
+    defenderId,
     `assaulting ${state.players[defenderId]?.name ?? defenderId}'s ${siteLabel}`
   );
 
@@ -2510,6 +2571,9 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
   if (!hero.spaceId) {
     throw new Error("That hero is not on the map.");
   }
+  if (heroInAnyCombat(state, hero.id)) {
+    throw new Error("That hero is fighting a battle — finish it before the hero moves on.");
+  }
 
   // The FREE Subterranean-Gate crossing ("one Field", 0 MP) is allowed even
   // with no movement points left; every paid step still needs a point.
@@ -2527,10 +2591,15 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
   if (!getHeroMoveDestinations(state, hero).includes(action.to)) {
     // getHeroMoveDestinations already filters to quiet steps while the table's
     // interaction slot is busy, so a non-quiet request lands here.
+    const busyTargetMessage = parallelPvpKeeps(state) && hero.spaceId
+      ? parallelPvpBusyStepMessage(state, hero, action.to)
+      : null;
     throw new Error(
       parallelBlocker
         ? parallelWaitMessage(state, parallelBlocker)
-        : hasParkedParallelInteractions(state)
+        : busyTargetMessage
+          ? busyTargetMessage
+        : !parallelPvpKeeps(state) && hasParkedParallelInteractions(state)
           ? "Parallel turns: wait until the other players' battles and choices finish before entering an occupied or enemy-controlled field."
         : "Heroes can only move to adjacent, passable fields."
     );
@@ -2566,6 +2635,9 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
   const hero = requireHero(state, action.playerId, action.heroId);
   if (!hero.spaceId) {
     throw new Error("That hero is not on the map.");
+  }
+  if (heroInAnyCombat(state, hero.id)) {
+    throw new Error("That hero is fighting a battle — finish it before the hero moves on.");
   }
 
   if (action.path.length === 0) {
@@ -3607,6 +3679,14 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
     tileDefId: tile.tileDefId,
     rotation
   });
+  // WoG era Mithril (optional module): the discoverer of a new (non-starting)
+  // tile gains its band's Mithril, once per tile, and a Near tile uncovers its
+  // Mithril Mine (carved BEFORE the Field-Override offer below, which then
+  // never picks the same protected hex).
+  if (!isStartTile) {
+    grantDiscoveryMithril(state, action.playerId, tile);
+    carveMithrilMine(state, tile);
+  }
 
   // GLOBAL Field Overrides place FIRST — before Creature Banks, Subterranean
   // Gates, and Monolith/Whirlpool/teleport tokens — so those systems never
@@ -6463,7 +6543,185 @@ export function startNeutralEncounter(
     return;
   }
 
-  beginNeutralCombatPlacement(state, hero, field, difficulty);
+  beginGuardFightOrKarmicChoice(state, hero, field, difficulty);
+}
+
+/**
+ * WoG era Karmic Battles (optional module): an ORDINARY field-guard fight — the
+ * plain-guard placement seams (the normal arrival, the Polish Quick Combat
+ * "Fight" arm, the Diplomacy-skip "Fight" arm / unpayable skip, and a declined or
+ * unusable Balance-Pack Diplomacy ease window at an ordinary guard) — first asks
+ * whether to fight the guard as printed or its
+ * EMPOWERED version. Banks, outposts, teleport guards, exact designer armies,
+ * break fields, waves, bosses and the Dungeon never reach these seams. With the
+ * module off this is exactly beginNeutralCombatPlacement.
+ */
+function beginGuardFightOrKarmicChoice(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number
+): void {
+  if (!karmicBattleOffered(state, difficulty)) {
+    beginNeutralCombatPlacement(state, hero, field, difficulty);
+    return;
+  }
+  const playerId = hero.controllerId;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `Karmic Battle — fight this level ${difficulty} guard as printed, or its EMPOWERED version: every guard gains 1 Stack Token (a statistic bonus that also soaks one lethal blow). Winning the empowered fight pays +${difficulty} gold and ${KARMIC_TREASURE_DICE} Treasure die on top of the normal reward.`,
+    options: [
+      { label: "Fight the guard as printed" },
+      { label: `Karmic Battle: fight the empowered guard (+${difficulty} gold & ${KARMIC_TREASURE_DICE} Treasure die on a win)` }
+    ],
+    context: "karmic-battle",
+    karmicBattle: { heroId: hero.id, fieldId: field.spaceId, difficulty },
+    returnPhase: choiceReturnPhase(state)
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the Karmic Battle pick (CHOOSE_OPTION "karmic-battle"). */
+export function resolveKarmicBattleChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "karmic-battle" ||
+    !choice.karmicBattle ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Karmic Battle decision to make.");
+  }
+  const decision = choice.karmicBattle;
+  const hero = state.heroes[decision.heroId];
+  const field = state.adventure?.fields[decision.fieldId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+  if (!hero || !field) {
+    return;
+  }
+  const empowered = optionIndex === 1;
+  if (empowered) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${state.players[playerId]?.name ?? playerId} accepts a Karmic Battle: the level ${decision.difficulty} guard fights empowered.`
+    });
+  }
+  beginNeutralCombatPlacement(state, hero, field, decision.difficulty, empowered ? { karmicEmpowered: true } : undefined);
+}
+
+/**
+ * Karmic Battle reveal: every DRAWN guard carries one rulebook Stack Token (the
+ * same token the raid-boss escort uses — +1 Attack/Defense/Health or +2
+ * Initiative that is discarded to soak one lethal blow). Seeded off the
+ * combat's dice seed, so every client folds the same tokens.
+ */
+function applyKarmicStackTokens(state: GameState, units: CombatUnitState[]): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral") {
+    return;
+  }
+  const ruleset = getRuleset(state);
+  const overrides = unitSideRuleOverrides(state);
+  const random = createSeededRandom(
+    `${combat.dice.seed ?? state.seed}#karmic-token#${combat.context.fieldId}`,
+    { salt: false }
+  );
+  let tokens = 0;
+  for (const unit of units) {
+    if (unit.bankUnit || !unit.unitDefId || unit.stackToken) {
+      continue;
+    }
+    unit.stackToken = rollStackTokenStat(random);
+    applyUnitCurrentSide(unit, ruleset, overrides);
+    tokens += 1;
+  }
+  if (tokens > 0) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: combat.attackerPlayerId,
+      message: `Karmic Battle: ${tokens} empowered guard${tokens === 1 ? "" : "s"} each carry a Stack Token.`
+    });
+  }
+}
+
+/** WoG era moving Raid Boss: the lone boss body, its recorded wounds carried in. */
+function revealWanderingBossArmy(state: GameState): void {
+  const unit = mintWanderingBossUnit(state, neutralBossCell(state.combat));
+  revealNeutralArmy(state, [], unit ? [unit] : []);
+}
+
+/** Shared guard for the WoG era map actions (legality itself is assertLegal's). */
+function assertEraMapTurn(state: GameState, playerId: PlayerId, what: string): void {
+  requireAdventure(state);
+  if (state.combat) {
+    throw new Error(`${what} cannot interrupt a combat.`);
+  }
+  if (!hasOpenAdventureTurn(state, playerId)) {
+    throw new Error(`${what} happens on your own turn.`);
+  }
+  assertParallelInteractionFree(state, playerId);
+}
+
+/** ATTACK_WANDERING_BOSS: 1 MP, then a boss fight from the hero's own field. */
+export function attackWanderingBossAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "ATTACK_WANDERING_BOSS" }>
+): void {
+  assertEraMapTurn(state, action.playerId, "Attacking the moving Raid Boss");
+  const heroField = state.heroes[action.heroId]?.spaceId
+    ? state.adventure?.fields[state.heroes[action.heroId]!.spaceId!]
+    : undefined;
+  if (!heroField) {
+    throw new Error("That hero is not on the map.");
+  }
+  const hero = beginWanderingBossAttack(state, action.playerId, action.heroId);
+  beginNeutralCombatPlacement(state, hero, heroField, 0, { wanderingBoss: true });
+}
+
+export function teacherLessonAction(state: GameState, action: Extract<GameAction, { type: "TEACHER_LESSON" }>): void {
+  assertEraMapTurn(state, action.playerId, "A lesson with the Wandering Teacher");
+  takeTeacherLesson(state, action.playerId, action.heroId, action.lesson, action.cardId, action.armyUnitId);
+}
+
+export function takeLoanAction(state: GameState, action: Extract<GameAction, { type: "TAKE_LOAN" }>): void {
+  assertEraMapTurn(state, action.playerId, "Taking a loan");
+  takeLoan(state, action.playerId);
+}
+
+export function repayLoanAction(state: GameState, action: Extract<GameAction, { type: "REPAY_LOAN" }>): void {
+  assertEraMapTurn(state, action.playerId, "Repaying a loan");
+  repayLoan(state, action.playerId);
+}
+
+export function mithrilForgeMineAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "MITHRIL_FORGE_MINE" }>
+): void {
+  assertEraMapTurn(state, action.playerId, "Forging a mine");
+  forgeMine(state, action.playerId, action.fieldId);
+}
+
+export function mithrilUpgradeWarMachineAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "MITHRIL_UPGRADE_WAR_MACHINE" }>
+): void {
+  assertEraMapTurn(state, action.playerId, "Forging a war machine");
+  upgradeWarMachine(state, action.playerId, action.cardId);
+}
+
+export function forgeSkillComboAction(
+  state: GameState,
+  action: Extract<GameAction, { type: "FORGE_SKILL_COMBO" }>
+): void {
+  assertEraMapTurn(state, action.playerId, "Forging a Skill Combo");
+  forgeSkillCombo(state, action.playerId, action.comboId);
 }
 
 const BLACK_TOWER_DRAGON_OPTIONS = [
@@ -6638,7 +6896,7 @@ export function resolvePolishQuickCombatChoice(state: GameState, playerId: Playe
     openDiplomacySkipChoice(state, hero, field, decision.difficulty);
     return;
   }
-  beginNeutralCombatPlacement(state, hero, field, decision.difficulty);
+  beginGuardFightOrKarmicChoice(state, hero, field, decision.difficulty);
 }
 
 /**
@@ -6730,6 +6988,10 @@ function beginNeutralCombatPlacement(
     diplomacyTierReduction?: boolean;
     /** Balance-Pack Diplomacy: remove one Bank Stack Token after normal rolls. */
     diplomacyFewerBankStacks?: boolean;
+    /** WoG era moving Raid Boss: difficulty 0, the lone boss is minted at reveal. */
+    wanderingBoss?: boolean;
+    /** WoG era Karmic Battle: every drawn guard gains a Stack Token. */
+    karmicEmpowered?: boolean;
   }
 ): void {
   const playerId = hero.controllerId;
@@ -6743,7 +7005,9 @@ function beginNeutralCombatPlacement(
   // Rulebook Combat Setup order: the player places up to 5 units first (4 when
   // their WOG Commander actually joins and reserves the fifth slot); the guard
   // army is drawn from the tier decks only after placement finishes.
-  const bankId = fieldCreatureBankId(field);
+  // The moving Raid Boss is fought on the hero's OWN field, so it never takes
+  // that field's Creature-Bank formation or Random-Town siege.
+  const bankId = options?.wanderingBoss ? undefined : fieldCreatureBankId(field);
   const combat = makeCombatShell(state, playerId, NEUTRAL_PLAYER_ID);
   combat.context = {
     kind: "neutral",
@@ -6756,7 +7020,7 @@ function beginNeutralCombatPlacement(
     // (where it IS a creature bank). Under the Grail & Dragon Utopia field
     // rules a Utopia is a NORMAL Level-VII field fight (opposing rows), like
     // its sibling Grail — never bank corners.
-    ...(bankId || (field.location === "dragon_utopia" && !grailUtopiaFieldRulesEnabled(state))
+    ...(bankId || (!options?.wanderingBoss && field.location === "dragon_utopia" && !grailUtopiaFieldRulesEnabled(state))
       ? { bankFormation: true }
       : {}),
     ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {}),
@@ -6765,9 +7029,11 @@ function beginNeutralCombatPlacement(
     ...(options?.dungeonFloor !== undefined ? { dungeonFloor: options.dungeonFloor } : {}),
     ...(options?.teleportArrival ? { teleportArrival: true } : {}),
     ...(options?.diplomacyTierReduction ? { diplomacyTierReduction: true } : {}),
-    ...(options?.diplomacyFewerBankStacks ? { diplomacyFewerBankStacks: true } : {})
+    ...(options?.diplomacyFewerBankStacks ? { diplomacyFewerBankStacks: true } : {}),
+    ...(options?.wanderingBoss ? { wanderingBoss: true as const } : {}),
+    ...(options?.karmicEmpowered ? { karmicEmpowered: true as const } : {})
   };
-  if (field.location === "random_town") {
+  if (field.location === "random_town" && !options?.wanderingBoss) {
     // Random Town fights use the siege battlefield and its four middle-row
     // fortifications. The printed card adds "Walls and the Gate for this
     // Combat, but not the Arrow Tower": the defending Neutral Arrow Tower is
@@ -6967,6 +7233,19 @@ function beginDiplomacyTargetBattle(
   enhanced: boolean,
   fight?: DiplomacyEaseFightOptions
 ): void {
+  // Declined / unusable Diplomacy at an ORDINARY guard field (not a bank,
+  // outpost, gateway, break-field or teleport-arrival fight): the plain guard
+  // fight, so the WoG era Karmic Battle pick applies (identical when off).
+  if (
+    kind === "neutral" &&
+    !enhanced &&
+    !field.unlimitedCombatRounds &&
+    !fight?.unlimitedRounds &&
+    !fight?.teleportArrival
+  ) {
+    beginGuardFightOrKarmicChoice(state, hero, field, difficulty);
+    return;
+  }
   beginNeutralCombatPlacement(state, hero, field, kind === "bank" ? 0 : difficulty, {
     ...(kind === "neutral" && (field.unlimitedCombatRounds || fight?.unlimitedRounds) ? { unlimitedRounds: true } : {}),
     ...(fight?.teleportArrival ? { teleportArrival: true } : {}),
@@ -7094,9 +7373,10 @@ export function resolveDiplomacySkipChoice(state: GameState, playerId: PlayerId,
   }
 
   // Option 1 ("Fight") just proceeds to the normal guard Combat Setup, keeping
-  // the Diplomacy card in hand.
+  // the Diplomacy card in hand. It is an ordinary guard fight, so the WoG era
+  // Karmic Battle pick applies (exactly beginNeutralCombatPlacement when off).
   if (optionIndex !== 0) {
-    beginNeutralCombatPlacement(state, hero, field, skip.difficulty);
+    beginGuardFightOrKarmicChoice(state, hero, field, skip.difficulty);
     return;
   }
 
@@ -7109,7 +7389,8 @@ export function resolveDiplomacySkipChoice(state: GameState, playerId: PlayerId,
   const crownFree = skip.crownFree === undefined ? empowered : skip.crownFree && empowered;
   const handIndex = player?.hand.indexOf("ability.diplomacy") ?? -1;
   if (!player || handIndex < 0 || (!crownFree && expertUsesAvailable(player) <= 0)) {
-    beginNeutralCombatPlacement(state, hero, field, skip.difficulty);
+    // The skip is no longer payable: the same ordinary guard fight as "Fight".
+    beginGuardFightOrKarmicChoice(state, hero, field, skip.difficulty);
     return;
   }
 
@@ -10085,6 +10366,10 @@ export function revealNeutralArmy(
     });
   }
   augmentDrawnUnits?.(neutralUnits);
+  // WoG era Karmic Battle: the fighter chose the empowered guard.
+  if (combat.context.karmicEmpowered) {
+    applyKarmicStackTokens(state, neutralUnits);
+  }
 
   if (neutralUnits.length === 0 && extraUnits.length === 0) {
     // The tier decks ran dry: the guards never show up and the field falls.
@@ -11794,16 +12079,31 @@ export function startPlayerCombat(
     throw new Error("Sanctuary: Heroes cannot attack one another this round.");
   }
 
-  // Parallel turns stop the moment a PvP battle begins: the whole table is
-  // warned, the attacker's action continues as their ordered turn, and the
-  // battle resolves under the normal one-at-a-time rules. (Throws — rejecting
-  // the attack — if a third player's interaction is still open.)
-  stopParallelTurns(
-    state,
-    "pvp-battle",
-    attacker.controllerId,
-    `against ${state.players[defenderPlayerId]?.name ?? defenderPlayerId}`
-  );
+  // Parallel turns, classic option: the mode stops the moment a PvP battle
+  // begins: the whole table is warned, the attacker's action continues as their
+  // ordered turn, and the battle resolves under the normal one-at-a-time rules.
+  // (Throws — rejecting the attack — if a third player's interaction is still
+  // open.) "Keep" option: the battle opens in the attacker's parallel context,
+  // the defender is routed into it (parallel-combats.ts) and everyone else keeps
+  // playing; refused while the defender is busy elsewhere. An Arena duel is a
+  // scheduled whole-table round-start event, never a hero's choice, so it keeps
+  // the classic stop either way.
+  if (options?.arenaDuel) {
+    stopParallelTurns(
+      state,
+      "pvp-battle",
+      attacker.controllerId,
+      `against ${state.players[defenderPlayerId]?.name ?? defenderPlayerId}`
+    );
+  } else {
+    resolveParallelPvp(
+      state,
+      "pvp-battle",
+      attacker.controllerId,
+      defenderPlayerId,
+      `against ${state.players[defenderPlayerId]?.name ?? defenderPlayerId}`
+    );
+  }
 
   // Each side keeps an EMPTY unit deck when its living commander joins this
   // fight (main heroes only — a garrison/secondary defender still restocks).
@@ -12583,6 +12883,11 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     // wounds persist) + its minion draws. No swap windows on a boss.
     if (combat.context.raidBossId) {
       revealRaidBossArmy(state, combat.context.raidBossId);
+      return;
+    }
+    // WoG era moving Raid Boss: the lone boss, no escort, no swap windows.
+    if (combat.context.wanderingBoss) {
+      revealWanderingBossArmy(state);
       return;
     }
     // Dungeon floor (§6.7.3): the floor party; floors 5/10 add the floor boss.
@@ -15944,6 +16249,7 @@ export function mgqCompanionOptionsAfterCombat(state: GameState, combat: CombatS
     combat.context.bankId ||
     combat.context.waveAssault ||
     combat.context.raidBossId ||
+    combat.context.wanderingBoss ||
     combat.context.dungeonFloor !== undefined
   ) {
     return [];
@@ -16017,6 +16323,8 @@ function releaseDeferredCombatReward(
     grantWaveVictoryRewards(state, playerId, reward.wave);
   } else if (reward?.kind === "raid-boss") {
     resolveRaidBossVictory(state, playerId, reward.bossInstanceId);
+  } else if (reward?.kind === "wandering-boss") {
+    resolveWanderingBossVictory(state, playerId);
   } else if (reward?.kind === "dungeon-floor") {
     resolveDungeonFloorVictory(state, playerId, reward.floor, reward.heroId, reward.fieldId);
   } else if (legacyHeroId && legacyFieldId) {
@@ -16484,8 +16792,10 @@ export function finalizeAdventureCombat(state: GameState): void {
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId === NEUTRAL_PLAYER_ID) {
       // Fixed creature-bank guards were minted for this fight; only deck-drawn
-      // guards cycle back to their tier's discard pile.
-      if (unit.unitDefId && !unit.bankGuard) {
+      // guards cycle back to their tier's discard pile. A battlefield-only
+      // summon (summoned + temporary: a raised Zombies / Lost Soul, a WoG weak
+      // copy) was never a deck card — recycling it would mint an extra card.
+      if (unit.unitDefId && !unit.bankGuard && !(unit.summoned && unit.temporary)) {
         const def = unit.grade === "gold" ? "gold" : unit.grade;
         const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
         const returnsToElementalsTop =
@@ -16773,6 +17083,7 @@ export function finalizeAdventureCombat(state: GameState): void {
           !context.bankId &&
           !context.waveAssault &&
           !context.raidBossId &&
+          !context.wanderingBoss &&
           context.dungeonFloor === undefined &&
           state.players[playerId]?.commander
         ) {
@@ -16829,6 +17140,7 @@ export function finalizeAdventureCombat(state: GameState): void {
           !context.bankId &&
           !context.waveAssault &&
           !context.raidBossId &&
+          !context.wanderingBoss &&
           context.dungeonFloor === undefined &&
           context.difficulty >= 6
         ) {
@@ -16882,6 +17194,24 @@ export function finalizeAdventureCombat(state: GameState): void {
           }
         }
 
+        // WoG era Karmic Battle: the empowered guard fell — the karmic loot on
+        // top of the field's normal reward (+difficulty gold, Treasure dice).
+        if (context.karmicEmpowered) {
+          adventure.rewardQueue.push({
+            playerId,
+            kind: "visit-steps",
+            steps: [
+              { type: "GAIN_RESOURCES", gold: Math.max(1, context.difficulty) },
+              { type: "ROLL_TREASURE_DICE", count: KARMIC_TREASURE_DICE }
+            ]
+          });
+          appendEvent(state, {
+            type: "EVENT_NOTE",
+            playerId,
+            message: `Karmic Battle won: +${Math.max(1, context.difficulty)} gold and ${KARMIC_TREASURE_DICE} Treasure die.`
+          });
+        }
+
         // Neutral Skeletons: "After defeating Skeletons, if you control a
         // Necropolis Hero, Reinforce 1 of your bronze units for free." The
         // mid-combat pop-up handles the usual case; this is the fallback for a
@@ -16896,7 +17226,8 @@ export function finalizeAdventureCombat(state: GameState): void {
         }
       } else if (outcome.reason === "retreat") {
         // Persistent break-field army: keep living guards for a later re-fight.
-        if (field?.persistentGuard) {
+        // (Never the moving Raid Boss — it is fought FROM this field, not ON it.)
+        if (field?.persistentGuard && !context.wanderingBoss) {
           persistLivingGuardsOnField(state, field, combat);
         }
         // A wave assault happens WHERE the hero stands and a Dungeon delve on
@@ -16904,7 +17235,7 @@ export function finalizeAdventureCombat(state: GameState): void {
         // Ordinary Secondary Heroes follow this same retreat path: Neutral
         // combat never removes them; only a PvP loss does.
         const returnTo =
-          context.waveAssault || context.dungeonFloor !== undefined
+          context.waveAssault || context.dungeonFloor !== undefined || context.wanderingBoss
             ? null
             : adventure.lastVisitedField[hero.id];
         if (returnTo) {
@@ -16918,7 +17249,7 @@ export function finalizeAdventureCombat(state: GameState): void {
         });
       } else {
         // Defeat: living guards stay on a break field when persistent is on.
-        if (field?.persistentGuard) {
+        if (field?.persistentGuard && !context.wanderingBoss) {
           persistLivingGuardsOnField(state, field, combat);
         }
         if (context.waveAssault || context.dungeonFloor !== undefined) {
@@ -16950,6 +17281,17 @@ export function finalizeAdventureCombat(state: GameState): void {
         );
         if (bossRecord && bossUnit) {
           bossRecord.layersLeft = bossLayersRemaining(bossUnit);
+        }
+      }
+
+      // WoG era moving Raid Boss: wounds persist WHATEVER the outcome; the
+      // fighter is credited the damage this fight dealt. A kill without a win
+      // (both sides fell) still belongs to the fighter — the win branch below
+      // defers the ordinary kill behind the Necromancy window.
+      if (context.wanderingBoss) {
+        const bossFell = settleWanderingBossCombat(state, combat, playerId);
+        if (bossFell && outcome.winnerPlayerId !== playerId) {
+          resolveWanderingBossVictory(state, playerId);
         }
       }
 
@@ -17011,12 +17353,19 @@ export function finalizeAdventureCombat(state: GameState): void {
       // reward and never the field visit (the hero merely stands there / the
       // lair clears / the gate stays). Their exact reward is still deferred
       // behind the same atomic Necromancy window.
-      if (context.waveAssault || context.raidBossId || context.dungeonFloor !== undefined) {
+      if (
+        context.waveAssault ||
+        context.raidBossId ||
+        context.wanderingBoss ||
+        context.dungeonFloor !== undefined
+      ) {
         const deferredReward: DeferredNecromancyReward = context.waveAssault
           ? { kind: "wave", wave: context.waveAssault.wave }
           : context.raidBossId
             ? { kind: "raid-boss", bossInstanceId: context.raidBossId }
-            : {
+            : context.wanderingBoss
+              ? { kind: "wandering-boss" }
+              : {
                 kind: "dungeon-floor",
                 floor: context.dungeonFloor!,
                 heroId: hero.id,
@@ -17029,6 +17378,8 @@ export function finalizeAdventureCombat(state: GameState): void {
           grantWaveVictoryRewards(state, playerId, context.waveAssault.wave);
         } else if (!deferred && context.raidBossId) {
           resolveRaidBossVictory(state, playerId, context.raidBossId);
+        } else if (!deferred && context.wanderingBoss) {
+          resolveWanderingBossVictory(state, playerId);
         } else if (!deferred && context.dungeonFloor !== undefined) {
           resolveDungeonFloorVictory(
             state,
@@ -20942,6 +21293,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "polish-quick-combat") {
     resolvePolishQuickCombatChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+  if (choice.context === "karmic-battle") {
+    resolveKarmicBattleChoice(state, action.playerId, action.optionIndex);
     return;
   }
   if (choice.context === "polish-bank-auto-combat") {

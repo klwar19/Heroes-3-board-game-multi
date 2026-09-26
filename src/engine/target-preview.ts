@@ -16,6 +16,7 @@ import {
   unitsAdjacent
 } from "./hex-footprint";
 import { hexPcSpellArea, hexPcSpellBlast } from "./hex-spell-areas";
+import { hexAreaAimedTargets, hexAreaAttackOf, hexAreaRing, isHexAreaAttackAbility } from "./hex-area-attacks";
 import {
   getAttackKind,
   isUnitAlive,
@@ -32,7 +33,12 @@ import {
   findUnitBehindTarget,
   unitIgnoresCardDamage
 } from "./reducer";
-import { parseFortificationTargetId } from "./siege";
+import {
+  defenderOnFortification,
+  enemyFortificationsInCells,
+  parseFortificationTargetId,
+  siegeHexTokenAt
+} from "./siege";
 import type {
   CardDefinition,
   CardLibrary,
@@ -146,6 +152,26 @@ function cardDamageReaches(state: GameState, unit: CombatUnitState, card: CardDe
 // ---------------------------------------------------------------------------
 
 /**
+ * Hex battlefield Death Cloud (hex-area-attacks.ts; reducer: the house rule's
+ * destroyEnemyFortificationsInCells around the target / aimed hex): every hex
+ * of each ENEMY Wall / Gate card the cloud fells — a touched card leaves the
+ * board whole, and a Gate a defender stands on is shielded (destroyFortification).
+ */
+function hexCloudFelledFortificationCells(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  ring: Iterable<number>
+): number[] {
+  const siege = combat.siege;
+  if (!siege) return [];
+  return enemyFortificationsInCells(siege, attacker.controllerId, ring).flatMap((hit) =>
+    defenderOnFortification(combat, siege, hit.position)
+      ? []
+      : (siegeHexTokenAt(siege, hit.position)?.cells ?? [hit.position])
+  );
+}
+
+/**
  * A declared attack: the defender, plus the printed post-attack follow-ups of
  * the attacker (reducer: applyAfterAttackSplash + the post-attack follow-up
  * table — Magog / Cerberi flat splash, Liches' Death Cloud, Gold Dragons' line,
@@ -215,6 +241,13 @@ function previewAttack(
       const unit = combat.units[id];
       return unit !== undefined && isUnitAlive(unit);
     });
+    // Hex battlefield Magog Fireball (hex-area-attacks.ts): every candidate
+    // around the target is hit — no pick — and the ring is the blast area.
+    if (followUp.zone === "target" && isHexAreaAttackAbility(combat, followUp.abilityId)) {
+      builder.addSplash(living);
+      builder.addCells([...areaAround(combat, defender, false)].filter(isHexPosition));
+      continue;
+    }
     if (living.length === 1 && unconditional.has(followUp.abilityId)) builder.addSplash(living);
     else builder.addPossible(living);
   }
@@ -224,7 +257,14 @@ function previewAttack(
   const secondAttack = firstAttack ? getSecondAttackAbility(attacker) : null;
   if (secondAttack && !(secondAttack.requiresNonAdjacentTarget && unitsAdjacent(combat, attacker, defender))) {
     const candidates = getSecondAttackCandidates(combat, attacker, defender, secondAttack.enemiesOnly);
-    if (candidates.length === 1 && !secondAttack.optional && secondAttack.onRoll === undefined) {
+    // Hex battlefield Death Cloud (hex-area-attacks.ts): one attack against
+    // EVERY candidate around the target — certain, no pick.
+    if (isHexAreaAttackAbility(combat, secondAttack.abilityId) && secondAttack.onRoll === undefined) {
+      const ring = [...areaAround(combat, defender, false)].filter(isHexPosition);
+      builder.addSplash(candidates);
+      builder.addCells(ring);
+      builder.addCells(hexCloudFelledFortificationCells(combat, attacker, ring));
+    } else if (candidates.length === 1 && !secondAttack.optional && secondAttack.onRoll === undefined) {
       builder.addSplash(candidates);
     } else {
       builder.addPossible(candidates);
@@ -558,6 +598,22 @@ export function previewActionTargets(
       // A printed follow-up attack (Death Cloud) never chains follow-ups of its own.
       const followUps = action.type === "MOVE_AND_ATTACK_UNIT" || !action.abilityAttack;
       previewAttack(state, combat, striker, defender, followUps, builder);
+      break;
+    }
+    // Hex battlefield aimed Magog / Lich shot (hex-area-attacks.ts): the aimed
+    // hex and its ring, and every unit the follow-up strikes there.
+    case "ATTACK_HEX": {
+      const attacker = combat.units[action.attackerId];
+      const area = attacker ? hexAreaAttackOf(combat, attacker) : null;
+      if (!attacker || !area) return null;
+      actingControllerId = attacker.controllerId;
+      const ring = hexAreaRing(combat, action.position);
+      builder.addCells([action.position, ...ring]);
+      builder.addSplash(hexAreaAimedTargets(combat, attacker, area, action.position));
+      // Death Cloud only (the Magog blast leaves walls standing).
+      if (area.kind === "second-attack") {
+        builder.addCells(hexCloudFelledFortificationCells(combat, attacker, ring));
+      }
       break;
     }
     case "CAST_SPELL":

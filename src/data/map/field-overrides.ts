@@ -62,6 +62,11 @@ export type FieldOverrideDefinition = {
    * before its art is dropped in. Ignored once `image` is set.
    */
   glyph?: string;
+  /**
+   * Never pool-drawn and never in the designer palette: the kind is placed
+   * only by its own module (WoG era Mithril Mine — carved by wog-era.ts).
+   */
+  poolExcluded?: true;
 };
 
 /** Mutable registry — packages call {@link registerFieldOverrideDefinitions}. */
@@ -104,6 +109,9 @@ export function listFieldOverrideDefinitions(filter?: {
       : [filter.package]
     : null;
   return Object.values(REGISTRY).filter((def) => {
+    if (def.poolExcluded) {
+      return false;
+    }
     if (filter?.implementedOnly && def.implementationStatus !== "implemented") {
       return false;
     }

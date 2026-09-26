@@ -757,10 +757,19 @@ export function applyBreakFieldOptions(
   else delete field.noExperience;
 }
 
-/** Grail dig MP cost (0 / 1 / 2). Absent preset ⇒ classic 1. */
+/**
+ * Grail dig MP cost (0 / 1 / 2). Absent preset ⇒ classic 1. The hidden
+ * Grail / Utopia package reads its own `hiddenGrailDigCost` (map-editor opt-in
+ * only); the legacy Polish house-rule switch on a map without that package
+ * stays at 1.
+ */
 export function grailDigMovementCost(state: GameState): 0 | 1 | 2 {
-  if (grailUtopiaFieldRulesEnabled(state)) return 1;
-  const cost = state.adventure?.mapPreset?.objectives?.grailDigCost;
+  const objectives = state.adventure?.mapPreset?.objectives;
+  if (grailUtopiaFieldRulesEnabled(state)) {
+    const hiddenCost = objectives?.hiddenGrailUtopia === true ? objectives.hiddenGrailDigCost : undefined;
+    return hiddenCost === 0 || hiddenCost === 2 ? hiddenCost : 1;
+  }
+  const cost = objectives?.grailDigCost;
   return cost === 0 || cost === 1 || cost === 2 ? cost : 1;
 }
 

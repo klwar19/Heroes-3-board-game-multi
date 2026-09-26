@@ -96,7 +96,7 @@ function BreakdownCard({
                   ) : null}
                   {entry.label}
                 </span>
-                <b>+{entry.vp}</b>
+                <b>{entry.vp < 0 ? entry.vp : `+${entry.vp}`}</b>
               </li>
             );
           })}

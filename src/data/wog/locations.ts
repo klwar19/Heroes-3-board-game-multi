@@ -181,5 +181,20 @@ export const wogLocationDefinitions: Record<string, LocationDefinition> = {
     interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: wogSource
+  },
+
+  /**
+   * WoG era Mithril Mine (optional Mithril module only — carved onto one field
+   * of each revealed Near tile by src/engine/wog-era.ts, never pool-drawn). A
+   * single-owner flag like a Garrison (routed by id in beginFieldVisit); its
+   * holder gains 1 Mithril every Resource Round.
+   */
+  "wog.mithril_mine": {
+    id: "wog.mithril_mine",
+    name: "Mithril Mine",
+    category: "flaggable",
+    interaction: { type: "NONE" },
+    implementationStatus: "implemented",
+    source: wogSource
   }
 };

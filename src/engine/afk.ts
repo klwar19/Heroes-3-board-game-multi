@@ -1,5 +1,5 @@
 import { isComputerPlayer } from "./computer/control";
-import { parallelStateForPlayer } from "./parallel-combats";
+import { parallelPvpPinOwner, parallelStateForPlayer } from "./parallel-combats";
 import { appendEvent } from "./events";
 import { combatUnitDecisionOwnerId } from "./neutral-control";
 import {
@@ -141,7 +141,11 @@ export function seatIsAwaitedInOrderedPlay(state: GameState, playerId: PlayerId)
     // awaited-idle time, which this gate stops from accruing here — a truly
     // gone seat still becomes removable because it is awaited again from the
     // next round's own turn, banking ~10 forced-timeout minutes per turn.)
-    return !state.turn.completedPlayerIds.includes(playerId);
+    // Parallel PvP "keep": a seat that ended its turn can still be ATTACKED
+    // (or handed a choice) — while it is pinned into that other seat's
+    // battle/choice the table IS waiting on it, exactly like a defender in
+    // ordered play, so the vote, the idle kick and their drivers must reach it.
+    return !state.turn.completedPlayerIds.includes(playerId) || parallelPvpPinOwner(state, playerId) !== null;
   }
   if (state.activePlayerId === playerId) {
     return true;

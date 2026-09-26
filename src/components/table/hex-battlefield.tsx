@@ -37,6 +37,7 @@ import { hexMoveDurationMs } from "@/data/battle-hex/creature-sprites";
 import { getFxSheet } from "@/data/fx";
 import siegeArt from "@/data/battle-hex/siege-art.json";
 import { formatEvent } from "./utils";
+import { HEX_SKILL_ICONS, type HexUnitSkill } from "./hex-unit-skills";
 
 export const HEX_BOARD_WIDTH = 800;
 export const HEX_BOARD_HEIGHT = 556;
@@ -574,11 +575,19 @@ export type HexUnitCueDetail = {
         holdMs?: number;
         /** The cue timeline's slot for this move (hexMoveEventDurationMs): the walk is paced to fill it. */
         durationMs?: number;
+        /**
+         * No strike of this unit follows the walk (a Harpy flying home, a
+         * shooter's step, a move that ended its activation): once arrived it
+         * turns back to face the enemy at once instead of holding its facing.
+         */
+        settle?: boolean;
       }
     | { kind: "lunge"; to: string; attackKind: "melee" | "ranged"; releaseMs?: number }
     /** A creature casting (Ogre Magi Bloodlust, Enchanters, ...): H3 cast groups toward `to`. */
     | { kind: "cast"; to?: string; releaseMs?: number }
     | { kind: "shake" }
+    /** Struck from behind: turn to face the attacker at `to` before the blow lands. */
+    | { kind: "face"; to: string; beatMs?: number }
     | { kind: "pose"; pose: "defend" };
   done: () => void;
   /** Set by the figure that takes the cue (an unanswered cue resolves at once). */
@@ -616,14 +625,28 @@ export function HexCommandBar({
   state,
   viewerPlayerId,
   legalActions,
+  skills = [],
+  armedSkillKey = null,
+  onArmSkill,
   onAction
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
+  /** The active creature's skills (hex-unit-skills.ts): the Unit Skills menu. */
+  skills?: HexUnitSkill[];
+  /** The skill whose targets the board is highlighting, if any. */
+  armedSkillKey?: string | null;
+  onArmSkill?: (key: string | null) => void;
   onAction: (action: GameAction) => void;
 }) {
   const [bookOpen, setBookOpen] = useState(false);
+  // The Unit Skills menu lists the ACTIVE creature's skills: it stays open only
+  // for the activation it was opened in, so it never pops open by itself when a
+  // later creature of yours has skills again.
+  const activationKey = `${state.combat?.id ?? ""}|${state.combat?.round ?? ""}|${state.combat?.activeUnitId ?? ""}`;
+  const [skillsOpenFor, setSkillsOpenFor] = useState<string | null>(null);
+  const skillsOpen = skillsOpenFor === activationKey;
   const own = legalActions.filter((legal) => "playerId" in legal.action && legal.action.playerId === viewerPlayerId);
   const first = (...types: GameAction["type"][]) => own.find((legal) => types.includes(legal.action.type));
   const surrender = first("SURRENDER_COMBAT");
@@ -702,7 +725,10 @@ export function HexCommandBar({
             "Cast a spell",
             "/assets/battle-hex/ui/spellbook.webp",
             undefined,
-            castable.length > 0 || spellBookOn ? () => setBookOpen((open) => !open) : undefined,
+            castable.length > 0 || spellBookOn ? () => {
+              setSkillsOpenFor(null);
+              setBookOpen((open) => !open);
+            } : undefined,
             "no Spell in your hand can be cast right now"
           )}
           {bookOpen && (castable.length > 0 || spellBookOn) ? (
@@ -735,9 +761,56 @@ export function HexCommandBar({
             </span>
           ) : null}
         </span>
+        <span className="hexBarBook">
+          <button
+            aria-expanded={skillsOpen && skills.length > 0}
+            aria-label={skills.length > 0 ? `Unit skills (${skills.length})` : "Unit skills"}
+            className={`hexBarButton skills${skills.length > 0 ? " ready" : ""}${armedSkillKey ? " armed" : ""}`}
+            disabled={skills.length === 0}
+            onClick={() => {
+              setBookOpen(false);
+              setSkillsOpenFor(skillsOpen ? null : activationKey);
+            }}
+            title={
+              skills.length > 0
+                ? `Unit skills: ${skills.map((skill) => skill.name).join(", ")}`
+                : "Unit skills — the active creature has no skill it can use right now"
+            }
+            type="button"
+          >
+            <img alt="" aria-hidden="true" src={assetUrl("/assets/battle-hex/ui/skills.webp")} />
+          </button>
+          {skillsOpen && skills.length > 0 ? (
+            <span className="hexBookMenu hexSkillMenu" role="menu" aria-label="Unit skills">
+              {skills.map((skill) => (
+                <button
+                  // Named by the skill (the engine's one-offer label is only its description).
+                  aria-label={skill.name}
+                  className={skill.key === armedSkillKey ? "armed" : undefined}
+                  key={skill.key}
+                  onClick={() => {
+                    setSkillsOpenFor(null);
+                    if (skill.immediate) {
+                      onArmSkill?.(null);
+                      onAction(skill.immediate);
+                    } else {
+                      onArmSkill?.(skill.key === armedSkillKey ? null : skill.key);
+                    }
+                  }}
+                  role="menuitem"
+                  title={skill.detail}
+                  type="button"
+                >
+                  <img alt="" aria-hidden="true" src={assetUrl(HEX_SKILL_ICONS[skill.category])} />
+                  <span>{skill.name}</span>
+                </button>
+              ))}
+            </span>
+          ) : null}
+        </span>
         {button("wait", "Wait", "/assets/battle-hex/ui/wait.webp", wait)}
         {button("defend", "Defend", "/assets/battle-hex/ui/defend.webp", defend)}
-        {button("hold", "Hold position", "/assets/battle-hex/ui/end.webp", hold)}
+        {button("hold", "Hold position", "/assets/battle-hex/ui/hold.webp", hold)}
       </div>
     </div>
   );

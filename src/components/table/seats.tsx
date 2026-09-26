@@ -10,6 +10,7 @@ import { HAND_OPEN_CARD_EVENT, HAND_OPEN_SPELL_BOOK_EVENT } from "./hex-battlefi
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
 import { activeWarMachineCardId, isWarMachineCard } from "@/engine/permanents";
+import { MITHRIL_WAR_MACHINES, mithrilWarMachineImage } from "@/data/wog/era";
 import { useBalanceArtFlags, useCardFaceImage } from "./polish-balance-art";
 import { getDeckBack } from "@/data/decks";
 import {
@@ -60,11 +61,17 @@ export function CardFrame({
   cardId,
   className,
   title,
-  empowered
+  empowered,
+  faceOverride
 }: {
   cardId?: string;
   className: string;
   title?: string;
+  /**
+   * A per-player face that replaces the printed one (WoG era: a Mithril-forged
+   * war machine). Falls back like any face when the image is missing.
+   */
+  faceOverride?: string;
   /**
    * Force the Empowered highlight (gold ring + glow) for an ability the owner
    * has had Empowered — that status is per-player, so the caller passes it in.
@@ -81,7 +88,8 @@ export function CardFrame({
   // stays on top of it. Falls back to the base face when no scan is registered.
   // The Polish Balance Pack's reprint beats BOTH (its `-empowered` twin prints
   // the OLD rules text) — see useCardFaceImage.
-  const src = useCardFaceImage(cardId, showEmpowered);
+  const printedSrc = useCardFaceImage(cardId, showEmpowered);
+  const src = faceOverride ?? printedSrc;
   // The empowered ring is layered onto whichever element renders, so the cue is
   // identical across the hand fan, trays, piles and discard tops.
   const frameClass = showEmpowered ? `${className} empoweredCard` : className;
@@ -274,10 +282,18 @@ export function PermanentSlot({
               aria-label={`${card?.name ?? cardId} actions`}
               className="permanentCardButton"
               onClick={() => setOpenCardActions(actionsOpen ? null : popupKey)}
-              title={`${card?.name ?? cardId} — click for actions`}
+              title={`${
+                mithrilWarMachineImage(cardId, state.players[playerId]?.mithrilWarMachines)
+                  ? `${MITHRIL_WAR_MACHINES[cardId]!.name}: ${MITHRIL_WAR_MACHINES[cardId]!.text}`
+                  : card?.name ?? cardId
+              } — click for actions`}
               type="button"
             >
-              <CardFrame cardId={cardId} className="permanentCardImage" />
+              <CardFrame
+                cardId={cardId}
+                className="permanentCardImage"
+                faceOverride={mithrilWarMachineImage(cardId, state.players[playerId]?.mithrilWarMachines)}
+              />
             </button>
             {actionsOpen ? (
               <div aria-label={`${card?.name ?? cardId} card actions`} className="permanentCardMenu" role="menu">

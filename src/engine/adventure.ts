@@ -1,5 +1,12 @@
 import { astrologersCardDefinitions, type AstrologersCardDefinition } from "@/data/cards/astrologers";
 import { grantFreeTownBuilding } from "./adventure-reducer";
+import {
+  applyEraRoundStart,
+  consumeMithrilForReroll,
+  isMithrilMineLocation,
+  mithrilRerollAvailable,
+  payMithrilMineBoosts
+} from "./wog-era";
 import { eventCardDefinitions, type EventCardDefinition } from "@/data/cards/events";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { spellDeckBinhExpert } from "@/data/cards/spells";
@@ -103,7 +110,7 @@ import {
   playerHoldsMoraleCard
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
-import { parallelMapInteractionBlocker, parallelTurnsActive, stopParallelTurns } from "./parallel-turns";
+import { parallelMapInteractionBlocker, parallelTurnsActive, resolveParallelPvp } from "./parallel-turns";
 import { dropParallelCombatContext, hasParkedParallelInteractions, reassignParkedNeutralController } from "./parallel-combats";
 import { clearResetVote } from "./reset-vote";
 import { clearPauseOnElimination } from "./game-pause";
@@ -1354,18 +1361,26 @@ export function materializeTileFields(
       }
     } else if (field.location === "temple_of_the_sea") {
       const perTile = tile.objectPlans?.temple_of_the_sea;
-      if (perTile) {
-        if (perTile.guard) applyCustomGuardToField(field, perTile.guard);
-        applyBreakFieldOptions(field, withPerTileBreakGate(mergeObjectBreakFlags(perTile, undefined), perTile));
+      // MAP-WIDE Temple options: a set per-tile field overrides, an unset one
+      // falls back to the global value (the Mine / Obelisk fallback semantic).
+      const temples = adventure.mapPreset?.templesOfTheSea;
+      if (perTile || temples) {
+        const guard = perTile?.guard ?? temples?.guard;
+        if (guard) applyCustomGuardToField(field, guard);
+        if (perTile) {
+          applyBreakFieldOptions(field, withPerTileBreakGate(mergeObjectBreakFlags(perTile, undefined), perTile));
+        }
         // A custom Temple award replaces its printed 10 gold + two Search(2).
         // Guard-only plans leave the printed award untouched.
-        if (perTile.reward) {
-          stampDesignerFieldReward(field, perTile.reward, perTile.vp);
+        const reward = perTile?.reward ?? temples?.reward;
+        const vp = perTile?.vp ?? temples?.vp;
+        if (reward) {
+          stampDesignerFieldReward(field, reward, vp);
           field.templeCustomAward = true;
-        } else if (perTile.vp) {
-          stampDesignerFieldReward(field, undefined, perTile.vp);
+        } else if (vp) {
+          stampDesignerFieldReward(field, undefined, vp);
         }
-        if (perTile.winCondition) field.designerWinCondition = true;
+        if (perTile?.winCondition) field.designerWinCondition = true;
       }
     } else if (field.location === "settlement") {
       const perTile = tile.settlement;
@@ -4833,10 +4848,13 @@ export function flagField(state: GameState, playerId: PlayerId, field: MapFieldS
     state.players[previousOwnerId] &&
     !state.players[previousOwnerId].eliminated
   ) {
-    stopParallelTurns(
+    // Parallel PvP "keep" option: the flag changes hands without ending the
+    // mode — refused (rolled back whole) only while the owner is busy elsewhere.
+    resolveParallelPvp(
       state,
       "pvp-interaction",
       playerId,
+      previousOwnerId,
       `took the ${locationDefinitionName(field.location)} from ${state.players[previousOwnerId]?.name ?? previousOwnerId}`
     );
   }
@@ -9639,6 +9657,25 @@ export function beginFieldVisit(
     return;
   }
 
+  // WoG era Mithril Mine (optional Mithril module): flagged exactly like the
+  // Garrison above — single owner, taken by entering (its beaten guard was
+  // cleared by the Field-Override branch). The holder gains 1 Mithril every
+  // Resource Round (payMithrilMineBoosts).
+  if (isMithrilMineLocation(location.id)) {
+    // Module off (a stray hex from an old snapshot): inert — never flagged as
+    // a mine, never routed to the generic flaggable handling below.
+    if (!adventure.mithril) {
+      return;
+    }
+    field.everFlagged = true;
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      flagField(state, playerId, field);
+    } else if (field.flagOwnerId !== playerId && !fieldFlaggedByAlly(state, playerId, field)) {
+      flagField(state, playerId, field);
+    }
+    return;
+  }
+
   if (location.category === "visitable") {
     // "Treat it as an Empty Field as long as it has a Black Cube": a field
     // that already carries its cube does nothing on re-entry. The cube goes
@@ -10669,6 +10706,9 @@ export function processPendingVisit(state: GameState): void {
         // returns under its deck with the MORALE_CARD_USED cue. No-op if the
         // card left the player's side since the option was built.
         consumeHeldMoraleCard(state, visit.playerId, step.cardId);
+        break;
+      case "CONSUME_MITHRIL":
+        consumeMithrilForReroll(state, visit.playerId);
         break;
       case "CONSUME_WEASEL": {
         const astrologers = getAstrologersState(state);
@@ -16550,6 +16590,14 @@ function extraDieRerollOptions(
     });
   }
 
+  // WoG era Mithril (optional module): 1 Mithril rerolls any die, once per round.
+  if (mithrilRerollAvailable(state, visit.playerId)) {
+    options.push({
+      label: `Spend 1 Mithril: reroll the ${dice} ${count > 1 ? "dice" : "die"} (once per round)`,
+      steps: [{ type: "CONSUME_MITHRIL" }, rollStep]
+    });
+  }
+
   // Morale Cards rule: the held "Reroll a Die" card stands in for the token
   // reroll above (the token count stays 0 while the rule is on).
   const rerollCard = moraleRerollCardOption(
@@ -19355,7 +19403,7 @@ export function makeCombatUnitFromArmy(
     def.tier,
     unitExperience,
     effectiveJob,
-    combatUnitRankScheduleSide({ variant, controllerId, bankUnit: armyUnit.side === "bank" })
+    combatUnitRankScheduleSide({ variant, controllerId, bankUnit: armyUnit.side === "bank", unitDefId: armyUnit.unitDefId })
   );
   // Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory): a
   // rulebook Stack Token baked onto this army card folds one stat bonus (+1
@@ -20816,6 +20864,10 @@ export function startAdventureRound(state: GameState, resumeResourceRoundAfterBa
   if (state.adventure?.winnerPlayerId) {
     return;
   }
+  // WoG era modules (optional; each a no-op unless frozen ON at setup): due
+  // Loan Bank loans settle, the moving Raid Boss arrives / heals / walks, the
+  // Wandering Teacher relocates. Every round kind, before any income.
+  applyEraRoundStart(state);
   // VP round-limit: announce the FINAL round as it begins (the end-of-round
   // scoring above fires next round when the counter passes `roundLimit`), so the
   // ending is never a surprise. `state.round <= roundLimit` here (the > guard
@@ -21188,6 +21240,10 @@ export function startAdventureRound(state: GameState, resumeResourceRoundAfterBa
     // whatever their faction.
     collectUraharaDebt(state, playerId);
   }
+
+  // WoG era Mithril (optional module): a forged mine pays its amount again to
+  // the forger who still holds it (one-shot; the mark clears either way).
+  payMithrilMineBoosts(state);
 
   // A designed Market day belongs after collection of resources. Queue only
   // the trade-only event here, before the ordinary Event/City Hall windows.

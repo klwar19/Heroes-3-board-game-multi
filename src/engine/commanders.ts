@@ -1,6 +1,7 @@
 import {
   COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
+  COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION,
   COMMANDER_SLUG_BY_FACTION,
   COMMANDER_STANCE_MAX_ROUND,
   COMMANDER_STAT_KEYS,
@@ -11,7 +12,7 @@ import {
   commanderCastTierIndex,
   commanderDefinitions,
   commanderGradePointsForLevelUp,
-  commanderMagicImmuneToOngoing,
+  commanderMagicImmuneToNegativeOngoing,
   commanderStatValue,
   commanderUnlockedCombos,
   commanderUsesActionPoints,
@@ -39,7 +40,7 @@ import { appendEvent, nextEventNumber } from "./events";
 import { availableRunes, gainRunes } from "./runes";
 import { createSeededRandom } from "./random";
 import { hasToken, noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
-import { isMechanicalUnit } from "./unit-abilities";
+import { hasUnitAbilityEffect, isMechanicalUnit } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
   ActiveEffectModifier,
@@ -290,15 +291,6 @@ export function isCommanderUnit(unit: CombatUnitState | undefined | null): boole
   return Boolean(unit?.commanderSlug);
 }
 
-/**
- * Whether a commander combat unit is immune to ongoing effects. The immunity is
- * part of the Magic grade-1 package, so it keys off the unit's grade snapshot —
- * a grade-0-Magic commander is NOT immune (it carries no titan-ignore-ongoing).
- */
-export function commanderUnitImmuneToOngoing(unit: CombatUnitState): boolean {
-  return Boolean(unit.commanderSlug) && commanderMagicImmuneToOngoing(unit.commanderGrades?.magic ?? 0);
-}
-
 export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatUnitState | null {
   const combat = state.combat;
   if (!combat) {
@@ -310,9 +302,8 @@ export function findCommanderUnit(state: GameState, playerId: PlayerId): CombatU
 
 /**
  * Ability ids the commander's combat unit carries, derived from its grades:
- *  - Magic package: NOTHING at grade 0 (the commander still takes full Spell
- *    damage and can be hit by ongoing effects); from grade 1 the ongoing-effect
- *    immunity plus the spell ward (-1 at grades 1 & 2, -3 at grade 3);
+ *  - Magic package: Spell ward -1/-2/-3 at grades 1/2/3; Specialty ward -1
+ *    and negative ongoing immunity at grades 2/3;
  *  - Damage grade 1/2/3: +1/+2/+3 bonus damage on its attacks;
  *  - every unlocked combination skill (one stat of the pair at grade 3, the
  *    other at 2+) — Sharpshooter has no ability id (it is the type flip);
@@ -324,9 +315,8 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   const grades = commanderGradesOf(commander);
   const ids: string[] = [];
 
-  // Magic package — begins at grade 1 per the module spec. At grade 0 the
-  // commander gets NO spell ward and NO ongoing-effect immunity (only the
-  // once-per-round cast, which every commander always has).
+  // Magic package — independent Spell and Specialty wards, so neither stacks
+  // into the other's damage category.
   const spellWard = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grades.magic];
   if (spellWard >= 3) {
     ids.push("reduce-spell-damage-3");
@@ -335,8 +325,11 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   } else if (spellWard >= 1) {
     ids.push("reduce-spell-damage-1");
   }
-  if (commanderMagicImmuneToOngoing(grades.magic)) {
-    ids.push("titan-ignore-ongoing");
+  if (COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION[grades.magic] > 0) {
+    ids.push("commander-reduce-specialty-damage-1");
+  }
+  if (commanderMagicImmuneToNegativeOngoing(grades.magic)) {
+    ids.push("commander-ignore-negative-ongoing");
   }
 
   // Defense grades II and III retain a permanent Defense token. Grade III also
@@ -1040,8 +1033,7 @@ export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitSta
  * targeting rule of the module: side, ranged/melee gate, mechanical gate,
  * damaged-only gate, the bronze/silver/gold tier ladder (tierless targets —
  * commanders, bank guards, summons — never pass a tier ladder), the
- * below-Power adjacency gate, and the no-self / no-commander rule for
- * ongoing-effect casts (a commander's ongoing immunity would fizzle them).
+ * below-Power adjacency gate, and each commander's self-target rule.
  */
 export function commanderCastCandidates(state: GameState, unit: CombatUnitState, abilityId?: string): CombatUnitState[] {
   const combat = state.combat;
@@ -1053,16 +1045,6 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
   const power = commanderCastPower(state, unit);
   const tierIndex = commanderCastTierIndex(power);
   const targeting = cast.targeting;
-  // Heals and Belfast's Royal Salvo are INSTANT (damage/heal now, no lingering
-  // effect), so ongoing-effect immunity never makes them a dead choice.
-  const ongoingCast =
-    cast.effect.kind !== "heal" &&
-    cast.effect.kind !== "heal-cleanse" &&
-    cast.effect.kind !== "enemy-damage" &&
-    // Tower Precision buffs a single pending attack (no lingering effect), so it
-    // is INSTANT — ongoing-effect immunity never makes an ally a dead target.
-    cast.effect.kind !== "precision-instant";
-
   return Object.values(combat.units).filter((target) => {
     if (target.damage >= target.maxHealth || target.position < 0) {
       return false;
@@ -1074,15 +1056,18 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
     if (target.id === unit.id && !targeting.canTargetSelf) {
       return false;
     }
-    // Ongoing-effect casts never land on a commander that is IMMUNE to ongoing
-    // effects (Magic grade >= 1) — the buff would fizzle, so no dead choices are
-    // offered. A grade-0-Magic commander is NOT immune and stays a legal target.
-    if (
-      ongoingCast &&
-      target.commanderSlug &&
-      target.id !== unit.id &&
-      commanderUnitImmuneToOngoing(target)
-    ) {
+    const soulEaterSelfHeal = target.id === unit.id && cast.abilityId === "commander-cast-soul_eater";
+    if (soulEaterSelfHeal && unit.soulEaterSelfHealUsed) {
+      return false;
+    }
+    // A cast whose ongoing effect on the target is NEGATIVE (the polarity
+    // resolveCommanderCast stamps: an Initiative shift below 0, e.g. the Sea
+    // Marshal's Slow) never offers a target that ignores negative ongoing
+    // effects (commander Magic grade 2+) — it would fizzle there. Positive
+    // casts (Haste, buffs) and instant heals / damage still target it.
+    const negativeOngoing =
+      cast.effect.kind === "initiative-shift" && (cast.effect.amountByPower[tierIndex] ?? 0) < 0;
+    if (negativeOngoing && hasUnitAbilityEffect(target, "IGNORE_NEGATIVE_ONGOING_EFFECTS")) {
       return false;
     }
     if (targeting.unitType === "ranged" && target.type !== "ranged") {
@@ -1109,7 +1094,7 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
           ? null
           : (TIER_RANK[target.grade] ?? null);
       const maxRank = TIER_RANK[targeting.maxTierByPower[tierIndex]] ?? 0;
-      if (targetRank === null || targetRank > maxRank) {
+      if (!soulEaterSelfHeal && (targetRank === null || targetRank > maxRank)) {
         return false;
       }
     }

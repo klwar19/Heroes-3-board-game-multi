@@ -218,7 +218,8 @@ export function ParallelBattleSwitcher({ state, playerId, onAction }: {
                 ? option.hasCombat ? "My battle" : "My adventure"
                 : option.role === "watch" ? `Watch ${option.fighterName}` : `Neutrals vs ${option.fighterName}`}</strong>
               <small>{option.role === "hero"
-                ? option.controllerName ? `${option.controllerName} controls your opponents` : "Your hero, cards and rewards"
+                ? option.pvp ? `PvP battle: ${option.fighterName}`
+                : option.controllerName ? `${option.controllerName} controls your opponents` : "Your hero, cards and rewards"
                 : option.role === "watch" ? "Read-only — you have no decision here" : "You command the neutral army"}</small>
               <span className={option.needsInput ? styles.ready : styles.waiting}>{option.needsInput ? "● " : "◷ "}{option.waitingFor}</span>
             </span>
@@ -229,7 +230,7 @@ export function ParallelBattleSwitcher({ state, playerId, onAction }: {
         {switching ? "Opening battle…" : current?.role === "neutrals"
           ? `You are commanding neutrals against ${current.fighterName}. Return to ${options[0].hasCombat ? "My battle" : "My adventure"} for your own hero.`
           : current?.role === "watch"
-            ? `You are watching ${current.fighterName}'s battle — read-only. Return to ${options[0].hasCombat ? "My battle" : "My adventure"} to play your own turn.`
+            ? `You are watching ${current.pvp ? `the ${current.fighterName} battle` : `${current.fighterName}'s battle`} — read-only. Return to ${options[0].hasCombat ? "My battle" : "My adventure"} to play your own turn.`
             : "You are playing your own hero. Check the neutral window when it needs your action."}
       </p>
     </section>

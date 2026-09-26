@@ -1527,7 +1527,45 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v188: Hex battlefield — default Round limit free for rounds 1-2 only (paid
 // from round 3), PC-size Fireball / Frost Ring / Meteor Shower / Inferno areas
 // (and the Adelaide / Glacius / Xyron specialties), PC Chain Lightning hops.
-export const ENGINE_PROTOCOL_VERSION = 188;
+// v189: WoG era modules (optional on the WOG and Anime surfaces, default OFF):
+// moving Raid Boss (adventure.wanderingBoss — Grimjaw or Morvane at random,
+// ATTACK_WANDERING_BOSS, combat context wanderingBoss), Wandering Teacher
+// (TEACHER_LESSON incl. armyUnitId, 2 per game), Loan Bank (TAKE_LOAN /
+// REPAY_LOAN, player.loan), Mithril (player.mithril from tile discovery + every
+// 3rd round + wog.mithril_mine Field Overrides on Near tiles, tile.mithrilGranted
+// / tile.mithrilMine, field.mithrilBoostBy double payout, reroll
+// source + CONSUME_MITHRIL once per round, MITHRIL_FORGE_MINE /
+// MITHRIL_UPGRADE_WAR_MACHINE, war-machine queue mithrilAmmoCart), Karmic
+// Battles ("karmic-battle" choice, context karmicEmpowered), Skill Combos
+// (FORGE_SKILL_COMBO, combo.* cards). A v188 peer lacks all of them.
+// Also v189: map-wide Temple of the Sea options (preset.templesOfTheSea) and
+// the hidden Grail/Utopia dig cost (objectives.hiddenGrailDigCost); a v188
+// peer sanitizes both away.
+// Also v189: Polish Balance Pack Force Field / Fire Wall / Luna I+VI reprints —
+// the "place-wall-token-pair" choice (pendingChoice.wallTokenPair), effect
+// fields pairAdjacent / durationRounds, and timed fire_wall tokens
+// (expiresAtCombatRoundEnd). A v188 peer lacks the second-token pick.
+// Also v189: parallel-turns PvP option (GameSetupOptions.parallelPvp "keep" |
+// "stop", lobby default "keep"; turn.pvpKeepsParallel): PvP battles and player
+// interactions resolve inside parallel turns — the battle lives in the
+// attacker's parallel context and the defender is routed into it; a busy seat
+// cannot be attacked or affected. A v188 peer would stop parallel turns.
+// Also v189: Hex Battlefield PC area attacks (hex-area-attacks.ts) — Magog
+// Fireball / Lich + Dracolich Death Cloud strike EVERY unit in the ring around
+// the target (no pick; the cloud queues attackSequence.queuedAbilityAttacks
+// entries flagged hexArea) and may aim at an empty hex via the new ATTACK_HEX
+// action (attackSequence.aimedHex: no primary defender, no retaliation); the
+// new HEX_AREA_ATTACK event names the centre and struck units, and
+// DAMAGE_ASSIGNED.areaCentre stamps PC-area specialty blasts for one burst.
+// Meteor Shower's hex area grows to a round 13 hexes (radius 1.75). A v188
+// peer lacks ATTACK_HEX / HEX_AREA_ATTACK and resolves the old picks.
+// Also v189: commander Magic ladder (Power 0/1/1/2, -1/-2/-3 Spell and -1
+// Specialty damage, negative-ongoing immunity from grade 2) and Soul Eater's
+// once-per-combat self-heal; Unit Experience — Fortress Dragon Flies R2 also
+// +1 Health, and a Creature-Bank track (RankScheduleSide "bank": Crypt
+// Skeletons R4 Reborn Guard, Treasury Dwarves R3 Spell Resistance). A v188
+// peer folds different stats and abilities.
+export const ENGINE_PROTOCOL_VERSION = 189;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

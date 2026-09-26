@@ -353,7 +353,7 @@ describe("commander casts — shared rules", () => {
     expect(castOffer(cancelled, "brute")).toBeTruthy();
   });
 
-  it("ongoing-effect casts never offer an ONGOING-IMMUNE commander (Magic grade 1+)", () => {
+  it("a negative ongoing cast never offers a commander immune to NEGATIVE ongoing effects (Magic grade 2+)", () => {
     function withEnemyCommander(magic: number): GameState {
       // Sea Marshal's Slow against an enemy commander.
       const state = castState("corsair");
@@ -370,14 +370,18 @@ describe("commander casts — shared rules", () => {
       return state;
     }
 
-    // Magic grade 1 (immune to ongoing): excluded up front.
-    const immune = castCandidateIds(withEnemyCommander(1), "corsair");
-    expect(immune).toContain("unit_p2_skeletons");
-    expect(immune).not.toContain("unit_p2_commander");
+    // Sea Marshal's Slow is a NEGATIVE ongoing effect (-Initiative). Magic
+    // grades 2 and 3 ignore negative ongoing effects: excluded up front.
+    for (const magic of [2, 3]) {
+      const immune = castCandidateIds(withEnemyCommander(magic), "corsair");
+      expect(immune).toContain("unit_p2_skeletons");
+      expect(immune).not.toContain("unit_p2_commander");
+    }
 
-    // CONTROL: a Magic grade-0 enemy commander is NOT immune → it IS offered.
-    const vulnerable = castCandidateIds(withEnemyCommander(0), "corsair");
-    expect(vulnerable).toContain("unit_p2_commander");
+    // CONTROL: Magic grades 0 and 1 carry no ongoing immunity → offered.
+    for (const magic of [0, 1]) {
+      expect(castCandidateIds(withEnemyCommander(magic), "corsair")).toContain("unit_p2_commander");
+    }
   });
 });
 
@@ -712,7 +716,7 @@ describe("commander casts — Succubus' Fire Shield", () => {
     expect(burn(castState("succubus"))).toBe(0);
     // Pow 0: 1 damage back.
     expect(burn(castOn(castState("succubus"), "succubus", "unit_p1_marksmen"))).toBe(1);
-    // Pow 1 (Magic grade 2; the ladder is 0/0/1/2): 2 damage back.
+    // Pow 1 (Magic grade 2; the ladder is 0/1/1/2): 2 damage back.
     expect(burn(castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen"))).toBe(2);
     // Pow 2: 2 damage back.
     expect(burn(castOn(castState("succubus", { magic: 3 }), "succubus", "unit_p1_marksmen"))).toBe(2);
@@ -779,12 +783,12 @@ describe("commander casts — Soul Eater's Animate Dead", () => {
     expect(lowIds).toContain("unit_p1_griffins");
     expect(lowIds).toContain("unit_p1_crusaders");
 
-    // Even an azure body qualifies — only tierless bodies stay excluded.
+    // Even an azure body qualifies — other tierless bodies stay excluded.
     const azure = prepare(castState("soul_eater"));
     azure.combat!.units.unit_p1_crusaders.grade = "azure";
     expect(castCandidateIds(azure, "soul_eater")).toContain("unit_p1_crusaders");
 
-    // Power 0 / 1 / 2 (Magic grade 0-1 / 2 / 3) remove 1 / 2 / 3 damage.
+    // Power 0 / 1 / 2 (Magic grade 0 / 1-2 / 3) remove 1 / 2 / 3 damage.
     const healedLow = castOn(prepare(castState("soul_eater")), "soul_eater", "unit_p1_crusaders");
     expect(healedLow.combat!.units.unit_p1_crusaders.damage).toBe(2);
     const healedMid = castOn(prepare(castState("soul_eater", { magic: 2 })), "soul_eater", "unit_p1_crusaders");

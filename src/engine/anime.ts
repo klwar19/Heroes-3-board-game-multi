@@ -40,6 +40,13 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   unitStacks: false,
   unitExperience: false,
   neutralRankUp: false,
+  wanderingBoss: false,
+  wanderingTeacher: false,
+  loanBank: false,
+  mithril: false,
+  karmicBattles: false,
+  skillCombos: false,
+  wanderingBossSpawnRound: 5,
   pveTheme: "classic",
   wavePressure: "standard",
   waveDefeatLimit: 0,
@@ -66,6 +73,7 @@ export function animeModuleEnabled(
     | "raidBossSpawnRound"
     | "dungeonDepth"
     | "dungeonDescentCost"
+    | "wanderingBossSpawnRound"
   >
 ): boolean {
   const anime = state?.anime;
@@ -100,6 +108,7 @@ export function resolveAnimeOptions(partial?: Partial<AnimeModOptions> | null): 
         ? merged.raidBossSpawnRound
         : 5,
     dungeonDepth: merged.dungeonDepth === 5 ? 5 : 10,
+    wanderingBossSpawnRound: merged.wanderingBossSpawnRound === 4 ? 4 : 5,
     dungeonDescentCost:
       merged.dungeonDescentCost === 0 || merged.dungeonDescentCost === 2
         ? merged.dungeonDescentCost

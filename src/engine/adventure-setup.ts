@@ -208,6 +208,7 @@ import type {
 } from "./state";
 import { DEFAULT_WOG_OPTIONS, MAX_FAR_TILES_PER_PLAYER, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import { animeModuleEnabled, resolveAnimeOptions } from "./anime";
+import { carveMithrilMine, eraAdventureFields, resolveEraModules } from "./wog-era";
 import { resolvePveEncounterTheme } from "./pve-content";
 import { planFieldOverrides, planTokens } from "./tile-hex-placements";
 import {
@@ -644,6 +645,12 @@ export type AdventureSetupOptions = {
    * with a table-wide warning — on a PvP battle or a serious PvP interaction.
    */
   parallelTurns?: number;
+  /**
+   * Parallel PvP option (see GameSetupOptions.parallelPvp): "keep" lets PvP
+   * battles and player-affecting interactions resolve without ending parallel
+   * turns; "stop"/absent keeps the classic stop-on-PvP behaviour.
+   */
+  parallelPvp?: "keep" | "stop";
   /**
    * OPTIONAL "Undo moves" debug/testing mode (default off). When on, the server
    * keeps a bounded per-room snapshot stack so a player may roll the game back.
@@ -3004,6 +3011,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ? { customWinConditions: options.customWinConditions }
       : {}),
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
+    ...(options.parallelPvp !== undefined ? { parallelPvp: options.parallelPvp } : {}),
     ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
     ...(options.unitExperience !== undefined ? { unitExperience: options.unitExperience } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
@@ -3217,6 +3225,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const dungeonOn =
     Boolean(wog.enabled && wog.dungeon) || Boolean(anime.enabled && anime.dungeon);
   const anyPveModuleOn = monsterWavesOn || raidBossesOn || dungeonOn;
+  // WoG era modules (optional): the WOG and Anime surfaces each activate ONE
+  // shared flag per module, frozen onto adventure state below. Default OFF.
+  const eraModules = resolveEraModules(wog, anime);
   // A mod surface only controls the shared PvE settings when it actually has
   // one of those modules enabled. Anime wins ties, mirroring wave cadence.
   const animePveOn =
@@ -3362,6 +3373,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // everyone plays simultaneously. A solo table always plays ordered.
   const parallelRounds = playerConfigs.length >= 2 && options.sessionMode !== "single-player"
     ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
+  // Parallel PvP "keep": PvP no longer ends the parallel period. Only frozen onto
+  // the turn state when parallel turns are actually on; absent = classic stop.
+  const pvpKeepsParallel = parallelRounds > 0 && setupOptions.parallelPvp === "keep";
   // PvP Neutral Control (optional, any table with at least two seats): the next
   // live seat clockwise plays the Neutral units in every combat. This includes
   // one-human-plus-computer tables; a true one-seat table keeps the Neutral AI.
@@ -3548,6 +3562,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // scheduled spawn (or a designer lair) places a boss. Default OFF.
     ...(raidBossesOn ? { raidBosses: {} } : {}),
     ...(raidBossesOn && raidBossSpawnRound !== 5 ? { raidBossSpawnRound } : {}),
+    // WoG era modules (optional): presence = ON; nothing is stamped for an OFF
+    // module, so those games stay byte-identical. See src/engine/wog-era.ts.
+    ...eraAdventureFields(eraModules),
     // The Dungeon (optional module): presence = ON; fieldId stays null until
     // the first Near-band Blocked Field reveal carves the site. Default OFF.
     ...(dungeonOn
@@ -3732,6 +3749,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     turn: {
       mode: parallelRounds > 0 ? "parallel" : "ordered",
       simultaneousRoundLimit: parallelRounds,
+      ...(pvpKeepsParallel ? { pvpKeepsParallel: true } : {}),
       completedPlayerIds: [],
       observingPlayerId: playerConfigs[0].id
     }
@@ -4798,7 +4816,19 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   }
 
   if (parallelRounds > 0) {
-    appendEvent(state, { type: "PARALLEL_TURNS_STARTED", rounds: parallelRounds });
+    appendEvent(state, {
+      type: "PARALLEL_TURNS_STARTED",
+      rounds: parallelRounds,
+      ...(pvpKeepsParallel ? { pvpKeepsParallel: true } : {})
+    });
+  }
+
+  // WoG era Mithril (optional module): a Near tile already face up at setup
+  // carries its Mithril Mine too (later reveals carve theirs in setTileRotation).
+  if (state.adventure?.mithril) {
+    for (const tile of Object.values(state.adventure.tiles)) {
+      carveMithrilMine(state, tile);
+    }
   }
 
   if (manualOrderRejected) {
@@ -5465,6 +5495,17 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       monsterWaves: Boolean(next.wog.monsterWaves),
       raidBosses: Boolean(next.wog.raidBosses),
       dungeon: Boolean(next.wog.dungeon),
+      // WoG era modules (the WOG surface's toggles) — without these the lobby
+      // toggles were dropped here and the WOG surface could never turn one on.
+      wanderingBoss: Boolean(next.wog.wanderingBoss),
+      wanderingTeacher: Boolean(next.wog.wanderingTeacher),
+      loanBank: Boolean(next.wog.loanBank),
+      mithril: Boolean(next.wog.mithril),
+      karmicBattles: Boolean(next.wog.karmicBattles),
+      skillCombos: Boolean(next.wog.skillCombos),
+      ...(next.wog.wanderingBossSpawnRound === 4 || next.wog.wanderingBossSpawnRound === 5
+        ? { wanderingBossSpawnRound: next.wog.wanderingBossSpawnRound }
+        : {}),
       ...(next.wog.pveTheme === "classic" ||
       next.wog.pveTheme === "doom" ||
       next.wog.pveTheme === "random"
@@ -5862,6 +5903,18 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       rounds > 0
         ? `parallel turns for the first ${rounds} round${rounds === 1 ? "" : "s"} (multiplayer only)`
         : "parallel turns off"
+    );
+  }
+
+  if (next.parallelPvp !== undefined) {
+    if (next.parallelPvp !== "keep" && next.parallelPvp !== "stop") {
+      throw new Error("Parallel PvP must be \"keep\" or \"stop\".");
+    }
+    lobby.options.parallelPvp = next.parallelPvp;
+    changes.push(
+      next.parallelPvp === "keep"
+        ? "parallel PvP: battles and player interactions keep parallel turns running"
+        : "parallel PvP: a PvP battle or player interaction switches to ordered turns"
     );
   }
 
@@ -7355,6 +7408,9 @@ function buildAdventureFromLobby(state: GameState): void {
     startingHandMulligan: lobby.options.startingHandMulligan !== false,
     houseRules: lobby.options.houseRules,
     parallelTurns: lobby.options.parallelTurns,
+    // Lobby default for parallel PvP is "keep" (absent = the table never touched
+    // the choice); an explicit "stop" keeps the classic behaviour.
+    parallelPvp: lobby.options.parallelPvp ?? "keep",
     undoMoves: lobby.options.undoMoves,
     unitExperience: lobby.options.unitExperience,
     farTileOpening: lobby.options.farTileOpening,

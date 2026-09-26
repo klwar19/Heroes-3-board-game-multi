@@ -497,6 +497,13 @@ function buildBreakdown(
     "Artifacts (1 VP per 2)",
     Math.floor(artifactCountOf(state.players[playerId], countRemovedArtifacts) / 2)
   );
+  // WoG era Loan Bank (optional module): VP forfeited to a defaulted loan when
+  // the bank found no building to seize — a NEGATIVE row (never hidden).
+  const loanDefaultVp = ledger.loanDefaultVp ?? 0;
+  if (loanDefaultVp > 0) {
+    rows.push({ label: "Defaulted Loan Bank loan", vp: -loanDefaultVp });
+    total -= loanDefaultVp;
+  }
 
   for (const objective of config?.objectives ?? []) {
     if (playerMeetsObjective(state, playerId, objective, ledger)) {

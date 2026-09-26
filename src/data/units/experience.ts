@@ -27,6 +27,7 @@ export {
   UNIT_STAT_STEPS,
   effectiveRankScheduleSide,
   hasNeutralSideRankSchedule,
+  hasBankSideRankSchedule,
   hasUniqueRankSchedule,
   inferFlavour,
   inferRankAbilityTrack,

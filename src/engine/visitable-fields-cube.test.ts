@@ -28,8 +28,11 @@ import { locationDefinitions } from "@/data/map/locations";
  * is removed or weakened — so the behavior is engine-enforced, not decorative.
  */
 
-function makeGame(): GameState {
-  return createAdventureGameState({ seed: "cube", difficulty: "normal", rollFirstPlayer: false });
+function makeGame(locationId?: string): GameState {
+  // The Mithril Mine only exists with the WoG era Mithril module on (it is
+  // inert on a visit with the module off — covered in wog-era.test.ts).
+  const wog = locationId === "wog.mithril_mine" ? { wog: { enabled: true, mithril: true } } : {};
+  return createAdventureGameState({ seed: "cube", difficulty: "normal", rollFirstPlayer: false, ...wog });
 }
 
 const FIELD_ID = "50,50";
@@ -142,7 +145,7 @@ describe("Revisitable fields never take a black cube", () => {
 describe("Flaggable fields take a faction cube, never a black cube", () => {
   for (const loc of flaggable) {
     it(`${loc.id}: flags the visitor and leaves no black cube`, () => {
-      const state = makeGame();
+      const state = makeGame(loc.id);
       stockPlayer(state);
       const field = injectField(state, loc.id);
       field.resource = "gold";

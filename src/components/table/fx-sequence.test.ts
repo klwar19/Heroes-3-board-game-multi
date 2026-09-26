@@ -100,6 +100,21 @@ describe("orderFxEventsForPresentation", () => {
     const log = [ev("DAMAGE_ASSIGNED", "fs"), ev("UNIT_DEFENDED", "def")];
     expect(orderFxEventsForPresentation(log).map((e) => (e as { id: string }).id)).toEqual(["fs", "def"]);
   });
+
+  it("leads a WOG commander cast's damage / death run with the cast (logged after its results)", () => {
+    // The reducer appends COMMANDER_CAST_USED after the damage it dealt (Mech
+    // Princess Arc Discharge): the cast must play first, then its numbers.
+    const log = [
+      ev("UNIT_ACTIVATION_STARTED", "act"),
+      ev("DAMAGE_ASSIGNED", "dmg"),
+      ev("UNIT_REMOVED", "rm"),
+      ev("COMMANDER_CAST_USED", "cast")
+    ];
+    expect(orderFxEventsForPresentation(log).map((e) => (e as { id: string }).id)).toEqual(["act", "cast", "dmg", "rm"]);
+    // CONTROL: a commander cast with no result run stays where it was logged.
+    const buffOnly = [ev("UNIT_ACTIVATION_STARTED", "act"), ev("COMMANDER_CAST_USED", "cast"), ev("UNIT_DEFENDED", "def")];
+    expect(orderFxEventsForPresentation(buffOnly).map((e) => (e as { id: string }).id)).toEqual(["act", "cast", "def"]);
+  });
 });
 
 describe("partitionCombatMoves (Harpy Strike-and-Return ordering)", () => {

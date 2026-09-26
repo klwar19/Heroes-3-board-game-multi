@@ -6,7 +6,7 @@ import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
-import { isParallelWatchOnly, parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
+import { isParallelWatchOnly, parallelContextOptions, parallelPvpKeeps, parallelPvpPinOwner, parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
 import {
@@ -150,6 +150,7 @@ import {
   unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk,
   spellCreatesDirectUnitOngoingEffect,
+  spellCreatesDirectUnitNegativeOngoingEffect,
   cardDamageNullified,
   specialtyImmunityActive,
 } from "./active-effects";
@@ -240,6 +241,7 @@ import {
   unitTailOffset,
 } from "./hex-footprint";
 import { hexPcSpellBlast } from "./hex-spell-areas";
+import { hexAreaAimOptions, hexAreaAttackOf } from "./hex-area-attacks";
 import { chainHexReachable } from "./chain-lightning-hex";
 import { movableObstacleCells } from "./hex-battlefield";
 import {
@@ -276,6 +278,7 @@ import {
   heroTrainAvailable,
   playerMainHeroInCombat,
 } from "./anime-hero-grades";
+import { addWogEraActions } from "./wog-era";
 import {
   fuyukiCommandSealsOf,
   hiddenLeafCombatFormationError,
@@ -1236,7 +1239,13 @@ export function unitBlockedBySpellCard(
   }
   if (
     spellCreatesDirectUnitOngoingEffect(card) &&
-    (hasIgnoreOngoingEffects(unit) || hasIgnoreOngoingSpellEffects(unit))
+    (hasIgnoreOngoingEffects(unit) ||
+      hasIgnoreOngoingSpellEffects(unit) ||
+      // Commander Magic grade 2+ ignores only NEGATIVE ongoing effects: a
+      // negative one would fizzle on it, so it is never a target; a positive
+      // one (Haste, Anti-Magic, Fire Shield…) still lands and stays offered.
+      (spellCreatesDirectUnitNegativeOngoingEffect(card) &&
+        hasUnitAbilityEffect(unit, "IGNORE_NEGATIVE_ONGOING_EFFECTS")))
   ) {
     return true;
   }
@@ -8247,6 +8256,86 @@ function addUnitAbilityActions(
 }
 
 /**
+ * Hex battlefield aimed shots (hex-area-attacks.ts, user ruling 2026-09-26):
+ * an active Magog / Lich / Dracolich that may shoot RIGHT NOW — at least one
+ * legal ranged ATTACK_UNIT among `attackOffers` (so every "may attack now"
+ * gate: not yet attacked, a shooter that moved gave its shot up, engagement,
+ * Berserk menus never pass their offers here) — may instead aim that shot at
+ * an EMPTY hex: no living unit, obstacle / Force Field / Ladybird Wall or
+ * standing Wall / Gate on it (an occupied hex is ATTACK_UNIT on that unit),
+ * not adjacent to the shooter (the shot's "target not adjacent" rule), and
+ * whose ring holds at least one unit the printed follow-up reaches (the
+ * shooter itself never counts). `requireEnemy`: a must-attack neutral menu —
+ * the ring must hold an enemy of the guard. One offer per hex; the options are
+ * computed once per call from the units' rings (hexAreaAimOptions).
+ */
+function addHexAreaAttackOffers(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState,
+  attackOffers: readonly LegalAction[],
+  requireEnemy = false,
+): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combatGeometry(combat) !== "hex" ||
+    activeUnit.attackedThisActivation
+  ) {
+    return;
+  }
+  const area = hexAreaAttackOf(combat, activeUnit);
+  if (!area) {
+    return;
+  }
+  const canShoot = attackOffers.some((offer) => {
+    if (
+      offer.action.type !== "ATTACK_UNIT" ||
+      offer.action.attackerId !== activeUnit.id ||
+      offer.action.abilityAttack
+    ) {
+      return false;
+    }
+    const defender = combat.units[offer.action.defenderId];
+    return defender !== undefined && getAttackKind(activeUnit, defender, combat) === "ranged";
+  });
+  if (!canShoot) {
+    return;
+  }
+  const blocked = new Set<number>([
+    ...getCombatObstacles(combat),
+    ...getForceFieldPositions(combat),
+    ...getArtifactWallPositions(combat),
+    ...(combat.siege ? intactFortificationPositions(combat.siege) : []),
+  ]);
+  for (const unit of Object.values(combat.units)) {
+    if (isUnitAlive(unit)) {
+      for (const cell of unitCells(combat, unit)) blocked.add(cell);
+    }
+  }
+  for (const [position, struck] of hexAreaAimOptions(combat, activeUnit, area, blocked)) {
+    if (
+      requireEnemy &&
+      !struck.some(
+        (unitId) => combat.units[unitId]?.controllerId !== activeUnit.controllerId,
+      )
+    ) {
+      continue;
+    }
+    actions.push({
+      label: `${activeUnit.name}: ${area.abilityName} at hex ${getBattlefieldLabel(position)} (hits ${struck.length} unit${struck.length === 1 ? "" : "s"})`,
+      action: {
+        type: "ATTACK_HEX",
+        playerId,
+        attackerId: activeUnit.id,
+        position,
+      },
+    });
+  }
+}
+
+/**
  * Siege demolition: the active unit may bring down a Wall or the Gate as its
  * attack — adjacent ground/flying units always, Cyclops-style units at any
  * range (their pack version also levels the Arrow Tower).
@@ -8623,6 +8712,7 @@ function addControlledNeutralUnitActions(
       pushMove(destination);
     }
     actions.push(...attacks);
+    addHexAreaAttackOffers(actions, state, playerId, activeUnit, attacks);
     // Consecutive-Defend ban: a guard that Defended last activation must do
     // something else before it may Defend again.
     if (!isArrowTowerUnit(activeUnit) && !activeUnit.defendedLastActivation) {
@@ -8655,6 +8745,8 @@ function addControlledNeutralUnitActions(
       pushMove(destination);
     }
     actions.push(...attacks);
+    // Must attack a player unit: an aimed hex only when its ring holds one.
+    addHexAreaAttackOffers(actions, state, playerId, activeUnit, attacks, true);
     if (attacks.length === 0 && moveDestinations.length === 0) {
       actions.push(hold);
     }
@@ -8681,6 +8773,8 @@ function addControlledNeutralUnitActions(
   );
   if (attacks.length > 0 || strikeCells.length > 0) {
     actions.push(...attacks);
+    // Must attack a player unit: an aimed hex only when its ring holds one.
+    addHexAreaAttackOffers(actions, state, playerId, activeUnit, attacks, true);
     for (const destination of strikeCells) {
       pushMove(destination);
     }
@@ -8939,6 +9033,7 @@ function addUnitActions(
   // first and then attack an adjacent enemy. canUnitAttack enforces that a
   // ranged unit that already moved gave up its attack. A Sandworm with a cube
   // may attack again even after its first strike (cubeAttackAvailable).
+  const attackOffersStart = actions.length;
   if (!alreadyAttacked || cubeAttackAvailable) {
     for (const defender of Object.values(combat.units)) {
       if (!canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
@@ -8957,6 +9052,16 @@ function addUnitActions(
         },
       });
     }
+  }
+  // Hex battlefield: a Magog / Lich that may shoot now may aim at an empty hex.
+  if (!alreadyAttacked) {
+    addHexAreaAttackOffers(
+      actions,
+      state,
+      playerId,
+      activeUnit,
+      actions.slice(attackOffersStart),
+    );
   }
 
   // Factory Dreadnoughts (Juggernaut): "[activation] Instead of attacking, select
@@ -9364,7 +9469,7 @@ export function getLegalActions(
         context.role === "hero"
           ? "My battle / adventure"
           : context.role === "watch"
-            ? `Watch ${context.fighterName}'s battle`
+            ? context.pvp ? `Watch the battle ${context.fighterName}` : `Watch ${context.fighterName}'s battle`
           : `Control neutrals for ${context.fighterName}`,
     });
   }
@@ -9789,7 +9894,9 @@ function getLegalActionsCore(
     if (state.pendingChoice.type === "ABILITY_TARGET_CHOICE") {
       const choice = state.pendingChoice;
       const verb =
-        choice.kind === "war-machine" && choice.abilityId?.startsWith("specialty.dark_mullich.")
+        choice.kind === "war-machine" && choice.abilityId === "war_machine.ammo_cart"
+          ? `Mithril ${choice.abilityName}: +1 Attack for`
+          : choice.kind === "war-machine" && choice.abilityId?.startsWith("specialty.dark_mullich.")
           ? `${choice.abilityName}: overclock`
           : choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
@@ -16768,6 +16875,30 @@ function getParallelBystanderActions(
     return actions;
   }
 
+  // Parallel PvP "keep": the blocking work sits in this seat's OWN context —
+  // another seat's decision this seat opened (the garrison prompt of its
+  // assault, the defender's post-battle choices, a choice its card handed
+  // someone). Like the aggressor in ordered play it waits for that answer: no
+  // quiet step may walk the attacking hero off the contested field, and no
+  // town action may change the army about to fight.
+  if (parallelPvpKeeps(state) && state.parallelCombatOwnerId === playerId) {
+    return actions;
+  }
+  // Parallel PvP "keep": a seat PINNED into another seat's context (the
+  // defender of a PvP battle, the target of a choice) that switched over to
+  // command a Neutral battle acts there only as that battle's controller — no
+  // quiet step (its fighting hero must not walk off the PvP battle) and no
+  // hand step. Mirrors the reducer guard (pinnedElsewhere in applyActionInContext).
+  // A hosted view carries no parked contexts, only the option summaries, whose
+  // "hero" entry is the pin (see parallelContextOptions' `home`).
+  if (parallelPvpKeeps(state)) {
+    const pin = parallelPvpPinOwner(state, playerId) ??
+      state.parallelContextOptions?.find((option) => option.role === "hero")?.ownerPlayerId;
+    if (pin && pin !== playerId && pin !== state.parallelCombatOwnerId) {
+      return actions;
+    }
+  }
+
   // Round-start Event / Astrologers barrier: a frozen bystander has NO quiet
   // actions — not even a hand refresh, a town action or a move — until the
   // player whose event choice is open (and the rest of the table) has resolved
@@ -17619,6 +17750,11 @@ function getAdventureLegalActions(
       action: { type: "HERO_TRAIN", playerId },
     });
   }
+
+  // WoG era modules (optional): every offer below is empty unless its module
+  // was frozen ON at setup — attack the moving Raid Boss, a Wandering Teacher
+  // lesson, the Loan Bank, Mithril enchantments and the one Skill Combo.
+  addWogEraActions(actions, state, playerId);
 
   // Unit Experience Drill (optional rule): pay gold to grant one army unit
   // +1 XP. Bronze units and Towns/Settlements/Random Towns waive movement.

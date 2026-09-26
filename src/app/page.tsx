@@ -243,7 +243,8 @@ import {
   NEUTRAL_ATTACK_PAUSE_MS,
   preloadRuneBurstArt,
   RANGED_RELEASE_MS,
-  type FxCue
+  type FxCue,
+  type StatGlowKind
 } from "@/components/table/fx";
 import { isBulwarkPlayer } from "@/engine/runes";
 import {
@@ -252,6 +253,8 @@ import {
   cardShotFxPlans,
   cardSpellFxPlans,
   CHAIN_FROM_CENTRE_CARD_IDS,
+  hexAreaSpecialtyFxPlans,
+  followUpStrikeFx,
   DEFAULT_BEAM_TIMING,
   healFxPlans,
   getFxSheet,
@@ -285,7 +288,12 @@ import {
   planReturnMoveDelays,
   unitAbilityCastsOnHex
 } from "@/components/table/fx-sequence";
+import { playedCardStatGlows, statBuffGlows } from "@/components/table/stat-glow";
 import { hexMoveEventDurationMs, isHexCombat } from "@/components/table/hex-battlefield";
+import { unitAbilities } from "@/data/units/abilities";
+import { getLineAttackAbility } from "@/engine/unit-abilities";
+import { cellBehindTarget } from "@/engine/reducer";
+import { isHexAreaAttackAbility } from "@/engine/hex-area-attacks";
 import { hexPcSpellArea } from "@/engine/hex-spell-areas";
 import { HEX_RANGED_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
 import { HERO_CAST_RELEASE_MS } from "@/data/battle-hex/hero-sprites";
@@ -368,6 +376,24 @@ import { ChatPanel } from "@/components/table/chat-panel";
 import { InvitePopup } from "@/components/invite-popup";
 
 /** Events that move cards or play battle effects on the table. */
+/**
+ * Events whose presentation can carry a stat buff (a cast, an ability, a
+ * defend): a buffed unit no effect was aimed at glows once the latest of them
+ * has played (stat-glow.ts).
+ */
+const STAT_GLOW_BEAT_EVENTS = new Set<GameEvent["type"]>([
+  "CARD_PLAYED",
+  "SPELL_CAST_RESOLVED",
+  "COMMANDER_CAST_USED",
+  "UNIT_ABILITY_TRIGGERED",
+  "ENEMY_FORCE_CARD_PLAYED",
+  "UNIT_DEFENDED"
+]);
+/** Hex battlefield Magog / Lich area burst: how long it plays before its splash damage shows. */
+const HEX_AREA_BURST_HOLD_MS = 650;
+/** A buff's glow starts this long after the effect aimed at the unit starts. */
+const STAT_GLOW_LEAD_MS = 180;
+
 const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "CARDS_DRAWN",
   "CARD_PLAYED",
@@ -403,6 +429,9 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   // reused H3 spell sprite + sound is the only thing that animates it. MUST be
   // listed here — the FX switch only ever sees events in this set.
   "ENEMY_FORCE_CARD_PLAYED",
+  // Hex battlefield Magog Fireball / Lich Death Cloud: ONE PC-sized blast over
+  // the whole area (and an aimed-hex shot's own shot).
+  "HEX_AREA_ATTACK",
   // Includes the Hierophant's off-turn Shield: the reducer emits this only
   // after the instant command resolves, with the protected unit as target.
   "COMMANDER_CAST_USED",
@@ -1312,6 +1341,8 @@ export default function Home() {
   const seenStructureIdsRef = useRef<Set<string>>(new Set());
   const seenFeedIdsRef = useRef<Set<string>>(new Set());
   const seenFxIdsRef = useRef<Set<string>>(new Set());
+  // The previous presented frame: stat-buff glows read what each frame raised (stat-glow.ts).
+  const statGlowPriorRef = useRef<GameState | null>(null);
   // Storm Circuit chain origin, keyed `${playerId}|${cardId}`: the centre unit a
   // play struck first (and its cell, in case it has since fallen). An area-pick
   // hit arrives in a LATER snapshot than the centre hit; its arc starts here.
@@ -1668,6 +1699,8 @@ export default function Home() {
 
     const incomingState = nextState;
     nextState = parallelStateForPlayer(nextState, viewerRef.current);
+    const statGlowPrior = statGlowPriorRef.current;
+    statGlowPriorRef.current = nextState;
 
     const eventWindow = presentationEventWindow(presentationEventCursorRef.current, nextState.eventLog);
     const presentationEvents = parallelPresentationEvents(nextState, eventWindow.events, viewerRef.current);
@@ -2517,7 +2550,19 @@ export default function Home() {
           };
         }
       );
-      const activationSpellLeadMs = activationSpellPreamble.leadMs;
+      // Hex battlefield: a Magog / Lich shot aimed at an EMPTY hex has no attack
+      // die of its own, but its blast comes first — the shot flies and bursts,
+      // THEN any Death Cloud follow-up dice roll — so everything else in the
+      // snapshot is held back by the shot's length, like a leading cast.
+      const aimedAreaShotStart = activationSpellPreamble.leadMs;
+      const aimedAreaShotLeadMs =
+        isHexCombat(nextState.combat) &&
+        presentationEvents.some(
+          (event) => event.type === "HEX_AREA_ATTACK" && !event.centreUnitId && !seenFxIdsRef.current.has(event.id)
+        )
+          ? ATTACK_IMPACT_MS + HEX_AREA_BURST_HOLD_MS
+          : 0;
+      const activationSpellLeadMs = activationSpellPreamble.leadMs + aimedAreaShotLeadMs;
 
       // Each attack die is its own beat: the cube rolls and reads, then the
       // table holds (ATTACK_ANIM_MS) so the striking unit's lunge / slash / shot
@@ -2819,6 +2864,20 @@ export default function Home() {
       for (const event of fxEvents) {
         seenFxIdsRef.current.add(event.id);
       }
+      // Buffs that raised a unit's Attack / Defense / Speed this frame make it
+      // glow in that stat's colour (stat-glow.ts) as their effect lands.
+      const statGlows = combatBoardLive ? statBuffGlows(statGlowPrior, nextState) : new Map<string, StatGlowKind[]>();
+      if (freshFx.length === 0 && fresh.length === 0 && statGlows.size > 0) {
+        // No cast / attack presented this frame (a round-start or passive buff): glow now.
+        const glowCues = [...statGlows].map(([unitId, stats]): FxCue => ({
+          kind: "statGlow",
+          id: `statglow-${nextState.eventLog.at(-1)?.id ?? "frame"}-${unitId}`,
+          unitId,
+          stats,
+          delayMs: 0
+        }));
+        setFxCues((current) => [...current, ...glowCues]);
+      }
       if (freshFx.length > 0 || fresh.length > 0) {
         const cues: FxCue[] = [];
         // Spell rolls (Inferno) feed the attack-die overlay; collected as the loop
@@ -2900,6 +2959,21 @@ export default function Home() {
         // unitId -> when its latest "−N" lands this batch (a Soul Link tether
         // leaves the linked unit only once its own wound has shown).
         const damageLandAt = new Map<string, number>();
+        // Hex battlefield PC-area specialty blast (`<controller>|<card>|<centre>`)
+        // -> when its one area burst has played (every hit of it lands then).
+        const hexAreaBurstLandAt = new Map<string, number>();
+        // Hex battlefield Magog / Lich area blast: struck unitId -> when the one
+        // area burst has played (its Magog splash damage lands then).
+        const hexAreaHitLandAt = new Map<string, number>();
+        // Stat-buff glow beats: unitId -> when an effect aimed at it starts,
+        // and the end of the latest cast / ability / defend presented (the
+        // fallback for a buff that named no unit on screen).
+        const unitFxBeat = new Map<string, number>();
+        let lastEffectEnd = -1;
+        let glowBeatPending = false;
+        const noteUnitFxBeat = (anchor: string, at: number) => {
+          if (anchor.startsWith("unit:")) unitFxBeat.set(anchor.slice("unit:".length), at);
+        };
         // commander unitId -> when its Soul Link share lands (the soul orb's
         // arrival), set by the tether cue and consumed by that transfer's
         // DAMAGE_ASSIGNED.
@@ -3061,6 +3135,32 @@ export default function Home() {
               // nothing to the area (the FX stage sizes it from live cells).
               const struck = primaryId === declaration.defenderId ? [primaryId] : [primaryId, declaration.defenderId];
               return `area:${centre}|${struck.join(",")}`;
+            }
+          }
+          return undefined;
+        };
+        /**
+         * Where a follow-up attack's first strike landed: the unit the attacker
+         * struck (not as a follow-up) just before this declaration — the Evil
+         * Eye's Forked Gaze spreads from it. Undefined when it cannot be found.
+         */
+        const followUpOriginAnchor = (
+          declaration: Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }>
+        ): string | undefined => {
+          const log = nextState.eventLog;
+          const declaredIndex = log.findIndex((candidate) => candidate.id === declaration.id);
+          for (let index = declaredIndex - 1; declaredIndex > 0 && index >= 0 && declaredIndex - index <= 400; index -= 1) {
+            const candidate = log[index];
+            if (candidate.type === "UNIT_ACTIVATION_STARTED" || candidate.type === "COMBAT_ROUND_STARTED") {
+              return undefined;
+            }
+            if (
+              candidate.type === "UNIT_ATTACK_DECLARED" &&
+              candidate.attackerId === declaration.attackerId &&
+              !candidate.isRetaliation &&
+              !candidate.abilityAttack
+            ) {
+              return candidate.defenderId === declaration.defenderId ? undefined : standingAnchor(candidate.defenderId);
             }
           }
           return undefined;
@@ -3359,6 +3459,14 @@ export default function Home() {
             toPosition: event.to,
             // Hex board: the figure paces its walk to exactly this timeline slot.
             ...(hexCombat ? { durationMs: glideMsFor(event) } : {}),
+            // Hex board: a walk no strike of this unit follows (its activation
+            // is over) faces the enemy again as soon as it arrives.
+            ...(hexCombat &&
+            nextState.combat?.activeUnitId !== event.unitId &&
+            !fresh.some((roll) => roll.attackerId === event.unitId) &&
+            !freshFx.some((candidate) => candidate.type === "UNIT_ATTACK_DECLARED" && candidate.attackerId === event.unitId)
+              ? { settle: true }
+              : {}),
             teleport: event.sourceAbilityId === "veteran-magma-teleport-strike" || nestReturn,
             teleportFxKey: nestReturn ? "phoenix-scorch-animated" : undefined,
             // Cards always stand upright now (the seat flip only mirrors cell
@@ -3404,6 +3512,9 @@ export default function Home() {
         // so its OWN fly-back leaves then — not after every later guard in a
         // batched snapshot has also struck.
         const strikeEndByAttacker = new Map<string, number>();
+        // attackerId -> its latest strike's impact beat (a follow-up swing such
+        // as a Minotaur's Cleave starts once that blow has landed).
+        const lastImpactByAttacker = new Map<string, number>();
         fresh.forEach((roll, index) => {
           const strikeAt = diceDismissAt[index];
           const impactAt = strikeAt + ATTACK_IMPACT_MS;
@@ -3450,6 +3561,19 @@ export default function Home() {
             );
           const ranged = attackDeclaration?.attackKind === "ranged";
           const lichDeathCloudFollowUp = attackDeclaration?.abilityAttack?.abilityId === "lich-death-cloud";
+          // Follow-up hits that belong to the first strike's own animation:
+          // a line breath's hit on the unit behind (the breath already carried
+          // through it), a Dracolich's cloud (its trigger draws the cloud), and
+          // the Evil Eye's Forked Gaze, which spreads FROM the first target —
+          // none of them lunges / cries a second time.
+          const followUpAbilityId = attackDeclaration?.abilityAttack?.abilityId;
+          const lineFollowUp = followUpAbilityId !== undefined &&
+            unitAbilities[followUpAbilityId]?.effect?.type === "SECOND_ATTACK_BEHIND_TARGET";
+          const spreadFrom = followUpAbilityId === "veteran-eye-splash" && attackDeclaration
+            ? followUpOriginAnchor(attackDeclaration)
+            : undefined;
+          const quietFollowUp = lichDeathCloudFollowUp || lineFollowUp ||
+            followUpAbilityId === "wog-dracolich-death-cloud";
           // The attacker's own H3 voice as it strikes (after the die, not on the
           // declaration). A magical striker (the Magic Elemental) layers a magic
           // zap over its voice so its blow reads as raw magic, not a plain thwack.
@@ -3474,7 +3598,7 @@ export default function Home() {
           const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
           const projectileSheet = shotPlan?.projectile ? getFxSheet(shotPlan.projectile) : undefined;
           const phasedShot = Boolean(projectileSheet?.projectilePhases || projectileSheet?.beamFrames);
-          if (!lichDeathCloudFollowUp) {
+          if (!quietFollowUp && !spreadFrom) {
             playUnitSound(
               attackerVoice,
               dracolichMelee ? "attack" : usesProjectilePresentation ? "shoot" : "attack",
@@ -3492,7 +3616,7 @@ export default function Home() {
           if (attackFlourish) {
             window.setTimeout(() => playLibrarySound(attackFlourish, 0.4), strikeAt);
           }
-          if (!lichDeathCloudFollowUp) {
+          if (!quietFollowUp && !spreadFrom) {
             cues.push({
               kind: "lunge",
               id: `${roll.id}-lunge`,
@@ -3505,9 +3629,36 @@ export default function Home() {
               delayMs: strikeAt
             });
           }
-          const attackerCell =
-            attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
-          if (lichDeathCloudFollowUp) {
+          // The Forked Gaze leaves the first target, not the Evil Eye.
+          const attackerCell = spreadFrom ??
+            (attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`);
+          lastImpactByAttacker.set(roll.attackerId, Math.max(lastImpactByAttacker.get(roll.attackerId) ?? 0, impactAt));
+          // Hex battlefield: a line attack's breath / thrust (dragons, the
+          // Phoenix, a spear wall) carries on through the hex behind its target.
+          const lineAbility = hexCombat && !quietFollowUp && defender && defender.position >= 0
+            ? getLineAttackAbility(attacker)
+            : null;
+          const breathThroughCell = lineAbility && nextState.combat
+            ? cellBehindTarget(attacker, defender!, false, nextState.combat)
+            : null;
+          // Hex battlefield (PC): a unit struck in melee from behind turns to
+          // face its attacker (where it strikes from — a Harpy's strike hex)
+          // before the blow lands; it turns back once idle.
+          const strikeFromCell = harpyHoldCellByUnit.get(roll.attackerId) ?? attacker.position;
+          if (hexCombat && !usesProjectilePresentation && !quietFollowUp && !spreadFrom && strikeFromCell >= 0 && defender && defender.position >= 0) {
+            cues.push({
+              kind: "face",
+              id: `${roll.id}-face`,
+              unitId: roll.defenderId,
+              to: `cell:${strikeFromCell}`,
+              beatMs: ATTACK_IMPACT_MS - 120,
+              delayMs: strikeAt
+            });
+          }
+          if (lichDeathCloudFollowUp && hexCombat && isHexAreaAttackAbility(nextState.combat, followUpAbilityId)) {
+            // Hex battlefield PC area: the one big cloud was drawn over the whole
+            // area by HEX_AREA_ATTACK; each struck unit just takes its hit here.
+          } else if (lichDeathCloudFollowUp) {
             // Death Cloud's second attack is already the cloud itself: no Lich
             // card attack motion and no duplicate ranged projectile. Hex
             // battlefield: one cloud centred on the Lich's original target,
@@ -3520,6 +3671,8 @@ export default function Home() {
               sound: "spells/death-cloud",
               delayMs: strikeAt
             });
+          } else if (quietFollowUp) {
+            // Part of the first strike's breath / cloud: only the hit shows.
           } else if (usesProjectilePresentation) {
             if (shotPlan?.projectile) {
               // Authored launch/flight/impact frames follow the same impact
@@ -3601,6 +3754,7 @@ export default function Home() {
                 fxKey: meleeFxKey,
                 from: attackerCell,
                 at: defenderCell,
+                ...(breathThroughCell !== null && breathThroughCell !== undefined ? { through: `cell:${breathThroughCell}` } : {}),
                 scaleMultiplier: behemothClaw ? 1.45 : undefined,
                 // Directional atlases are rotated from the live attacker toward
                 // the live target; Hydra's consecutive bites live in one atlas.
@@ -3639,7 +3793,7 @@ export default function Home() {
             cardImage: unit?.assets?.cardImage,
             path: event.path,
             toPosition: event.to,
-            ...(hexCombat ? { durationMs: glideMsFor(event) } : {}),
+            ...(hexCombat ? { durationMs: glideMsFor(event), settle: true } : {}),
             flip: false,
             delayMs: held ? 0 : moveDelay,
             ...(held ? { holdMs: moveDelay } : {})
@@ -3700,6 +3854,7 @@ export default function Home() {
         ) => {
           const at = plan.battlefield ? "battlefield" : `unit:${targetUnitId}`;
           const start = timeline;
+          noteUnitFxBeat(`unit:${targetUnitId}`, start);
           if (plan.chainLightningBeam) {
             pushLightningBeamCues(cues, plan, eventId, fromAnchor, at, start);
           } else if (plan.projectile) {
@@ -3864,6 +4019,11 @@ export default function Home() {
           return struck;
         };
         for (const event of orderFxEventsForPresentation(freshFx)) {
+          // The end of a cast / ability / defend = the timeline once it is queued.
+          if (glowBeatPending) {
+            lastEffectEnd = Math.max(lastEffectEnd, timeline);
+          }
+          glowBeatPending = STAT_GLOW_BEAT_EVENTS.has(event.type);
           switch (event.type) {
             case "RUNE_LEVEL_REACHED": {
               // A Bulwark army just crossed a Rune-Level threshold — ring the rune
@@ -3975,9 +4135,32 @@ export default function Home() {
               // CHOOSE_ONE label — by the play's own card-sourced hit in this
               // snapshot (Storm Circuit I/IV/VI all strike their centre at once).
               const presentedPerHit =
-                Boolean(cardSpellFxPlans[event.cardId]) &&
-                (/damage/iu.test(event.optionLabel ?? "") ||
-                  freshFx.some((candidate) => isStormChainHit(candidate, event.playerId, event.cardId)));
+                (Boolean(cardSpellFxPlans[event.cardId]) &&
+                  (/damage/iu.test(event.optionLabel ?? "") ||
+                    freshFx.some((candidate) => isStormChainHit(candidate, event.playerId, event.cardId)))) ||
+                // Hex battlefield PC-area specialty (Xyron / Adelaide / Glacius):
+                // its one area burst is drawn on the blast's DAMAGE_ASSIGNED hits.
+                (hexCombat &&
+                  Boolean(hexAreaSpecialtyFxPlans[event.cardId]) &&
+                  freshFx.some((candidate) =>
+                    isStormChainHit(candidate, event.playerId, event.cardId) &&
+                    candidate.type === "DAMAGE_ASSIGNED" &&
+                    candidate.areaCentre !== undefined));
+              // An attack-window stat bonus (Bloodlust, Stone Skin, Precision…)
+              // rides the pending attack, not an active effect, so the frame diff
+              // cannot glow it: the unit it lands on glows here, with the cast.
+              if (inCombat && !isPowerBoost && event.targetUnitId && !statGlows.has(event.targetUnitId)) {
+                const glowStats = playedCardStatGlows(cardLibrary[event.cardId], event.optionLabel);
+                if (glowStats.length > 0) {
+                  cues.push({
+                    kind: "statGlow",
+                    id: `${event.id}-statglow`,
+                    unitId: event.targetUnitId,
+                    stats: glowStats,
+                    delayMs: start + FLIGHT_MS + STAT_GLOW_LEAD_MS
+                  });
+                }
+              }
               const playedPlan = isPowerBoost || presentedPerHit ? undefined : spellFxPlans[event.cardId];
               if (playedPlan) {
                 const at = start + FLIGHT_MS;
@@ -4013,6 +4196,7 @@ export default function Home() {
                   // One sprite per anchored unit (Darkstorn IV's whole army,
                   // Cuthbert VI's every enemy); the sound plays once.
                   anchors.forEach((unitAnchor, anchorIndex) => {
+                    noteUnitFxBeat(unitAnchor, at);
                     cues.push({
                       kind: "sprite",
                       id: anchorIndex === 0 ? `${event.id}-played-fx` : `${event.id}-played-fx-${anchorIndex}`,
@@ -4029,6 +4213,7 @@ export default function Home() {
                     const tint = playedPlan.tint;
                     const soundKey = playedPlan.sound;
                     const unitId = event.targetUnitId;
+                    noteUnitFxBeat(`unit:${unitId}`, at);
                     window.setTimeout(() => {
                       if (soundKey) {
                         playLibrarySound(soundKey);
@@ -4262,6 +4447,80 @@ export default function Home() {
               }
               break;
             }
+            case "HEX_AREA_ATTACK": {
+              // Hex battlefield (PC): a Magog's fireball / a Lich's or
+              // Dracolich's death cloud engulfs the whole area around its target
+              // — ONE big burst over every struck unit, on the shot's impact.
+              // An aimed EMPTY hex has no attack roll: the unit shoots at the hex
+              // here, at the front of the snapshot (the lead reserved above).
+              if (!hexCombat) {
+                break;
+              }
+              const cloud = event.abilityId !== "magog-fireball-splash";
+              // A unit-targeted blast bursts on its shot's impact (or now, when
+              // that strike played in an earlier snapshot); only an aimed hex
+              // fires its shot here.
+              let burstAt = event.centreUnitId ? impactByTarget.get(event.centreUnitId) ?? timeline : undefined;
+              if (burstAt === undefined) {
+                const shooter = nextState.combat?.units[event.attackerId];
+                const shooterVoice = unitVoice(event.attackerId);
+                const strikeAt = aimedAreaShotStart;
+                if (shooter && shooter.position >= 0) {
+                  const shot = unitShotFxPlan(shooterVoice);
+                  const shotSheet = shot?.projectile ? getFxSheet(shot.projectile) : undefined;
+                  const phased = Boolean(shotSheet?.projectilePhases || shotSheet?.beamFrames);
+                  playUnitSound(shooterVoice, "shoot", strikeAt + (phased ? HEX_RANGED_RELEASE_MS : 0), unitVariant(event.attackerId));
+                  cues.push({
+                    kind: "lunge",
+                    id: `${event.id}-area-shot`,
+                    attackerId: event.attackerId,
+                    to: `cell:${event.centre}`,
+                    attackKind: "ranged",
+                    flip: false,
+                    delayMs: strikeAt
+                  });
+                  cues.push(shot?.projectile ? {
+                    kind: "projectile",
+                    id: `${event.id}-area-projectile`,
+                    fxKey: shot.projectile,
+                    from: `cell:${shooter.position}`,
+                    to: `cell:${event.centre}`,
+                    sound: shot.sound,
+                    flightMs: Math.max(180, ATTACK_IMPACT_MS - HEX_RANGED_RELEASE_MS),
+                    delayMs: strikeAt + (phased ? HEX_RANGED_RELEASE_MS - RANGED_RELEASE_MS : HEX_RANGED_RELEASE_MS)
+                  } : {
+                    kind: "bolt",
+                    id: `${event.id}-area-bolt`,
+                    from: `cell:${shooter.position}`,
+                    to: `cell:${event.centre}`,
+                    flightMs: ATTACK_IMPACT_MS - HEX_RANGED_RELEASE_MS,
+                    delayMs: strikeAt + HEX_RANGED_RELEASE_MS
+                  });
+                }
+                burstAt = strikeAt + ATTACK_IMPACT_MS;
+              }
+              const centreAnchor = (event.centreUnitId ? standingAnchor(event.centreUnitId) : undefined) ?? `cell:${event.centre}`;
+              cues.push({
+                kind: "sprite",
+                id: `${event.id}-area-burst`,
+                fxKey: cloud ? "death-cloud" : "fireball",
+                at: `area:${centreAnchor}|${event.struckUnitIds.join(",")}|1`,
+                sound: cloud ? "spells/death-cloud" : "spells/fireball-hit",
+                delayMs: burstAt
+              });
+              const landAt = burstAt + HEX_AREA_BURST_HOLD_MS;
+              for (const unitId of event.struckUnitIds) {
+                hexAreaHitLandAt.set(unitId, landAt);
+              }
+              if (!cloud) {
+                // The Magog splash lands with the burst (the Death Cloud's hits
+                // follow on their own attack dice).
+                timeline = Math.max(timeline, landAt);
+              }
+              combatFxActive = true;
+              combatPresentationEnd = Math.max(combatPresentationEnd, landAt + 1200);
+              break;
+            }
             case "COMMANDER_CAST_USED": {
               // Hex battlefield: the commander's figure casts at its target
               // first; the cast's slash / sprite / sound leave on the release.
@@ -4493,8 +4752,17 @@ export default function Home() {
                 // card has glided onto the token's cell, so it lands as the unit
                 // arrives — not at t=0, before the glide. Only effect damage on a
                 // unit that moved this batch; attacks pin to their strike beat.
+                // Hex battlefield Magog splash: lands as the one area burst ends.
+                const areaAt =
+                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && event.damageKind !== "attack"
+                    ? hexAreaHitLandAt.get(targetId)
+                    : undefined;
+                if (areaAt !== undefined) {
+                  hexAreaHitLandAt.delete(targetId);
+                }
                 const tokenMoveAt =
-                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && event.damageKind === "effect"
+                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && areaAt === undefined &&
+                  event.damageKind === "effect"
                     ? hexTokenSpringAt.get(targetId) ?? moveArrivalByUnit.get(targetId)
                     : undefined;
                 if (tokenMoveAt !== undefined) {
@@ -4508,10 +4776,11 @@ export default function Home() {
                     ? attackImpactBeforeEvent(event.id, targetId)
                     : undefined;
                 const attackBeat =
-                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && tokenMoveAt === undefined
+                  leadAt === undefined && soulLinkAt === undefined && burnAt === undefined && tokenMoveAt === undefined &&
+                  areaAt === undefined
                     ? exactAttackBeat ?? impactByTarget.get(targetId)
                     : undefined;
-                let at = leadAt ?? soulLinkAt ?? burnAt ?? tokenMoveAt ?? attackBeat ?? timeline;
+                let at = leadAt ?? soulLinkAt ?? burnAt ?? areaAt ?? tokenMoveAt ?? attackBeat ?? timeline;
                 if (burnAt !== undefined) {
                   fireShieldBurnAt.delete(targetId);
                 }
@@ -4577,6 +4846,51 @@ export default function Home() {
                     combatFxActive = true;
                     combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                   }
+                }
+                // Hex battlefield PC-area specialty (Xyron's Inferno, Adelaide /
+                // Glacius Frost Ring): ONE burst over the whole area, centred on
+                // the chosen hex. The blast's first hit queues it (the hero
+                // figure casts it, released on the burst); every hit of that
+                // blast lands as the burst finishes.
+                const areaCentre = event.areaCentre;
+                const areaPlan =
+                  hexCombat && attackBeat === undefined && cardSource && areaCentre !== undefined
+                    ? hexAreaSpecialtyFxPlans[cardSource.cardId]
+                    : undefined;
+                if (areaPlan?.hit && cardSource && areaCentre !== undefined) {
+                  const blastKey = `${cardSource.controllerId}|${cardSource.cardId}|${areaCentre}`;
+                  let landAt = hexAreaBurstLandAt.get(blastKey);
+                  if (landAt === undefined) {
+                    timeline = Math.max(timeline, at);
+                    heroSpecialtyOrigin(event.id, cardSource.controllerId, cardSource.cardId, timeline);
+                    const struck: string[] = [];
+                    for (const hit of freshFx) {
+                      if (
+                        isStormChainHit(hit, cardSource.controllerId, cardSource.cardId) &&
+                        hit.type === "DAMAGE_ASSIGNED" &&
+                        hit.areaCentre === areaCentre &&
+                        hit.target.type === "unit" &&
+                        !struck.includes(hit.target.unitId)
+                      ) {
+                        struck.push(hit.target.unitId);
+                      }
+                    }
+                    const pcArea = hexPcSpellArea(nextState.combat, cardSource.cardId);
+                    cues.push({
+                      kind: "sprite",
+                      id: `${event.id}-area-burst`,
+                      fxKey: areaPlan.hit,
+                      at: `area:cell:${areaCentre}|${struck.join(",")}|${pcArea?.radius ?? 1}`,
+                      sound: areaPlan.sound ?? areaPlan.hitSound,
+                      delayMs: timeline
+                    });
+                    timeline += spellPresentationMs(areaPlan);
+                    landAt = timeline;
+                    hexAreaBurstLandAt.set(blastKey, landAt);
+                    combatFxActive = true;
+                    combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                  }
+                  at = Math.max(at, landAt);
                 }
                 // Hex battlefield: Chain Lightning jumps target to target in the
                 // engine's bounce order (its hits are logged in that order). The
@@ -4715,6 +5029,11 @@ export default function Home() {
               if (event.abilityId === "lich-death-cloud") {
                 break;
               }
+              // Hex battlefield PC area (Magog splash, Dracolich cloud): the one
+              // area burst is drawn by HEX_AREA_ATTACK, not one per struck unit.
+              if (hexCombat && isHexAreaAttackAbility(nextState.combat, event.abilityId)) {
+                break;
+              }
               // An ability that physically threw dice (Death Stare, the
               // Thunderbird extra die, the Dwarven resistance die, the morale
               // skip-activation check…) rolls them out in the attack-die
@@ -4749,6 +5068,41 @@ export default function Home() {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 500);
                 }
+              }
+              // A follow-up swing (Minotaur Cleave, the Cerberi's second head):
+              // the unit strikes that unit once its own blow has landed — its
+              // attack clip / card lunge, cry and melee effect — and the damage
+              // lands on this blow.
+              const followUpStrike = followUpStrikeFx[event.abilityId];
+              const striker = nextState.combat?.units[event.unitId];
+              if (followUpStrike && striker && event.targetUnitId && event.targetUnitId !== event.unitId) {
+                const start = Math.max(timeline, (lastImpactByAttacker.get(event.unitId) ?? -Infinity) + 260);
+                const strikerVoice = unitVoice(event.unitId);
+                const victimCell = unitCellAnchor(event.targetUnitId);
+                playUnitSound(strikerVoice, "attack", start, unitVariant(event.unitId));
+                cues.push({
+                  kind: "lunge",
+                  id: `${event.id}-follow-lunge`,
+                  attackerId: event.unitId,
+                  to: victimCell,
+                  attackKind: "melee",
+                  flip: false,
+                  delayMs: start
+                });
+                cues.push({
+                  kind: "slash",
+                  id: `${event.id}-follow-slash`,
+                  fxKey: followUpStrike.fxKey ?? unitMeleeFxKey(strikerVoice),
+                  from: striker.position >= 0 ? `cell:${striker.position}` : `unit:${event.unitId}`,
+                  at: victimCell,
+                  ...(hexCombat ? { impactDelayMs: ATTACK_IMPACT_MS - 276 } : {}),
+                  delayMs: start + 276
+                });
+                timeline = start + ATTACK_IMPACT_MS;
+                lastImpactByAttacker.set(event.unitId, timeline);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 900);
+                break;
               }
               const plan = abilityFxPlans[event.abilityId];
               if (!plan) {
@@ -5122,6 +5476,22 @@ export default function Home() {
             default:
               break;
           }
+        }
+
+        // Stat-buff glows: each buffed unit glows as the effect aimed at it
+        // starts (a beat in), else once the latest cast / ability has played.
+        if (glowBeatPending) {
+          lastEffectEnd = Math.max(lastEffectEnd, timeline);
+        }
+        for (const [unitId, stats] of statGlows) {
+          const beat = unitFxBeat.get(unitId);
+          cues.push({
+            kind: "statGlow",
+            id: `statglow-${nextState.eventLog.at(-1)?.id ?? "frame"}-${unitId}`,
+            unitId,
+            stats,
+            delayMs: beat !== undefined ? beat + STAT_GLOW_LEAD_MS : lastEffectEnd >= 0 ? lastEffectEnd : timeline
+          });
         }
 
         // Show any spell rolls (Inferno) collected above in the attack-die

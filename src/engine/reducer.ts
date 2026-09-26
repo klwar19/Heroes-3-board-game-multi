@@ -17,7 +17,7 @@ import { resolveManaTurbulence, neutralTownDelayedDamageAtActivation, neutralTow
 import { neutralTownVeterancy, neutralTownAttackBonus, neutralTownDefenseBonus, neutralTownAttackDamagePreview, neutralTownCommitAttackReduction, neutralTownMovement, neutralTownActivation, neutralTownAfterAttack, neutralTownFailedParalysis, neutralTownFinishActivation } from "./neutral-town-veterancy";
 import { getTargetsForCard, isCombatParticipant, rerollSourceAvailableFor as helmRerollSourceAvailableFor } from "./legal-actions";
 import { baseCardId, toPhantomCardId } from "./phantom-cards";
-import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
+import { parallelPvpKeeps, parallelPvpPinOwner, parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
 import { sampleBuildings } from "@/data/towns/buildings";
@@ -58,6 +58,7 @@ import {
   grantArmyUnitExperience,
   unitExperienceActive,
 } from "./unit-experience";
+import { consumeMithrilForReroll, mithrilRerollSources, mithrilTentHealBonus } from "./wog-era";
 import {
   balanceCardLibrary,
   balanceRerollReactionArtifactIds,
@@ -161,6 +162,13 @@ import {
   reviveCommander,
   beginHeavenlyTribulation,
   heroTrain,
+  attackWanderingBossAction,
+  teacherLessonAction,
+  takeLoanAction,
+  repayLoanAction,
+  mithrilForgeMineAction,
+  mithrilUpgradeWarMachineAction,
+  forgeSkillComboAction,
   drillUnit,
   assignMgqUnitJob,
   setMgqSpirit,
@@ -228,6 +236,8 @@ import {
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
   parallelPlayerImpact,
+  parallelPlayerImpacts,
+  parallelPvpImpactVerdict,
   parallelSlotSignature,
   parallelWaitMessage,
   roundStartEventResolver,
@@ -270,6 +280,7 @@ import {
   battlefieldTokenCovers,
   footprintAt,
   footprintFits,
+  hexWallCells,
   hexWallPlacement,
   hexWallSize,
   nearestUnitCellTo,
@@ -286,6 +297,13 @@ import {
   unitTailOffset,
 } from "./hex-footprint";
 import { hexPcSpellArea, hexPcSpellBlast } from "./hex-spell-areas";
+import {
+  hexAreaAimedTargets,
+  hexAreaAttackOf,
+  hexAreaRing,
+  isHexAreaAttackAbility,
+  orderHexAreaTargets,
+} from "./hex-area-attacks";
 import { chainHopCandidates } from "./chain-lightning-hex";
 import { HEX_DEFAULT_FREE_COMBAT_ROUNDS, hexDeploymentLine } from "./hex-battlefield";
 import {
@@ -556,7 +574,7 @@ import {
   consumeStarCandyShield,
   transferPendingDamage,
   reduceFirstDamageByAbility,
-  soulLinkCanTakeShare,
+  soulLinkShareAmount,
 } from "./events";
 import {
   LITTLE_BUSTERS_BLADE_DANCE_ID,
@@ -4229,6 +4247,26 @@ function dealAreaCardDamage(
   markUnitRemovedIfNeeded(state, unit);
 }
 
+/**
+ * Hex battlefield, presentation only: stamp `areaCentre` on `cardId`'s area
+ * hits logged after `lastBefore` (the log's last event before the blast), so
+ * the table draws ONE PC-area burst over them (DAMAGE_ASSIGNED.areaCentre).
+ */
+function stampHexAreaCentre(
+  state: GameState,
+  lastBefore: GameEvent | undefined,
+  cardId: string,
+  centre: number,
+): void {
+  for (let index = state.eventLog.length - 1; index >= 0; index -= 1) {
+    const event = state.eventLog[index];
+    if (event === lastBefore) return;
+    if (event.type === "DAMAGE_ASSIGNED" && event.source.type === "card" && event.source.cardId === cardId) {
+      event.areaCentre = centre;
+    }
+  }
+}
+
 /** The printed Spell hits the selected space and every orthogonal neighbour. */
 function resolveMeteorShowerSpell(
   state: GameState,
@@ -4397,12 +4435,16 @@ function applyAreaAllAdjacentPlay(
         isCentre(unit) ||
         unit.controllerId !== action.playerId),
   );
+  const lastBefore = state.eventLog.at(-1);
   for (const unit of inBlast) {
     const amount =
       isCentre(unit) && effect.centerAmount !== undefined
         ? effect.centerAmount
         : effect.amount;
     dealAreaCardDamage(state, action.playerId, card, unit, amount);
+  }
+  if (hexPcSpellArea(combat, card.id)) {
+    stampHexAreaCentre(state, lastBefore, card.id, center);
   }
 }
 
@@ -4612,6 +4654,7 @@ function resolveAreaPickDamage(
 
   // The body covering the centre (a double-wide tail counts on the hex board).
   const centreBody = unitAtCell(combat, centerPosition, Object.values(combat.units).filter(isUnitAlive));
+  const lastBefore = state.eventLog.at(-1);
   if (pcArea ? pcArea.includeCentre : includeCenter) {
     const centre = centreBody;
     if (centre) {
@@ -4642,6 +4685,9 @@ function resolveAreaPickDamage(
     amount,
     pcArea ? undefined : minAdjacentPicks,
   );
+  if (pcArea && card) {
+    stampHexAreaCentre(state, lastBefore, card.id, centerPosition);
+  }
 }
 
 function rollAttackCandidate(
@@ -5285,12 +5331,12 @@ function applyAttackDamageFromCandidate(
     unit.commanderSlug === "soul_eater" && unit.controllerId === defender.controllerId &&
     unit.soulLinkTargetId === defender.id && isUnitAlive(unit) &&
     unit.soulLinkUsedRound !== state.combat!.round &&
-    soulLinkCanTakeShare(unit, anticipatedDamage)
+    soulLinkShareAmount(unit, anticipatedDamage) > 0
   );
   if (
     lethalCancel &&
     damage > 0 &&
-    defender.damage + (soulLinkCommander ? Math.floor(anticipatedDamage / 2) : anticipatedDamage) >= defender.maxHealth &&
+    defender.damage + anticipatedDamage - (soulLinkCommander ? soulLinkShareAmount(soulLinkCommander, anticipatedDamage) : 0) >= defender.maxHealth &&
     bankAwareTierGateRank(
       defender,
       "CANCEL_LETHAL_ATTACK",
@@ -6688,6 +6734,8 @@ function buildRerollSources(
     ...moraleSetSources,
     ...cultivationSources,
     ...equipmentSources,
+    // WoG era Mithril (optional module): 1 Mithril, any die, once per round.
+    ...mithrilRerollSources(state, attacker.controllerId),
   ].filter((source) => source.remaining > 0);
 }
 
@@ -7143,6 +7191,8 @@ function buildAbilityRerollSources(
     ...moraleSources,
     ...moraleSetSources,
     ...equipmentSources,
+    // WoG era Mithril (optional module): 1 Mithril, any die, once per round.
+    ...mithrilRerollSources(state, roller.controllerId),
   ].filter((source) => source.remaining > 0);
 }
 
@@ -8822,16 +8872,16 @@ function finishResolvedAttack(
       details.defender,
       preview.damage,
     );
-    // A Soul Link share changes the defender's lethal window only when the
-    // commander can survive its half of this hit.
+    // Soul Link changes the defender's lethal window by the amount the
+    // commander can actually take while remaining at 1 Health.
     const lethalRound = state.combat?.round;
-    const soulLinked = Object.values(state.combat?.units ?? {}).some(unit =>
+    const soulLinkCommander = Object.values(state.combat?.units ?? {}).find(unit =>
       unit.commanderSlug === "soul_eater" && unit.controllerId === details.defender.controllerId &&
       unit.soulLinkTargetId === details.defender.id && isUnitAlive(unit) &&
       unit.soulLinkUsedRound !== lethalRound &&
-      soulLinkCanTakeShare(unit, preview.damage)
+      soulLinkShareAmount(unit, preview.damage) > 0
     );
-    const landedDamage = soulLinked ? Math.floor(preview.damage / 2) : preview.damage;
+    const landedDamage = preview.damage - (soulLinkCommander ? soulLinkShareAmount(soulLinkCommander, preview.damage) : 0);
     if (
       preview.damage > 0 &&
       details.defender.damage + landedDamage >= details.defender.maxHealth &&
@@ -9195,6 +9245,23 @@ function finishResolvedAttack(
       state.combat?.attackSequence?.attackerId === details.defender.id
     ) {
       state.combat.attackSequence = null;
+    }
+    // Hex Death Cloud ring (hex-area-attacks.ts): a save that cancels ONE
+    // engulfed unit's attack does not lift the cloud off the others — the
+    // next queued ring attack is still declared, and once the ring is done
+    // the parked sequence resumes (the primary target's Retaliation, the
+    // sequence cleared) exactly as after a ring strike that landed. (Other
+    // queues keep the printed stop.)
+    if (
+      details.abilityAttack &&
+      !details.isRetaliation &&
+      isHexAreaAttackAbility(state.combat, details.abilityAttack.abilityId) &&
+      state.combat?.attackSequence?.attackerId === details.attacker.id
+    ) {
+      if (!declareNextQueuedAbilityAttack(state, cards)) {
+        resumeAttackSequence(state, cards);
+      }
+      return;
     }
     concludeAttackerActivation(
       state,
@@ -9634,6 +9701,11 @@ function finishResolvedAttack(
       state.combat.attackSequence = null;
     }
     const originalAttacker = details.defender;
+    // Korbac IV reads the exchange's end here too: the retaliator is the
+    // enemy unit the original attacker struck.
+    if (startKorbacDragonFliesTurn(state, originalAttacker, details.attacker)) {
+      return;
+    }
     concludeAttackerActivation(state, originalAttacker);
     return;
   }
@@ -11305,6 +11377,11 @@ function declareNextQueuedAbilityAttack(
     if (!next || !target || !isUnitAlive(target)) {
       continue;
     }
+    // Hex Death Cloud ring (hex-area-attacks.ts): a unit that left the board
+    // since the cloud was declared is no longer engulfed.
+    if (next.hexArea && !isHexPosition(target.position)) {
+      continue;
+    }
 
     declareAbilityAttack(
       state,
@@ -11327,6 +11404,55 @@ function declareNextQueuedAbilityAttack(
  * Continues an attack after its printed follow-ups finished: fires the parked
  * retaliation when it is still legal, otherwise concludes the activation.
  */
+/**
+ * Korbac's Dragon Flies IV (permanent): "After your unit attacks and the enemy
+ * unit survives, immediately start a turn with your Dragon Flies, even if they
+ * already acted this round." The defender survived while it is still on the
+ * board — a Pack→Few flip or a discarded Stack Token still counts. Shared by
+ * EVERY end of an attack exchange (no retaliation, and after the Retaliation
+ * Attack resolves), so the trigger never depends on whether the enemy struck
+ * back. Ends the attacker's activation and hands the turn to the Dragon Flies;
+ * returns false (nothing changed) when it does not apply.
+ */
+function startKorbacDragonFliesTurn(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState | undefined,
+): boolean {
+  const combat = state.combat;
+  if (
+    !combat ||
+    !defender ||
+    !isUnitAlive(defender) ||
+    !getPermanentCardIds(state, attacker.controllerId).includes("specialty.korbac.4")
+  ) {
+    return false;
+  }
+  // The trigger is "after YOUR UNIT attacks": the Dragon Flies' own attack
+  // never re-triggers them (otherwise they would chain turns endlessly).
+  const dragonFlies = Object.values(combat.units).find(unit =>
+    unit.id !== attacker.id &&
+    unit.controllerId === attacker.controllerId &&
+    unit.unitDefId === "fortress.dragon_flies" && isUnitAlive(unit));
+  if (!dragonFlies) {
+    return false;
+  }
+  delete attacker.bombardment;
+  markActivatedThisRound(attacker);
+  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
+  appendEvent(state, { type: "UNIT_ACTIVATION_ENDED", playerId: attacker.controllerId, unitId: attacker.id });
+  dragonFlies.activatedThisRound = false;
+  dragonFlies.waitPending = undefined;
+  dragonFlies.waitToken = undefined;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  setActiveUnit(state, dragonFlies.id);
+  appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: dragonFlies.id,
+    abilityId: "specialty.korbac.4", targetUnitId: defender.id,
+    message: `${dragonFlies.cardName} immediately starts another turn after ${defender.cardName} survives an attack.` });
+  return true;
+}
+
 function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
   const combat = state.combat;
   if (!combat) {
@@ -11341,7 +11467,12 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
   }
 
   const attacker = combat.units[sequence.attackerId];
-  const defender = combat.units[sequence.defenderId];
+  // A hex aimed shot (ATTACK_HEX) has no defender: nothing retaliates and no
+  // "the target survives an attack" trigger reads one.
+  const defender =
+    sequence.aimedHex === undefined
+      ? combat.units[sequence.defenderId]
+      : undefined;
 
   if (
     sequence.retaliationPending &&
@@ -11374,30 +11505,8 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
 
   combat.attackSequence = null;
   if (attacker) {
-    if (defender && isUnitAlive(defender) &&
-        getPermanentCardIds(state, attacker.controllerId).includes("specialty.korbac.4")) {
-      // The trigger is "after YOUR UNIT attacks": the Dragon Flies' own attack
-      // never re-triggers them (otherwise they would chain turns endlessly).
-      const dragonFlies = Object.values(combat.units).find(unit =>
-        unit.id !== attacker.id &&
-        unit.controllerId === attacker.controllerId &&
-        unit.unitDefId === "fortress.dragon_flies" && isUnitAlive(unit));
-      if (dragonFlies) {
-        delete attacker.bombardment;
-        markActivatedThisRound(attacker);
-        appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
-        appendEvent(state, { type: "UNIT_ACTIVATION_ENDED", playerId: attacker.controllerId, unitId: attacker.id });
-        dragonFlies.activatedThisRound = false;
-        dragonFlies.waitPending = undefined;
-        dragonFlies.waitToken = undefined;
-        state.phase = "combat";
-        state.priorityPlayerId = null;
-        setActiveUnit(state, dragonFlies.id);
-        appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: dragonFlies.id,
-          abilityId: "specialty.korbac.4", targetUnitId: defender.id,
-          message: `${dragonFlies.cardName} immediately starts another turn after ${defender.cardName} survives an attack.` });
-        return;
-      }
+    if (startKorbacDragonFliesTurn(state, attacker, defender)) {
+      return;
     }
     concludeAttackerActivation(state, attacker);
   } else {
@@ -11444,6 +11553,16 @@ function openFlatDamageFollowUps(
       return unit && isUnitAlive(unit);
     });
 
+    // Hex battlefield (hex-area-attacks.ts, user ruling 2026-09-26): Magogs'
+    // Fireball engulfs EVERY unit around the target like the PC — no pick for
+    // anyone; each takes the printed flat damage, in board order. Siege walls
+    // are NOT part of the blast (user ruling 2026-09-26: "only the main at
+    // centre counts"), so the Wall/Gate option below never applies to it.
+    // Every other flat splash keeps its pick below.
+    const hexArea =
+      followUp.zone === "target" &&
+      isHexAreaAttackAbility(combat, followUp.abilityId);
+
     // House rule ("as like attack a unit"): an ENEMY Wall/Gate in the splash zone
     // is a CHOOSABLE target of the pick-one splash. Offered only to a besieger a
     // player picks for (humanPicks) — never the pure Neutral AI (its auto-resolve
@@ -11451,7 +11570,7 @@ function openFlatDamageFollowUps(
     const anchorUnit =
       followUp.zone === "self" ? attacker : defender;
     const fortIds =
-      humanPicks && combat.siege
+      humanPicks && combat.siege && !hexArea
         ? enemyFortificationsInCells(
             combat.siege,
             attacker.controllerId,
@@ -11464,6 +11583,21 @@ function openFlatDamageFollowUps(
     }
     if (followUp.oncePerCombat) {
       attacker.kivotosKyrieUsedThisCombat = true;
+    }
+
+    if (hexArea) {
+      if (
+        applyHexAreaFlatDamage(
+          state,
+          attacker,
+          followUp,
+          living,
+          { position: defender.position, unitId: defender.id },
+        )
+      ) {
+        return true;
+      }
+      continue;
     }
 
     // AI-only: a single candidate is mandatory and needs no prompt. (fortIds is
@@ -11512,6 +11646,219 @@ function openFlatDamageFollowUps(
   }
 
   return false;
+}
+
+/**
+ * Hex battlefield PC area attack (hex-area-attacks.ts): the one presentation /
+ * log event, emitted right before the ring follow-ups are applied.
+ */
+function appendHexAreaAttackEvent(
+  state: GameState,
+  attacker: CombatUnitState,
+  ability: { abilityId: string; abilityName: string },
+  centre: { position: number; unitId?: UnitId },
+  struckUnitIds: readonly UnitId[],
+): void {
+  const combat = state.combat;
+  const names = struckUnitIds.map(
+    (unitId) => combat?.units[unitId]?.cardName ?? unitId,
+  );
+  const area =
+    centre.unitId !== undefined
+      ? `around ${combat?.units[centre.unitId]?.cardName ?? centre.unitId}`
+      : `at hex ${getBattlefieldLabel(centre.position)}`;
+  appendEvent(state, {
+    type: "HEX_AREA_ATTACK",
+    playerId: attacker.controllerId,
+    attackerId: attacker.id,
+    abilityId: ability.abilityId,
+    centre: centre.position,
+    ...(centre.unitId !== undefined ? { centreUnitId: centre.unitId } : {}),
+    struckUnitIds: [...struckUnitIds],
+    message:
+      names.length > 0
+        ? `${attacker.name}: ${ability.abilityName} engulfs the area ${area}, striking ${names.join(", ")}.`
+        : `${attacker.name}: ${ability.abilityName} engulfs the area ${area} and strikes no unit.`,
+  });
+}
+
+/**
+ * Hex battlefield Magog Fireball (hex-area-attacks.ts): the printed flat
+ * damage to EVERY struck unit, in board order — each hit exactly the pick-one
+ * splash's (applyFlatAbilityDamage: same source, damage kind, immunities,
+ * removal, combat-end check). Siege Walls/Gate in the ring are untouched
+ * (user ruling 2026-09-26: only the main target at the centre counts, and a
+ * Magog can never aim at a fortification). Emits HEX_AREA_ATTACK first when a
+ * unit is struck (always for an aimed hex). Returns true when the combat ended.
+ */
+function applyHexAreaFlatDamage(
+  state: GameState,
+  attacker: CombatUnitState,
+  followUp: { abilityId: string; abilityName: string; amount: number },
+  struckUnitIds: readonly UnitId[],
+  centre: { position: number; unitId?: UnitId },
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const struck = orderHexAreaTargets(
+    combat,
+    struckUnitIds.filter((unitId) => {
+      const unit = combat.units[unitId];
+      return unit !== undefined && isUnitAlive(unit);
+    }),
+  );
+  if (struck.length > 0 || centre.unitId === undefined) {
+    appendHexAreaAttackEvent(state, attacker, followUp, centre, struck);
+  }
+  for (const unitId of struck) {
+    applyFlatAbilityDamage(
+      state,
+      attacker,
+      unitId,
+      followUp.abilityId,
+      followUp.abilityName,
+      followUp.amount,
+    );
+    if (finishCombatIfNeeded(state)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Hex battlefield Death Cloud (hex-area-attacks.ts): a full separate ability
+ * attack against EVERY struck unit, one at a time in board order. They ride
+ * the attack sequence's ability-attack queue (the BINH Cerberi one): the first
+ * is declared now, and each later one only when the previous has fully
+ * resolved (instants, dice, damage, deaths) — finishResolvedAttack's
+ * ability-attack branch calls declareNextQueuedAbilityAttack, which skips a
+ * unit that fell or left the board meanwhile. The parked retaliation and the
+ * activation end (resumeAttackSequence) wait until the queue is drained.
+ * Returns true when an ability attack was declared.
+ */
+function declareHexAreaSecondAttacks(
+  state: GameState,
+  attacker: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; baseAttack: number },
+  candidateUnitIds: readonly UnitId[],
+  centre: { position: number; unitId?: UnitId },
+  cards: CardLibrary,
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return false;
+  }
+  const struck = orderHexAreaTargets(
+    combat,
+    candidateUnitIds.filter((unitId) => {
+      const unit = combat.units[unitId];
+      return unit !== undefined && isUnitAlive(unit);
+    }),
+  );
+  if (struck.length === 0) {
+    return false;
+  }
+  appendHexAreaAttackEvent(state, attacker, ability, centre, struck);
+  let sequence = combat.attackSequence;
+  if (!sequence || sequence.attackerId !== attacker.id) {
+    // Defensive only: a primary attack always parks its sequence before its
+    // follow-up table runs, and ATTACK_HEX opens its own.
+    sequence = {
+      attackerId: attacker.id,
+      defenderId: centre.unitId ?? attacker.id,
+      attackKind: "ranged",
+      retaliationPending: false,
+      ...(centre.unitId === undefined ? { aimedHex: centre.position } : {}),
+    };
+    combat.attackSequence = sequence;
+  }
+  sequence.queuedAbilityAttacks = struck.map((targetUnitId) => ({
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    baseAttack: ability.baseAttack,
+    targetUnitId,
+    hexArea: true,
+  }));
+  return declareNextQueuedAbilityAttack(state, cards);
+}
+
+/**
+ * Hex battlefield ATTACK_HEX (hex-area-attacks.ts, user ruling 2026-09-26): a
+ * Magog / Lich / Dracolich aims its ranged attack at an EMPTY hex. The
+ * legality check already matched the offer (the unit had a legal ranged
+ * ATTACK_UNIT, the hex is empty and not adjacent to it, its ring holds a unit
+ * the follow-up reaches). It IS the unit's attack for this activation, but
+ * there is no primary defender — no attack roll, no retaliation, no
+ * defender-keyed trigger: the ring around the hex receives the printed
+ * follow-up exactly as after a unit-targeted attack, then the activation
+ * concludes as after any shot (post-shot step window, Wait, activation end).
+ */
+function attackHex(
+  state: GameState,
+  action: Extract<GameAction, { type: "ATTACK_HEX" }>,
+  cards: CardLibrary,
+): void {
+  const combat = state.combat;
+  const attacker = combat?.units[action.attackerId];
+  const area = combat && attacker ? hexAreaAttackOf(combat, attacker) : null;
+  if (
+    !combat ||
+    !attacker ||
+    !area ||
+    !isUnitAlive(attacker) ||
+    attacker.controllerId !== action.playerId ||
+    combat.activeUnitId !== attacker.id ||
+    attacker.attackedThisActivation ||
+    !isHexPosition(action.position)
+  ) {
+    throw new Error("That unit cannot fire at that hex.");
+  }
+  const struck = hexAreaAimedTargets(combat, attacker, area, action.position);
+  const ring = hexAreaRing(combat, action.position);
+  const centre = { position: action.position };
+
+  // The shot replaces the unit's attack for this activation (the
+  // ATTACK_FORTIFICATION precedent). Counted before any follow-up resolves so
+  // the "first attack of the activation" gates read it as after a shot.
+  attacker.attackedThisActivation = true;
+  attacker.attacksThisActivation = (attacker.attacksThisActivation ?? 0) + 1;
+
+  if (area.kind === "flat-damage") {
+    // Magogs: the blast strikes units only — siege Walls/Gate in the ring stay
+    // standing (applyHexAreaFlatDamage).
+    if (applyHexAreaFlatDamage(state, attacker, area, struck, centre)) {
+      return;
+    }
+    concludeAttackerActivation(state, attacker);
+    return;
+  }
+
+  // Death Cloud: the sequence of this shot (no defender, no retaliation), the
+  // house rule's enemy Wall/Gate felling once around the hex, then the queue.
+  combat.attackSequence = {
+    attackerId: attacker.id,
+    defenderId: attacker.id,
+    attackKind: "ranged",
+    retaliationPending: false,
+    aimedHex: action.position,
+  };
+  if (
+    destroyEnemyFortificationsInCells(state, attacker, ring) > 0 &&
+    finishCombatIfNeeded(state)
+  ) {
+    return;
+  }
+  if (declareHexAreaSecondAttacks(state, attacker, area, struck, centre, cards)) {
+    return;
+  }
+  if (struck.length === 0) {
+    appendHexAreaAttackEvent(state, attacker, area, centre, []);
+  }
+  combat.attackSequence = null;
+  concludeAttackerActivation(state, attacker);
 }
 
 function resolveTownBolt(state: GameState, unit: CombatUnitState, target: CombatUnitState, candidate: AttackRollCandidate): void {
@@ -13541,10 +13888,11 @@ function addBattlefieldToken(
 }
 
 /**
- * Lifts every Force Field whose timed duration ends with `finishedRound` (a
- * Power 0 field after this round, a Power 1 field after the next). Fire Wall,
- * Quicksand and Land Mine carry no expiry — they last the whole Combat and go
- * when the combat state does.
+ * Lifts every battlefield token whose timed duration ends with `finishedRound`
+ * (a Power 0 Force Field after this round, a Power 1 field after the next; a
+ * Polish Balance Pack Fire Wall after its 2 Combat rounds). The printed Fire
+ * Wall, Quicksand and Land Mine carry no expiry — they last the whole Combat
+ * and go when the combat state does.
  */
 function expireBattlefieldTokensAtRoundEnd(
   state: GameState,
@@ -13584,7 +13932,141 @@ function forceFieldExpiry(
   if (duration.type === "next-combat-round") {
     return combat.round + 1;
   }
+  // Polish Balance Pack Force Field: "until the end of N Combat rounds" —
+  // this round counts as the first (N = 1 lifts at this round's end).
+  if (duration.type === "combat-rounds") {
+    return combat.round + Math.max(1, duration.rounds) - 1;
+  }
   return undefined;
+}
+
+/** A Polish Balance Pack Fire Wall's "For N Combat rounds" expiry (undefined = whole combat). */
+function fireWallExpiry(
+  combat: CombatState,
+  durationRounds: number | undefined,
+): number | undefined {
+  return durationRounds === undefined
+    ? undefined
+    : combat.round + Math.max(1, durationRounds) - 1;
+}
+
+/**
+ * Polish Balance Pack Force Field / Fire Wall: "place UP TO 2 tokens on 2
+ * ADJACENT empty spaces". The first token already lies on the cast target;
+ * this opens the caster's optional pick for the second — an empty space
+ * adjacent to any space of the first token (grid: orthogonal; hex board: the
+ * six neighbours, with the second wall's whole Expert/normal footprint clear).
+ * The second token copies the first one's payload (controller, damage, expiry,
+ * source, activation burn). Returns false — nothing opened — when no adjacent
+ * space is free, so the cast simply ends with one token ("up to 2").
+ */
+function openWallTokenPairChoice(
+  state: GameState,
+  playerId: PlayerId,
+  first: BattlefieldTokenState,
+  expert: boolean,
+): boolean {
+  const combat = state.combat;
+  if (!combat || (first.kind !== "force_field" && first.kind !== "fire_wall")) {
+    return false;
+  }
+  const kind = first.kind;
+  const blocked = (cell: number) => isSpaceBlockedForSummon(combat, cell);
+  const size = hexWallSize(combat, kind, expert);
+  const anchors = new Set<number>();
+  for (const cell of battlefieldTokenCells(first)) {
+    for (const neighbor of getOrthogonalNeighbors(cell)) {
+      if (!blocked(neighbor) && hexWallCells(neighbor, size, blocked)) {
+        anchors.add(neighbor);
+      }
+    }
+  }
+  const positions = [...anchors].sort((left, right) => left - right);
+  if (positions.length === 0) {
+    return false;
+  }
+  const { id: _id, position: _position, extraCells: _extra, kind: _kind, ...token } = first;
+  const name = kind === "force_field" ? "Force Field" : "Fire Wall";
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${name}: place a second token on an empty space adjacent to the first, or stop.`,
+    options: [
+      ...positions.map((position) => ({
+        label: `Place at ${getBattlefieldLabel(position)}`,
+      })),
+      { label: "No second token" },
+    ],
+    context: "place-wall-token-pair",
+    wallTokenPair: { firstTokenId: first.id, kind, positions, expert, token },
+    returnPhase: combat.prep ? "combat-setup" : "combat",
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: `${state.players[playerId]?.name ?? playerId} may place a second ${name} token.`,
+  });
+  return true;
+}
+
+/** Resolves the optional second-token pick of a Polish Balance Pack Force Field / Fire Wall. */
+function resolveWallTokenPairChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "place-wall-token-pair" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.wallTokenPair
+  ) {
+    throw new Error("There is no second wall token to place.");
+  }
+  const combat = state.combat;
+  const plan = choice.wallTokenPair;
+  const position = plan.positions[action.optionIndex];
+  if (position === undefined && action.optionIndex !== plan.positions.length) {
+    throw new Error("That option is not available.");
+  }
+
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex,
+  });
+  state.pendingChoice = null;
+
+  // The trailing "No second token" option places nothing ("UP TO 2"). A space
+  // that is somehow no longer empty is skipped rather than stacked onto.
+  if (combat && position !== undefined && !isSpaceBlockedForSummon(combat, position)) {
+    addBattlefieldToken(state, {
+      ...plan.token,
+      kind: plan.kind,
+      position,
+      ...wallTokenFootprint(combat, plan.kind, position, plan.expert),
+    });
+  }
+
+  // Back to wherever the placing play left the table (see playCard's tail).
+  if (state.combat?.awaitingContinue) {
+    state.phase = "combat";
+    state.priorityPlayerId = action.playerId;
+  } else {
+    state.phase = state.combat?.prep ? "combat-setup" : "combat";
+    state.priorityPlayerId = null;
+  }
+  finishCombatIfNeeded(state);
 }
 
 /** Empty board spaces a new token may be placed on (no unit, obstacle, fortification or other token). */
@@ -14312,6 +14794,20 @@ function openSecondAttackFollowUp(
   const candidates = getSecondAttackCandidates(combat, attacker, defender, ability.enemiesOnly);
   if (candidates.length === 0) {
     return false;
+  }
+
+  // Hex battlefield (hex-area-attacks.ts, user ruling 2026-09-26): the Death
+  // Cloud engulfs EVERY candidate around the target like the PC — no pick for
+  // anyone; one full ability attack each, resolved one after another.
+  if (isHexAreaAttackAbility(combat, ability.abilityId)) {
+    return declareHexAreaSecondAttacks(
+      state,
+      attacker,
+      ability,
+      candidates,
+      { position: defender.position, unitId: defender.id },
+      cards,
+    );
   }
 
   // Forge Tanks print "You may also attack": an optional follow-up always asks.
@@ -19860,7 +20356,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const duration = durationAtPower(card.effect.durationByPower, power) ?? {
         type: "combat",
       };
-      addBattlefieldToken(state, {
+      const expert = spellCastIsExpert(stackItem);
+      const field = addBattlefieldToken(state, {
         kind: "force_field",
         position: stackItem.action.target.position,
         // Hex board: 2 hexes, 3 when cast Expert (no-op on the 4×5 grid).
@@ -19868,11 +20365,15 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           state.combat,
           "force_field",
           stackItem.action.target.position,
-          spellCastIsExpert(stackItem),
+          expert,
         ),
         controllerId: stackItem.action.playerId,
         expiresAtCombatRoundEnd: forceFieldExpiry(state.combat, duration),
       });
+      // Polish Balance Pack: "up to 2 tokens on 2 adjacent empty spaces".
+      if (card.effect.pairAdjacent) {
+        openWallTokenPairChoice(state, stackItem.action.playerId, field, expert);
+      }
     }
 
     // Fire Wall (Basic Fire): drop an Effect Obstacle on the chosen empty space
@@ -19883,7 +20384,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       stackItem.action.target.type === "space"
     ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
-      addBattlefieldToken(state, {
+      const expert = spellCastIsExpert(stackItem);
+      const expiresAtCombatRoundEnd = fireWallExpiry(state.combat, card.effect.durationRounds);
+      const wall = addBattlefieldToken(state, {
         kind: "fire_wall",
         position: stackItem.action.target.position,
         // Hex board: 2 hexes, 3 when cast Expert (no-op on the 4×5 grid).
@@ -19891,7 +20394,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           state.combat,
           "fire_wall",
           stackItem.action.target.position,
-          spellCastIsExpert(stackItem),
+          expert,
         ),
         controllerId: stackItem.action.playerId,
         sourceSpellCardId: card.id,
@@ -19900,7 +20403,13 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         // or stopping here…" — the printed spell only bites on stop /
         // pass-through, so the flag is absent there.
         ...(card.effect.burnsAtActivation ? { burnsAtActivation: true } : {}),
+        // Polish Balance Pack: "For 2 Combat rounds" (printed: the whole Combat).
+        ...(expiresAtCombatRoundEnd !== undefined ? { expiresAtCombatRoundEnd } : {}),
       });
+      // Polish Balance Pack: "up to 2 tokens on 2 adjacent empty spaces".
+      if (card.effect.pairAdjacent) {
+        openWallTokenPairChoice(state, stackItem.action.playerId, wall, expert);
+      }
     }
 
     // Quicksand (Basic Earth) / Land Mine (Expert Fire): a no-target cast that
@@ -30590,7 +31099,8 @@ function playCard(
     state.combat &&
     action.target?.type === "space"
   ) {
-    addBattlefieldToken(state, {
+    const expiresAtCombatRoundEnd = fireWallExpiry(state.combat, effect.durationRounds);
+    const wall = addBattlefieldToken(state, {
       kind: "fire_wall",
       position: action.target.position,
       // Hex board: a Fire Wall covers 2 hexes (a specialty play, not an
@@ -30601,7 +31111,14 @@ function playCard(
       // Luna's Fire Wall (unlike the base spell) burns a unit that begins its
       // activation standing on it — the printed card says "starting its turn here".
       burnsAtActivation: true,
+      // Polish Balance Pack Luna I/VI: "For 2 Combat rounds" (printed: the whole Combat).
+      ...(expiresAtCombatRoundEnd !== undefined ? { expiresAtCombatRoundEnd } : {}),
     });
+    // Polish Balance Pack Luna I/VI: "up to 2 tokens on 2 adjacent empty
+    // spaces". The pick owns phase/priority (playCard's pendingChoice guard).
+    if (effect.pairAdjacent) {
+      openWallTokenPairChoice(state, action.playerId, wall, false);
+    }
   }
 
   // Ladybird of Luck (ongoing side): the card lies on the chosen empty space as
@@ -31708,7 +32225,12 @@ function applyActiveEffectAction(
   }
 
   const damageBeforeHeal = target.damage;
-  healUnitDamage(state, effect.source, action.target, healModifier.amount);
+  // WoG era Mithril First Aid Tent (optional module): +1 heal in even combat rounds.
+  const mithrilTentBonus =
+    effect.source.type === "card" && effect.source.cardId === "war_machine.first_aid_tent"
+      ? mithrilTentHealBonus(state, effect.controllerId)
+      : 0;
+  healUnitDamage(state, effect.source, action.target, healModifier.amount + mithrilTentBonus);
 
   if (effect.name === "Chalice of Renewal" && healModifier.excludeSourceUnitId) {
     appendEvent(state, {
@@ -33851,6 +34373,11 @@ function rerollPendingChoice(
     }
   }
 
+  // WoG era Mithril: spend 1 Mithril and latch the once-per-round reroll.
+  if (source.mithril && source.used === 1) {
+    consumeMithrilForReroll(state, action.playerId);
+  }
+
   if (source.equipmentId && source.used === 1) {
     const player = state.players[action.playerId];
     if (player && source.equipmentUseScope === "round") {
@@ -34240,12 +34767,18 @@ function resolveCommanderCast(
   const effect = cast.effect;
   switch (effect.kind) {
     case "heal": {
+      if (caster.commanderSlug === "soul_eater" && target.id === caster.id && caster.soulEaterSelfHealUsed) {
+        throw new Error("Soul Eater has already healed itself with Animate Dead this combat.");
+      }
       const priorHeals = caster.commanderCastCount ?? (caster.commanderCastRound !== undefined ? 1 : 0);
       const amount = caster.commanderSlug === "soul_eater" && tier >= 2 && priorHeals > 0
         ? 2
         : caster.commanderSlug === "bulwark" && tier >= 2 && priorHeals >= 2
           ? 2 : effect.healByPower[tier];
       healUnitDamage(state, source, targetRef, amount);
+      if (caster.commanderSlug === "soul_eater" && target.id === caster.id) {
+        caster.soulEaterSelfHealUsed = true;
+      }
       break;
     }
     // Factory Emergency Repair is a lethal-hit-window reaction, never resolved
@@ -38551,6 +39084,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           !combat.context.waveAssault &&
           combat.context.dungeonFloor === undefined &&
           !combat.context.raidBossId &&
+          !combat.context.wanderingBoss &&
           combat.attackerPlayerId !== NEUTRAL_PLAYER_ID;
         const fieldRoundLimit = isPlayerFieldFight
           ? combat.context.kind === "neutral" && !combat.context.bankId && isGrailUtopiaModeField(state, utopiaField)
@@ -38746,6 +39280,7 @@ function asNeutralSeatCommand<
       type:
         | "MOVE_UNIT"
         | "ATTACK_UNIT"
+        | "ATTACK_HEX"
         | "MOVE_AND_ATTACK_UNIT"
         | "DEFEND_UNIT"
         | "END_ACTIVATION"
@@ -39251,6 +39786,55 @@ function applyActionInContext(
     ? parallelSlotSignature(nextState)
     : null;
 
+  // Parallel PvP "keep": when the blocking work sits in the actor's OWN
+  // context (the defender's garrison prompt of the actor's assault, the
+  // defender's post-battle choices, a choice the actor's card opened) the actor
+  // waits for that answer like the aggressor in ordered play — no quiet step
+  // (walking the attacking hero off the contested field), no town action
+  // (changing the army about to fight). Covers the handler-validated actions
+  // too (MOVE_HERO, BUILD_STRUCTURE, market…), which bypass getLegalActions.
+  // The Wandering Merchant stays exempt: an independent purchase getLegalActions
+  // offers regardless of any open window (as the event barrier below exempts it).
+  if (
+    parallelBystanderBlocker &&
+    action.type !== "BUY_WANDERING_MERCHANT" &&
+    parallelPvpKeeps(nextState) &&
+    nextState.parallelCombatOwnerId === actorPlayerId
+  ) {
+    const waitingOn =
+      parallelBystanderBlocker === "table"
+        ? "the other player"
+        : (nextState.players[parallelBystanderBlocker]?.name ?? parallelBystanderBlocker);
+    return fail(base, {
+      code: "ACTION_NOT_LEGAL",
+      message: `Parallel turns: wait for ${waitingOn} to answer — your interaction with them is still open.`,
+    });
+  }
+
+  // Parallel PvP "keep": a seat PINNED into another seat's context (the
+  // defender of a PvP battle, the target of a choice) that switched over to
+  // command a Neutral battle acts there only as that battle's controller: its
+  // map and hand steps (the quiet set getParallelBystanderActions withholds for
+  // it) would walk its fighting hero off the PvP battle or redraw mid-fight.
+  if (
+    actorPlayerId &&
+    !isTableMetaAction &&
+    (action.type === "MOVE_HERO" ||
+      action.type === "MOVE_HERO_PATH" ||
+      action.type === "REFRESH_HAND" ||
+      action.type === "RESOLVE_EXPLORERS_DISCARD" ||
+      action.type === "OPENING_HAND_MULLIGAN") &&
+    parallelPvpKeeps(nextState)
+  ) {
+    const pinnedElsewhere = parallelPvpPinOwner(nextState, actorPlayerId);
+    if (pinnedElsewhere && pinnedElsewhere !== nextState.parallelCombatOwnerId) {
+      return fail(base, {
+        code: "ACTION_NOT_LEGAL",
+        message: `Parallel turns: finish your interaction with ${nextState.players[pinnedElsewhere]?.name ?? pinnedElsewhere} first — only the neutral commands are yours here.`,
+      });
+    }
+  }
+
   // Round-start Event / Astrologers barrier (ordered AND parallel play): while
   // the round's Event is being resolved clockwise, the ONLY player who may act
   // is the one whose event choice is currently open — every other player waits
@@ -39309,6 +39893,10 @@ function applyActionInContext(
         }
         case "ATTACK_UNIT":
           attackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
+          break;
+        case "ATTACK_HEX":
+          // Hex battlefield aimed Magog / Lich shot (hex-area-attacks.ts).
+          attackHex(nextState, asNeutralSeatCommand(nextState, action), cards);
           break;
         case "MOVE_AND_ATTACK_UNIT":
           moveAndAttackUnit(
@@ -39635,6 +40223,28 @@ function applyActionInContext(
         case "HERO_TRAIN":
           heroTrain(nextState, action);
           break;
+        // WoG era modules (optional; each offered only while its module is on).
+        case "ATTACK_WANDERING_BOSS":
+          attackWanderingBossAction(nextState, action);
+          break;
+        case "TEACHER_LESSON":
+          teacherLessonAction(nextState, action);
+          break;
+        case "TAKE_LOAN":
+          takeLoanAction(nextState, action);
+          break;
+        case "REPAY_LOAN":
+          repayLoanAction(nextState, action);
+          break;
+        case "MITHRIL_FORGE_MINE":
+          mithrilForgeMineAction(nextState, action);
+          break;
+        case "MITHRIL_UPGRADE_WAR_MACHINE":
+          mithrilUpgradeWarMachineAction(nextState, action);
+          break;
+        case "FORGE_SKILL_COMBO":
+          forgeSkillComboAction(nextState, action);
+          break;
         case "HERO_GRADE_PICK":
           heroGradePick(nextState, action);
           break;
@@ -39936,6 +40546,11 @@ function applyActionInContext(
             resolvePlaceTokensChoice(nextState, action);
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "place-wall-token-pair"
+          ) {
+            resolveWallTokenPairChoice(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             nextState.pendingChoice.context === "combat-clone"
           ) {
             resolveCloneChoice(nextState, action);
@@ -40196,8 +40811,21 @@ function applyActionInContext(
     refillSharedDeckDiscards(nextState, base);
 
     if (actorPlayerId && !isTableMetaAction) {
-      const affected = parallelPlayerImpact(base, nextState, actorPlayerId);
-      if (affected && !isParallelEventResolutionAction(base, action)) {
+      // Parallel PvP "keep" option: affecting another seat does not end the
+      // mode — it is refused only while an affected seat is busy elsewhere (a
+      // battle, a choice), so nobody's open interaction is changed under them.
+      // The rare decision opened for a third seat INSIDE a battle still takes
+      // the classic stop below.
+      const pvpKeeps = parallelPvpKeeps(base);
+      const affectedSeats = pvpKeeps ? parallelPlayerImpacts(base, nextState, actorPlayerId) : [];
+      const affected = pvpKeeps ? (affectedSeats[0] ?? null) : parallelPlayerImpact(base, nextState, actorPlayerId);
+      const verdict = affected && pvpKeeps && !isParallelEventResolutionAction(base, action)
+        ? parallelPvpImpactVerdict(base, nextState, affectedSeats)
+        : "stop";
+      if (verdict !== null && verdict !== "stop") {
+        return fail(base, { code: "ACTION_NOT_LEGAL", message: verdict });
+      }
+      if (affected && verdict === "stop" && !isParallelEventResolutionAction(base, action)) {
         try {
           stopParallelTurns(
             nextState,

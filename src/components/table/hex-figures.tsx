@@ -20,6 +20,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronDown, ChevronUp, User, Users } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { CASTER_BADGE_ICON, unitHasCastSkill } from "./hex-unit-skills";
 import { getBattlefieldCoordinates, getBattlefieldDistance, hexPosition, isHexPosition } from "@/engine/battlefield";
 import { unitAtCell, unitCells, unitTailOffset } from "@/engine/hex-footprint";
 import { getPermanentCardIds, isWarMachineCard } from "@/engine/permanents";
@@ -31,6 +32,7 @@ import {
   HEX_CAST_RELEASE_MS,
   HEX_DEATH_FRAME_MS,
   HEX_HIT_FRAME_MS,
+  HEX_IDLE_FIDGET_CHANCE,
   HEX_IDLE_FRAME_MS,
   HEX_RANGED_RELEASE_MS,
   HEX_TURN_FRAME_MS,
@@ -96,6 +98,8 @@ const MOVE_HOLD_GRACE_MS = 400;
 const IDLE_TURN_BACK_MS = 220;
 /** Longest a figure keeps its walk's facing waiting for its strike (dice + reactions) before turning back anyway. */
 const FACING_HOLD_MAX_MS = 9000;
+/** Longest a figure that turned to face an attacker from behind keeps that facing (the blow, then its retaliation die). */
+const FACE_HOLD_MAX_MS = 3200;
 
 /**
  * Figures tell each other when one starts to act (move, strike, cast): a figure
@@ -137,6 +141,11 @@ export function onClock(tick: Tick): () => void {
   return () => {
     ticks.delete(tick);
   };
+}
+
+/** Reduced motion: idle creatures hold their standing frame instead of looping it. */
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +246,8 @@ function createController(options: ControllerOptions): Controller {
   let stopClip: (() => void) | null = null;
   let stopMove: (() => void) | null = null;
   let holdTimer = 0;
-  let idleTimer = 0;
+  /** Stops the idle loop (the standing group looping while nothing plays), or null. */
+  let stopIdle: (() => void) | null = null;
   let busy = 0;
   /** The walk this figure is playing (resolves when it has arrived), or null. */
   let walking: Promise<void> | null = null;
@@ -301,6 +311,7 @@ function createController(options: ControllerOptions): Controller {
   const playClip = (group: number, durations: number[], hold = false, startAt?: number): Promise<void> =>
     new Promise((resolve) => {
       stopClip?.();
+      haltIdle();
       if (!atlas || durations.length === 0) {
         resolve();
         return;
@@ -318,6 +329,8 @@ function createController(options: ControllerOptions): Controller {
           if (hold) showFrame(group, durations.length - 1);
           else showFrame(SPRITE_GROUP.standing, 0);
           resolve();
+          // A clip played outside any cue (mouse-over, turning back): back to breathing.
+          if (!hold) resumeIdle();
           return false;
         }
         let acc = 0;
@@ -707,6 +720,20 @@ function createController(options: ControllerOptions): Controller {
       .finished.catch(() => undefined);
   };
 
+  /**
+   * Struck from behind (PC): turn to face the attacker inside the time left
+   * before the blow, so the hit (and any retaliation) plays facing it. Only
+   * turns when the attacker is on the far side of the current facing.
+   */
+  const runFace = async (cue: Extract<HexUnitCueDetail["cue"], { kind: "face" }>) => {
+    const target = parseCellAnchor(cue.to);
+    if (target === null || !isHexPosition(target) || options.ownCells().includes(target)) return;
+    const b = options.cellPoint(target);
+    const a = nearestOwnPoint(b);
+    if (b.x === a.x || (b.x > a.x) === facing) return;
+    await quickTurn(b.x > a.x, Math.max(1, cue.beatMs ?? IMPACT_MS));
+  };
+
   const runPose = async () => {
     if (atlas && frames(SPRITE_GROUP.defend) > 0) {
       await playClip(SPRITE_GROUP.defend, even(SPRITE_GROUP.defend, paced(HEX_HIT_FRAME_MS)));
@@ -722,19 +749,50 @@ function createController(options: ControllerOptions): Controller {
     void playClip(SPRITE_GROUP.mouseOver, even(SPRITE_GROUP.mouseOver, paced(HEX_IDLE_FRAME_MS)));
   };
 
-  const scheduleIdle = () => {
-    if (!atlas || disposed || !options.idle) return;
-    window.clearTimeout(idleTimer);
-    idleTimer = window.setTimeout(async () => {
-      if (disposed) return;
-      // Skipped while the tab is hidden (no frames would draw anyway).
-      if (busy === 0 && !document.hidden) {
-        await playClip(SPRITE_GROUP.standing, even(SPRITE_GROUP.standing, paced(HEX_IDLE_FRAME_MS)));
+  /**
+   * A creature standing idle is never still on the PC (VCMI CreatureAnimation /
+   * BattleStacksController): it LOOPS its standing group (HOLDING) at the H3
+   * idle rate for as long as nothing else plays, and after each loop it now and
+   * then (timeBetweenFidgets 1: about one loop in ten) plays its mouse-over row
+   * once as a fidget. Each figure starts at its own phase so a line of the same
+   * creature never breathes in step; Haste / Slow set the pace like every clip.
+   * Runs on the shared clock and writes the DOM only when the frame changes; a
+   * cue, a hover clip or a turn stops it and it resumes once the figure is idle.
+   */
+  function resumeIdle() {
+    if (stopIdle || !atlas || disposed || busy > 0 || !options.idle || prefersReducedMotion()) return;
+    const holding = Math.max(1, frames(SPRITE_GROUP.standing));
+    const fidget = frames(SPRITE_GROUP.mouseOver);
+    if (holding <= 1 && fidget === 0) return;
+    // A sheet-built idle row plays there and back (0..n-1..1), an H3 one loops.
+    const pingPong = Boolean(atlas.idlePingPong) && holding > 2;
+    const loop = pingPong ? holding * 2 - 2 : holding;
+    let group: number = SPRITE_GROUP.standing;
+    let count = loop;
+    let loopStart = -1;
+    const phase = Math.random() * loop;
+    stopIdle = onClock((now) => {
+      if (disposed) return false;
+      const frameMs = paced(HEX_IDLE_FRAME_MS);
+      if (loopStart < 0) loopStart = now - phase * frameMs;
+      let index = Math.floor((now - loopStart) / frameMs);
+      if (index >= count) {
+        // A loop ended: roll for a fidget (VCMI onAnimationFinished).
+        loopStart = now;
+        index = 0;
+        const fidgets = fidget > 0 && Math.random() < HEX_IDLE_FIDGET_CHANCE;
+        group = fidgets ? SPRITE_GROUP.mouseOver : SPRITE_GROUP.standing;
+        count = fidgets ? fidget : loop;
       }
-      scheduleIdle();
-      // A Hasted unit fidgets more often, a Slowed one less.
-    }, (3500 + Math.random() * 5000) / options.tempo());
-  };
+      showFrame(group, group === SPRITE_GROUP.standing && index >= holding ? loop - index : index);
+      return true;
+    });
+  }
+
+  function haltIdle() {
+    stopIdle?.();
+    stopIdle = null;
+  }
 
   const handle = (event: Event) => {
     const detail = (event as CustomEvent<HexUnitCueDetail>).detail;
@@ -742,6 +800,7 @@ function createController(options: ControllerOptions): Controller {
     detail.accepted = true;
     event.stopPropagation();
     busy += 1;
+    haltIdle();
     const cue = detail.cue;
     const arrived = performance.now();
     const start = (): Promise<void> => {
@@ -759,6 +818,7 @@ function createController(options: ControllerOptions): Controller {
         const beat = cue.releaseMs ?? CAST_RELEASE_MS;
         return runCast(waited > 1 && beat > 0 ? { ...cue, releaseMs: Math.max(1, beat - waited) } : cue);
       }
+      if (cue.kind === "face") return runFace(cue);
       return cue.kind === "shake" ? runShake() : runPose();
     };
     // The creature's own strike or cast never starts while it is still
@@ -786,16 +846,21 @@ function createController(options: ControllerOptions): Controller {
       .finally(() => {
         busy = Math.max(0, busy - 1);
         detail.done();
+        if (busy === 0) resumeIdle();
         if (busy > 0 || disposed || facing === options.facesRight()) return;
-        if (cue.kind === "move") {
+        if ((cue.kind === "move" && !cue.settle) || cue.kind === "face") {
           // Arrived facing away from the enemy: hold that facing while its
           // strike may still come (the die is thrown and read first), until
-          // its own next action or another creature starts acting.
+          // its own next action or another creature starts acting. Turned to
+          // face an attacker from behind: hold it through the blow and the
+          // retaliation the same way (a shorter cap: nothing of its own waits).
           facingHeld = true;
           window.clearTimeout(facingTimer);
-          facingTimer = window.setTimeout(turnBackWhenIdle, FACING_HOLD_MAX_MS);
+          facingTimer = window.setTimeout(turnBackWhenIdle, cue.kind === "face" ? FACE_HOLD_MAX_MS : FACING_HOLD_MAX_MS);
           return;
         }
+        // Being hit (or bracing) while holding a facing keeps it.
+        if (facingHeld && (cue.kind === "shake" || cue.kind === "pose")) return;
         // Idle again after striking / casting to one side: after a short beat
         // (a cue that follows at once keeps the facing it needs), turn back to
         // face the enemy with the H3 turn.
@@ -845,7 +910,7 @@ function createController(options: ControllerOptions): Controller {
 
   setFacing(facing);
   showFrame(SPRITE_GROUP.standing, 0);
-  scheduleIdle();
+  resumeIdle();
 
   return {
     handle,
@@ -858,7 +923,7 @@ function createController(options: ControllerOptions): Controller {
       stopClip?.();
       stopMove?.();
       window.clearTimeout(holdTimer);
-      window.clearTimeout(idleTimer);
+      haltIdle();
       window.clearTimeout(facingTimer);
       // Never leave the figure parked on a hold/walk offset for the next controller.
       figure.style.translate = "";
@@ -894,6 +959,8 @@ type FigureProps = {
   /** The hex in front of the stack is taken (or off the board): its count box tucks into its own hex. */
   plateInside: boolean;
   variant: CombatUnitState["variant"];
+  /** The creature casts a skill of its own: its plate wears the caster badge. */
+  caster: boolean;
   cardImage: string | undefined;
   name: string;
   flipped: boolean;
@@ -914,6 +981,7 @@ const HexUnitFigure = memo(function HexUnitFigure({
   tailStep,
   plateInside,
   variant,
+  caster,
   cardImage,
   name,
   flipped,
@@ -1067,6 +1135,7 @@ const HexUnitFigure = memo(function HexUnitFigure({
         ) : variant === "few" ? (
           <User aria-hidden="true" className="hexPlateSide" />
         ) : null}
+        {caster ? <img alt="" aria-hidden="true" className="hexPlateCaster" src={assetUrl(CASTER_BADGE_ICON)} /> : null}
         {health}
         {attackDelta || defenseDelta || initiativeDelta ? (
           <span className="hexPlateStats">
@@ -1169,6 +1238,7 @@ export function HexUnitsLayer({
               unitId={unit.id}
               unitType={unit.type}
               variant={unit.variant}
+              caster={unitHasCastSkill(unit)}
             />
           );
         })}
@@ -1283,7 +1353,11 @@ const WAR_MACHINE_SPRITES: Readonly<Record<string, string>> = {
   "war_machine.first_aid_tent": "war-first-aid-tent",
   // Forge (no PC original): a Codex sheet drawn from the card art
   // (generated-session-art/forge/war-machines, scripts/import-sprite-sheet.mjs).
-  "war_machine.lightning_generator": "war-lightning-generator"
+  "war_machine.lightning_generator": "war-lightning-generator",
+  // Cove Cannon (no PC original file): a Codex sheet drawn from the card art
+  // (generated-session-art/battle-hex/war-machines, scripts/key-sheet-background.mjs
+  // then import-sprite-sheet.mjs + refit-sheet-sprites.mjs).
+  "war_machine.cannon": "war-cannon"
 };
 
 /** Row each machine type stands beside (PC: ballista high, cart and tent low). */

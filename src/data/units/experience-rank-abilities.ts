@@ -468,6 +468,9 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   // Mountain Rams keep their generated R2 ability CHOICE and ALSO gain +1 Health
   // (same hybrid pattern as cove.sea_dogs above).
   if (unitDefId === "bulwark.mountain_rams") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
+  // Fortress Dragon Flies (user 2026-09-26): keep the generated R2 ability
+  // CHOICE and ALSO gain +1 Health (same hybrid pattern as cove.sea_dogs).
+  if (unitDefId === "fortress.dragon_flies") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
   if (unitDefId === "bulwark.yetis") return A("town-yeti-specialty-aura");
   if (unitDefId === "castle.marksmen") return A("town-marksman-mark");
   if (unitDefId === "castle.crusaders") return A("town-crusader-undead");
@@ -733,7 +736,29 @@ const RANK_SCHEDULE_CACHE = new Map<string, RankSchedule>();
  * differs from "faction" for units that own a NEUTRAL_SIDE_VETERANCY_OVERRIDES
  * entry (Bulwark / Factory / Forge Neutral sides).
  */
-export type RankScheduleSide = "faction" | "neutral";
+export type RankScheduleSide = "faction" | "neutral" | "bank";
+
+/**
+ * Creature-Bank cards reuse Neutral unit ids but print a different card (the
+ * Crypt Skeleton prints Rebirth, the Treasury Dwarves a Stacked Defense token),
+ * so a few need their own ranks. Only these steps differ from the unit's
+ * faction track; bank units without an entry resolve exactly as before.
+ */
+const BANK_SIDE_RANK_STEP_OVERRIDES: Record<string, Partial<Record<1 | 2 | 3 | 4, RankStep>>> = {
+  // User 2026-09-26: the Crypt Skeleton already has Rebirth, so its R4 Veteran
+  // Rebirth could never add anything — it becomes +1 Defense after that Rebirth.
+  "neutral.skeletons": { 4: A("veteran-rebirth-guard") },
+  // User 2026-09-26: Treasury Dwarves reduce no spell damage, so Runic Backlash
+  // could never fire — R3 becomes Spell Resistance (-1 Spell damage).
+  "neutral.dwarves": { 3: A("reduce-spell-damage-1") }
+};
+
+const BANK_SCHEDULE_CACHE = new Map<string, RankSchedule>();
+
+/** True when this unit's Creature-Bank card has its own veteran ranks. */
+export function hasBankSideRankSchedule(unitDefId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(BANK_SIDE_RANK_STEP_OVERRIDES, unitDefId);
+}
 
 /** True when this unit's Neutral side has its own veteran track. */
 export function hasNeutralSideRankSchedule(unitDefId: string): boolean {
@@ -745,6 +770,7 @@ export function hasNeutralSideRankSchedule(unitDefId: string): boolean {
  * unit owns a Neutral-side track, so callers can key caches on the result.
  */
 export function effectiveRankScheduleSide(unitDefId: string, side: RankScheduleSide | undefined): RankScheduleSide {
+  if (side === "bank") return hasBankSideRankSchedule(unitDefId) ? "bank" : "faction";
   return side === "neutral" && hasNeutralSideRankSchedule(unitDefId) ? "neutral" : "faction";
 }
 
@@ -758,8 +784,16 @@ export function effectiveRankScheduleSide(unitDefId: string, side: RankScheduleS
  * unit (and every faction-side stack) resolves exactly as before.
  */
 export function rankScheduleFor(unitDefId: string, side: RankScheduleSide = "faction"): RankSchedule {
-  if (effectiveRankScheduleSide(unitDefId, side) === "neutral") {
+  const effectiveSide = effectiveRankScheduleSide(unitDefId, side);
+  if (effectiveSide === "neutral") {
     return NEUTRAL_SIDE_VETERANCY_OVERRIDES[unitDefId]!;
+  }
+  if (effectiveSide === "bank") {
+    const cachedBank = BANK_SCHEDULE_CACHE.get(unitDefId);
+    if (cachedBank) return cachedBank;
+    const bank = { ...rankScheduleFor(unitDefId, "faction"), ...BANK_SIDE_RANK_STEP_OVERRIDES[unitDefId] } as RankSchedule;
+    BANK_SCHEDULE_CACHE.set(unitDefId, bank);
+    return bank;
   }
   const cached = RANK_SCHEDULE_CACHE.get(unitDefId);
   if (cached) return cached;
@@ -985,6 +1019,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-harpy-vitality": "/game-tokens/rank-ability/dungeon-necropolis/harpy-vitality.webp",
   "veteran-eye-immunity": "/assets/ui/rank-ability/precision.webp",
   "veteran-skeleton-rebirth": "/game-tokens/rank-ability/dungeon-necropolis/skeleton-rebirth.webp",
+  "veteran-rebirth-guard": "/game-tokens/rank-ability/dungeon-necropolis/skeleton-rebirth.webp",
   "veteran-wraith-escape": "/game-tokens/rank-ability/dungeon-necropolis/wraith-escape.webp",
   "veteran-wraith-magic": "/game-tokens/rank-ability/dungeon-necropolis/wraith-magic.webp",
   "veteran-zombie-intercept": "/game-tokens/rank-ability/dungeon-necropolis/zombie-intercept.webp",

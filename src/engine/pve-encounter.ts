@@ -16,6 +16,7 @@ export function isPveEncounterCombat(combat: CombatState | null | undefined): bo
     combat?.context.kind === "neutral" &&
       (combat.context.waveAssault ||
         combat.context.raidBossId !== undefined ||
+        combat.context.wanderingBoss === true ||
         combat.context.dungeonFloor !== undefined)
   );
 }

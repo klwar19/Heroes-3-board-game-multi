@@ -4,7 +4,10 @@
  * Battlefield atlas of every H3 creature a unit card uses, from a folder of the
  * original .def files (H3sprite.lod extracts).
  *
- *   node scripts/build-all-creature-sprites.mjs <folder-with-defs> [more folders...] [--only slug,slug]
+ *   node scripts/build-all-creature-sprites.mjs <folder-with-defs> [more folders...] [--only slug,slug] [--anchor-only]
+ *
+ * --anchor-only re-anchors the existing atlases on the PC canvas point (see
+ * build-creature-sprites.mjs) without re-encoding any image.
  *
  * The unit-id -> slug map lives in src/data/battle-hex/creature-sprites.ts;
  * this list only says which .def each slug is cut from. Both creatures of every
@@ -101,11 +104,33 @@ export const CASTER_SLUGS = new Set([
   "sentinel-automaton", "mechanic", "engineer", "couatl", "crimson-couatl", "satyr", "leprechaun"
 ]);
 
+/**
+ * PC two-hex creatures (VCMI config/creatures + the HotA mod's `doubleWide`; the
+ * WoG ones by their canvas): their .def draws the body around the middle of its
+ * two hexes, which becomes the atlas anchor (build-creature-sprites --double-wide).
+ */
+export const DOUBLE_WIDE_SLUGS = new Set([
+  "griffin", "royal-griffin", "cavalier", "champion", "archangel", "black-knight", "dread-knight", "bone-dragon",
+  "ghost-dragon", "medusa", "medusa-queen", "manticore", "scorpicore", "red-dragon", "black-dragon", "centaur",
+  "centaur-captain", "pegasus", "silver-pegasus", "unicorn", "war-unicorn", "green-dragon", "gold-dragon", "hell-hound",
+  "cerberus", "wolf-rider", "wolf-raider", "roc", "thunderbird", "behemoth", "ancient-behemoth", "basilisk",
+  "greater-basilisk", "gorgon", "mighty-gorgon", "wyvern", "wyvern-monarch", "hydra", "chaos-hydra", "naga",
+  "naga-queen", "water-elemental", "ice-elemental", "firebird", "phoenix", "boar", "nomad", "azure-dragon",
+  "crystal-dragon", "faerie-dragon", "rust-dragon", "stormbird", "ayssid", "sea-serpent", "haspid", "armadillo",
+  "bellwether-armadillo", "automaton", "sentinel-automaton", "couatl", "crimson-couatl", "sandworm", "olgoi-khorkhoi",
+  "dreadnought", "juggernaut", "mountain-ram", "argali", "yeti", "yeti-runemaster", "mammoth", "war-mammoth", "jotunn",
+  "jotunn-warlord",
+  "wog-gorynych", "wog-nightmare", "wog-sylvan-centaur", "wog-hell-steed", "wog-dracolich"
+]);
+
 function main() {
   const args = process.argv.slice(2);
+  // --anchor-only: re-anchor the existing atlases on the PC canvas point, images untouched.
+  const anchorOnly = args.includes("--anchor-only");
   const onlyIndex = args.indexOf("--only");
   const only = onlyIndex >= 0 ? new Set((args[onlyIndex + 1] ?? "").split(",")) : null;
-  const folders = onlyIndex < 0 ? args : args.filter((_, index) => index !== onlyIndex && index !== onlyIndex + 1);
+  const folders = (onlyIndex < 0 ? args : args.filter((_, index) => index !== onlyIndex && index !== onlyIndex + 1))
+    .filter((arg) => arg !== "--anchor-only");
   if (folders.length === 0 || folders.some((folder) => !fs.existsSync(folder))) {
     console.error("usage: node scripts/build-all-creature-sprites.mjs <folder-with-defs> [more folders...] [--only slug,slug]");
     process.exit(1);
@@ -123,7 +148,18 @@ function main() {
       missing.push(`${slug} (${def.includes(".") ? def : `${def}.def`})`);
       continue;
     }
-    const run = spawnSync(process.execPath, [builder, file, slug, ...(CASTER_SLUGS.has(slug) ? ["--cast"] : [])], { stdio: "inherit" });
+    const run = spawnSync(
+      process.execPath,
+      [
+        builder,
+        file,
+        slug,
+        ...(CASTER_SLUGS.has(slug) ? ["--cast"] : []),
+        ...(DOUBLE_WIDE_SLUGS.has(slug) ? ["--double-wide"] : []),
+        ...(anchorOnly ? ["--anchor-only"] : [])
+      ],
+      { stdio: "inherit" }
+    );
     if (run.status !== 0) {
       missing.push(`${slug} (${def}.def: build failed)`);
     }

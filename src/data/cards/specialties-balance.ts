@@ -84,6 +84,18 @@ function tags(cardId: string, balanceText: string): string[] {
   return [...keep, `Balance pack: ${balanceText}`];
 }
 
+/** Luna I / VI — the Fire Wall now lasts 2 Combat rounds and may be a pair of adjacent tokens. */
+function lunaFireWallReprint(level: 1 | 6, damage: number): CardDefinition {
+  const cardId = `specialty.luna.${level}`;
+  return reprint(cardId, {
+    tags: tags(
+      cardId,
+      `For 2 Combat rounds, place up to 2 Fire Wall tokens on 2 adjacent empty spaces. Deal ${damage} damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through.`,
+    ),
+    effect: { type: "PLACE_FIRE_WALL_FIXED", damage, durationRounds: 2, pairAdjacent: true },
+  });
+}
+
 /** Jeddite I / VI — the dig now takes Cast a Spell enablers under the Book. */
 function warlockDigReprint(level: 1 | 6, count: number): CardDefinition {
   const cardId = `specialty.jeddite.${level}`;
@@ -349,6 +361,13 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
 
   "specialty.ciele.1": cieleArrowReprint(1),
   "specialty.ciele.4": cieleArrowReprint(4),
+
+  // Luna I / VI (2026-09-26 faces) — "For 2 Combat rounds, place up to 2 Fire
+  // Wall tokens on 2 adjacent empty spaces." Printed: ONE token for the whole
+  // Combat. The fixed bite (1 / 3), the start-of-turn burn and the
+  // stop / pass-through reach are unchanged. Luna IV is not reprinted.
+  "specialty.luna.1": lunaFireWallReprint(1, 1),
+  "specialty.luna.6": lunaFireWallReprint(6, 3),
 
   // Tarnum (Conflux) I — "Search (1) Spell and add it to your Spellbook." The
   // Remove-from-the-game option is DROPPED (`allowRemove` gone); the Spellbook

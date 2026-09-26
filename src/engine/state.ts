@@ -370,6 +370,8 @@ export type WavePressure = "standard" | "brutal";
 export type WaveDefeatLimit = 0 | 2 | 3;
 /** Lobby-friendly scheduled world-boss arrival choices. Designed maps may still use any round 2..30. */
 export type RaidBossSpawnRound = 4 | 5 | 6;
+/** Moving Raid Boss (WoG era module) arrival round choices. */
+export type WanderingBossSpawnRound = 4 | 5;
 /** Short expedition or full ten-floor Dungeon campaign. */
 export type DungeonDepth = 5 | 10;
 /** Movement paid only when immediately descending to the next floor. */
@@ -418,6 +420,36 @@ export type WogModOptions = {
    * Field). Same engine as `anime.dungeon` — either surface activates it.
    */
   dungeon?: boolean;
+  /**
+   * WoG "era" modules (WOG surface; either the WOG or the Anime surface
+   * activates ONE shared engine flag frozen onto AdventureState at setup).
+   * Default OFF ⇒ byte-identical. See src/engine/wog-era.ts.
+   *  - wanderingBoss: a moving world boss (NOT the Rift Lair raid boss; one of
+   *    two, picked at random) that walks one field per round toward the richest
+   *    seat, heals 25% per round and keeps its wounds; kill = relic search,
+   *    chip damage = gold share.
+   *  - wanderingTeacher: a sage token that relocates every round and sells a
+   *    lesson (Empower an ability, retrain an ability, or study) to a hero on
+   *    it — two lessons per seat per game.
+   *  - loanBank: borrow 10 gold, repay 15 within 3 rounds or the bank seizes a
+   *    building (or VP).
+   *  - mithril: a rare resource from discovering tiles (Far 1 / Near 2 /
+   *    Center 3), +1 every 3rd round and Mithril Mines (one per Near tile, +1
+   *    per Resource Round to the holder), spent only on enchantments (reroll any
+   *    die once per round, a mine's double payout, Mithril war machines).
+   *  - karmicBattles: before an ordinary guard fight, opt into an empowered
+   *    guard (+1 Stack Token each) for extra loot.
+   *  - skillCombos: a player holding two specific ability cards may forge ONE
+   *    combo card per game.
+   */
+  wanderingBoss?: boolean;
+  wanderingTeacher?: boolean;
+  loanBank?: boolean;
+  mithril?: boolean;
+  karmicBattles?: boolean;
+  skillCombos?: boolean;
+  /** Moving boss arrival round (announced one round earlier). */
+  wanderingBossSpawnRound?: WanderingBossSpawnRound;
   /** Calamity wave cadence when monsterWaves is on (mirrors anime.waveCadence). */
   waveCadence?: 3 | 4 | 5;
   /** Shared monster/map-object theme for Waves, Raid Bosses and the Dungeon. */
@@ -445,6 +477,13 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   monsterWaves: false,
   raidBosses: false,
   dungeon: false,
+  wanderingBoss: false,
+  wanderingTeacher: false,
+  loanBank: false,
+  mithril: false,
+  karmicBattles: false,
+  skillCombos: false,
+  wanderingBossSpawnRound: 5,
   pveTheme: "classic",
   wavePressure: "standard",
   waveDefeatLimit: 0,
@@ -540,6 +579,36 @@ export type AnimeModOptions = {
    * it. Types + resolution only (no anime lobby UI). See unit-experience.ts.
    */
   neutralRankUp?: boolean;
+  /**
+   * WoG "era" modules (Anime surface; either the WOG or the Anime surface
+   * activates ONE shared engine flag frozen onto AdventureState at setup).
+   * Default OFF ⇒ byte-identical. See src/engine/wog-era.ts.
+   *  - wanderingBoss: a moving world boss (NOT the Rift Lair raid boss; one of
+   *    two, picked at random) that walks one field per round toward the richest
+   *    seat, heals 25% per round and keeps its wounds; kill = relic search,
+   *    chip damage = gold share.
+   *  - wanderingTeacher: a sage token that relocates every round and sells a
+   *    lesson (Empower an ability, retrain an ability, or study) to a hero on
+   *    it — two lessons per seat per game.
+   *  - loanBank: borrow 10 gold, repay 15 within 3 rounds or the bank seizes a
+   *    building (or VP).
+   *  - mithril: a rare resource from discovering tiles (Far 1 / Near 2 /
+   *    Center 3), +1 every 3rd round and Mithril Mines (one per Near tile, +1
+   *    per Resource Round to the holder), spent only on enchantments (reroll any
+   *    die once per round, a mine's double payout, Mithril war machines).
+   *  - karmicBattles: before an ordinary guard fight, opt into an empowered
+   *    guard (+1 Stack Token each) for extra loot.
+   *  - skillCombos: a player holding two specific ability cards may forge ONE
+   *    combo card per game.
+   */
+  wanderingBoss?: boolean;
+  wanderingTeacher?: boolean;
+  loanBank?: boolean;
+  mithril?: boolean;
+  karmicBattles?: boolean;
+  skillCombos?: boolean;
+  /** Moving boss arrival round (announced one round earlier). */
+  wanderingBossSpawnRound?: WanderingBossSpawnRound;
   /** Calamity wave cadence when monsterWaves is on. */
   waveCadence?: 3 | 4 | 5;
   /** Shared monster/map-object theme for Waves, Raid Bosses and the Dungeon. */
@@ -574,6 +643,62 @@ export type RaidBossState = {
   scheduled?: true;
   /** Set once slain; the lair field is cleared and the entry stays as a record. */
   slainBy?: PlayerId;
+};
+
+/**
+ * WoG era module — the MOVING Raid Boss (a separate module; the Rift Lair
+ * `raidBosses` module above is untouched). One boss per game: it arrives on
+ * `spawnRound`, walks one field per round toward the richest seat, heals 25%
+ * of its Health every round and keeps every wound between fights. It is an
+ * overlay token (the field under it keeps its own content) fought from its
+ * field or an adjacent one. See src/engine/wog-era.ts.
+ */
+export type WanderingBossState = {
+  spawnRound: number;
+  defId: string;
+  /** Null until it arrives, and again once slain. */
+  spaceId: MapSpaceId | null;
+  maxHealth: number;
+  damage: number;
+  /** Cumulative damage each seat dealt (the non-killers' gold share). */
+  damageBy: Record<PlayerId, number>;
+  spawnedRound?: number;
+  /** The seat currently fighting it — no second fight opens until it ends. */
+  engagedBy?: PlayerId;
+  /** Damage on the boss when the current fight opened (credit = delta). */
+  engagedStartDamage?: number;
+  /** Seat the boss walked toward on its last move (display only). */
+  targetPlayerId?: PlayerId;
+  slainBy?: PlayerId;
+  slainRound?: number;
+  /**
+   * Chip-damage gold owed to seats that were busy elsewhere at the kill under
+   * parallel turns' PvP "keep" option (paying them then would refuse the
+   * killing action); paid at the next round start.
+   */
+  pendingShares?: Record<PlayerId, number>;
+};
+
+/** The Wandering Teacher's lessons (two are offered each round). */
+export type TeacherLessonKind = "mastery" | "retrain" | "study";
+
+/** WoG era module — the Wandering Teacher token. See src/engine/wog-era.ts. */
+export type WanderingTeacherState = {
+  spaceId: MapSpaceId | null;
+  /** The two lessons offered this round (re-rolled every round). */
+  offer: TeacherLessonKind[];
+  movedRound: number;
+};
+
+/** WoG era module — one outstanding Loan Bank loan. */
+export type LoanState = {
+  /** Gold paid out when the loan was taken. */
+  principal: number;
+  /** Gold owed back. */
+  repay: number;
+  takenRound: number;
+  /** Repay by the END of this round; the bank settles at the next round start. */
+  dueRound: number;
 };
 
 /**
@@ -3750,6 +3875,13 @@ export type EffectDefinition =
        */
       type: "PLACE_FORCE_FIELD";
       durationByPower: Record<number, EffectDurationDefinition>;
+      /**
+       * Polish Balance Pack: "Place UP TO 2 … tokens on 2 ADJACENT empty
+       * spaces." After the first token lands on the cast target the caster may
+       * drop a second, identical token on an empty space adjacent to it (the
+       * "place-wall-token-pair" pick), or decline. Absent on the printed card.
+       */
+      pairAdjacent?: boolean;
     }
   | {
       /**
@@ -3761,6 +3893,14 @@ export type EffectDefinition =
        */
       type: "PLACE_FIRE_WALL";
       damageByPower: Record<number, number>;
+      /** Polish Balance Pack: optional second token on an adjacent empty space (see PLACE_FORCE_FIELD). */
+      pairAdjacent?: boolean;
+      /**
+       * Polish Balance Pack: "For 2 Combat rounds" — the tokens lift at the end
+       * of the (N−1)th round after this one (2 = this and the next round).
+       * Absent = the whole Combat, as printed.
+       */
+      durationRounds?: number;
       /**
        * Community Balance Pack Fire Wall: "…to any unit STARTING THEIR
        * ACTIVATION or stopping here…". Sets `burnsAtActivation` on the placed
@@ -3779,6 +3919,10 @@ export type EffectDefinition =
        */
       type: "PLACE_FIRE_WALL_FIXED";
       damage: number;
+      /** Polish Balance Pack: optional second token on an adjacent empty space (see PLACE_FORCE_FIELD). */
+      pairAdjacent?: boolean;
+      /** Polish Balance Pack: lifetime in Combat rounds (see PLACE_FIRE_WALL). Absent = the whole Combat. */
+      durationRounds?: number;
     }
   | {
       /**
@@ -4603,6 +4747,22 @@ type GameActionPayload =
       abilityAttack?: { abilityId: string; baseAttack: number };
     }
   | {
+      /**
+       * Hex battlefield only (hex-area-attacks.ts, user ruling 2026-09-26):
+       * a Magog / Lich / Dracolich aims its ranged attack at an EMPTY hex. It
+       * is the unit's attack for this activation, but there is no primary
+       * defender (no attack roll, no retaliation): every unit in the ring
+       * around `position` receives the printed follow-up (Magog flat damage,
+       * Death Cloud ability attacks). Offered only while the unit has a legal
+       * ranged ATTACK_UNIT.
+       */
+      type: "ATTACK_HEX";
+      playerId: PlayerId;
+      attackerId: UnitId;
+      /** The aimed empty hex (the blast centre). */
+      position: number;
+    }
+  | {
       type: "MOVE_AND_ATTACK_UNIT";
       playerId: PlayerId;
       attackerId: UnitId;
@@ -4739,6 +4899,43 @@ type GameActionPayload =
        */
       type: "HERO_TRAIN";
       playerId: PlayerId;
+    }
+  | {
+      /** WoG era: attack the moving Raid Boss from its field or an adjacent one (1 MP). */
+      type: "ATTACK_WANDERING_BOSS";
+      playerId: PlayerId;
+      heroId: HeroId;
+    }
+  | {
+      /** WoG era: buy one of this round's lessons from the Wandering Teacher. */
+      type: "TEACHER_LESSON";
+      playerId: PlayerId;
+      heroId: HeroId;
+      lesson: TeacherLessonKind;
+      /** The hand ability card to Empower (mastery) or retrain. */
+      cardId?: CardId;
+      /** Study with Unit Experience on: this army unit gains +2 XP (instead of the hero). */
+      armyUnitId?: string;
+    }
+  | { /** WoG era Loan Bank: borrow gold now. */ type: "TAKE_LOAN"; playerId: PlayerId }
+  | { /** WoG era Loan Bank: repay the outstanding loan. */ type: "REPAY_LOAN"; playerId: PlayerId }
+  | {
+      /** WoG era Mithril: forge a mine you hold (its next Resource-round payout is doubled). */
+      type: "MITHRIL_FORGE_MINE";
+      playerId: PlayerId;
+      fieldId: MapSpaceId;
+    }
+  | {
+      /** WoG era Mithril: forge one of your war machines in Mithril. */
+      type: "MITHRIL_UPGRADE_WAR_MACHINE";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /** WoG era Skill Combos: forge your one combo card for this game. */
+      type: "FORGE_SKILL_COMBO";
+      playerId: PlayerId;
+      comboId: string;
     }
   | {
       /**
@@ -6386,6 +6583,27 @@ type GameEventPayload =
     }
   | {
       /**
+       * Hex battlefield (hex-area-attacks.ts): a Magog Fireball / Lich or
+       * Dracolich Death Cloud engulfs its PC area. Emitted once, right before
+       * the ring follow-ups are applied — after a unit-targeted attack when at
+       * least one unit is struck, and always for an aimed-hex shot (ATTACK_HEX).
+       */
+      id: string;
+      type: "HEX_AREA_ATTACK";
+      /** The attacking unit's controller. */
+      playerId: PlayerId;
+      attackerId: UnitId;
+      abilityId: string;
+      /** The primary target's head hex, or the aimed hex. */
+      centre: number;
+      /** The primary target; absent for an aimed empty hex. */
+      centreUnitId?: UnitId;
+      /** Every unit that will receive the follow-up, in resolution order. */
+      struckUnitIds: UnitId[];
+      message: string;
+    }
+  | {
+      /**
        * A resolved attack would reduce a unit to 0 HP — opens the save window
        * where that unit's controller may play Alamar's Resurrection.
        */
@@ -6726,6 +6944,12 @@ type GameEventPayload =
       soulLinkTransfer?: boolean;
       /** Whether this damage came from a Retaliation Attack. */
       isRetaliation?: boolean;
+      /**
+       * Hex battlefield, presentation only: the hex a PC-area card blast
+       * (hex-spell-areas.ts — Xyron's Inferno, Adelaide / Glacius Frost Ring)
+       * was centred on, so the table draws ONE burst over the whole area.
+       */
+      areaCentre?: number;
     }
   | {
       id: string;
@@ -6967,6 +7191,8 @@ type GameEventPayload =
       id: string;
       type: "PARALLEL_TURNS_STARTED";
       rounds: number;
+      /** PvP battles/interactions keep the mode running (parallelPvp "keep"). */
+      pvpKeepsParallel?: boolean;
     }
   | {
       /** A player finished their own parallel turn; the round wraps once every live player has. */
@@ -9200,6 +9426,14 @@ export type TurnState = {
     reason: "pvp-battle" | "pvp-interaction" | "period-ended";
     round: number;
   } | null;
+  /**
+   * Parallel PvP "keep" option (GameSetupOptions.parallelPvp): PvP battles and
+   * player-affecting interactions no longer stop parallel turns. A PvP battle
+   * lives in the ATTACKER's parallel context and the defender is routed into it
+   * (parallel-combats.ts); nothing may touch a player who is already engaged
+   * elsewhere. Absent = the classic stop-on-PvP behaviour (older snapshots).
+   */
+  pvpKeepsParallel?: boolean;
 };
 
 /**
@@ -10064,6 +10298,20 @@ export type PlayerState = {
    * spends it (one pick per player per game, whatever they choose).
    */
   raidBossTrophyClaimed?: true;
+  /** WoG era Mithril: the seat's Mithril (spent only on enchantments). */
+  mithril?: number;
+  /** WoG era Mithril: war-machine card ids this seat forged in Mithril. */
+  mithrilWarMachines?: CardId[];
+  /** WoG era Mithril: the round this seat last spent Mithril on a reroll (once per round). */
+  mithrilRerollRound?: number;
+  /** WoG era Wandering Teacher: lessons this seat has taken this game (max 2). */
+  teacherLessons?: number;
+  /** WoG era Loan Bank: the outstanding loan, if any. */
+  loan?: LoanState;
+  /** WoG era Loan Bank: set once the seat defaulted — the bank never lends again. */
+  loanDefaulted?: true;
+  /** WoG era Skill Combos: the ONE combo id this seat forged (once per game). */
+  skillCombo?: string;
   /**
    * DEAD FIELD (legacy snapshots only). It used to be the Dungeon's
    * once-per-turn latch (the round this player last OPENED a floor fight).
@@ -10266,6 +10514,8 @@ export type BattlefieldTokenKind =
  *    whole Combat. The base Fire Wall spell burns ONLY on move-through/stop; a
  *    wall with `burnsAtActivation` (Luna's specialty, the WoG Hell Steed) ALSO
  *    burns any unit of ANY type that BEGINS its activation standing on it.
+ *    A Polish Balance Pack wall ("For 2 Combat rounds") carries
+ *    `expiresAtCombatRoundEnd` and lifts then, like a timed Force Field.
  *  - quicksand / land_mine — a face-down trap: `armed` true for a real token,
  *    false for a decoy ("empty"). `armed` is hidden from non-controllers (see
  *    getPlayerView) — only the caster ever knows which are real. The instant a
@@ -10316,7 +10566,10 @@ export type BattlefieldTokenState = {
   /** Unit ability that created this token, for exact event/FX attribution. */
   sourceUnitId?: UnitId;
   sourceAbilityId?: string;
-  /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
+  /**
+   * force_field (and a Polish Balance Pack fire_wall): combat round at whose
+   * end it lifts; absent = lasts the whole Combat.
+   */
   expiresAtCombatRoundEnd?: number;
   /** artifact_wall: the artifact card lying on the board as this Wall. */
   sourceArtifactCardId?: CardId;
@@ -10829,6 +11082,8 @@ export type CombatUnitState = {
   commanderCastRound?: number;
   /** Total non-AP command casts made in this combat; used by ability-specific combat caps. */
   commanderCastCount?: number;
+  /** Soul Eater's Animate Dead may target itself only once in this combat. */
+  soulEaterSelfHealUsed?: boolean;
   /** Necropolis Soul Eater's combat-start Soul Link. */
   soulLinkTargetId?: UnitId;
   soulLinkSelectionDone?: boolean;
@@ -10930,6 +11185,18 @@ export type CombatContext =
        * combat end, whatever the outcome.
        */
       raidBossId?: string;
+      /**
+       * WoG era moving Raid Boss fight: the lone boss body is minted from
+       * `adventure.wanderingBoss` (its wounds carried in), fought at
+       * `difficulty: 0` (no XP). Its damage is written back at combat end,
+       * whatever the outcome; the post-win field visit is skipped.
+       */
+      wanderingBoss?: true;
+      /**
+       * WoG era Karmic Battle: the fighter chose the EMPOWERED guard — every
+       * guard gets +1 Stack Token at reveal, and a win pays the karmic bonus.
+       */
+      karmicEmpowered?: true;
       /**
        * Dungeon floor fight (§6.7.3): the per-player floor being delved. Runs
        * at REAL difficulty min(floor+1, 7) — the Dungeon is the grind site, so
@@ -11062,11 +11329,20 @@ export type CombatSetupState = {
  */
 export type AttackSequenceState = {
   attackerId: UnitId;
-  /** The original declared target (retaliation comes from this unit). */
+  /**
+   * The original declared target (retaliation comes from this unit). For an
+   * aimed-hex shot (`aimedHex`) there is none: the attacker's own id stands in
+   * and is never read as a defender.
+   */
   defenderId: UnitId;
   attackKind: "melee" | "ranged";
   /** Whether the original target still owes its retaliation attack. */
   retaliationPending: boolean;
+  /**
+   * Hex battlefield ATTACK_HEX (hex-area-attacks.ts): the sequence belongs to
+   * a shot aimed at this empty hex — no primary defender, no retaliation.
+   */
+  aimedHex?: number;
   /**
    * Magic Mirror bounced an instant debuff (Curse/Weakness) onto a unit during
    * this attack: carried here so the same one-shot stat delta also applies to
@@ -11079,13 +11355,16 @@ export type AttackSequenceState = {
   }[];
   /**
    * BINH Cerberi: remaining printed follow-up attacks (one full attack per
-   * adjacent enemy), resolved one at a time before the retaliation.
+   * adjacent enemy), resolved one at a time before the retaliation. Also the
+   * hex battlefield Death Cloud ring (hex-area-attacks.ts, `hexArea`).
    */
   queuedAbilityAttacks?: {
     abilityId: string;
     abilityName: string;
     baseAttack: number;
     targetUnitId: UnitId;
+    /** Hex Death Cloud ring entry: skipped once its target left the board. */
+    hexArea?: boolean;
   }[];
   /**
    * Wolf Raiders: same target follow-up after the original target's
@@ -11456,6 +11735,8 @@ export type CombatState = {
        * Instant attack buff played from hand when the holder's unit attacks.
        */
       forgeOverclockStart?: 1 | 4;
+      /** WoG era Mithril Ammo Cart: combat round 1 — pick a ranged unit for +1 Attack. */
+      mithrilAmmoCart?: true;
     }[];
     firstTargetUnitId?: UnitId | null;
     /**
@@ -11772,6 +12053,10 @@ export type MapTileState = {
   faceDown: boolean;
   /** Roman numerals printed on the tile back (public info), e.g. "Ⅳ–Ⅴ". */
   backLabel?: string;
+  /** WoG era Mithril: this tile already paid its discovery Mithril. */
+  mithrilGranted?: true;
+  /** WoG era Mithril: this Near tile already had its Mithril Mine carved (or tried). */
+  mithrilMine?: true;
   /** Tile group (public info — the printed back gives it away). */
   group?: "starting" | "far" | "near" | "center" | "sea" | "subterranean";
   /**
@@ -12058,6 +12343,12 @@ export type MapFieldState = {
    * removed on the kill (the field is then black-cubed empty).
    */
   riftLair?: string;
+  /**
+   * WoG era Mithril: the seat that forged this mine — at the NEXT Resource
+   * Round the mine pays that seat its amount twice (if it still holds it); the
+   * mark is cleared then either way.
+   */
+  mithrilBoostBy?: PlayerId;
   /**
    * The Dungeon (§6.7.3): latched once the one-per-map delve site is carved
    * onto this (former Blocked) Field — `location` becomes "dungeon_gate" and
@@ -13139,6 +13430,10 @@ export type VisitStep =
   | {
       /** Marks the Swift Weasel once-per-turn adventure-die reroll as used. */
       type: "CONSUME_WEASEL";
+    }
+  | {
+      /** WoG era Mithril: spend 1 Mithril (map-die reroll arm). */
+      type: "CONSUME_MITHRIL";
     }
   | {
       /** Marks a once-per-game-round equipment die power as spent. */
@@ -14927,6 +15222,7 @@ export type AdventureState = {
         }
       | { kind: "wave"; wave: number }
       | { kind: "raid-boss"; bossInstanceId: string }
+      | { kind: "wandering-boss" }
       | {
           kind: "dungeon-floor";
           floor: number;
@@ -14965,6 +15261,7 @@ export type AdventureState = {
         }
       | { kind: "wave"; wave: number }
       | { kind: "raid-boss"; bossInstanceId: string }
+      | { kind: "wandering-boss" }
       | {
           kind: "dungeon-floor";
           floor: number;
@@ -15152,6 +15449,17 @@ export type AdventureState = {
    * See src/engine/raid-bosses.ts.
    */
   raidBosses?: Record<string, RaidBossState>;
+  /**
+   * WoG era modules (PRESENCE = module ON, frozen at setup from the WOG / Anime
+   * surfaces). Absent on every legacy snapshot and every game that leaves them
+   * off, so those games are byte-identical. See src/engine/wog-era.ts.
+   */
+  wanderingBoss?: WanderingBossState;
+  wanderingTeacher?: WanderingTeacherState;
+  loanBank?: true;
+  mithril?: true;
+  karmicBattles?: true;
+  skillCombos?: true;
   /**
    * The Dungeon (optional module, §6.7.3): PRESENCE = module ON (frozen at
    * setup from `wog.dungeon` / `anime.dungeon`; also requires the Creature
@@ -15523,6 +15831,17 @@ export type GameSetupOptions = {
    * stops when the period runs out. Play then continues turn-after-turn.
    */
   parallelTurns?: number;
+  /**
+   * How PvP behaves during parallel turns (only read while `parallelTurns` > 0):
+   *  - "keep": a PvP battle or a player-affecting interaction does NOT end the
+   *    mode. The two players involved resolve it together while everyone else
+   *    keeps playing; anything that would touch a player who is already busy
+   *    (in a battle, or answering a choice) waits until they are free.
+   *  - "stop": the classic behaviour described on `parallelTurns`.
+   * Absent on an engine-level setup = "stop" (legacy); the lobby defaults to
+   * "keep" (see `lobbySetupOptions`).
+   */
+  parallelPvp?: "keep" | "stop";
   /**
    * OPTIONAL "Undo moves" mode (default OFF/absent). A DEBUG / manual-testing
    * aid: with it ON, a player may roll the whole game back to the state before
@@ -16021,6 +16340,20 @@ export type CustomMapPreset = {
     noExperience?: boolean;
   };
   /**
+   * MAP-WIDE Temple of the Sea options. Absent = printed Temple (10 gold +
+   * two Artifact Search (2)). A per-tile `objectPlans.temple_of_the_sea` value
+   * overrides each field here for that tile; an unset per-tile field falls
+   * back to this one.
+   *   - guard: replaces the printed difficulty-Ⅶ guard
+   *   - reward: REPLACES the printed award (same pipeline as the per-tile award)
+   *   - vp: first-clear Victory Points (VP mode only)
+   */
+  templesOfTheSea?: {
+    guard?: CustomGuardSpec;
+    reward?: CustomFieldReward;
+    vp?: number;
+  };
+  /**
    * MAP-WIDE Random Town customization. Absent = classic Random Town (rolled
    * faction Packs 1 bronze + 2 silver + 2 gold, +10 gold income, +10 gold on
    * first capture).
@@ -16134,6 +16467,12 @@ export type CustomMapPreset = {
     grailAsUtopia?: "always" | "after-dig-utopia" | "after-dig-empty";
     /** Movement points to dig the Grail (0 free / 1 classic / 2 costly). */
     grailDigCost?: 0 | 1 | 2;
+    /**
+     * Dig cost inside the hidden Grail / Utopia package (`hiddenGrailUtopia`),
+     * which ignores `grailDigCost`. Kept separate so a stale classic value never
+     * leaks into the package. Absent = 1 MP (the package's original cost).
+     */
+    hiddenGrailDigCost?: 0 | 1 | 2;
     /** One-shot resources granted when the Grail is successfully dug. */
     grailDigReward?: {
       gold?: number;
@@ -16327,6 +16666,8 @@ export type VpLedgerEntry = {
    * `computeVictoryPoints`.
    */
   viiCenterVp?: number;
+  /** WoG era Loan Bank: VP lost to a defaulted loan with no building to seize. */
+  loanDefaultVp?: number;
 };
 
 /** A designer-placed one-hex map object's kind. Open for future kinds. */
@@ -16499,6 +16840,7 @@ export type CustomMapObjectivesConfig = NonNullable<
 
 /** The MAP-WIDE mine options block of a {@link CustomMapPreset}. */
 export type CustomMapMinesConfig = NonNullable<CustomMapPreset["mines"]>;
+export type CustomMapTemplesOfTheSeaConfig = NonNullable<CustomMapPreset["templesOfTheSea"]>;
 
 /** The MAP-WIDE Random Town options block of a {@link CustomMapPreset}. */
 export type CustomMapRandomTownsConfig = NonNullable<
@@ -16545,6 +16887,23 @@ export type CustomMapObeliskBonus =
 export const DEFAULT_OBELISK_BONUS: CustomMapObeliskBonus = {
   kind: "morale",
   amount: 1,
+};
+
+/**
+ * Map-editor SUGGESTION for a Temple of the Sea award that out-values Dragon
+ * Utopia: Morale / Ability-Empower token choice, 20 gold, Search (5) Artifacts,
+ * two Search (5) Spells and 3 first-clear VP. Only copied into a map when the
+ * designer applies it (then freely editable) — never an implicit default.
+ */
+export const SUGGESTED_TEMPLE_OF_THE_SEA_AWARD: { reward: CustomFieldReward; vp: number } = {
+  reward: {
+    gold: 20,
+    moraleOrAbilityEmpowerToken: true,
+    searchArtifact: 5,
+    searchSpell: 5,
+    searchSpellTimes: 2,
+  },
+  vp: 3,
 };
 
 /**
@@ -17714,6 +18073,8 @@ export type AttackRerollSource = {
    * source drops out for the rest of this combat.
    */
   cultivation?: boolean;
+  /** WoG era Mithril: spend 1 Mithril for this reroll (once per round, any die). */
+  mithril?: boolean;
   /** Standing equipment die power; reducer records the matching use scope when spent. */
   equipmentId?: string;
   equipmentUseScope?: "round" | "combat";
@@ -17916,6 +18277,7 @@ export type PendingChoice =
         | "neutral-destination"
         | "neutral-target-wall"
         | "place-battlefield-tokens"
+        | "place-wall-token-pair"
         | "combat-clone"
         | "combat-step"
         | "combat-activation-order"
@@ -17931,6 +18293,7 @@ export type PendingChoice =
         | "diplomacy-skip"
         | "diplomacy-battle-ease"
         | "polish-quick-combat"
+        | "karmic-battle"
         | "polish-bank-auto-combat"
         | "diplomacy-recruit"
         | "dimension-door-hero"
@@ -18232,6 +18595,22 @@ export type PendingChoice =
         placedCount: number;
         remaining: number;
         triggerDamage: number;
+      };
+      /**
+       * place-wall-token-pair: the second, optional token of a Polish Balance
+       * Pack Force Field / Fire Wall ("up to 2 tokens on 2 adjacent empty
+       * spaces"). `positions` are the empty anchors adjacent to the first
+       * token (index-aligned with the options; a trailing "no second token"
+       * option carries no position). `token` is the first token's payload
+       * (controller, damage, expiry, source) copied onto the second; `expert`
+       * keeps the Expert hex footprint.
+       */
+      wallTokenPair?: {
+        firstTokenId: string;
+        kind: "force_field" | "fire_wall";
+        positions: number[];
+        expert: boolean;
+        token: Omit<BattlefieldTokenState, "id" | "position" | "extraCells" | "kind">;
       };
       /**
        * combat-clone: the Clone Spell is placing a copy of `originalUnitId`; the
@@ -18648,6 +19027,12 @@ export type PendingChoice =
        * Diplomacy is still offered afterwards at a matching level).
        */
       polishQuickCombat?: {
+        heroId: HeroId;
+        fieldId: MapSpaceId;
+        difficulty: number;
+      };
+      /** karmic-battle (WoG era): the guard fight waiting on the normal/empowered pick. */
+      karmicBattle?: {
         heroId: HeroId;
         fieldId: MapSpaceId;
         difficulty: number;

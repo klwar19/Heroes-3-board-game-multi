@@ -24,7 +24,7 @@ import { cardLibrary } from "@/data/cards/library";
 /**
  * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts,
  * Specialties, plus Knowledge, its distinct Empowered library card, and the
- * user-supplied corrections — 91 ids — see
+ * user-supplied corrections — 94 ids — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
@@ -58,6 +58,7 @@ export const POLISH_BALANCE_CARD_IDS = [
   "spell.disrupting_ray",
   "spell.fire_shield",
   "spell.fire_wall",
+  "spell.force_field",
   "spell.forgetfulness",
   "spell.fortune",
   "spell.frenzy",
@@ -116,6 +117,8 @@ export const POLISH_BALANCE_CARD_IDS = [
   "specialty.gelu.4",
   "specialty.jeddite.1",
   "specialty.jeddite.6",
+  "specialty.luna.1",
+  "specialty.luna.6",
   "specialty.sandro.1",
   "specialty.sandro.4",
   "specialty.tarnum_conflux.1",
@@ -130,8 +133,8 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
  * EMPTY: all 17 Abilities (the 13 classic ones plus the four Basic X Magic
- * reprints), Knowledge (regular + Empowered), 28 Spells,
- * 33 Artifacts and 11 Specialties are wired (91 ids).
+ * reprints), Knowledge (regular + Empowered), 29 Spells,
+ * 33 Artifacts and 13 Specialties are wired (94 ids).
  * A FUTURE unwireable reprint belongs
  * here, never silently in the classic-face fallback.
  */

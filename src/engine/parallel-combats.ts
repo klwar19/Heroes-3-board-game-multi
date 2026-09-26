@@ -1,4 +1,4 @@
-import type { AdventureState, GameEvent, GameState, PlayerId } from "./state";
+import type { AdventureState, GameEvent, GameState, HeroId, PlayerId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { combatUnitDecisionOwnerId, isNeutralSideCombatChoice, neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import { makeNeutralSeatPlayer } from "./neutral-player";
@@ -90,11 +90,124 @@ function busy(context: ParallelCombatContext): boolean {
   );
 }
 
+/**
+ * Parallel PvP "keep" option (`turn.pvpKeepsParallel`): PvP battles and
+ * player-affecting interactions run inside the parallel mode instead of
+ * ending it.
+ */
+export function parallelPvpKeeps(state: GameState): boolean {
+  return state.mode === "adventure" && state.turn?.mode === "parallel" && state.turn.pvpKeepsParallel === true;
+}
+
+/**
+ * Work in `context` that waits on `playerId` as a PRINCIPAL: they fight its
+ * PvP battle, or a choice / reaction / visit / garrison decision / queued
+ * reward in it is theirs. Never true for a mere PvP-Neutral-Control commander
+ * of a Neutral fight — that seat keeps its own map (see
+ * `parallelMapInteractionBlocker`).
+ */
+function contextAwaitsPrincipal(context: ParallelCombatContext, playerId: PlayerId): boolean {
+  const combat = context.combat;
+  if (combat) {
+    // A Neutral fight belongs to its (single) human fighter, who owns the key.
+    return combat.context.kind === "player" &&
+      (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId);
+  }
+  const adventure = context.adventure;
+  return (
+    context.pendingChoice?.playerId === playerId ||
+    context.reactionWindow?.priorityPlayerId === playerId ||
+    adventure.pendingVisit?.playerId === playerId ||
+    adventure.pendingTileChoice?.playerId === playerId ||
+    adventure.pendingNecromancy?.playerId === playerId ||
+    adventure.pendingCompanionRecruitment?.playerId === playerId ||
+    adventure.pendingCommanderFirstAid?.playerId === playerId ||
+    adventure.pendingFarTileFlip?.playerId === playerId ||
+    adventure.pendingTokenTeleport?.playerId === playerId ||
+    adventure.pendingGarrison?.defenderPlayerId === playerId ||
+    adventure.rewardQueue.some((reward) => reward.playerId === playerId)
+  );
+}
+
+/**
+ * Parallel PvP "keep": the OTHER seat's context `playerId` is engaged in as a
+ * principal — the attacker's key for a PvP defender, or the key of whoever
+ * opened a choice / garrison decision for them. While set, that seat acts only
+ * there (see `parallelStateForPlayer`). Null outside the keep option.
+ */
+export function parallelPvpPinOwner(state: GameState, playerId: PlayerId): PlayerId | null {
+  if (!parallelPvpKeeps(state) || playerId === NEUTRAL_PLAYER_ID) return null;
+  const contexts = allContexts(state);
+  return state.turnOrder.find((ownerId) =>
+    ownerId !== playerId &&
+    !state.players[ownerId]?.eliminated &&
+    Boolean(contexts[ownerId]) &&
+    contextAwaitsPrincipal(contexts[ownerId], playerId),
+  ) ?? null;
+}
+
+/**
+ * Parallel PvP "keep": whether `playerId` is ENGAGED anywhere, i.e. must not be
+ * attacked or otherwise affected by another seat right now. Returns the key of
+ * the context holding the engagement (or the seat itself for its round-event
+ * work), null when free. Engaged = their own context holds any open work; they
+ * fight, command neutrals in, or owe a decision in another context; or their
+ * round-start event work is still open. `ignoreOwnerId` skips one context —
+ * the live one the current action is running in, whose participants are part
+ * of that very interaction.
+ */
+export function parallelEngagementOwner(
+  state: GameState,
+  playerId: PlayerId,
+  ignoreOwnerId?: PlayerId,
+): PlayerId | null {
+  const contexts = allContexts(state);
+  for (const ownerId of Object.keys(contexts)) {
+    if (ownerId === ignoreOwnerId || state.players[ownerId]?.eliminated) continue;
+    const context = contexts[ownerId];
+    const combat = context.combat;
+    if (
+      (ownerId === playerId && busy(context)) ||
+      contextAwaitsPrincipal(context, playerId) ||
+      (combat && !combat.outcome && neutralCombatControllerId(state, combat) === playerId) ||
+      context.pendingChoice?.playerId === playerId ||
+      context.reactionWindow?.priorityPlayerId === playerId
+    ) {
+      return ownerId;
+    }
+  }
+  const adventure = state.adventure;
+  if (
+    adventure?.parallelRoundRewards?.[playerId]?.length ||
+    adventure?.parallelEventOpenPlayers?.includes(playerId) ||
+    adventure?.parallelEventSuspended?.[playerId] ||
+    adventure?.parallelSharedEventQueue?.some((reward) => reward.playerId === playerId)
+  ) {
+    return playerId;
+  }
+  return null;
+}
+
+/** "Wait" message for an action refused because `targetId` is engaged. */
+export function parallelEngagementMessage(state: GameState, targetId: PlayerId, engagementOwnerId: PlayerId): string {
+  const name = state.players[targetId]?.name ?? targetId;
+  const context = allContexts(state)[engagementOwnerId];
+  const inBattle = Boolean(
+    context?.combat &&
+      (context.combat.attackerPlayerId === targetId ||
+        context.combat.defenderPlayerId === targetId ||
+        neutralCombatControllerId(state, context.combat) === targetId),
+  );
+  return `Parallel turns: ${name} is busy ${inBattle ? "in a battle" : "resolving a choice"} — wait until they finish before attacking or affecting them.`;
+}
+
 export type ParallelContextOption = {
   ownerPlayerId: PlayerId;
   contextId: string;
   /** "watch" = read-only: this viewer has no decision in that battle. */
   role: "hero" | "neutrals" | "watch";
+  /** A player-vs-player battle: `fighterName` then reads "A vs B". */
+  pvp?: boolean;
   fighterName: string;
   controllerName?: string;
   waitingFor: string;
@@ -150,13 +263,26 @@ export function parallelContextOptions(state: GameState, playerId: PlayerId): Pa
   // this is defensive; the fixtures in parallel-combats.test.ts do build such a
   // table.) A computer seat's battle is still watchable BY a human.
   const isComputerSeat = state.controllers?.[playerId]?.kind === "computer";
+  // Parallel PvP "keep": a seat pinned into another seat's context (the
+  // defender of a PvP battle) has THAT window as its own — never its idle map.
+  const home = seated ? parallelPvpPinOwner(state, playerId) ?? playerId : playerId;
   const actionable = controls
-    ? [playerId, ...watchable.filter(id => id !== playerId &&
+    ? [home, ...watchable.filter(id => id !== home && id !== playerId &&
         neutralCombatControllerId(state, contexts[id].combat!) === playerId)]
     : seated
-      ? [playerId]
+      ? [home]
       : [];
-  const watchOnly = isComputerSeat ? [] : watchable.filter((id) => !actionable.includes(id));
+  const battleName = (id: PlayerId): { fighterName: string; pvp?: true } => {
+    const combat = contexts[id]?.combat;
+    if (combat?.context.kind === "player") {
+      const name = (seat: PlayerId) => state.players[seat]?.name ?? seat;
+      return { fighterName: `${name(combat.attackerPlayerId)} vs ${name(combat.defenderPlayerId)}`, pvp: true };
+    }
+    return { fighterName: state.players[id]?.name ?? id };
+  };
+  // A seat pinned into another seat's PvP battle / choice is not offered
+  // read-only watching: its own fight or answer comes first.
+  const watchOnly = isComputerSeat || home !== playerId ? [] : watchable.filter((id) => !actionable.includes(id));
   // No watch offer AND no controller work: keep the PRE-WATCH shape exactly —
   // options existed iff PvP Neutral Control was on for a live seat, and the
   // hosted view keys `parallelCombatOwnerId` / `parallelContextSelections` off
@@ -170,7 +296,7 @@ export function parallelContextOptions(state: GameState, playerId: PlayerId): Pa
         ownerPlayerId: id,
         contextId: combat.id ?? `map:${id}`,
         role: "watch" as const,
-        fighterName: state.players[id]?.name ?? id,
+        ...battleName(id),
         waitingFor: "Watching",
         needsInput: false,
         hasCombat: true,
@@ -191,8 +317,8 @@ export function parallelContextOptions(state: GameState, playerId: PlayerId): Pa
     return {
       ownerPlayerId: id,
       contextId: combat?.id ?? `map:${id}`,
-      role: id === playerId ? "hero" : "neutrals",
-      fighterName: state.players[id]?.name ?? id,
+      role: id === home ? "hero" : "neutrals",
+      ...battleName(id),
       controllerName: controller ? state.players[controller]?.name ?? controller : undefined,
       waitingFor: done ? "Turn finished" : deciding === playerId ? "Your action" : `Waiting for ${state.players[deciding]?.name ?? deciding}`,
       needsInput: !done && deciding === playerId,
@@ -238,6 +364,41 @@ export function parallelStateForPlayer(
   if (!state.turnOrder.includes(playerId) || state.players[playerId]?.eliminated)
     return projectContext(state, watchTargetFor(state, playerId, requestedOwner));
   const forcedOwnTurn = state.afk?.droppingPlayerId === playerId || state.afk?.turnTimeoutPlayerId === playerId;
+  // Parallel PvP "keep": a seat engaged in ANOTHER seat's context — the
+  // defender of a PvP battle keyed by its attacker, or the target of a choice /
+  // garrison decision another seat opened — acts only there until it resolves,
+  // never on its own map (where it could walk its fighting hero away or open a
+  // second interaction). The pin is its "own" window: the turn clock and the
+  // AFK / turn-timeout drivers (which ask for the seat's own window) land on it
+  // too. It may still switch to command the neutrals of another live battle it
+  // was assigned (PvP Neutral Control) so that battle is not stalled — the same
+  // rule a fighter of its own Neutral battle has: the selection is honoured
+  // while it owes no choice / reaction / end-of-battle acknowledgement in the
+  // pinned one, and its "My battle" window is flagged when its unit is up.
+  // Read-only watching is not offered to a pinned seat (parallelContextOptions).
+  const pvpPin = parallelPvpPinOwner(state, playerId);
+  if (pvpPin) {
+    // Unowned serialized work is live (setup / legacy table choice): leave the
+    // frame alone, as the owner resolution below would.
+    if (!currentOwner && busy(capture(state))) return state;
+    const pinned = pvpPin === currentOwner ? capture(state) : parked[pvpPin];
+    const pinnedCombat = pinned?.combat;
+    const pinnedOwesNow = !pinnedCombat || Boolean(pinnedCombat.outcome) ||
+      pinned?.pendingChoice?.playerId === playerId ||
+      pinned?.reactionWindow?.priorityPlayerId === playerId;
+    const wanted = forcedOwnTurn ? undefined : requestedOwner ?? state.parallelContextSelections?.[playerId];
+    const wantedCombat = wanted && wanted !== pvpPin && wanted !== playerId
+      ? wanted === currentOwner ? state.combat : parked[wanted]?.combat
+      : null;
+    const target = wantedCombat && !wantedCombat.outcome && !pinnedOwesNow &&
+      neutralCombatControllerId(state, wantedCombat) === playerId
+      ? wanted!
+      : pvpPin;
+    if (currentOwner === target) {
+      return state.parallelCombatOwnerId ? state : { ...state, parallelCombatOwnerId: currentOwner };
+    }
+    return projectContext(state, target);
+  }
   const preferred = requestedOwner ?? (forcedOwnTurn ? playerId : state.parallelContextSelections?.[playerId]) ??
     (state.adventure.pvpNeutralControl ? playerId : undefined);
   const preferredCombat = preferred === currentOwner ? state.combat : preferred ? parked[preferred]?.combat : null;
@@ -440,6 +601,31 @@ export function hasParkedParallelInteractions(state: GameState): boolean {
   return Object.entries(state.parallelCombats ?? {}).some(([ownerId, context]) =>
     contextCounts(state, ownerId, context),
   );
+}
+
+/**
+ * Whether `heroId` is a combatant of a battle that is still on the table — the
+ * live frame's or one parked in ANY parallel context (an orphaned context of an
+ * eliminated owner never counts, see `contextCounts`). Such a hero stays on its
+ * battlefield until the battle is finalized: no map step may take it away, even
+ * from another context its seat is acting in (e.g. commanding the neutrals of
+ * someone else's fight). The seat's other heroes are unaffected.
+ */
+export function heroInAnyCombat(state: GameState, heroId: HeroId): boolean {
+  const combats = [
+    state.combat,
+    ...Object.entries(state.parallelCombats ?? {})
+      .filter(([ownerId]) => !state.players[ownerId]?.eliminated)
+      .map(([, context]) => context.combat),
+  ];
+  return combats.some((combat) => {
+    const context = combat?.context;
+    return context?.kind === "neutral"
+      ? context.heroId === heroId
+      : context?.kind === "player"
+        ? context.attackerHeroId === heroId || context.defenderHeroId === heroId
+        : false;
+  });
 }
 
 const capture = captureParallelContext;

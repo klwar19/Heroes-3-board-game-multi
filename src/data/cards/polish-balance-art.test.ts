@@ -177,6 +177,8 @@ describe("Polish Balance Pack registries", () => {
       "spell.disrupting_ray",
       "spell.fire_shield",
       "spell.fire_wall",
+      // 2026-09-26 supplied face: up to 2 adjacent tokens, 1/2/3 rounds.
+      "spell.force_field",
       "spell.forgetfulness",
       "spell.fortune",
       "spell.frenzy",
@@ -225,7 +227,8 @@ describe("Polish Balance Pack registries", () => {
       "artifact.spirit_of_oppression",
       "artifact.sword_of_judgement",
       "artifact.thunder_helmet",
-      // The pack's Specialities folder is exactly these 11 cards (spec §4).
+      // The pack's Specialities folder is these 11 cards (spec §4) plus the
+      // 2026-09-26 supplied Luna I / VI Fire Wall faces.
       "specialty.adelaide.4",
       "specialty.ciele.1",
       "specialty.ciele.4",
@@ -233,6 +236,8 @@ describe("Polish Balance Pack registries", () => {
       "specialty.gelu.4",
       "specialty.jeddite.1",
       "specialty.jeddite.6",
+      "specialty.luna.1",
+      "specialty.luna.6",
       "specialty.sandro.1",
       "specialty.sandro.4",
       "specialty.tarnum_conflux.1",

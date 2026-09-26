@@ -248,6 +248,7 @@ const ADVANCED_OWNED_KEYS = [
   "pvpNeutralControl",
   "pvpNeutralControlMustAttack",
   "parallelTurns",
+  "parallelPvp",
   "undoMoves",
   "manualGuardControl",
   "startingHandMulligan",
@@ -279,6 +280,8 @@ const ADVANCED_KEY_DEFAULTS: Partial<Record<keyof GameSetupOptions, unknown>> = 
   victoryPointsRoundLimit: 0,
   customWinConditions: [],
   parallelTurns: 0,
+  // The lobby freezes an untouched choice as "keep" (buildAdventureFromLobby).
+  parallelPvp: "keep",
   undoMoves: false,
   unitExperience: false
 };

@@ -377,6 +377,36 @@ export function spellCreatesDirectUnitOngoingEffect(
 }
 
 /**
+ * Whether the ongoing effect such a Spell places on its unit is NEGATIVE — the
+ * polarity its resolution stamps (Berserk / Forgetfulness / Disrupting Ray
+ * always; an Initiative shift by its printed polarity, else its sign; a
+ * unit-scoped active effect by its printed polarity). Anti-Magic, Fire Shield
+ * and every positive buff are not. Read by targeting so a unit that ignores
+ * negative ongoing effects (commander Magic grade 2+) is never offered a
+ * target the effect would fizzle on.
+ */
+export function spellCreatesDirectUnitNegativeOngoingEffect(
+  card: (Pick<CardDefinition, "kind"> & Partial<Pick<CardDefinition, "effect">>) | undefined,
+): boolean {
+  if (!spellCreatesDirectUnitOngoingEffect(card)) return false;
+  const effect = card!.effect!;
+  switch (effect.type) {
+    case "BERSERK":
+    case "FORGETFULNESS":
+    case "DISRUPTING_RAY":
+      return true;
+    case "CREATE_INITIATIVE_BUFF":
+      return effect.polarity
+        ? effect.polarity === "negative"
+        : (effect.amount ?? effect.amountByPower?.[0] ?? 0) < 0;
+    case "CREATE_ACTIVE_EFFECT":
+      return effect.effect.polarity === "negative";
+    default:
+      return false;
+  }
+}
+
+/**
  * Fangarm's printed exception is deliberately about the EFFECT of a Spell or
  * Specialty, not about being a legal target and not about damage. Keep this
  * predicate separate from the damage-immunity path so a mixed card can still
@@ -522,6 +552,9 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
     )
   ) return false;
   if (getUnitAbilityDefinitions(unit).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "all-ongoing-immunity")) return false;
+  if (effect.polarity === "negative" && getUnitAbilityDefinitions(unit).some(ability =>
+    ability.implementationStatus === "implemented" && ability.effect?.type === "IGNORE_NEGATIVE_ONGOING_EFFECTS"
+  )) return false;
   // Tower Titans ignore ongoing effects played DIRECTLY on their unit card.
   // Player/global effects (Archery and other global ongoing artifacts) still
   // apply: those cards were not played on the Titan. Tower Gargoyles keep their

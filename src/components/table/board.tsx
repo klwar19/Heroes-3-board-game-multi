@@ -69,7 +69,7 @@ import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { CommanderCardFace } from "@/components/commander-card";
 import { COMMANDER_ARTIFACT_SPECS } from "@/data/wog/commander-artifacts";
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
-import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, commanderStatValue, commanderUsesActionPoints } from "@/data/commanders";
+import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION, commanderMagicImmuneToNegativeOngoing, commanderStatValue, commanderUsesActionPoints } from "@/data/commanders";
 import type { CommanderGrade, CommanderSlug } from "@/data/commanders";
 import {
   actionKey,
@@ -100,6 +100,7 @@ import {
   isHexCombat,
   siegeTownOf
 } from "./hex-battlefield";
+import { CASTER_BADGE_ICON, hexUnitSkills, unitHasCastSkill } from "./hex-unit-skills";
 import { getBattlefieldPositions, isHexPosition } from "@/engine/battlefield";
 import { battlefieldTokenCovers, unitCells, unitTailCell } from "@/engine/hex-footprint";
 import { siegeGatePositions, siegeHexTokenAt } from "@/engine/siege";
@@ -588,7 +589,7 @@ function BattlefieldTokenMark({
 
   const describe =
     token.kind === "fire_wall"
-      ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through`
+      ? `Fire Wall (${owner}) — ${token.damage ?? 0} damage to a unit stopping here or a ground/ranged unit passing through${token.expiresAtCombatRoundEnd === undefined ? "" : `, until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
       : token.kind === "force_field"
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
         : token.kind === "factory_trap"
@@ -857,6 +858,73 @@ function RepositionPreview({
   );
 }
 
+/**
+ * A PC-style move-then-attack in flight (hex board): the MOVE_UNIT to the
+ * chosen side of the enemy was sent; the attack from that hex follows it.
+ */
+export type HexApproachQueued = {
+  attackerId: string;
+  defenderId: string;
+  destination: number;
+  /** Where the striker stood, and which activation it was, when queued. */
+  origin: number;
+  round: number;
+  activationStart: number | undefined;
+  sentAt: number;
+  arrivedAt: number | null;
+};
+
+/**
+ * What a queued move-then-attack does on a new frame: `send` the attack the
+ * engine now offers from the approach hex, `wait` (the walk has not landed, or
+ * the offer is a frame behind), or `drop` it — it was stopped short, its
+ * activation ended, or a prompt / choice opened once it arrived (that prompt
+ * cancels it: the attack is never auto-sent after it). Stamps `arrivedAt`.
+ */
+export function hexApproachFollowUp(
+  queued: HexApproachQueued,
+  state: GameState,
+  legalActions: readonly LegalAction[],
+  viewerPlayerId: PlayerId,
+  now: number
+): { kind: "send"; action: GameAction } | { kind: "wait" } | { kind: "drop" } {
+  const attacker = state.combat?.units[queued.attackerId];
+  // Only the same activation that sent the move may follow it up (never a
+  // later morale / Wait re-activation that happens to start there).
+  if (
+    !attacker ||
+    state.combat?.activeUnitId !== queued.attackerId ||
+    state.combat?.round !== queued.round ||
+    attacker.activationStartPosition !== queued.activationStart ||
+    attacker.attackedThisActivation ||
+    now - queued.sentAt > 15000
+  ) {
+    return { kind: "drop" };
+  }
+  if (attacker.position !== queued.destination) {
+    // Stopped short of the approach hex: drop the follow-up.
+    return attacker.position === queued.origin ? { kind: "wait" } : { kind: "drop" };
+  }
+  // Arrived, but a prompt / choice opened (a trap, a reaction window…): the
+  // player decides what happens next, so the queued attack is cancelled.
+  if (state.pendingChoice || state.reactionWindow) {
+    return { kind: "drop" };
+  }
+  const attack = legalActions.find(
+    (legal) =>
+      legal.action.type === "ATTACK_UNIT" &&
+      legal.action.playerId === viewerPlayerId &&
+      legal.action.attackerId === queued.attackerId &&
+      legal.action.defenderId === queued.defenderId &&
+      !legal.action.abilityAttack
+  );
+  if (attack) {
+    return { kind: "send", action: attack.action };
+  }
+  queued.arrivedAt ??= now;
+  return now - queued.arrivedAt > 4000 ? { kind: "drop" } : { kind: "wait" };
+}
+
 export function BattlefieldBoard({
   state,
   viewerPlayerId,
@@ -925,56 +993,16 @@ export function BattlefieldBoard({
   // A PC-style move-then-attack in flight: the MOVE_UNIT to the chosen side was
   // sent; once the creature stands there, the attack from that hex is sent —
   // only if the engine then offers exactly that attack. Anything else (it was
-  // stopped short, a prompt opened, its activation ended) drops the follow-up.
-  const hexApproachQueue = useRef<{
-    attackerId: string;
-    defenderId: string;
-    destination: number;
-    /** Where the striker stood, and which activation it was, when queued. */
-    origin: number;
-    round: number;
-    activationStart: number | undefined;
-    sentAt: number;
-    arrivedAt: number | null;
-  } | null>(null);
+  // stopped short, a prompt opened, its activation ended) drops the follow-up
+  // (hexApproachFollowUp).
+  const hexApproachQueue = useRef<HexApproachQueued | null>(null);
   useEffect(() => {
     const queued = hexApproachQueue.current;
     if (!queued) return;
-    const now = Date.now();
-    const attacker = state.combat?.units[queued.attackerId];
-    // Only the same activation that sent the move may follow it up (never a
-    // later morale / Wait re-activation that happens to start there).
-    if (
-      !attacker ||
-      state.combat?.activeUnitId !== queued.attackerId ||
-      state.combat?.round !== queued.round ||
-      attacker.activationStartPosition !== queued.activationStart ||
-      attacker.attackedThisActivation ||
-      now - queued.sentAt > 15000
-    ) {
-      hexApproachQueue.current = null;
-      return;
-    }
-    if (attacker.position !== queued.destination) {
-      // Stopped short of the approach hex: drop the follow-up.
-      if (attacker.position !== queued.origin) hexApproachQueue.current = null;
-      return;
-    }
-    const attack = legalActions.find(
-      (legal) =>
-        legal.action.type === "ATTACK_UNIT" &&
-        legal.action.playerId === viewerPlayerId &&
-        legal.action.attackerId === queued.attackerId &&
-        legal.action.defenderId === queued.defenderId &&
-        !legal.action.abilityAttack
-    );
-    if (attack) {
-      hexApproachQueue.current = null;
-      onAction(attack.action);
-      return;
-    }
-    queued.arrivedAt ??= now;
-    if (now - queued.arrivedAt > 4000) hexApproachQueue.current = null;
+    const next = hexApproachFollowUp(queued, state, legalActions, viewerPlayerId, Date.now());
+    if (next.kind === "wait") return;
+    hexApproachQueue.current = null;
+    if (next.kind === "send") onAction(next.action);
   }, [state, legalActions, onAction, viewerPlayerId]);
   // The Neutral guard currently being drag-sorted (Manual guard control): while
   // it is held, only that guard's legal cells light up — a shooter shows just
@@ -1022,6 +1050,28 @@ export function BattlefieldBoard({
     }
     return map;
   }, [state.pendingChoice, legalActions]);
+
+  // Hex battlefield Unit Skills (command bar): the skill armed from the bar's
+  // menu highlights its target units / hexes; a click dispatches the engine's
+  // own offer for that target (looked up fresh each render, like set powers).
+  const hexSkills = useMemo(
+    () => (hex ? hexUnitSkills(state, legalActions, viewerPlayerId) : []),
+    [hex, state, legalActions, viewerPlayerId]
+  );
+  const [armedSkillKey, setArmedSkillKey] = useState<string | null>(null);
+  const armedSkill = armedSkillKey ? hexSkills.find((skill) => skill.key === armedSkillKey) ?? null : null;
+  const armedSkillOffered = Boolean(armedSkill);
+  useEffect(() => {
+    if (armedSkillKey && !armedSkillOffered) setArmedSkillKey(null);
+  }, [armedSkillKey, armedSkillOffered]);
+  useEffect(() => {
+    if (!armedSkillKey) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setArmedSkillKey(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [armedSkillKey]);
 
   const activeUnitId = combat?.activeUnitId ?? null;
   // Auto-disarm the moment the armed power stops being offered (it was used, the
@@ -1178,11 +1228,19 @@ export function BattlefieldBoard({
   if (
     combat &&
     placeChoice?.type === "OPTION_CHOICE" &&
-    (placeChoice.context === "place-battlefield-tokens" || placeChoice.context === "factory-commander-traps") &&
+    (placeChoice.context === "place-battlefield-tokens" ||
+      placeChoice.context === "factory-commander-traps" ||
+      placeChoice.context === "place-wall-token-pair") &&
     placeChoice.playerId === viewerPlayerId &&
-    (placeChoice.placeTokens || placeChoice.factoryCommanderTraps)
+    (placeChoice.placeTokens || placeChoice.factoryCommanderTraps || placeChoice.wallTokenPair)
   ) {
-    const positions = placeChoice.placeTokens?.positions ?? placeChoice.factoryCommanderTraps?.positions ?? [];
+    // Polish Balance Pack Force Field / Fire Wall: the optional second token's
+    // adjacent spaces light up the same way; "stop" declines the second token.
+    const positions =
+      placeChoice.placeTokens?.positions ??
+      placeChoice.factoryCommanderTraps?.positions ??
+      placeChoice.wallTokenPair?.positions ??
+      [];
     positions.forEach((position, optionIndex) => {
       placeTokenActionsByPosition.set(position, {
         type: "CHOOSE_OPTION",
@@ -1534,6 +1592,16 @@ export function BattlefieldBoard({
           </button>
         </div>
       ) : null}
+      {armedSkill ? (
+        <div className="tacticsExpertBanner artifactSetAimBanner" role="group" aria-label="Unit skill aiming">
+          <span>
+            {armedSkill.name} — click a highlighted {armedSkill.cellTargets.size > 0 && armedSkill.unitTargets.size === 0 ? "hex" : "target"}.
+          </span>
+          <button className="commandButton" onClick={() => setArmedSkillKey(null)} type="button">
+            Cancel
+          </button>
+        </div>
+      ) : null}
       {armedSetPower ? (
         <div className="tacticsExpertBanner artifactSetAimBanner" role="group" aria-label="Set power aiming">
           <span>
@@ -1835,6 +1903,12 @@ export function BattlefieldBoard({
           // Polish Set Artifacts: while a multi-target set power is armed from
           // the set-powers window, its legal units glow and a click uses it.
           const setPowerAction = unit ? armedSetPower?.targets.get(unit.id) : undefined;
+          // Hex Unit Skills: a target of the skill armed from the command bar.
+          const skillAction = armedSkill
+            ? (unit ? armedSkill.unitTargets.get(unit.id) : undefined) ??
+              armedSkill.cellTargets.get(index) ??
+              (tokenAnchor !== undefined ? armedSkill.cellTargets.get(tokenAnchor) : undefined)
+            : undefined;
           // Remove Obstacle: this cell holds a removable obstacle/wall/gate/token.
           const removeObstacleTarget =
             removeObstacleTargets.get(index) ??
@@ -1953,7 +2027,7 @@ export function BattlefieldBoard({
             isObstacle ? `obstacle${isShipObstacle ? " seaObstacle" : ""}` : ""
           } ${(moveAction || tacticsMoveAction) && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${setPowerAction ? "artifactSetTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
+          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${setPowerAction ? "artifactSetTarget" : ""} ${skillAction ? "skillTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
           } ${isSwapTarget ? "swapTarget" : ""} ${isSwapSelected ? "swapSelected" : ""} ${
             isRepositionSource ? "repositionSource" : ""
@@ -2168,6 +2242,15 @@ export function BattlefieldBoard({
               )}
               <div className="boardCardHud">
                 <span className="boardCardHp">{health}/{unit.maxHealth} HP</span>
+                {unitHasCastSkill(unit) ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="boardCasterBadge"
+                    src={assetUrl(CASTER_BADGE_ICON)}
+                    title="This creature can cast a skill"
+                  />
+                ) : null}
                 {attackDelta || defenseDelta || healthDelta || initiativeDelta ? (
                   <span aria-label={`${unit.cardName} stat changes`} className="boardCardStatChanges">
                     {attackDelta ? (
@@ -2443,6 +2526,35 @@ export function BattlefieldBoard({
                 onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
                 style={cellStyle}
                 title={removeObstacleTarget.label}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          }
+
+          // Hex Unit Skills: a skill armed from the command bar is a deliberate
+          // aim, so its targets outrank every other click on the cell (the
+          // dispatched action is the engine's offer for this very target).
+          if (skillAction && armedSkill) {
+            const skillLabel = unit
+              ? `${armedSkill.name}: use on ${unit.name}`
+              : `${armedSkill.name}: aim at ${getBattlefieldLabel(index)}`;
+            if (hex) hexCellDispatch.set(index, skillAction);
+            return (
+              <button
+                aria-label={skillLabel}
+                className={className}
+                data-fx-cell={index}
+                data-fx-unit={unit?.id}
+                key={index}
+                onClick={() => {
+                  setArmedSkillKey(null);
+                  onAction(skillAction);
+                }}
+                onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
+                style={cellStyle}
+                title={skillLabel}
                 type="button"
               >
                 {content}
@@ -2769,7 +2881,15 @@ export function BattlefieldBoard({
         </div>
       </div>
       {hex && combat ? (
-        <HexCommandBar legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+        <HexCommandBar
+          armedSkillKey={armedSkill ? armedSkill.key : null}
+          legalActions={legalActions}
+          onAction={onAction}
+          onArmSkill={setArmedSkillKey}
+          skills={hexSkills}
+          state={state}
+          viewerPlayerId={viewerPlayerId}
+        />
       ) : null}
       {arrowTower && isUnitAlive(arrowTower) ? (
         <ArrowTowerCard
@@ -3247,10 +3367,9 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
             const mightDice = commanderStatValue("damage", clamp(unit.commanderGrades.damage));
             const power = commanderStatValue("magic", magicGrade);
             const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[magicGrade];
-            const immune = magicGrade >= 1;
-            const magicTitle = immune
-              ? `Magic Power ${power}${ward > 0 ? ` · −${ward} Spell damage taken` : ""} · immune to ongoing effects`
-              : "Magic grade 0: cast only — takes full Spell damage, NOT immune to ongoing effects";
+            const specialtyWard = COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION[magicGrade];
+            const immune = commanderMagicImmuneToNegativeOngoing(magicGrade);
+            const magicTitle = `Magic Power ${power}${ward > 0 ? ` · −${ward} Spell damage taken` : ""}${specialtyWard > 0 ? ` · −${specialtyWard} Specialty damage taken` : ""}${immune ? " · immune to negative ongoing effects" : ""}`;
             return (
               <div className="inspectStats" style={{ marginTop: 2 }}>
                 <span title={`Damage grade (Might): rolls ${mightDice} extra attack ${mightDice === 1 ? "die" : "dice"} on each attack — each “+1” raises Attack, at most one “−1”.`}>
@@ -3732,13 +3851,26 @@ export function CommandDock({
         (legal) =>
           legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === "mgq-pack-dig"
       );
+  // Hex battlefield: creature skills live behind the command bar's Unit
+  // Skills symbol (one entry per skill, aimed on the board), so their per-target
+  // text buttons are not repeated here. Anything the bar cannot group stays.
+  const hexSkillActionKeys = isHexCombat(state.combat)
+    ? new Set(
+        hexUnitSkills(state, legalActions, viewerPlayerId).flatMap((skill) =>
+          [skill.immediate, ...skill.unitTargets.values(), ...skill.cellTargets.values()]
+            .filter((action): action is GameAction => Boolean(action))
+            .map(actionKey)
+        )
+      )
+    : null;
   const commands = inBattlePrep
     ? []
     : legalActions.filter(
         (legal) =>
           COMMAND_ACTION_TYPES.has(legal.action.type) &&
           legal.action.type !== "SWAP_COMBAT_UNITS" &&
-          !(legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === "mgq-pack-dig")
+          !(legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === "mgq-pack-dig") &&
+          !hexSkillActionKeys?.has(actionKey(legal.action))
       );
   // First Aid Tent heal, surfaced right by the commands (not only in the
   // under-board effects rail). One button per wounded friendly unit; also

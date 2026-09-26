@@ -112,13 +112,13 @@ describe("hex battlefield: PC-size area spells", () => {
     expect(damage(state, "unit_p2_skeletons")).toBe(0);
   });
 
-  it("the PC areas: Inferno covers 19 hexes, Fireball / Meteor Shower 7, Frost Ring the 6-hex ring; none on the grid", () => {
+  it("the PC areas: Inferno covers 19 hexes, Fireball 7, Meteor Shower a round 13, Frost Ring the 6-hex ring; none on the grid", () => {
     const state = createInitialGameState("hex-pc-areas", { hexBattlefield: true });
     const centre = hex(6, 4);
     expect(hexPcSpellBlast(state.combat, "spell.inferno", centre)?.size).toBe(19);
     expect(hexPcSpellBlast(state.combat, "specialty.xyron.1", centre)?.size).toBe(19);
     expect(hexPcSpellBlast(state.combat, "spell.fireball", centre)?.size).toBe(7);
-    expect(hexPcSpellBlast(state.combat, "spell.meteor_shower", centre)?.size).toBe(7);
+    expect(hexPcSpellBlast(state.combat, "spell.meteor_shower", centre)?.size).toBe(13);
     const ring = hexPcSpellBlast(state.combat, "spell.frost_ring", centre);
     expect(ring?.size).toBe(6);
     expect(ring?.has(centre)).toBe(false);

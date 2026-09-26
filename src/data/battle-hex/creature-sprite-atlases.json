@@ -5,7 +5,7 @@
     "frameHeight": 140,
     "columns": 11,
     "anchorX": 83,
-    "anchorY": 126,
+    "anchorY": 127,
     "groups": {
       "0": {
         "row": 0,
@@ -66,8 +66,8 @@
     "frameWidth": 221,
     "frameHeight": 184,
     "columns": 10,
-    "anchorX": 125,
-    "anchorY": 160,
+    "anchorX": 124,
+    "anchorY": 161,
     "groups": {
       "0": {
         "row": 0,
@@ -128,7 +128,7 @@
     "frameWidth": 151,
     "frameHeight": 135,
     "columns": 10,
-    "anchorX": 85,
+    "anchorX": 81,
     "anchorY": 124,
     "groups": {
       "0": {
@@ -203,7 +203,7 @@
     "frameHeight": 173,
     "columns": 14,
     "anchorX": 96,
-    "anchorY": 145,
+    "anchorY": 147,
     "groups": {
       "0": {
         "row": 0,
@@ -264,8 +264,8 @@
     "frameWidth": 114,
     "frameHeight": 121,
     "columns": 13,
-    "anchorX": 52,
-    "anchorY": 115,
+    "anchorX": 53,
+    "anchorY": 114,
     "groups": {
       "0": {
         "row": 0,
@@ -338,8 +338,8 @@
     "frameWidth": 181,
     "frameHeight": 150,
     "columns": 10,
-    "anchorX": 89,
-    "anchorY": 138,
+    "anchorX": 90,
+    "anchorY": 139,
     "groups": {
       "0": {
         "row": 0,
@@ -412,7 +412,7 @@
     "frameWidth": 103,
     "frameHeight": 91,
     "columns": 9,
-    "anchorX": 56,
+    "anchorX": 54,
     "anchorY": 86,
     "groups": {
       "0": {
@@ -486,8 +486,8 @@
     "frameWidth": 125,
     "frameHeight": 130,
     "columns": 10,
-    "anchorX": 40,
-    "anchorY": 106,
+    "anchorX": 45,
+    "anchorY": 107,
     "groups": {
       "0": {
         "row": 0,
@@ -622,8 +622,8 @@
     "frameWidth": 146,
     "frameHeight": 103,
     "columns": 12,
-    "anchorX": 57,
-    "anchorY": 88,
+    "anchorX": 59,
+    "anchorY": 89,
     "groups": {
       "0": {
         "row": 0,
@@ -688,8 +688,8 @@
     "frameWidth": 201,
     "frameHeight": 180,
     "columns": 12,
-    "anchorX": 104,
-    "anchorY": 129,
+    "anchorX": 99,
+    "anchorY": 127,
     "groups": {
       "0": {
         "row": 0,
@@ -750,7 +750,7 @@
     "frameWidth": 258,
     "frameHeight": 155,
     "columns": 12,
-    "anchorX": 130,
+    "anchorX": 139,
     "anchorY": 135,
     "groups": {
       "0": {
@@ -812,7 +812,7 @@
     "frameWidth": 153,
     "frameHeight": 108,
     "columns": 10,
-    "anchorX": 74,
+    "anchorX": 75,
     "anchorY": 99,
     "groups": {
       "0": {
@@ -874,7 +874,7 @@
     "frameWidth": 104,
     "frameHeight": 98,
     "columns": 11,
-    "anchorX": 51,
+    "anchorX": 49,
     "anchorY": 87,
     "groups": {
       "0": {
@@ -936,8 +936,8 @@
     "frameWidth": 209,
     "frameHeight": 179,
     "columns": 10,
-    "anchorX": 117,
-    "anchorY": 158,
+    "anchorX": 118,
+    "anchorY": 159,
     "groups": {
       "0": {
         "row": 0,
@@ -999,7 +999,7 @@
     "frameHeight": 119,
     "columns": 11,
     "anchorX": 40,
-    "anchorY": 107,
+    "anchorY": 110,
     "groups": {
       "0": {
         "row": 0,
@@ -1072,8 +1072,8 @@
     "frameWidth": 121,
     "frameHeight": 92,
     "columns": 17,
-    "anchorX": 61,
-    "anchorY": 78,
+    "anchorX": 67,
+    "anchorY": 79,
     "groups": {
       "0": {
         "row": 0,
@@ -1146,7 +1146,7 @@
     "frameWidth": 258,
     "frameHeight": 176,
     "columns": 11,
-    "anchorX": 130,
+    "anchorX": 136,
     "anchorY": 131,
     "groups": {
       "0": {
@@ -1208,7 +1208,7 @@
     "frameWidth": 150,
     "frameHeight": 123,
     "columns": 11,
-    "anchorX": 72,
+    "anchorX": 77,
     "anchorY": 117,
     "groups": {
       "0": {
@@ -1270,7 +1270,7 @@
     "frameWidth": 171,
     "frameHeight": 134,
     "columns": 12,
-    "anchorX": 89,
+    "anchorX": 99,
     "anchorY": 121,
     "groups": {
       "0": {
@@ -1332,7 +1332,7 @@
     "frameWidth": 240,
     "frameHeight": 187,
     "columns": 11,
-    "anchorX": 145,
+    "anchorX": 143,
     "anchorY": 177,
     "groups": {
       "0": {
@@ -1394,8 +1394,8 @@
     "frameWidth": 124,
     "frameHeight": 128,
     "columns": 15,
-    "anchorX": 48,
-    "anchorY": 120,
+    "anchorX": 50,
+    "anchorY": 121,
     "groups": {
       "0": {
         "row": 0,
@@ -1468,8 +1468,8 @@
     "frameWidth": 161,
     "frameHeight": 134,
     "columns": 10,
-    "anchorX": 63,
-    "anchorY": 114,
+    "anchorX": 70,
+    "anchorY": 115,
     "groups": {
       "0": {
         "row": 0,
@@ -1531,7 +1531,7 @@
     "frameHeight": 141,
     "columns": 11,
     "anchorX": 62,
-    "anchorY": 123,
+    "anchorY": 124,
     "groups": {
       "0": {
         "row": 0,
@@ -1604,7 +1604,7 @@
     "frameWidth": 153,
     "frameHeight": 151,
     "columns": 11,
-    "anchorX": 56,
+    "anchorX": 64,
     "anchorY": 132,
     "groups": {
       "0": {
@@ -1678,7 +1678,7 @@
     "frameWidth": 192,
     "frameHeight": 154,
     "columns": 10,
-    "anchorX": 86,
+    "anchorX": 95,
     "anchorY": 134,
     "groups": {
       "0": {
@@ -1740,7 +1740,7 @@
     "frameWidth": 161,
     "frameHeight": 134,
     "columns": 10,
-    "anchorX": 63,
+    "anchorX": 70,
     "anchorY": 114,
     "groups": {
       "0": {
@@ -1802,7 +1802,7 @@
     "frameWidth": 164,
     "frameHeight": 146,
     "columns": 17,
-    "anchorX": 72,
+    "anchorX": 75,
     "anchorY": 129,
     "groups": {
       "0": {
@@ -1876,7 +1876,7 @@
     "frameWidth": 93,
     "frameHeight": 126,
     "columns": 11,
-    "anchorX": 45,
+    "anchorX": 44,
     "anchorY": 110,
     "groups": {
       "0": {
@@ -1950,8 +1950,8 @@
     "frameWidth": 183,
     "frameHeight": 147,
     "columns": 21,
-    "anchorX": 91,
-    "anchorY": 134,
+    "anchorX": 95,
+    "anchorY": 133,
     "groups": {
       "0": {
         "row": 0,
@@ -2021,63 +2021,75 @@
   },
   "commander-forge": {
     "image": "/assets/battle-hex/creatures/commander-forge.webp",
-    "frameWidth": 125,
-    "frameHeight": 97,
-    "columns": 8,
-    "anchorX": 45,
-    "anchorY": 94,
+    "frameWidth": 143,
+    "frameHeight": 135,
+    "columns": 14,
+    "anchorX": 70,
+    "anchorY": 125,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8
       },
-      "2": {
+      "1": {
         "row": 1,
-        "frames": 8
+        "frames": 7
+      },
+      "2": {
+        "row": 2,
+        "frames": 7
       },
       "3": {
-        "row": 2,
-        "frames": 4
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 7
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 8
+        "row": 8,
+        "frames": 10
       },
       "12": {
-        "row": 7,
-        "frames": 8
+        "row": 9,
+        "frames": 10
       },
       "13": {
-        "row": 7,
-        "frames": 8
+        "row": 10,
+        "frames": 10
       },
       "17": {
-        "row": 8,
-        "frames": 4
+        "row": 11,
+        "frames": 14
       },
       "18": {
-        "row": 8,
-        "frames": 4
+        "row": 12,
+        "frames": 14
       },
       "19": {
-        "row": 8,
-        "frames": 4
+        "row": 13,
+        "frames": 14
+      },
+      "20": {
+        "row": 14,
+        "frames": 2
+      },
+      "21": {
+        "row": 15,
+        "frames": 2
       }
     }
   },
@@ -2086,8 +2098,8 @@
     "frameWidth": 99,
     "frameHeight": 123,
     "columns": 10,
-    "anchorX": 31,
-    "anchorY": 104,
+    "anchorX": 34,
+    "anchorY": 103,
     "groups": {
       "0": {
         "row": 0,
@@ -2160,7 +2172,7 @@
     "frameWidth": 161,
     "frameHeight": 140,
     "columns": 9,
-    "anchorX": 93,
+    "anchorX": 91,
     "anchorY": 124,
     "groups": {
       "0": {
@@ -2234,7 +2246,7 @@
     "frameWidth": 160,
     "frameHeight": 144,
     "columns": 11,
-    "anchorX": 83,
+    "anchorX": 84,
     "anchorY": 124,
     "groups": {
       "0": {
@@ -2382,8 +2394,8 @@
     "frameWidth": 143,
     "frameHeight": 116,
     "columns": 11,
-    "anchorX": 75,
-    "anchorY": 112,
+    "anchorX": 77,
+    "anchorY": 111,
     "groups": {
       "0": {
         "row": 0,
@@ -2456,8 +2468,8 @@
     "frameWidth": 152,
     "frameHeight": 140,
     "columns": 11,
-    "anchorX": 86,
-    "anchorY": 121,
+    "anchorX": 83,
+    "anchorY": 120,
     "groups": {
       "0": {
         "row": 0,
@@ -2522,7 +2534,7 @@
     "frameWidth": 116,
     "frameHeight": 141,
     "columns": 13,
-    "anchorX": 67,
+    "anchorX": 70,
     "anchorY": 135,
     "groups": {
       "0": {
@@ -2596,8 +2608,8 @@
     "frameWidth": 245,
     "frameHeight": 222,
     "columns": 16,
-    "anchorX": 116,
-    "anchorY": 188,
+    "anchorX": 121,
+    "anchorY": 187,
     "groups": {
       "0": {
         "row": 0,
@@ -2687,7 +2699,7 @@
     "frameHeight": 99,
     "columns": 10,
     "anchorX": 70,
-    "anchorY": 93,
+    "anchorY": 95,
     "groups": {
       "0": {
         "row": 0,
@@ -2748,8 +2760,8 @@
     "frameWidth": 243,
     "frameHeight": 219,
     "columns": 16,
-    "anchorX": 117,
-    "anchorY": 186,
+    "anchorX": 119,
+    "anchorY": 185,
     "groups": {
       "0": {
         "row": 0,
@@ -2838,8 +2850,8 @@
     "frameWidth": 167,
     "frameHeight": 130,
     "columns": 11,
-    "anchorX": 89,
-    "anchorY": 109,
+    "anchorX": 90,
+    "anchorY": 110,
     "groups": {
       "0": {
         "row": 0,
@@ -2900,7 +2912,7 @@
     "frameWidth": 199,
     "frameHeight": 144,
     "columns": 12,
-    "anchorX": 98,
+    "anchorX": 108,
     "anchorY": 133,
     "groups": {
       "0": {
@@ -2962,7 +2974,7 @@
     "frameWidth": 103,
     "frameHeight": 119,
     "columns": 17,
-    "anchorX": 26,
+    "anchorX": 27,
     "anchorY": 110,
     "groups": {
       "0": {
@@ -3037,7 +3049,7 @@
     "frameHeight": 119,
     "columns": 17,
     "anchorX": 27,
-    "anchorY": 110,
+    "anchorY": 111,
     "groups": {
       "0": {
         "row": 0,
@@ -3110,8 +3122,8 @@
     "frameWidth": 127,
     "frameHeight": 121,
     "columns": 10,
-    "anchorX": 68,
-    "anchorY": 111,
+    "anchorX": 70,
+    "anchorY": 112,
     "groups": {
       "0": {
         "row": 0,
@@ -3172,7 +3184,7 @@
     "frameWidth": 157,
     "frameHeight": 156,
     "columns": 10,
-    "anchorX": 86,
+    "anchorX": 89,
     "anchorY": 142,
     "groups": {
       "0": {
@@ -3289,7 +3301,7 @@
     "frameHeight": 165,
     "columns": 14,
     "anchorX": 96,
-    "anchorY": 138,
+    "anchorY": 139,
     "groups": {
       "0": {
         "row": 0,
@@ -3350,8 +3362,8 @@
     "frameWidth": 108,
     "frameHeight": 112,
     "columns": 9,
-    "anchorX": 49,
-    "anchorY": 105,
+    "anchorX": 51,
+    "anchorY": 106,
     "groups": {
       "0": {
         "row": 0,
@@ -3412,8 +3424,8 @@
     "frameWidth": 139,
     "frameHeight": 138,
     "columns": 7,
-    "anchorX": 59,
-    "anchorY": 110,
+    "anchorX": 68,
+    "anchorY": 125,
     "groups": {
       "0": {
         "row": 0,
@@ -3474,7 +3486,7 @@
     "frameWidth": 150,
     "frameHeight": 123,
     "columns": 11,
-    "anchorX": 72,
+    "anchorX": 77,
     "anchorY": 117,
     "groups": {
       "0": {
@@ -3536,8 +3548,8 @@
     "frameWidth": 163,
     "frameHeight": 246,
     "columns": 20,
-    "anchorX": 69,
-    "anchorY": 229,
+    "anchorX": 70,
+    "anchorY": 230,
     "groups": {
       "0": {
         "row": 0,
@@ -3590,8 +3602,8 @@
     "frameWidth": 101,
     "frameHeight": 96,
     "columns": 11,
-    "anchorX": 51,
-    "anchorY": 85,
+    "anchorX": 47,
+    "anchorY": 86,
     "groups": {
       "0": {
         "row": 0,
@@ -3653,7 +3665,7 @@
     "frameHeight": 122,
     "columns": 11,
     "anchorX": 52,
-    "anchorY": 118,
+    "anchorY": 119,
     "groups": {
       "0": {
         "row": 0,
@@ -3715,7 +3727,7 @@
     "frameHeight": 135,
     "columns": 11,
     "anchorX": 47,
-    "anchorY": 118,
+    "anchorY": 119,
     "groups": {
       "0": {
         "row": 0,
@@ -3777,7 +3789,7 @@
     "frameHeight": 135,
     "columns": 11,
     "anchorX": 47,
-    "anchorY": 118,
+    "anchorY": 119,
     "groups": {
       "0": {
         "row": 0,
@@ -3839,7 +3851,7 @@
     "frameHeight": 127,
     "columns": 12,
     "anchorX": 61,
-    "anchorY": 109,
+    "anchorY": 107,
     "groups": {
       "0": {
         "row": 0,
@@ -3916,8 +3928,8 @@
     "frameWidth": 140,
     "frameHeight": 181,
     "columns": 11,
-    "anchorX": 61,
-    "anchorY": 150,
+    "anchorX": 60,
+    "anchorY": 149,
     "groups": {
       "0": {
         "row": 0,
@@ -3990,7 +4002,7 @@
     "frameWidth": 215,
     "frameHeight": 261,
     "columns": 19,
-    "anchorX": 62,
+    "anchorX": 64,
     "anchorY": 146,
     "groups": {
       "0": {
@@ -4080,8 +4092,8 @@
     "frameWidth": 158,
     "frameHeight": 115,
     "columns": 11,
-    "anchorX": 73,
-    "anchorY": 105,
+    "anchorX": 74,
+    "anchorY": 108,
     "groups": {
       "0": {
         "row": 0,
@@ -4154,7 +4166,7 @@
     "frameWidth": 178,
     "frameHeight": 164,
     "columns": 12,
-    "anchorX": 75,
+    "anchorX": 81,
     "anchorY": 131,
     "groups": {
       "0": {
@@ -4229,7 +4241,7 @@
     "frameHeight": 119,
     "columns": 9,
     "anchorX": 59,
-    "anchorY": 106,
+    "anchorY": 107,
     "groups": {
       "0": {
         "row": 0,
@@ -4352,7 +4364,7 @@
     "frameWidth": 124,
     "frameHeight": 153,
     "columns": 15,
-    "anchorX": 48,
+    "anchorX": 47,
     "anchorY": 148,
     "groups": {
       "0": {
@@ -4414,8 +4426,8 @@
     "frameWidth": 292,
     "frameHeight": 235,
     "columns": 12,
-    "anchorX": 114,
-    "anchorY": 179,
+    "anchorX": 118,
+    "anchorY": 178,
     "groups": {
       "0": {
         "row": 0,
@@ -4473,556 +4485,676 @@
   },
   "forge-bruiser": {
     "image": "/assets/battle-hex/creatures/forge-bruiser.webp",
-    "frameWidth": 109,
-    "frameHeight": 80,
-    "columns": 8,
-    "anchorX": 47,
-    "anchorY": 79,
+    "frameWidth": 143,
+    "frameHeight": 127,
+    "columns": 11,
+    "anchorX": 48,
+    "anchorY": 118,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
       },
       "2": {
-        "row": 1,
-        "frames": 8
+        "row": 2,
+        "frames": 10
       },
       "3": {
-        "row": 2,
-        "frames": 4
+        "row": 3,
+        "frames": 7
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 9
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 4
+        "row": 8,
+        "frames": 9
       },
       "12": {
-        "row": 7,
-        "frames": 4
+        "row": 9,
+        "frames": 9
       },
       "13": {
-        "row": 7,
-        "frames": 4
+        "row": 10,
+        "frames": 9
       },
       "14": {
-        "row": 8,
-        "frames": 8
+        "row": 11,
+        "frames": 9
       },
       "15": {
-        "row": 8,
-        "frames": 8
+        "row": 12,
+        "frames": 9
       },
       "16": {
-        "row": 8,
-        "frames": 8
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
       }
     }
   },
   "forge-bruiser-pack": {
     "image": "/assets/battle-hex/creatures/forge-bruiser-pack.webp",
-    "frameWidth": 109,
-    "frameHeight": 84,
-    "columns": 8,
-    "anchorX": 47,
-    "anchorY": 80,
+    "frameWidth": 148,
+    "frameHeight": 123,
+    "columns": 12,
+    "anchorX": 57,
+    "anchorY": 115,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
       },
       "2": {
-        "row": 1,
-        "frames": 8
+        "row": 2,
+        "frames": 10
       },
       "3": {
-        "row": 2,
-        "frames": 4
+        "row": 3,
+        "frames": 7
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 9
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 3
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 3
       },
       "11": {
-        "row": 7,
-        "frames": 4
+        "row": 8,
+        "frames": 8
       },
       "12": {
-        "row": 7,
-        "frames": 4
+        "row": 9,
+        "frames": 8
       },
       "13": {
-        "row": 7,
-        "frames": 4
+        "row": 10,
+        "frames": 8
       },
       "14": {
-        "row": 8,
+        "row": 11,
         "frames": 8
       },
       "15": {
-        "row": 8,
+        "row": 12,
         "frames": 8
       },
       "16": {
-        "row": 8,
+        "row": 13,
         "frames": 8
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
       }
     }
   },
   "forge-cyber-zombie": {
     "image": "/assets/battle-hex/creatures/forge-cyber-zombie.webp",
-    "frameWidth": 116,
-    "frameHeight": 89,
-    "columns": 8,
-    "anchorX": 42,
-    "anchorY": 85,
+    "frameWidth": 141,
+    "frameHeight": 143,
+    "columns": 10,
+    "anchorX": 59,
+    "anchorY": 127,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 10
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
+        "row": 5,
         "frames": 8
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 3
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 3
       },
       "11": {
-        "row": 7,
-        "frames": 8
+        "row": 8,
+        "frames": 6
       },
       "12": {
-        "row": 7,
-        "frames": 8
+        "row": 9,
+        "frames": 7
       },
       "13": {
-        "row": 8,
-        "frames": 4
+        "row": 10,
+        "frames": 6
+      },
+      "20": {
+        "row": 11,
+        "frames": 1
+      },
+      "21": {
+        "row": 12,
+        "frames": 1
       }
     }
   },
   "forge-cyber-zombie-pack": {
     "image": "/assets/battle-hex/creatures/forge-cyber-zombie-pack.webp",
-    "frameWidth": 118,
-    "frameHeight": 92,
-    "columns": 8,
-    "anchorX": 44,
-    "anchorY": 83,
+    "frameWidth": 197,
+    "frameHeight": 164,
+    "columns": 10,
+    "anchorX": 99,
+    "anchorY": 146,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 10
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
+        "row": 5,
         "frames": 8
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 3
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 3
       },
       "11": {
-        "row": 7,
-        "frames": 8
+        "row": 8,
+        "frames": 6
       },
       "12": {
-        "row": 7,
-        "frames": 8
+        "row": 9,
+        "frames": 7
       },
       "13": {
-        "row": 8,
-        "frames": 4
+        "row": 10,
+        "frames": 6
+      },
+      "20": {
+        "row": 11,
+        "frames": 1
+      },
+      "21": {
+        "row": 12,
+        "frames": 1
       }
     }
   },
   "forge-cyberbrute": {
     "image": "/assets/battle-hex/creatures/forge-cyberbrute.webp",
-    "frameWidth": 154,
-    "frameHeight": 120,
-    "columns": 8,
-    "anchorX": 69,
-    "anchorY": 107,
+    "frameWidth": 207,
+    "frameHeight": 194,
+    "columns": 9,
+    "anchorX": 105,
+    "anchorY": 170,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 9
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 5
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 6
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 3
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 3
       },
       "11": {
-        "row": 7,
-        "frames": 8
-      },
-      "12": {
-        "row": 7,
-        "frames": 8
-      },
-      "13": {
         "row": 8,
         "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 1
+      },
+      "21": {
+        "row": 12,
+        "frames": 1
       }
     }
   },
   "forge-cyberbrute-pack": {
     "image": "/assets/battle-hex/creatures/forge-cyberbrute-pack.webp",
-    "frameWidth": 147,
-    "frameHeight": 113,
-    "columns": 8,
-    "anchorX": 69,
-    "anchorY": 105,
+    "frameWidth": 206,
+    "frameHeight": 198,
+    "columns": 9,
+    "anchorX": 105,
+    "anchorY": 174,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 9
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 5
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 6
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 3
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 3
       },
       "11": {
-        "row": 7,
-        "frames": 8
-      },
-      "12": {
-        "row": 7,
-        "frames": 8
-      },
-      "13": {
         "row": 8,
         "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 1
+      },
+      "21": {
+        "row": 12,
+        "frames": 1
       }
     }
   },
   "forge-grunt": {
     "image": "/assets/battle-hex/creatures/forge-grunt.webp",
-    "frameWidth": 102,
-    "frameHeight": 75,
-    "columns": 8,
-    "anchorX": 42,
+    "frameWidth": 99,
+    "frameHeight": 79,
+    "columns": 9,
+    "anchorX": 36,
     "anchorY": 74,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
-      },
-      "5": {
         "row": 4,
         "frames": 8
       },
-      "7": {
+      "5": {
         "row": 5,
-        "frames": 4
+        "frames": 6
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 4
+        "row": 8,
+        "frames": 7
       },
       "12": {
-        "row": 7,
-        "frames": 4
+        "row": 9,
+        "frames": 7
       },
       "13": {
-        "row": 7,
-        "frames": 4
+        "row": 10,
+        "frames": 7
       },
       "14": {
-        "row": 8,
-        "frames": 8
+        "row": 11,
+        "frames": 9
       },
       "15": {
-        "row": 8,
-        "frames": 8
+        "row": 12,
+        "frames": 9
       },
       "16": {
-        "row": 8,
-        "frames": 8
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 2
+      },
+      "21": {
+        "row": 15,
+        "frames": 2
       }
     }
   },
   "forge-grunt-pack": {
     "image": "/assets/battle-hex/creatures/forge-grunt-pack.webp",
-    "frameWidth": 91,
-    "frameHeight": 70,
-    "columns": 8,
-    "anchorX": 38,
-    "anchorY": 68,
+    "frameWidth": 113,
+    "frameHeight": 86,
+    "columns": 9,
+    "anchorX": 45,
+    "anchorY": 81,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 6
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 4
+        "row": 8,
+        "frames": 7
       },
       "12": {
-        "row": 7,
-        "frames": 4
+        "row": 9,
+        "frames": 7
       },
       "13": {
-        "row": 7,
-        "frames": 4
+        "row": 10,
+        "frames": 7
       },
       "14": {
-        "row": 8,
-        "frames": 8
+        "row": 11,
+        "frames": 9
       },
       "15": {
-        "row": 8,
-        "frames": 8
+        "row": 12,
+        "frames": 9
       },
       "16": {
-        "row": 8,
-        "frames": 8
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 2
+      },
+      "21": {
+        "row": 15,
+        "frames": 2
       }
     }
   },
   "forge-jump-trooper": {
     "image": "/assets/battle-hex/creatures/forge-jump-trooper.webp",
-    "frameWidth": 117,
-    "frameHeight": 95,
+    "frameWidth": 173,
+    "frameHeight": 155,
     "columns": 8,
-    "anchorX": 50,
-    "anchorY": 93,
+    "anchorX": 79,
+    "anchorY": 146,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 7
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 5
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 7
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 8
-      },
-      "12": {
-        "row": 7,
-        "frames": 8
-      },
-      "13": {
         "row": 8,
         "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 3
       }
     }
   },
   "forge-jump-trooper-pack": {
     "image": "/assets/battle-hex/creatures/forge-jump-trooper-pack.webp",
-    "frameWidth": 112,
-    "frameHeight": 89,
+    "frameWidth": 174,
+    "frameHeight": 152,
     "columns": 8,
-    "anchorX": 50,
-    "anchorY": 88,
+    "anchorX": 76,
+    "anchorY": 139,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 7
       },
-      "2": {
+      "1": {
         "row": 1,
         "frames": 8
       },
-      "3": {
+      "2": {
         "row": 2,
-        "frames": 4
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 5
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 7
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 8
-      },
-      "12": {
-        "row": 7,
-        "frames": 8
-      },
-      "13": {
         "row": 8,
         "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 3
       }
     }
   },
   "forge-tank": {
     "image": "/assets/battle-hex/creatures/forge-tank.webp",
     "frameWidth": 137,
-    "frameHeight": 109,
+    "frameHeight": 107,
     "columns": 8,
     "anchorX": 58,
     "anchorY": 106,
@@ -5079,14 +5211,15 @@
         "row": 8,
         "frames": 8
       }
-    }
+    },
+    "idlePingPong": true
   },
   "forge-tank-pack": {
     "image": "/assets/battle-hex/creatures/forge-tank-pack.webp",
-    "frameWidth": 132,
+    "frameWidth": 127,
     "frameHeight": 106,
     "columns": 8,
-    "anchorX": 55,
+    "anchorX": 50,
     "anchorY": 103,
     "groups": {
       "0": {
@@ -5141,129 +5274,154 @@
         "row": 8,
         "frames": 8
       }
-    }
+    },
+    "idlePingPong": true
   },
   "forge-watcher": {
     "image": "/assets/battle-hex/creatures/forge-watcher.webp",
-    "frameWidth": 107,
-    "frameHeight": 86,
-    "columns": 8,
-    "anchorX": 47,
-    "anchorY": 75,
+    "frameWidth": 136,
+    "frameHeight": 105,
+    "columns": 10,
+    "anchorX": 37,
+    "anchorY": 101,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 7
       },
       "2": {
-        "row": 1,
-        "frames": 8
+        "row": 2,
+        "frames": 7
       },
       "3": {
-        "row": 2,
-        "frames": 4
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 6
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 5
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 4
+        "row": 8,
+        "frames": 7
       },
       "12": {
-        "row": 7,
-        "frames": 4
+        "row": 9,
+        "frames": 7
       },
       "13": {
-        "row": 7,
-        "frames": 4
+        "row": 10,
+        "frames": 7
       },
       "14": {
-        "row": 8,
-        "frames": 8
+        "row": 11,
+        "frames": 7
       },
       "15": {
-        "row": 8,
-        "frames": 8
+        "row": 12,
+        "frames": 7
       },
       "16": {
-        "row": 8,
-        "frames": 8
+        "row": 13,
+        "frames": 7
+      },
+      "20": {
+        "row": 14,
+        "frames": 2
+      },
+      "21": {
+        "row": 15,
+        "frames": 2
       }
     }
   },
   "forge-watcher-pack": {
     "image": "/assets/battle-hex/creatures/forge-watcher-pack.webp",
-    "frameWidth": 116,
-    "frameHeight": 93,
-    "columns": 8,
-    "anchorX": 49,
-    "anchorY": 87,
+    "frameWidth": 182,
+    "frameHeight": 126,
+    "columns": 11,
+    "anchorX": 82,
+    "anchorY": 112,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 7
       },
       "2": {
-        "row": 1,
-        "frames": 8
+        "row": 2,
+        "frames": 7
       },
       "3": {
-        "row": 2,
-        "frames": 4
+        "row": 3,
+        "frames": 6
       },
       "4": {
-        "row": 3,
-        "frames": 4
+        "row": 4,
+        "frames": 5
       },
       "5": {
-        "row": 4,
-        "frames": 8
+        "row": 5,
+        "frames": 5
       },
       "7": {
-        "row": 5,
-        "frames": 4
+        "row": 6,
+        "frames": 2
       },
       "8": {
-        "row": 6,
-        "frames": 4
+        "row": 7,
+        "frames": 2
       },
       "11": {
-        "row": 7,
-        "frames": 4
+        "row": 8,
+        "frames": 7
       },
       "12": {
-        "row": 7,
-        "frames": 4
+        "row": 9,
+        "frames": 7
       },
       "13": {
-        "row": 7,
-        "frames": 4
+        "row": 10,
+        "frames": 7
       },
       "14": {
-        "row": 8,
-        "frames": 8
+        "row": 11,
+        "frames": 7
       },
       "15": {
-        "row": 8,
-        "frames": 8
+        "row": 12,
+        "frames": 7
       },
       "16": {
-        "row": 8,
-        "frames": 8
+        "row": 13,
+        "frames": 7
+      },
+      "20": {
+        "row": 14,
+        "frames": 3
+      },
+      "21": {
+        "row": 15,
+        "frames": 3
       }
     }
   },
@@ -5272,7 +5430,7 @@
     "frameWidth": 157,
     "frameHeight": 141,
     "columns": 8,
-    "anchorX": 70,
+    "anchorX": 69,
     "anchorY": 113,
     "groups": {
       "0": {
@@ -5334,7 +5492,7 @@
     "frameWidth": 240,
     "frameHeight": 187,
     "columns": 11,
-    "anchorX": 145,
+    "anchorX": 143,
     "anchorY": 177,
     "groups": {
       "0": {
@@ -5396,8 +5554,8 @@
     "frameWidth": 170,
     "frameHeight": 144,
     "columns": 9,
-    "anchorX": 92,
-    "anchorY": 130,
+    "anchorX": 96,
+    "anchorY": 131,
     "groups": {
       "0": {
         "row": 0,
@@ -5454,7 +5612,7 @@
     "frameWidth": 108,
     "frameHeight": 115,
     "columns": 15,
-    "anchorX": 44,
+    "anchorX": 49,
     "anchorY": 101,
     "groups": {
       "0": {
@@ -5516,7 +5674,7 @@
     "frameWidth": 108,
     "frameHeight": 120,
     "columns": 15,
-    "anchorX": 44,
+    "anchorX": 49,
     "anchorY": 106,
     "groups": {
       "0": {
@@ -5578,7 +5736,7 @@
     "frameWidth": 133,
     "frameHeight": 137,
     "columns": 9,
-    "anchorX": 75,
+    "anchorX": 72,
     "anchorY": 113,
     "groups": {
       "0": {
@@ -5640,7 +5798,7 @@
     "frameWidth": 137,
     "frameHeight": 145,
     "columns": 10,
-    "anchorX": 62,
+    "anchorX": 64,
     "anchorY": 112,
     "groups": {
       "0": {
@@ -5714,8 +5872,8 @@
     "frameWidth": 256,
     "frameHeight": 208,
     "columns": 9,
-    "anchorX": 146,
-    "anchorY": 128,
+    "anchorX": 155,
+    "anchorY": 129,
     "groups": {
       "0": {
         "row": 0,
@@ -5776,8 +5934,8 @@
     "frameWidth": 107,
     "frameHeight": 115,
     "columns": 9,
-    "anchorX": 55,
-    "anchorY": 107,
+    "anchorX": 56,
+    "anchorY": 108,
     "groups": {
       "0": {
         "row": 0,
@@ -5838,7 +5996,7 @@
     "frameWidth": 223,
     "frameHeight": 172,
     "columns": 12,
-    "anchorX": 61,
+    "anchorX": 71,
     "anchorY": 124,
     "groups": {
       "0": {
@@ -5892,8 +6050,8 @@
     "frameWidth": 112,
     "frameHeight": 109,
     "columns": 12,
-    "anchorX": 50,
-    "anchorY": 100,
+    "anchorX": 51,
+    "anchorY": 101,
     "groups": {
       "0": {
         "row": 0,
@@ -5966,7 +6124,7 @@
     "frameWidth": 199,
     "frameHeight": 159,
     "columns": 11,
-    "anchorX": 105,
+    "anchorX": 108,
     "anchorY": 153,
     "groups": {
       "0": {
@@ -6052,7 +6210,7 @@
     "frameWidth": 154,
     "frameHeight": 108,
     "columns": 11,
-    "anchorX": 74,
+    "anchorX": 75,
     "anchorY": 99,
     "groups": {
       "0": {
@@ -6114,8 +6272,8 @@
     "frameWidth": 237,
     "frameHeight": 163,
     "columns": 9,
-    "anchorX": 134,
-    "anchorY": 124,
+    "anchorX": 143,
+    "anchorY": 123,
     "groups": {
       "0": {
         "row": 0,
@@ -6238,7 +6396,7 @@
     "frameWidth": 202,
     "frameHeight": 139,
     "columns": 9,
-    "anchorX": 112,
+    "anchorX": 116,
     "anchorY": 117,
     "groups": {
       "0": {
@@ -6300,8 +6458,8 @@
     "frameWidth": 125,
     "frameHeight": 129,
     "columns": 20,
-    "anchorX": 48,
-    "anchorY": 121,
+    "anchorX": 46,
+    "anchorY": 122,
     "groups": {
       "0": {
         "row": 0,
@@ -6374,7 +6532,7 @@
     "frameWidth": 142,
     "frameHeight": 114,
     "columns": 12,
-    "anchorX": 65,
+    "anchorX": 70,
     "anchorY": 108,
     "groups": {
       "0": {
@@ -6429,7 +6587,7 @@
     "frameHeight": 95,
     "columns": 22,
     "anchorX": 33,
-    "anchorY": 88,
+    "anchorY": 87,
     "groups": {
       "0": {
         "row": 0,
@@ -6498,8 +6656,8 @@
     "frameWidth": 109,
     "frameHeight": 100,
     "columns": 24,
-    "anchorX": 42,
-    "anchorY": 86,
+    "anchorX": 46,
+    "anchorY": 87,
     "groups": {
       "0": {
         "row": 0,
@@ -6572,8 +6730,8 @@
     "frameWidth": 144,
     "frameHeight": 153,
     "columns": 12,
-    "anchorX": 65,
-    "anchorY": 101,
+    "anchorX": 61,
+    "anchorY": 99,
     "groups": {
       "0": {
         "row": 0,
@@ -6634,7 +6792,7 @@
     "frameWidth": 142,
     "frameHeight": 119,
     "columns": 12,
-    "anchorX": 65,
+    "anchorX": 62,
     "anchorY": 100,
     "groups": {
       "0": {
@@ -6696,8 +6854,8 @@
     "frameWidth": 193,
     "frameHeight": 171,
     "columns": 11,
-    "anchorX": 78,
-    "anchorY": 136,
+    "anchorX": 87,
+    "anchorY": 133,
     "groups": {
       "0": {
         "row": 0,
@@ -6758,8 +6916,8 @@
     "frameWidth": 196,
     "frameHeight": 159,
     "columns": 10,
-    "anchorX": 84,
-    "anchorY": 138,
+    "anchorX": 94,
+    "anchorY": 139,
     "groups": {
       "0": {
         "row": 0,
@@ -6820,8 +6978,8 @@
     "frameWidth": 136,
     "frameHeight": 139,
     "columns": 9,
-    "anchorX": 76,
-    "anchorY": 114,
+    "anchorX": 73,
+    "anchorY": 115,
     "groups": {
       "0": {
         "row": 0,
@@ -6882,8 +7040,8 @@
     "frameWidth": 130,
     "frameHeight": 123,
     "columns": 10,
-    "anchorX": 67,
-    "anchorY": 113,
+    "anchorX": 69,
+    "anchorY": 114,
     "groups": {
       "0": {
         "row": 0,
@@ -6944,7 +7102,7 @@
     "frameWidth": 152,
     "frameHeight": 143,
     "columns": 17,
-    "anchorX": 72,
+    "anchorX": 75,
     "anchorY": 123,
     "groups": {
       "0": {
@@ -7018,8 +7176,8 @@
     "frameWidth": 226,
     "frameHeight": 169,
     "columns": 12,
-    "anchorX": 96,
-    "anchorY": 140,
+    "anchorX": 91,
+    "anchorY": 139,
     "groups": {
       "0": {
         "row": 0,
@@ -7104,8 +7262,8 @@
     "frameWidth": 123,
     "frameHeight": 116,
     "columns": 9,
-    "anchorX": 59,
-    "anchorY": 103,
+    "anchorX": 60,
+    "anchorY": 104,
     "groups": {
       "0": {
         "row": 0,
@@ -7166,7 +7324,7 @@
     "frameWidth": 164,
     "frameHeight": 144,
     "columns": 10,
-    "anchorX": 49,
+    "anchorX": 52,
     "anchorY": 112,
     "groups": {
       "0": {
@@ -7221,7 +7379,7 @@
     "frameHeight": 95,
     "columns": 9,
     "anchorX": 49,
-    "anchorY": 88,
+    "anchorY": 89,
     "groups": {
       "0": {
         "row": 0,
@@ -7282,8 +7440,8 @@
     "frameWidth": 193,
     "frameHeight": 141,
     "columns": 21,
-    "anchorX": 77,
-    "anchorY": 134,
+    "anchorX": 83,
+    "anchorY": 132,
     "groups": {
       "0": {
         "row": 0,
@@ -7372,8 +7530,8 @@
     "frameWidth": 197,
     "frameHeight": 148,
     "columns": 12,
-    "anchorX": 84,
-    "anchorY": 138,
+    "anchorX": 87,
+    "anchorY": 136,
     "groups": {
       "0": {
         "row": 0,
@@ -7446,8 +7604,8 @@
     "frameWidth": 162,
     "frameHeight": 252,
     "columns": 20,
-    "anchorX": 69,
-    "anchorY": 235,
+    "anchorX": 70,
+    "anchorY": 236,
     "groups": {
       "0": {
         "row": 0,
@@ -7500,7 +7658,7 @@
     "frameWidth": 132,
     "frameHeight": 112,
     "columns": 10,
-    "anchorX": 65,
+    "anchorX": 67,
     "anchorY": 85,
     "groups": {
       "0": {
@@ -7562,7 +7720,7 @@
     "frameWidth": 132,
     "frameHeight": 112,
     "columns": 10,
-    "anchorX": 65,
+    "anchorX": 67,
     "anchorY": 85,
     "groups": {
       "0": {
@@ -7624,8 +7782,8 @@
     "frameWidth": 120,
     "frameHeight": 162,
     "columns": 15,
-    "anchorX": 53,
-    "anchorY": 147,
+    "anchorX": 52,
+    "anchorY": 148,
     "groups": {
       "0": {
         "row": 0,
@@ -7772,7 +7930,7 @@
     "frameWidth": 115,
     "frameHeight": 119,
     "columns": 10,
-    "anchorX": 55,
+    "anchorX": 53,
     "anchorY": 116,
     "groups": {
       "0": {
@@ -7846,7 +8004,7 @@
     "frameWidth": 109,
     "frameHeight": 125,
     "columns": 10,
-    "anchorX": 60,
+    "anchorX": 59,
     "anchorY": 113,
     "groups": {
       "0": {
@@ -7921,7 +8079,7 @@
     "frameHeight": 110,
     "columns": 13,
     "anchorX": 49,
-    "anchorY": 104,
+    "anchorY": 105,
     "groups": {
       "0": {
         "row": 0,
@@ -7994,8 +8152,8 @@
     "frameWidth": 114,
     "frameHeight": 143,
     "columns": 13,
-    "anchorX": 42,
-    "anchorY": 137,
+    "anchorX": 43,
+    "anchorY": 136,
     "groups": {
       "0": {
         "row": 0,
@@ -8069,7 +8227,7 @@
     "frameHeight": 148,
     "columns": 11,
     "anchorX": 99,
-    "anchorY": 136,
+    "anchorY": 135,
     "groups": {
       "0": {
         "row": 0,
@@ -8142,7 +8300,7 @@
     "frameWidth": 147,
     "frameHeight": 153,
     "columns": 10,
-    "anchorX": 66,
+    "anchorX": 67,
     "anchorY": 119,
     "groups": {
       "0": {
@@ -8216,8 +8374,8 @@
     "frameWidth": 151,
     "frameHeight": 126,
     "columns": 13,
-    "anchorX": 45,
-    "anchorY": 109,
+    "anchorX": 53,
+    "anchorY": 112,
     "groups": {
       "0": {
         "row": 0,
@@ -8278,7 +8436,7 @@
     "frameWidth": 175,
     "frameHeight": 129,
     "columns": 11,
-    "anchorX": 91,
+    "anchorX": 86,
     "anchorY": 117,
     "groups": {
       "0": {
@@ -8414,8 +8572,8 @@
     "frameWidth": 160,
     "frameHeight": 148,
     "columns": 8,
-    "anchorX": 71,
-    "anchorY": 118,
+    "anchorX": 72,
+    "anchorY": 119,
     "groups": {
       "0": {
         "row": 0,
@@ -8488,7 +8646,7 @@
     "frameWidth": 161,
     "frameHeight": 119,
     "columns": 17,
-    "anchorX": 81,
+    "anchorX": 80,
     "anchorY": 105,
     "groups": {
       "0": {
@@ -8562,8 +8720,8 @@
     "frameWidth": 210,
     "frameHeight": 261,
     "columns": 19,
-    "anchorX": 57,
-    "anchorY": 146,
+    "anchorX": 59,
+    "anchorY": 145,
     "groups": {
       "0": {
         "row": 0,
@@ -8727,7 +8885,7 @@
     "frameHeight": 119,
     "columns": 10,
     "anchorX": 84,
-    "anchorY": 118,
+    "anchorY": 117,
     "groups": {
       "0": {
         "row": 0,
@@ -8800,7 +8958,7 @@
     "frameWidth": 182,
     "frameHeight": 175,
     "columns": 12,
-    "anchorX": 59,
+    "anchorX": 69,
     "anchorY": 127,
     "groups": {
       "0": {
@@ -8854,7 +9012,7 @@
     "frameWidth": 142,
     "frameHeight": 128,
     "columns": 10,
-    "anchorX": 70,
+    "anchorX": 72,
     "anchorY": 107,
     "groups": {
       "0": {
@@ -8962,7 +9120,7 @@
     "frameWidth": 100,
     "frameHeight": 124,
     "columns": 11,
-    "anchorX": 32,
+    "anchorX": 35,
     "anchorY": 104,
     "groups": {
       "0": {
@@ -9032,8 +9190,8 @@
     "frameWidth": 121,
     "frameHeight": 126,
     "columns": 10,
-    "anchorX": 40,
-    "anchorY": 102,
+    "anchorX": 45,
+    "anchorY": 103,
     "groups": {
       "0": {
         "row": 0,
@@ -9094,8 +9252,8 @@
     "frameWidth": 135,
     "frameHeight": 151,
     "columns": 10,
-    "anchorX": 65,
-    "anchorY": 126,
+    "anchorX": 68,
+    "anchorY": 125,
     "groups": {
       "0": {
         "row": 0,
@@ -9156,7 +9314,7 @@
     "frameWidth": 156,
     "frameHeight": 116,
     "columns": 11,
-    "anchorX": 66,
+    "anchorX": 68,
     "anchorY": 103,
     "groups": {
       "0": {
@@ -9218,7 +9376,7 @@
     "frameWidth": 166,
     "frameHeight": 146,
     "columns": 11,
-    "anchorX": 80,
+    "anchorX": 81,
     "anchorY": 130,
     "groups": {
       "0": {
@@ -9280,7 +9438,7 @@
     "frameWidth": 169,
     "frameHeight": 199,
     "columns": 10,
-    "anchorX": 79,
+    "anchorX": 80,
     "anchorY": 154,
     "groups": {
       "0": {
@@ -9342,7 +9500,7 @@
     "frameWidth": 169,
     "frameHeight": 199,
     "columns": 10,
-    "anchorX": 79,
+    "anchorX": 80,
     "anchorY": 154,
     "groups": {
       "0": {
@@ -9466,8 +9624,8 @@
     "frameWidth": 150,
     "frameHeight": 134,
     "columns": 13,
-    "anchorX": 56,
-    "anchorY": 106,
+    "anchorX": 57,
+    "anchorY": 104,
     "groups": {
       "1": {
         "row": 0,
@@ -9586,8 +9744,8 @@
     "frameWidth": 150,
     "frameHeight": 134,
     "columns": 13,
-    "anchorX": 56,
-    "anchorY": 106,
+    "anchorX": 57,
+    "anchorY": 104,
     "groups": {
       "1": {
         "row": 0,
@@ -9644,8 +9802,8 @@
     "frameWidth": 155,
     "frameHeight": 144,
     "columns": 9,
-    "anchorX": 90,
-    "anchorY": 128,
+    "anchorX": 87,
+    "anchorY": 129,
     "groups": {
       "0": {
         "row": 0,
@@ -9706,7 +9864,7 @@
     "frameWidth": 182,
     "frameHeight": 174,
     "columns": 9,
-    "anchorX": 104,
+    "anchorX": 101,
     "anchorY": 150,
     "groups": {
       "0": {
@@ -9780,8 +9938,8 @@
     "frameWidth": 166,
     "frameHeight": 137,
     "columns": 12,
-    "anchorX": 64,
-    "anchorY": 113,
+    "anchorX": 66,
+    "anchorY": 111,
     "groups": {
       "0": {
         "row": 0,
@@ -9842,7 +10000,7 @@
     "frameWidth": 126,
     "frameHeight": 116,
     "columns": 11,
-    "anchorX": 70,
+    "anchorX": 69,
     "anchorY": 109,
     "groups": {
       "0": {
@@ -9917,7 +10075,7 @@
     "frameHeight": 131,
     "columns": 11,
     "anchorX": 70,
-    "anchorY": 117,
+    "anchorY": 116,
     "groups": {
       "0": {
         "row": 0,
@@ -9990,8 +10148,8 @@
     "frameWidth": 108,
     "frameHeight": 100,
     "columns": 16,
-    "anchorX": 52,
-    "anchorY": 92,
+    "anchorX": 56,
+    "anchorY": 91,
     "groups": {
       "0": {
         "row": 0,
@@ -10052,7 +10210,7 @@
     "frameWidth": 162,
     "frameHeight": 131,
     "columns": 11,
-    "anchorX": 85,
+    "anchorX": 84,
     "anchorY": 120,
     "groups": {
       "0": {
@@ -10114,8 +10272,8 @@
     "frameWidth": 315,
     "frameHeight": 239,
     "columns": 12,
-    "anchorX": 136,
-    "anchorY": 186,
+    "anchorX": 141,
+    "anchorY": 182,
     "groups": {
       "0": {
         "row": 0,
@@ -10176,7 +10334,7 @@
     "frameWidth": 152,
     "frameHeight": 129,
     "columns": 13,
-    "anchorX": 53,
+    "anchorX": 60,
     "anchorY": 117,
     "groups": {
       "0": {
@@ -10230,7 +10388,7 @@
     "frameWidth": 106,
     "frameHeight": 101,
     "columns": 10,
-    "anchorX": 46,
+    "anchorX": 45,
     "anchorY": 99,
     "groups": {
       "0": {
@@ -10367,7 +10525,7 @@
     "frameHeight": 186,
     "columns": 15,
     "anchorX": 96,
-    "anchorY": 144,
+    "anchorY": 145,
     "groups": {
       "0": {
         "row": 0,
@@ -10432,7 +10590,7 @@
     "frameWidth": 102,
     "frameHeight": 119,
     "columns": 10,
-    "anchorX": 47,
+    "anchorX": 40,
     "anchorY": 100,
     "groups": {
       "0": {
@@ -10494,7 +10652,7 @@
     "frameWidth": 183,
     "frameHeight": 148,
     "columns": 11,
-    "anchorX": 80,
+    "anchorX": 83,
     "anchorY": 131,
     "groups": {
       "0": {
@@ -10569,7 +10727,7 @@
     "frameHeight": 139,
     "columns": 13,
     "anchorX": 47,
-    "anchorY": 133,
+    "anchorY": 132,
     "groups": {
       "0": {
         "row": 0,
@@ -10642,7 +10800,7 @@
     "frameWidth": 227,
     "frameHeight": 170,
     "columns": 11,
-    "anchorX": 106,
+    "anchorX": 111,
     "anchorY": 130,
     "groups": {
       "0": {
@@ -10704,7 +10862,7 @@
     "frameWidth": 325,
     "frameHeight": 203,
     "columns": 9,
-    "anchorX": 174,
+    "anchorX": 176,
     "anchorY": 157,
     "groups": {
       "0": {
@@ -10766,8 +10924,8 @@
     "frameWidth": 114,
     "frameHeight": 107,
     "columns": 12,
-    "anchorX": 39,
-    "anchorY": 98,
+    "anchorX": 44,
+    "anchorY": 96,
     "groups": {
       "0": {
         "row": 0,
@@ -10824,7 +10982,7 @@
     "frameWidth": 250,
     "frameHeight": 167,
     "columns": 9,
-    "anchorX": 121,
+    "anchorX": 132,
     "anchorY": 132,
     "groups": {
       "0": {
@@ -10886,7 +11044,7 @@
     "frameWidth": 207,
     "frameHeight": 169,
     "columns": 12,
-    "anchorX": 102,
+    "anchorX": 104,
     "anchorY": 138,
     "groups": {
       "0": {
@@ -10948,8 +11106,8 @@
     "frameWidth": 151,
     "frameHeight": 130,
     "columns": 12,
-    "anchorX": 64,
-    "anchorY": 112,
+    "anchorX": 66,
+    "anchorY": 110,
     "groups": {
       "0": {
         "row": 0,
@@ -11010,8 +11168,8 @@
     "frameWidth": 110,
     "frameHeight": 130,
     "columns": 21,
-    "anchorX": 37,
-    "anchorY": 104,
+    "anchorX": 39,
+    "anchorY": 102,
     "groups": {
       "0": {
         "row": 0,
@@ -11084,7 +11242,7 @@
     "frameWidth": 175,
     "frameHeight": 130,
     "columns": 11,
-    "anchorX": 91,
+    "anchorX": 86,
     "anchorY": 118,
     "groups": {
       "0": {
@@ -11146,7 +11304,7 @@
     "frameWidth": 106,
     "frameHeight": 101,
     "columns": 10,
-    "anchorX": 46,
+    "anchorX": 45,
     "anchorY": 99,
     "groups": {
       "0": {
@@ -11220,8 +11378,8 @@
     "frameWidth": 188,
     "frameHeight": 162,
     "columns": 11,
-    "anchorX": 76,
-    "anchorY": 130,
+    "anchorX": 84,
+    "anchorY": 127,
     "groups": {
       "0": {
         "row": 0,
@@ -11282,7 +11440,7 @@
     "frameWidth": 138,
     "frameHeight": 122,
     "columns": 15,
-    "anchorX": 58,
+    "anchorX": 59,
     "anchorY": 102,
     "groups": {
       "0": {
@@ -11369,7 +11527,7 @@
     "frameHeight": 99,
     "columns": 10,
     "anchorX": 70,
-    "anchorY": 94,
+    "anchorY": 95,
     "groups": {
       "0": {
         "row": 0,
@@ -11430,8 +11588,8 @@
     "frameWidth": 151,
     "frameHeight": 107,
     "columns": 12,
-    "anchorX": 62,
-    "anchorY": 91,
+    "anchorX": 64,
+    "anchorY": 92,
     "groups": {
       "0": {
         "row": 0,
@@ -11497,7 +11655,7 @@
     "frameHeight": 130,
     "columns": 7,
     "anchorX": 59,
-    "anchorY": 94,
+    "anchorY": 110,
     "groups": {
       "0": {
         "row": 0,
@@ -11558,7 +11716,7 @@
     "frameWidth": 199,
     "frameHeight": 159,
     "columns": 11,
-    "anchorX": 105,
+    "anchorX": 108,
     "anchorY": 153,
     "groups": {
       "0": {
@@ -11644,8 +11802,8 @@
     "frameWidth": 107,
     "frameHeight": 113,
     "columns": 12,
-    "anchorX": 54,
-    "anchorY": 106,
+    "anchorX": 56,
+    "anchorY": 105,
     "groups": {
       "0": {
         "row": 0,
@@ -11718,7 +11876,7 @@
     "frameWidth": 162,
     "frameHeight": 131,
     "columns": 11,
-    "anchorX": 85,
+    "anchorX": 84,
     "anchorY": 120,
     "groups": {
       "0": {
@@ -11780,7 +11938,7 @@
     "frameWidth": 162,
     "frameHeight": 136,
     "columns": 11,
-    "anchorX": 76,
+    "anchorX": 73,
     "anchorY": 121,
     "groups": {
       "0": {
@@ -11842,7 +12000,7 @@
     "frameWidth": 168,
     "frameHeight": 135,
     "columns": 11,
-    "anchorX": 81,
+    "anchorX": 79,
     "anchorY": 120,
     "groups": {
       "0": {
@@ -11905,7 +12063,7 @@
     "frameHeight": 115,
     "columns": 11,
     "anchorX": 59,
-    "anchorY": 109,
+    "anchorY": 110,
     "groups": {
       "0": {
         "row": 0,
@@ -11978,7 +12136,7 @@
     "frameWidth": 109,
     "frameHeight": 114,
     "columns": 15,
-    "anchorX": 55,
+    "anchorX": 59,
     "anchorY": 102,
     "groups": {
       "0": {
@@ -12064,7 +12222,7 @@
     "frameWidth": 108,
     "frameHeight": 114,
     "columns": 10,
-    "anchorX": 43,
+    "anchorX": 46,
     "anchorY": 99,
     "groups": {
       "0": {
@@ -12127,7 +12285,7 @@
     "frameHeight": 115,
     "columns": 11,
     "anchorX": 59,
-    "anchorY": 109,
+    "anchorY": 110,
     "groups": {
       "0": {
         "row": 0,
@@ -12200,8 +12358,8 @@
     "frameWidth": 95,
     "frameHeight": 92,
     "columns": 14,
-    "anchorX": 48,
-    "anchorY": 87,
+    "anchorX": 49,
+    "anchorY": 86,
     "groups": {
       "0": {
         "row": 0,
@@ -12262,7 +12420,7 @@
     "frameWidth": 149,
     "frameHeight": 121,
     "columns": 17,
-    "anchorX": 79,
+    "anchorX": 81,
     "anchorY": 112,
     "groups": {
       "0": {
@@ -12324,7 +12482,7 @@
     "frameWidth": 96,
     "frameHeight": 95,
     "columns": 9,
-    "anchorX": 48,
+    "anchorX": 50,
     "anchorY": 87,
     "groups": {
       "0": {
@@ -12387,7 +12545,7 @@
     "frameHeight": 180,
     "columns": 11,
     "anchorX": 87,
-    "anchorY": 169,
+    "anchorY": 168,
     "groups": {
       "0": {
         "row": 0,
@@ -12472,8 +12630,8 @@
     "frameWidth": 197,
     "frameHeight": 177,
     "columns": 12,
-    "anchorX": 101,
-    "anchorY": 129,
+    "anchorX": 95,
+    "anchorY": 127,
     "groups": {
       "0": {
         "row": 0,
@@ -12534,7 +12692,7 @@
     "frameWidth": 167,
     "frameHeight": 130,
     "columns": 11,
-    "anchorX": 89,
+    "anchorX": 87,
     "anchorY": 109,
     "groups": {
       "0": {
@@ -12596,7 +12754,7 @@
     "frameWidth": 302,
     "frameHeight": 202,
     "columns": 9,
-    "anchorX": 152,
+    "anchorX": 154,
     "anchorY": 154,
     "groups": {
       "0": {
@@ -12658,7 +12816,7 @@
     "frameWidth": 177,
     "frameHeight": 150,
     "columns": 9,
-    "anchorX": 99,
+    "anchorX": 103,
     "anchorY": 134,
     "groups": {
       "0": {
@@ -12728,8 +12886,8 @@
     "frameWidth": 161,
     "frameHeight": 156,
     "columns": 10,
-    "anchorX": 42,
-    "anchorY": 124,
+    "anchorX": 49,
+    "anchorY": 125,
     "groups": {
       "0": {
         "row": 0,
@@ -12782,8 +12940,8 @@
     "frameWidth": 104,
     "frameHeight": 107,
     "columns": 10,
-    "anchorX": 53,
-    "anchorY": 100,
+    "anchorX": 54,
+    "anchorY": 99,
     "groups": {
       "0": {
         "row": 0,
@@ -12844,7 +13002,7 @@
     "frameWidth": 179,
     "frameHeight": 152,
     "columns": 11,
-    "anchorX": 83,
+    "anchorX": 87,
     "anchorY": 135,
     "groups": {
       "0": {
@@ -12906,7 +13064,7 @@
     "frameWidth": 108,
     "frameHeight": 126,
     "columns": 9,
-    "anchorX": 49,
+    "anchorX": 52,
     "anchorY": 110,
     "groups": {
       "0": {
@@ -12968,7 +13126,7 @@
     "frameWidth": 113,
     "frameHeight": 128,
     "columns": 9,
-    "anchorX": 48,
+    "anchorX": 52,
     "anchorY": 112,
     "groups": {
       "0": {
@@ -13031,7 +13189,7 @@
     "frameHeight": 126,
     "columns": 10,
     "anchorX": 51,
-    "anchorY": 116,
+    "anchorY": 117,
     "groups": {
       "0": {
         "row": 0,
@@ -13151,6 +13309,44 @@
       }
     }
   },
+  "war-cannon": {
+    "image": "/assets/battle-hex/creatures/war-cannon.webp",
+    "frameWidth": 150,
+    "frameHeight": 93,
+    "columns": 6,
+    "anchorX": 56,
+    "anchorY": 92,
+    "groups": {
+      "2": {
+        "row": 0,
+        "frames": 6
+      },
+      "3": {
+        "row": 1,
+        "frames": 6
+      },
+      "4": {
+        "row": 1,
+        "frames": 6
+      },
+      "5": {
+        "row": 2,
+        "frames": 6
+      },
+      "14": {
+        "row": 3,
+        "frames": 6
+      },
+      "15": {
+        "row": 3,
+        "frames": 6
+      },
+      "16": {
+        "row": 3,
+        "frames": 6
+      }
+    }
+  },
   "war-catapult": {
     "image": "/assets/battle-hex/creatures/war-catapult.webp",
     "frameWidth": 133,
@@ -13258,8 +13454,8 @@
     "frameWidth": 151,
     "frameHeight": 126,
     "columns": 13,
-    "anchorX": 46,
-    "anchorY": 110,
+    "anchorX": 53,
+    "anchorY": 112,
     "groups": {
       "0": {
         "row": 0,
@@ -13320,7 +13516,7 @@
     "frameWidth": 190,
     "frameHeight": 160,
     "columns": 11,
-    "anchorX": 86,
+    "anchorX": 89,
     "anchorY": 140,
     "groups": {
       "0": {
@@ -13382,7 +13578,7 @@
     "frameWidth": 231,
     "frameHeight": 163,
     "columns": 15,
-    "anchorX": 98,
+    "anchorX": 93,
     "anchorY": 130,
     "groups": {
       "0": {
@@ -13444,8 +13640,8 @@
     "frameWidth": 107,
     "frameHeight": 110,
     "columns": 10,
-    "anchorX": 54,
-    "anchorY": 101,
+    "anchorX": 56,
+    "anchorY": 103,
     "groups": {
       "0": {
         "row": 0,
@@ -13518,8 +13714,8 @@
     "frameWidth": 93,
     "frameHeight": 87,
     "columns": 9,
-    "anchorX": 46,
-    "anchorY": 86,
+    "anchorX": 48,
+    "anchorY": 85,
     "groups": {
       "0": {
         "row": 0,
@@ -13580,8 +13776,8 @@
     "frameWidth": 104,
     "frameHeight": 111,
     "columns": 12,
-    "anchorX": 51,
-    "anchorY": 105,
+    "anchorX": 55,
+    "anchorY": 103,
     "groups": {
       "0": {
         "row": 0,
@@ -13654,7 +13850,7 @@
     "frameWidth": 326,
     "frameHeight": 226,
     "columns": 12,
-    "anchorX": 193,
+    "anchorX": 191,
     "anchorY": 195,
     "groups": {
       "0": {
@@ -13744,8 +13940,8 @@
     "frameWidth": 93,
     "frameHeight": 88,
     "columns": 9,
-    "anchorX": 46,
-    "anchorY": 87,
+    "anchorX": 50,
+    "anchorY": 86,
     "groups": {
       "0": {
         "row": 0,
@@ -13806,8 +14002,8 @@
     "frameWidth": 93,
     "frameHeight": 87,
     "columns": 9,
-    "anchorX": 46,
-    "anchorY": 86,
+    "anchorX": 48,
+    "anchorY": 85,
     "groups": {
       "0": {
         "row": 0,
@@ -13942,8 +14138,8 @@
     "frameWidth": 207,
     "frameHeight": 139,
     "columns": 9,
-    "anchorX": 134,
-    "anchorY": 131,
+    "anchorX": 143,
+    "anchorY": 129,
     "groups": {
       "0": {
         "row": 0,
@@ -14004,8 +14200,8 @@
     "frameWidth": 203,
     "frameHeight": 201,
     "columns": 7,
-    "anchorX": 84,
-    "anchorY": 131,
+    "anchorX": 88,
+    "anchorY": 130,
     "groups": {
       "0": {
         "row": 0,
@@ -14058,8 +14254,8 @@
     "frameWidth": 104,
     "frameHeight": 111,
     "columns": 12,
-    "anchorX": 51,
-    "anchorY": 105,
+    "anchorX": 55,
+    "anchorY": 103,
     "groups": {
       "0": {
         "row": 0,
@@ -14132,8 +14328,8 @@
     "frameWidth": 216,
     "frameHeight": 188,
     "columns": 11,
-    "anchorX": 82,
-    "anchorY": 125,
+    "anchorX": 85,
+    "anchorY": 124,
     "groups": {
       "0": {
         "row": 0,
@@ -14194,8 +14390,8 @@
     "frameWidth": 161,
     "frameHeight": 118,
     "columns": 17,
-    "anchorX": 81,
-    "anchorY": 105,
+    "anchorX": 80,
+    "anchorY": 104,
     "groups": {
       "0": {
         "row": 0,
@@ -14268,8 +14464,8 @@
     "frameWidth": 153,
     "frameHeight": 144,
     "columns": 8,
-    "anchorX": 65,
-    "anchorY": 132,
+    "anchorX": 68,
+    "anchorY": 131,
     "groups": {
       "0": {
         "row": 0,
@@ -14334,7 +14530,7 @@
     "frameWidth": 105,
     "frameHeight": 132,
     "columns": 14,
-    "anchorX": 34,
+    "anchorX": 38,
     "anchorY": 110,
     "groups": {
       "0": {
@@ -14404,8 +14600,8 @@
     "frameWidth": 93,
     "frameHeight": 87,
     "columns": 9,
-    "anchorX": 46,
-    "anchorY": 86,
+    "anchorX": 48,
+    "anchorY": 85,
     "groups": {
       "0": {
         "row": 0,
@@ -14466,8 +14662,8 @@
     "frameWidth": 124,
     "frameHeight": 115,
     "columns": 8,
-    "anchorX": 57,
-    "anchorY": 113,
+    "anchorX": 56,
+    "anchorY": 111,
     "groups": {
       "0": {
         "row": 0,
@@ -14520,7 +14716,7 @@
     "frameWidth": 176,
     "frameHeight": 143,
     "columns": 9,
-    "anchorX": 86,
+    "anchorX": 89,
     "anchorY": 128,
     "groups": {
       "0": {
@@ -14582,7 +14778,7 @@
     "frameWidth": 159,
     "frameHeight": 129,
     "columns": 9,
-    "anchorX": 77,
+    "anchorX": 80,
     "anchorY": 121,
     "groups": {
       "0": {
@@ -14645,7 +14841,7 @@
     "frameHeight": 106,
     "columns": 12,
     "anchorX": 50,
-    "anchorY": 100,
+    "anchorY": 101,
     "groups": {
       "0": {
         "row": 0,
@@ -14719,7 +14915,7 @@
     "frameHeight": 117,
     "columns": 10,
     "anchorX": 54,
-    "anchorY": 108,
+    "anchorY": 109,
     "groups": {
       "0": {
         "row": 0,
@@ -14792,7 +14988,7 @@
     "frameWidth": 226,
     "frameHeight": 163,
     "columns": 9,
-    "anchorX": 111,
+    "anchorX": 121,
     "anchorY": 135,
     "groups": {
       "0": {
@@ -14854,7 +15050,7 @@
     "frameWidth": 242,
     "frameHeight": 176,
     "columns": 9,
-    "anchorX": 118,
+    "anchorX": 128,
     "anchorY": 145,
     "groups": {
       "0": {
@@ -14916,8 +15112,8 @@
     "frameWidth": 153,
     "frameHeight": 175,
     "columns": 13,
-    "anchorX": 53,
-    "anchorY": 148,
+    "anchorX": 65,
+    "anchorY": 144,
     "groups": {
       "0": {
         "row": 0,
@@ -14978,8 +15174,8 @@
     "frameWidth": 160,
     "frameHeight": 196,
     "columns": 13,
-    "anchorX": 53,
-    "anchorY": 160,
+    "anchorX": 69,
+    "anchorY": 156,
     "groups": {
       "0": {
         "row": 0,
@@ -15040,7 +15236,7 @@
     "frameWidth": 105,
     "frameHeight": 132,
     "columns": 14,
-    "anchorX": 34,
+    "anchorX": 38,
     "anchorY": 110,
     "groups": {
       "0": {
@@ -15110,8 +15306,8 @@
     "frameWidth": 163,
     "frameHeight": 139,
     "columns": 10,
-    "anchorX": 88,
-    "anchorY": 123,
+    "anchorX": 89,
+    "anchorY": 124,
     "groups": {
       "0": {
         "row": 0,
@@ -15164,6 +15360,1354 @@
       "21": {
         "row": 12,
         "frames": 1
+      }
+    }
+  },
+  "ba-mika": {
+    "image": "/assets/battle-hex/creatures/ba-mika.webp",
+    "frameWidth": 95,
+    "frameHeight": 103,
+    "columns": 11,
+    "anchorX": 37,
+    "anchorY": 87,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "20": {
+        "row": 11,
+        "frames": 4
+      },
+      "21": {
+        "row": 12,
+        "frames": 4
+      }
+    }
+  },
+  "ba-seia": {
+    "image": "/assets/battle-hex/creatures/ba-seia.webp",
+    "frameWidth": 107,
+    "frameHeight": 99,
+    "columns": 8,
+    "anchorX": 47,
+    "anchorY": 90,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 7
+      },
+      "12": {
+        "row": 9,
+        "frames": 7
+      },
+      "13": {
+        "row": 10,
+        "frames": 7
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 2
+      }
+    }
+  },
+  "ba-nagisa": {
+    "image": "/assets/battle-hex/creatures/ba-nagisa.webp",
+    "frameWidth": 100,
+    "frameHeight": 92,
+    "columns": 9,
+    "anchorX": 41,
+    "anchorY": 85,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 7
+      },
+      "12": {
+        "row": 9,
+        "frames": 7
+      },
+      "13": {
+        "row": 10,
+        "frames": 7
+      },
+      "14": {
+        "row": 11,
+        "frames": 9
+      },
+      "15": {
+        "row": 12,
+        "frames": 9
+      },
+      "16": {
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 2
+      },
+      "21": {
+        "row": 15,
+        "frames": 2
+      }
+    }
+  },
+  "ba-aris": {
+    "image": "/assets/battle-hex/creatures/ba-aris.webp",
+    "frameWidth": 133,
+    "frameHeight": 102,
+    "columns": 11,
+    "anchorX": 51,
+    "anchorY": 90,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "14": {
+        "row": 11,
+        "frames": 9
+      },
+      "15": {
+        "row": 12,
+        "frames": 9
+      },
+      "16": {
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-kei": {
+    "image": "/assets/battle-hex/creatures/ba-kei.webp",
+    "frameWidth": 169,
+    "frameHeight": 140,
+    "columns": 7,
+    "anchorX": 74,
+    "anchorY": 119,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 7
+      },
+      "1": {
+        "row": 1,
+        "frames": 7
+      },
+      "2": {
+        "row": 2,
+        "frames": 7
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 5
+      },
+      "5": {
+        "row": 5,
+        "frames": 7
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 3
+      }
+    }
+  },
+  "ba-hoshino": {
+    "image": "/assets/battle-hex/creatures/ba-hoshino.webp",
+    "frameWidth": 97,
+    "frameHeight": 101,
+    "columns": 11,
+    "anchorX": 35,
+    "anchorY": 91,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "20": {
+        "row": 11,
+        "frames": 4
+      },
+      "21": {
+        "row": 12,
+        "frames": 4
+      }
+    }
+  },
+  "ba-shiroko": {
+    "image": "/assets/battle-hex/creatures/ba-shiroko.webp",
+    "frameWidth": 115,
+    "frameHeight": 99,
+    "columns": 11,
+    "anchorX": 38,
+    "anchorY": 94,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 9
+      },
+      "2": {
+        "row": 2,
+        "frames": 9
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "14": {
+        "row": 11,
+        "frames": 9
+      },
+      "15": {
+        "row": 12,
+        "frames": 9
+      },
+      "16": {
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-hina": {
+    "image": "/assets/battle-hex/creatures/ba-hina.webp",
+    "frameWidth": 142,
+    "frameHeight": 126,
+    "columns": 8,
+    "anchorX": 67,
+    "anchorY": 114,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 7
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 5
+      },
+      "4": {
+        "row": 4,
+        "frames": 5
+      },
+      "5": {
+        "row": 5,
+        "frames": 7
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 3
+      }
+    }
+  },
+  "ba-yuuka": {
+    "image": "/assets/battle-hex/creatures/ba-yuuka.webp",
+    "frameWidth": 101,
+    "frameHeight": 107,
+    "columns": 12,
+    "anchorX": 38,
+    "anchorY": 95,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "20": {
+        "row": 11,
+        "frames": 4
+      },
+      "21": {
+        "row": 12,
+        "frames": 4
+      }
+    }
+  },
+  "ba-aru": {
+    "image": "/assets/battle-hex/creatures/ba-aru.webp",
+    "frameWidth": 118,
+    "frameHeight": 97,
+    "columns": 11,
+    "anchorX": 46,
+    "anchorY": 92,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 11
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 3
+      },
+      "8": {
+        "row": 7,
+        "frames": 3
+      },
+      "11": {
+        "row": 8,
+        "frames": 8
+      },
+      "12": {
+        "row": 9,
+        "frames": 8
+      },
+      "13": {
+        "row": 10,
+        "frames": 8
+      },
+      "14": {
+        "row": 11,
+        "frames": 8
+      },
+      "15": {
+        "row": 12,
+        "frames": 8
+      },
+      "16": {
+        "row": 13,
+        "frames": 8
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-neru": {
+    "image": "/assets/battle-hex/creatures/ba-neru.webp",
+    "frameWidth": 91,
+    "frameHeight": 86,
+    "columns": 8,
+    "anchorX": 38,
+    "anchorY": 81,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 7
+      },
+      "12": {
+        "row": 9,
+        "frames": 7
+      },
+      "13": {
+        "row": 10,
+        "frames": 7
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 2
+      }
+    }
+  },
+  "ba-toki": {
+    "image": "/assets/battle-hex/creatures/ba-toki.webp",
+    "frameWidth": 140,
+    "frameHeight": 125,
+    "columns": 8,
+    "anchorX": 70,
+    "anchorY": 110,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 6
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 5
+      },
+      "5": {
+        "row": 5,
+        "frames": 7
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 3
+      }
+    }
+  },
+  "ba-azusa": {
+    "image": "/assets/battle-hex/creatures/ba-azusa.webp",
+    "frameWidth": 115,
+    "frameHeight": 101,
+    "columns": 12,
+    "anchorX": 45,
+    "anchorY": 91,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 3
+      },
+      "8": {
+        "row": 7,
+        "frames": 3
+      },
+      "11": {
+        "row": 8,
+        "frames": 8
+      },
+      "12": {
+        "row": 9,
+        "frames": 8
+      },
+      "13": {
+        "row": 10,
+        "frames": 8
+      },
+      "14": {
+        "row": 11,
+        "frames": 8
+      },
+      "15": {
+        "row": 12,
+        "frames": 8
+      },
+      "16": {
+        "row": 13,
+        "frames": 8
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-wakamo": {
+    "image": "/assets/battle-hex/creatures/ba-wakamo.webp",
+    "frameWidth": 113,
+    "frameHeight": 102,
+    "columns": 12,
+    "anchorX": 39,
+    "anchorY": 91,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "14": {
+        "row": 11,
+        "frames": 9
+      },
+      "15": {
+        "row": 12,
+        "frames": 9
+      },
+      "16": {
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-saori": {
+    "image": "/assets/battle-hex/creatures/ba-saori.webp",
+    "frameWidth": 95,
+    "frameHeight": 94,
+    "columns": 12,
+    "anchorX": 36,
+    "anchorY": 90,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "20": {
+        "row": 11,
+        "frames": 4
+      },
+      "21": {
+        "row": 12,
+        "frames": 4
+      }
+    }
+  },
+  "ba-iori": {
+    "image": "/assets/battle-hex/creatures/ba-iori.webp",
+    "frameWidth": 108,
+    "frameHeight": 102,
+    "columns": 12,
+    "anchorX": 46,
+    "anchorY": 93,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 3
+      },
+      "8": {
+        "row": 7,
+        "frames": 3
+      },
+      "11": {
+        "row": 8,
+        "frames": 8
+      },
+      "12": {
+        "row": 9,
+        "frames": 8
+      },
+      "13": {
+        "row": 10,
+        "frames": 8
+      },
+      "14": {
+        "row": 11,
+        "frames": 8
+      },
+      "15": {
+        "row": 12,
+        "frames": 8
+      },
+      "16": {
+        "row": 13,
+        "frames": 8
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-mutsuki": {
+    "image": "/assets/battle-hex/creatures/ba-mutsuki.webp",
+    "frameWidth": 121,
+    "frameHeight": 108,
+    "columns": 12,
+    "anchorX": 42,
+    "anchorY": 93,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 9
+      },
+      "2": {
+        "row": 2,
+        "frames": 9
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "14": {
+        "row": 11,
+        "frames": 9
+      },
+      "15": {
+        "row": 12,
+        "frames": 9
+      },
+      "16": {
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 4
+      },
+      "21": {
+        "row": 15,
+        "frames": 4
+      }
+    }
+  },
+  "ba-miyo": {
+    "image": "/assets/battle-hex/creatures/ba-miyo.webp",
+    "frameWidth": 104,
+    "frameHeight": 105,
+    "columns": 12,
+    "anchorX": 43,
+    "anchorY": 99,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 12
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "7": {
+        "row": 6,
+        "frames": 3
+      },
+      "8": {
+        "row": 7,
+        "frames": 3
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "20": {
+        "row": 11,
+        "frames": 4
+      },
+      "21": {
+        "row": 12,
+        "frames": 4
+      }
+    }
+  },
+  "ba-hasumi": {
+    "image": "/assets/battle-hex/creatures/ba-hasumi.webp",
+    "frameWidth": 147,
+    "frameHeight": 120,
+    "columns": 7,
+    "anchorX": 66,
+    "anchorY": 110,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 7
+      },
+      "1": {
+        "row": 1,
+        "frames": 7
+      },
+      "2": {
+        "row": 2,
+        "frames": 7
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 5
+      },
+      "5": {
+        "row": 5,
+        "frames": 7
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 4
+      },
+      "12": {
+        "row": 9,
+        "frames": 6
+      },
+      "13": {
+        "row": 10,
+        "frames": 4
+      },
+      "20": {
+        "row": 11,
+        "frames": 2
+      },
+      "21": {
+        "row": 12,
+        "frames": 2
+      }
+    }
+  },
+  "ba-ibuki": {
+    "image": "/assets/battle-hex/creatures/ba-ibuki.webp",
+    "frameWidth": 89,
+    "frameHeight": 97,
+    "columns": 9,
+    "anchorX": 46,
+    "anchorY": 88,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 7
+      },
+      "2": {
+        "row": 2,
+        "frames": 7
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 7
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 9
+      },
+      "12": {
+        "row": 9,
+        "frames": 9
+      },
+      "13": {
+        "row": 10,
+        "frames": 9
+      },
+      "17": {
+        "row": 11,
+        "frames": 9
+      },
+      "18": {
+        "row": 12,
+        "frames": 9
+      },
+      "19": {
+        "row": 13,
+        "frames": 9
+      },
+      "20": {
+        "row": 14,
+        "frames": 2
+      },
+      "21": {
+        "row": 15,
+        "frames": 2
       }
     }
   }

@@ -44,6 +44,11 @@ export function unitAbilityCastsOnHex(abilityId: string): boolean {
  * damage / heal / removal run it produced, so the cue builder walks events in
  * the order the table should see them: spell sprite first, then its result.
  *
+ * A WOG commander's cast (COMMANDER_CAST_USED) is logged the same way —
+ * after the damage / heal it dealt (Mech Princess Arc Discharge, Belfast's
+ * Royal Salvo, the Paladin's Cure…) — so it leads its result run too: the
+ * commander casts, its bolt / sprite plays, then the number lands.
+ *
  * Attack damage is unaffected: it carries no SPELL_CAST_RESOLVED, so its
  * DAMAGE_ASSIGNED / UNIT_REMOVED keep their original order (and are pinned to
  * the strike beat by the caller regardless). Unit-ability damage already logs
@@ -80,8 +85,8 @@ export function orderFxEventsForPresentation<T extends { type: GameEvent["type"]
       pendingResults.push(event);
       continue;
     }
-    if (event.type === "SPELL_CAST_RESOLVED") {
-      // The spell's own sprite/sound leads; its buffered outcome follows.
+    if (event.type === "SPELL_CAST_RESOLVED" || event.type === "COMMANDER_CAST_USED") {
+      // The spell's / commander cast's own sprite/sound leads; its buffered outcome follows.
       ordered.push(event);
       ordered.push(...pendingResults);
       pendingResults = [];

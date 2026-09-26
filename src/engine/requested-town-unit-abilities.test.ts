@@ -16,6 +16,7 @@ import {
   type PlayerId,
 } from "./index";
 import { previewSpellDamage } from "./reducer";
+import { unitRankStatBonusesFor } from "./unit-experience";
 import { removeComputerPhantomCards } from "./computer/combat-boost";
 import { isPhantomCardId } from "./phantom-cards";
 
@@ -126,6 +127,21 @@ describe("requested town-unit veterancy ranks", () => {
     expect(rankScheduleFor("inferno.pit_lords")[2]).toMatchObject({ choices: ["reduce-spell-damage-2"] });
     expect(rankScheduleFor("cove.haspids")[2]).toMatchObject({ choices: ["town-haspid-aggressive-drill"] });
     expect(rankScheduleFor("fortress.gorgons")[1]).toMatchObject({ choices: ["town-gorgon-stare-reroll"] });
+  });
+
+  it("Fortress Dragon Flies R2 keeps its generated ability choice and ALSO gains +1 Health", () => {
+    // The generated flying R2 choice (rotated pool) is unchanged…
+    expect(rankScheduleFor("fortress.dragon_flies")[2]).toEqual({
+      kind: "hybrid",
+      stats: { attack: 0, defense: 0, health: 1, initiative: 0 },
+      choices: ["reduce-spell-damage-1", "veteran-guarded-stance", "bulwark-air-shield", "wog-fire-shield-1"]
+    });
+    // …and reaching R2 adds exactly +1 Health on top of R1 (+2 Initiative).
+    // CONTROL: R1 alone grants no Health.
+    const rankOne = unitRankStatBonusesFor("fortress.dragon_flies", "bronze", 1);
+    const rankTwo = unitRankStatBonusesFor("fortress.dragon_flies", "bronze", 2);
+    expect(rankOne).toMatchObject({ health: 0, initiative: 2 });
+    expect(rankTwo).toMatchObject({ health: 1, initiative: 2 });
   });
 
   it("Hydra rerolls every +1 and bites the attacker once when a replacement remains +1 [MUTATION-CHECK]", () => {

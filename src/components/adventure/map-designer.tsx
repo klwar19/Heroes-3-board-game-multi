@@ -68,6 +68,7 @@ import {
   MAX_HEX_EVENT_MESSAGE,
   MAX_SETTLEMENT_HOLD_ROUNDS,
   MAX_SETTLEMENT_VP,
+  SUGGESTED_TEMPLE_OF_THE_SEA_AWARD,
   type CustomCenterHexPlan,
   type CustomGuardSpec,
   type CustomMapGateLink,
@@ -493,6 +494,12 @@ function nextObjectPlans(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+/** Is this plan pinned to a sea def that prints a Temple of the Sea? */
+function planDefHasTemple(plan: CustomMapTilePlan): boolean {
+  const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
+  return Boolean(def?.fields.some((field) => field.location === "temple_of_the_sea"));
+}
+
 /** Does this plan's pinned def carry the location (face-up eligibility)? */
 function planDefHasLocation(plan: CustomMapTilePlan, location: "obelisk" | "mine"): boolean {
   const def = plan.tileDefId ? allTileDefinitions[plan.tileDefId] : undefined;
@@ -598,7 +605,7 @@ function seedIndividualObjectPlan(
 }
 
 /** The object kinds the SPECIFIC pick flow may target on a tile. */
-export type SpecificPickKind = "obelisk" | "mine" | "settlement" | "center";
+export type SpecificPickKind = "obelisk" | "mine" | "settlement" | "center" | "temple_of_the_sea";
 
 /**
  * SPECIFIC-mode pick eligibility, all kinds: obelisk/mine need the printed (or
@@ -612,6 +619,11 @@ export function planEligibleForPick(plan: CustomMapTilePlan, kind: SpecificPickK
   }
   if (kind === "settlement") {
     return plan.group !== "sea" && plan.group !== "center" && plan.group !== "starting";
+  }
+  // Temple of the Sea only appears on sea tiles; the tile panel section
+  // applies when the tile drawn there reveals one.
+  if (kind === "temple_of_the_sea") {
+    return plan.group === "sea";
   }
   return plan.group === "center";
 }
@@ -661,6 +673,8 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     fold(plan.objectPlans?.[kind]);
   } else if (kind === "settlement") {
     fold(plan.settlement);
+  } else if (kind === "temple_of_the_sea") {
+    fold(plan.objectPlans?.temple_of_the_sea);
   } else {
     fold(plan.centerHex);
     if (plan.viiField) bits.push(`forced ${plan.viiField.replace("_", " ")}`);
@@ -673,14 +687,16 @@ export const SPECIFIC_POPOVER_GROUP: Record<SpecificPickKind, string> = {
   obelisk: "Obelisk & Mine (this tile)",
   mine: "Obelisk & Mine (this tile)",
   settlement: "Special settlement",
-  center: "Center (Ⅶ) objective"
+  center: "Center (Ⅶ) objective",
+  temple_of_the_sea: "Temple of the Sea (this tile)"
 };
 
 const SPECIFIC_KIND_LABEL: Record<SpecificPickKind, string> = {
   obelisk: "Obelisk",
   mine: "Mine",
   settlement: "Settlement",
-  center: "Center objective"
+  center: "Center objective",
+  temple_of_the_sea: "Temple of the Sea"
 };
 
 /** Plain-words tile position for designer confirmations ("Ⅳ–Ⅴ tile @4,6"). */
@@ -699,7 +715,9 @@ function specificPickMessage(
       ? plan.group === "starting"
         ? " Applies to the Mine printed on whichever town tile starts here."
         : ` Applies when the tile drawn here has a${kind === "obelisk" ? "n Obelisk" : " Mine"}.`
-      : "";
+      : kind === "temple_of_the_sea" && !planDefHasTemple(plan)
+        ? " Applies only if the sea tile drawn here reveals a Temple of the Sea."
+        : "";
   if (committed === "created") {
     return `✔ ${SPECIFIC_KIND_LABEL[kind]} on ${planPositionLabel(plan)} now has INDIVIDUAL settings (saved in the map, copied from the global ${SPECIFIC_KIND_LABEL[kind]} settings) — edit them in the tile panel; the global settings no longer apply to it.${drawn}`;
   }
@@ -826,7 +844,7 @@ function tokenLegalityKind(kind: PlanTokenKind): MapTokenKind {
   return kind === "whirlpool" ? "whirlpool" : "monolith";
 }
 
-type MapWideTokenBreaks = Pick<CustomMapPreset, "mines" | "obelisks">;
+type MapWideTokenBreaks = Pick<CustomMapPreset, "mines" | "obelisks" | "templesOfTheSea">;
 
 /**
  * Definition legality plus the map author's exact Break-field settings. The
@@ -5965,7 +5983,9 @@ export function MapDesigner({
                     ? "Click a highlighted tile with a Mine to set its specific options."
                     : pickRequest.objectKind === "settlement"
                       ? "Click a highlighted tile to set its specific Settlement options."
-                      : "Click a highlighted Ⅵ–Ⅶ center tile to set its objective's specific options."}
+                      : pickRequest.objectKind === "temple_of_the_sea"
+                        ? "Click a highlighted sea tile to set its specific Temple of the Sea options."
+                        : "Click a highlighted Ⅵ–Ⅶ center tile to set its objective's specific options."}
             </strong>
             <button
               className="commandButton ghost"
@@ -7458,19 +7478,31 @@ export function MapDesigner({
                       <small className="popoverHint">
                         Applies only if this sea tile reveals a Temple of the Sea. A custom award replaces
                         its printed 10 gold and two Artifact Search (2) rewards. A custom guard alone keeps
-                        the printed award. For a Dragon Utopia style award, set Gold to 20, Artifacts
-                        Search size to 3, Times to 2, and tick the Morale or Ability Empower choice.
+                        the printed award. Values left unset here use the map-wide Temple of the Sea
+                        settings (Map objects), then the printed rules.
                       </small>
                       <div className="popoverSubLabel">Custom guards</div>
                       <GuardSpecEditor
                         guard={selected.objectPlans?.temple_of_the_sea?.guard}
-                        noneLabel="Printed"
+                        noneLabel={mapWideTokenBreaks?.templesOfTheSea?.guard ? "Map-wide" : "Printed"}
                         onChange={(guard) => updateTile(selectedIndex as number, {
                           objectPlans: nextObjectPlans(selected.objectPlans, "temple_of_the_sea",
                             nextObjectPlan(selected.objectPlans?.temple_of_the_sea, { guard }))
                         })}
                       />
                       <div className="popoverSubLabel">Custom award</div>
+                      <button
+                        className="popoverIconButton"
+                        title="Fill this Temple's award with the suggestion (Morale / Ability Empower token, 20 gold, Search (5) Artifacts, two Search (5) Spells, 3 VP). Every value stays editable below."
+                        type="button"
+                        onClick={() => updateTile(selectedIndex as number, {
+                          objectPlans: nextObjectPlans(selected.objectPlans, "temple_of_the_sea",
+                            nextObjectPlan(selected.objectPlans?.temple_of_the_sea, {
+                              reward: { ...SUGGESTED_TEMPLE_OF_THE_SEA_AWARD.reward },
+                              vp: SUGGESTED_TEMPLE_OF_THE_SEA_AWARD.vp
+                            }))
+                        })}
+                      >Use suggested award</button>
                       <FieldRewardEditor
                         ariaLabel="Temple of the Sea custom award"
                         reward={selected.objectPlans?.temple_of_the_sea?.reward}

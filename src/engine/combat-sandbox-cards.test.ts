@@ -6,6 +6,7 @@ import { animeXianxiaArtifactCardIds } from "@/data/anime/artifacts";
 import { animeNeverDeckedCardIds } from "@/data/anime/hero-grades";
 import { wogArtifactCardIds } from "@/data/wog/artifacts";
 import { wogCommanderArtifactCardIds } from "@/data/wog/commander-artifacts";
+import { wogEraComboCardIds } from "@/data/wog/era";
 import { animeEquipmentCardIds } from "@/data/anime/equipment-cards";
 import { WAR_MACHINE_CARD_IDS } from "@/data/cards/permanents";
 import { applyAction, createInitialGameState, getLegalActions, getRuleset, SHARED_DECK_IDS } from "./index";
@@ -39,13 +40,16 @@ const DECK_KINDS = ["spell", "ability", "artifact"] as const;
 // The Hero Grades Training Manual (`anime.heroGrades`) NEVER joins a deck/well —
 // it is bought at a guild shop, so it is excluded here too (still addable via
 // SANDBOX_ADD_CARD, which reads cardLibrary directly). See `animeNeverDeckedCardIds`.
+// WoG era Skill Combo cards are likewise forged (FORGE_SKILL_COMBO), never in a
+// well — still addable via SANDBOX_ADD_CARD. See `wogEraComboCardIds`.
 const startingOnly = new Set(STARTING_ONLY_SPELLS);
 const moduleGated = new Set<string>([
   ...animeXianxiaArtifactCardIds,
   ...animeEquipmentCardIds,
   ...wogArtifactCardIds,
   ...wogCommanderArtifactCardIds,
-  ...animeNeverDeckedCardIds
+  ...animeNeverDeckedCardIds,
+  ...wogEraComboCardIds
 ]);
 
 function implementedIdsOfKind(kind: (typeof DECK_KINDS)[number]): string[] {

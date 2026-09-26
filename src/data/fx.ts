@@ -1184,6 +1184,13 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // per-unit voice, which a fixed library `sound` here could not express).
   "wog-dracolich-armor": { affect: [{ key: "anti-magic" }] },
   "magog-fireball-splash": { hit: "fireball", hitSound: "spells/fireball-hit" },
+  // Splash follow-ups that had no presentation (only a floating number): the
+  // Forge Bruiser's rocket and the neutral town veterancy fire splash explode
+  // on the unit they strike; the veterancy Chain Lightning crackles over it.
+  "forge-bruiser-rocket-1": { hit: "fireball", hitSound: "spells/fireball-hit" },
+  "forge-bruiser-rocket-2": { hit: "fireball", hitSound: "spells/fireball-hit" },
+  "ntv-scattering-flame": { hit: "fireball", hitSound: "spells/fireball-hit" },
+  "ntv-chain-lightning": { affect: [{ key: "lightning-crackle" }], sound: "spells/chain-lightning" },
   "kansen-full-barrage": { hit: "akagi-full-barrage", hitSound: "spells/fireball-hit" },
   "lich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   // WOG Dracolich's spread attack (Necrotic Death Cloud) is the Lich's Death
@@ -1798,6 +1805,21 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
   }
 };
 
+/**
+ * Unit abilities whose trigger IS the unit physically striking one more unit
+ * right after its attack (no spell, no die): a Minotaur's Cleave, the Cerberi's
+ * second head. The unit plays its attack toward that unit with its own attack
+ * cry and a melee effect (`fxKey`, else its usual melee effect), and the
+ * damage lands on the blow — the FX timeline reads this table.
+ */
+export const followUpStrikeFx: Record<string, { fxKey?: string }> = {
+  "veteran-minotaur-cleave": { fxKey: "melee-crescent-slash" },
+  "ntv-labyrinth-cleave": { fxKey: "melee-crescent-slash" },
+  "cerberi-second-head": {},
+  // Neutral Cerberi town veterancy: one more bite at a different adjacent enemy.
+  "ntv-threefold-threat": {},
+};
+
 // Direct specialty damage has no SPELL_CAST_RESOLVED event. Present the
 // specialty's spell on its damage event, without animating its Power option.
 export const cardSpellFxPlans: Record<string, SpellFxPlan> = {
@@ -1805,6 +1827,24 @@ export const cardSpellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.zeestral.1": stormCircuitBoltPlan,
   "specialty.zeestral.4": stormCircuitBoltPlan,
   "specialty.zeestral.6": stormCircuitBoltPlan,
+};
+
+/**
+ * Hex battlefield: specialty plays that take a PC spell area
+ * (engine hex-spell-areas.ts) burst ONCE over that whole area with the spell's
+ * own sheet + sound, centred on DAMAGE_ASSIGNED.areaCentre — Xyron → Inferno,
+ * Adelaide / Glacius → Frost Ring — instead of one burst per struck unit.
+ */
+export const hexAreaSpecialtyFxPlans: Record<string, SpellFxPlan> = {
+  "specialty.xyron.1": spellFxPlans["spell.inferno"],
+  "specialty.xyron.4": spellFxPlans["spell.inferno"],
+  "specialty.xyron.6": spellFxPlans["spell.inferno"],
+  "specialty.adelaide.1": spellFxPlans["spell.frost_ring"],
+  "specialty.adelaide.4": spellFxPlans["spell.frost_ring"],
+  "specialty.adelaide.6": spellFxPlans["spell.frost_ring"],
+  "specialty.glacius.1": spellFxPlans["spell.frost_ring"],
+  "specialty.glacius.4": spellFxPlans["spell.frost_ring"],
+  "specialty.glacius.6": spellFxPlans["spell.frost_ring"],
 };
 
 /**

@@ -22,6 +22,12 @@ import {
   isHexPosition,
 } from "../battlefield";
 import { unitAtCell, unitDistance, unitDistanceAt, unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
+import {
+  hexAreaAimedTargets,
+  hexAreaAttackOf,
+  hexAreaAttackStrikes,
+  type HexAreaAttack,
+} from "../hex-area-attacks";
 import type { CombatState, CombatUnitState, GameAction, GameState } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
@@ -43,7 +49,7 @@ import { canStrikeFromLegalLanding, coordinatedReplyDamage } from "./opponent-re
 import { estimatedStrikeDamage, dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
 import { unitSideStrength } from "./army-strength";
-import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations, getUnitMoveRange } from "../legal-actions";
+import { canUnitAttack, canUnitMoveAndAttack, getAttackKind, getLegalMoveDestinations, getUnitMoveRange } from "../legal-actions";
 import { getPermanentCardIds } from "../permanents";
 import { effectiveInitiative } from "../active-effects";
 import { conditionExpectedStrikeDamage, conditionInitiativePrecedes } from "./battlefield-conditions";
@@ -1962,6 +1968,68 @@ function commanderCastScore(
 }
 
 /**
+ * Hex battlefield Magog Fireball / Death Cloud (hex-area-attacks.ts): EVERY
+ * unit in the ring is struck — no pick — so friendly fire always happens.
+ * Value of a struck set for `side`: an enemy hit is a gain (more when it
+ * finishes the body), an own unit hit a loss weighted 1.5×. Cheap estimate:
+ * the printed flat damage, or one strike at the printed replacement Attack.
+ */
+function hexAreaStruckValue(
+  combat: CombatState,
+  side: string,
+  attacker: CombatUnitState,
+  attack: HexAreaAttack,
+  struckUnitIds: readonly string[],
+): { value: number; enemies: number; friends: number } {
+  let value = 0;
+  let enemies = 0;
+  let friends = 0;
+  const cloudStriker =
+    attack.kind === "second-attack" ? { ...attacker, attack: attack.baseAttack } : null;
+  for (const unitId of struckUnitIds) {
+    const unit = combat.units[unitId];
+    const remaining = unit ? unitRemainingHealth(unit) : 0;
+    if (!unit || remaining <= 0) continue;
+    const damage = attack.kind === "flat-damage"
+      ? attack.amount
+      : estimatedStrikeDamage(cloudStriker!, unit, attacker.position);
+    const finishes = damage > 0 && damage >= unitRemovalHealth(unit);
+    const worth =
+      Math.round(Math.min(1, damage / remaining) * 24) +
+      (finishes ? 30 + Math.min(40, Math.round(unitThreatValue(unit) / 2)) : 0);
+    if (unit.controllerId === side) {
+      friends += 1;
+      value -= Math.round(worth * 1.5) + 6;
+    } else {
+      enemies += 1;
+      value += worth;
+    }
+  }
+  return { value, enemies, friends };
+}
+
+/**
+ * The ring value (hexAreaStruckValue) a Magog / Lich ATTACK_UNIT or
+ * MOVE_AND_ATTACK_UNIT adds on the hex board: 0 off the hex board, for every
+ * other unit, and when a printed gate stops the follow-up.
+ */
+function hexAreaAttackRingValue(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackFrom: number,
+): number {
+  if (combatGeometry(combat) !== "hex" || !hexAreaAttackOf(combat, attacker)) return 0;
+  const striker = attackFrom === attacker.position ? attacker : { ...attacker, position: attackFrom };
+  const board = striker === attacker
+    ? combat
+    : { ...combat, units: { ...combat.units, [attacker.id]: striker } };
+  const strikes = hexAreaAttackStrikes(board, striker, defender, getAttackKind(striker, defender, board));
+  if (!strikes || strikes.struckUnitIds.length === 0) return 0;
+  return hexAreaStruckValue(board, attacker.controllerId, striker, strikes.attack, strikes.struckUnitIds).value;
+}
+
+/**
  * Strategic scores for a computer's own combat activation. Returns null for any
  * action it does not specialize (tactics finish, end-activation…), delegating
  * those to the map/foundation layers unchanged.
@@ -2034,13 +2102,61 @@ export function scoreCombatAction(
         attackFrom,
         observation.state as unknown as GameState,
       );
+      const rulePriority = baseScore > ATTACK_CEIL || baseScore < ATTACK_FLOOR;
+      // Hex battlefield Magog / Lich: the whole ring around the target is struck
+      // (hex-area-attacks.ts) — enemies a gain, own units a certain loss. Only
+      // inside the ordinary attack band: rule-priority scores stay as they are.
+      const ring = rulePriority ? 0 : hexAreaAttackRingValue(combat, attacker, defender, attackFrom);
+      // A clean / net-positive ring keeps the 450 floor; a ring that does net
+      // harm (friendly fire outweighing the enemy hits) takes its full cost, so
+      // it can fall below hold / Wait / any better option.
+      const ringedScore = ring === 0
+        ? baseScore
+        : ring > 0
+          ? Math.max(450, Math.min(ATTACK_CEIL, baseScore + ring))
+          : Math.min(ATTACK_CEIL, baseScore + ring);
       return {
-        score: baseScore + (action.type === "MOVE_AND_ATTACK_UNIT"
+        score: ringedScore + (action.type === "MOVE_AND_ATTACK_UNIT"
           ? Math.min(0, friendlyLaneChange(combat, attacker, attackFrom, observation.state as unknown as GameState)) : 0),
         // Preserve special priority/safety decisions even if the lane penalty
         // moves their final number back into the ordinary attack band.
-        policy: baseScore > ATTACK_CEIL || baseScore < ATTACK_FLOOR
-          ? "combat.attack-rule-priority" : "combat.attack-target",
+        policy: rulePriority
+          ? "combat.attack-rule-priority"
+          : ring !== 0 ? "combat.attack-hex-area" : "combat.attack-target",
+      };
+    }
+    case "ATTACK_HEX": {
+      // Hex battlefield aimed Magog / Lich shot: no primary hit, only the ring.
+      // Worth it only as a clean multi-enemy blast (two or more enemies, no own
+      // unit); otherwise a unit-targeted shot, which adds a full primary hit,
+      // or the normal exits win.
+      const attacker = combat.units[action.attackerId];
+      const area = attacker ? hexAreaAttackOf(combat, attacker) : null;
+      if (!attacker || !area) return { score: 300, policy: "combat.attack-hex-skip" };
+      const state = observation.state as unknown as GameState;
+      if (bronzeArmyNeedsWithdrawal(state, attacker.controllerId, combat)) {
+        return { score: 180, policy: "combat.attack-rule-priority" };
+      }
+      const blast = hexAreaStruckValue(
+        combat,
+        attacker.controllerId,
+        attacker,
+        area,
+        hexAreaAimedTargets(combat, attacker, area, action.position),
+      );
+      // The skip must lose to the normal exits — hold (END_ACTIVATION 400) and
+      // Wait (430) — or the AI fires into its own unit / wakes a Paralyzed
+      // target the attack rules just declined. Friendly fire ranks lowest, so
+      // a forced must-attack menu still prefers any plain strike.
+      if (blast.friends > 0) {
+        return { score: 150, policy: "combat.attack-hex-skip" };
+      }
+      if (blast.enemies < 2) {
+        return { score: 390, policy: "combat.attack-hex-skip" };
+      }
+      return {
+        score: Math.max(ATTACK_FLOOR, Math.min(ATTACK_CEIL, ATTACK_BASE - 40 + blast.value)),
+        policy: "combat.attack-hex-area",
       };
     }
     case "MOVE_UNIT":

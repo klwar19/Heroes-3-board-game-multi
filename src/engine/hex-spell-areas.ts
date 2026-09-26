@@ -13,7 +13,10 @@ import { areaAround, type FootprintCombat, type FootprintUnit } from "./hex-foot
  * ("0" = the centre hex, "1" = the ring around it):
  *   fireball     "0-1" → radius 1, centre included (7 hexes)
  *   frostRing    "1"   → radius 1, centre EXCLUDED (the 6-hex ring)
- *   meteorShower "0-1" → radius 1, centre included (7 hexes)
+ *   meteorShower "0-1" → radius 1, centre included (7 hexes) — OVERRIDDEN:
+ *                user ruling 2026-09-26 "a bit more than Fireball" → a round
+ *                13-hex blast (radius 1.75: Fireball's 7 + the six hexes
+ *                between the second ring's corners; areaAround)
  *   inferno      "0-2" → radius 2, centre included (19 hexes)
  *
  * The radius is measured in hexes from the centre; a two-hex (double-wide)
@@ -24,7 +27,10 @@ import { areaAround, type FootprintCombat, type FootprintUnit } from "./hex-foot
  * Damage amounts, dice, reductions, immunities and events are unchanged.
  */
 export type HexPcSpellArea = {
-  /** Hexes from the centre the blast reaches. */
+  /**
+   * Hexes from the centre the blast reaches. A fractional radius is a round
+   * blast measured centre-to-centre (areaAround): 1.75 = 13 hexes.
+   */
   readonly radius: number;
   /** Whether the centre hex(es) — the unit standing there — are hit too. */
   readonly includeCentre: boolean;
@@ -32,7 +38,7 @@ export type HexPcSpellArea = {
 
 const FIREBALL_AREA: HexPcSpellArea = { radius: 1, includeCentre: true };
 const FROST_RING_AREA: HexPcSpellArea = { radius: 1, includeCentre: false };
-const METEOR_SHOWER_AREA: HexPcSpellArea = { radius: 1, includeCentre: true };
+const METEOR_SHOWER_AREA: HexPcSpellArea = { radius: 1.75, includeCentre: true };
 const INFERNO_AREA: HexPcSpellArea = { radius: 2, includeCentre: true };
 
 /**

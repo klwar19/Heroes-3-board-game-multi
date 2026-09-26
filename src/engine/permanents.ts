@@ -10,6 +10,7 @@ import {
   rollPandoraIncomePermanentDie,
   spendResources
 } from "./adventure";
+import { mithrilCatapultAnyTargets, mithrilRoundStartBonus, mithrilWarMachineForged } from "./wog-era";
 import { isAdjacent } from "./battlefield";
 import { unitCells } from "./hex-footprint";
 import { combatRoundStartWindowOpen, combatStartWindowOpen } from "./combat-timing";
@@ -1049,10 +1050,16 @@ function activeWarMachineEntry(
     return null;
   }
 
-  const roundStart = getRoundStartDefinitionForCard(head.cardId);
-  if (!roundStart) {
+  const printed = getRoundStartDefinitionForCard(head.cardId);
+  if (!printed) {
     return null;
   }
+  // WoG era Mithril (optional module): a forged Ballista deals +1; a forged
+  // Cannon / Lightning Generator +1 in EVEN combat rounds. Folded here, the ONE
+  // read every round-start consumer uses (auto-fire, tie-break prompt,
+  // Artillery volley, Cannon shot).
+  const mithril = mithrilRoundStartBonus(state, playerId, head.cardId);
+  const roundStart = mithril > 0 ? { ...printed, amount: printed.amount + mithril } : printed;
   if (roundStart.kind === "damage-lowest-initiative") {
     return { cardId: head.cardId, roundStart: { ...roundStart, amount: astrologersBallistaDamage(state, roundStart.amount) } };
   }
@@ -1158,9 +1165,90 @@ function fortificationCells(siege: SiegeState, position: number): number[] {
 /** Catapult first targets: any unit/Wall/Gate with at least one adjacent target. */
 function splashFirstTargets(state: GameState): SplashTarget[] {
   const targets = splashTargets(state);
+  // WoG era Mithril Catapult: any two targets — only a second target must exist.
+  if (mithrilCatapultAtHead(state)) {
+    return targets.length >= 2 ? targets : [];
+  }
   return targets.filter((target) =>
     targets.some((other) => other.id !== target.id && splashCellsTouch(other.cells, target.cells))
   );
+}
+
+/** The queue head is the owner's own Mithril-forged Catapult (not a Ballistics shot). */
+function mithrilCatapultAtHead(state: GameState): boolean {
+  const head = state.combat?.warMachineRound?.pending[0];
+  return Boolean(
+    head &&
+      head.cardId === "war_machine.catapult" &&
+      !head.openingBallistics &&
+      !head.handBallistics &&
+      !head.granted &&
+      mithrilCatapultAnyTargets(state, head.playerId)
+  );
+}
+
+const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
+
+/** Own living ranged units the Mithril Ammo Cart may arm. */
+function mithrilAmmoCartCandidates(state: GameState, playerId: PlayerId): CombatUnitState[] {
+  return Object.values(state.combat?.units ?? {})
+    .filter((unit) => unit.controllerId === playerId && unit.type === "ranged" && isAlive(unit))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * The Mithril Ammo Cart battle-start pick is owed: combat round 1, the forged
+ * Ammo Cart is in play (and is the active machine under a Factory Tinkerer),
+ * the pick was not made yet this combat, and a ranged unit exists.
+ */
+function mithrilAmmoCartPickPending(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat || combat.round !== 1 || !mithrilWarMachineForged(state, playerId, AMMO_CART_CARD_ID)) {
+    return false;
+  }
+  if (!getPermanentCardIds(state, playerId).includes(AMMO_CART_CARD_ID)) {
+    return false;
+  }
+  if (tinkererActive(state, playerId) && activeWarMachineCardId(state, playerId) !== AMMO_CART_CARD_ID) {
+    return false;
+  }
+  const alreadyArmed = state.activeEffects.some(
+    (effect) =>
+      effect.controllerId === playerId &&
+      effect.name === "Mithril Ammo Cart" &&
+      effect.source.type === "card" &&
+      effect.source.cardId === AMMO_CART_CARD_ID
+  );
+  return !alreadyArmed && mithrilAmmoCartCandidates(state, playerId).length > 0;
+}
+
+/** +1 Attack on the chosen ranged unit for this combat (a unit-scoped effect). */
+function applyMithrilAmmoCart(state: GameState, playerId: PlayerId, unitId: UnitId): void {
+  const target = state.combat?.units[unitId];
+  if (!target) {
+    return;
+  }
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Mithril Ammo Cart",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "RANGED_ATTACK_BONUS", amount: 1, nonAdjacentOnly: false }]
+      },
+      { type: "card", cardId: AMMO_CART_CARD_ID, controllerId: playerId },
+      playerId,
+      { type: "unit", unitId }
+    )
+  );
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `Mithril Ammo Cart: ${target.cardName} gets +1 Attack for this combat.`
+  });
 }
 
 /**
@@ -1271,6 +1359,11 @@ export function startWarMachineRound(state: GameState): void {
     ...([1, 4] as const)
       .filter((level) => playerCanStartOverclockAtCombatStart(state, playerId, level))
       .map((level) => ({ playerId, cardId: overclockStartCardId(level), forgeOverclockStart: level })),
+    // WoG era Mithril Ammo Cart: "when the battle begins" (combat round 1) the
+    // owner picks one ranged unit for +1 Attack this combat.
+    ...(mithrilAmmoCartPickPending(state, playerId)
+      ? [{ playerId, cardId: AMMO_CART_CARD_ID, mithrilAmmoCart: true as const }]
+      : []),
     // Dark Mullich VI (Overclock) is played "at the beginning of the Combat
     // round": the holder is asked each round start (round 1 = the beginning of
     // the combat included) while it is in hand.
@@ -1991,6 +2084,27 @@ export function processWarMachineRound(state: GameState): void {
       return;
     }
 
+    if (head.mithrilAmmoCart) {
+      const candidates = mithrilAmmoCartCandidates(state, playerId);
+      if (!mithrilAmmoCartPickPending(state, playerId) || candidates.length === 0) {
+        queue.pending.shift();
+        continue;
+      }
+      if (candidates.length === 1) {
+        applyMithrilAmmoCart(state, playerId, candidates[0]!.id);
+        queue.pending.shift();
+        continue;
+      }
+      openWarMachineTargetChoice(
+        state,
+        playerId,
+        "Mithril Ammo Cart: choose one of your ranged units — it gets +1 Attack for this combat.",
+        candidates.map((unit) => unit.id),
+        1
+      );
+      return;
+    }
+
     if (head.forgeOverclockStart) {
       if (!playerCanStartOverclockAtCombatStart(state, playerId, head.forgeOverclockStart)) {
         queue.pending.shift();
@@ -2157,7 +2271,7 @@ export function processWarMachineRound(state: GameState): void {
       openWarMachineOffer(
         state,
         playerId,
-        `${name}: pay 1 building material to hit 2 adjacent targets for ${roundStart.amount} damage each?`,
+        `${name}: pay 1 building material to hit 2 ${mithrilCatapultAtHead(state) ? "targets of your choice (Mithril: they need not be adjacent)" : "adjacent targets"} for ${roundStart.amount} damage each?`,
         // The Catapult keeps its printed wording; the Balance Pack's in-play
         // Ballistics reprint drives the SAME offer and must name itself.
         entry.cardId === "war_machine.catapult" ? "Fire the Catapult" : `Fire ${name}`,
@@ -2542,6 +2656,16 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
     return;
   }
 
+  if (queue.pending[0]?.mithrilAmmoCart) {
+    if (!mithrilAmmoCartCandidates(state, playerId).some((unit) => unit.id === targetUnitId)) {
+      throw new Error("That unit cannot take the Mithril Ammo Cart bonus.");
+    }
+    applyMithrilAmmoCart(state, playerId, targetUnitId);
+    queue.pending.shift();
+    processWarMachineRound(state);
+    return;
+  }
+
   const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;
   const isSplash = roundStart?.kind === "pay-to-splash";
 
@@ -2572,7 +2696,9 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
       firstPosition === null
         ? []
         : splashTargets(state).filter(
-            (target) => target.id !== targetUnitId && splashCellsTouch(target.cells, firstCells)
+            (target) =>
+              target.id !== targetUnitId &&
+              (mithrilCatapultAtHead(state) || splashCellsTouch(target.cells, firstCells))
           );
 
     if (neighbors.length === 0) {

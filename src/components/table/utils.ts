@@ -353,6 +353,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         return `${unitName(state, event.attackerId)} — 2nd attack: ${abilityName} (Attack ${event.abilityAttack.baseAttack}) targets ${unitName(state, event.defenderId)}.`;
       }
       return `${unitName(state, event.attackerId)} ${event.isRetaliation ? "retaliates against" : "attacks"} ${unitName(state, event.defenderId)} (${event.attackKind}${event.rollMode === "normal" ? "" : `, ${event.rollMode}`}).`;
+    case "HEX_AREA_ATTACK":
+      // Hex battlefield Magog Fireball / Death Cloud area (aimed hex or unit).
+      return event.message;
     case "ATTACK_ROLLED":
       return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map(formatDieFace).join("/")} -> ${formatDieFace(event.roll)}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.${
         event.defendRoll !== undefined
@@ -417,7 +420,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends, and the trap is spent.`
         : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : event.kind === "factory_trap" ? "a Mechanical Trap" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;
     case "BATTLEFIELD_TOKEN_EXPIRED":
-      return `The ${event.kind === "force_field" ? "Force Field" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
+      return `The ${event.kind === "force_field" ? "Force Field" : event.kind === "fire_wall" ? "Fire Wall" : "spell token"} at ${getBattlefieldLabel(event.position)} fades.`;
     case "COMBAT_OBSTACLE_REMOVED":
       return `${playerName(state, event.playerId)} removes the obstacle at ${getBattlefieldLabel(event.position)}.`;
     case "UNIT_DEFENDED":
@@ -510,7 +513,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "ORDERED_TURNS_STARTED":
       return `Ordered turns begin with ${playerName(state, event.activePlayerId)}.`;
     case "PARALLEL_TURNS_STARTED":
-      return `Parallel turns: everyone plays at the same time for the first ${event.rounds} round${event.rounds === 1 ? "" : "s"} (battles and choices still resolve one at a time; a PvP clash ends the mode early).`;
+      return event.pvpKeepsParallel
+        ? `Parallel turns: everyone plays at the same time for the first ${event.rounds} round${event.rounds === 1 ? "" : "s"}. PvP battles and player interactions resolve between the players involved while the others keep playing; a player who is busy in a battle or a choice cannot be attacked or affected until they finish.`
+        : `Parallel turns: everyone plays at the same time for the first ${event.rounds} round${event.rounds === 1 ? "" : "s"} (battles and choices still resolve one at a time; a PvP clash ends the mode early).`;
     case "PARALLEL_TURN_ENDED":
       return event.waitingForPlayerIds.length > 0
         ? `${playerName(state, event.playerId)} ends their parallel turn — waiting for ${event.waitingForPlayerIds

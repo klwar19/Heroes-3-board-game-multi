@@ -403,6 +403,7 @@ export function isMapPacedComputerAction(action: GameAction): boolean {
 export function isPvpPacedComputerAction(action: GameAction): boolean {
   switch (action.type) {
     case "ATTACK_UNIT":
+    case "ATTACK_HEX":
     case "MOVE_AND_ATTACK_UNIT":
     case "MOVE_UNIT":
     case "DEFEND_UNIT":

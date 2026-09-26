@@ -12,6 +12,7 @@ import {
   scheduleAbilityCount,
   unitStatStepsFor,
   effectiveRankScheduleSide,
+  hasBankSideRankSchedule,
   type RankScheduleSide,
   type RankStep,
   type UnitRankStatBonus
@@ -182,14 +183,17 @@ export function unitRankStep(
  * its army card (side "bank").
  */
 export function combatUnitRankScheduleSide(
-  unit: Partial<Pick<CombatUnitState, "variant" | "controllerId" | "bankUnit">>
+  unit: Partial<Pick<CombatUnitState, "variant" | "controllerId" | "bankUnit" | "unitDefId">>
 ): RankScheduleSide {
+  // A Creature-Bank card with its own ranks (defender or won card) follows them.
+  if (unit.bankUnit && unit.unitDefId && hasBankSideRankSchedule(unit.unitDefId)) return "bank";
   if (unit.controllerId === NEUTRAL_PLAYER_ID) return "neutral";
   return unit.variant === "neutral" && !unit.bankUnit ? "neutral" : "faction";
 }
 
 /** Which veteran track a player's ARMY card follows (its printed Neutral side → Neutral track). */
-export function armyCardRankScheduleSide(armyUnit: Pick<ArmyUnitState, "side">): RankScheduleSide {
+export function armyCardRankScheduleSide(armyUnit: Pick<ArmyUnitState, "side"> & Partial<Pick<ArmyUnitState, "unitDefId">>): RankScheduleSide {
+  if (armyUnit.side === "bank" && armyUnit.unitDefId && hasBankSideRankSchedule(armyUnit.unitDefId)) return "bank";
   return armyUnit.side === "neutral" ? "neutral" : "faction";
 }
 

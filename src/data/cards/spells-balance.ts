@@ -241,12 +241,44 @@ export const polishBalanceSpellCards: CardLibrary = {
   }),
 
   // Fire Wall — same damage, reachable at Power 0 / 1 / 2 (was 0 / 2 / 4).
+  // 2026-09-26 face: the wall now lasts 2 Combat rounds (this and the next,
+  // was the whole Combat) and the caster may drop a SECOND token on an empty
+  // space adjacent to the first ("up to 2 … on 2 adjacent empty spaces"). The
+  // bite stays stop / pass-through only — no start-of-activation burn (that is
+  // Luna's specialty and the Community reprint, not this face).
   "spell.fire_wall": reprint("spell.fire_wall", {
     tags: tags(
       "spell.fire_wall",
-      "Ongoing: for this Combat, place this card on an empty space; any unit stopping there and any ground or ranged unit passing through takes: Power 0: 1 damage; Power 1: 2 damage; Power 2: 3 damage.",
+      "Ongoing: for 2 Combat rounds, place up to 2 Fire Wall tokens on 2 adjacent empty spaces; any unit stopping there and any ground or ranged unit passing through takes: Power 0: 1 damage; Power 1: 2 damage; Power 2: 3 damage.",
     ),
-    effect: { type: "PLACE_FIRE_WALL", damageByPower: { 0: 1, 1: 2, 2: 3 } },
+    effect: {
+      type: "PLACE_FIRE_WALL",
+      damageByPower: { 0: 1, 1: 2, 2: 3 },
+      durationRounds: 2,
+      pairAdjacent: true,
+    },
+  }),
+
+  // Force Field — 2026-09-26 face: "Place up to 2 Force Field tokens on 2
+  // adjacent empty spaces. It counts as an Obstacle until the end of *
+  // Combat rounds: 0: 1; 1: 2; 2: 3." The casting round counts as the first,
+  // so Power 0 lifts at this round's end (as printed), Power 1 at the next
+  // round's end (as printed) and Power 2 at the end of the round after that
+  // (printed: the whole Combat). Both tokens share the span.
+  "spell.force_field": reprint("spell.force_field", {
+    tags: tags(
+      "spell.force_field",
+      "Ongoing: place up to 2 Force Field tokens on 2 adjacent empty spaces. They count as Obstacles until the end of: Power 0: 1 Combat round (this one); Power 1: 2 Combat rounds; Power 2: 3 Combat rounds.",
+    ),
+    effect: {
+      type: "PLACE_FORCE_FIELD",
+      durationByPower: {
+        0: { type: "combat-rounds", rounds: 1 },
+        1: { type: "combat-rounds", rounds: 2 },
+        2: { type: "combat-rounds", rounds: 3 },
+      },
+      pairAdjacent: true,
+    },
   }),
 
   // Forgetfulness — no tier gate at all (any ranged unit), and the ladder is

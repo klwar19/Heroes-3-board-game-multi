@@ -1,5 +1,10 @@
 import { appendEvent } from "./events";
-import { hasParkedParallelInteractions } from "./parallel-combats";
+import {
+  hasParkedParallelInteractions,
+  parallelEngagementMessage,
+  parallelEngagementOwner,
+  parallelPvpKeeps
+} from "./parallel-combats";
 import { combatUnitDecisionOwnerId, neutralCombatControllerId } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { GameState, PlayerId } from "./state";
@@ -23,6 +28,11 @@ import type { GameState, PlayerId } from "./state";
  * or the chosen period ends. Play
  * then continues in the normal one-at-a-time rotation, starting with the player
  * whose action stopped the mode.
+ *
+ * With the parallel PvP "keep" option (`turn.pvpKeepsParallel`) the mode does
+ * NOT stop for PvP: the battle / interaction resolves between the players it
+ * involves while everyone else keeps playing (see `resolveParallelPvp`), and
+ * only the period running out ends it.
  */
 
 /** Upper bound for the parallel-turn period pickable in the lobby. */
@@ -167,6 +177,29 @@ export function parallelInteractionBlocker(state: GameState, playerId: PlayerId)
 
   if (state.stack.length > 0) {
     return "table";
+  }
+
+  // Parallel PvP "keep": a PvP battle's aftermath can leave BOTH players with
+  // a window in the same context (the loser's retreat choice or First Aid next
+  // to the winner's Necromancy / field visit). "First slot that is not mine"
+  // would then name each of them as the other's blocker — a mutual freeze.
+  // Instead the TOPMOST open window decides, in the order getLegalActions
+  // serves them (choice, reaction, tile rotation, visit, Companion, First Aid,
+  // Necromancy, far-tile flip, garrison): its owner acts, everyone else waits.
+  if (parallelPvpKeeps(state)) {
+    const adventure = state.adventure;
+    const top =
+      state.pendingChoice?.playerId ??
+      state.reactionWindow?.priorityPlayerId ??
+      adventure?.pendingTileChoice?.playerId ??
+      adventure?.pendingVisit?.playerId ??
+      adventure?.pendingCompanionRecruitment?.playerId ??
+      adventure?.pendingCommanderFirstAid?.playerId ??
+      adventure?.pendingNecromancy?.playerId ??
+      adventure?.pendingFarTileFlip?.playerId ??
+      adventure?.pendingGarrison?.defenderPlayerId ??
+      null;
+    return top === null || top === playerId ? null : top;
   }
 
   const choice = state.pendingChoice;
@@ -417,15 +450,59 @@ export function stopParallelTurns(
   });
 }
 
+/**
+ * THE parallel-mode PvP gate, called where a PvP battle opens (hero attack,
+ * holding assault / garrison prompt) or a flag is taken from another live
+ * player. Classic option: stops parallel turns (see `stopParallelTurns`).
+ * "Keep" option: parallel turns continue; the action is refused — rolled back
+ * whole — only while `targetId` is ENGAGED elsewhere (in a battle, commanding
+ * neutrals, or answering a choice / event window), so nobody is ever attacked
+ * or robbed in the middle of another interaction. The live context the action
+ * runs in is not counted: its participants belong to this very interaction.
+ */
+export function resolveParallelPvp(
+  state: GameState,
+  reason: "pvp-battle" | "pvp-interaction",
+  byPlayerId: PlayerId,
+  targetId: PlayerId,
+  detail?: string
+): void {
+  if (!parallelTurnsActive(state)) {
+    return;
+  }
+  if (!parallelPvpKeeps(state)) {
+    stopParallelTurns(state, reason, byPlayerId, detail);
+    return;
+  }
+  const engagement = parallelEngagementOwner(state, targetId, state.parallelCombatOwnerId);
+  if (engagement) {
+    throw new Error(parallelEngagementMessage(state, targetId, engagement));
+  }
+}
+
 /** Transactional safety net for player-affecting cards, buildings and scripts.
  * Shared supplies remain shared; changes to another seat's personal game state
  * require ordered play. Round-start events deliberately resolve for the table.
  */
 export function parallelPlayerImpact(before: GameState, after: GameState, actor: PlayerId): PlayerId | null {
+  return parallelPlayerImpacts(before, after, actor, true)[0] ?? null;
+}
+
+/**
+ * Every seat `parallelPlayerImpact` would flag (it reports only the first).
+ * The parallel PvP "keep" option must check EACH affected seat is free.
+ */
+export function parallelPlayerImpacts(
+  before: GameState,
+  after: GameState,
+  actor: PlayerId,
+  firstOnly = false
+): PlayerId[] {
+  const affected: PlayerId[] = [];
   if (!parallelTurnsActive(before) || !parallelTurnsActive(after) ||
     (!before.parallelCombatOwnerId && !before.combat) ||
     before.phase === "setup" || before.round !== after.round ||
-    isRoundStartEventBarrierActive(before) || isRoundStartEventBarrierActive(after)) return null;
+    isRoundStartEventBarrierActive(before) || isRoundStartEventBarrierActive(after)) return affected;
   const participants = new Set([
     actor,
     before.parallelCombatOwnerId,
@@ -441,14 +518,51 @@ export function parallelPlayerImpact(before: GameState, after: GameState, actor:
       Object.values(state.towns).filter(town => town.controllerId === id),
       state.activeEffects.filter(effect => effect.controllerId === id),
     ];
-    if (JSON.stringify(owned(before)) !== JSON.stringify(owned(after))) return id;
     const controller = after.combat ? neutralCombatControllerId(after, after.combat) : null;
-    if (id !== controller && (after.pendingChoice?.playerId === id || after.reactionWindow?.priorityPlayerId === id ||
-      after.adventure?.pendingVisit?.playerId === id)) return id;
     const sharedEffects = (state: GameState) => state.activeEffects.filter(effect =>
       effect.scope === "global" && (effect.duration.type === "current-turn" ||
         effect.duration.type === "current-game-round" || effect.duration.type === "permanent"));
-    if (JSON.stringify(sharedEffects(before)) !== JSON.stringify(sharedEffects(after))) return id;
+    if (
+      JSON.stringify(owned(before)) !== JSON.stringify(owned(after)) ||
+      (id !== controller && (after.pendingChoice?.playerId === id || after.reactionWindow?.priorityPlayerId === id ||
+        after.adventure?.pendingVisit?.playerId === id)) ||
+      JSON.stringify(sharedEffects(before)) !== JSON.stringify(sharedEffects(after))
+    ) {
+      affected.push(id);
+      if (firstOnly) return affected;
+    }
+  }
+  return affected;
+}
+
+/**
+ * Parallel PvP "keep": vet a player-affecting action (flagged by
+ * `parallelPlayerImpacts`) instead of stopping the mode. Returns
+ *  - null when every affected seat is free — the action stands and parallel
+ *    turns continue;
+ *  - "stop" when the action opened a decision for an affected seat INSIDE a
+ *    battle (a neutral fight's context cannot host a third seat's window), the
+ *    rare case that still falls back to the classic stop;
+ *  - otherwise the refusal message (an affected seat is engaged elsewhere).
+ * `before` is the actor's pre-action frame; its live context is the actor's
+ * own interaction and is not counted.
+ */
+export function parallelPvpImpactVerdict(
+  before: GameState,
+  after: GameState,
+  affected: PlayerId[]
+): null | "stop" | string {
+  for (const id of affected) {
+    const engagement = parallelEngagementOwner(before, id, before.parallelCombatOwnerId);
+    if (engagement) {
+      return parallelEngagementMessage(before, id, engagement);
+    }
+  }
+  const combat = after.combat;
+  if (combat && affected.some((id) =>
+    combat.attackerPlayerId !== id && combat.defenderPlayerId !== id &&
+    (after.pendingChoice?.playerId === id || after.reactionWindow?.priorityPlayerId === id))) {
+    return "stop";
   }
   return null;
 }

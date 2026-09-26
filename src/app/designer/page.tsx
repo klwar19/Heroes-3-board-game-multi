@@ -60,7 +60,7 @@ export default function MapDesignerPage() {
   // are placed straight from the board's own Objects palette — no pick flow.)
   const [pickRequest, setPickRequest] = useState<{
     kind: "object-plan";
-    objectKind: "obelisk" | "mine" | "settlement" | "center";
+    objectKind: "obelisk" | "mine" | "settlement" | "center" | "temple_of_the_sea";
     target?: { row: number; col: number };
   } | null>(null);
   const [name, setName] = useState("My map");

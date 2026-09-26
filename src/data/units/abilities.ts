@@ -48,7 +48,7 @@ export type UnitAbilityEffectDefinition =
   | { type: "NEUTRAL_TOWN_VETERANCY"; mechanic: NeutralTownVeterancyMechanic }
   | { type: "TOWN_VETERANCY"; mechanic: TownVeterancyMechanic }
   | { type: "ATTACK_BONUS_PER_DAMAGE_SUFFERED"; damagePerBonus: number; maxBonus: number }
-  | { type: "FACTION_VETERANCY"; mechanic: "mark" | "revenge" | "hide" | "cleave" | "medusa-mend" | "execution" | "full-rebirth" | "flip-haste" | "flip-health" | "eye-immunity" | "skeleton-rebirth" | "escape" | "spell-heal" | "intercept" | "defend-heal" | "cloud-pierce" | "ally-heal" | "tribute" | "first-ward" | "dread" }
+  | { type: "FACTION_VETERANCY"; mechanic: "mark" | "revenge" | "hide" | "cleave" | "medusa-mend" | "execution" | "full-rebirth" | "flip-haste" | "flip-health" | "eye-immunity" | "skeleton-rebirth" | "rebirth-guard" | "escape" | "spell-heal" | "intercept" | "defend-heal" | "cloud-pierce" | "ally-heal" | "tribute" | "first-ward" | "dread" }
   | { type: "ELEMENTAL_VETERANCY"; mechanic: ElementalVeterancyMechanic }
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
@@ -1211,6 +1211,15 @@ export type UnitAbilityEffectDefinition =
        */
       type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE";
       amount: number;
+    }
+  | {
+      /** Reduces Specialty damage without also reducing Spell damage. */
+      type: "REDUCE_SPECIALTY_DAMAGE";
+      amount: number;
+    }
+  | {
+      /** Ignores negative ongoing effects while retaining positive effects. */
+      type: "IGNORE_NEGATIVE_ONGOING_EFFECTS";
     }
   | {
       /**
@@ -3233,6 +3242,22 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     requiresLayersAtMost: 1,
     implementationStatus: "implemented"
   },
+  // WoG era moving Raid Boss (Morvane the Lich Sovereign) — data-only entries
+  // on engine-wired effect types (the Faerie Bolt / Pain Elemental seams).
+  "wog-boss-death-bolt": {
+    id: "wog-boss-death-bolt",
+    name: "Death Bolt",
+    text: "[activation] An enemy unit suffers 2 damage — a spell (the boss aims it like a normal attack). Then it acts normally.",
+    effect: { type: "ON_ACTIVATION_DAMAGE_SPELL", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "wog-boss-raise-zombies": {
+    id: "wog-boss-raise-zombies",
+    name: "Raise Zombies",
+    text: "[unit_attack] After an attack, raise a neutral Zombies unit onto a random empty battlefield space; it fights for the boss in this combat only.",
+    effect: { type: "SUMMON_UNIT_ON_ATTACK", unitDefId: "neutral.zombies" },
+    implementationStatus: "implemented"
+  },
   // The four `boss-spell-*` caster rotations that lived here were REMOVED
   // 2026-08-21 with the BOSS_SPELL_ROTATION mechanic (user rejection). The five
   // bosses that carried them now use ordinary implemented arms.
@@ -3646,6 +3671,20 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Spell Resistance",
     text: "[unit_passive] Reduce any damage from spells by 3 (to a minimum of 0).",
     effect: { type: "REDUCE_SPELL_DAMAGE", amount: 3 },
+    implementationStatus: "implemented"
+  },
+  "commander-reduce-specialty-damage-1": {
+    id: "commander-reduce-specialty-damage-1",
+    name: "Specialty Resistance",
+    text: "[unit_passive] Reduce damage from Specialty cards by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPECIALTY_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "commander-ignore-negative-ongoing": {
+    id: "commander-ignore-negative-ongoing",
+    name: "Negative Effect Immunity",
+    text: "[unit_passive] Ignore negative ongoing effects; positive ongoing effects still apply.",
+    effect: { type: "IGNORE_NEGATIVE_ONGOING_EFFECTS" },
     implementationStatus: "implemented"
   },
   "reduce-spell-and-specialty-damage-1": {
@@ -4358,6 +4397,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-harpy-vitality": { id: "veteran-harpy-vitality", name: "Second Wind", text: "Gain 4 maximum HP when changing from Pack to Few, for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "flip-health" }, implementationStatus: "implemented" },
   "veteran-eye-immunity": { id: "veteran-eye-immunity", name: "Unclouded Eye", text: "Ignores all ranged combat penalties and is immune to enemy ongoing effects. Friendly ongoing buffs still apply.", effect: { type: "FACTION_VETERANCY", mechanic: "eye-immunity" }, implementationStatus: "implemented" },
   "veteran-skeleton-rebirth": { id: "veteran-skeleton-rebirth", name: "Deathless Fury", text: "Once per Combat when an attack would defeat this unit, survive at 1 Health and gain +1 Attack for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "skeleton-rebirth" }, implementationStatus: "implemented" },
+  // Crypt (Creature Bank) Skeletons' R4 (user 2026-09-26): the bank card already
+  // prints Rebirth, so its veteran reward rides on it instead of repeating it.
+  "veteran-rebirth-guard": { id: "veteran-rebirth-guard", name: "Reborn Guard", text: "[unit_passive] After this unit's Rebirth saves it, it gains +1 Defense for the rest of this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "rebirth-guard" }, implementationStatus: "implemented" },
   "veteran-wraith-escape": { id: "veteran-wraith-escape", name: "Spectral Escape", text: "Once per Combat when an attack would defeat this unit, survive at 1 Health and choose an empty space to teleport to.", effect: { type: "FACTION_VETERANCY", mechanic: "escape" }, implementationStatus: "implemented" },
   "veteran-wraith-magic": { id: "veteran-wraith-magic", name: "Feed on Magic", text: "Whenever an enemy casts a Spell, heal 1 HP.", effect: { type: "FACTION_VETERANCY", mechanic: "spell-heal" }, implementationStatus: "implemented" },
   "veteran-zombie-intercept": { id: "veteran-zombie-intercept", name: "Carrion Guardian", text: "Once per combat round, when an adjacent ally is attacked, transfer half the damage (rounded up) to this unit.", effect: { type: "FACTION_VETERANCY", mechanic: "intercept" }, implementationStatus: "implemented" },
@@ -4764,7 +4806,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-soul_eater": {
     id: "commander-cast-soul_eater",
     name: "Animate Dead",
-    text: "[activation] Once per combat round: Power 0 removes 1 damage; Power 1 removes 2 damage (3 uses per combat); Power 2 removes 3 damage on the first use, then 2 damage (4 uses per combat). Does not end the activation.",
+    text: "[activation] Once per combat round: Power 0 removes 1 damage; Power 1 removes 2 damage (3 casts per combat); Power 2 removes 3 damage on the first cast, then 2 damage (4 casts per combat). Target a friendly graded unit, or heal Soul Eater itself once per combat. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

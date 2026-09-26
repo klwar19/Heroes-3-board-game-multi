@@ -4,8 +4,11 @@ import atlases from "./creature-sprite-atlases.json";
  * Hex Battlefield creature sprites (the PC-style board). Each atlas is built from
  * a Heroes 3 creature .def by `scripts/build-creature-sprites.mjs`: one row per
  * H3 animation group, every frame cropped to the same box so the foot anchor
- * (anchorX, anchorY) is constant. H3 creatures face RIGHT; the board mirrors a
- * sprite to face left.
+ * (anchorX, anchorY) is constant. For a .def creature the anchor is the point
+ * the PC stands on its hex (canvas 196,266 — 15 px below the hex centre — or
+ * the middle of a two-hex creature's hexes), so flyers keep their PC hover; a
+ * sheet-built sprite anchors on its measured feet. H3 creatures face RIGHT; the
+ * board mirrors a sprite to face left.
  *
  * A unit with no sprite here is drawn as a token of its card art on the hex
  * board — it still walks the same routes, lunges and recoils on the same beats.
@@ -24,6 +27,12 @@ export type CreatureSpriteAtlas = {
    * Without it a group is one sheet row (`row`), frame k in column k.
    */
   groups: Record<string, { row: number; frames: number; start?: number }>;
+  /**
+   * The standing row idles back and forth (0..n-1..1) instead of looping —
+   * sheet-built sprites (scripts/refit-sheet-sprites.mjs), whose generated idle
+   * row does not lead from its last frame back into its first as H3's do.
+   */
+  idlePingPong?: boolean;
 };
 
 /** Pixel offset of frame `index` of a group inside its atlas sheet (either layout). */
@@ -162,15 +171,39 @@ const CARD_SPRITES: Readonly<Record<string, readonly [few: string, pack: string 
   "bulwark.shamans": ["shaman", "great-shaman"],
   "bulwark.mammoths": ["mammoth", "war-mammoth"],
   "bulwark.jotunns": ["jotunn", "jotunn-warlord"],
-  // Forge: Codex-drawn sprite sheets (scripts/import-sprite-sheet.mjs). A side
-  // whose atlas is missing (or null) stands as its card token.
+  // Forge (no PC original): Codex repaints of real H3/HotA animations
+  // (scripts/pose-sprite-manifest.json); the Tanks are an older Codex sheet
+  // (scripts/import-sprite-sheet.mjs). A side whose atlas is missing (or null)
+  // stands as its card token.
   "forge.grunts": ["forge-grunt", "forge-grunt-pack"],
   "forge.cyber_zombies": ["forge-cyber-zombie", "forge-cyber-zombie-pack"],
   "forge.watchers": ["forge-watcher", "forge-watcher-pack"],
   "forge.bruisers": ["forge-bruiser", "forge-bruiser-pack"],
   "forge.jump_troopers": ["forge-jump-trooper", "forge-jump-trooper-pack"],
   "forge.tanks": ["forge-tank", "forge-tank-pack"],
-  "forge.cyberbrutes": ["forge-cyberbrute", "forge-cyberbrute-pack"]
+  "forge.cyberbrutes": ["forge-cyberbrute", "forge-cyberbrute-pack"],
+  // Blue Archive (Kivotos): each student drawn from her official art over a real
+  // H3/HotA animation (scripts/pose-sprite-manifest.json); one figure for both
+  // card sides.
+  "blue_archive.mika": ["ba-mika", "ba-mika"],
+  "blue_archive.seia": ["ba-seia", "ba-seia"],
+  "blue_archive.nagisa": ["ba-nagisa", "ba-nagisa"],
+  "blue_archive.aris": ["ba-aris", "ba-aris"],
+  "blue_archive.kei": ["ba-kei", "ba-kei"],
+  "blue_archive.hoshino": ["ba-hoshino", "ba-hoshino"],
+  "blue_archive.shiroko": ["ba-shiroko", "ba-shiroko"],
+  "blue_archive.hina": ["ba-hina", "ba-hina"],
+  "blue_archive.yuuka": ["ba-yuuka", "ba-yuuka"],
+  "blue_archive.aru": ["ba-aru", "ba-aru"],
+  "blue_archive.neru": ["ba-neru", "ba-neru"],
+  "blue_archive.toki": ["ba-toki", "ba-toki"],
+  "blue_archive.azusa": ["ba-azusa", "ba-azusa"],
+  "blue_archive.wakamo": ["ba-wakamo", "ba-wakamo"],
+  "blue_archive.saori": ["ba-saori", "ba-saori"],
+  "blue_archive.iori": ["ba-iori", "ba-iori"],
+  "blue_archive.mutsuki": ["ba-mutsuki", "ba-mutsuki"],
+  "blue_archive.miyo": ["ba-miyo", "ba-miyo"],
+  "blue_archive.hasumi": ["ba-hasumi", "ba-hasumi"]
 };
 
 /**
@@ -220,7 +253,7 @@ const WOG_SPRITES: Readonly<Record<string, string>> = {
   "wog.dracolich": "wog-dracolich"
 };
 
-/** WoG town Commanders (and the Forge's Mech Princess), by commander slug. */
+/** WoG town Commanders (and the Forge's Mech Princess, Blue Archive's Ibuki), by commander slug. */
 const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   paladin: "commander-paladin",
   hierophant: "commander-hierophant",
@@ -231,8 +264,11 @@ const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   ogre_leader: "commander-ogre-leader",
   shaman: "commander-shaman",
   astral_spirit: "commander-astral-spirit",
-  // Mech Princess: a Codex sheet drawn from her card art (scripts/refit-sheet-sprites.mjs).
-  forge: "commander-forge"
+  // Mech Princess: Codex repaint of the Sorceress's H3 animation as her card art
+  // (scripts/pose-sprite-manifest.json).
+  forge: "commander-forge",
+  // Ibuki (Blue Archive): her official art over the Sorceress's animation.
+  ibuki: "ba-ibuki"
 };
 
 const ATLASES = atlases as Record<string, Omit<CreatureSpriteAtlas, "slug">>;
@@ -352,8 +388,18 @@ export const HEX_ACTION_FRAME_MS = 70;
 export const HEX_HIT_FRAME_MS = 60;
 /** Death frames (the fall, then the corpse holds its last frame). */
 export const HEX_DEATH_FRAME_MS = 80;
-/** Idle (standing) flourish frames. */
-export const HEX_IDLE_FRAME_MS = 110;
+/**
+ * Idle frames: the standing loop (H3 HOLDING) and the mouse-over row both play
+ * at the PC's 10 frames a second (VCMI: HOLDING speed = creature idle time 10,
+ * MOUSEON = the 10 fps base speed).
+ */
+export const HEX_IDLE_FRAME_MS = 100;
+/**
+ * Chance that an idle creature fidgets (plays its mouse-over row once) after a
+ * standing loop — VCMI rolls nextDouble(99) < timeBetweenFidgets·10, and H3 /
+ * HotA creatures carry timeBetweenFidgets 1.
+ */
+export const HEX_IDLE_FIDGET_CHANCE = 0.1;
 
 /** The start-moving + stop-moving frames a (non-teleporting) move plays. */
 export function spriteMoveEdgeFrames(atlas: CreatureSpriteAtlas | null): number {

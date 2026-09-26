@@ -45,6 +45,7 @@ import {
   TIMED_EFFECT_KINDS,
   VICTORY_POINT_OBJECTIVE_OPTIONS,
   MAX_HEX_EVENTS,
+  SUGGESTED_TEMPLE_OF_THE_SEA_AWARD,
   type CustomGuardSpec,
   type CustomMapObeliskBonus,
   type CustomMapObeliskConfig,
@@ -85,7 +86,7 @@ const MAP_DESIGN_ART = {
   objects: "/map-designer/category-objects.webp"
 } as const;
 
-type MapObjectPanel = "breaks" | "center" | "obelisk" | "mine" | "random-town" | "settlement";
+type MapObjectPanel = "breaks" | "center" | "obelisk" | "mine" | "random-town" | "settlement" | "temple-of-the-sea";
 
 /** The Global | Specific kind each object panel's mode tabs drive ("breaks" has none). */
 const MAP_OBJECT_PANEL_KIND: Record<Exclude<MapObjectPanel, "breaks">, SpecificPickKind> = {
@@ -93,7 +94,8 @@ const MAP_OBJECT_PANEL_KIND: Record<Exclude<MapObjectPanel, "breaks">, SpecificP
   obelisk: "obelisk",
   mine: "mine",
   "random-town": "center",
-  settlement: "settlement"
+  settlement: "settlement",
+  "temple-of-the-sea": "temple_of_the_sea"
 };
 
 const MAP_OBJECT_CARDS: { id: MapObjectPanel; title: string; description: string; images: string[]; glyph?: string }[] = [
@@ -102,6 +104,7 @@ const MAP_OBJECT_CARDS: { id: MapObjectPanel; title: string; description: string
   { id: "mine", title: "Mines", description: "Guards, breaks and rewards", images: ["mine-gold.webp", "mine-materials.webp", "mine-valuable.webp"] },
   { id: "random-town", title: "Random Town", description: "Army, capture and income", images: ["vii-random-town.webp"] },
   { id: "settlement", title: "Settlements", description: "Guard, reward and control VP", images: ["settlement.webp"] },
+  { id: "temple-of-the-sea", title: "Temple of the Sea", description: "Guard, award and VP", images: ["vii-temple-of-seas.webp"] },
   { id: "breaks", title: "Break rules", description: "Entry gates and team scope", images: ["/map-designer/icon-break.webp"] }
 ];
 
@@ -224,7 +227,7 @@ function SpecificModePanel({
         </ul>
       ) : (
         <small className="mapPresetHint">
-          No tile carries a specific {kind === "center" ? "center-objective" : kind} setting yet.
+          No tile carries a specific {kind === "center" ? "center-objective" : kind === "temple_of_the_sea" ? "Temple of the Sea" : kind} setting yet.
         </small>
       )}
       {eligible ? (
@@ -257,6 +260,11 @@ function mineConfigHasValue(config: NonNullable<CustomMapPreset["mines"]>): bool
     config.guard || config.reward || config.vp || config.combatRoundLimit || config.breakField ||
       config.persistentGuard || config.unlimitedRounds || config.noExperience
   );
+}
+
+/** Whether a map-wide Temple of the Sea config still carries any setting. */
+function templeConfigHasValue(config: NonNullable<CustomMapPreset["templesOfTheSea"]>): boolean {
+  return Boolean(config.guard || config.reward || config.vp);
 }
 
 /** The Global | Specific mode chips one object section shows at its top. */
@@ -724,7 +732,10 @@ export function MapPresetEditor({
   const setHiddenGrailUtopia = (enabled: boolean) => {
     const next = { ...objectives };
     if (enabled) next.hiddenGrailUtopia = true;
-    else delete next.hiddenGrailUtopia;
+    else {
+      delete next.hiddenGrailUtopia;
+      delete next.hiddenGrailDigCost;
+    }
     patch({
       objectives: Object.keys(next).length > 0 ? next : undefined,
       ...(enabled &&
@@ -956,13 +967,14 @@ export function MapPresetEditor({
       (value.obelisks ? 1 : 0) +
       (value.settlements ? 1 : 0) +
       (value.mines ? 1 : 0) +
+      (value.templesOfTheSea ? 1 : 0) +
       (value.randomTowns ? 1 : 0) +
       (value.hexEvents?.length ?? 0) +
       // SPECIFIC per-tile settings count toward the group badge too.
       (tiles ?? []).reduce(
         (total, plan) =>
           total +
-          (["obelisk", "mine", "settlement", "center"] as const).filter(
+          (["obelisk", "mine", "settlement", "center", "temple_of_the_sea"] as const).filter(
             (kind) => describeTileSpecificPlan(plan, kind).length > 0
           ).length,
         0
@@ -1663,7 +1675,7 @@ export function MapPresetEditor({
           On each face-down Center (Ⅶ) tile, select both Grail and Dragon Utopia and leave “Player picks” off.
           The game balances the hidden results: 4 fields = 2 + 2; 3 fields = a random 2 + 1 split.
           Both fields use the mode army below (default: one Black Dragon and two random Azure units), with unlimited combat rounds.
-          Dig costs 1 MP and gives 20 gold plus the 3-VP Grail token.
+          Dig costs 1 MP by default (0 or 2 in the Grail objective panel) and gives 20 gold plus the 3-VP Grail token.
           Dragon Utopia rewards 20 gold, Morale or an Ability token, plus two Search(3)
           rewards from the Artifact deck (two Artifacts). The Utopia Creature Bank (Ⅳ–Ⅴ) pays its own richer
           reward instead: 40 gold, Search(3), then Search(5) twice.
@@ -1947,8 +1959,8 @@ export function MapPresetEditor({
       ) : null}
 
       {/* Under the hidden Grail/Utopia package the engine FIXES most Grail knobs,
-          so the full editor above would be misleading. Surface only the two it
-          still honours (Obelisks needed; dig-site-as-Utopia Off/Always) and spell
+          so the full editor above would be misleading. Surface only the knobs it
+          still honours (Obelisks needed; dig-site-as-Utopia; its own dig cost) and spell
           out the forced values, instead of silently hiding everything. */}
       {objectives.hiddenGrailUtopia ? (
         <section className="mapPresetSection victoryPanel" data-active={activeVictoryPanel === "grail"} aria-label="Objectives">
@@ -2020,8 +2032,39 @@ export function MapPresetEditor({
               </button>
             </div>
           </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Hidden Grail dig movement cost">
+            <span className="mapPresetObjectiveLabel">Dig cost (MP)</span>
+            <div className="mapPresetChipRow">
+              {([0, 1, 2] as const).map((cost) => {
+                const active = (objectives.hiddenGrailDigCost ?? 1) === cost;
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`mapPresetChip${active ? " active" : ""}`}
+                    key={cost}
+                    onClick={() => {
+                      const next = { ...objectives };
+                      // 1 is the package default: store nothing so older
+                      // clients and saves read the same map.
+                      if (cost === 1) delete next.hiddenGrailDigCost;
+                      else next.hiddenGrailDigCost = cost;
+                      patchObjectives(next);
+                    }}
+                    title={cost === 0
+                      ? "Free dig: the hero can dig right after the guard fight even with no movement left."
+                      : cost === 1
+                        ? "Default: digging costs 1 movement point."
+                        : "Digging costs 2 movement points."}
+                    type="button"
+                  >
+                    {cost === 0 ? "Free (0)" : cost === 1 ? "1 (default)" : "2"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <small className="mapPresetHint">
-            Hidden rules fix the rest: dig costs 1 MP and grants 20 gold plus the 3-VP Grail token; the Grail builds at
+            Hidden rules fix the rest: the dig grants 20 gold plus the 3-VP Grail token; the Grail builds at
             both a Town and a Settlement with a free building. Turn the hidden package off to tune those knobs
             individually.
           </small>
@@ -2891,6 +2934,72 @@ export function MapPresetEditor({
                 ? next
                 : undefined
             });
+          }}
+        />
+        </div>
+      </section>
+
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "temple-of-the-sea"} aria-label="Temple of the Sea">
+        <div className="mapPresetSectionLabel">🌊 Temple of the Sea</div>
+        {modeTabs("temple_of_the_sea")}
+        {objectMode("temple_of_the_sea") === "specific"
+          ? specificPanel("temple_of_the_sea", "No sea tile is placed yet — a Temple of the Sea can only appear on a sea tile.")
+          : null}
+        <div className="mapObjectConfigStack" hidden={objectMode("temple_of_the_sea") !== "global"}>
+        <small className="mapPresetHint">
+          Applies to every Temple of the Sea on the map. A custom award REPLACES the printed 10 gold and two
+          Artifact Search (2). A sea tile's own Temple settings (📍 Specific) override these value by value;
+          anything left unset there uses these, then the printed rules.
+        </small>
+        <ObjectConfigHeading kind="encounter">Encounter</ObjectConfigHeading>
+        <div className="mapPresetObjectiveRow" role="group" aria-label="Temple of the Sea guard">
+          <span className="mapPresetObjectiveLabel mapPresetGuardLabel">Guard</span>
+          <GuardSpecEditor
+            compact
+            guard={value.templesOfTheSea?.guard}
+            noneLabel="Printed"
+            onChange={(guard) => {
+              const next = { ...(value.templesOfTheSea ?? {}) };
+              if (guard) next.guard = guard;
+              else delete next.guard;
+              patch({ templesOfTheSea: templeConfigHasValue(next) ? next : undefined });
+            }}
+          />
+        </div>
+        <RewardSectionTitle>Award</RewardSectionTitle>
+        <div className="mapPresetChipRow">
+          <button
+            className="mapPresetChip"
+            onClick={() => {
+              const next = { ...(value.templesOfTheSea ?? {}) };
+              next.reward = { ...SUGGESTED_TEMPLE_OF_THE_SEA_AWARD.reward };
+              next.vp = SUGGESTED_TEMPLE_OF_THE_SEA_AWARD.vp;
+              patch({ templesOfTheSea: next });
+            }}
+            title="Fill the award with the suggestion: Morale / Ability Empower token, 20 gold, Search (5) Artifacts, two Search (5) Spells and 3 VP. Every value stays editable below."
+            type="button"
+          >
+            Use suggested award
+          </button>
+        </div>
+        <small className="mapPresetHint">
+          Suggested: Morale or Ability Empower token, 20 gold, 3 VP, Search (5) Artifacts, 2 × Search (5) Spells.
+        </small>
+        <FieldRewardEditor
+          ariaLabel="Global Temple of the Sea award"
+          reward={value.templesOfTheSea?.reward}
+          onChange={(reward) => {
+            const next = { ...(value.templesOfTheSea ?? {}) };
+            if (reward) next.reward = reward;
+            else delete next.reward;
+            patch({ templesOfTheSea: templeConfigHasValue(next) ? next : undefined });
+          }}
+          vp={value.templesOfTheSea?.vp}
+          onVpChange={(vp) => {
+            const next = { ...(value.templesOfTheSea ?? {}) };
+            if (vp) next.vp = vp;
+            else delete next.vp;
+            patch({ templesOfTheSea: templeConfigHasValue(next) ? next : undefined });
           }}
         />
         </div>

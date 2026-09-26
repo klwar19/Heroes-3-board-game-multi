@@ -332,7 +332,19 @@ describe("Necropolis hard guard battles", () => {
     expect(result.state.players.p2.army.some((u) => u.id === "army_p2_3")).toBe(
       true,
     );
-    if (!["weak-control", "single-gorgon", "single-treant"].includes(name)) {
+    if (name === "gorgons") {
+      // USER RULING 2026-09-26: two armored guards are no longer an automatic
+      // retreat — the forecast clears the armored bar here, so the army TRIES
+      // (Arrow on the armored guards) and may only cut its losses at a window.
+      // It must never be wiped out.
+      expect(
+        result.trail.some((t: any) =>
+          ["ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT"].includes(t.action.type),
+        ),
+      ).toBe(true);
+      const outcome = (result.battles[0] as any).outcome;
+      expect(outcome.winnerPlayerId === "p2" || outcome.reason === "retreat").toBe(true);
+    } else if (!["weak-control", "single-gorgon", "single-treant"].includes(name)) {
       const retreat = result.trail.find(
         (t: any) => t.action.type === "RETREAT_FROM_COMBAT",
       ) as any;

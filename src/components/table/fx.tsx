@@ -81,6 +81,8 @@ export type FxCue =
       toPosition?: number;
       /** Hex battlefield: the timeline slot the walk must fill (the figure paces itself to it). */
       durationMs?: number;
+      /** Hex battlefield: no strike follows this walk — the figure faces the enemy again on arrival. */
+      settle?: boolean;
       teleportFxKey?: string;
       /** The card reads upside-down on the board (p1 / flipped view). */
       flip?: boolean;
@@ -119,6 +121,17 @@ export type FxCue =
       tint: "bloodlust";
       delayMs?: number;
       sound?: string;
+    }
+  | {
+      /**
+       * A buff just raised these stats of the unit: its hex sprite (or 4x5
+       * board card) glows in each stat's colour for a moment (stat-glow.ts).
+       */
+      kind: "statGlow";
+      id: string;
+      unitId: string;
+      stats: StatGlowKind[];
+      delayMs?: number;
     }
   | {
       kind: "projectile";
@@ -243,12 +256,30 @@ export type FxCue =
       delayMs?: number;
     }
   | {
+      /**
+       * Hex battlefield: a unit about to be struck in melee turns to face its
+       * attacker (at `to`, a cell anchor) when the blow comes from behind, as
+       * on the PC; it turns back once idle. `beatMs` = time left to the blow.
+       */
+      kind: "face";
+      id: string;
+      unitId: string;
+      to: string;
+      beatMs?: number;
+      delayMs?: number;
+    }
+  | {
       /** An authored melee slash landing on a cell from the attacker's side. */
       kind: "slash";
       id: string;
       fxKey: string;
       from: string;
       at: string;
+      /**
+       * A line attack's breath / thrust carries on to this anchor (the hex
+       * behind the target, hex battlefield) instead of ending at the target.
+       */
+      through?: string;
       scaleMultiplier?: number;
       sound?: string;
       delayMs?: number;
@@ -889,7 +920,8 @@ async function runMove(stage: HTMLElement, cue: Extract<FxCue, { kind: "move" }>
       teleport: cue.teleport,
       path: cue.path,
       holdMs: cue.holdMs,
-      durationMs: cue.durationMs
+      durationMs: cue.durationMs,
+      settle: cue.settle
     });
     if (!cue.teleport) {
       return walk;
@@ -1122,7 +1154,7 @@ async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
 /** The long thrust grows from the attacking unit and ends at the defender. */
 async function runThrust(
   stage: HTMLElement,
-  cue: { fxKey: string; from: string; at: string; sound?: string; impactDelayMs?: number }
+  cue: { fxKey: string; from: string; at: string; through?: string; sound?: string; impactDelayMs?: number }
 ): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
   const toRect = resolveAnchorRect(cue.at);
@@ -1146,11 +1178,19 @@ async function runThrust(
   const hexBreathOverrun = dragonBreath && !compactBreath && hexBoardShown()
     ? resolveAnchorElement(cue.at)?.getBoundingClientRect().width
     : undefined;
-  const targetOverrun = compactBreath
-    ? toRect.width * 0.12
-    : dragonBreath
-      ? hexBreathOverrun ?? toRect.width * 0.58
-      : 0;
+  // A line attack (dragon / phoenix breath, a spear wall) reaches the hex
+  // behind its target: stretch the stream to that hex's far edge.
+  const throughRect = cue.through ? resolveAnchorRect(cue.through) : null;
+  const throughOverrun = throughRect && throughRect.width > 0
+    ? Math.max(0, Math.hypot(centerOf(throughRect).x - from.x, centerOf(throughRect).y - from.y) - distance) + throughRect.width * 0.35
+    : undefined;
+  const targetOverrun = throughOverrun !== undefined
+    ? throughOverrun
+    : compactBreath
+      ? toRect.width * 0.12
+      : dragonBreath
+        ? hexBreathOverrun ?? toRect.width * 0.58
+        : 0;
   const width = Math.max(distance * 0.6, distance - sourceInset + targetOverrun);
   const height = Math.min(fromRect.height, toRect.height) * (compactBreath ? 0.67 : dragonBreath ? 1.14 : 0.88);
   const centerX = from.x + dx / distance * (sourceInset + width / 2);
@@ -2087,6 +2127,96 @@ async function runPulse(stage: HTMLElement, cue: Extract<FxCue, { kind: "pulse" 
   }
 }
 
+/** Stats a buff can raise; each glows in its own colour (stat-glow.ts). */
+export type StatGlowKind = "attack" | "defense" | "speed";
+
+/** RGB triplets: Attack red, Defense blue, Speed green. */
+export const STAT_GLOW_COLOURS: Readonly<Record<StatGlowKind, string>> = {
+  attack: "255 64 48",
+  defense: "72 158 255",
+  speed: "86 232 120"
+};
+
+const STAT_GLOW_MS = 1700;
+
+/**
+ * A buffed unit glows: its sprite (hex battlefield) or card (4x5 board) takes
+ * a pulsing halo in the raised stats' colours, and a soft wash of the first
+ * colour blooms over its body — Bloodlust reads red, Stone Skin blue, Haste
+ * green. Runs on the element's own compositor animation, so it layers over the
+ * active unit's outline and ends by itself.
+ */
+async function runStatGlow(stage: HTMLElement, cue: Extract<FxCue, { kind: "statGlow" }>): Promise<void> {
+  const colours = cue.stats.map((stat) => STAT_GLOW_COLOURS[stat]);
+  if (colours.length === 0) {
+    return;
+  }
+  const figure = hexUnitFigure(cue.unitId);
+  const sprite = figure?.querySelector(".hexSprite, .hexToken");
+  const card = sprite instanceof HTMLElement ? null : boardCardFor(cue.unitId);
+  const target = sprite instanceof HTMLElement ? sprite : card;
+  if (!target || target.getBoundingClientRect().width === 0) {
+    return;
+  }
+  const easing = "cubic-bezier(.35,0,.25,1)";
+  const running: Promise<void>[] = [];
+  if (sprite instanceof HTMLElement) {
+    const halo = (blur: number, alpha: number, lift: number) =>
+      `${colours.map((colour, index) => `drop-shadow(0 0 ${blur + index * 2}px rgb(${colour} / ${alpha}))`).join(" ")} brightness(${lift})`;
+    running.push(animate(
+      sprite,
+      [
+        { filter: halo(0, 0, 1), offset: 0 },
+        { filter: halo(7, 0.95, 1.3), offset: 0.2 },
+        { filter: halo(3, 0.55, 1.08), offset: 0.45 },
+        { filter: halo(6, 0.9, 1.22), offset: 0.68 },
+        { filter: halo(0, 0, 1), offset: 1 }
+      ],
+      { duration: STAT_GLOW_MS, easing }
+    ));
+  } else if (card) {
+    const halo = (spread: number, alpha: number) =>
+      colours.map((colour, index) => `0 0 ${10 + spread * 3 + index * 4}px ${spread + index}px rgb(${colour} / ${alpha})`).join(", ");
+    running.push(animate(
+      card,
+      [
+        { boxShadow: halo(0, 0), offset: 0 },
+        { boxShadow: halo(4, 0.9), offset: 0.2 },
+        { boxShadow: halo(1, 0.45), offset: 0.45 },
+        { boxShadow: halo(3, 0.8), offset: 0.68 },
+        { boxShadow: halo(0, 0), offset: 1 }
+      ],
+      { duration: STAT_GLOW_MS, easing }
+    ));
+  }
+  // The body wash: a soft radial bloom of the (first) stat colour.
+  const body = figure?.querySelector("[data-fx-body]") ?? card;
+  const rect = body instanceof HTMLElement ? body.getBoundingClientRect() : null;
+  if (rect && rect.width > 0) {
+    const centre = centerOf(rect);
+    const size = Math.max(rect.width, rect.height) * 1.9;
+    const wash = document.createElement("div");
+    wash.className = "fxStatGlowWash";
+    wash.style.left = `${centre.x}px`;
+    wash.style.top = `${centre.y}px`;
+    wash.style.width = `${size}px`;
+    wash.style.height = `${size}px`;
+    wash.style.background = `radial-gradient(circle, rgb(${colours[0]} / 55%) 0%, rgb(${colours[colours.length - 1]} / 22%) 42%, rgb(${colours[0]} / 0%) 70%)`;
+    stage.appendChild(wash);
+    running.push(animate(
+      wash,
+      [
+        { transform: "translate(-50%, -50%) scale(0.55)", opacity: 0, offset: 0 },
+        { transform: "translate(-50%, -50%) scale(1)", opacity: 1, offset: 0.25 },
+        { transform: "translate(-50%, -50%) scale(1.06)", opacity: 0.55, offset: 0.7 },
+        { transform: "translate(-50%, -50%) scale(1.12)", opacity: 0, offset: 1 }
+      ],
+      { duration: STAT_GLOW_MS, easing }
+    ).finally(() => wash.remove()));
+  }
+  await Promise.all(running);
+}
+
 /**
  * A sprite-less colored wash flashed over an anchor (Bloodlust's red battle-rage
  * on a card play, where there is no board unit to tint). Mirrors the unit-card
@@ -2530,10 +2660,16 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runPulse(stage, cue);
           case "glow":
             return runGlow(stage, cue);
+          case "statGlow":
+            return runStatGlow(stage, cue);
           case "lunge":
             return runLunge(cue);
           case "shake":
             return runShake(cue);
+          case "face": {
+            const hexFigure = hexUnitFigure(cue.unitId);
+            return hexFigure ? playHexUnitCue(hexFigure, { kind: "face", to: cue.to, beatMs: cue.beatMs }) : undefined;
+          }
           case "pose": {
             const hexFigure = hexUnitFigure(cue.unitId);
             return hexFigure ? playHexUnitCue(hexFigure, { kind: "pose", pose: cue.pose }) : undefined;

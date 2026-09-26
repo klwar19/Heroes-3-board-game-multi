@@ -1876,6 +1876,10 @@ export function objectiveStrategicValue(
         value = 670;
       } else if (field?.location === "keymaster_tent" || field?.location === "garrison") {
         value = 635;
+      } else if (field?.location === "wog.mithril_mine") {
+        // WoG era Mithril Mine: steady Mithril (war machines, rerolls) —
+        // a touch above a bare materials mine.
+        value = 632;
       } else value = 625;
       break;
     case "visitable":
@@ -2951,9 +2955,17 @@ function primaryMapObjectiveRanked(
   const beatablePremiumGuardReachable = actionable.some((objective) => {
     if (objective.kind !== "guard") return false;
     const guardField = state.adventure?.fields[objective.spaceId];
-    return Boolean(guardField && isPremiumEconomyField(guardField) &&
-      (guardField.difficulty ?? 0) > 0 &&
-      canBeatGuardedField(state, hero, guardField));
+    if (!guardField || (guardField.difficulty ?? 0) <= 0) return false;
+    if (isPremiumEconomyField(guardField)) return canBeatGuardedField(state, hero, guardField);
+    // USER RULING 2026-09-26 (Far III by round 4): the opening Far tile's own
+    // income capture (any mine / settlement on it) holds the same priority
+    // when the hero can park beside it tonight — tomorrow's fresh turn takes
+    // it. Opening another Far tile first walked away and cost a round.
+    return hero.kind === "main" &&
+      (guardField.location === "mine" || guardField.location === "settlement") &&
+      isOpeningFarSweepField(state, hero.controllerId, guardField) &&
+      (distanceFromHeroTo(state, hero, objective.spaceId, true) ?? Infinity) - 1 <= Math.max(0, hero.movementPoints) &&
+      canBeatGuardedField(state, hero, guardField);
   });
   // Revealed-Far conversion before another doorway: see the wrapper
   // (primaryMapObjectiveUncached) and the opening doorway hunt just below.

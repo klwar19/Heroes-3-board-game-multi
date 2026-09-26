@@ -27,11 +27,9 @@
  *    face counts (see the Might wiring in reducer.ts / getMightDiceCount).
  *  - The Magic stat grades the whole magic package per the module spec:
  *    grade 0 = Power 0 and NOTHING else (only the once-per-round cast itself);
- *    grade 1 = Power 0, take -1 Spell damage, immune to ongoing effects;
- *    grade 2 = Power 1 (keeps -1 Spell damage + ongoing immunity);
- *    grade 3 = Power 2, take -3 Spell damage, immune to ongoing effects.
- *    The spell ward and the ongoing-effect immunity begin at grade 1 — a
- *    grade-0 commander is NOT immune and takes full Spell damage.
+ *    grade 1 = Power 1, take -1 Spell damage;
+ *    grade 2 = Power 1, take -2 Spell and -1 Specialty damage, ignore negative ongoing effects;
+ *    grade 3 = Power 2, take -3 Spell and -1 Specialty damage, ignore negative ongoing effects.
  *  - Each commander has ONE command ability (a "cast"): usable once per
  *    combat round during the commander's own activation, free (does not end
  *    the activation), scaling with Power (tiers 0 / 1 / 2+).
@@ -111,15 +109,14 @@ export function commanderComboSiteIcon(tag: string): string {
  *    dice pool in reducer.ts (every extra "+1" raises the attack; at most one
  *    "−1" counts).
  *  - magic is the command-ability Power. Per the module spec the Power ladder
- *    is 0/0/1/2 (grade 1 buys the defensive package, not Power; grade 2 is the
- *    first Power step, grade 3 the top). Cast tiers cap at Power 2.
+ *    is 0/1/1/2. Cast tiers cap at Power 2.
  */
 export const COMMANDER_GRADE_VALUES: Record<CommanderStatKey, readonly [number, number, number, number]> = {
   attack: [2, 3, 3, 4],
   defense: [1, 2, 2, 2],
   health: [4, 5, 6, 8],
   damage: [0, 1, 2, 3],
-  magic: [0, 0, 1, 2],
+  magic: [0, 1, 1, 2],
   speed: [5, 6, 7, 10]
 };
 
@@ -132,23 +129,24 @@ export const COMMANDER_DEFENSE_TOKEN_GRADE = 2;
 
 /**
  * Spell-damage reduction granted by the Magic stat at grade 0/1/2/3. Per the
- * module spec grade 0 grants NONE (0); the ward begins at grade 1 (-1), holds
- * at grade 2 (-1) and jumps to grade 3 (-3). A 0 means no `reduce-spell-damage`
+ * module spec grade 0 grants NONE (0); the ward rises by one at each grade.
+ * A 0 means no `reduce-spell-damage`
  * ability is wired at all (the commander takes full Spell damage).
  */
-export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number, number] = [0, 1, 1, 3];
+export const COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION: readonly [number, number, number, number] = [0, 1, 2, 3];
+
+/** Specialty damage resistance begins at Magic grade 2 and remains 1 at grade 3. */
+export const COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION: readonly [number, number, number, number] = [0, 0, 1, 1];
 
 /**
- * The Magic grade at (and above) which the commander is immune to ongoing
- * effects (the titan-style ward). Per the module spec a grade-0 Magic commander
- * is NOT immune — the immunity is part of the grade-1 package. Consumed by
- * commanderAbilityIds and the stats UI so the single source of truth is here.
+ * The Magic grade at (and above) which the commander ignores negative ongoing
+ * effects. Positive ongoing effects still apply.
  */
-export const COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE = 1;
+export const COMMANDER_MAGIC_NEGATIVE_ONGOING_IMMUNE_GRADE = 2;
 
-/** Whether a commander at the given Magic grade is immune to ongoing effects. */
-export function commanderMagicImmuneToOngoing(magicGrade: number): boolean {
-  return magicGrade >= COMMANDER_MAGIC_ONGOING_IMMUNE_GRADE;
+/** Whether a commander at the given Magic grade ignores negative ongoing effects. */
+export function commanderMagicImmuneToNegativeOngoing(magicGrade: number): boolean {
+  return magicGrade >= COMMANDER_MAGIC_NEGATIVE_ONGOING_IMMUNE_GRADE;
 }
 
 export const COMMANDER_ALL_GRADES_ZERO: CommanderGrades = {
@@ -166,8 +164,8 @@ export function commanderStatValue(key: CommanderStatKey, grade: CommanderGrade)
  * commander games, 197 grade-ups) MAGIC was graded on these casters and on
  * NONE of the melee/utility commanders (paladin,
  * succubus, shaman, corsair/Sea Marshal, brute, ogre_leader, bulwark, factory —
- * 0 magic grades between them). Cast Power itself only climbs at Magic grade 2+
- * (COMMANDER_GRADE_VALUES.magic = [0,0,1,2]), so only a commander that actually
+ * 0 magic grades between them). Cast Power climbs at Magic grades 1 and 3
+ * (COMMANDER_GRADE_VALUES.magic = [0,1,1,2]), so only a commander that actually
  * uses its cast is worth the investment. The computer AI's grade-up priority
  * (choice-policy) reads this so casters pour into Magic while everyone else
  * takes Attack + survivability. Single source of truth.
@@ -449,10 +447,7 @@ export interface CommanderCastTargeting {
   maxDistance?: number;
   /** Runes spent from the owner's combat pool per Power tier (Rune Keeper). */
   runeCostByPower?: readonly [number, number, number];
-  /**
-   * Ongoing-effect buffs never land on the commander itself (its Magic grade 1
-   * ongoing-effect immunity would fizzle them), so those casts exclude self.
-   */
+  /** Whether the caster can select itself when the other targeting gates allow it. */
   canTargetSelf: boolean;
 }
 
@@ -900,23 +895,22 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       targeting: {
         side: "friendly",
         damagedOnly: true,
-        // Every graded tier at every Power; the ladder stays so tierless
-        // bodies (other commanders, bank guards, summons, battlefield
-        // heroes) remain excluded exactly as before.
+        // Graded allies at every Power; Soul Eater alone is an exception to
+        // the tierless gate for its once-per-combat self-heal.
         maxTierByPower: ["azure", "azure", "azure"],
-        canTargetSelf: false
+        canTargetSelf: true
       },
       effect: { kind: "heal", healByPower: [1, 2, 3] },
       tierText: [
-        "Remove 1 damage from any friendly unit.",
-        "Remove 2 damage from any friendly unit. At most 3 times per combat.",
-        "First use: remove 3 damage. Later uses: remove 2 damage. At most 4 times per combat."
+        "Remove 1 damage from a friendly graded unit, or from Soul Eater itself once per combat.",
+        "Remove 2 damage from a friendly graded unit, or from Soul Eater itself once per combat. At most 3 casts per combat.",
+        "First cast: remove 3 damage. Later casts: remove 2 damage. Target a friendly graded unit, or Soul Eater itself once per combat. At most 4 casts per combat."
       ]
     },
     specialty: {
       id: "soul-link",
       name: "Soul Link",
-      text: "At combat start, choose another friendly unit. Once per combat round, when it takes damage, the commander takes half that damage, rounded up, and the chosen unit takes the rest. If that share would defeat the commander, do not share that hit."
+      text: "At combat start, choose another friendly unit. Once per combat round, when it takes damage, the commander takes half that damage, rounded up, and the chosen unit takes the rest. The commander takes only as much as leaves it at 1 Health; any excess stays on the chosen unit. At 1 Health, this effect waits until the commander is healed."
     },
     cardImage: "/assets/units-commander-soul_eater.webp"
   },

@@ -152,6 +152,7 @@ import {
 } from "./memory";
 import type { ComputerObservation } from "./types";
 import { hasCommittedIncomeRoute, premiumCombatMovementReserve, scorePremiumApproach } from "./premium-approach";
+import { scoreWogEraAction } from "./wog-era-policy";
 
 function memoryOf(observation: ComputerObservation): ComputerPolicyMemory {
   return (
@@ -2132,7 +2133,14 @@ export function premiumRotationRouteScore(
     const reserve = premiumCombatMovementReserve(probe, hero, field);
     const budget = distance + reserve;
     const captureThisTurn = ready && budget <= hero.movementPoints;
-    const captureNextTurn = ready && budget <= heroMovementMax(probe, hero);
+    // Plan ahead: the hero keeps walking with this turn's remaining movement
+    // and parks beside a guard it cannot open yet, so next turn starts that
+    // much closer. Reading next turn from the current cell undervalued the
+    // rotation that sets up a fresh-turn attack (measured: Tower, Impossible,
+    // the settlement landed three steps off and the Far III slipped a round).
+    const guarded = isFieldGuarded(field) || field.location === "creature_bank";
+    const nextTurnDistance = Math.max(guarded ? 1 : 0, distance - Math.max(0, hero.movementPoints));
+    const captureNextTurn = ready && nextTurnDistance + reserve <= heroMovementMax(probe, hero);
     // A clear two-step route with a combat point left beats a pretty entrance
     // that needs a full turn merely to walk to the same mine.
     // Unbeatable rewards still need an accessible return route after army
@@ -3031,6 +3039,12 @@ function resolveVisitStepScore(
     if (teleportScore !== null) {
       return teleportScore;
     }
+    // WoG era Mithril: the AI keeps its Mithril for permanent enchantments
+    // (forged mines / war machines) — a map-die reroll is scored under every
+    // keep option, so it is never spent here.
+    if (option.steps.some((inner) => inner.type === "CONSUME_MITHRIL")) {
+      return 1_030;
+    }
     const utility = visitStepsUtility(state, playerId, option.steps);
     // Empty steps = "leave / cancel / decline" branch.
     if (option.steps.length === 0) {
@@ -3190,6 +3204,12 @@ export function scoreMapAction(
     // Includes the unconditional FAR-discovery bonus below. When entry needs
     // refreshed MP, keep the combat budget instead of opening another tile.
     return { score: 200, policy: "map.capture-income-before-expansion" };
+  }
+  // WoG era modules (optional): boss attacks, Teacher lessons, the Loan Bank,
+  // Mithril enchantments and Skill Combos have their own policy module.
+  const eraScore = scoreWogEraAction(observation, action);
+  if (eraScore) {
+    return eraScore;
   }
   switch (action.type) {
     case "RESOLVE_COMPANION_RECRUITMENT":
@@ -3489,6 +3509,7 @@ export function scoreMapAction(
       const freePickupOverClamp =
         ordinaryMoveScore === FREE_PICKUP_LAST_STEP_SCORE &&
         premium?.policy === "map.premium-keep-commitment";
+      if (premium?.policy === "map.premium-side-fight-before-next-turn") return premium;
       if (premium && !freePickupOverClamp &&
           (premium.score <= 300 || ordinaryMoveScore > 300 ||
           premium.policy === "map.premium-pickup-before-next-turn")) {
@@ -3814,10 +3835,13 @@ export function scoreMapAction(
         COMMANDER_GRADE_VALUES[action.stat][grades[action.stat]];
       const weight = { attack: 5, damage: 3, defense: 5, health: 3, speed: 2, magic: 6 };
       const combos = commanderUnlockedCombos(next).length - commanderUnlockedCombos(grades).length;
-      // Magic I adds immunity/ward despite no Power increase; Defense II adds
+      // Magic II (ladder Power 0/1/1/2) adds the -2 Spell / -1 Specialty wards
+      // and negative-ongoing immunity despite no Power increase; Defense II adds
       // its defend die despite no printed Defense increase. Free points should
       // be spent before marching into a battle, with learned close-choice ties.
-      const ward = action.stat === "magic" && grades.magic === 0 ? 6 : 0;
+      // (scoreChoiceAction scores COMMANDER_GRADE_UP first in policy.ts, so this
+      // branch is a fallback only.)
+      const ward = action.stat === "magic" && grades.magic === 1 ? 6 : 0;
       const defendDie = action.stat === "defense" && grades.defense === 1 ? 3 : 0;
       return {
         score: 1000 + delta * weight[action.stat] + ward + defendDie + combos * 14,

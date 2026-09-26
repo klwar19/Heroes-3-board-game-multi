@@ -64,6 +64,7 @@ function scriptModuleActive(state: Pick<GameState, "anime">, script: CombatScrip
     required === "wavePressure" ||
     required === "waveDefeatLimit" ||
     required === "raidBossSpawnRound" ||
+    required === "wanderingBossSpawnRound" ||
     required === "dungeonDepth" ||
     required === "dungeonDescentCost"
   ) {

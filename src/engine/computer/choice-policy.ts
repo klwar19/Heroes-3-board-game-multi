@@ -41,6 +41,7 @@ import {
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
+import { karmicBattleEmpowerWorthIt } from "./wog-era-policy";
 
 /**
  * Scores mandatory decision actions (CHOOSE_OPTION, deck search keep, combat
@@ -445,6 +446,17 @@ function scoreAbilityTarget(
         })()
       : 0;
 
+  // WoG era Mithril Ammo Cart (battle start): arm the most threatening own
+  // ranged unit with the +1 Attack.
+  if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "war-machine" &&
+    choice.abilityId === "war_machine.ammo_cart"
+  ) {
+    if (unit.controllerId !== observation.playerId) return CHOICE_BASE - 80;
+    return CHOICE_BASE + 20 + Math.min(60, Math.round(unitThreatValue(unit) / 2));
+  }
+
   // Dark Mullich Overclock I / IV played at the beginning of the combat: the
   // pick is the friendly unit to buff — the biggest threat, and a GROUND unit
   // for Overclock I (its effect doubles there).
@@ -585,6 +597,18 @@ function scoreRerollOffer(
   // Attack roll — prefer set-die (+1) over a raw reroll when offered.
   if (action.useSetDie) {
     return CHOICE_BASE + 35;
+  }
+  // WoG era Mithril: the AI keeps its Mithril for mines / war machines — a plain
+  // reroll whose only remaining sources are Mithril is never taken.
+  const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
+  const plainSources = choice.rerollSources.filter(
+    (source) =>
+      source.setDieFace === undefined &&
+      source.used < source.remaining &&
+      (source.onlyOnRoll === undefined || source.onlyOnRoll === currentRoll)
+  );
+  if (plainSources.length > 0 && plainSources.every((source) => source.mithril)) {
+    return CHOICE_BASE - 40;
   }
   // Only reroll when the best current candidate looks bad (roll < 0 or zero).
   const best = choice.candidates.reduce(
@@ -761,6 +785,19 @@ function scorePositionOption(
     return CHOICE_BASE + Math.max(0, 20 - dist);
   }
 
+  if (context === "place-wall-token-pair" && choice.wallTokenPair) {
+    // Polish Balance Pack Force Field / Fire Wall second token: a second wall
+    // is free extra board control, so always take it, as close to the enemy
+    // army as the adjacent spaces allow (where it bites / blocks soonest).
+    const pos = choice.wallTokenPair.positions[optionIndex];
+    if (pos === undefined) return CHOICE_BASE; // "No second token"
+    const combat = observation.state.combat;
+    if (!combat) return CHOICE_BASE + 10;
+    const dist = distanceToNearestEnemy(combat, observation.playerId, pos);
+    if (dist === null) return CHOICE_BASE + 10;
+    return CHOICE_BASE + 10 + Math.max(0, 20 - dist);
+  }
+
   if (context === "combat-knockback" && choice.knockback) {
     // Prefer safer (farther from enemies) for the shoved unit.
     const pos = choice.knockback.positions[optionIndex];
@@ -831,6 +868,18 @@ function scorePositionOption(
       return optionIndex === 1 ? CHOICE_BASE + 55 : CHOICE_BASE + 10;
     }
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
+  // WoG era Karmic Battle: fight the empowered guard only on a near-certain,
+  // near-lossless forecast (difficulty ≤ V) — never gamble the army for loot.
+  if (context === "karmic-battle" && choice.karmicBattle) {
+    const state = observation.state as unknown as GameState;
+    const data = choice.karmicBattle;
+    const empower = karmicBattleEmpowerWorthIt(state, observation.playerId, data.heroId, data.fieldId, data.difficulty);
+    if (optionIndex === 1) {
+      return empower ? CHOICE_BASE + 50 : CHOICE_BASE + 5;
+    }
+    return CHOICE_BASE + 30;
   }
 
   if (context === "polish-bank-auto-combat") {

@@ -12,6 +12,7 @@ import {
   COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_GRADE_VALUES,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
+  COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION,
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
   COMMANDER_STAT_ICON,
   COMMANDER_STAT_KEYS,
@@ -23,7 +24,7 @@ import {
   commanderComboUnlocked,
   commanderDefinitions,
   commanderDoublePointLevels,
-  commanderMagicImmuneToOngoing,
+  commanderMagicImmuneToNegativeOngoing,
   commanderReviveCost,
   commanderStatValue,
   commanderUnlockedCombos,
@@ -266,7 +267,7 @@ function ThemedCommanderCardOverlays({
         {might > 0 || grades.magic > 0 ? (
           <div style={{ display: "grid", gap: "0.45cqw", fontSize: "1.7cqw", lineHeight: 1.1, textAlign: "center" }}>
             {might > 0 ? <span style={{ color: theme.accent }}>Might +{might} die{might === 1 ? "" : "s"}</span> : null}
-            {grades.magic > 0 ? <span style={{ color: theme.text }}>Power {power}{spellWard > 0 ? ` · −${spellWard} spell` : ""}</span> : null}
+            {grades.magic > 0 ? <span style={{ color: theme.text }}>Power {power}{spellWard > 0 ? ` · −${spellWard} Spell` : ""}{COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION[grades.magic] > 0 ? " · −1 Specialty" : ""}{commanderMagicImmuneToNegativeOngoing(grades.magic) ? " · ignores negative ongoing" : ""}</span> : null}
           </div>
         ) : null}
       </div>
@@ -528,7 +529,7 @@ export function CommanderCardFace({
         {grades.magic > 0 ? (
           <span
             style={badgeStyle}
-            title={`Magic grade ${gradeNumeral(grades.magic)}: command Power ${power}${spellWard > 0 ? `, takes ${spellWard} less Spell damage` : ""}, immune to ongoing effects.`}
+            title={`Magic grade ${gradeNumeral(grades.magic)}: command Power ${power}, takes ${spellWard} less Spell damage${COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION[grades.magic] ? ", 1 less Specialty damage" : ""}${commanderMagicImmuneToNegativeOngoing(grades.magic) ? ", immune to negative ongoing effects" : ""}.`}
           >
             ✦ {power > 0 ? `Pow ${power}` : "🛡"}
           </span>
@@ -789,18 +790,19 @@ export function CommanderStatsPanel({
               ? <>Rolls <b style={{ color: GOLD }}>{mightDice}</b> extra attack {mightDice === 1 ? "die" : "dice"} — each “+1” raises Attack; at most one “−1”.</>
               : <span style={{ opacity: 0.7 }}>No extra attack dice yet.</span>;
           } else if (key === "magic") {
-            const immune = commanderMagicImmuneToOngoing(gradeIndex);
+            const immune = commanderMagicImmuneToNegativeOngoing(gradeIndex);
+            const specialtyWard = COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION[gradeIndex];
             detail = (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <PowerLadder power={power} />
-                {spellWard > 0 || immune ? (
+                {spellWard > 0 ? (
                   <span style={{ opacity: 0.85 }}>
-                    {spellWard > 0 ? `−${spellWard} Spell dmg` : ""}
-                    {spellWard > 0 && immune ? " · " : ""}
-                    {immune ? "immune to ongoing effects" : ""}
+                    {`−${spellWard} Spell dmg`}
+                    {specialtyWard > 0 ? ` · −${specialtyWard} Specialty dmg` : ""}
+                    {immune ? " · immune to negative ongoing effects" : ""}
                   </span>
                 ) : (
-                  <span style={{ opacity: 0.7 }}>Cast only — no ward, not immune to ongoing (grade I gains both).</span>
+                  <span style={{ opacity: 0.7 }}>Cast only — no resistance or ongoing immunity.</span>
                 )}
               </span>
             );
@@ -1035,8 +1037,7 @@ function GradeChips({ grade }: { grade: CommanderGrade }) {
   );
 }
 
-/** Magic Power ladder 0→1→2 with the current tier highlighted (the spec caps
- *  command Power at 2 — grades map to Power 0/0/1/2). */
+/** Magic Power ladder 0→1→2 with the current tier highlighted (grades map to 0/1/1/2). */
 function PowerLadder({ power }: { power: number }) {
   return (
     <span style={{ display: "inline-flex", gap: 3 }}>
@@ -1513,12 +1514,13 @@ function gradeValueLabel(key: CommanderStatKey, grade: CommanderGrade): string {
     return value === 0 ? "no dice" : `${value} ${value === 1 ? "die" : "dice"}`;
   }
   if (key === "magic") {
-    // The Magic grade ladders a whole package, not just Power (0/0/1/2).
+    // The Magic grade ladders a whole package, not just Power (0/1/1/2).
     if (grade === 0) {
       return "cast only";
     }
     const ward = COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION[grade];
-    return value > 0 ? `Power ${value}, −${ward} ward` : `−${ward} ward, immune`;
+    const specialtyWard = COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION[grade];
+    return `Power ${value}, −${ward} Spell${specialtyWard ? `, −${specialtyWard} Specialty` : ""}`;
   }
   if (key === "defense" && grade >= COMMANDER_DEFENSE_TOKEN_GRADE) {
     return grade >= 3 ? `${value} +token (0/+1)` : `${value} +token`;
@@ -1558,11 +1560,11 @@ function gradeUpBenefit(key: CommanderStatKey, grade: CommanderGrade): string {
     case "magic":
       switch (grade) {
         case 1:
-          return "−1 Spell damage + immune to ongoing effects";
+          return "command Power 1, −1 Spell damage";
         case 2:
-          return "command Power 1 (keeps −1 ward + ongoing immunity)";
+          return "command Power 1, −2 Spell damage, −1 Specialty damage, immune to negative ongoing effects";
         case 3:
-          return "command Power 2, −3 Spell damage, immune to ongoing";
+          return "command Power 2, −3 Spell damage, −1 Specialty damage, immune to negative ongoing effects";
         default:
           return "the once-per-round cast";
       }

@@ -102,6 +102,108 @@ describe("premium capture movement budget", () => {
     expect(choose()?.action.type).toBe("MOVE_HERO");
   });
 
+  it("spends waiting movement on a safe level-2 side fight that keeps next turn's attack", () => {
+    const setup = (dangerousSide: boolean) => {
+      const f = fixture();
+      const { state, hero } = f;
+      // Continuations are free here, so the premium guard needs no reserve: two
+      // steps with one point left is a next-turn capture, not a capture now.
+      state.adventure!.houseRules = { ...state.adventure!.houseRules, "free-neutral-combat-extend": true };
+      hero.spaceId = "h:10:8";
+      hero.movementPoints = 1;
+      hero.level = 2;
+      state.adventure!.fields["h:10:7"].location = "empty_field";
+      const sideId = getAdjacentSpaceIds("h:10:8").find(id =>
+        id !== "h:10:7" && getAdjacentSpaceIds("h:10:7").includes(id))!;
+      state.adventure!.fields[sideId] = { ...state.adventure!.fields["h:10:7"], spaceId: sideId,
+        location: "treasure_symbol", difficulty: 2,
+        ...(dangerousSide ? { customGuardUnits: ["castle.archangels", "castle.archangels", "castle.archangels", "castle.archangels"] } : {}) };
+      state.players.p2.army = state.players.p2.army.map(unit => ({ ...unit, unitDefId: "castle.archangels", side: "pack" }));
+      return { ...f, sideId };
+    };
+    const strong = setup(false);
+    expect(canBeatGuardedField(strong.state, strong.hero, strong.target)).toBe(true);
+    const side = scoreMapAction(strong.observation(), strong.move(strong.sideId))!;
+    expect(side.policy).toBe("map.premium-side-fight-before-next-turn");
+    // CONTROL: the same army and premium commitment, but a side guard the
+    // forecast cannot clear in the one affordable round — keep the route.
+    const risky = setup(true);
+    expect(canBeatGuardedField(risky.state, risky.hero, risky.target)).toBe(true);
+    expect(scoreMapAction(risky.observation(), risky.move(risky.sideId))!.policy)
+      .not.toBe("map.premium-side-fight-before-next-turn");
+  });
+
+  it("reads the level shortcut as 'no battle' only where Quick Combat really applies", () => {
+    const setup = (customGuard: boolean) => {
+      const f = fixture();
+      const { state, hero } = f;
+      state.adventure!.houseRules = { ...state.adventure!.houseRules, "free-neutral-combat-extend": true };
+      hero.spaceId = "h:10:8";
+      hero.movementPoints = 1;
+      hero.level = 3; // strictly above the side guard's difficulty 2
+      state.adventure!.fields["h:10:7"].location = "empty_field";
+      const sideId = getAdjacentSpaceIds("h:10:8").find(id =>
+        id !== "h:10:7" && getAdjacentSpaceIds("h:10:7").includes(id))!;
+      state.adventure!.fields[sideId] = { ...state.adventure!.fields["h:10:7"], spaceId: sideId,
+        location: "treasure_symbol", difficulty: 2,
+        ...(customGuard ? { customGuardUnits: Array.from({ length: 4 }, () => "pack:castle.archangels") } : {}) };
+      state.players.p2.army = state.players.p2.army.map(unit => ({ ...unit, unitDefId: "castle.archangels", side: "pack" }));
+      return { ...f, sideId };
+    };
+    // CONTROL: a printed level-2 guard under a level-3 hero is a Quick Combat.
+    const quick = setup(false);
+    expect(scoreMapAction(quick.observation(), quick.move(quick.sideId))!.policy)
+      .toBe("map.premium-side-fight-before-next-turn");
+    // A designer's exact army is never Quick-Combat skipped: the same level lead
+    // is a real battle against four Archangel Packs, which the forecast refuses
+    // even though the generic beatability read still passes it.
+    const exact = setup(true);
+    expect(canBeatGuardedField(exact.state, exact.hero, exact.state.adventure!.fields[exact.sideId])).toBe(true);
+    expect(scoreMapAction(exact.observation(), exact.move(exact.sideId))!.policy)
+      .not.toBe("map.premium-side-fight-before-next-turn");
+  });
+
+  it("never walks onto an enemy hero on the way to a two-step side fight", () => {
+    // Hero on h:10:9 (3 steps from the settlement, 2 MP now, 3 next turn, free
+    // continuations): the level-2 side guard on h:9:7 is two steps away, via
+    // the route field h:10:8 or via h:9:8. map-policy returns the side-fight
+    // step score without its ordinary safety read, so the step itself must
+    // refuse a field an enemy hero (here a far stronger one) stands on.
+    const setup = (enemyOnStep: boolean) => {
+      const f = fixture();
+      const { state, hero } = f;
+      state.adventure!.houseRules = { ...state.adventure!.houseRules, "free-neutral-combat-extend": true };
+      for (const id of ["h:10:9", "h:9:8"]) {
+        state.adventure!.fields[id] = { ...state.adventure!.fields["h:10:7"], spaceId: id, location: "empty_field" };
+      }
+      state.adventure!.fields["h:10:8"].location = "empty_field";
+      state.adventure!.fields["h:9:7"] = { ...state.adventure!.fields["h:10:7"], spaceId: "h:9:7",
+        location: "treasure_symbol", difficulty: 2 };
+      hero.spaceId = "h:10:9";
+      hero.movementPoints = 2;
+      hero.level = 2;
+      state.players.p2.army = state.players.p2.army.map(unit => ({ ...unit, unitDefId: "castle.archangels", side: "pack" }));
+      if (enemyOnStep) {
+        const enemy = Object.values(state.heroes).find(h => h.controllerId !== "p2")!;
+        enemy.spaceId = "h:9:8";
+        state.players[enemy.controllerId].army = state.players[enemy.controllerId].army.map(unit =>
+          ({ ...unit, unitDefId: "neutral.azure_dragons", side: "neutral" }));
+      }
+      return f;
+    };
+    const open = setup(false);
+    expect(distanceFromHeroTo(open.state, open.hero, "h:9:7")).toBe(2);
+    // CONTROL: with both steps free, each leads to the side fight.
+    expect(scoreMapAction(open.observation(), open.move("h:9:8"))!.policy)
+      .toBe("map.premium-side-fight-before-next-turn");
+    const blocked = setup(true);
+    expect(scoreMapAction(blocked.observation(), blocked.move("h:9:8"))!.policy)
+      .not.toBe("map.premium-side-fight-before-next-turn");
+    // The free route step is unaffected.
+    expect(scoreMapAction(blocked.observation(), blocked.move("h:10:8"))!.policy)
+      .toBe("map.premium-side-fight-before-next-turn");
+  });
+
   it("does not commit an unbeatable army to the premium fight", () => {
     const {state, hero, target, move} = fixture();
     state.players.p2.army = [];
@@ -145,6 +247,52 @@ describe("premium capture movement budget", () => {
       expect(choices[0].distance + 1).toBeLessThanOrEqual(hero.movementPoints);
       choices.sort((a,b) => b.score-a.score);
       expect(choices[0].distance + 1).toBeLessThanOrEqual(hero.movementPoints);
+    } finally {
+      delete allTileDefinitions[defId];
+    }
+  });
+
+  it("plans next turn from where this turn's remaining steps can park the hero", () => {
+    // 2-MP turns (entry + one continuation) with 1 step left now: a guard two
+    // steps away is attackable NEXT turn after parking beside it tonight; one
+    // three steps away is not. Reading next turn from the current cell (old
+    // rule) gave neither rotation the next-turn credit.
+    const { state, hero } = fixture();
+    hero.spaceId = "h:10:8";
+    hero.movementPoints = 1;
+    hero.movementPointsMax = 2;
+    state.adventure!.fields[hero.spaceId].location = "empty_field";
+    const defId = "TEST_PREMIUM_NEXT_TURN_ROTATION";
+    allTileDefinitions[defId] = {
+      id: defId, group: "far", content: "core_game", terrain: "grass",
+      fields: Array.from({length: 7}, (_, slot) => slot === 1
+        ? { location: "mine", resource: "gold", difficulty: 3 }
+        : { location: "empty_field" }),
+      outerImpassable: [false, false, false, false, false, false],
+      source: { product: "test", credit: "test" },
+    } as (typeof allTileDefinitions)[string];
+    const tile: MapTileState = { id: "next-turn-tile", tileDefId: defId, group: "far",
+      centerRow: 10, centerCol: 10, rotation: 0, faceDown: false, awaitingRotation: true };
+    state.adventure!.tiles[tile.id] = tile;
+    state.adventure!.pendingTileChoice = { tileInstanceId: tile.id, playerId: "p2", heroId: hero.id, kind: "place" };
+    try {
+      const choices = [0,1,2,3,4,5].map(rotation => {
+        const rotated = {...tile, rotation, awaitingRotation: false};
+        const adventure = {...state.adventure!, fields: {...state.adventure!.fields}, tiles: {...state.adventure!.tiles, [tile.id]: rotated}};
+        materializeTileFields(adventure, rotated);
+        const target = Object.values(adventure.fields).find(field => field.tileInstanceId === tile.id && field.location === "mine")!;
+        const probe = {...state, adventure};
+        return { routeScore: premiumRotationRouteScore(state, tile, rotation, "p2"),
+          distance: distanceFromHeroTo(probe, hero, target.spaceId, true)!,
+          reserve: premiumCombatMovementReserve(probe, hero, target) };
+      });
+      const two = choices.find(choice => choice.distance === 2)!;
+      const three = choices.find(choice => choice.distance === 3)!;
+      expect(two).toBeDefined();
+      expect(three).toBeDefined();
+      expect(two.reserve).toBe(1);
+      // Plain one-step distance difference is 30; the next-turn capture adds 65.
+      expect(two.routeScore - three.routeScore).toBeGreaterThan(60);
     } finally {
       delete allTileDefinitions[defId];
     }

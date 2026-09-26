@@ -1733,15 +1733,18 @@ export function getSelfAttackerTypeDefenseBonus(defender: CombatUnitState, attac
 }
 
 /**
- * Steel Golems: total reduction applied to each instance of Hero-Specialty
- * damage this unit takes (Xyron's Inferno, Solmyr's Chain Lightning). Ordinary
- * spell-reducing golems have none — their passive only softens Spell damage.
+ * Total reduction applied to each instance of Hero-Specialty damage this unit
+ * takes (Xyron's Inferno, Solmyr's Chain Lightning). Includes specialty-only
+ * commander resistance and Steel Golems' combined Spell/Specialty resistance.
  */
 export function getSpecialtyDamageReduction(unit: CombatUnitState): number {
-  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE").reduce(
-    (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),
-    0
-  );
+  return getUnitAbilityDefinitions(unit).reduce((total, ability) => {
+    if (ability.implementationStatus !== "implemented") return total;
+    return ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ||
+      ability.effect?.type === "REDUCE_SPECIALTY_DAMAGE"
+      ? total + ability.effect.amount
+      : total;
+  }, 0);
 }
 
 /**

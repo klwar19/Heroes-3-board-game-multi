@@ -59,7 +59,7 @@ export function hiddenLeafNextMissionRank(points: number): { rank: HiddenLeafMis
 
 export function hiddenLeafMissionPointsEarned(context: CombatContext): number {
   if (context.kind !== "neutral" || context.waveAssault || context.teleportArrival) return 0;
-  if (context.raidBossId || context.dungeonFloor !== undefined) return 3;
+  if (context.raidBossId || context.wanderingBoss || context.dungeonFloor !== undefined) return 3;
   if (context.bankId) return 2;
   if (context.difficulty <= 0) return 0;
   if (context.hasAzure || context.difficulty >= 6) return 3;

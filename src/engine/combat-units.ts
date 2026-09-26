@@ -29,6 +29,31 @@ import { gainBloodEssenceFromCasualty } from "./wuxia-factions";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
 
 /**
+ * Reborn Guard (Crypt Creature Bank Skeletons, R4 — user 2026-09-26): once a
+ * Rebirth has saved this unit, it gains +1 Defense for the rest of the combat.
+ */
+function applyRebirthGuard(state: GameState, unit: CombatUnitState): void {
+  if (!factionVeterancy(unit, "rebirth-guard")) return;
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Reborn Guard",
+        scope: "unit",
+        polarity: "positive",
+        removable: false,
+        duration: { type: "combat" },
+        modifiers: [{ type: "DEFENSE_BONUS", amount: 1 }]
+      },
+      { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      unit.controllerId,
+      { type: "unit", unitId: unit.id }
+    )
+  );
+  veteranTrigger(state, unit, "veteran-rebirth-guard", unit, `${unit.cardName} rises guarded: +1 Defense for the rest of this combat.`);
+}
+
+/**
  * Consume health bonuses that protect only the current physical health bar.
  * The generic combat-long bonuses stay in `combatMaxHealthBonus` and continue
  * onto the next side/layer; Polish Balance First Aid is deliberately removed.
@@ -301,6 +326,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
       const abilityId = mechanic === "full-rebirth" ? "veteran-troglodyte-rebirth" : mechanic === "escape" ? "veteran-wraith-escape" : "veteran-skeleton-rebirth";
       if (mechanic === "skeleton-rebirth") unit.factionVeterancy.rebirthAttack = 1;
       veteranTrigger(state, unit, abilityId, unit, `${unit.cardName} survives at ${unit.maxHealth - unit.damage} HP.`);
+      applyRebirthGuard(state, unit);
       if (mechanic === "escape") queueElementalChoice(state, { kind: "veteran-teleport", unitId: unit.id, abilityId });
       return;
     }
@@ -355,6 +381,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
       abilityId: rebirth.abilityId,
       message: `${unit.cardName} is reborn and clings to life at 1 Health.`
     });
+    applyRebirthGuard(state, unit);
     if (elementalVeterancy(unit, "rebirth-heal")) {
       const healed = Math.min(5, unit.damage);
       unit.damage -= healed;

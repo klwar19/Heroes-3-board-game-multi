@@ -51,6 +51,7 @@ import type {
   RandomTownGuardSlot,
   CustomHexEvent,
   CustomMapMinesConfig,
+  CustomMapTemplesOfTheSeaConfig,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
   CustomMapRandomTownsConfig,
@@ -1607,6 +1608,23 @@ function sanitizeMinesConfig(input: unknown): CustomMapMinesConfig | undefined {
     : undefined;
 }
 
+/** Sanitize MAP-WIDE Temple of the Sea options (guard / award / VP). Empty → undefined. */
+function sanitizeTemplesOfTheSeaConfig(input: unknown): CustomMapTemplesOfTheSeaConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { guard?: unknown; reward?: unknown; vp?: unknown };
+  const config: CustomMapTemplesOfTheSeaConfig = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard);
+  if (guard) config.guard = guard;
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) config.reward = reward;
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    config.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  return config.guard || config.reward || config.vp ? config : undefined;
+}
+
 /** Sanitize MAP-WIDE difficulty-Ⅶ center-object defaults. */
 function sanitizeCenterHexesConfig(input: unknown): CustomMapPreset["centerHexes"] | undefined {
   const plan = sanitizeObjectFieldPlan(input);
@@ -1721,6 +1739,7 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
     utopiaBonusSearch?: unknown;
     grailAsUtopia?: unknown;
     grailDigCost?: unknown;
+    hiddenGrailDigCost?: unknown;
     grailDigReward?: unknown;
     grailPossessionVp?: unknown;
     grailBuildAt?: unknown;
@@ -1750,6 +1769,11 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
   }
   if (raw.grailDigCost === 0 || raw.grailDigCost === 1 || raw.grailDigCost === 2) {
     config.grailDigCost = raw.grailDigCost;
+  }
+  // Only meaningful inside the hidden package; dropping it otherwise keeps a
+  // stale value from reviving when setup flips the package on (Polish rule).
+  if (config.hiddenGrailUtopia && (raw.hiddenGrailDigCost === 0 || raw.hiddenGrailDigCost === 1 || raw.hiddenGrailDigCost === 2)) {
+    config.hiddenGrailDigCost = raw.hiddenGrailDigCost;
   }
   if (raw.grailDigReward && typeof raw.grailDigReward === "object") {
     const r = raw.grailDigReward as Record<string, unknown>;
@@ -2797,6 +2821,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.mines = mines;
     }
   }
+  if (raw.templesOfTheSea !== undefined) {
+    const temples = sanitizeTemplesOfTheSeaConfig(raw.templesOfTheSea);
+    if (temples) {
+      preset.templesOfTheSea = temples;
+    }
+  }
   if (raw.randomTowns !== undefined) {
     const randomTowns = sanitizeRandomTownsConfig(raw.randomTowns);
     if (randomTowns) {
@@ -2871,6 +2901,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.obelisks ||
       Boolean(preset.settlements) ||
       Boolean(preset.mines) ||
+      Boolean(preset.templesOfTheSea) ||
       Boolean(preset.randomTowns) ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
@@ -3075,7 +3106,13 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
   } else if (config.grailAsUtopia === "after-dig-empty") {
     entries.push({ icon: "🏆", text: "After the Grail is taken, other Grail tiles become empty" });
   }
-  if (config.grailDigCost !== undefined && config.grailDigCost !== 1) {
+  if (config.hiddenGrailUtopia && config.hiddenGrailDigCost !== undefined && config.hiddenGrailDigCost !== 1) {
+    entries.push({
+      icon: "🏆",
+      text: config.hiddenGrailDigCost === 0 ? "Hidden Grail dig is free (0 MP)" : `Hidden Grail dig costs ${config.hiddenGrailDigCost} MP`
+    });
+  }
+  if (!config.hiddenGrailUtopia && config.grailDigCost !== undefined && config.grailDigCost !== 1) {
     entries.push({
       icon: "🏆",
       text: config.grailDigCost === 0 ? "Grail dig is free (0 MP)" : `Grail dig costs ${config.grailDigCost} MP`
@@ -3547,6 +3584,13 @@ export function describeCustomMapPresetEntries(
     // Legacy flag: only when no explicit round limit already said so.
     if (preset.mines.unlimitedRounds && !preset.mines.combatRoundLimit) parts.push("unlimited rounds");
     entries.push({ icon: "⛏️", text: `Mines: ${parts.join(", ") || "custom"}` });
+  }
+  if (preset.templesOfTheSea) {
+    const parts: string[] = [];
+    if (preset.templesOfTheSea.guard) parts.push(`guard ${describeGuardSpec(preset.templesOfTheSea.guard)}`);
+    if (preset.templesOfTheSea.reward) parts.push(`award: ${describeFieldReward(preset.templesOfTheSea.reward)}`);
+    if (preset.templesOfTheSea.vp) parts.push(`+${preset.templesOfTheSea.vp} VP first clear`);
+    entries.push({ icon: "🌊", text: `Temples of the Sea: ${parts.join(", ") || "custom"}` });
   }
   if (preset.randomTowns) {
     const parts: string[] = [];

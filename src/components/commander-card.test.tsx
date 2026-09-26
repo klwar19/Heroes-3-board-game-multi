@@ -46,11 +46,12 @@ describe("CommanderStatsPanel", () => {
   });
 
   it("shows the Magic Power ladder with the current tier and spell ward", () => {
-    // The spec ladders Power 0/0/1/2: grade 2 = Power 1, ward −1.
+    // Power is 0/1/1/2: grade 2 retains Power 1 and gains both wards.
     const { getByText, getByTitle } = render(<CommanderStatsPanel slug="paladin" grades={{ magic: 2 }} />);
     expect(getByTitle("Power 1 (current)")).toBeTruthy();
-    expect(getByText(/−1 Spell dmg/i)).toBeTruthy();
-    expect(getByText(/immune to ongoing effects/i)).toBeTruthy();
+    expect(getByText(/−2 Spell dmg/i)).toBeTruthy();
+    expect(getByText(/−1 Specialty dmg/i)).toBeTruthy();
+    expect(getByText(/immune to negative ongoing effects/i)).toBeTruthy();
     cleanup();
     // Grade 3 = Power 2, ward −3.
     const top = render(<CommanderStatsPanel slug="paladin" grades={{ magic: 3 }} />);
@@ -61,7 +62,7 @@ describe("CommanderStatsPanel", () => {
   it("says a Magic grade-0 commander gets the cast only (no ward, not immune)", () => {
     const { getByText } = render(<CommanderStatsPanel slug="paladin" grades={{ magic: 0 }} />);
     expect(getByText(/cast only/i)).toBeTruthy();
-    expect(getByText(/grade I gains both/i)).toBeTruthy();
+    expect(getByText(/no resistance or ongoing immunity/i)).toBeTruthy();
   });
 
   it("shows the Conflux commander's new Elemental Scourge specialty", () => {

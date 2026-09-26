@@ -1,4 +1,4 @@
-import { parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
+import { parallelContextOptions, parallelPvpKeeps, parallelPvpPinOwner, parallelStateForPlayer } from "./parallel-combats";
 import { combatRetakeAvailable } from "./combat-retake";
 import type {
   CardId,
@@ -444,6 +444,21 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   if (contextOptions.length) {
     base.parallelContextOptions = contextOptions;
     base.parallelContextSelections = { [viewerPlayerId]: state.parallelCombatOwnerId ?? viewerPlayerId };
+  } else if (
+    parallelPvpKeeps(state) &&
+    state.parallelCombatOwnerId &&
+    (state.parallelCombatOwnerId === viewerPlayerId ||
+      state.parallelCombatOwnerId === parallelPvpPinOwner(state, viewerPlayerId))
+  ) {
+    // Parallel PvP "keep": a defender (or choice target) is projected into the
+    // OTHER seat's context. Keep that owner on the view so the client's own
+    // projection re-derives the same pin, and its actions carry the context id
+    // the server resolves them against (`map:<owner>` once the battle closed).
+    // The viewer's OWN context keeps its owner too: the client's offers read it
+    // (an aggressor whose context holds the defender's answer waits — see
+    // getParallelBystanderActions), exactly as the server's projection does.
+    delete base.parallelContextSelections;
+    delete base.parallelContextOptions;
   } else {
     delete base.parallelCombatOwnerId;
     delete base.parallelContextSelections;

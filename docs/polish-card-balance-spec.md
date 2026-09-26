@@ -240,6 +240,25 @@ power-source alternative — unchanged on every spell.
   Combat round…" — the shield lasts 2 combat rounds (both tiers; damage 2/3
   unchanged; breakpoints 2/4 unchanged).
 - **Fire Wall** — breakpoints 2/4 → **1/2** (damage 2/3 unchanged).
+  2026-09-26 face (user-supplied): "For 2 Combat rounds, place up to 2 Fire
+  Wall tokens on 2 adjacent empty spaces" — the wall lifts at the end of the
+  NEXT round (was: the whole Combat), and after the first token lands on the
+  cast target the caster may place a second, identical token on an empty space
+  adjacent to it, or decline (`pairAdjacent`, `durationRounds: 2`). Bite is
+  still stop / pass-through only.
+- **Force Field** (added 2026-09-26, user-supplied face) — "Place up to 2
+  Force Field tokens on 2 adjacent empty spaces. It counts as an Obstacle
+  until the end of * Combat rounds: 0: 1; 1: 2; 2: 3." The casting round is
+  the first, so Power 0 = this round, 1 = through the next, 2 = through the
+  round after that (was: the whole Combat). Same optional second token.
+- **Luna I / VI** (specialties, added 2026-09-26, user-supplied faces) — same
+  text change as Fire Wall: 2 Combat rounds, up to 2 adjacent tokens; fixed
+  1 / 3 damage, start-of-turn burn and stop / pass-through bite unchanged.
+  Luna IV is not reprinted. Jiraiya's rethemed copy (Toad Oil Flame Bomb) is a
+  different card id and keeps the printed Luna reading.
+- Hex board: each of the two tokens takes the usual wall footprint (2 hexes,
+  3 Expert); the second anchor is any empty hex touching the first wall whose
+  own footprint fits.
 - **Forgetfulness** — breakpoints 1/2 → **1/3**; text: "Select a ranged unit.
   For X activations it suffers: can't range AT" — basic 1 activation, expert 2
   activations (the unit cannot make ranged attacks for its next X activations;

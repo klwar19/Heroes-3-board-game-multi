@@ -80,6 +80,13 @@ import {
 import { fieldSymbolOverlayFor } from "@/data/map/field-symbol-modules";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { pveThemeFieldArt } from "@/engine/pve-content";
+import {
+  MITHRIL_ICON,
+  TEACHER_LESSONS,
+  TEACHER_LESSONS_PER_GAME,
+  WANDERING_TEACHER_MAP_IMAGE,
+  wanderingBossDefinition
+} from "@/data/wog/era";
 import { houseRuleEnabled } from "@/engine/house-rules";
 import {
   NEUTRAL_DECK_IDS,
@@ -2861,6 +2868,92 @@ export function HexMapBoard({
           </g>,
         );
       }
+      // WoG era Mithril (optional module): a forged mine whose NEXT
+      // Resource-round payout is doubled for its forger.
+      if (field.mithrilBoostBy) {
+        overlays.push(
+          <g
+            aria-label="Mithril-forged mine: next payout doubled"
+            className="eraMithrilForged"
+            key={`${spaceId}-mithril-forged`}
+            style={{ pointerEvents: "none" }}
+            transform={`translate(${x + HEX_SIZE * 0.5} ${y + HEX_SIZE * 0.34})`}
+          >
+            <title>{`Mithril-forged mine: its next Resource-round payout is doubled for ${state.players[field.mithrilBoostBy]?.name ?? "its forger"} (if they still hold it)`}</title>
+            <rect height="11" rx="4" width="22" x="-11" y="-7" />
+            <text textAnchor="middle" y="1.5">
+              ×2
+            </text>
+          </g>,
+        );
+      }
+      // WoG era moving Raid Boss / Wandering Teacher (optional modules): overlay
+      // tokens standing on this field. Decorative — clicks reach the hex.
+      const eraBoss = adventure.wanderingBoss;
+      if (eraBoss?.spaceId === spaceId && !eraBoss.slainBy) {
+        const eraBossDef = wanderingBossDefinition(eraBoss.defId);
+        const left = Math.max(0, eraBoss.maxHealth - eraBoss.damage);
+        const share = eraBoss.maxHealth > 0 ? left / eraBoss.maxHealth : 0;
+        overlays.push(
+          <g
+            aria-label={`${eraBossDef.name}: ${left} of ${eraBoss.maxHealth} Health`}
+            className="eraMapToken eraBossToken"
+            data-space-id={spaceId}
+            key={`${spaceId}-era-boss`}
+            style={{ pointerEvents: "none" }}
+          >
+            <title>{`${eraBossDef.name} — ${left}/${eraBoss.maxHealth} Health. ${eraBossDef.abilityText} Walks one field toward the richest player each round and heals 25%. Attack it from its field or an adjacent one (1 movement).`}</title>
+            <ellipse className="eraTokenShadow" cx={x} cy={y + HEX_SIZE * 0.45} rx={HEX_SIZE * 0.62} ry={HEX_SIZE * 0.2} />
+            <circle className="eraTokenRing" cx={x} cy={y - 2} r={HEX_SIZE * 0.62} />
+            <image
+              height={HEX_SIZE * 1.55}
+              href={assetUrl(eraBossDef.mapImage)}
+              preserveAspectRatio="xMidYMid meet"
+              width={HEX_SIZE * 1.55}
+              x={x - HEX_SIZE * 0.775}
+              y={y - HEX_SIZE * 0.95}
+            />
+            <rect className="eraBossHpTrack" height="5" rx="2" width={HEX_SIZE * 1.2} x={x - HEX_SIZE * 0.6} y={y + HEX_SIZE * 0.58} />
+            <rect
+              className="eraBossHpFill"
+              height="5"
+              rx="2"
+              width={HEX_SIZE * 1.2 * share}
+              x={x - HEX_SIZE * 0.6}
+              y={y + HEX_SIZE * 0.58}
+            />
+            <text className="eraBossHpText" textAnchor="middle" x={x} y={y + HEX_SIZE * 0.58 + 4.2}>
+              {left}/{eraBoss.maxHealth}
+            </text>
+          </g>,
+        );
+      }
+      const eraTeacher = adventure.wanderingTeacher;
+      if (eraTeacher?.spaceId === spaceId) {
+        overlays.push(
+          <g
+            aria-label="Wandering Teacher"
+            className="eraMapToken eraTeacherToken"
+            data-space-id={spaceId}
+            key={`${spaceId}-era-teacher`}
+            style={{ pointerEvents: "none" }}
+          >
+            <title>{`Wandering Teacher — this round: ${eraTeacher.offer
+              .map((kind) => `${TEACHER_LESSONS[kind].name} (${TEACHER_LESSONS[kind].gold} gold): ${TEACHER_LESSONS[kind].text}`)
+              .join(" | ")}. Stand on this field with a hero to buy a lesson — each player may take ${TEACHER_LESSONS_PER_GAME} lessons per game.`}</title>
+            <ellipse className="eraTokenShadow" cx={x} cy={y + HEX_SIZE * 0.45} rx={HEX_SIZE * 0.5} ry={HEX_SIZE * 0.17} />
+            <circle className="eraTokenRing" cx={x} cy={y - 2} r={HEX_SIZE * 0.5} />
+            <image
+              height={HEX_SIZE * 1.3}
+              href={assetUrl(WANDERING_TEACHER_MAP_IMAGE)}
+              preserveAspectRatio="xMidYMid meet"
+              width={HEX_SIZE * 1.3}
+              x={x - HEX_SIZE * 0.65}
+              y={y - HEX_SIZE * 0.85}
+            />
+          </g>,
+        );
+      }
       if (field.location === "creature_bank" && field.bankSize) {
         overlays.push(
           <g
@@ -4896,7 +4989,25 @@ export function AdventureHud({
               </small>
             </span>
           ))}
+          {/* WoG era Mithril / Loan Bank (optional modules): shown only when on. */}
+          {state.adventure?.mithril ? (
+            <span
+              className="resourceChip"
+              title={`Mithril: ${player.mithril ?? 0} — spent only on enchantments: 1 rerolls any die (once per round), 2 forge a mine you hold (its next Resource-round payout is doubled), 6 forge a war machine in Mithril. Gained by discovering tiles (Far 1, Near 2, Center 3), +1 every 3rd round, and +1 per Mithril Mine you hold every Resource Round.`}
+            >
+              <img alt="Mithril" className="resourceIcon" src={assetUrl(MITHRIL_ICON)} />
+              <b>{player.mithril ?? 0}</b>
+            </span>
+          ) : null}
           <small className="incomeNote">income / resource round</small>
+          {player.loan ? (
+            <small
+              className="eraSeatChip loanDue"
+              title={`Loan Bank: repay ${player.loan.repay} gold by the end of round ${player.loan.dueRound}, or the bank seizes your newest building (else Victory Points / your gold).`}
+            >
+              Loan: {player.loan.repay} gold due by round {player.loan.dueRound}
+            </small>
+          ) : null}
         </div>
       ) : null}
       {hero ? (
@@ -13399,6 +13510,12 @@ function GameModeSection({
     "monsterWaves",
     "raidBosses",
     "dungeon",
+    "wanderingBoss",
+    "wanderingTeacher",
+    "loanBank",
+    "mithril",
+    "karmicBattles",
+    "skillCombos",
   ] as const;
   const wogAllModulesOn = wogEnableAllKeys.every((key) => Boolean(wog[key]));
   const setAllWogModules = (on: boolean) => {
@@ -13431,6 +13548,12 @@ function GameModeSection({
     "monsterWaves",
     "raidBosses",
     "dungeon",
+    "wanderingBoss",
+    "wanderingTeacher",
+    "loanBank",
+    "mithril",
+    "karmicBattles",
+    "skillCombos",
   ] as const;
   const commanderModuleOn = Boolean(wog.enabled && wog.commanders);
   const animeAllModulesOn =
@@ -13810,6 +13933,36 @@ function GameModeSection({
                         "Dungeon Gate",
                         "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below.",
                       ],
+                      [
+                        "wanderingBoss",
+                        "Moving raid boss",
+                        "One of two bosses, picked at random — Grimjaw the Roaming Behemoth (27 Health; strikes twice, locks your morale) or Morvane the Lich Sovereign (24 Health, ranged; casts a Death Bolt every activation, raises Zombies after every attack) — strides onto the map on round 4 or 5 (announced a round ahead) and walks one field per round toward the player with the most gold. Its wounds persist, but it regenerates 25% of its Health every round. Attack it from its field or an adjacent one (1 movement). The killing blow claims a relic-tier Artifact search; everyone else who hurt it splits 15 gold by damage dealt. Separate from the Rift Lair raid boss.",
+                      ],
+                      [
+                        "wanderingTeacher",
+                        "Wandering Teacher",
+                        "From round 2 a Teacher moves to a new field every round and offers 2 of 3 lessons: Mastery (8 gold: Empower an Ability in your hand — its Expert side needs no crown), Retrain (3 gold: set an Ability from your hand aside, then Search the Ability deck (3)), Study (4 gold: Main Hero +1 experience, or with Unit Experience one army unit +2 experience). A hero standing on the Teacher's field may buy a lesson; each player may take 2 lessons per game.",
+                      ],
+                      [
+                        "loanBank",
+                        "Loan Bank",
+                        "On your turn, borrow 10 gold (one loan at a time) and repay 15 gold by the end of the 3rd round after. At the deadline the bank collects 15 gold if you have it; otherwise you default: the bank seizes your most recently built building that no other building needs (with none: 2 Victory Points in VP games, else all your gold) and never lends to you again.",
+                      ],
+                      [
+                        "mithril",
+                        "Mithril",
+                        "Discovering a new tile gives you Mithril (Far 1, Near 2, Center 3; once per tile), everyone gains 1 every 3rd round, and each Near tile uncovers a guarded (Ⅴ) Mithril Mine whose holder gains 1 Mithril every Resource Round. Mithril never buys units: 1 rerolls any die (once per round); 2 forge a mine you hold (its next Resource-round payout is doubled); 6 forge a war machine in Mithril — Ballista +1 damage, First Aid Tent heals 2 in even Combat rounds, Ammo Cart gives one chosen ranged unit +1 Attack when battle begins, Catapult hits any 2 targets, Cannon deals 3 and Lightning Generator 2 in even Combat rounds.",
+                      ],
+                      [
+                        "karmicBattles",
+                        "Karmic battles",
+                        "Before an ordinary guarded-field fight (never Creature Banks, bosses, outposts or exact designer armies) choose the guard as printed or EMPOWERED: every guard gains a Stack Token (+1 to a statistic that also soaks one lethal blow). Winning the empowered fight adds gold equal to the field's difficulty and 1 Treasure die to the normal reward.",
+                      ],
+                      [
+                        "skillCombos",
+                        "Skill combos",
+                        "Own two specific Ability cards to forge ONE combo card per game (optional; it joins your hand and takes a deck slot): Archery + Tactics = Volley Formation, Basic Earth Magic + Logistics = Tunnel March, Tactics + Armorer = Shield Wall, Tactics + Offense = Pincer Assault, Basic Water Magic + First Aid = Healing Tide, Basic Air Magic + Scouting = Tailwind, Basic Fire Magic + Offense = Firebrand, Artillery + Ballistics = Siege Battery, Pathfinding + Logistics = Trailblazer.",
+                      ],
                     ] as const
                   ).map(([key, label, description]) => {
                     const active = wog[key];
@@ -13880,6 +14033,29 @@ function GameModeSection({
                         </button>
                       ))}
                       <small>Warning appears one round earlier.</small>
+                    </div>
+                  ) : null}
+                  {wog.wanderingBoss ? (
+                    <div
+                      className="waveCadenceRow pveSettingRow"
+                      role="group"
+                      aria-label="Moving raid boss arrival"
+                    >
+                      <strong>Moving boss arrival</strong>
+                      {([4, 5] as const).map((round) => (
+                        <button
+                          aria-pressed={(wog.wanderingBossSpawnRound ?? 5) === round}
+                          className={`waveCadenceChip ${(wog.wanderingBossSpawnRound ?? 5) === round ? "selected" : ""}`}
+                          key={round}
+                          onClick={() =>
+                            send({ wog: { ...wog, wanderingBossSpawnRound: round } })
+                          }
+                          type="button"
+                        >
+                          Round {round}
+                        </button>
+                      ))}
+                      <small>Announced one round earlier.</small>
                     </div>
                   ) : null}
                   {wog.dungeon ? (
@@ -14132,6 +14308,36 @@ function GameModeSection({
                         "Dungeon Gate",
                         "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below.",
                       ],
+                      [
+                        "wanderingBoss",
+                        "Moving raid boss",
+                        "One of two bosses, picked at random — Grimjaw the Roaming Behemoth (27 Health; strikes twice, locks your morale) or Morvane the Lich Sovereign (24 Health, ranged; casts a Death Bolt every activation, raises Zombies after every attack) — strides onto the map on round 4 or 5 (announced a round ahead) and walks one field per round toward the player with the most gold. Its wounds persist, but it regenerates 25% of its Health every round. Attack it from its field or an adjacent one (1 movement). The killing blow claims a relic-tier Artifact search; everyone else who hurt it splits 15 gold by damage dealt. Separate from the Rift Lair raid boss.",
+                      ],
+                      [
+                        "wanderingTeacher",
+                        "Wandering Teacher",
+                        "From round 2 a Teacher moves to a new field every round and offers 2 of 3 lessons: Mastery (8 gold: Empower an Ability in your hand — its Expert side needs no crown), Retrain (3 gold: set an Ability from your hand aside, then Search the Ability deck (3)), Study (4 gold: Main Hero +1 experience, or with Unit Experience one army unit +2 experience). A hero standing on the Teacher's field may buy a lesson; each player may take 2 lessons per game.",
+                      ],
+                      [
+                        "loanBank",
+                        "Loan Bank",
+                        "On your turn, borrow 10 gold (one loan at a time) and repay 15 gold by the end of the 3rd round after. At the deadline the bank collects 15 gold if you have it; otherwise you default: the bank seizes your most recently built building that no other building needs (with none: 2 Victory Points in VP games, else all your gold) and never lends to you again.",
+                      ],
+                      [
+                        "mithril",
+                        "Mithril",
+                        "Discovering a new tile gives you Mithril (Far 1, Near 2, Center 3; once per tile), everyone gains 1 every 3rd round, and each Near tile uncovers a guarded (Ⅴ) Mithril Mine whose holder gains 1 Mithril every Resource Round. Mithril never buys units: 1 rerolls any die (once per round); 2 forge a mine you hold (its next Resource-round payout is doubled); 6 forge a war machine in Mithril — Ballista +1 damage, First Aid Tent heals 2 in even Combat rounds, Ammo Cart gives one chosen ranged unit +1 Attack when battle begins, Catapult hits any 2 targets, Cannon deals 3 and Lightning Generator 2 in even Combat rounds.",
+                      ],
+                      [
+                        "karmicBattles",
+                        "Karmic battles",
+                        "Before an ordinary guarded-field fight (never Creature Banks, bosses, outposts or exact designer armies) choose the guard as printed or EMPOWERED: every guard gains a Stack Token (+1 to a statistic that also soaks one lethal blow). Winning the empowered fight adds gold equal to the field's difficulty and 1 Treasure die to the normal reward.",
+                      ],
+                      [
+                        "skillCombos",
+                        "Skill combos",
+                        "Own two specific Ability cards to forge ONE combo card per game (optional; it joins your hand and takes a deck slot): Archery + Tactics = Volley Formation, Basic Earth Magic + Logistics = Tunnel March, Tactics + Armorer = Shield Wall, Tactics + Offense = Pincer Assault, Basic Water Magic + First Aid = Healing Tide, Basic Air Magic + Scouting = Tailwind, Basic Fire Magic + Offense = Firebrand, Artillery + Ballistics = Siege Battery, Pathfinding + Logistics = Trailblazer.",
+                      ],
                     ] as const
                   ).map(([key, label, description]) => {
                     const active = anime[key];
@@ -14307,6 +14513,29 @@ function GameModeSection({
                         </button>
                       ))}
                       <small>Warning appears one round earlier.</small>
+                    </div>
+                  ) : null}
+                  {anime.wanderingBoss ? (
+                    <div
+                      className="waveCadenceRow pveSettingRow"
+                      role="group"
+                      aria-label="Moving raid boss arrival"
+                    >
+                      <strong>Moving boss arrival</strong>
+                      {([4, 5] as const).map((round) => (
+                        <button
+                          aria-pressed={(anime.wanderingBossSpawnRound ?? 5) === round}
+                          className={`waveCadenceChip ${(anime.wanderingBossSpawnRound ?? 5) === round ? "selected" : ""}`}
+                          key={round}
+                          onClick={() =>
+                            send({ anime: { ...anime, wanderingBossSpawnRound: round } })
+                          }
+                          type="button"
+                        >
+                          Round {round}
+                        </button>
+                      ))}
+                      <small>Announced one round earlier.</small>
                     </div>
                   ) : null}
                   {anime.dungeon ? (
@@ -15880,7 +16109,12 @@ function GameOptionsPanel({
               0,
               Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0),
             );
+            // The lobby default is "keep" (absent = never touched; see
+            // buildAdventureFromLobby, which freezes the same default).
+            const parallelPvp = options.parallelPvp ?? "keep";
+            const pvpKeepsParallel = parallelPvp === "keep";
             return (
+              <>
               <div className="optionRow">
                 <small title="Optional: everyone plays their turns at the same time for the first rounds (multiplayer only)">
                   Parallel turns
@@ -15899,10 +16133,43 @@ function GameOptionsPanel({
                 </div>
                 <small className="optionHint">
                   {singlePlayerParallelDisabled ? "Parallel turns are disabled in single-player games." : parallelRounds > 0
-                    ? "Play together. Player conflicts switch to ordered turns."
+                    ? pvpKeepsParallel
+                      ? "Play together. PvP is fought between the players involved while the others keep playing."
+                      : "Play together. Player conflicts switch to ordered turns."
                     : "Classic turns: one player at a time, in seat order."}
                 </small>
               </div>
+              {parallelRounds > 0 ? (
+                <div className="optionRow">
+                  <small title="Sub-rule of Parallel turns: what happens when players attack or affect each other">
+                    Parallel turns — PvP
+                  </small>
+                  <div className="optionButtons">
+                    {(["keep", "stop"] as const).map((mode) => (
+                      <button
+                        aria-pressed={parallelPvp === mode}
+                        className={parallelPvp === mode ? "selected" : ""}
+                        key={mode}
+                        onClick={() => send({ parallelPvp: mode })}
+                        title={
+                          mode === "keep"
+                            ? "PvP battles and player interactions keep parallel turns running"
+                            : "The first PvP battle or player interaction switches everyone to ordered turns"
+                        }
+                        type="button"
+                      >
+                        {mode === "keep" ? "Stay parallel" : "Switch to ordered"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {pvpKeepsParallel
+                      ? "Attacking a hero or holding, or taking a mine, is fought between the two players while everyone else keeps playing. A player who is busy in a battle or a choice cannot be attacked or affected until they finish."
+                      : "Classic: the first PvP battle or player interaction ends parallel turns for everyone, and play continues in seat order."}
+                  </small>
+                </div>
+              ) : null}
+              </>
             );
           })()}
         </div>

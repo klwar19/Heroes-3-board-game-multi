@@ -3,6 +3,7 @@ import {
   COMMANDER_DEFENSE_TOKEN_GRADE,
   COMMANDER_GRADE_VALUES,
   COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION,
+  COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION,
   COMMANDER_SLUGS,
   COMMANDER_STAT_KEYS,
   commanderDefinitions,
@@ -48,7 +49,7 @@ import {
 } from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { countBallistas, startWarMachineRound, warMachinesForSale } from "./permanents";
-import { countExtraBallistas, effectiveInitiative } from "./active-effects";
+import { countExtraBallistas, effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { gainRunes } from "./runes";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -159,12 +160,12 @@ describe("WOG commanders — content integrity", () => {
     expect(COMMANDER_GRADE_VALUES.health).toEqual([4, 5, 6, 8]);
     expect(COMMANDER_GRADE_VALUES.speed).toEqual([5, 6, 7, 10]);
     // Damage grade = the number of EXTRA attack dice; Magic grade = Power.
-    // Per the module spec the Power ladder is 0/0/1/2 (grade 1 buys the
-    // defensive package, not Power) and the spell ward is 0/1/1/3 (nothing at
-    // grade 0, -1 from grade 1, -3 at grade 3).
+    // Magic Power is 0/1/1/2; Spell resistance is 0/1/2/3, and Specialty
+    // resistance begins at grade 2.
     expect(COMMANDER_GRADE_VALUES.damage).toEqual([0, 1, 2, 3]);
-    expect(COMMANDER_GRADE_VALUES.magic).toEqual([0, 0, 1, 2]);
-    expect(COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION).toEqual([0, 1, 1, 3]);
+    expect(COMMANDER_GRADE_VALUES.magic).toEqual([0, 1, 1, 2]);
+    expect(COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION).toEqual([0, 1, 2, 3]);
+    expect(COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION).toEqual([0, 0, 1, 1]);
     expect(COMMANDER_DEFENSE_TOKEN_GRADE).toBe(2);
   });
 
@@ -281,19 +282,18 @@ describe("WOG commanders — combat injection", () => {
       controllerId: "p1"
     });
     expect(unit.position).toBeGreaterThanOrEqual(12);
-    // Magic grade 0 (base): the commander gets ONLY its cast — no spell ward,
-    // no ongoing-effect immunity (both begin at Magic grade 1).
+    // Magic grade 0 (base): only the cast, without either ward or immunity.
     expect(unit.abilities).not.toContain("reduce-spell-damage-1");
-    expect(unit.abilities).not.toContain("titan-ignore-ongoing");
+    expect(unit.abilities).not.toContain("commander-ignore-negative-ongoing");
     expect(unit.abilities).toContain("commander-cast-paladin");
   });
 
-  it("gains the magic package (ward + ongoing immunity) from Magic grade 1", () => {
+  it("gains Power 1 and the Spell ward at Magic grade 1", () => {
     const state = adventureWithCommanders("cmd-inject-magic");
     state.players.p1.commander = freshCommander("paladin", { magic: 1 });
     const unit = intoNeutralFight(state).combat!.units[commanderUnitId("p1")];
     expect(unit.abilities).toContain("reduce-spell-damage-1");
-    expect(unit.abilities).toContain("titan-ignore-ongoing");
+    expect(unit.abilities).not.toContain("commander-ignore-negative-ongoing");
   });
 
   it("CONTROL: no commander unit when the module is off, and none for a DEAD commander", () => {
@@ -588,9 +588,9 @@ describe("WOG commanders — the Magic grade package", () => {
     const warded = boltAt(sandboxWithCommander("paladin", { magic: 1 }), commanderUnitId("p1"));
     expect(warded.combat!.units[commanderUnitId("p1")].damage).toBe(1);
 
-    // Grade 2 keeps the -1 ward → 2 - 1 = 1 damage.
+    // Grade 2 increases the ward to -2 → 2 - 2 = 0 damage.
     const graded = boltAt(sandboxWithCommander("paladin", { magic: 2 }), commanderUnitId("p1"));
-    expect(graded.combat!.units[commanderUnitId("p1")].damage).toBe(1);
+    expect(graded.combat!.units[commanderUnitId("p1")].damage).toBe(0);
 
     // Grade 3 carries the -3 ward (behaviour of the shared REDUCE_SPELL_DAMAGE
     // id is pinned by its own ability tests; here we pin WHICH ward is wired).
@@ -607,19 +607,36 @@ describe("WOG commanders — the Magic grade package", () => {
     expect(control.combat!.units.unit_p1_marksmen.damage).toBe(2);
   });
 
-  it("is immune to ongoing effects from Magic grade 1: an enemy Slow never shifts its initiative", () => {
-    let state = sandboxWithCommander("paladin", { magic: 1 });
+  it("ignores negative ongoing effects from Magic grade 2: an enemy Slow is never offered on it and never shifts its initiative", () => {
+    const state = sandboxWithCommander("paladin", { magic: 2 });
     state.players.p2.hand = ["spell.slow"];
     state.combat!.activeUnitId = "unit_p2_skeletons";
     state.activePlayerId = "p2";
     const before = effectiveInitiative(state.combat!.units[commanderUnitId("p1")], state.activeEffects);
-    state = settle(
-      apply(state, {
-        type: "CAST_SPELL",
-        playerId: "p2",
-        cardId: "spell.slow",
-        target: { type: "unit", unitId: commanderUnitId("p1") }
-      })
+    // The Slow would fizzle on it, so it is no target (the reducer refuses it)…
+    expect(findCast(state, "p2", "spell.slow", commanderUnitId("p1"))).toBeUndefined();
+    expect(findCast(state, "p2", "spell.slow", "unit_p1_marksmen")).toBeTruthy();
+    applyError(state, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.slow",
+      target: { type: "unit", unitId: commanderUnitId("p1") }
+    });
+    // …and a negative effect that does reach it anyway is ignored.
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Slow",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "negative",
+          modifiers: [{ type: "INITIATIVE_BONUS", amount: -2 }]
+        },
+        { type: "card", cardId: "spell.slow", controllerId: "p2" },
+        "p2",
+        { type: "unit", unitId: commanderUnitId("p1") }
+      )
     );
     const after = effectiveInitiative(state.combat!.units[commanderUnitId("p1")], state.activeEffects);
     expect(after).toBe(before);
@@ -641,9 +658,8 @@ describe("WOG commanders — the Magic grade package", () => {
     );
     expect(effectiveInitiative(control.combat!.units.unit_p1_marksmen, control.activeEffects)).toBeLessThan(baseline);
 
-    // CONTROL 2: a Magic grade-0 commander is NOT immune — the same Slow drags
-    // IT down too (the immunity is the grade-1 package, not a baseline).
-    let unwarded = sandboxWithCommander("paladin"); // magic grade 0
+    // CONTROL 2: Magic grade 1 has no ongoing immunity, so Slow still applies.
+    let unwarded = sandboxWithCommander("paladin", { magic: 1 });
     unwarded.players.p2.hand = ["spell.slow"];
     unwarded.combat!.activeUnitId = "unit_p2_skeletons";
     unwarded.activePlayerId = "p2";

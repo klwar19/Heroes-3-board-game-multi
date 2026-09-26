@@ -190,6 +190,7 @@ function moduleEnabledForState(state: Pick<GameState, "anime">) {
     module !== "wavePressure" &&
     module !== "waveDefeatLimit" &&
     module !== "raidBossSpawnRound" &&
+    module !== "wanderingBossSpawnRound" &&
     module !== "dungeonDepth" &&
     module !== "dungeonDescentCost" &&
     animeModuleEnabled(state, module);
@@ -207,7 +208,11 @@ export function fieldOverrideKindAllowedForState(
   kind: string
 ): boolean {
   const def = getFieldOverrideDefinition(kind);
-  if (!def || !packageAllowedForState(state)(def.package)) {
+  // A `poolExcluded` kind (WoG era Mithril Mine) is placed ONLY by its own
+  // module (wog-era.ts carveMithrilMine, which bypasses this gate): a
+  // hand-crafted designer pin must never carve it — with the module off it
+  // would be an inert hex, with it on an extra mine beyond one per Near tile.
+  if (!def || def.poolExcluded || !packageAllowedForState(state)(def.package)) {
     return false;
   }
   return !def.requiresModule || moduleEnabledForState(state)(def.requiresModule);

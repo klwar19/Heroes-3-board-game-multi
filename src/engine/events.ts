@@ -23,13 +23,12 @@ import { deferPreOrderWarMachine } from "./astrologers-pre-order";
 
 type EventDraft = Omit<GameEvent, "id">;
 
-/** Soul Link never redirects a hit that would defeat its commander. */
-export function soulLinkCanTakeShare(
+/** Redirect at most half the hit, always leaving Soul Eater at 1 Health. */
+export function soulLinkShareAmount(
   commander: Pick<CombatUnitState, "damage" | "maxHealth">,
   incomingDamage: number,
-): boolean {
-  return incomingDamage > 0 &&
-    commander.damage + Math.ceil(incomingDamage / 2) < commander.maxHealth;
+): number {
+  return Math.max(0, Math.min(Math.ceil(incomingDamage / 2), commander.maxHealth - commander.damage - 1));
 }
 
 /** Scorching Earth places a damage token without a normal damage event. */
@@ -40,10 +39,10 @@ export function transferUnloggedSoulLinkDamage(state: GameState, targetId: strin
   const commander = Object.values(combat.units).find(unit =>
     unit.commanderSlug === "soul_eater" && unit.controllerId === target.controllerId &&
     unit.soulLinkTargetId === target.id && unit.soulLinkUsedRound !== combat.round &&
-    soulLinkCanTakeShare(unit, amount)
+    soulLinkShareAmount(unit, amount) > 0
   );
   if (!commander) return;
-  const transferred = Math.ceil(amount / 2);
+  const transferred = soulLinkShareAmount(commander, amount);
   target.damage = Math.max(0, target.damage - transferred);
   commander.damage += transferred;
   commander.soulLinkUsedRound = combat.round;
@@ -428,9 +427,9 @@ export function appendEvent<T extends EventDraft>(
       unit.soulLinkUsedRound !== state.combat!.round
     );
     const amount = (eventDraft as { amount?: number }).amount ?? 0;
-    if (target && commander && soulLinkCanTakeShare(commander, amount) &&
+    const transferred = commander ? soulLinkShareAmount(commander, amount) : 0;
+    if (target && commander && transferred > 0 &&
         target.damage - amount < target.maxHealth) {
-      const transferred = Math.ceil(amount / 2);
       target.damage = Math.max(0, target.damage - transferred);
       commander.damage += transferred;
       commander.soulLinkUsedRound = state.combat.round;

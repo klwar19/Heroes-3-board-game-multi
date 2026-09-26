@@ -4,6 +4,7 @@ import { animeEquipmentCards } from "@/data/anime/equipment-cards";
 import { animeHeroGradeCards } from "@/data/anime/hero-grades";
 import { wogArtifactCards } from "@/data/wog/artifacts";
 import { wogCommanderArtifactCards } from "@/data/wog/commander-artifacts";
+import { wogEraComboCards } from "@/data/wog/era";
 import { extraAbilityCards } from "./abilities-extra";
 import { adventureCards } from "./adventure";
 import { artifactCards } from "./artifacts";
@@ -31,6 +32,8 @@ export const cardLibrary: CardLibrary = {
   ...animeEquipmentCards,
   ...wogArtifactCards,
   ...wogCommanderArtifactCards,
+  // WoG era Skill Combos: granted only by FORGE_SKILL_COMBO (never in a deck).
+  ...wogEraComboCards,
   ...animeHeroGradeCards,
   ...extraAbilityCards,
   ...permanentCards,

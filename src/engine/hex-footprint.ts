@@ -352,6 +352,24 @@ export function unitCellDistance(
   return cellsDistance(unitCells(combat, unit), [cell]);
 }
 
+/**
+ * Straight-line distance, in hex widths, from the nearest of `centres` to
+ * `cell` (pointy-top, even rows shifted half a hex right; rows √3/2 apart).
+ */
+function hexCentreDistance(centres: readonly number[], cell: number): number {
+  const point = (position: number) => {
+    const { row, column } = getBattlefieldCoordinates(position);
+    return { x: column + (row % 2 === 0 ? 0.5 : 0), y: (row * Math.sqrt(3)) / 2 };
+  };
+  const target = point(cell);
+  let best = Infinity;
+  for (const centre of centres) {
+    const from = point(centre);
+    best = Math.min(best, Math.hypot(target.x - from.x, target.y - from.y));
+  }
+  return best;
+}
+
 function cellsDistance(leftCells: readonly number[], rightCells: readonly number[]): number {
   let best = Infinity;
   for (const left of leftCells) {
@@ -411,6 +429,12 @@ export function unitInCells(
  * nearest centre cell is 1..radius (the PC-sized area spells, see
  * hex-spell-areas.ts). Radius 1 is exactly the adjacent ring above; the 4×5
  * grid ignores `radius` and always returns the orthogonal ring.
+ *
+ * A FRACTIONAL radius is a round blast: every hex whose centre lies within
+ * `radius` hex-widths (straight-line distance between hex centres) of the
+ * nearest centre cell. Hex steps are 1 apart, the six "between the corners"
+ * hexes of the second ring are √3 ≈ 1.73 away and its six corners 2 — so
+ * radius 1.75 = the 7-hex Fireball area plus those six (13 hexes).
  */
 export function areaAround(
   combat: FootprintCombat | null | undefined,
@@ -425,10 +449,11 @@ export function areaAround(
     // distance, so they widen nothing — the centre alone, like its empty ring.
     const hexCentres = centreCells.filter(isHexPosition);
     if (hexCentres.length === 0) return area;
+    const round = !Number.isInteger(radius);
     for (const cell of getBattlefieldPositions("hex")) {
       if (centreCells.includes(cell)) continue;
-      const distance = cellsDistance(hexCentres, [cell]);
-      if (distance >= 1 && distance <= radius) area.add(cell);
+      const distance = round ? hexCentreDistance(hexCentres, cell) : cellsDistance(hexCentres, [cell]);
+      if (distance >= 1 - 1e-9 && distance <= radius) area.add(cell);
     }
     return area;
   }

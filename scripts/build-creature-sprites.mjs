@@ -15,6 +15,18 @@
  *
  * --cast also keeps the spell-casting groups 17/18/19 (cast up/straight/down)
  * for creatures that cast on the board (Ogre Magi, Enchanters, Faerie Dragons...).
+ * --double-wide: the creature is a PC two-hex creature (VCMI `doubleWide`), drawn
+ * around the middle of its two hexes (see the anchor below).
+ * --anchor-only: only recompute the anchor of the existing atlas (same crop),
+ * without re-encoding its image.
+ *
+ * Anchor = where the PC stands the creature: every H3 creature canvas (450x400)
+ * is drawn at a fixed offset from its hex (VCMI getStackPositionAtHex), which
+ * puts the hex centre on canvas (196.5, 251) — feet row 266, 15 px below it —
+ * and a two-hex creature's middle 22 px further right. The atlas anchor is that
+ * canvas point (not the lowest body pixel), so flyers keep their PC hover and
+ * every creature stands exactly where the PC draws it. A non-H3 canvas falls
+ * back to the standing frame's measured feet.
  *
  * Output:
  *   public/assets/battle-hex/creatures/<slug>.webp          (media-managed: run
@@ -187,6 +199,15 @@ function isBody(v) {
   return v > 7;
 }
 
+/**
+ * The PC's creature canvas and the hex point on it (VCMI BattleStacksController
+ * getStackPositionAtHex: canvas left = hex left - 189 + 29 facing right, top =
+ * hex top - 139; hex rect 45x52): hex centre x 196.5 (pixel column 196), feet
+ * 15 px below the hex centre y 251; a double-wide creature is drawn 44 px left
+ * of its head hex, so its two hexes' middle is canvas x 218.5.
+ */
+const PC_CANVAS = { width: 450, height: 400, hexX: 196, doubleWideX: 218, footY: 266 };
+
 async function main() {
   const args = process.argv.slice(2);
   const defPath = args[0];
@@ -245,8 +266,27 @@ async function main() {
       }
     }
   }
-  const anchorX = Math.round((footMin + footMax) / 2) - minX;
-  const anchorY = bodyBottom - minY;
+  // The PC canvas point (see PC_CANVAS); any other canvas keeps the measured feet.
+  const pcCanvas = fullHeight === PC_CANVAS.height && fullWidth >= PC_CANVAS.width && fullWidth <= PC_CANVAS.width + 2;
+  const doubleWide = args.includes("--double-wide");
+  const anchorX = pcCanvas
+    ? (doubleWide ? PC_CANVAS.doubleWideX : PC_CANVAS.hexX) - minX
+    : Math.round((footMin + footMax) / 2) - minX;
+  const anchorY = pcCanvas ? PC_CANVAS.footY - minY : bodyBottom - minY;
+
+  if (args.includes("--anchor-only")) {
+    const meta = fs.existsSync(META_FILE) ? JSON.parse(fs.readFileSync(META_FILE, "utf8")) : {};
+    const entry = meta[slug];
+    if (!entry) throw new Error(`${slug}: no atlas to re-anchor (build it first)`);
+    if (entry.frameWidth !== cellWidth || entry.frameHeight !== cellHeight) {
+      throw new Error(`${slug}: atlas frames ${entry.frameWidth}x${entry.frameHeight} were not cut from this .def's ${cellWidth}x${cellHeight} box — rebuild it`);
+    }
+    const moved = `(${entry.anchorX}, ${entry.anchorY}) -> (${anchorX}, ${anchorY})`;
+    meta[slug] = { ...entry, anchorX, anchorY };
+    fs.writeFileSync(META_FILE, `${JSON.stringify(meta, null, 2)}\n`);
+    console.log(`${slug}: anchor ${moved}${pcCanvas ? "" : " (not a PC canvas: measured feet)"}`);
+    return;
+  }
 
   const columns = Math.max(...def.groups.map((group) => group.frames.length));
   const rows = def.groups.length;

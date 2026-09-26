@@ -24,7 +24,18 @@ import { artifactSetTierAt, type GameAction, type LegalAction } from "@/engine";
 // no offer, so no button renders. Clicking dispatches the exact legal payload.
 // ---------------------------------------------------------------------------
 
-type HeroMapActionKey = "train" | "tribulation" | "revisit" | "build" | "artifact-set" | "ally-transfer";
+type HeroMapActionKey = "train" | "tribulation" | "revisit" | "build" | "artifact-set" | "ally-transfer" | "wog-era";
+
+/** WoG era module actions (optional modules; the engine offers them only while on). */
+const WOG_ERA_ACTION_TYPES = new Set<GameAction["type"]>([
+  "ATTACK_WANDERING_BOSS",
+  "TEACHER_LESSON",
+  "TAKE_LOAN",
+  "REPAY_LOAN",
+  "MITHRIL_FORGE_MINE",
+  "MITHRIL_UPGRADE_WAR_MACHINE",
+  "FORGE_SKILL_COMBO"
+]);
 
 /** EN/VI label + a one-line cost/effect tooltip per hero map action. */
 const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string; title: string }> = {
@@ -57,11 +68,16 @@ const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string;
     en: "",
     vi: "",
     title: "Offer this resource or Artifact to an ally; they must accept"
+  },
+  "wog-era": {
+    en: "",
+    vi: "",
+    title: "Wake of Gods era module action"
   }
 };
 
 /** Keys whose button text is the ENGINE's label (several offers may co-exist). */
-const ENGINE_LABELLED_KEYS = new Set<HeroMapActionKey>(["revisit", "build", "artifact-set", "ally-transfer"]);
+const ENGINE_LABELLED_KEYS = new Set<HeroMapActionKey>(["revisit", "build", "artifact-set", "ally-transfer", "wog-era"]);
 
 /** Which hero map action a legal action is, or null when it is not one of them. */
 function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
@@ -79,6 +95,9 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   }
   if (action.type === "OFFER_ALLY_TRANSFER") {
     return "ally-transfer";
+  }
+  if (WOG_ERA_ACTION_TYPES.has(action.type)) {
+    return "wog-era";
   }
   // Polish Set Artifacts: only the MAP tiers reach a map legal-action list at
   // all (the combat tiers live in the command dock) — the engine decides which of
@@ -140,6 +159,8 @@ export function HeroActionButtons({
                 `${offer.key}:${offer.action.setId}:${offer.action.tier}:${offer.action.neutralTier ?? ""}`
               : offer.action.type === "OFFER_ALLY_TRANSFER"
                 ? `${offer.key}:${offer.action.fromHeroId}:${offer.action.targetPlayerId}:${offer.action.targetHeroId ?? "market"}:${JSON.stringify(offer.action.transfer)}`
+              : offer.key === "wog-era"
+                ? `${offer.key}:${JSON.stringify(offer.action)}`
               : offer.key;
         return (
           <button
