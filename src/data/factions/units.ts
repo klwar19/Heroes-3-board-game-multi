@@ -1616,7 +1616,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ground",
     few: { attack: 8, defense: 2, health: 7, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: ["forge-cyberbrute-crush"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0).", cardImage: "/assets/units-forge-golden-cyberbrutes-few.webp" },
-    pack: { attack: 8, defense: 2, health: 9, initiative: 7, cost: { gold: 35, valuables: 2 }, abilities: ["forge-cyberbrute-crush", "forge-cyberbrute-feast"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0). [unit_passive] Each time this unit kills a unit, it heals 1 [health_points].", cardImage: "/assets/units-forge-golden-cyberbrutes-pack.webp" },
+    pack: { attack: 8, defense: 2, health: 9, initiative: 7, cost: { gold: 35, valuables: 2 }, abilities: ["forge-cyberbrute-crush", "forge-cyberbrute-feast"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0). [unit_attack] When this unit's attack kills an enemy unit, heal 1 [health_points].", cardImage: "/assets/units-forge-golden-cyberbrutes-pack.webp" },
     // No neutral side: like Titans / Hydras, the Cyberbrutes' Neutral Unit card
     // is the separate AZURE-tier neutral.cyberbrutes (azureNeutralCounterpartId).
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
@@ -3035,7 +3035,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "ground",
-    neutral: { attack: 8, defense: 3, health: 9, initiative: 7, cost: { gold: 38, valuables: 2 }, abilities: ["forge-cyberbrute-crush", "forge-cyberbrute-feast"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0). [unit_passive] Each time this unit kills a unit, it heals 1 [health_points].", cardImage: "/assets/units-neutral-azure-cyberbrutes.webp" },
+    neutral: { attack: 8, defense: 3, health: 9, initiative: 7, cost: { gold: 38, valuables: 2 }, abilities: ["forge-cyberbrute-crush", "forge-cyberbrute-feast"], abilityText: "[unit_attack] Decrease the target's [defense] by half, rounded up (to a minimum of 0). [unit_attack] When this unit's attack kills an enemy unit, heal 1 [health_points].", cardImage: "/assets/units-neutral-azure-cyberbrutes.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",

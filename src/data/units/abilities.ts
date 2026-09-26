@@ -2525,7 +2525,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "forge-cyberbrute-feast": {
     id: "forge-cyberbrute-feast",
     name: "Scrap Feast",
-    text: "[unit_passive] Each time this unit kills a unit, it heals 1 Health (never above its maximum). Every enemy side, stack layer or Stack Token it defeats counts, Retaliation included.",
+    text: "[unit_attack] When this unit's attack kills an enemy unit, it heals 1 Health (never above its maximum). Every enemy side, stack layer or Stack Token it defeats counts. Retaliation does not trigger this ability.",
     effect: { type: "HEAL_PER_KILL", amount: 1 },
     implementationStatus: "implemented"
   },

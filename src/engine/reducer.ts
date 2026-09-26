@@ -285,6 +285,8 @@ import {
   unitStepSpaces,
   unitTailOffset,
 } from "./hex-footprint";
+import { hexPcSpellArea, hexPcSpellBlast } from "./hex-spell-areas";
+import { chainHopCandidates } from "./chain-lightning-hex";
 import { HEX_DEFAULT_FREE_COMBAT_ROUNDS, hexDeploymentLine } from "./hex-battlefield";
 import {
   appendExpiredEffectEvents,
@@ -554,6 +556,7 @@ import {
   consumeStarCandyShield,
   transferPendingDamage,
   reduceFirstDamageByAbility,
+  soulLinkCanTakeShare,
 } from "./events";
 import {
   LITTLE_BUSTERS_BLADE_DANCE_ID,
@@ -1114,18 +1117,9 @@ function assertLegal(
     const effect = card
       ? getEffectiveCardEffectForState(state, card, action.optionIndex)
       : null;
-    if (
-      effect?.type === "CHAIN_LIGHTNING" &&
-      Object.values(state.combat?.units ?? {}).filter(
-        (unit) => isUnitAlive(unit) && unit.position >= 0,
-      ).length < 3
-    ) {
-      return {
-        code: "ACTION_NOT_LEGAL",
-        message:
-          "Chain Lightning requires 3 living units on the battlefield: select 1 unit and the 2 closest units.",
-      };
-    }
+    // Chain Lightning starts on any living unit on the board; bolts left
+    // without a body simply have no target (getTargetsForCard's rule — the old
+    // "3 living units" gate here refused the very cast the table offered).
     // Defence-in-depth twin of the addOptionPlays gate: the exact-multi-target
     // meteor family (`includeCenter` — it rings the chosen unit AND itself) needs
     // `adjacentPicks` living adjacent UNITS at its centre. Scoped on `includeCenter`
@@ -4169,10 +4163,18 @@ function applyInfernoDiceOutcome(
     return;
   }
 
-  const blastArea = new Set<number>([
-    position,
-    ...getOrthogonalNeighbors(position),
-  ]);
+  // Hex battlefield: the PC Inferno area (radius 2 around the centre body,
+  // hex-spell-areas.ts). 4×5 grid: the printed space + orthogonal neighbours.
+  const blastArea =
+    hexPcSpellBlast(
+      combat,
+      card.id,
+      unitAtCell(combat, position, Object.values(combat.units).filter(isUnitAlive)) ?? position,
+    ) ??
+    new Set<number>([
+      position,
+      ...getOrthogonalNeighbors(position),
+    ]);
   // Snapshot the targets first so removals during the loop never shift it.
   const targets = Object.values(combat.units).filter(
     (unit) => isUnitAlive(unit) && unitInCells(combat, unit, blastArea),
@@ -4242,7 +4244,14 @@ function resolveMeteorShowerSpell(
     ? 0
     : getAmountByPower(card.effect.damageByPower, 0, power);
   if (amount <= 0) return;
-  const blast = new Set([position, ...getOrthogonalNeighbors(position)]);
+  // Hex battlefield: the PC Meteor Shower area (radius 1 around the centre body,
+  // centre included — hex-spell-areas.ts). 4×5 grid: the printed space + neighbours.
+  const blast =
+    hexPcSpellBlast(
+      combat,
+      card.id,
+      unitAtCell(combat, position, Object.values(combat.units).filter(isUnitAlive)) ?? position,
+    ) ?? new Set([position, ...getOrthogonalNeighbors(position)]);
   for (const unit of Object.values(combat.units)) {
     if (isUnitAlive(unit) && unitInCells(combat, unit, blast)) {
       dealAreaCardDamage(state, playerId, card, unit, amount);
@@ -4371,7 +4380,11 @@ function applyAreaAllAdjacentPlay(
   const centreUnit = action.target.type === "unit"
     ? combat.units[action.target.unitId]
     : unitAtCell(combat, center, Object.values(combat.units).filter(isUnitAlive));
-  const blastArea = areaAround(combat, centreUnit ?? center, effect.includeCenter !== false);
+  // Hex battlefield: Xyron's Inferno / Adelaide's Frost Ring VI take their PC
+  // area (hex-spell-areas.ts); every other card and the 4×5 grid keep the ring.
+  const blastArea =
+    hexPcSpellBlast(combat, card.id, centreUnit ?? center) ??
+    areaAround(combat, centreUnit ?? center, effect.includeCenter !== false);
   const isCentre = (unit: CombatUnitState): boolean =>
     unitOccupiesCell(combat, unit, center);
   const inBlast = Object.values(state.combat.units).filter(
@@ -4592,9 +4605,14 @@ function resolveAreaPickDamage(
 
   retainPendingCardDamageTransfers(state, card);
 
+  // Hex battlefield (Frost Ring spell + Adelaide / Glacius): the PC area
+  // (hex-spell-areas.ts) — EVERY living unit in it is hit, no picks. The 4×5
+  // grid and every other card keep the printed centre + "pick N" ring.
+  const pcArea = hexPcSpellArea(combat, card?.id);
+
   // The body covering the centre (a double-wide tail counts on the hex board).
   const centreBody = unitAtCell(combat, centerPosition, Object.values(combat.units).filter(isUnitAlive));
-  if (includeCenter) {
+  if (pcArea ? pcArea.includeCentre : includeCenter) {
     const centre = centreBody;
     if (centre) {
       dealAreaCardDamage(state, playerId, card, centre, centerAmount ?? amount);
@@ -4603,7 +4621,9 @@ function resolveAreaPickDamage(
 
   // The ring around the centre body's whole footprint (grid: the centre's
   // orthogonal neighbours).
-  const neighbours = areaAround(combat, centreBody ?? centerPosition, false);
+  const neighbours = pcArea
+    ? areaAround(combat, centreBody ?? centerPosition, false, pcArea.radius)
+    : areaAround(combat, centreBody ?? centerPosition, false);
   const candidates = Object.values(combat.units).filter(
     (unit) =>
       isUnitAlive(unit) &&
@@ -4616,9 +4636,11 @@ function resolveAreaPickDamage(
     playerId,
     card,
     candidates.map((unit) => unit.id),
-    adjacentPicks,
+    // PC area: as many "picks" as candidates, so all are hit at once and the
+    // area-pick choice never opens.
+    pcArea ? candidates.length : adjacentPicks,
     amount,
-    minAdjacentPicks,
+    pcArea ? undefined : minAdjacentPicks,
   );
 }
 
@@ -5258,12 +5280,13 @@ function applyAttackDamageFromCandidate(
   const delayAmount = delayedImpactAmount(state, defender, state.combat.round);
   const deferred = damage > 0 && attacker.controllerId !== defender.controllerId ? Math.min(delayAmount, damage) : 0;
   damage -= deferred;
+  const anticipatedDamage = veteranInterceptPreview(state, attacker, defender, damage);
   const soulLinkCommander = Object.values(state.combat.units).find(unit =>
     unit.commanderSlug === "soul_eater" && unit.controllerId === defender.controllerId &&
     unit.soulLinkTargetId === defender.id && isUnitAlive(unit) &&
-    unit.soulLinkUsedRound !== state.combat!.round
+    unit.soulLinkUsedRound !== state.combat!.round &&
+    soulLinkCanTakeShare(unit, anticipatedDamage)
   );
-  const anticipatedDamage = veteranInterceptPreview(state, attacker, defender, damage);
   if (
     lethalCancel &&
     damage > 0 &&
@@ -5413,6 +5436,7 @@ function applyAttackDamageFromCandidate(
       target: { type: "unit", unitId: defender.id },
       amount: damage,
       damageKind: "attack",
+      ...(isRetaliation ? { isRetaliation: true } : {}),
     });
     if (soulLinkCommander?.soulLinkUsedRound === state.combat.round) {
       damage = assigned.amount;
@@ -8798,14 +8822,14 @@ function finishResolvedAttack(
       details.defender,
       preview.damage,
     );
-    // Soul Link moves half of the blow onto the linked Soul Eater (once per
-    // round), so the lethal-save window uses the share the defender keeps —
-    // the same halving the resolution-time lethal re-check applies.
+    // A Soul Link share changes the defender's lethal window only when the
+    // commander can survive its half of this hit.
     const lethalRound = state.combat?.round;
     const soulLinked = Object.values(state.combat?.units ?? {}).some(unit =>
       unit.commanderSlug === "soul_eater" && unit.controllerId === details.defender.controllerId &&
       unit.soulLinkTargetId === details.defender.id && isUnitAlive(unit) &&
-      unit.soulLinkUsedRound !== lethalRound
+      unit.soulLinkUsedRound !== lethalRound &&
+      soulLinkCanTakeShare(unit, preview.damage)
     );
     const landedDamage = soulLinked ? Math.floor(preview.damage / 2) : preview.damage;
     if (
@@ -19716,6 +19740,10 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
       if (target) {
+        // Hex battlefield: the PC Fireball area — the target's whole body and
+        // every hex around it (hex-spell-areas.ts), read before the hit so a
+        // flip / removal cannot shrink it. Null on the 4×5 grid.
+        const pcBlast = hexPcSpellBlast(state.combat, card.id, target);
         // The primary target's own spell-damage reduction applies here; the
         // splash keeps the raw `amount` and is reduced per splash-target below.
         const dealt = reducedCardDamage(state, target, card, amount);
@@ -19734,10 +19762,27 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         noteUnitDamagedForTokens(state, target, assignedDamage.amount);
         markUnitRemovedIfNeeded(state, target);
 
+        if (pcBlast) {
+          // Hex: EVERY other living unit in the area — friend or foe — takes
+          // the same Power damage (per-unit reduction / immunity via
+          // dealAreaCardDamage); there is no second-target pick.
+          const blastCombat = state.combat;
+          const splashed = Object.values(blastCombat.units).filter(
+            (unit) =>
+              unit.id !== target.id &&
+              isUnitAlive(unit) &&
+              unitInCells(blastCombat, unit, pcBlast),
+          );
+          for (const unit of splashed) {
+            dealAreaCardDamage(state, stackItem.action.playerId, card, unit, amount);
+          }
+        }
+
         // "Select 2 adjacent places": the caster picks one unit adjacent to
         // the target for the same damage (the second space may be empty). A
         // unit immune to this Spell's school (an Elemental) is not a candidate.
-        const splashCandidates = Object.values(state.combat.units).filter(
+        // (Never on the hex board, where the PC area above already hit them.)
+        const splashCandidates: CombatUnitState[] = pcBlast ? [] : Object.values(state.combat.units).filter(
           (unit) =>
             unit.id !== target.id &&
             isUnitAlive(unit) &&
@@ -20942,9 +20987,8 @@ function performSpellCast(
     }
   }
 
-  // Scroll spells ignore standing/school/equipment Power (skip those hooks) but
-  // allow paid Power cards into the cast window up to the lowest useful tier
-  // (see resolvedSpellPowerForStackItem). Flag the stack item as scroll-locked.
+  // Scroll spells ignore all Power sources and cannot be boosted in the cast
+  // window. Flag the stack item before opening the reaction window.
   if (action.fromScroll) {
     stackItem.modifiers.scrollLocked = true;
   } else {
@@ -21086,8 +21130,8 @@ function passReaction(
   // spell is still below its useful Power floor AND they can still fuel it
   // (Implosion needs ≥1, etc.). Prevents a silent 0-damage resolve. Escape
   // hatch: if they have nothing left to fuel with, pass is allowed (spell
-  // fizzles) so the table cannot soft-lock. Scroll casts ALSO honour this floor
-  // — paid Power is the only way to reach it (standing bonuses never apply).
+  // fizzles) so the table cannot soft-lock. Scrolls stay at Power 0 and can
+  // never be fuelled, so their caster must always be allowed to pass.
   //
   // A FORCED-resolution pass (the passing seat is being AFK-dropped or turn-
   // timed-out) always goes through: those drivers hard-code PASS_REACTION and
@@ -21101,6 +21145,7 @@ function passReaction(
   if (
     !forcedResolutionPass &&
     pending?.action.type === "CAST_SPELL" &&
+    !pending.modifiers.scrollLocked &&
     pending.action.playerId === action.playerId
   ) {
     const spell = cards[pending.action.cardId];
@@ -27157,10 +27202,20 @@ function advanceChainLightning(
 
   let pool = reachable;
   const values = [...remaining];
+  // Hex battlefield (PC Chain Lightning, chain-lightning-hex.ts): each bolt
+  // hops from the unit the chain struck LAST to the closest unit it has not
+  // struck yet; `pool` is then every unstruck unit and `primaryId` the unit it
+  // hops from. The 4×5 board keeps the printed fork around the selected unit.
+  const hex = combatGeometry(combat) === "hex";
+  let anchorId = primaryId;
   while (values.length > 0) {
-    const candidates = pool.filter(
+    const living = pool.filter(
       (id) => combat.units[id] && isUnitAlive(combat.units[id]),
     );
+    const anchor = combat.units[anchorId];
+    const candidates = hex && anchor
+      ? chainHopCandidates(combat, anchor, living.map((id) => combat.units[id]!)).map((unit) => unit.id)
+      : living;
     if (candidates.length === 0) {
       break;
     }
@@ -27174,9 +27229,11 @@ function advanceChainLightning(
     // differ (max-Power Spell 2/1, or Solmyr I's effective 1/0): the caster may
     // put the larger/nonzero bolt on either closest unit.
     const remainingValuesDiffer = new Set(values).size > 1;
+    // Hex: a tie at the nearest distance is always the caster's pick — the
+    // unit struck decides where every later bolt hops.
     if (
       candidates.length > 1 &&
-      (candidates.length > values.length || remainingValuesDiffer)
+      (hex || candidates.length > values.length || remainingValuesDiffer)
     ) {
       const choiceId = `choice_${nextEventNumber(state)}`;
       state.pendingChoice = {
@@ -27188,7 +27245,8 @@ function advanceChainLightning(
         abilityName: "Chain Lightning",
         prompt: `Chain Lightning: deal ${value} damage to one of the closest units.`,
         sourceUnitId: null,
-        anchorUnitId: primaryId,
+        // Grid: the selected unit. Hex: the unit the next bolt hops from.
+        anchorUnitId: anchorId,
         candidateUnitIds: candidates,
         amount: value,
         chainReachableUnitIds: pool,
@@ -27207,12 +27265,13 @@ function advanceChainLightning(
       return;
     }
 
-    const target = closestChainTarget(state, primaryId, candidates);
+    const target = hex ? candidates[0] : closestChainTarget(state, primaryId, candidates);
     if (!target) {
       break;
     }
     dealChainLightningDamage(state, playerId, card, target, value);
     pool = pool.filter((id) => id !== target);
+    if (hex) anchorId = target;
     values.shift();
   }
 
@@ -27247,7 +27306,13 @@ function startChainLightning(
 ): void {
   if (!state.combat) return;
   retainPendingCardDamageTransfers(state, card);
-  const reachable = chainLightningReachable(state, primaryId);
+  // Hex: the chain may hop to any other unit on the field (PC hop,
+  // chain-lightning-hex.ts); the 4×5 board forks to the two closest.
+  const reachable = combatGeometry(state.combat) === "hex"
+    ? Object.values(state.combat.units)
+        .filter((unit) => unit.id !== primaryId && isUnitAlive(unit) && isHexPosition(unit.position))
+        .map((unit) => unit.id)
+    : chainLightningReachable(state, primaryId);
   dealChainLightningDamage(state, playerId, card, primaryId, damages[0] ?? 0);
   if (finishCombatIfNeeded(state)) {
     delete state.combat?.pendingCardDamageTransfers;
@@ -34283,6 +34348,26 @@ function resolveCommanderCast(
     case "attack-buff":
       // Only Dungeon Brute uses caster-activation duration and the Black Dragon
       // cap. Other commanders sharing this effect kind keep their printed rules.
+      // Recasting Bloodlust on the same unit replaces this Brute's existing
+      // buff (including its optional opening cast) and starts a fresh timer.
+      if (caster.commanderSlug === "brute") {
+        const replaced = state.activeEffects.filter((active) =>
+          active.source.type === "unit" && active.source.unitId === caster.id &&
+          active.target?.type === "unit" && active.target.unitId === target.id &&
+          (active.name === `${cast.name} (${caster.cardName})` ||
+            active.name === `Opening ${cast.name} (${caster.cardName})`)
+        );
+        if (replaced.length > 0) {
+          const replacedIds = new Set(replaced.map((active) => active.id));
+          state.activeEffects = state.activeEffects.filter((active) => !replacedIds.has(active.id));
+          appendEvent(state, {
+            type: "ACTIVE_EFFECTS_REMOVED",
+            source,
+            target: targetRef,
+            effectIds: [...replacedIds],
+          });
+        }
+      }
       createActiveEffect(
         state,
         {
@@ -34932,7 +35017,8 @@ function chooseAbilityTarget(
         state,
         action.playerId,
         chainCard,
-        choice.anchorUnitId,
+        // Hex: the next bolt hops from the unit just struck (PC chain).
+        combatGeometry(combat) === "hex" ? action.targetUnitId : choice.anchorUnitId,
         reachable,
         remaining.slice(1),
       );
@@ -38477,10 +38563,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         // designer value overrides the azure / level-VII / bank exemptions).
         // "unlimited" never opens the window. Never an automatic retreat.
         // USER RULE 2026-09-25: on the hex battlefield the DEFAULT Round limit
-        // is counted after 3 rounds (the armies start 10 hexes apart), so a
-        // player-attacked neutral fight with no designer limit rolls on free
-        // for its first 3 rounds; the usual window (and its cost) applies from
-        // then on. A designer limit keeps its own number.
+        // is counted after 2 rounds (the armies start 10 hexes apart; ruling
+        // 2026-09-26: only rounds 1-2 are free), so a player-attacked neutral
+        // fight with no designer limit rolls on free into round 2; continuing
+        // into round 3 and later costs movement through the usual window.
+        // A designer limit keeps its own number.
         // The rulebook's default one-round limit (the paid window below).
         const defaultRoundLimitApplies =
           combat.context.kind === "neutral" &&

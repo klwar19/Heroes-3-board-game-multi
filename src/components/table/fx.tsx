@@ -147,6 +147,8 @@ export type FxCue =
       sound?: string;
       /** Grow/hold/fade (default DEFAULT_BEAM_TIMING, the quick zap). */
       timing?: BeamTiming;
+      /** The volley's first zap: a hex war machine at `from` plays its firing frames. */
+      fire?: boolean;
     }
   | {
       /**
@@ -502,7 +504,10 @@ function hexLaunchRect(anchor: string, rect: DOMRect, toward: { x: number; y: nu
  * Ring burst draws over exactly what it hit, never a 4x5-sized cell.
  */
 function resolveHexAreaRect(anchor: string): DOMRect | null {
-  const [centreAnchor, struckList = ""] = anchor.slice("area:".length).split("|");
+  // An optional third part is the spell's PC area in hex rings (hex-spell-areas.ts:
+  // Fireball / Meteor Shower / Frost Ring 1, Inferno 2): the burst covers all of
+  // it even where it struck nobody, as on the PC.
+  const [centreAnchor, struckList = "", ringText = ""] = anchor.slice("area:".length).split("|");
   const centreCells = centreAnchor.startsWith("unit:")
     ? unitCellRects(centreAnchor.slice("unit:".length))
     : [resolveAnchorElement(centreAnchor)?.getBoundingClientRect()].filter(
@@ -528,6 +533,8 @@ function resolveHexAreaRect(anchor: string): DOMRect | null {
       radius = Math.max(radius, Math.hypot(point.x - centre.x, point.y - centre.y) + rect.width / 2);
     }
   }
+  const rings = Number(ringText);
+  if (Number.isFinite(rings) && rings > 0) radius = Math.max(radius, cellWidth * (rings + 0.5));
   return new DOMRect(centre.x - radius, centre.y - radius, radius * 2, radius * 2);
 }
 
@@ -1217,6 +1224,13 @@ async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: 
   const sourceRect = resolveAnchorRect(cue.from);
   const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (cue.sound) playLibrarySound(cue.sound);
+  if (cue.fire) {
+    // A war machine on the hex battlefield (the Lightning Generator) discharges.
+    const launcher = resolveAnchorElement(cue.from) as HTMLElement | null;
+    if (launcher?.hasAttribute("data-hex-war-machine")) {
+      void playHexUnitCue(launcher, { kind: "lunge", to: cue.to, attackKind: "ranged", releaseMs: 0 });
+    }
+  }
   if (!fromRect || !toRect) return;
   const from = centerOf(fromRect);
   const to = centerOf(toRect);

@@ -1519,7 +1519,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Necromancy Undead-only, Castle-S3 approaches on Bulwark/Factory/Forge starting
 // tiles, Angel one hex / Archangel two, unit-ability lethal saves cancel outright,
 // neutral Chain Lightning forks auto-aim, parked-activation advance, AI throw guard.
-export const ENGINE_PROTOCOL_VERSION = 185;
+// v186: Forge neutral/bank two-spell Scroll price, strict Power-0 Scroll casts
+// and targeting, Dungeon Brute range/opening duration, Cyberbrute attack-only
+// kill healing (retaliation marker), Meteor Shower own-turn targeting.
+// v187: Brute Bloodlust recasts replace their prior buff; Soul Link skips a
+// transfer that would defeat its commander, including lethal-hit previews.
+// v188: Hex battlefield — default Round limit free for rounds 1-2 only (paid
+// from round 3), PC-size Fireball / Frost Ring / Meteor Shower / Inferno areas
+// (and the Adelaide / Glacius / Xyron specialties), PC Chain Lightning hops.
+export const ENGINE_PROTOCOL_VERSION = 188;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

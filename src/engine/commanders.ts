@@ -1470,7 +1470,7 @@ export function commanderBeginCastOption(
   };
 }
 
-/** Brute's optional combat-start Bloodlust: one round of +1 Attack at every Power. */
+/** Brute's optional combat-start Bloodlust: two rounds of +1 Attack at every Power. */
 export function applyCommanderBeginCastBloodlust(
   state: GameState,
   commander: CombatUnitState,
@@ -1488,7 +1488,7 @@ export function applyCommanderBeginCastBloodlust(
     {
       name: `Opening ${cast.name} (${commander.cardName})`,
       scope: "unit",
-      duration: { type: "current-combat-round" },
+      duration: { type: "combat-rounds", rounds: 2 },
       polarity: "positive",
       removable: true,
       modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
@@ -1508,7 +1508,7 @@ export function applyCommanderBeginCastBloodlust(
     castName: cast.name,
     power: commanderCastPower(state, commander),
     targetUnitId: target.id,
-    message: `${commander.cardName} casts opening ${cast.name} on ${target.cardName} for +1 Attack this round and skips its round-1 turn.`
+    message: `${commander.cardName} casts opening ${cast.name} on ${target.cardName} for +1 Attack for 2 rounds and skips its round-1 turn.`
   });
 }
 

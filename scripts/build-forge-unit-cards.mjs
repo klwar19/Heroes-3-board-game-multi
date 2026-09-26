@@ -62,8 +62,8 @@ const units = [
     neutral: { stats: [6, 2, 8, 5], cost: [20, 1], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 2."] } },
   { slug: "cyberbrutes", name: "Cyberbrutes", tier: "golden", type: "ground", focus: "centre",
     few: { stats: [8, 2, 7, 6], cost: [22, 1], upgrade: [35, 2], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0)."] },
-    pack: { stats: [8, 2, 9, 7], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0).", "\n", "{unit_passive}", "Each time this unit kills a unit, it heals 1", "{health}", "."] },
-    neutral: { tier: "azure", art: "cyberbrutes-azure", out: "units-neutral-azure-cyberbrutes", stats: [8, 3, 9, 7], cost: [38, 2], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0).", "\n", "{unit_passive}", "Each time this unit kills a unit, it heals 1", "{health}", "."] } }
+    pack: { stats: [8, 2, 9, 7], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0).", "\n", "{unit_attack}", "When this unit's attack kills an enemy unit, heal 1", "{health}", "."] },
+    neutral: { tier: "azure", art: "cyberbrutes-azure", out: "units-neutral-azure-cyberbrutes", stats: [8, 3, 9, 7], cost: [38, 2], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0).", "\n", "{unit_attack}", "When this unit's attack kills an enemy unit, heal 1", "{health}", "."] } }
 ];
 
 // ---- Bulwark Few + Pack + Neutral faces (same printed format, 2026-09-24) --

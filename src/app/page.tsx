@@ -286,6 +286,7 @@ import {
   unitAbilityCastsOnHex
 } from "@/components/table/fx-sequence";
 import { hexMoveEventDurationMs, isHexCombat } from "@/components/table/hex-battlefield";
+import { hexPcSpellArea } from "@/engine/hex-spell-areas";
 import { HEX_RANGED_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
 import { HERO_CAST_RELEASE_MS } from "@/data/battle-hex/hero-sprites";
 import { buildForcedHandFx } from "@/components/table/astrologers-hand-fx";
@@ -845,6 +846,7 @@ function pushLightningBeamCues(
       width: plan.beamWidth ?? "normal",
       ...(plan.beamTiming ? { timing: plan.beamTiming } : {}),
       ...(shot === 0 && plan.sound ? { sound: plan.sound } : {}),
+      ...(shot === 0 && plan.warMachine ? { fire: true } : {}),
       delayMs: at
     });
     // The crackle bursts as the bolt head reaches the target (the quick zap
@@ -1319,6 +1321,12 @@ export default function Home() {
   const stormChainCentreRef = useRef<
     Map<string, { unitId: string; position: number; combatId?: string; at: number }>
   >(new Map());
+  // Hex battlefield: when each unit's scheduled walk ends (performance.now()
+  // clock). A move and its strike can land in SEPARATE snapshots (a click
+  // that walks then strikes, the AI's MOVE_UNIT then ATTACK_UNIT), so the
+  // later snapshot's first die for that attacker waits out the walk still
+  // playing — the strike never starts before the creature has arrived.
+  const hexWalkEndRef = useRef<Map<string, number>>(new Map());
   // Morale-card events already popped as the big MoraleCardOverlay — one pop
   // per event, never replayed on reconnect.
   const seenMoraleCueIdsRef = useRef<Set<string>>(new Set());
@@ -2470,6 +2478,19 @@ export default function Home() {
         (unitId) => approachGlideByUnit.get(unitId) ?? COMBAT_MOVE_MS,
         NEUTRAL_ATTACK_PAUSE_MS
       );
+      // Hex battlefield: an attacker whose walk from an EARLIER snapshot is
+      // still playing (its move and strike arrived as two actions) holds its
+      // first die until it has arrived, plus a short settle beat.
+      if (nextState.combat?.geometry === "hex") {
+        const now = performance.now();
+        for (const roll of fresh) {
+          if (movePreDelayByAttacker.has(roll.attackerId)) continue;
+          const walkEnd = hexWalkEndRef.current.get(roll.attackerId);
+          if (walkEnd !== undefined && walkEnd > now) {
+            movePreDelayByAttacker.set(roll.attackerId, Math.round(walkEnd - now) + 80);
+          }
+        }
+      }
 
       // A leading activation spell (the neutral Faerie Dragon's Ice Bolt) is cast
       // BEFORE its caster then moves/attacks, all in one snapshot. Its cast +
@@ -3345,6 +3366,7 @@ export default function Home() {
             flip: false,
             delayMs: moveDelay
           });
+          if (hexCombat) hexWalkEndRef.current.set(event.unitId, performance.now() + moveDelay + glideMsFor(event));
           if (event.sourceAbilityId !== "veteran-magma-teleport-strike" && !nestReturn) {
             playMoveSound(event, moveDelay);
           }
@@ -3622,6 +3644,7 @@ export default function Home() {
             delayMs: held ? 0 : moveDelay,
             ...(held ? { holdMs: moveDelay } : {})
           });
+          if (hexCombat) hexWalkEndRef.current.set(event.unitId, performance.now() + moveDelay + glideMsFor(event));
           // The Harpy already voiced a footstep on its fly-IN; the fly-back is
           // the same round trip home, so it does not speak a second time. Other
           // after-attack steps keep their move sound.
@@ -4105,8 +4128,13 @@ export default function Home() {
                 const struckAround = hexCombat && plan.hit && !plan.projectile && !plan.battlefield
                   ? struckByCast(event)
                   : [];
-                const hexArea = struckAround.some((unitId) => unitId !== castTargetId)
-                  ? `area:unit:${castTargetId}|${struckAround.join(",")}`
+                // A PC-area spell (Fireball) always bursts on the target's hexes
+                // over its whole PC area, even when it struck the target alone.
+                const pcArea = hexCombat && plan.hit && !plan.projectile && !plan.battlefield
+                  ? hexPcSpellArea(nextState.combat, event.spellCardId)
+                  : null;
+                const hexArea = pcArea || struckAround.some((unitId) => unitId !== castTargetId)
+                  ? `area:unit:${castTargetId}|${struckAround.join(",")}${pcArea ? `|${pcArea.radius}` : ""}`
                   : undefined;
                 queueBoardFx(plan, event.id, castOrigin, event.target.unitId, hexArea);
                 // Even a zero-damage/free cast needs its full presentation.
@@ -4126,12 +4154,14 @@ export default function Home() {
                   // Hex battlefield: the burst covers every hex it struck
                   // (engine damage events), not just the chosen hex.
                   const struckUnits = hexCombat ? struckByCast(event) : [];
+                  // PC-area spells (Inferno, Meteor Shower, Frost Ring) cover their whole area.
+                  const pcArea = hexCombat ? hexPcSpellArea(nextState.combat, event.spellCardId) : null;
                   cues.push({
                     kind: "sprite",
                     id: `${event.id}-burst`,
                     fxKey: plan.hit,
-                    at: struckUnits.length > 0
-                      ? `area:cell:${event.target.position}|${struckUnits.join(",")}`
+                    at: struckUnits.length > 0 || pcArea
+                      ? `area:cell:${event.target.position}|${struckUnits.join(",")}${pcArea ? `|${pcArea.radius}` : ""}`
                       : `cell:${event.target.position}`,
                     sound: plan.hitSound,
                     delayMs: at
@@ -9046,6 +9076,8 @@ export default function Home() {
                 compact
                 legalActions={legalActions}
                 onAction={submitAction}
+                onSelectCardAction={selectBoardCardAction}
+                selectedCardAction={selectedCardAction}
                 playerId={viewerPlayerId}
                 showEmpty
                 state={state}

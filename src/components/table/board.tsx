@@ -93,6 +93,7 @@ import {
   HEX_BOARD_WIDTH,
   HexBattlefieldBackdrop,
   HexCommandBar,
+  hexBoardMetrics,
   hexCellCenter,
   HEX_UNIT_HOVER_EVENT,
   hexCellStyle,
@@ -105,6 +106,7 @@ import { siegeGatePositions, siegeHexTokenAt } from "@/engine/siege";
 import { previewActionTargets, type ActionTargetPreview } from "@/engine/target-preview";
 import { HexUnitsLayer } from "./hex-figures";
 import {
+  hexAimSideAngle,
   hexApproaches,
   hexAttackCursor,
   hexAttackIsRanged,
@@ -1674,13 +1676,19 @@ export function BattlefieldBoard({
                     setHexAimAngle(null);
                     return;
                   }
+                  // The cell box is the hex's bounding box: the mouse offset in
+                  // board units picks the PC attack side (VCMI's nearest test
+                  // point), snapped so the board re-renders per side only.
                   const rect = cell.getBoundingClientRect();
-                  const angle = Math.atan2(
-                    event.clientY - (rect.top + rect.height / 2),
-                    event.clientX - (rect.left + rect.width / 2)
+                  if (rect.width <= 0 || rect.height <= 0) return;
+                  const metrics = hexBoardMetrics;
+                  setHexAimAngle(
+                    hexAimSideAngle(
+                      ((event.clientX - (rect.left + rect.width / 2)) * metrics.hexWidth) / rect.width,
+                      ((event.clientY - (rect.top + rect.height / 2)) * 2 * metrics.hexRadius) / rect.height,
+                      Boolean(hexStriker && unitCells(combat, hexStriker).length > 1)
+                    )
                   );
-                  const step = Math.PI / 6;
-                  setHexAimAngle(Math.round(angle / step) * step);
                 },
                 onPointerLeave: () => {
                   window.clearTimeout(hexHoverTimer.current);

@@ -406,14 +406,32 @@ export function unitInCells(
  * plus the centre cell(s) when `includeCentre`. On the 4×5 grid / one-hex
  * units: the centre's orthogonal neighbours (and the centre), in the order
  * `[centre, ...getOrthogonalNeighbors(centre)]`.
+ *
+ * `radius` (hex board only; default 1): every hex whose distance to the
+ * nearest centre cell is 1..radius (the PC-sized area spells, see
+ * hex-spell-areas.ts). Radius 1 is exactly the adjacent ring above; the 4×5
+ * grid ignores `radius` and always returns the orthogonal ring.
  */
 export function areaAround(
   combat: FootprintCombat | null | undefined,
   centre: number | FootprintUnit,
-  includeCentre: boolean
+  includeCentre: boolean,
+  radius = 1
 ): Set<number> {
   const centreCells = typeof centre === "number" ? [centre] : unitCells(combat, centre);
   const area = new Set<number>(includeCentre ? centreCells : []);
+  if (radius > 1 && combatGeometry(combat) === "hex") {
+    // Off-board centre cells (the beside-board Arrow Tower) have no hex
+    // distance, so they widen nothing — the centre alone, like its empty ring.
+    const hexCentres = centreCells.filter(isHexPosition);
+    if (hexCentres.length === 0) return area;
+    for (const cell of getBattlefieldPositions("hex")) {
+      if (centreCells.includes(cell)) continue;
+      const distance = cellsDistance(hexCentres, [cell]);
+      if (distance >= 1 && distance <= radius) area.add(cell);
+    }
+    return area;
+  }
   for (const cell of centreCells) {
     for (const neighbor of getOrthogonalNeighbors(cell)) {
       if (!centreCells.includes(neighbor)) area.add(neighbor);

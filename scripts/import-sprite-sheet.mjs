@@ -66,8 +66,15 @@ async function referenceBodyHeight(slug) {
   if (!meta) throw new Error(`--ref ${slug}: no such atlas`);
   const standing = meta.groups["2"] ?? Object.values(meta.groups)[0];
   const file = path.join(ROOT, "public", meta.image);
+  // A dense-packed atlas (pack-creature-atlases.mjs) starts the group at cell `start`.
+  const cell = standing.start ?? standing.row * meta.columns;
   const { data, info } = await sharp(fs.readFileSync(file))
-    .extract({ left: 0, top: standing.row * meta.frameHeight, width: meta.frameWidth, height: meta.frameHeight })
+    .extract({
+      left: (cell % meta.columns) * meta.frameWidth,
+      top: Math.floor(cell / meta.columns) * meta.frameHeight,
+      width: meta.frameWidth,
+      height: meta.frameHeight
+    })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });

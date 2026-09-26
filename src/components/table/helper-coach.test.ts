@@ -108,7 +108,7 @@ describe("cardUnplayableReason", () => {
     expect(reason.toLowerCase()).toMatch(/spell limit/);
   });
 
-  it("explains that Chain Lightning needs three battlefield units", () => {
+  it("never claims Chain Lightning needs three battlefield units (it starts on any living unit)", () => {
     const state = createInitialGameState("helper-coach-chain-three") as GameState;
     for (const unitId of Object.keys(state.combat!.units)) {
       if (unitId !== "unit_p1_marksmen" && unitId !== "unit_p2_skeletons") {
@@ -116,7 +116,7 @@ describe("cardUnplayableReason", () => {
       }
     }
     const reason = cardUnplayableReason(state, "p1", "spell.chain_lightning");
-    expect(reason).toContain("requires 3 living units");
+    expect(reason).not.toContain("requires 3 living units");
   });
 
   it("explains Meteor Shower's adjacent-target requirement", () => {

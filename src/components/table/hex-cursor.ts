@@ -19,7 +19,7 @@ import { isAdjacent, isHexPosition } from "@/engine/battlefield";
 import { unitCells, unitCellsAt } from "@/engine/hex-footprint";
 import { assetUrl } from "@/lib/asset-url";
 import combatCursors from "@/data/battle-hex/combat-cursors.json";
-import { hexCellCenter } from "./hex-battlefield";
+import { hexBoardMetrics, hexCellCenter } from "./hex-battlefield";
 
 type CursorName = keyof typeof combatCursors;
 
@@ -65,6 +65,50 @@ function angleFrom(aimed: number, cell: number, flipped: boolean): number {
 }
 
 /**
+ * The side a strike from `head` comes from, as VCMI reads it: the centre of the
+ * attacker's hexes that touch the aimed hex — one neighbour (a straight side),
+ * or, for a two-hex creature standing across both hexes above / below it, the
+ * point straight above / below (the PC's north / south swords). A two-hex
+ * attacker touching only the enemy's other hex strikes from its nearest hex.
+ */
+function approachAngle(combat: CombatState, attacker: CombatUnitState, head: number, aimed: number, flipped: boolean): number {
+  const touching = unitCellsAt(combat, attacker, head).filter((cell) => isAdjacent(cell, aimed));
+  if (touching.length === 0) return angleFrom(aimed, strikingCell(combat, attacker, head, aimed, flipped), flipped);
+  const from = hexCellCenter(aimed, flipped);
+  const points = touching.map((cell) => hexCellCenter(cell, flipped));
+  const x = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const y = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+  return Math.atan2(y - from.y, x - from.x);
+}
+
+/**
+ * The PC attack side under the mouse (VCMI BattleFieldController::
+ * selectAttackDirection): of the test points around the aimed hex — its six
+ * neighbours' centres, plus, for a two-hex striker, the points one hex-height
+ * straight above and below — the one nearest the mouse. `dx`/`dy` are the
+ * mouse's offset from the aimed hex centre in board units; returns that test
+ * point's direction (radians, y down), so the board re-renders only when the
+ * side changes, never on every mouse pixel.
+ */
+export function hexAimSideAngle(dx: number, dy: number, twoHexStriker: boolean): number {
+  const { hexWidth: w, hexRadius, rowStep } = hexBoardMetrics;
+  const points: Array<[number, number]> = [
+    [w, 0], [w / 2, rowStep], [-w / 2, rowStep], [-w, 0], [-w / 2, -rowStep], [w / 2, -rowStep]
+  ];
+  if (twoHexStriker) points.push([0, -2 * hexRadius], [0, 2 * hexRadius]);
+  let best = points[0];
+  let bestDistance = Infinity;
+  for (const point of points) {
+    const distance = (point[0] - dx) ** 2 + (point[1] - dy) ** 2;
+    if (distance < bestDistance) {
+      best = point;
+      bestDistance = distance;
+    }
+  }
+  return Math.atan2(best[1], best[0]);
+}
+
+/**
  * Every side the active melee creature can strike `defender` from this
  * activation: its current hex when the engine offers the attack in place
  * (`attackInPlace`, a melee ATTACK_UNIT), and every offered MOVE_UNIT
@@ -97,7 +141,7 @@ export function hexApproaches({
     approaches.push({
       destination: attacker.position,
       attack: attackInPlace,
-      angle: angleFrom(aimed, strikingCell(combat, attacker, attacker.position, aimed, flipped), flipped)
+      angle: approachAngle(combat, attacker, attacker.position, aimed, flipped)
     });
   }
   // Ranged creatures never walk up and strike (they shoot, or melee only when
@@ -110,7 +154,7 @@ export function hexApproaches({
     // Strike from a hex that touches the enemy (a two-hex attacker's other end
     // may be the one touching it).
     if (!unitCells(combat, defender).some((enemyCell) => isAdjacent(enemyCell, cell))) continue;
-    approaches.push({ destination, move: action, angle: angleFrom(aimed, cell, flipped) });
+    approaches.push({ destination, move: action, angle: approachAngle(combat, attacker, destination, aimed, flipped) });
   }
   return approaches;
 }

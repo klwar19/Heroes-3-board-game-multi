@@ -155,6 +155,8 @@ export function PermanentSlot({
   viewerPlayerId,
   legalActions,
   onAction,
+  onSelectCardAction,
+  selectedCardAction,
   compact = false,
   showEmpty = false
 }: {
@@ -163,6 +165,8 @@ export function PermanentSlot({
   viewerPlayerId?: PlayerId;
   legalActions?: LegalAction[];
   onAction?: (action: GameAction) => void;
+  onSelectCardAction?: (action: CardBoardAction | null) => void;
+  selectedCardAction?: CardBoardAction | null;
   compact?: boolean;
   /** Keep a labelled slot visible even before a Permanent/Ongoing card enters play. */
   showEmpty?: boolean;
@@ -216,8 +220,8 @@ export function PermanentSlot({
             legal.action.cardId === cardId
         )
       : undefined;
-  // Map/combat cast of a scroll spell (CAST_SPELL with fromScroll). Offered when
-  // the engine has a concrete cast; click dispatches the first legal target.
+  // Map/combat cast of a scroll spell (CAST_SPELL with fromScroll). In combat,
+  // arm battlefield targeting so the player chooses the actual unit/space.
   const scrollCastActionsFor = (scrollId: string, cardId: string) =>
     ownView
       ? (legalActions ?? []).filter(
@@ -450,11 +454,18 @@ export function PermanentSlot({
                     <button
                       className="commandButton"
                       key={`cast-${scroll.id}-${spellId}`}
-                      onClick={() => onAction?.(casts[0]!.action)}
+                      onClick={() => {
+                        const action = casts[0]!.action;
+                        if (onSelectCardAction && isBoardTargetCardAction(action)) {
+                          onSelectCardAction(sameCardSelection(selectedCardAction ?? null, action) ? null : action);
+                        } else {
+                          onAction?.(action);
+                        }
+                      }}
                       title={casts[0]!.label}
                       type="button"
                     >
-                      Cast {cardLibrary[spellId]?.name ?? "Spell"}
+                      {casts[0]?.action.type === "CAST_SPELL" ? "Choose target for " : "Cast "}{cardLibrary[spellId]?.name ?? "Spell"}
                     </button>
                   );
                 }
@@ -561,11 +572,9 @@ type HandCardEntry = {
 
 /**
  * The pop-up window opened by the Spell Book / Spell Scroll icon: lists each
- * stored Spell with the cast buttons the engine currently offers for it. The
- * cast actions are already concrete (pre-targeted, carrying their own
- * fromScroll/fromSpellBook source), so each is dispatched DIRECTLY — never
- * routed through the board's card-selection key, which does not distinguish the
- * source zone. Spells with no legal cast right now show why (the timing hint).
+ * stored Spell with the cast buttons the engine currently offers for it.
+ * Targeted scroll casts arm battlefield selection; the selection key includes
+ * the scroll id, so another source of the same Spell cannot be used by mistake.
  */
 function SpellShelfPopover({
   title,
@@ -575,6 +584,8 @@ function SpellShelfPopover({
   state,
   trayActive,
   onAction,
+  onSelectCardAction,
+  selectedCardAction,
   onClose,
   zoomCard,
   emptyHint
@@ -586,6 +597,8 @@ function SpellShelfPopover({
   state: GameState;
   trayActive: boolean;
   onAction: (action: GameAction) => void;
+  onSelectCardAction?: (action: CardBoardAction | null) => void;
+  selectedCardAction?: CardBoardAction | null;
   onClose: () => void;
   zoomCard: (cardId: string) => void;
   emptyHint?: (cardId: string) => string;
@@ -612,9 +625,15 @@ function SpellShelfPopover({
             </button>
             {castable ? (
               <div className="shelfSpellCasts">
-                {actionsForSpell.map((legal) => {
+                {actionsForSpell.filter((legal, index, all) =>
+                  !isBoardTargetCardAction(legal.action) ||
+                  all.findIndex((candidate) => isBoardTargetCardAction(candidate.action) &&
+                    cardSelectionKey(candidate.action) === cardSelectionKey(legal.action as CardBoardAction)) === index
+                ).map((legal) => {
                   const action = legal.action;
+                  const boardAction = isBoardTargetCardAction(action) ? action : null;
                   const targetLabel =
+                    boardAction && onSelectCardAction ? " → choose target on board" :
                     "target" in action && action.target?.type === "unit"
                       ? ` → ${targetName(state, action.target)}`
                       : "target" in action && action.target?.type === "space"
@@ -625,7 +644,11 @@ function SpellShelfPopover({
                       className="commandButton"
                       key={actionKey(action)}
                       onClick={() => {
-                        onAction(action);
+                        if (boardAction && onSelectCardAction) {
+                          onSelectCardAction(sameCardSelection(selectedCardAction ?? null, boardAction) ? null : boardAction);
+                        } else {
+                          onAction(action);
+                        }
                         onClose();
                       }}
                       type="button"
@@ -979,6 +1002,8 @@ export function HandFan({
                 <SpellShelfPopover
                   actions={scrollCastActions}
                   onAction={onAction}
+                  onSelectCardAction={onSelectCardAction}
+                  selectedCardAction={selectedCardAction}
                   onClose={() => setShelfOpen(null)}
                   spellIds={scrolls.flatMap((scroll) => scroll.spellCardIds)}
                   state={state}

@@ -1288,7 +1288,7 @@ export const spellCards: CardLibrary = {
     target: { type: "any-space" },
     tags: [
       "spell", "expert", "earth", "area",
-      "Activation: Select a space. The unit on this space and all adjacent units, friend or foe, take 1 damage at Power 2 or 2 damage at Power 4. Below Power 2, deal no damage. — OR — Instant: +1 Power."
+      "Activation (on your unit's turn): Select a space. The unit on this space and all adjacent units, friend or foe, take 1 damage at Power 2 or 2 damage at Power 4. Below Power 2, deal no damage. — OR — Instant: +1 Power."
     ],
     effect: {
       type: "METEOR_SHOWER_SPELL",

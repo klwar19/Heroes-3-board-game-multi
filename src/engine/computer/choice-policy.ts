@@ -1291,12 +1291,13 @@ function scorePositionOption(
     // Preserve a scarce building material or Valuable for the town plan.
     const resources = observation.state.players[observation.playerId]?.resources;
     const pvp = observation.state.combat?.context.kind === "player";
-    const reserveMet = pvp
+    const materialReserveMet = pvp
       ? (resources?.valuables ?? 0) - 1 >= Math.max(1, goldLadderValuablesReserve(observation.state as unknown as GameState, observation.playerId))
       : (resources?.buildingMaterials ?? 0) >= 2;
     const offer = choice?.type === "OPTION_CHOICE"
       ? choice.forgeScrollOptions?.[optionIndex] ?? (optionIndex === 0 ? "chain-only" : "decline")
       : "decline";
+    const reserveMet = materialReserveMet && (offer !== "both" || (resources?.gold ?? 0) >= 5);
     if (offer === "both" || offer === "chain-only") return CHOICE_BASE + (reserveMet ? 45 : 15);
     return CHOICE_BASE + (reserveMet ? 10 : 40);
   }

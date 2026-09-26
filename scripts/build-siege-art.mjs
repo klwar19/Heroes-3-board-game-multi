@@ -172,7 +172,8 @@ async function main() {
     console.error("usage: node scripts/build-siege-art.mjs --h3 <SgXx bmp folder> --vcmi <VCMI factions folder> [--hota <folder>]");
     process.exit(1);
   }
-  const meta = {};
+  // Keep the sets other builders own (the Forge's, build-forge-siege-art.mjs).
+  const meta = fs.existsSync(META_FILE) ? JSON.parse(fs.readFileSync(META_FILE, "utf8")) : {};
   for (const [town, spec] of Object.entries(TOWNS)) {
     const folder = spec.source === "h3" ? h3 : hota && path.join(hota, town);
     const configFile = spec.source === "h3" ? path.join(vcmi, spec.config) : hota && path.join(hota, spec.config);

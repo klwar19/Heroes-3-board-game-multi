@@ -13026,17 +13026,18 @@ function maybeOpenForgeChainLightning(state: GameState): boolean {
     const player = state.players[playerId];
     if (!player || !playerHasLivingCommander(state, playerId, "forge") ||
         !commanderStandsInCurrentCombat(state, playerId) ||
-        (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1)) continue;
-    const forgeScrollOptions: Array<"chain-only" | "both" | "decline"> = ["chain-only", "decline"];
+        (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1 || player.resources.gold < 2)) continue;
+    const forgeScrollOptions: Array<"chain-only" | "both" | "decline"> = [pvp ? "chain-only" : "both", "decline"];
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
       prompt: "Mech Princess: choose a phantom Spell Scroll for this combat. Any remaining spells disappear after combat.",
-      options: forgeScrollOptions.map(option => ({ label: option === "chain-only"
-        ? `Pay 1 ${costName}: Chain Lightning`
-        : "Do not buy a Scroll" })),
+      options: forgeScrollOptions.map(option => ({ label: option === "both"
+        ? "Pay 1 building material and 2 gold: Chain Lightning + Stone Skin"
+        : option === "chain-only" ? `Pay 1 ${costName}: Chain Lightning` : "Do not buy a Scroll" })),
       forgeScrollOptions,
+      ...(pvp ? {} : { forgeScrollGoldCost: 2 }),
       context: "forge-phantom-chain-lightning",
       returnPhase: "combat"
     };
@@ -13059,7 +13060,8 @@ function resolveForgeChainLightning(state: GameState, playerId: PlayerId, option
   if (selected !== "decline") {
     const player = state.players[playerId];
     const pvp = combat.context.kind === "player";
-    // Preserve an already-open choice from older saves; new combats never offer this option.
+    // Older saved choices retain their printed cost; newly opened neutral
+    // offers carry the explicit 2-gold price above.
     const goldCost = selected === "both" ? (choice.forgeScrollGoldCost ?? 0) : 0;
     if (!player || (combat.context.kind !== "neutral" && !pvp) ||
         (pvp ? player.resources.valuables < 1 : player.resources.buildingMaterials < 1) ||

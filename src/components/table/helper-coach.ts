@@ -609,14 +609,6 @@ export function cardUnplayableReason(
     if (spellLimitReached) {
       return `Spell limit reached (${spellLimit} per combat round)`;
     }
-    if (
-      card.effect.type === "CHAIN_LIGHTNING" &&
-      Object.values(state.combat.units).filter(
-        (unit) => isUnitAlive(unit) && unit.position >= 0,
-      ).length < 3
-    ) {
-      return "Chain Lightning requires 3 living units: select 1 unit and the 2 closest units";
-    }
     if (card.trigger || card.timing === "instant") {
       return "Instant spell — play into an attack or spell window (Power cards can empower it)";
     }
@@ -646,15 +638,6 @@ export function cardUnplayableReason(
       !activeUnit.activatedThisRound &&
       !activeUnit.attackedThisActivation
   );
-
-  if (card.effect.type === "CHAIN_LIGHTNING") {
-    const living = Object.values(state.combat.units).filter(
-      (unit) => isUnitAlive(unit) && unit.position >= 0,
-    );
-    if (living.length < 3) {
-      return "Chain Lightning requires 3 living units: select 1 unit and the 2 closest units";
-    }
-  }
 
   if (cardId === "specialty.deemer.1" || cardId === "specialty.deemer.6") {
     const required = cardId.endsWith(".6") ? 2 : 1;

@@ -874,15 +874,14 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       abilityId: "commander-cast-brute",
       name: "Bloodlust",
       icon: "/assets/spell-icons/bloodlust.png",
-      // Power ladder (user spec): Pow 0 = +1 but the melee unit must be adjacent
-      // to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere. Cast on the
+      // Every Power tier reaches a friendly melee unit anywhere. Cast on the
       // Brute's activation and lasting until its second following activation.
-      targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
+      targeting: { side: "friendly", unitType: "melee", canTargetSelf: false },
       effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "caster-two-activations", blackDragonPower2Cap: 1, blackDragonAdvantageAtPower2: true, advantageAtPower: 1 },
       tierText: [
-        "At most 3 casts per combat. On the Brute's activation, an adjacent friendly melee unit gains +1 Attack until the Brute's second following activation. You may instead cast at combat start for +1 Attack until the end of round 1 and skip the Brute's round-1 turn.",
-        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +1 Attack and rolls Attack dice with advantage until the Brute's second following activation. You may instead cast at combat start for +1 Attack only until the end of round 1 and skip the Brute's round-1 turn.",
-        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +2 Attack (Black Dragons gain only +1 Attack and roll Attack dice with advantage) until the Brute's second following activation. You may instead cast at combat start for +1 Attack only until the end of round 1 and skip the Brute's round-1 turn."
+        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +1 Attack until the Brute's second following activation. Recasting on that unit replaces Bloodlust and refreshes its timer. You may instead cast at combat start for +1 Attack for 2 rounds and skip the Brute's round-1 turn.",
+        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +1 Attack and rolls Attack dice with advantage until the Brute's second following activation. Recasting on that unit replaces Bloodlust and refreshes its timer. You may instead cast at combat start for +1 Attack only for 2 rounds and skip the Brute's round-1 turn.",
+        "At most 3 casts per combat. On the Brute's activation, any friendly melee unit gains +2 Attack (Black Dragons gain only +1 Attack and roll Attack dice with advantage) until the Brute's second following activation. Recasting on that unit replaces Bloodlust and refreshes its timer. You may instead cast at combat start for +1 Attack only for 2 rounds and skip the Brute's round-1 turn."
       ]
     },
     specialty: {
@@ -917,7 +916,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "soul-link",
       name: "Soul Link",
-      text: "At combat start, choose another friendly unit. Once per combat round, when it takes damage, the commander takes half that damage, rounded up, and the chosen unit takes the rest."
+      text: "At combat start, choose another friendly unit. Once per combat round, when it takes damage, the commander takes half that damage, rounded up, and the chosen unit takes the rest. If that share would defeat the commander, do not share that hit."
     },
     cardImage: "/assets/units-commander-soul_eater.webp"
   },
@@ -1378,7 +1377,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "storm-salvage",
       name: "Storm Salvage",
-      text: "At combat start, choose no Scroll, or buy a phantom Chain Lightning Scroll for 1 building material against neutrals / 1 Valuable in PvP. If you win and the Scroll still contains a spell after combat, gain 1 building material, then the Scroll disappears."
+      text: "At the start of neutral or Creature Bank combat, buy a phantom Scroll with Chain Lightning and Stone Skin for 1 building material and 2 gold, or decline. In PvP, buy a Chain Lightning Scroll for 1 Valuable, or decline. Scroll spells cast at Power 0 without using the Spell limit. If you win and the Scroll still contains a spell after combat, gain 1 building material, then the Scroll disappears."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

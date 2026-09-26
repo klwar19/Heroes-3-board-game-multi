@@ -636,19 +636,19 @@ describe("commander casts — Brute's Bloodlust", () => {
   // Power ladder (user spec): Pow 0 = +1 but ADJACENT; Pow 1 = +1 anywhere;
   // Pow 2 = +2 anywhere. Cast on the Brute's activation and lasts this round
   // plus the next combat round.
-  it("targets MELEE friendlies only; Pow 0 needs adjacency, Pow 1+ reaches anywhere", () => {
+  it("targets MELEE friendlies only, anywhere on the board at every Power", () => {
     function gate(magic: number): string[] {
       const state = castState("brute", magic ? { magic } : {});
       state.combat!.units.unit_p1_crusaders.position = 6; // melee, NOT adjacent to the commander at 9
       return castCandidateIds(state, "brute");
     }
-    // Pow 0: only the ADJACENT melee griffins (cell 5); the distant melee crusaders
-    // and the ranged marksmen are NOT offered.
+    // Pow 0: the adjacent melee griffins (cell 5) AND the distant melee
+    // crusaders (the old Pow-0 adjacency limit is gone); ranged never.
     const low = gate(0);
     expect(low).toContain("unit_p1_griffins");
-    expect(low).not.toContain("unit_p1_crusaders");
+    expect(low).toContain("unit_p1_crusaders");
     expect(low).not.toContain("unit_p1_marksmen");
-    // Pow 1 (magic grade 2): the distant melee crusaders joins; ranged never do.
+    // Pow 1 (magic grade 2): the same reach; ranged still never.
     const mid = gate(2);
     expect(mid).toContain("unit_p1_crusaders");
     expect(mid).not.toContain("unit_p1_marksmen");

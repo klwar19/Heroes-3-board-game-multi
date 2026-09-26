@@ -112,6 +112,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   const spellMend = factionVeterancy(unit, "medusa-mend");
   finalizeUnitRemoval(state, unit, hit?.kind === "attack");
   if (unit.townVeterancy) delete unit.townVeterancy.damageSourceId;
+  if (unit.townVeterancy) delete unit.townVeterancy.damageSourceWasOwnAttack;
   if (hit?.kind === "spell" && hit.amount > 0) townNagaMend(state, unit);
   if (hit?.kind === "spell" && hit.amount > 0 && spellMend && unit.damage < unit.maxHealth) veteranHeal(state, unit, 2, "veteran-medusa-mend");
   if (hit && revenge && unit.damage >= unit.maxHealth && hit.source.type === "unit") {

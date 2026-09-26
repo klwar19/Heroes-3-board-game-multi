@@ -15,6 +15,7 @@ import {
   unitOccupiesCell,
   unitsAdjacent
 } from "./hex-footprint";
+import { hexPcSpellArea, hexPcSpellBlast } from "./hex-spell-areas";
 import {
   getAttackKind,
   isUnitAlive,
@@ -24,6 +25,7 @@ import {
   wallPlacementCells
 } from "./legal-actions";
 import { bladeDanceSplashFor } from "./little-busters-specialties";
+import { chainHexHopPreview } from "./chain-lightning-hex";
 import {
   cellBehindTarget,
   chainLightningReachable,
@@ -309,7 +311,10 @@ function previewCard(
       if (centre === undefined) return;
       const centreUnit =
         target.type === "unit" ? combat.units[target.unitId] : unitAtCell(combat, centre, units);
-      const blast = areaAround(combat, centreUnit ?? centre, effect.includeCenter !== false);
+      // Hex battlefield: Xyron's Inferno / Adelaide VI take their PC area.
+      const blast =
+        hexPcSpellBlast(combat, card.id, centreUnit ?? centre) ??
+        areaAround(combat, centreUnit ?? centre, effect.includeCenter !== false);
       builder.addCells(blast);
       for (const unit of cardDamageUnitsIn(state, combat, card, blast)) {
         const isCentre = unitOccupiesCell(combat, unit, centre);
@@ -326,16 +331,25 @@ function previewCard(
     case "AREA_DAMAGE_PICK_ADJACENT": {
       if (centre === undefined) return;
       const centreBody = unitAtCell(combat, centre, units);
-      if (effect.includeCenter && centreBody) builder.addPrimary([centreBody.id]);
-      const ring = areaAround(combat, centreBody ?? centre, false);
+      // Hex battlefield (Frost Ring spell + Adelaide / Glacius): the PC ring,
+      // every unit in it hit — no picks (resolveAreaPickDamage).
+      const pcArea = hexPcSpellArea(combat, card.id);
+      const hitsCentre = pcArea ? pcArea.includeCentre : effect.includeCenter;
+      const radius = pcArea?.radius ?? 1;
+      if (hitsCentre && centreBody) builder.addPrimary([centreBody.id]);
+      const ring = areaAround(combat, centreBody ?? centre, false, radius);
       builder.addCells(ring);
-      if (effect.includeCenter) builder.addCells(areaAround(combat, centreBody ?? centre, true));
+      if (hitsCentre) builder.addCells(areaAround(combat, centreBody ?? centre, true, radius));
       const candidates = units
         .filter(
           (unit) =>
             unit !== centreBody && unitInCells(combat, unit, ring) && cardDamageReaches(state, unit, card)
         )
         .map((unit) => unit.id);
+      if (pcArea) {
+        builder.addSplash(candidates);
+        return;
+      }
       if (effect.adjacentPicks <= 0) return;
       // Both routes (PLAY_CARD and the CAST_SPELL resolver) pass the printed minimum.
       const minPicks = effect.minAdjacentPicks;
@@ -350,7 +364,10 @@ function previewCard(
     case "INFERNO":
     case "METEOR_SHOWER_SPELL": {
       if (target.type !== "space") return;
-      const blast = new Set<number>([target.position, ...getOrthogonalNeighbors(target.position)]);
+      // Hex battlefield: their PC area around the centre body (hex-spell-areas.ts).
+      const blast =
+        hexPcSpellBlast(combat, card.id, unitAtCell(combat, target.position, units) ?? target.position) ??
+        new Set<number>([target.position, ...getOrthogonalNeighbors(target.position)]);
       builder.addCells(blast);
       for (const unit of cardDamageUnitsIn(state, combat, card, blast)) {
         if (unitOccupiesCell(combat, unit, target.position)) builder.addPrimary([unit.id]);
@@ -366,6 +383,17 @@ function previewCard(
       const primary = combat.units[target.unitId];
       if (!primary) return;
       builder.addPrimary([primary.id]);
+      // Hex battlefield: the PC Fireball area — every unit in it is hit, no pick.
+      const pcBlast = hexPcSpellBlast(combat, card.id, primary);
+      if (pcBlast) {
+        builder.addCells(pcBlast);
+        builder.addSplash(
+          cardDamageUnitsIn(state, combat, card, pcBlast)
+            .filter((unit) => unit.id !== primary.id)
+            .map((unit) => unit.id)
+        );
+        return;
+      }
       builder.addPossible(
         units
           .filter(
@@ -387,6 +415,21 @@ function previewCard(
     case "CHAIN_LIGHTNING": {
       if (target.type !== "unit") return;
       builder.addPrimary([target.unitId]);
+      const primary = combat.units[target.unitId];
+      if (primary && isHexPosition(primary.position)) {
+        // Hex: the PC hop chain (chain-lightning-hex.ts, the reducer's rule) —
+        // units every routing strikes are hit, a tie (the caster's pick) and
+        // bolts a lower Power may not have are possible.
+        const ladders = effect.damages ? [effect.damages] : Object.values(effect.damagesByPower ?? {});
+        const hopCounts = ladders.map((ladder) => ladder.slice(1).filter((value) => value > 0).length);
+        const most = Math.max(0, ...hopCounts);
+        const least = Math.min(most, ...hopCounts);
+        const others = units.filter((unit) => unit.id !== primary.id && isHexPosition(unit.position));
+        const { sure, possible } = chainHexHopPreview(combat, primary, others, most);
+        builder.addSplash(sure.slice(0, least).map((unit) => unit.id));
+        builder.addPossible([...sure.slice(least), ...possible].map((unit) => unit.id));
+        return;
+      }
       const reachable = chainLightningReachable(state, target.unitId);
       if (effect.damagesByPower || !effect.damages) {
         builder.addPossible(reachable);

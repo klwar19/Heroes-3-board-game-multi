@@ -121,22 +121,22 @@ describe("Chain Lightning spell", () => {
     expect(result.pendingChoice).toBeNull();
   });
 
-  it("is unavailable with only two living units and explains the three-unit requirement", () => {
-    const state = chainState("chain-needs-three");
+  it("starts on any living unit: with only two units the later bolts find fewer bodies", () => {
+    const state = chainState("chain-two-units");
     for (const unitId of Object.keys(state.combat!.units)) {
       if (unitId !== "unit_p1_marksmen" && unitId !== "unit_p2_skeletons") {
         delete state.combat!.units[unitId];
       }
     }
-    expect(findCast(state, "spell.chain_lightning", "unit_p2_skeletons")).toBeUndefined();
-    const result = applyAction(state, {
-      type: "CAST_SPELL",
-      playerId: "p1",
-      cardId: "spell.chain_lightning",
-      target: { type: "unit", unitId: "unit_p2_skeletons" }
-    });
-    expect(result.errors.map((error) => error.message).join(" ")).toContain("requires 3 living units");
-    expect(result.state.players.p1.hand).toContain("spell.chain_lightning");
+    // Offered AND accepted by the reducer (the two must never disagree).
+    const cast = findCast(state, "spell.chain_lightning", "unit_p2_skeletons");
+    expect(cast).toBeTruthy();
+    const result = passAllReactions(applyOk(state, cast!.action));
+    // Power 0 (1/1/1): the selected unit takes the first bolt, the only other
+    // unit the next; the third bolt has no body left and is lost.
+    expect(result.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(result.combat!.units.unit_p1_marksmen.damage).toBe(1);
+    expect(result.pendingChoice).toBeNull();
   });
 });
 

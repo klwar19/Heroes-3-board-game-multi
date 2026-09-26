@@ -1,6 +1,6 @@
 import { townVeterancy, townAllyLost, townArtifactUsed, townNagaMend } from "./town-veterancy";
 import { neutralTownAllyLost, neutralTownCardDamageReduction, neutralTownCardDamageResolved } from "./neutral-town-veterancy";
-import type { GameEvent, GameState, SourceRef } from "./state";
+import type { CombatUnitState, GameEvent, GameState, SourceRef } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { unitAbilities } from "@/data/units/abilities";
 import { noteUnitDamagedForTokens } from "./tokens";
@@ -23,6 +23,15 @@ import { deferPreOrderWarMachine } from "./astrologers-pre-order";
 
 type EventDraft = Omit<GameEvent, "id">;
 
+/** Soul Link never redirects a hit that would defeat its commander. */
+export function soulLinkCanTakeShare(
+  commander: Pick<CombatUnitState, "damage" | "maxHealth">,
+  incomingDamage: number,
+): boolean {
+  return incomingDamage > 0 &&
+    commander.damage + Math.ceil(incomingDamage / 2) < commander.maxHealth;
+}
+
 /** Scorching Earth places a damage token without a normal damage event. */
 export function transferUnloggedSoulLinkDamage(state: GameState, targetId: string, amount: number): void {
   const combat = state.combat;
@@ -30,8 +39,8 @@ export function transferUnloggedSoulLinkDamage(state: GameState, targetId: strin
   if (!combat || !target || amount <= 0) return;
   const commander = Object.values(combat.units).find(unit =>
     unit.commanderSlug === "soul_eater" && unit.controllerId === target.controllerId &&
-    unit.soulLinkTargetId === target.id && unit.damage < unit.maxHealth &&
-    unit.soulLinkUsedRound !== combat.round
+    unit.soulLinkTargetId === target.id && unit.soulLinkUsedRound !== combat.round &&
+    soulLinkCanTakeShare(unit, amount)
   );
   if (!commander) return;
   const transferred = Math.ceil(amount / 2);
@@ -50,8 +59,8 @@ export function transferUnloggedSoulLinkDamage(state: GameState, targetId: strin
  * defeated enemy side (UNIT_FLIPPED Pack→Few), Polish stack layer
  * (ARMY_STACK_LOST), Stack Token (STACK_TOKEN_DISCARDED) and final removal
  * (UNIT_REMOVED) counts as one kill. The killer is the unit whose lethal hit
- * set `townVeterancy.damageSourceId` (attacks, retaliations and unit-sourced
- * ability damage alike; spells/cards/war machines have no unit source).
+ * set `townVeterancy.damageSourceId`; the companion own-attack flag excludes
+ * retaliations and unit-sourced ability damage from this attack-only rider.
  */
 function healKillerPerKill(
   state: GameState,
@@ -60,6 +69,7 @@ function healKillerPerKill(
 ): void {
   const combat = state.combat;
   const killerId = fallen.townVeterancy?.damageSourceId;
+  if (!fallen.townVeterancy?.damageSourceWasOwnAttack) return;
   const killer = killerId ? combat?.units[killerId] : undefined;
   // A final removal only counts when damage defeated it (not a flee/expiry).
   if (!combat || !killer || (lossType === "UNIT_REMOVED" && fallen.damage < fallen.maxHealth)) return;
@@ -414,11 +424,12 @@ export function appendEvent<T extends EventDraft>(
     const target = state.combat.units[damageEvent.target.unitId ?? ""];
     const commander = target && Object.values(state.combat.units).find(unit =>
       unit.commanderSlug === "soul_eater" && unit.controllerId === target.controllerId &&
-      unit.soulLinkTargetId === target.id && unit.damage < unit.maxHealth &&
+      unit.soulLinkTargetId === target.id &&
       unit.soulLinkUsedRound !== state.combat!.round
     );
     const amount = (eventDraft as { amount?: number }).amount ?? 0;
-    if (target && commander && amount > 0 && target.damage - amount < target.maxHealth) {
+    if (target && commander && soulLinkCanTakeShare(commander, amount) &&
+        target.damage - amount < target.maxHealth) {
       const transferred = Math.ceil(amount / 2);
       target.damage = Math.max(0, target.damage - transferred);
       commander.damage += transferred;
@@ -463,6 +474,7 @@ export function appendEvent<T extends EventDraft>(
         const memory = (target.townVeterancy ??= {});
         if (target.damage - dealt.amount < target.maxHealth) delete memory.lossRecorded;
         memory.damageSourceId = target.damage >= target.maxHealth && dealt.source.type === "unit" ? dealt.source.unitId : undefined;
+        memory.damageSourceWasOwnAttack = Boolean(memory.damageSourceId && dealt.damageKind === "attack" && !dealt.isRetaliation);
       }
       if (target) target.neutralLastDamageSourceId = target.damage >= target.maxHealth && dealt.source.type === "unit" ? dealt.source.unitId : undefined;
       if (target) {

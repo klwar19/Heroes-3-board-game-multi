@@ -90,24 +90,25 @@ describe("Solmyr's Chain Lightning", () => {
     expect(next.pendingChoice).toBeNull();
   });
 
-  it("I is unavailable with only two living units and explains the three-unit requirement", () => {
-    const state = chainState("solmyr-needs-three", "specialty.solmyr.1");
+  it("I starts on any living unit: with only two units the second bolt strikes the other one", () => {
+    const state = chainState("solmyr-two-units", "specialty.solmyr.1");
     for (const unitId of Object.keys(state.combat!.units)) {
       if (unitId !== "unit_p1_marksmen" && unitId !== "unit_p2_skeletons") {
         delete state.combat!.units[unitId];
       }
     }
-    expect(findPlay(state, "specialty.solmyr.1", undefined, "unit_p2_skeletons")).toBeUndefined();
-    const result = applyAction(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "specialty.solmyr.1",
-      mode: "basic",
-      optionIndex: 0,
-      target: { type: "unit", unitId: "unit_p2_skeletons" }
-    });
-    expect(result.errors.map((error) => error.message).join(" ")).toContain("requires 3 living units");
-    expect(result.state.players.p1.hand).toContain("specialty.solmyr.1");
+    // The Griffins (the active unit) are gone: activate the surviving Marksmen.
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    state.combat!.units.unit_p1_marksmen.activatedThisRound = false;
+    state.activePlayerId = "p1";
+    // Offered AND accepted by the reducer (the two must never disagree).
+    const play = findPlay(state, "specialty.solmyr.1", undefined, "unit_p2_skeletons");
+    expect(play).toBeTruthy();
+    const next = applyOk(state, play!.action);
+    // 1 / 1 / 0: the selected unit, then the only other unit; nothing is left for the 0.
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(next.combat!.units.unit_p1_marksmen.damage).toBe(1);
+    expect(next.pendingChoice).toBeNull();
   });
 
   it("VI deals 2 to the selected unit and 1 to each of the two closest (no choice when exactly two)", () => {

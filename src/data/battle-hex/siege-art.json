@@ -1816,5 +1816,158 @@
       "y": -26
     },
     "guardSprite": "gunslinger"
+  },
+  "forge": {
+    "pieces": {
+      "back": {
+        "x": 0,
+        "y": 0,
+        "width": 800,
+        "height": 556
+      },
+      "moat": {
+        "x": 415,
+        "y": 80,
+        "width": 194,
+        "height": 476
+      },
+      "moat-bank": {
+        "x": 415,
+        "y": 80,
+        "width": 194,
+        "height": 476
+      },
+      "background-wall": {
+        "x": 631,
+        "y": 56,
+        "width": 169,
+        "height": 63
+      },
+      "keep": {
+        "x": 715,
+        "y": 156,
+        "width": 85,
+        "height": 305
+      },
+      "keep-ruin": {
+        "x": 715,
+        "y": 156,
+        "width": 85,
+        "height": 305
+      },
+      "keep-battlement": {
+        "x": 715,
+        "y": 156,
+        "width": 85,
+        "height": 93
+      },
+      "tower-upper": {
+        "x": 584,
+        "y": 14,
+        "width": 50,
+        "height": 124
+      },
+      "tower-upper-battlement": {
+        "x": 584,
+        "y": 14,
+        "width": 50,
+        "height": 60
+      },
+      "tower-bottom": {
+        "x": 613,
+        "y": 508,
+        "width": 56,
+        "height": 48
+      },
+      "tower-bottom-battlement": {
+        "x": 613,
+        "y": 508,
+        "width": 56,
+        "height": 48
+      },
+      "wall-upper": {
+        "x": 557,
+        "y": 65,
+        "width": 59,
+        "height": 126
+      },
+      "wall-upper-ruin": {
+        "x": 557,
+        "y": 65,
+        "width": 59,
+        "height": 126
+      },
+      "static-top": {
+        "x": 511,
+        "y": 88,
+        "width": 89,
+        "height": 170
+      },
+      "wall-over-gate": {
+        "x": 496,
+        "y": 185,
+        "width": 54,
+        "height": 128
+      },
+      "wall-over-gate-ruin": {
+        "x": 496,
+        "y": 185,
+        "width": 54,
+        "height": 128
+      },
+      "gate-arch": {
+        "x": 481,
+        "y": 212,
+        "width": 82,
+        "height": 233
+      },
+      "gate": {
+        "x": 427,
+        "y": 281,
+        "width": 78,
+        "height": 74
+      },
+      "gate-ruin": {
+        "x": 427,
+        "y": 281,
+        "width": 78,
+        "height": 74
+      },
+      "wall-below-gate": {
+        "x": 507,
+        "y": 318,
+        "width": 56,
+        "height": 127
+      },
+      "wall-below-gate-ruin": {
+        "x": 507,
+        "y": 318,
+        "width": 56,
+        "height": 127
+      },
+      "static-bottom": {
+        "x": 530,
+        "y": 368,
+        "width": 103,
+        "height": 188
+      },
+      "wall-bottom": {
+        "x": 580,
+        "y": 459,
+        "width": 58,
+        "height": 97
+      },
+      "wall-bottom-ruin": {
+        "x": 580,
+        "y": 459,
+        "width": 58,
+        "height": 97
+      }
+    },
+    "keepGuard": {
+      "x": 536,
+      "y": -26
+    },
+    "guardSprite": "forge-grunt"
   }
 }

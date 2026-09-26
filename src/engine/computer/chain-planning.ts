@@ -1,3 +1,5 @@
+import { isHexPosition } from "../battlefield";
+import { chainHopCandidates } from "../chain-lightning-hex";
 import { unitDistance } from "../hex-footprint";
 import { previewSpellDamage } from "../reducer";
 import type { CardDefinition, CombatUnitState, GameState } from "../state";
@@ -31,6 +33,26 @@ export function chainLightningValue(state: GameState, playerId: string, card: Ca
   // The resolver ends combat after removing the last enemy, before any bounce.
   if (primary.controllerId !== playerId && living.filter(unit => unit.controllerId !== playerId).length === 1 &&
       previewSpellDamage(state, primary, card, damages[0] ?? 0) >= unitRemovalHealth(primary)) return value;
+  if (isHexPosition(primary.position)) {
+    // Hex: the PC hop chain (chain-lightning-hex.ts) — each bolt jumps from
+    // the unit struck last to the nearest unstruck unit; a tie is our pick.
+    let anchor: CombatUnitState = primary;
+    let hopPool = living.filter(unit => unit.id !== primaryId && isHexPosition(unit.position));
+    for (const damage of damages.slice(1).filter(amount => amount > 0)) {
+      const nearest = chainHopCandidates(combat, anchor, hopPool);
+      if (!nearest.length) break;
+      let best = nearest[0];
+      let bestValue = -Infinity;
+      for (const unit of nearest) {
+        const bolt = chainBoltValue(state, playerId, card, unit, damage);
+        if (bolt > bestValue) { bestValue = bolt; best = unit; }
+      }
+      value += bestValue;
+      anchor = best;
+      hopPool = hopPool.filter(unit => unit !== best);
+    }
+    return value;
+  }
   const others = living.filter(unit => unit.id !== primaryId).map(unit => ({ unit,
     distance: unitDistance(combat, primary, unit) }))
     .sort((a, b) => a.distance - b.distance || a.unit.id.localeCompare(b.unit.id));

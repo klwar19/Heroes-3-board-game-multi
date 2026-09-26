@@ -6724,6 +6724,8 @@ type GameEventPayload =
       damageKind: DamageKind;
       /** Soul Link's assigned share is direct damage and cannot be redirected again. */
       soulLinkTransfer?: boolean;
+      /** Whether this damage came from a Retaliation Attack. */
+      isRetaliation?: boolean;
     }
   | {
       id: string;
@@ -10533,6 +10535,7 @@ export type CombatUnitState = {
   customVeterancyRounds?: Partial<Record<import("@/data/units/abilities").CustomTownVeterancyMechanic, number>>;
   townVeterancy?: {
     damageSourceId?: string;
+    damageSourceWasOwnAttack?: boolean;
     attack?: number;
     defense?: number;
     zeal?: number;

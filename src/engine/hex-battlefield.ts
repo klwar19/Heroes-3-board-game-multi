@@ -24,11 +24,13 @@ import type { CombatState, HexBattlefieldId, HexObstacleToken } from "./state";
  */
 
 /**
- * Hex battlefield default Round limit (user ruling 2026-09-25): a neutral fight
- * with no designer limit rolls on free for this many rounds before the usual
- * continue-or-retreat window applies (the 4×5 board counts it after round 1).
+ * Hex battlefield default Round limit (user ruling 2026-09-26, replacing the
+ * 2026-09-25 "3 rounds"): a neutral fight with no designer limit rolls on free
+ * for rounds 1 and 2; continuing into round 3 and every later round costs
+ * movement points through the usual continue-or-retreat window (the 4×5 board
+ * counts it after round 1).
  */
-export const HEX_DEFAULT_FREE_COMBAT_ROUNDS = 3;
+export const HEX_DEFAULT_FREE_COMBAT_ROUNDS = 2;
 
 /** Auto-deployment spreads from the middle row outwards: E, D, F, C, G, B, H, A, I. */
 export const HEX_MIDDLE_OUT_ROWS: readonly number[] = [4, 3, 5, 2, 6, 1, 7, 0, 8];

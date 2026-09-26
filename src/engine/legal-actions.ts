@@ -239,6 +239,8 @@ import {
   unitStepSpaces,
   unitTailOffset,
 } from "./hex-footprint";
+import { hexPcSpellBlast } from "./hex-spell-areas";
+import { chainHexReachable } from "./chain-lightning-hex";
 import { movableObstacleCells } from "./hex-battlefield";
 import {
   ballisticsOpeningBombardAvailable,
@@ -1401,20 +1403,30 @@ export function spellPotentialBlastUnitIds(
   const effect = card.effect;
   const target = stackItem.action.target;
 
-  // Inferno and Meteor Shower: the centre space and all orthogonal neighbours.
+  // Inferno and Meteor Shower: the centre space and all orthogonal neighbours
+  // (hex battlefield: their PC area around the centre body, hex-spell-areas.ts).
   if ((effect.type === "INFERNO" || effect.type === "METEOR_SHOWER_SPELL") && target.type === "space") {
     return unitsOnPositions(
       combat,
-      new Set([target.position, ...getOrthogonalNeighbors(target.position)]),
+      hexPcSpellBlast(
+        combat,
+        card.id,
+        unitAtCell(combat, target.position, Object.values(combat.units).filter(isUnitAlive)) ?? target.position,
+      ) ?? new Set([target.position, ...getOrthogonalNeighbors(target.position)]),
     );
   }
 
   // Fireball: the primary unit plus every unit adjacent to it (the caster picks
-  // one adjacent as the splash, so all of them are potential victims).
+  // one adjacent as the splash, so all of them are potential victims). Hex
+  // battlefield: every unit in the PC area is hit (no pick).
   if (effect.type === "AREA_DAMAGE_ADJACENT" && target.type === "unit") {
     const primary = combat.units[target.unitId];
     if (!primary) {
       return [];
+    }
+    const pcBlast = hexPcSpellBlast(combat, card.id, primary);
+    if (pcBlast) {
+      return unitsOnPositions(combat, pcBlast);
     }
     return Object.values(combat.units)
       .filter(
@@ -1443,7 +1455,10 @@ export function spellPotentialBlastUnitIds(
     const centreUnit = target.type === "unit"
       ? combat.units[target.unitId]
       : unitAtCell(combat, centre, Object.values(combat.units).filter(isUnitAlive));
-    const blast = areaAround(combat, centreUnit ?? centre, Boolean(effect.includeCenter));
+    // Hex battlefield: the Frost Ring's PC ring (hex-spell-areas.ts).
+    const blast =
+      hexPcSpellBlast(combat, card.id, centreUnit ?? centre) ??
+      areaAround(combat, centreUnit ?? centre, Boolean(effect.includeCenter));
     return unitsOnPositions(combat, blast);
   }
 
@@ -2877,16 +2892,9 @@ export function getTargetsForCard(
     });
   }
 
-  // Chain Lightning always names three distinct living units: the selected
-  // primary plus the two closest units. With fewer than three bodies on the
-  // battlefield there is no legal cast/activation at all.
+  // Chain Lightning starts on any living unit. Later bolts have no target when
+  // fewer than three bodies remain, rather than making the primary uncastable.
   if (card?.effect.type === "CHAIN_LIGHTNING") {
-    const living = Object.values(state.combat?.units ?? {}).filter(
-      (unit) => isUnitAlive(unit) && unit.position >= 0,
-    );
-    if (living.length < 3) {
-      return [];
-    }
     targets = targets.filter(
       (target) =>
         target.type !== "unit" ||
@@ -3876,6 +3884,11 @@ function addSpellActions(
     // activation spell keeps the standard activation window, which still allows
     // casting after a move, with its printed timing waivers left intact.
     const activeCaster = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+    // Meteor Shower's spell face is an on-turn activation cast. Intelligence
+    // does not turn this particular printed timing into an off-turn cast.
+    if (card.id === "spell.meteor_shower" && activeCaster?.controllerId !== playerId) {
+      continue;
+    }
     if (card.id === "spell.magic_arrow" && activeCaster?.controllerId === playerId &&
         activeCaster.movedThisActivation) {
       continue;
@@ -7544,6 +7557,16 @@ export function unitIdsThreatenedByDamageEffect(
   if (effect.type === "CHAIN_LIGHTNING" && target.type === "unit") {
     const primary = combat.units[target.unitId];
     if (!primary || !isUnitAlive(primary)) return [];
+    if (isHexPosition(primary.position)) {
+      // Hex: the PC hop chain (chain-lightning-hex.ts) — every unit some
+      // routing of the card's bolts could strike.
+      const ladders = effect.damages ? [effect.damages] : Object.values(effect.damagesByPower ?? {});
+      const hops = Math.max(0, ...ladders.map((ladder) => ladder.slice(1).filter((value) => value > 0).length));
+      const pool = Object.values(combat.units).filter(
+        (unit) => unit.id !== primary.id && isUnitAlive(unit) && isHexPosition(unit.position),
+      );
+      return [primary.id, ...chainHexReachable(combat, primary, pool, hops).map((unit) => unit.id)];
+    }
     const others = Object.values(combat.units)
       .filter(
         (unit) =>
@@ -7578,6 +7601,11 @@ export function unitIdsThreatenedByDamageEffect(
     if (!primary || !isUnitAlive(primary)) {
       return [];
     }
+    // Hex battlefield: the PC Fireball area — every unit in it is hit.
+    const pcBlast = hexPcSpellBlast(combat, card?.id, primary);
+    if (pcBlast) {
+      return unitsOnPositions(combat, pcBlast).filter(hurtable);
+    }
     return Object.values(combat.units)
       .filter(
         (unit) =>
@@ -7605,9 +7633,16 @@ export function unitIdsThreatenedByDamageEffect(
       : effect.type === "AREA_DAMAGE_ALL_ADJACENT"
         ? unitAtCell(combat, center, Object.values(combat.units).filter(isUnitAlive))
         : undefined;
+    // Hex battlefield: Inferno / Meteor Shower / Xyron / Adelaide VI take their
+    // PC area around the centre body (hex-spell-areas.ts).
+    const pcBlast = hexPcSpellBlast(
+      combat,
+      card?.id,
+      centreUnit ?? unitAtCell(combat, center, Object.values(combat.units).filter(isUnitAlive)) ?? center,
+    );
     const hit = unitsOnPositions(
       combat,
-      areaAround(
+      pcBlast ?? areaAround(
         combat,
         centreUnit ?? center,
         !(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false),
@@ -7660,8 +7695,10 @@ export function unitIdsThreatenedByDamageEffect(
       : unitAtCell(combat, center, Object.values(combat.units).filter(isUnitAlive));
     // resolveAreaPickDamage: the centre body (when included) and the ring's
     // candidates — a unit ignoring this card's damage is never a candidate and
-    // takes 0 as the centre.
-    const blast = areaAround(combat, centreUnit ?? center, Boolean(effect.includeCenter));
+    // takes 0 as the centre. Hex battlefield: the Frost Ring's PC ring, all hit.
+    const blast =
+      hexPcSpellBlast(combat, card?.id, centreUnit ?? center) ??
+      areaAround(combat, centreUnit ?? center, Boolean(effect.includeCenter));
     return unitsOnPositions(combat, blast).filter(hurtable);
   }
 
@@ -13712,12 +13749,7 @@ export function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
  *    proclamation + Pandora's flat bonus)
  *   × the matching Elemental-Orb multiplier − the enemy Pegasi reduction,
  *   floored at 0.
- * A Spell Scroll cast ignores standing/school/equipment Power and Orb
- * doubling: only Power paid into THIS cast window (`spellPowerBonus` from
- * Power cards / "+1 Power" discards) counts, and only up to the spell's
- * lowest useful tier (`spellMinUsefulPower`) — so you may fuel Implosion to
- * Power 1 for its first damage rung, but never climb a higher ladder. Spells
- * whose lowest useful tier is 0 (Magic Arrow, Lightning Bolt…) stay at 0.
+ * A Spell Scroll cast ignores every Power source and resolves at Power 0.
  *
  * Previously the readout/gate counted only the stack-item modifier terms and
  * silently dropped the Orb doubling, the school/flat bonuses and the Pegasi
@@ -13735,13 +13767,8 @@ export function resolvedSpellPowerForStackItem(
   }
   const card = cards[stackItem.action.cardId];
   if (stackItem.modifiers.scrollLocked) {
-    // Scroll: paid Power into this window only, capped at the lowest useful tier.
-    const minUseful = spellMinUsefulPower(card);
-    const paid = Math.max(0, stackItem.modifiers.spellPowerBonus);
-    if (minUseful <= 0) {
-      return 0;
-    }
-    return Math.min(paid, minUseful);
+    // Every Spell Scroll cast is fixed at Power 0.
+    return 0;
   }
   if (stackItem.modifiers.spellPowerBaseZero) {
     // Polish Balance Pack — the reprinted Eagle Eye EXPERT copy: "with 0 SP … You
@@ -14210,7 +14237,7 @@ export function isEffectLegalForTrigger(
       // Power only empowers a real Spell cast — never a specialty damage card
       // that reuses the SPELL_CAST_STARTED window so pre-hit heals can fire.
       const stackItemForPower = getPendingStackItem(state, triggerEvent);
-      if (stackItemForPower?.action.type !== "CAST_SPELL") {
+      if (stackItemForPower?.action.type !== "CAST_SPELL" || stackItemForPower.modifiers.scrollLocked) {
         return false;
       }
 
@@ -14231,6 +14258,7 @@ export function isEffectLegalForTrigger(
         return false;
       }
       const stackItem = getPendingStackItem(state, triggerEvent);
+      if (stackItem?.modifiers.scrollLocked) return false;
       const pendingSpell =
         stackItem?.action.type === "CAST_SPELL"
           ? cardLibrary[stackItem.action.cardId]
@@ -14300,7 +14328,8 @@ export function isEffectLegalForTrigger(
       // the reducer's recall branch is gated on CAST_SPELL and would eat the card.
       return (
         triggerEvent.playerId === playerId &&
-        getPendingStackItem(state, triggerEvent)?.action.type === "CAST_SPELL"
+        getPendingStackItem(state, triggerEvent)?.action.type === "CAST_SPELL" &&
+        !getPendingStackItem(state, triggerEvent)?.modifiers.scrollLocked
       );
     }
 

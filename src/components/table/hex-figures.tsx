@@ -38,6 +38,7 @@ import {
   creatureSpriteForSlug,
   hexAnimationTempo,
   hexMovePlan,
+  spriteFrameOffset,
   spriteGroupFrames,
   spriteTeleports,
   unitCreatureSprite,
@@ -91,6 +92,20 @@ const CAST_MS = 900;
 const TURN_SHARE_OF_BEAT = 0.45;
 /** How long a moved unit waits on its old hex for its move cue before snapping. */
 const MOVE_HOLD_GRACE_MS = 400;
+/** An idle figure facing away from the enemy turns back after this beat (a following cue keeps its facing). */
+const IDLE_TURN_BACK_MS = 220;
+/** Longest a figure keeps its walk's facing waiting for its strike (dice + reactions) before turning back anyway. */
+const FACING_HOLD_MAX_MS = 9000;
+
+/**
+ * Figures tell each other when one starts to act (move, strike, cast): a figure
+ * still holding the facing it arrived with then knows its turn is over.
+ */
+const figureActionListeners = new Set<(unitId: string) => void>();
+
+function announceFigureAction(unitId: string): void {
+  for (const listener of Array.from(figureActionListeners)) listener(unitId);
+}
 
 type Point = { x: number; y: number };
 
@@ -191,6 +206,8 @@ type Controller = {
 };
 
 type ControllerOptions = {
+  /** The unit (or war machine) this figure draws. */
+  id: string;
   figure: HTMLElement;
   sprite: HTMLElement | null;
   atlas: CreatureSpriteAtlas | null;
@@ -222,6 +239,11 @@ function createController(options: ControllerOptions): Controller {
   let holdTimer = 0;
   let idleTimer = 0;
   let busy = 0;
+  /** The walk this figure is playing (resolves when it has arrived), or null. */
+  let walking: Promise<void> | null = null;
+  /** Arrived from a walk facing away from the enemy, and keeping that facing for a strike. */
+  let facingHeld = false;
+  let facingTimer = 0;
   let disposed = false;
   /** Bumped by every new cue, so a turn-back never fights a newer cue. */
   let generation = 0;
@@ -257,8 +279,8 @@ function createController(options: ControllerOptions): Controller {
     if (!sprite || !atlas) return;
     const info = atlas.groups[String(group)] ?? atlas.groups[String(SPRITE_GROUP.standing)];
     if (!info) return;
-    const column = Math.min(index, info.frames - 1);
-    const position = `${-column * atlas.frameWidth}px ${-info.row * atlas.frameHeight}px`;
+    const offset = spriteFrameOffset(atlas, info, index);
+    const position = `${-offset.x}px ${-offset.y}px`;
     if (position !== shownFrame) {
       shownFrame = position;
       sprite.style.backgroundPosition = position;
@@ -270,8 +292,13 @@ function createController(options: ControllerOptions): Controller {
 
   const frames = (group: number) => (atlas ? spriteGroupFrames(atlas, group) : 0);
 
-  /** Plays one group once (durations per frame); resolves after the last frame. */
-  const playClip = (group: number, durations: number[], hold = false): Promise<void> =>
+  /**
+   * Plays one group once (durations per frame); resolves after the last frame.
+   * `startAt` (performance.now() clock) pins frame 0 to a scheduled moment, so
+   * a clip that starts a frame late plays on the schedule instead of pushing
+   * everything after it later (a walk's segments never drift past its slot).
+   */
+  const playClip = (group: number, durations: number[], hold = false, startAt?: number): Promise<void> =>
     new Promise((resolve) => {
       stopClip?.();
       if (!atlas || durations.length === 0) {
@@ -279,7 +306,7 @@ function createController(options: ControllerOptions): Controller {
         return;
       }
       const total = durations.reduce((sum, ms) => sum + ms, 0);
-      let start = -1;
+      let start = startAt ?? -1;
       const stop = onClock((now) => {
         if (disposed) {
           resolve();
@@ -316,14 +343,19 @@ function createController(options: ControllerOptions): Controller {
    * H3 turn-around: turn-left frames, flip, turn-right frames. A newer cue
    * (another figure clip) cuts it short with the flip already applied.
    */
-  const turnTo = async (right: boolean, frameMs = paced(HEX_TURN_FRAME_MS)) => {
+  const turnTo = async (right: boolean, frameMs = paced(HEX_TURN_FRAME_MS), startAt?: number) => {
     if (facing === right) return;
     const gen = generation;
     if (atlas && frameMs > 0 && frames(SPRITE_GROUP.turnLeft) > 0 && frames(SPRITE_GROUP.turnRight) > 0) {
-      await playClip(SPRITE_GROUP.turnLeft, even(SPRITE_GROUP.turnLeft, frameMs), true);
+      await playClip(SPRITE_GROUP.turnLeft, even(SPRITE_GROUP.turnLeft, frameMs), true, startAt);
       setFacing(right);
       if (gen !== generation || disposed) return;
-      await playClip(SPRITE_GROUP.turnRight, even(SPRITE_GROUP.turnRight, frameMs));
+      await playClip(
+        SPRITE_GROUP.turnRight,
+        even(SPRITE_GROUP.turnRight, frameMs),
+        false,
+        startAt === undefined ? undefined : startAt + frames(SPRITE_GROUP.turnLeft) * frameMs
+      );
     } else {
       setFacing(right);
     }
@@ -394,7 +426,7 @@ function createController(options: ControllerOptions): Controller {
    * Moves the figure through board points (offsets from its rest point), one
    * equal leg per step, looping the walk cycle once per hex.
    */
-  const walk = (points: Point[], legMs: number): Promise<void> =>
+  const walk = (points: Point[], legMs: number, startAt?: number): Promise<void> =>
     new Promise((resolve) => {
       stopMove?.();
       const rest = options.restPoint();
@@ -405,14 +437,14 @@ function createController(options: ControllerOptions): Controller {
       const legs = points.length - 1;
       const total = legs * legMs;
       const walkFrames = Math.max(1, frames(SPRITE_GROUP.move));
-      let start = -1;
+      let start = startAt ?? -1;
       const stop = onClock((now) => {
         if (disposed) {
           resolve();
           return false;
         }
         if (start < 0) start = now;
-        const elapsed = Math.min(total, now - start);
+        const elapsed = Math.max(0, Math.min(total, now - start));
         const legFloat = elapsed / legMs;
         const leg = Math.min(legs - 1, Math.floor(legFloat));
         const local = Math.min(1, legFloat - leg);
@@ -485,11 +517,15 @@ function createController(options: ControllerOptions): Controller {
       settle();
       return;
     }
-    const home = options.facesRight();
     setOffset({ x: startPoint.x - rest.x, y: startPoint.y - rest.y });
     const legMs = (plan.legsMs * fit) / Math.max(1, points.length - 1);
     const turnFrameMs = plan.turnFrameMs * fit;
     const edgeFrameMs = plan.edgeFrameMs * fit;
+    // Every segment is pinned to the slot's own clock: one that starts a frame
+    // late plays on schedule instead of pushing the arrival past the slot the
+    // strike, damage number and footsteps after it are timed to.
+    const slotEnd = performance.now() + plan.totalMs * fit;
+    let at = performance.now();
     // Walk the route in stretches of one heading: before each stretch the
     // figure plays the H3 turn-around (setting off backwards, or where the path
     // doubles back), so it never snaps round mid-stride. hexWalkTurns counts
@@ -502,26 +538,35 @@ function createController(options: ControllerOptions): Controller {
       while (end < points.length - 1 && (points[end + 1].x === points[end].x || (points[end + 1].x > points[end].x) === right)) {
         end += 1;
       }
-      await turnTo(right, turnFrameMs);
+      if (right !== facing) {
+        await turnTo(right, turnFrameMs, at);
+        at += turnFrames() * turnFrameMs;
+      }
       if (disposed) return;
       if (!started) {
         // H3 start-moving frames (take-off for flyers), held into the stride.
         started = true;
         if (frames(SPRITE_GROUP.startMove) > 0) {
-          await playClip(SPRITE_GROUP.startMove, even(SPRITE_GROUP.startMove, edgeFrameMs), true);
+          await playClip(SPRITE_GROUP.startMove, even(SPRITE_GROUP.startMove, edgeFrameMs), true, at);
+          at += frames(SPRITE_GROUP.startMove) * edgeFrameMs;
         }
       }
-      await walk(points.slice(index, end + 1), legMs);
+      await walk(points.slice(index, end + 1), legMs, at);
+      at += (end - index) * legMs;
       index = end;
     }
     setOffset({ x: endPoint.x - rest.x, y: endPoint.y - rest.y });
     // H3 stop-moving frames (landing for flyers) on arrival.
     if (frames(SPRITE_GROUP.stopMove) > 0) {
-      await playClip(SPRITE_GROUP.stopMove, even(SPRITE_GROUP.stopMove, edgeFrameMs));
+      await playClip(SPRITE_GROUP.stopMove, even(SPRITE_GROUP.stopMove, edgeFrameMs), false, at);
     }
-    // Face the enemy again once arrived (the PC game turns back too).
-    await turnTo(home, turnFrameMs);
     settle();
+    // Arrived: stand facing the way it came for the rest of the slot rather
+    // than turning back now — a strike that follows then swings straight at
+    // its target instead of turning round twice. Once nothing follows, the
+    // idle turn-back (handle) faces the enemy again, as the PC does.
+    const left = slotEnd - performance.now();
+    if (left > 1 && !disposed) await new Promise((resolve) => window.setTimeout(resolve, left));
   };
 
   /**
@@ -697,25 +742,83 @@ function createController(options: ControllerOptions): Controller {
     detail.accepted = true;
     event.stopPropagation();
     busy += 1;
-    generation += 1;
-    const run =
-      detail.cue.kind === "move" ? runMove(detail.cue)
-        : detail.cue.kind === "lunge" ? runLunge(detail.cue)
-          : detail.cue.kind === "cast" ? runCast(detail.cue)
-            : detail.cue.kind === "shake" ? runShake()
-              : runPose();
+    const cue = detail.cue;
+    const arrived = performance.now();
+    const start = (): Promise<void> => {
+      generation += 1;
+      if (cue.kind === "move") return runMove(cue);
+      // A strike / cast that waited for this figure's walk spends the wait out
+      // of its wind-up, so its blow lands as close to the shared beat as the
+      // walk allows.
+      const waited = performance.now() - arrived;
+      if (cue.kind === "lunge") {
+        const beat = cue.releaseMs ?? (cue.attackKind === "ranged" ? HEX_RANGED_RELEASE_MS : IMPACT_MS);
+        return runLunge(waited > 1 && beat > 0 ? { ...cue, releaseMs: Math.max(1, beat - waited) } : cue);
+      }
+      if (cue.kind === "cast") {
+        const beat = cue.releaseMs ?? CAST_RELEASE_MS;
+        return runCast(waited > 1 && beat > 0 ? { ...cue, releaseMs: Math.max(1, beat - waited) } : cue);
+      }
+      return cue.kind === "shake" ? runShake() : runPose();
+    };
+    // The creature's own strike or cast never starts while it is still
+    // walking (its move and attack can arrive in separate snapshots, or the
+    // walk end a frame late): it waits for the walk to finish. Being hit
+    // (shake / pose) plays at once, e.g. on a Harpy waiting to fly home.
+    const acts = cue.kind === "move" || cue.kind === "lunge" || cue.kind === "cast";
+    if (acts) {
+      facingHeld = false;
+      window.clearTimeout(facingTimer);
+      announceFigureAction(options.id);
+    }
+    const run = (cue.kind === "lunge" || cue.kind === "cast") && walking
+      ? walking.then(() => (disposed ? undefined : start()))
+      : start();
+    if (cue.kind === "move") {
+      const gate = run.catch(() => undefined);
+      walking = gate;
+      void gate.then(() => {
+        if (walking === gate) walking = null;
+      });
+    }
     run
       .catch(() => undefined)
       .finally(() => {
         busy = Math.max(0, busy - 1);
         detail.done();
-        // Idle again after striking / casting to one side: turn back to face
-        // the enemy with the H3 turn (a newer cue cuts this short).
-        if (busy === 0 && !disposed && facing !== options.facesRight()) {
-          void turnTo(options.facesRight());
+        if (busy > 0 || disposed || facing === options.facesRight()) return;
+        if (cue.kind === "move") {
+          // Arrived facing away from the enemy: hold that facing while its
+          // strike may still come (the die is thrown and read first), until
+          // its own next action or another creature starts acting.
+          facingHeld = true;
+          window.clearTimeout(facingTimer);
+          facingTimer = window.setTimeout(turnBackWhenIdle, FACING_HOLD_MAX_MS);
+          return;
         }
+        // Idle again after striking / casting to one side: after a short beat
+        // (a cue that follows at once keeps the facing it needs), turn back to
+        // face the enemy with the H3 turn.
+        window.clearTimeout(facingTimer);
+        facingTimer = window.setTimeout(turnBackWhenIdle, IDLE_TURN_BACK_MS);
       });
   };
+
+  /** Face the enemy again with the H3 turn, unless a cue is playing. */
+  const turnBackWhenIdle = () => {
+    facingHeld = false;
+    if (busy === 0 && !disposed && facing !== options.facesRight()) {
+      void turnTo(options.facesRight());
+    }
+  };
+
+  /** Another creature started acting: a figure still holding its walk's facing is done. */
+  const othersAct = (unitId: string) => {
+    if (unitId === options.id || !facingHeld) return;
+    window.clearTimeout(facingTimer);
+    facingTimer = window.setTimeout(turnBackWhenIdle, IDLE_TURN_BACK_MS);
+  };
+  figureActionListeners.add(othersAct);
 
   const snap = () => {
     if (busy === 0) {
@@ -751,10 +854,12 @@ function createController(options: ControllerOptions): Controller {
     hover,
     dispose: () => {
       disposed = true;
+      figureActionListeners.delete(othersAct);
       stopClip?.();
       stopMove?.();
       window.clearTimeout(holdTimer);
       window.clearTimeout(idleTimer);
+      window.clearTimeout(facingTimer);
       // Never leave the figure parked on a hold/walk offset for the next controller.
       figure.style.translate = "";
     }
@@ -833,6 +938,7 @@ const HexUnitFigure = memo(function HexUnitFigure({
     const figure = figureRef.current;
     if (!figure) return;
     const controller = createController({
+      id: unitId,
       figure,
       sprite: spriteRef.current,
       atlas,
@@ -1119,6 +1225,7 @@ const HexKeepGuard = memo(function HexKeepGuard({
     if (!figure || !atlas) return;
     const rest: Point = { x: flipped ? HEX_BOARD_WIDTH - footX : footX, y: footY };
     const controller = createController({
+      id: unitId,
       figure,
       sprite: spriteRef.current,
       atlas,
@@ -1173,7 +1280,10 @@ const WAR_MACHINE_SPRITES: Readonly<Record<string, string>> = {
   "war_machine.ballista": "war-ballista",
   "war_machine.catapult": "war-catapult",
   "war_machine.ammo_cart": "war-ammo-cart",
-  "war_machine.first_aid_tent": "war-first-aid-tent"
+  "war_machine.first_aid_tent": "war-first-aid-tent",
+  // Forge (no PC original): a Codex sheet drawn from the card art
+  // (generated-session-art/forge/war-machines, scripts/import-sprite-sheet.mjs).
+  "war_machine.lightning_generator": "war-lightning-generator"
 };
 
 /** Row each machine type stands beside (PC: ballista high, cart and tent low). */
@@ -1230,6 +1340,7 @@ function HexWarMachineFigure({
     const figure = figureRef.current;
     if (!figure) return;
     const controller = createController({
+      id: `war-machine:${playerId}:${cardId}`,
       figure,
       sprite: spriteRef.current,
       atlas,
@@ -1343,8 +1454,8 @@ function HexFallen({
 function deathFrameAt(atlas: CreatureSpriteAtlas, elapsed: number): string | null {
   const info = atlas.groups[String(SPRITE_GROUP.death)];
   if (!info || info.frames < 1) return null;
-  const index = Math.min(info.frames - 1, Math.max(0, Math.floor(elapsed / HEX_DEATH_FRAME_MS)));
-  return `${-index * atlas.frameWidth}px ${-info.row * atlas.frameHeight}px`;
+  const offset = spriteFrameOffset(atlas, info, Math.floor(elapsed / HEX_DEATH_FRAME_MS));
+  return `${-offset.x}px ${-offset.y}px`;
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   fieldCreatureBankId, heroMovementMax, isBankStyleGuardLocation, isFieldGuarded,
   isTeleportObjectGuardLocation, neutralBattleLevel, neutralArmyDifficultyForField,
 } from "../adventure";
+import { HEX_DEFAULT_FREE_COMBAT_ROUNDS } from "../hex-battlefield";
 import { houseRuleEnabled } from "../house-rules";
 import { isGrailUtopiaModeField } from "../map-design-features";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
@@ -72,13 +73,15 @@ export function premiumCombatMovementReserve(state: GameState, hero: HeroState, 
   // and two paid continuations. At or below the cap one continuation is kept,
   // so a short approach can still lead to an attack that same turn.
   const gridReserve = (field.difficulty ?? 0) > twoMoveGuardCap(state, hero.controllerId, field) ? 2 : 1;
-  // Hex battlefield: the default Round limit counts after 3 rounds (rounds 1-3
-  // are free), and the armies spend about one round closing the 10 hexes
-  // between them — so the fight a grid turn pays 1 + N rounds for needs one
-  // paid continuation fewer there. A designer's numeric limit keeps its own
-  // count (no hex free rounds apply to it).
+  // Hex battlefield: the default Round limit counts after HEX_DEFAULT_FREE_
+  // COMBAT_ROUNDS rounds (rounds 1-2 free, ruling 2026-09-26) — one free round
+  // more than the grid — but the armies spend about one round closing the 10
+  // hexes between them, so the fight still needs the grid's paid
+  // continuations. The reserve only shrinks for free rounds beyond that
+  // approach round. A designer's numeric limit keeps its own count.
+  const hexExtraFreeRounds = Math.max(0, HEX_DEFAULT_FREE_COMBAT_ROUNDS - 2);
   const reserve = houseRuleEnabled(state, "hex-battlefield") && !designerPaidRounds
-    ? Math.max(0, gridReserve - 1)
+    ? Math.max(0, gridReserve - hexExtraFreeRounds)
     : gridReserve;
   // ALWAYS capped by a refreshed turn's actual capacity after paying entry: a
   // Secondary Hero (2 MP) or a main hero under the -1 Astrologers movement

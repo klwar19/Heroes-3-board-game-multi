@@ -218,6 +218,7 @@ function PendingPowerReadout({ state }: { state: GameState }) {
     : undefined;
   const subject = power.kind === "spell" ? cardName(power.spellCardId ?? "") : "This attack";
   const bounds = power.kind === "spell" ? spellCastPowerBounds(spell) : { minUseful: 0, maxUseful: null };
+  const scrollLocked = power.kind === "spell" && Boolean(state.stack.at(-1)?.modifiers.scrollLocked);
   // Damage spells (Magic Arrow, Lightning Bolt, …) read more clearly with the
   // damage their CURRENT Power deals beside the number; die-roll spells (Inferno
   // on a cast, Slayer on an attack) show how many Attack dice the current Power
@@ -235,7 +236,7 @@ function PendingPowerReadout({ state }: { state: GameState }) {
       ? getSpellDiceRollCount(spell, power.totalPower)
       : slayerDice;
 
-  const underMin = bounds.minUseful > 0 && power.totalPower < bounds.minUseful;
+  const underMin = !scrollLocked && bounds.minUseful > 0 && power.totalPower < bounds.minUseful;
   const overMax = bounds.maxUseful !== null && power.totalPower > bounds.maxUseful;
   const meterClass = underMin ? "trayPowerMeter under" : overMax ? "trayPowerMeter over" : "trayPowerMeter";
 
@@ -252,9 +253,9 @@ function PendingPowerReadout({ state }: { state: GameState }) {
         {diceRolls !== null
           ? ` · ${diceRolls} Attack ${diceRolls === 1 ? "die" : "dice"}`
           : ""}
-        {bounds.minUseful > 0 ? ` · needs ≥${bounds.minUseful}` : ""}
+        {!scrollLocked && bounds.minUseful > 0 ? ` · needs ≥${bounds.minUseful}` : ""}
         {bounds.maxUseful !== null ? ` · top tier ${bounds.maxUseful}` : ""}
-        {power.fueledPower > 0
+        {scrollLocked ? " · Scroll locked at Power 0" : power.fueledPower > 0
           ? ` · ${power.basePower} base + ${power.fueledPower} fuelled`
           : " · no Power added yet"}
         {underMin ? " · too low" : ""}
@@ -1577,14 +1578,14 @@ export function ReactionTray({
           ? `Pass — allow ${pendingSpellCard.name}`
           : "Pass";
   const scrollLocked = Boolean(pendingCast?.modifiers.scrollLocked);
-  // Scroll casts may still need the floor (Implosion etc.): paid Power is the
-  // only fuel, capped at minUseful — so under-min still blocks Pass.
+  // Scroll casts are fixed at Power 0; a printed higher floor simply fizzles.
+  // Never block Pass with a Power requirement the scroll cannot satisfy.
   const underMinPower =
     isSpellCaster &&
+    !scrollLocked &&
     castPowerBounds.minUseful > 0 &&
     castTotalPower < castPowerBounds.minUseful;
-  // Scrolls cannot climb past the lowest useful tier; skip the "over max" warn
-  // (extra Power is already capped in the engine).
+  // Scrolls cannot be boosted, so no over-max warning applies.
   const overMaxPower =
     isSpellCaster &&
     !scrollLocked &&

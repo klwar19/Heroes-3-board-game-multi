@@ -49564,10 +49564,17 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 }
 
 /* H3 marks the stack whose turn it is with a yellow outline that pulses
-   (its selection palette slot cycles); the figure outline does the same. */
+   (its selection palette slot cycles); the figure outline does the same, in
+   palette-like steps — a smooth filter animation would repaint the sprite
+   every frame for as long as the unit waits. */
 .hexFigure.active .hexSprite {
   filter: drop-shadow(0 0 1px #ffe98a) drop-shadow(0 0 1px #ffe98a);
-  animation: hexActiveOutline 1.1s ease-in-out infinite alternate;
+  animation: hexActiveOutline 1.1s steps(6) infinite alternate;
+}
+
+/* A corpse holds its last frame: no layer of its own once it has fallen. */
+.hexFallen .hexSprite {
+  will-change: auto;
 }
 
 @keyframes hexActiveOutline {

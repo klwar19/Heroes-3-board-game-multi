@@ -19,6 +19,7 @@ import {
   unitInCells,
   unitOccupiesCell,
 } from "../hex-footprint";
+import { hexPcSpellArea, hexPcSpellBlast } from "../hex-spell-areas";
 import { cancelSpellAllowsSchoolAndLevel, deathRippleReachesUnit, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
@@ -530,6 +531,7 @@ function areaDamageUnits(
   observation: ComputerObservation,
   effect: EffectDefinition,
   target: TargetRef | undefined,
+  cardId?: string,
 ): CombatUnitState[] | null {
   const combat = observation.state.combat;
   if (!combat || !target) return null;
@@ -543,6 +545,25 @@ function areaDamageUnits(
         ? combat.units[target.unitId]?.position
         : undefined;
   if (center === undefined) return null;
+
+  // Hex battlefield: Fireball / Frost Ring / Meteor Shower / Inferno (and the
+  // Adelaide / Glacius / Xyron specialties) hit EVERY unit in their PC area,
+  // friend or foe, with no pick (hex-spell-areas.ts) — score the whole area.
+  const pcArea =
+    effect.type === "AREA_DAMAGE_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
+    effect.type === "INFERNO" ||
+    effect.type === "METEOR_SHOWER_SPELL"
+      ? hexPcSpellArea(combat, cardId)
+      : null;
+  if (pcArea) {
+    const centreBody = target.type === "unit" ? combat.units[target.unitId] : unitAtCell(combat, center, living);
+    const blast = areaAround(combat, centreBody ?? center, pcArea.includeCentre, pcArea.radius);
+    return living.filter(
+      (unit) => unitInCells(combat, unit, blast) && (pcArea.includeCentre || unit !== centreBody),
+    );
+  }
 
   if (effect.type === "DAMAGE_BATTLEFIELD_LINE") {
     // Hex battlefield: "the line" is the target's hex ROW (the line running
@@ -650,7 +671,7 @@ function scoreDamageEffect(
     const value = chainLightningValue(state, observation.playerId, card, target.unitId, power);
     return value <= 0 ? 200 : Math.max(180, Math.min(895, base + value));
   }
-  const affected = areaDamageUnits(observation, effect, target);
+  const affected = areaDamageUnits(observation, effect, target, card.id);
   if (affected) {
     // This card has no Power-0 damage rung. Require enough visible Power before
     // valuing the blast, and use its own two-row ladder rather than generic
@@ -2041,7 +2062,17 @@ function pendingSpellBoostImpact(
   const spell = cards[top.action.cardId];
   const target = top.action.target;
   if (spell?.effect.type === "METEOR_SHOWER_SPELL" && target?.type === "space") {
-    const blast = new Set([target.position, ...getOrthogonalNeighbors(target.position)]);
+    // Hex battlefield: the PC Meteor Shower area around the centre body.
+    const blast =
+      hexPcSpellBlast(
+        combat,
+        spell.id,
+        unitAtCell(
+          combat,
+          target.position,
+          Object.values(combat.units).filter((unit) => unitRemainingHealth(unit) > 0),
+        ) ?? target.position,
+      ) ?? new Set([target.position, ...getOrthogonalNeighbors(target.position)]);
     if (!Object.values(combat.units).some((unit) =>
       unit.controllerId !== observation.playerId &&
       unitRemainingHealth(unit) > 0 && unitInCells(combat, unit, blast))) return "no-ladder-step";

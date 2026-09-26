@@ -18,8 +18,28 @@ export type CreatureSpriteAtlas = {
   columns: number;
   anchorX: number;
   anchorY: number;
-  groups: Record<string, { row: number; frames: number }>;
+  /**
+   * `start` (dense-packed sheets, scripts/pack-creature-atlases.mjs): the
+   * group's first cell, its frames following cell by cell across `columns`.
+   * Without it a group is one sheet row (`row`), frame k in column k.
+   */
+  groups: Record<string, { row: number; frames: number; start?: number }>;
 };
+
+/** Pixel offset of frame `index` of a group inside its atlas sheet (either layout). */
+export function spriteFrameOffset(
+  atlas: Pick<CreatureSpriteAtlas, "frameWidth" | "frameHeight" | "columns">,
+  info: { row: number; frames: number; start?: number },
+  index: number
+): { x: number; y: number } {
+  const frame = Math.max(0, Math.min(index, info.frames - 1));
+  if (info.start === undefined) return { x: frame * atlas.frameWidth, y: info.row * atlas.frameHeight };
+  const cell = info.start + frame;
+  return {
+    x: (cell % atlas.columns) * atlas.frameWidth,
+    y: Math.floor(cell / atlas.columns) * atlas.frameHeight
+  };
+}
 
 /** H3 creature animation group ids (CREATURE .def block ids). */
 export const SPRITE_GROUP = {
