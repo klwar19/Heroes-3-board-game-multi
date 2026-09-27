@@ -1,0 +1,2621 @@
+{
+  "air-elemental": {
+    "walk": 0.5,
+    "attack": 1,
+    "idle": 100
+  },
+  "ancient-behemoth": {
+    "walk": 1.17,
+    "attack": 1,
+    "idle": 188
+  },
+  "angel": {
+    "walk": 0.82,
+    "attack": 1,
+    "idle": 188
+  },
+  "arch-devil": {
+    "walk": 1,
+    "attack": 1,
+    "missile": {
+      "up": [
+        10,
+        -70
+      ],
+      "straight": [
+        10,
+        -70
+      ],
+      "down": [
+        10,
+        -70
+      ]
+    },
+    "idle": 275
+  },
+  "arch-mage": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        28,
+        -107
+      ],
+      "straight": [
+        43,
+        -99
+      ],
+      "down": [
+        18,
+        -92
+      ]
+    },
+    "idle": 275
+  },
+  "archangel": {
+    "walk": 0.82,
+    "attack": 1,
+    "idle": 100
+  },
+  "archer": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        38,
+        -65
+      ],
+      "straight": [
+        36,
+        -59
+      ],
+      "down": [
+        21,
+        -50
+      ]
+    },
+    "idle": 275
+  },
+  "argali": {
+    "walk": 1.1,
+    "attack": 1,
+    "idle": 275
+  },
+  "armadillo": {
+    "walk": 1.3,
+    "attack": 1,
+    "idle": 183
+  },
+  "automaton": {
+    "walk": 1.1,
+    "attack": 1,
+    "idle": 220
+  },
+  "ayssid": {
+    "walk": 0.72,
+    "attack": 1,
+    "idle": 100
+  },
+  "azure-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 125
+  },
+  "ba-aris": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -80
+      ],
+      "straight": [
+        48,
+        -63
+      ],
+      "down": [
+        24,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-aru": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        30,
+        -66
+      ],
+      "straight": [
+        36,
+        -54
+      ],
+      "down": [
+        16,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-azusa": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        30,
+        -66
+      ],
+      "straight": [
+        36,
+        -54
+      ],
+      "down": [
+        16,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-hasumi": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "ba-hina": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "ba-hoshino": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -80
+      ],
+      "straight": [
+        48,
+        -63
+      ],
+      "down": [
+        24,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-ibuki": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        35,
+        -61
+      ],
+      "straight": [
+        46,
+        -63
+      ],
+      "down": [
+        24,
+        -12
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "ba-iori": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        30,
+        -66
+      ],
+      "straight": [
+        36,
+        -54
+      ],
+      "down": [
+        16,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-kei": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "ba-mika": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -80
+      ],
+      "straight": [
+        48,
+        -63
+      ],
+      "down": [
+        24,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-miyo": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 7,
+    "missile": {
+      "up": [
+        31,
+        -68
+      ],
+      "straight": [
+        37,
+        -56
+      ],
+      "down": [
+        17,
+        -48
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-mutsuki": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        30,
+        -79
+      ],
+      "straight": [
+        48,
+        -62
+      ],
+      "down": [
+        24,
+        -46
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 244,
+    "fidget": false
+  },
+  "ba-nagisa": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        36,
+        -89
+      ],
+      "straight": [
+        43,
+        -61
+      ],
+      "down": [
+        20,
+        -33
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "ba-neru": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        35,
+        -85
+      ],
+      "straight": [
+        41,
+        -58
+      ],
+      "down": [
+        19,
+        -32
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "ba-saori": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -80
+      ],
+      "straight": [
+        48,
+        -63
+      ],
+      "down": [
+        24,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-seia": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        36,
+        -89
+      ],
+      "straight": [
+        43,
+        -61
+      ],
+      "down": [
+        20,
+        -33
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "ba-shiroko": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        29,
+        -77
+      ],
+      "straight": [
+        46,
+        -60
+      ],
+      "down": [
+        23,
+        -45
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 244,
+    "fidget": false
+  },
+  "ba-toki": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "ba-wakamo": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -80
+      ],
+      "straight": [
+        48,
+        -63
+      ],
+      "down": [
+        24,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "ba-yuuka": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -80
+      ],
+      "straight": [
+        48,
+        -63
+      ],
+      "down": [
+        24,
+        -47
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "basilisk": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "battle-dwarf": {
+    "walk": 0.97,
+    "attack": 1,
+    "idle": 188
+  },
+  "behemoth": {
+    "walk": 1.17,
+    "attack": 1,
+    "idle": 275
+  },
+  "beholder": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        14,
+        -73
+      ],
+      "straight": [
+        14,
+        -70
+      ],
+      "down": [
+        9,
+        -60
+      ]
+    },
+    "idle": 100
+  },
+  "bellwether-armadillo": {
+    "walk": 1.3,
+    "attack": 1,
+    "idle": 183
+  },
+  "black-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 275
+  },
+  "black-knight": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "boar": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 183
+  },
+  "bone-dragon": {
+    "walk": 0.75,
+    "attack": 1,
+    "idle": 188
+  },
+  "bounty-hunter": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 7,
+    "missile": {
+      "up": [
+        38,
+        -85
+      ],
+      "straight": [
+        46,
+        -70
+      ],
+      "down": [
+        21,
+        -60
+      ]
+    },
+    "idle": 220
+  },
+  "cavalier": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 220
+  },
+  "centaur": {
+    "walk": 0.5,
+    "attack": 1,
+    "missile": {
+      "up": [
+        10,
+        -70
+      ],
+      "straight": [
+        10,
+        -70
+      ],
+      "down": [
+        10,
+        -70
+      ]
+    },
+    "idle": 275
+  },
+  "centaur-captain": {
+    "walk": 0.5,
+    "attack": 1,
+    "missile": {
+      "up": [
+        10,
+        -70
+      ],
+      "straight": [
+        10,
+        -70
+      ],
+      "down": [
+        10,
+        -70
+      ]
+    },
+    "idle": 244
+  },
+  "cerberus": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "champion": {
+    "walk": 0.9,
+    "attack": 1,
+    "idle": 100
+  },
+  "chaos-hydra": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "commander-astral-spirit": {
+    "idle": 100
+  },
+  "commander-brute": {
+    "idle": 300
+  },
+  "commander-bulwark": {
+    "walk": 1.05,
+    "attack": 1,
+    "gait": "units/minotaur-king-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "commander-corsair": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        39,
+        -96
+      ],
+      "straight": [
+        47,
+        -66
+      ],
+      "down": [
+        22,
+        -36
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "commander-factory": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/swordsman-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "commander-forge": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        48,
+        -84
+      ],
+      "straight": [
+        63,
+        -88
+      ],
+      "down": [
+        34,
+        -16
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "commander-hierophant": {
+    "idle": 300
+  },
+  "commander-ogre-leader": {
+    "idle": 300
+  },
+  "commander-paladin": {
+    "idle": 100
+  },
+  "commander-shaman": {
+    "idle": 275
+  },
+  "commander-soul-eater": {
+    "idle": 300
+  },
+  "commander-succubus": {
+    "idle": 300
+  },
+  "commander-temple-guardian": {
+    "idle": 300
+  },
+  "couatl": {
+    "walk": 1.5,
+    "attack": 0.5,
+    "idle": 100
+  },
+  "crew-mate": {
+    "walk": 0.87,
+    "attack": 1,
+    "idle": 220
+  },
+  "crimson-couatl": {
+    "walk": 1.5,
+    "attack": 2.5,
+    "idle": 150
+  },
+  "crusader": {
+    "walk": 0.95,
+    "attack": 1,
+    "idle": 188
+  },
+  "crystal-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 183
+  },
+  "cyclops": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        55,
+        -115
+      ],
+      "straight": [
+        53,
+        -84
+      ],
+      "down": [
+        40,
+        -59
+      ]
+    },
+    "idle": 300
+  },
+  "cyclops-king": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        55,
+        -115
+      ],
+      "straight": [
+        53,
+        -84
+      ],
+      "down": [
+        38,
+        -54
+      ]
+    },
+    "idle": 300
+  },
+  "demon": {
+    "walk": 0.93,
+    "attack": 1,
+    "idle": 275
+  },
+  "dendroid-guard": {
+    "walk": 1.55,
+    "attack": 1,
+    "idle": 275
+  },
+  "dendroid-soldier": {
+    "walk": 1.55,
+    "attack": 1,
+    "idle": 275
+  },
+  "devil": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "diamond-golem": {
+    "walk": 1.27,
+    "attack": 1,
+    "idle": 220
+  },
+  "dragon-fly": {
+    "walk": 0.77,
+    "attack": 1,
+    "idle": 100
+  },
+  "dread-knight": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "dreadnought": {
+    "walk": 1.85,
+    "attack": 1.75,
+    "idle": 220
+  },
+  "dwarf": {
+    "walk": 0.98,
+    "attack": 1,
+    "idle": 275
+  },
+  "earth-elemental": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "efreet": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "efreet-sultan": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "enchanter": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        37,
+        -98
+      ],
+      "straight": [
+        62,
+        -53
+      ],
+      "down": [
+        28,
+        3
+      ]
+    },
+    "idle": 188
+  },
+  "energy-elemental": {
+    "walk": 0.67,
+    "attack": 1,
+    "idle": 100
+  },
+  "engineer": {
+    "walk": 1.15,
+    "attack": 1,
+    "idle": 188
+  },
+  "evil-eye": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        13,
+        -72
+      ],
+      "straight": [
+        13,
+        -69
+      ],
+      "down": [
+        7,
+        -60
+      ]
+    },
+    "idle": 100
+  },
+  "faerie-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 125
+  },
+  "familiar": {
+    "walk": 1.3,
+    "attack": 1,
+    "idle": 188
+  },
+  "fangarm": {
+    "walk": 1.15,
+    "attack": 1,
+    "idle": 100
+  },
+  "fire-elemental": {
+    "walk": 0.5,
+    "attack": 1,
+    "idle": 100
+  },
+  "firebird": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "forge-bruiser": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        35,
+        -91
+      ],
+      "straight": [
+        55,
+        -72
+      ],
+      "down": [
+        28,
+        -53
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "forge-bruiser-pack": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        36,
+        -81
+      ],
+      "straight": [
+        44,
+        -67
+      ],
+      "down": [
+        20,
+        -57
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "forge-cyber-zombie": {
+    "walk": 1.3,
+    "attack": 1,
+    "gait": "units/walking-dead-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-cyber-zombie-pack": {
+    "walk": 1.3,
+    "attack": 1,
+    "gait": "units/walking-dead-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-cyberbrute": {
+    "walk": 1.17,
+    "attack": 1,
+    "gait": "units/behemoth-move",
+    "idle": 188,
+    "fidget": false
+  },
+  "forge-cyberbrute-pack": {
+    "walk": 1.17,
+    "attack": 1,
+    "gait": "units/ancient-behemoth-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-grunt": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -76
+      ],
+      "straight": [
+        37,
+        -52
+      ],
+      "down": [
+        17,
+        -29
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-grunt-pack": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        33,
+        -80
+      ],
+      "straight": [
+        39,
+        -55
+      ],
+      "down": [
+        18,
+        -30
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-jump-trooper": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-jump-trooper-pack": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "forge-tank": {
+    "idle": 157
+  },
+  "forge-tank-pack": {
+    "idle": 157
+  },
+  "forge-watcher": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        15,
+        -79
+      ],
+      "straight": [
+        15,
+        -76
+      ],
+      "down": [
+        10,
+        -65
+      ]
+    },
+    "gait": "units/beholder-move",
+    "idle": 214,
+    "fidget": false
+  },
+  "forge-watcher-pack": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        13,
+        -73
+      ],
+      "straight": [
+        13,
+        -70
+      ],
+      "down": [
+        7,
+        -61
+      ]
+    },
+    "gait": "units/evil-eye-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "genie": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "ghost-dragon": {
+    "walk": 0.75,
+    "attack": 1,
+    "idle": 188
+  },
+  "giant": {
+    "walk": 1.38,
+    "attack": 1,
+    "idle": 275
+  },
+  "gnoll": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "gnoll-marauder": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "goblin": {
+    "walk": 1.21,
+    "attack": 1,
+    "idle": 275
+  },
+  "gog": {
+    "walk": 1.27,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        37,
+        -88
+      ],
+      "straight": [
+        69,
+        -50
+      ],
+      "down": [
+        14,
+        -6
+      ]
+    },
+    "idle": 220
+  },
+  "gold-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 244
+  },
+  "gold-golem": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 275
+  },
+  "gorgon": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "grand-elf": {
+    "walk": 1.02,
+    "attack": 1,
+    "climax": 11,
+    "missile": {
+      "up": [
+        32,
+        -77
+      ],
+      "straight": [
+        40,
+        -61
+      ],
+      "down": [
+        18,
+        -55
+      ]
+    },
+    "idle": 275
+  },
+  "great-shaman": {
+    "walk": 1.2,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        40,
+        -57
+      ],
+      "straight": [
+        45,
+        -50
+      ],
+      "down": [
+        25,
+        -20
+      ]
+    },
+    "idle": 300
+  },
+  "greater-basilisk": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "green-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 275
+  },
+  "gremlin": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "griffin": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "gunslinger": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        38,
+        -99
+      ],
+      "straight": [
+        60,
+        -78
+      ],
+      "down": [
+        30,
+        -58
+      ]
+    },
+    "idle": 220
+  },
+  "halberdier": {
+    "walk": 0.9,
+    "attack": 1,
+    "idle": 188
+  },
+  "halfling": {
+    "walk": 1.4,
+    "attack": 1.5,
+    "idle": 150
+  },
+  "halfling-grenadier": {
+    "walk": 1.4,
+    "attack": 1.5,
+    "climax": 10,
+    "missile": {
+      "up": [
+        32,
+        -77
+      ],
+      "straight": [
+        36,
+        -36
+      ],
+      "down": [
+        18,
+        -55
+      ]
+    },
+    "idle": 220
+  },
+  "harpy": {
+    "walk": 0.85,
+    "attack": 1,
+    "idle": 214
+  },
+  "harpy-hag": {
+    "walk": 0.85,
+    "attack": 1,
+    "idle": 100
+  },
+  "haspid": {
+    "walk": 0.95,
+    "attack": 1,
+    "idle": 100
+  },
+  "hell-hound": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "hobgoblin": {
+    "walk": 1.24,
+    "attack": 1,
+    "idle": 214
+  },
+  "horned-demon": {
+    "walk": 0.93,
+    "attack": 1,
+    "idle": 275
+  },
+  "hydra": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "ice-elemental": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 4,
+    "missile": {
+      "up": [
+        28,
+        -107
+      ],
+      "straight": [
+        43,
+        -99
+      ],
+      "down": [
+        18,
+        -92
+      ]
+    },
+    "idle": 188
+  },
+  "imp": {
+    "walk": 1.25,
+    "attack": 1,
+    "idle": 188
+  },
+  "infernal-troglodyte": {
+    "walk": 0.8,
+    "attack": 1,
+    "idle": 220
+  },
+  "iron-golem": {
+    "walk": 1.45,
+    "attack": 1,
+    "idle": 275
+  },
+  "jotunn": {
+    "walk": 1.45,
+    "attack": 1,
+    "idle": 300
+  },
+  "jotunn-warlord": {
+    "walk": 1.45,
+    "attack": 1,
+    "idle": 300
+  },
+  "juggernaut": {
+    "walk": 1.85,
+    "attack": 1.75,
+    "idle": 220
+  },
+  "kobold": {
+    "walk": 1.15,
+    "attack": 1,
+    "idle": 275
+  },
+  "kobold-foreman": {
+    "walk": 1.15,
+    "attack": 1,
+    "idle": 275
+  },
+  "lb-haruka": {
+    "walk": 1.2,
+    "attack": 2.5,
+    "gait": "units/leprechaun-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-kanata": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        41,
+        -102
+      ],
+      "straight": [
+        66,
+        -53
+      ],
+      "down": [
+        33,
+        12
+      ]
+    },
+    "gait": "units/monk-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "lb-komari": {
+    "walk": 0.75,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        54,
+        -51
+      ],
+      "straight": [
+        45,
+        -17
+      ],
+      "down": [
+        9,
+        9
+      ]
+    },
+    "gait": "units/master-gremlin-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-kud": {
+    "walk": 1.4,
+    "attack": 1.5,
+    "gait": "units/halfling-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "lb-kyousuke": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/swordsman-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-masato": {
+    "walk": 1.2,
+    "attack": 1,
+    "gait": "units/stone-golem-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-mio": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        21,
+        -90
+      ],
+      "straight": [
+        33,
+        -84
+      ],
+      "down": [
+        14,
+        -79
+      ]
+    },
+    "gait": "units/mage-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-riki": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/crew-mate-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "lb-rin": {
+    "walk": 1,
+    "attack": 2,
+    "gait": "units/satyr-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "lb-rins-cats": {
+    "walk": 1.1,
+    "attack": 1,
+    "gait": "units/mountain-ram-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-sasami": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        36,
+        -88
+      ],
+      "straight": [
+        42,
+        -60
+      ],
+      "down": [
+        20,
+        -33
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "lb-saya": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/rogue-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "lb-softball": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        40,
+        -69
+      ],
+      "straight": [
+        52,
+        -72
+      ],
+      "down": [
+        28,
+        -13
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "lb-yuiko": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        45,
+        -78
+      ],
+      "straight": [
+        59,
+        -82
+      ],
+      "down": [
+        32,
+        -15
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "leprechaun": {
+    "walk": 1.2,
+    "attack": 2.5,
+    "idle": 275
+  },
+  "lich": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        49,
+        -97
+      ],
+      "straight": [
+        65,
+        -82
+      ],
+      "down": [
+        33,
+        -12
+      ]
+    },
+    "idle": 188
+  },
+  "lizard-warrior": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        39,
+        -76
+      ],
+      "straight": [
+        49,
+        -66
+      ],
+      "down": [
+        25,
+        -56
+      ]
+    },
+    "idle": 188
+  },
+  "lizardman": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        34,
+        -76
+      ],
+      "straight": [
+        47,
+        -65
+      ],
+      "down": [
+        26,
+        -55
+      ]
+    },
+    "idle": 188
+  },
+  "mage": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        25,
+        -105
+      ],
+      "straight": [
+        38,
+        -98
+      ],
+      "down": [
+        16,
+        -92
+      ]
+    },
+    "idle": 275
+  },
+  "magic-elemental": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "magma-elemental": {
+    "walk": 0.77,
+    "attack": 1,
+    "idle": 188
+  },
+  "magog": {
+    "walk": 1.33,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        38,
+        -89
+      ],
+      "straight": [
+        69,
+        -51
+      ],
+      "down": [
+        15,
+        -9
+      ]
+    },
+    "idle": 100
+  },
+  "mammoth": {
+    "walk": 1.55,
+    "attack": 1,
+    "idle": 275
+  },
+  "manticore": {
+    "walk": 0.8,
+    "attack": 1,
+    "idle": 275
+  },
+  "marksman": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        34,
+        -71
+      ],
+      "straight": [
+        38,
+        -61
+      ],
+      "down": [
+        17,
+        -53
+      ]
+    },
+    "idle": 188
+  },
+  "master-genie": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "master-gremlin": {
+    "walk": 0.75,
+    "attack": 1,
+    "climax": 11,
+    "missile": {
+      "up": [
+        55,
+        -52
+      ],
+      "straight": [
+        46,
+        -17
+      ],
+      "down": [
+        9,
+        9
+      ]
+    },
+    "idle": 275
+  },
+  "mechanic": {
+    "walk": 1.15,
+    "attack": 1,
+    "idle": 275
+  },
+  "medusa": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        76,
+        -79
+      ],
+      "straight": [
+        72,
+        -63
+      ],
+      "down": [
+        53,
+        -53
+      ]
+    },
+    "idle": 100
+  },
+  "medusa-queen": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        75,
+        -65
+      ],
+      "straight": [
+        75,
+        -50
+      ],
+      "down": [
+        70,
+        -45
+      ]
+    },
+    "idle": 100
+  },
+  "mighty-gorgon": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "minotaur": {
+    "walk": 1.05,
+    "attack": 1,
+    "idle": 150
+  },
+  "minotaur-king": {
+    "walk": 1.05,
+    "attack": 1,
+    "idle": 150
+  },
+  "monk": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        38,
+        -95
+      ],
+      "straight": [
+        61,
+        -49
+      ],
+      "down": [
+        31,
+        11
+      ]
+    },
+    "idle": 300
+  },
+  "mountain-ram": {
+    "walk": 1.1,
+    "attack": 1,
+    "idle": 275
+  },
+  "mummy": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "naga": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "naga-queen": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "nix": {
+    "walk": 1.07,
+    "attack": 1,
+    "idle": 150
+  },
+  "nix-warrior": {
+    "walk": 1.07,
+    "attack": 1,
+    "idle": 150
+  },
+  "nomad": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 183
+  },
+  "nymph": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "obsidian-gargoyle": {
+    "walk": 0.7,
+    "attack": 1,
+    "idle": 188
+  },
+  "oceanid": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "ogre": {
+    "walk": 1.28,
+    "attack": 1,
+    "idle": 275
+  },
+  "ogre-mage": {
+    "walk": 1.28,
+    "attack": 1,
+    "idle": 275
+  },
+  "olgoi-khorkhoi": {
+    "walk": 1.25,
+    "attack": 1,
+    "idle": 188
+  },
+  "orc": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 4,
+    "missile": {
+      "up": [
+        42,
+        -83
+      ],
+      "straight": [
+        43,
+        -66
+      ],
+      "down": [
+        33,
+        -26
+      ]
+    },
+    "idle": 275
+  },
+  "orc-chieftain": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 4,
+    "missile": {
+      "up": [
+        34,
+        -88
+      ],
+      "straight": [
+        37,
+        -66
+      ],
+      "down": [
+        32,
+        -28
+      ]
+    },
+    "idle": 275
+  },
+  "peasant": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "pegasus": {
+    "walk": 0.72,
+    "attack": 1,
+    "idle": 275
+  },
+  "phoenix": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "pikeman": {
+    "walk": 1.15,
+    "attack": 1,
+    "idle": 214
+  },
+  "pirate": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        38,
+        -93
+      ],
+      "straight": [
+        45,
+        -64
+      ],
+      "down": [
+        21,
+        -35
+      ]
+    },
+    "idle": 100
+  },
+  "pit-fiend": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "pit-lord": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "pixie": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "power-lich": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        41,
+        -92
+      ],
+      "straight": [
+        58,
+        -79
+      ],
+      "down": [
+        29,
+        -14
+      ]
+    },
+    "idle": 275
+  },
+  "psychic-elemental": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "red-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 275
+  },
+  "roc": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "rogue": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 220
+  },
+  "royal-griffin": {
+    "walk": 1.05,
+    "attack": 1,
+    "idle": 188
+  },
+  "rust-dragon": {
+    "walk": 0.6,
+    "attack": 1,
+    "idle": 183
+  },
+  "sandworm": {
+    "walk": 1.25,
+    "attack": 1,
+    "idle": 188
+  },
+  "satyr": {
+    "walk": 1,
+    "attack": 2,
+    "idle": 220
+  },
+  "scorpicore": {
+    "walk": 0.8,
+    "attack": 1,
+    "idle": 188
+  },
+  "sea-dog": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        38,
+        -93
+      ],
+      "straight": [
+        45,
+        -64
+      ],
+      "down": [
+        21,
+        -35
+      ]
+    },
+    "idle": 100
+  },
+  "sea-serpent": {
+    "walk": 0.95,
+    "attack": 1,
+    "idle": 136
+  },
+  "sea-witch": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        41,
+        -72
+      ],
+      "straight": [
+        54,
+        -75
+      ],
+      "down": [
+        29,
+        -14
+      ]
+    },
+    "idle": 100
+  },
+  "seaman": {
+    "walk": 0.87,
+    "attack": 1,
+    "idle": 150
+  },
+  "sentinel-automaton": {
+    "walk": 1.1,
+    "attack": 1,
+    "idle": 150
+  },
+  "serpent-fly": {
+    "walk": 0.77,
+    "attack": 1,
+    "idle": 100
+  },
+  "shaman": {
+    "walk": 1.2,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        40,
+        -57
+      ],
+      "straight": [
+        45,
+        -50
+      ],
+      "down": [
+        25,
+        -20
+      ]
+    },
+    "idle": 300
+  },
+  "sharpshooter": {
+    "walk": 1.02,
+    "attack": 1,
+    "climax": 11,
+    "missile": {
+      "up": [
+        32,
+        -77
+      ],
+      "straight": [
+        40,
+        -61
+      ],
+      "down": [
+        18,
+        -55
+      ]
+    },
+    "idle": 188
+  },
+  "silver-pegasus": {
+    "walk": 0.72,
+    "attack": 1,
+    "idle": 275
+  },
+  "skeleton": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "skeleton-warrior": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "snow-elf": {
+    "walk": 1.2,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        30,
+        -60
+      ],
+      "straight": [
+        45,
+        -50
+      ],
+      "down": [
+        20,
+        -20
+      ]
+    },
+    "idle": 300
+  },
+  "sorceress": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        41,
+        -72
+      ],
+      "straight": [
+        54,
+        -75
+      ],
+      "down": [
+        29,
+        -14
+      ]
+    },
+    "idle": 100
+  },
+  "sprite": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "steel-elf": {
+    "walk": 1.2,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        30,
+        -60
+      ],
+      "straight": [
+        45,
+        -50
+      ],
+      "down": [
+        20,
+        -20
+      ]
+    },
+    "idle": 300
+  },
+  "steel-golem": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 157
+  },
+  "stone-gargoyle": {
+    "walk": 0.7,
+    "attack": 1,
+    "idle": 275
+  },
+  "stone-golem": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 275
+  },
+  "storm-elemental": {
+    "walk": 1.33,
+    "attack": 1,
+    "climax": 4,
+    "missile": {
+      "up": [
+        50,
+        -100
+      ],
+      "straight": [
+        80,
+        -80
+      ],
+      "down": [
+        45,
+        -40
+      ]
+    },
+    "idle": 100
+  },
+  "stormbird": {
+    "walk": 0.72,
+    "attack": 1,
+    "idle": 188
+  },
+  "swordsman": {
+    "walk": 0.87,
+    "attack": 1,
+    "idle": 188
+  },
+  "thunderbird": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "titan": {
+    "walk": 1.38,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        11,
+        -131
+      ],
+      "straight": [
+        76,
+        -87
+      ],
+      "down": [
+        19,
+        -1
+      ]
+    },
+    "idle": 188
+  },
+  "troglodyte": {
+    "walk": 0.8,
+    "attack": 1,
+    "idle": 220
+  },
+  "troll": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 220
+  },
+  "unicorn": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 275
+  },
+  "vampire": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "vampire-lord": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "walking-dead": {
+    "walk": 1.3,
+    "attack": 1,
+    "idle": 275
+  },
+  "war-ammo-cart": {
+    "walk": 1,
+    "attack": 1
+  },
+  "war-ballista": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        57,
+        -104
+      ],
+      "straight": [
+        101,
+        -75
+      ],
+      "down": [
+        53,
+        -36
+      ]
+    }
+  },
+  "war-cannon": {
+    "walk": 1,
+    "attack": 0.5,
+    "climax": 4,
+    "missile": {
+      "up": [
+        44,
+        -63
+      ],
+      "straight": [
+        79,
+        -55
+      ],
+      "down": [
+        27,
+        -46
+      ]
+    }
+  },
+  "war-catapult": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 4,
+    "missile": {
+      "up": [
+        69,
+        -119
+      ],
+      "straight": [
+        69,
+        -119
+      ],
+      "down": [
+        69,
+        -119
+      ]
+    }
+  },
+  "war-first-aid-tent": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 300
+  },
+  "war-lightning-generator": {
+    "idle": 100
+  },
+  "war-mammoth": {
+    "walk": 1.55,
+    "attack": 1,
+    "idle": 275
+  },
+  "war-unicorn": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 275
+  },
+  "water-elemental": {
+    "walk": 0.87,
+    "attack": 1,
+    "idle": 100
+  },
+  "wight": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 275
+  },
+  "wog-air-messenger": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 100
+  },
+  "wog-arctic-sharpshooter": {
+    "walk": 1.02,
+    "attack": 1,
+    "climax": 11,
+    "missile": {
+      "up": [
+        32,
+        -77
+      ],
+      "straight": [
+        40,
+        -61
+      ],
+      "down": [
+        18,
+        -55
+      ]
+    },
+    "idle": 100
+  },
+  "wog-dracolich": {
+    "walk": 0.75,
+    "attack": 1,
+    "climax": 1,
+    "missile": {
+      "up": [
+        41,
+        -92
+      ],
+      "straight": [
+        58,
+        -79
+      ],
+      "down": [
+        29,
+        -14
+      ]
+    },
+    "idle": 100
+  },
+  "wog-earth-messenger": {
+    "walk": 1.8,
+    "attack": 1,
+    "idle": 100
+  },
+  "wog-fire-messenger": {
+    "walk": 1.4,
+    "attack": 1,
+    "idle": 100
+  },
+  "wog-ghost": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "wog-gorynych": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 100
+  },
+  "wog-hell-steed": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 100
+  },
+  "wog-lava-sharpshooter": {
+    "walk": 1.02,
+    "attack": 1,
+    "climax": 11,
+    "missile": {
+      "up": [
+        32,
+        -77
+      ],
+      "straight": [
+        40,
+        -61
+      ],
+      "down": [
+        18,
+        -55
+      ]
+    },
+    "idle": 275
+  },
+  "wog-nightmare": {
+    "walk": 1.2,
+    "attack": 1,
+    "idle": 188
+  },
+  "wog-santa-gremlin": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "wog-sylvan-centaur": {
+    "walk": 0.5,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        10,
+        -70
+      ],
+      "straight": [
+        10,
+        -70
+      ],
+      "down": [
+        10,
+        -70
+      ]
+    },
+    "idle": 100
+  },
+  "wog-war-zealot": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        37,
+        -98
+      ],
+      "straight": [
+        62,
+        -53
+      ],
+      "down": [
+        28,
+        3
+      ]
+    },
+    "idle": 300
+  },
+  "wog-water-messenger": {
+    "walk": 1.6,
+    "attack": 1,
+    "idle": 275
+  },
+  "wog-werewolf": {
+    "walk": 1.1,
+    "attack": 1,
+    "idle": 100
+  },
+  "wolf-raider": {
+    "walk": 0.93,
+    "attack": 1,
+    "idle": 275
+  },
+  "wolf-rider": {
+    "walk": 0.93,
+    "attack": 1,
+    "idle": 275
+  },
+  "wood-elf": {
+    "walk": 1.02,
+    "attack": 1,
+    "climax": 11,
+    "missile": {
+      "up": [
+        38,
+        -65
+      ],
+      "straight": [
+        36,
+        -59
+      ],
+      "down": [
+        21,
+        -50
+      ]
+    },
+    "idle": 275
+  },
+  "wraith": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
+  "wyvern": {
+    "walk": 0.67,
+    "attack": 1,
+    "idle": 275
+  },
+  "wyvern-monarch": {
+    "walk": 0.67,
+    "attack": 1,
+    "idle": 275
+  },
+  "yeti": {
+    "walk": 1.8,
+    "attack": 1,
+    "idle": 100
+  },
+  "yeti-runemaster": {
+    "walk": 1.8,
+    "attack": 1,
+    "idle": 214
+  },
+  "zealot": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        37,
+        -98
+      ],
+      "straight": [
+        62,
+        -53
+      ],
+      "down": [
+        28,
+        3
+      ]
+    },
+    "idle": 300
+  },
+  "zombie": {
+    "walk": 1.3,
+    "attack": 1,
+    "idle": 275
+  }
+}

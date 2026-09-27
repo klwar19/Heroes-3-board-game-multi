@@ -211,6 +211,10 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // shared leather resource tile to a transparent background
   // (scripts/make-octavia-gold-icon.py), not the generic Estates skill emblem.
   octavia: "/assets/specialty-card/icon-gold.webp", // Gold (gold-coins icon)
+  // Ignatius / Olema (Gamefound preview): the Familiars imp picture cut from his
+  // card art, and the Weakness SPELL SYMBOL (never the whole card), as printed.
+  ignatius: "/assets/specialty-card/icon-ignatius-familiars.webp", // Familiars (imp)
+  olema: "/assets/specialty-card/icon-weakness.webp", // Weakness spell symbol
   // Melodia's specialty IS Fortune — the actual Fortune SPELL icon
   // (scripts/fetch-fortune-icon.py), not the generic Luck skill emblem.
   melodia: "/assets/specialty-card/icon-fortune.webp", // Fortune spell icon

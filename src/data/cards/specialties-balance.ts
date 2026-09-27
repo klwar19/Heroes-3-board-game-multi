@@ -242,6 +242,7 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
       initiative: 6,
       stackAttackBonus: 1,
       cardImage: "/assets/hero_specialties-sandro-1.webp",
+      inheritPackAbilities: true,
     },
   }),
 
@@ -273,6 +274,7 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
       initiative: 6,
       stackAttackBonus: 1,
       cardImage: "/assets/hero_specialties-vidomina-4.webp",
+      inheritPackAbilities: true,
     },
   }),
 

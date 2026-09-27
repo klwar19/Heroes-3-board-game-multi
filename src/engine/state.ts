@@ -1006,6 +1006,16 @@ export type ActiveEffectModifier =
       type: "SPECIALTY_IMMUNITY";
     }
   | {
+      /**
+       * Olema's Weakness VI: while this unit-scoped effect applies, the unit
+       * cannot be TARGETED by Spell, Ability, Hero-Specialty, Statistic or
+       * Artifact cards played by any player other than the effect's controller
+       * (the "enemy" of the card that placed it). Untargeted/area effects still
+       * reach it. Read through `unitCardTargetLocked` (active-effects.ts).
+       */
+      type: "ENEMY_CARD_TARGET_LOCK";
+    }
+  | {
       type: "DEFENSE_BONUS";
       amount: number;
     }
@@ -2192,6 +2202,13 @@ export type EffectDefinition =
        * the Balance Sandro IV, whose face prints no such rider.
        */
       stackAttackBonus?: number;
+      /**
+       * The cover fights with the covered unit's PACK-side printed abilities
+       * (player ruling: Horde/Legion of Imps keep the Familiars Pack's Mana
+       * Leech; Horde/Legion of Skeletons keep the Skeletons Pack's). Without it
+       * the covered card's printed abilities are inactive (Horde of Zombies).
+       */
+      inheritPackAbilities?: boolean;
     }
   | {
       /**
@@ -2299,6 +2316,32 @@ export type EffectDefinition =
       unitNames: string[];
       defense: number;
       neutralHealth: number;
+    }
+  | {
+      /**
+       * Ignatius's Familiars VI: "For this Combat, all your Familiars units gain
+       * +2 Attack and +1 Health." A player-scoped, combat-long ATTACK_BONUS gated
+       * by printed unit name (`appliesOnlyToUnitNames`, so a Pack→Few flip or a
+       * covering Horde/Legion keeps it), plus `+health` combat-long max Health on
+       * every matching living unit the caster controls when it is played (the
+       * ADD_UNIT_MAX_HEALTH / combatMaxHealthBonus path). Resolved in playCard.
+       */
+      type: "UNIT_NAME_COMBAT_RALLY";
+      name: string;
+      unitNames: string[];
+      attack: number;
+      health: number;
+    }
+  | {
+      /**
+       * Olema's Weakness I: "Set all dice to -1." Played by the DEFENDING side
+       * in the post-roll ATTACK_DIE_SETTLED window of an enemy attack: every
+       * rolled Attack die of that attack is set to `face` and the roll is
+       * re-aggregated (the die really shows the face, so face-triggered effects
+       * read it). Offered only by getDieCancelReactions, never as a free play.
+       */
+      type: "SET_ALL_ATTACK_DICE";
+      face: number;
     }
   | {
       /** Estates, gold/resource artifacts: gain resources immediately. */
@@ -3776,9 +3819,8 @@ export type EffectDefinition =
       /**
        * Summon X Elemental (Conflux Expert spells): on a chosen empty space,
        * Power 2 summons a Few and Power 4 a Pack of the school's Elemental.
-       * The unit joins the combat immediately (acts on its own initiative) and
-       * stays in the caster's army afterwards — exactly like the Pit Lords'
-       * summoned Demons.
+       * The unit joins combat immediately, acts on its own initiative, and
+       * disappears at combat end without entering the caster's army.
        */
       type: "SUMMON_ELEMENTAL";
       unitDefId: string;
@@ -9587,6 +9629,8 @@ export type UnitTransformState = {
    * so a spent Stack drops the rider with it. Absent on every classic printing.
    */
   stackAttackBonus?: number;
+  /** TRANSFORM_UNIT.inheritPackAbilities: the cover keeps the Pack side's printed abilities. */
+  inheritPackAbilities?: boolean;
 };
 
 /** Monster Girl Quest's persistent per-card Job assignment. */
@@ -10976,6 +11020,14 @@ export type CombatUnitState = {
    */
   combatMaxHealthBonus?: number;
   /**
+   * Combat-only max Health LOSS (Necropolis Ghost Dragons' Withering Touch: −1
+   * per trigger, stacking). Subtracted on every printed-side / cover / bank
+   * recompute (applyUnitCurrentSide) so it follows the unit across Pack↔Few
+   * flips and Stack layers; floored so a health bar never drops below 1.
+   * Combat-scoped like combatMaxHealthBonus (never mirrored to the army card).
+   */
+  combatMaxHealthPenalty?: number;
+  /**
    * Polish Unit Stacks mirrored from the backing Pack army card. Each remaining
    * layer absorbs one full Pack health bar; deliberately separate from the
    * Creature Bank defender's `stackToken`.
@@ -11436,7 +11488,7 @@ export type CombatState = {
   /** Defense tokens specifically granted by Darkstorn IV, expiring at round end. */
   darkstornRoundDefenseTokenIds?: UnitId[];
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "forge-grunt-tempo" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "forge-grunt-tempo" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning" | "dread-paralyze";
     unitId: string;
     abilityId: string;
     amount?: number;
@@ -11469,6 +11521,16 @@ export type CombatState = {
     cardId: CardId;
     transfers: NonNullable<ResolutionStackItem["modifiers"]["damageTransfers"]>;
   };
+  /**
+   * Interference / Plate of the Dying Light reductions of a damaging Spell
+   * whose stack item already resolved while part of its damage still waits on
+   * a pick (Fireball's second space, a Frost Ring area-pick, an aimed Chain
+   * Lightning hop, a Balance-Pack Inferno reroll window). Read by the
+   * Spell-damage chokepoint exactly like the stack-scoped
+   * `interfereSpellReductions`; cleared once that deferred hit lands (or the
+   * combat ends).
+   */
+  pendingInterfereSpellReductions?: { unitId: UnitId; amount: number }[];
 
   id: string;
   round: number;

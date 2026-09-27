@@ -9,6 +9,8 @@ import {
 } from "./index";
 import { effectiveInitiative, expireEffectsForActivationEnd, getActiveDefenseBonus, getDisplayAttackBonus } from "./active-effects";
 import { applyCommanderBeginCastHaste, applyCommanderCombatStart, applyLionRoundStartBarrage } from "./commanders";
+import { maybeOpenCommanderCombatStartDecision } from "./adventure-reducer";
+import { getUnitMoveRange } from "./legal-actions";
 import type { GameAction, GameState } from "./state";
 
 /**
@@ -946,6 +948,96 @@ describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
     expect(retaliationFreeStrike(vsSlower, 0)).toBe(3);
     // CONTROL: unslowed skeletons vs the fast marksmen: full 3.
     expect(retaliationFreeStrike(castState("corsair"), 30)).toBe(3);
+  });
+});
+
+/**
+ * USER SPEC 2026-09-27 (Cove Sea Marshal): "all pow: last for 2 turns, and pow 2
+ * also -1 space move, and from pow 1 also allow casting at begin of battle but
+ * would last 1 turn only" + "Does the start-of-battle Slow cost the Marshal its
+ * round-1 turn?" → "yes, skip." Magic grade 0/1/3 → Power 0/1/2.
+ */
+describe("commander casts — Sea Marshal's Slow (2026-09-27 spec)", () => {
+  const slowOn = (state: GameState, unitId: string) =>
+    state.activeEffects.find(
+      (effect) =>
+        effect.name.startsWith("Slow (") && effect.target?.type === "unit" && effect.target.unitId === unitId
+    );
+
+  it("an in-turn Slow lasts 2 combat rounds at every Power", () => {
+    for (const magic of [0, 1, 3]) {
+      const state = castOn(castState("corsair", { magic }), "corsair", "unit_p2_skeletons");
+      const slow = slowOn(state, "unit_p2_skeletons");
+      expect(slow?.duration, `magic ${magic}`).toEqual({ type: "combat-rounds", rounds: 2 });
+      expect(slow?.expiresAtCombatRoundEnd, `magic ${magic}`).toBe(state.combat!.round + 1);
+    }
+  });
+
+  it("Power 2 also takes 1 Movement space; Power 0/1 do not", () => {
+    const range = (state: GameState) => getUnitMoveRange(state.combat!.units.unit_p2_skeletons, state);
+    const control = castState("corsair", { magic: 3 });
+    const base = range(control);
+    expect(range(castOn(castState("corsair", { magic: 3 }), "corsair", "unit_p2_skeletons"))).toBe(base - 1);
+    expect(range(castOn(castState("corsair", { magic: 1 }), "corsair", "unit_p2_skeletons"))).toBe(base);
+    expect(range(castOn(castState("corsair"), "corsair", "unit_p2_skeletons"))).toBe(base);
+  });
+
+  it("from Power 1 it may be cast at the start of battle on an ENEMY: round 1 only, and the Marshal skips its round-1 turn", () => {
+    const state = castState("corsair", { magic: 1 });
+    state.combat!.commanderCombatStartResolved = false;
+    expect(maybeOpenCommanderCombatStartDecision(state)).toBe(true);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "commander-begin-cast") {
+      throw new Error("expected the Sea Marshal's opening-cast choice");
+    }
+    const targets = choice.commanderBeginCast!.targetUnitIds;
+    expect(targets).toContain("unit_p2_skeletons");
+    expect(targets.some((unitId) => state.combat!.units[unitId]?.controllerId === "p1")).toBe(false);
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    const before = effectiveInitiative(skeletons, state.activeEffects);
+    const after = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: targets.indexOf("unit_p2_skeletons")
+    });
+    const slow = slowOn(after, "unit_p2_skeletons");
+    expect(slow?.duration).toEqual({ type: "combat-rounds", rounds: 1 });
+    expect(slow?.expiresAtCombatRoundEnd).toBe(1);
+    expect(effectiveInitiative(after.combat!.units.unit_p2_skeletons, after.activeEffects)).toBe(before - 3);
+    // The commander forgoes its round-1 turn — and gets no Shaman-style self Haste.
+    expect(after.combat!.units[commanderUnitId("p1")].activatedThisRound).toBe(true);
+    expect(after.activeEffects.some((effect) => effect.name.startsWith("Opening Slow"))).toBe(false);
+  });
+
+  it("CONTROL: at Power 0 there is no start-of-battle Slow", () => {
+    const state = castState("corsair", { magic: 0 });
+    state.combat!.commanderCombatStartResolved = false;
+    expect(maybeOpenCommanderCombatStartDecision(state)).toBe(false);
+    expect(state.pendingChoice).toBeFalsy();
+  });
+
+  // USER (2026-09-27): "refresh only, not stack of course".
+  it("a recast on the same unit next round REFRESHES the Slow — it never stacks", () => {
+    let state = castOn(castState("corsair"), "corsair", "unit_p2_skeletons");
+    const printed = state.combat!.units.unit_p2_skeletons.initiative;
+    // The first Slow (2 rounds) is still on the skeletons in round 2, when the
+    // once-per-round cast is available again.
+    state.combat!.round = 2;
+    state.combat!.activeUnitId = commanderUnitId("p1");
+    state.combat!.units[commanderUnitId("p1")].activatedThisRound = false;
+    state = castOn(state, "corsair", "unit_p2_skeletons");
+    const slows = state.activeEffects.filter(
+      (effect) =>
+        effect.name.startsWith("Slow (") &&
+        effect.target?.type === "unit" &&
+        effect.target.unitId === "unit_p2_skeletons"
+    );
+    expect(slows).toHaveLength(1);
+    // The timer restarts from round 2 (ends with round 3) …
+    expect(slows[0].expiresAtCombatRoundEnd).toBe(3);
+    // … and the shift is still a single -2, not -4.
+    expect(effectiveInitiative(state.combat!.units.unit_p2_skeletons, state.activeEffects)).toBe(printed - 2);
   });
 });
 

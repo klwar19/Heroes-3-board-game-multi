@@ -1,4 +1,5 @@
 import atlases from "./creature-sprite-atlases.json";
+import animTimes from "./creature-anim-times.json";
 
 /**
  * Hex Battlefield creature sprites (the PC-style board). Each atlas is built from
@@ -203,7 +204,19 @@ const CARD_SPRITES: Readonly<Record<string, readonly [few: string, pack: string 
   "blue_archive.iori": ["ba-iori", "ba-iori"],
   "blue_archive.mutsuki": ["ba-mutsuki", "ba-mutsuki"],
   "blue_archive.miyo": ["ba-miyo", "ba-miyo"],
-  "blue_archive.hasumi": ["ba-hasumi", "ba-hasumi"]
+  "blue_archive.hasumi": ["ba-hasumi", "ba-hasumi"],
+  // Little Busters (no PC original): Codex repaints of real H3/HotA animations
+  // as the card characters (scripts/pose-sprite-manifest.json); one character,
+  // one sprite on both sides. Rin's Cat Corps summons are the same cat.
+  "little_busters.haruka": ["lb-haruka", "lb-haruka"],
+  "little_busters.rins_cats": ["lb-rins-cats", "lb-rins-cats"],
+  "little_busters.stray_cat": ["lb-rins-cats", "lb-rins-cats"],
+  "little_busters.alley_cat": ["lb-rins-cats", "lb-rins-cats"],
+  "little_busters.disciplinary_committee": ["lb-kanata", "lb-kanata"],
+  "little_busters.masato": ["lb-masato", "lb-masato"],
+  "little_busters.softball_club": ["lb-softball", "lb-softball"],
+  "little_busters.saya": ["lb-saya", "lb-saya"],
+  "little_busters.mio": ["lb-mio", "lb-mio"]
 };
 
 /**
@@ -268,7 +281,27 @@ const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   // (scripts/pose-sprite-manifest.json).
   forge: "commander-forge",
   // Ibuki (Blue Archive): her official art over the Sorceress's animation.
-  ibuki: "ba-ibuki"
+  ibuki: "ba-ibuki",
+  // Kyousuke (Little Busters): his card art over the Swordsman's animation.
+  kyousuke_natsume: "lb-kyousuke",
+  // Sea Marshal / Artificer / Rune Keeper: card art over the Sea Dog's, Swordsman's and Minotaur King's animations.
+  corsair: "commander-corsair",
+  factory: "commander-factory",
+  bulwark: "commander-bulwark"
+};
+
+/**
+ * Heroes fighting as battlefield units (the Little Busters heroes' heroUnit
+ * bodies), by hero definition: their portrait characters over real H3
+ * animations (scripts/pose-sprite-manifest.json).
+ */
+const HERO_UNIT_SPRITES: Readonly<Record<string, string>> = {
+  sasami_sasasegawa: "lb-sasami",
+  riki_naoe: "lb-riki",
+  rin_natsume: "lb-rin",
+  yuiko_kurugaya: "lb-yuiko",
+  kudryavka_noumi: "lb-kud",
+  komari_kamikita: "lb-komari"
 };
 
 const ATLASES = atlases as Record<string, Omit<CreatureSpriteAtlas, "slug">>;
@@ -298,15 +331,23 @@ export function creatureSpriteFor(
   return slug && atlas ? { slug, ...atlas } : null;
 }
 
-/** The creature for a combat unit: its Commander figure, else its card's current side. */
+/**
+ * The creature for a combat unit: its Commander figure, a battlefield hero's
+ * own figure, else its card's current side.
+ */
 export function unitCreatureSprite(unit: {
   unitDefId?: string;
   variant?: "few" | "pack" | "neutral";
   commanderSlug?: string;
+  heroDefId?: string;
 }): CreatureSpriteAtlas | null {
   const commander = unit.commanderSlug ? COMMANDER_SPRITES[unit.commanderSlug] : undefined;
   if (commander) {
     return creatureSpriteForSlug(commander);
+  }
+  const hero = unit.heroDefId ? HERO_UNIT_SPRITES[unit.heroDefId] : undefined;
+  if (hero) {
+    return creatureSpriteForSlug(hero);
   }
   return creatureSpriteFor(unit.unitDefId, unit.variant);
 }
@@ -315,6 +356,39 @@ export function unitCreatureSprite(unit: {
 export function creatureSpriteForSlug(slug: string): CreatureSpriteAtlas | null {
   const atlas = ATLASES[slug];
   return atlas ? { slug, ...atlas } : null;
+}
+
+/**
+ * War machine cards -> their battlefield machine. The PC's own machines come
+ * from their H3 .defs (SMBAL, SMCATA, SMTENT, SMCART) and the Cove Cannon from
+ * the HotA one (SMCANNON, the VCMI HotA mod), anchored on the PC canvas point
+ * like the creatures (two-hex for the Ballista, Catapult, First Aid Tent and
+ * Cannon, VCMI `doubleWide`). The Forge Lightning Generator has no PC
+ * original: a Codex sheet drawn from its card art.
+ */
+const WAR_MACHINE_SPRITES: Readonly<Record<string, string>> = {
+  "war_machine.ballista": "war-ballista",
+  "war_machine.catapult": "war-catapult",
+  "war_machine.ammo_cart": "war-ammo-cart",
+  "war_machine.first_aid_tent": "war-first-aid-tent",
+  "war_machine.lightning_generator": "war-lightning-generator",
+  "war_machine.cannon": "war-cannon"
+};
+
+/** The machine drawn for a war machine card, or null (card token). */
+export function warMachineSprite(cardId: string): CreatureSpriteAtlas | null {
+  const slug = WAR_MACHINE_SPRITES[cardId];
+  return slug ? creatureSpriteForSlug(slug) : null;
+}
+
+/**
+ * Hex board: how long a war machine winds up before its shot leaves — its
+ * straight firing row at its PC pace up to its CRANIM climax frame (a Ballista
+ * 4 frames, 320 ms). The page starts the machine's firing row this much ahead
+ * of the shot. 0 for a machine drawn as a card token.
+ */
+export function warMachineShotLeadMs(cardId: string): number {
+  return Math.round(creatureShotDrawMs(warMachineSprite(cardId)));
 }
 
 export function spriteGroupFrames(atlas: CreatureSpriteAtlas, group: number): number {
@@ -347,20 +421,64 @@ export const HEX_RANGED_RELEASE_MS = 300;
 export const HEX_CAST_RELEASE_MS = 450;
 
 /**
- * Hex board pace, PC style: every creature has its own speed. H3 drives it from
- * each creature's animation times (CRANIM.TXT, not shipped with the open
- * data), so here the card's printed Initiative sets it — a Zombie shambles, a
- * Wolf Rider runs — and flyers glide across the field much faster than any
- * walker (an Archangel crosses it in well under a second). One full walk cycle
- * plays per hex entered.
+ * Hex board animation speed, as VCMI's battle "speedFactor" (1 = the PC's
+ * slowest setting, H3 10 frames a second; VCMI's default is 2). Every creature
+ * clip runs at 10·speed frames a second (client/battle/CreatureAnimation.cpp):
+ * a calm, readable pace — each frame of a swing, a flinch or a turn reads.
  */
-export function hexWalkStepMs(initiative: number): number {
-  return Math.round(Math.min(185, Math.max(110, 205 - 9 * initiative)));
+export const HEX_ANIMATION_SPEED = 1.25;
+/** One PC animation frame at HEX_ANIMATION_SPEED (80 ms). */
+const HEX_BASE_FRAME_MS = 100 / HEX_ANIMATION_SPEED;
+
+/** A shot's launch point per direction: PC pixels from the feet, facing right. */
+export type MissileOffsets = { up: [number, number]; straight: [number, number]; down: [number, number] };
+type CreatureAnimTimes = {
+  walk?: number;
+  attack?: number;
+  /** 1-based shoot frame the projectile leaves on (CRANIM "Attack Climax Frame"). */
+  climax?: number;
+  missile?: MissileOffsets;
+  /** Standing-loop frame time, ms (scripts/build-creature-anim-times.mjs idleFrameMs). */
+  idle?: number;
+  /** A rotoscoped sprite's footstep clip: its H3 donor's move sound. */
+  gait?: string;
+  /** false: the mouse-over row only copies the standing loop (no real fidget). */
+  fidget?: boolean;
+};
+// Via unknown: JSON arrays type as number[], not the [x, y] pairs they hold.
+const ANIM_TIMES = animTimes as unknown as Readonly<Record<string, CreatureAnimTimes>>;
+
+/**
+ * A creature's PC "Walk Animation Time" (H3 CRANIM.TXT; the HotA / WoG
+ * creatures' VCMI animationTime; a rotoscoped sprite takes its donor's — see
+ * scripts/build-creature-anim-times.mjs). Higher = slower: a Zombie 1.30, a
+ * Pikeman 1.15, a Wolf Rider 0.93, an Archangel 0.82. Card-art tokens and
+ * sheet-built war machines take the common 1.0.
+ */
+export function creatureWalkTime(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): number {
+  const walk = atlas ? ANIM_TIMES[atlas.slug]?.walk : undefined;
+  return walk && Number.isFinite(walk) && walk > 0 ? walk : 1;
 }
 
-/** Flight pace: ms per hex of straight-line distance. */
-export function hexFlyStepMs(initiative: number): number {
-  return Math.round(Math.min(100, Math.max(50, 118 - 6 * initiative)));
+/**
+ * Hex board pace, PC style: every creature has its own speed, its PC walk
+ * time. VCMI moves a walker 2·speed / walk hexes a second and a flyer
+ * 250·speed / walk PC pixels a second (one hex = 44 PC px), and plays the move
+ * frames at 10·speed / walk frames a second — the legs keep the stride the
+ * artists drew for that ground speed, the cycle running on across hexes.
+ */
+export function hexWalkStepMs(walkTime: number): number {
+  return (1000 * walkTime) / (2 * HEX_ANIMATION_SPEED);
+}
+
+/** Flight pace: ms per hex of straight-line (or routed) distance. */
+export function hexFlyStepMs(walkTime: number): number {
+  return (44 * 1000 * walkTime) / (250 * HEX_ANIMATION_SPEED);
+}
+
+/** Move-group (walk / flight) frame duration. */
+export function hexWalkFrameMs(walkTime: number): number {
+  return HEX_BASE_FRAME_MS * walkTime;
 }
 
 /**
@@ -373,25 +491,26 @@ export function hexAnimationTempo(initiativeDelta: number): number {
   return Math.min(1.8, Math.max(0.5, 1 + 0.18 * initiativeDelta));
 }
 
-/** Teleport vanish/appear frame duration. */
-export const HEX_TELEPORT_FRAME_MS = 45;
+/** Teleport vanish/appear frame duration (VCMI TELEPORT_START/END = speed). */
+export const HEX_TELEPORT_FRAME_MS = HEX_BASE_FRAME_MS;
 /** Turn-around frame duration (H3 turn-left group, flip, turn-right group). */
-export const HEX_TURN_FRAME_MS = 50;
+export const HEX_TURN_FRAME_MS = HEX_BASE_FRAME_MS;
 /** Start-moving / stop-moving frame duration (a walk's first and last beats). */
-export const HEX_MOVE_EDGE_FRAME_MS = 45;
+export const HEX_MOVE_EDGE_FRAME_MS = HEX_BASE_FRAME_MS;
 /**
- * Melee / shoot / cast frame duration at normal tempo (the PC's "fast" combat
- * speed is 20 frames a second; a touch slower keeps the blow readable).
+ * Melee / shoot / cast frame duration at normal tempo. VCMI plays melee
+ * attacks at the one common rate so every blow lasts alike; the wind-up still
+ * fits the shared impact beat (hex-figures playActionClip).
  */
-export const HEX_ACTION_FRAME_MS = 70;
+export const HEX_ACTION_FRAME_MS = HEX_BASE_FRAME_MS;
 /** Hit (hurt) and defend frame durations. */
-export const HEX_HIT_FRAME_MS = 60;
+export const HEX_HIT_FRAME_MS = HEX_BASE_FRAME_MS;
 /** Death frames (the fall, then the corpse holds its last frame). */
-export const HEX_DEATH_FRAME_MS = 80;
+export const HEX_DEATH_FRAME_MS = HEX_BASE_FRAME_MS;
 /**
  * Idle frames: the standing loop (H3 HOLDING) and the mouse-over row both play
- * at the PC's 10 frames a second (VCMI: HOLDING speed = creature idle time 10,
- * MOUSEON = the 10 fps base speed).
+ * at the PC's 10 frames a second whatever the speed setting (VCMI: HOLDING
+ * speed = creature idle time 10, MOUSEON = the 10 fps base speed).
  */
 export const HEX_IDLE_FRAME_MS = 100;
 /**
@@ -400,6 +519,76 @@ export const HEX_IDLE_FRAME_MS = 100;
  * HotA creatures carry timeBetweenFidgets 1.
  */
 export const HEX_IDLE_FIDGET_CHANCE = 0.1;
+
+/**
+ * A creature's standing-loop frame time. The PC loops every idle at 10 fps,
+ * which on this big board makes the many creatures whose idle is a slight
+ * breath (a Snow Elf, a Pikeman) tremble; the pace table measures each idle's
+ * motion and slows a breath to about 2.2 s a cycle, a bigger motion to 1.5 s,
+ * and keeps lively idles (flames, wings, elementals) at the PC's 10 fps.
+ */
+export function creatureIdleFrameMs(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): number {
+  const idle = atlas ? ANIM_TIMES[atlas.slug]?.idle : undefined;
+  return idle && Number.isFinite(idle) && idle > 0 ? idle : HEX_IDLE_FRAME_MS;
+}
+
+/**
+ * Whether a creature's mouse-over row is a real fidget. A rotoscoped sprite's
+ * is only a copy of its standing loop: played as a fidget (or on mouse-over)
+ * it would run the same breath at 10 fps, a sudden twitch.
+ */
+export function creatureHasFidget(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): boolean {
+  return !atlas || ANIM_TIMES[atlas.slug]?.fidget !== false;
+}
+
+/**
+ * Shoot / cast frame duration (VCMI: 10·speed / attackAnimationTime frames a
+ * second — a Gunslinger's 1.5 draws slower than an Archer's 1.0).
+ */
+export function creatureShootFrameMs(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): number {
+  const attack = atlas ? ANIM_TIMES[atlas.slug]?.attack : undefined;
+  return HEX_BASE_FRAME_MS * (attack && Number.isFinite(attack) && attack > 0 ? attack : 1);
+}
+
+/**
+ * The 0-based frame of a shoot group on which the projectile leaves (VCMI
+ * ShootingAnimation: CRANIM climax, 1-based, clamped to the group), or null
+ * when the creature has no PC shot data.
+ */
+export function creatureShotClimaxFrame(atlas: CreatureSpriteAtlas | null, group: number): number | null {
+  const climax = atlas ? ANIM_TIMES[atlas.slug]?.climax : undefined;
+  const count = atlas ? spriteGroupFrames(atlas, group) : 0;
+  if (!climax || !Number.isFinite(climax) || count === 0) return null;
+  return Math.min(count, Math.max(1, Math.round(climax))) - 1;
+}
+
+/**
+ * How long a creature draws before its shot leaves at normal tempo: its
+ * straight shoot row played at its own pace up to the climax frame. The page
+ * starts a hex shooter's clip this much before the shot's release beat (less
+ * the shared HEX_RANGED_RELEASE_MS), so the draw is never squeezed.
+ */
+export function creatureShotDrawMs(atlas: CreatureSpriteAtlas | null): number {
+  if (!atlas) return 0;
+  const group = spriteGroupFrames(atlas, SPRITE_GROUP.shootStraight) > 0 ? SPRITE_GROUP.shootStraight : SPRITE_GROUP.attackStraight;
+  const count = spriteGroupFrames(atlas, group);
+  if (count === 0) return 0;
+  const climax = creatureShotClimaxFrame(atlas, group) ?? Math.max(1, Math.ceil(count / 2));
+  return climax * creatureShootFrameMs(atlas);
+}
+
+/**
+ * The footsteps of a rotoscoped figure's walk (its H3 donor's move clip), for
+ * units whose own move sound is a spoken line; null for everyone else.
+ */
+export function creatureGaitSound(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): string | null {
+  return (atlas ? ANIM_TIMES[atlas.slug]?.gait : undefined) ?? null;
+}
+
+/** The creature's PC shot launch points (CRANIM missile offsets), or null. */
+export function creatureMissileOffsets(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): MissileOffsets | null {
+  return (atlas ? ANIM_TIMES[atlas.slug]?.missile : undefined) ?? null;
+}
 
 /** The start-moving + stop-moving frames a (non-teleporting) move plays. */
 export function spriteMoveEdgeFrames(atlas: CreatureSpriteAtlas | null): number {
@@ -414,13 +603,15 @@ export function spriteTurnFrames(atlas: CreatureSpriteAtlas | null): number {
 }
 
 /** The shortest any hex move may play (one quick hop still reads as a move). */
-const HEX_MOVE_MIN_MS = 300;
+const HEX_MOVE_MIN_MS = 400;
 
 export type HexMoveOptions = {
   unitDefId?: string;
   variant?: "few" | "pack" | "neutral";
   commanderSlug?: string;
-  /** The unit's printed Initiative (its pace). */
+  /** A battlefield hero's definition (its own figure's pace). */
+  heroDefId?: string;
+  /** The unit's printed Initiative (kept for callers; the pace is the creature's PC walk time). */
   initiative?: number;
   /** Live Initiative minus printed (Haste / Slow …): the animation tempo. */
   initiativeDelta?: number;
@@ -442,7 +633,8 @@ export type HexMoveOptions = {
  *  - walkers step hex by hex along `steps` (the route length) at their pace,
  *  - flyers glide straight over `distance` hexes (or follow a route) at flight pace,
  *  - teleporters (sprite Devils, teleport cues) blink out and in.
- * `legsMs` is the whole travel time (split evenly over the route's legs).
+ * `legsMs` is the whole travel time (split evenly over the route's legs);
+ * `walkFrameMs` the move group's frame duration (the cycle runs on across hexes).
  */
 export function hexMovePlan(options: HexMoveOptions): {
   totalMs: number;
@@ -450,10 +642,12 @@ export function hexMovePlan(options: HexMoveOptions): {
   turnFrameMs: number;
   edgeFrameMs: number;
   teleportFrameMs: number;
+  walkFrameMs: number;
 } {
   const atlas = unitCreatureSprite(options);
   const tempo = hexAnimationTempo(options.initiativeDelta ?? 0);
-  const initiative = options.initiative ?? 5;
+  const walkTime = creatureWalkTime(atlas);
+  const walkFrameMs = hexWalkFrameMs(walkTime) / tempo;
   const turnFrameMs = HEX_TURN_FRAME_MS / tempo;
   const edgeFrameMs = HEX_MOVE_EDGE_FRAME_MS / tempo;
   const teleportFrameMs = HEX_TELEPORT_FRAME_MS / tempo;
@@ -464,19 +658,20 @@ export function hexMovePlan(options: HexMoveOptions): {
       legsMs: 0,
       turnFrameMs,
       edgeFrameMs,
-      teleportFrameMs: frames > 0 ? Math.max(HEX_MOVE_MIN_MS, frames * teleportFrameMs) / frames : teleportFrameMs
+      teleportFrameMs: frames > 0 ? Math.max(HEX_MOVE_MIN_MS, frames * teleportFrameMs) / frames : teleportFrameMs,
+      walkFrameMs
     };
   }
   if (options.teleport) {
-    return { totalMs: HEX_MOVE_MIN_MS, legsMs: 0, turnFrameMs, edgeFrameMs, teleportFrameMs };
+    return { totalMs: HEX_MOVE_MIN_MS, legsMs: 0, turnFrameMs, edgeFrameMs, teleportFrameMs, walkFrameMs };
   }
   const flyer = options.flyer ?? options.flying;
   const hexes = options.flying ? options.distance : options.steps;
-  const stepMs = flyer ? hexFlyStepMs(initiative) : hexWalkStepMs(initiative);
+  const stepMs = flyer ? hexFlyStepMs(walkTime) : hexWalkStepMs(walkTime);
   const legsMs = Math.max(HEX_MOVE_MIN_MS, (hexes * stepMs) / tempo);
   const totalMs = legsMs + (options.turns ?? 0) * spriteTurnFrames(atlas) * turnFrameMs +
     spriteMoveEdgeFrames(atlas) * edgeFrameMs;
-  return { totalMs: Math.round(totalMs), legsMs, turnFrameMs, edgeFrameMs, teleportFrameMs };
+  return { totalMs: Math.round(totalMs), legsMs, turnFrameMs, edgeFrameMs, teleportFrameMs, walkFrameMs };
 }
 
 /** How long a unit's move plays on the hex board (see hexMovePlan). */

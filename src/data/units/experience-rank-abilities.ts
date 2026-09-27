@@ -485,8 +485,8 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "inferno.demons") return A("town-demon-paralyze");
   if (unitDefId === "inferno.arch_devils") return A("reduce-spell-and-specialty-damage-1");
   if (unitDefId === "inferno.efreet") return A("wog-fire-shield-1");
-  // Preserve R2 after replacing the earlier Guarded Stance that used to exclude it.
-  if (unitDefId === "necropolis.ghost_dragons") return A("bulwark-air-shield");
+  // Necropolis Ghost Dragons R2: Spectral Ward (replaced Air Shield, user spec 2026-09-27).
+  if (unitDefId === "necropolis.ghost_dragons") return A("veteran-ghost-dragon-spectral-ward");
   if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-cleave");
   if (unitDefId === "dungeon.medusas") return A("veteran-medusa-mend");
   if (unitDefId === "necropolis.skeletons") return A("veteran-skeleton-retaliation");
@@ -555,8 +555,12 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "bulwark.yetis") return A("bulwark-thick-hide");
   if (unitDefId === "bulwark.jotunns") return A("town-jotunn-rune-bolt");
   if (unitDefId === "bulwark.mammoths") return A("town-mammoth-hunter");
-  // Preserve the previous R3 stat reward after R1 became a hybrid.
-  if (unitDefId === "inferno.arch_devils") return S({ ...Z, attack: 1 });
+  // User 2026-09-27: the former +1 Attack step became Petrifying Curse.
+  if (unitDefId === "inferno.arch_devils") return A("town-devil-petrify");
+  // User 2026-09-27: Fortress Hydras' former +1 Health and Wyverns' former
+  // generated Fear are replaced by their poison-cube abilities.
+  if (unitDefId === "fortress.hydras") return A("town-hydra-venom-bite");
+  if (unitDefId === "fortress.wyverns") return A("town-wyvern-venom-hunter");
   if (unitDefId === "castle.halberdiers") return A("town-halberd-aura");
   if (unitDefId === "castle.crusaders") return H({ ...Z, initiative: 1 }, "reduce-spell-damage-1");
   if (unitDefId === "castle.zealots") return A("veteran-zealot-spell-sunder");
@@ -598,12 +602,20 @@ function explicitRankThree(unitDefId: string): RankStep | null {
     return H({ ...Z, initiative: 2 }, "veteran-mobility-1");
   }
   if (unitDefId === "stronghold.behemoths") return A("veteran-flying-movement");
+  // Dungeon Black Dragons (user 2026-09-27): keep Hunt the Slow, drop to +1
+  // Initiative and ALSO grant the post-retaliation return.
+  if (unitDefId === "dungeon.black_dragons") {
+    return { kind: "hybrid", stats: { ...Z, initiative: 1 }, choices: ["veteran-speed-hunter"], grants: ["town-black-dragon-return"] };
+  }
   if (unitDefId.endsWith(".black_dragons")) {
     return H({ ...Z, initiative: 2 }, "veteran-speed-hunter");
   }
   if (unitDefId.endsWith(".phoenixes")) return A("veteran-regeneration-2");
   // Reserve Soul Feast for the requested Ghost Dragon capstone instead of
   // accidentally consuming it from the generic dragon pool one rank early.
+  // Necropolis Ghost Dragons R3: Withering Touch (user spec 2026-09-27); other
+  // Ghost Dragons keep the plain stat step below.
+  if (unitDefId === "necropolis.ghost_dragons") return A("veteran-ghost-dragon-withering-touch");
   if (unitDefId.endsWith(".ghost_dragons")) return S();
   if (unitDefId === "neutral.sharpshooters") return A("veteran-double-attack");
   // Preserve Ice Elementals' former R2 Guarded Stance after moving it to R3.
@@ -654,7 +666,8 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "fortress.dragon_flies") return A("town-dragon-fly-landing");
   if (unitDefId === "fortress.basilisks") return A("town-basilisk-lower-roll");
   if (unitDefId === "fortress.lizardmen") return A("town-lizard-spell-draw");
-  if (unitDefId === "fortress.hydras") return A("town-hydra-round-mend");
+  // Requested addition (2026-09-27): keep Hydra Regrowth and grant Venom Ward too.
+  if (unitDefId === "fortress.hydras") return G(["town-hydra-round-mend"], "town-hydra-venom-ward");
   if (unitDefId === "fortress.wyverns") return A("town-wyvern-potent-poison");
   if (unitDefId === "cove.ayssids") return H({ ...Z, initiative: 2 }, "town-ayssid-slow");
   if (unitDefId === "cove.haspids") return A("town-haspid-unstoppable-counter");
@@ -1028,7 +1041,9 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-lich-mend": "/assets/ui/rank-ability/soul-mend.webp",
   "veteran-vampire-tribute": "/game-tokens/rank-ability/dungeon-necropolis/vampire-tribute.webp",
   "veteran-vampire-ward": "/game-tokens/rank-ability/dungeon-necropolis/vampire-ward.webp",
-  "veteran-dragon-dread": "/game-tokens/rank-ability/dungeon-necropolis/dragon-dread.webp",
+  "veteran-dragon-dread": "/game-tokens/rank-ability/veterancy/ghost-dragon-dread-aura.webp",
+  "veteran-ghost-dragon-spectral-ward": "/game-tokens/rank-ability/veterancy/ghost-dragon-spectral-ward.webp",
+  "veteran-ghost-dragon-withering-touch": "/game-tokens/rank-ability/veterancy/ghost-dragon-withering-touch.webp",
   "veteran-manticore-mend": "/assets/ui/rank-ability/regeneration-2.webp",
   "veteran-eye-splash": "/assets/ui/rank-ability/double-strike.webp",
   "veteran-skeleton-retaliation": "/assets/ui/rank-ability/retaliation-fury.webp",
@@ -1060,6 +1075,12 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-haspid-unstoppable-counter": "/game-tokens/rank-ability/veterancy/town-haspid-unstoppable-counter.webp",
   "town-hydra-forced-reroll": "/game-tokens/rank-ability/veterancy/town-hydra-forced-reroll.webp",
   "town-hydra-round-mend": "/game-tokens/rank-ability/veterancy/town-hydra-round-mend.webp",
+  // 2026-09-27 Codex-painted: Black Dragon / Hydra / Wyvern / Arch Devil revisions.
+  "town-black-dragon-return": "/game-tokens/rank-ability/veterancy/town-black-dragon-return.webp",
+  "town-hydra-venom-bite": "/game-tokens/rank-ability/veterancy/town-hydra-venom-bite.webp",
+  "town-hydra-venom-ward": "/game-tokens/rank-ability/veterancy/town-hydra-venom-ward.webp",
+  "town-wyvern-venom-hunter": "/game-tokens/rank-ability/veterancy/town-wyvern-venom-hunter.webp",
+  "town-devil-petrify": "/game-tokens/rank-ability/veterancy/town-devil-petrify.webp",
   "town-jotunn-rune-hide": "/game-tokens/rank-ability/veterancy/town-jotunn-rune-hide.webp",
   "town-kobold-rune-step": "/game-tokens/rank-ability/veterancy/town-kobold-rune-step.webp",
   "town-mammoth-hunter": "/game-tokens/rank-ability/veterancy/town-mammoth-hunter.webp",

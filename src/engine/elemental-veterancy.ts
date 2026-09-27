@@ -2,7 +2,7 @@ import { townSpellCast, townBound } from "./town-veterancy";
 import { neutralTownSpellCast, neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { getUnitAbilityDefinitions, isUnitDamageImmune } from "./unit-abilities";
 import { factionVeterancy } from "./unit-abilities";
-import { veteranHeal, veteranRandom, veteranDamage, veteranTrigger } from "./faction-veterancy";
+import { dreadAuraParalyzeCandidates, veteranHeal, veteranRandom, veteranDamage, veteranTrigger } from "./faction-veterancy";
 import {
   isAdjacent,
   combatGeometry,
@@ -26,11 +26,11 @@ import {
 } from "@/data/units/abilities";
 import { cardLibrary } from "@/data/cards/library";
 import { balanceCardLibrary } from "./community-balance-cards";
-import { effectiveInitiative, makeActiveEffect } from "./active-effects";
+import { effectiveInitiative, makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
 import { appendEvent, nextEventNumber } from "./events";
 import { applyNeutralDebuff } from "./neutral-veterancy";
 import { availableRunes, spendRunes } from "./runes";
-import { noteUnitDamagedForTokens } from "./tokens";
+import { hasToken, noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import {
   battlefieldTokenCovers,
   footprintAt,
@@ -379,7 +379,37 @@ export function elementalFinishActivation(
   }
 }
 
+/**
+ * Black Dragons R3 Wheeling Retreat returns only AFTER the enemy's Retaliation
+ * Attack: while the Dragon's own attack still has its retaliation pending, the
+ * return pick stays queued (behind everything else) even if another post-attack
+ * pick from the same hit opens the queue early. attackSequence is cleared when
+ * the attack ends, so the pick is then offered normally.
+ */
+function heldUntilRetaliation(state: GameState, request: Request): boolean {
+  const sequence = state.combat?.attackSequence;
+  return request.abilityId === "town-black-dragon-return" &&
+    Boolean(sequence?.retaliationPending) &&
+    sequence?.attackerId === request.unitId;
+}
+
 export function openElementalChoice(
+  state: GameState,
+  hooks: ElementalHooks,
+): boolean {
+  const combat = state.combat;
+  const held = combat?.elementalChoices?.filter((request) => heldUntilRetaliation(state, request)) ?? [];
+  if (!combat || !held.length) return openQueuedElementalChoice(state, hooks);
+  combat.elementalChoices = combat.elementalChoices!.filter((request) => !held.includes(request));
+  try {
+    return openQueuedElementalChoice(state, hooks);
+  } finally {
+    // Re-read the combat: a resolved pick may have ended it.
+    if (state.combat === combat && !combat.outcome) (combat.elementalChoices ??= []).push(...held);
+  }
+}
+
+function openQueuedElementalChoice(
   state: GameState,
   hooks: ElementalHooks,
 ): boolean {
@@ -621,6 +651,13 @@ export function openElementalChoice(
             labels.push(target.cardName);
           }
         }
+    } else if (request.kind === "dread-paralyze") {
+      // Ghost Dragons' Dread Aura "-1": strongest eligible enemy first, so an
+      // automatic pick (computer / Neutral seat) takes the most dangerous one.
+      for (const target of dreadAuraParalyzeCandidates(state, unit)) {
+        picks.push({ targetId: target.id });
+        labels.push(`Paralyze ${target.cardName}`);
+      }
     } else if (request.kind === "debuff-attack") {
       for (const target of enemies(state, unit)) if ((!request.adjacent || unitsAdjacent(combat, unit, target))) {
         picks.push({ targetId: target.id }); labels.push(target.cardName);
@@ -672,7 +709,7 @@ export function openElementalChoice(
       );
     }
     if (!picks.length) continue;
-    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "forge-jump-round" && request.kind !== "forge-grunt-tempo" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
+    if (request.optional || (request.kind !== "damage" && request.kind !== "forge-death-burst" && request.kind !== "forge-jump-round" && request.kind !== "forge-grunt-tempo" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover" && request.kind !== "dread-paralyze")) {
       picks.push({ skip: true });
       labels.push("Skip");
     }
@@ -692,7 +729,7 @@ export function openElementalChoice(
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId: chooser,
-      prompt: `${unit.cardName}: ${request.abilityId === "dace-minotaurs-pack-break" ? "Minotaurs IV" : unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
+      prompt: `${unit.cardName}: ${request.abilityId === "dace-minotaurs-pack-break" ? "Minotaurs IV" : request.abilityId === "commander-rune-ritual-mend" ? "Rune Ritual — Rune Level reached: heal a friendly unit 1 HP" : unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
       options: labels.map((label) => ({ label })),
       context: "elemental-veterancy",
       elementalChoice: { request, picks },
@@ -894,6 +931,19 @@ function executeElementalPick(
       (request.adjacent && !unitsAdjacent(combat, unit, target)) ||
       (request.adjacentOrSelf && target.id !== unit.id && !unitsAdjacent(combat, unit, target))) throw new Error("Choose a damaged allied unit in range.");
     veteranHeal(state, target, request.amount ?? 1, request.abilityId, unit); return;
+  }
+  if (request.kind === "dread-paralyze") {
+    const target = combat.units[pick.targetId!];
+    if (!target || !alive(target) || target.controllerId === unit.controllerId) throw new Error("Choose an enemy unit to Paralyze.");
+    if (hasToken(target, "paralysis")) return;
+    if (unitImmuneToParalysis(state, target)) {
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: target.id, abilityId: "ignore-paralysis", targetUnitId: target.id, message: `${target.cardName} is immune to Paralysis.` });
+      return;
+    }
+    const name = unitAbilities[request.abilityId]?.name ?? "Dread Aura";
+    placeCombatToken(state, target, "paralysis", 0, name);
+    veteranTrigger(state, unit, request.abilityId, target, `${unit.cardName}'s ${name} paralyses ${target.cardName}.`);
+    return;
   }
   if (request.kind === "debuff-attack") {
     const target = combat.units[pick.targetId!];

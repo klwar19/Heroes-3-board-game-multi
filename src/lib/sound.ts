@@ -285,16 +285,26 @@ function playLibrarySoundFor(key: string, volume: number, durationMs: number): v
   }, Math.max(0, durationMs - fadeMs));
 }
 
+/** A spoken line (the anime towns' character voices), never a footstep loop. */
+function isVoiceClip(key: string): boolean {
+  return key.includes("/voices/");
+}
+
 /**
  * playUnitSound held for `durationMs` (a creature walking the hex battlefield:
  * its move clip loops for the whole walk). Same keys, layer and silence rules.
+ * A unit whose move sound is a spoken line (Little Busters, Blue Archive, the
+ * Forge's commander...) says it ONCE as it sets off — looping it would repeat
+ * the line for the whole walk — and `gaitKey` (the footsteps of the H3 walk its
+ * figure traces) carries the rest of the walk.
  */
 export function playUnitSoundFor(
   unitDefId: string | undefined,
   action: UnitSoundAction,
   delayMs: number,
   durationMs: number,
-  variant?: UnitSoundVariant
+  variant?: UnitSoundVariant,
+  gaitKey?: string
 ): void {
   if (!unitDefId || typeof window === "undefined") {
     return;
@@ -306,8 +316,17 @@ export function playUnitSoundFor(
   }
   const play = () => {
     if (muted) return;
-    if (key) playLibrarySoundFor(key, 0.55, durationMs);
-    if (layerKey) playLibrarySoundFor(layerKey, 0.55, durationMs);
+    if (key && isVoiceClip(key)) {
+      playLibrarySound(key, 0.55);
+      // A layer that is already a footstep loop walks for it.
+      if (gaitKey && !layerKey && soundLibrary[gaitKey]) playLibrarySoundFor(gaitKey, 0.5, durationMs);
+    } else if (key) {
+      playLibrarySoundFor(key, 0.55, durationMs);
+    }
+    if (layerKey) {
+      if (isVoiceClip(layerKey)) playLibrarySound(layerKey, 0.55);
+      else playLibrarySoundFor(layerKey, 0.55, durationMs);
+    }
   };
   if (delayMs > 0) {
     window.setTimeout(play, delayMs);

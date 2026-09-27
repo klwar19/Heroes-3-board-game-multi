@@ -19,7 +19,7 @@
 // defeat once the combat's outcome has played out.
 // ---------------------------------------------------------------------------
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { memo, useEffect, useRef, type CSSProperties } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import type { CombatState, GameState, PlayerId } from "@/engine";
 import { coreFactionDefinitions } from "@/data/factions/core";
@@ -85,7 +85,16 @@ function playerColor(state: GameState, playerId: PlayerId): string {
   return (factionId && coreFactionDefinitions[factionId]?.color) || FALLBACK_PLAYER_COLOR;
 }
 
-export function HexHeroesLayer({ state, combat, flipped }: { state: GameState; combat: CombatState; flipped: boolean }) {
+/** Memoised: hover-only board renders (the aim cursor) never reach it. */
+export const HexHeroesLayer = memo(function HexHeroesLayer({
+  state,
+  combat,
+  flipped
+}: {
+  state: GameState;
+  combat: CombatState;
+  flipped: boolean;
+}) {
   const layerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const layer = layerRef.current;
@@ -133,7 +142,7 @@ export function HexHeroesLayer({ state, combat, flipped }: { state: GameState; c
       )}
     </div>
   );
-}
+});
 
 function HexHeroFigure({
   playerId,
@@ -170,11 +179,16 @@ function HexHeroFigure({
     let idleTimer = 0;
     let stopClip: (() => void) | null = null;
 
+    // A frame that did not change is never written again (no per-tick style work).
+    let shownFrame = "";
     const showFrame = (group: number, index: number) => {
       const info = atlas.groups[String(group)] ?? atlas.groups[String(HERO_GROUP.standing)];
       if (!info) return;
       const column = Math.min(index, info.frames - 1);
-      sprite.style.backgroundPosition = `${-column * atlas.frameWidth}px ${-info.row * atlas.frameHeight}px`;
+      const position = `${-column * atlas.frameWidth}px ${-info.row * atlas.frameHeight}px`;
+      if (position === shownFrame) return;
+      shownFrame = position;
+      sprite.style.backgroundPosition = position;
     };
     const lastFrame = (group: number) => Math.max(0, (atlas.groups[String(group)]?.frames ?? 1) - 1);
 

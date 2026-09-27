@@ -27,9 +27,12 @@ export type TileBorderSegment = {
  * — the Calamity / Dungeon Gates and every Field Override) follows the same
  * rule.
  *
- * CURRENT BANK RULE 2026-09-06: banks on far (II–III) and near (IV–V)
- * tiles remove their printed outside arcs too. Starting-tile arcs and all
- * designer borders survive. Other carved objects retain the rule below.
+ * CURRENT BANK RULE 2026-09-06 (extended 2026-09-27): a bank on ANY tile that
+ * can host one — far (II–III), near (IV–V), subterranean (near pile) and sea
+ * (Polish Bank Sizes) — removes its printed outside arcs too, so it is entered
+ * from neighbouring tiles as well ({@link creatureBankOpensPrintedArc}).
+ * Starting-tile arcs and all designer borders survive. Other carved objects
+ * retain the rule below.
  *
  * Previous general carve rule 2026-09-05 — "Bank: should respect the border. Only remove the
  * INSIDE border to get in. If there is no border outside, don't add a border."
@@ -50,6 +53,19 @@ export type TileBorderSegment = {
  */
 const NO_BORDER_SLOTS: ReadonlySet<number> = new Set();
 
+/**
+ * Whether a Creature Bank carved on a tile of this LIVE group drops its slot's
+ * printed outer arc (CURRENT BANK RULE above). Every group a bank can land on by
+ * discovery: far, near, subterranean (near pile) and sea (Polish Bank Sizes) —
+ * a bank outside far/near used to stay walled off from the neighbouring tiles
+ * (2026-09-27 report). Starting / center tiles never host a bank and keep
+ * their arcs. ONE predicate, read by the board (`getTileBorderSegments`) and by
+ * movement / discovery (`isOuterEdgeSealed`), so a drawn line is a real wall.
+ */
+export function creatureBankOpensPrintedArc(group: string | undefined): boolean {
+  return group === "far" || group === "near" || group === "subterranean" || group === "sea";
+}
+
 export function getTileBorderSegments(
   def: TileDefinition,
   bankSlots: ReadonlySet<number> = NO_BORDER_SLOTS,
@@ -63,6 +79,11 @@ export function getTileBorderSegments(
      * RULE 2026-08-22).
      */
     borderlessSlots?: ReadonlySet<number>;
+    /**
+     * The LIVE tile's group (`MapTileState.group`), which the engine reads for
+     * the bank arc rule; a designer-pinned tile may differ from `def.group`.
+     */
+    tileGroup?: string;
   } = {}
 ): TileBorderSegment[] {
   // Printed art (suppressible by a carve) and FIXED lines that survive a carve
@@ -87,12 +108,13 @@ export function getTileBorderSegments(
       return;
     }
     const slot = direction + 1;
-    // Except for far/near banks, a carve keeps the tile's PRINTED outer arc — only
+    // Except for a bank on a bank-hosting tile, a carve keeps the tile's PRINTED outer arc — only
     // the ring's inside half is opened, so a hero enters from the host tile and
     // the map's outer wall stays a wall. Emitted through `addDesigned` so the
     // adjacency suppression pass below (which drops every printed line touching
     // the carved hex) cannot erase it again.
-    const bankOpensPrintedArc = bankSlots.has(slot) && (def.group === "far" || def.group === "near");
+    const bankOpensPrintedArc = bankSlots.has(slot) &&
+      creatureBankOpensPrintedArc(options.tileGroup ?? def.group);
     if (bankOpensPrintedArc) return;
     const retained = suppressedSlots.has(slot);
     const emit = retained ? addDesigned : add;

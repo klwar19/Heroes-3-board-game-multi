@@ -1565,7 +1565,46 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // +1 Health, and a Creature-Bank track (RankScheduleSide "bank": Crypt
 // Skeletons R4 Reborn Guard, Treasury Dwarves R3 Spell Resistance). A v188
 // peer folds different stats and abilities.
-export const ENGINE_PROTOCOL_VERSION = 189;
+// v190: Unit Experience — Dungeon Black Dragons R3 +1 Initiative (was +2) plus
+// Wheeling Retreat (return to the activation's start space after the attack
+// and any Retaliation); Fortress Hydras R3 Venomous Heads (poison cube on an
+// own-attack 0/+1) and R4 also Venom Ward (-1 damage from poisoned enemies);
+// Fortress Wyverns R3 Venom Hunter; Arch Devils R1 Devil's Luck leaves a
+// non-stacking 2-round curse (the unit's +1 die results get -1 Attack), R3
+// Petrifying Curse (-1 Paralyze, 0 +1 Attack). Bulwark Snow Elves Few cost 4; Rune Keeper's
+// Level-1 rider is +1 Speed and every Rune Level offers a 1-HP heal pick. A
+// v189 peer resolves different combat results and costs.
+// Also v190: a Creature Bank on a subterranean or sea tile opens its printed
+// outer arc like a far/near bank (enterable from neighbouring tiles). A v189
+// peer still seals those edges.
+// Also v190: in adventure combats the pump opens the pre-activation interrupt
+// window (Bowstring of the Unicorn's Mane option A, Sorrow) before a unit's
+// pacing pause or a guard's automatic activation. A v189 peer never offers it
+// before a Neutral guard acts.
+// Also v190: Necropolis Ghost Dragons R1 Dread Aura (odd rounds: -1 Paralyzes
+// a chosen enemy, 0 gives one random enemy -1 Defense this round), R2 Spectral
+// Ward (no non-damage Spell effect applies; Spell damage -1), R3 Withering
+// Touch (own-attack 0: the target loses 1 max Health this combat); Manticores
+// R1 heal only after being attacked, never after taking a Retaliation.
+// Also v190: Summon Elemental's unit is combat-only (never joins the army);
+// Interference / Plate of the Dying Light answer every damaging Spell that can
+// hit one of your units (area blasts, Fireball splash, Chain Lightning hops,
+// Death Ripple, Power-2 Earthquake) on a chosen unit, kept for the cast's
+// deferred hits; Binh Spell Book: View Air cannot enter the Book; Cove Sea
+// Marshal Slow lasts 2 rounds (refreshes), -1 Movement at Power 2, and from
+// Power 1 may open a combat (1 round, forgoing its round-1 turn); a lone Power
+// no Spell can pair with is refused before Helm of Chaos's counter window.
+// Also v190: Inferno heroes Ignatius (Horde / Legion of Imps covers, Familiars
+// rally) and Olema (all Attack dice to -1, -2 Attack, enemy card target lock);
+// Horde / Legion of Imps and of Skeletons keep the Pack's printed abilities,
+// every cover folds veteran rank stats and combat Health, and defeat excess is
+// measured against the cover's real health bar.
+// Also v190: Forge Grunts Few 2/0/3 for 2 gold (Pack 4 gold), Tanks Few 6 Health, Tanks Neutral 5/2/6
+// for 27 gold + 1 Valuable, Bruisers Pack 13 gold; Bulwark Kobolds Few 1 gold,
+// Mountain Rams / Snow Elves Few 3 Health; new starting tiles Factory S10,
+// Bulwark S11, Forge S12 (a save's old &S1 id loads as S10). A v189 peer
+// resolves different combats, costs and starting-tile borders.
+export const ENGINE_PROTOCOL_VERSION = 190;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

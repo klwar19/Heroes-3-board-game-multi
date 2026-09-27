@@ -78,6 +78,12 @@ const cuthbertPreviewSource = {
   url: "https://imgcdn.gamefound.com/productimage/projects/8492/f6676220-af26-4ed6-913c-346163d9ec91.png",
 };
 
+const infernoIgnatiusOlemaPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero boards and specialty cards from the supplied preview; portraits repainted from that visual reference. Specialty wording and hidden values supplied by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/ac2ce3b5-9542-4970-8bf2-d207eefefa83.png",
+};
+
 const fortressHeroPreviewSource = {
   product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
   credit: "Hero identities and stats from the WIP preview; specialty rules supplied by the player. Portraits generated for this adaptation.",
@@ -2568,6 +2574,47 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-inferno-might-octavia.webp",
     source: stretchGoalHeroSource("octavia")
   },
+  // Gamefound preview pair (Inferno): Ignatius is the Familiars specialist —
+  // his I/IV cards cover a Familiars unit card exactly like Sandro's Cloak
+  // (Horde of Imps A3 D1 HP2 I7 on the Pack; Legion of Imps A3 D1 HP3 I8 on
+  // Few/Pack/Horde, always on top), VI rallies every Familiars unit. Olema is
+  // the Weakness specialist (post-roll dice set, -2 Attack instant, and the VI
+  // card-target lock). Power/Knowledge 1/1 of Ignatius (hidden on the preview)
+  // were supplied by the player.
+  ignatius: {
+    id: "ignatius",
+    name: "Ignatius",
+    faction: "inferno",
+    class: "Demoniac",
+    type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: {
+      1: "specialty.ignatius.1",
+      4: "specialty.ignatius.4",
+      6: "specialty.ignatius.6"
+    },
+    portrait: "/assets/hero_boardart-ignatius.webp",
+    boardScan: "/assets/heroes-inferno-might-ignatius.webp",
+    source: infernoIgnatiusOlemaPreviewSource
+  },
+  olema: {
+    id: "olema",
+    name: "Olema",
+    faction: "inferno",
+    class: "Heretic",
+    type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.olema.1",
+      4: "specialty.olema.4",
+      6: "specialty.olema.6"
+    },
+    portrait: "/assets/hero_boardart-olema.webp",
+    boardScan: "/assets/heroes-inferno-magic-olema.webp",
+    source: infernoIgnatiusOlemaPreviewSource
+  },
   melodia: {
     id: "melodia",
     name: "Melodia",
@@ -3033,7 +3080,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Inferno",
     color: "#e07020",
     startingTileId: "S6",
-    heroes: ["xyron", "rashka", "zydar", "fiona", "ash", "octavia"],
+    heroes: ["xyron", "rashka", "zydar", "fiona", "ash", "octavia", "ignatius", "olema"],
     buildings: buildingsOfFaction("inferno"),
     units: unitsOfFaction("inferno"),
     townImage: "/assets/towns-inferno-empty.webp",
@@ -3127,7 +3174,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Bulwark",
     // Glacial blue-white — distinct from Castle/Tower/Cove blues.
     color: "#7fb2d9",
-    startingTileId: "S10",
+    startingTileId: "S11",
     heroes: ["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana", "kaliki"],
     buildings: buildingsOfFaction("bulwark"),
     units: unitsOfFaction("bulwark"),
@@ -3142,11 +3189,10 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Factory",
     // Warm industrial bronze — steampunk HotA aesthetic.
     color: "#c17820",
-    // PLAYABLE: "&S1" is the Factory starting tile (src/data/map/expansion-tiles.ts;
-    // the "&" prefix is the Factory tile set's marker, printed on the tile). The
+    // PLAYABLE: "S10" is the Factory starting tile (src/data/map/expansion-tiles.ts).
     // The units, buildings, and all six Factory hero specialty ladders are
     // available through the authoritative data and engine paths below.
-    startingTileId: "&S1",
+    startingTileId: "S10",
     heroes: [
       // Six unit specialists kept (the placeholder heroes were removed): each has
       // an engine-wired I/IV/VI specialty that buffs a Factory unit.
@@ -3160,7 +3206,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     townImage: "/assets/towns-factory-empty.webp",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Factory Expansion faction: PLAYABLE, with the &S1 starting tile. Unit Few/Pack art and abilities are transcribed from the real board-game scans; buildings map to shared archetype effects. Some town/hero PC art remains placeholder — verify before final release.",
+      credit: "Factory Expansion faction: PLAYABLE, with the S10 starting tile. Unit Few/Pack art and abilities are transcribed from the real board-game scans; buildings map to shared archetype effects. Some town/hero PC art remains placeholder — verify before final release.",
       url: "https://heroes.thelazy.net/index.php/Factory"
     }
   },
@@ -3308,8 +3354,8 @@ export function usesRandomUnexpectedReinforcements(factionId: string | null | un
  * definitions so the public faction data and the runtime setup map can never
  * drift apart. S1 = Necropolis, S2 = Dungeon, S3 = Castle (core box); S4 =
  * Rampart, S5 = Fortress, S6 = Inferno, S7 = Stronghold, S8 = Conflux, S9 =
- * Cove, S10 = Bulwark, #S1 = Tower, &S1 = Factory (expansion tiles). Every
- * shipped faction is playable and draws its own tile.
+ * Cove, #S1 = Tower, S10 = Factory, S11 = Bulwark, S12 = Forge (expansion
+ * tiles). Every shipped faction is playable and draws its own tile.
  */
 export const startingTileByFaction: Record<string, string> = Object.fromEntries(
   Object.values(coreFactionDefinitions).map((faction) => [faction.id, faction.startingTileId])
@@ -3320,7 +3366,7 @@ export const startingTileByFaction: Record<string, string> = Object.fromEntries(
  * and the Random Town defender pool route through this so a faction flagged
  * `playable: false` can never enter a real game and crash on a missing starting
  * tile. A faction is playable unless its definition explicitly sets
- * `playable: false`. (Every shipped faction — Factory included, with its &S1
+ * `playable: false`. (Every shipped faction — Factory included, with its S10
  * starting tile — is currently playable; the flag is the guard for any future
  * art-only stub.)
  */

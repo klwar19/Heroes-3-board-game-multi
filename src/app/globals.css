@@ -2396,8 +2396,8 @@ button.battleCell {
 }
 
 .commanderBattleEquipmentDialog {
-  width: min(620px, 100%);
-  max-height: min(90dvh, 720px);
+  width: min(760px, 100%);
+  max-height: 94dvh;
   overflow-y: auto;
   padding: clamp(16px, 3vw, 26px);
   border: 1px solid #b69259;
@@ -2447,73 +2447,50 @@ button.battleCell {
   background: #5c4426;
 }
 
-.commanderBattleEquipmentSlots {
-  display: grid;
-  gap: 10px;
+.commanderBattlePaperdoll {
+  position: relative;
+  min-height: 620px;
+  overflow: hidden;
+  border: 1px solid rgb(228 189 104 / 28%);
+  border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 42%, rgb(228 189 104 / 13%), transparent 52%), #0b0d10;
 }
 
-.commanderBattleEquipmentSlots article {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 78px;
-  padding: 10px;
-  border: 1px solid #775e3b;
-  border-radius: 9px;
-  background: #292219;
+.commanderBattlePaperdoll .commanderArtifactSlot {
+  width: min(250px, 43%);
 }
 
-.commanderBattleEquipmentSlots article.empty {
-  border-style: dashed;
-  opacity: .7;
+.commanderBattlePaperdoll .commanderArtifactSlotWell > span {
+  color: #e4bd68;
+  font-size: 30px;
 }
 
-.commanderBattleEquipmentIcon {
-  display: grid;
-  place-items: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 7px;
-  background: #18130d;
-  font-size: 28px;
-}
-
-.commanderBattleEquipmentIcon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
-
-.commanderBattleEquipmentSlots article > div:nth-child(2) {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.commanderBattleEquipmentSlots small {
+.commanderBattlePaperdoll .commanderArtifactSlotMeta small {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #b99b68;
-  text-transform: uppercase;
 }
 
-.commanderBattleEquipmentSlots strong {
-  color: #f3dfb4;
-}
-
-.commanderBattleEquipmentSlots span {
-  color: #d1c7b5;
-  font-size: 12px;
-  line-height: 1.35;
+.commanderBattlePaperdoll .commanderBattleViewCard {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 3px 8px;
+  font-size: 11px;
 }
 
 @media (max-width: 560px) {
-  .commanderBattleEquipmentSlots article { grid-template-columns: 44px minmax(0, 1fr); }
-  .commanderBattleEquipmentIcon { width: 44px; height: 44px; }
-  .commanderBattleEquipmentSlots article > button { grid-column: 2; justify-self: start; }
+  .commanderBattlePaperdoll { min-height: 520px; }
+  .commanderBattlePaperdoll .commanderPaperdollBody { opacity: .35; }
+  .commanderBattlePaperdoll .commanderPaperdollBust { opacity: .4; }
+  .commanderBattlePaperdoll .commanderArtifactSlot {
+    left: 12px !important;
+    right: 12px !important;
+    width: auto;
+    min-height: 0;
+  }
+  .commanderBattlePaperdoll .commanderArtifactSlot.slot-weapon { top: 24px; }
+  .commanderBattlePaperdoll .commanderArtifactSlot.slot-armor { top: 190px; }
+  .commanderBattlePaperdoll .commanderArtifactSlot.slot-trinket { top: 356px; bottom: auto; }
 }
 
 .inspectKind {
@@ -49651,6 +49628,36 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   height: 100%;
   color: #f4e6bf;
   font-weight: 800;
+}
+
+/* Arch Devils' Petrifying Curse: while that Paralysis holds, the creature (hex
+   sprite / token art, or the grid board's card art) turns to grey stone, fading
+   in as it is cursed; it returns to colour when the Paralysis ends. */
+.hexFigure.petrified .hexSprite,
+.hexFigure.petrified.active .hexSprite,
+.hexFigure.petrified .hexToken img,
+.boardCard.petrifiedCard .boardCardImage {
+  filter: grayscale(1) sepia(0.12) brightness(0.8) contrast(1.18);
+  animation: petrifyIn 700ms ease-out;
+}
+
+@keyframes petrifyIn {
+  from {
+    filter: none;
+  }
+
+  to {
+    filter: grayscale(1) sepia(0.12) brightness(0.8) contrast(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hexFigure.petrified .hexSprite,
+  .hexFigure.petrified.active .hexSprite,
+  .hexFigure.petrified .hexToken img,
+  .boardCard.petrifiedCard .boardCardImage {
+    animation: none;
+  }
 }
 
 .hexFallen.token {

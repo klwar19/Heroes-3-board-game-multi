@@ -16,7 +16,7 @@
 // hex face takes the clicks, creature sprites never do.
 // ---------------------------------------------------------------------------
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { memo, useMemo, useState, type CSSProperties } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import {
   getBattlefieldCoordinates,
@@ -134,7 +134,8 @@ export function parseCellAnchor(anchor: string | undefined): number | null {
 // Backdrop, grid and board art
 // ---------------------------------------------------------------------------
 
-export function HexBattlefieldBackdrop({
+/** Memoised: hover-only board renders (the aim cursor) never redraw the field. */
+export const HexBattlefieldBackdrop = memo(function HexBattlefieldBackdrop({
   boardArtId,
   flipped,
   combat,
@@ -233,7 +234,7 @@ export function HexBattlefieldBackdrop({
       </div>
     </>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Siege: the defending town's own PC scene
@@ -585,7 +586,8 @@ export type HexUnitCueDetail = {
     | { kind: "lunge"; to: string; attackKind: "melee" | "ranged"; releaseMs?: number }
     /** A creature casting (Ogre Magi Bloodlust, Enchanters, ...): H3 cast groups toward `to`. */
     | { kind: "cast"; to?: string; releaseMs?: number }
-    | { kind: "shake" }
+    /** Struck: the H3 hurt clip, or the defend clip for a stack that took Defend (PC). */
+    | { kind: "shake"; defending?: boolean }
     /** Struck from behind: turn to face the attacker at `to` before the blow lands. */
     | { kind: "face"; to: string; beatMs?: number }
     | { kind: "pose"; pose: "defend" };
@@ -867,6 +869,7 @@ export function hexMoveEventDurationMs(
     unitDefId: unit?.unitDefId,
     variant: unit?.variant,
     commanderSlug: unit?.commanderSlug,
+    heroDefId: unit?.heroDefId,
     initiative: unit?.initiative,
     initiativeDelta: unit && combat ? hexInitiativeDelta(unit, activeEffects, combat) : 0,
     flyer: unit?.type === "flying",

@@ -2,22 +2,89 @@ import { hasNecromancyPlan } from "./development";
 import { openingGuardCommitment } from "./necropolis-combat";
 import { cardLibrary } from "@/data/cards/library";
 import { baseCardId, isPhantomCardId } from "../phantom-cards";
-import { effectiveHandLimit, explorersHandStepActive, getUnitSide, isFieldGuarded } from "../adventure";
+import {
+  applyRecruitGoldDiscount, effectiveHandLimit, explorersHandStepActive, getUnitSide, isFieldGuarded, reinforceCostFor,
+} from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
-import { cardHandValue, moraleRedrawDiscards, scoreCardAction } from "./card-policy";
+import { cardHandValue, moraleRedrawDiscards, PREP_CYCLE_SCORE, scoreCardAction } from "./card-policy";
 import { upcomingFight } from "./card-planning";
 import { heroPickBias } from "./card-values";
 import { scoreChoiceAction } from "./choice-policy";
 import { scoreCombatAction } from "./combat-policy";
-import { scoreMapAction } from "./map-policy";
+import { evadeStepScore, scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
 import { learnedActionBias, type LearnedModelSelection } from "./learned-policy";
 import type { ReplayPolicyModel } from "./replay-model";
 import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
 import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective, withMapScoringCache } from "./map-navigation";
-import { isPremiumEconomyField } from "./army-strength";
+import { garrisonFeeReserve, isPremiumEconomyField } from "./army-strength";
+import { pvpReach } from "./pvp-reach";
+import { coreBuildingDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { effectiveTownBuildingCost } from "../house-rules";
 import { deferDiscretionarySpending, refineCombatShortlist, refinePvpCombatSpellRound } from "./decision-planning";
+
+/** Plays of `cardId` this seat already made in the current window — its map
+ * turn, or the current combat round. The runner's cycle guard cannot see a card
+ * loop (every play advances the event counter), so draw riders that keep
+ * drawing each other back (Armorer <-> Breastplate on the map; Leadership ->
+ * morale draw -> Deemer IV reshuffle in combat) would otherwise replay until the
+ * step limit and the AI turn never ends. */
+const REPLAY_CYCLE_LIMIT = 3;
+function playsThisWindow(state: GameState, playerId: string, cardId: string): number {
+  const log = state.eventLog ?? [];
+  const inCombat = Boolean(state.combat);
+  let plays = 0;
+  for (let index = log.length - 1; index >= 0; index -= 1) {
+    const event = log[index];
+    if (event.type === "ROUND_STARTED" || (event.type === "TURN_STARTED" && event.playerId === playerId)) break;
+    if (inCombat && (event.type === "COMBAT_ROUND_STARTED" || event.type === "NEUTRAL_COMBAT_STARTED" ||
+        event.type === "PLAYER_COMBAT_STARTED" || event.type === "CREATURE_BANK_COMBAT_STARTED")) break;
+    if (event.type === "CARD_PLAYED" && event.playerId === playerId && event.cardId === cardId) plays += 1;
+  }
+  return plays;
+}
+
+/**
+ * A spell cast the engine REFUNDED earlier in this combat round (the card came
+ * back: Clone below its Power-for-grade, no space to place it …). The same cast
+ * resolves the same way again, so re-casting it only loops — lab league
+ * 2026-09-27 (L3-factory R16): Clone on a Gold Pack with Power 1, refunded and
+ * re-cast 1,457 times until the step cap froze the table.
+ */
+function refundedThisCombatRound(state: GameState, playerId: string, cardId: string): boolean {
+  if (!state.combat) return false;
+  const base = baseCardId(cardId);
+  const log = state.eventLog ?? [];
+  for (let index = log.length - 1; index >= 0; index -= 1) {
+    const event = log[index];
+    if (event.type === "COMBAT_ROUND_STARTED" || event.type === "NEUTRAL_COMBAT_STARTED" ||
+        event.type === "PLAYER_COMBAT_STARTED" || event.type === "CREATURE_BANK_COMBAT_STARTED") return false;
+    if (event.type === "SPELL_CAST_REFUNDED" && event.playerId === playerId && baseCardId(event.spellCardId) === base) return true;
+  }
+  return false;
+}
+
+/** Gold an optional spending action pays (printed / discounted costs). */
+function goldSpendOf(state: GameState, playerId: string, action: GameAction): number {
+  if (action.type === "BUILD_STRUCTURE") {
+    const building = coreBuildingDefinitions[action.buildingId];
+    return building ? effectiveTownBuildingCost(state, building).gold ?? 0 : 0;
+  }
+  if (action.type === "HIRE_SECONDARY_HERO") return 10;
+  if (action.type === "POPULATION_ACTION") {
+    return action.purchases.reduce((sum, purchase) => {
+      if (purchase.kind === "recruit") {
+        const few = coreUnitDefinitions[purchase.unitDefId]?.few?.cost ?? {};
+        return sum + (applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId: purchase.unitDefId }, few).gold ?? 0);
+      }
+      const unitId = purchase.armyUnitId ?? state.players[playerId]?.army.find(unit => unit.unitDefId === purchase.unitDefId)?.id;
+      return sum + (unitId ? reinforceCostFor(state, playerId, unitId, false, false, false)?.gold ?? 0 : 0);
+    }, 0);
+  }
+  return 0;
+}
 
 /** A scored move alone is not evidence that retracing a route pays off. */
 function returnsTowardPayoff(observation: ComputerObservation, action: GameAction): boolean {
@@ -446,6 +513,43 @@ function chooseComputerActionUncached(
         (base.score < 900 || legal.action.type === "BUILD_STRUCTURE")
         ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
       const scored = { ...base, score: base.score + planBias };
+      // Keep the garrison fee while an enemy can reach our base next turn: a
+      // broke owner's Town / Settlement falls without a fight. Only optional
+      // gold spending is held (purchases, buildings, a secondary hero).
+      if (!observation.state.combat && scored.score > 240 && scored.score < 1_000 &&
+          (legal.action.type === "POPULATION_ACTION" || legal.action.type === "BUILD_STRUCTURE" ||
+            legal.action.type === "HIRE_SECONDARY_HERO")) {
+        const state = observation.state as unknown as GameState;
+        const reserve = garrisonFeeReserve(state, observation.playerId, enemy => pvpReach(state, enemy, true));
+        const gold = state.players[observation.playerId]?.resources.gold ?? 0;
+        if (reserve > 0 && gold - goldSpendOf(state, observation.playerId, legal.action) < reserve) {
+          scored.score = 240;
+          scored.policy = "map.keep-garrison-fee";
+        }
+      }
+      // Not getting caught by a stronger hero outranks ordinary travel (never a
+      // premium capture or a scripted must-move, which already score higher).
+      if (!observation.state.combat && legal.action.type === "MOVE_HERO") {
+        const evade = evadeStepScore(observation.state as unknown as GameState, observation.playerId, legal.action);
+        if (evade !== null && evade > scored.score) {
+          scored.score = evade;
+          scored.policy = "map.evade-stronger-hero";
+        }
+      }
+      // Held below the window's exit: END_TURN (300) on the map, ACCEPT_COMBAT
+      // (225) in the PvP pre-battle prep window, whose card plays are the
+      // map-turn plays — at 280 a replayed card still outranked ACCEPT there.
+      const prepWindow = Boolean(observation.state.combat?.prep);
+      if (legal.action.type === "PLAY_CARD" && scored.score >= (prepWindow ? PREP_CYCLE_SCORE + 1 : 290) &&
+          playsThisWindow(observation.state as unknown as GameState, observation.playerId, legal.action.cardId) >= REPLAY_CYCLE_LIMIT) {
+        scored.score = prepWindow ? PREP_CYCLE_SCORE : 280;
+        scored.policy = "card.replay-cycle-guard";
+      }
+      if (legal.action.type === "CAST_SPELL" && scored.score > 100 &&
+          refundedThisCombatRound(observation.state as unknown as GameState, observation.playerId, legal.action.cardId)) {
+        scored.score = 100;
+        scored.policy = "card.refunded-cast-guard";
+      }
       if (withdraw && legal.action.type === "RETREAT_FROM_COMBAT") {
         scored.score = 2_000;
         scored.policy = "combat.leave-two-armored-guards";
@@ -502,7 +606,15 @@ function chooseComputerActionUncached(
         ...(delayingPrepExit
           ? legal.action.type === "ACCEPT_COMBAT"
             ? { score: 225, policy: "combat.prepare-before-exit" }
-            : { score: Math.min(scored.score, 224), policy: "combat.prepare-before-exit" }
+            // A forecast-hopeless fight is left once the useful prep is done.
+            // The Victory Points Surrender stays ahead of that Retreat: the
+            // prep window is where Surrender is offered (legal-actions), and
+            // capped at 224 here the Retreat (the 3-VP Main Hero defeat) won.
+            : scored.policy === "combat.pvp-escape-hopeless"
+              ? { score: 230, policy: scored.policy }
+              : scored.policy === "combat.pvp-escape-vp-surrender"
+                ? { score: 231, policy: scored.policy }
+                : { score: Math.min(scored.score, 224), policy: "combat.prepare-before-exit" }
           : {}),
         tie: tieValue(tieSeed, legal),
       };

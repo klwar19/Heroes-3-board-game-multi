@@ -1,5 +1,5 @@
 import { isOpeningFarSweepField, securedFarTileIds } from "./far-sweep";
-import { heroReadyForGrowth, tileBandOffersGrowth } from "./map-navigation";
+import { eliminationRecaptureStep, heroReadyForGrowth, tileBandOffersGrowth } from "./map-navigation";
 import { preferredOpeningPacks, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan, goldLadderValuablesReserve } from "./development";
 import {
   GOLD_RESERVE,
@@ -41,6 +41,7 @@ import {
   heroesAtSpace,
   isFieldGuarded,
   isOuterEdgeSealed,
+  pvpAttacksBanned,
   materializeTileFields,
   heroMovementMax,
   neutralBattleLevel,
@@ -66,6 +67,7 @@ import type {
   ResourceCost,
   VisitStep,
 } from "../state";
+import { NEUTRAL_PLAYER_ID } from "../state";
 import { cardKeepValue } from "./card-policy";
 import { playersAreAllied } from "./control";
 import { cardTier } from "./card-values";
@@ -76,9 +78,11 @@ import {
   statisticEmpowerUtility,
   warMachineGrantUtility,
 } from "./recruit-value";
-import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
+import { isPremiumEconomyField, playerArmyStrength, pvpThreatens, shouldAssaultEnemyHolding, shouldEngageEnemy } from "./army-strength";
+import { pvpReach } from "./pvp-reach";
 import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
 import { effectiveTownBuildingCost, houseRuleEnabled } from "../house-rules";
+import { VP_ENDGAME_BUILD_ROUNDS, vpBuildingAddsPoint, vpRoundsLeft } from "./vp-plan";
 import { getRuleset, wisdomGoldDiscount } from "../ruleset";
 import { armyUnitRankInfo } from "../unit-experience";
 import {
@@ -277,6 +281,8 @@ function reachableMapGoldThisTurn(state: GameState, playerId: PlayerId): number 
     if (field.resource !== "gold" || !field.amount) continue;
     if (field.flagOwnerId === playerId) continue;   // already ours
     if ((field.difficulty ?? 0) > 0) continue;        // guarded — not a free grab this turn
+    // A Black-Cubed visitable (Water Wheel already taken) pays nothing now.
+    if (field.blackCube && locationDefinitions[field.location]?.category === "visitable") continue;
     if ((distanceFromHeroTo(state, hero, field.spaceId, true) ?? Infinity) <= mp) {
       gold += field.amount;
     }
@@ -317,6 +323,16 @@ function buildingScore(
         return 180;
       }
     }
+  }
+  // Victory Points endgame: every building in our Towns is 1 VP (8 at most)
+  // and resources left at the scoring are worth nothing, so the round's build
+  // token buys a point. Cheapest first — the next round may afford another.
+  const vpLeft = vpRoundsLeft(state);
+  if (vpLeft !== null && vpLeft <= VP_ENDGAME_BUILD_ROUNDS && vpBuildingAddsPoint(state, playerId)) {
+    const building = coreBuildingDefinitions[buildingId];
+    const cost = building ? effectiveTownBuildingCost(state, building) : {};
+    const weight = (cost.gold ?? 0) + 2 * (cost.buildingMaterials ?? 0) + 6 * (cost.valuables ?? 0);
+    return 988 - Math.min(13, Math.floor(weight / 4));
   }
   if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold" &&
       needsPremiumSilverBreakthrough(state, playerId)) return 240;
@@ -1133,6 +1149,16 @@ function populationScore(
         }
         return score;
       }
+      // USER RULING (2026-09-27): the level-7 Pack is the success target — a
+      // lower Gold Few or Pack waits while paying it now would land the level-7
+      // Pack a Resource Round later (trading counts only with a post in reach).
+      if (step.kind === "reinforce" && step.rank === 0 &&
+          action.purchases.some(purchase => purchase.unitDefId !== step.unitDefId &&
+            coreUnitDefinitions[purchase.unitDefId]?.tier === "gold") &&
+          lowerFewDelaysTopGold(state, observation.playerId, step.cost,
+            { gold: spentGold, buildingMaterials: spentMaterials, valuables: spentValuables })) {
+        return Math.min(score, 240);
+      }
       const saving =
         step.kind === "recruit" ||
         goldPurchaseReachable(state, observation.playerId, step.cost, 1);
@@ -1393,9 +1419,13 @@ function moveScore(
   // gold, buy the Silver unit, THEN attack. Otherwise the hero marches at the fight and
   // stalls bronze-only (the readiness gate refuses the attack) or wanders to a shrine.
   // Deterministic score above the equal-progress march step so the gold is taken first.
+  // (A Creature Bank has no Field Difficulty but IS guarded: the "free" test must
+  // be isFieldGuarded, or the step walks into an unassessed bank fight — lab
+  // seed lab-2, Tower R6 entered Medusa Stores at a 48% forecast this way.)
   if (primaryField && isPremiumEconomyField(primaryField) &&
       (primaryField.difficulty ?? 0) > 0 &&
       field.flagOwnerId !== observation.playerId && (field.difficulty ?? 0) === 0 &&
+      !isFieldGuarded(field) && field.location !== "creature_bank" &&
       fieldSuppliesResource(state, observation.playerId, field, "gold") &&
       silverAccessible(state, observation.playerId)) {
     const plannedSilver = nextPlannedSilver(state, observation.playerId);
@@ -2425,7 +2455,8 @@ function visitStepsUtility(
         const unit = state.players[playerId]?.army.find((candidate) => candidate.id === step.armyUnitId);
         const cost = reinforceCostFor(state, playerId, step.armyUnitId, step.halfCost, false, step.roundDown ?? false);
         const paid = eventResourceCostValue(cost ?? undefined) > 0;
-        utility += unit && paid && !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce") ? -100 : 36;
+        utility += unit && paid && (!goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce") ||
+          paidSilverPackWaitsForGold(state, playerId, unit.unitDefId)) ? -100 : 36;
         break;
       }
       case "RECRUIT_FREE":
@@ -2910,11 +2941,94 @@ function rejectsPaidBronzeSteps(state: GameState, playerId: PlayerId, steps: Rea
       const cost = reinforceCostFor(state, playerId, step.armyUnitId, step.halfCost, false, step.roundDown ?? false);
       return spendsMissingGoldRecruitFund(state, playerId, cost) || Boolean(hasGoldArmy(state, playerId) &&
         unit && eventResourceCostValue(cost ?? undefined) > 0 &&
-        !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce"));
+        !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce")) ||
+        Boolean(unit && eventResourceCostValue(cost ?? undefined) > 0 && paidSilverPackWaitsForGold(state, playerId, unit.unitDefId));
     }
     if (step.type === "PAY_TO") return rejectsPaidBronzeSteps(state, playerId, step.steps);
     return false;
   });
+}
+
+/** USER RULE (ladder spec): a PAID Silver Pack waits until the Gold ladder is
+ * done — the same gate the Population purchase path applies (score 180). A
+ * half-price hero-specialty reinforce (Isra's Friends) is still a paid Silver
+ * Pack: lab seed lab-1 Inferno paid 8 gold for Pit Lords on R6 and missed the R7
+ * Arch Devils. Earned Necromancy upgrades keep their own discounted path. */
+function paidSilverPackWaitsForGold(state: GameState, playerId: PlayerId, unitDefId: string): boolean {
+  if (coreUnitDefinitions[unitDefId]?.tier !== "silver") return false;
+  if (state.adventure?.pendingNecromancy?.playerId === playerId) return false;
+  return !armyDevelopmentProfile(state, playerId).goldUnlocked || nextGoldLadderStep(state, playerId) !== null;
+}
+
+/**
+ * Not getting caught: when a hostile hero we should NOT fight (the PvP
+ * forecast refuses it) can reach our hero's hex with its next turn's movement,
+ * a step to a hex outside every such reach — or one that shortens the walk to
+ * such a hex within this turn's movement — comes before ordinary travel. A
+ * premium capture (945) or a certain-kill step still outranks it. Lab league
+ * 2026-09-27: the new AI was caught 29 times in 52 games by stronger armies.
+ */
+/**
+ * An enemy holding its owner can garrison-defend (the settlement-style defense
+ * windows in adventure-reducer garrisonDefenderFor): stepping onto it opens a
+ * PvP battle against the owner's army. A Town counts through its controller
+ * when no flag stands on it.
+ */
+function enemyGarrisonHolding(state: GameState, playerId: PlayerId, field: MapFieldState): boolean {
+  const town = locationDefinitions[field.location]?.category === "town";
+  const holder = field.flagOwnerId ??
+    (town ? Object.values(state.towns ?? {}).find(candidate => candidate.fieldId === field.spaceId)?.controllerId ?? null : null);
+  if (!holder || holder === playerId || holder === NEUTRAL_PLAYER_ID || playersAreAllied(state, holder, playerId)) return false;
+  return town || field.location === "settlement" || field.location === "garrison" || field.location === "dragon_utopia" ||
+    (field.location === "mine" && houseRuleEnabled(state, "mine-army-defense"));
+}
+
+const EVADE_SAFE_SCORE = 890;
+const EVADE_CLOSER_SCORE = 880;
+export function evadeStepScore(
+  state: GameState,
+  playerId: PlayerId,
+  action: Extract<GameAction, { type: "MOVE_HERO" }>,
+): number | null {
+  const hero = state.heroes[action.heroId];
+  if (!hero?.spaceId || hero.controllerId !== playerId || pvpAttacksBanned(state)) return null;
+  // The Elimination clock's last turn: losing a battle is no worse than the
+  // certain loss at the end of it, so no step is spent running away (lab league
+  // 2026-09-27 L5-castle: the evade step cost the move that reached the base).
+  if ((state.players[playerId]?.eliminationCountdown ?? Infinity) <= 1) return null;
+  if (Object.values(state.heroes).some(other => other.spaceId === action.to && other.controllerId !== playerId)) return null;
+  // An evade step never OPENS a fight: not onto a guard or bank, nor an enemy
+  // holding its owner can garrison. It outranks the ordinary move score, which
+  // had already refused such a step (map.avoid-losing-garrison-step) — lab
+  // league 2026-09-27: a Secondary fled into an enemy Settlement, met the whole
+  // army and was defeated (5 units, 5 gold, morale, a Victory Point).
+  const destination = state.adventure?.fields[action.to];
+  if (!destination || isFieldGuarded(destination) || enemyGarrisonHolding(state, playerId, destination)) return null;
+  const threats = Object.values(state.heroes).filter(enemy => enemy.spaceId && enemy.controllerId !== playerId &&
+    enemy.controllerId !== "neutrals" && !state.players[enemy.controllerId]?.eliminated &&
+    !playersAreAllied(state, enemy.controllerId, playerId) &&
+    pvpThreatens(state, playerId, enemy.controllerId));
+  if (!threats.length) return null;
+  const reaches = threats.map(enemy => pvpReach(state, enemy, true));
+  const sheltered = (spaceId: string) => {
+    const field = state.adventure?.fields[spaceId];
+    return Boolean(field && locationDefinitions[field.location]?.passive?.protectsFromAttack);
+  };
+  const exposed = (spaceId: string) => !sheltered(spaceId) && reaches.some(reach => reach.has(spaceId));
+  if (!exposed(hero.spaceId)) return null;
+  const ours = pvpReach(state, hero);
+  const nearestSafe = (from: ReadonlyMap<string, number>) => {
+    let best = Infinity;
+    for (const [spaceId, cost] of from) if (!exposed(spaceId)) best = Math.min(best, cost);
+    return best;
+  };
+  const now = nearestSafe(ours);
+  if (!Number.isFinite(now)) return null;
+  if (!exposed(action.to)) return EVADE_SAFE_SCORE;
+  const stepCost = ours.get(action.to);
+  if (stepCost === undefined) return null;
+  const after = nearestSafe(pvpReach(state, { ...hero, spaceId: action.to, movementPoints: Math.max(0, hero.movementPoints - stepCost) }));
+  return after + stepCost <= now && after < now ? EVADE_CLOSER_SCORE : null;
 }
 
 function resolveVisitStepScore(
@@ -3473,7 +3587,32 @@ export function scoreMapAction(
         policy: "map.observatory-place-expansion-tile",
       };
     case "MOVE_HERO": {
+      // A step onto a hex holding a hostile hero OPENS a PvP battle. The route
+      // and approach rules below score steps as travel; none may start a fight
+      // the engagement forecast refuses (lab league 2026-09-27: a one-card army
+      // recruited a Phoenix and walked into the enemy hero on a premium route).
+      const blocker = Object.values(state.heroes).find(other => other.spaceId === action.to &&
+        other.controllerId !== observation.playerId && !playersAreAllied(state, other.controllerId, observation.playerId));
+      const blockerField = state.adventure?.fields[action.to];
+      if (blocker && !pvpAttacksBanned(state) && !(blockerField && locationDefinitions[blockerField.location]?.passive?.protectsFromAttack) &&
+          !eliminationRecaptureStep(state, observation.playerId, blockerField, true) &&
+          !shouldEngageEnemy(state, observation.playerId, blocker.controllerId, { field: blockerField })) {
+        return { score: 40, policy: "map.avoid-losing-pvp-step" };
+      }
+      // The same for passing THROUGH an enemy holding its owner can garrison:
+      // the step itself opens that fight (lab league: a route to a visitable
+      // crossed an enemy Settlement and met the whole army at 8%).
+      if (!blocker && blockerField?.flagOwnerId && blockerField.flagOwnerId !== observation.playerId &&
+          !playersAreAllied(state, blockerField.flagOwnerId, observation.playerId) &&
+          (blockerField.location === "settlement" || blockerField.location === "garrison" ||
+            blockerField.location === "dragon_utopia" || locationDefinitions[blockerField.location]?.category === "town" ||
+            (blockerField.location === "mine" && houseRuleEnabled(state, "mine-army-defense"))) &&
+          !eliminationRecaptureStep(state, observation.playerId, blockerField) &&
+          !shouldAssaultEnemyHolding(state, observation.playerId, blockerField)) {
+        return { score: 40, policy: "map.avoid-losing-garrison-step" };
+      }
       const ordinaryMoveScore = moveScore(observation, action);
+
       if (ordinaryMoveScore >= 1_000) {
         return { score: ordinaryMoveScore, policy: "map.clear-shared-space" };
       }
@@ -3495,7 +3634,8 @@ export function scoreMapAction(
           !(enterHero.spaceId && heroesAtSpace(state, enterHero.spaceId).length > 1) &&
           !gateFieldsLinked(enterHero.spaceId ? state.adventure?.fields[enterHero.spaceId] : undefined, enterField) &&
           combatReserve > 0 &&
-          enterHero.movementPoints < 1 + combatReserve) {
+          enterHero.movementPoints < 1 + combatReserve &&
+          !eliminationRecaptureStep(state, observation.playerId, enterField)) {
         // Preserve the planned paid continuations before entering. Only
         // banks with free continuations and unlimited fights are exempt.
         return { score: 250, policy: "map.save-guard-continuation" };
@@ -3733,7 +3873,7 @@ export function scoreMapAction(
       // A combat-only Spell (timing != "map") cannot be cast on this map turn, so
       // a high-tier one is the prime Book candidate: stashing banks it for a
       // crown-free cast in the next fight AND frees a hand slot — worth doing even
-      // from an uncrowded hand. A high-tier MAP Spell (Town Portal, View Air) the
+      // from an uncrowded hand. A high-tier MAP Spell (such as Town Portal) the
       // AI might want to cast NOW is left ready unless the hand is crowded.
       const combatOnly = cardLibrary[action.cardId]?.timing !== "map";
       if ((tier === "S" || tier === "A") && combatOnly) {

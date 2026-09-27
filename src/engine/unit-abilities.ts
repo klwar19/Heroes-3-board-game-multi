@@ -880,6 +880,19 @@ export function getAttackBonusOnAttackDie(attacker: CombatUnitState, roll: numbe
         ? total + ability.effect.amount
         : total,
     0
+  ) + (roll === 0 && devilPetrifyAbility(attacker) ? 1 : 0);
+}
+
+/**
+ * Arch Devils R3 Petrifying Curse: its "0" face adds +1 Attack to the unit's own
+ * attack (the "-1" face's Paralysis resolves after the hit in townAfterAttack).
+ */
+function devilPetrifyAbility(attacker: CombatUnitState): UnitAbilityDefinition | undefined {
+  return getUnitAbilityDefinitions(attacker).find(
+    (ability) =>
+      ability.implementationStatus === "implemented" &&
+      ability.effect?.type === "TOWN_VETERANCY" &&
+      ability.effect.mechanic === "devil-petrify"
   );
 }
 
@@ -888,13 +901,18 @@ export function getTriggeredAttackDieBonusAbilities(
   attacker: CombatUnitState,
   roll: number
 ): { abilityId: string; abilityName: string; amount: number }[] {
-  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_ON_ATTACK_DIE").flatMap((ability) =>
-    ability.effect?.type === "ATTACK_BONUS_ON_ATTACK_DIE" &&
-    roll >= ability.effect.minRoll &&
-    roll <= ability.effect.maxRoll
-      ? [{ abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
-      : []
-  );
+  const petrify = roll === 0 ? devilPetrifyAbility(attacker) : undefined;
+  return [
+    ...getAbilitiesWithEffect(attacker, "ATTACK_BONUS_ON_ATTACK_DIE").flatMap((ability) =>
+      ability.effect?.type === "ATTACK_BONUS_ON_ATTACK_DIE" &&
+      roll >= ability.effect.minRoll &&
+      roll <= ability.effect.maxRoll
+        ? [{ abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
+        : []
+    ),
+    // A separate id so the "0" bonus plays its own cue, not the Paralysis one.
+    ...(petrify ? [{ abilityId: "town-devil-petrify-fury", abilityName: petrify.name, amount: 1 }] : [])
+  ];
 }
 
 export type OnAttackDieToken = {
@@ -1540,7 +1558,9 @@ export function getPostAttackAbilityDamageEffects(
  * Specialty" passive counts here too. The caller floors the dealt damage at 0.
  */
 export function getSpellDamageReduction(unit: CombatUnitState): number {
-  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE")
+  // Necropolis Ghost Dragons' Spectral Ward: Spell damage still lands, −1 per instance.
+  return (factionVeterancy(unit, "spectral-ward") ? 1 : 0) +
+    getAbilitiesWithEffect(unit, "REDUCE_SPELL_DAMAGE")
     .reduce((total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_DAMAGE" ? ability.effect.amount : 0), 0)
     + getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE").reduce(
       (total, ability) => total + (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE" ? ability.effect.amount : 0),

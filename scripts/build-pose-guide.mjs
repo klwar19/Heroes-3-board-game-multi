@@ -13,6 +13,7 @@
  *
  *   node scripts/build-pose-guide.mjs <donor-slug> <out-base>
  *     [--grid 10x6 | auto] [--size 1536x1024] [--groups "2,0,15,12,3,4,5,7,8,20,21"] [--caps "4:6,5:7"]
+ *     [--meta other-atlases.json]
  *
  * Writes <out-base>.png (the guide: flat #8a8a8a backdrop) and <out-base>.json
  * (the layout: which donor group/frame each cell holds and where).
@@ -61,9 +62,13 @@ if (!donor || !outBase) {
   process.exit(1);
 }
 const [width, height] = option(args, "size", "1536x1024").split("x").map(Number);
-const atlas = JSON.parse(fs.readFileSync(META_FILE, "utf8"))[donor];
+// --meta: a donor atlas from another table (e.g. a hero atlas with its groups
+// renamed to creature ids by scripts/build-hero-pose-sprites.mjs); its image
+// path is then read as given (under public/).
+const metaOption = option(args, "meta", "");
+const atlas = JSON.parse(fs.readFileSync(metaOption ? path.resolve(ROOT, metaOption) : META_FILE, "utf8"))[donor];
 if (!atlas) throw new Error(`no atlas for donor ${donor}`);
-const image = path.join(CREATURE_DIR, path.basename(atlas.image));
+const image = metaOption ? path.join(ROOT, "public", atlas.image) : path.join(CREATURE_DIR, path.basename(atlas.image));
 
 const order = option(args, "groups", "2,0,15,12,3,4,5,7,8,20,21").split(",").map(Number).filter((g) => atlas.groups[String(g)]);
 const caps = Object.fromEntries(option(args, "caps", "").split(",").filter(Boolean).map((pair) => pair.split(":").map(Number)));

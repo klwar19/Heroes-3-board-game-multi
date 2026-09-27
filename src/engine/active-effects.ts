@@ -356,6 +356,48 @@ function effectIsFromSpecialty(effect: ActiveEffectState): boolean {
   return effect.source.type === "card" && cardLibrary[effect.source.cardId]?.kind === "hero-specialty";
 }
 
+const SPELL_DAMAGE_EFFECT_TYPE =
+  /^(DEAL_DAMAGE|AREA_DAMAGE_[A-Z_]+|DAMAGE_(?!SHIELD$)[A-Z_]+|CHAIN_LIGHTNING|INFERNO|METEOR_SHOWER_SPELL|DEATH_RIPPLE_SPELL|IMPLOSION[A-Z_]*|ARMAGEDDON[A-Z_]*|PLACE_FIRE_WALL)$/;
+const SPELL_DAMAGE_KEY = /^(damage|damages)(ByPower)?$/;
+
+function effectTreeCarriesDamage(node: unknown, depth = 0): boolean {
+  if (!node || typeof node !== "object" || depth > 8) return false;
+  if (Array.isArray(node)) return node.some((item) => effectTreeCarriesDamage(item, depth + 1));
+  const record = node as Record<string, unknown>;
+  if (typeof record.type === "string" && SPELL_DAMAGE_EFFECT_TYPE.test(record.type)) return true;
+  for (const [key, value] of Object.entries(record)) {
+    if (SPELL_DAMAGE_KEY.test(key) && value !== undefined && value !== null && value !== 0) return true;
+    if (value && typeof value === "object" && effectTreeCarriesDamage(value, depth + 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a Spell card has a damage component on any of its faces (Magic
+ * Arrow, Lightning Bolt, Fireball, Chain Lightning, Frost Ring, Meteor Shower,
+ * Inferno, Fire Wall, a Slow that also deals damage…). Read by Ghost Dragons'
+ * Spectral Ward: a damage Spell may still target the unit (its damage lands,
+ * −1); a Spell with no damage at all cannot.
+ */
+export function spellCardCarriesDamage(
+  card: (Pick<CardDefinition, "kind"> & Partial<Pick<CardDefinition, "effect">>) | undefined,
+): boolean {
+  return Boolean(card?.kind === "spell" && effectTreeCarriesDamage(card.effect));
+}
+
+/**
+ * Ghost Dragons' Spectral Ward (target legality only): a Spell that deals no
+ * damage cannot be aimed at, or land its reaction on, this unit. Damage Spells
+ * stay legal; their non-damage riders are dropped by unitIgnoresCardNonDamage /
+ * effectAppliesToUnit instead.
+ */
+export function spectralWardBlocksSpellCard(
+  unit: CombatUnitState,
+  card: (Pick<CardDefinition, "kind"> & Partial<Pick<CardDefinition, "effect">>) | undefined,
+): boolean {
+  return card?.kind === "spell" && factionVeterancy(unit, "spectral-ward") && !spellCardCarriesDamage(card);
+}
+
 /** Spells that place an ongoing effect directly on their selected unit. */
 export function spellCreatesDirectUnitOngoingEffect(
   card: (Pick<CardDefinition, "kind"> & Partial<Pick<CardDefinition, "effect">>) | undefined,
@@ -418,6 +460,8 @@ export function unitIgnoresCardNonDamage(
   state?: GameState
 ): boolean {
   return (
+    // Ghost Dragons' Spectral Ward: every non-damage part of any Spell.
+    (card?.kind === "spell" && factionVeterancy(unit, "spectral-ward")) ||
     (card?.kind === "spell" &&
       spellCreatesDirectUnitOngoingEffect(card) &&
       (hasIgnoreOngoingEffects(unit) || hasIgnoreOngoingSpellEffects(unit))) ||
@@ -435,6 +479,39 @@ export function specialtyImmunityActive(state: GameState | undefined, unit: Comb
         effectAppliesToUnit(effect, unit) &&
         effect.modifiers.some((modifier) => modifier.type === "SPECIALTY_IMMUNITY")
     )
+  );
+}
+
+/** Card kinds Olema's Weakness VI names: "spells, abilities, specialities, statistics or artifacts cards". */
+const ENEMY_CARD_TARGET_LOCK_KINDS: ReadonlySet<string> = new Set([
+  "spell",
+  "ability",
+  "hero-specialty",
+  "statistic",
+  "artifact",
+]);
+
+/**
+ * Olema's Weakness VI: true when `unit` carries an ENEMY_CARD_TARGET_LOCK
+ * effect placed by someone other than `playerId`, so a Spell / Ability /
+ * Specialty / Statistic / Artifact card played by `playerId` may not TARGET it
+ * (pick it, or land an attack-window instant on it). The lock's own controller
+ * (Olema) is never blocked. Untargeted / area effects are not affected.
+ */
+export function unitCardTargetLocked(
+  state: GameState | undefined,
+  unit: CombatUnitState,
+  playerId: PlayerId,
+  card: Pick<CardDefinition, "kind"> | undefined,
+): boolean {
+  if (!state || !card || !ENEMY_CARD_TARGET_LOCK_KINDS.has(card.kind)) {
+    return false;
+  }
+  return state.activeEffects.some(
+    (effect) =>
+      effect.controllerId !== playerId &&
+      effect.modifiers.some((modifier) => modifier.type === "ENEMY_CARD_TARGET_LOCK") &&
+      effectAppliesToUnit(effect, unit),
   );
 }
 
@@ -563,6 +640,12 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
     return false;
   }
   if (hasIgnoreOngoingSpellEffects(unit) && effect.scope === "unit" && effectIsFromSpell(effect)) {
+    return false;
+  }
+  // Ghost Dragons' Spectral Ward: no ongoing effect created by a Spell applies,
+  // whatever its scope or polarity (friendly buffs included). Spell damage is
+  // resolved separately and still lands (reduced by 1).
+  if (factionVeterancy(unit, "spectral-ward") && effectIsFromSpell(effect)) {
     return false;
   }
   // Fangarm: ignores all ongoing effects from spells AND specialties (but still

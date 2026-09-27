@@ -7,6 +7,7 @@ import { unitSoundKey } from "@/data/unit-sounds";
 import {
   applyAction,
   BATTLEFIELD_CELL_COUNT,
+  createAdventureGameState,
   createInitialGameState,
   getActivationOrder,
   getLegalActions,
@@ -338,15 +339,23 @@ describe("Summon Elemental spell", () => {
     expect(summoned?.abilities).toContain("elemental-damage");
   });
 
-  it("Power 4 summons a Pack and it joins the caster's army", () => {
+  // USER RULING 2026-09-27 ("AFTER SUMMON, WHY THEY APPEAR IN ROSTER? MUST
+  // DISAPPEAR IF IT'S SUMMON"): the summon is combat-only — it fights on its
+  // own initiative but never becomes an army card (supersedes the old "stays in
+  // your army like the Pit Lords' Demons" reading).
+  it("Power 4 summons a Pack that fights this combat but never joins the caster's army", () => {
+    const armyBefore = createInitialGameState("summon-seed").players.p1.army.map((entry) => entry.id);
     const { state, position } = castSummon("spell.summon_fire_elemental", 4);
     const summoned = unitAt(state, position);
     expect(summoned?.unitDefId).toBe("conflux.fire_elementals");
     expect(summoned?.variant).toBe("pack");
     // It acts on its own initiative this round (not pre-activated)…
     expect(summoned?.activatedThisRound).toBe(false);
-    // …and persists in the army afterwards, like the Pit Lords' Demons.
-    expect(state.players.p1.army.some((entry) => entry.unitDefId === "conflux.fire_elementals")).toBe(true);
+    // …but it is a combat-only body: no army card is minted for it.
+    expect(summoned?.temporary).toBe(true);
+    expect(summoned?.armyUnitId).toBeUndefined();
+    expect(state.players.p1.army.map((entry) => entry.id)).toEqual(armyBefore);
+    expect(state.players.p1.army.some((entry) => entry.unitDefId === "conflux.fire_elementals")).toBe(false);
   });
 
   it("enters the current round at its printed speed and receives a normal activation after faster units", () => {
@@ -447,6 +456,62 @@ describe("Summon Elemental spell", () => {
     for (const obstacle of combat.obstacles ?? []) {
       expect(offered.has(obstacle), `obstacle ${obstacle} must not be offered`).toBe(false);
     }
+  });
+
+  it("a real adventure fight: the summon fights and wins, then disappears — no army card, no Neutral card", () => {
+    let state = createAdventureGameState({ seed: "doom-neutral-e2e", difficulty: "normal", rollFirstPlayer: false });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:9:1" });
+    state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: state.players.p1.army[0].id, position: 13 });
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.initiative = unit.controllerId === "p1" ? 99 : 1;
+    }
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    const armyBefore = state.players.p1.army.map((entry) => `${entry.id}:${entry.unitDefId}:${entry.side}`);
+    const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
+
+    // Summon a Few of Air Elementals (Power 2) beside the guard.
+    state.players.p1.hand = ["spell.summon_air_elemental", "stat.power", "stat.power"];
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.target.type === "space" &&
+        Math.abs(legal.action.target.position - guard.position) === 1
+    );
+    expect(cast, "a summon space beside the guard").toBeTruthy();
+    state = applyOk(state, cast!.action);
+    for (let i = 0; i < 2; i += 1) {
+      const boost = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+      );
+      if (boost) state = applyOk(state, boost.action);
+    }
+    state = passAllReactions(state);
+    const summoned = Object.values(state.combat!.units).find((unit) => unit.unitDefId === "conflux.air_elementals");
+    expect(summoned?.temporary).toBe(true);
+
+    // The summon takes its own turn and lands the killing blow.
+    state = applyOk(state, { type: "END_ACTIVATION", playerId: "p1", unitId: state.combat!.activeUnitId! });
+    expect(state.combat!.activeUnitId).toBe(summoned!.id);
+    const liveGuard = state.combat!.units[guard.id];
+    liveGuard.maxHealth = 1;
+    liveGuard.damage = 0;
+    liveGuard.defense = 0;
+    liveGuard.abilities = [];
+    state.combat!.dice.scriptedRolls = Array(20).fill(0);
+    state.combat!.dice.rollCount = 0;
+    state = passAllReactions(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: summoned!.id, defenderId: guard.id })
+    );
+    expect(state.combat?.outcome?.winnerPlayerId).toBe("p1");
+    state = applyOk(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
+
+    expect(state.combat).toBeNull();
+    expect(state.players.p1.army.map((entry) => `${entry.id}:${entry.unitDefId}:${entry.side}`)).toEqual(armyBefore);
+    const neutralCards = Object.values(state.decks).flatMap((deck) => [...(deck?.drawPile ?? []), ...(deck?.discardPile ?? [])]);
+    expect(neutralCards).not.toContain("conflux.air_elementals");
   });
 });
 

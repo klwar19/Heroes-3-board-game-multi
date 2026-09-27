@@ -9,24 +9,32 @@ import {
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { assessDwellingRush, openingCorePackTarget, openingBronzeCoreReady } from "./development";
-import { playersAreAllied } from "./control";
+import { isComputerPlayer, playersAreAllied } from "./control";
+import { forecastContextKey, forecastCreatureBankField, forecastPlayerFight } from "./fight-forecast";
+import { getRuleset, unitSideRuleOverrides } from "../ruleset";
+import { houseRuleEnabled } from "../house-rules";
 import { isOpeningFarMaterialMine, secondFarFightNeedsSilver } from "./far-sweep";
 import type { UnitTier } from "@/data/factions/types";
 import {
   getUnitSide,
+  heroMovementMax,
+  makeCombatUnitFromArmy,
   NEUTRAL_ARMY_TABLE,
   neutralArmyDifficulty,
   neutralArmyDifficultyForField,
 } from "../adventure";
 import { armyUnitRankInfo } from "../unit-experience";
-import { combatUnitLimit } from "../adventure-reducer";
+import { COMBAT_UNIT_LIMIT, combatUnitLimit } from "../adventure-reducer";
 import { commandersModuleEnabled, makeCommanderCombatUnit } from "../commanders";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import { unitAbilities } from "@/data/units/abilities";
+import { vpEngageBarShift } from "./vp-plan";
 import { ATTACK_DIE_FACES } from "../battlefield";
 import type {
   ArmyUnitState,
   BankSize,
+  CombatUnitState,
+  HeroState,
   GameDifficulty,
   GameState,
   MapFieldState,
@@ -317,11 +325,165 @@ export function shouldEngageEnemy(
     ((field.location === "town" && town.fieldId === field.spaceId) ||
       ((field.location === "settlement" || field.location === "random_town") &&
         field.flagOwnerId === enemyPlayerId)));
+  // Forecast first: the two public armies fought forward over
+  // sampled dice against a thinking opponent, instead of a stat-sum ratio that
+  // cannot see matchups (Defense vs Attack, elemental strikes, shooters,
+  // paralysis). The ranked-replay lesson stays: every level the enemy main hero
+  // leads by demands a safer win chance (more specialty / expert cards, crowns).
+  // Walls and the town tower are not simulated: a fortified holding demands a
+  // wider margin instead (the stat-sum ratio waved a Conflux army into a
+  // Citadel-backed Settlement the forecast gave 0%, lab seed lab-4 R8).
+  {
+    const forecast = pvpEngagementForecast(state, playerId, enemyPlayerId,
+      Boolean(options.ignoreHeroLevel) && options.field?.location !== "mine");
+    if (forecast) {
+      const extraSides = Math.max(0, activeEnemySideCount(state, playerId) - 1);
+      const levelLead = options.ignoreHeroLevel ? 0 : enemyMainHeroLevelLead(state, playerId, enemyPlayerId);
+      // Victory Points endgame: the 3-VP Main Hero defeat can decide the
+      // score — guard a lead a loss would hand over, chase one a win takes.
+      const vpShift = options.ignoreHeroLevel ? 0 : vpEngageBarShift(state, playerId, enemyPlayerId);
+      const bar = Math.min(PVP_FORECAST_MAX_WIN,
+        PVP_FORECAST_ENGAGE_WIN + extraSides * PVP_FORECAST_SIDE_MARGIN + levelLead * PVP_FORECAST_LEVEL_MARGIN +
+        (fortified ? PVP_FORECAST_FORTIFIED_MARGIN : 0) + vpShift);
+      return forecast.winChance >= bar;
+    }
+  }
   const ratio = Math.min(
     MAX_HERO_LEVEL_ENGAGE_RATIO + (fortified ? 0.2 : 0),
     enemyEngagementRatio(state, playerId) + levelMargin + (fortified ? 0.2 : 0),
   );
   return pvpArmyStrength(state, playerId, enemyPlayerId) >= enemyStrength * ratio;
+}
+
+/**
+ * Whether a hostile player is a real THREAT if it attacks us: our forecast of
+ * that fight (their public army and estimated cards vs ours) stays under the
+ * defender bar. Separate from shouldEngageEnemy on purpose — declining to OPEN a
+ * 55% fight is prudence, but running from one hands the attacker a free turn
+ * (and a reckless attacker a free defeat). Falls back to the engage gate.
+ */
+export const PVP_THREAT_MAX_WIN = 0.45;
+
+/**
+ * The garrison fee our bases need right now: 8 gold (a Town / Settlement) when
+ * a hostile hero can reach one of them next turn while no hero of ours stands on
+ * it — and either it is our last base (losing it starts the elimination clock)
+ * or our units-only garrison would likely hold. 0 when nothing is threatened.
+ * A broke owner cannot garrison at all, so the holding simply falls (lab league
+ * 2026-09-27: Settlement and Town lost for free, then the game).
+ */
+export const GARRISON_FEE_GOLD = 8;
+export function garrisonFeeReserve(
+  state: GameState,
+  playerId: PlayerId,
+  reach: (hero: HeroState) => ReadonlyMap<string, number>,
+): number {
+  if (!state.adventure) return 0;
+  const bases = Object.values(state.adventure.fields).filter(field => field.flagOwnerId === playerId &&
+    (field.location === "settlement" || field.location === "random_town" ||
+      Object.values(state.towns ?? {}).some(town => town.fieldId === field.spaceId)));
+  if (!bases.length) return 0;
+  const guarded = new Set(Object.values(state.heroes).filter(hero => hero.controllerId === playerId && hero.spaceId)
+    .map(hero => hero.spaceId!));
+  for (const enemy of Object.values(state.heroes)) {
+    if (!enemy.spaceId || enemy.controllerId === playerId || enemy.controllerId === NEUTRAL_PLAYER_ID ||
+        state.players[enemy.controllerId]?.eliminated || playersAreAllied(state, playerId, enemy.controllerId)) continue;
+    const enemyReach = reach(enemy);
+    const exposed = bases.filter(base => !guarded.has(base.spaceId) && enemyReach.has(base.spaceId));
+    if (!exposed.length) continue;
+    if (bases.length === 1) return GARRISON_FEE_GOLD;
+    // Our units-only garrison against their public army and estimated cards
+    // (never their actual hidden hand).
+    const hold = pvpEngagementForecast(state, playerId, enemy.controllerId, false, true);
+    if (!hold || hold.winChance >= 0.5) return GARRISON_FEE_GOLD;
+  }
+  return 0;
+}
+export function pvpThreatens(state: GameState, playerId: PlayerId, enemyId: PlayerId): boolean {
+  const forecast = pvpEngagementForecast(state, playerId, enemyId, false);
+  return forecast ? forecast.winChance < PVP_THREAT_MAX_WIN : !shouldEngageEnemy(state, playerId, enemyId);
+}
+
+/** Win chance a PvP fight must forecast before the AI opens it: a duel accepts a
+ * clear edge, each further hostile side (who profits from the winner's losses)
+ * and each level the enemy main hero leads by demand more. */
+export const PVP_FORECAST_ENGAGE_WIN = 0.55;
+export const PVP_FORECAST_SIDE_MARGIN = 0.1;
+export const PVP_FORECAST_LEVEL_MARGIN = 0.08;
+export const PVP_FORECAST_MAX_WIN = 0.9;
+export const PVP_FORECAST_FORTIFIED_MARGIN = 0.15;
+
+/** The bodies a player would actually deploy — its strongest cards up to the
+ * deploy cap plus a living commander — as combat units. A heroless GARRISON
+ * side has no commander (it stands only beside its main hero —
+ * commanderStandsInCurrentCombat) and deploys the full five cards
+ * (combatSetupUnitLimit; Hellstorm's sixth still counts). */
+function deployableCombatUnits(state: GameState, playerId: PlayerId, garrison = false): CombatUnitState[] {
+  const player = state.players[playerId];
+  if (!player) return [];
+  const ruleset = getRuleset(state);
+  const overrides = unitSideRuleOverrides(state);
+  const limit = garrison
+    ? COMBAT_UNIT_LIMIT + (player.hellstormSixUnitRound === state.round ? 1 : 0)
+    : plannedUnitLimit(state, playerId);
+  const cards = [...player.army].sort((a, b) => unitSideStrength(b) - unitSideStrength(a))
+    .slice(0, limit);
+  const units = cards.flatMap((unit, index) => {
+    const made = makeCombatUnitFromArmy(unit, playerId, `u-${index}`, index, ruleset, overrides);
+    return made ? [made] : [];
+  });
+  if (!garrison && commandersModuleEnabled(state)) {
+    const commander = makeCommanderCombatUnit(player, units.length);
+    if (commander) units.push(commander);
+  }
+  return units;
+}
+
+/** Combat cards an opponent's HIDDEN hand is assumed to hold, from its public
+ * size alone (roughly one Attack or Defense card per three cards, a damage
+ * spell from three, Power from five), plus the phantom Power + Magic Arrow a
+ * computer seat fields in every combat. A garrison defends with units only. */
+/** An opponent's hand SIZE is public: a seat view empties the cards and keeps
+ * `handCount` (player-view.ts); the full state still carries the array. */
+function publicHandSize(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId] as (GameState["players"][string] & { handCount?: number }) | undefined;
+  return player?.handCount ?? player?.hand?.length ?? 0;
+}
+
+function estimatedEnemyCombatHand(state: GameState, enemyId: PlayerId, garrison: boolean): string[] {
+  if (garrison) return [];
+  const size = publicHandSize(state, enemyId);
+  const hand: string[] = [];
+  for (let card = 0; card < Math.floor(size / 3); card += 1) hand.push(card % 2 === 0 ? "stat.attack" : "stat.defense");
+  if (size >= 3) hand.push("spell.magic_arrow");
+  if (size >= 5) hand.push("stat.power");
+  if (isComputerPlayer(state, enemyId)) hand.push("stat.power", "spell.magic_arrow");
+  return hand;
+}
+
+const PVP_ENGAGE_MEMO_LIMIT = 128;
+const pvpEngageMemo = new Map<string, { winChance: number; expectedOwnLosses: number } | null>();
+function armySignature(state: GameState, playerId: PlayerId): string {
+  return (state.players[playerId]?.army ?? []).map(unit => `${unit.unitDefId}:${unit.side}:${unit.stacks ?? 0}:` +
+    `${unit.permanentAttackBonus ?? 0}:${unit.permanentHealthBonus ?? 0}:${unit.experience ?? 0}:${unit.transforms?.length ?? 0}`).join(",");
+}
+
+/** Memoized on the public armies and hands, so the map scorer can ask per candidate action. */
+export function pvpEngagementForecast(
+  state: GameState, playerId: PlayerId, enemyId: PlayerId, garrison: boolean,
+  /** WE hold a garrison: our units fight without cards. */
+  ownUnitsOnly = false,
+): { winChance: number; expectedOwnLosses: number } | null {
+  const key = `${state.seed}|${forecastContextKey(state, [playerId, enemyId])}|${playerId}|${enemyId}|${garrison}|${ownUnitsOnly}|${armySignature(state, playerId)}|${armySignature(state, enemyId)}|` +
+    `${plannedUnitLimit(state, playerId)}/${plannedUnitLimit(state, enemyId)}|` +
+    `${[...(state.players[playerId]?.hand ?? [])].sort().join(",")}|${publicHandSize(state, enemyId)}|` +
+    `${commandersModuleEnabled(state) ? commanderStrength(state, playerId) + "/" + commanderStrength(state, enemyId) : ""}`;
+  if (pvpEngageMemo.has(key)) return pvpEngageMemo.get(key)!;
+  const forecast = forecastPlayerFight(state, playerId, enemyId, deployableCombatUnits(state, playerId, ownUnitsOnly),
+    deployableCombatUnits(state, enemyId, garrison), estimatedEnemyCombatHand(state, enemyId, garrison), ownUnitsOnly);
+  if (pvpEngageMemo.size >= PVP_ENGAGE_MEMO_LIMIT) pvpEngageMemo.delete(pvpEngageMemo.keys().next().value as string);
+  pvpEngageMemo.set(key, forecast);
+  return forecast;
 }
 
 /**
@@ -403,7 +565,82 @@ export function creatureBankMatchupRatio(
     Boolean(state.adventure?.houseRules?.["polish-creature-banks"]),
   );
   if (!Number.isFinite(bankStr) || bankStr <= 0) return 0;
-  return deployedArmyStrength(state, playerId) / bankStr;
+  const ratio = deployedArmyStrength(state, playerId) / bankStr;
+  const polish = Boolean(state.adventure?.houseRules?.["polish-creature-banks"]);
+  const bank = (polish ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[bankId as CreatureBankId];
+  const paysResources = bankRewardPaysResources(bank);
+  // A resource-paying bank is judged by the simulated fight whatever the stat
+  // sum says (lab 2026-09-27: 30 in-reach banks forecast >= 90% were never
+  // fought because their stat ratio sat under 0.85 — ranked humans take 2.25
+  // banks by R7, this AI took 0.61). A unit-reward bank keeps the stat-sum
+  // pre-gate: opened to the forecast, armies went into 32 Dragon Fly Hive fights
+  // by R7 and the level-7 slipped (89 -> 83 of 156 by R8).
+  if (!paysResources && ratio <= BANK_ENGAGE_RATIO - 0.05) return ratio;
+  // Judged on the longest fight the seat can buy: a fresh turn's entry keeps
+  // every other movement point for paid continuations (see bankFightRounds).
+  const forecast = forecastCreatureBankField(state, playerId, field, bankFightRounds(state, playerId));
+  return forecast ? bankRatioFromForecast(ratio, forecast, paysResources) : ratio;
+}
+
+/**
+ * The simulated bank fight (public defender cards, sampled Stack Tokens, our
+ * army and fight cards) decides the bank: under this win chance it VETOES a bank
+ * the stat-sum ratio would enter (Dwarven Treasury and Medusa Stores entered on
+ * the ratio alone retreated 33 of 75 times in the 2026-09-27 lab); at or above
+ * it the bank is beatable whatever the ratio says. Only resource-paying banks
+ * earn the clear-margin promotion below (a promoting variant sent armies into
+ * 52 Dragon Fly Hive fights).
+ */
+export const BANK_FORECAST_ENGAGE_WIN = 0.75;
+
+/**
+ * Rounds a bank fight can last when entered on a fresh turn. Under
+ * `bank-move-points` each round after the first costs one movement point, so it
+ * is the main hero's movement (1 to enter, the rest to continue); otherwise the
+ * bank rolls on for free. Lab 2026-09-27: Treasury fights forecast at 95% were
+ * FORCED to retreat after round 2 (0 MP left) in 35% of entries.
+ */
+export function bankFightRounds(state: GameState, playerId: PlayerId, keptMovement?: number): number {
+  if (!houseRuleEnabled(state, "bank-move-points") || houseRuleEnabled(state, "free-neutral-combat-extend")) return 4;
+  if (keptMovement !== undefined) return 1 + Math.max(0, keptMovement);
+  const hero = Object.values(state.heroes ?? {}).find(candidate => candidate.controllerId === playerId && candidate.kind === "main");
+  return hero ? Math.max(1, heroMovementMax(state, hero)) : 3;
+}
+function bankRatioFromForecast(
+  ratio: number,
+  forecast: { winChance: number; expectedOwnLosses: number },
+  paysResources: boolean,
+): number {
+  if (forecast.winChance < BANK_FORECAST_ENGAGE_WIN) return Math.min(ratio, BANK_ENGAGE_RATIO - 0.05);
+  // A likely win of a paying bank the stat sum undervalues is still a fight the army can take.
+  if (paysResources) ratio = Math.max(ratio, BANK_ENGAGE_RATIO);
+  // A near-certain, cheap win of a bank that PAYS resources earns the clear-
+  // margin promotion (>= 1.2): on-time level-7 seats won 0.85 banks by R7 vs
+  // 0.36 for late ones (lab 2026-09-27). Unit-reward banks never get it — a
+  // promoting variant sent armies into 52 Dragon Fly Hive fights.
+  if (paysResources && forecast.winChance >= BANK_FORECAST_CLEAR_WIN && forecast.expectedOwnLosses <= BANK_FORECAST_CLEAR_LOSSES) {
+    return Math.max(ratio, 1.2);
+  }
+  return ratio;
+}
+export const BANK_FORECAST_CLEAR_WIN = 0.9;
+export const BANK_FORECAST_CLEAR_LOSSES = 0.5;
+
+/** Whether a bank's printed win reward pays gold, materials or valuables. */
+function bankRewardPaysResources(bank: { buildReward?: (x: number) => unknown } | undefined): boolean {
+  const yields = (interaction: unknown, depth = 0): boolean => {
+    if (!interaction || typeof interaction !== "object" || depth > 6) return false;
+    const it = interaction as { type?: string; interactions?: unknown[]; options?: { interaction?: unknown }[] } & Record<string, unknown>;
+    if (it.type === "GAIN_RESOURCES") return ["gold", "buildingMaterials", "valuables"].some(key => Number(it[key] ?? 0) > 0);
+    if (it.type === "SEQUENCE") return (it.interactions ?? []).some(step => yields(step, depth + 1));
+    if (it.type === "CHOOSE_ONE") return (it.options ?? []).some(option => yields(option?.interaction, depth + 1));
+    return false;
+  };
+  try {
+    return yields(bank?.buildReward?.(0));
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -800,6 +1037,12 @@ export function shouldAssaultEnemyHolding(
   // An ALLY's holding is never assaulted (defense in depth — callers filter
   // allies too, but this read must be safe to reuse on its own).
   if (playersAreAllied(state, ownerId, playerId)) return false;
+  // The owner must PAY to garrison (3 gold for a Mine / Garrison object, 8 for
+  // a Town / Settlement) and needs an army to do it: a broke or empty owner
+  // loses the holding without a fight — take it while that window is open.
+  const owner = state.players[ownerId];
+  const fee = field.location === "garrison" || field.location === "mine" ? 3 : 8;
+  if (!owner || owner.army.length === 0 || owner.resources.gold < fee) return true;
   // A garrison is defended by the owner's unit deck alone — no hero, so the
   // owner's hero level (cards, crowns) never enters this fight.
   return shouldEngageEnemy(state, playerId, ownerId, { ignoreHeroLevel: true, field });

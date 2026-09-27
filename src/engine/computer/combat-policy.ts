@@ -48,7 +48,8 @@ import type { ComputerObservation } from "./types";
 import { canStrikeFromLegalLanding, coordinatedReplyDamage } from "./opponent-reply";
 import { estimatedStrikeDamage, dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
-import { unitSideStrength } from "./army-strength";
+import { pvpEngagementForecast, unitSideStrength } from "./army-strength";
+import { vpSurrenderSavesPoints } from "./vp-plan";
 import { canUnitAttack, canUnitMoveAndAttack, getAttackKind, getLegalMoveDestinations, getUnitMoveRange } from "../legal-actions";
 import { getPermanentCardIds } from "../permanents";
 import { effectiveInitiative } from "../active-effects";
@@ -59,6 +60,30 @@ import { conditionExpectedStrikeDamage, conditionInitiativePrecedes } from "./ba
  * still threaten meaningful damage and enemies out-bulk us. Used to prefer
  * RETREAT over CONTINUE when the fight is hopeless (saves MP and units).
  */
+/** Score of a hopeless-PvP escape; above every combat action and, in the
+ * pre-battle prep window, above ACCEPT (the prep floor honours this policy). */
+export const PVP_ESCAPE_SCORE = 905;
+/** Win chance at or below which a PvP fight is hopeless enough to leave. */
+export const PVP_ESCAPE_MAX_WIN = 0.1;
+/** ...when it would also cost at least this many of our units. */
+export const PVP_ESCAPE_MIN_LOSSES = 1.5;
+
+/** Whether leaving this PvP combat now beats fighting it: only in the escape
+ * windows (no unit has fought yet), from our own public forecast of the two
+ * armies. A garrison defense is units-only on the owner's side. */
+function pvpEscapeIsBest(observation: ComputerObservation, combat: CombatState): boolean {
+  if (combat.context.kind !== "player" || combat.outcome) return false;
+  if (Object.values(combat.units).some(unit => unit.activatedThisRound || unit.damage > 0) || (combat.round ?? 1) > 1) return false;
+  const state = observation.state as unknown as GameState;
+  const me = observation.playerId;
+  const enemy = combat.attackerPlayerId === me ? combat.defenderPlayerId : combat.attackerPlayerId;
+  if (!enemy || enemy === me) return false;
+  const defendingGarrison = combat.defenderPlayerId === enemy && !combat.context.defenderHeroId &&
+    !combat.context.garrisonCardsAllowed;
+  const forecast = pvpEngagementForecast(state, me, enemy, defendingGarrison);
+  return Boolean(forecast && forecast.winChance <= PVP_ESCAPE_MAX_WIN && forecast.expectedOwnLosses >= PVP_ESCAPE_MIN_LOSSES);
+}
+
 function combatIsHopeless(
   observation: ComputerObservation,
   combat: CombatState,
@@ -2440,7 +2465,27 @@ export function scoreCombatAction(
           adventurePvpTroopLoss(observation.state as unknown as GameState) === "none") {
         return { score: -900, policy: "combat.keep-troops-never-retreat" };
       }
+      // A hopeless PvP fight caught in an escape window (pre-battle prep, the
+      // deployment, or deployed-but-untouched): leave with the army intact
+      // instead of feeding it to the stronger side. Retreat (5 gold, -1 morale)
+      // is the cheap exit; Surrender (10 gold, no morale hit) only when Retreat
+      // is not offered. Lab 2026-09-27 league: the side caught by a >= 80%
+      // forecast lost 64 of 66 fights, usually with most of its army.
+      // Victory Points mode flips the order for our MAIN hero while the
+      // opponent can still score its 3-VP defeat: a Retreat is that defeat
+      // (plus the winner's experience), a Surrender is 1 VP.
+      const surrenderFirst = vpSurrenderSavesPoints(observation.state as unknown as GameState, observation.playerId, combat) &&
+        observation.legalActions.some(legal => legal.action.type === "SURRENDER_COMBAT");
+      if (combat.context.kind === "player" && pvpEscapeIsBest(observation, combat)) {
+        const retreatOffered = observation.legalActions.some(legal => legal.action.type === "RETREAT_FROM_COMBAT");
+        if (action.type === "SURRENDER_COMBAT" && surrenderFirst) return { score: PVP_ESCAPE_SCORE, policy: "combat.pvp-escape-vp-surrender" };
+        if (action.type === "RETREAT_FROM_COMBAT") return { score: PVP_ESCAPE_SCORE - (surrenderFirst ? 5 : 0), policy: "combat.pvp-escape-hopeless" };
+        if (action.type === "SURRENDER_COMBAT" && !retreatOffered) {
+          return { score: PVP_ESCAPE_SCORE - 5, policy: "combat.pvp-escape-hopeless" };
+        }
+      }
       if (combatIsHopeless(observation, combat)) {
+        const vpBias = surrenderFirst ? (action.type === "SURRENDER_COMBAT" ? 3 : -3) : 0;
         const lostAUnit = Object.values(combat.units).some(
           (unit) =>
             unit.controllerId === observation.playerId && unitRemainingHealth(unit) <= 0,
@@ -2450,9 +2495,9 @@ export function scoreCombatAction(
           lostAUnit &&
           livingFriendlies(combat, observation.playerId).length > 0
         ) {
-          return { score: PVP_CONCEDE_SCORE, policy: "combat.pvp-concede-hopeless" };
+          return { score: PVP_CONCEDE_SCORE + vpBias, policy: "combat.pvp-concede-hopeless" };
         }
-        return { score: 380, policy: "combat.retreat-hopeless" };
+        return { score: 380 + vpBias, policy: "combat.retreat-hopeless" };
       }
       return { score: -900, policy: "combat.retreat-refuse" };
     }

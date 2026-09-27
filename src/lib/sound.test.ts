@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
-import { isTableUiClickTarget, playLibrarySound, playLibrarySoundThen, playTableUiClickSound, playUnitSound, setSoundMuted } from "./sound";
+import {
+  isTableUiClickTarget,
+  playLibrarySound,
+  playLibrarySoundThen,
+  playTableUiClickSound,
+  playUnitSound,
+  playUnitSoundFor,
+  setSoundMuted
+} from "./sound";
 
 /**
  * Records every <audio> the foley layer creates so a test asserts real
@@ -15,6 +23,7 @@ class FakeAudio {
   volume = 1;
   currentTime = 0;
   paused = true;
+  loop = false;
   playCount = 0;
   private listeners: Record<string, Array<() => void>> = {};
   constructor(src?: string) {
@@ -28,6 +37,9 @@ class FakeAudio {
     this.paused = false;
     this.playCount += 1;
     return Promise.resolve();
+  }
+  pause(): void {
+    this.paused = true;
   }
   fireEnded(): void {
     for (const cb of this.listeners.ended ?? []) {
@@ -209,6 +221,43 @@ describe("creature movement sound repeats", () => {
     expect(audio.playCount).toBe(2);
     audio.fireEnded();
     expect(audio.playCount).toBe(2);
+  });
+});
+
+describe("hex walk footsteps (playUnitSoundFor)", () => {
+  // A hex battlefield walk holds its move clip for the whole route. A unit
+  // whose move sound is a spoken line (Little Busters, Blue Archive) says it
+  // ONCE; its figure's footsteps (the H3 donor's move clip) carry the walk.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance", "Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const haruka = new Set((library["little-busters/voices/haruka/move"].random ?? []).map((key) => library[key].src ?? ""));
+
+  it("says a voiced unit's move line once and loops its figure's footsteps for exactly the walk", () => {
+    playUnitSoundFor("little_busters.haruka", "move", 0, 1200, "few", "units/leprechaun-move");
+    expect(FakeAudio.instances).toHaveLength(2);
+    const [line, steps] = FakeAudio.instances;
+    expect([...haruka].some((src) => src && line.src.includes(src)), "one of Haruka's move lines").toBe(true);
+    expect(line.loop, "the spoken line is never looped").toBe(false);
+    expect(steps.src).toContain("/sounds/units/leprechaun-move.mp3");
+    expect(steps.loop).toBe(true);
+    vi.advanceTimersByTime(1300);
+    expect(steps.paused, "the footsteps stop when the walk ends").toBe(true);
+    expect(steps.loop).toBe(false);
+  });
+
+  it("CONTROL: a creature's own footstep clip loops for the walk and never takes a gait", () => {
+    playUnitSoundFor("castle.halberdiers", "move", 0, 1200, "few", "units/leprechaun-move");
+    expect(FakeAudio.instances).toHaveLength(1);
+    const [steps] = FakeAudio.instances;
+    expect(steps.src).toContain("-move.mp3");
+    expect(steps.src).not.toContain("leprechaun");
+    expect(steps.loop).toBe(true);
+    vi.advanceTimersByTime(1300);
+    expect(steps.paused).toBe(true);
   });
 });
 

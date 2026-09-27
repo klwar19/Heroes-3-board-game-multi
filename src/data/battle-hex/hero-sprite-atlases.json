@@ -607,60 +607,64 @@
   },
   "hero-forge-magic": {
     "image": "/assets/battle-hex/heroes/hero-forge-magic.webp",
-    "frameWidth": 99,
-    "frameHeight": 132,
-    "columns": 8,
-    "anchorX": 41,
-    "anchorY": 115,
+    "frameWidth": 80,
+    "frameHeight": 114,
+    "columns": 11,
+    "anchorX": 32,
+    "anchorY": 112,
+    "originX": 38,
+    "originY": 54,
     "groups": {
       "0": {
-        "row": 0,
-        "frames": 8
+        "row": 1,
+        "frames": 1
       },
       "1": {
         "row": 0,
-        "frames": 8
+        "frames": 6
       },
       "2": {
-        "row": 1,
-        "frames": 8
+        "row": 2,
+        "frames": 11
       },
       "3": {
-        "row": 2,
-        "frames": 8
+        "row": 3,
+        "frames": 11
       },
       "4": {
-        "row": 3,
+        "row": 4,
         "frames": 8
       }
     }
   },
   "hero-forge-might": {
     "image": "/assets/battle-hex/heroes/hero-forge-might.webp",
-    "frameWidth": 99,
-    "frameHeight": 132,
-    "columns": 8,
-    "anchorX": 41,
-    "anchorY": 116,
+    "frameWidth": 78,
+    "frameHeight": 117,
+    "columns": 11,
+    "anchorX": 30,
+    "anchorY": 114,
+    "originX": 36,
+    "originY": 57,
     "groups": {
       "0": {
-        "row": 0,
-        "frames": 8
+        "row": 1,
+        "frames": 1
       },
       "1": {
         "row": 0,
-        "frames": 8
+        "frames": 6
       },
       "2": {
-        "row": 1,
-        "frames": 8
+        "row": 2,
+        "frames": 11
       },
       "3": {
-        "row": 2,
-        "frames": 8
+        "row": 3,
+        "frames": 11
       },
       "4": {
-        "row": 3,
+        "row": 4,
         "frames": 8
       }
     }
@@ -1034,6 +1038,166 @@
       "1": {
         "row": 1,
         "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-ba-mika": {
+    "image": "/assets/battle-hex/heroes/hero-ba-mika.webp",
+    "frameWidth": 79,
+    "frameHeight": 116,
+    "columns": 11,
+    "anchorX": 32,
+    "anchorY": 111,
+    "originX": 38,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-ba-yuuka": {
+    "image": "/assets/battle-hex/heroes/hero-ba-yuuka.webp",
+    "frameWidth": 73,
+    "frameHeight": 114,
+    "columns": 11,
+    "anchorX": 26,
+    "anchorY": 112,
+    "originX": 32,
+    "originY": 54,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 5
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-ba-seia": {
+    "image": "/assets/battle-hex/heroes/hero-ba-seia.webp",
+    "frameWidth": 75,
+    "frameHeight": 115,
+    "columns": 11,
+    "anchorX": 29,
+    "anchorY": 113,
+    "originX": 34,
+    "originY": 55,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-ba-chise": {
+    "image": "/assets/battle-hex/heroes/hero-ba-chise.webp",
+    "frameWidth": 74,
+    "frameHeight": 117,
+    "columns": 11,
+    "anchorX": 26,
+    "anchorY": 114,
+    "originX": 32,
+    "originY": 55,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-ba-kei": {
+    "image": "/assets/battle-hex/heroes/hero-ba-kei.webp",
+    "frameWidth": 74,
+    "frameHeight": 116,
+    "columns": 11,
+    "anchorX": 27,
+    "anchorY": 114,
+    "originX": 33,
+    "originY": 56,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 6
       },
       "2": {
         "row": 2,

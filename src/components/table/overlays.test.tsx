@@ -3966,3 +3966,91 @@ describe("ReactionTray — the Helm of the Alabaster Unicorn's Spell-deck cast h
     expect(screen.queryByRole("button", { name: /Cast from the Spell discard/i })).toBeNull();
   });
 });
+
+describe("ReactionTray — Plate of the Dying Light names the protected unit and its own amounts", () => {
+  // An enemy Power-2 Meteor Shower on space 9 hits the griffins (9) and the
+  // marksmen (10). Each affected unit gets its own Plate button that reads
+  // "Protect <unit> from this Spell (+1 Defense)" / "(+4 Defense; remove this
+  // card)" — never the option label with a unit name glued after "remove this
+  // card", and never Interference's "+2 Expert" (the Plate has no expert side).
+  function meteorOnP1(balance: boolean): GameState {
+    let state = createInitialGameState(`plate-tray-${balance}`);
+    state.adventure = {
+      houseRules: { "polish-card-balance": balance },
+      tiles: {},
+      playerFarTiles: {}
+    } as unknown as GameState["adventure"];
+    state.combat!.obstacles = [];
+    const layout: Record<string, number> = {
+      unit_p1_griffins: 9,
+      unit_p1_marksmen: 10,
+      unit_p1_crusaders: 0,
+      unit_p2_skeletons: 19,
+      unit_p2_vampires: 16,
+      unit_p2_dread_knights: 18
+    };
+    for (const [unitId, position] of Object.entries(layout)) {
+      state.combat!.units[unitId].position = position;
+    }
+    state.players.p1.hand = ["artifact.plate_of_the_dying_light"];
+    state.players.p2.hand = ["spell.meteor_shower", "stat.power", "stat.power"];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    const cast = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.meteor_shower",
+      target: { type: "space", position: 9 }
+    });
+    expect(cast.errors).toEqual([]);
+    state = cast.state;
+    // The caster pays Power 2 so the shower really damages.
+    for (let paid = 0; paid < 2 && state.reactionWindow?.priorityPlayerId === "p2"; paid += 1) {
+      const power = getLegalActions(state, "p2").find(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+      );
+      if (!power) break;
+      const paidState = applyAction(state, power.action);
+      expect(paidState.errors).toEqual([]);
+      state = paidState.state;
+    }
+    for (let safety = 10; state.reactionWindow && state.reactionWindow.priorityPlayerId !== "p1" && safety > 0; safety -= 1) {
+      const passed = applyAction(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+      expect(passed.errors).toEqual([]);
+      state = passed.state;
+    }
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    return state;
+  }
+
+  function tray(state: GameState) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it.each([false, true])("labels every affected unit's Plate play (Polish Balance %s)", (balance) => {
+    render(tray(meteorOnP1(balance)));
+    for (const unit of ["Griffins", "Marksmen"]) {
+      expect(
+        screen.getByRole("button", { name: new RegExp(`^Protect .*${unit}.* from this Spell \\(\\+1 Defense\\)$`) })
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", {
+          name: new RegExp(`^Protect .*${unit}.* from this Spell \\(\\+4 Defense; remove this card\\)$`)
+        })
+      ).toBeTruthy();
+    }
+    expect(screen.queryByRole("button", { name: /remove this card \S/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /\+2 Expert/ })).toBeNull();
+  });
+});

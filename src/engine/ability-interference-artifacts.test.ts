@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { getSpellCastRestriction, spellNullifiedByRestriction } from "./active-effects";
+import { chooseComputerAction } from "./computer/policy";
+import { observeForComputer } from "./computer/observation";
+import { hexPosition } from "./battlefield";
 import { cardLibrary } from "@/data/cards/library";
 import {
   artifactDeckBinhMajor,
   artifactDeckBinhRelic,
   artifactDeckLegacy
 } from "@/data/cards/artifacts";
-import type { ActiveEffectState, GameAction, GameState, PlayerId, UnitId } from "./state";
+import type { ActiveEffectState, GameAction, GameState, PlayerId, TargetRef, UnitId } from "./state";
 
 /**
  * Three "ability-interference" artifacts imported from the fan wiki, each driven
@@ -549,5 +552,367 @@ describe("Plate of the Dying Light — defense that also blunts spell damage", (
         legal.action.type === "PLAY_REACTION" && legal.action.cardId === PLATE && legal.action.mode === "expert"
     );
     expect(expertOffered).toBe(false);
+  });
+});
+
+/**
+ * USER REPORT: "meteor shower spell: why can't i use this plate of dying light?
+ * Bug, it's a spell". The Plate now answers an enemy AREA damaging Spell too:
+ * one offer per friendly unit the blast can hit, and the chosen unit alone gets
+ * the reduction. Area casts whose hit on that unit lands only AFTER the cast's
+ * stack item resolved (Fireball's second space, a Frost Ring pick) must still
+ * honour the paid Plate.
+ *
+ * 4×5 grid:  0  1  2  3 /  4  5  6  7 /  8  9 10 11 / 12 13 14 15 / 16 17 18 19
+ */
+describe("Plate of the Dying Light vs enemy AREA damaging Spells", () => {
+  const G = "unit_p1_griffins";
+  const M = "unit_p1_marksmen";
+
+  /** p2 (skeletons at 19) casts `spellId` at `target`; p1 holds `p1Hand`. */
+  function areaCast(
+    seed: string,
+    p1Hand: string[],
+    spellId: string,
+    target: TargetRef,
+    positions: Record<UnitId, number>,
+    casterPower = 0,
+    configure?: (state: GameState) => void
+  ): GameState {
+    const state = createInitialGameState(seed);
+    state.combat!.obstacles = [];
+    state.players.p1.hand = [...p1Hand];
+    state.players.p1.removed = [];
+    state.players.p2.hand = [spellId];
+    const layout: Record<UnitId, number> = {
+      unit_p1_griffins: 0,
+      unit_p1_marksmen: 2,
+      unit_p1_crusaders: 3,
+      unit_p2_skeletons: 19,
+      unit_p2_vampires: 16,
+      unit_p2_dread_knights: 18,
+      ...positions
+    };
+    for (const [unitId, position] of Object.entries(layout)) {
+      const unit = state.combat!.units[unitId];
+      unit.position = position;
+      unit.abilities = [];
+      unit.maxHealth = 20;
+      unit.damage = 0;
+    }
+    if (casterPower > 0) {
+      state.activeEffects.push({
+        id: "effect_plate_area_power",
+        name: "Test Power",
+        scope: "player",
+        controllerId: "p2",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SPELL_POWER_BONUS", amount: casterPower }],
+        source: { type: "system" },
+        startedRound: state.round,
+        usedRollEventIds: [],
+        usedChoiceIds: [],
+        usedCombatRoundNumbers: []
+      });
+    }
+    configure?.(state);
+    setActive(state, "p2", "unit_p2_skeletons");
+    state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    script(state, [0, 0, 0, 0, 0, 0]);
+    return applyOk(state, { type: "CAST_SPELL", playerId: "p2", cardId: spellId, target });
+  }
+
+  function plateOffers(state: GameState, optionIndex = 0) {
+    return getLegalActions(passUntil(state, "p1"), "p1")
+      .map((legal) => legal.action)
+      .filter(
+        (action): action is Extract<GameAction, { type: "PLAY_REACTION" }> =>
+          action.type === "PLAY_REACTION" && action.cardId === PLATE && action.optionIndex === optionIndex
+      );
+  }
+
+  function protect(state: GameState, unitId: UnitId, optionIndex = 0): GameState {
+    const offer = plateOffers(state, optionIndex).find(
+      (action) => action.target?.type === "unit" && action.target.unitId === unitId
+    );
+    expect(offer, `the Plate must be offered for ${unitId}`).toBeTruthy();
+    return settle(applyOk(passUntil(state, "p1"), offer!));
+  }
+
+  function pickTarget(state: GameState, unitId: UnitId): GameState {
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("expected a target pick");
+    expect(choice.candidateUnitIds).toContain(unitId);
+    return applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: choice.playerId,
+      choiceId: choice.id,
+      targetUnitId: unitId
+    });
+  }
+
+  const damageOf = (state: GameState, unitId: UnitId) => state.combat!.units[unitId].damage;
+
+  it("Meteor Shower: one offer per affected friendly unit; only the chosen unit is spared", () => {
+    // Centre 9 (griffins) + neighbour 10 (marksmen); crusaders at 3 stay out.
+    const meteor = (hand: string[]) =>
+      areaCast("plate-meteor", hand, "spell.meteor_shower", { type: "space", position: 9 }, { [G]: 9, [M]: 10 }, 2);
+
+    const offered = plateOffers(meteor([PLATE]));
+    expect(offered.map((action) => action.target?.type === "unit" && action.target.unitId).sort()).toEqual([M, G].sort());
+
+    // CONTROL: no Plate — both take the Power-2 hit of 1.
+    const control = settle(meteor([]));
+    expect([damageOf(control, G), damageOf(control, M)]).toEqual([1, 1]);
+
+    const protectedGriffins = protect(meteor([PLATE]), G);
+    expect(damageOf(protectedGriffins, G)).toBe(0);
+    expect(damageOf(protectedGriffins, M)).toBe(1);
+  });
+
+  it("Fireball on the 4×5 grid: a Plate on the splash victim still counts when the caster picks it", () => {
+    // Primary: griffins at 9; the marksmen at 10 are the only splash candidate.
+    const fireball = (hand: string[]) =>
+      areaCast("plate-fireball", hand, "spell.fireball", { type: "unit", unitId: G }, { [G]: 9, [M]: 10 });
+
+    // CONTROL: without the Plate the splash deals the full 1.
+    const control = pickTarget(settle(fireball([])), M);
+    expect(damageOf(control, M)).toBe(1);
+
+    const guarded = protect(fireball([PLATE]), M);
+    expect(damageOf(guarded, G), "the primary is not the protected unit").toBe(1);
+    const splashed = pickTarget(guarded, M);
+    expect(damageOf(splashed, M), "the paid Plate blunts the deferred splash").toBe(0);
+    // The carried reduction is spent with that hit — nothing lingers.
+    expect(splashed.combat!.pendingInterfereSpellReductions).toBeUndefined();
+  });
+
+  it("Frost Ring picks on the 4×5 grid: the protected ring unit is spared when picked", () => {
+    // Ring of 9 = {5, 8, 10, 13}: griffins 5, marksmen 10, vampires 13 → 3 candidates, 2 picks.
+    const ring = (hand: string[]) =>
+      areaCast(
+        "plate-frost-ring",
+        hand,
+        "spell.frost_ring",
+        { type: "space", position: 9 },
+        { [G]: 5, [M]: 10, unit_p2_vampires: 13 }
+      );
+
+    // CONTROL: without the Plate a picked marksmen takes the full 1.
+    const control = pickTarget(settle(ring([])), M);
+    expect(damageOf(control, M)).toBe(1);
+
+    const guarded = protect(ring([PLATE]), M);
+    const first = pickTarget(guarded, M);
+    expect(damageOf(first, M)).toBe(0);
+    // The second pick still hits the unprotected griffins in full.
+    const second = pickTarget(first, G);
+    expect(damageOf(second, G)).toBe(1);
+    expect(second.combat!.pendingInterfereSpellReductions).toBeUndefined();
+  });
+
+  // USER RULING 2026-09-27: "yes, cover all damage spell like that, choose
+  // target properly instant window" — Chain Lightning (target AND hops), Death
+  // Ripple and a Power-2 Earthquake join the per-unit offers.
+  const V = "unit_p2_vampires";
+  const C = "unit_p1_crusaders";
+  const offeredIds = (state: GameState) =>
+    plateOffers(state)
+      .map((action) => (action.target?.type === "unit" ? action.target.unitId : ""))
+      .sort();
+
+  it("Chain Lightning: the target AND every hop unit are offered; a Plate on a hop unit blunts its bolt", () => {
+    // Power 0 = 1/1/1: griffins (9) is the target; marksmen (10) and the enemy
+    // vampires (8) are the two closest units, so both hops land inline.
+    const chain = (hand: string[]) =>
+      areaCast("plate-chain", hand, "spell.chain_lightning", { type: "unit", unitId: G }, { [G]: 9, [M]: 10, [V]: 8 });
+    expect(offeredIds(chain([PLATE]))).toEqual([G, M].sort());
+
+    const control = settle(chain([]));
+    expect([damageOf(control, G), damageOf(control, M), damageOf(control, V)]).toEqual([1, 1, 1]);
+
+    const guarded = protect(chain([PLATE]), M);
+    expect(damageOf(guarded, M), "the protected hop unit").toBe(0);
+    expect(damageOf(guarded, G)).toBe(1);
+    expect(damageOf(guarded, V)).toBe(1);
+  });
+
+  it("Chain Lightning Power 4 (3/2/1): the hop the caster aims AFTER the cast resolved still honours the Plate", () => {
+    const chain = (hand: string[]) =>
+      areaCast("plate-chain-aimed", hand, "spell.chain_lightning", { type: "unit", unitId: G }, { [G]: 9, [M]: 10, [V]: 8 }, 4);
+    // CONTROL: the aimed 2-damage hop on the marksmen lands in full.
+    const control = pickTarget(settle(chain([])), M);
+    expect(damageOf(control, M)).toBe(2);
+
+    const guarded = protect(chain([PLATE]), M);
+    expect(damageOf(guarded, G)).toBe(3);
+    const aimed = pickTarget(guarded, M);
+    expect(damageOf(aimed, M)).toBe(1);
+    expect(damageOf(aimed, V), "the last bolt still lands on the vampires").toBe(1);
+    expect(aimed.combat!.pendingInterfereSpellReductions).toBeUndefined();
+  });
+
+  const ripple = (hand: string[], power = 0, tune?: (state: GameState) => void) =>
+    areaCast("plate-ripple", hand, "spell.death_ripple", { type: "none" }, { [G]: 5, [M]: 6 }, power, (state) => {
+      state.combat!.units[G].grade = "bronze";
+      state.combat!.units[M].grade = "bronze";
+      state.combat!.units[C].grade = "silver";
+      tune?.(state);
+    });
+
+  it("Death Ripple: every friendly unit its current Power reaches is offered; only the chosen one is spared", () => {
+    // Power 0 reaches bronze only; Power 2 adds the silver crusaders.
+    expect(offeredIds(ripple([PLATE]))).toEqual([G, M].sort());
+    expect(offeredIds(ripple([PLATE], 2))).toEqual([C, G, M].sort());
+
+    const control = settle(ripple([]));
+    expect([damageOf(control, G), damageOf(control, M)]).toEqual([1, 1]);
+    const guarded = protect(ripple([PLATE]), G);
+    expect(damageOf(guarded, G)).toBe(0);
+    expect(damageOf(guarded, M)).toBe(1);
+  });
+
+  it("Earthquake at Power 2: each friendly unit beside a standing Wall or Gate is offered; the chosen one is spared", () => {
+    // p1 besieges p2's walls (8, 10, 11) and Gate (9); p2 holds the Plate.
+    const quake = (p2Hand: string[]) => {
+      const state = createInitialGameState("plate-earthquake");
+      state.combat!.siege = { townPlayerId: "p2", walls: [8, 10, 11], gatePosition: 9, arrowTowerUnitId: null };
+      state.combat!.obstacles = [];
+      const layout: Record<UnitId, number> = {
+        unit_p1_marksmen: 1,
+        unit_p1_griffins: 5,
+        unit_p1_crusaders: 3,
+        unit_p2_skeletons: 13,
+        unit_p2_vampires: 12,
+        unit_p2_dread_knights: 18
+      };
+      for (const [unitId, position] of Object.entries(layout)) {
+        const unit = state.combat!.units[unitId];
+        unit.position = position;
+        unit.abilities = [];
+        unit.maxHealth = 20;
+        unit.damage = 0;
+      }
+      state.players.p1.hand = ["spell.earthquake", "stat.power", "stat.power"];
+      state.players.p2.hand = [...p2Hand];
+      setActive(state, "p1", "unit_p1_marksmen");
+      const cast = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.earthquake"
+      );
+      expect(cast, "Earthquake is castable against standing fortifications").toBeTruthy();
+      let casted = applyOk(state, cast!.action);
+      // The caster pays Power 2 into the cast with two Power statistics.
+      for (let paid = 0; paid < 2; paid += 1) {
+        const power = getLegalActions(passUntil(casted, "p1"), "p1").find(
+          (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+        );
+        expect(power, "the caster can pay Power into Earthquake").toBeTruthy();
+        casted = applyOk(passUntil(casted, "p1"), power!.action);
+      }
+      return casted;
+    };
+    const p2Offers = (state: GameState) =>
+      getLegalActions(passUntil(state, "p2"), "p2")
+        .map((legal) => legal.action)
+        .filter(
+          (action): action is Extract<GameAction, { type: "PLAY_REACTION" }> =>
+            action.type === "PLAY_REACTION" && action.cardId === PLATE && action.optionIndex === 0
+        );
+    // The skeletons (beside the Gate) and the vampires (beside a Wall) — not the
+    // distant dread knights.
+    expect(
+      p2Offers(quake([PLATE])).map((action) => (action.target?.type === "unit" ? action.target.unitId : "")).sort()
+    ).toEqual(["unit_p2_skeletons", V].sort());
+
+    const control = settle(quake([]));
+    expect([damageOf(control, "unit_p2_skeletons"), damageOf(control, V)]).toEqual([1, 1]);
+
+    const state = quake([PLATE]);
+    const offer = p2Offers(state).find(
+      (action) => action.target?.type === "unit" && action.target.unitId === "unit_p2_skeletons"
+    );
+    const guarded = settle(applyOk(passUntil(state, "p2"), offer!));
+    expect(damageOf(guarded, "unit_p2_skeletons")).toBe(0);
+    expect(damageOf(guarded, V)).toBe(1);
+    expect(damageOf(guarded, G), "the caster's own wall-side unit is hit too").toBe(1);
+  });
+
+  it("hex board: Chain Lightning offers exactly the units its PC hops can reach (a second-hop unit, not the 4×5 fork)", () => {
+    const hex = (column: number, row: number): number => {
+      const position = hexPosition(column, row);
+      if (position === null) throw new Error(`off board ${column},${row}`);
+      return position;
+    };
+    // p2 aims at the griffins; the chain hops griffins → vampires → crusaders.
+    // The marksmen are the 4×5 fork's second-closest unit but no hop reaches them.
+    const hexChain = (hand: string[]) => {
+      const state = createInitialGameState("plate-hex-chain", { hexBattlefield: true });
+      const place: Record<UnitId, number> = {
+        unit_p1_griffins: hex(6, 4),
+        unit_p2_vampires: hex(8, 4),
+        unit_p1_crusaders: hex(10, 4),
+        unit_p1_marksmen: hex(6, 1),
+        unit_p2_skeletons: hex(1, 8),
+        unit_p2_dread_knights: hex(11, 8)
+      };
+      for (const [unitId, position] of Object.entries(place)) {
+        const unit = state.combat!.units[unitId];
+        unit.position = position;
+        unit.abilities = [];
+        unit.maxHealth = 20;
+        unit.damage = 0;
+      }
+      state.players.p1.hand = [...hand];
+      state.players.p1.removed = [];
+      state.players.p2.hand = ["spell.chain_lightning"];
+      setActive(state, "p2", "unit_p2_skeletons");
+      state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+      return applyOk(state, {
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.chain_lightning",
+        target: { type: "unit", unitId: G }
+      });
+    };
+    expect(offeredIds(hexChain([PLATE]))).toEqual([C, G].sort());
+
+    const control = settle(hexChain([]));
+    expect([damageOf(control, G), damageOf(control, V), damageOf(control, C), damageOf(control, M)]).toEqual([1, 1, 1, 0]);
+    const guarded = protect(hexChain([PLATE]), C);
+    expect(damageOf(guarded, C), "the protected second-hop unit").toBe(0);
+    expect(damageOf(guarded, G)).toBe(1);
+  });
+
+  it("a unit that takes no damage from the Spell is not offered (Fire Immunity vs a Fireball splash)", () => {
+    const fireball = (immune: boolean) =>
+      areaCast("plate-fireball-immune", [PLATE], "spell.fireball", { type: "unit", unitId: G }, { [G]: 9, [M]: 10 }, 0,
+        (state) => {
+          if (immune) state.combat!.units[M].abilities = ["fire-elemental-immunity"];
+        });
+    // CONTROL: the ordinary splash candidate is protectable.
+    expect(offeredIds(fireball(false))).toEqual([G, M].sort());
+    expect(offeredIds(fireball(true))).toEqual([G]);
+  });
+
+  it("the AI answers: it shields its most valuable affected unit and the play resolves", () => {
+    const state = passUntil(
+      ripple([PLATE], 0, (draft) => {
+        // Listed first but weak vs listed second and strong.
+        Object.assign(draft.combat!.units[M], { attack: 0, initiative: 1 });
+        Object.assign(draft.combat!.units[G], { attack: 8, initiative: 9 });
+      }),
+      "p1"
+    );
+    const decision = chooseComputerAction(observeForComputer(state, "p1"));
+    expect(decision?.action.type).toBe("PLAY_REACTION");
+    const action = decision!.action as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(action.cardId).toBe(PLATE);
+    expect(action.target).toEqual({ type: "unit", unitId: G });
+    const after = settle(applyOk(state, action));
+    expect(damageOf(after, G)).toBe(0);
+    expect(damageOf(after, M)).toBe(1);
   });
 });

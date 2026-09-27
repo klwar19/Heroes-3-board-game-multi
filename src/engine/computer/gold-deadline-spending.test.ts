@@ -36,12 +36,13 @@ describe("gold milestone deadline spending", () => {
   }
 
   it("prices the missing valuables in gold after surplus materials are exchanged", () => {
-    // Milestone: Gold dwelling 10g/9m/4v + Archangels 20g/1v. R7 → one payout (R9).
-    // Valuables 1 + 1 - 5 = -3; materials 10 + 4 - 9 = +5 → one 3:1 exchange → 2 valuables × 6 gold.
-    const state = castleSeat(7, { gold: 26, buildingMaterials: 10, valuables: 1 });
-    expect(goldMilestoneConversionGold(state, "p2")).toBe(12);
+    // Milestone: Gold dwelling 10g/9m/4v + Archangels 20g/1v, due by R8 (USER
+    // 2026-09-27: level-7 before round 9) — at R7 no payout lands before it.
+    // Valuables 1 - 5 = -4; materials 13 - 9 = +4 → one 3:1 exchange → 3 valuables × 6 gold.
+    const state = castleSeat(7, { gold: 26, buildingMaterials: 13, valuables: 1 });
+    expect(goldMilestoneConversionGold(state, "p2")).toBe(18);
     // CONTROL: with the valuables in stock nothing needs converting.
-    const flush = castleSeat(7, { gold: 26, buildingMaterials: 10, valuables: 4 });
+    const flush = castleSeat(7, { gold: 26, buildingMaterials: 13, valuables: 5 });
     expect(goldMilestoneConversionGold(flush, "p2")).toBe(0);
   });
 

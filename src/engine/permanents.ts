@@ -125,6 +125,18 @@ export function activeWarMachineCardId(state: GameState, playerId: PlayerId): Ca
 }
 
 /**
+ * The in-play war machines that take the field in this player's combats:
+ * every one, except under the Factory Tinkerer, where only the active machine
+ * fights and the other waits in reserve (startWarMachineRound's rule).
+ */
+export function fieldedWarMachineCardIds(state: GameState, playerId: PlayerId): CardId[] {
+  const machines = getPermanentCardIds(state, playerId).filter(isWarMachineCard);
+  if (!tinkererActive(state, playerId)) return machines;
+  const active = activeWarMachineCardId(state, playerId);
+  return active ? [active] : [];
+}
+
+/**
  * How many permanents the player may keep in play: 1 as printed ("You may
  * only have one permanent card at a time"), unless an in-play Pandora's Box
  * permanent raises it ("You can have up to 3 permanent cards played at a

@@ -1349,12 +1349,13 @@ describe("WOG commanders — specialties", () => {
     expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(10);
     expect(moved.combat!.runes?.p1?.count).toBe(3);
 
-    // Level 1 gives the living Rune Keeper its own extra +1 Attack on top of the
-    // army-wide Rune Power (6 banked + 3 = 9 → Level 1).
+    // Level 1 gives the living Rune Keeper its own +1 Speed (user ruling
+    // 2026-09-27; it was +1 Attack) on top of the army-wide Rune Power
+    // (6 banked + 3 = 9 → Level 1).
     const keeperRider = (state: GameState) =>
       state.activeEffects.filter(
         (effect) =>
-          effect.name === "Rune Keeper's Rune Power" &&
+          effect.name === "Rune Keeper's Rune Swiftness" &&
           effect.target?.type === "unit" &&
           effect.target.unitId === commanderUnitId("p1")
       );
@@ -1362,6 +1363,7 @@ describe("WOG commanders — specialties", () => {
     gainRunes(s, "p1", 3);
     expect(s.combat!.runes?.p1).toMatchObject({ count: 0, appliedLevel: 1 });
     expect(keeperRider(s)).toHaveLength(1);
+    expect(keeperRider(s)[0].modifiers).toEqual([{ type: "INITIATIVE_BONUS", amount: 1 }]);
 
     // CONTROL: a Paladin commander (even for a Bulwark player) has no Rune Ritual,
     // so neither being attacked nor moving banks anything.
@@ -1372,7 +1374,7 @@ describe("WOG commanders — specialties", () => {
     // CONTROL: a Paladin commander reaching Level 1 gets no Rune Keeper rider.
     gainRunes(ctrlMoved, "p1", 9);
     expect(ctrlMoved.combat!.runes?.p1?.appliedLevel).toBe(1);
-    expect(ctrlMoved.activeEffects.some((effect) => effect.name === "Rune Keeper's Rune Power")).toBe(false);
+    expect(ctrlMoved.activeEffects.some((effect) => effect.name === "Rune Keeper's Rune Swiftness")).toBe(false);
   });
 });
 

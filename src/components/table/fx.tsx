@@ -160,8 +160,21 @@ export type FxCue =
       sound?: string;
       /** Grow/hold/fade (default DEFAULT_BEAM_TIMING, the quick zap). */
       timing?: BeamTiming;
-      /** The volley's first zap: a hex war machine at `from` plays its firing frames. */
-      fire?: boolean;
+    }
+  | {
+      /**
+       * Hex battlefield: the war machine standing at `anchor`
+       * (`war-machine:<player>:<card>`) plays its H3 firing row toward `to`,
+       * its shot leaving `releaseMs` in — on its PC climax frame. The page
+       * queues the shot's projectile / beam on that beat, from the same
+       * machine (several Ballistas take turns). No machine figure = no-op.
+       */
+      kind: "machine";
+      id: string;
+      anchor: string;
+      to: string;
+      releaseMs: number;
+      delayMs?: number;
     }
   | {
       /**
@@ -246,6 +259,11 @@ export type FxCue =
       to: string;
       attackKind: "melee" | "ranged";
       flip?: boolean;
+      /**
+       * Hex figure only: the blow / shot lands this long after the cue starts
+       * (default: the shared impact beat, or HEX_RANGED_RELEASE_MS for a shot).
+       */
+      releaseMs?: number;
       delayMs?: number;
     }
   | {
@@ -253,6 +271,8 @@ export type FxCue =
       kind: "shake";
       id: string;
       unitId: string;
+      /** Hex figure only: the struck unit took Defend, so it braces (its H3 defend clip) instead of flinching. */
+      defending?: boolean;
       delayMs?: number;
     }
   | {
@@ -396,14 +416,48 @@ function firstVisibleAnchor(selector: string): Element | null {
   return null;
 }
 
+/**
+ * Hex battlefield: the war machine figures of an anchor
+ * (`war-machine:<player>:<card>`; several when granted Ballistas stand beside
+ * the player's own). A figure is a zero-size point at its feet, so its body
+ * span tells whether the board is on screen.
+ */
+function hexWarMachineFigures(anchor: string): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(`[data-hex-war-machine][data-fx-anchor="${CSS.escape(anchor)}"]`)
+  ).filter((figure) => {
+    const rect = figure.querySelector("[data-fx-body]")?.getBoundingClientRect();
+    return Boolean(rect && rect.width > 0 && rect.height > 0);
+  });
+}
+
+/** Per anchor, the machine that fired last: its shot, beam or recoil comes from it. */
+const firedHexWarMachines = new Map<string, HTMLElement>();
+
+/** The next machine of an anchor to fire (several Ballistas take turns), remembered for its shot. */
+function fireHexWarMachine(anchor: string): HTMLElement | null {
+  const figures = hexWarMachineFigures(anchor);
+  if (figures.length === 0) return null;
+  const last = firedHexWarMachines.get(anchor);
+  const next = figures[(last ? figures.indexOf(last) + 1 : 0) % figures.length];
+  firedHexWarMachines.set(anchor, next);
+  return next;
+}
+
+/** The machine a war-machine anchor resolves to on the hex battlefield (the one that fired last), or null. */
+function hexWarMachineFigure(anchor: string): HTMLElement | null {
+  const figures = hexWarMachineFigures(anchor);
+  const fired = firedHexWarMachines.get(anchor);
+  return fired && figures.includes(fired) ? fired : figures[0] ?? null;
+}
+
 function resolveAnchorElement(anchor: string): Element | null {
   if (typeof document === "undefined") {
     return null;
   }
   if (anchor.startsWith("war-machine:")) {
     // Hex battlefield: the machine itself stands on the field; fire from it.
-    return firstVisibleAnchor(`[data-hex-war-machine][data-fx-anchor="${anchor}"]`) ??
-      firstVisibleAnchor(`[data-fx-anchor="${anchor}"]`);
+    return hexWarMachineFigure(anchor) ?? firstVisibleAnchor(`[data-fx-anchor="${anchor}"]`);
   }
   const [kind, value] = anchor.split(":", 2);
   return kind === "unit"
@@ -434,7 +488,9 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
       : null;
     const body = bodyUnitId
       ? document.querySelector(`[data-hex-unit="${CSS.escape(bodyUnitId)}"] [data-fx-body]`)
-      : null;
+      : element.hasAttribute("data-hex-war-machine")
+        ? element.querySelector("[data-fx-body]")
+        : null;
     const rect = (body ?? element).getBoundingClientRect();
     if (anchor.startsWith("hand:") &&
       (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth)) {
@@ -516,15 +572,53 @@ function unitCellRects(unitId: string): DOMRect[] {
  * of its two hexes. Every other anchor (and the whole 4x5 board, which has no
  * figures) keeps `rect`.
  */
-function hexLaunchRect(anchor: string, rect: DOMRect, toward: { x: number; y: number }): DOMRect {
+function hexLaunchRect(anchor: string, rect: DOMRect, toward: { x: number; y: number }, shot = false): DOMRect {
+  if (anchor.startsWith("war-machine:")) {
+    // A war machine on the field looses its shot from its PC missile point
+    // (the Ballista's bolt groove, the Catapult's arm) for the row it fired.
+    const machine = shot ? hexWarMachineFigure(anchor) : null;
+    const launch = machine ? hexMissilePoint(machine, toward) : null;
+    return launch ? new DOMRect(launch.x - rect.width / 2, launch.y - rect.height / 2, rect.width, rect.height) : rect;
+  }
   if (!anchor.startsWith("unit:") && !anchor.startsWith("cell:")) return rect;
   const unitId = resolveAnchorElement(anchor)?.getAttribute("data-fx-unit");
-  if (!unitId || !hexUnitFigure(unitId)) return rect;
+  const figure = unitId ? hexUnitFigure(unitId) : null;
+  if (!unitId || !figure) return rect;
+  // A PC shooter looses its shot from its own missile point (bow, staff tip);
+  // slashes, claws and breaths keep their body / near-hex origin.
+  const launch = shot ? hexMissilePoint(figure, toward) : null;
+  if (launch) return new DOMRect(launch.x - rect.width / 2, launch.y - rect.height / 2, rect.width, rect.height);
   const cells = unitCellRects(unitId).map(centerOf);
   if (cells.length < 2) return rect;
   const distance = (point: { x: number; y: number }) => Math.hypot(point.x - toward.x, point.y - toward.y);
   const near = cells.reduce((best, cell) => (distance(cell) < distance(best) ? cell : best));
   return new DOMRect(near.x - rect.width / 2, rect.top, rect.width, rect.height);
+}
+
+/**
+ * Where a hex figure's shot leaves it, in screen pixels: its creature's PC
+ * missile offset (CRANIM, on the figure as data-hex-missile: up, straight,
+ * down) for the shoot row it is playing (data-hex-shot, set by its lunge),
+ * mirrored toward the target. VCMI RangedAttackAnimation starts the projectile
+ * at canvas (222 - 25 + x, 265 + y); the figure's feet are canvas (196, 266).
+ * Null for a figure without PC shot data (the body centre is used).
+ */
+function hexMissilePoint(figure: HTMLElement, toward: { x: number; y: number }): { x: number; y: number } | null {
+  const values = figure.dataset.hexMissile?.split(",").map(Number);
+  if (!values || values.length !== 6 || values.some((value) => !Number.isFinite(value))) return null;
+  const sprite = figure.querySelector<HTMLElement>(".hexSprite");
+  const nativeWidth = sprite ? parseFloat(sprite.style.width) : Number.NaN;
+  const spriteRect = sprite?.getBoundingClientRect();
+  if (!spriteRect || !(nativeWidth > 0) || spriteRect.width <= 0) return null;
+  // Screen pixels per PC pixel (board scale x creature scale).
+  const scale = spriteRect.width / nativeWidth;
+  const feet = figure.getBoundingClientRect();
+  const row = figure.dataset.hexShot === "up" ? 0 : figure.dataset.hexShot === "down" ? 2 : 1;
+  const facing = toward.x >= feet.left ? 1 : -1;
+  return {
+    x: feet.left + (1 + values[row * 2]) * scale * facing,
+    y: feet.top + (values[row * 2 + 1] - 1) * scale
+  };
 }
 
 /**
@@ -1053,7 +1147,12 @@ function boardCardFor(unitId: string): HTMLElement | null {
 async function runLunge(cue: Extract<FxCue, { kind: "lunge" }>): Promise<void> {
   const hexFigure = hexUnitFigure(cue.attackerId);
   if (hexFigure) {
-    return playHexUnitCue(hexFigure, { kind: "lunge", to: cue.to, attackKind: cue.attackKind });
+    return playHexUnitCue(hexFigure, {
+      kind: "lunge",
+      to: cue.to,
+      attackKind: cue.attackKind,
+      ...(cue.releaseMs !== undefined ? { releaseMs: cue.releaseMs } : {})
+    });
   }
   const card = boardCardFor(cue.attackerId);
   const targetRect = resolveAnchorRect(cue.to);
@@ -1130,7 +1229,7 @@ async function runLunge(cue: Extract<FxCue, { kind: "lunge" }>): Promise<void> {
 async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
   const hexFigure = hexUnitFigure(cue.unitId);
   if (hexFigure) {
-    return playHexUnitCue(hexFigure, { kind: "shake" });
+    return playHexUnitCue(hexFigure, { kind: "shake", defending: cue.defending });
   }
   const card = boardCardFor(cue.unitId);
   if (!card || card.getBoundingClientRect().width === 0) {
@@ -1264,13 +1363,6 @@ async function runLightningBeam(stage: HTMLElement, cue: Extract<FxCue, { kind: 
   const sourceRect = resolveAnchorRect(cue.from);
   const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
   if (cue.sound) playLibrarySound(cue.sound);
-  if (cue.fire) {
-    // A war machine on the hex battlefield (the Lightning Generator) discharges.
-    const launcher = resolveAnchorElement(cue.from) as HTMLElement | null;
-    if (launcher?.hasAttribute("data-hex-war-machine")) {
-      void playHexUnitCue(launcher, { kind: "lunge", to: cue.to, attackKind: "ranged", releaseMs: 0 });
-    }
-  }
   if (!fromRect || !toRect) return;
   const from = centerOf(fromRect);
   const to = centerOf(toRect);
@@ -1722,7 +1814,7 @@ async function runProjectileImpact(stage: HTMLElement, point: { x: number; y: nu
 async function runBolt(stage: HTMLElement, cue: Extract<FxCue, { kind: "bolt" }>): Promise<void> {
   const toRect = resolveAnchorRect(cue.to);
   const sourceRect = resolveAnchorRect(cue.from);
-  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect), true) : sourceRect;
   if (!fromRect || !toRect) {
     return;
   }
@@ -1966,11 +2058,50 @@ async function runPhasedProjectile(
   }
 }
 
+/** VCMI calculateCatapultParabolaY's fixed curvature, per PC pixel. */
+const CATAPULT_ARC_FACTOR = 0.005;
+/** Steps the arc is sampled in (WAAPI keyframes; linear between them). */
+const CATAPULT_ARC_STEPS = 16;
+
+/**
+ * Hex battlefield: the PC's lob for a Catapult boulder and a HotA Cannon ball
+ * (VCMI ProjectileCatapult — both machines carry CATAPULT): the shot keeps an
+ * even pace across and rides y = 0.005·x² + b·x + c (PC pixels) through its
+ * launch and landing points, so it rises in a high arc and drops onto the
+ * target. The apex never leaves the top of the board. Returns the offset from
+ * `from` at `progress` (0-1) along the shot, in screen pixels, or null when
+ * the shot flies straight (the card boards, a shot straight up or down).
+ */
+function catapultArc(
+  from: { x: number; y: number },
+  to: { x: number; y: number }
+): ((progress: number) => { x: number; y: number }) | null {
+  const pixelScale = hexBoardPixelScale();
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (pixelScale <= 0 || Math.abs(dx) < 1) return null;
+  let curvature = CATAPULT_ARC_FACTOR / pixelScale;
+  // y(u) = dy·u/dx + k·u·(u - dx): through both points, highest near the middle.
+  const top = document.querySelector("svg.hexGrid")?.getBoundingClientRect().top ?? 0;
+  const apexU = Math.max(0, Math.min(1, 0.5 - dy / (2 * curvature * dx * dx))) * dx;
+  const apexY = from.y + (dy * apexU) / dx + curvature * apexU * (apexU - dx);
+  const ceiling = top + 8 * pixelScale;
+  if (apexY < ceiling) {
+    // Flatten the lob just enough to keep its top on the board.
+    const lift = Math.min(from.y, to.y) - ceiling;
+    curvature = lift > 0 ? Math.min(curvature, (4 * lift) / (dx * dx)) : 0;
+  }
+  return (progress) => {
+    const u = dx * progress;
+    return { x: u, y: (dy * u) / dx + curvature * u * (u - dx) };
+  };
+}
+
 async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "projectile" }>): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
   const toRect = resolveAnchorRect(cue.to);
   const sourceRect = resolveAnchorRect(cue.from);
-  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect)) : sourceRect;
+  const fromRect = sourceRect && toRect ? hexLaunchRect(cue.from, sourceRect, centerOf(toRect), true) : sourceRect;
   if (!sheet || !fromRect || !toRect) {
     // A layout change can remove a visual anchor while a delayed cue waits.
     // Missing geometry must not also swallow the spell's sound.
@@ -2015,11 +2146,11 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
     playLibrarySound(cue.sound);
   }
 
+  // A war machine on the hex battlefield already played its firing row (the
+  // page's `machine` cue, timed so the shot leaves on its climax frame); a
+  // machine card on the card boards recoils as the shot leaves it.
   const launcher = resolveAnchorElement(cue.from) as HTMLElement | null;
-  if (launcher?.hasAttribute("data-hex-war-machine")) {
-    // A war machine on the hex battlefield plays its own firing frames.
-    void playHexUnitCue(launcher, { kind: "lunge", to: cue.to, attackKind: "ranged", releaseMs: 0 });
-  } else if (launcher && cue.recoil) {
+  if (launcher && cue.recoil && !launcher.hasAttribute("data-hex-war-machine")) {
     const recoilPx = cue.recoil === "cannon" ? 11 : cue.recoil === "catapult" ? 8 : 5;
     const unitX = distance > 0 ? dx / distance : 1;
     const unitY = distance > 0 ? dy / distance : 0;
@@ -2046,14 +2177,31 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
       sprite.style.backgroundPosition = `-${col * sheet.frameWidth}px -${row * sheet.frameHeight}px`;
     }, 1000 / sheet.fps);
 
+    // A Catapult boulder / Cannon ball lobs (the PC arc), turning along its
+    // path; every other shot flies straight.
+    const arc = cue.recoil === "catapult" || cue.recoil === "cannon" ? catapultArc(from, to) : null;
     await animate(
       sprite,
-      [
-        { transform: `translate(0, 0) rotate(${angle}deg)${mirror} scale(${scale * 0.8})`, opacity: 0 },
-        { transform: `translate(${dx * 0.12}px, ${dy * 0.12}px) rotate(${angle}deg)${mirror} scale(${scale})`, opacity: 1, offset: 0.15 },
-        { transform: `translate(${dx}px, ${dy}px) rotate(${angle}deg)${mirror} scale(${scale})`, opacity: 1 }
-      ],
-      { duration: durationMs, easing: "cubic-bezier(0.4, 0, 0.8, 0.6)", fill: "forwards" }
+      arc
+        ? Array.from({ length: CATAPULT_ARC_STEPS + 1 }, (_, step) => {
+            const progress = step / CATAPULT_ARC_STEPS;
+            const at = arc(progress);
+            const ahead = arc(Math.min(1, progress + 0.02));
+            const behind = arc(Math.max(0, progress - 0.02));
+            const heading = (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
+            const flip = Math.abs(heading) > 90 ? " scaleY(-1)" : "";
+            return {
+              transform: `translate(${at.x}px, ${at.y}px) rotate(${heading}deg)${flip} scale(${progress === 0 ? scale * 0.8 : scale})`,
+              opacity: progress === 0 ? 0 : 1,
+              offset: progress
+            };
+          })
+        : [
+            { transform: `translate(0, 0) rotate(${angle}deg)${mirror} scale(${scale * 0.8})`, opacity: 0 },
+            { transform: `translate(${dx * 0.12}px, ${dy * 0.12}px) rotate(${angle}deg)${mirror} scale(${scale})`, opacity: 1, offset: 0.15 },
+            { transform: `translate(${dx}px, ${dy}px) rotate(${angle}deg)${mirror} scale(${scale})`, opacity: 1 }
+          ],
+      { duration: durationMs, easing: arc ? "linear" : "cubic-bezier(0.4, 0, 0.8, 0.6)", fill: "forwards" }
     );
   } finally {
     window.clearInterval(frameTimer);
@@ -2664,6 +2812,12 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
             return runStatGlow(stage, cue);
           case "lunge":
             return runLunge(cue);
+          case "machine": {
+            const machine = fireHexWarMachine(cue.anchor);
+            return machine
+              ? playHexUnitCue(machine, { kind: "lunge", to: cue.to, attackKind: "ranged", releaseMs: cue.releaseMs })
+              : undefined;
+          }
           case "shake":
             return runShake(cue);
           case "face": {

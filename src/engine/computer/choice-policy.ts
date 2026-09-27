@@ -12,11 +12,19 @@ import { unitsAdjacent } from "../hex-footprint";
 import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
 import {
   armyReadyForContestedFight,
+  assessDwellingRush,
   developmentResourceTargets,
+  firstGoldMilestoneCost,
+  goldBodyComboTradePlan,
   goldLadderValuablesReserve,
+  goldStepMarketPlan,
+  nextGoldLadderStep,
+  purchaseLandingRounds,
   resourceUrgency,
+  spendWorsensGoldMilestone,
   valuablesStarved,
 } from "./development";
+import { COMMANDER_ARTIFACT_SPECS } from "@/data/wog/commander-artifacts";
 import { adventureVictoryMode, isFieldGuarded, neutralRecruitCost } from "../adventure";
 import { isCastASpellCard } from "../polish-spell-book";
 import { neutralRecruitUtility, neutralTierMeanStrength, neutralUnitStrength } from "./recruit-value";
@@ -25,6 +33,7 @@ import {
   BANK_ENGAGE_RATIO,
   creatureBankStrength,
   playerArmyStrength,
+  pvpEngagementForecast,
 } from "./army-strength";
 import {
   collectMapObjectives,
@@ -63,6 +72,10 @@ import { karmicBattleEmpowerWorthIt } from "./wog-era-policy";
  */
 
 const CHOICE_BASE = 1_100;
+/** Garrison defense: hold when the attacker's forecast is at most this... */
+const GARRISON_HOLD_MAX_ATTACKER_WIN = 0.5;
+/** ...or, for the LAST base, while the attacker is not a near-certain winner. */
+const GARRISON_LAST_BASE_MAX_ATTACKER_WIN = 0.85;
 const CHOICE_BAND = 80; // options live in [CHOICE_BASE, CHOICE_BASE + CHOICE_BAND]
 
 /** Bounded value of filling the actual next army/build reserve. Surplus is not
@@ -232,7 +245,17 @@ function scoreCityHallOption(
   if (option.movement) score += option.movement * 5;
   if (option.experience) score += 20;
   if (option.searchSpellDeck) score += 12;
-  if (option.tradingPost) score += 5;
+  if (option.tradingPost) {
+    score += 5;
+    // Fortress City Hall: the exchange beats 5 gold when it completes a saved
+    // purchase this Resource Round — the next dwelling (a feasible rush), the
+    // saved Gold-ladder step, or the Gold dwelling + level-7 combo — usually
+    // by exchanging spare materials 3 → 1 valuable, the Gold ladder's bottleneck.
+    const state = observation.state as unknown as GameState;
+    if (assessDwellingRush(state, observation.playerId)?.feasible ||
+        goldStepMarketPlan(state, observation.playerId) ||
+        goldBodyComboTradePlan(state, observation.playerId)) score += 45;
+  }
   if (option.runesNextCombats) score += option.runesNextCombats * 6;
   // Forge City Hall: 2 random enemy cards beat 3 gold unless broke (the gold
   // arm's +15 broke bonus above flips it back). Bigger hands lose more value.
@@ -504,12 +527,28 @@ function scoreAbilityTarget(
             : 0
       : 0;
   const removesNow = abilityDamage > 0 && abilityDamage >= remaining;
+  // A lasting commander debuff (Sea Marshal's 2-round Slow refreshes rather
+  // than stacks) is wasted on an enemy still carrying this commander's own
+  // negative effect — prefer a fresh target.
+  const alreadyDebuffedByCaster =
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "commander-cast" &&
+    Boolean(choice.sourceUnitId) &&
+    (observation.state.activeEffects ?? []).some(
+      (effect) =>
+        effect.polarity === "negative" &&
+        effect.source.type === "unit" &&
+        effect.source.unitId === choice.sourceUnitId &&
+        effect.target?.type === "unit" &&
+        effect.target.unitId === unit.id,
+    );
   return (
     CHOICE_BASE +
     Math.min(60, Math.round(unitThreatValue(unit) / 2)) +
     (removesNow ? 45 : 0) +
     (remaining <= 2 ? 15 : 0) +
-    catapultPairAdjustment
+    catapultPairAdjustment -
+    (alreadyDebuffedByCaster ? 40 : 0)
   );
 }
 
@@ -638,6 +677,38 @@ function scorePositionOption(
   const choice = pendingChoiceOf(observation);
   if (!choice || choice.type !== "OPTION_CHOICE") {
     return CHOICE_BASE + (optionIndex === 0 ? 5 : 0);
+  }
+
+  // WoG commander artifact offer (after a won fight): a permanent commander
+  // bonus plus a regular artifact of its grade — bought from SURPLUS only.
+  // Unscored, the generic pick bought every offer: ranked-rule lab seats spent
+  // 5-12 gold of it before R7 and reached the level-7 by R8 in 36% of seats
+  // (57% without the module; ranked humans 53%).
+  if (context === "commander-artifact-offer" && choice.commanderArtifactOffer) {
+    const offer = choice.commanderArtifactOffer;
+    const state = observation.state as unknown as GameState;
+    const player = state.players[observation.playerId];
+    const spend = { gold: offer.cost };
+    const step = nextGoldLadderStep(state, observation.playerId);
+    let delaysStep = false;
+    if (step && player) {
+      const production = player.production ?? {};
+      const before = purchaseLandingRounds(player.resources, production, step.cost, false);
+      const after = purchaseLandingRounds({ ...player.resources, gold: (player.resources.gold ?? 0) - offer.cost },
+        production, step.cost, false);
+      delaysStep = before !== null && (after === null || after > before);
+    }
+    // Before the first level-7 stands, only gold beyond its whole remaining
+    // cost is surplus (ranked-rule lab: 4 gold a seat still went to artifacts
+    // by R7 under the landing-round test alone, R7 stock 23.7 vs 28.4 gold).
+    const milestone = firstGoldMilestoneCost(state, observation.playerId);
+    const beforeFirstGold = Boolean(milestone && player && (player.resources.gold ?? 0) - offer.cost < milestone.gold);
+    const needed = beforeFirstGold || spendWorsensGoldMilestone(state, observation.playerId, spend) || delaysStep;
+    const cardId = offer.cardIds[optionIndex];
+    if (!cardId) return CHOICE_BASE + (needed ? 40 : -20);
+    if (needed) return CHOICE_BASE - 40;
+    const tier = COMMANDER_ARTIFACT_SPECS[cardId]?.tier;
+    return CHOICE_BASE + (tier === "relic" ? 40 : tier === "major" ? 30 : 20);
   }
 
   if (context === "uland-cure" && choice.ulandCure) {
@@ -1064,6 +1135,25 @@ function scorePositionOption(
     const player = observation.state.players[observation.playerId];
     const gold = player?.resources.gold ?? 0;
     const army = player?.army.length ?? 0;
+    // Read the fight itself: the attacker's forecast against our units-only
+    // garrison. A garrison that will not hold loses the fee, units AND the
+    // holding — let it fall and retake it later. Only a LAST base (its loss
+    // starts the elimination clock) is worth a long-odds defense. Lab league
+    // 2026-09-27: 48 Settlement garrisons against >= 70% attackers, all lost.
+    const pending = observation.state.adventure?.pendingGarrison;
+    if (pending && gold >= cost && army >= 1) {
+      const state = observation.state as unknown as GameState;
+      const hold = pvpEngagementForecast(state, observation.playerId, pending.attackerPlayerId, false, true)?.winChance;
+      const attackerWins = hold === undefined ? undefined : 1 - hold;
+      if (attackerWins !== undefined) {
+        const lastBase = !Object.values(state.adventure?.fields ?? {}).some(field => field.spaceId !== pending.fieldId &&
+          field.flagOwnerId === observation.playerId && (field.location === "settlement" || field.location === "random_town" ||
+            Object.values(state.towns ?? {}).some(town => town.fieldId === field.spaceId)));
+        const holds = attackerWins <= GARRISON_HOLD_MAX_ATTACKER_WIN ||
+          (lastBase && attackerWins <= GARRISON_LAST_BASE_MAX_ATTACKER_WIN);
+        return optionIndex === 0 ? (holds ? CHOICE_BASE + 40 : CHOICE_BASE + 5) : (holds ? CHOICE_BASE + 5 : CHOICE_BASE + 40);
+      }
+    }
     if (optionIndex === 0) {
       if (gold >= cost + 5 && army >= 3) return CHOICE_BASE + 40;
       if (gold >= cost && army >= 2) return CHOICE_BASE + 25;

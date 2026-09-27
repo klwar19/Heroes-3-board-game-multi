@@ -471,8 +471,8 @@ export const spellCards: CardLibrary = {
   // ---- Summon Elemental (Conflux Expert spells) -------------------------
   // Activation spells cast during your own unit's activation. On a chosen
   // empty space, Power 2 summons a Few and Power 4 a Pack of the school's
-  // Elemental. The summoned unit joins the combat at once and stays in your
-  // army afterwards — just like the Pit Lords' Demons.
+  // Elemental. The summoned unit joins combat at once and disappears when
+  // combat ends; summoning does not add an army card.
   "spell.summon_air_elemental": {
     id: "spell.summon_air_elemental",
     name: "Summon Air Elemental",

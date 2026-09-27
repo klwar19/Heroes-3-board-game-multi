@@ -5,17 +5,17 @@ import { repairOrphanedChoicePhase } from "./choice-phase";
 import { randomTownTokenValue } from "./random-town-tactics";
 import { isGrailUtopiaModeField } from "./map-design-features";
 import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./computer/unit-ability-value";
-import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation, devilLuckSource, spendDevilLuck } from "./town-veterancy";
+import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation, devilLuckCursed, devilLuckSource, spendDevilLuck } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { drawAfterSpellCast } from "./kastore-sorcery";
 import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
 import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
-import { veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranTrigger } from "./faction-veterancy";
+import { dreadAuraParalyzeCandidates, veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranRandom, veteranTrigger } from "./faction-veterancy";
 import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, elementalActivation, elementalMovement, elementalAfterAttack, elementalFinishActivation, openElementalChoice, resolveElementalChoice, queueElementalChoice, noteElementalSpellCast } from "./elemental-veterancy";
 import { neutralVeterancy, neutralActivation, neutralAfterAttack, neutralAttackBonus, applyNeutralBurnAtActivation } from "./neutral-veterancy";
 import { resolveManaTurbulence, neutralTownDelayedDamageAtActivation, neutralTownRunicBacklash, neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { neutralTownVeterancy, neutralTownAttackBonus, neutralTownDefenseBonus, neutralTownAttackDamagePreview, neutralTownCommitAttackReduction, neutralTownMovement, neutralTownActivation, neutralTownAfterAttack, neutralTownFailedParalysis, neutralTownFinishActivation } from "./neutral-town-veterancy";
-import { getTargetsForCard, isCombatParticipant, rerollSourceAvailableFor as helmRerollSourceAvailableFor } from "./legal-actions";
+import { getTargetsForCard, interferenceTargetsForCast, isCombatParticipant, rerollSourceAvailableFor as helmRerollSourceAvailableFor } from "./legal-actions";
 import { baseCardId, toPhantomCardId } from "./phantom-cards";
 import { parallelPvpKeeps, parallelPvpPinOwner, parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
@@ -538,6 +538,7 @@ import {
   unitHasUnstoppableRetaliationEffect,
   unitIgnoresCardNonDamage,
   specialtyImmunityActive,
+  unitCardTargetLocked,
   unitIgnoresAttackDieFromEffects,
   unitRangedAttackHalved,
   unitImmuneToParalysis,
@@ -688,6 +689,7 @@ import {
   getOffTurnCombatReactions,
   healDrawOnlyRider,
   drawRiderThenDiscard,
+  drawRiderBanksSpellPower,
   bankAwareTierGateRank,
   instantDrawOnlyRider,
   isAdjacent,
@@ -699,6 +701,7 @@ import {
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
   ulandInstantPlays,
+  healTwoUnitsCandidateIds,
   prophecyPreRollAvailable,
   reflectableAttackInstantForPlayer,
   mapSpellPowerBankAvailable,
@@ -713,6 +716,7 @@ import {
   spellAbilitiesSuppressed,
   spellReactionAffectedUnitId,
   spellReactionBlockedByImmunity,
+  reactionBlockedByCardTargetLock,
   spellRedirectTargets,
   standingSpellPower,
   unitBlockedBySpellCard,
@@ -1705,7 +1709,7 @@ function moveSpellToSpellBook(
   if (!card || card.kind !== "spell") {
     throw new Error("Only Spell cards can go into the Spell Book.");
   }
-  // Magic Arrow (any starting-only Spell) is castable from hand but has no Spell
+  // Starting-only Spells and View Air are castable from hand but have no Binh
   // Book home — reject a fabricated stash so the rule holds at resolution too.
   if (!spellCanEnterSpellBook(action.cardId)) {
     throw new Error(`${card.name} cannot be set aside in the Spell Book.`);
@@ -3487,6 +3491,7 @@ function healUnitDamage(
 function applyHealAfterAttacked(
   state: GameState,
   defender: CombatUnitState,
+  allowManticoreMend = true,
 ): void {
   if (!state.combat || !isUnitAlive(defender) || defender.damage <= 0) {
     return;
@@ -3494,6 +3499,7 @@ function applyHealAfterAttacked(
   if (factionVeterancy(defender, "medusa-mend")) veteranHeal(state, defender, 1, "veteran-medusa-mend");
   for (const ability of getUnitAbilityDefinitions(defender)) {
     if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACKED_HEAL_SELF") continue;
+    if (!allowManticoreMend && ability.id === "veteran-manticore-mend") continue;
     const healed = Math.min(defender.damage, ability.effect.amount);
     if (healed <= 0) continue;
     appendEvent(state, {
@@ -3575,6 +3581,14 @@ function totalSpellDamageReduction(
       if (entry.unitId === target.id) {
         total += entry.amount;
       }
+    }
+  }
+  // …and the same reactions carried past the pop of their cast's stack item for
+  // its deferred hit (Fireball splash / Frost Ring pick / aimed Chain Lightning
+  // hop / Inferno reroll).
+  for (const entry of state.combat?.pendingInterfereSpellReductions ?? []) {
+    if (entry.unitId === target.id) {
+      total += entry.amount;
     }
   }
 
@@ -4817,10 +4831,12 @@ function getAttackDamagePreview(
   const baseAttack = baseAttackOverride ?? attacker.attack;
   const neutralPenalty = !dieCancelled && !neutralDieIgnored && (roll === -1 || roll === 1) && neutralVeterancy(defender, "troll-resilience") ? 2 : 0;
   // Arch Devils R1 Devil's Luck: an enemy "+1" Attack die gets -1 Attack while
-  // an opposing veteran devil still has a curse left this combat round.
+  // an opposing veteran devil still has a curse left this combat round, or
+  // while the attacker carries the 2-round Devil's Luck curse (never both: a
+  // cursed unit has no devilLuckSource, so the penalty is always a single -1).
   // (Hourglass of the Evil Hour: a "+1" that is ignored never "resolves", so
   // it draws no Devil's Luck penalty and spends no curse.)
-  const devilLuckPenalty = !dieCancelled && !neutralDieIgnored && !ignorePlusOneDie && roll === 1 && devilLuckSource(state, attacker) ? 1 : 0;
+  const devilLuckPenalty = !dieCancelled && !neutralDieIgnored && !ignorePlusOneDie && roll === 1 && (devilLuckCursed(state, attacker) || devilLuckSource(state, attacker)) ? 1 : 0;
   // WOG commander Might (Damage grade): `mightBonus` is the contribution of the
   // extra attack dice the commander rolled for this attack (+1 per "+1" face,
   // −1 for the whole pool if any "−1" appeared). They are ADDITIONAL attack
@@ -4883,6 +4899,9 @@ function getAttackDamagePreview(
   if (factionVeterancy(attacker, "execution") && attacker.controllerId !== defender.controllerId && hasToken(defender, "paralysis")) rawDamage += 2;
   if (state && !isRetaliation && elementalVeterancy(attacker, "speed-damage") && effectiveInitiative(attacker, state.activeEffects, state.combat) > effectiveInitiative(defender, state.activeEffects, state.combat)) rawDamage += 1;
   if (defender.elementalVeterancy?.solidifyUntilRound !== undefined) rawDamage = Math.max(0, rawDamage - 1);
+  // Hydras R4 Venom Ward: an enemy carrying a poison cube deals 1 less damage
+  // to this Hydra (attacks and Retaliation Attacks; previews agree).
+  if (attacker.controllerId !== defender.controllerId && (attacker.poisonCubes ?? 0) > 0 && townVeterancy(defender, "hydra-venom-ward")) rawDamage = Math.max(0, rawDamage - 1);
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
   // cap clamps the resolved damage of this one attack and is reflected in the
   // lethal-save preview too (both go through here), so a capped blow correctly
@@ -5209,13 +5228,16 @@ function applyAttackDamageFromCandidate(
   // numbers reconcile with the resolved attack/defense values.
   const trollAttackPenalty = !dieCancelled && !noDie && (candidate.roll === -1 || candidate.roll === 1) && neutralVeterancy(defender, "troll-resilience") ? 2 : 0;
   // Same predicate as the preview above, which already folded the -1 into
-  // attackValue; spend one of the devil's two curses for this round now.
-  const luckDevil = !dieCancelled && !noDie && !ignorePlusOneDie && candidate.roll === 1 ? devilLuckSource(state, attacker) : undefined;
-  if (luckDevil) {
-    spendDevilLuck(state, luckDevil, attacker);
-    pushRollModifierNote(candidate, "Devil's Luck", "−1 Attack");
-  }
-  const reportedAttackBonus = attackBonus + dieAttackBonus - trollAttackPenalty - (luckDevil ? 1 : 0);
+  // attackValue. A unit under the 2-round curse takes the -1 without spending
+  // anything; otherwise spend one of the devil's two uses this round (which
+  // also lays the curse). Checked BEFORE the spend, so the triggering hit
+  // counts exactly one -1.
+  const luckFace = !dieCancelled && !noDie && !ignorePlusOneDie && candidate.roll === 1;
+  const luckCursed = luckFace && devilLuckCursed(state, attacker);
+  const luckDevil = luckFace && !luckCursed ? devilLuckSource(state, attacker) : undefined;
+  if (luckDevil) spendDevilLuck(state, luckDevil, attacker);
+  if (luckCursed || luckDevil) pushRollModifierNote(candidate, "Devil's Luck", "−1 Attack");
+  const reportedAttackBonus = attackBonus + dieAttackBonus - trollAttackPenalty - (luckCursed || luckDevil ? 1 : 0);
   if (trollAttackPenalty) pushRollModifierNote(candidate, "Troll Resilience", "−2 Attack");
   // Include the Defend-die payout in the reported bonus. `defenseValue` already
   // contains it; omitting it here made the dice overlay subtract only other
@@ -9131,6 +9153,51 @@ function finishResolvedAttack(
       message: `${teaParty.source.cardName}'s ${teaParty.abilityName} grants ${details.defender.cardName} +${teaParty.amount} Defense for this attack.`,
     });
   }
+  // Wall cover reduces damage after Attack minus Defense. Show the actual
+  // positional reduction beside the settled roll so a 3 vs 2 shot that deals
+  // 0 damage has an explanation in both the dice overlay and event feed —
+  // only when the −1 really comes off a positive Attack−Defense margin: a hit
+  // Defense already stopped loses nothing to the wall, and a fixed-damage
+  // attacker (Fuyuki Casters) ignores the damage reduction entirely.
+  if (
+    state.combat &&
+    !stackItem.modifiers.ignoreRangedPenalty &&
+    getFuyukiCasterFixedDamage(details.attacker) === undefined &&
+    siegeRangedDamageReduction(
+      state.combat,
+      details.attacker,
+      details.defender,
+      details.attackKind,
+      state,
+      details.isRetaliation,
+    ) > 0
+  ) {
+    const wallMargin = getAttackDamagePreview(
+      details.attacker,
+      details.defender,
+      resolvedCandidate.roll,
+      details.attackBonus,
+      details.defenseBonus,
+      defendBonus,
+      details.dieMultiplier,
+      details.abilityAttack?.baseAttack,
+      details.damageReduction,
+      details.ignoreDefense,
+      dieCancelled,
+      mightBonus,
+      details.isRetaliation,
+      details.attackDamageCap,
+      details.halveAttack,
+      details.dieMultiplierSkipsNegative,
+      details.ignorePlusOneDie,
+      state,
+      details.ignoreAttackDie,
+      details.defenseFraction?.fraction,
+    );
+    if (wallMargin.attackValue - wallMargin.defenseValue > 0) {
+      pushRollModifierNote(resolvedCandidate, "Siege wall cover", "−1 damage");
+    }
+  }
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -9354,7 +9421,9 @@ function finishResolvedAttack(
   // Miku Voice of Angel IV (and any future HEAL_AFTER_ATTACKED sources): after a
   // resolved attack (not cancelled), heal the defender if the owner's ongoing
   // effect is active. Runs for declared attacks AND retaliations.
-  applyHealAfterAttacked(state, details.defender);
+  // A retaliation is a counterattack, not an attack on the retaliator's target
+  // for Manticore R1. Other after-hit healing retains its existing timing.
+  applyHealAfterAttacked(state, details.defender, !details.isRetaliation);
   applyDamageAttackerAfterAttacked(state, details.attacker, details.defender);
   // Stage Costume: first attack against the owner's unit this combat → Defense token.
   applyEquipmentStageCostumeDefenseToken(state, details.defender);
@@ -9517,7 +9586,7 @@ function finishResolvedAttack(
     const behind = findUnitBehindTarget(state.combat!, details.attacker, details.defender, true);
     if (behind && behind.controllerId !== details.attacker.controllerId) veteranDamage(state, details.attacker, behind, 1, "ntv-boulder-crash");
   }
-  if (!details.isRetaliation) veteranAfterAttack(state, details.attacker, details.defender);
+  if (!details.isRetaliation) veteranAfterAttack(state, details.attacker, details.defender, attackResult.roll, dieCancelled || details.ignoreAttackDie);
   if (!details.isRetaliation) elementalAfterAttack(state, details.attacker, details.defender, attackResult.damage);
   // Heavenly Demon Palace "Blood Siphon": heal 1 after its OWN attack DEALS
   // damage (a fully-soaked 0-damage attack heals nothing — the distinction from
@@ -15297,6 +15366,147 @@ function clearOwnDebuffsAtActivation(
   }
 }
 
+const DREAD_AURA_ABILITY_ID = "veteran-dragon-dread";
+const DREAD_AURA_EFFECT_NAME = "Dread Aura";
+
+/**
+ * Necropolis Ghost Dragons R1 "Dread Aura": in ODD combat rounds, as this unit
+ * activates, roll 1 Attack die through the shared combat dice stream (seeded,
+ * scriptable, Negative-Morale curses and Bron's reroll like Fear Aura) and
+ * show it as a dice cue.
+ *  -1 → its controller chooses one enemy to Paralyze (queued "dread-paralyze"
+ *       pick; computer/Neutral seats auto-take the strongest eligible enemy).
+ *   0 → one random enemy loses 1 Defense until the end of this combat round;
+ *       never stacks (an enemy already carrying it is not picked).
+ *  +1 → nothing.
+ */
+function resolveDreadAuraActivation(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+): void {
+  if (
+    !isUnitAlive(unit) ||
+    combat.outcome ||
+    combat.round % 2 !== 1 ||
+    !factionVeterancy(unit, "dread") ||
+    (unit.keyAuthorityCancelledAbilityIds ?? []).includes(DREAD_AURA_ABILITY_ID)
+  ) {
+    return;
+  }
+  const window: AbilityRollWindow = { minRoll: -1, maxRoll: 0 };
+  let candidate = rollAbilityCandidate(state, combat, unit, 1, window, false);
+  if (candidate.roll > 0 && bronRerollsAbilityRoll(state, unit)) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: `${DREAD_AURA_ABILITY_ID}-roll`,
+      message: `${unit.name} rolls ${candidate.roll} for Dread Aura — Multilingual Bron rerolls.`,
+      dice: {
+        rolls: [...candidate.rolls],
+        success: false,
+        label: DREAD_AURA_EFFECT_NAME,
+        caption: "Multilingual Bron rerolls…",
+        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {}),
+      },
+    });
+    candidate = rollAbilityCandidate(state, combat, unit, 1, window, false);
+  }
+  const roll = candidate.roll;
+  const diceNotes = candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {};
+
+  if (roll === -1) {
+    const eligible = dreadAuraParalyzeCandidates(state, unit);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: `${DREAD_AURA_ABILITY_ID}-roll`,
+      message: eligible.length
+        ? `${unit.name} rolls -1 for Dread Aura: one enemy unit will be Paralyzed.`
+        : `${unit.name} rolls -1 for Dread Aura, but no enemy unit can be Paralyzed.`,
+      dice: {
+        rolls: [...candidate.rolls],
+        success: eligible.length > 0,
+        label: DREAD_AURA_EFFECT_NAME,
+        caption: eligible.length ? "Choose an enemy to Paralyze." : "No enemy can be Paralyzed.",
+        ...diceNotes,
+      },
+    });
+    if (eligible.length) {
+      queueElementalChoice(state, { kind: "dread-paralyze", unitId: unit.id, abilityId: DREAD_AURA_ABILITY_ID });
+    }
+    return;
+  }
+
+  if (roll === 0) {
+    const source = { type: "unit" as const, unitId: unit.id, controllerId: unit.controllerId };
+    const makeDread = (target: CombatUnitState) =>
+      makeActiveEffect(
+        state,
+        {
+          name: DREAD_AURA_EFFECT_NAME,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }],
+        },
+        source,
+        unit.controllerId,
+        { type: "unit", unitId: target.id },
+      );
+    const pool = Object.values(combat.units).filter(
+      (target) =>
+        target.controllerId !== unit.controllerId &&
+        isUnitAlive(target) &&
+        // Never stacks: an enemy already under a Dread Aura this round is skipped.
+        !state.activeEffects.some(
+          (effect) =>
+            effect.name === DREAD_AURA_EFFECT_NAME &&
+            effect.target?.type === "unit" &&
+            effect.target.unitId === target.id,
+        ) &&
+        effectAppliesToUnit(makeDread(target), target),
+    );
+    const target = veteranRandom(state, pool, `${unit.id}-dread-aura`);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: `${DREAD_AURA_ABILITY_ID}-roll`,
+      ...(target ? { targetUnitId: target.id } : {}),
+      message: target
+        ? `${unit.name} rolls 0 for Dread Aura: ${target.cardName} loses 1 Defense this round.`
+        : `${unit.name} rolls 0 for Dread Aura — no enemy can be affected.`,
+      dice: {
+        rolls: [...candidate.rolls],
+        success: Boolean(target),
+        label: DREAD_AURA_EFFECT_NAME,
+        caption: target ? `${target.cardName}: −1 Defense this round.` : "No effect.",
+        ...diceNotes,
+      },
+    });
+    if (target) {
+      state.activeEffects.push(makeDread(target));
+      veteranTrigger(state, unit, DREAD_AURA_ABILITY_ID, target, `${target.cardName} loses 1 Defense until the end of this combat round.`);
+    }
+    return;
+  }
+
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: `${DREAD_AURA_ABILITY_ID}-roll`,
+    message: `${unit.name} rolls ${roll > 0 ? "+" : ""}${roll} for Dread Aura — no effect.`,
+    dice: {
+      rolls: [...candidate.rolls],
+      success: false,
+      label: DREAD_AURA_EFFECT_NAME,
+      caption: "No effect.",
+      ...diceNotes,
+    },
+  });
+}
+
 function applyActivationStartAbilities(
   state: GameState,
   unit: CombatUnitState,
@@ -15314,6 +15524,7 @@ function applyActivationStartAbilities(
     appendEvent(state, { type: "ACTIVE_EFFECTS_REMOVED", source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, target: { type: "unit", unitId: unit.id }, effectIds: [effect.id] });
   });
   veteranActivation(state, unit);
+  resolveDreadAuraActivation(state, combat, unit);
   townActivation(state, unit);
 
   const artifactPulse = commanderArtifactBonusesForUnit(
@@ -20141,7 +20352,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             (unit) =>
               unit.id !== healTarget!.id &&
               unit.controllerId === casterId &&
-              isUnitAlive(unit),
+              isUnitAlive(unit) &&
+              // Olema's Weakness VI: the sacrifice is picked by this Spell too.
+              !unitCardTargetLocked(state, unit, casterId, card),
           )
         : [];
       if (healTarget && candidates.length > 0) {
@@ -20438,6 +20651,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
 
     finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
 
+    retainDeferredInterfereSpellReductions(state, stackItem);
     stackItem.status = "resolved";
     state.stack.pop();
 
@@ -22882,6 +23096,22 @@ function applyReactionPlayCore(
     }
   }
 
+  // Olema's Weakness VI backstop: an attack-window / activation-skip instant
+  // may not land on a unit locked against this player's cards (any locked
+  // kind). The legal-action layer already withholds the offer.
+  {
+    const triggerEvent = state.reactionWindow?.triggerEvent;
+    if (
+      triggerEvent &&
+      (triggerEvent.type === "UNIT_ATTACK_DECLARED" ||
+        triggerEvent.type === "UNIT_ACTIVATION_STARTED" ||
+        triggerEvent.type === "SPELL_CAST_STARTED") &&
+      reactionBlockedByCardTargetLock(state, playerId, card, effect, triggerEvent)
+    ) {
+      throw new Error(`That unit cannot be targeted by ${card.name}.`);
+    }
+  }
+
   // Protection-from-X self-defends its School/level gate at resolution: a
   // fabricated reaction can never cancel a spell of the wrong School or above
   // the chosen Power tier's ceiling (the legal-action layer already filters offers).
@@ -24715,6 +24945,39 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Olema's Weakness I: "Set all dice to -1." Played by the defending side in
+  // the post-roll window: every die of the parked roll is SET to the face and
+  // the roll is re-folded exactly as Bowstring re-folds (keep-one modes → the
+  // face, apply-both → summed, Slayer → counted). The dice really show the
+  // face, so face-keyed effects read it; reroll replays no longer apply.
+  if (
+    effect.type === "SET_ALL_ATTACK_DICE" &&
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT") &&
+    stackItem.modifiers.rolledCandidate
+  ) {
+    const candidate = stackItem.modifiers.rolledCandidate;
+    const setRolls = (candidate.rolls.length > 0 ? candidate.rolls : [candidate.roll]).map(
+      () => effect.face,
+    );
+    const aggregation: MoraleDiceAggregation = stackItem.modifiers.slayerRolls
+      ? "count-plus"
+      : candidate.sumAllDice
+        ? "sum"
+        : (getAttackStackDetails(state, stackItem)?.rollMode ?? "normal");
+    stackItem.modifiers.rolledCandidate = {
+      ...candidate,
+      rolls: setRolls,
+      roll: aggregateCandidateRoll(setRolls, aggregation),
+      modifierNotes: [
+        ...(candidate.modifierNotes ?? []),
+        { source: card.name, text: `sets all dice to ${effect.face}` },
+      ],
+      rerollBeats: undefined,
+    };
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   // Ivor's Elves I / VI: force this attack's die to a fixed face. Unlike Bless
   // (which ignores the die) or the Dwarven Lords' cancel (which fires no
   // die-triggered effects), the die genuinely SHOWS this value — so a "0" still
@@ -25253,11 +25516,11 @@ function applyReactionPlayCore(
       });
     }
   }
-  // Interference: react to an enemy damaging Spell aimed at one of your units
   // Interference / Plate of the Dying Light vs an enemy damaging Spell:
-  // wiki `<instant>` — reduce THIS cast's Spell damage against the targeted
-  // unit by +X (basic 1 / expert 2 / Plate option 4). Stack-scoped only; no
-  // combat-long active effect (matches Shield's Instant fix and Lion's Shield).
+  // wiki `<instant>` — reduce THIS cast's Spell damage against the ONE chosen
+  // friendly unit it can hit (interferenceTargetsForCast) by +X (basic 1 /
+  // expert 2 / Plate option 4). Stack-scoped only; no combat-long active
+  // effect (matches Shield's Instant fix and Lion's Shield).
   if (
     effect.type === "INTERFERE_SPELL" &&
     stackItem?.action.type === "CAST_SPELL"
@@ -25276,7 +25539,11 @@ function applyReactionPlayCore(
         (stackItem.modifiers.interferencePowerReduction ?? 0) + reduction;
       stackItem.modifiers.playedCardIds.push(play.cardId);
     } else {
-      const targetRef = stackItem.action.target;
+      const trigger = state.reactionWindow?.triggerEvent;
+      const eligibleTargets = trigger?.type === "SPELL_CAST_STARTED"
+        ? interferenceTargetsForCast(state, trigger, playerId)
+        : [];
+      const targetRef = play.target ?? stackItem.action.target;
       const targetUnit =
         targetRef.type === "unit"
           ? state.combat?.units[targetRef.unitId]
@@ -25286,6 +25553,7 @@ function applyReactionPlayCore(
       // enemy unit or a dead one.
       if (
         targetUnit &&
+        eligibleTargets.includes(targetUnit.id) &&
         targetUnit.controllerId === playerId &&
         isUnitAlive(targetUnit)
       ) {
@@ -25293,6 +25561,8 @@ function applyReactionPlayCore(
           unitId: targetUnit.id,
           amount: effectAmount,
         });
+      } else {
+        throw new Error(`${card.name} must protect your unit affected by this damaging Spell.`);
       }
       stackItem.modifiers.playedCardIds.push(play.cardId);
     }
@@ -25407,7 +25677,7 @@ function applyReactionPlayCore(
   }
 
   if (effect.type === "HEAL_TWO_UNITS" && state.combat) {
-    const candidates = Object.values(state.combat.units).filter(isUnitAlive).map((unit) => unit.id);
+    const candidates = healTwoUnitsCandidateIds(state, playerId, card);
     if (candidates.length < 2) throw new Error("Cure IV requires two living units.");
     openUlandCureChoice(state, playerId, card.id, "first-unit", candidates, effect.amount);
   }
@@ -26444,72 +26714,21 @@ function spendCancelledEagleEyeCopy(
   helmCancelledEvent(state, play.playerId, EAGLE_EYE_ABILITY_ID, "expert", "Eagle Eye unit-bolt copy");
 }
 
-function playReaction(
+/**
+ * Power has no standalone effect during an attack UNLESS a Power-scaling
+ * spell instant has already been played into this window: the caster keeps
+ * priority and may keep empowering it (Bloodlust cast, then a Power card to
+ * lift it further). With nothing on the table to empower, lone Power still
+ * "dissipates" and is rejected — the same rule the batch validator enforces.
+ * Pure validation: playReaction runs it BEFORE a Helm of Chaos counter window
+ * pauses the play. Checked only on resume, a rejected lone Power left both of
+ * the Helm holder's answers failing — a frozen table (lab 2026-09-27).
+ */
+function assertLonePowerEmpowerable(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
   cards: CardLibrary,
-  resumingHelm = false,
-  cancelledByHelm = false,
 ): void {
-  const helmPending = state.reactionWindow?.helmCounterPending;
-  if (helmPending) {
-    if (
-      action.cardId !== "artifact.helm_of_chaos" ||
-      action.optionIndex !== 0 ||
-      action.playerId === helmPending.play.playerId
-    ) throw new Error("Choose Helm of Chaos or pass this Instant counter window.");
-    const spent = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
-    if (spent) throw new Error(spent.message);
-    appendEvent(state, {
-      type: "CARD_PLAYED", playerId: action.playerId,
-      cardId: action.cardId, timing: "instant", mode: "basic",
-      optionLabel: `Cancel ${cards[state.reactionWindow?.helmCounterCardId ?? ""]?.name ?? "the announced Instant"}`,
-    });
-    const cancelledName = cards[state.reactionWindow?.helmCounterCardId ?? ""]?.name ?? "The announced Instant";
-    restoreHelmCounterWindow(state);
-    resumeHelmPausedPlay(state, helmPending, cards, true);
-    appendEvent(state, {
-      type: "EVENT_NOTE", playerId: action.playerId,
-      message: `Helm of Chaos cancels ${cancelledName}; its effect does not resolve.`,
-    });
-    return;
-  }
-
-  // A hand-held Helm creates a precise answer window before an enemy Instant
-  // applies. The announced play is kept intact for a pass, or paid and negated
-  // when Helm is chosen. No previous effect needs to be rolled back.
-  if (!resumingHelm && offerHelmCounterForPlay(state, action, cards)) return;
-  // Tarnum (Conflux) VI played AS a reaction: consume the specialty (it cycles to
-  // the caster's discard) and open the per-search deck choice. The Search runs
-  // inside the still-open reaction window; once it finishes, resolveTarnumSearch
-  // re-derives the window's offers (so a just-Searched applicable instant can be
-  // cast into the SAME window) and hands priority back to the caster. The window
-  // is not advanced/closed here — that happens after the Search resolves.
-  const reactionCardEffect = cards[action.cardId]?.effect;
-  if (!cancelledByHelm && reactionCardEffect?.type === "TARNUM_OVERLIMIT_SEARCH") {
-    if (!state.reactionWindow) {
-      throw new Error("No reaction window is open.");
-    }
-    const moveError = moveCardFromHandToDiscard(
-      state,
-      action.playerId,
-      action.cardId,
-      "discard",
-    );
-    if (moveError) {
-      throw new Error(moveError.message);
-    }
-    // A fresh reaction clears everyone's prior pass so opponents get a new look.
-    state.reactionWindow.passedPlayerIds = [];
-    openTarnumSearch(state, action.playerId, reactionCardEffect.count);
-    return;
-  }
-
-  // Power has no standalone effect during an attack UNLESS a Power-scaling
-  // spell instant has already been played into this window: the caster keeps
-  // priority and may keep empowering it (Bloodlust cast, then a Power card to
-  // lift it further). With nothing on the table to empower, lone Power still
-  // "dissipates" and is rejected — the same rule the batch validator enforces.
   if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const card = cards[action.cardId];
     const effect =
@@ -26548,6 +26767,70 @@ function playReaction(
       }
     }
   }
+}
+
+function playReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_REACTION" }>,
+  cards: CardLibrary,
+  resumingHelm = false,
+  cancelledByHelm = false,
+): void {
+  const helmPending = state.reactionWindow?.helmCounterPending;
+  if (helmPending) {
+    if (
+      action.cardId !== "artifact.helm_of_chaos" ||
+      action.optionIndex !== 0 ||
+      action.playerId === helmPending.play.playerId
+    ) throw new Error("Choose Helm of Chaos or pass this Instant counter window.");
+    const spent = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    if (spent) throw new Error(spent.message);
+    appendEvent(state, {
+      type: "CARD_PLAYED", playerId: action.playerId,
+      cardId: action.cardId, timing: "instant", mode: "basic",
+      optionLabel: `Cancel ${cards[state.reactionWindow?.helmCounterCardId ?? ""]?.name ?? "the announced Instant"}`,
+    });
+    const cancelledName = cards[state.reactionWindow?.helmCounterCardId ?? ""]?.name ?? "The announced Instant";
+    restoreHelmCounterWindow(state);
+    resumeHelmPausedPlay(state, helmPending, cards, true);
+    appendEvent(state, {
+      type: "EVENT_NOTE", playerId: action.playerId,
+      message: `Helm of Chaos cancels ${cancelledName}; its effect does not resolve.`,
+    });
+    return;
+  }
+
+  // A hand-held Helm creates a precise answer window before an enemy Instant
+  // applies. The announced play is kept intact for a pass, or paid and negated
+  // when Helm is chosen. No previous effect needs to be rolled back.
+  assertLonePowerEmpowerable(state, action, cards);
+  if (!resumingHelm && offerHelmCounterForPlay(state, action, cards)) return;
+  // Tarnum (Conflux) VI played AS a reaction: consume the specialty (it cycles to
+  // the caster's discard) and open the per-search deck choice. The Search runs
+  // inside the still-open reaction window; once it finishes, resolveTarnumSearch
+  // re-derives the window's offers (so a just-Searched applicable instant can be
+  // cast into the SAME window) and hands priority back to the caster. The window
+  // is not advanced/closed here — that happens after the Search resolves.
+  const reactionCardEffect = cards[action.cardId]?.effect;
+  if (!cancelledByHelm && reactionCardEffect?.type === "TARNUM_OVERLIMIT_SEARCH") {
+    if (!state.reactionWindow) {
+      throw new Error("No reaction window is open.");
+    }
+    const moveError = moveCardFromHandToDiscard(
+      state,
+      action.playerId,
+      action.cardId,
+      "discard",
+    );
+    if (moveError) {
+      throw new Error(moveError.message);
+    }
+    // A fresh reaction clears everyone's prior pass so opponents get a new look.
+    state.reactionWindow.passedPlayerIds = [];
+    openTarnumSearch(state, action.playerId, reactionCardEffect.count);
+    return;
+  }
+
 
   if (action.elementalEchoUnitId) {
     const unit = state.combat?.units[action.elementalEchoUnitId];
@@ -27804,6 +28087,57 @@ function retainPendingCardDamageTransfers(state: GameState, card: CardDefinition
       cardId: card.id,
       transfers: pending.modifiers.damageTransfers,
     };
+}
+
+/**
+ * Interference / Plate of the Dying Light ride the damaging cast's stack item
+ * (`interfereSpellReductions`), which pops before a DEFERRED hit of that same
+ * cast lands: Fireball's second-space pick, a Frost Ring area-pick, a Chain
+ * Lightning hop the caster aims, or a Balance-Pack Inferno reroll window.
+ * Called right before the pop: keep the chosen units' reductions on the combat
+ * for exactly that pending hit (cleared when it lands — see
+ * clearDeferredInterfereSpellReductions — or when the combat ends).
+ */
+function retainDeferredInterfereSpellReductions(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+): void {
+  const combat = state.combat;
+  if (!combat) return;
+  delete combat.pendingInterfereSpellReductions;
+  const entries = stackItem.modifiers.interfereSpellReductions;
+  const choice = state.pendingChoice;
+  if (!entries?.length || !choice || stackItem.action.type !== "CAST_SPELL") return;
+  const cardId = stackItem.action.cardId;
+  const deferredHit =
+    (choice.type === "ABILITY_TARGET_CHOICE" &&
+      (choice.kind === "spell-splash" ||
+        (choice.kind === "area-pick" && choice.sourceCardId === cardId) ||
+        (choice.kind === "chain-lightning" && choice.abilityId === cardId))) ||
+    (choice.type === "ATTACK_DIE_REROLL" &&
+      choice.abilityRoll?.spellResume?.cardId === cardId);
+  if (deferredHit) {
+    combat.pendingInterfereSpellReductions = entries.map((entry) => ({ ...entry }));
+  }
+}
+
+function clearDeferredInterfereSpellReductions(state: GameState): void {
+  delete state.combat?.pendingInterfereSpellReductions;
+}
+
+/**
+ * Clear the carried reductions unless the hit just resolved reopened a further
+ * pick of the same deferred kind. Reads the LIVE pending choice in its own
+ * scope: the caller's control-flow narrowing of `state.pendingChoice` cannot
+ * see the resolution that may have reopened it.
+ */
+function clearDeferredInterfereSpellReductionsUnlessReopened(
+  state: GameState,
+  kind: Extract<NonNullable<GameState["pendingChoice"]>, { type: "ABILITY_TARGET_CHOICE" }>["kind"],
+): void {
+  const reopened = state.pendingChoice;
+  if (reopened?.type === "ABILITY_TARGET_CHOICE" && reopened.kind === kind) return;
+  clearDeferredInterfereSpellReductions(state);
 }
 
 function startChainLightning(
@@ -29744,6 +30078,41 @@ function playCard(
     }
   }
 
+  // Ignatius's Familiars VI: "For this Combat, all your Familiars units gain +2
+  // Attack and +1 Health." The Attack half is ONE player-scoped, combat-long
+  // ATTACK_BONUS gated by printed unit name (it follows a Pack→Few flip and a
+  // covering Horde/Legion of Imps, which is still a Familiars unit); the Health
+  // half lands per living matching unit through the combatMaxHealthBonus path
+  // so it survives side / stack / transform recomputes.
+  if (effect.type === "UNIT_NAME_COMBAT_RALLY" && state.combat) {
+    const source = { type: "card" as const, cardId: card.id, controllerId: action.playerId };
+    if (effect.attack !== 0) {
+      createActiveEffect(
+        state,
+        {
+          name: effect.name,
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: false,
+          appliesOnlyToUnitNames: [...effect.unitNames],
+          modifiers: [{ type: "ATTACK_BONUS", amount: effect.attack }],
+        },
+        source,
+        action.playerId,
+      );
+    }
+    for (const unit of Object.values(state.combat.units)) {
+      if (
+        unit.controllerId === action.playerId &&
+        effect.unitNames.includes(unit.name) &&
+        isUnitAlive(unit)
+      ) {
+        applyUnitMaxHealthBonus(state, unit, effect.health, effect.name, source, action.playerId);
+      }
+    }
+  }
+
   // Tarnum (Castle)'s Ballista VI: "Choose N enemy units. Each suffers `amount`
   // damage." Gather the caster's living enemy units and hit N of them; the
   // shared area-pick choice lets the caster pick which when more than N are
@@ -30171,17 +30540,8 @@ function playCard(
       },
     );
     if (effect.type === "ADD_SPELL_POWER" && state.combat) {
-      const combat = state.combat;
-      const active = combat.activeUnitId
-        ? combat.units[combat.activeUnitId]
-        : undefined;
-      const ownFreshActivation =
-        active &&
-        active.controllerId === action.playerId &&
-        !active.activatedThisRound &&
-        !active.attackedThisActivation &&
-        !active.movedThisActivation;
-      if (ownFreshActivation) {
+      // Shared with the draw-only offer labels so the promised bank is real.
+      if (drawRiderBanksSpellPower(state, action.playerId)) {
         const bank = getEffectAmount(effect, mode);
         if (bank > 0) {
           const stats = state.players[action.playerId].combatStats;
@@ -31306,7 +31666,7 @@ function playCard(
   }
 
   if (effect.type === "HEAL_TWO_UNITS" && state.combat) {
-    const candidates = Object.values(state.combat.units).filter(isUnitAlive).map((unit) => unit.id);
+    const candidates = healTwoUnitsCandidateIds(state, action.playerId, card);
     if (candidates.length < 2) throw new Error("Cure IV requires two living units.");
     openUlandCureChoice(state, action.playerId, card.id, "first-unit", candidates, effect.amount);
   }
@@ -31348,7 +31708,9 @@ function playCard(
     const candidates = wounded && wounded.damage > 0
       ? Object.values(state.combat.units).filter(unit =>
           unit.id !== wounded.id && unit.controllerId === action.playerId && isUnitAlive(unit) &&
-          unit.maxHealth > unit.damage)
+          unit.maxHealth > unit.damage &&
+          // Olema's Weakness VI: the recipient is picked by this specialty.
+          !unitCardTargetLocked(state, unit, action.playerId, card))
       : [];
     if (wounded && candidates.length) {
       const choiceId = `choice_${nextEventNumber(state)}`;
@@ -33003,7 +33365,7 @@ function resolveUlandCureChoice(state: GameState, action: Extract<GameAction, { 
     if (cure.removeParalysis && hasToken(unit, "paralysis")) removeToken(state, unit, "paralysis", "dispelled");
   }
   if (cure.kind === "first-unit") {
-    const others = Object.values(state.combat?.units ?? {}).filter((candidate) => candidate.id !== selectedId && isUnitAlive(candidate)).map((candidate) => candidate.id);
+    const others = healTwoUnitsCandidateIds(state, action.playerId, cardLibrary[cure.cardId]).filter((candidateId) => candidateId !== selectedId);
     if (others.length > 0) openUlandCureChoice(state, action.playerId, cure.cardId, "second-unit", others, cure.amount);
   } else if (cure.kind === "round-end") {
     advanceCombatRound(state, cure.byPlayerId ?? action.playerId);
@@ -33156,8 +33518,7 @@ function spaceBlockedForSummonCell(
 
 /**
  * Places a freshly summoned unit (Summon Elemental spell) onto an empty combat
- * space: it joins the caster's army and the combat at once, acting on its own
- * initiative this round — exactly like the Pit Lords' Demons. Returns the new
+ * space: it joins combat only, acting on its own initiative this round. Returns the new
  * combat unit, or null when the space is unusable or the side is missing.
  */
 function placeSummonedUnit(
@@ -33179,11 +33540,11 @@ function placeSummonedUnit(
     return null;
   }
 
-  const armyUnit = addArmyUnit(player, unitDefId, side);
+  const summonId = `elemental_summon_${nextEventNumber(state)}`;
   const summoned = makeCombatUnitFromArmy(
-    armyUnit,
+    { id: summonId, unitDefId, side },
     playerId,
-    `unit_${playerId}_${armyUnit.id}`,
+    `unit_${playerId}_${summonId}`,
     position,
     getRuleset(state),
     unitSideRuleOverrides(state),
@@ -33197,6 +33558,8 @@ function placeSummonedUnit(
   // Conjured units have no printed grade: flag them so the neutral AI skips its
   // same-tier rule for them and only attacks them once no graded target remains.
   summoned.summoned = true;
+  summoned.temporary = true;
+  delete summoned.armyUnitId;
   combat.units[summoned.id] = summoned;
   return summoned;
 }
@@ -34583,6 +34946,7 @@ function resolveAbilityRollKeep(
       );
       finishCombatIfNeeded(state);
     }
+    clearDeferredInterfereSpellReductions(state);
     return;
   }
 
@@ -35006,8 +35370,9 @@ function resolveCommanderCast(
       // Fortress Shaman riders (optional; unset for every other user). Extra
       // Movement applies unconditionally (COMMANDER_MOVEMENT_BONUS, read in
       // getUnitMoveRange regardless of the movement house rules).
+      // Sea Marshal's Power-2 Slow prints a NEGATIVE entry (-1 Movement).
       const moveBonus = effect.moveByPower?.[tier] ?? 0;
-      if (moveBonus > 0) {
+      if (moveBonus !== 0) {
         modifiers.push({ type: "COMMANDER_MOVEMENT_BONUS", amount: moveBonus });
       }
       const vsSlower = effect.bonusVsSlowerByPower?.[tier] ?? 0;
@@ -35374,6 +35739,7 @@ function chooseAbilityTarget(
         markUnitRemovedIfNeeded(state, target);
       }
     }
+    clearDeferredInterfereSpellReductions(state);
     finishCombatIfNeeded(state);
     return;
   }
@@ -35418,6 +35784,7 @@ function chooseAbilityTarget(
     }
     if (finishCombatIfNeeded(state)) {
       delete state.combat?.pendingCardDamageTransfers;
+      clearDeferredInterfereSpellReductions(state);
       return;
     }
     const rest = choice.candidateUnitIds.filter(
@@ -35439,6 +35806,8 @@ function chooseAbilityTarget(
           : choice.minPicksRemaining - 1,
       );
     }
+    // The blast's deferred hits are over unless a further pick of it reopened.
+    clearDeferredInterfereSpellReductionsUnlessReopened(state, "area-pick");
     finishCombatIfNeeded(state);
     // Resume tail for a blast fired INSIDE a reaction window (Meteor Shower /
     // Frost Ring played before an attack/retaliation). The window was paused
@@ -35556,6 +35925,8 @@ function chooseAbilityTarget(
         remaining.slice(1),
       );
     }
+    // The chain's deferred hops are over unless a further aimed hop reopened.
+    clearDeferredInterfereSpellReductionsUnlessReopened(state, "chain-lightning");
     return;
   }
 
@@ -37039,7 +37410,10 @@ function walkMoveThroughTokens(
       }
       if (
         token.armed === true &&
-        unitIgnoresBattlefieldTokenEffect(state, token, unit)
+        (unitIgnoresBattlefieldTokenEffect(state, token, unit) ||
+          // Ghost Dragons' Spectral Ward: a Spell's Quicksand stop is a
+          // non-damage Spell effect (Land Mine / Fire Wall damage still lands).
+          (Boolean(token.sourceSpellCardId) && factionVeterancy(unit, "spectral-ward")))
       ) {
         appendBattlefieldTokenImmune(state, token, unit);
       } else if (token.armed === true && !armedQuicksand) {
@@ -39179,6 +39553,28 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
 
       const active = combat.units[combat.activeUnitId];
       if (active && isUnitAlive(active) && !active.activatedThisRound) {
+        // Pre-activation interrupts (Sorrow's skip, Bowstring of the Unicorn's
+        // Mane's out-of-order ranged activation) come FIRST, before the pacing
+        // pause below or a guard's automatic activation. The applyAction tail
+        // also opens this window, but in an adventure combat the pump either
+        // parks a pendingNeutralStep (the window refuses to open over it) or runs
+        // the guard's whole activation right here — so without this call the
+        // window never surfaced before a Neutral guard acted (a paused PvP unit
+        // only got it after its pause). Offered once per activation
+        // (preActivationWindowOffered); pinned in bowstring-adventure-window.test.ts.
+        // Blue Archive combat-start abilities still queued resolve first (the
+        // tail drains that queue before it opens this window); the window then
+        // opens on a later pass, still before the unit acts.
+        if (
+          !active.preActivationWindowOffered &&
+          !combat.kivotosCombatStartQueue?.length
+        ) {
+          maybeOpenPreActivationWindow(state, cards);
+          if (state.reactionWindow) {
+            break;
+          }
+        }
+
         // Pre-activation reaction pause: before this unit acts, give the other
         // side a real window to react — cast (Intelligence-enabled / trigger-free
         // instant spells), play an instant ability/specialty, or use an active

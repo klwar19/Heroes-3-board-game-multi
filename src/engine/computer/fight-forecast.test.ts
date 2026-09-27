@@ -158,9 +158,49 @@ describe("armored guard commitment (user ruling 2026-09-26: try when winnable)",
     expect(chance).toBeGreaterThan(0.2);
     expect(chance).toBeLessThan(0.4);
     expect(openingGuardCommitment(pristine.state, "p2", pristine.combat)).toBe("retreat");
-    // Same odds once the fight is under way (a unit already acted this round).
-    const underWay = board([{ ...shooter, activatedThisRound: true }, target], { movement: 0, id: "keep-bar" });
+    // Same odds once the fight is under way: the guard already acted this
+    // round, our shooter still holds its activation. (Marking the SHOOTER as
+    // activated no longer means "same odds": an activated unit sits out the
+    // rest of the round in the forecast, and with no movement left that board
+    // is lost — it only read 1/3 through a memo key blind to the flag.)
+    const underWay = board([shooter, { ...target, activatedThisRound: true }], { movement: 0, id: "keep-bar" });
     expect(openingGuardCommitment(underWay.state, "p2", underWay.combat)).toBe("fight");
+  });
+
+  it("at the continue window a unit that fought last round fights again in the paid round", () => {
+    // Lab 2026-09-27: activation flags stay set on the finished round while the
+    // continue window is open; reading them as "already acted" emptied the one
+    // paid round and the forecast gave 0% against a 1-health guard -> retreat.
+    const guard = unit({ id: "g1", defense: 1, maxHealth: 1, attack: 0, activatedThisRound: true });
+    const window = board([own("a", { attack: 3, activatedThisRound: true }), guard], { movement: 1, round: 2, id: "continue-window" });
+    (window.combat as unknown as { awaitingContinue: boolean }).awaitingContinue = true;
+    expect(forecastNeutralFight(window.state, "p2", window.combat)!.winChance).toBeGreaterThan(0.9);
+    // CONTROL: mid-round (no continue window) with no movement left, the unit
+    // that already acted has nothing more this fight.
+    const spent = board([own("a", { attack: 3, activatedThisRound: true }), guard], { movement: 0, round: 2, id: "continue-spent" });
+    expect(forecastNeutralFight(spent.state, "p2", spent.combat)!.winChance).toBe(0);
+  });
+
+  it("a scout stays a scout unless the scouting turned the odds past the TRY bar", () => {
+    const scouting = (setup: ReturnType<typeof board>) => {
+      (setup.state as unknown as { computerMemory: unknown }).computerMemory = { p2: { scoutedWithdrawalCombatId: setup.combat.id } };
+      return setup;
+    };
+    // The shooter already fired this round; one paid round remains. Attack 3 vs
+    // Defense 2 kills a 1-health guard on two faces of three (~2/3).
+    const turned = scouting(board([own("a", { attack: 3, activatedThisRound: true }), unit({ id: "g1", defense: 2, maxHealth: 1, attack: 0 })],
+      { movement: 1, id: "scout-turned" }));
+    const good = forecastNeutralFight(turned.state, "p2", turned.combat)!.winChance;
+    expect(good).toBeGreaterThanOrEqual(0.4);
+    expect(openingGuardCommitment(turned.state, "p2", turned.combat)).toBe("fight");
+    // CONTROL: a 2-health guard dies only on the +1 face (~1/3): above the KEEP
+    // bar an ordinary under-way fight would hold, but the scout still withdraws.
+    const middling = scouting(board([own("a", { attack: 3, activatedThisRound: true }), unit({ id: "g1", defense: 2, maxHealth: 2, attack: 0 })],
+      { movement: 1, id: "scout-middling" }));
+    const odds = forecastNeutralFight(middling.state, "p2", middling.combat)!.winChance;
+    expect(odds).toBeGreaterThan(0.2);
+    expect(odds).toBeLessThan(0.4);
+    expect(openingGuardCommitment(middling.state, "p2", middling.combat)).toBe("retreat");
   });
 });
 
@@ -179,6 +219,18 @@ describe("forecast memo and public guard reads", () => {
     expect(forecastNeutralFight(soft.state, "p2", soft.combat)?.winChance).toBe(1);
     const tough = board([...bodies, ...guards(30)], { hand, movement: 1, id: "shared-combat-id" });
     expect(forecastNeutralFight(tough.state, "p2", tough.combat)?.winChance).toBe(0);
+  });
+
+  it("never serves a forecast cached before a unit acted this round (same positions, wounds and hand)", () => {
+    // A Defend or a bare END_ACTIVATION leaves every position, wound and card
+    // as it was; only the unit's round state changes. The forecast reads it
+    // (an activated unit sits out the rest of the round), so the memo key must.
+    const guard = unit({ id: "g1", defense: 1, maxHealth: 1, attack: 0 });
+    const fresh = board([own("a", { attack: 3 }), guard], { movement: 0, round: 2, id: "memo-round-state" });
+    expect(forecastNeutralFight(fresh.state, "p2", fresh.combat)!.winChance).toBeGreaterThan(0.9);
+    // Same board and combat id after the shooter's activation: nothing is left this fight.
+    const acted = board([own("a", { attack: 3, activatedThisRound: true }), guard], { movement: 0, round: 2, id: "memo-round-state" });
+    expect(forecastNeutralFight(acted.state, "p2", acted.combat)!.winChance).toBe(0);
   });
 
   it("resolves a designer's random / pack guard slots instead of dropping them", () => {

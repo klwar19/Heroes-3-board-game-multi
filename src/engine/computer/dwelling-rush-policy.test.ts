@@ -15,8 +15,10 @@ import {
   assessDwellingRush,
   developmentResourceTargets,
   goldBodyComboTradePlan,
+  goldStepMarketPlan,
 } from "./development";
 import { scoreMapAction } from "./map-policy";
+import { scoreChoiceAction } from "./choice-policy";
 import type { ComputerObservation } from "./types";
 
 /**
@@ -424,5 +426,54 @@ describe("goldBodyComboTradePlan — the level-7 body lands with its dwelling", 
     // Three gold short: the spare materials cannot close it — no plan.
     const tooShort = comboState(GOLD_DWELLING_COST.gold + 22 - 3).state;
     expect(goldBodyComboTradePlan(tooShort, "p2")).toBeNull();
+  });
+});
+
+/** TRADE_RATES index that exchanges 3 building materials for 1 valuables. */
+const EXCHANGE_RATE_INDEX = TRADE_RATES.findIndex(
+  (rate) => rate.sell.buildingMaterials === 3 && rate.buy.valuables === 1,
+);
+
+describe("spare materials exchange 3 → 1 valuable before gold (lab 2026-09-27)", () => {
+  it("a dwelling rush exchanges spare materials and stays feasible on a thin gold stock", () => {
+    // unlock-silver dwelling {8 gold, 6 materials, 3 valuables}: 15 materials
+    // leave 9 spare — all three valuables by exchange, no gold spent.
+    const { state } = marketRushState({ seed: "rush-exchange", prereqTiers: ["bronze"], gold: 22, buildingMaterials: 15, valuables: 0 });
+    const rush = assessDwellingRush(state, "p2");
+    expect(rush?.feasible).toBe(true);
+    expect(rush?.inputRateIndices).toEqual([EXCHANGE_RATE_INDEX]);
+    // Six spare materials cover two valuables; the third is bought for 6 gold.
+    state.players.p2.resources = { gold: 22, buildingMaterials: 12, valuables: 0 };
+    const mixed = assessDwellingRush(state, "p2");
+    expect(mixed?.feasible).toBe(true);
+    expect(mixed?.inputRateIndices).toEqual([EXCHANGE_RATE_INDEX, VALS_RATE_INDEX]);
+    // CONTROL: no spare materials — the 22 gold must buy all three valuables
+    // (18) and would strip the reserve: infeasible, gold purchase only.
+    state.players.p2.resources = { gold: 22, buildingMaterials: 6, valuables: 0 };
+    const gold = assessDwellingRush(state, "p2");
+    expect(gold?.feasible).toBe(false);
+    expect(gold?.inputRateIndices).toEqual([VALS_RATE_INDEX]);
+  });
+
+  it("the saved level-7 recruit exchanges spare materials for its missing valuable", () => {
+    const { state } = marketRushState({ seed: "step-exchange", prereqTiers: ["bronze", "silver", "gold"], gold: 30, buildingMaterials: 5, valuables: 0 });
+    expect(goldStepMarketPlan(state, "p2")?.rateIndices).toEqual([EXCHANGE_RATE_INDEX]);
+    // CONTROL: two materials cannot make an exchange — gold buys the valuable.
+    state.players.p2.resources = { gold: 30, buildingMaterials: 2, valuables: 0 };
+    expect(goldStepMarketPlan(state, "p2")?.rateIndices).toEqual([VALS_RATE_INDEX]);
+  });
+
+  it("a City Hall that offers the exchange takes it when it completes the dwelling this Resource Round", () => {
+    const { state } = marketRushState({ seed: "hall-exchange", prereqTiers: ["bronze"], gold: 22, buildingMaterials: 15, valuables: 0 });
+    state.pendingChoice = {
+      id: "hall", type: "OPTION_CHOICE", playerId: "p2", context: "city-hall", prompt: "City Hall",
+      options: [{ label: "Gain 5 gold" }, { label: "Exchange resources (Trading Post)" }],
+      cityHall: { options: [{ label: "Gain 5 gold", gold: 5 }, { label: "Exchange resources (Trading Post)", tradingPost: true }] },
+    } as unknown as GameState["pendingChoice"];
+    const score = (optionIndex: number) => scoreChoiceAction(observe(state), { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "hall", optionIndex })!.score;
+    expect(score(1)).toBeGreaterThan(score(0));
+    // CONTROL: nothing to complete by trading (no spare materials, thin gold) — take the gold.
+    state.players.p2.resources = { gold: 22, buildingMaterials: 6, valuables: 0 };
+    expect(score(0)).toBeGreaterThan(score(1));
   });
 });

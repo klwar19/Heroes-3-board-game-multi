@@ -28,7 +28,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
 import { unitAbilities, type UnitMapAbilityEffect } from "@/data/units/abilities";
 import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
-import { hasInternalBorder } from "@/data/map/borders";
+import { creatureBankOpensPrintedArc, hasInternalBorder } from "@/data/map/borders";
 import {
   CREATURE_BANKS,
   getCreatureBankDefinition,
@@ -2612,10 +2612,12 @@ export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldStat
   // tile-frame) OR by a DESIGNER-placed yellow border (`extraBorders`, absolute
   // frame). Both feed the single source of truth so every crossing / discovery /
   // placement read treats a deliberate designed line exactly like a printed one.
-  // II–III / IV–V banks erase their printed arc. The opposite tile is
-  // checked independently, preserving any touching starting-tile border.
+  // A bank on any bank-hosting tile (II–III / IV–V / subterranean / sea) erases
+  // its printed arc. The opposite tile is checked independently, preserving any
+  // touching starting-tile border. The live group wins; a legacy tile without
+  // one falls back to its definition's group, exactly like the board.
   const bankOpensPrintedArc = field.location === "creature_bank" &&
-    (tile.group === "far" || tile.group === "near");
+    creatureBankOpensPrintedArc(tile.group ?? allTileDefinitions[tile.tileDefId]?.group);
   return (!bankOpensPrintedArc && isTileSlotOuterSealed(tile.tileDefId, field.slot)) ||
     isTileSlotDesignedSealed(tile, field.slot);
 }
@@ -18644,7 +18646,7 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
   }));
 }
 
-function buildCreatureBankDrawsForState(
+export function buildCreatureBankDrawsForState(
   state: GameState,
   bankId: CreatureBankId,
   bankSize?: BankSize,

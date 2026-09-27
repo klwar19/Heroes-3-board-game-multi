@@ -2,73 +2,20 @@
 
 Two pieces of missing **Bulwark** art and how they get into the game:
 
-1. the **town map tile** (`S10`) — a Gemini edit of the Tower snow tile (below);
+1. the **town map tile** (`S11`) — built by `scripts/build-expansion-starting-tiles.mjs` (below);
 2. the **hero-specialty cards** (6 heroes × levels **I / IV / VI**) — now drawn
    **natively in-app** by `SpecialtyCard`; only one transparent symbol per hero
    is an image, and most already ship.
 
-## Bulwark town map tile (S10)
+## Bulwark town map tile (S11)
 
-The Bulwark starting tile `S10` (`src/data/map/expansion-tiles.ts`) is drawn by
-**editing the Tower starting tile** — both are `snow` tiles, so reuse Tower's
-whole environment and just swap the town.
-
-**The hex code is already aligned (the "fix code for correct hexes" step is done).**
-`S10`'s field arrangement and outer borders mirror the Tower tile `#S1` exactly
-(only the town's faction is `bulwark`), because a tile's field symbols are baked
-into its art and the engine hides the glyph overlay once `assets.tileImage` is
-set (see `renderTileArt` in `src/components/adventure/screen.tsx`). So the Tower
-symbols in the base art already sit on the right engine hexes — do **not** move
-them.
-
-- **Base / template:** `public/assets/board/tiles/sx1.webp` (the Tower snow
-  starting tile, `#S1`).
-- **Town reference:** the Bulwark Castle render. The browser uploads **files, not
-  URLs**, so download it to a local file first:
-
-  ```powershell
-  New-Item -ItemType Directory -Force -Path out\refs | Out-Null
-  curl.exe -L "https://static.wikia.nocookie.net/heroes-of-might-and-magic/images/b/b2/Bulwark_Castle_render.png/revision/latest?cb=20250129141039" -o out\refs\bulwark-town-render.png
-  ```
-
-  (Dropping the `/scale-to-width-down/250` segment from the URL fetches the
-  full-resolution original instead of the 250px thumbnail.)
-- **Output:** `public/assets/board/tiles/s10.webp`.
-
-### Tile prompt (TWO-image EDIT: the tile + the town render)
-
-Upload, in order: **Image 1** = `public/assets/board/tiles/sx1.webp` (the Tower
-tile), **Image 2** = `out/refs/bulwark-town-render.png` (the Bulwark Castle
-render).
-
-> **Image 1** is a finished hexagonal **map tile** from the **Heroes of Might &
-> Magic III board game** — the Tower faction's snowy starting tile. **Image 2** is
-> a render of the **Bulwark** town. EDIT Image 1 into the Bulwark starting tile.
-> This is a precise local edit of Image 1, NOT a regeneration.
->
-> Keep EVERYTHING in Image 1 except the central town building **100% identical and
-> pixel-aligned**: the snowy mountain terrain, every field symbol and its exact
-> position (the blocked rocky field, the two empty fields, the treasure chest, the
-> resource symbol, the mine), the hex-flower shape, the cream/yellow outer border
-> lines, and the overall lighting and palette. Do NOT move, restyle, recolor or
-> redraw any of them.
->
-> Change ONLY the central town: replace the Tower wizards' town with the **Bulwark
-> town shown in Image 2** — keep its architecture, colours and identity, but
-> repaint it to sit naturally inside Image 1: match the tile's perspective, scale,
-> lighting and snowy setting, and fit it to the SAME footprint the Tower town
-> occupied. Render crisp and print-quality at Image 1's original resolution and
-> crop.
-
-### Finalize + wire the tile
-
-```bash
-node scripts/png-to-webp.mjs out/bulwark-tile public/assets/board/tiles
-```
-
-Then set `assets: { tileImage: "/assets/board/tiles/s10.webp" }` on the `S10`
-entry in `src/data/map/expansion-tiles.ts`. (Done — `s10.webp` ships and is
-wired; the field symbols land on the right hexes.)
+The Bulwark starting tile is now `S11` (`public/assets/board/tiles/s11.webp`);
+`S10` is the Factory tile. The old Gemini edit of the Tower tile `#S1` is
+retired: its layout no longer matches the tile definition, and its output path
+(`s10.webp`) would overwrite the Factory art. `S10`/`S11`/`S12` are built by
+`node scripts/build-expansion-starting-tiles.mjs guides|build`, which draws every
+border, label and field symbol from the same slots as
+`src/data/map/expansion-tiles.ts`.
 
 ## Hero specialty cards (native render — `SpecialtyCard`)
 

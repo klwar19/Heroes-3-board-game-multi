@@ -23,12 +23,9 @@
  *          centre lies in and redrawn in cells N px wider on each side, so the
  *          importer (same --grid) cuts whole frames with no bleed.
  *
- * Cove Cannon (war_machine.cannon, no PC original):
- *   node scripts/key-sheet-background.mjs generated-session-art/battle-hex/war-machines/cannon-sheet.png
- *     generated-session-art/battle-hex/war-machines/cannon-sheet-alpha.png --grid 6x4 --regrid 48
- *   node scripts/import-sprite-sheet.mjs generated-session-art/battle-hex/war-machines/cannon-sheet-alpha.png war-cannon
- *     --grid 6x4 --rows "2:6;15:6;3:6;5:6" --copy "4=3,14=15,16=15" --ref war-ballista
- *   node scripts/refit-sheet-sprites.mjs war-cannon
+ * (It first keyed the Codex Cove Cannon sheet; the hex board's war-cannon is now
+ * the real HotA SMCANNON.def — node scripts/build-creature-sprites.mjs
+ * tmp/hota/mods/cannon/Content/sprites/hota/battle/SMCANNON.DEF war-cannon --double-wide.)
  */
 import fs from "node:fs";
 import { createRequire } from "node:module";

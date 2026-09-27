@@ -236,7 +236,7 @@ describe("town strategy focused", () => {
     expect(result.state.players.p2.army.find(unit=>unit.unitDefId === "inferno.arch_devils")?.side).toBe("pack");
   });
 
-  it("buys an affordable first Gold Pack when the preferred upgrade lacks valuables", () => {
+  it("keeps the level-7 Pack first, buying the affordable lower Gold Pack only as a breakthrough (USER RULING 2026-09-27)", () => {
     const f = fixture("hard", "conflux");
     f.second.flagOwnerId = "p2"; f.second.difficulty = undefined;
     const town = Object.values(f.state.towns).find(t => t.controllerId === "p2")!;
@@ -253,9 +253,21 @@ describe("town strategy focused", () => {
       expect(result.errors).toEqual([]);
       return result.state.players.p2;
     };
-    const affordable = buy(23, 1);
-    expect(affordable.army.find(u => u.unitDefId === "conflux.magic_elementals")?.side).toBe("pack");
-    expect(affordable.resources).toEqual({gold: 4, buildingMaterials: 18, valuables: 0});
+    // USER RULING (2026-09-27): level-7 Few, level-6 Few, level-7 Pack, level-6
+    // Pack — "level-7 Pack as soon as possible". With valuables income the
+    // Phoenix Pack is Resource Rounds away; the Magic Elemental Pack paid now
+    // would push it later, so the treasury waits.
+    const held = buy(23, 1);
+    expect(held.army.find(u => u.unitDefId === "conflux.magic_elementals")?.side).toBe("few");
+    expect(held.army.find(u => u.unitDefId === "conflux.phoenixes")?.side).toBe("few");
+    // CONTROL: with no valuables income the Phoenix Pack is beyond reach — the
+    // affordable lower Pack is the army's breakthrough and is bought.
+    const income = f.state.players.p2.production;
+    f.state.players.p2.production = {...income, valuables: 0};
+    const breakthrough = buy(23, 1);
+    expect(breakthrough.army.find(u => u.unitDefId === "conflux.magic_elementals")?.side).toBe("pack");
+    expect(breakthrough.resources).toEqual({gold: 4, buildingMaterials: 18, valuables: 0});
+    f.state.players.p2.production = income;
     // CONTROL: with both upgrades funded, retain the preferred Phoenix Pack.
     const preferred = buy(40, 3);
     expect(preferred.army.find(u => u.unitDefId === "conflux.phoenixes")?.side).toBe("pack");
@@ -381,8 +393,17 @@ describe("town strategy actual games", () => {
     // paper copy is not part of a competent Far III entry.
     const firstTile = result.state.adventure!.fields[farIII[0].fieldId].tileInstanceId;
     const second = farIII.find(entry => result.state.adventure!.fields[entry.fieldId].tileInstanceId !== firstTile);
-    expect(second, "must fight on a second Far tile").toBeDefined();
-    expect(second!.army.some(unit => ["silver","gold","azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier))).toBe(true);
+    // The second Far tile is taken with Silver in a real fight — or with no
+    // fight at all: a hero above the guard's level wins it by Quick Combat
+    // (engine rule), which needs no Silver (seen 2026-09-27: level-4 hero, Far
+    // III Settlement at R4).
+    const quickSecond = result.state.eventLog.some(event => {
+      if (event.type !== "QUICK_COMBAT_WON" || event.playerId !== "p2" || event.difficulty < 3) return false;
+      const tileId = result.state.adventure!.fields[event.fieldId]?.tileInstanceId;
+      return Boolean(tileId && tileId !== firstTile && result.state.adventure!.tiles[tileId]?.group === "far");
+    });
+    expect(second || quickSecond, "must take a second Far tile").toBeTruthy();
+    if (second) expect(second.army.some(unit => ["silver","gold","azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier))).toBe(true);
     expect(securedFarTileIds(result.state,"p2").size).toBeGreaterThanOrEqual(2);
     expect(result.state.players.p2.army.some(unit => coreUnitDefinitions[unit.unitDefId]?.tier === "gold" && unit.side === "pack")).toBe(true);
     expect(result.state.eventLog.some(event => event.type === "COMPUTER_GUARANTEED_WIN" && Number(event.difficulty) >= 3)).toBe(false);

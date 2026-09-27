@@ -9,7 +9,7 @@ import { playersAreAllied } from "./control";
 import { premiumCombatMovementReserve } from "./combat-movement";
 export { premiumCombatMovementReserve } from "./combat-movement";
 import {
-  canBeatGuardedField, collectMapObjectives, distanceFromHeroTo,
+  canBeatGuardedField, collectMapObjectives, distanceFromHeroTo, eliminationRecaptureStep,
   isFreeSeizeObjective, objectiveDistanceField, primaryMapObjective,
 } from "./map-navigation";
 import { repeatsFailedFight, type ComputerPolicyMemory } from "./memory";
@@ -89,7 +89,7 @@ export function scorePremiumApproach(
   if (action.to === primary.spaceId) {
     // The entry itself costs one point. Never start a paid-continuation fight
     // on the last MP when a refreshed turn can afford entry plus the buffer.
-    if (movement < 1 + reserve) {
+    if (movement < 1 + reserve && !eliminationRecaptureStep(state, hero.controllerId, field)) {
       return { score: 250, policy: "map.premium-save-combat-movement" };
     }
     return { score: 945, policy: "map.premium-capture-now" };

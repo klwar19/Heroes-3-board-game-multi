@@ -45,6 +45,14 @@ export function tokenDefenseDelta(unit: CombatUnitState): number {
   return -Math.min(unit.defense, reduction);
 }
 
+/** Arch Devils R3 Petrifying Curse: its Paralysis token's source name. */
+export const PETRIFYING_CURSE_SOURCE = "Petrifying Curse";
+
+/** The unit is held by Petrifying Curse's Paralysis (drawn turned to grey stone). */
+export function unitIsPetrified(unit: CombatUnitState): boolean {
+  return getUnitTokens(unit).some((token) => token.kind === "paralysis" && token.sourceName === PETRIFYING_CURSE_SOURCE);
+}
+
 export function hasToken(unit: CombatUnitState, kind: CombatTokenKind): boolean {
   return getUnitTokens(unit).some((token) => token.kind === kind);
 }

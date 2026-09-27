@@ -477,3 +477,29 @@ describe("attack-window power pairing", () => {
     ).toBe(true);
   });
 });
+
+describe("Helm of Chaos never freezes on a standalone Power", () => {
+  // Lab 2026-09-27: a computer played a lone Power into an attack while the
+  // defender held Helm of Chaos. The Helm counter window opened BEFORE the
+  // lone-Power rule was checked, so the paused play failed on resume and both
+  // of the Helm holder's answers (cancel / pass) were rejected: a frozen table.
+  it("rejects the lone Power before the Helm holder is asked to answer it", () => {
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power"], ["artifact.helm_of_chaos"]);
+    const result = applyAction(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "stat.power", mode: "basic" });
+    expect(result.errors[0]?.message).toContain("Power can only be played into an attack together with a Spell card");
+    expect(result.state.reactionWindow?.helmCounterPending).toBeUndefined();
+  });
+
+  it("CONTROL: a legal Instant still opens the Helm counter window, and passing it resolves the play", () => {
+    const state = declareMeleeAttack(["spell.bloodlust", "stat.power"], ["artifact.helm_of_chaos"]);
+    const bloodlust = (state.reactionWindow?.legalReactions.p1 ?? []).find((legal) =>
+      legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.bloodlust");
+    expect(bloodlust).toBeTruthy();
+    const paused = applyOk(state, bloodlust!.action);
+    expect(paused.reactionWindow?.helmCounterPending?.play).toMatchObject({ cardId: "spell.bloodlust" });
+    expect(paused.reactionWindow?.priorityPlayerId).toBe("p2");
+    const resumed = applyOk(paused, { type: "PASS_REACTION", playerId: "p2" });
+    expect(resumed.reactionWindow?.helmCounterPending).toBeUndefined();
+    expect(resumed.players.p1.hand).not.toContain("spell.bloodlust");
+  });
+});

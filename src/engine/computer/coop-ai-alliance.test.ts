@@ -157,6 +157,9 @@ describe("ally holdings are never march objectives", () => {
     const state = game();
     const hero = mainHeroOf(state, "p2");
     const p1Town = townSpaceOf(state, "p1");
+    // p1's hero stands on its town; the forecast-first PvP gate attacks it
+    // only when favoured — an empty enemy army always is.
+    state.players.p1.army = [];
 
     // CONTROL first (no alliance): the enemy town is a conquest target.
     expect(

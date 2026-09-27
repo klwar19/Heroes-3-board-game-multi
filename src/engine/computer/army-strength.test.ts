@@ -14,6 +14,8 @@ import {
   canBeatCreatureBank,
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
+  PVP_FORECAST_ENGAGE_WIN,
+  pvpEngagementForecast,
   enemyEngagementRatio,
   enemyMainHeroLevelDeficit,
   enemyMainHeroLevelLead,
@@ -67,13 +69,24 @@ describe("playerArmyStrength", () => {
 });
 
 describe("shouldEngageEnemy", () => {
-  it("engages a comparable army and one it outweighs", () => {
+  it("engages an army the fight forecast favours it against, and one with nothing to fear", () => {
     const state = game();
-    // Equal starting armies: a roughly even fight the AI takes.
+    // The same bronze bodies as Packs: the forecast (both public armies fought
+    // forward over sampled dice) favours the attack.
+    state.players.p2.army = state.players.p2.army.map(unit => ({ ...unit, side: "pack" as const }));
+    expect(pvpEngagementForecast(state, "p2", "p1", false)!.winChance).toBeGreaterThanOrEqual(PVP_FORECAST_ENGAGE_WIN);
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
     // Enemy with nothing to fear is always engaged.
     state.players.p1.army = [];
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+  });
+
+  it("holds off an even-strength army the forecast does not favour (forecast-first PvP gate, 2026-09-27)", () => {
+    const state = game();
+    // Equal starting stat sums used to read "roughly even, take it"; fought
+    // forward (initiative, matchups, the defender's cards) the attack is not favoured.
+    expect(pvpEngagementForecast(state, "p2", "p1", false)!.winChance).toBeLessThan(PVP_FORECAST_ENGAGE_WIN);
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
   });
 
   it("CONTROL: holds off when clearly outmatched", () => {
@@ -345,20 +358,20 @@ describe("premium economy + soft silver unlock", () => {
 
   it("engages a sized bank only when the army covers its layer bulk", () => {
     const state = game();
-    // Size Ⅰ Imp Cache (no extra layers) is in reach of a full starting army;
-    // size Ⅳ's stacked health bars are not — the AI must read bankSize.
-    const sizeI = {
-      spaceId: "bank:1",
-      location: "creature_bank",
-      bankId: "imp_cache",
-      bankSize: 1,
-    } as MapFieldState;
-    const sizeIV = { ...sizeI, bankSize: 4 } as MapFieldState;
-    expect(canBeatCreatureBank(state, "p2", sizeI)).toBe(true);
-    expect(canBeatCreatureBank(state, "p2", sizeIV)).toBe(false);
+    // Judged by the simulated fight, which reads bankSize (one Stack Token per
+    // size step on the defenders). Real engine, 30 forced fights each with this
+    // starting army (lab 2026-09-27): Imp Cache size Ⅰ 30/30 and size Ⅳ 30/30
+    // won — Familiars stay weak under their layers — while a size Ⅳ Dwarven
+    // Treasury was won 0/30. The old stat-sum read refused the size Ⅳ Imp Cache.
+    const impI = { spaceId: "bank:1", location: "creature_bank", bankId: "imp_cache", bankSize: 1 } as MapFieldState;
+    const impIV = { ...impI, bankSize: 4 } as MapFieldState;
+    const treasuryIV = { ...impI, spaceId: "bank:2", bankId: "dwarven_treasury", bankSize: 4 } as MapFieldState;
+    expect(canBeatCreatureBank(state, "p2", impI)).toBe(true);
+    expect(canBeatCreatureBank(state, "p2", impIV)).toBe(true);
+    expect(canBeatCreatureBank(state, "p2", treasuryIV)).toBe(false);
     // CONTROL: gut the army below even size Ⅰ.
     state.players.p2.army = state.players.p2.army.slice(0, 1);
-    expect(canBeatCreatureBank(state, "p2", sizeI)).toBe(false);
+    expect(canBeatCreatureBank(state, "p2", impI)).toBe(false);
   });
 });
 

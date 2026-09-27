@@ -3302,7 +3302,10 @@ export const artifactCards: CardLibrary = {
   // Defense bonus that, unusually, also reduces Spell damage. Reuses
   // INTERFERE_SPELL, so (like the Interference ability) it is offered BOTH as a
   // plain defense reaction to a physical attack on one of your units AND as a
-  // reaction to an enemy single-target damaging Spell aimed at one of your units.
+  // reaction to ANY enemy damaging Spell that can hit one of your units (user
+  // ruling 2026-09-27): bolts, area Spells such as Meteor Shower, Chain
+  // Lightning's target and hops, Death Ripple, a Power-2 Earthquake — one offer
+  // per such unit (interferenceTargetsForCast).
   // Wiki marks both sides `<instant>` — THIS attack / THIS spell only, never
   // combat-long (prior misread; same fix as Shield / Lion's Shield). Option A
   // grants +1 (discarded); option B grants +4 and removes the card.

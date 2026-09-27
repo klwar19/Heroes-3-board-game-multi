@@ -16,13 +16,13 @@ import { createAdventureGameState } from "./index";
  * together and actually playable.
  */
 describe("Bulwark faction wiring", () => {
-  it("registers the faction with its S10 starting tile, eight buildings, seven heroes and seven units", () => {
+  it("registers the faction with its S11 starting tile, eight buildings, seven heroes and seven units", () => {
     const faction = coreFactionDefinitions.bulwark;
     expect(faction).toBeDefined();
     expect(faction.id).toBe("bulwark");
     expect(faction.color).toBeTruthy();
-    expect(faction.startingTileId).toBe("S10");
-    expect(startingTileByFaction.bulwark).toBe("S10");
+    expect(faction.startingTileId).toBe("S11");
+    expect(startingTileByFaction.bulwark).toBe("S11");
 
     expect(faction.heroes).toEqual(["dhuin", "creyle", "glacius", "kriv", "eikthurn", "oidana", "kaliki"]);
     expect(faction.units).toEqual([
@@ -43,9 +43,9 @@ describe("Bulwark faction wiring", () => {
     expect(coreBuildingDefinitions["bulwark.altar"].effect).toMatchObject({ type: "RUNE_ALTAR", levelCap: 3 });
   });
 
-  it("defines the S10 Snow starting tile carrying the Bulwark town", () => {
-    const tile = allTileDefinitions.S10;
-    expect(tile, "S10 should be defined").toBeDefined();
+  it("defines the S11 Snow starting tile carrying the Bulwark town", () => {
+    const tile = allTileDefinitions.S11;
+    expect(tile, "S11 should be defined").toBeDefined();
     expect(tile.group).toBe("starting");
     expect(tile.terrain).toBe("snow");
     expect(tile.content).toBe("bulwark_expansion");
@@ -66,7 +66,7 @@ describe("Bulwark faction wiring", () => {
     }
   });
 
-  it("can start an adventure as Bulwark (S10, hero deck and town all resolve)", () => {
+  it("can start an adventure as Bulwark (S11, hero deck and town all resolve)", () => {
     const state = createAdventureGameState({
       seed: "bulwark-playable",
       rollFirstPlayer: false,
@@ -79,5 +79,9 @@ describe("Bulwark faction wiring", () => {
     expect(state.players.p1.deck.length, "the Bulwark hero builds a starting deck").toBeGreaterThan(0);
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
     expect(town?.factionId, "the Bulwark town is placed").toBe("bulwark");
+    // …on the Bulwark home tile S11 (S10 is now the Factory tile).
+    const homeField = town?.fieldId ? state.adventure?.fields[town.fieldId] : undefined;
+    const homeTile = homeField ? state.adventure?.tiles[homeField.tileInstanceId] : undefined;
+    expect(homeTile?.tileDefId, "the Bulwark seat starts on S11").toBe("S11");
   });
 });

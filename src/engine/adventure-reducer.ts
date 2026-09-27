@@ -348,6 +348,9 @@ import {
   applyCommanderCombatStart,
   collectFirstAidCandidates,
   commanderBeginCastOption,
+  commanderCastCandidates,
+  commanderCastOf,
+  commanderHasOpeningCast,
   commanderFirstAidGoldCost,
   commanderGradesOf,
   commanderPowerOf,
@@ -14879,21 +14882,38 @@ function openCommanderCombatStartChoice(
   const begin = commanderBeginCastOption(state, playerId);
   if (begin) {
     const bruteOpening = begin.commander.commanderSlug === "brute";
-    const castName = bruteOpening ? "Bloodlust" : "Haste";
+    const beginCast = commanderCastOf(begin.commander);
+    // Sea Marshal's opening Slow (openingCastRounds): lasts round 1 only and
+    // the commander forgoes its round-1 turn (user ruling 2026-09-27).
+    const shortOpening =
+      beginCast?.effect.kind === "initiative-shift" && beginCast.effect.openingCastRounds !== undefined
+        ? beginCast.effect.openingCastRounds
+        : undefined;
+    const normalRounds =
+      beginCast?.effect.kind === "initiative-shift" ? beginCast.effect.durationRounds ?? 1 : 1;
+    const castName = bruteOpening ? "Bloodlust" : beginCast?.name ?? "Haste";
     const options = begin.targetUnitIds.map((unitId) => {
       const unit = combat.units[unitId];
       return {
-        label: `Cast ${castName} on ${unit?.cardName ?? "unit"} (${getBattlefieldLabel(unit?.position ?? -1)}) now — ${bruteOpening ? "+1 Attack for round 1; " : ""}the commander skips its round-1 turn`
+        label: shortOpening !== undefined
+          ? `Cast ${castName} on ${unit?.cardName ?? "unit"} (${getBattlefieldLabel(unit?.position ?? -1)}) now — lasts round 1 only; the commander skips its round-1 turn`
+          : `Cast ${castName} on ${unit?.cardName ?? "unit"} (${getBattlefieldLabel(unit?.position ?? -1)}) now — ${bruteOpening ? "+1 Attack for round 1; " : ""}the commander skips its round-1 turn`
       };
     });
-    options.push({ label: "Skip — save the commander's turn" });
+    options.push({
+      label: shortOpening !== undefined
+        ? `Skip — save the commander's turn (cast ${castName} normally for ${normalRounds} round${normalRounds === 1 ? "" : "s"})`
+        : "Skip — save the commander's turn"
+    });
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
       prompt: bruteOpening
         ? "Brute: cast Bloodlust before combat begins for +1 Attack this round? This uses one of three casts and skips the Brute's round-1 turn."
-        : "Shaman: cast Haste before combat begins? The commander then forgoes its round-1 turn.",
+        : shortOpening !== undefined
+          ? `${begin.commander.cardName}: cast ${castName} on an enemy before combat begins? Cast now it lasts round 1 only (a normal cast lasts ${normalRounds} round${normalRounds === 1 ? "" : "s"}) and the commander forgoes its round-1 turn.`
+          : "Shaman: cast Haste before combat begins? The commander then forgoes its round-1 turn.",
       options,
       context: "commander-begin-cast",
       commanderBeginCast: {
@@ -15029,11 +15049,13 @@ function resolveCommanderBeginCastChoice(
     const target = combat.units[data.targetUnitIds[optionIndex]];
     if (
       !commander ||
-      (commander.commanderSlug !== "shaman" && commander.commanderSlug !== "brute") ||
+      !commanderHasOpeningCast(state, commander) ||
       commander.damage >= commander.maxHealth ||
       !target ||
       target.damage >= target.maxHealth ||
-      target.controllerId !== playerId
+      // Haste / Bloodlust land on a friend; Sea Marshal's Slow on an enemy —
+      // the cast's own targeting read decides, as it does for the offer.
+      !commanderCastCandidates(state, commander).some((unit) => unit.id === target.id)
     ) {
       throw new Error("Choose a legal living unit for that commander cast.");
     }
@@ -20924,7 +20946,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
     // Spell Book (house rule): a Spell may be routed straight into the Book on
     // pickup; everything else (and every pick when the rule is off) goes to hand.
-    // A starting-only Spell (Magic Arrow) has no Book home, so it always goes to
+    // Starting-only Spells and View Air have no Binh Book home, so they go to
     // hand even if a fabricated pick names the Book.
     const destination = pick.destinations?.[action.optionIndex] ?? "hand";
     const source = pick.sources?.[action.optionIndex] ?? "discard";
@@ -24004,8 +24026,8 @@ export function openDiscardPickChoice(
       continue;
     }
     entries.push({ cardId, destination: "hand", source });
-    // Magic Arrow (any starting-only Spell) goes only to hand — it has no Spell
-    // Book home, so no "→ Spell Book" route is offered for it.
+    // Starting-only Spells and View Air go only to hand — no "→ Spell Book"
+    // route is offered for them.
     if (
       bookOn &&
       bookHasCapacity &&

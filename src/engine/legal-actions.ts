@@ -148,11 +148,13 @@ import {
   unitAttackRollAdvantaged,
   unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
+  spectralWardBlocksSpellCard,
   unitIsBerserk,
   spellCreatesDirectUnitOngoingEffect,
   spellCreatesDirectUnitNegativeOngoingEffect,
   cardDamageNullified,
   specialtyImmunityActive,
+  unitCardTargetLocked,
 } from "./active-effects";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -1327,7 +1329,64 @@ export function spellReactionBlockedByImmunity(
     return false;
   }
   const unit = state.combat.units[unitId];
-  return Boolean(unit && unitBlockedBySpellCard(state, unit, card));
+  // Ghost Dragons' Spectral Ward: every reaction effect routed here (stat
+  // changes, die/strike riders, Sorrow's skip) is a non-damage Spell effect.
+  return Boolean(
+    unit &&
+      (unitBlockedBySpellCard(state, unit, card) ||
+        spectralWardBlocksSpellCard(unit, { kind: card.kind })),
+  );
+}
+
+/**
+ * Olema's Weakness VI: true when this card's attack-window / activation-skip
+ * reaction would land on a unit locked against `playerId`'s cards
+ * (ENEMY_CARD_TARGET_LOCK). Same affected-unit reading as
+ * spellReactionBlockedByImmunity, but for every locked card kind (Spell,
+ * Ability, Specialty, Statistic, Artifact), not only Spells.
+ */
+export function reactionBlockedByCardTargetLock(
+  state: GameState,
+  playerId: PlayerId,
+  card: Pick<CardDefinition, "kind">,
+  effect: ConcreteEffect,
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
+): boolean {
+  if (!state.combat) {
+    return false;
+  }
+  let unitId: UnitId | null = null;
+  if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+    unitId = spellReactionAffectedUnitId(
+      effect,
+      triggerEvent.attackerId,
+      triggerEvent.defenderId,
+    );
+    // Interference / Plate against a physical attack: the +Defense lands on
+    // the reacting player's own unit in the exchange (the defender, or the
+    // attacker while the astrologers turn Defense into Attack).
+    if (effect.type === "INTERFERE_SPELL") {
+      unitId =
+        state.combat.units[triggerEvent.defenderId]?.controllerId === playerId
+          ? triggerEvent.defenderId
+          : triggerEvent.attackerId;
+    }
+  } else if (
+    triggerEvent.type === "UNIT_ACTIVATION_STARTED" &&
+    effect.type === "SKIP_ACTIVATION"
+  ) {
+    unitId = triggerEvent.unitId;
+  }
+  const unit = unitId ? state.combat.units[unitId] : undefined;
+  return Boolean(unit && unitCardTargetLocked(state, unit, playerId, card));
 }
 
 /**
@@ -1340,7 +1399,7 @@ export function spellRedirectTargets(
   state: GameState,
   currentTargetUnitId: UnitId | null,
   maxGrade: CombatUnitState["grade"],
-  spellCard?: Pick<CardDefinition, "kind" | "spellSchools">,
+  spellCard?: Pick<CardDefinition, "kind" | "spellSchools"> & Partial<Pick<CardDefinition, "effect">>,
 ): CombatUnitState[] {
   const combat = state.combat;
   if (!combat) {
@@ -1365,7 +1424,9 @@ export function spellRedirectTargets(
         "REDIRECT_SPELL",
         houseRuleEnabled(state, "polish-bank-unit-spells"),
       ) <= gradeRank(maxGrade) &&
-      !unitBlockedBySpellCard(state, unit, reflected),
+      !unitBlockedBySpellCard(state, unit, reflected) &&
+      // Ghost Dragons' Spectral Ward: a known no-damage Spell cannot be bent onto it.
+      !(spellCard?.effect && spectralWardBlocksSpellCard(unit, spellCard)),
   );
 }
 
@@ -1561,6 +1622,106 @@ export function pendingSpellTargetForPlayer(
   return targetUnit && targetUnit.controllerId === playerId ? targetUnit : null;
 }
 
+/** A CHAIN_LIGHTNING allocation at `power` (the reducer's chainLightningDamages read). */
+function chainLightningLadderAtPower(
+  effect: Extract<EffectDefinition, { type: "CHAIN_LIGHTNING" }>,
+  power: number,
+): number[] {
+  if (!effect.damagesByPower) return effect.damages ?? [];
+  const rung = Object.keys(effect.damagesByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value <= power)
+    .sort((left, right) => left - right)
+    .at(-1);
+  return (rung === undefined ? undefined : effect.damagesByPower[rung]) ?? effect.damages ?? [];
+}
+
+/**
+ * Friendly units that an enemy's pending damaging Spell can actually hit at its
+ * current Power — one Interference / Plate of the Dying Light offer each (user
+ * ruling 2026-09-27: "cover all damage spell like that, choose target properly
+ * instant window"). Every damaging Spell: the direct bolts, Fireball's target
+ * and splash, the Frost Ring / Inferno / Meteor Shower areas, Chain Lightning's
+ * target AND every unit a hop can reach, Death Ripple's sweep, and a Power-2
+ * Earthquake's wall-side damage. Fire Wall / Land Mine deal their damage later
+ * from a token, never during this cast, so they hit nothing here. A unit that
+ * takes no damage from the card (spell immunity, Orb of Inhibition) is not
+ * offered. The reducer re-reads this list when the reaction resolves.
+ */
+export function interferenceTargetsForCast(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
+  playerId: PlayerId,
+): UnitId[] {
+  if (triggerEvent.playerId === playerId) return [];
+  const combat = state.combat;
+  const pending = getPendingStackItem(state, triggerEvent);
+  if (!combat || pending?.action.type !== "CAST_SPELL") return [];
+  const cards = balanceCardLibrary(state, cardLibrary);
+  const spell = cards[pending.action.cardId];
+  if (spell?.kind !== "spell") return [];
+  const effect = spell.effect;
+  const casterId = pending.action.playerId;
+  const target = pending.action.target;
+  const power = resolvedSpellPowerForStackItem(state, pending, cards);
+  let ids: UnitId[] = [];
+  if (effect.type === "DEAL_DAMAGE" && effect.damageKind === "spell") {
+    if (target.type === "unit") ids = [target.unitId];
+  } else if (
+    effect.type === "AREA_DAMAGE_ADJACENT" ||
+    effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
+    effect.type === "INFERNO" ||
+    // Meteor Shower below its first printed Power rung deals no damage.
+    (effect.type === "METEOR_SHOWER_SPELL" && power >= 2)
+  ) {
+    ids = spellPotentialBlastUnitIds(state, pending, cards);
+  } else if (effect.type === "CHAIN_LIGHTNING") {
+    // The selected unit plus every unit a hop of THIS Power's bolts can reach
+    // (4×5: the fork's closest units; hex: each PC-hop routing).
+    const ladder = chainLightningLadderAtPower(effect, power);
+    ids = ladder.slice(1).some((value) => value > 0)
+      ? unitIdsThreatenedByDamageEffect(
+          state,
+          { ...effect, damages: ladder, damagesByPower: undefined },
+          target,
+          spell,
+          casterId,
+        )
+      : target.type === "unit" ? [target.unitId] : [];
+  } else if (effect.type === "DEATH_RIPPLE_SPELL") {
+    // Every unit of the caster's enemies the ripple's Power reaches.
+    ids = Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.controllerId !== casterId &&
+          isUnitAlive(unit) &&
+          deathRippleReachesUnit(effect, unit, power),
+      )
+      .map((unit) => unit.id);
+  } else if (effect.type === "EARTHQUAKE" && combat.siege && power >= 2) {
+    // Power 2: every unit beside a standing Wall or Gate suffers 1 damage.
+    const fortifications = intactFortificationPositions(combat.siege);
+    ids = Object.values(combat.units)
+      .filter(
+        (unit) =>
+          isUnitAlive(unit) &&
+          unit.position >= 0 &&
+          fortifications.some((position) => unitAdjacentToCell(combat, unit, position)),
+      )
+      .map((unit) => unit.id);
+  }
+  return [...new Set(ids)].filter((id) => {
+    const unit = combat.units[id];
+    return (
+      unit?.controllerId === playerId &&
+      isUnitAlive(unit) &&
+      // Earthquake's wall-side hit is plain Spell damage with no card
+      // immunity check (resolveEarthquakeSpell), so only it skips this read.
+      (effect.type === "EARTHQUAKE" || !cardDamageIgnoredByUnit(state, unit, spell))
+    );
+  });
+}
+
 export function isUnitAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
 }
@@ -1625,15 +1786,16 @@ export function getUnitMoveRange(
   // COMMANDER_MOVEMENT_BONUS), independent of the movement house rules below.
   // Rooted (deep-rooted neutral-town) units never gain movement, mirroring how
   // the positive neutral bonus is clamped to 0 while rooted.
-  const commanderMoveBonus = rooted
-    ? 0
-    : (state?.activeEffects.reduce((total, effect) => {
-        if (!effectAppliesToUnit(effect, unit)) return total;
-        return total + effect.modifiers.reduce((sum, modifier) =>
-          modifier.type === "COMMANDER_MOVEMENT_BONUS" ||
-          modifier.type === "FACTORY_MOMENTUM_MOVEMENT_BONUS"
-            ? sum + modifier.amount : sum, 0);
-      }, 0) ?? 0);
+  // A NEGATIVE commander entry (Sea Marshal's Power-2 Slow) still lands on a
+  // rooted unit — only gains are clamped away.
+  const commanderMoveTotal = state?.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) return total;
+    return total + effect.modifiers.reduce((sum, modifier) =>
+      modifier.type === "COMMANDER_MOVEMENT_BONUS" ||
+      modifier.type === "FACTORY_MOMENTUM_MOVEMENT_BONUS"
+        ? sum + modifier.amount : sum, 0);
+  }, 0) ?? 0;
+  const commanderMoveBonus = rooted ? Math.min(0, commanderMoveTotal) : commanderMoveTotal;
 
   // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
@@ -2810,7 +2972,8 @@ export function getTargetsForCard(
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      return !unit || !unitBlockedBySpellCard(state, unit, card);
+      // Ghost Dragons' Spectral Ward: a Spell with no damage cannot target it.
+      return !unit || (!unitBlockedBySpellCard(state, unit, card) && !spectralWardBlocksSpellCard(unit, card));
     });
   }
 
@@ -2925,6 +3088,16 @@ export function getTargetsForCard(
       !townBound(state, state.combat!.units[target.unitId]),
     );
   }
+
+  // Olema's Weakness VI: a locked unit cannot be picked by this player's
+  // Spell / Ability / Specialty / Statistic / Artifact cards.
+  targets = targets.filter((target) => {
+    if (target.type !== "unit") {
+      return true;
+    }
+    const unit = state.combat?.units[target.unitId];
+    return !unit || !unitCardTargetLocked(state, unit, playerId, card);
+  });
 
   return targets;
 }
@@ -4154,6 +4327,7 @@ function addChooseOneSpellInstantCasts(
 function getTransformTargets(
   state: GameState,
   playerId: PlayerId,
+  card: Pick<CardDefinition, "kind">,
   effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>,
 ): TargetRef[] {
   if (!state.combat) {
@@ -4165,7 +4339,9 @@ function getTransformTargets(
       (unit) =>
         unit.controllerId === playerId &&
         isUnitAlive(unit) &&
-        canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect),
+        canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect) &&
+        // Olema's Weakness VI: a locked unit cannot take the owner's card.
+        !unitCardTargetLocked(state, unit, playerId, card),
     )
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
@@ -4208,10 +4384,6 @@ function addPlayableCardActions(
     !activeUnit.activatedThisRound &&
     !activeUnit.attackedThisActivation,
   );
-  const unitNotMovedYet = Boolean(
-    activeUnit && !activeUnit.movedThisActivation,
-  );
-
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
     if (
@@ -4285,11 +4457,12 @@ function addPlayableCardActions(
       Boolean(card.trigger);
     if (combatDrawOnly && isPhaseAllowedForCard(state, card)) {
       actions.push({
-        label: `Play ${card.name} (draw${
-          card.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet
-            ? ", next spell +Power"
-            : ""
-        })`,
+        label: `Play ${card.name}: ${drawOnlyPlayText(
+          card.effect,
+          "basic",
+          card.effect.type === "ADD_SPELL_POWER" &&
+            drawRiderBanksSpellPower(state, playerId),
+        )}`,
         action: {
           type: "PLAY_CARD",
           playerId,
@@ -4392,11 +4565,12 @@ function addPlayableCardActions(
             continue;
           }
           actions.push({
-            label: `${card.name}: ${option.label} (draw only${
-              option.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet
-                ? ", next spell +Power"
-                : ""
-            })`,
+            label: `${card.name}: ${drawOnlyPlayText(
+              option.effect,
+              "basic",
+              option.effect.type === "ADD_SPELL_POWER" &&
+                drawRiderBanksSpellPower(state, playerId),
+            )}`,
             action: {
               type: "PLAY_CARD",
               playerId,
@@ -4439,7 +4613,7 @@ function addPlayableCardActions(
     }
 
     if (card.effect.type === "TRANSFORM_UNIT") {
-      for (const target of getTransformTargets(state, playerId, card.effect)) {
+      for (const target of getTransformTargets(state, playerId, card, card.effect)) {
         actions.push({
           label: `Play ${card.name}`,
           action: {
@@ -4572,10 +4746,30 @@ export function ulandInstantPlays(state: GameState, playerId: PlayerId): LegalAc
       out.push({ label: `Play Cure I on ${unit.cardName}`, windowJoinOnly: true, action: { type: "PLAY_REACTION", playerId, cardId: "specialty.uland.1", mode: "basic", target: { type: "unit", unitId: unit.id } } });
     }
   }
-  if (player.hand.includes("specialty.uland.4") && Object.values(combat.units).filter(isUnitAlive).length >= 2) {
+  if (player.hand.includes("specialty.uland.4") && healTwoUnitsCandidateIds(state, playerId, cardLibrary["specialty.uland.4"]).length >= 2) {
     out.push({ label: "Play Cure IV (choose 2 units)", windowJoinOnly: true, action: { type: "PLAY_REACTION", playerId, cardId: "specialty.uland.4", mode: "basic", target: { type: "none" } } });
   }
   return out;
+}
+
+/**
+ * Uland's Cure IV ("Select any 2 units"): the living units `playerId` may pick
+ * with `card` — every unit on the board except one locked against this
+ * player's cards (Olema's Weakness VI). ONE read for the offer gates and the
+ * two resolution picks, so an offer never opens a pick it cannot fill.
+ */
+export function healTwoUnitsCandidateIds(
+  state: GameState,
+  playerId: PlayerId,
+  card: Pick<CardDefinition, "kind"> | undefined,
+): UnitId[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  return Object.values(combat.units)
+    .filter((unit) => isUnitAlive(unit) && !unitCardTargetLocked(state, unit, playerId, card))
+    .map((unit) => unit.id);
 }
 
 /**
@@ -5109,7 +5303,8 @@ function isOptionEffectPlayable(
     case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
       return context === "combat" && Boolean(state.combat);
     case "HEAL_TWO_UNITS":
-      return context === "combat" && state.combat != null && Object.values(state.combat.units).filter((unit) => isUnitAlive(unit)).length >= 2;
+      return context === "combat" && state.combat != null &&
+        healTwoUnitsCandidateIds(state, playerId, excludeCardId ? cardLibrary[excludeCardId] : undefined).length >= 2;
     case "CREATE_URFTIN_CUBES":
     case "CREATE_ULAND_CURE":
     case "CREATE_VERDISH_ROUND_HEAL":
@@ -5992,6 +6187,121 @@ export function instantDrawOnlyRider(
 }
 
 /**
+ * Whether a "+Power, then draw" rider played OUTSIDE its spell window banks
+ * that Power for the next Spell (Sorcery / Scales / Tunic): always on the map
+ * (mapSpellPowerBank), and in combat only on the player's own FRESH
+ * activation (the active unit has not activated, moved or attacked yet). ONE
+ * read shared by the reducer's draw-rider handler and every draw-only label.
+ */
+export function drawRiderBanksSpellPower(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  const combat = state.combat;
+  if (!combat) {
+    return true;
+  }
+  const active = combat.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
+  return Boolean(
+    active &&
+      active.controllerId === playerId &&
+      !active.activatedThisRound &&
+      !active.attackedThisActivation &&
+      !active.movedThisActivation,
+  );
+}
+
+/** The printed half a draw-rider-only play skips, in player-facing words. */
+function drawOnlySkippedEffectText(
+  effect: EffectDefinition,
+  mode: CardPlayMode,
+): string | null {
+  switch (effect.type) {
+    case "ADD_COMBAT_STAT": {
+      const amount = getEffectAmount(effect, mode);
+      return `${amount >= 0 ? "+" : ""}${amount} ${effect.stat === "attack" ? "Attack" : "Defense"}`;
+    }
+    case "ADD_SPELL_POWER":
+      return `+${getEffectAmount(effect, mode)} Power`;
+    case "HEAL_DAMAGE":
+    case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
+      return "the heal";
+    case "SUMMON_CAMPUS_CATS":
+      return "the summon";
+    case "GAIN_RUNES":
+      return "the Rune gain";
+    case "GAIN_HERO_MOVEMENT":
+      return "the movement";
+    case "GAIN_MORALE":
+      return "the Morale";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Player-facing text for a draw-rider-only play (Armor of Wonder / Offense /
+ * Armorer / Sorcery / medic faces used where their main effect has nothing to
+ * land on): says plainly that ONLY the card draw resolves and names the printed
+ * effect that does not apply, so a "Draw 1 card and +1 attack" face is never
+ * mistaken for the real attack-window play. `powerBanked` (see
+ * drawRiderBanksSpellPower) names the Sorcery-style Power bank instead.
+ */
+export function drawOnlyPlayText(
+  effect: EffectDefinition,
+  mode: CardPlayMode = "basic",
+  powerBanked = false,
+): string {
+  const drawn = instantDrawOnlyRider(effect, mode);
+  const discard = drawRiderThenDiscard(effect);
+  const draw = `Draw ${drawn} card${drawn === 1 ? "" : "s"}${
+    discard > 0 ? `, then discard ${discard}` : ""
+  }`;
+  if (effect.type === "ADD_SPELL_POWER" && powerBanked) {
+    return `${draw} now; +${getEffectAmount(effect, mode)} Power waits for your next Spell`;
+  }
+  const skipped = drawOnlySkippedEffectText(effect, mode);
+  return skipped
+    ? `${draw} only (${skipped} does not apply — nothing to boost here)`
+    : `${draw} only`;
+}
+
+/**
+ * The effect a turn PLAY_CARD resolves as a draw-rider-only play, or null.
+ * PLAY_CARD is never a reaction-window play, so a triggered "+stat / +Power,
+ * then draw" face played this way always fizzles its main half (the reducer's
+ * draw-rider handler), as does any play flagged `drawOnly`. Lets the hand
+ * chooser label those buttons honestly instead of echoing the printed face.
+ */
+export function drawOnlyTurnPlayEffect(
+  card: CardDefinition,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+): EffectDefinition | null {
+  const option =
+    card.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
+      ? card.effect.options[action.optionIndex]
+      : undefined;
+  if (card.effect.type === "CHOOSE_ONE" && !option) {
+    return null;
+  }
+  const effect = option ? option.effect : card.effect;
+  const trigger = option ? option.trigger : card.trigger;
+  if (action.drawOnly) {
+    return instantDrawOnlyRider(effect, action.mode ?? "basic") > 0 ? effect : null;
+  }
+  if (
+    trigger &&
+    (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") &&
+    effect.drawCards
+  ) {
+    return effect;
+  }
+  return null;
+}
+
+/**
  * The own-deck / own-Artifact-deck card-gain faces that may JOIN an open
  * reaction window (2026-08-10: "ALL INSTANT CARDS LIKE THAT CAN BE USED IN MAP
  * AND AS REACTION WINDOW"). Each resolves synchronously or opens an
@@ -6494,11 +6804,11 @@ function addTurnCardActions(
             continue;
           }
           actions.push({
-            label: `${card.name}: ${option.label} (draw only${
-              option.effect.type === "ADD_SPELL_POWER"
-                ? ", next Spell +Power"
-                : ""
-            })`,
+            label: `${card.name}: ${drawOnlyPlayText(
+              option.effect,
+              "basic",
+              option.effect.type === "ADD_SPELL_POWER",
+            )}`,
             action: {
               type: "PLAY_CARD",
               playerId,
@@ -6714,8 +7024,8 @@ function addSpellBookStashActions(
   }
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    // Magic Arrow (any starting-only Spell) may be held and cast, but never
-    // stashed — it has no Spell Book home (spellCanEnterSpellBook).
+    // Starting-only Spells and View Air may be held and cast, but never
+    // stashed in the Binh Spell Book (spellCanEnterSpellBook).
     if (card?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
       actions.push({
         label: `Move ${card.name} to your Spell Book`,
@@ -10495,6 +10805,35 @@ function getDieCancelReactions(
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
+      // Olema's Weakness I: "Set all dice to -1" — the defender's post-roll
+      // instant. Offered only when it would actually lower a rolled die (a roll
+      // already all -1 gains nothing, so no pointless window opens for it).
+      if (option.effect.type === "SET_ALL_ATTACK_DICE") {
+        const face = option.effect.face;
+        // The parked candidate is the live roll (an earlier post-roll play in
+        // this window may already have changed it); the event keeps the original.
+        const parkedRolls = pendingAttack?.modifiers.rolledCandidate?.rolls;
+        const settledDice = parkedRolls?.length
+          ? parkedRolls
+          : rolls.length > 0
+            ? rolls
+            : [roll];
+        if (
+          settledDice.some((die) => die > face) &&
+          canAffordCardCost(state, playerId, cardId, option.cost)
+        ) {
+          reactions.push(
+            makeReactionAction(`${card.name}: ${option.label}`, {
+              type: "PLAY_REACTION",
+              playerId,
+              cardId,
+              mode: "basic",
+              optionIndex,
+            }),
+          );
+        }
+        continue;
+      }
       if (option.effect.type !== "IGNORE_ATTACK_DIE_RESULT") {
         continue;
       }
@@ -10687,7 +11026,7 @@ function getMisfortunePreWindowReactions(
     // options — one card-level NEGATE_ATTACK whose die half scales with the
     // Power paid. Offered against any attacker the Spell can legally hex.
     if (card.effect.type === "NEGATE_ATTACK") {
-      if (unitBlockedBySpellCard(state, attacker, card)) {
+      if (unitBlockedBySpellCard(state, attacker, card) || spectralWardBlocksSpellCard(attacker, card)) {
         continue;
       }
       reactions.push(
@@ -10723,7 +11062,7 @@ function getMisfortunePreWindowReactions(
       }
       // Printed full Spell immunity (Black Dragons Pack, Azure, …): Misfortune
       // lands on the attacker, so an immune attacker cannot be hexed.
-      if (unitBlockedBySpellCard(state, attacker, card)) {
+      if (unitBlockedBySpellCard(state, attacker, card) || spectralWardBlocksSpellCard(attacker, card)) {
         continue;
       }
       reactions.push(
@@ -10916,6 +11255,11 @@ function getLethalSaveReactions(
         continue;
       }
       if (card.kind === "spell" && spellLimitReached) {
+        continue;
+      }
+      // Olema's Weakness VI: the dying unit cannot be targeted by its own
+      // side's cards, so a card save (Resurrection) cannot reach it.
+      if (unitCardTargetLocked(state, defender, playerId, card)) {
         continue;
       }
       for (const [optionIndex, option] of card.effect.options.entries()) {
@@ -11402,13 +11746,58 @@ export function damageTransferReactions(
   return result;
 }
 
+/**
+ * Olema's Weakness VI: a reaction offer that NAMES a unit — its `target` (Cure /
+ * First Aid heals, Interference vs a Spell, Bowstring / Valeska activations,
+ * Sirius' interceptor, a damage transfer's recipient) or the `protectedUnitId` a
+ * damage transfer shields — may not name a unit locked against the offering
+ * player's cards. Instants that land implicitly on the attacker / defender are
+ * filtered where they are built (reactionBlockedByCardTargetLock). No-op while
+ * no lock is on the table.
+ */
+function withoutCardTargetLockedOffers(
+  state: GameState,
+  result: Record<PlayerId, LegalAction[]>,
+  cards: CardLibrary,
+): Record<PlayerId, LegalAction[]> {
+  const combat = state.combat;
+  if (
+    !combat ||
+    !state.activeEffects.some((effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "ENEMY_CARD_TARGET_LOCK"),
+    )
+  ) {
+    return result;
+  }
+  for (const [playerId, offers] of Object.entries(result)) {
+    result[playerId] = offers.filter((offer) => {
+      const action = offer.action;
+      if (action.type !== "PLAY_REACTION") {
+        return true;
+      }
+      const card = cards[action.cardId] ?? cardLibrary[action.cardId];
+      const namedUnitIds = [
+        action.target?.type === "unit" ? action.target.unitId : undefined,
+        action.protectedUnitId,
+      ];
+      return !namedUnitIds.some((unitId) => {
+        const unit = unitId ? combat.units[unitId] : undefined;
+        return Boolean(unit && unitCardTargetLocked(state, unit, playerId, card));
+      });
+    });
+  }
+  return result;
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
   baseCards: CardLibrary = cardLibrary,
 ): Record<PlayerId, LegalAction[]> {
   const result = getLegalReactionsForTriggerCore(state, triggerEvent, baseCards);
-  if (!state.combat || spellAbilitiesSuppressed(state)) return result;
+  if (!state.combat || spellAbilitiesSuppressed(state)) {
+    return withoutCardTargetLockedOffers(state, result, baseCards);
+  }
   for (const unit of Object.values(state.combat.units)) {
     const saved = unit.elementalVeterancy?.echoSpells;
     const player = state.players[unit.controllerId];
@@ -11430,7 +11819,7 @@ export function getLegalReactionsForTrigger(
       }
     }
   }
-  return result;
+  return withoutCardTargetLockedOffers(state, result, baseCards);
 }
 
 /**
@@ -11824,6 +12213,15 @@ function getLegalReactionsForTriggerCore(
             card,
             variant.effect,
             triggerEvent,
+          ) ||
+          // Olema's Weakness VI: the unit this instant lands on is locked
+          // against this player's cards (every card kind, not only Spells).
+          reactionBlockedByCardTargetLock(
+            state,
+            player.id,
+            card,
+            variant.effect,
+            triggerEvent,
           )
         ) {
           continue;
@@ -11932,10 +12330,30 @@ function getLegalReactionsForTriggerCore(
                 ),
               );
             }
+          } else if (
+            variant.effect.type === "INTERFERE_SPELL" &&
+            triggerEvent.type === "SPELL_CAST_STARTED"
+          ) {
+            for (const unitId of interferenceTargetsForCast(state, triggerEvent, player.id)) {
+              push(makeReactionAction(
+                `${variantName} (${state.combat?.units[unitId]?.cardName ?? unitId})${fromSpellBook ? " (Spell Book)" : ""}`,
+                {
+                  type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic",
+                  target: { type: "unit", unitId },
+                  ...(houseRuleEnabled(state, "polish-card-balance") ? { interferenceMode: "damage" as const } : {}),
+                  ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                  ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                },
+              ));
+            }
           } else {
             push(
               makeReactionAction(
-                `${variantName}${fromSpellBook ? " (Spell Book)" : ""}`,
+                `${
+                  basicDrawOnly
+                    ? `${card.name}: ${drawOnlyPlayText(variant.effect, "basic")}`
+                    : variantName
+                }${fromSpellBook ? " (Spell Book)" : ""}`,
                 {
                   type: "PLAY_REACTION",
                   playerId: player.id,
@@ -12012,7 +12430,7 @@ function getLegalReactionsForTriggerCore(
         ) {
           reactions.push(
             makeReactionAction(
-              `${variantName} (draw only)${fromSpellBook ? " (Spell Book)" : ""}`,
+              `${card.name}: ${drawOnlyPlayText(variant.effect, "basic")}${fromSpellBook ? " (Spell Book)" : ""}`,
               {
                 type: "PLAY_REACTION",
                 playerId: player.id,
@@ -12043,14 +12461,18 @@ function getLegalReactionsForTriggerCore(
               cardId,
             ))
         ) {
-          push(
+          const expertTargets = variant.effect.type === "INTERFERE_SPELL" && triggerEvent.type === "SPELL_CAST_STARTED"
+            ? interferenceTargetsForCast(state, triggerEvent, player.id)
+            : [null];
+          for (const unitId of expertTargets) push(
             makeReactionAction(
-              `${variantName} expert${fromSpellBook ? " (Spell Book)" : ""}`,
+              `${variantName} expert${unitId ? ` (${state.combat?.units[unitId]?.cardName ?? unitId})` : ""}${fromSpellBook ? " (Spell Book)" : ""}`,
               {
                 type: "PLAY_REACTION",
                 playerId: player.id,
                 cardId,
                 mode: "expert",
+                ...(unitId ? { target: { type: "unit" as const, unitId } } : {}),
                 ...(variant.effect.type === "INTERFERE_SPELL" &&
                 houseRuleEnabled(state, "polish-card-balance") &&
                 triggerEvent.type === "SPELL_CAST_STARTED"
@@ -12155,6 +12577,13 @@ function getLegalReactionsForTriggerCore(
                 card,
                 variant.effect,
                 triggerEvent,
+              ) ||
+              reactionBlockedByCardTargetLock(
+                state,
+                player.id,
+                card,
+                variant.effect,
+                triggerEvent,
               )
             ) {
               continue;
@@ -12256,6 +12685,13 @@ function getLegalReactionsForTriggerCore(
               ) ||
               spellReactionBlockedByImmunity(
                 state,
+                card,
+                variant.effect,
+                triggerEvent,
+              ) ||
+              reactionBlockedByCardTargetLock(
+                state,
+                player.id,
                 card,
                 variant.effect,
                 triggerEvent,
@@ -12876,6 +13312,13 @@ function getLegalReactionsForTriggerCore(
             ) ||
             spellReactionBlockedByImmunity(
               state,
+              card,
+              variant.effect,
+              triggerEvent,
+            ) ||
+            reactionBlockedByCardTargetLock(
+              state,
+              player.id,
               card,
               variant.effect,
               triggerEvent,
@@ -13735,6 +14178,13 @@ export function getSchoolPermanentExpertActions(
             variant.effect,
             triggerEvent,
           ) &&
+          !reactionBlockedByCardTargetLock(
+            state,
+            playerId,
+            spell,
+            variant.effect,
+            triggerEvent,
+          ) &&
           affordableAfterCommit(variant)
         );
       });
@@ -14440,27 +14890,10 @@ export function isEffectLegalForTrigger(
       );
     }
 
-    // Interference: offered to the targeted side only (never the caster) when
-    // the pending Spell deals Spell damage to one of this player's units. The
-    // bonus lands on that unit; an enemy buff/debuff or a non-damaging spell
-    // never opens the window.
+    // Interference / Plate: offer protection for each friendly unit the
+    // pending damaging Spell can hit, including a space-targeted area cast.
     if (effect.type === "INTERFERE_SPELL") {
-      if (triggerEvent.playerId === playerId) {
-        return false;
-      }
-      if (!pendingSpellTargetForPlayer(state, triggerEvent, playerId)) {
-        return false;
-      }
-      const stackItem = getPendingStackItem(state, triggerEvent);
-      const pendingSpell =
-        stackItem?.action.type === "CAST_SPELL"
-          ? cardLibrary[stackItem.action.cardId]
-          : undefined;
-      return Boolean(
-        pendingSpell &&
-        pendingSpell.effect.type === "DEAL_DAMAGE" &&
-        pendingSpell.effect.damageKind === "spell",
-      );
+      return interferenceTargetsForCast(state, triggerEvent, playerId).length > 0;
     }
 
     return false;
@@ -15696,7 +16129,11 @@ function addTacticsCombatActions(
   }
   const sideLabel = communityBasic ? "Tactics" : "Tactics (expert)";
 
-  const units = tacticsSwappableUnits(combat, playerId);
+  // Olema's Weakness VI: a unit locked against its own side's cards cannot
+  // be chosen for this Ability card's switch / step.
+  const units = tacticsSwappableUnits(combat, playerId).filter(
+    (unit) => !unitCardTargetLocked(state, unit, playerId, { kind: "ability" }),
+  );
   for (let i = 0; i < units.length; i += 1) {
     for (let j = i + 1; j < units.length; j += 1) {
       // Hex board: a double-wide unit must fit the space it switches into.

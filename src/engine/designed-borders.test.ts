@@ -837,7 +837,7 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
   });
 
-  it("banks open printed far/near arcs and preserve starting/center arcs", () => {
+  it("banks open printed arcs on every bank-hosting group and preserve starting/center arcs", () => {
     const { state, tile, bank, outside } = bankOnPrintedBlockedSlot("db-bank-printed-arc-band");
     // The same-tile route in is what the carve opens — measured against the
     // sealed tile edge below, so this is not a vacuously true pair.
@@ -849,26 +849,39 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
         field.location !== "blocked_field"
     )!;
     expect(inside).toBeTruthy();
+    const outsideTile = adv(state).tiles[outside.tileInstanceId];
+    const outsideGroup = outsideTile.group;
 
-    for (const group of ["far", "near", "starting", "center"] as const) {
+    for (const group of ["far", "near", "subterranean", "sea", "starting", "center"] as const) {
+      const opens = group !== "starting" && group !== "center";
       tile.group = group as MapTileState["group"];
+      // A subterranean bank is only reachable from the same layer: keep the
+      // neighbour underground with it so the crossing tests the arc, not layers.
+      outsideTile.group = group === "subterranean" ? "subterranean" : outsideGroup;
       const def = { ...allTileDefinitions[tile.tileDefId], group };
       const rendered = getTileBorderSegments(def, new Set([bank.slot]));
       expect(rendered.filter(segment => segment.slot === bank.slot)).toHaveLength(
-        group === "far" || group === "near" ? 0 : 3,
+        opens ? 0 : 3,
       );
+      // The board reads the LIVE tile group (as the engine does) over def.group.
+      const flipped = { ...def, group: opens ? "starting" as const : "far" as const };
+      expect(
+        getTileBorderSegments(flipped, new Set([bank.slot]), { tileGroup: group })
+          .filter(segment => segment.slot === bank.slot),
+        `${group}: live group wins over def.group`,
+      ).toHaveLength(opens ? 0 : 3);
       expect(canCrossEdge(state, inside.spaceId, bank.spaceId, NONE), `${group}: walk in`).toBe(
         true
       );
       expect(
         canCrossEdge(state, outside.spaceId, bank.spaceId, NONE),
         `${group}: enter across the sealed tile edge`
-      ).toBe(group === "far" || group === "near");
+      ).toBe(opens);
       expect(
         canCrossEdge(state, bank.spaceId, outside.spaceId, NONE),
         `${group}: leave across the sealed tile edge`
-      ).toBe(group === "far" || group === "near");
-      expect(heroFieldSealedForDiscovery(adv(state), bank), `${group}: discovery`).toBe(group !== "far" && group !== "near");
+      ).toBe(opens);
+      expect(heroFieldSealedForDiscovery(adv(state), bank), `${group}: discovery`).toBe(!opens);
     }
 
     // MUTATION CONTROL: the SAME carve one slot over, where the tile prints no

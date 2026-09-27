@@ -67,7 +67,16 @@ export function openingGuardCommitment(state: GameState, playerId: string, comba
     // A scout stays a scout: retreat is only legal at the round's end, so
     // round 1 still has to be played after the pristine "retreat" read — the
     // first activation must not re-read that board as a fight under way.
-    if (state.computerMemory?.[playerId]?.scoutedWithdrawalCombatId === combat.id) return "retreat";
+    // The sticky scout guards against the low KEEP bar only: once the fight is
+    // under way, odds that would justify STARTING it (the TRY bars) keep it
+    // going. The ruling is "if the AI can't win, retreat and come back later",
+    // never "leave a won fight" — lab 2026-09-27: a scout left one 4-health
+    // guard after two good rounds and lost two turns (the old AI won it).
+    if (state.computerMemory?.[playerId]?.scoutedWithdrawalCombatId === combat.id) {
+      const turned = combatUnderWay(combat) ? forecastNeutralFight(state, playerId, combat) : null;
+      const tryBar = armored ? FORECAST_ARMORED_TRY_MIN_WIN : FORECAST_TRY_MIN_WIN;
+      return turned && turned.winChance >= tryBar ? "fight" : "retreat";
+    }
     const decided = forecastCommitment(state, playerId, combat, armored);
     if (decided) return decided;
   }

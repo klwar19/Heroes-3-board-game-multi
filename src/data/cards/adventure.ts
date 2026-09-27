@@ -40,6 +40,12 @@ function rampartPreviewHeroSource() {
   };
 }
 
+const infernoIgnatiusOlemaPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Specialty cards from the supplied preview; hidden wording and statistics supplied by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/ac2ce3b5-9542-4970-8bf2-d207eefefa83.png",
+};
+
 const necropolisHeroPreviewSource = {
   product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
   credit: "Specialty rules supplied by the player; card emblems generated for this adaptation.",
@@ -2751,6 +2757,7 @@ export const adventureCards: CardLibrary = {
       health: 2,
       initiative: 6,
       cardImage: "/assets/hero_specialties-sandro-1.webp",
+      inheritPackAbilities: true,
     },
     assets: {
       cardImage: "/assets/hero_specialties-sandro-1.webp",
@@ -2815,6 +2822,7 @@ export const adventureCards: CardLibrary = {
       health: 2,
       initiative: 6,
       cardImage: "/assets/hero_specialties-sandro-6.webp",
+      inheritPackAbilities: true,
       alwaysOnTop: true,
     },
     assets: {
@@ -5416,6 +5424,7 @@ export const adventureCards: CardLibrary = {
       health: 2,
       initiative: 6,
       cardImage: "/assets/hero_specialties-vidomina-4.webp",
+      inheritPackAbilities: true,
     },
     assets: {
       cardImage: specialtyCardImage("vidomina", 4),
@@ -6361,6 +6370,181 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("octavia"),
+  }),
+
+  // Ignatius (Inferno, Demoniac, A2 D2 P1 K1, Tactics): the "Familiars"
+  // specialist (Gamefound preview). I and IV work EXACTLY like Sandro's Cloak
+  // of the Undead King (player ruling): the card is placed on a Familiars unit
+  // card (in combat or on the map) and replaces its statistics until its HP
+  // runs out, then it is discarded and the card underneath is revealed.
+  //  I  — Horde of Imps (A3 D1 HP2 I7) on the Pack of Familiars.
+  //  IV — Legion of Imps (A3 D1 HP3 I8) on Few, Pack or even a Horde of
+  //       Familiars; always stays on top (Sandro VI's Legion rules).
+  //  Both covers keep the Pack of Familiars' printed ability (Mana Leech —
+  //  `inheritPackAbilities`, player ruling, same for the Skeleton covers), and
+  //  a veteran Familiars keeps its Unit Experience rank on top of the cover.
+  //  VI — Ongoing: for this Combat all your Familiars units gain +2 Attack and
+  //       +1 Health (UNIT_NAME_COMBAT_RALLY; the covered Horde/Legion is still a
+  //       Familiars unit, so it is included).
+  "specialty.ignatius.1": withSpecialtyArt({
+    id: "specialty.ignatius.1",
+    name: "Familiars I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "ignatius",
+      "transform",
+      "Put this card on the Pack of Familiars Unit card; it replaces the card's statistics (Horde of Imps) until its HP drops to 0, then it is discarded. The Horde keeps the Pack of Familiars ability (Mana Leech: whenever an enemy casts a Spell from hand, they must discard 1 card from hand).",
+    ],
+    effect: {
+      type: "TRANSFORM_UNIT",
+      targetUnitName: "Familiars",
+      targetVariants: ["pack"],
+      newName: "Horde of Imps",
+      attack: 3,
+      defense: 1,
+      health: 2,
+      initiative: 7,
+      cardImage: "/assets/hero_specialties-ignatius-1.webp",
+      inheritPackAbilities: true,
+    },
+    implementationStatus: "implemented",
+    source: infernoIgnatiusOlemaPreviewSource,
+  }),
+  "specialty.ignatius.4": withSpecialtyArt({
+    id: "specialty.ignatius.4",
+    name: "Familiars IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "ignatius",
+      "transform",
+      "Put this card on the Familiars Unit card (Few, Pack or even a Horde); it becomes a Legion of Imps. The Legion stays on top and its statistics apply until its HP drops to 0, then it is discarded. The Legion has the Pack of Familiars ability (Mana Leech: whenever an enemy casts a Spell from hand, they must discard 1 card from hand).",
+    ],
+    effect: {
+      type: "TRANSFORM_UNIT",
+      targetUnitName: "Familiars",
+      targetVariants: ["few", "pack"],
+      newName: "Legion of Imps",
+      attack: 3,
+      defense: 1,
+      health: 3,
+      initiative: 8,
+      cardImage: "/assets/hero_specialties-ignatius-4.webp",
+      inheritPackAbilities: true,
+      alwaysOnTop: true,
+    },
+    implementationStatus: "implemented",
+    source: infernoIgnatiusOlemaPreviewSource,
+  }),
+  "specialty.ignatius.6": withSpecialtyArt({
+    id: "specialty.ignatius.6",
+    name: "Familiars VI",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "ignatius",
+      "Ongoing: For this Combat, all your Familiars units gain +2 Attack and +1 Health.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "UNIT_NAME_COMBAT_RALLY",
+      name: "Familiars VI",
+      unitNames: ["Familiars"],
+      attack: 2,
+      health: 1,
+    },
+    implementationStatus: "implemented",
+    source: infernoIgnatiusOlemaPreviewSource,
+  }),
+
+  // Olema (Inferno, Heretic, A1 D1 P2 K1, Wisdom): the "Weakness" specialist
+  // (Gamefound preview; wording supplied by the player).
+  //  I  — Instant: "Set all dice to -1." Offered in the post-roll
+  //       ATTACK_DIE_SETTLED window of an enemy attack on her unit (the only
+  //       moment the dice exist): every rolled Attack die of that attack is SET
+  //       to -1 — the die genuinely shows -1, so "-1"-face effects still fire.
+  //  IV — Instant: the selected (attacking) enemy unit has -2 Attack (to a
+  //       minimum of 0) — the Weakness reaction, same seam as Cuthbert I.
+  //  VI — Ongoing: the selected enemy unit cannot be targeted by its side's
+  //       Spell / Ability / Specialty / Statistic / Artifact cards this Combat
+  //       (ENEMY_CARD_TARGET_LOCK) and has -1 Attack.
+  "specialty.olema.1": withSpecialtyArt({
+    id: "specialty.olema.1",
+    name: "Weakness I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "olema",
+      "Instant: Set all dice to -1. (Play it after an enemy unit's Attack roll against your unit.)",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "After the enemy Attack roll: set all dice to -1",
+          effect: { type: "SET_ALL_ATTACK_DICE", face: -1 },
+        },
+      ],
+    },
+    implementationStatus: "implemented",
+    source: infernoIgnatiusOlemaPreviewSource,
+  }),
+  "specialty.olema.4": withSpecialtyArt({
+    id: "specialty.olema.4",
+    name: "Weakness IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "olema",
+      "Instant: The selected (attacking) enemy unit has -2 Attack (to a minimum of 0).",
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: -2 },
+    implementationStatus: "implemented",
+    source: infernoIgnatiusOlemaPreviewSource,
+  }),
+  "specialty.olema.6": withSpecialtyArt({
+    id: "specialty.olema.6",
+    name: "Weakness VI",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "olema",
+      "Ongoing: Select an enemy unit. For this Combat, the selected unit cannot be targeted by enemy spells, abilities, specialities, statistics or artifacts cards and has -1 Attack.",
+    ],
+    target: { type: "enemy-unit" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Weakness VI",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "negative",
+        removable: true,
+        modifiers: [
+          { type: "ATTACK_BONUS", amount: -1 },
+          { type: "ENEMY_CARD_TARGET_LOCK" },
+        ],
+      },
+    },
+    implementationStatus: "implemented",
+    source: infernoIgnatiusOlemaPreviewSource,
   }),
 
   // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —

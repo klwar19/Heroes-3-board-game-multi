@@ -10,8 +10,10 @@ import type { CreatureSpriteAtlas } from "./creature-sprites";
  * sprite (Forge) are imported into the same atlas file with
  * `scripts/import-sprite-sheet.mjs --meta src/data/battle-hex/hero-sprite-atlases.json`.
  *
- * A hero whose town has no sprite (anime / wuxia / Warhammer towns, or a
- * Forge sheet not imported yet) gets NO figure — nothing is invented.
+ * Blue Archive heroes ride as themselves (OWN_HERO_SPRITES, rotoscoped from
+ * HotA riders). A hero whose town has no sprite (other anime / wuxia /
+ * Warhammer towns, or a sheet not imported yet) gets NO figure — nothing is
+ * invented.
  */
 export type HeroSpriteAtlas = CreatureSpriteAtlas & {
   /**
@@ -59,7 +61,7 @@ const FEMALE_HEROES: ReadonlySet<string> = new Set([
   // Rampart
   "gem", "mephala", "melodia",
   // Inferno
-  "fiona", "ash", "octavia",
+  "fiona", "ash", "octavia", "olema",
   // Stronghold
   "dessa", "gundula", "shiva",
   // Dungeon
@@ -81,8 +83,23 @@ const GENDERED_TOWNS = new Set(["castle", "rampart", "tower", "inferno", "necrop
 /** HotA towns: a male + female sprite per class (might / magic). */
 const CLASS_GENDERED_TOWNS = new Set(["cove", "factory", "bulwark"]);
 
+/**
+ * Heroes drawn as themselves (towns without a PC hero sprite): the hero on a
+ * PC hero's mount, rotoscoped from that hero's animation
+ * (scripts/build-hero-pose-sprites.mjs). Little Busters heroes fight on the
+ * field as units instead (creature-sprites HERO_UNIT_SPRITES).
+ */
+const OWN_HERO_SPRITES: Readonly<Record<string, string>> = {
+  mika_blue_archive: "hero-ba-mika",
+  yuuka_blue_archive: "hero-ba-yuuka",
+  seia_blue_archive: "hero-ba-seia",
+  chise_blue_archive: "hero-ba-chise",
+  kei_blue_archive: "hero-ba-kei"
+};
+
 /** Candidate atlas slugs for a hero, best first (none for towns without a PC hero). */
 export function heroSpriteSlugs(hero: Pick<HeroDefinition, "id" | "faction" | "type">): string[] {
+  if (OWN_HERO_SPRITES[hero.id]) return [OWN_HERO_SPRITES[hero.id]];
   const gender = FEMALE_HEROES.has(hero.id) ? "female" : "male";
   if (GENDERED_TOWNS.has(hero.faction)) return [`hero-${hero.faction}-${gender}`];
   if (hero.faction === "conflux") return [`hero-conflux-${hero.type}`];

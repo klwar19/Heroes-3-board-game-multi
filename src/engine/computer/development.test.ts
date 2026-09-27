@@ -951,7 +951,7 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     expect(score(state, build(state, income))).toBeGreaterThanOrEqual(970);
   });
 
-  it("walks the Gold ladder: top Few, lower Few, top Pack, lower Pack", () => {
+  it("walks the Gold ladder: top Few, then the top Pack unless the lower Few costs it nothing", () => {
     const state = game();
     goldTown(state);
     const [top, lower] = rankedGoldUnits(state, "p2");
@@ -963,10 +963,18 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     ).toBeGreaterThan((coreUnitDefinitions[lower].few!.cost.gold ?? 0));
     expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: top, kind: "recruit", rank: 0 });
     addUnit(state, top, "few");
+    // USER RULING (2026-09-27, clarified): the level-7 Pack is the success
+    // target — a lower Few that would land it a Resource Round later waits.
+    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: top, kind: "reinforce", rank: 0 });
+    // CONTROL: from a flush purse the lower Few delays nothing and goes first.
+    const purse = { ...state.players.p2.resources };
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: lower, kind: "recruit" });
+    state.players.p2.resources = purse;
+    // With the top Pack standing, the lower Few and then its Pack follow.
+    state.players.p2.army.find((unit) => unit.unitDefId === top)!.side = "pack";
     expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: lower, kind: "recruit" });
     addUnit(state, lower, "few");
-    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: top, kind: "reinforce", rank: 0 });
-    state.players.p2.army.find((unit) => unit.unitDefId === top)!.side = "pack";
     expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: lower, kind: "reinforce" });
     state.players.p2.army.find((unit) => unit.unitDefId === lower)!.side = "pack";
     expect(nextGoldLadderStep(state, "p2")).toBeNull();

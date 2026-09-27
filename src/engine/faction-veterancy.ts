@@ -4,9 +4,9 @@ import { appendEvent, eventSeedNumber } from "./events";
 import { createSeededRandom } from "./random";
 import { unitsAdjacent } from "./hex-footprint";
 import { markUnitRemovedIfNeeded } from "./combat-units";
-import { noteUnitDamagedForTokens } from "./tokens";
+import { hasToken, noteUnitDamagedForTokens } from "./tokens";
 import { queueElementalChoice } from "./elemental-veterancy";
-import { makeActiveEffect, effectAppliesToUnit } from "./active-effects";
+import { unitImmuneToParalysis } from "./active-effects";
 
 const alive = (u: CombatUnitState) => u.damage < u.maxHealth;
 
@@ -42,20 +42,54 @@ export function veteranActivation(state: GameState, unit: CombatUnitState): void
   if (factionVeterancy(unit, "tribute")) {
     queueElementalChoice(state, { kind: "veteran-tribute", unitId: unit.id, abilityId: "veteran-vampire-tribute" });
   }
-  if (factionVeterancy(unit, "dread") && [1, 3].includes(combat.round)) {
-    const target = veteranRandom(state, Object.values(combat.units).filter(t => alive(t) && t.controllerId !== unit.controllerId), unit.id + "-dread");
-    if (!target) return;
-    const effect = makeActiveEffect(state, { name: "Dread of the Grave", scope: "unit", duration: { type: "combat" }, polarity: "negative", removable: true, modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }] },
-      { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, unit.controllerId, { type: "unit", unitId: target.id });
-    if (effectAppliesToUnit(effect, target)) {
-      state.activeEffects.push(effect);
-      veteranTrigger(state, unit, "veteran-dragon-dread", target, `${target.cardName} loses 1 Defense for this combat.`);
-    }
-  }
+  // Ghost Dragons' Dread Aura rolls a real combat die, so it resolves in the
+  // reducer (resolveDreadAuraActivation) beside the other activation dice.
 }
 
-export function veteranAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): void {
-  if (!state.combat || !alive(attacker)) return;
+/** Rough "strongest first" order for a Paralysis pick: hitting power, then staying power. */
+function dreadThreat(unit: CombatUnitState): number {
+  return unit.attack * 2 + unit.defense + (unit.maxHealth - unit.damage) + unit.initiative / 100;
+}
+
+/**
+ * Ghost Dragons' Dread Aura "-1": the enemy units its controller may Paralyze —
+ * living, on the board, not already Paralyzed and not immune to Paralysis —
+ * strongest first, so an automatic (computer / Neutral) pick of option 0 takes
+ * the most dangerous one.
+ */
+export function dreadAuraParalyzeCandidates(state: GameState, unit: CombatUnitState): CombatUnitState[] {
+  const combat = state.combat;
+  if (!combat) return [];
+  return Object.values(combat.units)
+    .filter(t => alive(t) && t.position >= 0 && t.controllerId !== unit.controllerId && !hasToken(t, "paralysis") && !unitImmuneToParalysis(state, t))
+    .sort((a, b) => dreadThreat(b) - dreadThreat(a) || a.id.localeCompare(b.id));
+}
+
+/**
+ * Ghost Dragons' Withering Touch: the attacked enemy loses 1 maximum Health for
+ * the rest of the combat. Stored as combatMaxHealthPenalty so every side
+ * recompute (Pack→Few, Few→Pack, Stack layers, covers) re-applies it; a unit
+ * already carrying that much damage goes through the normal removal/flip path.
+ */
+function witheringTouch(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): void {
+  if (!alive(defender) || defender.controllerId === attacker.controllerId) return;
+  defender.combatMaxHealthPenalty = (defender.combatMaxHealthPenalty ?? 0) + 1;
+  defender.maxHealth = Math.max(1, defender.maxHealth - 1);
+  veteranTrigger(state, attacker, "veteran-ghost-dragon-withering-touch", defender, `${defender.cardName} loses 1 maximum Health for the rest of this combat.`);
+  markUnitRemovedIfNeeded(state, defender);
+}
+
+/**
+ * After this unit's OWN attack (the caller never passes a Retaliation).
+ * `roll` is the settled Attack die face the attack used; `dieCancelled` when
+ * the die was cancelled/ignored (no face for any die trigger).
+ */
+export function veteranAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, roll?: number, dieCancelled = false): void {
+  if (!state.combat) return;
+  if (!dieCancelled && roll === 0 && factionVeterancy(attacker, "withering-touch")) {
+    witheringTouch(state, attacker, defender);
+  }
+  if (!alive(attacker)) return;
   if (factionVeterancy(attacker, "ally-heal")) {
     veteranHeal(state, attacker, 1, "veteran-lich-mend");
     const ally = veteranRandom(state, Object.values(state.combat.units).filter(t => alive(t) && t.id !== attacker.id && t.controllerId === attacker.controllerId), attacker.id + "-mend");

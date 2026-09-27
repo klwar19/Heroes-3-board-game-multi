@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { pvpReach } from "./pvp-reach";
 import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
-import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan, premiumRecruitTradePlan } from "./development";
+import { openingBronzeCoreReady, committedGoldInvestment, goldStepMarketPlan, goldBodyComboTradePlan, premiumRecruitTradePlan, rankedGoldUnits } from "./development";
 import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
@@ -35,7 +35,8 @@ import {
   obeliskPresetRole,
 } from "../adventure";
 import { houseRuleEnabled } from "../house-rules";
-import { DEFAULT_OBELISK_BONUS, type CustomMapObeliskBonus } from "../state";
+import { DEFAULT_OBELISK_BONUS, NEUTRAL_PLAYER_ID, type CustomMapObeliskBonus } from "../state";
+import { activeScoringPass, scoringPassCached, withScoringPass } from "./scoring-pass";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { hexDistance, hexSpaceId, parseHexSpaceId, tileFootprint } from "../hex";
 import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
@@ -46,6 +47,7 @@ import { repeatsFailedFight } from "./memory";
 import { isOpeningFarMaterialMine, isOpeningFarSweepField } from "./far-sweep";
 import { MARKET_MIN_ROUND, wantsMarketVisit } from "./market-trades";
 import { premiumCombatMovementReserve } from "./combat-movement";
+import { forecastGuardField } from "./fight-forecast";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type {
   GameState,
@@ -67,6 +69,8 @@ import {
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
   enemyMainHeroLevelDeficit,
+  pvpEngagementForecast,
+  pvpThreatens,
 } from "./army-strength";
 import {
   armyDevelopmentProfile,
@@ -121,41 +125,16 @@ export type MapObjectiveKind =
 
 /**
  * Per-scoring-pass memo for the expensive map reads below (objective
- * collection, distance fields, guard-beat checks, the primary objective).
- * `chooseComputerAction` scores every legal action against ONE immutable
- * state, and each scorer re-derived these from scratch — measured at several
- * seconds per decision on a live table (the AI "taking longer every turn").
- * The cache is active only inside `withMapScoringCache` and only for that
- * exact state object; any other state (a reducer clone, a probe) computes
- * uncached, so nothing can observe a stale value.
+ * collection, distance fields, guard-beat checks, the primary objective) —
+ * the shared pass in scoring-pass.ts, active only inside
+ * `withMapScoringCache` and only for that exact state object.
  */
-type MapScoringCache = {
-  state: GameState;
-  entries: Map<string, unknown>;
-  /** JSON keys of the hero / objectives records already stringified in this pass (identity-keyed). */
-  heroKeys: WeakMap<HeroState, string>;
-  objectiveKeys: WeakMap<ReadonlyArray<MapObjective>, string>;
-};
-let mapScoringCache: MapScoringCache | null = null;
-
 export function withMapScoringCache<T>(state: GameState, run: () => T): T {
-  if (mapScoringCache && mapScoringCache.state === state) return run();
-  const previous = mapScoringCache;
-  mapScoringCache = { state, entries: new Map(), heroKeys: new WeakMap(), objectiveKeys: new WeakMap() };
-  try {
-    return run();
-  } finally {
-    mapScoringCache = previous;
-  }
+  return withScoringPass(state, run);
 }
 
 export function mapScoringCached<T>(state: GameState, key: string, compute: () => T): T {
-  const cache = mapScoringCache;
-  if (!cache || cache.state !== state) return compute();
-  if (cache.entries.has(key)) return cache.entries.get(key) as T;
-  const value = compute();
-  cache.entries.set(key, value);
-  return value;
+  return scoringPassCached(state, key, compute);
 }
 
 /**
@@ -166,23 +145,23 @@ export function mapScoringCached<T>(state: GameState, key: string, compute: () =
  * state as immutable, so identity implies the same JSON.
  */
 function heroCacheKey(hero: HeroState): string {
-  const cache = mapScoringCache;
+  const cache = activeScoringPass();
   if (!cache) return JSON.stringify(hero);
-  let key = cache.heroKeys.get(hero);
+  let key = cache.keys.get(hero);
   if (key === undefined) {
     key = JSON.stringify(hero);
-    cache.heroKeys.set(hero, key);
+    cache.keys.set(hero, key);
   }
   return key;
 }
 
 function objectivesCacheKey(objectives: ReadonlyArray<MapObjective>): string {
-  const cache = mapScoringCache;
+  const cache = activeScoringPass();
   if (!cache) return JSON.stringify(objectives);
-  let key = cache.objectiveKeys.get(objectives);
+  let key = cache.keys.get(objectives);
   if (key === undefined) {
     key = JSON.stringify(objectives);
-    cache.objectiveKeys.set(objectives, key);
+    cache.keys.set(objectives, key);
   }
   return key;
 }
@@ -486,6 +465,12 @@ export function fieldSuppliesResource(
 ): boolean {
   if (field.location === "settlement") return field.flagOwnerId !== playerId;
   if (field.location === "mine") return field.resource === resource && field.flagOwnerId !== playerId;
+  // A Black Cube on a visitable (a Water Wheel already taken) or on a Creature
+  // Bank (already won) means it pays nothing until a map event clears the cube.
+  // Counting it sent a Bulwark hero (lab seed lab-0, R4) to a spent Water Wheel
+  // and back instead of attacking the adjacent level-3 gold mine.
+  if (field.blackCube && (locationDefinitions[field.location]?.category === "visitable" ||
+      field.location === "creature_bank")) return false;
   const bankId = fieldCreatureBankId(field);
   if (bankId) {
     if (field.flagOwnerId) return false;
@@ -821,6 +806,15 @@ function canBeatGuardedFieldUncached(
   if (homeOpeningGuard && heroBattleLevel >= difficulty) {
     return true;
   }
+  // The Center (level VI: a Silver and four Gold guards on Impossible) lies
+  // beyond every printed army-tier cap, so it was never fought. A late army of
+  // Gold Packs can own it: let the guard forecast over the public party table
+  // (our army, fight cards, the movement kept for continuations) decide, with a
+  // wide margin. Level VII keeps its fight-to-the-death rules and stays refused.
+  if (hero.kind === "main" && difficulty === 6 && !field.customGuardUnits?.length && humanNeutralFormationReady) {
+    const forecast = forecastGuardField(state, hero, field, premiumCombatMovementReserve(state, hero, field));
+    if (forecast && forecast.winChance >= CENTER_FORECAST_MIN_WIN) return true;
+  }
   // A real fight must be covered by the army that still exists, not by a hero
   // level earned before that army was destroyed. This includes the ordinary
   // equal-level case; strict level advantage returned above as a no-risk Quick
@@ -1040,15 +1034,24 @@ function objectiveKind(
   }
 
   // Enemy-flagged holdings (no enemy hero on the hex):
-  //  - bare mines / flaggables re-flag for free → always worth taking
+  //  - bare mines / flaggables re-flag for free → always worth taking, EXCEPT a
+  //    holding its owner may garrison with the whole army (a Settlement, a Mine
+  //    under `mine-army-defense`, a designer Garrison object, a captured Utopia)
   //  - towns / settlements may open a garrison fight → army-strength gate
   if (field.flagOwnerId && !playersAreAllied(state, field.flagOwnerId, playerId)) {
     if (category === "flaggable") {
-      return "flaggable";
+      // A Settlement is category "flaggable" too, so it must be caught HERE —
+      // the Town/Settlement gate below never saw one and every enemy Settlement
+      // read as a free re-flag (lab seed lab-4 R8: into Archangels at 0%).
+      const defendable = field.location === "settlement" || field.location === "garrison" ||
+        field.location === "dragon_utopia" ||
+        (field.location === "mine" && houseRuleEnabled(state, "mine-army-defense"));
+      return !defendable || shouldAssaultEnemyHolding(state, playerId, field) ||
+        (field.location === "settlement" && onEliminationClock(state, playerId)) ? "flaggable" : null;
     }
     if (
       (category === "town" || field.location === "settlement") &&
-      shouldAssaultEnemyHolding(state, playerId, field)
+      (shouldAssaultEnemyHolding(state, playerId, field) || onEliminationClock(state, playerId))
     ) {
       return category === "town" ? "town" : "flaggable";
     }
@@ -1715,6 +1718,47 @@ function savedPurchaseNeedsMarket(state: GameState, playerId: PlayerId): boolean
 
 export const BANK_LEVEL_DEFICIT_PENALTY = 40;
 
+/**
+ * No Town or Settlement left: the Player Elimination clock is running and the
+ * game is lost when it runs out. Retaking ANY base outranks everything, and the
+ * garrison-strength gate is waived — a doubtful assault beats a certain loss.
+ * (Lab league 2026-09-27: the new AI lost 8 games this way, one with a
+ * 7-card army that never tried to retake anything.)
+ */
+export function onEliminationClock(state: GameState, playerId: PlayerId): boolean {
+  return state.players[playerId]?.eliminationCountdown != null;
+}
+const ELIMINATION_RECAPTURE_VALUE = 1_400;
+
+/** A Town / Settlement / Random Town not held by this seat: taking it stops the clock. */
+export function isRecaptureBase(state: GameState, playerId: PlayerId, field: MapFieldState | undefined): boolean {
+  return Boolean(field && field.flagOwnerId !== playerId &&
+    (field.location === "settlement" || field.location === "random_town" ||
+      locationDefinitions[field.location]?.category === "town"));
+}
+
+/**
+ * Stepping onto a base while the Elimination clock runs: the ordinary safety
+ * rules (never attack a holding its owner garrisons at long odds, keep combat
+ * movement in reserve, never open a losing PvP battle) are waived, because the
+ * game is lost for certain when the clock runs out. A hostile HERO standing on
+ * the base is only fought on the clock's LAST turn — a turn earlier it may
+ * still walk away. Lab league 2026-09-27 (L3-fortress): the town fell, the
+ * Secondary stood next to an enemy Settlement on the last turn and the garrison
+ * guard held it back; the seat was eliminated with a full army.
+ */
+export function eliminationRecaptureStep(
+  state: GameState, playerId: PlayerId, field: MapFieldState | undefined, enemyHeroThere = false,
+): boolean {
+  const countdown = state.players[playerId]?.eliminationCountdown;
+  if (countdown == null || !isRecaptureBase(state, playerId, field)) return false;
+  return !enemyHeroThere || countdown <= 1;
+}
+/** Forecast win chance at which an enemy hero becomes a priority target. */
+export const PVP_PRESS_WIN = 0.75;
+/** Forecast win chance a level-VI (Center) guard needs before the main army takes it. */
+export const CENTER_FORECAST_MIN_WIN = 0.8;
+
 /** Exported for tests only — the ranking seam behind primaryMapObjective. */
 export function objectiveStrategicValue(
   state: GameState,
@@ -1733,6 +1777,8 @@ export function objectiveStrategicValue(
   const field = state.adventure?.fields[objective.spaceId];
   const homeSweep = isHomeTileSweepObjective(state, hero, objective, field);
   let value: number;
+  const recaptureBase = onEliminationClock(state, hero.controllerId) && isRecaptureBase(state, hero.controllerId, field);
+  if (recaptureBase) return ELIMINATION_RECAPTURE_VALUE - distance * 18;
   switch (objective.kind) {
     case "victory": {
       const carryingGrailHome = Boolean(
@@ -1748,9 +1794,19 @@ export function objectiveStrategicValue(
       } else value = 950;
       break;
     }
-    case "enemy-hero":
+    case "enemy-hero": {
       value = bronzeRush ? 970 : ready ? 760 : 390;
+      // Hit when you can: a battle the forecast calls a near-certain win (the
+      // loser pays the toll, loses units and walks home) outranks ordinary
+      // economy — above all when it can be opened THIS turn, before the enemy
+      // moves away or grows.
+      const target = heroAtSpace(state, objective.spaceId, hero.id);
+      const edge = target ? pvpEngagementForecast(state, hero.controllerId, target.controllerId, false) : null;
+      if (edge && edge.winChance >= PVP_PRESS_WIN) {
+        value = Math.max(value, distance <= hero.movementPoints ? 930 : 880);
+      }
       break;
+    }
     case "guard": {
       const difficulty = field?.difficulty ?? 0;
       const battleLevel = neutralBattleLevel(state, hero);
@@ -2850,6 +2906,93 @@ function revealedFarConversion(
     bestObjectiveOf(state, hero, within, true);
 }
 
+/** Conquest finishing phase: from this round with a Gold army once the level-7
+ * Pack stands, and from FINISH_LATEST_ROUND whatever the ladder. */
+export const FINISH_FROM_ROUND = 9;
+export const FINISH_LATEST_ROUND = 11;
+
+function finishingPhase(state: GameState, playerId: PlayerId): boolean {
+  const mode = adventureVictoryMode(state);
+  const round = state.round ?? 0;
+  if ((mode !== "conquest" && mode !== "conquer") || round < FINISH_FROM_ROUND ||
+      !hasGoldArmy(state, playerId) || onEliminationClock(state, playerId)) return false;
+  // USER GOAL "level-7 Pack as soon as possible": until it stands (or R11),
+  // the funding cascade keeps the hero on the resources that buy it — lab
+  // 2026-09-27: finishing from R9 cut level-7 Packs by R11 from 49 to 39 of 156.
+  const top = rankedGoldUnits(state, playerId)[0];
+  const topPack = Boolean(top && state.players[playerId]?.army.some(unit => unit.unitDefId === top && unit.side === "pack"));
+  return topPack || round >= FINISH_LATEST_ROUND;
+}
+
+/** Who holds a base: its flag, or an unflagged faction Town's home owner. */
+function baseHolder(state: GameState, field: MapFieldState): PlayerId | null {
+  if (field.flagOwnerId) return field.flagOwnerId;
+  if (locationDefinitions[field.location]?.category !== "town") return null;
+  return Object.values(state.towns ?? {}).find(town => town.fieldId === field.spaceId)?.controllerId ?? null;
+}
+
+function isBaseField(field: MapFieldState): boolean {
+  return field.location === "settlement" || field.location === "random_town" ||
+    locationDefinitions[field.location]?.category === "town";
+}
+
+/** Towns / Settlements a seat holds: at zero its Elimination clock starts. */
+export function basesHeldBy(state: GameState, playerId: PlayerId): number {
+  return Object.values(state.adventure?.fields ?? {}).filter(field =>
+    isBaseField(field) && baseHolder(state, field) === playerId).length;
+}
+
+/**
+ * CONQUEST FINISHING: past the development race (FINISH_FROM_ROUND, Gold army
+ * standing), a decisive military target inside next turn's reach comes before
+ * the economy cascade — an enemy hero the forecast calls a clear win
+ * (PVP_PRESS_WIN), then an enemy Town whose garrison would fall, then — with
+ * the owner down to its last two bases — any enemy base (the win condition is
+ * the last faction standing). Lab league 2026-09-27: in 19 of 104 games the new
+ * AI won 3+ battles to none, and at R16 a 12-card army stood three steps from
+ * the enemy Town while the funding cascade marched it to a Mine; no game was
+ * won by conquest.
+ */
+function finishingTarget(
+  state: GameState, hero: HeroState, actionable: ReadonlyArray<MapObjective>, stickySpaceId: MapSpaceId | null | undefined,
+): MapObjective | null {
+  const reach = Math.max(0, hero.movementPoints) + heroMovementMax(state, hero);
+  const near = actionable.flatMap(objective => {
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId, true);
+    return distance === undefined || distance > reach ? [] : [{ objective, distance }];
+  });
+  const nearest = (list: typeof near) => list.sort((a, b) => a.distance - b.distance ||
+    Number(b.objective.spaceId === stickySpaceId) - Number(a.objective.spaceId === stickySpaceId) ||
+    a.objective.spaceId.localeCompare(b.objective.spaceId))[0]?.objective ?? null;
+  const huntable = near.filter(({ objective }) => {
+    if (objective.kind !== "enemy-hero") return false;
+    const target = heroAtSpace(state, objective.spaceId, hero.id);
+    const edge = target ? pvpEngagementForecast(state, hero.controllerId, target.controllerId, false) : null;
+    return Boolean(edge && edge.winChance >= PVP_PRESS_WIN);
+  });
+  if (huntable.length) return nearest(huntable);
+  const assault = (onlyTowns: boolean) => near.filter(({ objective }) => {
+    const field = state.adventure?.fields[objective.spaceId];
+    if (!field || !isBaseField(field) || heroAtSpace(state, field.spaceId, hero.id)) return false;
+    const town = locationDefinitions[field.location]?.category === "town";
+    if (onlyTowns && !town) return false;
+    const holder = baseHolder(state, field);
+    if (!holder || holder === hero.controllerId || holder === NEUTRAL_PLAYER_ID ||
+        playersAreAllied(state, holder, hero.controllerId)) return false;
+    if (!town && basesHeldBy(state, holder) > 2) return false;
+    if (!shouldAssaultEnemyHolding(state, hero.controllerId, { ...field, flagOwnerId: holder })) return false;
+    // A broke or empty owner cannot garrison: the base falls without a fight.
+    // Otherwise the assault must be a CLEAR win — a failed Town assault leaves
+    // the army wrecked far from home (lab league 2026-09-27 L2-castle: a
+    // 69% Town assault lost the whole army and then the game).
+    const owner = state.players[holder];
+    const fee = field.location === "garrison" || field.location === "mine" ? 3 : 8;
+    if (!owner || owner.army.length === 0 || owner.resources.gold < fee) return true;
+    return (pvpEngagementForecast(state, hero.controllerId, holder, true)?.winChance ?? 0) >= PVP_PRESS_WIN;
+  });
+  return nearest(assault(true)) ?? nearest(assault(false));
+}
+
 function primaryMapObjectiveRanked(
   state: GameState,
   hero: HeroState,
@@ -2889,7 +3032,7 @@ function primaryMapObjectiveRanked(
       !state.players[enemy.controllerId]?.eliminated &&
       !playersAreAllied(state, hero.controllerId, enemy.controllerId) &&
       (pvpReach(state, enemy, true).has(hero.spaceId!) || pvpReach(state, hero).has(enemy.spaceId)) &&
-      !shouldEngageEnemy(state, hero.controllerId, enemy.controllerId));
+      pvpThreatens(state, hero.controllerId, enemy.controllerId));
     if (incoming.length) {
       const safe = actionable.filter(objective => pvpReach(state, hero).has(objective.spaceId) &&
         (locationDefinitions[state.adventure?.fields[objective.spaceId]?.location ?? ""]?.passive?.protectsFromAttack ||
@@ -2935,6 +3078,11 @@ function primaryMapObjectiveRanked(
     return openingObjective ??
       homeRemaining.find(objective => objective.spaceId === stickySpaceId) ??
       bestObjectiveOf(state, hero, homeRemaining, true);
+  }
+
+  if (hero.kind === "main" && finishingPhase(state, hero.controllerId)) {
+    const finish = finishingTarget(state, hero, actionable, stickySpaceId);
+    if (finish) return finish;
   }
 
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
@@ -3038,8 +3186,15 @@ function primaryMapObjectiveRanked(
   // other users (growth-tile band) keep their behaviour.
   const goldEconomyTargets = developmentResourceTargets(state, hero.controllerId);
   const goldEconomyRes = state.players[hero.controllerId]?.resources;
-  const missingGoldRecruit = nextGoldLadderStep(state, hero.controllerId)?.kind === "recruit";
-  const savingForGoldEconomy = (!hasGoldArmy(state, hero.controllerId) || missingGoldRecruit) && goldEconomyRes !== undefined &&
+  const ladderStep = nextGoldLadderStep(state, hero.controllerId);
+  const missingGoldRecruit = ladderStep?.kind === "recruit";
+  // USER RULING (2026-09-27, clarified): the level-7 Pack is the success
+  // target, so saving for it holds the growth pivot like a missing Gold body
+  // (lab: the saved Pack step switched this gate off and a Dungeon hero walked
+  // past an adjacent Far III Settlement to a Near level-IV XP fight).
+  const savingTopGoldPack = ladderStep?.kind === "reinforce" && ladderStep.rank === 0;
+  const savingForGoldEconomy = (!hasGoldArmy(state, hero.controllerId) || missingGoldRecruit || savingTopGoldPack) &&
+    goldEconomyRes !== undefined &&
     ((goldEconomyRes.valuables ?? 0) < (goldEconomyTargets.valuables ?? 0) ||
       (goldEconomyRes.buildingMaterials ?? 0) < (goldEconomyTargets.buildingMaterials ?? 0) ||
       (goldEconomyRes.gold ?? 0) < (goldEconomyTargets.gold ?? 0));

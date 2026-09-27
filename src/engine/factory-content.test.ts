@@ -24,10 +24,10 @@ import { applyAction, createAdventureGameState, createAdventureLobbyState } from
 import type { GameAction, GameState } from "./state";
 
 /**
- * Factory is a PLAYABLE Expansion faction with its own &S1 starting tile. This
+ * Factory is a PLAYABLE Expansion faction with its own S10 starting tile. This
  * file is the "done" bar for the art import (every town/unit/hero/building image
  * resolves to a file on disk) AND for the playable wiring (registered faction,
- * &S1 starting tile carrying the Factory town, Random-Town defender pool, lobby
+ * S10 starting tile carrying the Factory town, Random-Town defender pool, lobby
  * pick, real adventure start). Each claim carries a mutation control (castle is
  * the twin) so a test fails if the wiring is removed.
  *
@@ -70,7 +70,7 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
-describe("Factory faction — art wired and playable (&S1 starting tile)", () => {
+describe("Factory faction — art wired and playable (S10 starting tile)", () => {
   it("registers the faction with all 8 units and the 6 kept heroes", () => {
     const faction = coreFactionDefinitions.factory;
     expect(faction, "factory faction should be registered").toBeDefined();
@@ -158,42 +158,34 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     }
   });
 
-  // ---- A real, playable faction (&S1 starting tile) -------------------------
+  // ---- A real, playable faction (S10 starting tile) ------------------------
 
-  it("is playable and registered with its &S1 starting tile", () => {
+  it("is playable and registered with its S10 starting tile", () => {
     expect(isPlayableFaction("factory")).toBe(true);
     expect(coreFactionDefinitions.factory.playable).not.toBe(false);
-    expect(coreFactionDefinitions.factory.startingTileId).toBe("&S1");
-    expect(startingTileByFaction.factory).toBe("&S1");
-    // The &S1 tile exists, is a starting tile, and carries the Factory town.
-    const tile = allTileDefinitions["&S1"];
-    expect(tile, "&S1 tile is defined").toBeDefined();
+    expect(coreFactionDefinitions.factory.startingTileId).toBe("S10");
+    expect(startingTileByFaction.factory).toBe("S10");
+    const tile = allTileDefinitions.S10;
+    expect(tile, "S10 tile is defined").toBeDefined();
     expect(tile.group).toBe("starting");
     expect(tile.fields[0]).toMatchObject({ location: "town", faction: "factory" });
-    expect(tile.assets?.tileImage).toBe("/assets/board/tiles/sf1.webp");
+    expect(tile.assets?.tileImage).toBe("/assets/board/tiles/s10.webp");
+    // Saves from before the rename still resolve the old id, but catalogs list it once.
+    expect(allTileDefinitions["&S1"]).toBe(tile);
+    expect(Object.keys(allTileDefinitions)).not.toContain("&S1");
   });
 
-  it("&S1 fields follow the real sf1.webp scan (not the Stronghold-S7 rotation)", () => {
-    // Ring slots 1-6 = NE, E, SE, SW, W, NW. Read off the printed art: campfire +
-    // crossed-pick resource (NE), open pine-desert (E) and rocky outcrop (SE),
-    // the "I" treasure cabin (SW), the "loop 2" materials mine "I" (W), and the
-    // "&S1" tar-chasm anchor (NW). This diverges from the old S7-clone rotation
-    // (which put the mine at NE and the blocked field at E), so a regression back
-    // to it fails here.
-    const f = allTileDefinitions["&S1"].fields;
-    expect(f[1]).toMatchObject({ location: "resource_symbol" }); // NE
-    expect(f[2]).toMatchObject({ location: "empty_field" }); // E
+  it("S10 follows the designer's WiP layout with the official starting-tile borders", () => {
+    // Ring slots 1-6 = NE, E, SE, SW, W, NW.
+    const f = allTileDefinitions.S10.fields;
+    expect(f[1]).toMatchObject({ location: "mine", resource: "buildingMaterials", amount: 2, difficulty: 1 }); // NE
+    expect(f[2]).toMatchObject({ location: "resource_symbol" }); // E
     expect(f[3]).toMatchObject({ location: "empty_field" }); // SE
     expect(f[4]).toMatchObject({ location: "treasure_symbol", difficulty: 1 }); // SW
-    expect(f[5]).toMatchObject({
-      location: "mine",
-      resource: "buildingMaterials",
-      amount: 2,
-      difficulty: 1
-    }); // W
+    expect(f[5]).toMatchObject({ location: "empty_field" }); // W
     expect(f[6]).toMatchObject({ location: "blocked_field" }); // NW
-    // The blocked-field anchor's outer edge is sealed (best-fit borders).
-    expect(allTileDefinitions["&S1"].outerImpassable[5]).toBe(true);
+    // Blocked NW + the three fields opposite it sealed; NE and W stay open.
+    expect(allTileDefinitions.S10.outerImpassable).toEqual([false, true, true, true, false, true]);
   });
 
   it("is in the Random Town defender pool alongside the other factions", () => {
@@ -212,7 +204,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(ok.setupLobby?.seats.find((s) => s.playerId === "p1")?.factionId).toBe("factory");
   });
 
-  it("can start an adventure as Factory — the &S1 town and hero deck resolve", () => {
+  it("can start an adventure as Factory — the S10 town and hero deck resolve", () => {
     const state = createAdventureGameState({ startingBuildings: [],
       seed: "factory-playable",
       rollFirstPlayer: false,
@@ -464,10 +456,10 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(state.towns[townId].buildings, "silver dwelling stands after bronze").toContain("factory.dwelling_silver");
   });
 
-  it("ships the full Factory '&' tile set (start + 2 near + 3 far + 1 center)", () => {
+  it("ships the full Factory tile set (start S10 + 2 near + 3 far + 1 center)", () => {
     const t = allTileDefinitions;
     const expected: Record<string, "starting" | "near" | "far" | "center"> = {
-      "&S1": "starting",
+      S10: "starting",
       "&N1": "near",
       "&N2": "near",
       "&F1": "far",
@@ -482,9 +474,9 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       expect(t[id].fields, `${id} has 7 fields`).toHaveLength(7);
       expect(t[id].assets?.tileImage, `${id} art`).toMatch(/^\/assets\/board\/tiles\/[a-z0-9]+\.webp$/);
     }
-    // &S1 centre carries the Factory town; &C1 centre is the Airship Yard
+    // S10 centre carries the Factory town; &C1 centre is the Airship Yard
     // (Factory rulebook p.8 — NOT a War Machine Factory).
-    expect(t["&S1"].fields[0]).toMatchObject({ location: "town", faction: "factory" });
+    expect(t.S10.fields[0]).toMatchObject({ location: "town", faction: "factory" });
     expect(t["&C1"].fields[0]).toMatchObject({ location: "airship_yard", difficulty: 7 });
     // Every resource-bearing Factory tile has a mine with a real resource + amount.
     for (const id of ["&N1", "&N2", "&F2", "&F3"]) {

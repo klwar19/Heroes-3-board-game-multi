@@ -103,13 +103,14 @@ describe("expansion tile data", () => {
     for (const id of Object.keys(expansionTileDefinitions)) {
       expect(coreIds.has(id), `${id} duplicated`).toBe(false);
     }
-    // 41 boxed tiles + 66 wiki expansion tiles + the Bulwark S10 and Factory &S1
-    // starting tiles + the full Factory "&" set: &N1/&N2 near, &F1/&F2/&F3 far,
+    // 41 boxed tiles + 66 wiki expansion tiles + the Factory S10 and Bulwark S11
+    // starting tiles (the non-enumerable legacy "&S1" alias of S10 is not
+    // counted) + the full Factory "&" set: &N1/&N2 near, &F1/&F2/&F3 far,
     // &C1 center (transcribed from the physical tile scans) + the anime starting
     // tiles A-S1 (Fuyuki) / W-S1 (Azure Breeze) / L-S1 (Hidden Leaf) / P-S1 (Azur
     // Lane) / D-S1 (Heavenly Demon Palace), plus LB-S1 (Little Busters) and
     // MGQ-S1 (Monster Girl Quest: Paradox), BA-S1 (Blue Archive), and IM-S1
-    // (Imperium of Man), plus the Forge S12 starting tile (Bulwark S10's own-
+    // (Imperium of Man), plus the Forge S12 starting tile (Bulwark S11's own-
     // content precedent; starting tiles never enter a supply pool).
     expect(Object.keys(allTileDefinitions)).toHaveLength(125);
   });

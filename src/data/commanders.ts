@@ -544,6 +544,15 @@ export type CommanderCastEffect =
       bonusVsSlowerByPower?: readonly [number, number, number];
       durationRounds?: number;
       refresh?: boolean;
+      /**
+       * Sea Marshal "Slow": from this Power the commander may ALSO cast at the
+       * very start of the battle (the combat-start begin-cast choice), before
+       * any unit activates. That opening cast lasts `openingCastRounds` combat
+       * rounds and, like the Shaman/Brute openings, the commander forgoes its
+       * round-1 turn.
+       */
+      openingCastFromPower?: number;
+      openingCastRounds?: number;
     }
   | { kind: "unlimited-retaliation"; duration?: "round" | "combat" }
   | { kind: "reactivate" }
@@ -1018,11 +1027,25 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Slow",
       icon: "/assets/spell-icons/slow.png",
       targeting: { side: "enemy", canTargetSelf: false },
-      effect: { kind: "initiative-shift", amountByPower: [-2, -3, -4], attackVs: "faster", attackAmount: -1 },
+      // User spec 2026-09-27: every Power lasts 2 combat rounds (a recast on the
+      // same unit refreshes instead of stacking); Power 2 also takes 1 Movement
+      // space; from Power 1 it may instead be cast at the start of the battle,
+      // lasting round 1 only.
+      effect: {
+        kind: "initiative-shift",
+        amountByPower: [-2, -3, -4],
+        attackVs: "faster",
+        attackAmount: -1,
+        moveByPower: [0, 0, -1],
+        durationRounds: 2,
+        refresh: true,
+        openingCastFromPower: 1,
+        openingCastRounds: 1
+      },
       tierText: [
-        "An enemy unit suffers -2 Initiative and -1 Attack against faster units this round.",
-        "An enemy unit suffers -3 Initiative and -1 Attack against faster units this round.",
-        "An enemy unit suffers -4 Initiative and -1 Attack against faster units this round."
+        "An enemy unit suffers -2 Initiative and -1 Attack against faster units for 2 combat rounds.",
+        "An enemy unit suffers -3 Initiative and -1 Attack against faster units for 2 combat rounds. May instead be cast at the start of combat, lasting round 1 only (the commander then skips its round-1 turn).",
+        "An enemy unit suffers -4 Initiative, -1 Movement and -1 Attack against faster units for 2 combat rounds. May instead be cast at the start of combat, lasting round 1 only (the commander then skips its round-1 turn)."
       ]
     },
     specialty: {
@@ -1085,7 +1108,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "rune-ritual",
       name: "Rune Ritual",
-      text: "Gain +1 Rune every time the commander MOVES, and +3 Runes every time it is attacked. At Rune Level 1, the commander gains +1 additional Attack beyond the army-wide +1 Attack."
+      text: "Gain +1 Rune every time the commander MOVES, and +3 Runes every time it is attacked. At Rune Level 1, the commander gains +1 Speed. Every time a Rune Level is reached while the commander lives, it may heal a friendly unit 1 HP."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
   },

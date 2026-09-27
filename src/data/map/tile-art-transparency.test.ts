@@ -10,7 +10,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
  * an alpha channel that cuts them away — otherwise the corners render opaque and
  * the tile no longer blends with the board around it.
  *
- * The Bulwark starting tile (S10, /assets/board/tiles/s10.webp) originally
+ * The Bulwark starting tile (then S10, now S11 at /assets/board/tiles/s11.webp) originally
  * shipped as a flat lossy WebP ("VP8 ", no alpha): its corners were solid white
  * and stood out against the surrounding tiles. This test parses the WebP RIFF
  * header of every committed tile art and fails if any of them lacks an alpha
@@ -68,7 +68,7 @@ describe("tile art carries a transparent (flower-shaped) background", () => {
     }
     // Guard the guard: the Bulwark starting tile (the one this regression
     // targets) is actually among the tiles exercised.
-    expect(checked).toContain("S10");
+    expect(checked).toContain("S11");
     expect(checked.length).toBeGreaterThan(10);
   });
 
@@ -95,7 +95,7 @@ describe("tile art carries a transparent (flower-shaped) background", () => {
     }
     // Guard the guard: the Bulwark starting tile (the one this regression
     // targets) is actually among the tiles exercised.
-    expect(checked).toContain("S10");
+    expect(checked).toContain("S11");
     expect(checked.length).toBeGreaterThan(10);
   });
 });

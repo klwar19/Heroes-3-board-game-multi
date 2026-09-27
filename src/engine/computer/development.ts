@@ -11,6 +11,7 @@ import { unitExperienceActive } from "../unit-experience";
 import { playersAreAllied } from "./control";
 import { isFieldGuarded, reinforceCostFor, applyRecruitGoldDiscount, playerCanRecruitFewNow } from "../adventure";
 import { isOpeningFarMaterialMine, securedFarTileIds } from "./far-sweep";
+import { scoringPassCached } from "./scoring-pass";
 import { effectiveTownBuildingCost } from "../house-rules";
 
 /** The faction's bronze units in roster (unit-level) order: [level-1, level-2,
@@ -1082,8 +1083,12 @@ export function firstGoldMilestoneCost(state: GameState, playerId: PlayerId): Re
   return cost;
 }
 
-/** The actual Resource rounds remaining through R9, not nine income ticks.
- * After R9, keep planning over the next two rounds to recover a late start. */
+/** USER TARGET (2026-09-27): the first level-7 Gold body lands BEFORE round 9
+ * — by R8, i.e. on the R7 Resource Round's income (even rounds pay nothing). */
+export const FIRST_GOLD_DEADLINE_ROUND = 8;
+
+/** The actual Resource rounds remaining through the deadline, not eight income
+ * ticks. After it, keep planning over the next two rounds to recover a late start. */
 export function goldMilestoneShortfall(
   state: GameState, playerId: PlayerId, spend: ResourceCost = {},
 ): Required<ResourceCost> {
@@ -1103,7 +1108,7 @@ function goldMilestoneBalance(
   const player = state.players[playerId];
   if (!cost || !player) return null;
   let payouts = 0;
-  const deadline = state.round <= 9 ? 9 : state.round + 2;
+  const deadline = state.round <= FIRST_GOLD_DEADLINE_ROUND ? FIRST_GOLD_DEADLINE_ROUND : state.round + 2;
   for (let round = state.round + 1; round <= deadline; round += 1) {
     if (round > 1 && round % 2 === 1) payouts += 1;
   }
@@ -1138,9 +1143,70 @@ export function goldMilestoneConversionGold(state: GameState, playerId: PlayerId
 /** Optional spending must not create or worsen a deadline funding gap. Core
  * recovery and the planned Silver breakthrough decide in their own paths. */
 export function spendWorsensGoldMilestone(state: GameState, playerId: PlayerId, spend: ResourceCost): boolean {
-  const before = goldMilestoneShortfall(state, playerId);
-  const after = goldMilestoneShortfall(state, playerId, spend);
-  return (["gold", "buildingMaterials", "valuables"] as const).some(key => after[key] > before[key]);
+  // Lookahead, not a fixed-deadline shortfall: a spend is refused only when it
+  // pushes the first level-7 (remaining dwelling + body) to a LATER Resource
+  // Round. The old shortfall test refused every spend once the deadline was out
+  // of reach (starving the army that must win the income fights) and waved
+  // through spends that cost a whole round while the deadline still looked
+  // covered (lab 2026-09-27: dwelling R7, body R9 in half the seats).
+  const before = firstGoldLandingRound(state, playerId);
+  if (before === null) return false;
+  const after = firstGoldLandingRound(state, playerId, spend);
+  if (after === null || after > before) return true;
+  // Overdue (the deadline round has passed) and still unpaid this round: the
+  // gap is what map pickups must close before the next Resource Round, so an
+  // optional gold spend that widens it waits until the level-7 stands. Printed
+  // income alone reads "lands the same round either way" and let a 10-gold
+  // experience visit eat a 16-of-20 Archangels fund at R9.
+  return state.round > FIRST_GOLD_DEADLINE_ROUND && before > state.round && (spend.gold ?? 0) > 0;
+}
+
+const GOLD_LANDING_HORIZON = 8;
+/**
+ * Gold-equivalent a seat collects on the map per round beyond printed income
+ * (resource dice, first flags, bank rewards, pickups): measured 3.3-3.9 per
+ * round through R7 across impossible lab seats (2026-09-27). Counting none made
+ * the lookahead read "the level-7 lands on R9 either way" from R5, so optional
+ * buys spent the very fund that would have landed it on R7.
+ */
+export const EXPECTED_PICKUP_GOLD_PER_ROUND = 2;
+
+/**
+ * The earliest round by which stock plus printed Resource-Round income (odd
+ * rounds after this one) and the expected map pickups (EXPECTED_PICKUP_GOLD_PER_ROUND)
+ * pay the first-Gold milestone after `spend`, counting
+ * the Trading Post conversions the market planners use (surplus materials 3 → 1
+ * valuable, then 2 gold per material / 6 gold per valuable; nothing sold).
+ * Null when not within the horizon or when there is no milestone left.
+ */
+export function firstGoldLandingRound(
+  state: GameState, playerId: PlayerId, spend: ResourceCost = {},
+): number | null {
+  const cost = firstGoldMilestoneCost(state, playerId);
+  const player = state.players[playerId];
+  if (!cost || !player) return null;
+  const exchange = materialsForValuableRate();
+  const materialsGold = goldPurchaseRate("buildingMaterials")?.goldPerUnit ?? 2;
+  const valuablesGold = goldPurchaseRate("valuables")?.goldPerUnit ?? 6;
+  let payouts = 0;
+  for (let round = state.round; round <= state.round + GOLD_LANDING_HORIZON; round += 1) {
+    if (round > state.round && round > 1 && round % 2 === 1) payouts += 1;
+    const net = (key: "gold" | "buildingMaterials" | "valuables") =>
+      player.resources[key] + payouts * (player.production?.[key] ?? 0) - cost[key] - (spend[key] ?? 0);
+    // Map income expected over the rounds still to come (none this turn).
+    let gold = net("gold") + EXPECTED_PICKUP_GOLD_PER_ROUND * (round - state.round);
+    let materials = net("buildingMaterials");
+    let valuables = net("valuables");
+    if (valuables < 0 && exchange && materials >= exchange.materialsPerValuable) {
+      const traded = Math.min(-valuables, Math.floor(materials / exchange.materialsPerValuable));
+      valuables += traded;
+      materials -= traded * exchange.materialsPerValuable;
+    }
+    if (materials < 0) gold -= -materials * materialsGold;
+    if (valuables < 0) gold -= -valuables * valuablesGold;
+    if (gold >= 0) return round;
+  }
+  return null;
 }
 
 /**
@@ -1149,6 +1215,12 @@ export function spendWorsensGoldMilestone(state: GameState, playerId: PlayerId, 
  * first-Pack fallback for the non-Necropolis two-Far plan. Null before the
  * Gold dwelling stands or once every Gold unit is a Pack. A Gold body lost in
  * combat re-opens its Few step, so the ladder "goes back" on its own.
+ *
+ * USER RULING (2026-09-27, clarified): the level-7 PACK is the success target.
+ * Once the level-7 Few stands, a lower Gold Few is the next step only when it
+ * pushes progress without landing the level-7 Pack a Resource Round later (or
+ * when that Pack is beyond the planning horizon anyway); otherwise the next
+ * step is the level-7 Pack — "fight things with more ease".
  */
 export function nextGoldLadderStep(
   state: GameState,
@@ -1161,8 +1233,17 @@ export function nextGoldLadderStep(
     player.army.find((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
   for (const [rank, unitDefId] of ranked.entries()) {
     if (!owned(unitDefId)) {
-      return { unitDefId, kind: "recruit", cost: applyRecruitGoldDiscount(state, playerId,
-        { kind: "recruit", unitDefId }, coreUnitDefinitions[unitDefId]!.few!.cost), rank };
+      const cost = applyRecruitGoldDiscount(state, playerId,
+        { kind: "recruit", unitDefId }, coreUnitDefinitions[unitDefId]!.few!.cost);
+      const top = rank > 0 ? owned(ranked[0]) : undefined;
+      if (top?.side === "few") {
+        const topPackCost = reinforceCostFor(state, playerId, top.id, false, false, false) ??
+          coreUnitDefinitions[ranked[0]]!.pack!.cost;
+        if (spendDelaysTopPack(player, topPackCost, cost)) {
+          return { unitDefId: ranked[0], kind: "reinforce", cost: topPackCost, rank: 0 };
+        }
+      }
+      return { unitDefId, kind: "recruit", cost, rank };
     }
   }
   // Once both Gold bodies stand, take an affordable first Pack when scarce
@@ -1170,13 +1251,18 @@ export function nextGoldLadderStep(
   // instead of parking both Few cards through several Resource Rounds.
   if (player.factionId !== "necropolis" && securedFarTileIds(state, playerId).size >= 2 &&
       !ranked.some(id => owned(id)?.side === "pack")) {
-    const affordable = ranked.find(id => {
+    const top = owned(ranked[0]);
+    const topPackCost = top?.side === "few"
+      ? reinforceCostFor(state, playerId, top.id, false, false, false) ?? coreUnitDefinitions[ranked[0]]!.pack!.cost
+      : null;
+    const affordable = ranked.find((id, rank) => {
       const unit = owned(id);
       const cost = unit && reinforceCostFor(state, playerId, unit.id, false, false, false);
       return unit?.side === "few" && cost &&
         player.resources.gold >= (cost.gold ?? 0) &&
         player.resources.buildingMaterials >= (cost.buildingMaterials ?? 0) &&
-        player.resources.valuables >= (cost.valuables ?? 0);
+        player.resources.valuables >= (cost.valuables ?? 0) &&
+        (rank === 0 || !topPackCost || !spendDelaysTopPack(player, topPackCost, cost));
     });
     if (affordable) return { unitDefId: affordable, kind: "reinforce",
       cost: reinforceCostFor(state, playerId, owned(affordable)!.id, false, false, false) ??
@@ -1189,6 +1275,29 @@ export function nextGoldLadderStep(
     }
   }
   return null;
+}
+
+/**
+ * USER RULING (2026-09-27): the Gold ladder is level-7 Few, level-6 Few,
+ * level-7 Pack, level-6 Pack — "level-7 Pack as soon as possible". A lower
+ * Gold Pack may still go first when paying it now does not push the top
+ * Pack's landing to a later Resource Round (printed production, no trade), or
+ * when the top Pack is beyond the planning horizon anyway.
+ */
+function spendDelaysTopPack(
+  player: GameState["players"][string],
+  topCost: ResourceCost,
+  spend: ResourceCost,
+): boolean {
+  const production = player.production ?? {};
+  const before = purchaseLandingRounds(player.resources, production, topCost, false);
+  if (before === null) return false;
+  const after = purchaseLandingRounds({
+    gold: (player.resources.gold ?? 0) - (spend.gold ?? 0),
+    buildingMaterials: (player.resources.buildingMaterials ?? 0) - (spend.buildingMaterials ?? 0),
+    valuables: (player.resources.valuables ?? 0) - (spend.valuables ?? 0),
+  }, production, topCost, false);
+  return after === null || after > before;
 }
 
 /** Dungeon's remaining mandatory spend through Black Dragons Pack. Optional
@@ -1223,6 +1332,10 @@ export type ResourceUrgency = Record<"gold" | "buildingMaterials" | "valuables",
  * read this instead of raw deficits so the true bottleneck wins.
  */
 export function resourceUrgency(state: GameState, playerId: PlayerId): ResourceUrgency {
+  return { ...scoringPassCached(state, `urgency|${playerId}`, () => resourceUrgencyUncached(state, playerId)) };
+}
+
+function resourceUrgencyUncached(state: GameState, playerId: PlayerId): ResourceUrgency {
   const player = state.players[playerId];
   const target = developmentResourceTargets(state, playerId);
   const urgency: ResourceUrgency = { gold: 0, buildingMaterials: 0, valuables: 0 };
@@ -1337,6 +1450,15 @@ export function spendDelaysSavedCost(
  * rather than treating materials above 4 / valuables above 1 as disposable.
  */
 export function developmentResourceTargets(
+  state: GameState,
+  playerId: PlayerId,
+): Required<ResourceCost> {
+  // Read dozens of times per decision (every purchase / build / trade / route
+  // candidate); one computation per scoring pass. A copy: callers own it.
+  return { ...scoringPassCached(state, `devTargets|${playerId}`, () => developmentResourceTargetsUncached(state, playerId)) };
+}
+
+function developmentResourceTargetsUncached(
   state: GameState,
   playerId: PlayerId,
 ): Required<ResourceCost> {
@@ -1569,11 +1691,25 @@ export function goldStepMarketPlan(
   }
   const rateIndices: number[] = [];
   let goldShort = need.gold - res.gold;
+  // Materials the step itself does not need: exchanged 3 → 1 for a missing
+  // valuable before any gold is spent (selling 6 of them to buy it back with
+  // gold costs twice as much), then sold 1:1 below if gold is still short.
+  let spareMaterials = Math.max(0, res.buildingMaterials - need.buildingMaterials);
   for (const key of ["valuables", "buildingMaterials"] as const) {
-    const missing = Math.max(0, need[key] - res[key]);
+    let missing = Math.max(0, need[key] - res[key]);
     if (missing === 0) continue;
     // A dwelling's missing inputs belong to the rush planner, never here.
     if (!step) return null;
+    if (key === "valuables") {
+      const exchange = materialsForValuableRate();
+      const byMaterials = exchange ? Math.min(missing, Math.floor(spareMaterials / exchange.materialsPerValuable)) : 0;
+      if (exchange && byMaterials > 0) {
+        missing -= byMaterials;
+        spareMaterials -= byMaterials * exchange.materialsPerValuable;
+        rateIndices.push(exchange.rateIndex);
+      }
+      if (missing === 0) continue;
+    }
     const rate = goldPurchaseRate(key);
     if (!rate) return null;
     goldShort += missing * rate.goldPerUnit;
@@ -1589,8 +1725,7 @@ export function goldStepMarketPlan(
     const materialRate = goldSaleRate("buildingMaterials");
     // For a dwelling keep the same +3 materials cushion the generic trade
     // floor keeps before Gold (the NEXT dwelling's rebuild starts from it).
-    const materialSurplus = Math.max(0,
-      res.buildingMaterials - need.buildingMaterials - (step ? 0 : 3));
+    const materialSurplus = Math.max(0, spareMaterials - (step ? 0 : 3));
     if (materialRate && materialSurplus > 0) {
       raised += materialSurplus * materialRate.goldPerUnit;
       rateIndices.push(materialRate.rateIndex);
@@ -1807,8 +1942,9 @@ export type DwellingRushAssessment = {
    */
   feasible: boolean;
   /**
-   * TRADE_RATES indices that BUY a still-missing dwelling input (materials /
-   * valuables) from gold. Enabled decisively when `feasible`; SUPPRESSED when not,
+   * TRADE_RATES indices that obtain a still-missing dwelling input: a valuable
+   * exchanged from spare materials (3 → 1), else materials / valuables bought
+   * from gold. Enabled decisively when `feasible`; SUPPRESSED when not,
    * so a half-conversion never strips the recruit fund chasing a dwelling the seat
    * cannot actually complete this turn.
    */
@@ -1828,9 +1964,9 @@ export type DwellingRushAssessment = {
  * valuables are only ever BOUGHT, never sold, so the plan cannot strip its own
  * saved inputs.
  *
- * Honest scope: the planner funds missing inputs from GOLD only. A seat short on
- * gold but flush on the other two is left to the generic trade heuristic; the
- * materials<->valuables cross-conversions are out of scope.
+ * A missing valuable is first exchanged from materials the dwelling does not
+ * need (3 → 1), then bought from gold. A seat short on gold but flush on the
+ * other two is left to the generic trade heuristic.
  */
 export function assessDwellingRush(
   state: GameState,
@@ -1872,8 +2008,22 @@ export function assessDwellingRush(
     goldForTrades += missingMaterials * matsRate.goldPerUnit;
     inputRateIndices.push(matsRate.rateIndex);
   }
-  if (missingValuables > 0 && valsRate) {
-    goldForTrades += missingValuables * valsRate.goldPerUnit;
+  // Materials beyond the dwelling's own exchange 3 → 1 for a missing valuable
+  // before any gold is spent. Measured (lab 2026-09-27): Stronghold / Fortress
+  // seats sat on 12-22 materials one or two valuables short of the Gold
+  // dwelling at R5-R7 while the gold-only plan read the rush as unaffordable.
+  let valuablesToBuy = missingValuables;
+  const exchange = materialsForValuableRate();
+  if (valuablesToBuy > 0 && exchange && missingMaterials === 0) {
+    const byMaterials = Math.min(valuablesToBuy,
+      Math.floor((res.buildingMaterials - need.buildingMaterials) / exchange.materialsPerValuable));
+    if (byMaterials > 0) {
+      valuablesToBuy -= byMaterials;
+      inputRateIndices.push(exchange.rateIndex);
+    }
+  }
+  if (valuablesToBuy > 0 && valsRate) {
+    goldForTrades += valuablesToBuy * valsRate.goldPerUnit;
     inputRateIndices.push(valsRate.rateIndex);
   }
   if (inputRateIndices.length === 0) {

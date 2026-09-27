@@ -4,6 +4,7 @@ import { makeActiveEffect } from "./active-effects";
 import { siegeRangedDamageReduction } from "./siege";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { formatEvent } from "@/components/table/utils";
 import type { GameAction, GameState, SiegeState } from "./state";
 
 /**
@@ -191,5 +192,63 @@ describe("siege behind-Wall shot — the 'Ignore combat penalties' waiver", () =
       )
     );
     expect(siegeRangedDamageReduction(combat, attacker, defender, "ranged", state, true)).toBe(0);
+  });
+});
+
+/**
+ * REPORTED: "my elves shoot commander dungeon, 3 damage, commander def 2, 3-2 but
+ * commander take 0 damage????" — the engine was right (3 − 2 − the wall's 1 = 0),
+ * the dice overlay / combat log never said why. The shot now carries a
+ * "Siege wall cover: −1 damage" roll note — and ONLY when the wall really took
+ * that point off a positive Attack−Defense margin.
+ */
+describe("siege wall cover is named on the roll exactly when it cuts the damage", () => {
+  const WALL_NOTE = { source: "Siege wall cover", text: "−1 damage" };
+
+  function shot(state: GameState) {
+    const settled = settle(applyOk(state, ATTACK));
+    const rolled = settled.eventLog.find(
+      (event): event is Extract<GameState["eventLog"][number], { type: "ATTACK_ROLLED" }> =>
+        event.type === "ATTACK_ROLLED" && event.attackerId === ATTACK.attackerId && !event.isRetaliation
+    );
+    expect(rolled, "the shot must roll").toBeTruthy();
+    return { settled, rolled: rolled! };
+  }
+
+  it("the reported case: 3 vs 2 through an intact Wall deals 0 and the roll says why", () => {
+    const state = wallShot([]);
+    state.combat!.units.unit_p2_skeletons.defense = 2;
+    const { settled, rolled } = shot(state);
+    expect(rolled.attackValue).toBe(3);
+    expect(rolled.defenseValue).toBe(2);
+    expect(rolled.damage).toBe(0);
+    expect(settled.combat!.units.unit_p2_skeletons.damage).toBe(0);
+    expect(rolled.rollModifiers).toContainEqual(WALL_NOTE);
+    // The combat log line adds up: "3 vs 2, 0 damage. Siege wall cover: −1 damage."
+    expect(formatEvent(rolled, settled)).toContain("3 vs 2, 0 damage. Siege wall cover: −1 damage.");
+  });
+
+  it("a positive margin: 3 vs 0 lands 2 and carries the note", () => {
+    const { rolled } = shot(wallShot([]));
+    expect(rolled.damage).toBe(2);
+    expect(rolled.rollModifiers).toContainEqual(WALL_NOTE);
+  });
+
+  it("CONTROL: no note when Defense already stopped the hit (3 vs 3 — the wall took nothing)", () => {
+    const state = wallShot([]);
+    state.combat!.units.unit_p2_skeletons.defense = 3;
+    const { rolled } = shot(state);
+    expect(rolled.damage).toBe(0);
+    expect(rolled.rollModifiers ?? []).not.toContainEqual(WALL_NOTE);
+  });
+
+  it("CONTROL: no note once the Wall in that column is destroyed, nor for the full waiver", () => {
+    const broken = shot(wallShot([], { walls: [8, 10] })).rolled;
+    expect(broken.damage).toBe(3);
+    expect(broken.rollModifiers ?? []).not.toContainEqual(WALL_NOTE);
+
+    const waived = shot(wallShot(["ignore-all-combat-penalties"])).rolled;
+    expect(waived.damage).toBe(3);
+    expect(waived.rollModifiers ?? []).not.toContainEqual(WALL_NOTE);
   });
 });

@@ -71,11 +71,9 @@ const BACKUP_DIR = path.join(ROOT, "tmp", "gen", "sheet-sprite-originals");
  */
 const TARGETS = {
   // Two-hex creatures (hex-footprint): their corpse may span both hexes.
-  "forge-tank": { height: 102, maxArea: 4900, twoHex: true }, "forge-tank-pack": { height: 106, maxArea: 5200, twoHex: true },
-  // Cove Cannon (war machine, no PC original): the Ballista's size class (H3 Ballista
-  // standing body 76 px tall, opaque area ~4100). Sheet keyed + regridded by
-  // scripts/key-sheet-background.mjs first (see its header for the import commands).
-  "war-cannon": { height: 72, maxArea: 4100 }
+  "forge-tank": { height: 102, maxArea: 4900, twoHex: true }, "forge-tank-pack": { height: 106, maxArea: 5200, twoHex: true }
+  // (The Cove Cannon is no longer a sheet: war-cannon is the real HotA SMCANNON.def,
+  // built by scripts/build-creature-sprites.mjs --double-wide — never refit it.)
 };
 
 /** H3 groups whose frames stand in place (re-centred on the standing feet). */

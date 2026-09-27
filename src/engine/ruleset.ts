@@ -985,13 +985,12 @@ export function spellBookRuleEnabled(state: GameState): boolean {
 
 /**
  * Whether `cardId` is a Spell that may be set aside in a player's Spell Book.
- * House rule: a starting-only Spell (Magic Arrow) may be drawn, held in hand and
- * cast like any other, but it can NEVER enter the Spell Book — it has no Book
- * home and is excluded from both the hand→Book stash and the discard→Book pickup.
- * Every other Spell is eligible.
+ * Binh house rule: starting-only Spells and View Air may be held and cast, but
+ * cannot enter the standard Spell Book through either a hand stash or a
+ * discard-pile pickup. The Polish Spell Book has its own eligibility rule.
  */
 export function spellCanEnterSpellBook(cardId: CardId): boolean {
-  return !STARTING_ONLY_SPELLS.includes(cardId);
+  return cardId !== "spell.view_air" && !STARTING_ONLY_SPELLS.includes(cardId);
 }
 
 /**

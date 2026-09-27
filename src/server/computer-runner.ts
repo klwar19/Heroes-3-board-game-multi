@@ -26,6 +26,7 @@ import {
 } from "@/engine/computer/memory";
 import { computerStallRecoveryDecision } from "@/engine/computer/stall-recovery";
 import { reconsiderComputerPlan } from "@/engine/computer/reconsider";
+import { withMapScoringCache } from "@/engine/computer/map-navigation";
 import type { ChooseComputerActionOptions } from "@/engine/computer/policy";
 
 export const DEFAULT_COMPUTER_STEP_LIMIT = 256;
@@ -239,18 +240,26 @@ export function driveComputerPlayers(
       // policy sees up-to-date focus and visit thrash guards (persists on state).
       state = refreshComputerMemory(state, playerId);
       // Commit the current sticky map objective for this seat's main hero so the
-      // next turn keeps the same march target when it is still valid.
+      // next turn keeps the same march target when it is still valid. Not during
+      // a combat: the march target cannot change mid-battle and no combat
+      // decision reads it, yet this uncached objective sweep ran before EVERY
+      // unit action — the bulk of the CPU of late-game battle decisions
+      // (lab profile 2026-09-27: objective sweeps ~70% of AI CPU, 300-500 ms
+      // combat decisions at R19).
       const mainHero = Object.values(state.heroes).find(
         (hero) => hero.controllerId === playerId && hero.kind === "main",
       );
-      if (mainHero && state.adventure) {
-        const objectives = collectMapObjectives(state, mainHero);
-        const primary = primaryMapObjective(
-          state,
+      if (mainHero && state.adventure && !state.combat) {
+        // One scoring pass over this exact state: the sweep's many repeated
+        // reach / can-beat / distance reads share the pass cache, as the
+        // policy's own pass does (the state is not mutated inside it).
+        const scored = state;
+        const primary = withMapScoringCache(scored, () => primaryMapObjective(
+          scored,
           mainHero,
-          objectives,
-          state.computerMemory?.[playerId]?.stickyObjectiveSpaceId,
-        );
+          collectMapObjectives(scored, mainHero),
+          scored.computerMemory?.[playerId]?.stickyObjectiveSpaceId,
+        ));
         state = setStickyObjective(state, playerId, primary?.spaceId ?? null);
       }
 

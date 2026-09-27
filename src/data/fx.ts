@@ -973,7 +973,11 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.darkstorn.6": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
   "specialty.cuthbert.1": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
   "specialty.cuthbert.4": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
-  "specialty.cuthbert.6": { affect: [{ key: "weakness" }], sound: "spells/weakness" }
+  "specialty.cuthbert.6": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  // Olema's Weakness specialties show the Weakness spell sprite + sound too.
+  "specialty.olema.1": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "specialty.olema.4": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "specialty.olema.6": { affect: [{ key: "weakness" }], sound: "spells/weakness" }
 };
 
 /**
@@ -991,7 +995,10 @@ export const SPECIALTY_PLAY_FX_ANCHOR: Record<string, SpecialtyPlayFxAnchor> = {
   "specialty.darkstorn.6": "effect-target",
   "specialty.cuthbert.1": "window-attacker",
   "specialty.cuthbert.4": "effect-target",
-  "specialty.cuthbert.6": "enemy-units"
+  "specialty.cuthbert.6": "enemy-units",
+  "specialty.olema.1": "window-attacker",
+  "specialty.olema.4": "window-attacker",
+  "specialty.olema.6": "effect-target"
 };
 
 /** Played at center stage when a spell is countered. */
@@ -1129,6 +1136,18 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "town-dragon-snare": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "town-devil-slow": { affect: [{ key: "slow" }], sound: "spells/slow" },
   "town-devil-luck": { affect: [{ key: "misfortune" }], sound: "spells/misfortune" },
+  // Arch Devils R3 Petrifying Curse: the paralyze glyph + stone-skin crust over
+  // the victim (the figure itself greys out while this Paralysis lasts); the
+  // "0" face's +1 Attack gets its own frenzy flash on the devil.
+  "town-devil-petrify": { affect: [{ key: "paralyze" }, { key: "stone-skin", delayMs: 160 }], sound: "spells/paralyze" },
+  "town-devil-petrify-fury": { affect: [{ key: "frenzy" }], sound: "spells/frenzy" },
+  // Hydras R3 Venomous Heads / R4 Venom Ward, Black Dragons R3 Wheeling Retreat.
+  "town-hydra-venom-bite": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "town-hydra-venom-ward": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "town-black-dragon-return": { affect: [{ key: "haste" }], sound: "units/black-dragon-move" },
+  // Rune Keeper commander: the 1-HP mend offered each time a Rune Level is reached.
+  "commander-rune-ritual-mend": { affect: [{ key: "cure" }], sound: "effects/rune" },
+  "commander-rune-ritual-swiftness": { affect: [{ key: "haste" }], sound: "spells/haste" },
   "town-goblin-save": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   ...blueArchiveAbilityVoicePlans,
   "ranged-extra-shot-on-low-roll": {
@@ -1318,6 +1337,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-vampire-tribute": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
   "veteran-vampire-ward": { affect: [{ key: "anti-magic" }], sound: "effects/magic-resist" },
   "veteran-dragon-dread": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  "veteran-ghost-dragon-withering-touch": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
   "veteran-lich-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "veteran-dragon-feast": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "veteran-troglodyte-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },

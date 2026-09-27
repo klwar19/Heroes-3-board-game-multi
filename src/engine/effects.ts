@@ -49,6 +49,8 @@ export const implementedCardEffectTypes = [
   "DRAW_NEUTRAL_RECRUIT_OFFER",
   "NEUTRAL_DECK_UNIT_SEARCH",
   "HALFLINGS_RALLY",
+  "UNIT_NAME_COMBAT_RALLY",
+  "SET_ALL_ATTACK_DICE",
   "RESOURCE_FORTUNE_PLAY",
   "GAIN_RECRUIT_DISCOUNT",
   "LEGION_TIER_REINFORCE",
@@ -1206,7 +1208,9 @@ export function effectCreatesLastingEffect(effect: EffectDefinition): boolean {
   if (effect.type === "CREATE_URFTIN_CUBES" ||
       effect.type === "CREATE_ULAND_CURE" ||
       effect.type === "CREATE_VERDISH_ROUND_HEAL" ||
-      effect.type === "CREATE_VERDISH_KILL_HEAL") {
+      effect.type === "CREATE_VERDISH_KILL_HEAL" ||
+      // Ignatius's Familiars VI: a combat-long rally.
+      effect.type === "UNIT_NAME_COMBAT_RALLY") {
     return true;
   }
   return "duration" in effect && durationIsLasting(effect.duration);
@@ -1625,6 +1629,10 @@ export function describeCardEffect(card: CardDefinition): string {
     return `+${card.effect.defense} Defense to all your ${card.effect.unitNames.join("/")} units and +${card.effect.neutralHealth} Health to your neutral ${card.effect.unitNames.join("/")} for this combat`;
   }
 
+  if (card.effect.type === "UNIT_NAME_COMBAT_RALLY") {
+    return `+${card.effect.attack} Attack and +${card.effect.health} Health to all your ${card.effect.unitNames.join("/")} units for this combat`;
+  }
+
   if (card.effect.type === "CARD_DECK_SEARCH") {
     return `Search (${card.effect.count}) the ${card.effect.deck} deck`;
   }
@@ -1670,6 +1678,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "IGNORE_ATTACK_DIE_RESULT") {
     return "after the Attack die roll: ignore the die and any effects it triggered";
+  }
+
+  if (card.effect.type === "SET_ALL_ATTACK_DICE") {
+    return `after an enemy Attack roll: set all dice to ${card.effect.face}`;
   }
 
   if (card.effect.type === "IGNORE_ONE_ATTACK_DIE_RESULT") {
@@ -1915,7 +1927,7 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "INTERFERE_SPELL") {
-    return `react to an enemy damaging spell on your unit: +${card.effect.amount} defense (expert +${card.effect.expertAmount}) for the Combat, which also reduces that spell's damage`;
+    return `instant: +${card.effect.amount} defense${card.effect.expertAmount === undefined ? "" : ` (expert +${card.effect.expertAmount})`}; reduce this spell's damage to your chosen affected unit by the same amount`;
   }
 
   if (card.effect.type === "SUMMON_ELEMENTAL") {

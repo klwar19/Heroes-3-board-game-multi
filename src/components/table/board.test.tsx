@@ -2482,3 +2482,66 @@ describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", (
     expect(bare.veterancy).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// USER: "DISPLAY COMMANDER EQUIPMENT WHEN VIEW IN COMBAT TOO, IN THE DISPLAY, SAME
+// AS THE VIEW PAPERDOLL, BUT STILL NOTHING TO CLICK TO SEE OR VIEW". The button
+// used to hide whenever the WoG Artifact-deck option was off; commander
+// equipment belongs to the Commanders module, so every commander card — own or
+// ENEMY — now opens the themed paperdoll in combat.
+// ---------------------------------------------------------------------------
+describe("InspectPanel — commander battle equipment paperdoll", () => {
+  function commanderTable(): GameState {
+    const state = createInitialGameState("inspect-commander-equipment");
+    state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
+    const grades = { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 };
+    state.players.p1.commander = { slug: "paladin", grades, artifacts: { weapon: "wog.artifact.iron_cudgel" } };
+    state.players.p2.commander = { slug: "brute", grades };
+    for (const [playerId, position] of [["p1", 9], ["p2", 10]] as const) {
+      const unit = makeCommanderCombatUnit(state.players[playerId], position)!;
+      state.combat!.units[unit.id] = unit;
+    }
+    return state;
+  }
+
+  function renderInspect(state: GameState, unitId: string) {
+    return render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unitId} />
+      </CardZoomProvider>
+    );
+  }
+
+  it("shows the button with the Artifact deck OFF and opens the slots with the real bound artifact", () => {
+    const { container } = renderInspect(commanderTable(), commanderUnitId("p1"));
+    const button = container.querySelector<HTMLButtonElement>(".inspectCommanderEquipmentButton");
+    expect(button, "the equipment button is on the commander card").toBeTruthy();
+    expect(button!.textContent).toContain("1/3 bound");
+
+    fireEvent.click(button!);
+    const dialog = document.querySelector(".commanderBattleEquipmentDialog");
+    expect(dialog, "the paperdoll dialog opens").toBeTruthy();
+    expect(dialog!.querySelector(".commanderBattlePaperdoll .commanderPaperdollBody")).toBeTruthy();
+    const weapon = dialog!.querySelector(".commanderArtifactSlot.slot-weapon");
+    expect(weapon?.classList.contains("filled")).toBe(true);
+    expect(weapon?.textContent).toContain("Iron Cudgel");
+    expect(dialog!.querySelectorAll(".commanderArtifactSlot.empty")).toHaveLength(2);
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[aria-label="Close commander equipment"]')!);
+    expect(document.querySelector(".commanderBattleEquipmentDialog")).toBeNull();
+  });
+
+  it("an ENEMY commander with nothing bound still opens (three empty slots); a plain unit has no button", () => {
+    const state = commanderTable();
+    const enemy = renderInspect(state, commanderUnitId("p2"));
+    const button = enemy.container.querySelector<HTMLButtonElement>(".inspectCommanderEquipmentButton");
+    expect(button!.textContent).toContain("0/3 bound");
+    fireEvent.click(button!);
+    expect(document.querySelectorAll(".commanderBattleEquipmentDialog .commanderArtifactSlot.empty")).toHaveLength(3);
+    cleanup();
+
+    // CONTROL: an ordinary unit card has no commander equipment button.
+    const plain = renderInspect(state, "unit_p1_griffins");
+    expect(plain.container.querySelector(".inspectCommanderEquipmentButton")).toBeNull();
+  });
+});

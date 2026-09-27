@@ -12,6 +12,7 @@ import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
 import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { isPhantomCardId } from "@/engine/phantom-cards";
+import { unitIsPetrified } from "@/engine/tokens";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { factionGradeRegister, HERO_GRADE_REGISTERS } from "@/data/anime/hero-grades";
 import { getFxSheet } from "@/data/fx";
@@ -69,7 +70,8 @@ import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { CommanderCardFace } from "@/components/commander-card";
 import { COMMANDER_ARTIFACT_SPECS } from "@/data/wog/commander-artifacts";
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
-import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION, commanderMagicImmuneToNegativeOngoing, commanderStatValue, commanderUsesActionPoints } from "@/data/commanders";
+import { factionUiLexicon } from "@/data/faction-theme";
+import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, COMMANDER_MAGIC_SPECIALTY_DAMAGE_REDUCTION, commanderDefinitions, commanderMagicImmuneToNegativeOngoing, commanderStatValue, commanderUsesActionPoints } from "@/data/commanders";
 import type { CommanderGrade, CommanderSlug } from "@/data/commanders";
 import {
   actionKey,
@@ -2213,6 +2215,8 @@ export function BattlefieldBoard({
           ) : unit ? (
             <article
               className={`boardCard ${unit.controllerId} ${unit.heroUnit ? "heroBattleCardPiece" : ""} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
+                unitIsPetrified(unit) ? "petrifiedCard" : ""
+              } ${
                 isClone ? "cloneCard" : ""
               }`}
             >
@@ -3189,6 +3193,11 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   const unit = unitId ? state.combat?.units[unitId] : undefined;
   const equipmentUnit = equipmentUnitId ? state.combat?.units[equipmentUnitId] : undefined;
   const equippedArtifacts = equipmentUnit ? state.players[equipmentUnit.controllerId]?.commander?.artifacts : undefined;
+  const equipmentCommander = equipmentUnit?.commanderSlug
+    ? commanderDefinitions[equipmentUnit.commanderSlug as CommanderSlug]
+    : undefined;
+  const equipmentLexicon = factionUiLexicon(equipmentUnit ? state.players[equipmentUnit.controllerId]?.factionId : undefined);
+  const equipmentRegister = equipmentLexicon.register;
 
   useEffect(() => {
     if (!equipmentUnitId) return;
@@ -3233,6 +3242,15 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
 
   return (
     <section className="inspectPanel" aria-label={`${unit.name} card`}>
+      {unit.commanderSlug ? (
+        <button
+          className="inspectCommanderEquipmentButton"
+          onClick={() => setEquipmentUnitId(unit.id)}
+          type="button"
+        >
+          Open commander equipment paperdoll · {Object.values(state.players[unit.controllerId]?.commander?.artifacts ?? {}).filter(Boolean).length}/3 bound
+        </button>
+      ) : null}
       <button
         aria-label={`Read ${unit.cardName} at full size`}
         className="inspectZoom"
@@ -3308,15 +3326,6 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
           <div className="inspectMarked" role="status">
             Mark token · Bounty Hunters gain their printed Attack bonus against this unit
           </div>
-        ) : null}
-        {unit.commanderSlug && state.wog?.artifacts ? (
-          <button
-            className="inspectCommanderEquipmentButton"
-            onClick={() => setEquipmentUnitId(unit.id)}
-            type="button"
-          >
-            View commander equipment · {Object.values(state.players[unit.controllerId]?.commander?.artifacts ?? {}).filter(Boolean).length}/3 bound
-          </button>
         ) : null}
         {getAzureDragonSuperCharge(unit) ? (
           <div className="inspectMarked" role="status">
@@ -3434,7 +3443,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         ) : null}
       </div>
       {equipmentUnit?.commanderSlug && typeof document !== "undefined" ? createPortal(
-        <div className="commanderBattleEquipmentBackdrop" onMouseDown={() => setEquipmentUnitId(null)}>
+        <div className={`commanderBattleEquipmentBackdrop theme-${equipmentRegister}`} onMouseDown={() => setEquipmentUnitId(null)}>
           <section
             aria-label={`${equipmentUnit.cardName} commander equipment`}
             aria-modal="true"
@@ -3445,26 +3454,43 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
             <header>
               <div>
                 <small>{state.players[equipmentUnit.controllerId]?.name ?? "Commander"} · battle equipment</small>
-                <h2>{equipmentUnit.cardName}</h2>
+                <h2>{equipmentUnit.cardName} · {equipmentLexicon.commanderEquipment}</h2>
               </div>
               <button aria-label="Close commander equipment" autoFocus onClick={() => setEquipmentUnitId(null)} type="button">×</button>
             </header>
             <p>Bound artifacts are permanent and remain equipped even if this commander falls.</p>
-            <div className="commanderBattleEquipmentSlots">
+            <div className="commanderBattlePaperdoll" aria-label="Commander paperdoll slots">
+              <img
+                alt=""
+                aria-hidden="true"
+                className="commanderPaperdollBody"
+                src={assetUrl(
+                  equipmentRegister === "anime"
+                    ? "/assets/ui/commander-paperdoll-body-anime.webp"
+                    : equipmentRegister === "wuxia"
+                      ? "/assets/ui/commander-paperdoll-body-wuxia.webp"
+                      : "/assets/ui/commander-paperdoll-body.webp"
+                )}
+              />
+              {equipmentRegister === "classic" && equipmentCommander ? (
+                <div className="commanderPaperdollBust">
+                  <img alt="" className="commanderPaperdollPortrait" src={assetUrl(equipmentCommander.cardImage)} />
+                </div>
+              ) : null}
               {(["weapon", "armor", "trinket"] as const).map((slot) => {
                 const cardId = equippedArtifacts?.[slot];
                 const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
                 return (
-                  <article className={spec ? "filled" : "empty"} key={slot}>
-                    <div className="commanderBattleEquipmentIcon">
+                  <article className={`commanderArtifactSlot slot-${slot} ${spec ? "filled" : "empty"}`} key={slot}>
+                    <div className="commanderArtifactSlotWell">
                       {spec ? <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} /> : <span aria-hidden="true">{slot === "weapon" ? "⚔" : slot === "armor" ? "🛡" : "💍"}</span>}
                     </div>
-                    <div>
+                    <div className="commanderArtifactSlotMeta">
                       <small>{slot}{spec ? <EquipGradeChip grade={tierToGrade(spec.tier)} title={spec.tier} /> : null}</small>
                       <strong>{spec?.name ?? "Empty slot"}</strong>
                       <span>{spec?.effectText ?? "No artifact bound"}</span>
                     </div>
-                    {spec ? <button onClick={() => { setEquipmentUnitId(null); zoomCard(spec.cardId); }} type="button">View card</button> : null}
+                    {spec ? <button className="commanderBattleViewCard" onClick={() => { setEquipmentUnitId(null); zoomCard(spec.cardId); }} type="button">View card</button> : null}
                   </article>
                 );
               })}

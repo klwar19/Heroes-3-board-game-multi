@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Hex Battlefield siege set for the FORGE (no PC original): Codex paintings of
- * the whole fortress, cut into the PC siege pieces.
+ * the whole fortress, cut into the PC siege pieces. The same recipe paints the
+ * other towns without a PC siege set (PAINTED_TOWNS below: Little Busters on
+ * the Castle's layout, Blue Archive on the Tower's).
  *
  * The Forge's fortress is laid out exactly like the Factory's (HotA) siege set:
  * Codex repainted a composite of the Factory pieces (intact, and a second
@@ -17,11 +19,11 @@
  * painted them 1536x1024, so one PC pixel is 1536/834 master pixels; pieces are
  * written at that resolution (≈1.84× the PC art — sharper on large screens).
  *
- *   node scripts/build-forge-siege-art.mjs
+ *   node scripts/build-forge-siege-art.mjs [town]      (default forge)
  *
- * Masters (gitignored): generated-session-art/forge/siege/forge-siege-{back,intact,ruin}.png
- * Output: public/assets/battle-hex/siege/forge/*.webp (run `npm run media:publish`)
- * and the `forge` entry of src/data/battle-hex/siege-art.json.
+ * Masters (gitignored): generated-session-art/<town>/siege/<town>-siege-{back,intact,ruin}.png
+ * (town with dashes: little-busters). Output: public/assets/battle-hex/siege/<town id>/*.webp
+ * (run `npm run media:publish`) and the town's entry of src/data/battle-hex/siege-art.json.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -33,24 +35,42 @@ const sharp = require("sharp");
 sharp.cache(false);
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MASTERS = path.join(ROOT, "generated-session-art", "forge", "siege");
-const LAYOUT_TOWN = "factory";
+/**
+ * Towns painted over a PC town's siege layout: that town's pieces are the
+ * masters' reference (and their alphas the cuts); the keep's guard is the
+ * town's own shooter.
+ *  - forge: the Factory's layout; guard the Grunts.
+ *  - little_busters: the Castle's layout (a school campus: plaster walls, the
+ *    clock-tower school building as the keep); guard the Softball Club pitcher.
+ *  - blue_archive: the Tower's layout (Kivotos academy: white concrete, glass
+ *    and halo rings; no moat, as the Tower); guard Miyo, the sniper.
+ */
+const PAINTED_TOWNS = {
+  forge: { layout: "factory", guard: "forge-grunt" },
+  little_busters: { layout: "castle", guard: "lb-softball" },
+  blue_archive: { layout: "tower", guard: "ba-miyo" }
+};
+const TOWN = process.argv[2] ?? "forge";
+if (!PAINTED_TOWNS[TOWN]) throw new Error(`no painted siege set for ${TOWN} (${Object.keys(PAINTED_TOWNS).join(", ")})`);
+const TOWN_SLUG = TOWN.replaceAll("_", "-");
+const MASTERS = path.join(ROOT, "generated-session-art", TOWN_SLUG, "siege");
+const LAYOUT_TOWN = PAINTED_TOWNS[TOWN].layout;
 const LAYOUT_DIR = path.join(ROOT, "public", "assets", "battle-hex", "siege", LAYOUT_TOWN);
-const OUT_DIR = path.join(ROOT, "public", "assets", "battle-hex", "siege", "forge");
+const OUT_DIR = path.join(ROOT, "public", "assets", "battle-hex", "siege", TOWN);
 const ART_FILE = path.join(ROOT, "src", "data", "battle-hex", "siege-art.json");
 /** Master pixels per PC pixel (834-wide padded reference painted 1536 wide). */
 const SCALE = 1536 / 834;
-/** The keep's guard: the Forge's shooter (Grunts, a ranged unit). */
-const GUARD_SPRITE = "forge-grunt";
+/** The keep's guard: the town's shooter. */
+const GUARD_SPRITE = PAINTED_TOWNS[TOWN].guard;
 
 const art = JSON.parse(fs.readFileSync(ART_FILE, "utf8"));
 const layout = art[LAYOUT_TOWN];
 if (!layout) throw new Error(`siege-art.json has no ${LAYOUT_TOWN} layout`);
 
 const masters = {
-  back: path.join(MASTERS, "forge-siege-back.png"),
-  intact: path.join(MASTERS, "forge-siege-intact.png"),
-  ruin: path.join(MASTERS, "forge-siege-ruin.png")
+  back: path.join(MASTERS, `${TOWN_SLUG}-siege-back.png`),
+  intact: path.join(MASTERS, `${TOWN_SLUG}-siege-intact.png`),
+  ruin: path.join(MASTERS, `${TOWN_SLUG}-siege-ruin.png`)
 };
 for (const file of Object.values(masters)) {
   if (!fs.existsSync(file)) throw new Error(`missing master ${path.relative(ROOT, file)}`);
@@ -96,11 +116,11 @@ for (const [name, piece] of Object.entries(layout.pieces)) {
   console.log(name, width, height);
 }
 
-// Same PC layout as the Factory (the pieces were cut to it); own guard.
-art.forge = {
+// Same PC layout as the layout town (the pieces were cut to it); own guard.
+art[TOWN] = {
   pieces: layout.pieces,
   keepGuard: layout.keepGuard,
   guardSprite: GUARD_SPRITE
 };
 fs.writeFileSync(ART_FILE, `${JSON.stringify(art, null, 2)}\n`);
-console.log("siege-art.json: forge");
+console.log(`siege-art.json: ${TOWN}`);

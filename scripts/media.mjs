@@ -18,6 +18,7 @@
  *                                                  content-addressed key, verify each object in the bucket,
  *                                                  then write the manifest(s) (needs .env.local R2_*).
  *                                                  --all also (re)uploads any manifest object the bucket lacks.
+ *                                                  --only a,b ships only new/changed keys containing a or b.
  *   node scripts/media.mjs repair --prefix <manifest-key-prefix> [--sources]
  *                                                  restore missing CDN objects for one manifest prefix
  *                                                  from matching local bytes; leave manifests unchanged.
@@ -301,6 +302,20 @@ async function commandPublish() {
   const r2 = r2Client();
   const previous = readManifest(REPO_ROOT, family);
   const next = await buildNext(previous);
+  // `--only a,b,…`: ship just the new/changed keys containing one of these
+  // substrings. Every other difference keeps its previous manifest entry (or
+  // stays out of it), so a shared working tree can publish one session's art
+  // without shipping another session's unfinished files.
+  const only = option("only", "").split(",").map((part) => part.trim()).filter(Boolean);
+  if (only.length > 0) {
+    const initial = diffManifests(previous, next);
+    for (const key of [...initial.added, ...initial.changed, ...initial.removed]) {
+      if (only.some((part) => key.includes(part))) continue;
+      if (previous?.files[key]) next.files[key] = previous.files[key];
+      else delete next.files[key];
+    }
+    log(`--only ${only.join(",")}: other local differences are left out of this publish.`);
+  }
   const { added, changed, removed } = diffManifests(previous, next);
   log(`Local tree: ${Object.keys(next.files).length} files; +${added.length} new, ~${changed.length} changed, -${removed.length} gone since the manifest.`);
   if (removed.length > 0) {

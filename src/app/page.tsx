@@ -295,7 +295,19 @@ import { getLineAttackAbility } from "@/engine/unit-abilities";
 import { cellBehindTarget } from "@/engine/reducer";
 import { isHexAreaAttackAbility } from "@/engine/hex-area-attacks";
 import { hexPcSpellArea } from "@/engine/hex-spell-areas";
-import { HEX_RANGED_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
+import {
+  HEX_RANGED_RELEASE_MS,
+  creatureGaitSound,
+  creatureShotDrawMs,
+  unitCreatureSprite,
+  warMachineShotLeadMs
+} from "@/data/battle-hex/creature-sprites";
+import { hexWarMachineStands } from "@/components/table/hex-figures";
+
+/** Longest a hex shooter starts drawing before its release beat (inside its die's read). */
+const HEX_SHOT_LEAD_MAX_MS = 450;
+/** A hex striker turns toward its target this long before its strike / draw (while its die is read). */
+const HEX_AIM_TURN_LEAD_MS = 700;
 import { HERO_CAST_RELEASE_MS } from "@/data/battle-hex/hero-sprites";
 import { buildForcedHandFx } from "@/components/table/astrologers-hand-fx";
 import {
@@ -875,7 +887,6 @@ function pushLightningBeamCues(
       width: plan.beamWidth ?? "normal",
       ...(plan.beamTiming ? { timing: plan.beamTiming } : {}),
       ...(shot === 0 && plan.sound ? { sound: plan.sound } : {}),
-      ...(shot === 0 && plan.warMachine ? { fire: true } : {}),
       delayMs: at
     });
     // The crackle bursts as the bolt head reaches the target (the quick zap
@@ -3347,7 +3358,15 @@ export default function Home() {
         /** A unit's footsteps: the card glide's one clip, or held for the whole hex walk. */
         const playMoveSound = (event: Extract<GameEvent, { type: "UNIT_MOVED" }>, at: number) => {
           if (hexCombat) {
-            playUnitSoundFor(unitVoice(event.unitId), "move", at, glideMsFor(event), unitVariant(event.unitId));
+            const walker = nextState.combat?.units[event.unitId];
+            playUnitSoundFor(
+              unitVoice(event.unitId),
+              "move",
+              at,
+              glideMsFor(event),
+              unitVariant(event.unitId),
+              creatureGaitSound(walker ? unitCreatureSprite(walker) : null) ?? undefined
+            );
           } else {
             playUnitSound(unitVoice(event.unitId), "move", at, unitVariant(event.unitId));
           }
@@ -3598,13 +3617,22 @@ export default function Home() {
           const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
           const projectileSheet = shotPlan?.projectile ? getFxSheet(shotPlan.projectile) : undefined;
           const phasedShot = Boolean(projectileSheet?.projectilePhases || projectileSheet?.beamFrames);
+          // Hex battlefield: a shooter whose PC draw (its shoot row up to the
+          // climax frame, at its own shoot pace) is longer than the shared
+          // release beat starts drawing that much earlier — while its die is
+          // still being read — so the draw is never squeezed. The shot still
+          // leaves on the release beat and lands on the impact beat.
+          const shotLeadMs = hexCombat && usesProjectilePresentation && !dracolichMelee
+            ? Math.min(HEX_SHOT_LEAD_MAX_MS, Math.max(0, Math.round(creatureShotDrawMs(unitCreatureSprite(attacker)) - HEX_RANGED_RELEASE_MS)))
+            : 0;
           if (!quietFollowUp && !spreadFrom) {
             playUnitSound(
               attackerVoice,
               dracolichMelee ? "attack" : usesProjectilePresentation ? "shoot" : "attack",
               // A phased shot is heard as it leaves its launch frames (the hex
-              // figure's later release moves that beat with it).
-              strikeAt + (phasedShot && !dracolichMelee ? releaseMs : 0),
+              // figure's later release moves that beat with it); a plain shot
+              // as the draw begins.
+              strikeAt + (phasedShot && !dracolichMelee ? releaseMs : -shotLeadMs),
               unitVariant(roll.attackerId)
             );
           }
@@ -3626,8 +3654,23 @@ export default function Home() {
               // Cards always stand upright now, so the lunge uses the plain
               // screen-space direction to the target.
               flip: false,
-              delayMs: strikeAt
+              ...(shotLeadMs > 0 ? { releaseMs: HEX_RANGED_RELEASE_MS + shotLeadMs } : {}),
+              delayMs: strikeAt - shotLeadMs
             });
+            // Hex battlefield (PC): the striker turns toward its target while
+            // its die is read, so its swing / draw plays whole on the beat
+            // instead of spending the wind-up turning round.
+            const pivotCell = harpyHoldCellByUnit.get(roll.attackerId) ?? attacker.position;
+            if (hexCombat && pivotCell >= 0 && defender && defender.position >= 0) {
+              cues.push({
+                kind: "face",
+                id: `${roll.id}-aim`,
+                unitId: roll.attackerId,
+                to: defenderCell,
+                beatMs: HEX_AIM_TURN_LEAD_MS,
+                delayMs: Math.max(0, strikeAt - HEX_AIM_TURN_LEAD_MS - shotLeadMs)
+              });
+            }
           }
           // The Forked Gaze leaves the first target, not the Evil Eye.
           const attackerCell = spreadFrom ??
@@ -3762,8 +3805,15 @@ export default function Home() {
                 delayMs: (hexCombat && clawSwipe ? impactAt : strikeAt + slashLeadMs) + repeat * 135
               });
           }
-          // The struck unit recoils at the moment of impact.
-          cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
+          // The struck unit recoils at the moment of impact (a defending one
+          // braces: its defend clip on the hex board, as on the PC).
+          cues.push({
+            kind: "shake",
+            id: `${roll.id}-shake`,
+            unitId: roll.defenderId,
+            ...(roll.defendRoll !== undefined ? { defending: true } : {}),
+            delayMs: impactAt
+          });
         });
 
         // After-attack moves now that the strike beats are known: a Harpy's
@@ -3940,17 +3990,27 @@ export default function Home() {
          * Physical Ballista/Catapult/Cannon fire. Unlike a spell, its source is
          * the matching face-up permanent card (with a hand/centre fallback for
          * specialty-granted machines), and the launcher recoils as the generated
-         * projectile leaves it. Returns the impact-safe end of this shot.
+         * projectile leaves it. On the hex battlefield the machine itself stands
+         * on the field: it winds up first — its H3 firing row toward the target —
+         * and the shot leaves it on its PC climax frame, so the shot (and all
+         * that waits on it) starts that much later. Returns the impact-safe end
+         * of this shot.
          */
         const queueWarMachineShot = (
           plan: SpellFxPlan,
           eventId: string,
           playerId: string,
           targetAnchor: string,
-          start: number
+          fireAt: number
         ): number => {
           const machineCardId = plan.warMachine ? `war_machine.${plan.warMachine}` : "";
           const from = machineCardId ? `war-machine:${playerId}:${machineCardId}` : `hand:${playerId}`;
+          const machineOnField = hexCombat && Boolean(machineCardId) && hexWarMachineStands(nextState, playerId, machineCardId);
+          const leadMs = machineOnField ? warMachineShotLeadMs(machineCardId) : 0;
+          if (machineOnField) {
+            cues.push({ kind: "machine", id: `${eventId}-machine`, anchor: from, to: targetAnchor, releaseMs: leadMs, delayMs: fireAt });
+          }
+          const start = fireAt + leadMs;
           if (plan.chainLightningBeam) {
             pushLightningBeamCues(cues, plan, eventId, from, targetAnchor, start);
           } else if (plan.projectile) {

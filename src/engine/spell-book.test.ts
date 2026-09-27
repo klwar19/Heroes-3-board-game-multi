@@ -489,6 +489,40 @@ describe("Spell Book — stashing from hand (map turn)", () => {
     expect(forced.state.players.p1.hand).toContain("spell.magic_arrow");
   });
 
+  // BINH house rule (user, 2026-09-27): "spell view air: cannot be put in spell
+  // book" — exactly like Magic Arrow, while it still casts normally from hand.
+  it("View Air can be held and cast, but NEVER stashed into the Book", () => {
+    const state = adventure("book-stash-view-air");
+    state.players.p1.hand = ["spell.view_air", "spell.haste"];
+
+    const offers = legal(state, "p1").filter((l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK");
+    // CONTROL: the ordinary Spell beside it is still offered.
+    expect(offers.map((l) => (l.action as { cardId: string }).cardId)).toEqual(["spell.haste"]);
+
+    const forced = applyAction(state, { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId: "p1", cardId: "spell.view_air" });
+    expect(forced.errors.length, "a forced View Air stash must be rejected").toBeGreaterThan(0);
+    expect(forced.state.players.p1.spellBook).not.toContain("spell.view_air");
+    expect(forced.state.players.p1.hand).toContain("spell.view_air");
+
+    // It still casts normally from hand (Power 0: +3 gold).
+    const goldBefore = state.players.p1.resources.gold;
+    const cast = legal(state, "p1").find(
+      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "spell.view_air" && (l.action.optionIndex ?? 0) === 0
+    );
+    expect(cast, "View Air stays castable from hand").toBeTruthy();
+    let after = applyOk(state, cast!.action);
+    const boost = after.pendingChoice;
+    if (boost?.type === "OPTION_CHOICE" && boost.context === "map-spell-boost") {
+      after = applyOk(after, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: boost.id,
+        optionIndex: boost.mapSpellBoost?.offers.length ?? boost.options.length - 1
+      });
+    }
+    expect(after.players.p1.resources.gold).toBe(goldBefore + 3);
+  });
+
   it("cannot stash a Spell until the mandatory start-of-turn draw is taken", () => {
     const state = adventure("book-stash-no-refill");
     state.players.p1.hand = ["spell.haste", "stat.attack"];
@@ -640,6 +674,29 @@ describe("Spell Book — refill from discard on pickup", () => {
     });
     expect(took.players.p1.hand).toContain("spell.magic_arrow");
     expect(took.players.p1.spellBook).not.toContain("spell.magic_arrow");
+  });
+
+  it("a picked-up View Air offers ONLY the hand route — never the Book (a forged Book pick lands in hand)", () => {
+    const state = adventure("book-refill-view-air");
+    state.players.p1.hand = [];
+    state.players.p1.discard = ["spell.view_air"];
+    state.adventure!.rewardQueue.push({ playerId: "p1", kind: "discard-pick", count: 1 });
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    const options = choice && "options" in choice ? choice.options : [];
+    expect(options.length).toBe(1);
+    expect(options.some((option) => option.label.includes("Spell Book"))).toBe(false);
+
+    // Forge the Book destination on the pick: the reducer still routes it to hand.
+    const forgedChoice = state.pendingChoice;
+    if (forgedChoice?.type === "OPTION_CHOICE" && forgedChoice.discardPick) {
+      forgedChoice.discardPick.destinations = ["spellBook"];
+    }
+    const took = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 0 });
+    expect(took.players.p1.hand).toContain("spell.view_air");
+    expect(took.players.p1.spellBook).not.toContain("spell.view_air");
   });
 });
 

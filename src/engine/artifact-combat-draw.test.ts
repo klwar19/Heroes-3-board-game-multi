@@ -7,6 +7,7 @@ import {
   getMainHero
 } from "./index";
 import { startNeutralEncounter } from "./adventure-reducer";
+import { drawOnlyPlayText, drawOnlyTurnPlayEffect } from "./legal-actions";
 import { cardLibrary } from "@/data/cards/library";
 import type { GameAction, GameState } from "./state";
 
@@ -289,5 +290,117 @@ describe("Trident of Dominion's sea side in combat", () => {
     const state = seaCombat("trident-land", false);
     const plays = playsFor(state, "artifact.trident_of_dominion");
     expect(plays.some((p) => p.optionIndex === 1)).toBe(false);
+  });
+});
+
+// ===========================================================================
+// [4] Armor of Wonder INSIDE the attack window: the printed stat lands on the
+//     pending attack AND the card is drawn, and the drawn card is immediately
+//     playable in that same window (the Offense/Armorer behaviour).
+// ===========================================================================
+
+describe("Armor of Wonder in the attack window: stat + draw, drawn card playable", () => {
+  /** Griffins (p1) adjacent to skeletons (p2), attack declared. */
+  function declareAttack(p1Hand: string[], p1Deck: string[], p2Hand: string[], p2Deck: string[]): GameState {
+    const state = createInitialGameState("attack-window-seed");
+    state.players.p1.hand = p1Hand;
+    state.players.p1.deck = p1Deck;
+    state.players.p2.hand = p2Hand;
+    state.players.p2.deck = p2Deck;
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+    return applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+  }
+
+  function givePriority(state: GameState, playerId: "p1" | "p2"): GameState {
+    let current = state;
+    for (let guard = 0; guard < 6 && current.reactionWindow?.priorityPlayerId !== playerId; guard += 1) {
+      current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow!.priorityPlayerId });
+    }
+    expect(current.reactionWindow?.priorityPlayerId).toBe(playerId);
+    return current;
+  }
+
+  function fullReaction(state: GameState, playerId: "p1" | "p2", cardId: string, optionIndex?: number) {
+    return getLegalActions(state, playerId)
+      .map((l) => l.action)
+      .find(
+        (a): a is Extract<GameAction, { type: "PLAY_REACTION" }> =>
+          a.type === "PLAY_REACTION" &&
+          a.cardId === cardId &&
+          (a.mode ?? "basic") === "basic" &&
+          !a.drawOnly &&
+          (optionIndex === undefined || a.optionIndex === optionIndex)
+      );
+  }
+
+  function pendingAttack(state: GameState) {
+    const item = state.stack.at(-1)!;
+    expect(item.action.type).toBe("ATTACK_UNIT");
+    return item.modifiers;
+  }
+
+  /** The bonuses the attack actually RESOLVED with (the last card closes the window). */
+  function resolvedAttack(state: GameState) {
+    expect(state.reactionWindow, "the window closes once nothing is left to play").toBeNull();
+    const rolled = [...state.eventLog].reverse().find(
+      // The griffins' own blow — the skeletons' Retaliation logs a later roll.
+      (event) => event.type === "ATTACK_ROLLED" && !event.isRetaliation && event.attackerId === "unit_p1_griffins"
+    );
+    expect(rolled?.type).toBe("ATTACK_ROLLED");
+    return rolled as Extract<(typeof state.eventLog)[number], { type: "ATTACK_ROLLED" }>;
+  }
+
+  it("attacker: +1 Attack lands, 1 card is drawn, and the drawn Attack statistic adds +1 more", () => {
+    let state = givePriority(declareAttack(["artifact.armor_of_wonder"], ["stat.attack"], [], []), "p1");
+    const armor = fullReaction(state, "p1", "artifact.armor_of_wonder", 0);
+    expect(armor, "the real +1 Attack side must be offered (not a draw-only join)").toBeTruthy();
+    const before = pendingAttack(state).attackBonus;
+    state = applyOk(state, armor!);
+    expect(pendingAttack(state).attackBonus).toBe(before + 1);
+    expect(state.players.p1.hand).toEqual(["stat.attack"]);
+
+    const drawn = fullReaction(givePriority(state, "p1"), "p1", "stat.attack");
+    expect(drawn, "the drawn card must be playable in the same window").toBeTruthy();
+    state = applyOk(givePriority(state, "p1"), drawn!);
+    expect(resolvedAttack(state).attackBonus).toBe(before + 2);
+  });
+
+  it("defender: +1 Defense lands, 1 card is drawn, and the drawn Defense statistic adds +1 more", () => {
+    let state = givePriority(declareAttack([], [], ["artifact.armor_of_wonder"], ["stat.defense"]), "p2");
+    const armor = fullReaction(state, "p2", "artifact.armor_of_wonder", 1);
+    expect(armor, "the real +1 Defense side must be offered (not a draw-only join)").toBeTruthy();
+    const before = pendingAttack(state).defenseBonus;
+    state = applyOk(state, armor!);
+    expect(pendingAttack(state).defenseBonus).toBe(before + 1);
+    expect(state.players.p2.hand).toEqual(["stat.defense"]);
+
+    state = givePriority(state, "p2");
+    const drawn = fullReaction(state, "p2", "stat.defense");
+    expect(drawn, "the drawn card must be playable in the same window").toBeTruthy();
+    state = applyOk(state, drawn!);
+    expect(resolvedAttack(state).defenseBonus).toBe(before + 2);
+  });
+
+  it("a draw-only play says plainly that the +1 Attack / +1 Defense does not apply", () => {
+    const card = cardLibrary["artifact.armor_of_wonder"];
+    expect(card.effect.type).toBe("CHOOSE_ONE");
+    if (card.effect.type !== "CHOOSE_ONE") return;
+    expect(drawOnlyPlayText(card.effect.options[0].effect)).toBe(
+      "Draw 1 card only (+1 Attack does not apply — nothing to boost here)"
+    );
+    expect(drawOnlyPlayText(card.effect.options[1].effect)).toBe(
+      "Draw 1 card only (+1 Defense does not apply — nothing to boost here)"
+    );
+    // The own-activation hand play is recognised as draw-only for BOTH sides.
+    const state = combatOwnTurn(["artifact.armor_of_wonder"]);
+    for (const play of playsFor(state, "artifact.armor_of_wonder")) {
+      expect(drawOnlyTurnPlayEffect(card, play)).toBe(card.effect.options[play.optionIndex!].effect);
+    }
   });
 });

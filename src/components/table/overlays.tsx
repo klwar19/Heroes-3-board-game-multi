@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
-import { combatEnemySpellSunderUnit, getPendingStackItem } from "@/engine/legal-actions";
+import { combatEnemySpellSunderUnit, drawOnlyPlayText, getPendingStackItem } from "@/engine/legal-actions";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
   AFK_AUTO_KICK_MS,
@@ -1155,6 +1155,17 @@ export function ReactionTray({
       );
     });
 
+    // Interference / Plate of the Dying Light against a damaging Spell: name the
+    // protected unit FIRST and the card's own amounts (Plate +1 / +4 and
+    // "remove this card"; Interference +1, +2 Expert), never a unit name glued
+    // after the option label ("…remove this card Griffins").
+    const interferenceProtectLabel =
+      effect?.type === "INTERFERE_SPELL"
+        ? `Protect ${action.target?.type === "unit" ? unitName(state, action.target.unitId) : "your unit"} from this Spell (+${effect.amount} Defense${
+            effect.expertAmount !== undefined ? `, +${effect.expertAmount} Expert` : ""
+          }${option?.cost?.removeSelf ? "; remove this card" : ""})`
+        : undefined;
+
     if (existing) {
       if (!existing.modes.includes(action.mode ?? "basic")) {
         existing.modes.push(action.mode ?? "basic");
@@ -1170,14 +1181,18 @@ export function ReactionTray({
           ? "Discard for +1 Power"
           : action.interferenceMode === "power"
             ? "Reduce this Spell by up to 2 SP (4 SP Expert; minimum weakest effect)"
-            : action.interferenceMode === "damage"
-              ? "+1 Defense against this Spell (+2 Expert)"
+             : action.interferenceMode === "damage"
+               ? (interferenceProtectLabel ?? `Protect ${action.target?.type === "unit" ? unitName(state, action.target.unitId) : "your unit"} from this Spell (+1 Defense, +2 Expert)`)
           : action.protectedUnitId && action.target?.type === "unit"
             ? `Protect ${unitName(state, action.protectedUnitId)} → half to ${unitName(state, action.target.unitId)}`
-            : action.target?.type === "unit"
-            ? `${effect?.type === "ACTIVATE_RANGED_UNIT" ? "Activate" : "Target"} ${unitName(state, action.target.unitId)}`
+             : action.target?.type === "unit"
+             ? interferenceProtectLabel ?? `${effect?.type === "ACTIVATE_RANGED_UNIT" ? "Activate" : "Target"} ${unitName(state, action.target.unitId)}`
             : action.drawOnly
-              ? `${option?.label ?? card?.name ?? action.cardId} (draw only)`
+              ? // Name what is skipped ("+1 Attack does not apply") so a
+                // draw-only join is never mistaken for the real triggered face.
+                effect
+                ? drawOnlyPlayText(effect, action.mode ?? "basic")
+                : `${option?.label ?? card?.name ?? action.cardId} (draw only)`
               : action.dieIndex !== undefined
                 ? `Ignore die ${action.dieIndex + 1} (${
                     window.triggerEvent.type === "ATTACK_DIE_SETTLED"

@@ -1429,8 +1429,10 @@ export function commanderMagicArrowFetchOption(
 }
 
 /**
- * Optional combat-start cast for Fortress Shaman and Dungeon Brute. Other
- * commanders sharing their cast ability IDs do not receive this option.
+ * Optional combat-start cast for Fortress Shaman and Dungeon Brute, and for any
+ * commander whose initiative-shift cast prints `openingCastFromPower` (Sea
+ * Marshal's Slow, from Power 1). Other commanders sharing their cast ability IDs
+ * do not receive this option.
  */
 export function commanderBeginCastOption(
   state: GameState,
@@ -1441,7 +1443,7 @@ export function commanderBeginCastOption(
     return null;
   }
   const commander = findCommanderUnit(state, playerId);
-  if (!commander || (commander.commanderSlug !== "shaman" && commander.commanderSlug !== "brute") ||
+  if (!commander || !commanderHasOpeningCast(state, commander) ||
       commander.damage >= commander.maxHealth || commanderCastUsedThisRound(state, commander)) {
     return null;
   }
@@ -1453,6 +1455,23 @@ export function commanderBeginCastOption(
     commander,
     targetUnitIds: targets.map((unit) => unit.id).sort((a, b) => a.localeCompare(b))
   };
+}
+
+/**
+ * Whether this commander has a begin-of-battle cast: the Shaman / Brute by slug,
+ * or a cast printing `openingCastFromPower` once its Power reaches that tier.
+ */
+export function commanderHasOpeningCast(state: GameState, commander: CombatUnitState): boolean {
+  if (commander.commanderSlug === "shaman" || commander.commanderSlug === "brute") {
+    return true;
+  }
+  const cast = commanderCastOf(commander);
+  return Boolean(
+    cast &&
+      cast.effect.kind === "initiative-shift" &&
+      cast.effect.openingCastFromPower !== undefined &&
+      commanderCastTierIndex(commanderCastPower(state, commander)) >= cast.effect.openingCastFromPower
+  );
 }
 
 /** Brute's optional combat-start Bloodlust: two rounds of +1 Attack at every Power. */
@@ -1541,17 +1560,21 @@ export function applyCommanderBeginCastHaste(
       : { type: "ATTACK_BONUS", amount: effect.attackAmount }
   ];
   const moveBonus = effect.moveByPower?.[tier] ?? 0;
-  if (moveBonus > 0) {
+  if (moveBonus !== 0) {
     modifiers.push({ type: "COMMANDER_MOVEMENT_BONUS", amount: moveBonus });
   }
   const vsSlower = effect.bonusVsSlowerByPower?.[tier] ?? 0;
   if (vsSlower > 0) {
     modifiers.push({ type: "ATTACK_BONUS_VS_INITIATIVE", comparison: "slower", amount: vsSlower });
   }
+  // Every opening cast forgoes the commander's round-1 turn. Only the Shaman's
+  // opening Haste also speeds the Shaman itself; a printed `openingCastRounds`
+  // opening (Sea Marshal's Slow) instead lasts that many rounds.
+  const shamanOpening = effect.openingCastRounds === undefined;
   // Opening Haste also accelerates the Shaman itself at the two upgraded Power
   // tiers. This is separate from the target's Haste: it is commander-only,
   // lasts two rounds, and never applies to a normal in-turn cast.
-  const commanderOpeningInitiative = tier === 1 ? 3 : tier === 2 ? 5 : 0;
+  const commanderOpeningInitiative = !shamanOpening ? 0 : tier === 1 ? 3 : tier === 2 ? 5 : 0;
   if (commanderOpeningInitiative > 0) {
     state.activeEffects.push(
       makeActiveEffect(
@@ -1574,7 +1597,7 @@ export function applyCommanderBeginCastHaste(
   // GOLD unit (the normal in-turn activation cast keeps its full duration for
   // every grade — this override lives only on the begin-of-match helper).
   const beginCastRounds =
-    target.grade === "gold" ? 1 : effect.durationRounds;
+    effect.openingCastRounds ?? (target.grade === "gold" ? 1 : effect.durationRounds);
   const duration =
     beginCastRounds !== undefined
       ? { type: "combat-rounds" as const, rounds: beginCastRounds }
@@ -1600,7 +1623,8 @@ export function applyCommanderBeginCastHaste(
   commander.commanderCastRound = state.combat?.round;
   commander.commanderCastCount = (commander.commanderCastCount ?? 0) + 1;
   // User spec: casting at the start of the battle skips the commander's round-1
-  // turn — mark it already-activated so the round-1 activation order passes it.
+  // turn (Shaman, and Sea Marshal per 2026-09-27) — mark it already-activated so
+  // the round-1 activation order passes it.
   commander.activatedThisRound = true;
   appendEvent(state, {
     type: "COMMANDER_CAST_USED",
@@ -1609,7 +1633,9 @@ export function applyCommanderBeginCastHaste(
     castName: cast.name,
     power,
     targetUnitId: target.id,
-    message: `${commander.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName} at the start of combat — it forgoes its round-1 turn.`
+    message: shamanOpening
+      ? `${commander.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName} at the start of combat — it forgoes its round-1 turn.`
+      : `${commander.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName} at the start of combat — it lasts round 1 only, and the commander forgoes its round-1 turn.`
   });
 }
 

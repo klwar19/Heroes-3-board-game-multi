@@ -7,6 +7,8 @@ import { houseRuleEnabled } from "../house-rules";
 import { isGrailUtopiaModeField } from "../map-design-features";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type { GameState, HeroState, MapFieldState } from "../state";
+import { forecastCreatureBankField } from "./fight-forecast";
+import { BANK_FORECAST_ENGAGE_WIN, bankFightRounds } from "./army-strength";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
 export type ArmyTopTier = "bronze" | "silver" | "gold" | "goldPack";
@@ -72,7 +74,13 @@ export function premiumCombatMovementReserve(state: GameState, hero: HeroState, 
   // (TWO_MOVE_GUARD_CAP) needs a full three-point attack turn: one for entry
   // and two paid continuations. At or below the cap one continuation is kept,
   // so a short approach can still lead to an attack that same turn.
-  const gridReserve = (field.difficulty ?? 0) > twoMoveGuardCap(state, hero.controllerId, field) ? 2 : 1;
+  // A Creature Bank has no Field Difficulty to cap: keep the continuation the
+  // simulated fight actually needs — one paid round when a two-round fight is
+  // already a likely win, otherwise a fresh three-point turn.
+  const gridReserve = bankId
+    ? (forecastCreatureBankField(state, hero.controllerId, field, bankFightRounds(state, hero.controllerId, 1))?.winChance ?? 0) >=
+        BANK_FORECAST_ENGAGE_WIN ? 1 : 2
+    : (field.difficulty ?? 0) > twoMoveGuardCap(state, hero.controllerId, field) ? 2 : 1;
   // Hex battlefield: the default Round limit counts after HEX_DEFAULT_FREE_
   // COMBAT_ROUNDS rounds (rounds 1-2 free, ruling 2026-09-26) — one free round
   // more than the grid — but the armies spend about one round closing the 10

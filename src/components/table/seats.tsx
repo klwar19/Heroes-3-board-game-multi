@@ -37,6 +37,11 @@ import {
   type SharedDeckId
 } from "@/engine";
 import {
+  drawOnlyPlayText,
+  drawOnlyTurnPlayEffect,
+  drawRiderBanksSpellPower,
+} from "@/engine/legal-actions";
+import {
   actionKey,
   cardIsEmpoweredFor,
   cardName,
@@ -1245,6 +1250,12 @@ export function HandFan({
                       // generic "Use" / "Use expert".
                       const isBalanceIntelligence =
                         balanceArt && entry.cardId === "ability.intelligence" && action.type === "PLAY_CARD";
+                      // A "+stat / +Power, then draw" face played from hand has no
+                      // attack or Spell to boost (only an instant-window play does),
+                      // so say plainly that only the draw resolves — never echo the
+                      // printed "Draw 1 card and +1 attack" face (Armor of Wonder).
+                      const drawOnlyEffect =
+                        action.type === "PLAY_CARD" && card ? drawOnlyTurnPlayEffect(card, action) : null;
                       const label = isBalanceIntelligence
                         ? action.mode === "expert"
                           ? "Empowered"
@@ -1256,6 +1267,13 @@ export function HandFan({
                           ? `Cast ${cardName(action.cardId)}${
                               action.castEnablerMode === "expert" ? " (expert — ignores the Spell limit)" : ""
                             }`
+                        : action.type === "PLAY_CARD" && drawOnlyEffect
+                            ? drawOnlyPlayText(
+                                drawOnlyEffect,
+                                action.mode ?? "basic",
+                                drawOnlyEffect.type === "ADD_SPELL_POWER" &&
+                                  drawRiderBanksSpellPower(state, viewerPlayerId),
+                              )
                         : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
                             ? card.effect.options[action.optionIndex]?.label
                             : action.type === "PLAY_CARD" && action.mode === "expert"

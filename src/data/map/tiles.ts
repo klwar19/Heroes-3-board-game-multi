@@ -8,6 +8,11 @@ export const allTileDefinitions: Record<string, TileDefinition> = {
   ...expansionTileDefinitions
 };
 
+// The Factory starting tile was "&S1" before it became S10. Games saved with
+// the old id still resolve it; the alias is non-enumerable so catalogs, pools
+// and editors never list the tile twice.
+Object.defineProperty(allTileDefinitions, "&S1", { value: expansionTileDefinitions.S10, enumerable: false });
+
 /**
  * Every content set whose tiles exist in `allTileDefinitions`. Default games
  * mix the full catalog into the supply pools so no expansion / stretch-goal

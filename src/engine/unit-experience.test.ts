@@ -331,10 +331,13 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     expect(unitRankAbilityIds("rampart.unicorns", 4)).toContain("veteran-low-roll-insight");
     expect(unitRankAbilityIds("castle.zealots", 4)).toContain("veteran-defense-pierce");
     expect(unitRankAbilityIds("necropolis.ghost_dragons", 4)).toContain("veteran-soul-feast");
+    // User ruling 2026-09-27: Black Dragons R3 keeps Hunt the Slow at +1
+    // Initiative (was +2) and ALSO grants Wheeling Retreat.
     expect(rankScheduleFor("dungeon.black_dragons")[3]).toMatchObject({
       kind: "hybrid",
-      stats: { initiative: 2 },
-      choices: ["veteran-speed-hunter"]
+      stats: { initiative: 1 },
+      choices: ["veteran-speed-hunter"],
+      grants: ["town-black-dragon-return"]
     });
     expect(rankScheduleFor("conflux.phoenixes")[3]).toMatchObject({
       kind: "ability",
@@ -388,12 +391,19 @@ describe("Unit Experience — rank math & either/or rewards", () => {
           ).toBeGreaterThan(0);
         } else {
           expect(step.choices.length, `${unitDefId} R${r}`).toBeGreaterThan(0);
-          expect(unitRankAbilityGainsAt(unitDefId, r), `${unitDefId} R${r}`).toHaveLength(1);
+          // A rank pays its one choice plus every explicit extra grant (user
+          // rulings: Kobolds / Mountain Rams R4, Black Dragons R3, Hydras R4).
+          expect(unitRankAbilityGainsAt(unitDefId, r), `${unitDefId} R${r}`).toHaveLength(1 + (step.grants?.length ?? 0));
         }
       }
       const budget = scheduleAbilityCount(schedule);
+      const extraGrants = ([1, 2, 3, 4] as const).reduce((total, r) => {
+        const step = schedule[r];
+        return total + (step.kind === "stats" ? 0 : step.grants?.length ?? 0);
+      }, 0);
       expect(budget).toBeGreaterThanOrEqual(1);
-      expect(budget).toBeLessThanOrEqual(4);
+      // At most one ability per rank, plus the explicitly requested extra grants.
+      expect(budget).toBeLessThanOrEqual(4 + extraGrants);
       const maxIds = unitRankAbilityIds(unitDefId, 4);
       expect(maxIds.length).toBeLessThanOrEqual(budget);
       for (let r = 1; r <= 4; r++) {
@@ -1044,7 +1054,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     expect(r4.abilities).toContain("ranged-extra-shot-on-low-roll");
   });
 
-  it("Black Dragons R3 gain +2 Initiative and +1 Attack against a slower target", () => {
+  it("Black Dragons R3 gain +1 Initiative, Wheeling Retreat and +1 Attack against a slower target", () => {
     const veteran = makeCombatUnitFromArmy(
       { id: "bd2", unitDefId: "dungeon.black_dragons", side: "few", experience: 13 },
       "p1",
@@ -1059,8 +1069,11 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
       0,
       "legacy"
     )!;
-    expect(elite.initiative).toBe(veteran.initiative + 2);
+    // User ruling 2026-09-27: +1 Initiative (was +2); the return is ADDED.
+    expect(elite.initiative).toBe(veteran.initiative + 1);
     expect(elite.abilities).toContain("veteran-speed-hunter");
+    expect(elite.abilities).toContain("town-black-dragon-return");
+    expect(veteran.abilities).not.toContain("town-black-dragon-return");
 
     const control = resolveArmyAttack("uxp-black-dragon-r2", {
       unitDefId: "dungeon.black_dragons",

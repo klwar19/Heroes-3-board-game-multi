@@ -10,7 +10,7 @@ import {
 } from "./faction-veterancy";
 import { queueElementalChoice } from "./elemental-veterancy";
 import { makeActiveEffect, effectAppliesToUnit, unitImmuneToParalysis } from "./active-effects";
-import { placeCombatToken } from "./tokens";
+import { hasToken, placeCombatToken, PETRIFYING_CURSE_SOURCE } from "./tokens";
 import { drawCardsForPlayer } from "./decks";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { availableRunes, gainRunes } from "./runes";
@@ -31,16 +31,40 @@ export function townVeterancy(
 const alive = (u: CombatUnitState) => u.damage < u.maxHealth;
 
 /**
+ * The 2-round debuff Devil's Luck leaves on the cursed enemy unit. It has no
+ * stat modifier: while it lasts, every "+1" that unit resolves on its Attack
+ * die gets -1 Attack for that attack (user ruling 2026-09-27).
+ */
+export const DEVIL_LUCK_CURSE_NAME = "Devil's Luck Curse";
+
+/**
+ * The unit carries a live Devil's Luck curse: its "+1" Attack die results get
+ * -1 Attack, without spending any devil's per-round uses. A curse the unit
+ * ignores (e.g. Blind Instinct) does not count.
+ */
+export function devilLuckCursed(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(state?.activeEffects.some(
+    (effect) =>
+      effect.name === DEVIL_LUCK_CURSE_NAME &&
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unit.id &&
+      effectAppliesToUnit(effect, unit),
+  ));
+}
+
+/**
  * Arch Devils R1 Devil's Luck: a living veteran devil opposing `attacker` that
  * can still curse an enemy "+1" Attack die this combat round (2 per round, per
  * devil). Read-only, so previews and the real hit agree; the hit spends it.
+ * The curse does not stack: an attacker already cursed is not cursed again
+ * (its "+1" still gets the single -1 through devilLuckCursed).
  */
 export function devilLuckSource(
   state: GameState | undefined,
   attacker: CombatUnitState,
 ): CombatUnitState | undefined {
   const combat = state?.combat;
-  if (!combat) return undefined;
+  if (!state || !combat || devilLuckCursed(state, attacker)) return undefined;
   return Object.values(combat.units).find(
     (unit) =>
       unit.controllerId !== attacker.controllerId &&
@@ -61,7 +85,20 @@ export function spendDevilLuck(
   const vet = (devil.townVeterancy ??= {});
   vet.devilLuckUses = vet.devilLuckRound === round ? (vet.devilLuckUses ?? 0) + 1 : 1;
   vet.devilLuckRound = round;
-  veteranTrigger(state, devil, "town-devil-luck", attacker, `${devil.cardName} curses ${attacker.cardName}'s +1 — Devil's Luck gives -1 Attack (${vet.devilLuckUses}/2 this round).`);
+  // The -1 on THIS attack is already folded into its resolved value. The curse
+  // (no stat modifier) keeps that rule on the unit through the end of the next
+  // combat round: each of its "+1" results gets -1 (devilLuckCursed), once per
+  // attack — while it lives devilLuckSource yields nothing, so never -2.
+  const curse = makeActiveEffect(
+    state,
+    { name: DEVIL_LUCK_CURSE_NAME, scope: "unit", duration: { type: "combat-rounds", rounds: 2 }, polarity: "negative", removable: true, modifiers: [] },
+    { type: "unit", unitId: devil.id, controllerId: devil.controllerId },
+    devil.controllerId,
+    { type: "unit", unitId: attacker.id },
+  );
+  const cursed = effectAppliesToUnit(curse, attacker, true);
+  if (cursed) state.activeEffects.push(curse);
+  veteranTrigger(state, devil, "town-devil-luck", attacker, `${devil.cardName} curses ${attacker.cardName}'s +1 — Devil's Luck gives -1 Attack${cursed ? "; its +1 results get -1 until the end of next combat round" : ""} (${vet.devilLuckUses}/2 this round).`);
 }
 function sharedDrawCount(
   state: GameState,
@@ -112,7 +149,11 @@ export function townAttackBonus(
     (townVeterancy(attacker, "mammoth-hunter") && ["ground", "ranged"].includes(defender.type)
       ? 1
       : 0) +
-    (townVeterancy(attacker, "kobold-armored-prey") && currentDefense >= 2 ? 2 : 0) -
+    (townVeterancy(attacker, "kobold-armored-prey") && currentDefense >= 2 ? 2 : 0) +
+    // Wyverns R3 Venom Hunter: +1 into poisoned prey; a poisoned enemy strikes
+    // the Wyvern at -1 (attacks and Retaliation Attacks alike).
+    (townVeterancy(attacker, "wyvern-venom-hunter") && (defender.poisonCubes ?? 0) > 0 ? 1 : 0) -
+    (attacker.controllerId !== defender.controllerId && (attacker.poisonCubes ?? 0) > 0 && townVeterancy(defender, "wyvern-venom-hunter") ? 1 : 0) -
     (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0) -
     (retaliation && attacker.controllerId !== defender.controllerId && townVeterancy(defender, "angel-safe") ? 3 : 0) +
     (!retaliation && townVeterancy(attacker, "haspid-aggressive-drill") ? 1 : 0) +
@@ -245,6 +286,39 @@ export function townAfterAttack(
   kind: "melee" | "ranged",
 ): void {
   forgeAfterAttack(state, attacker, defender, retaliation, roll, dieCancelled);
+  // Hydras R4 Venom Ward: the -1 itself is folded into the resolved damage
+  // (reducer.ts attack-damage calculation); this only announces it. Read before any cube is
+  // added below, so it matches the cubes the attacker carried into the hit.
+  if (attacker.controllerId !== defender.controllerId && (attacker.poisonCubes ?? 0) > 0 && alive(defender) && townVeterancy(defender, "hydra-venom-ward")) {
+    veteranTrigger(state, defender, "town-hydra-venom-ward", attacker, `${defender.cardName}'s Venom Ward: poisoned ${attacker.cardName} deals 1 less damage.`);
+  }
+  const enemyTarget = attacker.controllerId !== defender.controllerId;
+  // Hydras R3 Venomous Heads: own attack, 0 or +1 face -> 1 poison cube (the
+  // shared cube pool, so it stacks with Wyvern / Haspid cubes).
+  if (!retaliation && !dieCancelled && (roll === 0 || roll === 1) && enemyTarget && alive(defender) && townVeterancy(attacker, "hydra-venom-bite")) {
+    defender.poisonCubes = (defender.poisonCubes ?? 0) + 1;
+    veteranTrigger(state, attacker, "town-hydra-venom-bite", defender, `${attacker.cardName}'s venomous heads leave 1 poison cube on ${defender.cardName}.`);
+  }
+  // Arch Devils R3 Petrifying Curse: own attack, -1 face -> Paralysis (the
+  // 0 face's +1 Attack is part of getAttackBonusOnAttackDie).
+  if (!retaliation && !dieCancelled && roll === -1 && enemyTarget && alive(defender) && townVeterancy(attacker, "devil-petrify") &&
+      !hasToken(defender, "paralysis") && !unitImmuneToParalysis(state, defender)) {
+    placeCombatToken(state, defender, "paralysis", 0, PETRIFYING_CURSE_SOURCE);
+    veteranTrigger(state, attacker, "town-devil-petrify", defender, `${attacker.cardName}'s Petrifying Curse turns ${defender.cardName} to stone (Paralyzed).`);
+  }
+  // Black Dragons R3 Wheeling Retreat: queued now, but a "return-origin" pick
+  // is only opened once the whole attack sequence (including the enemy's
+  // Retaliation Attack) has resolved, so the Dragon is retaliated first.
+  // A MOVE_UNIT records the origin in the town memory; a combined
+  // MOVE_AND_ATTACK_UNIT (Berserk / Werewolf frenzy) does not, so fall back to
+  // the space this activation began on.
+  const memoryOrigin = (attacker.townVeterancy as Record<string, unknown> | undefined)?.activationOrigin;
+  const origin = typeof memoryOrigin === "number"
+    ? memoryOrigin
+    : attacker.movedThisActivation ? attacker.activationStartPosition : undefined;
+  if (!retaliation && typeof origin === "number" && origin !== attacker.position && alive(attacker) && townVeterancy(attacker, "black-dragon-return")) {
+    queueElementalChoice(state, { kind: "return-origin", unitId: attacker.id, abilityId: "town-black-dragon-return", position: origin, optional: true });
+  }
   if (attacker.controllerId !== defender.controllerId && !dieCancelled && roll >= 0 &&
       alive(defender) && townVeterancy(defender, "grenadier-guard-heal")) {
     veteranHeal(state, defender, 1, "factory-grenadier-guard-heal");

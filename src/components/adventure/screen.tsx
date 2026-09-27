@@ -2103,6 +2103,7 @@ export function HexMapBoard({
             extraBorders: tile.extraBorders,
             borderEdges: tile.borderEdges,
             rotation,
+            tileGroup: tile.group,
           })
         : [];
       const footprint = tileFootprint(center, rotation);
@@ -2365,6 +2366,7 @@ export function HexMapBoard({
           borderEdges: tile.borderEdges,
           rotation: tile.rotation,
           borderlessSlots: borderlessOverrideSlots,
+          tileGroup: tile.group,
         })
       : [];
     for (const [slot, coord] of footprint.entries()) {
@@ -15432,7 +15434,7 @@ function GameOptionsPanel({
 
                 <div className="optionRow">
                   <OptionRowLabel
-                    hint="House rule: each player keeps a personal Spell Book holding up to 5 Spells to stash, cast and boost from"
+                    hint="House rule: each player keeps a personal Spell Book holding up to 5 Spells to stash, cast and boost from; View Air cannot enter it"
                     iconClassName="optionRowIcon spellBook"
                     iconSrc="/assets/ui/spell-book-button.png"
                     title="Spell Book"
@@ -15464,7 +15466,7 @@ function GameOptionsPanel({
                     {polishSpellBookOn
                       ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
                       : spellBookOn
-                        ? "Each player may set aside up to 5 Spells in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                        ? "Each player may set aside up to 5 Spells in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn). View Air cannot be put in the Book."
                         : "No Spell Book — Spells live only in hand, deck and discard."}
                   </small>
                 </div>

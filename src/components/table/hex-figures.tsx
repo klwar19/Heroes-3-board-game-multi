@@ -21,10 +21,20 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties 
 import { ChevronDown, ChevronUp, User, Users } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { CASTER_BADGE_ICON, unitHasCastSkill } from "./hex-unit-skills";
-import { getBattlefieldCoordinates, getBattlefieldDistance, hexPosition, isHexPosition } from "@/engine/battlefield";
+import {
+  HEX_BATTLEFIELD_COLUMNS,
+  HEX_BATTLEFIELD_ROWS,
+  HEX_POSITION_BASE,
+  getBattlefieldCoordinates,
+  getBattlefieldDistance,
+  hexPosition,
+  isHexPosition
+} from "@/engine/battlefield";
 import { unitAtCell, unitCells, unitTailOffset } from "@/engine/hex-footprint";
-import { getPermanentCardIds, isWarMachineCard } from "@/engine/permanents";
+import { countExtraBallistas } from "@/engine/active-effects";
+import { fieldedWarMachineCardIds } from "@/engine/permanents";
 import { siegeHexTokenAt } from "@/engine/siege";
+import { unitIsPetrified } from "@/engine/tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "@/engine";
 import { cardLibrary } from "@/data/cards/library";
 import {
@@ -37,6 +47,11 @@ import {
   HEX_RANGED_RELEASE_MS,
   HEX_TURN_FRAME_MS,
   SPRITE_GROUP,
+  creatureHasFidget,
+  creatureIdleFrameMs,
+  creatureMissileOffsets,
+  creatureShootFrameMs,
+  creatureShotClimaxFrame,
   creatureSpriteForSlug,
   hexAnimationTempo,
   hexMovePlan,
@@ -44,6 +59,7 @@ import {
   spriteGroupFrames,
   spriteTeleports,
   unitCreatureSprite,
+  warMachineSprite,
   type CreatureSpriteAtlas
 } from "@/data/battle-hex/creature-sprites";
 import {
@@ -90,6 +106,10 @@ const STRIKE_MS = 900;
 /** A cast's release beat (the spell leaves the caster; shared with fx.tsx) and its whole clip. */
 const CAST_RELEASE_MS = HEX_CAST_RELEASE_MS;
 const CAST_MS = 900;
+/** A shot's flight, release beat to impact beat (the shooter holds its release frame meanwhile). */
+const SHOT_FLIGHT_MS = IMPACT_MS - HEX_RANGED_RELEASE_MS;
+/** A shot or cast within this slope of level plays the straight row (VCMI straightAngle 0.2 rad). */
+const RANGED_STRAIGHT_SLOPE = Math.tan(0.2);
 /** At most this share of an attack's wind-up is spent turning toward the target. */
 const TURN_SHARE_OF_BEAT = 0.45;
 /** How long a moved unit waits on its old hex for its move cue before snapping. */
@@ -100,6 +120,10 @@ const IDLE_TURN_BACK_MS = 220;
 const FACING_HOLD_MAX_MS = 9000;
 /** Longest a figure that turned to face an attacker from behind keeps that facing (the blow, then its retaliation die). */
 const FACE_HOLD_MAX_MS = 3200;
+/** A stack summoned or brought in mid-combat fades in on its hex (VCMI summonFadeIn). */
+const HEX_APPEAR_MS = 500;
+/** A stack that leaves the field alive (flees, is recalled, a summon expires) fades out (VCMI summonFadeOut). */
+const HEX_LEAVE_MS = 500;
 
 /**
  * Figures tell each other when one starts to act (move, strike, cast): a figure
@@ -178,6 +202,20 @@ function facesRightByDefault(combat: CombatState, unit: CombatUnitState, flipped
   return unitIsAttackerSide(combat, unit) !== flipped;
 }
 
+/**
+ * The creature's PC shot launch points (up, straight, down: PC pixels from the
+ * feet facing right) as a figure attribute, for fx.tsx's projectile start.
+ * CRANIM offsets count from the PC canvas point, which on a two-hex creature
+ * is its tail hex (the canvas is drawn 44 px behind its head): from the middle
+ * of its two hexes, where its figure stands, that is 22 px further back.
+ */
+function missileAttribute(atlas: CreatureSpriteAtlas | null, twoHex = false): string | undefined {
+  const missile = creatureMissileOffsets(atlas);
+  if (!missile) return undefined;
+  const back = twoHex ? HEX_WIDTH / 2 / PC_PIXEL : 0;
+  return [missile.up, missile.straight, missile.down].flatMap(([x, y]) => [x - back, y]).join(",");
+}
+
 const px = (value: number) => `calc(var(--hex-scale, 1) * ${value.toFixed(2)}px)`;
 
 function pointStyle(point: Point, zIndex: number): CSSProperties {
@@ -211,8 +249,16 @@ type Controller = {
   holdAt: (from: number) => void;
   /** The mouse came to rest on the creature. */
   hover: () => void;
+  /**
+   * The unit has just entered the field mid-combat: a fallen stack brought back
+   * rises (its death clip backwards), any other fades in.
+   */
+  enter: (entrance: HexEntrance) => void;
   dispose: () => void;
 };
+
+/** How a figure mounted mid-combat enters the field (see HexUnitsLayer). */
+type HexEntrance = "rise" | "appear";
 
 type ControllerOptions = {
   /** The unit (or war machine) this figure draws. */
@@ -308,7 +354,7 @@ function createController(options: ControllerOptions): Controller {
    * a clip that starts a frame late plays on the schedule instead of pushing
    * everything after it later (a walk's segments never drift past its slot).
    */
-  const playClip = (group: number, durations: number[], hold = false, startAt?: number): Promise<void> =>
+  const playClip = (group: number, durations: number[], hold = false, startAt?: number, reverse = false): Promise<void> =>
     new Promise((resolve) => {
       stopClip?.();
       haltIdle();
@@ -326,7 +372,7 @@ function createController(options: ControllerOptions): Controller {
         if (start < 0) start = now;
         const elapsed = now - start;
         if (elapsed >= total) {
-          if (hold) showFrame(group, durations.length - 1);
+          if (hold) showFrame(group, reverse ? 0 : durations.length - 1);
           else showFrame(SPRITE_GROUP.standing, 0);
           resolve();
           // A clip played outside any cue (mouse-over, turning back): back to breathing.
@@ -339,7 +385,7 @@ function createController(options: ControllerOptions): Controller {
           acc += durations[index];
           index += 1;
         }
-        showFrame(group, index);
+        showFrame(group, reverse ? durations.length - 1 - index : index);
         return true;
       });
       stopClip = () => {
@@ -429,17 +475,25 @@ function createController(options: ControllerOptions): Controller {
     return best;
   };
 
-  /** Up / straight / down reading of the line from `a` to `b` (H3's three attack rows). */
-  const lineDirection = (a: Point, b: Point): "up" | "straight" | "down" => {
+  /**
+   * Up / straight / down reading of the line from `a` to `b` (H3's three
+   * attack rows). A blow reads its neighbour hex (the rows above and below lie
+   * at a steep slope); a shot or cast is straight only within 0.2 rad of level,
+   * as VCMI's RangedAttackAnimation picks its row.
+   */
+  const lineDirection = (a: Point, b: Point, ranged = false): "up" | "straight" | "down" => {
     const slope = (b.y - a.y) / Math.max(1, Math.abs(b.x - a.x));
-    return slope < -0.5 ? "up" : slope > 0.5 ? "down" : "straight";
+    const level = ranged ? RANGED_STRAIGHT_SLOPE : 0.5;
+    return slope < -level ? "up" : slope > level ? "down" : "straight";
   };
 
   /**
    * Moves the figure through board points (offsets from its rest point), one
-   * equal leg per step, looping the walk cycle once per hex.
+   * equal leg per step. The walk cycle runs at the creature's own frame rate
+   * (`frameMs`) from `cycleAt`, the moment the stride began, so it flows on
+   * across hexes and stretches as the PC's does instead of restarting.
    */
-  const walk = (points: Point[], legMs: number, startAt?: number): Promise<void> =>
+  const walk = (points: Point[], legMs: number, frameMs: number, cycleAt: number, startAt?: number): Promise<void> =>
     new Promise((resolve) => {
       stopMove?.();
       const rest = options.restPoint();
@@ -465,9 +519,9 @@ function createController(options: ControllerOptions): Controller {
         const b = points[leg + 1];
         if (b.x !== a.x && (b.x > a.x) !== facing) setFacing(b.x > a.x);
         setOffset({ x: a.x + (b.x - a.x) * local - rest.x, y: a.y + (b.y - a.y) * local - rest.y });
-        // Nearer rows stand in front while walking too.
-        setZ(String(10 + Math.round((a.y + (b.y - a.y) * local - GRID_TOP) / HEX_ROW_STEP)));
-        if (atlas) showFrame(SPRITE_GROUP.move, Math.floor((elapsed / legMs) * walkFrames) % walkFrames);
+        // Nearer rows stand in front while walking too (settle's row rule, read off the walking feet).
+        setZ(String(10 + Math.round((a.y + (b.y - a.y) * local - FOOT_DROP - GRID_TOP - HEX_RADIUS) / HEX_ROW_STEP)));
+        if (atlas) showFrame(SPRITE_GROUP.move, Math.floor(Math.max(0, now - cycleAt) / Math.max(16, frameMs)) % walkFrames);
         if (elapsed >= total) {
           resolve();
           return false;
@@ -534,6 +588,7 @@ function createController(options: ControllerOptions): Controller {
     const legMs = (plan.legsMs * fit) / Math.max(1, points.length - 1);
     const turnFrameMs = plan.turnFrameMs * fit;
     const edgeFrameMs = plan.edgeFrameMs * fit;
+    const walkFrameMs = plan.walkFrameMs * fit;
     // Every segment is pinned to the slot's own clock: one that starts a frame
     // late plays on schedule instead of pushing the arrival past the slot the
     // strike, damage number and footsteps after it are timed to.
@@ -545,13 +600,15 @@ function createController(options: ControllerOptions): Controller {
     // exactly these turns for the cue timeline.
     let index = 0;
     let started = false;
+    let cycleAt = -1;
     while (index < points.length - 1) {
       const right = points[index + 1].x === points[index].x ? facing : points[index + 1].x > points[index].x;
       let end = index + 1;
       while (end < points.length - 1 && (points[end + 1].x === points[end].x || (points[end + 1].x > points[end].x) === right)) {
         end += 1;
       }
-      if (right !== facing) {
+      const turned = right !== facing;
+      if (turned) {
         await turnTo(right, turnFrameMs, at);
         at += turnFrames() * turnFrameMs;
       }
@@ -564,7 +621,9 @@ function createController(options: ControllerOptions): Controller {
           at += frames(SPRITE_GROUP.startMove) * edgeFrameMs;
         }
       }
-      await walk(points.slice(index, end + 1), legMs, at);
+      // A turn mid-route starts a fresh stride; straight on, the cycle flows.
+      if (cycleAt < 0 || turned) cycleAt = at;
+      await walk(points.slice(index, end + 1), legMs, walkFrameMs, cycleAt, at);
       at += (end - index) * legMs;
       index = end;
     }
@@ -608,19 +667,27 @@ function createController(options: ControllerOptions): Controller {
    * its contact frame lands exactly `beat` ms in — the shared impact / release
    * beat the damage number and sound wait on. A quick unit holds its stance a
    * moment and then swings; the swing is never stretched into slow motion, and
-   * only a beat too short for the wind-up compresses it. The follow-through
-   * plays at the same pace.
+   * only a beat too short for the wind-up compresses it (the page starts a
+   * shooter's clip early enough that its draw fits). The follow-through plays
+   * at the same pace. Contact frames are the PC's (VCMI): a melee blow lands
+   * once half the group has played (MeleeAttackAnimation HIT), a shot leaves on
+   * the creature's CRANIM climax frame at its shoot pace and HOLDS that frame
+   * while the projectile flies (RangedAttackAnimation), a cast releases at half
+   * its frames (CastAnimation).
    */
-  const playActionClip = (group: number, beat: number): Promise<void> => {
+  const playActionClip = (group: number, beat: number, kind: "melee" | "shot" | "cast" = "melee"): Promise<void> => {
     const count = frames(group);
     if (count === 0) return Promise.resolve();
-    const frameMs = paced(HEX_ACTION_FRAME_MS);
+    const frameMs = paced(kind === "melee" ? HEX_ACTION_FRAME_MS : creatureShootFrameMs(atlas));
     if (beat <= 0) return playClip(group, even(group, frameMs));
-    // H3 attack groups connect a little past their middle frame.
-    const hitIndex = Math.min(count - 1, Math.max(1, Math.round(count * 0.55)));
+    const climax = kind === "shot" ? creatureShotClimaxFrame(atlas, group) : null;
+    const contact = climax ?? (kind === "cast" ? Math.floor(count / 2) : Math.ceil(count / 2));
+    const hitIndex = Math.min(count - 1, Math.max(1, contact));
     const windUpMs = Math.min(beat / hitIndex, frameMs);
     const holdMs = beat - windUpMs * hitIndex;
     const durations = Array.from({ length: count }, (_, index) => (index < hitIndex ? windUpMs : frameMs));
+    // The bow stays drawn / the arm stays out until the projectile lands.
+    if (kind === "shot") durations[hitIndex] += SHOT_FLIGHT_MS;
     // The hold is the standing frame, then the swing; a newer cue arriving
     // during the hold cancels the swing (it never cuts the newer clip).
     const gen = generation;
@@ -637,18 +704,21 @@ function createController(options: ControllerOptions): Controller {
     const b = targetPoint(target);
     const a = nearestOwnPoint(b);
     const ranged = cue.attackKind === "ranged";
+    const direction = lineDirection(a, b, ranged);
+    // The shot's launch row, for the projectile (fx.tsx reads it off the figure
+    // at the release beat to start it from the creature's PC missile point).
+    if (ranged) figure.dataset.hexShot = direction;
     // Face the target with a (quick) H3 turn inside the wind-up; the figure
     // turns back to face the enemy once it is idle again (see handle).
     const turnedMs = b.x !== a.x ? await quickTurn(b.x > a.x, cue.releaseMs ?? (ranged ? HEX_RANGED_RELEASE_MS : IMPACT_MS)) : 0;
     if (disposed) return;
-    const direction = lineDirection(a, b);
     if (atlas) {
       const shoot = { up: SPRITE_GROUP.shootUp, straight: SPRITE_GROUP.shootStraight, down: SPRITE_GROUP.shootDown }[direction];
       const strike = { up: SPRITE_GROUP.attackUp, straight: SPRITE_GROUP.attackStraight, down: SPRITE_GROUP.attackDown }[direction];
       const group = ranged && frames(shoot) > 0 ? shoot : frames(strike) > 0 ? strike : SPRITE_GROUP.attackStraight;
       const fullBeat = cue.releaseMs ?? (ranged ? HEX_RANGED_RELEASE_MS : IMPACT_MS);
       const beat = fullBeat <= 0 ? fullBeat : Math.max(1, fullBeat - turnedMs);
-      await playActionClip(group, beat);
+      await playActionClip(group, beat, ranged && group === shoot ? "shot" : "melee");
     } else {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
@@ -680,8 +750,10 @@ function createController(options: ControllerOptions): Controller {
 
   /**
    * A cast: face the target (quick turn inside the wind-up), then the H3
-   * spell-casting row for its direction (17/18/19). A creature without cast
-   * frames plays its straight attack; a card token pulses.
+   * spell-casting row for its direction (17/18/19). As VCMI's CastAnimation, a
+   * creature without cast frames casts with its shoot row (a WoG Commander, a
+   * rifle student), one with neither plays its straight attack; a card token
+   * pulses.
    */
   const runCast = async (cue: Extract<HexUnitCueDetail["cue"], { kind: "cast" }>) => {
     const target = cue.to ? parseCellAnchor(cue.to) : null;
@@ -693,16 +765,16 @@ function createController(options: ControllerOptions): Controller {
       const a = nearestOwnPoint(b);
       if (b.x !== a.x) beat = Math.max(1, fullBeat - (await quickTurn(b.x > a.x, fullBeat)));
       if (disposed) return;
-      direction = lineDirection(a, b);
+      direction = lineDirection(a, b, true);
     }
+    // A spell bolt the creature looses leaves from its row's missile point too.
+    figure.dataset.hexShot = direction;
     const cast = { up: SPRITE_GROUP.castUp, straight: SPRITE_GROUP.castStraight, down: SPRITE_GROUP.castDown }[direction];
-    const group = frames(cast) > 0
-      ? cast
-      : frames(SPRITE_GROUP.castStraight) > 0
-        ? SPRITE_GROUP.castStraight
-        : SPRITE_GROUP.attackStraight;
+    const shoot = { up: SPRITE_GROUP.shootUp, straight: SPRITE_GROUP.shootStraight, down: SPRITE_GROUP.shootDown }[direction];
+    const group = [cast, shoot, SPRITE_GROUP.castStraight, SPRITE_GROUP.shootStraight]
+      .find((candidate) => frames(candidate) > 0) ?? SPRITE_GROUP.attackStraight;
     if (atlas && frames(group) > 0) {
-      await playActionClip(group, beat);
+      await playActionClip(group, beat, group === SPRITE_GROUP.attackStraight ? "melee" : "cast");
       return;
     }
     await figure
@@ -710,7 +782,15 @@ function createController(options: ControllerOptions): Controller {
       .finished.catch(() => undefined);
   };
 
-  const runShake = async () => {
+  /**
+   * Struck: the H3 hurt clip — or, for a stack that took Defend this round,
+   * its defend clip, as the PC plays a defending creature being hit.
+   */
+  const runShake = async (defending = false) => {
+    if (defending && atlas && frames(SPRITE_GROUP.defend) > 0) {
+      await playClip(SPRITE_GROUP.defend, even(SPRITE_GROUP.defend, paced(HEX_HIT_FRAME_MS)));
+      return;
+    }
     if (atlas && frames(SPRITE_GROUP.hit) > 0) {
       await playClip(SPRITE_GROUP.hit, even(SPRITE_GROUP.hit, paced(HEX_HIT_FRAME_MS)));
       return;
@@ -745,7 +825,7 @@ function createController(options: ControllerOptions): Controller {
    * as on the PC — never over a cue (a cue arriving cuts it short).
    */
   const hover = () => {
-    if (!atlas || disposed || busy > 0 || frames(SPRITE_GROUP.mouseOver) === 0) return;
+    if (!atlas || disposed || busy > 0 || frames(SPRITE_GROUP.mouseOver) === 0 || !creatureHasFidget(atlas)) return;
     void playClip(SPRITE_GROUP.mouseOver, even(SPRITE_GROUP.mouseOver, paced(HEX_IDLE_FRAME_MS)));
   };
 
@@ -759,10 +839,11 @@ function createController(options: ControllerOptions): Controller {
    * Runs on the shared clock and writes the DOM only when the frame changes; a
    * cue, a hover clip or a turn stops it and it resumes once the figure is idle.
    */
-  function resumeIdle() {
+  function resumeIdle(randomPhase = false) {
     if (stopIdle || !atlas || disposed || busy > 0 || !options.idle || prefersReducedMotion()) return;
     const holding = Math.max(1, frames(SPRITE_GROUP.standing));
-    const fidget = frames(SPRITE_GROUP.mouseOver);
+    // A mouse-over row that only copies the standing loop is no fidget.
+    const fidget = creatureHasFidget(atlas) ? frames(SPRITE_GROUP.mouseOver) : 0;
     if (holding <= 1 && fidget === 0) return;
     // A sheet-built idle row plays there and back (0..n-1..1), an H3 one loops.
     const pingPong = Boolean(atlas.idlePingPong) && holding > 2;
@@ -770,10 +851,17 @@ function createController(options: ControllerOptions): Controller {
     let group: number = SPRITE_GROUP.standing;
     let count = loop;
     let loopStart = -1;
-    const phase = Math.random() * loop;
+    // A figure that just appeared starts at its own phase (a line of the same
+    // creature never breathes in step); one coming back from a clip carries on
+    // from the standing frame that clip ended on, never jumping mid-breath.
+    const phase = randomPhase ? Math.random() * loop : 0;
+    const breathMs = creatureIdleFrameMs(atlas);
+    let shownGroup = -1;
+    let shownIndex = -1;
     stopIdle = onClock((now) => {
       if (disposed) return false;
-      const frameMs = paced(HEX_IDLE_FRAME_MS);
+      // The standing loop at the creature's calm breath; a fidget at the PC's 10 fps.
+      const frameMs = paced(group === SPRITE_GROUP.standing ? breathMs : HEX_IDLE_FRAME_MS);
       if (loopStart < 0) loopStart = now - phase * frameMs;
       let index = Math.floor((now - loopStart) / frameMs);
       if (index >= count) {
@@ -784,7 +872,12 @@ function createController(options: ControllerOptions): Controller {
         group = fidgets ? SPRITE_GROUP.mouseOver : SPRITE_GROUP.standing;
         count = fidgets ? fidget : loop;
       }
-      showFrame(group, group === SPRITE_GROUP.standing && index >= holding ? loop - index : index);
+      const frame = group === SPRITE_GROUP.standing && index >= holding ? loop - index : index;
+      if (frame !== shownIndex || group !== shownGroup) {
+        shownGroup = group;
+        shownIndex = frame;
+        showFrame(group, frame);
+      }
       return true;
     });
   }
@@ -793,6 +886,29 @@ function createController(options: ControllerOptions): Controller {
     stopIdle?.();
     stopIdle = null;
   }
+
+  /**
+   * Entering the field mid-combat, as the PC shows it: a resurrected stack gets
+   * up from its corpse — its death clip played backwards (VCMI
+   * ResurrectionAnimation), starting on the corpse frame so it never flashes
+   * standing — and a summoned or reinforcing stack fades in (summonFadeIn).
+   * A cue that arrives meanwhile simply takes over.
+   */
+  const enter = (entrance: HexEntrance) => {
+    if (disposed) return;
+    const count = frames(SPRITE_GROUP.death);
+    if (entrance === "rise" && atlas && count > 0) {
+      busy += 1;
+      haltIdle();
+      showFrame(SPRITE_GROUP.death, count - 1);
+      void playClip(SPRITE_GROUP.death, even(SPRITE_GROUP.death, paced(HEX_DEATH_FRAME_MS)), false, undefined, true).finally(() => {
+        busy = Math.max(0, busy - 1);
+        if (busy === 0) resumeIdle();
+      });
+      return;
+    }
+    figure.animate([{ opacity: 0 }, { opacity: 1 }], { duration: HEX_APPEAR_MS, easing: "ease-out" });
+  };
 
   const handle = (event: Event) => {
     const detail = (event as CustomEvent<HexUnitCueDetail>).detail;
@@ -819,7 +935,7 @@ function createController(options: ControllerOptions): Controller {
         return runCast(waited > 1 && beat > 0 ? { ...cue, releaseMs: Math.max(1, beat - waited) } : cue);
       }
       if (cue.kind === "face") return runFace(cue);
-      return cue.kind === "shake" ? runShake() : runPose();
+      return cue.kind === "shake" ? runShake(cue.defending) : runPose();
     };
     // The creature's own strike or cast never starts while it is still
     // walking (its move and attack can arrive in separate snapshots, or the
@@ -831,7 +947,8 @@ function createController(options: ControllerOptions): Controller {
       window.clearTimeout(facingTimer);
       announceFigureAction(options.id);
     }
-    const run = (cue.kind === "lunge" || cue.kind === "cast") && walking
+    // A face cue waits too: turning mid-walk would cut the stride short.
+    const run = (cue.kind === "lunge" || cue.kind === "cast" || cue.kind === "face") && walking
       ? walking.then(() => (disposed ? undefined : start()))
       : start();
     if (cue.kind === "move") {
@@ -910,13 +1027,14 @@ function createController(options: ControllerOptions): Controller {
 
   setFacing(facing);
   showFrame(SPRITE_GROUP.standing, 0);
-  resumeIdle();
+  resumeIdle(true);
 
   return {
     handle,
     pending,
     holdAt,
     hover,
+    enter,
     dispose: () => {
       disposed = true;
       figureActionListeners.delete(othersAct);
@@ -945,6 +1063,8 @@ type LiveBoard = {
   units: Map<string, CombatUnitState>;
   /** Live Initiative swing per unit (Haste / Slow): its animation tempo input. */
   initiativeDelta: Map<string, number>;
+  /** Units entering the field in this render (a figure reads its own on mount). */
+  entrances: ReadonlyMap<string, HexEntrance>;
 };
 
 type FigureProps = {
@@ -969,6 +1089,8 @@ type FigureProps = {
   attackDelta: number;
   defenseDelta: number;
   initiativeDelta: number;
+  /** Held by Petrifying Curse's Paralysis: the creature is drawn as grey stone. */
+  petrified: boolean;
 };
 
 const HexUnitFigure = memo(function HexUnitFigure({
@@ -986,6 +1108,7 @@ const HexUnitFigure = memo(function HexUnitFigure({
   name,
   flipped,
   active,
+  petrified,
   health,
   attackDelta,
   defenseDelta,
@@ -999,6 +1122,8 @@ const HexUnitFigure = memo(function HexUnitFigure({
   const spriteRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<Controller | null>(null);
   const previousPosition = useRef(position);
+  /** The figure has played its entrance (only its first controller does). */
+  const entered = useRef(false);
 
   // Layout effect, declared before the hold effect below: a frame that changes
   // both the art and the hex must hand the hold to the NEW controller.
@@ -1047,6 +1172,7 @@ const HexUnitFigure = memo(function HexUnitFigure({
           unitDefId: now?.unitDefId,
           variant: now?.variant,
           commanderSlug: now?.commanderSlug,
+          heroDefId: now?.heroDefId,
           initiative: now?.initiative,
           initiativeDelta: live.current.initiativeDelta.get(unitId) ?? 0,
           flyer: now?.type === "flying",
@@ -1059,6 +1185,11 @@ const HexUnitFigure = memo(function HexUnitFigure({
       }
     });
     controllerRef.current = controller;
+    if (!entered.current) {
+      entered.current = true;
+      const entrance = live.current.entrances.get(unitId);
+      if (entrance) controller.enter(entrance);
+    }
     figure.addEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
     figure.addEventListener(HEX_UNIT_PENDING_MOVE_EVENT, controller.pending);
     figure.addEventListener(HEX_UNIT_HOVER_EVENT, controller.hover);
@@ -1092,8 +1223,9 @@ const HexUnitFigure = memo(function HexUnitFigure({
   const bodyLift = atlas ? atlas.anchorY * SPRITE_SCALE * 0.42 : HEX_RADIUS * 0.9;
   return (
     <div
-      className={`hexFigure ${side}${active ? " active" : ""}${atlas ? "" : " token"}`}
+      className={`hexFigure ${side}${active ? " active" : ""}${petrified ? " petrified" : ""}${atlas ? "" : " token"}`}
       data-hex-unit={unitId}
+      data-hex-missile={missileAttribute(atlas, tailStep !== 0)}
       ref={figureRef}
       style={pointStyle(foot, 10 + row)}
     >
@@ -1167,16 +1299,20 @@ function frontHexTaken(combat: CombatState, unit: CombatUnitState, standing: rea
   return unitAtCell(combat, front, standing.filter((other) => other.id !== unit.id)) !== undefined;
 }
 
-/** Every creature, war machine and corpse on the hex board. */
-export function HexUnitsLayer({
-  state,
-  combat,
-  flipped,
-  units,
-  healthOf,
-  statDeltasOf,
-  siegeTown
-}: {
+/** Atlas images already requested this session (kept referenced so the decode is kept). */
+const preloadedAtlases = new Map<string, HTMLImageElement>();
+
+/** Fetches and decodes one atlas off the main thread, once. */
+function preloadAtlas(image: string): void {
+  if (typeof window === "undefined" || preloadedAtlases.has(image)) return;
+  const element = new Image();
+  element.decoding = "async";
+  element.src = assetUrl(image);
+  preloadedAtlases.set(image, element);
+  void element.decode().catch(() => undefined);
+}
+
+type HexUnitsLayerProps = {
   state: GameState;
   combat: CombatState;
   flipped: boolean;
@@ -1187,7 +1323,34 @@ export function HexUnitsLayer({
   healthOf: (unit: CombatUnitState) => number;
   /** Live Attack / Defense / Initiative minus the printed values. */
   statDeltasOf: (unit: CombatUnitState) => HexStatDeltas;
-}) {
+};
+
+/**
+ * The layer only redraws for a new game state, board side or shown health:
+ * the board re-renders for every hex the mouse crosses (its aim cursor), and
+ * the figures never need that (the stat deltas read only the state).
+ */
+function sameUnitsLayerProps(previous: HexUnitsLayerProps, next: HexUnitsLayerProps): boolean {
+  return (
+    previous.state === next.state &&
+    previous.combat === next.combat &&
+    previous.flipped === next.flipped &&
+    previous.siegeTown === next.siegeTown &&
+    previous.units.length === next.units.length &&
+    previous.units.every((unit, index) => unit === next.units[index] && previous.healthOf(unit) === next.healthOf(unit))
+  );
+}
+
+/** Every creature, war machine and corpse on the hex board. */
+export const HexUnitsLayer = memo(function HexUnitsLayer({
+  state,
+  combat,
+  flipped,
+  units,
+  healthOf,
+  statDeltasOf,
+  siegeTown
+}: HexUnitsLayerProps) {
   const layerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const layer = layerRef.current;
@@ -1201,14 +1364,60 @@ export function HexUnitsLayer({
     observer.observe(layer);
     return () => observer.disconnect();
   }, []);
+  // Every creature atlas of this fight (standing units and the dead, who may
+  // come back), fetched and decoded ahead of use: a figure that first moves,
+  // strikes or appears (a summon, a resurrection) never waits on a multi-MB
+  // download or a large image decode mid-animation.
+  const atlasKey = Object.values(combat.units)
+    .map((unit) => unitCreatureSprite(unit)?.image)
+    .filter((image): image is string => Boolean(image))
+    .sort()
+    .join("|");
+  useEffect(() => {
+    if (!atlasKey) return;
+    for (const image of new Set(atlasKey.split("|"))) preloadAtlas(image);
+  }, [atlasKey]);
   const deltas = new Map(units.map((unit) => [unit.id, statDeltasOf(unit)]));
+  // Who stood on the field at the last commit, and who fell since. A unit
+  // standing now that did not then ENTERS the field: a fallen stack brought
+  // back rises, a summon or reinforcement fades in. A combat's first frame
+  // (a new fight, a reload) has no entrances.
+  const roster = useRef<{ combatId: string; alive: Set<string>; fallen: Set<string> }>({
+    combatId: "",
+    alive: new Set(),
+    fallen: new Set()
+  });
+  const entrances = new Map<string, HexEntrance>();
+  if (roster.current.combatId === combat.id) {
+    for (const unit of units) {
+      if (!roster.current.alive.has(unit.id)) entrances.set(unit.id, roster.current.fallen.has(unit.id) ? "rise" : "appear");
+    }
+  }
+  // After every commit (the figures have read their entrances on mount).
+  useLayoutEffect(() => {
+    const alive = new Set(units.map((unit) => unit.id));
+    const last = roster.current;
+    if (last.combatId !== combat.id) {
+      roster.current = { combatId: combat.id, alive, fallen: new Set() };
+      return;
+    }
+    for (const id of last.alive) {
+      if (alive.has(id)) continue;
+      // HexFallen's rule: gone while still on its hex = it fell (its corpse lies there).
+      const unit = combat.units[id];
+      if (unit && (unit.damage >= unit.maxHealth || isHexPosition(unit.position))) last.fallen.add(id);
+    }
+    for (const id of alive) last.fallen.delete(id);
+    last.alive = alive;
+  });
   // One stable holder: figures read the newest combat / units / tempo through it.
-  const live = useRef<LiveBoard>({ combat, flipped, units: new Map(), initiativeDelta: new Map() });
+  const live = useRef<LiveBoard>({ combat, flipped, units: new Map(), initiativeDelta: new Map(), entrances: new Map() });
   live.current = {
     combat,
     flipped,
     units: new Map(units.map((unit) => [unit.id, unit])),
-    initiativeDelta: new Map(units.map((unit) => [unit.id, deltas.get(unit.id)?.initiative ?? 0]))
+    initiativeDelta: new Map(units.map((unit) => [unit.id, deltas.get(unit.id)?.initiative ?? 0])),
+    entrances
   };
   const shownAlive = new Map(units.map((unit) => [unit.id, unit.position]));
   return (
@@ -1231,6 +1440,7 @@ export function HexUnitsLayer({
               key={unit.id}
               live={live}
               name={unit.name}
+              petrified={unitIsPetrified(unit)}
               position={unit.position}
               spriteKey={unitCreatureSprite(unit)?.slug ?? ""}
               tailStep={unitTailOffset(combat, unit)}
@@ -1242,7 +1452,7 @@ export function HexUnitsLayer({
             />
           );
         })}
-      <HexWarMachines combat={combat} flipped={flipped} state={state} />
+      <HexWarMachines combat={combat} flipped={flipped} live={live} state={state} />
       {(() => {
         // Siege: the standing Arrow Tower is drawn as its town's guard on the keep.
         const towerId = combat.siege?.arrowTowerUnitId;
@@ -1254,7 +1464,7 @@ export function HexUnitsLayer({
       })()}
     </div>
   );
-}
+}, sameUnitsLayerProps);
 
 // ---------------------------------------------------------------------------
 // Siege: the keep's guard (the Arrow Tower)
@@ -1330,7 +1540,13 @@ const HexKeepGuard = memo(function HexKeepGuard({
   const bodyLift = atlas.anchorY * SPRITE_SCALE * 0.42;
   return (
     // z 11: in front of the keep, behind its battlement (z 13, hex-battlefield HexSiegeScene).
-    <div className="hexFigure defenderSide" data-hex-unit={unitId} ref={figureRef} style={pointStyle(point, 11)}>
+    <div
+      className="hexFigure defenderSide"
+      data-hex-missile={missileAttribute(atlas)}
+      data-hex-unit={unitId}
+      ref={figureRef}
+      style={pointStyle(point, 11)}
+    >
       <div className="hexSprite" ref={spriteRef} style={spriteStyle(atlas)} />
       <span
         aria-hidden="true"
@@ -1343,91 +1559,164 @@ const HexKeepGuard = memo(function HexKeepGuard({
 });
 
 // ---------------------------------------------------------------------------
-// War machines: the in-play machine cards stand at their army's edge
+// War machines: on the PC's own hexes at their army's edge
 // ---------------------------------------------------------------------------
 
-const WAR_MACHINE_SPRITES: Readonly<Record<string, string>> = {
-  "war_machine.ballista": "war-ballista",
-  "war_machine.catapult": "war-catapult",
-  "war_machine.ammo_cart": "war-ammo-cart",
-  "war_machine.first_aid_tent": "war-first-aid-tent",
-  // Forge (no PC original): a Codex sheet drawn from the card art
-  // (generated-session-art/forge/war-machines, scripts/import-sprite-sheet.mjs).
-  "war_machine.lightning_generator": "war-lightning-generator",
-  // Cove Cannon (no PC original file): a Codex sheet drawn from the card art
-  // (generated-session-art/battle-hex/war-machines, scripts/key-sheet-background.mjs
-  // then import-sprite-sheet.mjs + refit-sheet-sprites.mjs).
-  "war_machine.cannon": "war-cannon"
+const BALLISTA_CARD_ID = "war_machine.ballista";
+
+/**
+ * Where each machine stands, as on the PC (VCMI BattleInfo war machines, on
+ * the PC's 17x11 field): the attacker's in column 1, the defender's in column
+ * 15 — the hex just outside the Battlefield Expansion's hexes (warMachineFoot) —
+ * Ammo Cart in PC row 1, Ballista row 3, Catapult row 7, First Aid Tent row 9.
+ * The HotA Cannon takes the Ballista's place, and so does the Forge's
+ * Lightning Generator (the one machine a Forge army fields). `twoHex`: VCMI
+ * `doubleWide`, the tail hex behind it on the board's edge column.
+ */
+const WAR_MACHINE_SPOTS: Readonly<Record<string, { pcRow: number; twoHex: boolean }>> = {
+  "war_machine.ammo_cart": { pcRow: 1, twoHex: false },
+  [BALLISTA_CARD_ID]: { pcRow: 3, twoHex: true },
+  "war_machine.cannon": { pcRow: 3, twoHex: true },
+  "war_machine.lightning_generator": { pcRow: 3, twoHex: true },
+  "war_machine.catapult": { pcRow: 7, twoHex: true },
+  "war_machine.first_aid_tent": { pcRow: 9, twoHex: true }
 };
 
-/** Row each machine type stands beside (PC: ballista high, cart and tent low). */
-const WAR_MACHINE_ROWS: Readonly<Record<string, number>> = {
-  "war_machine.ballista": 1,
-  "war_machine.cannon": 1,
-  "war_machine.lightning_generator": 2,
-  "war_machine.catapult": 4,
-  "war_machine.ammo_cart": 6,
-  "war_machine.first_aid_tent": 8
-};
+/**
+ * Machines whose standing row is a real loop: the First Aid Tent's flag (its
+ * PC .def) and the Lightning Generator's sparks. The others stand still, as on
+ * the PC.
+ */
+const WAR_MACHINE_IDLE_LOOPS = new Set(["war_machine.first_aid_tent", "war_machine.lightning_generator"]);
 
-function HexWarMachines({ state, combat, flipped }: { state: GameState; combat: CombatState; flipped: boolean }) {
-  const figures: Array<{ playerId: PlayerId; cardId: string; attacker: boolean; row: number }> = [];
+/** Free edge rows, in order, for a machine whose own spot is taken (several machines, granted Ballistas). */
+const WAR_MACHINE_SPARE_ROWS = [5, 3, 7, 1, 9, 2, 4, 6, 8];
+
+/**
+ * The war machines standing for a player on the hex battlefield: each machine
+ * that takes the field (the Factory Tinkerer's reserve machine stays off it)
+ * and one Ballista per granted extra Ballista (Torosar, a fighting Ogre
+ * Leader…), which shoot as real machines.
+ */
+function hexWarMachineCards(state: GameState, playerId: PlayerId): string[] {
+  if (!state.players[playerId]) return [];
+  return [
+    ...fieldedWarMachineCardIds(state, playerId),
+    ...Array.from({ length: countExtraBallistas(state, playerId) }, () => BALLISTA_CARD_ID)
+  ];
+}
+
+/** Whether a war machine of this card stands on the hex battlefield for the player (its shots leave it). */
+export function hexWarMachineStands(state: GameState, playerId: PlayerId, cardId: string): boolean {
+  return hexWarMachineCards(state, playerId).includes(cardId);
+}
+
+/**
+ * A machine's foot point (board units): the centre of the hex one column
+ * outside its army's edge column, on its PC row (board row = PC row - 1), or —
+ * for a two-hex machine — the middle of it and its tail hex behind it, where
+ * its atlas anchors (the PC canvas point) stand it. The hex comes from the
+ * board's own grid: the board indents its even rows where the PC indents its
+ * even PC rows, so a literal PC column 1 / 15 hex would lie half a hex off
+ * the board's hexes (the attacker's machines a hex and a half out, the
+ * defender's half over its edge hexes).
+ */
+function warMachineFoot(attacker: boolean, pcRow: number, twoHex: boolean, flipped: boolean): Point {
+  const row = Math.min(HEX_BATTLEFIELD_ROWS, Math.max(1, pcRow)) - 1;
+  const edge = hexCellCenter(hexPosition(attacker ? 0 : HEX_BATTLEFIELD_COLUMNS - 1, row) ?? HEX_POSITION_BASE, false);
+  const centre = edge.x + (attacker ? -HEX_WIDTH : HEX_WIDTH);
+  const x = twoHex ? centre + (attacker ? -HEX_WIDTH / 2 : HEX_WIDTH / 2) : centre;
+  return { x: flipped ? HEX_BOARD_WIDTH - x : x, y: edge.y + FOOT_DROP };
+}
+
+function HexWarMachines({
+  state,
+  combat,
+  flipped,
+  live
+}: {
+  state: GameState;
+  combat: CombatState;
+  flipped: boolean;
+  live: { current: LiveBoard };
+}) {
+  const figures: Array<{ playerId: PlayerId; cardId: string; attacker: boolean; pcRow: number; twoHex: boolean; key: string }> = [];
   for (const [playerId, attacker] of [[combat.attackerPlayerId, true], [combat.defenderPlayerId, false]] as const) {
-    if (!state.players[playerId]) continue;
     const taken = new Set<number>();
-    for (const cardId of getPermanentCardIds(state, playerId).filter(isWarMachineCard)) {
-      let row = WAR_MACHINE_ROWS[cardId] ?? 3;
-      while (taken.has(row) && row < 8) row += 1;
-      taken.add(row);
-      figures.push({ playerId, cardId, attacker, row });
-    }
+    hexWarMachineCards(state, playerId).forEach((cardId, index) => {
+      const spot = WAR_MACHINE_SPOTS[cardId] ?? { pcRow: 5, twoHex: false };
+      const pcRow = [spot.pcRow, ...WAR_MACHINE_SPARE_ROWS].find((row) => !taken.has(row)) ?? spot.pcRow;
+      taken.add(pcRow);
+      figures.push({ playerId, cardId, attacker, pcRow, twoHex: spot.twoHex, key: `${playerId}:${cardId}:${index}` });
+    });
   }
   return (
     <>
-      {figures.map((figure) => (
-        <HexWarMachineFigure flipped={flipped} key={`${figure.playerId}:${figure.cardId}`} {...figure} />
+      {figures.map(({ key, ...figure }) => (
+        <HexWarMachineFigure flipped={flipped} key={key} live={live} {...figure} />
       ))}
     </>
   );
 }
 
-function HexWarMachineFigure({
+/**
+ * A war machine on the field. It never walks; it plays its H3 firing row
+ * toward its target when the page's `machine` cue fires it (the shot leaves
+ * on its PC climax frame from its missile point), and its standing loop (the
+ * First Aid Tent's flag) while idle. Its shots, beams and heals anchor on it
+ * (`war-machine:<player>:<card>`, fx.tsx).
+ */
+const HexWarMachineFigure = memo(function HexWarMachineFigure({
+  live,
   playerId,
   cardId,
   attacker,
-  row,
+  pcRow,
+  twoHex,
   flipped
 }: {
+  live: { current: LiveBoard };
   playerId: PlayerId;
   cardId: string;
   attacker: boolean;
-  row: number;
+  pcRow: number;
+  twoHex: boolean;
   flipped: boolean;
 }) {
-  const slug = WAR_MACHINE_SPRITES[cardId];
-  const atlas = slug ? creatureSpriteForSlug(slug) : null;
+  const atlas = warMachineSprite(cardId);
   const leftSide = attacker !== flipped;
-  const point = { x: leftSide ? 20 : HEX_BOARD_WIDTH - 20, y: GRID_TOP + HEX_RADIUS + row * HEX_ROW_STEP + FOOT_DROP };
+  const point = warMachineFoot(attacker, pcRow, twoHex, flipped);
   const figureRef = useRef<HTMLDivElement | null>(null);
   const spriteRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const figure = figureRef.current;
     if (!figure) return;
+    // Rebuilt only for new art / spot (a fresh atlas object every render must not restart it).
+    const art = warMachineSprite(cardId);
+    const rest = warMachineFoot(attacker, pcRow, twoHex, flipped);
     const controller = createController({
       id: `war-machine:${playerId}:${cardId}`,
       figure,
       sprite: spriteRef.current,
-      atlas,
+      atlas: art,
       unitType: "ranged",
-      idle: false,
+      idle: WAR_MACHINE_IDLE_LOOPS.has(cardId),
       facesRight: () => leftSide,
-      restPoint: () => point,
-      pointFor: (position) => hexCellCenter(position, flipped),
+      restPoint: () => rest,
+      pointFor: () => rest,
       cellPoint: (position) => cellFootPoint(position, flipped),
       ownCells: () => [],
-      targetCells: (position) => [position],
+      targetCells: (cell) => {
+        const combat = live.current.combat;
+        const standing = unitAtCell(
+          combat,
+          cell,
+          Object.values(combat.units).filter((other) => other.damage < other.maxHealth)
+        );
+        return standing ? unitCells(combat, standing) : [cell];
+      },
       // War machines never walk and have no Haste/Slow tempo.
-      movePlan: () => ({ totalMs: 0, legsMs: 0, turnFrameMs: 0, edgeFrameMs: 0, teleportFrameMs: 0 }),
+      movePlan: () => ({ totalMs: 0, legsMs: 0, turnFrameMs: 0, edgeFrameMs: 0, teleportFrameMs: 0, walkFrameMs: 0 }),
       tempo: () => 1
     });
     figure.addEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
@@ -1435,26 +1724,34 @@ function HexWarMachineFigure({
       figure.removeEventListener(HEX_UNIT_CUE_EVENT, controller.handle);
       controller.dispose();
     };
-    // point is derived from these.
-  }, [atlas?.slug, flipped, leftSide, row]);
+  }, [cardId, playerId, attacker, pcRow, twoHex, flipped, leftSide]);
+  const bodyLift = atlas ? atlas.anchorY * SPRITE_SCALE * 0.42 : HEX_RADIUS * 0.9;
   return (
     <div
-      className="hexFigure hexWarMachine"
+      className={`hexFigure hexWarMachine ${attacker ? "attackerSide" : "defenderSide"}${atlas ? "" : " token"}`}
       data-fx-anchor={`war-machine:${playerId}:${cardId}`}
+      data-hex-missile={missileAttribute(atlas, twoHex)}
       data-hex-war-machine=""
       ref={figureRef}
-      style={pointStyle(point, 10 + row)}
+      style={pointStyle(point, 9 + pcRow)}
     >
       {atlas ? (
-        <div className="hexSprite" ref={spriteRef} style={{ ...spriteStyle(atlas), ["--face" as string]: leftSide ? "1" : "-1" }} />
+        <div className="hexSprite" ref={spriteRef} style={spriteStyle(atlas)} />
       ) : (
         <div className="hexToken" style={{ left: px(-20), top: px(-60), width: px(40), height: px(56) }}>
           {cardLibrary[cardId]?.assets?.cardImage ? <img alt="" src={assetUrl(cardLibrary[cardId]!.assets!.cardImage!)} /> : null}
         </div>
       )}
+      {/* Its shots and heals leave (and aim at) the machine's body. */}
+      <span
+        aria-hidden="true"
+        className="hexUnitBody"
+        data-fx-body=""
+        style={{ left: px(-22), top: px(-bodyLift - 26), width: px(44), height: px(52) }}
+      />
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Fallen units: H3 leaves its dead on the field
@@ -1464,6 +1761,8 @@ type FallenEntry = {
   id: string;
   unit: CombatUnitState;
   position: number;
+  /** It left the field alive (fled, recalled, an expiring summon): it fades out standing instead of falling. */
+  left?: boolean;
   /** When it fell (performance.now()): the death clip plays ONCE from here. */
   diedAt: number;
   /** Frozen at death: which way it faced and where its two-hex tail lay. */
@@ -1480,35 +1779,50 @@ function HexFallen({
   flipped: boolean;
   shownAlive: ReadonlyMap<string, number>;
 }) {
-  const previous = useRef<{ combatId: string; alive: Map<string, number> }>({ combatId: combat.id, alive: new Map() });
+  const previous = useRef<{ combatId: string; alive: Map<string, number>; units: Map<string, CombatUnitState> }>({
+    combatId: combat.id,
+    alive: new Map(),
+    units: new Map()
+  });
   const [fallen, setFallen] = useState<FallenEntry[]>([]);
   const aliveKey = Array.from(shownAlive, ([id, position]) => `${id}@${position}`).join("|");
   // Layout effect: the corpse mounts in the same paint the live figure leaves.
   useLayoutEffect(() => {
     const last = previous.current;
+    const shownUnits = new Map(
+      Array.from(shownAlive.keys(), (id) => [id, combat.units[id]] as const).filter(
+        (pair): pair is readonly [string, CombatUnitState] => pair[1] !== undefined
+      )
+    );
     if (last.combatId !== combat.id) {
-      previous.current = { combatId: combat.id, alive: new Map(shownAlive) };
+      previous.current = { combatId: combat.id, alive: new Map(shownAlive), units: shownUnits };
       setFallen([]);
       return;
     }
     const newlyFallen: FallenEntry[] = [];
     const diedAt = performance.now();
     for (const [id, position] of last.alive) {
-      if (shownAlive.has(id)) continue;
-      const unit = combat.units[id];
-      // Only a listed unit that took lethal damage died here; one that left
-      // the field (retreat, flee, recall) just disappears.
-      if (!unit || unit.damage < unit.maxHealth || !isHexPosition(position)) continue;
+      if (shownAlive.has(id) || !isHexPosition(position)) continue;
+      const now = combat.units[id];
+      const unit = now ?? last.units.get(id);
+      if (!unit) continue;
+      // Gone while still on its hex = its shown health ran out: it falls (even
+      // when the engine already brought it back, a Phoenix reborn in the same
+      // update — it then rises from the corpse, HexUnitsLayer). Gone off the
+      // field or out of the fight alive (flee, recall, an expiring summon): it
+      // fades out where it stood.
+      const fell = now !== undefined && (now.damage >= now.maxHealth || isHexPosition(now.position));
       newlyFallen.push({
         id,
         unit,
         position,
+        ...(fell ? {} : { left: true }),
         diedAt,
         attackerSide: unitIsAttackerSide(combat, unit),
         tailStep: unitTailOffset(combat, unit)
       });
     }
-    previous.current = { combatId: combat.id, alive: new Map(shownAlive) };
+    previous.current = { combatId: combat.id, alive: new Map(shownAlive), units: shownUnits };
     setFallen((current) => {
       const kept = current.filter((entry) => !shownAlive.has(entry.id));
       return newlyFallen.length > 0 ? [...kept, ...newlyFallen] : kept.length === current.length ? current : kept;
@@ -1542,8 +1856,22 @@ const HexFallenFigure = memo(function HexFallenFigure({ entry, flipped }: { entr
   const slug = atlas?.slug ?? "";
   const spriteRef = useRef<HTMLDivElement | null>(null);
   const [gone, setGone] = useState(false);
+  const figureRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const sprite = spriteRef.current;
+    if (entry.left) {
+      // Left alive: it fades out standing where it was (VCMI summonFadeOut).
+      const fade = figureRef.current?.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: HEX_LEAVE_MS,
+        easing: "ease-in",
+        fill: "forwards"
+      });
+      const timer = window.setTimeout(() => setGone(true), HEX_LEAVE_MS);
+      return () => {
+        window.clearTimeout(timer);
+        fade?.cancel();
+      };
+    }
     if (!atlas || !sprite) {
       // A card token has no death frames: it fades out where it fell.
       const timer = window.setTimeout(() => setGone(true), 700);
@@ -1570,16 +1898,24 @@ const HexFallenFigure = memo(function HexFallenFigure({ entry, flipped }: { entr
     y: center.y + FOOT_DROP
   };
   const facesRight = entry.attackerSide !== flipped;
+  const standingOffset = atlas && entry.left ? spriteFrameOffset(atlas, atlas.groups[String(SPRITE_GROUP.standing)] ?? { row: 0, frames: 1 }, 0) : null;
   return (
-    <div className={`hexFigure hexFallen${atlas ? "" : " token"}`} style={pointStyle(foot, 9)}>
+    <div
+      className={`hexFigure hexFallen${atlas || entry.left ? "" : " token"}`}
+      ref={figureRef}
+      style={pointStyle(foot, entry.left ? 10 + getBattlefieldCoordinates(entry.position).row : 9)}
+    >
       {atlas ? (
         <div
           className="hexSprite"
           ref={spriteRef}
           style={{
             ...spriteStyle(atlas),
-            // Mount straight onto the right death frame (never a standing flash).
-            backgroundPosition: deathFrameAt(atlas, performance.now() - entry.diedAt) ?? undefined,
+            // Mount straight onto the right death frame (never a standing flash);
+            // one leaving alive stands as it was.
+            backgroundPosition: standingOffset
+              ? `${-standingOffset.x}px ${-standingOffset.y}px`
+              : deathFrameAt(atlas, performance.now() - entry.diedAt) ?? undefined,
             ["--face" as string]: facesRight ? "1" : "-1"
           }}
         />

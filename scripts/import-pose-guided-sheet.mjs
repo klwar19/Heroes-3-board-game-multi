@@ -25,6 +25,20 @@
  *    longer weapon), scaled back to donor pixels, then uniformly so the
  *    standing body is --height H3 px tall; the anchor is the donor's (feet
  *    corrected by at most a few pixels to the generated standing feet).
+ *  - STILL IDLE (default; --idle sheet keeps the repainted loop): the standing
+ *    loop plays all the time, and repainted idle cells differ everywhere (size,
+ *    folds, face) — a figure that twitches on the spot. The loop is rebuilt
+ *    from ONE standing frame (the one most like the others) breathing as H3
+ *    creatures do: head and shoulders rise a pixel or two and settle, the feet
+ *    and legs still.
+ *  - PREFER (--prefer "0=name,4=name", manifest "prefer"): that group comes
+ *    from the named sheet whenever it carries at least half its frames.
+ *  - STEADY frames: a repaint redraws every cell a little differently, so a
+ *    still arm or skirt shimmers ("boils") from frame to frame. After the
+ *    downscale each frame is locked onto the frame before it (a group's first
+ *    frame onto the standing frame): wherever a small window of the two
+ *    matches — same silhouette, colours within --steady — the earlier pixels
+ *    are kept exactly, so only what really moves changes. --steady 0 = off.
  *  - H3 FINISH: 1-bit edges after the downscale, the H3 ground shadow cast
  *    from each frame's own silhouette (as scripts/refit-sheet-sprites.mjs),
  *    one shared 256-colour palette for the whole atlas (no colour shimmer).
@@ -41,7 +55,7 @@
  *     entry whose sheets are in tmp/gen/pose-sheets: <name>.png + <name>.guide.png/.json)
  *   node scripts/import-pose-guided-sheet.mjs <sheet.png> <layout.json> <slug> --height 72
  *     [--also <sheet2.png>,<layout2.json>[,smooth]]... [--smooth] [--groups "0,1,2,3,4,5,7,8,11,12,13,20,21"]
- *     [--tolerance 34] [--step 16] [--pad 0.22]
+ *     [--tolerance 34] [--step 16] [--pad 0.22] [--steady 24] [--dither 0] [--idle still|sheet] [--prefer 0=<sheet name>]
  *     [--out-dir public/assets/battle-hex/creatures] [--meta src/data/battle-hex/creature-sprite-atlases.json]
  *     [--preview out.png] [--dry]
  *
@@ -82,6 +96,8 @@ const HOLE_MIN_PIXELS = 16;
 const SEARCH = 18;
 /** Largest correction of the donor's feet row toward the generated feet, guide pixels. */
 const MAX_FEET_FIX = 4;
+/** A sheet painted this much bigger / smaller than the first one is rescaled to it. */
+const SIZE_TOLERANCE = 0.03;
 /** A group no sheet carried → the sibling it reuses. */
 const ALIAS = { 1: [2], 11: [12], 13: [12], 14: [15], 16: [15], 8: [7], 7: [8], 17: [18, 12], 18: [12], 19: [18, 12] };
 
@@ -97,7 +113,11 @@ const args = process.argv.slice(2);
 if (args[0] === "--all") {
   // Every sprite of the manifest whose sheets are in tmp/gen/pose-sheets (or only the listed slugs).
   const manifest = JSON.parse(fs.readFileSync(MANIFEST_FILE, "utf8")).sprites;
-  const wanted = args.slice(1);
+  // Options handed on to every import (a trial into a scratch folder, the steadiness, the dither).
+  const PASS = ["out-dir", "meta", "steady", "dither"];
+  const passed = PASS.flatMap((name) => (option(args, name) !== undefined ? [`--${name}`, option(args, name)] : []));
+  if (args.includes("--dry")) passed.push("--dry");
+  const wanted = args.slice(1).filter((arg, index, list) => !arg.startsWith("--") && !PASS.includes(list[index - 1]?.slice(2)));
   for (const [slug, spec] of Object.entries(manifest)) {
     if (wanted.length && !wanted.includes(slug)) continue;
     const names = (spec.sheets ?? [slug]).filter((name) => fs.existsSync(path.join(SHEET_DIR, `${name}.png`)));
@@ -112,7 +132,10 @@ if (args[0] === "--all") {
       fileURLToPath(import.meta.url), sheet(names[0]), layout(names[0]), slug,
       ...names.slice(1).flatMap((name) => ["--also", `${sheet(name)},${layout(name)}${smooth.has(name) ? ",smooth" : ""}`]),
       ...(smooth.has(names[0]) ? ["--smooth"] : []),
-      "--height", String(spec.height), ...(spec.groups ? ["--groups", spec.groups] : [])
+      "--height", String(spec.height), ...(spec.groups ? ["--groups", spec.groups] : []),
+      ...(spec.idle ? ["--idle", spec.idle] : []),
+      ...(spec.prefer ? ["--prefer", Object.entries(spec.prefer).map(([group, name]) => `${group}=${name}`).join(",")] : []),
+      ...passed
     ], { stdio: "inherit" });
     if (run.status !== 0) process.exit(run.status ?? 1);
   }
@@ -130,6 +153,12 @@ const only = option(args, "groups") ? new Set(option(args, "groups").split(",").
 const bgTolerance = Number(option(args, "tolerance", "34"));
 const stepTolerance = Number(option(args, "step", "16"));
 const padShare = Number(option(args, "pad", "0.22"));
+const steadyTolerance = Number(option(args, "steady", "24"));
+const idleMode = option(args, "idle", "still");
+const preferred = new Map((option(args, "prefer", "") || "").split(",").filter(Boolean).map((pair) => {
+  const [group, name] = pair.split("=");
+  return [Number(group), name.replace(/.png$/i, "")];
+}));
 const dry = args.includes("--dry");
 const preview = option(args, "preview", "");
 
@@ -384,7 +413,7 @@ for (const [sheetPath, layoutPath, mode] of sourceSpecs) {
   const sheet = await readRaw(sheetPath, layout.width, layout.height);
   const guide = await readRaw(layoutPath.replace(/\.json$/, ".png"), layout.width, layout.height);
   const pad = Math.round(padShare * Math.max(layout.frameW, layout.frameH));
-  sources.push({ layout, sheet, guide, pad, boxW: layout.frameW + 2 * pad, boxH: layout.frameH + 2 * pad, smooth: mode === "smooth" });
+  sources.push({ layout, sheet, guide, pad, boxW: layout.frameW + 2 * pad, boxH: layout.frameH + 2 * pad, smooth: mode === "smooth", name: path.basename(sheetPath).replace(/.png$/i, "") });
 }
 const donorFrame = sources[0].layout.donorFrame;
 const groupsOf = sources[0].layout.groups;
@@ -409,6 +438,68 @@ for (const source of sources) {
   }
   scores.sort((a, b) => a - b);
   console.log(`${sheet.label}: ${layout.cells.length} frames, overlap with the donor median ${scores[scores.length >> 1].toFixed(2)}, lowest ${scores[0].toFixed(2)}`);
+}
+
+// ---- one size for every sheet ----------------------------------------------------------------------
+/**
+ * The height of a figure's BODY in a mask: the rows at least a quarter as wide
+ * as its widest row, so a thin raised blade or staff does not count.
+ */
+function coreHeight(mask, w, h) {
+  const widths = new Array(h).fill(0);
+  for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) if (mask[y * w + x]) widths[y] += 1;
+  const floor = Math.max(...widths) * 0.25;
+  let top = -1, bottom = -1;
+  for (let y = 0; y < h; y += 1) if (widths[y] >= floor && widths[y] > 0) { if (top < 0) top = y; bottom = y; }
+  return top < 0 ? 0 : bottom - top + 1;
+}
+/** How much bigger than its clay guide a sheet painted the creature (median over its cells). */
+function sheetSize(source) {
+  const ratios = all.filter((cell) => cell.source === source).map((cell) => {
+    const body = coreHeight(cell.alpha.map((a) => (a >= 128 ? 1 : 0)), cell.box.w, cell.box.h);
+    const clay = coreHeight(cell.donor, cell.box.w, cell.box.h);
+    return body && clay ? body / clay : null;
+  }).filter(Boolean);
+  return ratios.length ? [...ratios].sort((x, y) => x - y)[ratios.length >> 1] : 1;
+}
+/** A cell's figure scaled by `k` about its feet (the bottom centre of its body), then registered again. */
+function rescaleCell(cell, k) {
+  const { w, h } = cell.box;
+  const mask = cell.alpha.map((a) => (a >= 128 ? 1 : 0));
+  const b = bounds(mask, w, h);
+  if (!b) return;
+  const fx = (b.x0 + b.x1) / 2, fy = b.y1;
+  const px = new Uint8ClampedArray(w * h * 4), alpha = new Uint8Array(w * h);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const sx = (x - fx) / k + fx, sy = (y - fy) / k + fy;
+      const x0 = Math.floor(sx), y0 = Math.floor(sy);
+      let a = 0, r = 0, g = 0, bl = 0;
+      for (const [ox, oy, wt] of [[0, 0, (1 - (sx - x0)) * (1 - (sy - y0))], [1, 0, (sx - x0) * (1 - (sy - y0))], [0, 1, (1 - (sx - x0)) * (sy - y0)], [1, 1, (sx - x0) * (sy - y0)]]) {
+        const qx = x0 + ox, qy = y0 + oy;
+        if (qx < 0 || qy < 0 || qx >= w || qy >= h || wt <= 0) continue;
+        const q = qy * w + qx, qa = cell.alpha[q] * wt;
+        a += qa; r += cell.px[q * 4] * qa; g += cell.px[q * 4 + 1] * qa; bl += cell.px[q * 4 + 2] * qa;
+      }
+      const p = y * w + x;
+      alpha[p] = Math.round(a);
+      if (a > 0) { px[p * 4] = r / a; px[p * 4 + 1] = g / a; px[p * 4 + 2] = bl / a; }
+      px[p * 4 + 3] = 255;
+    }
+  }
+  cell.px = px;
+  cell.alpha = alpha;
+  cell.reg = register(alpha, cell.donor, w, h);
+}
+{
+  // Every sheet at the size of the first (the base sheet, which sets the standing size's family).
+  const sizes = sources.map(sheetSize);
+  sources.forEach((source, index) => {
+    const k = sizes[0] / sizes[index];
+    const note = Math.abs(k - 1) > SIZE_TOLERANCE ? `scaled x${k.toFixed(3)} to the first sheet's size` : "kept";
+    console.log(`  ${source.sheet.label}: painted x${sizes[index].toFixed(3)} the clay body, ${note}`);
+    if (Math.abs(k - 1) > SIZE_TOLERANCE) for (const cell of all) if (cell.source === source) rescaleCell(cell, k);
+  });
 }
 
 // ---- stray effects: a muzzle flash / blast painted into a frame of a group that has none --------------
@@ -508,6 +599,14 @@ sources.forEach((source) => {
   for (const cell of all) if (cell.source === source && !cell.dropped) counts.set(cell.group, (counts.get(cell.group) ?? 0) + 1);
   for (const [group, count] of counts) if (!chosen.has(group) || count >= chosen.get(group).count) chosen.set(group, { source, count });
 });
+for (const [group, name] of preferred) {
+  const source = sources.find((candidate) => candidate.name === name);
+  if (!source) throw new Error(`--prefer ${group}=${name}: no such sheet`);
+  const carriedCount = all.filter((cell) => cell.source === source && cell.group === group).length;
+  const clean = all.filter((cell) => cell.source === source && cell.group === group && !cell.dropped).length;
+  if (clean > 0 && clean * 2 >= carriedCount) chosen.set(group, { source, count: clean });
+  else console.log(`  --prefer ${group}=${name}: only ${clean} of ${carriedCount} frames clean, not preferred`);
+}
 const cells = all.filter((cell) => chosen.get(cell.group)?.source === cell.source);
 for (const cell of cells) if (cell.dropped) console.log(`  dropped group ${cell.group} frame ${cell.frame} (${cell.source.sheet.label}): ${cell.dropped}`);
 cells.splice(0, cells.length, ...cells.filter((cell) => !cell.dropped));
@@ -599,7 +698,11 @@ async function finishFrame(cell) {
     if (small[i + 3] < 128) continue;
     canvas[i] = small[i]; canvas[i + 1] = small[i + 1]; canvas[i + 2] = small[i + 2]; canvas[i + 3] = 255;
   }
-  // H3 ground shadow from this frame's silhouette, cast from the feet row (behind the body only).
+  return canvas;
+}
+
+/** H3 ground shadow from a frame's silhouette, cast from the feet row (behind the body only). */
+function castShadow(canvas) {
   const groundY = Math.round(anchorY);
   const shadow = new Uint8Array(frameW * frameH);
   for (let y = 0; y < frameH; y += 1) {
@@ -615,12 +718,212 @@ async function finishFrame(cell) {
   return canvas;
 }
 
+// ---- steady frames ---------------------------------------------------------------------------------
+/** Half-width of the window two frames must match in to share pixels (5x5). */
+const STEADY_RADIUS = 2;
+/** Most silhouette disagreement a matching window may hold (share of its pixels). */
+const STEADY_EDGE_SHARE = 0.12;
+/** A frame is locked only when at least this share of it matches the frame before. */
+const STEADY_MIN_SHARE = 0.4;
+/**
+ * `cur` locked onto `ref` (both frameW x frameH, 1-bit alpha): every pixel
+ * whose window matches in both frames takes ref's pixel (colour and alpha).
+ * A moving part differs in its window (colour or silhouette) and stays.
+ */
+function steadyFrame(ref, cur) {
+  const W = frameW, H = frameH, R = STEADY_RADIUS;
+  const IW = W + 1;
+  const diff = new Float64Array(IW * (H + 1)), both = new Float64Array(IW * (H + 1)), edge = new Float64Array(IW * (H + 1));
+  for (let y = 0; y < H; y += 1) {
+    let rowDiff = 0, rowBoth = 0, rowEdge = 0;
+    for (let x = 0; x < W; x += 1) {
+      const i = (y * W + x) * 4;
+      const a = ref[i + 3] > 0, b = cur[i + 3] > 0;
+      if (a && b) {
+        rowBoth += 1;
+        rowDiff += Math.max(Math.abs(ref[i] - cur[i]), Math.abs(ref[i + 1] - cur[i + 1]), Math.abs(ref[i + 2] - cur[i + 2]));
+      } else if (a !== b) rowEdge += 1;
+      const o = (y + 1) * IW + x + 1;
+      diff[o] = diff[o - IW] + rowDiff; both[o] = both[o - IW] + rowBoth; edge[o] = edge[o - IW] + rowEdge;
+    }
+  }
+  const sum = (table, x0, y0, x1, y1) => table[(y1 + 1) * IW + x1 + 1] - table[y0 * IW + x1 + 1] - table[(y1 + 1) * IW + x0] + table[y0 * IW + x0];
+  const out = new Uint8ClampedArray(cur);
+  let kept = 0, opaque = 0;
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const i = (y * W + x) * 4;
+      if (!ref[i + 3] && !cur[i + 3]) continue;
+      opaque += 1;
+      const x0 = Math.max(0, x - R), y0 = Math.max(0, y - R), x1 = Math.min(W - 1, x + R), y1 = Math.min(H - 1, y + R);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const n = sum(both, x0, y0, x1, y1);
+      if (n < area * 0.3) continue;
+      if (sum(edge, x0, y0, x1, y1) > area * STEADY_EDGE_SHARE) continue;
+      if (sum(diff, x0, y0, x1, y1) / n > steadyTolerance) continue;
+      out[i] = ref[i]; out[i + 1] = ref[i + 1]; out[i + 2] = ref[i + 2]; out[i + 3] = ref[i + 3];
+      kept += 1;
+    }
+  }
+  return { canvas: out, share: opaque ? kept / opaque : 0 };
+}
+
 // ---- groups ---------------------------------------------------------------------------------------
 const carried = new Map();
 for (const cell of cells) {
   if (!carried.has(cell.group)) carried.set(cell.group, new Map());
   carried.get(cell.group).set(cell.frame, await finishFrame(cell));
 }
+/** The standing body's height in final pixels. */
+const bodyPx = bodyHeight * fit;
+
+// ---- loose pieces ----------------------------------------------------------------------------------
+/**
+ * A piece of a quiet frame smaller than this share of its body, standing apart
+ * from it WHOLLY AT FOOT LEVEL, is a scrap (sheer hem cloth cut off by the
+ * key) — unless the frames next to it carry nearly all of it too. Anything
+ * higher (a halo, a floating part of the design, a spark) always stays.
+ */
+const SCRAP_SHARE = 0.04;
+/** Share of a piece's pixels the neighbouring frames must also cover for it to stay. */
+const SCRAP_KEEP_COVER = 0.8;
+/** `canvas` without the small flickering pieces apart from its body (8-connected, final pixels). */
+function dropScraps(canvas, neighbours) {
+  const label = new Int32Array(frameW * frameH).fill(-1);
+  const sizes = [], tops = [];
+  // A small piece lying wholly at foot level is cloth cut off the hem, never a design part.
+  const footBand = anchorY - 0.12 * bodyPx;
+  for (let p = 0; p < label.length; p += 1) {
+    if (!canvas[p * 4 + 3] || label[p] >= 0) continue;
+    const id = sizes.length;
+    const stack = [p];
+    label[p] = id;
+    let n = 0, top = frameH;
+    while (stack.length) {
+      const q = stack.pop();
+      n += 1;
+      const x = q % frameW, y = (q / frameW) | 0;
+      top = Math.min(top, y);
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= frameW || ny >= frameH) continue;
+          const r = ny * frameW + nx;
+          if (canvas[r * 4 + 3] && label[r] < 0) { label[r] = id; stack.push(r); }
+        }
+      }
+    }
+    sizes.push(n);
+    tops.push(top);
+  }
+  if (sizes.length < 2) return 0;
+  const floor = Math.max(...sizes) * SCRAP_SHARE;
+  // Pixels of each small piece the neighbouring frames also cover.
+  const covered = new Array(sizes.length).fill(0);
+  for (let p = 0; p < label.length; p += 1) {
+    if (label[p] < 0 || sizes[label[p]] >= floor) continue;
+    if (neighbours.some((other) => other[p * 4 + 3] > 0)) covered[label[p]] += 1;
+  }
+  const scrap = sizes.map((n, id) => n < floor && tops[id] >= footBand && !(neighbours.length && covered[id] >= n * SCRAP_KEEP_COVER));
+  let dropped = 0;
+  for (let p = 0; p < label.length; p += 1) {
+    if (label[p] >= 0 && scrap[label[p]]) { canvas[p * 4 + 3] = 0; dropped += 1; }
+  }
+  return dropped;
+}
+{
+  let scraps = 0;
+  for (const [group, framesOf] of carried) {
+    if (!QUIET_GROUPS.has(group)) continue;
+    const keys = [...framesOf.keys()].sort((a, b) => a - b);
+    // Judge every frame against the ORIGINAL neighbours (before any piece is dropped).
+    const originals = keys.map((key) => new Uint8ClampedArray(framesOf.get(key)));
+    keys.forEach((key, k) => {
+      const neighbours = [originals[k - 1], originals[k + 1]].filter(Boolean);
+      scraps += dropScraps(framesOf.get(key), neighbours);
+    });
+  }
+  if (scraps) console.log(`  loose scraps removed from the quiet groups: ${scraps} px`);
+}
+
+// ---- still idle ------------------------------------------------------------------------------------
+/**
+ * `canvas` breathing: rows above the waist rise by up to `lift` px (the
+ * head and shoulders the full lift, easing to nothing at the waist), the legs
+ * and feet untouched.
+ */
+function breathe(canvas, lift) {
+  if (lift <= 0) return new Uint8ClampedArray(canvas);
+  const waist = anchorY - 0.5 * bodyPx;
+  const chest = anchorY - 0.75 * bodyPx;
+  const out = new Uint8ClampedArray(canvas.length);
+  for (let y = 0; y < frameH; y += 1) {
+    const weight = y >= waist ? 0 : y <= chest ? 1 : (waist - y) / (waist - chest);
+    const sy = Math.min(frameH - 1, Math.round(y + lift * weight));
+    out.set(canvas.subarray(sy * frameW * 4, (sy + 1) * frameW * 4), y * frameW * 4);
+  }
+  return out;
+}
+const idleFrames = carried.get(2);
+if (idleMode === "still" && idleFrames && idleFrames.size > 1) {
+  const keys = [...idleFrames.keys()].sort((a, b) => a - b);
+  const distance = (a, b) => {
+    let d = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      const oa = a[i + 3] > 0, ob = b[i + 3] > 0;
+      if (oa !== ob) d += 255;
+      else if (oa) d += Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2]));
+    }
+    return d;
+  };
+  // The medoid: the idle frame most like all the others (the calmest rendering).
+  let masterKey = keys[0], best = Infinity;
+  for (const key of keys) {
+    const total = keys.reduce((sum, other) => sum + (other === key ? 0 : distance(idleFrames.get(key), idleFrames.get(other))), 0);
+    if (total < best) { best = total; masterKey = key; }
+  }
+  const master = idleFrames.get(masterKey);
+  const maxLift = bodyPx >= 100 ? 2 : 1;
+  const count = keys.length;
+  keys.forEach((key, k) => {
+    const rise = 0.5 - 0.5 * Math.cos((2 * Math.PI * k) / count);
+    idleFrames.set(key, breathe(master, Math.round(maxLift * rise - 0.01)));
+  });
+  console.log(`  still idle: ${count} frames from idle frame ${masterKey}, breathing up to ${maxLift} px`);
+}
+
+if (steadyTolerance > 0) {
+  // The standing frame first (every clip starts from and returns to it), then each group in frame order.
+  const standingFrames = carried.get(2);
+  const standingKey = standingFrames ? Math.min(...standingFrames.keys()) : undefined;
+  const base = standingKey === undefined ? null : standingFrames.get(standingKey);
+  const report = [];
+  for (const [group, framesOf] of [...carried].sort(([a], [b]) => a - b)) {
+    const keys = [...framesOf.keys()].sort((a, b) => a - b);
+    let previous = group === 2 ? null : base;
+    const shares = [];
+    for (const key of keys) {
+      if (group === 2 && (key === standingKey || idleMode === "still")) {
+        previous = framesOf.get(key);
+        continue;
+      }
+      if (!previous) {
+        previous = framesOf.get(key);
+        continue;
+      }
+      const { canvas, share } = steadyFrame(previous, framesOf.get(key));
+      // Only a frame mostly like the one before takes its pixels: patching a
+      // wholly different rendering would mix two drawings in one frame.
+      const alike = share >= STEADY_MIN_SHARE;
+      if (alike) framesOf.set(key, canvas);
+      previous = framesOf.get(key);
+      shares.push(`${Math.round(share * 100)}${alike ? "" : "x"}`);
+    }
+    report.push(`${group}:${shares.join("/") || "-"}`);
+  }
+  console.log(`  steady (% of each frame kept from the one before): ${report.join(" ")}`);
+}
+for (const framesOf of carried.values()) for (const [key, canvas] of framesOf) framesOf.set(key, castShadow(canvas));
 const groups = [];
 for (const key of Object.keys(groupsOf)) {
   const group = Number(key);
@@ -672,7 +975,7 @@ groups.forEach(({ frames }, row) => frames.forEach((canvas, column) => {
 }));
 // One shared palette for every frame (the .def creatures are 256-colour).
 const png = await sharp(Buffer.from(atlas.buffer), { raw: { width: atlasW, height: atlasH, channels: 4 } })
-  .png({ palette: true, colours: 256, dither: Number(option(args, "dither", "0.35")), effort: 10 })
+  .png({ palette: true, colours: 256, dither: Number(option(args, "dither", "0")), effort: 10 })
   .toBuffer();
 const entry = {
   image: `/assets/battle-hex/creatures/${slug}.webp`,

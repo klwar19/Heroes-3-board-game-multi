@@ -135,6 +135,7 @@ const COMBAT_BUFF_EFFECTS = new Set<EffectDefinition["type"]>([
   "CREATE_ATTACK_BUFF",
   "CREATE_VARIANT_ATTACK_BUFF",
   "HALFLINGS_RALLY",
+  "UNIT_NAME_COMBAT_RALLY",
   "CREATE_DEFENSE_BUFF",
   "CREATE_INITIATIVE_BUFF",
   "CREATE_FIRE_SHIELD",
@@ -151,6 +152,7 @@ const COMBAT_BUFF_EFFECTS = new Set<EffectDefinition["type"]>([
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
   "IGNORE_ATTACK_DIE_RESULT",
+  "SET_ALL_ATTACK_DICE",
   "IGNORE_DEFENSE",
   "ACTIVATE_RANGED_UNIT",
   "FIRST_AID_TENT_VOLLEY",
@@ -970,7 +972,7 @@ function scoreStatReaction(
   mode: CardPlayMode | undefined,
   effect: EffectDefinition,
 ): number {
-  if (card.id === "specialty.cuthbert.1") {
+  if (card.id === "specialty.cuthbert.1" || card.id === "specialty.olema.4") {
     const pending = pendingAttackValues(observation);
     if (!pending || pending.defender.controllerId !== observation.playerId || pending.damage <= 0) return 1_020;
     const survives = pending.damage >= unitRemainingHealth(pending.defender) &&
@@ -1754,6 +1756,18 @@ function scoreEffect(
         !readySpells(state, observation.playerId).some(spell => state.combat ? spell.timing !== "map" : spell.timing === "map")) return 180;
   }
 
+  // Interference / Plate against a damaging Spell: one offer per friendly unit
+  // the cast can hit (area, chain, ripple). A small value tie-break shields the
+  // most valuable of them instead of whichever unit was listed first; capped so
+  // it never outranks an outright Spell cancel (1_140).
+  if (effect.type === "INTERFERE_SPELL" && isReaction && target?.type === "unit") {
+    const protectedUnit = state.combat?.units[target.unitId];
+    if (protectedUnit?.controllerId === observation.playerId) {
+      return scoreSaveReaction(observation, effect, mode) +
+        Math.min(10, Math.round(unitThreatValue(protectedUnit) / 6));
+    }
+  }
+
   if (SAVE_EFFECTS.has(effect.type)) {
     return scoreSaveReaction(observation, effect, mode);
   }
@@ -1854,6 +1868,52 @@ function scoreEffect(
     }
     const neutrals = rallied.filter((unit) => unit.variant === "neutral").length;
     return 700 + Math.min(60, rallied.length * 25 + neutrals * 10) + modeBonus(mode);
+  }
+
+  // Ignatius's Familiars VI: a combat-long +Attack/+Health rally worth the
+  // number of living Familiars bodies it lands on; with none it is dead — hold.
+  if (effect.type === "UNIT_NAME_COMBAT_RALLY") {
+    const combat = observation.state.combat;
+    const rallied = combat
+      ? Object.values(combat.units).filter(
+          (unit) =>
+            unit.controllerId === observation.playerId &&
+            effect.unitNames.includes(unit.name) &&
+            unitRemainingHealth(unit) > 0,
+        )
+      : [];
+    return rallied.length === 0 ? 120 : 730 + Math.min(60, rallied.length * 30) + modeBonus(mode);
+  }
+
+  // Olema's Weakness I in the post-roll window: set the enemy's dice to -1.
+  // Worth it when it lowers the hit meaningfully (a saved stack above all);
+  // a roll it barely changes on a cheap unit scores under PASS (1050) — hold.
+  if (effect.type === "SET_ALL_ATTACK_DICE") {
+    const trigger = observation.state.reactionWindow?.triggerEvent;
+    const pending = pendingAttackValues(observation);
+    if (trigger?.type !== "ATTACK_DIE_SETTLED" || !pending || pending.defender.controllerId !== observation.playerId) {
+      return 200;
+    }
+    const drop = trigger.roll - effect.face;
+    if (drop <= 0 || pending.elemental && pending.damage === 0) {
+      return 200;
+    }
+    const remaining = unitRemainingHealth(pending.defender);
+    const withRoll = Math.max(0, pending.damage + trigger.roll);
+    const afterSet = Math.max(0, pending.damage + effect.face);
+    if (withRoll >= remaining && afterSet < remaining) return 1_185;
+    if (withRoll > afterSet && (drop >= 2 || unitThreatValue(pending.defender) >= 25)) return 1_110;
+    return 1_040;
+  }
+
+  if (effect.type === "CLONE_UNIT" && target?.type === "unit") {
+    // Clone is grade-gated by the Power paid (Power 1 bronze, 3 silver, 5 gold);
+    // below the target's grade the engine REFUNDS the cast, so a cast the held
+    // Power cannot lift that far is a no-op — and re-casting it looped (lab
+    // league 2026-09-27: Clone on a Gold Pack with Power 1, 1,457 refunds).
+    const unit = combatUnitFromTarget(observation, target);
+    const needed = clonePowerNeeded(effect.gradeByPower, unit?.grade);
+    if (!unit || needed === undefined || clonePowerBudget(observation, card.id) < needed) return 200;
   }
 
   if (COMBAT_BUFF_EFFECTS.has(effect.type)) {
@@ -1973,6 +2033,14 @@ function scoreEffect(
         ? 680 + Math.min(90, unitThreatValue(enemy) / 2)
         : 180;
     }
+    // Olema's Weakness VI: -1 Attack plus a lock on the enemy's own buffs —
+    // aim it at the enemy's most threatening body.
+    if (card.id === "specialty.olema.6") {
+      const enemy = combatUnitFromTarget(observation, target);
+      return enemy && enemy.controllerId !== observation.playerId
+        ? 690 + Math.min(95, unitThreatValue(enemy) / 2)
+        : 180;
+    }
     if (card.id === "specialty.cuthbert.6") {
       const combat = state.combat;
       const enemies = combat ? Object.values(combat.units).filter((unit) =>
@@ -2050,6 +2118,28 @@ function scoreEffect(
  * accumulated Power modifiers. Returns null when the pending item is not a
  * damage cast at an enemy unit (buff ladders etc. keep the generic heuristic).
  */
+/** The least Power a Clone ladder needs to copy a unit of `grade`. */
+function clonePowerNeeded(gradeByPower: Record<number, string> | undefined, grade: string | undefined): number | undefined {
+  const rank = (value: string | undefined) => ["bronze", "silver", "gold", "azure"].indexOf(value ?? "bronze");
+  return Object.entries(gradeByPower ?? {})
+    .map(([power, atGrade]) => ({ power: Number(power), atGrade }))
+    .filter(entry => Number.isFinite(entry.power) && rank(entry.atGrade) >= rank(grade))
+    .sort((left, right) => left.power - right.power)[0]?.power;
+}
+
+/** Power a Clone cast can reach: printed + standing + held Power cards (crowns
+ * double them) + other spells played as +1 Power boosts (hand or Spell Book). */
+function clonePowerBudget(observation: ComputerObservation, cloneCardId: string): number {
+  const state = observation.state as unknown as GameState;
+  const player = state.players[observation.playerId];
+  const card = cardLibrary[baseCardId(cloneCardId)];
+  const heldPower = (player?.hand ?? []).filter(id => baseCardId(id) === "stat.power").length;
+  const boostSpells = (player?.hand ?? []).filter(id => baseCardId(id) !== baseCardId(cloneCardId) &&
+    cardLibrary[baseCardId(id)]?.kind === "spell").length + (player?.spellBook ?? []).length;
+  return (card?.power ?? 0) + (card ? standingSpellPower(state, observation.playerId, card) : 0) + heldPower +
+    Math.min(heldPower, Math.max(0, crownsAvailable(observation))) + boostSpells;
+}
+
 function pendingSpellBoostImpact(
   observation: ComputerObservation,
   boost = 1,
@@ -2118,6 +2208,18 @@ function pendingSpellBoostImpact(
       }
     }
     return "no-ladder-step";
+  }
+  if (spell?.effect.type === "CLONE_UNIT" && target?.type === "unit") {
+    // Clone's Power ladder (1 bronze, 3 silver, 5 gold): below the target's
+    // grade the engine refunds the cast. Boost only while the held Power can
+    // still reach that rung; once it is reached, extra Power buys nothing.
+    const unit = combat.units[target.unitId];
+    const needed = clonePowerNeeded(spell.effect.gradeByPower, unit?.grade);
+    if (!unit || needed === undefined) return "no-ladder-step";
+    const power = resolvedSpellPowerForStackItem(publicState, top, cards);
+    if (power >= needed) return "lethal-already";
+    return clonePowerBudget(observation, spell.id) - (spell.power ?? 0) -
+      standingSpellPower(publicState, observation.playerId, spell) >= needed - power ? "kills" : "no-ladder-step";
   }
   if (!spell || !target || target.type !== "unit") return null;
   if (!COMBAT_DAMAGE_EFFECTS.has(spell.effect.type)) return null;
@@ -2407,6 +2509,10 @@ function marginalAttackModifierScore(
   return free ? 1_060 : 1_030;
 }
 
+/** A pure card cycle inside the PvP pre-battle prep window: below its exit,
+ * ACCEPT_COMBAT (225 — the prep floor in policy.ts). */
+export const PREP_CYCLE_SCORE = 220;
+
 /**
  * Strategic score for card / spell / reaction plays. Returns null for actions
  * this module does not handle.
@@ -2437,14 +2543,40 @@ export function scoreCardAction(
       // for a real play later. Score it as the pure card-cycle it is — the same
       // deliberately-low band as the medic map draw-only play (~300), so a real
       // in-combat use always outranks it.
+      // The PvP pre-battle prep window offers the map-turn plays, and its exit
+      // is ACCEPT_COMBAT (policy.ts prep floor, 225) rather than END_TURN: a
+      // pure cycle there must sit below that exit, or two draw riders replay
+      // each other until the step limit and the battle never starts.
+      const prepWindow = Boolean(observation.state.combat?.prep);
       if ((action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") && action.drawOnly) {
         // On the MAP a pure cycle must sit strictly BELOW END_TURN (300): tied
         // at 300 it could win the tie-break and, with a deck of nothing but
         // draw riders, replay itself through the reshuffled discard forever
         // (the seed "measure-f" 256-action stall, 2026-09-04).
-        return observation.state.combat
+        return prepWindow
+          ? { score: PREP_CYCLE_SCORE, policy: "card.draw-rider-only" }
+          : observation.state.combat
           ? { score: 300, policy: "card.draw-rider-only" }
           : { score: 290, policy: "card.draw-rider-only" };
+      }
+
+      // The unflagged MAP twin: a combat/instant card offered on the map turn
+      // only for its "draw" part (Breastplate's "Draw 1 card" face; Armorer /
+      // Offense, whose +stat fizzles with no combat). Drawing one card for the
+      // one played is a pure cycle, and with an empty deck two such cards draw
+      // each other back out of the reshuffled discard forever (lab seed lab-5,
+      // Bulwark R6: Armorer <-> Breastplate for 12,000 plays, the turn never
+      // ended). Hold it below END_TURN like the flagged draw-only play; a real
+      // net card gain (draw 2+) keeps its normal score.
+      if (action.type === "PLAY_CARD" && (!observation.state.combat || prepWindow) && card.timing !== "map") {
+        const mapEffect = primaryEffect(card, action.optionIndex);
+        const expert = action.mode === "expert";
+        const drawn = mapEffect?.type === "DRAW_CARDS"
+          ? (expert ? mapEffect.expertAmount ?? mapEffect.amount : mapEffect.amount)
+          : mapEffect?.type === "ADD_COMBAT_STAT" ? mapEffect.drawCards ?? 0 : null;
+        if (drawn !== null && drawn <= 1) {
+          return { score: prepWindow ? PREP_CYCLE_SCORE : 290, policy: "card.map-draw-cycle" };
+        }
       }
 
       // Sorcery-style activation play banks Power for the next Spell and draws

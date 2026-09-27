@@ -1,38 +1,621 @@
 {
   "_comment": "Hex Battlefield sprites rotoscoped from real H3/HotA creatures (scripts/build-pose-guide.mjs -> Codex repaint -> scripts/import-pose-guided-sheet.mjs). Per slug: donor atlas, guide options, standing-body height (H3 px) and the atlas groups kept. Sheets, guides and prompts: tmp/gen/pose-sheets/<slug>.png, <slug>.guide.png/.json, <slug>.prompt.txt.",
   "sprites": {
-    "forge-grunt": { "donor": "sea-dog", "guide": { "note": "pilot guide: an explicit frame list (10x6), kept in its .guide.json" }, "height": 72 },
-    "forge-grunt-pack": { "donor": "pirate", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 76 },
-    "forge-cyber-zombie": { "donor": "walking-dead", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13" }, "height": 86, "sheets": ["forge-cyber-zombie", "forge-cyber-zombie.move"] },
-    "forge-cyber-zombie-pack": { "donor": "zombie", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13" }, "height": 90, "sheets": ["forge-cyber-zombie-pack", "forge-cyber-zombie-pack.move"] },
-    "forge-watcher": { "donor": "beholder", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 90 },
-    "forge-watcher-pack": { "donor": "evil-eye", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21", "grid": "8x6", "caps": "5:7,4:5,11:4,13:4" }, "height": 94, "sheets": ["forge-watcher-pack", "forge-watcher-pack.move"] },
-    "forge-bruiser": { "donor": "gunslinger", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 94, "sheets": ["forge-bruiser", "forge-bruiser.move"] },
-    "forge-bruiser-pack": { "donor": "bounty-hunter", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 98, "sheets": ["forge-bruiser-pack", "forge-bruiser-pack.move"] },
-    "forge-jump-trooper": { "donor": "angel", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "4:5,11:4,13:4" }, "height": 98, "sheets": ["forge-jump-trooper", "forge-jump-trooper.move"] },
-    "forge-jump-trooper-pack": { "donor": "angel", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "4:5,11:4,13:4" }, "height": 102, "sheets": ["forge-jump-trooper-pack", "forge-jump-trooper-pack.move"] },
-    "forge-cyberbrute": { "donor": "behemoth", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "5:7,4:5,11:4,13:4" }, "height": 104, "sheets": ["forge-cyberbrute", "forge-cyberbrute.move"] },
-    "forge-cyberbrute-pack": { "donor": "ancient-behemoth", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "5:7,4:5,11:4,13:4" }, "height": 108, "sheets": ["forge-cyberbrute-pack", "forge-cyberbrute-pack.move"] },
-    "commander-forge": { "donor": "sorceress", "sheets": ["commander-forge", "commander-forge.move", "commander-forge.act"], "smooth": ["commander-forge.move"], "guide": { "groups": "2,0,18,12,3,4,5,7,8,20,21", "move": "2,0,20,21,7,8 auto grid", "act": "18,12,3,4,5 auto grid (defend cells dropped from its layout: the repaint broke that row)" }, "height": 98, "groups": "0,1,2,3,4,5,7,8,11,12,13,17,18,19,20,21" },
-    "ba-mika": { "donor": "gunslinger", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 82, "sheets": ["ba-mika", "ba-mika.move"] },
-    "ba-seia": { "donor": "sea-dog", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 84 },
-    "ba-nagisa": { "donor": "sea-dog", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 84 },
-    "ba-aris": { "donor": "gunslinger", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 82, "sheets": ["ba-aris", "ba-aris.move"] },
-    "ba-kei": { "donor": "angel", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "4:5,11:4,13:4" }, "height": 80, "sheets": ["ba-kei", "ba-kei.move"] },
-    "ba-hoshino": { "donor": "gunslinger", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 82, "sheets": ["ba-hoshino", "ba-hoshino.move"] },
-    "ba-shiroko": { "donor": "gunslinger", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 80, "sheets": ["ba-shiroko", "ba-shiroko.move"] },
-    "ba-hina": { "donor": "angel", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "4:5,11:4,13:4" }, "height": 84, "sheets": ["ba-hina", "ba-hina.move"] },
-    "ba-yuuka": { "donor": "gunslinger", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 82, "sheets": ["ba-yuuka", "ba-yuuka.move"] },
-    "ba-aru": { "donor": "bounty-hunter", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 80, "sheets": ["ba-aru", "ba-aru.move"] },
-    "ba-neru": { "donor": "sea-dog", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 80 },
-    "ba-toki": { "donor": "angel", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "4:5,11:4,13:4" }, "height": 82, "sheets": ["ba-toki", "ba-toki.move"] },
-    "ba-azusa": { "donor": "bounty-hunter", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 80, "sheets": ["ba-azusa", "ba-azusa.move"] },
-    "ba-wakamo": { "donor": "gunslinger", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 84, "sheets": ["ba-wakamo", "ba-wakamo.move"] },
-    "ba-saori": { "donor": "gunslinger", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 82, "sheets": ["ba-saori", "ba-saori.move"] },
-    "ba-iori": { "donor": "bounty-hunter", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 80, "sheets": ["ba-iori", "ba-iori.move"] },
-    "ba-mutsuki": { "donor": "gunslinger", "guide": { "groups": "2,0,15,12,3,4,5,7,8,20,21" }, "height": 80, "sheets": ["ba-mutsuki", "ba-mutsuki.move"] },
-    "ba-miyo": { "donor": "bounty-hunter", "guide": { "groups": "2,0,12,3,4,5,7,8,20,21" }, "height": 84, "sheets": ["ba-miyo", "ba-miyo.move"] },
-    "ba-hasumi": { "donor": "angel", "guide": { "groups": "2,0,12,3,4,5,7,8,11,13", "grid": "8x6", "caps": "4:5,11:4,13:4" }, "height": 82, "sheets": ["ba-hasumi", "ba-hasumi.move"] },
-    "ba-ibuki": { "donor": "sorceress", "guide": { "groups": "2,0,18,12,3,4,5,7,8,20,21" }, "height": 70, "groups": "0,1,2,3,4,5,7,8,11,12,13,17,18,19,20,21" }
+    "forge-grunt": {
+      "donor": "sea-dog",
+      "guide": {
+        "note": "pilot guide: an explicit frame list (10x6), kept in its .guide.json"
+      },
+      "height": 72,
+      "sheets": [
+        "forge-grunt",
+        "forge-grunt.move"
+      ]
+    },
+    "forge-grunt-pack": {
+      "donor": "pirate",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 76
+    },
+    "forge-cyber-zombie": {
+      "donor": "walking-dead",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13"
+      },
+      "height": 86,
+      "sheets": [
+        "forge-cyber-zombie",
+        "forge-cyber-zombie.move"
+      ]
+    },
+    "forge-cyber-zombie-pack": {
+      "donor": "zombie",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13"
+      },
+      "height": 90,
+      "sheets": [
+        "forge-cyber-zombie-pack",
+        "forge-cyber-zombie-pack.move",
+        "forge-cyber-zombie-pack.walk"
+      ],
+      "prefer": {
+        "0": "forge-cyber-zombie-pack.walk"
+      },
+      "walk": "0 --grid 5x2 --caps 0:10 --max-scale 2.4 (the chainsaw vanished behind the body in both earlier walks)"
+    },
+    "forge-watcher": {
+      "donor": "beholder",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 90,
+      "sheets": [
+        "forge-watcher",
+        "forge-watcher.move"
+      ]
+    },
+    "forge-watcher-pack": {
+      "donor": "evil-eye",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "grid": "8x6",
+        "caps": "5:7,4:5,11:4,13:4"
+      },
+      "height": 94,
+      "sheets": [
+        "forge-watcher-pack",
+        "forge-watcher-pack.move"
+      ]
+    },
+    "forge-bruiser": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 94,
+      "sheets": [
+        "forge-bruiser",
+        "forge-bruiser.move"
+      ]
+    },
+    "forge-bruiser-pack": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 98,
+      "sheets": [
+        "forge-bruiser-pack",
+        "forge-bruiser-pack.move"
+      ]
+    },
+    "forge-jump-trooper": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "4:5,11:4,13:4"
+      },
+      "height": 98,
+      "sheets": [
+        "forge-jump-trooper",
+        "forge-jump-trooper.move"
+      ]
+    },
+    "forge-jump-trooper-pack": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "4:5,11:4,13:4"
+      },
+      "height": 102,
+      "sheets": [
+        "forge-jump-trooper-pack",
+        "forge-jump-trooper-pack.move"
+      ]
+    },
+    "forge-cyberbrute": {
+      "donor": "behemoth",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "5:7,4:5,11:4,13:4"
+      },
+      "height": 104,
+      "sheets": [
+        "forge-cyberbrute",
+        "forge-cyberbrute.move"
+      ]
+    },
+    "forge-cyberbrute-pack": {
+      "donor": "ancient-behemoth",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "5:7,4:5,11:4,13:4"
+      },
+      "height": 108,
+      "sheets": [
+        "forge-cyberbrute-pack",
+        "forge-cyberbrute-pack.move"
+      ]
+    },
+    "commander-forge": {
+      "donor": "sorceress",
+      "sheets": [
+        "commander-forge",
+        "commander-forge.move",
+        "commander-forge.act",
+        "commander-forge.strike",
+        "commander-forge.death"
+      ],
+      "smooth": [
+        "commander-forge.move"
+      ],
+      "prefer": {
+        "0": "commander-forge.move",
+        "5": "commander-forge.death",
+        "12": "commander-forge.strike"
+      },
+      "guide": {
+        "groups": "2,0,18,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 auto grid",
+        "act": "18,12,3,4,5 auto grid (defend cells dropped from its layout: the repaint broke that row)",
+        "strike": "12 --grid 5x2 --caps 12:10 --max-scale 2.4 (one blade: the act sheet turned the donor orb AND sword into two)",
+        "death": "5 --grid 4x2 --caps 5:7 --max-scale 2.4 (the blade drops beside her; the donor orb is not drawn)"
+      },
+      "height": 98,
+      "groups": "0,1,2,3,4,5,7,8,11,12,13,17,18,19,20,21"
+    },
+    "ba-mika": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-mika",
+        "ba-mika.move"
+      ]
+    },
+    "ba-seia": {
+      "donor": "sea-dog",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "ba-seia",
+        "ba-seia.move"
+      ]
+    },
+    "ba-nagisa": {
+      "donor": "sea-dog",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "ba-nagisa",
+        "ba-nagisa.move"
+      ]
+    },
+    "ba-aris": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-aris",
+        "ba-aris.move"
+      ]
+    },
+    "ba-kei": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "4:5,11:4,13:4"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-kei",
+        "ba-kei.move"
+      ]
+    },
+    "ba-hoshino": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-hoshino",
+        "ba-hoshino.move"
+      ]
+    },
+    "ba-shiroko": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-shiroko",
+        "ba-shiroko.move"
+      ]
+    },
+    "ba-hina": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "4:5,11:4,13:4"
+      },
+      "height": 84,
+      "sheets": [
+        "ba-hina",
+        "ba-hina.move"
+      ]
+    },
+    "ba-yuuka": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-yuuka",
+        "ba-yuuka.move"
+      ]
+    },
+    "ba-aru": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-aru",
+        "ba-aru.move"
+      ]
+    },
+    "ba-neru": {
+      "donor": "sea-dog",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-neru",
+        "ba-neru.move"
+      ]
+    },
+    "ba-toki": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "4:5,11:4,13:4"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-toki",
+        "ba-toki.move"
+      ]
+    },
+    "ba-azusa": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-azusa",
+        "ba-azusa.move"
+      ]
+    },
+    "ba-wakamo": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "ba-wakamo",
+        "ba-wakamo.move"
+      ]
+    },
+    "ba-saori": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-saori",
+        "ba-saori.move"
+      ]
+    },
+    "ba-iori": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-iori",
+        "ba-iori.move"
+      ]
+    },
+    "ba-mutsuki": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 80,
+      "sheets": [
+        "ba-mutsuki",
+        "ba-mutsuki.move"
+      ]
+    },
+    "ba-miyo": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "ba-miyo",
+        "ba-miyo.move"
+      ]
+    },
+    "ba-hasumi": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,11,13",
+        "grid": "8x6",
+        "caps": "4:5,11:4,13:4"
+      },
+      "height": 82,
+      "sheets": [
+        "ba-hasumi",
+        "ba-hasumi.move"
+      ]
+    },
+    "ba-ibuki": {
+      "donor": "sorceress",
+      "guide": {
+        "groups": "2,0,18,12,3,4,5,7,8,20,21"
+      },
+      "height": 70,
+      "groups": "0,1,2,3,4,5,7,8,11,12,13,17,18,19,20,21",
+      "sheets": [
+        "ba-ibuki",
+        "ba-ibuki.move"
+      ]
+    },
+    "lb-haruka": {
+      "donor": "leprechaun",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 78,
+      "sheets": [
+        "lb-haruka",
+        "lb-haruka.move"
+      ]
+    },
+    "lb-rins-cats": {
+      "donor": "mountain-ram",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 46,
+      "sheets": [
+        "lb-rins-cats",
+        "lb-rins-cats.move"
+      ]
+    },
+    "lb-kanata": {
+      "donor": "monk",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 84,
+      "sheets": [
+        "lb-kanata",
+        "lb-kanata.move"
+      ]
+    },
+    "lb-masato": {
+      "donor": "stone-golem",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 96,
+      "sheets": [
+        "lb-masato",
+        "lb-masato.move"
+      ]
+    },
+    "lb-softball": {
+      "donor": "sorceress",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "lb-softball",
+        "lb-softball.move"
+      ]
+    },
+    "lb-saya": {
+      "donor": "rogue",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "lb-saya",
+        "lb-saya.move"
+      ]
+    },
+    "lb-mio": {
+      "donor": "mage",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "lb-mio",
+        "lb-mio.move"
+      ]
+    },
+    "lb-kyousuke": {
+      "donor": "swordsman",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 90,
+      "sheets": [
+        "lb-kyousuke",
+        "lb-kyousuke.move"
+      ]
+    },
+    "lb-sasami": {
+      "donor": "pirate",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 82,
+      "sheets": [
+        "lb-sasami",
+        "lb-sasami.move"
+      ]
+    },
+    "lb-riki": {
+      "donor": "crew-mate",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "lb-riki",
+        "lb-riki.move"
+      ]
+    },
+    "lb-rin": {
+      "donor": "satyr",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "lb-rin",
+        "lb-rin.move"
+      ]
+    },
+    "lb-yuiko": {
+      "donor": "sea-witch",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 86,
+      "sheets": [
+        "lb-yuiko",
+        "lb-yuiko.move"
+      ]
+    },
+    "lb-kud": {
+      "donor": "halfling",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 68,
+      "sheets": [
+        "lb-kud",
+        "lb-kud.move"
+      ]
+    },
+    "lb-komari": {
+      "donor": "master-gremlin",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 74,
+      "sheets": [
+        "lb-komari",
+        "lb-komari.move"
+      ]
+    },
+    "commander-corsair": {
+      "donor": "sea-dog",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2",
+        "strike": "12 --grid 4x2 --caps 12:7 --max-scale 2.4 (the base sheet drew the lunging cutlass as a broken thin line)"
+      },
+      "height": 92,
+      "sheets": [
+        "commander-corsair",
+        "commander-corsair.move",
+        "commander-corsair.strike"
+      ],
+      "prefer": {
+        "12": "commander-corsair.strike"
+      }
+    },
+    "commander-factory": {
+      "donor": "swordsman",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2",
+        "note": "HotA Engineer/Mechanic were rejected as donors: their melee is a flamethrower jet (no swing) with a back tank and hose; the Swordsman raises a one-handed weapon like the card wrench and swings it overhead"
+      },
+      "height": 92,
+      "sheets": [
+        "commander-factory",
+        "commander-factory.move"
+      ]
+    },
+    "commander-bulwark": {
+      "donor": "minotaur-king",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8",
+        "move": "2,0,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,7:2,8:2 (the donor has no 20/21)",
+        "walk": "0 --grid 4x2 --caps 0:7 --max-scale 3.2 (the walk of the other sheets bobbed: the repaint froze the axe the clay swings)",
+        "turns": "turn cells removed from the base (8) and move (7, 8) layouts (full layouts kept as .guide.full.json): those repaints drew the minotaur horns or his back; 7 comes from the base sheet, 8 is 7 reversed"
+      },
+      "height": 102,
+      "sheets": [
+        "commander-bulwark",
+        "commander-bulwark.move",
+        "commander-bulwark.walk"
+      ],
+      "prefer": {
+        "0": "commander-bulwark.walk"
+      }
+    }
   }
 }

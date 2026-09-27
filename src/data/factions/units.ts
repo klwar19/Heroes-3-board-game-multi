@@ -1176,7 +1176,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // engine: the gold income is the Pack (Kobold Foreman) ONLY; the Few (Kobold)
     // has no wired ability and intentionally carries no abilityText, so it stays a
     // true no-op rather than a decorative gold-income claim.
-    few: { attack: 2, defense: 0, health: 3, initiative: 4, cost: { gold: 0 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
+    few: { attack: 2, defense: 0, health: 3, initiative: 4, cost: { gold: 1 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-kobolds-few.webp" },
     pack: { attack: 2, defense: 1, health: 4, initiative: 5, cost: { gold: 2 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold] (Kobold Foreman).", cardImage: "/assets/units-bulwark-bronze-kobolds-pack.webp" },
     neutral: { attack: 2, defense: 0, health: 4, initiative: 4, cost: { gold: 3 }, abilities: ["bulwark-kobold-gold"], abilityText: "[map] At the beginning of each Resource round, gain 1 [gold].", cardImage: "/assets/units-neutral-bronze-kobolds.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Kobold",
@@ -1194,7 +1194,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Mountain Ram) has no wired ability; Pack (Argali) carries the
     // magic-resistance translation only (reduce-spell-damage-1).
-    few: { attack: 2, defense: 1, health: 4, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
+    few: { attack: 2, defense: 1, health: 3, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-bulwark-bronze-mountain_rams-few.webp" },
     pack: { attack: 2, defense: 1, health: 5, initiative: 10, cost: { gold: 4 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1 (Argali).", cardImage: "/assets/units-bulwark-bronze-mountain_rams-pack.webp" },
     neutral: { attack: 2, defense: 0, health: 5, initiative: 9, cost: { gold: 5 }, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce any [damage] from [spell] by 1.", cardImage: "/assets/units-neutral-bronze-mountain_rams.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Mountain_Ram_and_Argali",
@@ -1213,7 +1213,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // engine: Both sides ignore the melee penalty (ignore-combat-penalties). The
     // Pack (Steel Elf) additionally provokes NO enemy Retaliation on its attacks
     // (ignores-retaliation).
-    few: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
+    few: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
     pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 7 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack.", cardImage: "/assets/units-neutral-bronze-snow_elves.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf_and_Steel_Elf",
@@ -1519,8 +1519,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "forge",
     tier: "bronze",
     type: "ranged",
-    few: { attack: 3, defense: 0, health: 2, initiative: 3, cost: { gold: 3 }, abilities: [], cardImage: "/assets/units-forge-bronze-grunts-few.webp" },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-pack.webp" },
+    few: { attack: 2, defense: 0, health: 3, initiative: 3, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-forge-bronze-grunts-few.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 4 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
@@ -1568,7 +1568,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "silver",
     type: "ranged",
     few: { attack: 3, defense: 1, health: 4, initiative: 4, cost: { gold: 7 }, abilities: ["forge-bruiser-rocket-1"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 1 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-few.webp" },
-    pack: { attack: 4, defense: 1, health: 5, initiative: 5, cost: { gold: 12 }, abilities: ["forge-bruiser-rocket-2"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 2 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-pack.webp" },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 5, cost: { gold: 13 }, abilities: ["forge-bruiser-rocket-2"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 2 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 5, initiative: 4, cost: { gold: 15 }, abilities: ["forge-bruiser-rocket-1"], abilityText: "[unit_attack] When target of attack is not adjacent to Bruisers, deal 1 [damage] to a unit adjacent to the target of attack.", cardImage: "/assets/units-forge-silver-bruisers-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
@@ -1599,9 +1599,9 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "forge",
     tier: "gold",
     type: "ranged",
-    few: { attack: 6, defense: 2, health: 7, initiative: 4, cost: { gold: 14 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-few.webp" },
+    few: { attack: 6, defense: 2, health: 6, initiative: 4, cost: { gold: 14 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-few.webp" },
     pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 23, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
-    neutral: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 20, valuables: 1 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
+    neutral: { attack: 5, defense: 2, health: 6, initiative: 5, cost: { gold: 27, valuables: 1 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",

@@ -206,11 +206,14 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
   // Specialty cards covering the unit are defeated one by one, each leaving
   // the excess damage on whatever it reveals.
   while (unit.damage >= unit.maxHealth && topTransform(unit)) {
+    // The cover's real health bar (its printed Health plus any veteran rank /
+    // combat HP folded onto it), captured before the cover leaves.
+    const coverHealth = unit.maxHealth;
     const defeated = unit.transforms?.pop();
     if (!defeated) {
       break;
     }
-    const excess = Math.max(0, unit.damage - defeated.health);
+    const excess = Math.max(0, unit.damage - coverHealth);
     consumeCurrentLifeHealthBonuses(state, unit);
     applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
     unit.damage = Math.min(unit.maxHealth, excess);
@@ -838,6 +841,7 @@ export function finishCombatIfNeeded(state: GameState): boolean {
     reason
   };
   delete combat.pendingCardDamageTransfers;
+  delete combat.pendingInterfereSpellReductions;
   delete combat.redirectedDamageRemovals;
   appendExpiredEffectEvents(state, expireEffectsForCombatEnd(state), "combat-ended");
   combat.activeUnitId = null;

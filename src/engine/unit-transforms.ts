@@ -33,7 +33,8 @@ export function makeUnitTransformState(
     initiative: effect.initiative,
     ...(effect.cardImage ? { cardImage: effect.cardImage } : {}),
     ...(effect.alwaysOnTop ? { alwaysOnTop: true } : {}),
-    ...(effect.stackAttackBonus ? { stackAttackBonus: effect.stackAttackBonus } : {})
+    ...(effect.stackAttackBonus ? { stackAttackBonus: effect.stackAttackBonus } : {}),
+    ...(effect.inheritPackAbilities ? { inheritPackAbilities: true } : {})
   };
 }
 
@@ -170,9 +171,21 @@ export function unitFlipSidePreview(
 }
 
 /**
+ * Fold the combat-scoped max-Health loss (Ghost Dragons' Withering Touch) onto
+ * a freshly computed health bar. Floored at 1 so a side never starts at 0 HP;
+ * the trigger itself routes an already-damaged unit through the removal path.
+ */
+function withCombatMaxHealthPenalty(unit: CombatUnitState, health: number): number {
+  const penalty = unit.combatMaxHealthPenalty ?? 0;
+  return penalty > 0 ? Math.max(1, health - penalty) : health;
+}
+
+/**
  * Recomputes a combat unit's fighting statistics from its current top: the
- * topmost transform when one is on the card (printed abilities inactive,
- * wiki FAQ), otherwise the printed side with the ruleset's unit tweaks.
+ * topmost transform when one is on the card (printed abilities inactive per
+ * the wiki FAQ, unless the cover `inheritPackAbilities` — Horde/Legion of Imps
+ * and of Skeletons keep the Pack's; veteran rank + combat HP still fold on),
+ * otherwise the printed side with the ruleset's unit tweaks.
  * Damage stays as it is — the tokens sit on the physical stack.
  */
 export function applyUnitCurrentSide(
@@ -203,14 +216,37 @@ export function applyUnitCurrentSide(
     // is gone — this rider is what the reprint gives back, and only on a Stack).
     const coverStackBonus =
       overrides?.polishUnitStacks && (unit.armyStacks ?? 0) > 0 ? top.stackAttackBonus ?? 0 : 0;
-    unit.cardName = top.name;
-    unit.attack = top.attack + coverStackBonus + waveAttack;
-    unit.defense = top.defense + waveDefense;
-    unit.maxHealth = top.health;
-    unit.initiative = top.initiative + waveInitiative + veteranInitiative;
+    // Unit Experience (optional rule): the veteran rank belongs to the unit, not
+    // to its printed card, so a covered veteran keeps its rank stat bonuses and
+    // rank abilities on top of the cover's statistics (and the revealed card
+    // re-folds them the same way). No-op without mirrored XP.
+    const rankFold = combatUnitRankFold(unit);
+    // A cover that keeps the Pack's printed abilities (Horde/Legion of Imps and
+    // of Skeletons — player ruling) reads them from the unit's Pack side with the
+    // ruleset's side tweaks; any other cover leaves the printed abilities inactive.
+    const coveredDef = top.inheritPackAbilities && unit.unitDefId ? coreUnitDefinitions[unit.unitDefId] : undefined;
+    const packAbilities = coveredDef?.pack
+      ? [...(applyUnitSideRules(ruleset, unit.unitDefId as string, "pack", coveredDef.pack, overrides).abilities ?? [])]
+      : [];
     // A Job is a separate persistent token on the army card, not printed text
     // covered by the transform. Its base package and rank-3 signature remain.
-    unit.abilities = withMgqJobAbilities(withRankAbilities([], combatUnitRankFold(unit)), unit.job);
+    const coverAbilityIds = withMgqJobAbilities(withRankAbilities(packAbilities, rankFold), unit.job);
+    unit.cardName = top.name;
+    unit.attack = top.attack + coverStackBonus + rankFold.attack + waveAttack;
+    unit.defense = top.defense + rankFold.defense + waveDefense;
+    // combatMaxHealthBonus (Familiars VI, Valeska, Vial of Lifeblood…) sits on
+    // the unit for the Combat, so it also rides on the cover's health bar.
+    unit.maxHealth = withCombatMaxHealthPenalty(unit, maxHealthAfterUnitAbilityEffects(
+      top.health + (unit.combatMaxHealthBonus ?? 0) + rankFold.health,
+      coverAbilityIds
+    ));
+    unit.initiative = top.initiative + rankFold.initiative + waveInitiative + veteranInitiative;
+    unit.abilities = coverAbilityIds;
+    if (rankFold.rank > 0) {
+      unit.unitRank = rankFold.rank;
+    } else {
+      delete unit.unitRank;
+    }
     // Keep the movement TYPE in lockstep with the ability list, exactly like the
     // printed-side branch below: `veteran-flying-movement` (GRANT_FLYING_MOVEMENT)
     // sets `unit.type = "flying"` outright, so a unit that gains it and is then
@@ -246,7 +282,7 @@ export function applyUnitCurrentSide(
     const rankFold = (unit.unitExperience ?? 0) > 0 ? combatUnitRankFold(unit) : null;
     unit.attack = bankSide.attack + bonus("attack") + (rankFold?.attack ?? 0) + waveAttack;
     unit.defense = bankSide.defense + bonus("defense") + (rankFold?.defense ?? 0) + waveDefense;
-    unit.maxHealth = bankSide.health + bonus("health") + (rankFold?.health ?? 0);
+    unit.maxHealth = withCombatMaxHealthPenalty(unit, bankSide.health + bonus("health") + (rankFold?.health ?? 0));
     unit.initiative =
       bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0) + waveInitiative + veteranInitiative;
     unit.abilities = rankFold ? withRankAbilities(bankSide.abilities, rankFold) : bankSide.abilities;
@@ -321,14 +357,14 @@ export function applyUnitCurrentSide(
   // combatMaxHealthBonus: ADD_UNIT_MAX_HEALTH (Valeska, Vial, Ivor VI…). Must
   // re-fold here so a Pack→Few flip or a Polish Stack layer loss keeps the
   // same +HP on the new health bar (stack / pack / few all share the bonus).
-  unit.maxHealth = maxHealthAfterUnitAbilityEffects(
+  unit.maxHealth = withCombatMaxHealthPenalty(unit, maxHealthAfterUnitAbilityEffects(
     side.health +
       (unit.permanentHealthBonus ?? 0) +
       (unit.combatMaxHealthBonus ?? 0) +
       rankFold.health +
       tokenBonus("health"),
     combatAbilityIds
-  );
+  ));
   unit.initiative =
     side.initiative + rankFold.initiative + tokenBonus("initiative") + waveInitiative + veteranInitiative;
   unit.abilities = combatAbilityIds;
