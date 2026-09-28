@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { WelcomeNotice } from "@/components/menu/welcome-notice";
+import { ModdingGate } from "@/components/menu/modding-gate";
 import { MusicToggle } from "@/components/music-toggle";
 import { UiModePrompt } from "@/components/table/ui-mode-prompt";
 import { assetUrl } from "@/lib/asset-url";
@@ -137,6 +138,9 @@ export default function MenuPage() {
             icon-only, pinned top-right (`.menuMusicToggle`), persists like the
             in-game table toggle (same localStorage-backed music store). */}
         <MusicToggle className="menuMusicToggle" compact />
+        {/* Corner "Modding" icon: password-gated entry to experimental single-player
+            mods (Restia life-sim at /restia). */}
+        <ModdingGate />
         <nav
           aria-label={view === "main" ? "Main menu" : `${view} menu`}
           className={`menuNav menuNav-${view}`}
