@@ -111,26 +111,50 @@ describe("persistent development plan", () => {
         );
       },
     );
-    // Income-first (ranked replays 2026-09-10/11): with the Pack core ready
-    // and no City Hall, the hall is the plan and keeps the plan bonus (its
-    // base score already outscores the dwellings), while a side build that eats
-    // its fund is discouraged.
-    state = refreshComputerMemory(state, "p2");
-    const income = getComputerMemory(state, "p2").developmentPlan!;
-    expect(income.goal).toBe("income");
-    expect(income.buildingId).toBe("stronghold.city_hall");
-    state.players.p2.resources = { gold: 10, buildingMaterials: 4, valuables: 0 };
-    const buildAt = (buildingId: string): GameAction => ({
-      type: "BUILD_STRUCTURE",
-      playerId: "p2",
-      townId: town.id,
-      buildingId,
-    });
-    expect(developmentPlanBias(state, "p2", buildAt("stronghold.city_hall"), income)).toBeGreaterThan(0);
-    expect(developmentPlanBias(state, "p2", buildAt("stronghold.mage_guild"), income)).toBeLessThan(0);
-    state.towns[town.id].buildings.push("stronghold.city_hall");
+    // Income-first (ranked replays 2026-09-10/11) needs the hall payable with
+    // the five-gold cushion while the Silver dwelling is not payable now yet
+    // still lands next Resource Round after the hall (15g / 8m / 1v).
+    // USER RULING (2026-09-17, factionSkipsIncomeHall): Stronghold never builds
+    // its City Hall, so even then its plan goes straight to the Silver dwelling.
+    state.players.p2.resources = { gold: 15, buildingMaterials: 8, valuables: 1 };
     state = refreshComputerMemory(state, "p2");
     expect(getComputerMemory(state, "p2").developmentPlan?.goal).toBe("silver");
+    // CONTROL: the same moment for a hall-building town (Castle) plans the hall
+    // first; the hall keeps the plan bonus while a side build that eats its fund
+    // is discouraged.
+    let castle = createAdventureGameState({
+      seed: "plan",
+      playerCount: 2,
+      events: false,
+      rollFirstPlayer: false,
+    });
+    castle.players.p2.factionId = "castle";
+    castle.players.p2.army = ["castle.halberdiers", "castle.marksmen", "castle.griffins"].map(
+      (unitDefId, i) => ({ id: "army" + i, unitDefId, side: "pack" as const }),
+    );
+    const castleTown = Object.values(castle.towns).find((t) => t.controllerId === "p2")!;
+    castleTown.buildings = coreFactionDefinitions.castle.buildings.filter((id) => {
+      const e = coreBuildingDefinitions[id].effect;
+      return (
+        e?.type === "UNLOCK_REINFORCE" ||
+        (e?.type === "UNLOCK_RECRUIT_TIER" && e.tier === "bronze")
+      );
+    });
+    castle.players.p2.resources = { gold: 15, buildingMaterials: 8, valuables: 1 };
+    castle = refreshComputerMemory(castle, "p2");
+    const income = getComputerMemory(castle, "p2").developmentPlan!;
+    expect(income.goal).toBe("income");
+    expect(income.buildingId).toBe("castle.city_hall");
+    castle.players.p2.resources = { gold: 10, buildingMaterials: 4, valuables: 0 };
+    const castleBuild = (buildingId: string): GameAction => ({
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: castleTown.id,
+      buildingId,
+    });
+    expect(developmentPlanBias(castle, "p2", castleBuild("castle.city_hall"), income)).toBeGreaterThan(0);
+    expect(developmentPlanBias(castle, "p2", castleBuild("castle.mage_guild"), income)).toBeLessThan(0);
+    state.players.p2.resources = { gold: 10, buildingMaterials: 4, valuables: 0 };
     state.towns[town.id].buildings.push("stronghold.dwelling_silver");
     state.round = 4;
     state = refreshComputerMemory(state, "p2");

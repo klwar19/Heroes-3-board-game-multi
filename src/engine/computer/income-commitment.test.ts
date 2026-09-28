@@ -212,7 +212,15 @@ describe("Fortress opening through the authoritative computer runner", () => {
     expect(capturedRound, trail.slice(-40).join("\n")).toBeDefined();
     expect(capturedRound).toBeLessThan(5);
     expect(state.eventLog.some(event => event.type === "NEUTRAL_COMBAT_STARTED" && event.fieldId === capturedField)).toBe(true);
-    expect(state.eventLog.some(event => event.type === "UNIT_REMOVED" && event.playerId === "p2")).toBe(true);
+    // The capture was won in a real battle against its guards (no Quick Combat
+    // or free win). This used to demand a p2 casualty as that proof; the
+    // stronger combat AI now wins this seed cleanly (0 casualties; 2 paid
+    // continuations on impossible).
+    const starts = state.eventLog.flatMap((event, index) =>
+      event.type === "NEUTRAL_COMBAT_STARTED" && event.fieldId === capturedField ? [index] : []);
+    const ended = state.eventLog.slice(starts.at(-1)).find(event => event.type === "COMBAT_ENDED");
+    expect(ended?.type === "COMBAT_ENDED" ? [ended.winnerPlayerId, ended.reason] : null)
+      .toEqual(["p2", "all-enemy-units-defeated"]);
     if (difficulty === "impossible") {
       expect(state.eventLog.some(event => event.type === "COMBAT_CONTINUED")).toBe(true);
     }

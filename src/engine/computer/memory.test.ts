@@ -94,6 +94,14 @@ describe("refreshComputerMemory / sticky / notes", () => {
   it("notes MOVE_HERO visits and market rounds", () => {
     let state = baseState(2, 12, 4);
     state = refreshComputerMemory(state, "p2");
+    // Notes run after the action applied and record the hero's authoritative
+    // stop (e940332d: path movement can end early), so the hero stands on "1,2".
+    (state.heroes as Record<string, unknown>).h2 = {
+      id: "h2",
+      controllerId: "p2",
+      kind: "main",
+      spaceId: "1,2",
+    };
     state = noteComputerAction(state, "p2", {
       type: "MOVE_HERO",
       playerId: "p2",

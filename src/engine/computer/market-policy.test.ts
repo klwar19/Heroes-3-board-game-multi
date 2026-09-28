@@ -105,7 +105,16 @@ describe("resource deficits and trade utility", () => {
         buildings: ["castle.dwelling_gold"],
       },
     } as GameState["towns"];
-    expect(tradeUtility(state, "p2", 2)).toBeGreaterThan(0);
+    // USER RULING 2026-09-16 (bf289935, market-trades): valuables are never sold
+    // below what the Gold ladder still needs — the seat's ONLY valuable stays
+    // even after the Gold dwelling.
+    expect(tradeUtility(state, "p2", 2)).toBeLessThan(0);
+    // CONTROL: the dwelling does release the pre-Gold valuables cushion — a
+    // surplus valuable (3 held) is refused before it and sells after it.
+    const surplus = stateWithResources(2, 8, 3);
+    expect(tradeUtility(surplus, "p2", 2)).toBeLessThan(0);
+    surplus.towns = state.towns;
+    expect(tradeUtility(surplus, "p2", 2)).toBeGreaterThan(0);
   });
 
   it("sells TRUE surplus valuables for gold even before the Gold dwelling", () => {

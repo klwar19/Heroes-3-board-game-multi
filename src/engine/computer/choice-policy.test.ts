@@ -49,7 +49,8 @@ function observation(
   for (const u of units) unitMap[u.id] = u;
   const combat =
     units.length > 0
-      ? ({ id: "c1", units: unitMap } as unknown as CombatState)
+      // Every real combat carries a context; these units fight seat p1.
+      ? ({ id: "c1", context: { kind: "player" }, attackerPlayerId: playerId, defenderPlayerId: "p1", units: unitMap } as unknown as CombatState)
       : null;
   const state = {
     seed: "choice-policy-test",
@@ -57,12 +58,14 @@ function observation(
     eventCounter: 0,
     combat,
     pendingChoice,
+    activeEffects: [],
     players: {
       [playerId]: {
         id: playerId,
         hand: ["stat.attack", "spell.haste", "artifact.centaurs_axe"],
         resources: { gold: 8, buildingMaterials: 1, valuables: 0 },
         army: [{ id: "u1" }, { id: "u2" }],
+        combatStats: { spellsCastThisRound: 0, spellLimitBonusThisRound: 0, expertUsesSpentThisRound: 0 },
       },
     },
   } as unknown as PlayerVisibleState;

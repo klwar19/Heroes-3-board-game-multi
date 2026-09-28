@@ -342,8 +342,14 @@ export function shouldEngageEnemy(
       // Victory Points endgame: the 3-VP Main Hero defeat can decide the
       // score — guard a lead a loss would hand over, chase one a win takes.
       const vpShift = options.ignoreHeroLevel ? 0 : vpEngageBarShift(state, playerId, enemyPlayerId);
+      // USER RULING (2026-09-28): two equal armies FIGHT ("for fun for
+      // players") — an even hero duel opens from the coin-flip bar. A heroless
+      // garrison assault, a walled holding and a duel against a main hero that
+      // leads in level (the ranked-replay lesson) keep the older edge bar.
+      const base = options.ignoreHeroLevel || fortified || levelLead > 0
+        ? PVP_FORECAST_EDGE_WIN : PVP_FORECAST_ENGAGE_WIN;
       const bar = Math.min(PVP_FORECAST_MAX_WIN,
-        PVP_FORECAST_ENGAGE_WIN + extraSides * PVP_FORECAST_SIDE_MARGIN + levelLead * PVP_FORECAST_LEVEL_MARGIN +
+        base + extraSides * PVP_FORECAST_SIDE_MARGIN + levelLead * PVP_FORECAST_LEVEL_MARGIN +
         (fortified ? PVP_FORECAST_FORTIFIED_MARGIN : 0) + vpShift);
       return forecast.winChance >= bar;
     }
@@ -359,8 +365,10 @@ export function shouldEngageEnemy(
  * Whether a hostile player is a real THREAT if it attacks us: our forecast of
  * that fight (their public army and estimated cards vs ours) stays under the
  * defender bar. Separate from shouldEngageEnemy on purpose — declining to OPEN a
- * 55% fight is prudence, but running from one hands the attacker a free turn
- * (and a reckless attacker a free defeat). Falls back to the engage gate.
+ * fight the side / level / VP margins make risky is prudence, but running from
+ * one hands the attacker a free turn (and a reckless attacker a free defeat).
+ * The plain duel engage bar equals this bar (2026-09-28), so an even duel is
+ * opened, not fled. Falls back to the engage gate.
  */
 export const PVP_THREAT_MAX_WIN = 0.45;
 
@@ -404,10 +412,19 @@ export function pvpThreatens(state: GameState, playerId: PlayerId, enemyId: Play
   return forecast ? forecast.winChance < PVP_THREAT_MAX_WIN : !shouldEngageEnemy(state, playerId, enemyId);
 }
 
-/** Win chance a PvP fight must forecast before the AI opens it: a duel accepts a
- * clear edge, each further hostile side (who profits from the winner's losses)
- * and each level the enemy main hero leads by demand more. */
-export const PVP_FORECAST_ENGAGE_WIN = 0.55;
+/** Win chance a PvP HERO fight must forecast before the AI opens it. USER
+ * RULING (2026-09-28): "two equal armies ... should fight, for fun for
+ * players" — a duel opens at the coin-flip bar, which is exactly the threat bar
+ * (PVP_THREAT_MAX_WIN), so an even duel is either opened or evaded, never a
+ * stand-off where neither side moves. Each further hostile side (who profits
+ * from the winner's losses) still demands more; an enemy main hero that leads
+ * in level moves the duel onto PVP_FORECAST_EDGE_WIN plus its level margin. */
+export const PVP_FORECAST_ENGAGE_WIN = PVP_THREAT_MAX_WIN;
+/** The pre-2026-09-28 clear-edge bar, still the base for a heroless garrison
+ * assault or a walled holding (walls and the tower are not simulated, and a
+ * failed assault strands the army) and for a duel against a main hero that
+ * leads in level (its level margin stacks on this, as before). */
+export const PVP_FORECAST_EDGE_WIN = 0.55;
 export const PVP_FORECAST_SIDE_MARGIN = 0.1;
 export const PVP_FORECAST_LEVEL_MARGIN = 0.08;
 export const PVP_FORECAST_MAX_WIN = 0.9;

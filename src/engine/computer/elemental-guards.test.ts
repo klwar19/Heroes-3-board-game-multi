@@ -54,9 +54,14 @@ describe("Defense cards against an elemental hit", () => {
   const reaction = (cardId: string): GameAction =>
     ({ type: "PLAY_REACTION", playerId: "p2", cardId, mode: "basic" }) as GameAction;
   it("holds the Defense card when the attacker is an Elemental, plays it against an Ogre (CONTROL)", () => {
-    const vsElemental = fightState(magma(), halberdier(), ["stat.defense"]);
+    // A wounded Few (2 health left): the Ogre's 1-damage hit kills on its +1 die
+    // face, so the card changes the outcome. A fresh 5-health Pack only takes chip
+    // damage the card is kept from — USER RULING 2026-09-18 (tanky-unit read) and
+    // the 2026-09-28 neutral die-face hold in card-policy scoreStatReaction.
+    const wounded = () => ({ ...halberdier(), variant: "few", damage: 3 }) as CombatUnitState;
+    const vsElemental = fightState(magma(), wounded(), ["stat.defense"]);
     const elemental = scoreCardAction({ playerId: "p2", state: vsElemental as unknown as PlayerVisibleState, legalActions: [] }, reaction("stat.defense"));
-    const vsOgre = fightState(ogre(), halberdier(), ["stat.defense"]);
+    const vsOgre = fightState(ogre(), wounded(), ["stat.defense"]);
     const ogreHit = scoreCardAction({ playerId: "p2", state: vsOgre as unknown as PlayerVisibleState, legalActions: [] }, reaction("stat.defense"));
     // PASS_REACTION scores 1050: below it the card is kept, above it it is played.
     expect(elemental!.score).toBeLessThan(1_050);

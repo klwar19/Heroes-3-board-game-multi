@@ -10,7 +10,10 @@ import type { ComputerObservation } from "./types";
  * DELTA on the same unit at two experience values (bronze thresholds 5/9/...).
  */
 
-function stateWithArmy(experience: number): GameState {
+// Drill spends only SURPLUS gold (3f2de608, v146: "drill uses real gold/movement
+// costs" — map.drill-preserve-development below the development gold target, 16
+// here), so the rank-proximity read is pinned with 30 gold of surplus.
+function stateWithArmy(experience: number, gold = 30): GameState {
   return {
     seed: "drill-policy-test",
     round: 4,
@@ -19,7 +22,7 @@ function stateWithArmy(experience: number): GameState {
     heroes: {},
     players: {
       p2: {
-        resources: { gold: 14, buildingMaterials: 0, valuables: 0 },
+        resources: { gold, buildingMaterials: 0, valuables: 0 },
         army: [
           {
             id: "a1",
@@ -61,5 +64,8 @@ describe("DRILL_UNIT — rank proximity is actually read", () => {
     // objective marches (700+) — drilling never displaces a march.
     expect(fresh).toBeGreaterThan(300);
     expect(nearRank).toBeLessThan(700);
+    // CONTROL: without surplus (14 gold vs the 16 target) even the near-rank
+    // card waits below END_TURN.
+    expect(drillScore(stateWithArmy(4, 14))).toBeLessThan(300);
   });
 });

@@ -12,10 +12,15 @@ it("hires a second hero for reachable jobs, never merely for surplus cash", () =
     rollFirstPlayer: false,
   });
   state.players.p2.factionId = "stronghold";
+  // The collector is a post-Gold hire (acc2eeef, v143: "post-Gold second hero
+  // collects leftovers off the main hero's target"): a finished Gold ladder
+  // (both Gold Packs) stands, so no Gold step competes for the gold.
   state.players.p2.army = [
     "stronghold.goblins",
     "stronghold.orcs",
     "stronghold.ogres",
+    "stronghold.cyclopes",
+    "stronghold.behemoths",
   ].map((unitDefId, i) => ({ id: String(i), unitDefId, side: "pack" }));
   state.players.p2.resources = {
     gold: 100,
@@ -64,9 +69,10 @@ it("hires a second hero for reachable jobs, never merely for surplus cash", () =
     { spaceId: "job1", kind: "visitable" },
     { spaceId: "job2", kind: "visitable" },
   ]);
-  vi.spyOn(navigation, "objectiveDistanceField").mockReturnValue(
-    new Map([[placement, 3]]),
-  );
+  // A connected itinerary (4938d03d, v169): job1 three steps from the hire
+  // field, job2 one step beyond it.
+  const route = new Map([[placement, 3], ["job1", 1], ["job2", 1]]);
+  vi.spyOn(navigation, "objectiveDistanceField").mockReturnValue(route);
   expect(secondaryHeroOpportunity(state, "p2", placement).worthwhile).toBe(
     true,
   );
@@ -74,10 +80,9 @@ it("hires a second hero for reachable jobs, never merely for surplus cash", () =
   // Both jobs unreachable; the portrait cannot turn into an idle purchase.
   vi.spyOn(navigation, "objectiveDistanceField").mockReturnValue(new Map());
   expect(chooseComputerAction(obs)?.action.type).toBe("END_TURN");
-  vi.spyOn(navigation, "objectiveDistanceField").mockReturnValue(
-    new Map([[placement, 3]]),
-  );
-  state.players.p2.resources.gold = 15;
+  vi.spyOn(navigation, "objectiveDistanceField").mockReturnValue(route);
+  // The hire's 10 gold must leave the 5-gold reserve (GOLD_RESERVE, v143).
+  state.players.p2.resources.gold = 14;
   expect(chooseComputerAction(obs)?.action.type).toBe("END_TURN");
   vi.restoreAllMocks();
 });

@@ -14,7 +14,11 @@ import {
   canBeatCreatureBank,
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
+  PVP_FORECAST_EDGE_WIN,
   PVP_FORECAST_ENGAGE_WIN,
+  PVP_FORECAST_LEVEL_MARGIN,
+  PVP_FORECAST_SIDE_MARGIN,
+  pvpThreatens,
   pvpEngagementForecast,
   enemyEngagementRatio,
   enemyMainHeroLevelDeficit,
@@ -81,11 +85,22 @@ describe("shouldEngageEnemy", () => {
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
   });
 
-  it("holds off an even-strength army the forecast does not favour (forecast-first PvP gate, 2026-09-27)", () => {
+  it("engages an even-strength army at the coin-flip bar (USER RULING 2026-09-28: equal armies fight)", () => {
+    // SUPERSEDES the 2026-09-27 expectation "holds off an even-strength army":
+    // that duel sat under the old 0.55 edge bar, so two equal armies never met.
     const state = game();
-    // Equal starting stat sums used to read "roughly even, take it"; fought
-    // forward (initiative, matchups, the defender's cards) the attack is not favoured.
-    expect(pvpEngagementForecast(state, "p2", "p1", false)!.winChance).toBeLessThan(PVP_FORECAST_ENGAGE_WIN);
+    const even = pvpEngagementForecast(state, "p2", "p1", false)!.winChance;
+    // The matchup really is a coin flip: at or above the new bar, below the old one.
+    expect(even).toBeGreaterThanOrEqual(PVP_FORECAST_ENGAGE_WIN);
+    expect(even).toBeLessThan(PVP_FORECAST_EDGE_WIN);
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+    // …and the evade read agrees: an even duel is not a threat to run from.
+    expect(pvpThreatens(state, "p2", "p1")).toBe(false);
+    // CONTROL: the same armies against a main hero one level ahead stay on the
+    // edge bar plus its level margin (ranked-replay lesson) — no attack.
+    const enemy = Object.values(state.heroes).find(hero => hero.controllerId === "p1" && hero.kind === "main")!;
+    const own = Object.values(state.heroes).find(hero => hero.controllerId === "p2" && hero.kind === "main")!;
+    enemy.level = own.level + 1;
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
   });
 
@@ -104,9 +119,9 @@ describe("shouldEngageEnemy", () => {
 
   it("keeps a survivor's margin while a third hostile side remains", () => {
     const state = game();
-    state.players.p1.army = structuredClone(state.players.p2.army).map(
-      (unit, index) => ({ ...unit, id: `p1-unit-${index}` }),
-    );
+    // The default armies forecast an even duel (coin-flip test above); the third
+    // side is a copy of p1. (A mirrored p1 army is NOT even: p2's own hand gives
+    // it a clear forecast edge since the forecast-first PvP gate, 2026-09-27.)
     state.players.p3 = structuredClone(state.players.p1);
     state.players.p3.id = "p3";
     state.players.p3.name = "Third side";
@@ -117,12 +132,15 @@ describe("shouldEngageEnemy", () => {
     state.turnOrder.push("p3");
 
     expect(activeEnemySideCount(state, "p2")).toBe(2);
-    expect(enemyEngagementRatio(state, "p2")).toBe(1.05);
-    // Equal armies are a good duel, but an unnecessary trade in a three-way
-    // game because the untouched third side can clean up the winner.
-    expect(playerArmyStrength(state, "p2")).toBe(
-      playerArmyStrength(state, "p1"),
-    );
+    // Stat-ratio fallback: ENEMY_ENGAGE_RATIO is 1 since 2ae9a06d (was 0.85),
+    // + 0.2 per extra side, capped at MAX_ENEMY_ENGAGE_RATIO 1.15.
+    expect(enemyEngagementRatio(state, "p2")).toBe(1.15);
+    // An even duel is a good fight, but an unnecessary trade in a three-way
+    // game because the untouched third side can clean up the winner: the
+    // forecast clears the duel bar, not the duel bar plus one side's margin.
+    const even = pvpEngagementForecast(state, "p2", "p1", false)!.winChance;
+    expect(even).toBeGreaterThanOrEqual(PVP_FORECAST_ENGAGE_WIN);
+    expect(even).toBeLessThan(PVP_FORECAST_ENGAGE_WIN + PVP_FORECAST_SIDE_MARGIN);
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
 
     // Once that third side is gone, the exact same matchup becomes the normal
@@ -144,21 +162,25 @@ describe("shouldEngageEnemy", () => {
     };
     const own = mainHero("p2");
     const enemy = mainHero("p1");
-    // Equal armies, so the unit-stat read alone always engages (mirrors the
-    // third-side fixture: factions start with different rosters).
-    state.players.p2.army = structuredClone(state.players.p1.army).map(
-      (unit, index) => ({ ...unit, id: `p2-unit-${index}` }),
+    // Equal unit stats (p1 fields a copy of p2's army). Forecast-first PvP gate
+    // (2026-09-27): with p2's own hand the forecast reads a moderate edge —
+    // clear of one enemy level's margin, short of two.
+    state.players.p1.army = structuredClone(state.players.p2.army).map(
+      (unit, index) => ({ ...unit, id: `p1-unit-${index}` }),
     );
     expect(playerArmyStrength(state, "p2")).toBe(playerArmyStrength(state, "p1"));
-    // CONTROL: equal levels keep the aggressive even trade.
+    const edge = pvpEngagementForecast(state, "p2", "p1", false)!.winChance;
+    expect(edge).toBeGreaterThanOrEqual(PVP_FORECAST_EDGE_WIN + PVP_FORECAST_LEVEL_MARGIN);
+    expect(edge).toBeLessThan(PVP_FORECAST_EDGE_WIN + 2 * PVP_FORECAST_LEVEL_MARGIN);
+    // CONTROL: equal levels take the edge.
     own.level = 4;
     enemy.level = 4;
     expect(enemyMainHeroLevelLead(state, "p2", "p1")).toBe(0);
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
-    // One level behind still allows the even trade (0.85 + 0.12 < 1).
+    // One level behind still allows it (edge bar + one level margin).
     enemy.level = 5;
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
-    // Two levels behind — the L4-vs-L6 replays — an equal army no longer attacks…
+    // Two levels behind — the L4-vs-L6 replays — the same army no longer attacks…
     enemy.level = 6;
     expect(enemyMainHeroLevelLead(state, "p2", "p1")).toBe(2);
     expect(enemyMainHeroLevelDeficit(state, "p2")).toBe(2);

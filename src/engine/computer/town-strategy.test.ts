@@ -75,6 +75,9 @@ describe("town strategy focused", () => {
     const f = fixture("impossible", "rampart"); prepareCore(f);
     f.first.flagOwnerId = null; f.first.everFlagged = false; f.first.difficulty = 3;
     // A separate branch reaches the second guard without crossing the first.
+    // Both are Settlements: the opening sweep ranks a timely Settlement above
+    // other captures (2ae9a06d), so only equal holdings isolate the schedule.
+    f.second.location = "settlement";
     delete f.state.adventure!.fields[f.second.spaceId];
     f.second.spaceId = "h:9:5";
     f.state.adventure!.fields[f.second.spaceId] = f.second;
@@ -134,7 +137,11 @@ describe("town strategy focused", () => {
 
   it.each(["rampart", "inferno", "dungeon"] as const)("%s purchases the requested two Packs", faction => {
     const f = fixture("hard", faction);
-    const expected = { rampart: ["rampart.elves", "rampart.dwarves"], inferno: ["inferno.cerberi", "inferno.familiars"], dungeon: ["dungeon.harpies", "dungeon.evil_eyes"] }[faction];
+    // The OPENING core: no Far income captured yet (after the first Far capture
+    // only the level-3 Bronze Pack is rebuilt — user spec 2026-09-15). The first
+    // Pack is always the level-3 Bronze (Dungeon: Evil Eyes, then Harpies).
+    f.first.flagOwnerId = null; f.first.everFlagged = false;
+    const expected = { rampart: ["rampart.elves", "rampart.dwarves"], inferno: ["inferno.cerberi", "inferno.familiars"], dungeon: ["dungeon.evil_eyes", "dungeon.harpies"] }[faction];
     let state = f.state;
     state.players.p2.army.forEach(unit => unit.side = "few");
     state.players.p2.resources = { gold: 30, buildingMaterials: 0, valuables: 0 };

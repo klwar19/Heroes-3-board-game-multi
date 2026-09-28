@@ -8,12 +8,18 @@ import bundled from "./learned-policy.json";
 import * as mapPolicy from "./map-policy";
 import { chooseComputerAction } from "./policy";
 import { createAdventureGameState } from "../adventure-setup";
+import { replayConditions } from "./replay-context";
 import type { PlayerVisibleState, GameAction } from "../state";
 const context = {
   stage: "midgame",
   faction: "fortress",
   combat: "map",
   pressure: false,
+  // Votes are keyed by the public rule conditions they were learned under
+  // (3f2de608, v146 "decision-time facts"): train under the live game's rules.
+  conditions: replayConditions(createAdventureGameState({
+    seed: "learned-choice", playerCount: 2, events: false, rollFirstPlayer: false,
+  })),
 };
 const preferred = {
   type: "BUILD_STRUCTURE",

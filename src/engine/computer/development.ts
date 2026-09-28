@@ -257,7 +257,9 @@ export function needsPremiumSilverBreakthrough(state: GameState, playerId: Playe
 /** The two-Far income base funds Gold growth before optional town extras. */
 export function committedGoldInvestment(state: GameState, playerId: PlayerId): boolean {
   return !hasNecromancyPlan(state, playerId) &&
-    securedFarTileIds(state, playerId).size >= 2 && nextGoldLadderStep(state, playerId) !== null;
+    securedFarTileIds(state, playerId).size >= 2 &&
+    // The fight-need exception only picks between two non-null steps: skip its sweep.
+    nextGoldLadderStep(state, playerId, false) !== null;
 }
 
 /** Per-faction ordered Silver plan (user ruling 2026-09-15): which Silver bodies
@@ -1221,10 +1223,17 @@ export function firstGoldLandingRound(
  * pushes progress without landing the level-7 Pack a Resource Round later (or
  * when that Pack is beyond the planning horizon anyway); otherwise the next
  * step is the level-7 Pack — "fight things with more ease".
+ *
+ * USER RULING (2026-09-28): "Should a lv6 Few go first when the next fight
+ * needs it? — yeah". A lower Gold Few that would delay the level-7 Pack is
+ * still the step when the army needs it for its next fight (see
+ * `lowerGoldFewNeededForNextFight`). `withFightNeed: false` reads the ladder
+ * without that exception (the map reads it evaluates use this base ladder).
  */
 export function nextGoldLadderStep(
   state: GameState,
   playerId: PlayerId,
+  withFightNeed = true,
 ): GoldLadderStep | null {
   const player = state.players[playerId];
   if (!player || !armyDevelopmentProfile(state, playerId).goldUnlocked) return null;
@@ -1239,7 +1248,8 @@ export function nextGoldLadderStep(
       if (top?.side === "few") {
         const topPackCost = reinforceCostFor(state, playerId, top.id, false, false, false) ??
           coreUnitDefinitions[ranked[0]]!.pack!.cost;
-        if (spendDelaysTopPack(player, topPackCost, cost)) {
+        if (spendDelaysTopPack(player, topPackCost, cost) &&
+            !(withFightNeed && lowerGoldFewNeededForNextFight(state, playerId, unitDefId, cost, top.id, topPackCost))) {
           return { unitDefId: ranked[0], kind: "reinforce", cost: topPackCost, rank: 0 };
         }
       }
@@ -1298,6 +1308,62 @@ function spendDelaysTopPack(
     valuables: (player.resources.valuables ?? 0) - (spend.valuables ?? 0),
   }, production, topCost, false);
   return after === null || after > before;
+}
+
+/**
+ * The map read behind the 2026-09-28 lower-Gold-Few exception: whether the
+ * army WITH `lowerUnitDefId` added (Few) takes its next planned fight that the
+ * current army cannot — and the level-7 Pack, when payable now, would not take
+ * it instead. It lives in map-navigation (which imports this module), so it
+ * is registered from there instead of imported here.
+ */
+export type LowerGoldFewFightNeed = (
+  state: GameState,
+  playerId: PlayerId,
+  lowerUnitDefId: string,
+  topArmyUnitId: string,
+  topPackPayableNow: boolean,
+) => boolean;
+let lowerGoldFewFightNeed: LowerGoldFewFightNeed | null = null;
+/** > 0 while the fight-need read runs: nested ladder reads use the base ladder. */
+let fightNeedDepth = 0;
+export function registerLowerGoldFewFightNeed(read: LowerGoldFewFightNeed | null): void {
+  lowerGoldFewFightNeed = read;
+}
+
+function payableNow(resources: ResourceCost, cost: ResourceCost): boolean {
+  return (["gold", "buildingMaterials", "valuables"] as const).every(key =>
+    (resources[key] ?? 0) >= (cost[key] ?? 0));
+}
+
+/**
+ * USER RULING (2026-09-28): after the level-7 Few, the level-6 Few goes first
+ * — even though it lands the level-7 Pack a Resource Round later — when the
+ * army needs it for the next fight: the Few is payable now and the next planned
+ * fight (the primary objective the army with that Few would march for, within
+ * this turn's and next turn's movement) is refused by the current army's fight
+ * gates but taken with the Few. Evaluated only in that narrow ladder state and
+ * memoized for the scoring pass.
+ */
+function lowerGoldFewNeededForNextFight(
+  state: GameState,
+  playerId: PlayerId,
+  lowerUnitDefId: string,
+  lowerFewCost: ResourceCost,
+  topArmyUnitId: string,
+  topPackCost: ResourceCost,
+): boolean {
+  const player = state.players[playerId];
+  const read = lowerGoldFewFightNeed;
+  if (!read || fightNeedDepth > 0 || !player || !payableNow(player.resources, lowerFewCost)) return false;
+  return scoringPassCached(state, `goldFewFightNeed|${playerId}|${lowerUnitDefId}`, () => {
+    fightNeedDepth += 1;
+    try {
+      return read(state, playerId, lowerUnitDefId, topArmyUnitId, payableNow(player.resources, topPackCost));
+    } finally {
+      fightNeedDepth -= 1;
+    }
+  });
 }
 
 /** Dungeon's remaining mandatory spend through Black Dragons Pack. Optional

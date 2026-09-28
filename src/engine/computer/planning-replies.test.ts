@@ -58,11 +58,14 @@ describe("enemy legal reply search", () => {
     const state = createAdventureGameState({ seed: "reply-effects", playerCount: 2, events: false, rollFirstPlayer: false });
     const board = { units: { own, enemy }, obstacles: [] } as unknown as CombatState;
     expect(coordinatedReplyDamage(board, own, 0, undefined, state)).toBe(3);
+    // A real ActiveEffectState (Forgetfulness shape): every live effect carries
+    // `source` / `controllerId`, which effectAppliesToUnit reads.
     state.activeEffects.push({
-      id: "cannot-attack", sourceCardId: "test", ownerPlayerId: "p2",
-      scope: "unit", target: { type: "unit", unitId: enemy.id }, duration: "combat",
+      id: "cannot-attack", name: "Forgetfulness", controllerId: "p2", startedRound: state.round,
+      source: { type: "card", cardId: "spell.forgetfulness", controllerId: "p2" }, polarity: "negative",
+      scope: "unit", target: { type: "unit", unitId: enemy.id }, duration: { type: "next-activation" },
       modifiers: [{ type: "UNIT_CANNOT_ATTACK" }],
-    } as unknown as typeof state.activeEffects[number]);
+    } as typeof state.activeEffects[number]);
     expect(coordinatedReplyDamage(board, own, 0, undefined, state)).toBe(0);
     state.activeEffects = [];
     expect(coordinatedReplyDamage(board, own, 0, undefined, state)).toBe(3);
@@ -86,8 +89,12 @@ describe("persistent empty-route guard", () => {
       heroId: hero.id,
       to: "h:1:0",
     };
-    for (const to of ["h:1:0", "h:0:0", "h:1:0", "h:0:0"])
+    // The runner notes an action AFTER applying it, and the route guard records
+    // the hero's authoritative stop (e940332d) — so move the hero first.
+    for (const to of ["h:1:0", "h:0:0", "h:1:0", "h:0:0"]) {
+      state.heroes[hero.id].spaceId = to;
       state = noteComputerAction(state, "p2", { ...action, to });
+    }
     state = JSON.parse(JSON.stringify(state));
     state.round++;
     expect(
@@ -113,7 +120,12 @@ describe("persistent empty-route guard", () => {
       ],
     };
     expect(chooseComputerAction(obs)?.action).toEqual(alternate);
+    // Passive income is not route progress (4019226e: "captured value / army
+    // development, not tile reveals or passive income") ...
     state.players.p2.resources.gold++;
+    expect(repeatsUnproductiveRoute(state, "p2", action, getComputerMemory(state, "p2"))).toBe(true);
+    // ... a captured field is.
+    Object.values(state.adventure!.fields).find((field) => !field.flagOwnerId)!.flagOwnerId = "p2";
     expect(
       repeatsUnproductiveRoute(
         state,

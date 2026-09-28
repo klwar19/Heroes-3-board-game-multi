@@ -457,4 +457,33 @@ describe("lab regressions 2026-09-27", () => {
     state.players.p2.eliminationCountdown = 1;
     expect(evadeStepScore(state, "p2", move(east))).toBeNull();
   });
+
+  it("clears a shared hex onto a safe neighbor, never into a guard it would refuse (necropolis game R14: level-VII Grail)", () => {
+    const state = baseState();
+    const hero = mainHero(state, "p2");
+    const template = Object.values(state.adventure!.fields)[0];
+    state.adventure!.tiles = {};
+    state.adventure!.fields = {};
+    for (let column = 2; column <= 14; column += 1) {
+      const spaceId = "h:10:" + column;
+      state.adventure!.fields[spaceId] = { ...template, spaceId, tileInstanceId: "corridor", location: "empty_field",
+        flagOwnerId: null, everFlagged: false, blackCube: false, difficulty: undefined };
+    }
+    hero.spaceId = "h:10:8";
+    hero.movementPoints = 3;
+    // A second own hero on the same hex: stepping off is mandatory.
+    state.heroes.shared_hex_mate = { ...hero, id: "shared_hex_mate", kind: "secondary" };
+    setArmy(state, "p2", [["rampart.centaurs", "pack"], ["rampart.dwarves", "pack"], ["rampart.elves", "pack"]]);
+    const move = (to: string): Extract<GameAction, { type: "MOVE_HERO" }> => ({ type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to });
+    const west = "h:10:7";
+    const east = "h:10:9";
+    Object.assign(state.adventure!.fields[west], { location: "grail", difficulty: 7 });
+    const intoGrail = scoreMapAction(observe(state, "p2"), move(west));
+    expect(intoGrail?.policy).not.toBe("map.clear-shared-space");
+    expect(intoGrail?.score ?? 0).toBeLessThan(1_050);
+    expect(scoreMapAction(observe(state, "p2"), move(east))?.policy).toBe("map.clear-shared-space");
+    // CONTROL: a guard the army takes is still a fine exit.
+    Object.assign(state.adventure!.fields[west], { location: "mine", resource: "gold", difficulty: 1 });
+    expect(scoreMapAction(observe(state, "p2"), move(west))?.policy).toBe("map.clear-shared-space");
+  });
 });

@@ -26,9 +26,17 @@ type PlayerOverrides = {
   army?: Array<{ id: string; unitDefId: string; side: string }>;
 };
 
+/**
+ * Rounds 1-5 are the OPENING hand build (2ae9a06d, 2026-09-15): Attack is kept
+ * (78) and, through round 4, the Magic Arrow hunt cycles below 70 up to the hand
+ * limit. The generic voluntary cycle (junk < 30, Necropolis hunt < 46, at most
+ * 3 cards) is pinned past that window.
+ */
+const MIDGAME_ROUND = 6;
+
 function makeState(
   players: Record<string, PlayerOverrides>,
-  extras: { pendingNecromancyFor?: string } = {},
+  extras: { pendingNecromancyFor?: string; round?: number } = {},
 ): PlayerVisibleState {
   const playerMap: Record<string, unknown> = {};
   for (const [id, over] of Object.entries(players)) {
@@ -48,7 +56,7 @@ function makeState(
   }
   return {
     seed: "mulligan-test",
-    round: 2,
+    round: extras.round ?? 2,
     eventCounter: 0,
     combat: null,
     pendingChoice: null,
@@ -82,7 +90,7 @@ const refreshOffer: LegalAction = {
 
 function refreshDiscards(
   self: PlayerOverrides,
-  extras: { pendingNecromancyFor?: string } = {},
+  extras: { pendingNecromancyFor?: string; round?: number } = {},
 ): string[] {
   const state = makeState(
     { p2: { needsHandRefresh: true, ...self }, p1: { factionId: "tower" } },
@@ -94,10 +102,11 @@ function refreshDiscards(
 }
 
 describe("voluntary mulligan — every seat cycles true junk", () => {
-  // ability.eagle_eye is D-tier (keep 10+28-12 = 26 < 30); the S-tier relic
-  // and spell stay far above the junk threshold.
+  // ability.ballistics is capped at keep 18 (< 30); the S-tier relic and spell
+  // stay far above the junk threshold. (Eagle Eye is no longer junk: acc2eeef,
+  // v143, keeps it at 60-80 as a spell-search engine.)
   const hand = [
-    "ability.eagle_eye",
+    "ability.ballistics",
     "artifact.dragon_scale_armor",
     "spell.lightning_bolt",
   ];
@@ -107,8 +116,8 @@ describe("voluntary mulligan — every seat cycles true junk", () => {
       factionId: "castle",
       hand,
       deckCount: 6,
-    });
-    expect(discards).toEqual(["ability.eagle_eye"]);
+    }, { round: MIDGAME_ROUND });
+    expect(discards).toEqual(["ability.ballistics"]);
   });
 
   it("CONTROL: with no replacement supply (empty deck + discard) nothing is cycled", () => {
@@ -117,7 +126,7 @@ describe("voluntary mulligan — every seat cycles true junk", () => {
       hand,
       deckCount: 0,
       discard: [],
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toEqual([]);
   });
 
@@ -126,7 +135,7 @@ describe("voluntary mulligan — every seat cycles true junk", () => {
       factionId: "castle",
       hand: ["stat.attack", "artifact.dragon_scale_armor"],
       deckCount: 6,
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toEqual([]);
   });
 });
@@ -137,7 +146,7 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
       factionId: "necropolis",
       hand: ["stat.attack", "artifact.dragon_scale_armor"],
       deckCount: 6,
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toEqual(["stat.attack"]);
   });
 
@@ -146,7 +155,7 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
       factionId: "necropolis",
       hand: ["stat.attack", "ability.necromancy", "artifact.dragon_scale_armor"],
       deckCount: 6,
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toEqual([]);
   });
 
@@ -159,7 +168,7 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
       hand: ["stat.attack", "ability.necromancy", "artifact.dragon_scale_armor"],
       deckCount: 6,
       deckDrawnAbilityCardIds: ["ability.necromancy"],
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toEqual([]);
   });
 
@@ -168,7 +177,7 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
       factionId: "necropolis",
       hand: ["stat.attack", "specialty.vidomina.1", "artifact.dragon_scale_armor"],
       deckCount: 6,
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toEqual([]);
   });
 
@@ -195,17 +204,19 @@ describe("voluntary mulligan — Necropolis digs for its Necromancy engine", () 
   });
 
   it("caps the voluntary cycle at 3 cards", () => {
+    // Four cards sit under the hunt threshold (Artillery took Eagle Eye's junk
+    // slot — see the first describe), so the cap itself decides.
     const discards = refreshDiscards({
       factionId: "necropolis",
       hand: [
         "stat.attack",
         "stat.defense",
-        "ability.eagle_eye",
+        "ability.artillery",
         "ability.ballistics",
         "artifact.dragon_scale_armor",
       ],
       deckCount: 8,
-    });
+    }, { round: MIDGAME_ROUND });
     expect(discards).toHaveLength(3);
     expect(discards).not.toContain("artifact.dragon_scale_armor");
   });

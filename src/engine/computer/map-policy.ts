@@ -1319,10 +1319,15 @@ function moveScore(
   // A shared map hex is temporary and END_TURN is illegal there. Always take a
   // legal step onto an unoccupied neighbor before optional economy/card noise;
   // this also prevents an allied AI corridor step from stalling its turn.
+  // The exit must not OPEN a fight the hero would refuse: a secondary hero
+  // clearing a shared hex walked onto the level-VII Grail guard and the whole
+  // army died (necropolis-strategy impossible game, R14). Such a step falls
+  // through to the ordinary scoring below, so a safe exit wins.
   if (
     hero.spaceId &&
     heroesAtSpace(state, hero.spaceId, hero.id).length > 0 &&
-    heroesAtSpace(state, action.to, hero.id).length === 0
+    heroesAtSpace(state, action.to, hero.id).length === 0 &&
+    (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field))
   ) {
     return 1_050;
   }

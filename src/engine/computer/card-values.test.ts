@@ -71,6 +71,7 @@ function makeState(
       discard: [],
       needsHandRefresh: over.needsHandRefresh,
       limits: { hand: over.handLimit ?? 5 },
+      combatStats: { spellsCastThisRound: 0, spellLimitBonusThisRound: 0, expertUsesSpentThisRound: 0 },
       permanents: over.permanents ?? [],
       resources: {
         gold: over.gold ?? 10,
@@ -90,6 +91,7 @@ function makeState(
     eventCounter: 0,
     combat: null,
     pendingChoice: extras.pendingChoice ?? null,
+    activeEffects: [],
     players: playerMap,
     towns: extras.towns ?? {},
     adventure: {
@@ -139,9 +141,10 @@ describe("card-values — id hygiene", () => {
     expect(inert).toEqual([]);
   });
 
-  it("covers the full published lists: 65 artifacts + 43 spells + 26 abilities", () => {
+  it("covers the full published lists: 66 artifacts + 43 spells + 26 abilities", () => {
     const keys = Object.keys(CARD_TIER);
-    expect(keys.filter((id) => id.startsWith("artifact.")).length).toBe(65); // 63 published + Helm of Chaos + Hellstorm Helmet
+    // 63 published + Helm of Chaos + Hellstorm Helmet + Ladybird of Luck (tiered "A" in v171, e4b8f4be)
+    expect(keys.filter((id) => id.startsWith("artifact.")).length).toBe(66);
     expect(keys.filter((id) => id.startsWith("spell.")).length).toBe(43); // 41 published + Meteor Shower + Death Ripple
     expect(keys.filter((id) => id.startsWith("ability.")).length).toBe(26);
     // Necromancy is deliberately contextual, never a flat table entry.
@@ -322,7 +325,12 @@ describe("card-values — Wisdom drops without a built Mage Guild", () => {
     const rich = cardKeepValue("ability.wisdom", withGuild);
     const dead = cardKeepValue("ability.wisdom", without);
     expect(rich).toBeGreaterThan(dead);
-    expect(rich - dead).toBe(TIER_SCORE.A - TIER_SCORE.C);
+    // The tier layer drops A -> C; since v143 (acc2eeef, hand-vs-keep valuations)
+    // cardKeepValue additionally floors guild-less Wisdom to junk (8), so the exact
+    // A - C step is asserted on the tier layer itself.
+    const tier = (obs: ComputerObservation) =>
+      cardTierValue("ability.wisdom", cardValueContext(obs.state, obs.playerId));
+    expect(tier(withGuild) - tier(without)).toBe(TIER_SCORE.A - TIER_SCORE.C);
   });
 
   it("CONTROL: another town's guild does not count, and Mysticism ignores guilds", () => {
@@ -449,8 +457,11 @@ describe("card-values — deck search keeps the higher-tier spell", () => {
   it("passes the seat CONTEXT through: the Necromancy deny-pick wins a search only vs Necropolis", () => {
     // Same revealed pair, only the enemy faction differs. Fails if the
     // deck-search keep path stops passing its observation into cardKeepValue
-    // (context-free, Necromancy contributes 0 and Diplomacy always wins).
-    const revealed = searchChoice(["ability.necromancy", "ability.diplomacy"]);
+    // (context-free, Necromancy contributes 0 and Mysticism always wins).
+    // Mysticism (A, context-free) replaces Diplomacy: since v143 (acc2eeef)
+    // Diplomacy's keep value follows the hero level (20 below level 3, >= 65
+    // from it), so it no longer sits between the two Necromancy readings.
+    const revealed = searchChoice(["ability.necromancy", "ability.mysticism"]);
     const vsNecro = observe(
       makeState(
         { p2: { factionId: "castle" }, p1: { factionId: "necropolis" } },
@@ -465,11 +476,11 @@ describe("card-values — deck search keeps the higher-tier spell", () => {
     );
     const necroKeep = (obs: ComputerObservation) =>
       scoreChoiceAction(obs, keepAction(0))?.score ?? 0;
-    const diploKeep = (obs: ComputerObservation) =>
+    const mysticismKeep = (obs: ComputerObservation) =>
       scoreChoiceAction(obs, keepAction(1))?.score ?? 0;
-    expect(necroKeep(vsNecro)).toBeGreaterThan(diploKeep(vsNecro));
+    expect(necroKeep(vsNecro)).toBeGreaterThan(mysticismKeep(vsNecro));
     // CONTROL: no Necropolis on the table — Necromancy is the dead card.
-    expect(necroKeep(vsTower)).toBeLessThan(diploKeep(vsTower));
+    expect(necroKeep(vsTower)).toBeLessThan(mysticismKeep(vsTower));
   });
 });
 
@@ -576,11 +587,14 @@ describe("card-values — hero auto-pick prefers the community top tier", () => 
 // --- war machines ---------------------------------------------------------------
 
 describe("card-values — war-machine shop order", () => {
+  // A late ("improve-army") seat: the bronze core includes the level-3 Pack
+  // (Griffins) the opening-Pack plan requires, and the machine tests use gold
+  // above the recruit hold (developmentResourceTargets gold + 12 = 37 here).
   function lateMarketObservation(self: PlayerOverrides): ComputerObservation {
     const army = self.army ?? [
       { unitDefId: "castle.halberdiers", side: "pack" },
       { unitDefId: "castle.marksmen", side: "pack" },
-      { unitDefId: "castle.halberdiers", side: "pack" },
+      { unitDefId: "castle.griffins", side: "pack" },
     ];
     const obs = duelObservation({
       self: { ...self, army },
@@ -609,7 +623,7 @@ describe("card-values — war-machine shop order", () => {
     // tight band so different contexts buy different machines (variety). (Revised
     // from the Step-3 "Ballista clearly over Tent" order: the Tent is now
     // competitive by default and wins the contexts below.)
-    const obs = lateMarketObservation({ gold: 30 });
+    const obs = lateMarketObservation({ gold: 40 });
     const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
     const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
     const ammo = scoreMapAction(obs, buy("war_machine.ammo_cart"))?.score ?? 0;
@@ -624,7 +638,7 @@ describe("card-values — war-machine shop order", () => {
     // A gold-tier body in the army (a unit worth keeping alive) flips the first
     // buy to the Tent.
     const obs = lateMarketObservation({
-      gold: 30,
+      gold: 40,
       army: [
         { unitDefId: "castle.champions", side: "pack" },
         { unitDefId: "castle.halberdiers", side: "pack" },
@@ -639,11 +653,11 @@ describe("card-values — war-machine shop order", () => {
     // preferred (default Ballista order returns), proving the tier signal drove
     // the flip.
     const bronzeArmy = lateMarketObservation({
-      gold: 30,
+      gold: 40,
       army: [
         { unitDefId: "castle.halberdiers", side: "pack" },
         { unitDefId: "castle.marksmen", side: "pack" },
-        { unitDefId: "castle.halberdiers", side: "pack" },
+        { unitDefId: "castle.griffins", side: "pack" },
       ], // bronze tier
     });
     const ballistaB = scoreMapAction(bronzeArmy, buy("war_machine.ballista"))?.score ?? 0;
@@ -652,19 +666,27 @@ describe("card-values — war-machine shop order", () => {
   });
 
   it("Gem — the healing specialist — keeps the STRONGEST Tent preference (even chaff army)", () => {
-    const obs = lateMarketObservation({ gold: 30, heroDefId: "gem" });
+    const obs = lateMarketObservation({ gold: 40, heroDefId: "gem" });
     const ballista = scoreMapAction(obs, buy("war_machine.ballista"))?.score ?? 0;
     const tent = scoreMapAction(obs, buy("war_machine.first_aid_tent"))?.score ?? 0;
     expect(tent).toBeGreaterThan(ballista);
   });
 
-  it("buys one additional machine only in late development with a large surplus", () => {
+  it("never buys a second machine once one is owned, even with a large surplus", () => {
+    // USER RULING (v154, ec9bde05; recruit-value.ts ownsAnyWarMachine): one War
+    // Machine per seat. Replaces the old "one additional machine in late
+    // development with a large surplus" rule.
     const rich = lateMarketObservation({
       gold: 50,
       permanents: ["war_machine.first_aid_tent"],
     });
     expect(
       scoreMapAction(rich, buy("war_machine.ballista"))?.score ?? 0,
+    ).toBeLessThan(520);
+    // CONTROL: the same rich seat with no machine buys its first one.
+    const unequipped = lateMarketObservation({ gold: 50 });
+    expect(
+      scoreMapAction(unequipped, buy("war_machine.ballista"))?.score ?? 0,
     ).toBeGreaterThan(520);
 
     const reserved = lateMarketObservation({
@@ -781,6 +803,8 @@ describe("card-values — +1-Power fodder in the kill window", () => {
     });
     (state as unknown as { combat: unknown }).combat = {
       id: "c1",
+      // Every real combat carries a context (the AI reads combat.context.kind).
+      context: { kind: "sandbox" },
       units: {
         E: {
           id: "E",

@@ -65,6 +65,10 @@ function observation(
           { id: "army_r", unitDefId: "castle.marksmen", side: "few" },
           { id: "army_m", unitDefId: "castle.pikemen", side: "few" },
         ],
+        hand: [],
+        // Every real PlayerState carries combatStats (the PvP spell-round
+        // planner reads the spell limit through it).
+        combatStats: { spellsCastThisRound: 0, spellLimitBonusThisRound: 0, expertUsesSpentThisRound: 0 },
       },
     },
   } as unknown as PlayerVisibleState;

@@ -586,11 +586,27 @@ it.each([0, 1])(
 );
 
 it("retreat takes a nearby pickup and only retries after preparation", () => {
+  // Three Gorgons: since the 2026-09-26 USER RULING the pristine-board retreat
+  // is forecast-based ("TRY fighting ... if the AI can't win, retreat"), and
+  // this army now fights and beats two Gorgons on this seed.
   const battle = encounter("necro-retreat-route", [
+    "neutral.gorgons",
     "neutral.gorgons",
     "neutral.gorgons",
   ]);
   const guardId = (battle.combat!.context as any).fieldId;
+  // By round 4 the two guarded tile-I objects are round-1 work (USER RULING
+  // 2026-09-25: R1 takes both tile-I objects), and a live tile-I guard outranks a
+  // one-time pickup (tutor opening doctrine) — mark them taken so the retreat's
+  // own route is what is tested.
+  for (const field of Object.values(battle.adventure!.fields)) {
+    if (field.spaceId !== guardId && field.tileInstanceId === battle.adventure!.fields[guardId].tileInstanceId &&
+        field.difficulty && !field.flagOwnerId) {
+      if (field.location === "mine") field.flagOwnerId = "p2";
+      else field.blackCube = true;
+      field.everFlagged = true;
+    }
+  }
   const escaped = runGame(
     battle,
     "necro-retreat-route",
@@ -832,7 +848,7 @@ it("Gold development remembers an earned Vampire Pack after casualties", () => {
 });
 
 it.each([false, true])(
-  "Wraith purchase follows human neutral control: %s",
+  "Wraith purchase waits for the earned Necromancy upgrade (human neutral control: %s)",
   (humanGuards) => {
     const state = game("necro-human-guards", "hard");
     state.activePlayerId = "p2";
@@ -855,16 +871,22 @@ it.each([false, true])(
     expect(
       actions.some(({ action }) => action.type === "POPULATION_ACTION"),
     ).toBe(true);
-    const decision = chooseComputerAction({
+    const decide = () => chooseComputerAction({
       playerId: "p2",
       state: getPlayerView(state, "p2"),
       legalActions: actions,
       memory: getComputerMemory(state, "p2"),
     })!;
-    expect(decision.action.type).toBe(
-      humanGuards ? "POPULATION_ACTION" : "END_TURN",
-    );
-    if (humanGuards) {
+    // 2ae9a06d (Release Round 9 AI) dropped the human-guard exception from both
+    // Wraith gates: the held Necromancy earns the Wraith Pack after a reachable
+    // win whoever controls the guards; paying is the no-earn fallback only.
+    expect(decide().action.type).toBe("END_TURN");
+    // CONTROL: with no Necromancy card in hand nothing can earn the upgrade, so
+    // the paid Wraith Pack is the fallback (Skeletons already a Pack).
+    state.players.p2.hand = state.players.p2.hand.filter((id) => id !== "ability.necromancy");
+    const decision = decide();
+    expect(decision.action.type).toBe("POPULATION_ACTION");
+    {
       const bought = applyAction(state, decision.action);
       expect(bought.errors).toEqual([]);
       expect(

@@ -110,28 +110,26 @@ describe("combat policy — neutral continue risk", () => {
 });
 
 describe("combat policy — attack target selection", () => {
-  it("removes the identical enemy that has not activated yet", () => {
-    const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8 });
-    const spent = unit({
-      id: "SPENT",
-      attack: 5,
-      defense: 0,
-      maxHealth: 3,
-      position: 9,
-      activatedThisRound: true,
-    });
-    const ready = unit({
-      id: "READY",
-      attack: 5,
-      defense: 0,
-      maxHealth: 3,
-      position: 7,
-      activatedThisRound: false,
-    });
-    const decision = chooseComputerAction(
-      observation([attacker, spent, ready], [attackOn("A", "SPENT"), attackOn("A", "READY")]),
-    );
-    expect((decision?.action as { defenderId: string }).defenderId).toBe("READY");
+  it("picks between identical killable twins by what the unactivated one would do (USER RULING 2026-09-28)", () => {
+    // "If the one that hasn't acted is a big threat that can kill … kill it; if
+    // it kills itself with retaliation, that's the key too." No fixed rule: the
+    // look-ahead reads the READY twin's coming activation.
+    const twins = (attackerOverrides: Partial<CombatUnitState> = {}) => {
+      const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8, ...attackerOverrides });
+      const spent = unit({ id: "SPENT", attack: 5, defense: 0, maxHealth: 3, position: 9, activatedThisRound: true });
+      const ready = unit({ id: "READY", attack: 5, defense: 0, maxHealth: 3, position: 7, activatedThisRound: false });
+      const decision = chooseComputerAction(
+        observation([attacker, spent, ready], [attackOn("A", "SPENT"), attackOn("A", "READY")]),
+      );
+      return (decision?.action as { defenderId: string }).defenderId;
+    };
+    // READY's hit (≈3) leaves our 5-health unit standing and dies to its
+    // 10-Attack retaliation: kill SPENT and the fight ends this round.
+    expect(twins()).toBe("SPENT");
+    // CONTROL: READY's hit would kill our 3-health unit — remove the threat.
+    expect(twins({ maxHealth: 3 })).toBe("READY");
+    // CONTROL: our unit already retaliated this round, so READY strikes free.
+    expect(twins({ retaliatedThisRound: true })).toBe("READY");
   });
 
   it("uses physical damage on the lower-Defense target", () => {
@@ -177,7 +175,8 @@ describe("combat policy — attack target selection", () => {
     );
     expect(lethal?.action.type).toBe("ATTACK_UNIT");
     expect((lethal?.action as { defenderId: string }).defenderId).toBe("E2");
-    expect(lethal?.policy).toBe("combat.attack-target");
+    // The 3-ply look-ahead (a36a5e21) relabels an ordinary attack it adjusts.
+    expect(lethal?.policy).toMatch(/^combat.attack-target(-lookahead)?$/);
 
     // CONTROL: make E2 durable (6-2=4 < 12 HP), a poor chip. With no lethal
     // removal available, the harder-hit E1 becomes the pick — proving the lethal
@@ -291,8 +290,10 @@ describe("combat policy — kill enemy shooters first", () => {
     // Attacker (att 10) kills either. The ground E1 is the bigger raw threat
     // (att 7 → threat 29) than the ranged E2 (att 4 → threat 26+6): without the
     // explicit shooter bonus the threat-scaled lethal quality picks E1; the
-    // shooter-first rule flips the removal onto the ranged unit.
-    const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8 });
+    // shooter-first rule flips the removal onto the ranged unit. The attacker is
+    // durable (hp 20): at the default 5 health the melee E1's median reply kills
+    // it, and the 3-ply look-ahead (a36a5e21) rightly removes that threat first.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 10, maxHealth: 20, position: 8 });
     const melee = unit({ id: "E1", attack: 7, defense: 0, maxHealth: 3, position: 9 });
     const shooter = unit({
       id: "E2", type: "ranged", attack: 4, defense: 0, maxHealth: 3, position: 12,
@@ -1225,16 +1226,33 @@ describe("combat policy — PvP lessons from the ranked replays (2026-09-10/11)"
     label: "Retreat",
   };
 
-  it("hunts the enemy GOLD body in PvP while neutral fights keep the shooter hunt", () => {
+  it("hunts the enemy GOLD body in PvP, but never trades a kill or Pack flip for a chip (USER RULING 2026-09-28)", () => {
     // Both attacks are non-lethal chips; the bronze shooter is the easier
     // chip, the gold ground unit is the fight's carry.
-    const attacker = unit({ id: "A", controllerId: "p2", attack: 5, defense: 2, maxHealth: 20, position: 8 });
-    const shooter = unit({ id: "E1", type: "ranged", attack: 3, defense: 0, maxHealth: 10, position: 12 });
-    const gold = unit({ id: "E2", grade: "gold", attack: 4, defense: 0, maxHealth: 8, position: 9 });
+    const board = (shooterOverrides: Partial<CombatUnitState> = {}, goldOverrides: Partial<CombatUnitState> = {}) => [
+      unit({ id: "A", controllerId: "p2", attack: 5, defense: 2, maxHealth: 20, position: 8 }),
+      unit({ id: "E1", type: "ranged", attack: 3, defense: 0, maxHealth: 10, position: 12, ...shooterOverrides }),
+      unit({ id: "E2", grade: "gold", attack: 4, defense: 0, maxHealth: 8, position: 9, ...goldOverrides }),
+    ];
     const legal = [attackOn("A", "E1"), attackOn("A", "E2")];
-    expect(defenderOf(chooseComputerAction(pvp(observation([attacker, shooter, gold], legal))))).toBe("E2");
-    // CONTROL: the same board in a neutral fight still opens on the shooter.
-    expect(defenderOf(chooseComputerAction(neutral(observation([attacker, shooter, gold], legal))))).toBe("E1");
+    expect(defenderOf(chooseComputerAction(pvp(observation(board(), legal))))).toBe("E2");
+    // The PvP gold hunt is a PvP bonus: the base strike score of the same board
+    // in a neutral fight still ranks the shooter first. (Ranged-first is the
+    // neutral GUARDS' targeting rule; the computer player's final pick between
+    // two chips is the look-ahead's call.)
+    const baseScore = (obs: ComputerObservation, defenderId: string) =>
+      scoreCombatAction(obs, attackOn("A", defenderId).action)?.score ?? 0;
+    const pvpBoard = pvp(observation(board(), legal));
+    const neutralBoard = neutral(observation(board(), legal));
+    expect(baseScore(pvpBoard, "E2")).toBeGreaterThan(baseScore(pvpBoard, "E1"));
+    expect(baseScore(neutralBoard, "E1")).toBeGreaterThan(baseScore(neutralBoard, "E2"));
+    // "Don't leave the job with nothing done": a hit that kills or flips a Pack
+    // beats a chip on the other target, in PvP and neutral fights alike.
+    for (const context of [pvp, neutral]) {
+      expect(defenderOf(chooseComputerAction(context(observation(board({ damage: 7 }), legal))))).toBe("E1");
+      expect(defenderOf(chooseComputerAction(context(observation(board({}, { damage: 5 }), legal))))).toBe("E2");
+    }
+    expect(defenderOf(chooseComputerAction(neutral(observation(board({ variant: "pack", maxHealth: 6 }), legal))))).toBe("E1");
   });
 
   it("concedes a hopeless PvP fight after a casualty, never a neutral fight, a fresh one, or a fight a kill can still turn", () => {
@@ -1302,7 +1320,8 @@ describe("combat policy — reach-aware target value (siege Arrow Tower, 2026-09
   it("shoots the Elves that can hit us, not the Centaurs stuck behind intact walls", () => {
     const walled = siegedTown([tower(), garrison(), centaurs(13), elves()], [8, 10, 11], 9);
     const decision = chooseComputerAction(walled);
-    expect(decision?.policy).toBe("combat.attack-target");
+    // The 3-ply look-ahead (a36a5e21) relabels an ordinary attack it adjusts.
+    expect(decision?.policy).toMatch(/^combat.attack-target(-lookahead)?$/);
     expect((decision?.action as { defenderId: string }).defenderId).toBe("E");
 
     // CONTROL: the SAME Centaurs with the fortifications down and a step from

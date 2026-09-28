@@ -49,7 +49,14 @@ it("conserves an attack reaction on a guaranteed kill but spends it to secure a 
         resources: { gold: 10, buildingMaterials: 0, valuables: 0 },
       },
     },
-    combat: { units: { a: attacker, d: defender } },
+    heroes: {},
+    // Every real combat carries a context; "d" is a neutral guard.
+    combat: {
+      context: { kind: "neutral", heroId: "h2", fieldId: "f1", difficulty: 1, hasAzure: false },
+      attackerPlayerId: "p2",
+      defenderPlayerId: "neutrals",
+      units: { a: attacker, d: defender },
+    },
     stack: [
       {
         action: {

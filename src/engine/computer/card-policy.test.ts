@@ -49,12 +49,17 @@ function observation(
     round: 1,
     eventCounter: 0,
     combat,
+    activeEffects: [],
     players: {
       [playerId]: {
         id: playerId,
         hand,
         resources: { gold: 10, buildingMaterials: 2, valuables: 0 },
         army: [],
+        // Real players always carry limits + combatStats; 2 crowns = the
+        // crownsAvailable fallback these tests were written against.
+        limits: { hand: 5, expertUses: 2 },
+        combatStats: { spellsCastThisRound: 0, spellLimitBonusThisRound: 0, expertUsesSpentThisRound: 0 },
       },
     },
   } as unknown as PlayerVisibleState;
@@ -655,10 +660,12 @@ describe("card policy — map plays", () => {
       mode: "basic",
       target: { type: "none" },
     } as GameAction;
-    const fresh = mapCardObservation(["ability.sorcery"]);
+    // A map Spell (View Earth) in hand: since v143 (acc2eeef) a Power bank with no
+    // ready Spell of the matching timing is held at 180, so the CONTROL needs one.
+    const fresh = mapCardObservation(["ability.sorcery", "spell.view_earth"]);
     // CONTROL: nothing banked yet — the first play is a real Power bank, above END_TURN.
     expect(scoreCardAction(fresh, sorcery)!.score).toBeGreaterThan(300);
-    const banked = mapCardObservation(["ability.sorcery"]);
+    const banked = mapCardObservation(["ability.sorcery", "spell.view_earth"]);
     (banked.state.players.p2 as { mapSpellPowerBank?: number }).mapSpellPowerBank = 1;
     const held = scoreCardAction(banked, sorcery)!;
     expect(held.policy).toBe("card.hold-draw-rider-cycle");
@@ -964,7 +971,7 @@ describe("card policy — crown (expert use) discipline", () => {
       players: {
         p2: {
           id: "p2",
-          hand: ["ability.estates"],
+          hand: ["ability.scouting"],
           resources: { gold: 10, buildingMaterials: 2, valuables: 0 },
           army: [],
           limits: { hand: 5, expertUses: crowns },
@@ -979,19 +986,21 @@ describe("card policy — crown (expert use) discipline", () => {
     return { playerId: "p2", state, legalActions };
   }
 
-  const estates = (mode: "basic" | "expert"): LegalAction => ({
+  // Map convenience = Scouting (a bigger search). Estates / Luck / Leadership are
+  // exempt from the last-crown hold since v143 (acc2eeef: Estates is played for gold).
+  const scouting = (mode: "basic" | "expert"): LegalAction => ({
     action: {
       type: "PLAY_CARD",
       playerId: "p2",
-      cardId: "ability.estates",
+      cardId: "ability.scouting",
       mode,
     } as GameAction,
-    label: `Estates ${mode}`,
+    label: `Scouting ${mode}`,
   });
 
   it("saves the round's last crown: basic map play beats its expert twin", () => {
     const decision = chooseComputerAction(
-      mapObservation(1, [estates("basic"), estates("expert")]),
+      mapObservation(1, [scouting("basic"), scouting("expert")]),
     );
     expect(decision?.action.type).toBe("PLAY_CARD");
     expect((decision?.action as { mode?: string }).mode).toBe("basic");
@@ -999,7 +1008,7 @@ describe("card policy — crown (expert use) discipline", () => {
 
   it("CONTROL: with crowns to spare the expert map play wins", () => {
     const decision = chooseComputerAction(
-      mapObservation(2, [estates("basic"), estates("expert")]),
+      mapObservation(2, [scouting("basic"), scouting("expert")]),
     );
     expect((decision?.action as { mode?: string }).mode).toBe("expert");
   });
@@ -1331,7 +1340,11 @@ describe("Defense card conservation for Castle key units", () => {
 
   it("holds the Defense card early for the Griffin, then spends it past the opening", () => {
     const attacker = unit({ id: "A", controllerId: "p1", attack: 6, position: 8 });
-    const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 10, position: 9 });
+    // 5 health: the atk-6 hit (3-5 damage) is lethal on its +1 face, a hit the card
+    // changes. (2026-09-28: outside PvP a hit NO die face makes lethal is chip damage
+    // the card is kept from — see neutral-fight-choices.test.ts — so the CONTROL
+    // needs a hit that matters to show the Griffin hold dropping.)
+    const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 5, position: 9 });
     const griffin = unit({ id: "G", controllerId: "p2", unitDefId: "castle.griffins", position: 13 });
     const observed = observation([attacker, defender, griffin], [pass, playDefense], "p2", ["stat.defense"]);
     (observed.state as unknown as { stack: unknown[] }).stack = attackStack("A", "D");
@@ -1349,12 +1362,14 @@ describe("Defense card conservation for Castle key units", () => {
     // spend. (Supersedes the old "drop the Griffin hold once gold is fielded → play
     // normally" — the hold still drops, but the gold-priority conservation replaces it.)
     const attacker = unit({ id: "A", controllerId: "p1", attack: 6, position: 8 });
-    const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 10, position: 9 });
+    // 5 health: lethal on the hit's +1 face only — survivable on the median, so the
+    // gold-priority hold applies, and a hit the card changes once the gold is safe.
+    const defender = unit({ id: "D", controllerId: "p2", defense: 2, maxHealth: 5, position: 9 });
     // A gold body the atk-6 enemy can meaningfully hurt (def 2, hp 5): threatened.
     const gold = unit({ id: "G", controllerId: "p2", grade: "gold", defense: 2, maxHealth: 5, position: 13, unitDefId: "castle.angels" });
     const observed = observation([attacker, defender, gold], [pass, playDefense], "p2", ["stat.defense"]);
     (observed.state as unknown as { stack: unknown[] }).stack = attackStack("A", "D");
-    // D survives the atk6 hit (4 vs hp10) — save the Defense for the threatened gold body.
+    // D survives the median atk6 hit (4 vs hp5) — save the Defense for the threatened gold body.
     expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
     // CONTROL: make the gold safe (durable, the atk6 enemy can't dent it) -> spend on D.
     gold.defense = 8;

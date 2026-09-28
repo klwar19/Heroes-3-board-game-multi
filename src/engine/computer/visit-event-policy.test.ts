@@ -440,7 +440,9 @@ describe("choice policy — map discovery / garrison", () => {
     // Full starting army clears size Ⅰ but not size Ⅳ — pick the beatable one.
     expect((strongPick!.action as { optionIndex: number }).optionIndex).toBe(0);
 
-    // CONTROL: gutted army cannot beat either → leave blocked.
+    // CONTROL: a gutted army beats neither — USER RULING 2026-09-18 (choice-policy,
+    // 33405d46): ALWAYS place a Creature Bank, so it still places one (a reward to
+    // claim later) instead of leaving the hex blocked.
     const weak = {
       ...strong,
       players: {
@@ -453,7 +455,7 @@ describe("choice policy — map discovery / garrison", () => {
       },
     } as unknown as GameState;
     const weakPick = chooseComputerAction(observe(weak, legal));
-    expect((weakPick!.action as { optionIndex: number }).optionIndex).toBe(2);
+    expect((weakPick!.action as { optionIndex: number }).optionIndex).not.toBe(2);
   });
 
   it("garrison: lets the holding fall when broke, defends when funded", () => {

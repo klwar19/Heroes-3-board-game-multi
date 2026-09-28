@@ -9,6 +9,7 @@ import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUt
 import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { CombatUnitState, GameAction, GameState, PendingChoice } from "../state";
 import { unitsAdjacent } from "../hex-footprint";
+import { neutralLandingShooterBinds, neutralStrikeCost } from "./neutral-tie-choices";
 import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
 import {
   armyReadyForContestedFight,
@@ -426,6 +427,15 @@ function scoreAbilityTarget(
     if (source && choice.kind === "enchanter-activation") {
       return CHOICE_BASE + 10 + abilityHealValue(state, unit, getEnchanterActivationAbility(source)?.healAmount ?? 0) * 8;
     }
+    // Rulebook neutral target tie ("the player chooses which unit is
+    // attacked"): the guard strikes whichever of OUR tied units we pick, so send
+    // the hit where it costs the least army value over its real die faces — a
+    // survivor that strikes back earns some of it back. The heal/buff reading
+    // below ("most wounded, highest threat first") fed it our weakest bodies.
+    if (source && choice.kind === "neutral-target" && unit.controllerId === observation.playerId &&
+        source.controllerId !== observation.playerId) {
+      return CHOICE_BASE + 40 - Math.min(100, Math.round(neutralStrikeCost(state, source, unit) * 4));
+    }
     if (source && choice.kind === "commander-soul-link") {
       // Protect the ally whose survival matters most; the commander will absorb
       // only one hit each round, so link value grows with the ally's threat and
@@ -839,11 +849,20 @@ function scorePositionOption(
     if (pos === undefined) return CHOICE_BASE;
     const combat = observation.state.combat;
     if (!combat) return CHOICE_BASE + 10;
+    const guard = combat.units[choice.neutralDestination.unitId];
+    // The chooser is the side this guard is about to strike (the attacking
+    // player of the neutral fight). Its target is fixed, so the landing only
+    // decides where the guard stands afterwards: never next to another of our
+    // shooters when a cell avoids it (an adjacent enemy binds a shooter to a
+    // penalised strike on that guard). Otherwise the previous ordering stands.
+    const bound = guard && guard.controllerId !== observation.playerId
+      ? neutralLandingShooterBinds(combat, observation.playerId, guard, pos, choice.neutralDestination.defenderId)
+      : 0;
     // A double-wide guard (hex board) is judged by its nearest hex.
     const dist = distanceToNearestEnemy(combat, observation.playerId, pos, combat.units[choice.neutralDestination.unitId]);
-    if (dist === null) return CHOICE_BASE + 10;
+    if (dist === null) return CHOICE_BASE + 10 - bound * 30;
     // Closer is better for the attacking player controlling the landing.
-    return CHOICE_BASE + Math.max(0, 20 - dist);
+    return CHOICE_BASE + Math.max(0, 20 - dist) - bound * 30;
   }
 
   if (context === "combat-teleport" && choice.teleport) {

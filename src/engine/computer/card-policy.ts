@@ -23,7 +23,8 @@ import { hexPcSpellArea, hexPcSpellBlast } from "../hex-spell-areas";
 import { cancelSpellAllowsSchoolAndLevel, deathRippleReachesUnit, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
-import { dealsElementalStrike } from "./strike-value";
+import { dealsElementalStrike, estimatedStrikeDamage } from "./strike-value";
+import { plannedAttackFaces } from "./battlefield-conditions";
 import { houseRuleEnabled } from "../house-rules";
 import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
 import { balanceCardLibrary } from "../community-balance-cards";
@@ -944,6 +945,53 @@ function goldAllyThreatened(
 }
 
 /**
+ * Whether +`amount` Defense on our attacked unit changes anything but chip
+ * damage in a NEUTRAL fight: a removal or Pack flip on any of the attacker's
+ * real Attack-die faces (advantage / disadvantage / forced dice included), or
+ * — through the guards still to act this round — the unit dying before the
+ * round ends. Chip damage alone does not cost the body its next strike.
+ */
+function defenseBoostChangesOutcome(
+  observation: ComputerObservation,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  from: number,
+  attackBonus: number,
+  defenseBonus: number,
+  amount: number,
+): boolean {
+  const observed = observation.state as unknown as GameState;
+  // Partial (test / preview) views may omit the effect list the die readers scan.
+  const state = observed.activeEffects ? observed : { ...observed, activeEffects: [] };
+  const combat = state.combat;
+  if (!combat) return true;
+  const faces = plannedAttackFaces(state, attacker, defender, from, false);
+  if (faces.length === 0) return true;
+  const hitter = { ...attacker, attack: attacker.attack + attackBonus };
+  const plain = { ...defender, defense: defender.defense + defenseBonus };
+  const boosted = { ...defender, defense: defender.defense + defenseBonus + amount };
+  const removal = unitRemovalHealth(defender);
+  const bar = unitRemainingHealth(defender);
+  const flips = defender.variant === "pack";
+  let chipBefore = 0;
+  let chipAfter = 0;
+  for (const face of faces) {
+    const before = estimatedStrikeDamage(hitter, plain, from, false, face);
+    const after = estimatedStrikeDamage(hitter, boosted, from, false, face);
+    if ((before >= removal) !== (after >= removal)) return true;
+    if (flips && (before >= bar) !== (after >= bar)) return true;
+    chipBefore += Math.min(before, removal);
+    chipAfter += Math.min(after, removal);
+  }
+  chipBefore /= faces.length;
+  chipAfter /= faces.length;
+  // The guards still to act this round (the striking one excluded) and what
+  // they can put on this unit from any landing they reach.
+  const followUp = coordinatedReplyDamage(combat, defender, defender.position, attacker.id, state);
+  return followUp >= removal - chipBefore && followUp < removal - chipAfter;
+}
+
+/**
  * The largest Defense boost the acting player currently holds in hand (0 if
  * none). Used by the attack-boost card-economy hold: a whiffed attacker that
  * would otherwise die to the target's retaliation can be kept alive behind a
@@ -1253,6 +1301,16 @@ function scoreStatReaction(
               if (defender.id !== griffin.id) return 1_020;
               return 1_145 + modeBonus(mode);
             }
+          }
+          // Die-face read (neutral fights only): the median-die checks above
+          // miss both ways — a +1 face that kills is a real save, while a hit
+          // no face turns lethal only shaves chip damage the body shrugs off.
+          // Keep the card for a hit it changes (fight bench 2026-09-28).
+          if (combat.context.kind === "neutral" && card.statisticType === "defense" &&
+              !defenseBoostChangesOutcome(observation, attacker, defender,
+                attack.type === "MOVE_AND_ATTACK_UNIT" ? attack.destination : attacker.position,
+                top.modifiers.attackBonus ?? 0, top.modifiers.defenseBonus ?? 0, amount)) {
+            return 1_020;
           }
         }
       }

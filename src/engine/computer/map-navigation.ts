@@ -79,6 +79,7 @@ import {
   developmentResourceTargets,
   goldMilestoneShortfall,
   nextGoldLadderStep,
+  registerLowerGoldFewFightNeed,
   hasGoldArmy,
   hasReachedGoldArmy,
   hasOpenedFarEconomy,
@@ -653,7 +654,9 @@ function canBeatGuardedFieldUncached(
   if (hero.kind === "main" && !field.flagOwnerId &&
       (fieldCreatureBankId(field) || fieldDifficulty >= 4) &&
       committedGoldInvestment(state, hero.controllerId) &&
-      nextGoldLadderStep(state, hero.controllerId)?.kind === "reinforce" &&
+      // The base ladder (no 2026-09-28 fight-need exception): that exception
+      // itself asks this gate whether the current army takes a fight.
+      nextGoldLadderStep(state, hero.controllerId, false)?.kind === "reinforce" &&
       !state.players[hero.controllerId].army.some(unit => unit.side === "pack" &&
         ["gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier))) return false;
   // Other towns pay for their Bronze core and bring a real Silver body to
@@ -2856,6 +2859,73 @@ export function primaryMapObjective(
     `primary|${stickySpaceId ?? ""}|${heroCacheKey(hero)}|${objectivesCacheKey(objectives)}`,
     () => primaryMapObjectiveUncached(state, hero, objectives, stickySpaceId));
 }
+
+/**
+ * Whether `hero`'s army would open and take the fight on `field` under the
+ * ordinary objective gates: an enemy hero (PvP engage forecast), an enemy
+ * holding its owner can garrison (assault gate), a guard or Creature Bank
+ * (canBeatGuardedField). Null when stepping there opens no fight.
+ */
+function armyTakesFight(state: GameState, hero: HeroState, field: MapFieldState): boolean | null {
+  const playerId = hero.controllerId;
+  const occupant = heroAtSpace(state, field.spaceId, hero.id);
+  if (occupant && !playersAreAllied(state, occupant.controllerId, playerId)) {
+    if (pvpAttacksBanned(state) || locationDefinitions[field.location]?.passive?.protectsFromAttack) return false;
+    return shouldEngageEnemy(state, playerId, occupant.controllerId, { field });
+  }
+  if (field.flagOwnerId && field.flagOwnerId !== playerId && !playersAreAllied(state, field.flagOwnerId, playerId) &&
+      (locationDefinitions[field.location]?.category === "town" || field.location === "settlement" ||
+        field.location === "garrison" || field.location === "dragon_utopia" ||
+        (field.location === "mine" && houseRuleEnabled(state, "mine-army-defense")))) {
+    return shouldAssaultEnemyHolding(state, playerId, field);
+  }
+  if (isFieldGuarded(field) || field.location === "creature_bank") return canBeatGuardedField(state, hero, field);
+  return null;
+}
+
+/**
+ * USER RULING (2026-09-28): "Should a lv6 Few go first when the next fight
+ * needs it? — yeah". The fight need behind nextGoldLadderStep's lower-Gold-Few
+ * exception: with `lowerUnitDefId` added as a Few, the main hero's primary
+ * objective (the same planner, sticky target included) is a fight within this
+ * turn's and next turn's movement that the army WITH the Few takes and the
+ * current army does not — and that the level-7 Pack, when payable now, would
+ * not take on its own (then the Pack stays the step: it is the success target
+ * and wins that fight too). Reuses the real fight gates (guard / bank / PvP /
+ * garrison forecasts); no separate strength heuristic.
+ */
+function lowerGoldFewUnlocksNextFight(
+  state: GameState,
+  playerId: PlayerId,
+  lowerUnitDefId: string,
+  topArmyUnitId: string,
+  topPackPayableNow: boolean,
+): boolean {
+  const player = state.players[playerId];
+  const hero = Object.values(state.heroes).find(candidate =>
+    candidate.controllerId === playerId && candidate.kind === "main" && candidate.spaceId);
+  if (!player || !hero || !state.adventure) return false;
+  const withArmy = (army: GameState["players"][string]["army"]): GameState =>
+    ({ ...state, players: { ...state.players, [playerId]: { ...player, army } } });
+  const probe = withArmy([...player.army, { id: `${playerId}_probe_gold_few`, unitDefId: lowerUnitDefId, side: "few" }]);
+  const reach = Math.max(0, hero.movementPoints) + heroMovementMax(state, hero);
+  // The probe gets its own scoring pass: its objective sweep repeats the same
+  // guard / distance reads many times, and nothing outside this read sees it.
+  const target = withScoringPass(probe, () => {
+    const primary = primaryMapObjective(probe, hero, collectMapObjectives(probe, hero),
+      state.computerMemory?.[playerId]?.stickyObjectiveSpaceId);
+    const field = primary ? probe.adventure?.fields[primary.spaceId] : undefined;
+    if (!field) return null;
+    const distance = distanceFromHeroTo(probe, hero, field.spaceId, true);
+    if (distance === undefined || distance > reach) return null;
+    return armyTakesFight(probe, hero, field) === true ? field : null;
+  });
+  if (!target || armyTakesFight(state, hero, target) !== false) return false;
+  if (!topPackPayableNow) return true;
+  const packProbe = withArmy(player.army.map(unit => unit.id === topArmyUnitId ? { ...unit, side: "pack" as const } : unit));
+  return !withScoringPass(packProbe, () => armyTakesFight(packProbe, hero, target) === true);
+}
+registerLowerGoldFewFightNeed(lowerGoldFewUnlocksNextFight);
 
 function primaryMapObjectiveUncached(
   state: GameState,

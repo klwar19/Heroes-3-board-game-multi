@@ -65,19 +65,23 @@ function fixture(difficulty: typeof difficulties[number], faction: typeof factio
 describe.each(difficulties)("Far opening on %s", difficulty => {
   it.each(factions)("%s takes the second Far material mine before a home pickup", faction => {
     const f = fixture(difficulty, faction);
+    // The second Far III (on another tile than the captured first) is fought
+    // with a real Silver body — acc2eeef canBeatGuardedField "bring a real
+    // Silver body to the next Far III" (secondFarFightNeedsSilver; Necropolis:
+    // hard/impossible Far III after other Far income). The army brings one.
+    const silver = coreFactionDefinitions[faction].units.find(id => coreUnitDefinitions[id]?.tier === "silver")!;
+    f.state.players.p2.army.push({ id: "silver-body", unitDefId: silver, side: "few" });
     expect(canBeatGuardedField(f.state, f.hero, f.second)).toBe(true);
     expect(primaryMapObjective(f.state, f.hero)?.spaceId).toBe(f.second.spaceId);
     const decision = chooseComputerAction(f.observe([f.move(f.first.spaceId), f.move(f.loot.spaceId), { type: "END_TURN", playerId: "p2" }]))!;
     expect(decision.action).toEqual(f.move(f.first.spaceId));
-    // CONTROL: the opening exception must not open an ordinary Near mine.
-    f.state.adventure!.tiles.far2.group = "near";
-    expect(canBeatGuardedField(f.state, f.hero, f.second)).toBe(false);
-    f.state.adventure!.tiles.far2.group = "far";
-    // CONTROL: once Gold is owned the main hero resumes its existing policy.
-    const gold = coreFactionDefinitions[faction].units.find(id => coreUnitDefinitions[id]?.tier === "gold")!;
-    f.state.players.p2.army.push({ id: "scope-control", unitDefId: gold, side: "few" });
-    expect(primaryMapObjective(f.state, f.hero)?.spaceId).toBe(f.loot.spaceId);
     f.state.players.p2.army.pop();
+    // CONTROL: without the Silver the bronze core waits and the home pickup is
+    // the target (Necropolis easy/normal keeps its own bronze Far plan).
+    if (faction !== "necropolis" || difficulty === "hard" || difficulty === "impossible") {
+      expect(canBeatGuardedField(f.state, f.hero, f.second)).toBe(false);
+      expect(primaryMapObjective(f.state, f.hero)?.spaceId).toBe(f.loot.spaceId);
+    }
     // CONTROL: both Far captures are finished; a real home leftover becomes useful.
     f.second.flagOwnerId = "p2"; f.second.everFlagged = true; f.second.difficulty = undefined;
     expect(primaryMapObjective(f.state, f.hero)?.spaceId).toBe(f.loot.spaceId);
@@ -191,10 +195,25 @@ describe.each(difficulties)("Far opening on %s", difficulty => {
 it("easier guards start this turn while Impossible saves the extra combat movement", () => {
   const starts = difficulties.map(difficulty => {
     const f = fixture(difficulty);
+    // The bronze core's FIRST Far III: the captured settlement sits on a Near
+    // tile (a second Far III waits for Silver, acc2eeef), and no tile-I
+    // leftover remains (a live tile-I payoff takes precedence, 3f09fcaa).
+    f.state.adventure!.tiles.far1.group = "near";
+    f.loot.location = "empty_field";
     f.hero.spaceId = f.first.spaceId; f.hero.movementPoints = 2;
+    expect(canBeatGuardedField(f.state, f.hero, f.second)).toBe(true);
     const decision = chooseComputerAction(f.observe([f.move(f.second.spaceId), { type: "END_TURN", playerId: "p2" }]))!;
     const startsNow = decision.action.type === "MOVE_HERO";
     expect(premiumCombatMovementReserve(f.state, f.hero, f.second)).toBe(difficulty === "impossible" ? 2 : 1);
+    // CONTROL: the opening exception must not open an ordinary Near mine (a
+    // fresh fixture: tile groups never change in play and the sweep tiles are
+    // memoized per adventure).
+    const near = fixture(difficulty);
+    near.state.adventure!.tiles.far1.group = "near";
+    near.state.adventure!.tiles.far2.group = "near";
+    near.loot.location = "empty_field";
+    near.hero.spaceId = near.first.spaceId; near.hero.movementPoints = 2;
+    expect(canBeatGuardedField(near.state, near.hero, near.second)).toBe(false);
     return startsNow;
   });
   expect(starts).toEqual([true, true, true, false]);

@@ -129,9 +129,13 @@ describe("computer Victory Points endgame", () => {
   });
 
   it("the VP endgame bar decides close Main Hero fights", () => {
-    // Forecasts (no cards on either side): ~0.67 vs Wraiths + Zombies, ~0.50 vs Liches + Zombies.
-    const favoured: Array<[string, "few" | "pack"]> = [["necropolis.wraiths", "pack"], ["necropolis.zombies", "pack"]];
+    // Forecasts (no cards on either side): ~0.50 vs Liches + Zombies, ~0.33 vs
+    // Liches + Wraiths Pack. USER RULING (2026-09-28): the normal duel bar is the
+    // coin flip (0.45), so the ~0.50 fight is the normal-bar CONTROL and the VP
+    // margins (+0.2 / -0.15) apply on top of it (the ~0.67 fixture this test
+    // used under the old 0.55 bar clears 0.45 + 0.2 and no longer discriminates).
     const coinFlip: Array<[string, "few" | "pack"]> = [["necropolis.liches", "few"], ["necropolis.zombies", "pack"]];
+    const behind: Array<[string, "few" | "pack"]> = [["necropolis.liches", "few"], ["necropolis.wraiths", "pack"]];
     const engage = (vp: boolean, lead: number | null, foe: Array<[string, "few" | "pack"]>) => {
       const state = gameState(vp);
       setArmy(state, "p1", [["castle.griffins", "pack"], ["castle.marksmen", "pack"]]);
@@ -139,11 +143,11 @@ describe("computer Victory Points endgame", () => {
       if (lead !== null) setLead(state, lead);
       return shouldEngageEnemy(state, "p1", "p2");
     };
-    expect(engage(false, null, favoured), "CONTROL: a ~67% fight clears the normal bar").toBe(true);
-    expect(engage(true, 2, favoured), "a loss would hand over a 2-VP lead").toBe(false);
-    expect(engage(true, 5, favoured), "a loss cannot flip a 5-VP lead").toBe(true);
-    expect(engage(false, null, coinFlip), "CONTROL: a ~50% fight stays under the normal bar").toBe(false);
-    expect(engage(true, -2, coinFlip), "a win takes the lead from 2 VP behind").toBe(true);
+    expect(engage(false, null, coinFlip), "CONTROL: a ~50% fight clears the normal (coin-flip) bar").toBe(true);
+    expect(engage(true, 2, coinFlip), "a loss would hand over a 2-VP lead").toBe(false);
+    expect(engage(true, 5, coinFlip), "a loss cannot flip a 5-VP lead").toBe(true);
+    expect(engage(false, null, behind), "CONTROL: a ~33% fight stays under the normal bar").toBe(false);
+    expect(engage(true, -2, behind), "a win takes the lead from 2 VP behind").toBe(true);
   });
 
   it("leaves a hopeless PvP fight by Surrender (1 VP) instead of Retreat (3 VP) while the Main Hero defeat is still open", () => {
