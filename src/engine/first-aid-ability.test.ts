@@ -83,7 +83,7 @@ describe("First Aid card definition", () => {
 // ===========================================================================
 
 describe("First Aid (basic) — heal from hand", () => {
-  it("heals 1 from the card, so the FX layer can play the cure shimmer + chime", () => {
+  it("heals 1 from the card, so the FX layer can play the regeneration orb + chime", () => {
     // The table plays a non-spell heal off healFxPlans[source.cardId] on the
     // DAMAGE_HEALED it logs. So the heal is only SEEN/HEARD when (a) it names the
     // card as its source, and (b) a plan is keyed there. Assert both — without
@@ -116,8 +116,10 @@ describe("First Aid (basic) — heal from hand", () => {
     expect(heal, "First Aid heal must name the card as its source").toBeTruthy();
     const plan = heal!.source.type === "card" ? healFxPlans[heal!.source.cardId] : undefined;
     expect(plan, "healFxPlans must answer the First Aid heal").toBeTruthy();
-    expect(plan!.sound).toBe("spells/cure");
-    expect(plan!.affect?.[0]?.key).toBe("cure");
+    // 016b95ef (v158): First Aid uses the Tent's regeneration orb + REGENER cue,
+    // never the Cure spell effect.
+    expect(plan!.sound).toBe("effects/regeneration");
+    expect(plan!.affect?.[0]?.key).toBe("regeneration");
   });
 });
 

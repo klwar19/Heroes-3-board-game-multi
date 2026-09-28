@@ -485,19 +485,22 @@ describe("Kivotos seat wiring", () => {
 // ===========================================================================
 
 describe("Kivotos unit veterancy schedules", () => {
-  it("every Kivotos card resolves a 4-step generated schedule (no explicit override) and folds into a combat unit without throwing", () => {
+  it("every Kivotos card resolves its 4-step custom schedule and folds into a combat unit without throwing", () => {
     for (const unit of blueArchiveCharacters) {
       const schedule = rankScheduleFor(unit.id);
       for (const rank of [1, 2, 3, 4] as const) {
         const step = schedule[rank];
         expect(step, `${unit.id} R${rank}`).toBeTruthy();
-        expect(["stats", "ability"]).toContain(step.kind);
+        // Custom schedules also use "hybrid" steps (stats + ability, e.g. Seia R1).
+        expect(["stats", "ability", "hybrid"]).toContain(step.kind);
       }
-      expect(hasUniqueRankSchedule(unit.id), `${unit.id} uses the flavour generator`).toBe(false);
+      // Since 64d90691 every Kivotos student carries its own custom schedule
+      // (custom-experience-overrides.ts: "Kivotos: add a second job").
+      expect(hasUniqueRankSchedule(unit.id), `${unit.id} has its custom schedule`).toBe(true);
       const combatUnit = makeCombatUnitFromArmy({ id: `xp_${unit.name}`, unitDefId: unit.id, side: "few", experience: 30 }, "p1", `u_${unit.name}`, 0, "legacy");
       expect(combatUnit, unit.id).toBeTruthy();
     }
-    // CONTROL: a signature unit DOES own an explicit override.
-    expect(hasUniqueRankSchedule("dungeon.black_dragons")).toBe(true);
+    // CONTROL: a generator-served unit owns no override, so the read splits.
+    expect(hasUniqueRankSchedule("wog.air_messenger")).toBe(false);
   });
 });

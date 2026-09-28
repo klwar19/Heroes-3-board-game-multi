@@ -350,12 +350,13 @@ describe("the force-shift — the turn ends, the player stays in the game", () =
     seedTurnClock(state, T0);
 
     // House rule "the 10-minute limit resets when in battle": the player's OWN
-    // neutral combat now pauses their turn clock, so the arm is refused even far
-    // past the limit — combat time can never expire the map-turn budget.
+    // neutral combat now pauses their turn clock, so nothing arms even far past
+    // the limit — combat time can never expire the map-turn budget. (v158,
+    // 016b95ef: a paused-clock request is an idempotent no-op, not an error.)
     expect(turnClockPausedFor(state, "p1")).toBe(true);
-    expect(
-      expectRejected(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT + 5 * 60_000)
-    ).toContain("paused");
+    const paused = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT + 5 * 60_000);
+    expect(paused.afk?.turnTimeoutPlayerId ?? null).toBeNull();
+    expect(paused.combat?.context.kind).toBe("neutral");
 
     // CONTROL: remove the battle from the SAME state (the fighter is back on the
     // map) — now the clock runs and the very same seat DOES time out past the

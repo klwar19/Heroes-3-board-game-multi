@@ -233,7 +233,15 @@ describe("cultivation art contract", () => {
     expect(roster).toHaveLength(14);
     expect(Object.keys(WUXIA_RANK_ABILITY_ICONS).sort()).toEqual([...roster].sort());
 
-    const rankIcons = roster.map((unitId) => unitRankAbilityIcon("commander-max-damage", unitId));
+    // Since 64d90691 a reward with its OWN rank icon shows that icon on these
+    // custom-veterancy units ("old faction portraits must not mask the actual
+    // learned rule"); the distinct per-unit wuxia art is the fallback for a
+    // reward that has no dedicated icon.
+    expect(unitRankAbilityIcon("commander-max-damage", roster[0])).toBe(
+      unitRankAbilityIcon("commander-max-damage")
+    );
+    const rankIcons = roster.map((unitId) => unitRankAbilityIcon("wuxia-reward-without-own-icon", unitId));
+    expect(rankIcons).toEqual(roster.map((unitId) => WUXIA_RANK_ABILITY_ICONS[unitId]));
     expect(new Set(rankIcons).size).toBe(14);
     const assets = [
       ...rankIcons,

@@ -134,7 +134,10 @@ describe("Necromancy: half-price Stack purchases", () => {
     state.players.p1.army = [
       // Skeletons Pack: Stack gold 4 (3 printed + bronze 1) → half, floored = 2.
       { id: "army_skel", unitDefId: "necropolis.skeletons", side: "pack" },
-      // Archangels Pack: gold tier — Stack gold 33 → half, floored = 16.
+      // Necromancy Stacks are Undead-only (5ec8e74b, v185), so the gold-tier card
+      // is Dread Knights Pack: Stack gold 23 (20 printed + gold 3) → half, floored = 11.
+      { id: "army_dk", unitDefId: "necropolis.dread_knights", side: "pack" },
+      // Archangels Pack: gold tier but NOT Undead — never a Necromancy target.
       { id: "army_arch", unitDefId: "castle.archangels", side: "pack" }
     ];
     return state;
@@ -146,7 +149,7 @@ describe("Necromancy: half-price Stack purchases", () => {
     pumpAdventureQueues(state);
 
     expect(visitAction(state, "Add a Stack to Skeletons (2 gold)")).toBeTruthy();
-    expect(visitAction(state, "Add a Stack to Archangels"), "gold tier is expert-only").toBeUndefined();
+    expect(visitAction(state, "Add a Stack to Dread Knights"), "gold tier is expert-only").toBeUndefined();
 
     const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, visitAction(state, "Add a Stack to Skeletons (2 gold)")!.action);
@@ -157,17 +160,31 @@ describe("Necromancy: half-price Stack purchases", () => {
     expect(state.players.p1.discard).toContain("ability.necromancy");
   });
 
-  it("expert extends the half-price Stack to gold-tier cards (floor(33/2) = 16)", () => {
+  it("expert extends the half-price Stack to gold-tier Undead cards (floor(23/2) = 11 gold + the Valuable)", () => {
     let state = necroState("necromancy-expert");
+    state.players.p1.resources.valuables = 2;
     queueNecromancyReinforce(state, "p1", "expert", "ability.necromancy");
     pumpAdventureQueues(state);
 
-    const archStack = visitAction(state, "Add a Stack to Archangels (16 gold)");
-    expect(archStack, "expert Necromancy reaches the gold tier").toBeTruthy();
+    // USER RULING 2026-09-28: only the GOLD is halved — the Dread Knights
+    // Stack's printed Valuable is still paid, as on Necromancy's reinforce.
+    const dkStack = visitAction(state, "Add a Stack to Dread Knights (11 gold + 1 valuables)");
+    expect(dkStack, "expert Necromancy reaches the gold tier").toBeTruthy();
+    expect(visitAction(state, "Add a Stack to Archangels"), "Undead-only (5ec8e74b)").toBeUndefined();
     const goldBefore = state.players.p1.resources.gold;
-    state = applyOk(state, archStack!.action);
+    state = applyOk(state, dkStack!.action);
     expect(state.players.p1.army[1].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(goldBefore - 16);
+    expect(state.players.p1.resources.gold).toBe(goldBefore - 11);
+    expect(state.players.p1.resources.valuables).toBe(1);
+  });
+
+  it("CONTROL: without the Valuable the gold-tier half-price Stack is not offered", () => {
+    const state = necroState("necromancy-expert-no-valuable");
+    state.players.p1.resources.valuables = 0;
+    queueNecromancyReinforce(state, "p1", "expert", "ability.necromancy");
+    pumpAdventureQueues(state);
+    expect(visitAction(state, "Add a Stack to Dread Knights")).toBeUndefined();
+    expect(visitAction(state, "Add a Stack to Skeletons (2 gold)"), "the gold-only bronze Stack stays").toBeTruthy();
   });
 
   it("Skip keeps the Necromancy card (the Stack option never pre-spends it)", () => {

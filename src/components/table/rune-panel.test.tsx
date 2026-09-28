@@ -33,7 +33,7 @@ describe("RunePanel — Bulwark Rune tracker", () => {
 
     expect(screen.getByLabelText(/Runes for .*: track 3 of 9, reserve 10, level 2 of 2/i)).toBeTruthy();
     expect(screen.getByRole("img", { name: /^Rune Level 1: \+1 Attack .* earned this combat$/ })).toBeTruthy();
-    expect(screen.getByRole("img", { name: /^Rune Level 2: \+3 Speed .* earned this combat$/ })).toBeTruthy();
+    expect(screen.getByRole("img", { name: /^Rune Level 2: \+2 Speed .* earned this combat$/ })).toBeTruthy();
     expect(screen.getByRole("img", { name: /^Rune Level 3: \+1 Defense .* locked \(build the Altar/ })).toBeTruthy();
 
     // One cube, on slot 3's measured centre of the printed track; slots 1-2 lit as passed.

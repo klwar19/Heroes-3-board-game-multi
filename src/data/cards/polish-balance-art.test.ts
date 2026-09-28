@@ -216,6 +216,11 @@ describe("Polish Balance Pack registries", () => {
       "artifact.hourglass_of_the_evil_hour",
       "artifact.lions_shield_of_courage",
       "artifact.necklace_of_swiftness",
+      // e940332d wired the pack's four elemental Orb reprints (artifacts-balance.ts).
+      "artifact.orb_of_driving_rain",
+      "artifact.orb_of_silt",
+      "artifact.orb_of_tempestuous_fire",
+      "artifact.orb_of_the_firmament",
       "artifact.pendant_of_second_sight",
       "artifact.rib_cage",
       "artifact.ring_of_the_wayfarer",

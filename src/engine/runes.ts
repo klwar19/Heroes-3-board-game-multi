@@ -26,7 +26,7 @@ export const RUNE_GAIN_DEFEND = 3;
 export const RUNE_STARTING_BASE = 0;
 
 /** The cumulative army-wide bonus added at each Rune Level (Gamefound Update #3). */
-export const RUNE_LEVEL_BONUS = { attack: 1, defense: 1, initiative: 3 } as const;
+export const RUNE_LEVEL_BONUS = { attack: 1, defense: 1, initiative: 2 } as const;
 
 /**
  * The player-scoped buff added when each successive Rune Level is first reached.

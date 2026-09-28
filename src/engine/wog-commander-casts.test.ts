@@ -7,7 +7,14 @@ import {
   makeCommanderCombatUnit,
   commanderUnitId
 } from "./index";
-import { effectiveInitiative, expireEffectsForActivationEnd, getActiveDefenseBonus, getDisplayAttackBonus } from "./active-effects";
+import {
+  advanceCasterEffectsAtActivationStart,
+  effectiveInitiative,
+  expireEffectsForActivationEnd,
+  expireEffectsForCombatRoundEnd,
+  getActiveDefenseBonus,
+  getDisplayAttackBonus
+} from "./active-effects";
 import { applyCommanderBeginCastHaste, applyCommanderCombatStart, applyLionRoundStartBarrage } from "./commanders";
 import { maybeOpenCommanderCombatStartDecision } from "./adventure-reducer";
 import { getUnitMoveRange } from "./legal-actions";
@@ -549,26 +556,30 @@ describe("commander casts — Temple Guardian's Precision (instant reaction)", (
     expect(commanderReactionOffer(declared)).toBeFalsy();
   });
 
-  it("adds +1/+2/+3 Attack by Power to that shot (first cast of the combat)", () => {
+  it("adds +1/+2/+2 Attack by Power to that shot (first cast of the combat)", () => {
+    // b939c348 (v170) Precision ladder: amountByPower [1, 2, 2] — Power 2's extra
+    // value is four uses, not a bigger first bonus.
     // CONTROL: marksmen 3 + die 0, Precision passed = 3.
     expect(settle(declareMarksmenShot(castState("temple_guardian"))).combat!.units.unit_p2_skeletons.damage).toBe(3);
     // Pow 0: +1 → 4.
     expect(shootWithPrecision(castState("temple_guardian")).combat!.units.unit_p2_skeletons.damage).toBe(4);
     // Pow 1 (magic grade 2): +2 → 5.
     expect(shootWithPrecision(castState("temple_guardian", { magic: 2 })).combat!.units.unit_p2_skeletons.damage).toBe(5);
-    // Pow 2 (magic grade 3): +3 → 6.
-    expect(shootWithPrecision(castState("temple_guardian", { magic: 3 })).combat!.units.unit_p2_skeletons.damage).toBe(6);
+    // Pow 2 (magic grade 3): +2 → 5.
+    expect(shootWithPrecision(castState("temple_guardian", { magic: 3 })).combat!.units.unit_p2_skeletons.damage).toBe(5);
   });
 
   it("waives the ranged penalty on the buffed shot", () => {
-    function pointBlank(withPrecision: boolean): number {
+    // b939c348 (v170): Precision answers only a NONADJACENT shot, so the penalty
+    // it waives is the long-range one (back row → opposite back row, 1 → 17).
+    function penaltyShot(withPrecision: boolean, targetCell: number): { declared: GameState; damage: number } {
       const state = castState("temple_guardian");
       const marksmen = state.combat!.units.unit_p1_marksmen;
       marksmen.abilities = [];
       marksmen.attack = 3;
       marksmen.position = 1;
       const skeletons = state.combat!.units.unit_p2_skeletons;
-      skeletons.position = 5; // adjacent to the marksmen at 1 → penalty shot
+      skeletons.position = targetCell;
       state.combat!.units.unit_p1_griffins.position = 6; // clear cell 5's owner
       state.combat!.activeUnitId = "unit_p1_marksmen";
       state.activePlayerId = "p1";
@@ -585,56 +596,73 @@ describe("commander casts — Temple Guardian's Precision (instant reaction)", (
       if (withPrecision) {
         const offer = commanderReactionOffer(declared);
         expect(offer, "Precision offered").toBeTruthy();
-        return settle(apply(declared, offer!.action)).combat!.units.unit_p2_skeletons.damage;
+        return { declared, damage: settle(apply(declared, offer!.action)).combat!.units.unit_p2_skeletons.damage };
       }
-      return settle(declared).combat!.units.unit_p2_skeletons.damage;
+      return { declared, damage: settle(declared).combat!.units.unit_p2_skeletons.damage };
     }
 
-    // CONTROL: penalty keeps the -1 → 3 - 1 = 2 damage.
-    expect(pointBlank(false)).toBe(2);
+    // CONTROL: the long-range penalty keeps the -1 → 3 - 1 = 2 damage.
+    expect(penaltyShot(false, 17).damage).toBe(2);
     // Pow 0 Precision: penalty waived (single die +1) AND +1 Attack → 3 + 1 + 1 = 5.
-    expect(pointBlank(true)).toBe(5);
+    expect(penaltyShot(true, 17).damage).toBe(5);
+    // CONTROL: an ADJACENT (point-blank) shot is never offered Precision.
+    expect(commanderReactionOffer(penaltyShot(false, 5).declared)).toBeFalsy();
   });
 
-  it("is once per round and twice per combat; the second cast scales (+2 at Power 2)", () => {
+  it("is once per round; twice per combat at Power 0/1, four times at Power 2 (+2, +2, +1, +1)", () => {
+    // b939c348 (v170): "Power 2 gives +2 Attack on uses 1-2 and +1 on uses 3-4";
+    // Power 0/1 keep two uses (the second gives +1).
     function resetMarksmen(state: GameState): void {
       const marksmen = state.combat!.units.unit_p1_marksmen;
       marksmen.activatedThisRound = false;
       marksmen.attackedThisActivation = undefined;
       marksmen.movedThisActivation = false;
       marksmen.retaliatedThisRound = false;
+      state.combat!.units.unit_p2_skeletons.damage = 0;
+    }
+    /** One shot in a fresh round; the Precision bonus it carried, or null when not offered. */
+    function nextRoundShot(state: GameState): { state: GameState; bonus: number | null } {
+      state.combat!.round += 1;
+      resetMarksmen(state);
+      const declared = declareMarksmenShot(state);
+      const offer = commanderReactionOffer(declared);
+      if (!offer) return { state: settle(declared), bonus: null };
+      const shot = settle(apply(declared, offer.action));
+      return { state: shot, bonus: shot.combat!.units.unit_p2_skeletons.damage - 3 };
     }
 
-    // Power 2: the first cast of the combat grants +3.
+    // Power 2: first cast +2.
     let state = castState("temple_guardian", { magic: 3 });
     let declared = declareMarksmenShot(state);
-    let offer = commanderReactionOffer(declared);
+    const offer = commanderReactionOffer(declared);
     expect(offer, "first Precision offered").toBeTruthy();
     state = settle(apply(declared, offer!.action));
-    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(6); // 3 + 3
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(5); // 3 + 2
 
     // Same round: the once-per-round budget is spent → no second offer.
     resetMarksmen(state);
     declared = declareMarksmenShot(state);
     expect(commanderReactionOffer(declared)).toBeFalsy();
-    state = declared; // no window opened → the plain shot already resolved (+3 → 9)
-    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(9);
+    expect(declared.combat!.units.unit_p2_skeletons.damage).toBe(3); // the plain shot resolved
 
-    // Next round: offered again; the SECOND cast grants +2 at Power 2.
-    state.combat!.round += 1;
-    resetMarksmen(state);
-    declared = declareMarksmenShot(state);
-    offer = commanderReactionOffer(declared);
-    expect(offer, "second Precision offered next round").toBeTruthy();
-    const before = declared.combat!.units.unit_p2_skeletons.damage;
-    state = settle(apply(declared, offer!.action));
-    expect(state.combat!.units.unit_p2_skeletons.damage - before).toBe(3 + 2); // attack 3 + second-cast +2
+    // Uses 2-4 in later rounds: +2, +1, +1; a fifth use is beyond the cap.
+    const bonuses: (number | null)[] = [];
+    for (let use = 2; use <= 5; use += 1) {
+      const shot = nextRoundShot(state);
+      state = shot.state;
+      bonuses.push(shot.bonus);
+    }
+    expect(bonuses).toEqual([2, 1, 1, null]);
 
-    // A third use is beyond the two-per-combat cap → no more offers, even later.
-    state.combat!.round += 1;
-    resetMarksmen(state);
-    declared = declareMarksmenShot(state);
-    expect(commanderReactionOffer(declared)).toBeFalsy();
+    // CONTROL: Power 0 keeps two uses (+1, then +1) and is not offered a third.
+    let low = castState("temple_guardian");
+    const lowBonuses: (number | null)[] = [];
+    for (let use = 1; use <= 3; use += 1) {
+      const shot = nextRoundShot(low);
+      low = shot.state;
+      lowBonuses.push(shot.bonus);
+    }
+    expect(lowBonuses).toEqual([1, 1, null]);
   });
 });
 
@@ -690,22 +718,33 @@ describe("commander casts — Brute's Bloodlust", () => {
     expect(strike(castOn(castState("brute", { magic: 3 }), "brute", "unit_p1_crusaders"))).toBe(4);
   });
 
-  it("is cast on the Brute's activation and lasts for 2 combat rounds", () => {
+  it("is cast on the Brute's activation and lasts until the Brute's second following activation", () => {
+    // e4b8f4be (v171): Bloodlust is timed by the CASTER's activations
+    // ("caster-two-activations"), no longer by 2 combat rounds.
     const state = castOn(castState("brute", { magic: 2 }), "brute", "unit_p1_griffins");
-    const bloodlust = state.activeEffects.find(
+    const bloodlustOf = (current: GameState) => current.activeEffects.find(
       (effect) =>
         effect.name.startsWith("Bloodlust") &&
         effect.target?.type === "unit" &&
         effect.target.unitId === "unit_p1_griffins"
     );
 
-    expect(bloodlust?.duration).toEqual({ type: "combat-rounds", rounds: 2 });
-    expect(bloodlust?.expiresAtCombatRoundEnd).toBe(state.combat!.round + 1);
+    expect(bloodlustOf(state)?.duration).toEqual({ type: "combat" });
+    expect(bloodlustOf(state)?.casterActivationsUntilExpiry).toBe(2);
+    // Round ends never end it while the Brute lives (the old 2-round timer would)…
+    expireEffectsForCombatRoundEnd(state, state.combat!.round);
+    expireEffectsForCombatRoundEnd(state, state.combat!.round + 1);
+    expect(bloodlustOf(state), "survives two round ends").toBeTruthy();
+    // …the Brute's next activation keeps it; the second one ends it.
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(bloodlustOf(state), "after the Brute's next activation").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(bloodlustOf(state), "ends at its second following activation").toBeUndefined();
   });
 });
 
 describe("commander casts — Succubus' Fire Shield", () => {
-  it("burns an attacker for 1 (Pow 0) or 2 (Pow 1/2); lasts 2/2/3 rounds; Pow 2 adds a one-attack +1 Defense", () => {
+  it("burns an attacker for 1 (Pow 0) or 2 (Pow 1/2); Pow 0 lasts 2 rounds, Pow 1/2 two caster activations; Pow 2 adds a one-attack +1 Defense", () => {
     function burn(state: GameState): number {
       // The defender's retaliation is spent, so any damage on the attacker
       // can only come from the Fire Shield itself.
@@ -723,8 +762,9 @@ describe("commander casts — Succubus' Fire Shield", () => {
     // Pow 2: 2 damage back.
     expect(burn(castOn(castState("succubus", { magic: 3 }), "succubus", "unit_p1_marksmen"))).toBe(2);
 
-    // Durations (expiry machinery itself is pinned in the active-effects tests):
-    // Pow 0 and Pow 1 last two combat rounds, Pow 2 three.
+    // Durations (e4b8f4be, v171): Pow 0 lasts two combat rounds; Pow 1/2 last
+    // until the commander's second following activation — 2 damage until its
+    // next activation, then 1 until the following one.
     const shieldOf = (state: GameState) =>
       state.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     const low = castOn(castState("succubus"), "succubus", "unit_p1_marksmen");
@@ -733,11 +773,23 @@ describe("commander casts — Succubus' Fire Shield", () => {
 
     const mid = castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen");
     const midEffect = shieldOf(mid);
-    expect(midEffect?.expiresAtCombatRoundEnd).toBe(mid.combat!.round + 1);
-
     const high = castOn(castState("succubus", { magic: 3 }), "succubus", "unit_p1_marksmen");
     const highEffect = shieldOf(high);
-    expect(highEffect?.expiresAtCombatRoundEnd).toBe(high.combat!.round + 2);
+    for (const effect of [midEffect, highEffect]) {
+      expect(effect?.duration).toEqual({ type: "combat" });
+      expect(effect?.modifiers.find((m) => m.type === "FIRE_SHIELD")).toMatchObject({
+        amount: 2,
+        amountAfterFirstCasterActivation: 1
+      });
+    }
+    // Round ends never end it while the Succubus lives; her activations do.
+    expireEffectsForCombatRoundEnd(mid, mid.combat!.round);
+    expireEffectsForCombatRoundEnd(mid, mid.combat!.round + 1);
+    expect(shieldOf(mid), "survives two round ends").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(mid, commanderUnitId("p1"));
+    expect(shieldOf(mid), "after the Succubus' next activation").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(mid, commanderUnitId("p1"));
+    expect(shieldOf(mid), "ends at her second following activation").toBeUndefined();
 
     // Every tier burns ranged attackers too.
     for (const effect of [lowEffect, midEffect, highEffect]) {

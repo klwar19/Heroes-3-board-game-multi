@@ -186,6 +186,8 @@ describe("a PAUSED table refuses gameplay and keeps table talk", () => {
     expect(expectRejected(paused, { type: "ADVANCE_COMPUTER", playerId: "p2" }, T0 + 2 * MINUTE)).toMatch(/paused/);
     expect(expectRejected(paused, { type: "CANCEL_PAUSE", playerId: "p2" }, T0 + 2 * MINUTE)).toMatch(/already paused/);
 
+    // Hosted chat needs the sender to be a room member (chat.ts, since f80818ad).
+    paused.room!.members.push({ clientId: "c1", name: "Catherine", seat: "p1", isHost: false });
     const chatted = applyOk(paused, { type: "SEND_CHAT", clientId: "c1", text: "brb", at: T0 + 2 * MINUTE }, T0 + 2 * MINUTE);
     expect(gamePaused(chatted)).toBe(true);
     const reset = applyOk(chatted, { type: "REQUEST_ROOM_RESET", playerId: "p2", clientId: "c2" }, T0 + 2 * MINUTE);
@@ -226,29 +228,38 @@ describe("a PAUSED table refuses gameplay and keeps table talk", () => {
 });
 
 describe("time controls freeze while paused and pick up where they stopped", () => {
-  it("the turn budget: 1 minute spent before the pause, none during it, the remaining 9 after resume", () => {
+  it("the turn inactivity window: 1 minute spent before the pause, none during it, the remaining 9 after resume", () => {
     const paused = pausedTwoPlayer("tc-turn", T0 + MINUTE);
     expect(turnClockRunningSeats(paused)).toEqual(["p1"]);
+    // v158 (016b95ef): the turn clock is an INACTIVITY window that every
+    // successful action refreshes, so p1's own ask re-stamped it. Back-date it
+    // so p1 has been idle for the minute before the pause (as the AFK idle test
+    // below does for lastActionAt).
+    paused.afk!.turnOpenSince!.p1 = T0;
     // Twenty minutes into the pause the clock still reads one minute.
     const deep = T0 + 21 * MINUTE;
     expect(pauseClockNow(paused, deep)).toBe(T0 + MINUTE);
     expect(turnElapsedMillis(paused, "p1", deep)).toBe(MINUTE);
 
-    const resumed = applyOk(paused, { type: "RESUME_GAME", playerId: "p1" }, deep);
+    // p2 resumes (past the override window): the pauser's own resume would be
+    // activity that refreshes p1's window, hiding the shift measured here.
+    const resumed = applyOk(paused, { type: "RESUME_GAME", playerId: "p2" }, deep);
     expect(resumed.pause ?? null).toBeNull();
     // Stamps moved forward by the 20 paused minutes: elapsed is still 1 minute.
     expect(resumed.afk?.turnOpenSince?.p1).toBe(T0 + 20 * MINUTE);
     expect(turnElapsedMillis(resumed, "p1", deep)).toBe(MINUTE);
-    // p2's last activity was their confirm at the pause moment: after the shift
-    // it reads as "just now" — the paused stretch never made them look away.
-    expect(resumed.afk?.lastActionAt?.p2).toBe(deep);
-    expect(idleMillis(resumed, "p2", deep)).toBe(0);
+    // p1's last activity (its ask, 1 s before the pause) was shifted too: it
+    // reads 1 s idle, not the 20 paused minutes.
+    expect(resumed.afk?.lastActionAt?.p1).toBe(deep - 1_000);
+    expect(idleMillis(resumed, "p1", deep)).toBe(1_000);
     const resumedEvent = resumed.eventLog.find((event) => event.type === "GAME_RESUMED");
     expect(resumedEvent && "pausedMs" in resumedEvent ? resumedEvent.pausedMs : null).toBe(20 * MINUTE);
 
-    // The budget expires 9 minutes after the resume, not before.
+    // The window expires 9 minutes after the resume, not before (an early
+    // automatic request is a v158 no-op, not a rules error).
     const limitAt = deep + TURN_TIME_LIMIT_MS - MINUTE;
-    expect(expectRejected(resumed, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, limitAt - 1_000)).toMatch(/still has turn time/);
+    const early = applyOk(resumed, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, limitAt - 1_000);
+    expect(early.afk?.turnTimeoutPlayerId ?? null).toBeNull();
     const expired = applyOk(resumed, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, limitAt + 1_000);
     expect(expired.afk?.turnTimeoutPlayerId).toBe("p1");
 
@@ -304,7 +315,9 @@ describe("who resumes", () => {
     const overrideAt = T0 + MINUTE + PAUSE_OVERRIDE_MS;
     const forced = applyOk(asked, { type: "RESUME_GAME", playerId: "p2" }, overrideAt);
     expect(gamePaused(forced)).toBe(false);
-    expect(forced.afk?.turnOpenSince?.p1).toBe(T0 + PAUSE_OVERRIDE_MS);
+    // p1's clock was last stamped by its own ask 1 s before the pause (v158
+    // refresh); the resume shifts it forward by exactly the paused stretch.
+    expect(forced.afk?.turnOpenSince?.p1).toBe(T0 + MINUTE - 1_000 + PAUSE_OVERRIDE_MS);
 
     // CONTROL: the pauser resumes at any moment.
     const own = applyOk(paused, { type: "RESUME_GAME", playerId: "p1" }, T0 + 2 * MINUTE);

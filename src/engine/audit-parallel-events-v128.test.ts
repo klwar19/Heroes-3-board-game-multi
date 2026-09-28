@@ -10,7 +10,7 @@ import {
   type GameState,
   type PlayerId
 } from "./index";
-import { EVENTS_DECK_ID, getTownOfPlayer, startAdventureRound } from "./adventure";
+import { EVENTS_DECK_ID, getTownOfPlayer, startAdventureRound, startPlayerTurn } from "./adventure";
 import { pumpAdventureQueues, pumpParallelRoundEvents } from "./adventure-reducer";
 import { stopParallelTurns } from "./parallel-turns";
 
@@ -306,11 +306,38 @@ describe("AUDIT v128 — a separate wave barrier still freezes seats with no OPE
 
 describe("AUDIT v128 — stopping parallel play must not lose parked Event work", () => {
   it("period-ended returns open windows and suspended interactions to the ordered queue", () => {
-    const state = game("audit-v128-stop");
+    let state = game("audit-v128-stop");
     for (const id of SEATS) getTownOfPlayer(state, id)!.buildings = ["castle.city_hall"];
     stackEventDeck(state, "event.stables");
-    startRound(state, 3);
-    expect(Object.keys(state.parallelCombats ?? {}).length).toBeGreaterThan(0);
+    // The real parallel wrap (endParallelTurn) starts EVERY live seat's turn
+    // right after the round start. Since the 2026-09-11 fix the Event windows
+    // wait for the shared City Hall queue, and each seat's window opens only
+    // after that seat's start-of-turn draw (round-start-event-barrier.test.ts),
+    // so drive the table until a seat's OPEN window sits in a parked context.
+    state.round = 3;
+    startAdventureRound(state);
+    for (const id of SEATS) startPlayerTurn(state, id);
+    pumpAdventureQueues(state);
+    pumpParallelRoundEvents(state);
+    const parkedWindows = (current: GameState) =>
+      Object.values(current.parallelCombats ?? {}).filter((context) => context.adventure.pendingVisit).length;
+    for (let guard = 0; guard < 30 && parkedWindows(state) === 0; guard += 1) {
+      let progressed = false;
+      for (const id of SEATS) {
+        if (parkedWindows(state) > 0) break;
+        const offers = getLegalActions(state, id);
+        const next =
+          offers.find((entry) => entry.action.type === "CHOOSE_OPTION") ??
+          offers.find((entry) => entry.action.type === "REFRESH_HAND");
+        if (!next) continue;
+        const result = applyAction(state, next.action);
+        expect(result.errors, `${id} answering ${next.label}`).toEqual([]);
+        state = result.state;
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
+    expect(parkedWindows(state), "an open Event window is parked in another seat's context").toBeGreaterThan(0);
 
     stopParallelTurns(state, "period-ended");
 

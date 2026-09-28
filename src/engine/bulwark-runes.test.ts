@@ -137,7 +137,7 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
     expect(state.combat!.units.unit_p2_skeletons.damage).toBe(4);
   });
 
-  it("Rune Level 2 (+3 Initiative) needs the Sieidi — the cap blocks it otherwise", () => {
+  it("Rune Level 2 (+2 Initiative) needs the Sieidi — the cap blocks it otherwise", () => {
     // No rune building: 18 Runes (two full cycles) still caps at Level 1, no Initiative buff.
     const capped = bulwarkState();
     gainRunes(capped, "p1", RUNE_THRESHOLD * 2); // 18
@@ -145,7 +145,7 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
     const cappedUnit = capped.combat!.units.unit_p1_marksmen;
     expect(effectiveInitiative(cappedUnit, capped.activeEffects)).toBe(cappedUnit.initiative);
 
-    // Sieidi built → 18 Runes reaches Level 2: +1 Attack AND +3 Initiative.
+    // Sieidi built → 18 Runes reaches Level 2: +1 Attack AND +2 Initiative.
     const sieidi = bulwarkState();
     sieidi.towns.town_p1.buildings.push("bulwark.sieidi");
     gainRunes(sieidi, "p1", RUNE_THRESHOLD * 2); // 18
@@ -156,7 +156,7 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
       defender: sieidi.combat!.units.unit_p2_skeletons,
       attackKind: "ranged"
     })).toBe(1);
-    expect(effectiveInitiative(unit, sieidi.activeEffects)).toBe(unit.initiative + 3);
+    expect(effectiveInitiative(unit, sieidi.activeEffects)).toBe(unit.initiative + 2);
     // Level 3 (Defense) still locked behind the Altar.
     expect(getActiveDefenseBonus(sieidi, unit)).toBe(0);
   });
@@ -169,7 +169,7 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
     expect(effectiveRuneLevel(sieidi, "p1")).toBe(2);
     const capped = sieidi.combat!.units.unit_p1_marksmen;
     expect(getActiveDefenseBonus(sieidi, capped)).toBe(0);
-    expect(effectiveInitiative(capped, sieidi.activeEffects)).toBe(capped.initiative + 3); // L2 Initiative is live
+    expect(effectiveInitiative(capped, sieidi.activeEffects)).toBe(capped.initiative + 2); // L2 Initiative is live
 
     // Altar built → 27 Runes reaches Level 3: +1 Defense on top of L1+L2.
     const altar = bulwarkState();
@@ -178,7 +178,7 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
     expect(effectiveRuneLevel(altar, "p1")).toBe(3);
     const unit = altar.combat!.units.unit_p1_marksmen;
     expect(getActiveDefenseBonus(altar, unit)).toBe(1);
-    expect(effectiveInitiative(unit, altar.activeEffects)).toBe(unit.initiative + 3);
+    expect(effectiveInitiative(unit, altar.activeEffects)).toBe(unit.initiative + 2);
   });
 
   it("runeLevelForCount counts full nine-Rune cycles (9/18/27), capped at Level 3", () => {
@@ -281,9 +281,9 @@ describe("Bulwark Runes — gained by combat actions (house-rule rates)", () => 
   it("EARNING Runes in a seeded combat climbs the level and raises a real stat (Sieidi: L1→L2 Initiative)", () => {
     // The load-bearing anti-decorative case: a Sieidi player (max level 2) opens
     // the battle at 0 Runes (Level 0) and EARNS its way up; reaching the Level 2
-    // threshold (the second nine-Rune cycle) turns on the army-wide +3 Initiative. Fails if the seed
+    // threshold (the second nine-Rune cycle) turns on the army-wide +2 Initiative. Fails if the seed
     // pre-charges to the cap (no climb to make) OR if the attack's Rune gain is
-    // removed (climb never happens) — testing the OUTCOME (initiative +0 → +3).
+    // removed (climb never happens) — testing the OUTCOME (initiative +0 → +2).
     const state = rangedBulwarkState();
     state.towns.town_p1.buildings.push("bulwark.sieidi");
     state.combat!.attackerPlayerId = "p1";
@@ -306,7 +306,7 @@ describe("Bulwark Runes — gained by combat actions (house-rule rates)", () => 
     const after = settle(applyOk(state, RANGED_ATTACK));
     expect(getRuneSummary(after, "p1")).toMatchObject({ count: 0, reserve: RUNE_SURPLUS_MAX * 2, level: 2 });
     expect(effectiveRuneLevel(after, "p1")).toBe(2);
-    expect(initiativeBonus(after)).toBe(3); // observable: the climb turned Initiative on
+    expect(initiativeBonus(after)).toBe(2); // observable: the climb turned Initiative on
   });
 
   it("a Retaliation Attack banks +2 Runes for the retaliating Bulwark player", () => {
@@ -488,13 +488,13 @@ describe("Bulwark Runes — starting pool (earned in battle; City Hall flag head
     const ctx = { attacker: unit, defender: state.combat!.units.unit_p2_skeletons, attackKind: "ranged" as const };
     const initiativeBonus = (s: GameState) => effectiveInitiative(unit, s.activeEffects) - unit.initiative;
     expect(getActiveAttackBonus(state, ctx)).toBe(1);
-    expect(initiativeBonus(state)).toBe(3); // Level 2 = +3 Initiative after the swap
+    expect(initiativeBonus(state)).toBe(2); // Level 2 = +2 Initiative after the swap
 
     // Seed AGAIN with the Level-1/2 buffs already live (the leak scenario): the
     // bonuses must NOT double — exactly one Rune Power / Rune Swiftness remains.
     seedRunesForCombat(state);
     expect(getActiveAttackBonus(state, ctx)).toBe(1); // not 2 — the reported bug
-    expect(initiativeBonus(state)).toBe(3); // not 6
+    expect(initiativeBonus(state)).toBe(2); // not 4
     expect(state.activeEffects.filter((effect) => effect.name === "Rune Power")).toHaveLength(1);
     expect(state.activeEffects.filter((effect) => effect.name === "Rune Swiftness")).toHaveLength(1);
   });
@@ -532,7 +532,7 @@ describe("Bulwark Runes — starting pool (earned in battle; City Hall flag head
 
     expect(effectiveRuneLevel(state, "p1")).toBe(3);
     const unit = state.combat!.units.unit_p1_marksmen;
-    expect(effectiveInitiative(unit, state.activeEffects)).toBe(unit.initiative + 3);
+    expect(effectiveInitiative(unit, state.activeEffects)).toBe(unit.initiative + 2);
   });
 });
 
@@ -563,8 +563,8 @@ describe("Bulwark Runes — PvP / multiplayer", () => {
     // Each side carries its own Level-1 +1 Attack…
     expect(getActiveAttackBonus(state, { attacker: p1Unit, defender: p2Unit, attackKind: "ranged" })).toBe(1);
     expect(getActiveAttackBonus(state, { attacker: p2Unit, defender: p1Unit, attackKind: "ranged" })).toBe(1);
-    // …but ONLY p1 (Level 2) has the +3 Initiative — it must NOT leak onto p2's units.
-    expect(effectiveInitiative(p1Unit, state.activeEffects)).toBe(p1Unit.initiative + 3);
+    // …but ONLY p1 (Level 2) has the +2 Initiative — it must NOT leak onto p2's units.
+    expect(effectiveInitiative(p1Unit, state.activeEffects)).toBe(p1Unit.initiative + 2);
     expect(effectiveInitiative(p2Unit, state.activeEffects)).toBe(p2Unit.initiative);
   });
 
@@ -607,7 +607,7 @@ describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
     });
     expect(baseTrack.levels.map((l) => l.status)).toEqual(["active", "locked", "locked"]);
     expect(baseTrack.levels.map((l) => l.threshold)).toEqual([9, 9, 9]);
-    expect(baseTrack.levels.map((l) => l.bonusLabel)).toEqual(["+1 Attack", "+3 Speed", "+1 Defense"]);
+    expect(baseTrack.levels.map((l) => l.bonusLabel)).toEqual(["+1 Attack", "+2 Speed", "+1 Defense"]);
 
     // Sieidi built, only 9 Runes earned: L2 is PENDING (unlocked, not yet earned).
     const sieidi = bulwarkState();

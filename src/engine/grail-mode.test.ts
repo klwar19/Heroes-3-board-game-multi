@@ -357,7 +357,17 @@ describe("Dragon Utopia objective", () => {
     expect(field.everFlagged).toBe(true);
     expect(state.adventure!.winnerPlayerId).toBeNull();
 
-    // Holding it into the start of a later turn wins.
+    // Hold timing (c812f5f5 "Dragon Conqueror hold timing"; end-to-end in
+    // dragon-map-victory-regression.test.ts): the holder wins only once the
+    // round FOLLOWING capture has ended, never earlier in that round.
+    const captureRound = field.dragonConquerorHold!.captureRound;
+    expect(captureRound).toBe(state.round);
+    checkDragonConquerorHold(state, "p1");
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+    state.round = captureRound + 1;
+    checkDragonConquerorHold(state, "p1");
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+    state.round = captureRound + 2;
     checkDragonConquerorHold(state, "p1");
     expect(state.adventure!.winnerPlayerId).toBe("p1");
   });

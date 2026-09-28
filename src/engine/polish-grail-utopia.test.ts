@@ -101,13 +101,17 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(seen).toEqual(new Set([1, 2]));
   });
 
-  it("uses the exact Grail and Utopia guard packages", () => {
+  it("uses the mode army on BOTH Grail and Utopia fields (1 Black Dragon + 2 random Azure)", () => {
+    // 3f2de608 (v146): the Grail & Dragon Utopia field rules fight ONE
+    // configurable mode army on both objectives — "Both fields use the mode army
+    // below (default: one Black Dragon and two random Azure units)" (editor).
     const state = game("polish-objective-guards");
     const grail = drawGuardArmy(state, field("grail", "20,20"), 7);
     const utopia = drawGuardArmy(state, field("dragon_utopia", "21,21"), 7);
-    expect(grail.map((draw) => draw.tier)).toEqual(["azure", "azure"]);
-    expect(utopia.map((draw) => draw.tier)).toEqual(["azure", "azure", "gold"]);
-    expect(utopia.at(-1)?.unitDefId).toBe("neutral.black_dragons");
+    for (const draws of [grail, utopia]) {
+      expect(draws.map((draw) => draw.tier).sort()).toEqual(["azure", "azure", "gold"]);
+      expect(draws.filter((draw) => draw.unitDefId === "neutral.black_dragons")).toHaveLength(1);
+    }
   });
 
   it("fights the Dragon Utopia as a NORMAL Level-VII field (opposing rows), not bank corners", () => {
@@ -337,23 +341,28 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
 });
 
 describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
-  it("scales both VII armies from scenario difficulty and adds exactly one Black Dragon to Utopia", () => {
-    const expected: Record<GameDifficulty, string[]> = {
-      easy: ["azure"],
-      normal: ["azure", "azure"],
-      hard: ["gold", "azure", "azure"],
-      impossible: ["gold", "gold", "azure", "azure"]
-    };
-    for (const difficulty of Object.keys(expected) as GameDifficulty[]) {
+  it("fights the same mode army on both VII fields at every scenario difficulty; a configured army replaces it", () => {
+    // 3f2de608 (v146): the hidden-rules army no longer scales with difficulty —
+    // "the fixed 2 Azure + 1 Black Dragon party at EVERY game difficulty"
+    // (adventure.ts) unless the designer configures `grailUtopiaGuard`.
+    for (const difficulty of ["easy", "normal", "hard", "impossible"] as GameDifficulty[]) {
       const state = editorGame(`editor-guards-${difficulty}`, difficulty);
-      const grail = drawGuardArmy(state, field("grail", `g-${difficulty}`), 7);
-      const utopia = drawGuardArmy(state, field("dragon_utopia", `u-${difficulty}`), 7);
-      expect(grail.map((draw) => draw.tier), `Grail ${difficulty}`).toEqual(expected[difficulty]);
-      expect(utopia.slice(0, -1).map((draw) => draw.tier), `Utopia base ${difficulty}`).toEqual(expected[difficulty]);
-      expect(utopia.at(-1), `Utopia Black Dragon ${difficulty}`).toMatchObject({
-        unitDefId: "neutral.black_dragons",
-        tier: "gold"
-      });
+      for (const location of ["grail", "dragon_utopia"]) {
+        const draws = drawGuardArmy(state, field(location, `${location}-${difficulty}`), 7);
+        expect(draws.map((draw) => draw.tier).sort(), `${location} ${difficulty}`).toEqual(["azure", "azure", "gold"]);
+        expect(draws.filter((draw) => draw.unitDefId === "neutral.black_dragons"), `${location} ${difficulty}`).toHaveLength(1);
+      }
+    }
+    // CONTROL: the configured mode army is what both fields fight.
+    const configured = editorGame("editor-guards-configured");
+    configured.adventure!.mapPreset = {
+      ...configured.adventure!.mapPreset,
+      objectives: { ...configured.adventure!.mapPreset?.objectives, grailUtopiaGuard: { units: ["neutral.cyclopes"] } }
+    };
+    for (const location of ["grail", "dragon_utopia"]) {
+      expect(drawGuardArmy(configured, field(location, `${location}-configured`), 7).map((draw) => draw.unitDefId)).toEqual([
+        "neutral.cyclopes"
+      ]);
     }
   });
 

@@ -10,6 +10,16 @@ afterEach(cleanup);
 /** The labelled control group for one Objectives knob (aria-label). */
 const section = (label: string): HTMLElement => screen.getByRole("group", { name: label });
 
+/**
+ * Protocol v166 (7cafcf46: "object/victory card galleries with focused
+ * dialogs") moved the Victory & scoring and Map objects controls behind
+ * gallery cards; each card opens a dialog holding them. Open the card first,
+ * exactly as a designer does.
+ */
+const configure = (card: string): void => {
+  fireEvent.click(screen.getByRole("button", { name: `Configure ${card}` }));
+};
+
 describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("renders collapsed with an 'optional' badge when the map has no conditions", () => {
     const { container } = render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
@@ -193,7 +203,8 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     render(
       <MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Conquest" }));
+    configure("Victory mode");
+    fireEvent.click(within(section("Victory mode")).getByRole("button", { name: "Conquest" }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ victoryMode: "conquest" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all conditions" }));
@@ -538,6 +549,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Obelisks: selecting a role writes the preset; bonus controls show only for 'bonus'", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    configure("Obelisks");
 
     // Default = Classic → no bonus controls, no obelisks config.
     expect(screen.queryByLabelText("Obelisk reward 1 kind")).toBeNull();
@@ -586,6 +598,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
         onChange={onChange}
       />
     );
+    configure("Obelisks");
     // Add reward → a second default award appended.
     fireEvent.click(screen.getByRole("button", { name: "Add reward" }));
     expect(onChange).toHaveBeenLastCalledWith(
@@ -628,6 +641,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const { rerender } = render(
       <MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={onChange} />
     );
+    configure("Obelisks");
     // Obelisk guard: pick level Ⅲ.
     fireEvent.click(within(section("Obelisk guard")).getByRole("button", { name: "Ⅲ" }));
     expect(onChange).toHaveBeenLastCalledWith(
@@ -636,6 +650,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
 
     // Settlement guard: pick level Ⅱ.
     rerender(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    configure("Settlements");
     fireEvent.click(within(section("Settlement guard")).getByRole("button", { name: "Ⅱ" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ settlements: { guard: { level: 2 } } })
@@ -652,6 +667,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Obelisks: choosing Classic removes the obelisks config", () => {
     const onChange = vi.fn();
     render(<MapPresetEditor preset={{ obelisks: { role: "monolith" } }} onChange={onChange} />);
+    configure("Obelisks");
     // The only condition was the obelisks role — clearing it collapses to undefined.
     fireEvent.click(screen.getByRole("button", { name: "Classic (locked die)" }));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
@@ -665,6 +681,8 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Objectives: the tuning is CONTEXTUAL to the chosen Win condition", () => {
     // Conquest / no mode: the Grail + Dragon tuning is hidden (only a hint shows).
     const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "conquest" }} onChange={() => {}} />);
+    // The dialog stays open across rerenders, so every absence below is real.
+    configure("Grail objective");
     expect(screen.queryByRole("group", { name: "Grail Obelisks required" })).toBeNull();
     expect(screen.queryByRole("group", { name: "Dragon Utopia guards" })).toBeNull();
 
@@ -675,6 +693,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
 
     // Dragon Conqueror: the Dragon Utopia tuning appears; the Grail row hides.
     rerender(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={() => {}} />);
+    configure("Dragon Utopia");
     expect(section("Dragon Utopia guards")).toBeTruthy();
     expect(section("Dragon Utopia bonus search")).toBeTruthy();
     expect(screen.queryByRole("group", { name: "Grail Obelisks required" })).toBeNull();
@@ -684,6 +703,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const onChange = vi.fn();
     // Grail Obelisks → objectives.grailObelisksRequired (Holy Grail win condition).
     const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />);
+    configure("Grail objective");
     fireEvent.click(within(section("Grail Obelisks required")).getByRole("button", { name: "1" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ objectives: { grailObelisksRequired: 1 } })
@@ -691,6 +711,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
 
     // Utopia guards → objectives.utopiaGuards (a Dragon win condition).
     rerender(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={onChange} />);
+    configure("Dragon Utopia");
     fireEvent.click(within(section("Dragon Utopia guards")).getByRole("button", { name: "Four dragons" }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ objectives: { utopiaGuards: "four" } })
@@ -728,6 +749,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("allows both dragon victories on a map with the hidden Grail/Utopia package", () => {
     const onChange = vi.fn();
     render(<MapPresetEditor preset={{ objectives: { hiddenGrailUtopia: true } }} onChange={onChange} />);
+    configure("Victory mode");
     for (const [name, victoryMode] of [["Dragon Hunt", "dragon-hunt"], ["Dragon Conqueror", "dragon-conqueror"]]) {
       const button = within(section("Victory mode")).getByRole("button", { name });
       expect((button as HTMLButtonElement).disabled).toBe(false);
@@ -739,6 +761,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("offers the hidden Grail/Utopia package directly in the Map Editor", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    configure("Hidden fields");
     const toggle = screen.getByLabelText("Use hidden Grail and Dragon Utopia rules");
 
     fireEvent.click(toggle);
@@ -776,6 +799,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Victory Points: the toggle writes the enabled block, adding/retyping an objective writes it, and off clears it", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    configure("Victory Points");
 
     // Toggle VP on → the enabled block with the default completion VP.
     fireEvent.click(screen.getByLabelText("Victory Points scoring"));
@@ -822,7 +846,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   });
 
   it("Victory Points: the 🎖️ summary line + the hard round-limit relabel appear when on", () => {
-    render(
+    const { rerender } = render(
       <MapPresetEditor
         preset={{ roundLimit: 8, victoryPoints: { enabled: true, victoryConditionVp: 4, objectives: [{ kind: "control-towns", vp: 2, count: 3 }] } }}
         onChange={() => {}}
@@ -831,13 +855,21 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     // Summary headline + objective line (describeVictoryPointsConfig).
     expect(screen.getByText(/most VPs wins \(completion \+4 VP\)/)).toBeTruthy();
     expect(screen.getByText("Objective: Control 3 Towns — +2 VP")).toBeTruthy();
-    // The round-limit section relabels to the hard meaning.
-    expect(screen.getByText("Round limit (hard end)")).toBeTruthy();
+    // The round limit reads as the hard end. v166 (7cafcf46) moved this row into
+    // the Victory Points dialog and relabelled it "Round limit · hard end".
+    configure("Victory Points");
+    expect(screen.getByText("Round limit · hard end")).toBeTruthy();
+    expect(screen.queryByText("Suggested length (rounds)")).toBeNull();
+    // CONTROL: with VP off the same round count is only a suggested length.
+    rerender(<MapPresetEditor preset={{ roundLimit: 8 }} onChange={() => {}} />);
+    expect(screen.queryByText("Round limit · hard end")).toBeNull();
+    expect(screen.getByText("Suggested length (rounds)")).toBeTruthy();
   });
 
   it("Custom win conditions: add / retype kind + param / remove; the cap disables Add", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    configure("Custom win conditions");
 
     // Add a condition → the first OFFERED kind's default (control-towns and
     // obelisks moved to Map objects as per-object win ticks and are no longer
@@ -908,6 +940,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const { rerender } = render(
       <MapPresetEditor preset={{ customWinConditions: [{ kind: "buildings", count: 10 }] }} onChange={onChange} />
     );
+    configure("Custom win conditions");
     // buildings → count param clamped to the instant-win-safe 8-15 band.
     const buildingsInput = within(
       screen.getByRole("group", { name: "Custom win condition list" })
@@ -952,6 +985,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const { rerender } = render(
       <MapPresetEditor preset={{ customWinConditions: [{ kind: "flag-mines", count: 4 }] }} onChange={onChange} />
     );
+    configure("Custom win conditions");
     const select = screen.getByLabelText("Condition 1 kind") as HTMLSelectElement;
     for (const kind of ["defeat-computers", "slay-raid-boss"]) {
       expect(
@@ -994,6 +1028,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
         onChange={() => {}}
       />
     );
+    configure("Dragon Utopia");
     expect(screen.getByRole("group", { name: "Dragon Utopia guards" })).toBeTruthy();
     // CONTROL: conquest with no Utopia placed anywhere → the section stays hidden.
     rerender(<MapPresetEditor preset={{ victoryMode: "conquest" }} tiles={[]} onChange={() => {}} />);
@@ -1008,6 +1043,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
         onChange={onChange}
       />
     );
+    configure("Dragon Utopia");
     const group = screen.getByRole("group", { name: "Dragon Utopia defeat VP" });
     fireEvent.change(within(group).getByRole("spinbutton"), { target: { value: "4" } });
     expect(onChange).toHaveBeenLastCalledWith(
@@ -1037,6 +1073,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Dragon Utopia: the inline instant-win knob upserts the defeat-dragon-utopia win condition", () => {
     const onChange = vi.fn();
     render(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={onChange} />);
+    configure("Dragon Utopia");
     const group = screen.getByRole("group", { name: "Dragon Utopia instant win" });
     fireEvent.change(within(group).getByRole("spinbutton"), { target: { value: "2" } });
     expect(onChange).toHaveBeenLastCalledWith(
@@ -1052,6 +1089,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
         onChange={() => {}}
       />
     );
+    configure("Victory Points");
     const legacy = screen.getByLabelText("Objective 1 kind") as HTMLSelectElement;
     expect(legacy.value).toBe("defeat-dragon-utopia");
     expect(Array.from(legacy.options).some((o) => o.value === "defeat-dragon-utopia")).toBe(true);
@@ -1068,6 +1106,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
 
   it("under the hidden Grail/Utopia package, Grail shows only the honored knobs + the forced-values note", () => {
     render(<MapPresetEditor preset={{ objectives: { hiddenGrailUtopia: true } }} onChange={() => {}} />);
+    configure("Grail objective");
     // The two engine-honored knobs are shown…
     expect(screen.getByRole("group", { name: "Grail Obelisks required" })).toBeTruthy();
     expect(screen.getByText(/Hidden rules fix the rest/)).toBeTruthy();
@@ -1080,6 +1119,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
   it("Hero-defeat bounty: the gold field writes preset.heroDefeatGold", () => {
     const onChange = vi.fn();
     render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    configure("Hero-defeat bounty");
     fireEvent.change(screen.getByRole("spinbutton", { name: "Gold on hero defeat" }), {
       target: { value: "30" }
     });
@@ -1251,6 +1291,7 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
         onPickOnMap={onPickOnMap}
       />
     );
+    configure("Break rules");
     const breakSection = screen.getByRole("region", { name: "Break configuration" });
     for (const label of ["Entering tiles Ⅳ–Ⅴ", "Entering tiles Ⅵ–Ⅶ", "Entering fields Ⅶ"]) {
       expect(within(breakSection).getByRole("button", { name: label })).toBeTruthy();
@@ -1259,11 +1300,16 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
     expect(within(breakSection).getByRole("button", { name: "Whole team" })).toBeTruthy();
     fireEvent.click(within(breakSection).getByRole("button", { name: "Entering tiles Ⅳ–Ⅴ" }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ breaks: { enterNearTiles: true } }));
-
-    fireEvent.click(within(breakSection).getByRole("button", { name: /Specific/ }));
-    fireEvent.click(within(breakSection).getByRole("button", { name: /Pick a tile on the map/ }));
-    expect(onPickOnMap).toHaveBeenCalledWith({ kind: "object-plan", objectKind: "center" });
+    // The Break card points exact-Ⅶ settings at Specific → center tile…
     expect(breakSection.textContent).toMatch(/Dragon Utopia, Grail, Random Town/);
+
+    // …which v166 (7cafcf46) split out of the Break card into its own
+    // "Center objectives" card carrying the center Global | Specific tabs.
+    configure("Center objectives");
+    const centerSection = screen.getByRole("region", { name: "Center objectives" });
+    fireEvent.click(within(centerSection).getByRole("button", { name: /Specific/ }));
+    fireEvent.click(within(centerSection).getByRole("button", { name: /Pick a tile on the map/ }));
+    expect(onPickOnMap).toHaveBeenCalledWith({ kind: "object-plan", objectKind: "center" });
   });
 
   const tilesWithMine: CustomMapTilePlan[] = [
@@ -1273,6 +1319,8 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
 
   it("shows the mode tabs only when tiles + onPickOnMap are wired (standalone editor stays global-only)", () => {
     render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
+    configure("Mines");
+    expect(screen.getByRole("region", { name: "Mines" })).toBeTruthy();
     expect(screen.queryAllByRole("group", { name: "Global or specific" })).toHaveLength(0);
     cleanup();
     render(
@@ -1283,6 +1331,7 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
         tiles={tilesWithMine}
       />
     );
+    configure("Mines");
     expect(screen.getAllByRole("group", { name: "Global or specific" }).length).toBeGreaterThanOrEqual(4);
   });
 
@@ -1306,6 +1355,7 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
         ]}
       />
     );
+    configure("Mines");
     const minesSection = screen.getByRole("region", { name: "Mines" });
     fireEvent.click(within(minesSection).getByRole("button", { name: /Specific/ }));
     // The list shows the tile + a plain-words summary.
@@ -1318,18 +1368,22 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
 
     cleanup();
     // CONTROL: with NO eligible tile the pick button is replaced by a warning.
+    // Since v171 (e4b8f4be "map-designer Mine pick fix") a seat (starting) tile
+    // IS eligible — every home tile prints a Mine — so the control uses a
+    // face-up Ⅳ–Ⅴ slot with no tile chosen, which cannot carry one.
     render(
       <MapPresetEditor
         onChange={() => {}}
         onPickOnMap={onPickOnMap}
         preset={undefined}
-        tiles={[{ row: 8, col: 2, group: "starting", faceDown: false }]}
+        tiles={[{ row: 12, col: 6, group: "near", faceDown: false }]}
       />
     );
+    configure("Mines");
     const bare = screen.getByRole("region", { name: "Mines" });
     fireEvent.click(within(bare).getByRole("button", { name: /Specific/ }));
     expect(within(bare).queryByRole("button", { name: /Pick a tile on the map/ })).toBeNull();
-    expect(within(bare).getByText(/No placed tile carries a Mine yet/)).toBeTruthy();
+    expect(within(bare).getByText(/No placed tile can carry a Mine yet/)).toBeTruthy();
   });
 
   it("hex events: the editor carries only a count note pointing at the board palette (no cards, no pick button)", () => {

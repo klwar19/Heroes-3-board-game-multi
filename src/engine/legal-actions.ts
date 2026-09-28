@@ -1308,6 +1308,8 @@ export function spellReactionBlockedByImmunity(
         | "UNIT_ACTIVATION_STARTED";
     }
   >,
+  /** The player playing the reaction (Spectral Ward only turns away enemies). */
+  playerId: PlayerId,
 ): boolean {
   if (card.kind !== "spell" || !state.combat) {
     return false;
@@ -1330,12 +1332,109 @@ export function spellReactionBlockedByImmunity(
   }
   const unit = state.combat.units[unitId];
   // Ghost Dragons' Spectral Ward: every reaction effect routed here (stat
-  // changes, die/strike riders, Sorrow's skip) is a non-damage Spell effect.
+  // changes, die/strike riders, Sorrow's skip) is a non-damage Spell effect,
+  // turned away only when an enemy plays it.
   return Boolean(
     unit &&
       (unitBlockedBySpellCard(state, unit, card) ||
-        spectralWardBlocksSpellCard(unit, { kind: card.kind })),
+        spectralWardBlocksSpellCard(unit, { kind: card.kind }, playerId)),
   );
+}
+
+/**
+ * Olema's Weakness VI (2026-09-28 ruling): the locked unit's side may not
+ * cancel or redirect an enemy Spell AIMED at it either (Resistance,
+ * Protection, Boots of Polarity, Magic Mirror). Returns the unit such a
+ * counter would shield: the pending cast's unit target, or the unit the enemy
+ * attack instant it would cancel / reflect lands on. An area blast whose
+ * primary target is another unit or a bare space is not aimed at it. (The
+ * First Aid Tent is not a card and keeps healing the locked unit.)
+ */
+export function spellCounterShieldedUnitId(
+  state: GameState,
+  playerId: PlayerId,
+  effect: ConcreteEffect,
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
+  cards: CardLibrary = cardLibrary,
+): UnitId | null {
+  if (
+    !state.combat ||
+    (effect.type !== "CANCEL_SPELL" &&
+      effect.type !== "CANCEL_INSTANT" &&
+      effect.type !== "REDIRECT_SPELL")
+  ) {
+    return null;
+  }
+  if (triggerEvent.type === "SPELL_CAST_STARTED") {
+    if (triggerEvent.playerId === playerId) {
+      return null;
+    }
+    const stackItem = getPendingStackItem(state, triggerEvent);
+    return stackItem?.action.type === "CAST_SPELL" &&
+      stackItem.action.target.type === "unit"
+      ? stackItem.action.target.unitId
+      : null;
+  }
+  const stackItem = state.stack.at(-1);
+  if (
+    triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    !stackItem ||
+    (stackItem.action.type !== "ATTACK_UNIT" &&
+      stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")
+  ) {
+    return null;
+  }
+  if (effect.type === "REDIRECT_SPELL") {
+    return (
+      reflectableAttackInstantForPlayer(state, stackItem, playerId, cards)
+        ?.affectedUnitId ?? null
+    );
+  }
+  if (effect.type !== "CANCEL_SPELL") {
+    return null;
+  }
+  // The reducer's pick: the most recent enemy instant on this attack that the
+  // counter's School / level gate allows.
+  const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
+  for (let index = instants.length - 1; index >= 0; index -= 1) {
+    const entry = instants[index];
+    if (entry.playerId === playerId) {
+      continue;
+    }
+    const spell = cards[entry.cardId];
+    if (
+      !cancelSpellAllowsSchoolAndLevel(
+        effect,
+        { schools: spell?.spellSchools ?? [], level: spell?.spellLevel },
+        "basic",
+      )
+    ) {
+      continue;
+    }
+    const instantEffect = spell
+      ? getEffectiveCardEffectForState(
+          state,
+          spell,
+          spell.effect.type === "CHOOSE_ONE" ? 0 : undefined,
+        )
+      : null;
+    return instantEffect
+      ? spellReactionAffectedUnitId(
+          instantEffect,
+          stackItem.action.attackerId,
+          stackItem.action.defenderId,
+        )
+      : null;
+  }
+  return null;
 }
 
 /**
@@ -1343,7 +1442,9 @@ export function spellReactionBlockedByImmunity(
  * reaction would land on a unit locked against `playerId`'s cards
  * (ENEMY_CARD_TARGET_LOCK). Same affected-unit reading as
  * spellReactionBlockedByImmunity, but for every locked card kind (Spell,
- * Ability, Specialty, Statistic, Artifact), not only Spells.
+ * Ability, Specialty, Statistic, Artifact), not only Spells. A counter that
+ * would cancel / redirect an enemy Spell aimed at the locked unit counts as
+ * landing on it (spellCounterShieldedUnitId).
  */
 export function reactionBlockedByCardTargetLock(
   state: GameState,
@@ -1359,6 +1460,7 @@ export function reactionBlockedByCardTargetLock(
         | "UNIT_ACTIVATION_STARTED";
     }
   >,
+  cards: CardLibrary = cardLibrary,
 ): boolean {
   if (!state.combat) {
     return false;
@@ -1385,6 +1487,9 @@ export function reactionBlockedByCardTargetLock(
   ) {
     unitId = triggerEvent.unitId;
   }
+  unitId =
+    spellCounterShieldedUnitId(state, playerId, effect, triggerEvent, cards) ??
+    unitId;
   const unit = unitId ? state.combat.units[unitId] : undefined;
   return Boolean(unit && unitCardTargetLocked(state, unit, playerId, card));
 }
@@ -1394,12 +1499,15 @@ export function reactionBlockedByCardTargetLock(
  * Any unit of the paid grade or lower (Power 0 → bronze, 1 → silver, 2 → gold),
  * friend or foe, except the unit currently targeted, and never a unit immune to
  * that Spell (Anti-Magic, printed school immunity, artifact school immunity).
+ * `casterId` is the player whose Spell is bounced (it stays theirs), which
+ * Ghost Dragons' Spectral Ward reads to tell a friendly Spell from a hostile one.
  */
 export function spellRedirectTargets(
   state: GameState,
   currentTargetUnitId: UnitId | null,
   maxGrade: CombatUnitState["grade"],
   spellCard?: Pick<CardDefinition, "kind" | "spellSchools"> & Partial<Pick<CardDefinition, "effect">>,
+  casterId?: PlayerId | null,
 ): CombatUnitState[] {
   const combat = state.combat;
   if (!combat) {
@@ -1425,8 +1533,8 @@ export function spellRedirectTargets(
         houseRuleEnabled(state, "polish-bank-unit-spells"),
       ) <= gradeRank(maxGrade) &&
       !unitBlockedBySpellCard(state, unit, reflected) &&
-      // Ghost Dragons' Spectral Ward: a known no-damage Spell cannot be bent onto it.
-      !(spellCard?.effect && spectralWardBlocksSpellCard(unit, spellCard)),
+      // Ghost Dragons' Spectral Ward: a known no-damage enemy Spell cannot be bent onto it.
+      !(spellCard?.effect && spectralWardBlocksSpellCard(unit, spellCard, casterId)),
   );
 }
 
@@ -1552,6 +1660,8 @@ export function reflectableAttackInstantForPlayer(
 ): {
   index: number;
   cardId: CardId;
+  /** The player who played the reflected instant (the Spell stays theirs). */
+  playerId: PlayerId;
   stat: "attack" | "defense";
   affectedUnitId: UnitId;
 } | null {
@@ -1590,11 +1700,39 @@ export function reflectableAttackInstantForPlayer(
     return {
       index,
       cardId: entry.cardId,
+      playerId: entry.playerId,
       stat: effect.stat,
       affectedUnitId: affected.id,
     };
   }
   return null;
+}
+
+/**
+ * The Spell a Magic Mirror on `playerId`'s side would bounce off the top stack
+ * item, with its caster: a cast Spell stays its caster's; an attack instant
+ * (Curse/Weakness…) stays the player who played it.
+ */
+export function reflectedSpellOnStack(
+  state: GameState,
+  stackItem: ResolutionStackItem | undefined,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary,
+): { card: CardDefinition | undefined; casterId: PlayerId | undefined } {
+  if (stackItem?.action.type === "CAST_SPELL") {
+    return { card: cards[stackItem.action.cardId], casterId: stackItem.action.playerId };
+  }
+  if (
+    stackItem &&
+    (stackItem.action.type === "ATTACK_UNIT" ||
+      stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
+    return found
+      ? { card: cards[found.cardId], casterId: found.playerId }
+      : { card: undefined, casterId: undefined };
+  }
+  return { card: undefined, casterId: undefined };
 }
 
 /**
@@ -2972,8 +3110,8 @@ export function getTargetsForCard(
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      // Ghost Dragons' Spectral Ward: a Spell with no damage cannot target it.
-      return !unit || (!unitBlockedBySpellCard(state, unit, card) && !spectralWardBlocksSpellCard(unit, card));
+      // Ghost Dragons' Spectral Ward: an enemy Spell with no damage cannot target it.
+      return !unit || (!unitBlockedBySpellCard(state, unit, card) && !spectralWardBlocksSpellCard(unit, card, playerId));
     });
   }
 
@@ -11026,7 +11164,7 @@ function getMisfortunePreWindowReactions(
     // options — one card-level NEGATE_ATTACK whose die half scales with the
     // Power paid. Offered against any attacker the Spell can legally hex.
     if (card.effect.type === "NEGATE_ATTACK") {
-      if (unitBlockedBySpellCard(state, attacker, card) || spectralWardBlocksSpellCard(attacker, card)) {
+      if (unitBlockedBySpellCard(state, attacker, card) || spectralWardBlocksSpellCard(attacker, card, playerId)) {
         continue;
       }
       reactions.push(
@@ -11062,7 +11200,7 @@ function getMisfortunePreWindowReactions(
       }
       // Printed full Spell immunity (Black Dragons Pack, Azure, …): Misfortune
       // lands on the attacker, so an immune attacker cannot be hexed.
-      if (unitBlockedBySpellCard(state, attacker, card) || spectralWardBlocksSpellCard(attacker, card)) {
+      if (unitBlockedBySpellCard(state, attacker, card) || spectralWardBlocksSpellCard(attacker, card, playerId)) {
         continue;
       }
       reactions.push(
@@ -11493,28 +11631,14 @@ function getMagicMirrorReactions(
       // Prefer the pending cast/instant's schools so partial elemental immunity
       // is judged against the actual bounced Spell, not "all schools".
       const pendingStack = state.stack.at(-1);
-      const reflectedSpell =
-        pendingStack?.action.type === "CAST_SPELL"
-          ? cards[pendingStack.action.cardId]
-          : pendingStack &&
-              (pendingStack.action.type === "ATTACK_UNIT" ||
-                pendingStack.action.type === "MOVE_AND_ATTACK_UNIT")
-            ? (() => {
-                const found = reflectableAttackInstantForPlayer(
-                  state,
-                  pendingStack,
-                  player.id,
-                  cards,
-                );
-                return found ? cards[found.cardId] : undefined;
-              })()
-            : undefined;
+      const reflected = reflectedSpellOnStack(state, pendingStack, player.id, cards);
       if (
         spellRedirectTargets(
           state,
           context.excludeUnitId,
           variant.effect.grade,
-          reflectedSpell,
+          reflected.card,
+          reflected.casterId,
         ).length === 0
       ) {
         continue;
@@ -11560,6 +11684,9 @@ function getInnateMagicMirrorReactions(
   }
 
   let affectedUnitId: UnitId | null = null;
+  // Whether the Spell is AIMED at the Mirror unit (its primary target, or an
+  // attack instant landing on it) rather than merely catching it in a blast.
+  let aimedAtUnit = false;
   if (
     triggerEvent.type === "SPELL_CAST_STARTED" &&
     triggerEvent.playerId !== playerId
@@ -11567,6 +11694,7 @@ function getInnateMagicMirrorReactions(
     const primary = pendingSpellTargetForPlayer(state, triggerEvent, playerId);
     if (primary && hasInnateMagicMirror(primary)) {
       affectedUnitId = primary.id;
+      aimedAtUnit = true;
     } else {
       const stackItem = getPendingStackItem(state, triggerEvent);
       if (stackItem?.action.type === "CAST_SPELL") {
@@ -11587,29 +11715,24 @@ function getInnateMagicMirrorReactions(
     const affected = instant ? combat.units[instant.affectedUnitId] : undefined;
     if (affected && hasInnateMagicMirror(affected)) {
       affectedUnitId = affected.id;
+      aimedAtUnit = true;
     }
+  }
+  // Olema's Weakness VI (2026-09-28 ruling): a unit locked against its own
+  // side's cards cannot lift a Spell aimed at it with its innate Mirror either.
+  if (
+    aimedAtUnit &&
+    affectedUnitId &&
+    unitCardTargetLocked(state, combat.units[affectedUnitId], playerId, { kind: "ability" })
+  ) {
+    return [];
   }
 
   const stackItem = state.stack.at(-1);
-  const reflectedSpell =
-    stackItem?.action.type === "CAST_SPELL"
-      ? cards[stackItem.action.cardId]
-      : stackItem &&
-          (stackItem.action.type === "ATTACK_UNIT" ||
-            stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
-        ? (() => {
-            const found = reflectableAttackInstantForPlayer(
-              state,
-              stackItem,
-              playerId,
-              cards,
-            );
-            return found ? cards[found.cardId] : undefined;
-          })()
-        : undefined;
+  const reflected = reflectedSpellOnStack(state, stackItem, playerId, cards);
   if (
     !affectedUnitId ||
-    spellRedirectTargets(state, affectedUnitId, "azure", reflectedSpell)
+    spellRedirectTargets(state, affectedUnitId, "azure", reflected.card, reflected.casterId)
       .length === 0
   ) {
     return [];
@@ -11752,13 +11875,16 @@ export function damageTransferReactions(
  * Sirius' interceptor, a damage transfer's recipient) or the `protectedUnitId` a
  * damage transfer shields — may not name a unit locked against the offering
  * player's cards. Instants that land implicitly on the attacker / defender are
- * filtered where they are built (reactionBlockedByCardTargetLock). No-op while
- * no lock is on the table.
+ * filtered where they are built (reactionBlockedByCardTargetLock). A counter
+ * that would cancel / redirect an enemy Spell aimed at a locked unit is
+ * withheld here too (2026-09-28 ruling), whichever builder offered it; the
+ * same check is the reducer's backstop. No-op while no lock is on the table.
  */
 function withoutCardTargetLockedOffers(
   state: GameState,
   result: Record<PlayerId, LegalAction[]>,
   cards: CardLibrary,
+  triggerEvent: GameEvent,
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
   if (
@@ -11776,9 +11902,19 @@ function withoutCardTargetLockedOffers(
         return true;
       }
       const card = cards[action.cardId] ?? cardLibrary[action.cardId];
+      const counterEffect = card
+        ? getEffectiveCardEffectForState(state, card, action.optionIndex)
+        : null;
+      const shieldedUnitId =
+        counterEffect &&
+        (triggerEvent.type === "SPELL_CAST_STARTED" ||
+          triggerEvent.type === "UNIT_ATTACK_DECLARED")
+          ? spellCounterShieldedUnitId(state, playerId, counterEffect, triggerEvent, cards)
+          : null;
       const namedUnitIds = [
         action.target?.type === "unit" ? action.target.unitId : undefined,
         action.protectedUnitId,
+        shieldedUnitId ?? undefined,
       ];
       return !namedUnitIds.some((unitId) => {
         const unit = unitId ? combat.units[unitId] : undefined;
@@ -11796,7 +11932,7 @@ export function getLegalReactionsForTrigger(
 ): Record<PlayerId, LegalAction[]> {
   const result = getLegalReactionsForTriggerCore(state, triggerEvent, baseCards);
   if (!state.combat || spellAbilitiesSuppressed(state)) {
-    return withoutCardTargetLockedOffers(state, result, baseCards);
+    return withoutCardTargetLockedOffers(state, result, baseCards, triggerEvent);
   }
   for (const unit of Object.values(state.combat.units)) {
     const saved = unit.elementalVeterancy?.echoSpells;
@@ -11819,7 +11955,7 @@ export function getLegalReactionsForTrigger(
       }
     }
   }
-  return withoutCardTargetLockedOffers(state, result, baseCards);
+  return withoutCardTargetLockedOffers(state, result, baseCards, triggerEvent);
 }
 
 /**
@@ -12213,6 +12349,7 @@ function getLegalReactionsForTriggerCore(
             card,
             variant.effect,
             triggerEvent,
+            player.id,
           ) ||
           // Olema's Weakness VI: the unit this instant lands on is locked
           // against this player's cards (every card kind, not only Spells).
@@ -12222,6 +12359,7 @@ function getLegalReactionsForTriggerCore(
             card,
             variant.effect,
             triggerEvent,
+            cards,
           )
         ) {
           continue;
@@ -12577,6 +12715,7 @@ function getLegalReactionsForTriggerCore(
                 card,
                 variant.effect,
                 triggerEvent,
+                player.id,
               ) ||
               reactionBlockedByCardTargetLock(
                 state,
@@ -12584,6 +12723,7 @@ function getLegalReactionsForTriggerCore(
                 card,
                 variant.effect,
                 triggerEvent,
+                cards,
               )
             ) {
               continue;
@@ -12688,6 +12828,7 @@ function getLegalReactionsForTriggerCore(
                 card,
                 variant.effect,
                 triggerEvent,
+                player.id,
               ) ||
               reactionBlockedByCardTargetLock(
                 state,
@@ -12695,6 +12836,7 @@ function getLegalReactionsForTriggerCore(
                 card,
                 variant.effect,
                 triggerEvent,
+                cards,
               )
             ) {
               continue;
@@ -13315,6 +13457,7 @@ function getLegalReactionsForTriggerCore(
               card,
               variant.effect,
               triggerEvent,
+              player.id,
             ) ||
             reactionBlockedByCardTargetLock(
               state,
@@ -13322,6 +13465,7 @@ function getLegalReactionsForTriggerCore(
               card,
               variant.effect,
               triggerEvent,
+              cards,
             )
           ) {
             continue;
@@ -14177,6 +14321,7 @@ export function getSchoolPermanentExpertActions(
             spell,
             variant.effect,
             triggerEvent,
+            playerId,
           ) &&
           !reactionBlockedByCardTargetLock(
             state,
@@ -14184,6 +14329,7 @@ export function getSchoolPermanentExpertActions(
             spell,
             variant.effect,
             triggerEvent,
+            cards,
           ) &&
           affordableAfterCommit(variant)
         );

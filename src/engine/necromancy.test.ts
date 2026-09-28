@@ -120,6 +120,9 @@ describe("Sandro's Cloak — defeat cascade", () => {
         p1: { id: "p1", discard: [], army: [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "pack", transforms: transforms.map((entry) => ({ ...entry })) }] }
       },
       combat: { units: { unit_skel: unit } },
+      // Every real GameState carries activeEffects (the Isra VI death-save
+      // check in finalizeUnitRemoval reads it).
+      activeEffects: [],
       eventLog: [],
       eventCounter: 0
     } as unknown as GameState;

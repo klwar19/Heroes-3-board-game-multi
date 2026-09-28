@@ -1,4 +1,4 @@
-import { townDefenseToken } from "./town-veterancy";
+import { townDefenseToken, townVeterancy } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { unitsAdjacent } from "./hex-footprint";
 import { combatRoundStartWindowOpen, intelligenceCastWindowClosed } from "./combat-timing";
@@ -386,16 +386,29 @@ export function spellCardCarriesDamage(
 }
 
 /**
- * Ghost Dragons' Spectral Ward (target legality only): a Spell that deals no
- * damage cannot be aimed at, or land its reaction on, this unit. Damage Spells
- * stay legal; their non-damage riders are dropped by unitIgnoresCardNonDamage /
- * effectAppliesToUnit instead.
+ * Ghost Dragons' Spectral Ward turns away only HOSTILE Spells (2026-09-28
+ * ruling): a Spell cast by the unit's own side (Bless, Haste, Cure…) lands
+ * normally. An unknown caster is treated as hostile.
+ */
+export function spectralWardRepelsSpellFrom(
+  unit: CombatUnitState,
+  casterId: PlayerId | null | undefined,
+): boolean {
+  return factionVeterancy(unit, "spectral-ward") && casterId !== unit.controllerId;
+}
+
+/**
+ * Ghost Dragons' Spectral Ward (target legality only): an enemy Spell that
+ * deals no damage cannot be aimed at, or land its reaction on, this unit.
+ * Damage Spells stay legal; their non-damage riders are dropped by
+ * unitIgnoresCardNonDamage / effectAppliesToUnit instead.
  */
 export function spectralWardBlocksSpellCard(
   unit: CombatUnitState,
   card: (Pick<CardDefinition, "kind"> & Partial<Pick<CardDefinition, "effect">>) | undefined,
+  casterId: PlayerId | null | undefined,
 ): boolean {
-  return card?.kind === "spell" && factionVeterancy(unit, "spectral-ward") && !spellCardCarriesDamage(card);
+  return card?.kind === "spell" && spectralWardRepelsSpellFrom(unit, casterId) && !spellCardCarriesDamage(card);
 }
 
 /** Spells that place an ongoing effect directly on their selected unit. */
@@ -457,11 +470,12 @@ export function spellCreatesDirectUnitNegativeOngoingEffect(
 export function unitIgnoresCardNonDamage(
   unit: CombatUnitState,
   card: CardDefinition | undefined,
-  state?: GameState
+  state: GameState | undefined,
+  casterId: PlayerId | null | undefined,
 ): boolean {
   return (
-    // Ghost Dragons' Spectral Ward: every non-damage part of any Spell.
-    (card?.kind === "spell" && factionVeterancy(unit, "spectral-ward")) ||
+    // Ghost Dragons' Spectral Ward: every non-damage part of an enemy Spell.
+    (card?.kind === "spell" && spectralWardRepelsSpellFrom(unit, casterId)) ||
     (card?.kind === "spell" &&
       spellCreatesDirectUnitOngoingEffect(card) &&
       (hasIgnoreOngoingEffects(unit) || hasIgnoreOngoingSpellEffects(unit))) ||
@@ -642,10 +656,10 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
   if (hasIgnoreOngoingSpellEffects(unit) && effect.scope === "unit" && effectIsFromSpell(effect)) {
     return false;
   }
-  // Ghost Dragons' Spectral Ward: no ongoing effect created by a Spell applies,
-  // whatever its scope or polarity (friendly buffs included). Spell damage is
-  // resolved separately and still lands (reduced by 1).
-  if (factionVeterancy(unit, "spectral-ward") && effectIsFromSpell(effect)) {
+  // Ghost Dragons' Spectral Ward: no ongoing effect created by an ENEMY Spell
+  // applies, whatever its scope or polarity; its own side's Spell effects do.
+  // Spell damage is resolved separately and still lands (reduced by 1).
+  if (effectIsFromSpell(effect) && spectralWardRepelsSpellFrom(unit, effect.controllerId)) {
     return false;
   }
   // Fangarm: ignores all ongoing effects from spells AND specialties (but still
@@ -915,7 +929,10 @@ export function getDisplayAttackBonus(state: GameState, unit: CombatUnitState): 
   )
     ? Object.values(state.combat?.units ?? {}).filter(candidate => candidate.damage < candidate.maxHealth && candidate.unitDefId === "wog.werewolf").length
     : 0;
-  return activeBonus + getInnateFlatAttackBonus(unit, false) + (unit.townVeterancy?.attack ?? 0) + werewolfPackBonus;
+  // Cove Haspids' Aggressive Drill (TOWN_VETERANCY) is the one defender-free
+  // own-attack +1 in townAttackBonus — show it, as the generic Drill is shown.
+  const haspidDrill = townVeterancy(unit, "haspid-aggressive-drill") ? 1 : 0;
+  return activeBonus + getInnateFlatAttackBonus(unit, false) + (unit.townVeterancy?.attack ?? 0) + werewolfPackBonus + haspidDrill;
 }
 
 /** Ingham's Zealots VI: does this unit have a lasting "ignores Defense" effect? */

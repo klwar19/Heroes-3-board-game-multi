@@ -290,10 +290,12 @@ describe("SetupLobbyScreen — merged Map picker", () => {
     // Game-mode box owns (sending it here silently dropped a table out of a
     // deliberately chosen Custom mode on every map pick).
     fireEvent.click(screen.getByRole("button", { name: "Twin Kingdoms (2P Land)" }));
+    // customMapId (v167 aaf12233: the library id behind finished-game stats)
+    // is cleared together with the map it names.
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { scenarioId: "land-2p", customMap: null, customMapName: null }
+      options: { scenarioId: "land-2p", customMap: null, customMapName: null, customMapId: null }
     });
   });
 });

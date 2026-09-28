@@ -178,7 +178,9 @@ describe("Protection from X — Knowledge / Mysticism recall of the counter itse
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "spell.protection_from_air",
-      mode: "basic"
+      mode: "basic",
+      // e27112ab: Protection's tiers are Power options; 0 = end a Basic Spell.
+      optionIndex: 0
     });
 
     expect(state.reactionWindow, "the cast window is held open for the recall").toBeTruthy();
@@ -204,7 +206,8 @@ describe("Protection from X — Knowledge / Mysticism recall of the counter itse
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "spell.protection_from_air",
-      mode: "basic"
+      mode: "basic",
+      optionIndex: 0
     });
 
     expect(state.reactionWindow).toBeNull();

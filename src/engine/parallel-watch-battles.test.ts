@@ -383,10 +383,13 @@ describe("a seat with no decision in a battle can WATCH it read-only", () => {
     // The fix must NOT drag a passive watcher off the fight they chose: only a
     // seat that actually OWES a decision is redirected to it.
     let state = twoBattles("watch-idle-still-watches");
+    // Read p2's battle id BEFORE p3 acts: the reducer commits the acting seat's
+    // own projection, so after the switch p2's battle is parked, not live.
+    const p2BattleId = state.combat!.id;
     // p3 is idle (its own turn open, owes nothing) and watches p2's live battle.
     state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p3", ownerPlayerId: "p2" });
     const watched = parallelStateForPlayer(state, "p3");
-    expect(watched.combat?.id, "an idle watcher keeps the battle it picked").toBe(state.combat!.id);
+    expect(watched.combat?.id, "an idle watcher keeps the battle it picked").toBe(p2BattleId);
     expect(isParallelWatchOnly(watched, "p3")).toBe(true);
   });
 

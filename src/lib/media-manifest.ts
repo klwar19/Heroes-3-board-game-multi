@@ -229,6 +229,7 @@ export function compareLocalTreeToManifest(rootDir: string = process.cwd()): Loc
 export const SOURCES_MANIFEST_FILE = "sources-manifest.json";
 export const SOURCE_ROOTS = [
   "scripts/anime-art",
+  "scripts/card-art",
   "scripts/commander-art",
   "scripts/neutral-unit-art",
   "scripts/doom-art",

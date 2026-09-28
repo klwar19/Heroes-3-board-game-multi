@@ -85,7 +85,9 @@ describe("ScenarioObjectivesDock", () => {
     target.designerWinCondition = true;
 
     render(<ScenarioObjectivesDock state={state} viewerPlayerId="p1" />);
-    expect(screen.getByText("Defeat Creature Bank")).toBeTruthy();
+    // The headline names EVERY end condition, joined by "or" (7d3a49b4), not
+    // just the first marked encounter.
+    expect(screen.getByText("Defeat Creature Bank or control 2 Towns")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show scenario objectives" }));
     const dialog = screen.getByRole("dialog", { name: "Scenario objectives" });
     expect(within(dialog).getByText(/level 6 encounter/)).toBeTruthy();

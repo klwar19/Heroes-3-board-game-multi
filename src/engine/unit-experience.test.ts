@@ -214,16 +214,19 @@ describe("Unit Experience — rank math & either/or rewards", () => {
       initiative: 0
     });
     expect(unitStatStepsFor("castle.halberdiers", "bronze")[0]).not.toEqual(UNIT_STAT_STEPS.bronze[0]);
-    // …and the cumulative fold really uses it. Halberdiers' R1/R2 are ability
-    // ranks, so their FIRST stat step lands at R3 — and it is the per-unit
-    // ladder's +1 Attack, not the bronze table's +1 Defense.
-    expect(unitRankStatBonusesFor("castle.halberdiers", "bronze", 2)).toEqual({
+    // …and the cumulative fold really uses it. Castle Halberdiers became
+    // all-ability ranks in f4662a61 (balance sheet), so the example is the
+    // generator-served silver wog.air_messenger: R1/R2 are ability ranks, so its
+    // FIRST stat step lands at R3 — and it is the per-unit ladder's +1 Attack,
+    // not the silver table's +1 Defense.
+    expect(unitStatStepsFor("wog.air_messenger", "silver")[0]).not.toEqual(UNIT_STAT_STEPS.silver[0]);
+    expect(unitRankStatBonusesFor("wog.air_messenger", "silver", 2)).toEqual({
       attack: 0,
       defense: 0,
       health: 0,
       initiative: 0
     });
-    expect(unitRankStatBonusesFor("castle.halberdiers", "bronze", 3)).toEqual({
+    expect(unitRankStatBonusesFor("wog.air_messenger", "silver", 3)).toEqual({
       attack: 1,
       defense: 0,
       health: 0,
@@ -258,13 +261,12 @@ describe("Unit Experience — rank math & either/or rewards", () => {
   });
 
   it("R1 uses only the approved small reward pool (except explicit signature overrides)", () => {
-    const flatDefenseIds = new Set([
-      "stronghold.wolf_raiders", "fuyuki.riders", "azure_breeze.spirit_crane", "hidden_leaf.anbu",
-      "azur_lane.javelin", "heavenly_demon.bone_reavers", "little_busters.haruka", "mgq.miyabi",
-      "mgq.hild", "mgq.pochi", "dungeon.minotaurs", "necropolis.wraiths",
-      "inferno.demons", "tower.genies", "rampart.dendroids", "castle.marksmen", "fortress.gnolls",
-      "wog.ghost", "doom.former_human", "doom.cacodemon"
-    ]);
+    // Since 64d90691 / f4662a61 most units carry a custom or explicit schedule
+    // (custom-experience-overrides.ts; docs/unit-experience-balance-sheet.md)
+    // whose R1 is its own design, so the pool applies to the generator-served
+    // units only — and these four are the generator's flat +1 Defense R1s.
+    const flatDefenseIds = new Set(["tower.genies", "wog.ghost", "doom.former_human", "doom.cacodemon"]);
+    let generatorServed = 0;
     for (const def of Object.values(coreUnitDefinitions)) {
       const step = rankScheduleFor(def.id)[1];
       // Explicit R1 signature overrides are the only units outside the pool.
@@ -281,6 +283,8 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         continue;
       }
       if (["neutral.sprites", "neutral.ice_elementals", "neutral.storm_elementals", "neutral.magma_elementals", "neutral.magic_elementals", "neutral.phoenixes", "conflux.ice_elementals", "conflux.energy_elementals", "conflux.magma_elementals", "conflux.magic_elementals"].includes(def.id)) continue;
+      if (hasUniqueRankSchedule(def.id)) continue;
+      generatorServed += 1;
       // Every other unit is generator-served at R1: one point of stats, or one
       // of the three approved small abilities.
       const gain = unitStatStepsFor(def.id, def.tier)[0]!;
@@ -297,6 +301,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         ], def.id).toContain(step.choices[0]);
       }
     }
+    expect(generatorServed, "the sweep still reaches generator-served units").toBeGreaterThan(20);
     for (const unitDefId of flatDefenseIds) {
       const def = coreUnitDefinitions[unitDefId]!;
       expect(unitRankStatGainsAt(unitDefId, def.tier, 1).defense, unitDefId).toBe(1);
@@ -322,15 +327,17 @@ describe("Unit Experience — rank math & either/or rewards", () => {
   });
 
   it("explicit signature examples resolve exactly at their requested ranks", () => {
+    // Values follow docs/unit-experience-balance-sheet.md (custom schedules of
+    // 64d90691 / f4662a61 and the 2026-09-27 Ghost Dragon rework).
     expect(rankScheduleFor("little_busters.rins_cats")[2]).toMatchObject({
       kind: "ability",
-      choices: ["veteran-soul-feast"]
+      choices: ["veteran-sprite-obstacle"]
     });
-    expect(unitRankAbilityIds("necropolis.skeletons", 4)).toContain("veteran-rebirth");
-    expect(unitRankAbilityIds("tower.magi", 4)).toContain("veteran-spell-sunder");
+    expect(unitRankAbilityIds("necropolis.skeletons", 4)).toContain("veteran-skeleton-last-stand");
+    expect(unitRankAbilityIds("tower.magi", 4)).toContain("veteran-magi-spell-sunder");
     expect(unitRankAbilityIds("rampart.unicorns", 4)).toContain("veteran-low-roll-insight");
-    expect(unitRankAbilityIds("castle.zealots", 4)).toContain("veteran-defense-pierce");
-    expect(unitRankAbilityIds("necropolis.ghost_dragons", 4)).toContain("veteran-soul-feast");
+    expect(unitRankAbilityIds("castle.zealots", 4)).toContain("town-zealot-loss");
+    expect(unitRankAbilityIds("necropolis.ghost_dragons", 4)).toContain("veteran-dragon-feast");
     // User ruling 2026-09-27: Black Dragons R3 keeps Hunt the Slow at +1
     // Initiative (was +2) and ALSO grants Wheeling Retreat.
     expect(rankScheduleFor("dungeon.black_dragons")[3]).toMatchObject({
@@ -416,41 +423,34 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     // own an EXPLICIT signature rank, false for everything the generator serves.
     // (It used to be `Boolean(coreUnitDefinitions[id])` — a tautology that could
     // never fail — and later a lookup in a bespoke table that no longer exists.)
+    // Since 64d90691 most factions carry full custom schedules
+    // (custom-experience-overrides.ts), so the explicit side is now the majority
+    // — but generator-served units remain, so the read still splits the roster.
     expect(uniqueCount).toBeGreaterThan(5);
-    expect(uniqueCount).toBeLessThan(unitIds.length / 2);
+    expect(uniqueCount).toBeLessThan(unitIds.length);
   });
 
-  it("SCHEDULE PRECEDENCE: explicit per-unit override > flavour generator, and nothing else", () => {
-    // The redesign (26f6e37f / 2d2da234) has exactly TWO tiers. The old
-    // hand-authored UNIT_RANK_SCHEDULES table is DELETED, and
-    // docs/unit-experience-balance-sheet.md is the design authority.
+  it("SCHEDULE PRECEDENCE: custom/explicit per-unit override > flavour generator, and nothing else", () => {
+    // The redesign (26f6e37f / 2d2da234) deleted the old hand-authored
+    // UNIT_RANK_SCHEDULES table; docs/unit-experience-balance-sheet.md is the
+    // design authority. Since 64d90691 / f4662a61 a unit may also carry a full
+    // CUSTOM schedule (custom-experience-overrides.ts) ahead of the explicit ranks.
     //
-    // (i) an explicit override wins its rank…
+    // (0) a custom schedule owns every rank (Castle Crusaders).
     expect(hasUniqueRankSchedule("castle.crusaders")).toBe(true);
+    expect(rankScheduleFor("castle.crusaders")[2]).toEqual({ kind: "ability", choices: ["town-crusader-undead"] });
     expect(rankScheduleFor("castle.crusaders")[4]).toMatchObject({
       kind: "ability",
       choices: ["veteran-double-attack"]
     });
-    // …while every OTHER rank of that same unit is the generator's cavalry
-    // rotation (a bespoke entry would have made R2 a single lore-keyed choice).
-    expect(rankScheduleFor("castle.crusaders")[2]).toEqual({
-      kind: "ability",
-      choices: [
-        "veteran-retaliation-fury",
-        "veteran-attack-when-attacking",
-        "wog-no-negative-attack-roll",
-        "commander-charge"
-      ]
-    });
-    expect(rankScheduleFor("castle.crusaders")[3]).toEqual({ kind: "stats" });
 
-    // (ii) a unit with NO override is the generator top to bottom. Halberdiers
-    // are the canonical case: the deleted table gave them S / A(thick-hide,
-    // air-shield) / S / S, so this whole schedule fails if a bespoke tier is
-    // ever re-plugged into the resolver.
-    expect(hasUniqueRankSchedule("castle.halberdiers")).toBe(false);
+    // (i) an explicit override wins its rank (Castle Halberdiers: R1 Sky and
+    // Cavalry Hunter, R3 Surrounding Phalanx)...
+    expect(hasUniqueRankSchedule("castle.halberdiers")).toBe(true);
+    // ...while every OTHER rank of that same unit is the generator rotation (a
+    // bespoke entry would have made R2/R4 a single lore-keyed choice).
     expect(rankScheduleFor("castle.halberdiers")).toEqual({
-      1: { kind: "ability", choices: ["veteran-attack-when-attacking"] },
+      1: { kind: "ability", choices: ["town-halberd-hunter"] },
       2: {
         kind: "ability",
         choices: [
@@ -460,7 +460,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
           "veteran-guarded-stance"
         ]
       },
-      3: { kind: "stats" },
+      3: { kind: "ability", choices: ["town-halberd-aura"] },
       4: {
         kind: "ability",
         choices: [
@@ -471,8 +471,35 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         ]
       }
     });
-    expect(hasUniqueRankSchedule("neutral.boars")).toBe(false);
-    expect(rankScheduleFor("neutral.boars")[2].kind).toBe("ability");
+
+    // (ii) a unit with NO override is the generator top to bottom
+    // (wog.air_messenger), so this whole schedule fails if a bespoke tier is
+    // ever re-plugged into the resolver.
+    expect(hasUniqueRankSchedule("wog.air_messenger")).toBe(false);
+    expect(rankScheduleFor("wog.air_messenger")).toEqual({
+      1: { kind: "ability", choices: ["veteran-attack-when-attacking"] },
+      2: {
+        kind: "ability",
+        choices: [
+          "veteran-attack-when-attacking",
+          "veteran-guarded-stance",
+          "commander-charge",
+          "wog-no-negative-attack-roll"
+        ]
+      },
+      3: { kind: "stats" },
+      4: {
+        kind: "ability",
+        choices: [
+          "unlimited-retaliation",
+          "commander-max-damage",
+          "veteran-defense-pierce",
+          "veteran-rebirth"
+        ]
+      }
+    });
+    expect(hasUniqueRankSchedule("wog.sylvan_centaur")).toBe(false);
+    expect(rankScheduleFor("wog.sylvan_centaur")[2].kind).toBe("ability");
 
     // (iii) the reward economy is EXACTLY the override ids plus the generator
     // pools. These arms lived only in the deleted table, so their reappearance
@@ -490,10 +517,11 @@ describe("Unit Experience — rank math & either/or rewards", () => {
       "kansen-fleet-formation",
       "gorgon-death-stare",
       "unicorn-paralyze-retaliation",
-      "bulwark-thick-hide",
+      // bulwark-thick-hide returned as an EXPLICIT rank (f4662a61: Dendroids R1,
+      // Yetis R3) and zombie-resilience as a CUSTOM one (78429380: Cyber Zombies
+      // R2) — both on the balance sheet, so they are no longer table-only ids.
       "gargoyle-spell-ward",
       "ignore-paralysis",
-      "zombie-resilience",
       "attack-roll-advantage",
       "sandworm-strike-again",
       "ignore-combat-penalties"
@@ -582,7 +610,10 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     //    its printed vampire-heal-on-attack (amount 2, and the reader takes the
     //    FIRST match anyway).
     expect(unitRankAbilityIds("neutral.vampires", 4)).not.toContain("veteran-soul-feast");
-    expect(unitRankAbilityGainsAt("neutral.vampires", 4)).toEqual(["wraith-enemy-discard"]);
+    // Its R4 rotation is now [soul-feast, wraith-heal-2, …] (balance sheet:
+    // Regeneration), so the fall-through lands on wraith-heal-2.
+    expect(rankScheduleFor("neutral.vampires")[4]).toMatchObject({ choices: ["veteran-soul-feast", "wraith-heal-2", "wraith-enemy-discard", "veteran-rebirth"] });
+    expect(unitRankAbilityGainsAt("neutral.vampires", 4)).toEqual(["wraith-heal-2"]);
     // `checked` counts the same-type (granted, held) pairs the sweep actually
     // JUDGED. Today exactly two survive as legitimate stacks — doom.mancubus
     // (printed retaliation-only advantage + the granted unconditional one) and
@@ -830,7 +861,14 @@ function resolveArmyAttack(
   defenderArmy?: { unitDefId: string; side: "few" | "pack" | "neutral"; experience?: number },
   defenderAttack = 0,
   defenderInitiative?: number,
-  options: { defenderMaxHealth?: number; attackerMoved?: boolean; attackerDeck?: string[]; attackerDamage?: number } = {}
+  options: {
+    defenderMaxHealth?: number;
+    attackerMoved?: boolean;
+    attackerDeck?: string[];
+    attackerDamage?: number;
+    /** Spaces the attacker already moved this combat round (the UNIT_MOVED memory). */
+    attackerMovedSpaces?: number;
+  } = {}
 ): GameState {
   let state = createInitialGameState(seed);
   const attacker = makeCombatUnitFromArmy(
@@ -844,6 +882,14 @@ function resolveArmyAttack(
   attacker.position = 9;
   attacker.damage = options.attackerDamage ?? 0;
   attacker.movedThisActivation = options.attackerMoved ?? false;
+  if (options.attackerMovedSpaces !== undefined) {
+    attacker.movedThisActivation = true;
+    attacker.townVeterancy = {
+      ...attacker.townVeterancy,
+      movedRound: state.combat!.round,
+      movedSpacesRound: options.attackerMovedSpaces
+    };
+  }
   state.combat!.units.unit_p1_griffins = attacker;
   if (defenderArmy) {
     const defender = makeCombatUnitFromArmy(
@@ -952,39 +998,52 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     expect(r4Damage).toBe(r3Damage + 2); // +1 through Defense on each of two shots.
   });
 
-  it("Rin's Cats Grade II heals exactly 1 HP after its own attack", () => {
-    const gradeOne = resolveArmyAttack(
-      "uxp-rins-cats-grade-one",
-      { unitDefId: "little_busters.rins_cats", side: "few", experience: 5 },
+  it("Soul Feast heals exactly 1 HP after its own attack (Dragon Flies R3)", () => {
+    // Rin's Cats R2 became Fairy Landscaping (custom schedule, 64d90691), so the
+    // Soul Feast rank is exercised on Fortress Dragon Flies, whose R3 it is
+    // (balance sheet); R2 is the CONTROL one rank below.
+    const rankTwo = resolveArmyAttack(
+      "uxp-dragon-flies-rank-two",
+      { unitDefId: "fortress.dragon_flies", side: "few", experience: 9 },
       undefined,
       0,
       undefined,
       { attackerDamage: 1 }
     );
-    const gradeTwo = resolveArmyAttack(
-      "uxp-rins-cats-grade-two",
-      { unitDefId: "little_busters.rins_cats", side: "few", experience: 9 },
+    const rankThree = resolveArmyAttack(
+      "uxp-dragon-flies-rank-three",
+      { unitDefId: "fortress.dragon_flies", side: "few", experience: 13 },
       undefined,
       0,
       undefined,
       { attackerDamage: 1 }
     );
-    expect(gradeOne.combat!.units.unit_p1_griffins.damage).toBe(1);
-    expect(gradeTwo.combat!.units.unit_p1_griffins.damage).toBe(0);
+    expect(unitRankAbilityGainsAt("fortress.dragon_flies", 3)).toEqual(["veteran-soul-feast"]);
+    expect(rankTwo.combat!.units.unit_p1_griffins.damage).toBe(1);
+    expect(rankThree.combat!.units.unit_p1_griffins.damage).toBe(0);
   });
 
-  it("halberdiers R1 adds +1 Attack only when they initiate", () => {
-    const control = resolveArmyAttack("uxp-r1-attack-ctl", {
-      unitDefId: "castle.halberdiers",
-      side: "few"
-    });
-    const seasoned = resolveArmyAttack("uxp-r1-attack", {
+  it("halberdiers R1 (Sky and Cavalry Hunter) adds +1 Attack against a flying target only", () => {
+    // f4662a61 Castle ranks (balance sheet): R1 = town-halberd-hunter.
+    const flyingTarget = { unitDefId: "castle.griffins", side: "few" as const };
+    const control = resolveArmyAttack("uxp-r1-hunter-ctl", { unitDefId: "castle.halberdiers", side: "few" }, flyingTarget);
+    const seasoned = resolveArmyAttack(
+      "uxp-r1-hunter",
+      { unitDefId: "castle.halberdiers", side: "few", experience: 5 },
+      flyingTarget
+    );
+    expect(seasoned.combat!.units.unit_p2_skeletons.damage).toBe(
+      control.combat!.units.unit_p2_skeletons.damage + 1
+    );
+    // CONTROL: against the ground skeletons the same rank adds nothing.
+    const groundControl = resolveArmyAttack("uxp-r1-ground-ctl", { unitDefId: "castle.halberdiers", side: "few" });
+    const groundSeasoned = resolveArmyAttack("uxp-r1-ground", {
       unitDefId: "castle.halberdiers",
       side: "few",
       experience: 5
     });
-    expect(seasoned.combat!.units.unit_p2_skeletons.damage).toBe(
-      control.combat!.units.unit_p2_skeletons.damage + 1
+    expect(groundSeasoned.combat!.units.unit_p2_skeletons.damage).toBe(
+      groundControl.combat!.units.unit_p2_skeletons.damage
     );
   });
 
@@ -1007,31 +1066,30 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     );
   });
 
-  it("champions R4 ignores retaliation (R3 CONTROL still takes it)", () => {
-    // Champions carry EXPLICIT overrides at R1-R3; R4 is the generator's
-    // cavalry capstone rotation, whose first choice is ignores-retaliation.
-    const control = resolveArmyAttack(
-      "uxp-elite-ctl",
-      { unitDefId: "castle.champions", side: "few", experience: 19 },
-      undefined,
-      6
-    );
-    const elite = resolveArmyAttack(
-      "uxp-elite",
-      { unitDefId: "castle.champions", side: "few", experience: 25 },
-      undefined,
-      6
-    );
-    expect(control.combat!.units.unit_p1_griffins.damage, "rank 3 still takes retaliation").toBeGreaterThan(0);
-    expect(elite.combat!.units.unit_p1_griffins.damage, "rank 4 no retaliation").toBe(0);
+  it("champions R4 (Unanswered Charge) skips retaliation after moving 2+ spaces this round (R3 CONTROL still takes it)", () => {
+    // f4662a61 Castle ranks (balance sheet): R4 = town-champion-two-space-safe,
+    // "After moving at least 2 spaces this combat round, this unit's attacks do
+    // not provoke retaliation for the rest of the round".
+    const charge = (seed: string, experience: number, attackerMovedSpaces: number) =>
+      resolveArmyAttack(
+        seed,
+        { unitDefId: "castle.champions", side: "few", experience },
+        undefined,
+        6,
+        undefined,
+        { attackerMovedSpaces }
+      ).combat!.units.unit_p1_griffins.damage;
+    expect(charge("uxp-elite-ctl", 19, 2), "rank 3 still takes retaliation").toBeGreaterThan(0);
+    expect(charge("uxp-elite", 25, 2), "rank 4 after a 2-space move: no retaliation").toBe(0);
+    expect(charge("uxp-elite-short", 25, 1), "rank 4 after only 1 space: retaliation lands").toBeGreaterThan(0);
     expect(makeCombatUnitFromArmy(
       { id: "c", unitDefId: "castle.champions", side: "few", experience: 25 },
       "p1",
       "u_c",
       0,
       "legacy"
-    )!.abilities).toContain("ignores-retaliation");
-    expect(unitRankAbilityGainsAt("castle.champions", 4)).toEqual(["ignores-retaliation"]);
+    )!.abilities).toContain("town-champion-two-space-safe");
+    expect(unitRankAbilityGainsAt("castle.champions", 4)).toEqual(["town-champion-two-space-safe"]);
   });
 
   it("marksmen R3 has 2 stats steps (+1 Def +1 Atk) but NOT HP/Init (those need a 3rd stats rank)", () => {
@@ -1042,7 +1100,8 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     expect(r3.attack).toBe(plain.attack + 1);
     expect(r3.maxHealth).toBe(plain.maxHealth); // no 3rd stats step on 2-ability path
     expect(r3.initiative).toBe(plain.initiative);
-    expect(r3.abilities).toContain("bulwark-air-shield"); // from R2 ability
+    // R2 is Sighted Target since the f4662a61 Castle ranks (balance sheet).
+    expect(r3.abilities).toContain("town-marksman-mark"); // from R2 ability
   });
 
   it("marksmen R4 grants Legend ability (no extra stats over R3)", () => {
@@ -1051,7 +1110,9 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     expect(r4.unitRank).toBe(4);
     expect(r4.attack).toBe(r3.attack);
     expect(r4.defense).toBe(r3.defense);
-    expect(r4.abilities).toContain("ranged-extra-shot-on-low-roll");
+    // R4 is Last Stand since the f4662a61 Castle ranks (balance sheet).
+    expect(r4.abilities).toContain("town-marksman-survival");
+    expect(r3.abilities).not.toContain("town-marksman-survival");
   });
 
   it("Black Dragons R3 gain +1 Initiative, Wheeling Retreat and +1 Attack against a slower target", () => {
@@ -1226,19 +1287,23 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     );
   });
 
-  it("halberdiers R3 adds a single Attack stat while ability ranks stay stat-neutral", () => {
-    // Generator-served end to end (A / A / S / A): R1 and R2 are abilities, so
-    // the FIRST stat step of the per-unit ladder (+1 Attack) lands at R3.
+  it("halberdiers' four ranks are all abilities, so no rank moves a printed stat", () => {
+    // f4662a61 Castle ranks (balance sheet): R1 Sky and Cavalry Hunter, R2
+    // Charge, R3 Surrounding Phalanx, R4 Armor-Piercing Drill — A / A / A / A.
     const plain = makeCombatUnitFromArmy({ ...HALBERDIERS }, "p1", "u_h0", 0, "legacy")!;
     const r2 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 9 }, "p1", "u_h2", 0, "legacy")!;
     const r3 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 13 }, "p1", "u_h3", 0, "legacy")!;
-    expect(unitRankStep("castle.halberdiers", 2)?.kind).toBe("ability");
-    expect(r2.attack).toBe(plain.attack);
-    expect(r2.abilities).toContain("commander-charge");
-    expect(r3.attack).toBe(plain.attack + 1);
-    expect(r3.defense).toBe(plain.defense);
     const r4 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 17 }, "p1", "u_h4", 0, "legacy")!;
-    expect(r4.attack).toBe(r3.attack);
+    expect(unitRankStep("castle.halberdiers", 3)?.kind).toBe("ability");
+    for (const veteran of [r2, r3, r4]) {
+      expect(veteran.attack).toBe(plain.attack);
+      expect(veteran.defense).toBe(plain.defense);
+      expect(veteran.maxHealth).toBe(plain.maxHealth);
+      expect(veteran.initiative).toBe(plain.initiative);
+    }
+    expect(r2.abilities).toContain("commander-charge");
+    expect(r3.abilities).toContain("town-halberd-aura");
+    expect(r2.abilities).not.toContain("town-halberd-aura");
     expect(r4.abilities).toContain("veteran-defense-pierce");
   });
 
@@ -1475,36 +1540,55 @@ describe("Unit Experience — Drill", () => {
     expect(max.players.p1.army[0].experience).toBe(3);
   });
 
-  it("waives movement at Towns, Settlements and Random Towns; elsewhere spends exactly 1 movement", () => {
+  it("waives movement at Towns, Settlements and Random Towns (and for bronze); elsewhere spends exactly 1 movement", () => {
+    // f4662a61 (2026-09-09): bronze cards never pay the drill movement, so the
+    // movement cost is exercised on a silver card (Crusaders, 2 gold).
+    const CRUSADERS = { id: "xp_crusaders", unitDefId: "castle.crusaders", side: "few" as const };
+    const silverDrill = (seed: string): GameState => {
+      const state = drillState(seed);
+      state.players.p1.army = [{ ...CRUSADERS }];
+      return state;
+    };
     for (const location of ["town", "settlement", "random_town"] as const) {
-      const state = drillState(`uxp-drill-free-${location}`);
+      const state = silverDrill(`uxp-drill-free-${location}`);
       const hero = getMainHero(state, "p1")!;
       hero.movementPoints = 2;
       state.adventure!.fields[hero.spaceId!].location = location;
-      const next = applyOk(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+      const next = applyOk(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: CRUSADERS.id });
       expect(next.heroes[hero.id].movementPoints, `${location} waives movement`).toBe(2);
       expect(next.players.p1.army[0].experience).toBe(1);
     }
 
-    const field = drillState("uxp-drill-field-cost");
+    const field = silverDrill("uxp-drill-field-cost");
     const hero = getMainHero(field, "p1")!;
     hero.movementPoints = 2;
     field.adventure!.fields[hero.spaceId!].location = "empty";
     expect(
       getLegalActions(field, "p1").find((legal) => legal.action.type === "DRILL_UNIT")?.label
     ).toContain("1 movement");
-    const drilled = applyOk(field, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+    const drilled = applyOk(field, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: CRUSADERS.id });
     expect(drilled.heroes[hero.id].movementPoints).toBe(1);
-    expect(drilled.players.p1.resources.gold).toBe(9);
+    expect(drilled.players.p1.resources.gold).toBe(8);
     expect(drilled.players.p1.army[0].experience).toBe(1);
 
-    const exhausted = drillState("uxp-drill-no-movement");
+    // CONTROL: on that same kind of field a BRONZE card drills without movement.
+    const bronze = drillState("uxp-drill-field-bronze");
+    const bronzeHero = getMainHero(bronze, "p1")!;
+    bronzeHero.movementPoints = 2;
+    bronze.adventure!.fields[bronzeHero.spaceId!].location = "empty";
+    expect(
+      getLegalActions(bronze, "p1").find((legal) => legal.action.type === "DRILL_UNIT")?.label
+    ).not.toContain("movement");
+    const bronzeDrilled = applyOk(bronze, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+    expect(bronzeDrilled.heroes[bronzeHero.id].movementPoints).toBe(2);
+
+    const exhausted = silverDrill("uxp-drill-no-movement");
     const tiredHero = getMainHero(exhausted, "p1")!;
     tiredHero.movementPoints = 0;
     exhausted.adventure!.fields[tiredHero.spaceId!].location = "empty";
     expect(getLegalActions(exhausted, "p1").some((legal) => legal.action.type === "DRILL_UNIT")).toBe(false);
     expect(
-      applyAction(exhausted, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message
+      applyAction(exhausted, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: CRUSADERS.id }).errors[0]?.message
     ).toContain("needs 1 movement");
   });
 

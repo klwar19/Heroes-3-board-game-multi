@@ -331,7 +331,10 @@ describe("Balance Pack — Basic X Magic finds the first TWO spells and the owne
     state.players.p1.discard = [];
     pushFetch(state, "p1", "air");
     state.decks["spells"].drawPile = ["spell.haste", "spell.slow", "spell.slow", "spell.precision"];
-    state.decks["spells"].discardPile = [];
+    // Every shared deck keeps one face-up discard: a Search that finds the pile
+    // empty flips the draw-pile TOP onto it first (openSharedDeckSearch), which
+    // would pull the scanned top card out of reach — seed a non-Air card instead.
+    state.decks["spells"].discardPile = ["spell.slow"];
     return state;
   }
 

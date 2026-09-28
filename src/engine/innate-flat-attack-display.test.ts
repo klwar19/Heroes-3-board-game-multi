@@ -7,7 +7,7 @@ import {
   markUnitRemovedIfNeeded,
   unitFlipSidePreview
 } from "./index";
-import { getDisplayAttackBonus } from "./active-effects";
+import { getDisplayAttackBonus, makeActiveEffect, syncAbilitySuppression } from "./active-effects";
 import { tokenAttackBonus } from "./tokens";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
@@ -154,7 +154,9 @@ describe("Haspid Pack→Few: the displayed Attack is the Attack it strikes with"
     expect(attacker.variant).toBe("few");
     expect(attacker.flippedDownThisCombat).toBe(true);
     expect(attacker.abilities).toContain("haspid-vengeance");
-    expect(attacker.abilities).toContain("veteran-attack-when-attacking");
+    // db44364e (v162) gave Haspids their own Cove Aggressive Drill (same +1 on
+    // own attacks, plus a poison-cube heal) in place of the generic one.
+    expect(attacker.abilities).toContain("town-haspid-aggressive-drill");
     expect(attacker.attack).toBe(printedFew.attack);
 
     // THE FIX: the display now includes the veteran drill +1 AND the +2 the
@@ -223,7 +225,24 @@ describe("Haspid Pack→Few: the displayed Attack is the Attack it strikes with"
   it("a suppressed ability (Disrupting Ray) hides the bonus from the card AND the dice together", () => {
     const { state, attacker, defender } = duel({ unitDefId: "cove.haspids", side: "pack" });
     flipDown(state, attacker);
-    attacker.abilitiesSuppressed = true;
+    // Since 612e09d5 (v140) the abilitiesSuppressed flag is rebuilt from the
+    // UNIT_ABILITY_SUPPRESSED effect before every action, so suppress through it.
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Disrupting Ray",
+          scope: "unit",
+          polarity: "negative",
+          duration: { type: "combat" },
+          modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+        },
+        { type: "system" },
+        "p2",
+        { type: "unit", unitId: attacker.id }
+      )
+    );
+    syncAbilitySuppression(state);
 
     const printedFew = coreUnitDefinitions["cove.haspids"].few!;
     expect(displayedAttack(state, attacker)).toBe(printedFew.attack);

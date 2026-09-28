@@ -138,10 +138,11 @@ describe("Ⅶ designation — face-up center tile", () => {
 
     // A designer-placed Utopia auto-activates the Grail & Dragon Utopia field
     // rules (no separate toggle): a normal Level-VII fight vs 2 Azure guards
-    // PLUS a Black Dragon (the Utopia signature).
+    // PLUS a Black Dragon (the Utopia signature) — the 3f2de608 mode army, which
+    // lists the Black Dragon first.
     const draws = drawGuardArmy(state, field!, 7);
-    expect(draws.map((draw) => draw.tier)).toEqual(["azure", "azure", "gold"]);
-    expect(draws.at(-1)?.unitDefId).toBe("neutral.black_dragons");
+    expect(draws.map((draw) => draw.tier).sort()).toEqual(["azure", "azure", "gold"]);
+    expect(draws.filter((draw) => draw.unitDefId === "neutral.black_dragons")).toHaveLength(1);
   });
 
   it("CONTROL: no viiField keeps C4's printed Grail field", () => {
@@ -616,12 +617,12 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
         (reward) => reward.kind === "shared-deck-search" && String(reward.deckId).startsWith("artifact")
       ).length;
 
-    // Before any battle a Grail fights plain Ⅶ guards (the Utopia draw appends
-    // a Black Dragon) and pays no artifacts.
+    // Before any battle both Grails are plain, unconverted Grails (since
+    // 3f2de608 every Grail/Utopia field fights the same mode army, so the
+    // conversion shows on the field) and a Grail pays no artifacts.
     const [fought, other] = grails;
-    expect(
-      drawGuardArmy(state, fought, 7).some((draw) => draw.unitDefId === "neutral.black_dragons")
-    ).toBe(false);
+    expect(other.location).toBe("grail");
+    expect(other.grailConverted ?? false).toBe(false);
     const searchesBefore = artifactSearches();
     hero.spaceId = fought.spaceId;
     beginFieldVisit(state, hero.id, fought.spaceId, false);
@@ -981,15 +982,24 @@ describe("objectives options", () => {
     expect(canDigGrail(control, "p1")).toBe(false);
   });
 
-  it("utopiaGuards='four' draws the full four-dragon party (CONTROL: default scales to 2 at Normal)", () => {
+  it("utopiaGuards='four' draws the full four-dragon party (CONTROLs: default 2 Azure + 2 Gold; by-difficulty scales to 2 at Normal)", () => {
     const four = createAdventureGameState({ seed: "vii-guards-four", difficulty: "normal", rollFirstPlayer: false });
     four.adventure!.mapPreset = { objectives: { utopiaGuards: "four" } };
-    expect(drawGuardArmy(four, fieldWith("dragon_utopia"), 7)).toHaveLength(4);
+    const party = drawGuardArmy(four, fieldWith("dragon_utopia"), 7);
+    expect(party).toHaveLength(4);
+    expect(party.every((draw) => draw.tier === "azure")).toBe(true);
 
-    // CONTROL: no objectives → the by-difficulty count (Normal = 2).
+    // CONTROL: no objectives → new games use the "default" guard (88e9d44f,
+    // v156): 2 Azure + 2 Gold Neutral draws.
     const control = createAdventureGameState({ seed: "vii-guards-def", difficulty: "normal", rollFirstPlayer: false });
-    expect(dragonUtopiaDifficultyGuardCount(control, 7)).toBe(2);
-    expect(drawGuardArmy(control, fieldWith("dragon_utopia"), 7)).toHaveLength(2);
+    expect(drawGuardArmy(control, fieldWith("dragon_utopia"), 7).map((draw) => draw.tier).sort()).toEqual([
+      "azure", "azure", "gold", "gold"
+    ]);
+    // CONTROL: "by-difficulty" keeps the Field-Difficulty count (Normal = 2).
+    const byDifficulty = createAdventureGameState({ seed: "vii-guards-def", difficulty: "normal", rollFirstPlayer: false });
+    byDifficulty.adventure!.mapPreset = { objectives: { utopiaGuards: "by-difficulty" } };
+    expect(dragonUtopiaDifficultyGuardCount(byDifficulty, 7)).toBe(2);
+    expect(drawGuardArmy(byDifficulty, fieldWith("dragon_utopia"), 7)).toHaveLength(2);
   });
 
   it("utopiaBonusSearch grants the defeater an EXTRA Artifact Search (CONTROL: none without it)", () => {

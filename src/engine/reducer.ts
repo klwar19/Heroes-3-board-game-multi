@@ -537,6 +537,7 @@ import {
   unitHasUnlimitedRetaliationEffect,
   unitHasUnstoppableRetaliationEffect,
   unitIgnoresCardNonDamage,
+  spectralWardRepelsSpellFrom,
   specialtyImmunityActive,
   unitCardTargetLocked,
   unitIgnoresAttackDieFromEffects,
@@ -704,6 +705,7 @@ import {
   healTwoUnitsCandidateIds,
   prophecyPreRollAvailable,
   reflectableAttackInstantForPlayer,
+  reflectedSpellOnStack,
   mapSpellPowerBankAvailable,
   attackWindowPooledPower,
   effectScalesWithAttackPool,
@@ -1132,6 +1134,18 @@ function assertLegal(
       message:
         "Only the priority player can act during the current reaction window.",
     };
+  }
+
+  // A full standard Spell Book is the reason a stash is refused: say so (the
+  // handler's own cap check is the resolution-side twin).
+  if (action.type === "MOVE_SPELL_TO_SPELL_BOOK") {
+    const player = state.players[action.playerId];
+    if (player && !standardSpellBookHasCapacity(player)) {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "The standard Spell Book can hold at most 5 Spells.",
+      };
+    }
   }
 
   if (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") {
@@ -4528,7 +4542,7 @@ function grantDefenseTokensToAll(
     if (
       unit.controllerId === playerId &&
       isUnitAlive(unit) &&
-      !unitIgnoresCardNonDamage(unit, sourceCard, state)
+      !unitIgnoresCardNonDamage(unit, sourceCard, state, playerId)
     ) {
       unit.defenseToken = true;
     }
@@ -7701,7 +7715,7 @@ function applyDispelToTarget(
     const unit = state.combat.units[target.unitId];
     if (
       unit &&
-      !unitIgnoresCardNonDamage(unit, card, state) &&
+      !unitIgnoresCardNonDamage(unit, card, state, playerId) &&
       maxGrade &&
       gradeRankOfUnit(unit) <= gradeRank(maxGrade)
     ) {
@@ -19307,7 +19321,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         ? state.combat.units[stackItem.action.target.unitId]
         : undefined;
     const targetIgnoresNonDamage = Boolean(
-      targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card, state),
+      targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card, state, stackItem.action.playerId),
     );
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
@@ -23077,7 +23091,7 @@ function applyReactionPlayCore(
       (triggerEvent.type === "UNIT_ATTACK_DECLARED" ||
         triggerEvent.type === "UNIT_ACTIVATION_STARTED" ||
         triggerEvent.type === "SPELL_CAST_STARTED") &&
-      spellReactionBlockedByImmunity(state, card, effect, triggerEvent)
+      spellReactionBlockedByImmunity(state, card, effect, triggerEvent, playerId)
     ) {
       const unitId =
         triggerEvent.type === "UNIT_ATTACK_DECLARED"
@@ -23106,7 +23120,7 @@ function applyReactionPlayCore(
       (triggerEvent.type === "UNIT_ATTACK_DECLARED" ||
         triggerEvent.type === "UNIT_ACTIVATION_STARTED" ||
         triggerEvent.type === "SPELL_CAST_STARTED") &&
-      reactionBlockedByCardTargetLock(state, playerId, card, effect, triggerEvent)
+      reactionBlockedByCardTargetLock(state, playerId, card, effect, triggerEvent, cards)
     ) {
       throw new Error(`That unit cannot be targeted by ${card.name}.`);
     }
@@ -23919,6 +23933,7 @@ function applyReactionPlayCore(
       currentTarget.type === "unit" ? currentTarget.unitId : null,
       effect.grade,
       castCard,
+      stackItem.action.playerId,
     );
     if (candidates.length === 0) {
       throw new Error("There is no legal new target for that spell.");
@@ -24003,6 +24018,7 @@ function applyReactionPlayCore(
           found.affectedUnitId,
           effect.grade,
           instantCard,
+          found.playerId,
         )
       : [];
     if (!found || !affected || candidates.length === 0) {
@@ -25810,7 +25826,7 @@ function applyReactionPlayCore(
     for (const unit of Object.values(state.combat.units)) {
       if (unit.controllerId !== playerId && isUnitAlive(unit)) {
         if (effect.damage) dealAreaCardDamage(state, playerId, card, unit, effect.damage);
-        if (isUnitAlive(unit) && !unitIgnoresCardNonDamage(unit, card, state)) {
+        if (isUnitAlive(unit) && !unitIgnoresCardNonDamage(unit, card, state, playerId)) {
           createActiveEffect(state, {
             name: effect.name, scope: "unit", duration: { type: "combat" },
             polarity: "negative", removable: true,
@@ -27594,27 +27610,28 @@ function applyUnitMagicMirror(
   ) {
     throw new Error("That unit cannot use Magic Mirror.");
   }
-
-  let reflectedSpell: Pick<CardDefinition, "kind" | "spellSchools"> | undefined;
-  if (stackItem.action.type === "CAST_SPELL") {
-    reflectedSpell = cards[stackItem.action.cardId];
-  } else if (
-    stackItem.action.type === "ATTACK_UNIT" ||
-    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+  // Olema's Weakness VI (2026-09-28 ruling): a unit locked against its own
+  // side's cards cannot lift a Spell aimed at it with its innate Mirror either.
+  if (
+    unitCardTargetLocked(state, unit, action.playerId, { kind: "ability" }) &&
+    ((stackItem.action.type === "CAST_SPELL" &&
+      stackItem.action.target.type === "unit" &&
+      stackItem.action.target.unitId === unit.id) ||
+      ((stackItem.action.type === "ATTACK_UNIT" ||
+        stackItem.action.type === "MOVE_AND_ATTACK_UNIT") &&
+        reflectableAttackInstantForPlayer(state, stackItem, action.playerId, cards)
+          ?.affectedUnitId === unit.id))
   ) {
-    const found = reflectableAttackInstantForPlayer(
-      state,
-      stackItem,
-      action.playerId,
-      cards,
-    );
-    reflectedSpell = found ? cards[found.cardId] : undefined;
+    throw new Error("That unit cannot be targeted by its own side's cards.");
   }
+
+  const reflected = reflectedSpellOnStack(state, stackItem, action.playerId, cards);
   let candidates = spellRedirectTargets(
     state,
     unit.id,
     "azure",
-    reflectedSpell,
+    reflected.card,
+    reflected.casterId,
   );
   if (candidates.length === 0) {
     throw new Error("There is no legal new target for Magic Mirror.");
@@ -27659,6 +27676,7 @@ function applyUnitMagicMirror(
       found.affectedUnitId,
       "azure",
       cards[found.cardId],
+      found.playerId,
     );
     const amount = attackInstantSignedAmount(stackItem, found.cardId, cards);
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
@@ -29460,7 +29478,7 @@ function playCard(
   const targetUnit =
     target && state.combat ? state.combat.units[target.unitId] : undefined;
   const nonDamageTarget =
-    targetUnit && unitIgnoresCardNonDamage(targetUnit, card, state)
+    targetUnit && unitIgnoresCardNonDamage(targetUnit, card, state, action.playerId)
       ? undefined
       : target;
 
@@ -30469,7 +30487,7 @@ function playCard(
   if (effect.type === "DARKSTORN_STONE_SKIN_ROUND" && state.combat) {
     const newlyGranted = Object.values(state.combat.units).filter(unit =>
       unit.controllerId === action.playerId && isUnitAlive(unit) && !unit.defenseToken &&
-      !unitIgnoresCardNonDamage(unit, card, state)).map(unit => unit.id);
+      !unitIgnoresCardNonDamage(unit, card, state, action.playerId)).map(unit => unit.id);
     grantDefenseTokensToAll(state, action.playerId, card);
     state.combat.darkstornRoundDefenseTokenIds = [
       ...new Set([...(state.combat.darkstornRoundDefenseTokenIds ?? []), ...newlyGranted]),
@@ -31975,7 +31993,7 @@ function playCard(
     if (
       destroyed &&
       !unitIgnoresCardDamage(state, destroyed, card) &&
-      !unitIgnoresCardNonDamage(destroyed, card, state)
+      !unitIgnoresCardNonDamage(destroyed, card, state, action.playerId)
     ) {
       // "Destroy" defeats the entire battlefield piece, not merely its current
       // Pack/stack layer, and therefore bypasses Rebirth-style lethal saves.
@@ -37411,9 +37429,9 @@ function walkMoveThroughTokens(
       if (
         token.armed === true &&
         (unitIgnoresBattlefieldTokenEffect(state, token, unit) ||
-          // Ghost Dragons' Spectral Ward: a Spell's Quicksand stop is a
+          // Ghost Dragons' Spectral Ward: an enemy Spell's Quicksand stop is a
           // non-damage Spell effect (Land Mine / Fire Wall damage still lands).
-          (Boolean(token.sourceSpellCardId) && factionVeterancy(unit, "spectral-ward")))
+          (Boolean(token.sourceSpellCardId) && spectralWardRepelsSpellFrom(unit, token.controllerId)))
       ) {
         appendBattlefieldTokenImmune(state, token, unit);
       } else if (token.armed === true && !armedQuicksand) {

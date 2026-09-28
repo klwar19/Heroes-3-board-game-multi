@@ -871,14 +871,15 @@ describe("HandFan — Balance Pack Intelligence: play Basic/Expert, then pick th
     );
   }
 
-  it("the popover shows Basic / Expert (not 'Use'), and clicking Basic plays Intelligence", () => {
+  it("the popover shows Basic / Empowered (not 'Use'), and clicking Basic plays Intelligence", () => {
     const onAction = vi.fn();
     renderHand(balanceIntelligenceState(), { onAction });
     // Open the Intelligence popover.
     fireEvent.click(screen.getByRole("button", { name: /Intelligence ability card/i }));
-    // The reprint's play sides read Basic / Expert, not the generic Use / Use expert.
+    // The reprint's play sides read Basic / Empowered (2ae9a06d relabeled the
+    // expert side), not the generic Use / Use expert.
     const basic = screen.getByRole("button", { name: /^Basic$/ });
-    expect(screen.getByRole("button", { name: /^Expert$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Empowered$/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Use$/ })).toBeNull();
     // No standalone "List the spells"/"Open Spell Book" enabler surface on the
     // balance Intelligence card (that path could spend a Cast a Spell card).

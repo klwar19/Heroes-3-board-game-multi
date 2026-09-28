@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { hasMediaFile } from "@/lib/media-manifest";
 import { artifactCards, SCANLESS_ARTIFACTS } from "./artifacts";
@@ -35,6 +37,15 @@ const ORIGINAL_REPLACEMENT_SLUGS = [
   "tome_of_water",
   "trident_of_dominion",
 ] as const;
+/** Non-scan artifacts with a deliberate custom face (not an /assets/artifacts_* scan). */
+const CUSTOM_FACES: Record<string, string> = {
+  // 21ae36de: the Spell Scroll deck addition is swapped for a live scroll on taking.
+  "artifact.spell_scroll": "/ui/hero-info/parchment.webp",
+  // b939c348 (v170) / e4b8f4be (v171): new artifacts shipped their own faces.
+  "artifact.helm_of_chaos": "/game-tokens/helm-of-chaos.webp",
+  "artifact.ladybird_of_luck": "/game-tokens/ladybird-of-luck.webp",
+  "artifact.hellstorm_helmet": "/factory-cards/hellstorm-helmet.webp",
+};
 
 describe("artifact card art is committed", () => {
   it("every artifact uses a real card face, or the deck back iff declared scanless", () => {
@@ -43,6 +54,14 @@ describe("artifact card art is committed", () => {
     for (const [id, card] of Object.entries(artifactCards)) {
       const image = card.assets?.cardImage;
       expect(image, `${id} has a cardImage`).toBeTruthy();
+
+      // Artifacts with no printed scan deliberately use a git-tracked custom face.
+      const customFace = CUSTOM_FACES[id];
+      if (customFace) {
+        expect(image, `${id} custom face`).toBe(customFace);
+        expect(existsSync(join("public", customFace)), `${customFace} must be tracked under public/`).toBe(true);
+        continue;
+      }
 
       if (image === DECK_BACK) {
         expect(

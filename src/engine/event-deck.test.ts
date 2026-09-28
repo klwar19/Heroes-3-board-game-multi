@@ -342,9 +342,16 @@ describe("Event resolution survives a mid-Event elimination", () => {
 
     // The live seats bid on: p2's single gold now wins the lot.
     const goldBefore = after.players.p2.resources.gold;
+    const scrollsBefore = after.players.p2.scrolls?.length ?? 0;
     after = chooseVisitOption(after, "p2", /^Bid 1 gold$/);
     after = chooseVisitOption(after, "p3", /^No bid$/);
-    expect(after.players.p2.hand).toContain(lot1);
+    if (lot1 === "artifact.spell_scroll") {
+      // 21ae36de: a won Spell Scroll materializes as a scroll of spells
+      // (materializeArtifactScrolls), never as a hand card.
+      expect(after.players.p2.scrolls ?? []).toHaveLength(scrollsBefore + 1);
+    } else {
+      expect(after.players.p2.hand).toContain(lot1);
+    }
     expect(after.players.p1.hand).not.toContain(lot1);
     expect(after.players.p2.resources.gold).toBe(goldBefore - 1);
 

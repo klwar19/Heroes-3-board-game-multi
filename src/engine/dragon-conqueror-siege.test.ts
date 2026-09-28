@@ -17,7 +17,7 @@ import type { GameAction, GameState } from "./state";
  * who walks onto a CAPTURED Dragon Utopia does not re-fight neutral dragons — it
  * BESIEGES the holder, who defends behind Walls, the Gate and the Arrow Tower
  * exactly like a Citadel town. Win the siege and you seize the Utopia; hold it
- * into the start of your next turn and you win the game.
+ * through the end of the following round and you win the game.
  *
  * Every assertion drives the real action flow (MOVE_HERO → placement → the
  * gate choice → demolition → finalize), so a break anywhere in the contest →
@@ -205,7 +205,7 @@ describe("Dragon Conqueror — contesting a held Utopia is a siege", () => {
     ).toBe(true);
   });
 
-  it("winning a two-player Utopia siege also completes the shared Conquest victory", () => {
+  it("winning a two-player Utopia siege seizes it; holding it through the following round wins", () => {
     let state = makeUtopiaSiegeReady();
     state = assaultUtopia(state);
     state = deploy(state);
@@ -235,7 +235,16 @@ describe("Dragon Conqueror — contesting a held Utopia is a siege", () => {
     expect(state.adventure!.winnerPlayerId ?? null).toBeNull();
     expect(state.phase).not.toBe("game-over");
 
-    // Holding the Utopia into the start of p1's next turn wins.
+    // Hold timing (c812f5f5 "Dragon Conqueror hold timing"): the re-flag marks
+    // this round as the capture; p1 wins only once the FOLLOWING round ends.
+    const utopia = state.adventure!.fields[townField];
+    expect(utopia.flagOwnerId).toBe("p1");
+    const captureRound = utopia.dragonConquerorHold!.captureRound;
+    expect(captureRound).toBe(state.round);
+    state.round = captureRound + 1;
+    checkDragonConquerorHold(state, "p1");
+    expect(state.adventure!.winnerPlayerId ?? null).toBeNull();
+    state.round = captureRound + 2;
     checkDragonConquerorHold(state, "p1");
     expect(state.adventure!.winnerPlayerId).toBe("p1");
   });

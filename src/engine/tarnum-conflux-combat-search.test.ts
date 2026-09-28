@@ -180,8 +180,12 @@ describe("Tarnum (Conflux) I in combat — Polish Balance Pack reprint", () => {
    */
   function balanceCombat(seed: string, balance: boolean): GameState {
     const state = tarnumCombat(seed);
+    // A real AdventureState always carries `fields`/`tiles` (the Search's
+    // tile-band deck gate, ruleset.ts heroTileGroup, reads them).
     state.adventure = {
-      houseRules: { "polish-card-balance": balance }
+      houseRules: { "polish-card-balance": balance },
+      fields: {},
+      tiles: {}
     } as unknown as GameState["adventure"];
     return state;
   }

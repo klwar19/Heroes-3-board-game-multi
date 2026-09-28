@@ -15,7 +15,12 @@ import { MAX_STORED_MAPS, type SharedMapRecord } from "./map-registry";
 type RoomCtor = ConstructorParameters<typeof MapsServer>[0];
 type MapsRequest = Parameters<MapsServer["onRequest"]>[0];
 
-/** A Map-backed stand-in for Durable Object storage (structured-clone on write). */
+/**
+ * A Map-backed stand-in for Durable Object storage (structured-clone on write).
+ * Since 2e03c928 the party stores one `map:<id>` key per map, so the fake mirrors
+ * the DO API it uses: batch `put(entries)`, `delete(keys[])` and a key-sorted
+ * `list({ prefix })`.
+ */
 function makeFakeRoom(id = "catalog") {
   const store = new Map<string, unknown>();
   const room = {
@@ -24,11 +29,20 @@ function makeFakeRoom(id = "catalog") {
       async get<T>(key: string): Promise<T | undefined> {
         return store.has(key) ? (structuredClone(store.get(key)) as T) : undefined;
       },
-      async put(key: string, value: unknown): Promise<void> {
-        store.set(key, structuredClone(value));
+      async put(keyOrEntries: string | Record<string, unknown>, value?: unknown): Promise<void> {
+        if (typeof keyOrEntries === "string") {
+          store.set(keyOrEntries, structuredClone(value));
+          return;
+        }
+        for (const [key, entry] of Object.entries(keyOrEntries)) store.set(key, structuredClone(entry));
       },
-      async delete(key: string): Promise<boolean> {
-        return store.delete(key);
+      async delete(keys: string | string[]): Promise<boolean | number> {
+        if (typeof keys === "string") return store.delete(keys);
+        return keys.filter((key) => store.delete(key)).length;
+      },
+      async list<T>(options: { prefix?: string } = {}): Promise<Map<string, T>> {
+        const keys = [...store.keys()].filter((key) => !options.prefix || key.startsWith(options.prefix)).sort();
+        return new Map(keys.map((key) => [key, structuredClone(store.get(key)) as T]));
       }
     }
   };
@@ -174,7 +188,27 @@ describe("maps Durable Object (party/maps.ts)", () => {
     await second.onStart();
     const maps = await listVia(second);
     expect(maps.map((m) => m.id)).toEqual(["persist-me"]);
-    expect(store.has("maps")).toBe(true);
+    // 2e03c928: each map lives under its own key; no whole-catalog blob is written.
+    expect(store.has("map:persist-me")).toBe(true);
+    expect(store.has("maps")).toBe(false);
+  });
+
+  it("migrates the legacy combined blob into per-map keys once, keeping the blob as a backup", async () => {
+    const { room, store } = makeFakeRoom();
+    const legacy = { ...mapBody({ id: "legacy-1", name: "Legacy" }), createdAt: 1, updatedAt: 1 };
+    store.set("maps", [legacy]);
+    const server = new MapsServer(room);
+    await server.onStart();
+    expect((await listVia(server)).map((m) => m.id)).toEqual(["legacy-1"]);
+    expect(store.has("map:legacy-1")).toBe(true);
+    expect(store.get("mapsMigratedV2")).toBe(true);
+    expect(store.has("maps")).toBe(true); // untouched backup
+
+    // CONTROL: once migrated, a deleted map is not resurrected from the backup.
+    await server.onRequest(mapsRequest("DELETE", { body: { id: "legacy-1" } }));
+    const reloaded = new MapsServer(room);
+    await reloaded.onStart();
+    expect(await listVia(reloaded)).toHaveLength(0);
   });
 
   it("keeps the library bounded — POSTing past the cap evicts the oldest", async () => {

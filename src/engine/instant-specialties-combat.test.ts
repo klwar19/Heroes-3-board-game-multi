@@ -159,8 +159,13 @@ describe("Tazar's War Hero VI (DRAW_TOP_ARTIFACT) mid-combat", () => {
     // The BINH Minor/Major/Relic split means the caster picks a deck, then the
     // draw lands an Artifact in the hand — all inside the live combat.
     const done = resolveChoices(played, "p1");
-    const gainedArtifact = done.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact");
-    expect(gainedArtifact.length, "the draw should have handed an Artifact to the player").toBeGreaterThan(0);
+    // A drawn Spell Scroll deck card becomes a live scroll, never a hand card
+    // (materializeArtifactScrolls, 21ae36de) — it counts as the drawn Artifact.
+    const gainedArtifact =
+      done.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact").length +
+      (done.players.p1.scrolls?.length ?? 0) -
+      (state.players.p1.scrolls?.length ?? 0);
+    expect(gainedArtifact, "the draw should have handed an Artifact to the player").toBeGreaterThan(0);
     expect(done.phase).toBe("combat");
     expect(done.combat?.outcome).toBeNull();
   });

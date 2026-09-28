@@ -647,25 +647,31 @@ describe("The banked voucher affects what is offered", () => {
   });
 
   it("the old immediate Necromancy prompt prices source-first, then Legion", () => {
-    function necropolisGriffinTurn(): GameState {
+    // Necromancy reinforces Undead units only (5ec8e74b, v185), so the priced
+    // target is Wraiths (Pack 6 gold); Griffins stay the non-Undead CONTROL.
+    function necropolisWraithTurn(): GameState {
       const state = setupRecruitTown();
       state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
-      state.players.p1.army = state.players.p1.army.filter((unit) => unit.unitDefId !== "castle.griffins");
+      state.players.p1.army = state.players.p1.army.filter(
+        (unit) => unit.unitDefId !== "castle.griffins" && unit.unitDefId !== "necropolis.wraiths"
+      );
+      state.players.p1.army.push({ id: "u_wraiths", unitDefId: "necropolis.wraiths", side: "few" });
       state.players.p1.army.push({ id: "u_griffins", unitDefId: "castle.griffins", side: "few" });
       return state;
     }
 
-    // No voucher: Griffins Pack 6 gold → Necromancy half (rounded down) = 3 gold.
-    const plain = necropolisGriffinTurn();
+    // No voucher: Wraiths Pack 6 gold → Necromancy half (rounded down) = 3 gold.
+    const plain = necropolisWraithTurn();
     queueNecromancyReinforce(plain, "p1", "basic");
-    expect(queuedOptionLabels(plain).some((label) => label.includes("Griffins") && label.includes("3 gold"))).toBe(true);
+    expect(queuedOptionLabels(plain).some((label) => label.includes("Wraiths") && label.includes("3 gold"))).toBe(true);
+    expect(queuedOptionLabels(plain).some((label) => label.includes("Griffins")), "not Undead").toBe(false);
 
     // A 4-gold voucher applies after the printed 6 is halved to 3, so it is free.
-    const withVoucher = necropolisGriffinTurn();
-    bankVoucher(withVoucher, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "u_griffins" });
+    const withVoucher = necropolisWraithTurn();
+    bankVoucher(withVoucher, "p1", "artifact.legs_of_legion", 4, { kind: "reinforce", armyUnitId: "u_wraiths" });
     queueNecromancyReinforce(withVoucher, "p1", "basic");
     const labels = queuedOptionLabels(withVoucher);
-    expect(labels.some((label) => label.includes("Griffins") && label.includes("free"))).toBe(true);
+    expect(labels.some((label) => label.includes("Wraiths") && label.includes("free"))).toBe(true);
   });
 });
 

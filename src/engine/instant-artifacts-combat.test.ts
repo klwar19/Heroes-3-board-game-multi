@@ -150,8 +150,13 @@ describe("other instant artifacts' Search/dig sides mid-combat", () => {
     expect(played.pendingChoice).toBeTruthy();
 
     const done = resolveChoices(played, "p1");
-    const gained = done.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact");
-    expect(gained.length).toBeGreaterThan(0);
+    // A kept Spell Scroll deck card becomes a live scroll, never a hand card
+    // (materializeArtifactScrolls, 21ae36de) — it counts as the gained Artifact.
+    const gained =
+      done.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact").length +
+      (done.players.p1.scrolls?.length ?? 0) -
+      (state.players.p1.scrolls?.length ?? 0);
+    expect(gained).toBeGreaterThan(0);
     expect(done.phase).toBe("combat");
   });
 

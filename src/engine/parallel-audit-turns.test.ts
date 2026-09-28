@@ -429,14 +429,14 @@ describe("parallel audit — force turn timeout targeting", () => {
   it("a seat that ended its parallel turn has no clock to time out (an OPEN seat does)", () => {
     let state = makeGame("audit-timeout-target", { parallelTurns: 3, players: 3, hosted: true });
     state = apply(state, { type: "END_TURN", playerId: "p3" }, T0);
-    expect(
-      expectRejected(
-        state,
-        { type: "FORCE_TURN_TIMEOUT", playerId: "p1", targetPlayerId: "p3" },
-        T0 + 11 * 60_000
-      )
-    ).toContain("no open turn");
-    // CONTROL: an open seat with an expired budget IS a legal target.
+    // v158 (016b95ef): a stale automatic FORCE_TURN_TIMEOUT for a seat with no
+    // open turn is an idempotent no-op instead of a rules error — nothing arms.
+    const stale = apply(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p1", targetPlayerId: "p3" }, T0 + 11 * 60_000);
+    expect(stale.afk?.turnTimeoutPlayerId ?? null).toBeNull();
+    expect(stale.eventLog.some((event) => event.type === "TURN_TIME_EXPIRED")).toBe(false);
+    // CONTROL: an open seat with an expired inactivity window IS armed.
     expect(turnClockRunningSeats(state)).toContain("p2");
+    const armed = apply(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p1", targetPlayerId: "p2" }, T0 + 11 * 60_000);
+    expect(armed.afk?.turnTimeoutPlayerId).toBe("p2");
   });
 });

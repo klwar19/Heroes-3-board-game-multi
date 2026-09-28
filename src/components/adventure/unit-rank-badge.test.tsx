@@ -18,7 +18,7 @@ function renderArmy(state: GameState) {
   );
 }
 
-function makeState(unitExperience: boolean, seed: string): GameState {
+function makeState(unitExperience: boolean, seed: string, unitDefId = "castle.halberdiers"): GameState {
   const state = createAdventureGameState({
     seed,
     difficulty: "normal",
@@ -26,29 +26,30 @@ function makeState(unitExperience: boolean, seed: string): GameState {
     ruleset: "legacy",
     ...(unitExperience ? { unitExperience: true } : {})
   } as Parameters<typeof createAdventureGameState>[0]);
-  // Halberdiers (generator-served A A S A): R1/R2 are ability ranks, so the
-  // per-unit ladder's FIRST stat step (+1 Attack) lands at R3 — 13 XP = rank 3.
-  state.players.p1.army = [{ id: "vets", unitDefId: "castle.halberdiers", side: "few", experience: 13 }];
+  // 13 XP = rank 3. The rank tests pass Marksmen (S A S A: R1 +1 Defense, R3
+  // +1 Attack); every Halberdiers rank is an ability since f4662a61, so they
+  // stay the plain roster fixture.
+  state.players.p1.army = [{ id: "vets", unitDefId, side: "few", experience: 13 }];
   return state;
 }
 
 describe("ArmyPanel veteran rank badge (unit experience)", () => {
   it("shows rank badge and schedule-folded stats for a rank-3 unit", () => {
-    renderArmy(makeState(true, "rank-badge-on"));
+    renderArmy(makeState(true, "rank-badge-on", "castle.marksmen"));
     const badge = document.querySelector(".unitRankBadge.rank-3");
     expect(badge).toBeTruthy();
-    const printed = coreUnitDefinitions["castle.halberdiers"]!.few!;
+    const printed = coreUnitDefinitions["castle.marksmen"]!.few!;
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
-    // R1/R2 are ability ranks; R3 is the first stats rank and pays +1 Attack.
+    // R1 pays +1 Defense, R2 is an ability rank, R3 pays +1 Attack.
     expect(stats).toContain(`A${printed.attack + 1}`);
-    expect(stats).toContain(`D${printed.defense}`);
+    expect(stats).toContain(`D${printed.defense + 1}`);
   });
 
   it("CONTROL — with the rule off the same card shows printed stats and no badge", () => {
-    renderArmy(makeState(false, "rank-badge-off"));
+    renderArmy(makeState(false, "rank-badge-off", "castle.marksmen"));
     expect(document.querySelector(".unitRankBadge")).toBeNull();
     expect(document.querySelector(".armyExperienceBoard")).toBeNull();
-    const printed = coreUnitDefinitions["castle.halberdiers"]!.few!;
+    const printed = coreUnitDefinitions["castle.marksmen"]!.few!;
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
     expect(stats).toContain(`A${printed.attack}`);
     expect(stats).toContain(`D${printed.defense}`);
@@ -89,7 +90,7 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
   });
 
   it("opens the Unit Experience Board picker, then a per-unit detail with STATS/ABILITY and Drill", () => {
-    const state = makeState(true, "rank-badge-action");
+    const state = makeState(true, "rank-badge-action", "castle.marksmen");
     state.players.p1.army[0].experience = 1;
     state.players.p1.army.push({ id: "champs", unitDefId: "castle.champions", side: "few", experience: 0 });
     const dispatched: unknown[] = [];
@@ -119,11 +120,11 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(dialog.textContent).toContain("Click a unit");
     expect(dialog.textContent).toContain("stats, abilities, or a signature combination");
     // Picker lists army cards — click one to open the large detail panel.
-    const pickHalberdiers = dialog.querySelector(
-      'button[aria-label="Open Few Halberdiers experience board"]'
+    const pickMarksmen = dialog.querySelector(
+      'button[aria-label="Open Few Marksmen experience board"]'
     ) as HTMLButtonElement;
-    expect(pickHalberdiers).toBeTruthy();
-    fireEvent.click(pickHalberdiers);
+    expect(pickMarksmen).toBeTruthy();
+    fireEvent.click(pickMarksmen);
     expect(dialog.classList.contains("unitXpDetailOpen")).toBe(true);
     const text = dialog.textContent ?? "";
     expect(text).toContain("1 · Seasoned");
@@ -133,10 +134,10 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(text).toContain("STATS");
     expect(text).toContain("ABILITY");
     expect(text).toContain("at 5 XP");
-    // Halberdiers' resolved ability ranks — name + full rules text.
-    expect(text).toContain("Aggressive Drill"); // R1
-    expect(text).toContain("Charge"); // R2
-    expect(text).toContain("+1 Attack when this unit attacks after moving this activation");
+    // Marksmen's resolved ability ranks — name + full rules text.
+    expect(text).toContain("Sighted Target"); // R2
+    expect(text).toContain("Last Stand"); // R4
+    expect(text).toContain("Attacking an enemy marks it for this unit.");
     expect(dialog.querySelector(".unitXpRankIcon .unitRankBadgeArt"), "rank rows use large illustrated badges").toBeTruthy();
     fireEvent.click(dialog.querySelector(".drillUnitButton") as Element);
     expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });

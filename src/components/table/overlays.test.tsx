@@ -3283,7 +3283,8 @@ describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {
     afk.lastActionAt = { p1: Date.now(), p2: Date.now() }; // nobody is idle
     afk.turnOpenSince = { p1: Date.now() - TURN_TIME_LIMIT_MS + 4 * 60_000 }; // 4:00 left
     render(<AfkVotePanel onAction={vi.fn()} state={state} viewerPlayerId={"p1" as PlayerId} />);
-    expect(screen.getByText(/Your turn auto-ends in/i)).toBeTruthy();
+    // 016b95ef (v158, inactivity timeout) reworded the owner's line.
+    expect(screen.getByText(/Act before your turn auto-ends/i)).toBeTruthy();
     cleanup();
 
     // The opponent sees the same countdown named after the seat it is about.

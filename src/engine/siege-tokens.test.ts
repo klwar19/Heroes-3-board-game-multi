@@ -699,28 +699,43 @@ describe("turn-start town buildings", () => {
     }
   });
 
-  it("resolution-level guard: a forced NECROMANCY_FETCH never hands out a third copy", () => {
-    // Defense in depth: if the hero reaches the two-copy cap after the prompt
-    // opens, the resolver must leave any further shared copy untouched.
-    const state = createAdventureGameState({ seed: "necromancy-resolve", rollFirstPlayer: false });
-    for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
-    const heroId = Object.values(state.heroes).find((hero) => hero.controllerId === "p2")!.id;
-    const fieldId = state.heroes[heroId].spaceId ?? "";
-    state.players.p2.hand = [];
-    state.players.p2.deck = ["ability.necromancy"];
-    state.players.p2.discard = ["ability.necromancy"];
-    // The shared deck holds a third copy on top; the resolver must not take it.
+  it("resolution-level: a forced NECROMANCY_FETCH takes a third copy while the shared deck holds one", () => {
+    // Ruling 2026-09-24 (e12fa82b, v172): the Amplifier fetches once per
+    // Necromancy copy still in the shared Ability deck — no two-copy cap. It
+    // hands out nothing only once the deck holds no copy (CONTROL below).
+    const setup = (seed: string) => {
+      const state = createAdventureGameState({ seed, rollFirstPlayer: false });
+      for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+      const heroId = Object.values(state.heroes).find((hero) => hero.controllerId === "p2")!.id;
+      const fieldId = state.heroes[heroId].spaceId ?? "";
+      state.players.p2.hand = [];
+      state.players.p2.deck = ["ability.necromancy"];
+      state.players.p2.discard = ["ability.necromancy"];
+      const visit = { heroId, playerId: "p2" as const, fieldId, steps: [{ type: "NECROMANCY_FETCH" as const }] };
+      return { state, visit };
+    };
+    const copiesOf = (state: GameState) =>
+      [...state.players.p2.hand, ...state.players.p2.deck, ...state.players.p2.discard].filter(
+        (id) => id === "ability.necromancy"
+      ).length;
+
+    const { state, visit } = setup("necromancy-resolve");
+    // The shared deck holds a third copy on top; the resolver takes it.
     state.decks.abilities.drawPile.push("ability.necromancy");
-
-    state.adventure!.pendingVisit = { heroId, playerId: "p2", fieldId, steps: [{ type: "NECROMANCY_FETCH" }] };
+    state.adventure!.pendingVisit = visit;
     processPendingVisit(state);
+    expect(copiesOf(state)).toBe(3);
+    expect(state.players.p2.hand).toContain("ability.necromancy");
 
-    const p2 = state.players.p2;
-    const copies = [...p2.hand, ...p2.deck, ...p2.discard].filter((id) => id === "ability.necromancy").length;
-    expect(copies).toBe(2);
-    expect(p2.hand).not.toContain("ability.necromancy");
-    // The untouched third copy remains in the shared deck.
-    expect(state.decks.abilities.drawPile).toContain("ability.necromancy");
+    // CONTROL: no copy left anywhere in the shared Ability deck → nothing gained.
+    const { state: empty, visit: emptyVisit } = setup("necromancy-resolve-empty");
+    const abilities = empty.decks.abilities;
+    abilities.drawPile = abilities.drawPile.filter((id) => id !== "ability.necromancy");
+    abilities.discardPile = abilities.discardPile.filter((id) => id !== "ability.necromancy");
+    empty.adventure!.pendingVisit = emptyVisit;
+    processPendingVisit(empty);
+    expect(copiesOf(empty)).toBe(2);
+    expect(empty.players.p2.hand).not.toContain("ability.necromancy");
   });
 
   it("CONTROL: a hero who does NOT yet own Necromancy is still offered the fetch", () => {

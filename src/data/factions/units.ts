@@ -1231,7 +1231,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Yeti) has no wired ability; Pack (Yeti Runemaster) keeps Recovery.
     few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
-    pack: { attack: 3, defense: 2, health: 5, initiative: 8, cost: { gold: 10 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    pack: { attack: 3, defense: 2, health: 5, initiative: 8, cost: { gold: 9 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
     neutral: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-yeti-shrug-off"], abilityText: "[unit_passive] Enemy [ongoing] effects on this unit last for only one round.", cardImage: "/assets/units-neutral-silver-yetis.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Yeti_and_Yeti_Runemaster",
     source: {
@@ -1601,7 +1601,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ranged",
     few: { attack: 6, defense: 2, health: 6, initiative: 4, cost: { gold: 14 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-few.webp" },
     pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 23, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
-    neutral: { attack: 5, defense: 2, health: 6, initiative: 5, cost: { gold: 27, valuables: 1 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
+    neutral: { attack: 5, defense: 2, health: 6, initiative: 5, cost: { gold: 27 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",

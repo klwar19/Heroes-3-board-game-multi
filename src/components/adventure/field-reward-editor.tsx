@@ -145,7 +145,7 @@ export function FieldRewardEditor({
           </label>
         ))}
         <label className="popoverViiField_num">
-          <span className="fieldRewardLabel"><RewardIcon src="/assets/glyphs/2_treasure_die.svg" tone="gold" />Treasure dice</span>
+          <span className="fieldRewardLabel"><RewardIcon src={REWARD_GLYPH_ICONS.treasureDie} tone="gold" />Treasure dice</span>
           <input
             aria-label={`${ariaLabel} Treasure dice`}
             max={MAX_CENTER_HEX_DICE}

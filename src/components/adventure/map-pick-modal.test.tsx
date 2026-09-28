@@ -37,8 +37,10 @@ function designedMap(overrides: Partial<SharedMapRecord> = {}): SharedMapRecord 
     createdByClientId: "c1",
     createdByName: "Binh",
     createdByUserId: null,
-    createdAt: 1,
-    updatedAt: 1,
+    // Fresh, not epoch-old: since v167 (aaf12233, "a five-month archive tab")
+    // a map unplayed for 5 months (sharedMapIsArchived) leaves the default list.
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
     ...overrides
   } as SharedMapRecord;
 }
@@ -96,6 +98,18 @@ describe("Map window — the list", () => {
       expect(listed.some((text) => text.includes(scenario.name)), scenario.name).toBe(true);
     }
     expect(listed.some((text) => text.includes("Twin Peaks") && text.includes("by Binh"))).toBe(true);
+  });
+
+  it("CONTROL: a designed map unplayed for five months lists only under Archive", async () => {
+    const stale = designedMap({ id: "stale", name: "Old Ruins", createdAt: 1, updatedAt: 1 });
+    const { dialog } = await open([designedMap(), stale]);
+    const names = () => Array.from(rows(dialog)).map((row) => row.textContent ?? "");
+    expect(names().some((text) => text.includes("Twin Peaks"))).toBe(true);
+    expect(names().some((text) => text.includes("Old Ruins"))).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+    expect(names().some((text) => text.includes("Old Ruins"))).toBe(true);
+    expect(names().some((text) => text.includes("Twin Peaks"))).toBe(false);
   });
 
   it("each filter narrows the list", async () => {
@@ -195,10 +209,12 @@ describe("Map window — applying a map", () => {
     fireEvent.click(within(dialog).getByText("📜 Twin Kingdoms (2P Land)").closest("button") as HTMLElement);
     fireEvent.click(within(dialog).getByRole("button", { name: /Play this map/ }));
 
+    // customMapId (v167 aaf12233: the stable library id behind finished-game
+    // stats) is cleared together with the map it names.
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { scenarioId: "land-2p", customMap: null, customMapName: null }
+      options: { scenarioId: "land-2p", customMap: null, customMapName: null, customMapId: null }
     });
     // The mode key is the Game-mode box's alone — a map pick that sent
     // `customMode: false` here silently dropped the table out of Custom mode.
@@ -218,6 +234,8 @@ describe("Map window — applying a map", () => {
         playerCount: 2,
         customMap: record.tiles,
         customMapName: "Twin Peaks",
+        // v167 (aaf12233): the library id rides along for finished-game stats.
+        customMapId: "map-twin",
         customMapPreset: null
       }
     });
@@ -242,6 +260,7 @@ describe("Map window — applying a map", () => {
         playerCount: 3,
         customMap: record.tiles,
         customMapName: "Solo Ambush",
+        customMapId: "solo-map",
         customMapPreset: null
       }
     });
@@ -316,7 +335,7 @@ describe("Map window — applying a map", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { scenarioId: "land-2p", playerCount: 2, customMap: null, customMapName: null }
+      options: { scenarioId: "land-2p", playerCount: 2, customMap: null, customMapName: null, customMapId: null }
     });
   });
 

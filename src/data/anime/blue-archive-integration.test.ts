@@ -147,7 +147,9 @@ describe("Blue Archive live faction integration", () => {
 
   it("uses the generated veterancy emblem and complete local voice sets", () => {
     const icon = unitRankAbilityIcon("veteran-attack-1", "blue_archive.mika");
-    expect(icon).toBe("/assets/anime/icons/blue-archive/rank-shared.webp");
+    // 64d90691 replaced the single rank-shared emblem with per-ability Kivotos
+    // icons; a rule outside that map falls back to the Precision emblem.
+    expect(icon).toBe("/assets/anime/icons/blue-archive/unit-experience/precision.webp");
     expect(hasMediaFile(icon), `${icon} — run npm run media:publish`).toBe(true);
     for (const unit of blueArchiveCharacters) {
       for (const action of ["attack", "shoot", "defend", "hurt", "death", "move"] as const) {

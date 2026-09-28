@@ -532,9 +532,15 @@ export function usesDragonScenarioUtopiaGuards(state: GameState, field: MapField
 /** Apply mode rules at encounter entry, including fields from older saves. */
 export function applyGrailUtopiaEncounterRules(state: GameState, field: MapFieldState): void {
   if (!isGrailUtopiaModeField(state, field)) return;
+  // USER RULING 2026-09-28: a designer's own guard on the hex (center-hex
+  // Guard, exact-hex pin) wins over the mode army, as the v155 Dragon Hunt
+  // Utopia fix does below. A field already stamped with the mode army is
+  // designedGuard too, so it is simply kept.
   if (!isDragonScenarioUtopiaField(adventureVictoryMode(state), field)) {
-    applyCustomGuardToField(field,
-      state.adventure?.mapPreset?.objectives?.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+    if (!field.designedGuard) {
+      applyCustomGuardToField(field,
+        state.adventure?.mapPreset?.objectives?.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+    }
   } else if (adventureDragonUtopiaGuards(state) === "default" && !field.designedGuard) {
     applyCustomGuardToField(field, state.adventure?.mapPreset?.objectives?.grailUtopiaGuard);
   }
@@ -1482,8 +1488,12 @@ export function materializeTileFields(
       // The Dragon Hunt / Dragon Conqueror win-objective Utopia keeps its chosen
       // `dragonUtopiaGuards` army (drawn at fight time); only a grail-field
       // Utopia takes the fixed default party here.
+      // A designer's center-hex guard stamped above wins over the mode army
+      // (USER RULING 2026-09-28, like the Dragon Hunt branch below).
       if (!isDragonScenarioUtopiaField(adventure.victoryMode, field)) {
-        applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+        if (!field.designedGuard) {
+          applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+        }
       } else if (adventure.dragonUtopiaGuards === "default" && !field.designedGuard) {
         applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard);
       }
@@ -6020,6 +6030,12 @@ export function eliminatePlayer(
         reward.kind === "opening-first-player-roll" ||
         reward.playerId !== playerId
     );
+    // Parallel turns park the seat's PERSONAL round-event work (never shared
+    // Event bookkeeping — that sits on parallelSharedEventQueue) until its
+    // window opens. Drop it with the seat: pumpParallelRoundEvents only walks
+    // `turnOrder`, which no longer lists this seat, and stopParallelTurns would
+    // flush it into the ordered queue as a window nobody can answer.
+    delete state.adventure.parallelRoundRewards?.[playerId];
     if (state.adventure.pendingVisit?.playerId === playerId) {
       // A visit step can hold cards LIFTED out of a shared zone (the Polish
       // Pandora Search / reduced-starting-bonus Minor-Artifact pick keep the
@@ -24547,11 +24563,11 @@ function stackOfferTargets(
   state: GameState,
   playerId: PlayerId,
   tiers?: readonly string[]
-): { unit: ArmyUnitState; name: string; baseGold: number }[] {
+): { unit: ArmyUnitState; name: string; baseGold: number; baseCost: ResourceCost }[] {
   if (!armyUnitStacksActive(state)) {
     return [];
   }
-  const targets: { unit: ArmyUnitState; name: string; baseGold: number }[] = [];
+  const targets: { unit: ArmyUnitState; name: string; baseGold: number; baseCost: ResourceCost }[] = [];
   for (const unit of state.players[playerId]?.army ?? []) {
     if (!polishArmyUnitCanBuyStack(unit)) {
       continue;
@@ -24560,10 +24576,12 @@ function stackOfferTargets(
     if (!tier || (tiers && !tiers.includes(tier))) {
       continue;
     }
+    const baseCost = polishArmyUnitStackCost(unit) ?? {};
     targets.push({
       unit,
       name: coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId,
-      baseGold: polishArmyUnitStackCost(unit)?.gold ?? 0
+      baseGold: baseCost.gold ?? 0,
+      baseCost
     });
   }
   return targets;
@@ -24571,8 +24589,10 @@ function stackOfferTargets(
 
 /**
  * One "Add a Stack to X (N gold / free)" option for a building/skill offer.
- * Null when the priced cost is unpayable (counting the Freelancer's Guild
- * substitution, exactly how the BUY_UNIT_STACK step will charge it).
+ * `otherResources` carries the non-gold part of the price (a gold-tier Stack's
+ * Valuable under Necromancy's half-GOLD deal). Null when the priced cost is
+ * unpayable (counting the Freelancer's Guild substitution, exactly how the
+ * BUY_UNIT_STACK step will charge it).
  */
 function stackOfferOption(
   state: GameState,
@@ -24580,14 +24600,21 @@ function stackOfferOption(
   target: { unit: ArmyUnitState; name: string },
   gold: number,
   source: string,
-  consumeCardId?: CardId
+  consumeCardId?: CardId,
+  otherResources: ResourceCost = {}
 ): { label: string; steps: VisitStep[] } | null {
   const cost: ResourceCost = gold > 0 ? { gold } : {};
-  if (gold > 0 && !hasRecruitResources(state, playerId, cost)) {
+  for (const [resource, amount] of Object.entries(otherResources) as [ResourceKind, number][]) {
+    if (resource !== "gold" && amount > 0) {
+      cost[resource] = amount;
+    }
+  }
+  const paid = Object.values(cost).some((amount) => (amount ?? 0) > 0);
+  if (paid && !hasRecruitResources(state, playerId, cost)) {
     return null;
   }
   return {
-    label: `Add a Stack to ${target.name} (${gold > 0 ? `${gold} gold` : "free"})`,
+    label: `Add a Stack to ${target.name} (${costLabelOf(cost)})`,
     steps: [{ type: "BUY_UNIT_STACK", armyUnitId: target.unit.id, cost, source, consumeCardId }]
   };
 }
@@ -24849,8 +24876,10 @@ export function queueNecromancyReinforce(
 
   // Polish Unit Stacks: Necromancy also buys ONE Stack layer at half the Stack
   // gold (rounded down, its printed rounding) — bronze/silver on basic, any
-  // tier on expert, the same ladder as its reinforce. The card is spent only
-  // if the Stack is really added (consumeCardId, like the reinforce options).
+  // tier on expert, the same ladder as its reinforce. Only the GOLD is halved:
+  // the Stack's other resources (a gold-tier Valuable) are paid in full, as on
+  // its reinforce (USER RULING 2026-09-28). The card is spent only if the
+  // Stack is really added (consumeCardId, like the reinforce options).
   for (const target of stackOfferTargets(state, playerId, allowedTiers.filter(tierAllowed))) {
     if (!isUndeadUnitDefinition(target.unit.unitDefId)) continue;
     const option = stackOfferOption(
@@ -24859,7 +24888,8 @@ export function queueNecromancyReinforce(
       target,
       Math.floor(target.baseGold / 2),
       "Necromancy",
-      consumeCardId
+      consumeCardId,
+      target.baseCost
     );
     if (option) {
       options.push(option);

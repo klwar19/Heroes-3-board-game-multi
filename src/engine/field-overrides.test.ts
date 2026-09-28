@@ -472,12 +472,12 @@ describe("carve + placement", () => {
     expect(state.adventure!.fields[field.spaceId]?.location).toBe("anime.bi_canh");
     expect(state.adventure!.fields[field.spaceId]?.difficulty).toBeUndefined();
     // CONTROL — the guard-stamp carve path itself still works: the Trial
-    // Tower's printed Ⅰ guard lands on carve.
+    // Tower's printed guard lands on carve (Ⅱ since 27f44b40, v163: Ⅱ→Ⅲ→Ⅳ).
     const second = Object.values(state.adventure!.fields).find(
       (f) => f.location !== "town" && !f.difficulty && f.spaceId !== field.spaceId && !f.location.startsWith("anime.")
     )!;
     carveFieldOverride(state.adventure!, second.spaceId, "thi_luyen_thap");
-    expect(state.adventure!.fields[second.spaceId]?.difficulty).toBe(1);
+    expect(state.adventure!.fields[second.spaceId]?.difficulty).toBe(2);
   });
 
   it("pool stamps pending on face-down far when anime content is available", () => {

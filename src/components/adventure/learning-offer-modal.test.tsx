@@ -78,8 +78,11 @@ describe("LearningOfferModal", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: /Learning/i });
-    // CONTROL: the classic card (rule OFF) carries the SAME timing-neutral header.
-    expect(within(dialog).getByText(/gaining Experience/i)).toBeTruthy();
+    // CONTROL: the classic card (rule OFF) went back to printed level-up timing
+    // (186072e7, v127–v130 audit), so its header says "leveling up" — only the
+    // Balance Pack reprint (test above) reads "gaining Experience".
+    expect(within(dialog).getByText(/Your Hero is leveling up!/i)).toBeTruthy();
+    expect(within(dialog).queryByText(/gaining Experience/i)).toBeNull();
     expect(within(dialog).queryByText(/about to level up/i)).toBeNull();
     // The Learning card art is shown ("with learning in hand").
     expect(within(dialog).getByRole("img", { name: /Learning/i })).toBeTruthy();
@@ -130,6 +133,7 @@ describe("LearningOfferModal", () => {
       <LearningOfferModal legalActions={getLegalActions(state, "p2")} onAction={vi.fn()} state={state} viewerPlayerId="p2" />
     );
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText(/gaining experience/i)).toBeTruthy();
+    // Classic card (rule OFF): the strip uses the level-up wording (186072e7).
+    expect(screen.getByText(/is leveling up/i)).toBeTruthy();
   });
 });

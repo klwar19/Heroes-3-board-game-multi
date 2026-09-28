@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { TownPanel } from "./screen";
 import { createAdventureGameState, getLegalActions } from "@/engine";
+import {
+  RUNE_GAIN_ATTACK,
+  RUNE_GAIN_DEFEND,
+  RUNE_GAIN_RETALIATION,
+  RUNE_LEVEL_LABELS
+} from "@/engine/runes";
 import type { FactionId } from "@/data/factions/types";
 
 afterEach(cleanup);
@@ -137,19 +143,25 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(panel.textContent).toMatch(/Resource round/i);
   });
 
-  it("describes Bulwark rune buildings as cap raisers with the house-rule rune gain rates", () => {
+  // v169 (4938d03d) nine-Rune track superseded the old house-rule text: Sieidi /
+  // Altar unlock Rune Levels 2 / 3 and add 4 + 2 starting Runes against Neutral
+  // units only; gains are attack 1 / retaliate 2 / defend 3. The panel must
+  // quote the engine's own numbers (runes.ts), so read them from there.
+  it("describes Bulwark rune buildings as level-cap raisers with the engine's rune gain rates", () => {
     const { state } = townWith("bulwark", ["bulwark.sieidi", "bulwark.altar"]);
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
 
     const sieidi = openPanel("Sieidi of the Runes");
-    expect(sieidi.textContent).toMatch(/maximum Rune Level to 2/i);
-    expect(sieidi.textContent).toMatch(/Current house rule/i);
-    expect(sieidi.textContent).toMatch(/Attack \+1, Retaliate \+1, Defend \+2/i);
+    expect(sieidi.textContent).toMatch(/unlocks Rune Level 2 and adds 4 starting Runes against Neutral units/i);
+    expect(sieidi.textContent).toContain(
+      `Attack +${RUNE_GAIN_ATTACK} Rune, Retaliate +${RUNE_GAIN_RETALIATION} Runes, Defend +${RUNE_GAIN_DEFEND} Runes`
+    );
     expect(sieidi.textContent).not.toMatch(/starts every combat with 0 Runes/i);
 
     const altar = openPanel("Altar of the Runes");
-    expect(altar.textContent).toMatch(/maximum Rune Level to 3/i);
-    expect(altar.textContent).toMatch(/\+3 Initiative/i);
+    expect(altar.textContent).toMatch(/unlocks Rune Level 3 and adds 2 starting Runes against Neutral units/i);
+    // The level ladder (incl. the Level 2 Speed/Initiative bonus) is the engine's.
+    expect(altar.textContent).toContain(`Levels grant ${RUNE_LEVEL_LABELS.join(", then ")} to all your units`);
   });
 
   it("shows Bulwark City Hall's Rune-Empowered Resource-round option in town UI", () => {
@@ -158,7 +170,8 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
 
     const panel = openPanel("City Hall");
     expect(panel.textContent).toMatch(/Rune-Empowered/i);
-    expect(panel.textContent).toMatch(/\+2 starting Runes/i);
+    // v169 (4938d03d): "City Hall 5 gold or +3 Rune-Empowered" (runesNextCombats: 3).
+    expect(panel.textContent).toMatch(/\+3 starting Runes/i);
     expect(panel.textContent).toMatch(/until next Resource round/i);
   });
 

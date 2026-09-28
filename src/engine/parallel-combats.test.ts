@@ -253,7 +253,11 @@ describe("independent parallel battles", () => {
             state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: id, ownerPlayerId: option.ownerPlayerId });
           const selected = parallelStateForPlayer(state, id);
           if (!selected.combat && !selected.pendingChoice && !selected.adventure?.pendingVisit && !selected.adventure?.pendingNecromancy) continue;
-          const before = new Map(seats.filter(seat => seat !== option.ownerPlayerId).map(seat => [seat, structuredClone(parallelStateForPlayer(state, seat, seat).combat)]));
+          // v142 (345992dc): work the seat OWES elsewhere (e.g. acknowledging its own
+          // decided battle) outranks a watch selection, so the context acted in is
+          // the projected owner, not necessarily the option just selected.
+          const actedOwner = selected.parallelCombatOwnerId ?? option.ownerPlayerId;
+          const before = new Map(seats.filter(seat => seat !== actedOwner).map(seat => [seat, structuredClone(parallelStateForPlayer(state, seat, seat).combat)]));
           const action = getLegalActions(state, id).find(l => ["PASS_REACTION", "ATTACK_UNIT", "ACKNOWLEDGE_COMBAT_END", "ACCEPT_COMBAT", "FINISH_COMBAT_PLACEMENT", "FINISH_NEUTRAL_PLACEMENT", "FINISH_COMMANDER_PLACEMENT"].includes(l.action.type)) ??
             getLegalActions(state, id).find(l => !["SELECT_PARALLEL_CONTEXT", "END_TURN", "GIVE_UP", "RETREAT_FROM_COMBAT", "SURRENDER_COMBAT", "MOVE_HERO"].includes(l.action.type));
           if (!action) continue;

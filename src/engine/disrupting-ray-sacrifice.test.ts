@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { effectAppliesToUnit } from "./active-effects";
 import { getUnitAbilityDefinitions, hasUnitAbilityEffect } from "./unit-abilities";
 import type { GameAction, GameState, PlayerId, UnitId } from "./state";
 
@@ -261,44 +262,52 @@ describe("Disrupting Ray spell", () => {
     )!.duration).toEqual({ type: "combat" });
   });
 
-  it("is ignored by a Tower Gargoyle (ongoing spell effects never apply to it)", () => {
-    const state = createInitialGameState("dray-gargoyle");
+  /**
+   * Since db1b5e26 ("Repair combat instant legality") a Spell whose ongoing
+   * effect would fizzle on its selected unit is never offered on it
+   * (legal-actions unitBlockedBySpellCard + spellCreatesDirectUnitOngoingEffect,
+   * which names DISRUPTING_RAY); the suppression effect itself is still refused
+   * at resolution (effectAppliesToUnit), so it never takes hold on the unit.
+   */
+  function expectRayRefusedBy(seed: string, ward: string) {
+    const state = createInitialGameState(seed);
     state.players.p1.hand = ["spell.disrupting_ray"];
     state.players.p2.hand = [];
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.abilities = ["double-attack"];
+
+    // CONTROL: the same enemy without the ward is a legal Ray target and the
+    // suppression effect applies to it.
+    const cast = findCast(state, "p1", "spell.disrupting_ray", "unit_p2_skeletons");
+    expect(cast, "CONTROL: Disrupting Ray is offered on the unwarded unit").toBeTruthy();
+    const ray = passAllReactions(applyOk(state, cast!.action)).activeEffects.find((effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "UNIT_ABILITY_SUPPRESSED")
+    );
+    expect(ray, "CONTROL: the Ray creates its suppression effect").toBeTruthy();
+    expect(effectAppliesToUnit(ray!, unit)).toBe(true);
+
+    unit.abilities = [ward, "double-attack"];
+    expect(effectAppliesToUnit(ray!, unit), "the suppression never takes hold on the warded unit").toBe(false);
+    expect(
+      findCast(state, "p1", "spell.disrupting_ray", "unit_p2_skeletons"),
+      "a Ray that would fizzle is never offered on the warded unit"
+    ).toBeUndefined();
+    expect(hasUnitAbilityEffect(unit, "DOUBLE_ATTACK")).toBe(true);
+    expect(getUnitAbilityDefinitions(unit).length).toBeGreaterThan(0);
+  }
+
+  it("is ignored by a Tower Gargoyle (ongoing spell effects never apply to it)", () => {
     // Gargoyles "ignore ongoing effects created by a Spell" — Disrupting Ray is
     // a Spell, so its suppression never takes hold; the unit keeps its ability.
-    const gargoyle = state.combat!.units.unit_p2_skeletons;
-    gargoyle.abilities = ["gargoyle-spell-ward", "double-attack"];
-
-    const cast = findCast(state, "p1", "spell.disrupting_ray", "unit_p2_skeletons");
-    const result = passAllReactions(applyOk(state, cast!.action));
-
-    const target = result.combat!.units.unit_p2_skeletons;
-    expect(target.abilitiesSuppressed).toBeFalsy();
-    expect(hasUnitAbilityEffect(target, "DOUBLE_ATTACK")).toBe(true);
-    expect(getUnitAbilityDefinitions(target).length).toBeGreaterThan(0);
+    expectRayRefusedBy("dray-gargoyle", "gargoyle-spell-ward");
   });
 
   it("is ignored by a Tower Titan (every ongoing effect on it is ignored)", () => {
-    const state = createInitialGameState("dray-titan");
-    state.players.p1.hand = ["spell.disrupting_ray"];
-    state.players.p2.hand = [];
-    state.activePlayerId = "p1";
-    state.combat!.activeUnitId = "unit_p1_marksmen";
     // Titans "ignore any ongoing effects on this unit, whatever the source" —
     // so Disrupting Ray's suppression never applies and the ability stays live.
-    const titan = state.combat!.units.unit_p2_skeletons;
-    titan.abilities = ["titan-ignore-ongoing", "double-attack"];
-
-    const cast = findCast(state, "p1", "spell.disrupting_ray", "unit_p2_skeletons");
-    const result = passAllReactions(applyOk(state, cast!.action));
-
-    const target = result.combat!.units.unit_p2_skeletons;
-    expect(target.abilitiesSuppressed).toBeFalsy();
-    expect(hasUnitAbilityEffect(target, "DOUBLE_ATTACK")).toBe(true);
-    expect(getUnitAbilityDefinitions(target).length).toBeGreaterThan(0);
+    expectRayRefusedBy("dray-titan", "titan-ignore-ongoing");
   });
 });
 

@@ -210,7 +210,12 @@ describe("a reaction window ends only on CONSECUTIVE passes", () => {
     // re-opened priority, and the loop terminates because every play spends a
     // card. Fails if a re-granted priority ever left the AI with NO action to
     // take (the frozen-table shape) or if the exchange never closed.
-    let state = applyOk(auraBoard("consec-ai", ["stat.defense", "stat.defense"]), declareAttack);
+    const board = auraBoard("consec-ai", ["stat.defense", "stat.defense"]);
+    // The AI conserves Defense on a chip of at most a third of the body's health
+    // (card-policy "Tanky-unit read", user 2026-09-18, 33405d46), so a 40-HP body
+    // never answers; at 5 HP a conversion makes the hit lethal and the card counts.
+    board.combat!.units.unit_p2_skeletons.maxHealth = 5;
+    let state = applyOk(board, declareAttack);
     let convertNext = true;
     let humanPlays = 0;
     let aiTurns = 0;

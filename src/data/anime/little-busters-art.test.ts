@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 import { factionGradeRegister, HERO_GRADE_REGISTERS, heroGradeIconForFaction } from "./hero-grades";
-import { unitRankAbilityIcon } from "../units/experience-rank-abilities";
+import { UNIT_RANK_ABILITY_ICONS, unitRankAbilityIcon } from "../units/experience-rank-abilities";
 
 const assetUrlOf = (rel: string) => `/assets/${rel}`;
 
@@ -79,7 +79,16 @@ describe("Little Busters production art pack", () => {
       ["little_busters.saya", "saya-armor-break", "rank-saya"],
       ["little_busters.mio", "gargoyle-spell-ward", "rank-mio"]
     ] as const;
-    for (const [unit, ability, icon] of choices) expect(unitRankAbilityIcon(ability, unit)).toContain(icon);
-    expect(unitRankAbilityIcon("veteran-soul-feast", "little_busters.rins_cats")).toContain("rank-rins-cats-heal");
+    // 64d90691 (custom unit veterancy): on these custom schedules a learned
+    // SHARED rule keeps its own icon; the bespoke art answers only a rule
+    // without one, and the unit emblem is the line's fallback.
+    for (const [unit, ability, icon] of choices) {
+      expect(unitRankAbilityIcon(ability, unit)).toEqual(UNIT_RANK_ABILITY_ICONS[ability] ?? expect.stringContaining(icon));
+      expect(unitRankAbilityIcon("rank-rule-without-shared-icon", unit)).toContain(icon);
+    }
+    expect(UNIT_RANK_ABILITY_ICONS["saya-armor-break"]).toBeUndefined();
+    expect(unitRankAbilityIcon("saya-armor-break", "little_busters.saya")).toContain("rank-saya");
+    expect(unitRankAbilityIcon("veteran-soul-feast", "little_busters.rins_cats"))
+      .toEqual(UNIT_RANK_ABILITY_ICONS["veteran-soul-feast"] ?? expect.stringContaining("rank-rins-cats-heal"));
   });
 });

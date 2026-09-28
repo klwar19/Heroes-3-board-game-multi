@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 import { hasMediaFile } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
@@ -10,6 +13,16 @@ import {
   specialtyEffectText,
   specialtyIconSrc
 } from "./specialty-card-data";
+
+/**
+ * assetUrl() deliberately serves these code-shipped roots from the app deployment
+ * (git-tracked under public/, e.g. e4b8f4be's Necropolis hero tokens), so they
+ * ship when present on disk; everything else must be a published media file.
+ */
+const CODE_SHIPPED_ROOTS = ["/game-tokens/", "/fx/", "/factory-cards/"];
+function ships(path: string): boolean {
+  return CODE_SHIPPED_ROOTS.some((root) => path.startsWith(root)) ? existsSync(join("public", path)) : hasMediaFile(path);
+}
 
 /** Every `specialty.<slug>.<level>` card id in the library. */
 function specialtyCardIds(): string[] {
@@ -45,7 +58,7 @@ describe("hero specialty card coverage", () => {
       const icon = SPECIALTY_ICON_BY_HERO[slug];
       if (!icon) {
         missingIcon.push(slug);
-      } else if (!hasMediaFile(icon)) {
+      } else if (!ships(icon)) {
         missingFile.push(`${slug} -> ${icon}`);
       }
     }
@@ -80,7 +93,7 @@ describe("hero specialty card coverage", () => {
     const missing: string[] = [];
     for (const id of specialtyCardIds()) {
       const cardImage = (cardLibrary[id] as { assets?: { cardImage?: string } }).assets?.cardImage;
-      if (cardImage && !hasMediaFile(cardImage)) {
+      if (cardImage && !ships(cardImage)) {
         missing.push(`${id} -> ${cardImage}`);
       }
     }
@@ -91,7 +104,7 @@ describe("hero specialty card coverage", () => {
     for (const [slug, icon] of Object.entries(SPECIALTY_ICON_BY_HERO)) {
       expect(coreHeroDefinitions[slug], `unknown hero slug in icon map: ${slug}`).toBeTruthy();
       expect(
-        hasMediaFile(icon),
+        ships(icon),
         `missing published file for ${slug}: ${icon} — run npm run media:publish`
       ).toBe(true);
     }

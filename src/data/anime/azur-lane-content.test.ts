@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { abilityFxPlans, getFxSheet } from "@/data/fx";
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
@@ -13,7 +15,6 @@ import { townBoardSpecs } from "@/data/towns/boards";
 import { commanderSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
 import {
-  AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE,
   AZUR_LANE_RANK_ABILITY_ICONS,
   UNIT_RANK_ABILITY_ICONS,
   hasUniqueRankSchedule,
@@ -672,98 +673,44 @@ describe("Azur Lane Naval Base — themed UI lexicon (naval words, anime visual 
 });
 
 // ---------------------------------------------------------------------------
-// Fleet veterancy — the Unit Experience REDESIGN (26f6e37f / 2d2da234).
-// A rank is EITHER an explicit per-unit override OR the flavour generator's
-// roll; there is no bespoke per-unit schedule table any more (the old
-// hand-authored one is deleted — see experience-rank-abilities.ts). None of the
-// seven shipgirls owns an override, so all seven are generator-served, and
-// `docs/unit-experience-balance-sheet.md` is the design authority for what
-// follows. The pins below are the EXACT live ladder, rank by rank.
+// Fleet veterancy — custom unit veterancy (64d90691). Every shipgirl owns an
+// explicit per-unit schedule in custom-experience-overrides.ts ("Fleet: Unicorn
+// gets independent mobility and disruption, not more healing"), mirrored row by
+// row in docs/unit-experience-balance-sheet.md. Shared rules keep their own
+// names, icons and engine behaviour. The pins below are the EXACT live ladder.
 // ---------------------------------------------------------------------------
 
 type RankPin = "stats" | readonly string[];
 
 /**
  * The EXACT resolved schedule per shipgirl: per rank, either "stats" or the
- * ability CHOICE ARRAY the resolver offers (offer order matters — the first
- * choice the unit does not already answer is what it gains). This table is the
- * mutation control: change any schedule and the deep-equal below fails.
+ * ability CHOICE ARRAY the rank grants (a hybrid rank's choices; its stat half
+ * is pinned by the behavioural fold below). This table is the mutation
+ * control: change any schedule and the deep-equal below fails.
  */
 const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, RankPin]> = {
-  "azur_lane.laffey": [
-    ["veteran-retaliation-fury"],
-    ["veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking"],
-    "stats",
-    ["commander-max-damage", "veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation"]
-  ],
-  "azur_lane.javelin": [
-    "stats",
-    ["wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge"],
-    "stats",
-    ["veteran-rebirth", "unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce"]
-  ],
-  "azur_lane.honolulu": [
-    ["veteran-attack-when-attacking"],
-    ["attack-roll-advantage-passive", "ranged-extra-shot-on-low-roll", "veteran-steady-aim", "bulwark-air-shield"],
-    ["veteran-defense-pierce", "ignore-all-combat-penalties", "veteran-low-roll-insight", "ranged-extra-shot-on-low-roll"],
-    ["veteran-low-roll-insight", "veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ],
-  "azur_lane.unicorn": [
-    ["veteran-attack-when-attacking"],
-    ["commander-charge", "veteran-retaliation-fury", "veteran-attack-when-attacking", "wog-no-negative-attack-roll"],
-    "stats",
-    ["commander-max-damage", "ignores-retaliation", "veteran-speed-hunter", "veteran-double-attack-low-roll"]
-  ],
-  "azur_lane.yukikaze": [
-    "stats",
-    ["wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge"],
-    "stats",
-    ["veteran-rebirth", "unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce"]
-  ],
-  "azur_lane.prinz_eugen": [
-    ["veteran-guarded-stance"],
-    ["commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance"],
-    "stats",
-    ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"]
-  ],
-  "azur_lane.i19": [
-    "stats",
-    ["veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking"],
-    "stats",
-    ["commander-max-damage", "veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation"]
-  ],
-  "azur_lane.ayanami": [
-    ["veteran-guarded-stance"],
-    ["commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance"],
-    "stats",
-    ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"]
-  ],
-  "azur_lane.akagi": [
-    "stats",
-    ["ranged-extra-shot-on-low-roll", "veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive"],
-    "stats",
-    ["veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight"]
-  ]
+  "azur_lane.laffey": [["bulwark-air-shield"], ["ntv-searing-passage"], ["ntv-first-volley"], ["ntv-flowing-assault"]],
+  "azur_lane.javelin": [["town-seaman-survival-gold"], ["ntv-boarding-formation"], ["ntv-winged-riposte"], "stats"],
+  "azur_lane.honolulu": [["ntv-suppressing-shot"], ["veteran-storm-link"], ["ctv-covering-extraction"], ["ntv-consecrated-shot"]],
+  "azur_lane.unicorn": [["veteran-unicorn-enfeeble"], "stats", ["veteran-flying-movement"], ["veteran-magic-dispel"]],
+  "azur_lane.yukikaze": [["ntv-pack-rush"], ["veteran-energy-delay"], ["ntv-ethereal-escape"], ["ctv-clear-mind"]],
+  "azur_lane.prinz_eugen": [["town-seaman-survival-gold"], ["ntv-scaled-intercept"], ["ntv-armoured-prey"], ["ctv-returning-edge"]],
+  "azur_lane.i19": [["ntv-disrupting-gaze"], ["ntv-stone-landing"], ["town-lizard-spell-draw"], "stats"],
+  "azur_lane.ayanami": [["veteran-speed-hunter"], ["ctv-blood-price"], ["ntv-ageing-breath"], ["ntv-ethereal-escape"]],
+  "azur_lane.akagi": [["ntv-boarding-formation"], ["ntv-marked-volley"], "stats", ["ntv-bewitching-bolt"]]
 };
 
-/** The ability each ability-rank actually GRANTS (after the no-op dedupe). */
+/** The ability each ability-rank actually GRANTS at max rank. */
 const EXPECTED_GRANTS: Record<string, readonly string[]> = {
-  "azur_lane.laffey": ["veteran-retaliation-fury", "veteran-guarded-stance", "commander-max-damage"],
-  "azur_lane.javelin": ["wog-no-negative-attack-roll", "veteran-rebirth"],
-  "azur_lane.honolulu": [
-    "veteran-attack-when-attacking",
-    "attack-roll-advantage-passive",
-    "veteran-defense-pierce",
-    "veteran-low-roll-insight"
-  ],
-  "azur_lane.unicorn": ["veteran-attack-when-attacking", "commander-charge", "commander-max-damage"],
-  "azur_lane.yukikaze": ["wog-no-negative-attack-roll", "veteran-rebirth"],
-  "azur_lane.prinz_eugen": ["veteran-guarded-stance", "commander-charge", "veteran-defense-pierce"],
-  "azur_lane.i19": ["veteran-guarded-stance", "commander-max-damage"],
-  // Ayanami PRINTS commander-charge, so the R2 rung skips its first choice and
-  // pays Sure Shot instead — the no-wasted-rank invariant in action.
-  "azur_lane.ayanami": ["veteran-guarded-stance", "wog-no-negative-attack-roll", "veteran-defense-pierce"],
-  "azur_lane.akagi": ["ranged-extra-shot-on-low-roll", "veteran-spell-sunder"]
+  "azur_lane.laffey": ["bulwark-air-shield", "ntv-searing-passage", "ntv-first-volley", "ntv-flowing-assault"],
+  "azur_lane.javelin": ["town-seaman-survival-gold", "ntv-boarding-formation", "ntv-winged-riposte"],
+  "azur_lane.honolulu": ["ntv-suppressing-shot", "veteran-storm-link", "ctv-covering-extraction", "ntv-consecrated-shot"],
+  "azur_lane.unicorn": ["veteran-unicorn-enfeeble", "veteran-flying-movement", "veteran-magic-dispel"],
+  "azur_lane.yukikaze": ["ntv-pack-rush", "veteran-energy-delay", "ntv-ethereal-escape", "ctv-clear-mind"],
+  "azur_lane.prinz_eugen": ["town-seaman-survival-gold", "ntv-scaled-intercept", "ntv-armoured-prey", "ctv-returning-edge"],
+  "azur_lane.i19": ["ntv-disrupting-gaze", "ntv-stone-landing", "town-lizard-spell-draw"],
+  "azur_lane.ayanami": ["veteran-speed-hunter", "ctv-blood-price", "ntv-ageing-breath", "ntv-ethereal-escape"],
+  "azur_lane.akagi": ["ntv-boarding-formation", "ntv-marked-volley", "ntv-bewitching-bolt"]
 };
 
 /** Every distinct ability id the nine schedules can offer. */
@@ -783,18 +730,23 @@ function rankPinsOf(schedule: RankSchedule): RankPin[] {
   });
 }
 
+/** A rank icon ships as a published media file, or as a git-tracked code-shipped token. */
+function rankIconShips(icon: string): boolean {
+  return icon.startsWith("/game-tokens/") ? existsSync(join("public", icon)) : hasMediaFile(icon);
+}
+
 describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", () => {
-  it("all nine are GENERATOR-served: no explicit override, and every rank pays something", () => {
+  it("all nine own an explicit custom schedule (64d90691), and every rank pays something", () => {
     for (const unitId of coreFactionDefinitions[FACTION].units) {
-      // The redesign gives an override only to the handful of signature units;
-      // an Azur Lane one would have to be added deliberately.
-      expect(hasUniqueRankSchedule(unitId), unitId).toBe(false);
+      expect(hasUniqueRankSchedule(unitId), unitId).toBe(true);
       const schedule = rankScheduleFor(unitId);
       for (const rank of [1, 2, 3, 4] as const) {
         const step = schedule[rank];
         if (step.kind !== "stats") expect(step.choices.length, `${unitId} R${rank}`).toBeGreaterThan(0);
       }
     }
+    // CONTROL: a generator-served unit owns no override, so the read splits.
+    expect(hasUniqueRankSchedule("wog.air_messenger")).toBe(false);
   });
 
   it("SIGNATURE pins: the exact resolved ladder per ship (fails if any schedule moves)", () => {
@@ -806,8 +758,8 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
       expect(unitRankAbilityIds(unitId, 4), unitId).toEqual([...EXPECTED_GRANTS[unitId]!]);
     }
     // Spot the headline picks explicitly so the intent is legible.
-    expect(unitRankAbilityIds("azur_lane.honolulu", 2)).toContain("attack-roll-advantage-passive");
-    expect(unitRankAbilityIds("azur_lane.prinz_eugen", 1)).toContain("veteran-guarded-stance");
+    expect(unitRankAbilityIds("azur_lane.honolulu", 2)).toContain("veteran-storm-link");
+    expect(unitRankAbilityIds("azur_lane.prinz_eugen", 1)).toContain("town-seaman-survival-gold");
   });
 
   it("HYGIENE (azur_lane-scoped): every choice implemented, non-Stacked; a GRANT is never already printed", () => {
@@ -823,8 +775,7 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
           expect(ability.requiresStacked, `${unitId} → ${choiceId}`).not.toBe(true);
         }
       }
-      // No-wasted-rank invariant: the resolver skips a choice the unit already
-      // prints, so no GRANTED id may be printed on either side…
+      // No-wasted-rank invariant: no GRANTED id may be printed on either side…
       for (const grantedId of EXPECTED_GRANTS[unitId]!) {
         expect(printed.has(grantedId), `${unitId} prints ${grantedId} (would waste the rank)`).toBe(false);
       }
@@ -834,72 +785,50 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
     }
   });
 
-  it("ART: every choice id has an EXPLICIT icon entry resolving to a published file", () => {
+  it("ART: every choice id resolves to its own rule icon, and that icon ships", () => {
     for (const choiceId of allExpectedChoiceIds()) {
-      // Prefer an explicit mapping for all (the fallback exists too, but an
-      // explicit entry is the pinned contract).
-      expect(UNIT_RANK_ABILITY_ICONS[choiceId], `${choiceId} needs an explicit icon`).toBeTruthy();
       const icon = unitRankAbilityIcon(choiceId);
-      expect(icon.startsWith("/assets/"), choiceId).toBe(true);
-      expect(
-        hasMediaFile(icon),
-        `${choiceId} → ${icon} is not published — run npm run media:publish`
-      ).toBe(true);
+      // Never the generic slayer fallback: every learned rule has real art.
+      expect(icon, `${choiceId} needs its own icon`).not.toBe("/assets/spell-icons/slayer.png");
+      expect(rankIconShips(icon), `${choiceId} → ${icon} does not ship`).toBe(true);
     }
   });
 
-  it("ART: the XP board uses a ship-specific HD icon for every Azur Lane unit", () => {
+  it("ART: shared rules keep their own icon on the XP board; the ship emblem is the fallback", () => {
     for (const unitId of Object.keys(EXPECTED_SCHEDULES)) {
-      const icon = AZUR_LANE_RANK_ABILITY_ICONS[unitId];
-      expect(icon, `${unitId} needs a ship-specific XP icon`).toBeTruthy();
-      expect(unitRankAbilityIcon("commander-max-damage", unitId)).toBe(icon);
+      const shipIcon = AZUR_LANE_RANK_ABILITY_ICONS[unitId];
+      expect(shipIcon, `${unitId} needs a ship-specific XP icon`).toBeTruthy();
       expect(
-        hasMediaFile(icon),
-        `${unitId} XP icon ${icon} is not published — run npm run media:publish`
+        hasMediaFile(shipIcon),
+        `${unitId} XP icon ${shipIcon} is not published — run npm run media:publish`
       ).toBe(true);
+      // 64d90691: a SHARED rule keeps its own icon on a custom schedule…
+      expect(unitRankAbilityIcon("commander-max-damage", unitId)).toBe(UNIT_RANK_ABILITY_ICONS["commander-max-damage"]);
+      // …and the ship emblem answers a rule without an icon of its own.
+      expect(unitRankAbilityIcon("rank-rule-without-shared-icon", unitId)).toBe(shipIcon);
     }
-    // The optional unit id keeps the generic renderer unchanged for non-Azur
-    // units and for normal card ability presentations.
-    expect(unitRankAbilityIcon("commander-max-damage")).toBe(UNIT_RANK_ABILITY_ICONS["commander-max-damage"]);
+    // CONTROL: without the unit id the same unknown rule gets the generic fallback.
+    expect(unitRankAbilityIcon("rank-rule-without-shared-icon")).toBe("/assets/spell-icons/slayer.png");
   });
 
-  it("ART: every Azur Lane XP choice resolves to a published ship emblem", () => {
-    // The by-choice map is the fine-grained override; anything it does not name
-    // still falls back to the SHIP's own emblem, never to the generic card art.
+  it("ART: every Azur Lane XP choice shows the same icon its rule shows everywhere", () => {
     for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
-      const shipIcon = AZUR_LANE_RANK_ABILITY_ICONS[unitId]!;
       for (const pin of expected) {
         if (pin === "stats") continue;
         for (const choiceId of pin) {
           const key = `${unitId}:${choiceId}`;
-          const icon = AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE[key] ?? shipIcon;
-          expect(unitRankAbilityIcon(choiceId, unitId), key).toBe(icon);
-          expect(
-            hasMediaFile(icon),
-            `${key} → ${icon} is not published — run npm run media:publish`
-          ).toBe(true);
+          expect(unitRankAbilityIcon(choiceId, unitId), key).toBe(unitRankAbilityIcon(choiceId));
+          expect(unitRankAbilityIcon(choiceId, unitId), key).not.toBe(AZUR_LANE_RANK_ABILITY_ICONS[unitId]);
         }
       }
     }
-    // The explicit by-choice entries that DO exist must still win over the ship
-    // default — otherwise the fine-grained map is dead weight.
-    for (const [key, icon] of Object.entries(AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE)) {
-      const [unitId, choiceId] = key.split(":") as [string, string];
-      expect(unitRankAbilityIcon(choiceId, unitId), key).toBe(icon);
-    }
-
-    // Shared engine abilities still resolve to different ship art on the XP
-    // board; the optional unit id is what prevents a generic card icon leak.
-    expect(
-      unitRankAbilityIcon("commander-max-damage", "azur_lane.javelin")
-    ).not.toBe(unitRankAbilityIcon("commander-max-damage", "azur_lane.i19"));
   });
 
   // BEHAVIOURAL (effect-level): Yukikaze's schedule actually FOLDS in combat —
-  // a stats rank moves a real stat and an ability rank grants the resolved id.
-  // Fails if withRankAbilities / the schedule wiring is removed, OR if the
-  // schedule moves (r2 would carry a different id).
-  it("Yukikaze folds in combat: R1 stats (+1 HP), R2 grants Sure Shot — below-threshold CONTROL grants neither the ability nor the stat", () => {
+  // an ability rank grants the resolved id and the hybrid rank moves a real
+  // stat. Fails if withRankAbilities / the schedule wiring is removed, OR if
+  // the schedule moves.
+  it("Yukikaze folds in combat: R1 grants Pack Rush, R4's hybrid adds +1 Attack with Clear Mind — below-threshold CONTROLs grant neither", () => {
     const build = (experience?: number): CombatUnitState =>
       makeCombatUnitFromArmy(
         { id: "yk_army", unitDefId: "azur_lane.yukikaze", side: "few", ...(experience ? { experience } : {}) },
@@ -909,28 +838,30 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
         "legacy"
       )!;
 
-    // silver thresholds 6/10/15/20 → R1 at 6 XP (stats), R2 at 10 XP (ability slot1).
+    // silver thresholds 6/10/15/20 → R1 at 6 XP, R3 at 15 XP, R4 at 20 XP.
     const plain = build();
     const r1 = build(6);
-    const r2 = build(10);
+    const r3 = build(15);
+    const r4 = build(20);
 
     expect(r1.unitRank).toBe(1);
-    expect(r2.unitRank).toBe(2);
+    expect(r3.unitRank).toBe(3);
+    expect(r4.unitRank).toBe(4);
 
-    // Stats-rank fold: Yukikaze's per-unit ladder opens with +1 Health — an
-    // OBSERVABLE stat delta (the flat silver tier table is no longer read).
-    expect(plain.maxHealth).toBe(coreUnitDefinitions["azur_lane.yukikaze"].few!.health);
-    expect(r1.maxHealth).toBe(plain.maxHealth + 1);
-    expect(r2.maxHealth).toBe(plain.maxHealth + 1); // R2 is an ability rank → no further stat step
-    expect(r1.defense).toBe(plain.defense);
+    // Ability rank: R1 carries Pack Rush and moves no stat.
+    expect(plain.attack).toBe(coreUnitDefinitions["azur_lane.yukikaze"].few!.attack);
+    expect(r1.abilities).toContain("ntv-pack-rush");
+    expect(r1.attack).toBe(plain.attack);
 
-    // Ability-rank grant: R2 carries the resolved first choice (Sure Shot).
-    expect(r2.abilities).toContain("wog-no-negative-attack-roll");
+    // Hybrid rank: R4 adds +1 Attack AND grants Clear Mind — an OBSERVABLE delta.
+    expect(r4.attack).toBe(plain.attack + 1);
+    expect(r4.abilities).toContain("ctv-clear-mind");
 
-    // CONTROLs: below the R2 ability threshold there is NO grant; the plain card
-    // (no XP) carries neither the grant nor the stat bump (base stats).
-    expect(r1.abilities).not.toContain("wog-no-negative-attack-roll");
-    expect(plain.abilities).not.toContain("wog-no-negative-attack-roll");
+    // CONTROLs: below the R4 threshold there is neither the stat nor the grant;
+    // the plain card (no XP) carries no rank ability at all.
+    expect(r3.attack).toBe(plain.attack);
+    expect(r3.abilities).not.toContain("ctv-clear-mind");
+    expect(plain.abilities).not.toContain("ntv-pack-rush");
     expect(plain.unitRank ?? 0).toBe(0);
   });
 });

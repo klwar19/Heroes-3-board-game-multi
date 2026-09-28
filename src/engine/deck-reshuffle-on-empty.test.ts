@@ -377,6 +377,7 @@ describe("Tazar's War Hero VI (draw the top Artifact card)", () => {
     expect(minorIndex, "a deck whose cards are all in its discard pile is still drawable").toBeGreaterThanOrEqual(0);
 
     const handBefore = played.players.p1.hand.length;
+    const scrollsBefore = played.players.p1.scrolls?.length ?? 0;
     const drawn = applyOk(played, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
@@ -384,7 +385,11 @@ describe("Tazar's War Hero VI (draw the top Artifact card)", () => {
       optionIndex: minorIndex
     });
 
-    expect(drawn.players.p1.hand.length).toBe(handBefore + 1);
+    // Exactly one card gained. A drawn Spell Scroll artifact never stays in hand:
+    // materializeArtifactScrolls (21ae36de) turns it into a scroll, so count both.
+    const gained =
+      drawn.players.p1.hand.length - handBefore + (drawn.players.p1.scrolls?.length ?? 0) - scrollsBefore;
+    expect(gained).toBe(1);
     expect(drawn.pendingChoice).toBeNull();
     // The draw reports the reshuffle honestly (it used to hardcode false).
     const event = [...drawn.eventLog].reverse().find((entry) => entry.type === "CARDS_DRAWN");

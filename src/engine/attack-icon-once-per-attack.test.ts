@@ -511,7 +511,9 @@ describe("SWEEP — every printed unit reroll ability is bounded within one atta
     expect([...rerollAbilityIds].sort()).toEqual(
       [
         "attack-die-reroll", "champion-move-reroll", "kivotos-hardboiled-boss", "minotaur-reroll", "yukikaze-torpedo-run",
-        "kivotos-piercing-judgment", "kivotos-silent-faith"
+        "kivotos-piercing-judgment", "kivotos-silent-faith",
+        // Later veterancy rewards (f4662a61, 50607870) — swept by the budget test below.
+        "factory-automaton-reroll", "ntv-improvised-ammunition", "town-wyvern-reroll"
       ].sort()
     );
   });

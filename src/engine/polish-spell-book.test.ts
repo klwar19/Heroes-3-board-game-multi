@@ -1807,8 +1807,18 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
 
       // And it is genuinely castable again — a refreshed-side entry nobody can
       // cast would be a data check, not the effect. (Round 2 opens with p1's
-      // mandatory start-of-turn hand step; take it first.)
-      for (let hand = 0; hand < 4; hand += 1) {
+      // mandatory start-of-turn hand step; take it first. Since e4b8f4be the
+      // round may also open with an Astrologers proclamation step, e.g. "New
+      // Buildings" where each seat in turn may build for free, that holds the
+      // turn ahead of the hand step: every seat skips it.)
+      for (let step = 0; step < 12; step += 1) {
+        const skip = ["p1", "p2"]
+          .flatMap((playerId) => getLegalActions(state, playerId))
+          .find((legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label === "Skip");
+        if (skip) {
+          state = applyOk(state, skip.action);
+          continue;
+        }
         const refresh = getLegalActions(state, "p1").find(
           (legal) => legal.action.type === "REFRESH_HAND"
         );

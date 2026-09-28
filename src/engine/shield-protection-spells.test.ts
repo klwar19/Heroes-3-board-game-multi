@@ -317,6 +317,23 @@ describe("Shield / Air Shield in combat", () => {
 // ===========================================================================
 
 describe("Protection from X spells", () => {
+  // Since e27112ab ("magic protection") the printed tiers are SPELL-POWER tiers
+  // (spells.ts: CHOOSE_ONE option 0 = Power 0 ends a Basic Spell; option 1 =
+  // Power 1, paid by a power source, ends a Basic or Expert Spell), not the
+  // crown-funded basic/expert play modes — so each play names its option.
+  const POWER_0 = 0;
+  const POWER_1 = 1;
+
+  function protectionOffered(state: GameState, cardId: string, optionIndex: number): boolean {
+    return getLegalActions(state, "p2").some(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === cardId &&
+        legal.action.optionIndex === optionIndex &&
+        !legal.action.asPowerBoost
+    );
+  }
+
   /** p1 casts `spellId` on p2's vampires; returns the state with p2 on priority. */
   function castOnVampires(seed: string, spellId: string, p2Hand: string[]): GameState {
     const state = createInitialGameState(seed);
@@ -333,7 +350,7 @@ describe("Protection from X spells", () => {
     const onP2 = castOnVampires("prot-air-cancel", "spell.lightning_bolt", ["spell.protection_from_air"]);
     expect(reactionOffered(onP2, "p2", "spell.protection_from_air", "basic")).toBe(true);
     const result = passAllReactions(
-      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_air", mode: "basic" })
+      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_air", mode: "basic", optionIndex: POWER_0 })
     );
     expect(result.reactionWindow).toBeNull();
     expect(result.stack).toEqual([]);
@@ -369,7 +386,7 @@ describe("Protection from X spells", () => {
 
     // ...and playing one actually ends it: Magic Arrow deals 0 to the vampires.
     const result = passAllReactions(
-      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_water", mode: "basic" })
+      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_water", mode: "basic", optionIndex: POWER_0 })
     );
     expect(result.stack).toEqual([]);
     expect(result.combat!.units.unit_p2_vampires.damage).toBe(0);
@@ -388,7 +405,7 @@ describe("Protection from X spells", () => {
     const onP2 = passUntil(applyOk(state, cast!.action), "p2");
     expect(reactionOffered(onP2, "p2", "spell.protection_from_earth", "basic")).toBe(true);
     const result = passAllReactions(
-      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_earth", mode: "basic" })
+      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_earth", mode: "basic", optionIndex: POWER_0 })
     );
     // The Slow never created an initiative debuff on the vampires.
     expect(
@@ -401,17 +418,31 @@ describe("Protection from X spells", () => {
     });
   });
 
-  it("is level-gated: basic Protection cannot end an Expert spell, but the expert play can", () => {
-    // Implosion is an Expert Earth spell. Basic Protection from Earth must not
-    // reach it; the expert play (spending a crown) ends it.
-    const onP2 = castOnVampires("prot-earth-expert", "spell.implosion", ["spell.protection_from_earth"]);
-    expect(reactionOffered(onP2, "p2", "spell.protection_from_earth", "basic")).toBe(false);
-    expect(reactionOffered(onP2, "p2", "spell.protection_from_earth", "expert")).toBe(true);
+  it("is level-gated: Power 0 cannot end an Expert spell, but Power 1 (paid by a power source) can", () => {
+    // Implosion is an Expert Earth spell. The Power 0 tier must not reach it;
+    // the Power 1 tier, paid by discarding a power source, ends it.
+    const bare = castOnVampires("prot-earth-expert-bare", "spell.implosion", ["spell.protection_from_earth"]);
+    expect(protectionOffered(bare, "spell.protection_from_earth", POWER_0)).toBe(false);
+    // CONTROL: with nothing to pay the Power 1 cost, that tier is not offered either.
+    expect(protectionOffered(bare, "spell.protection_from_earth", POWER_1)).toBe(false);
+
+    const onP2 = castOnVampires("prot-earth-expert", "spell.implosion", ["spell.protection_from_earth", "stat.power"]);
+    expect(protectionOffered(onP2, "spell.protection_from_earth", POWER_0)).toBe(false);
+    expect(protectionOffered(onP2, "spell.protection_from_earth", POWER_1)).toBe(true);
 
     const result = passAllReactions(
-      applyOk(onP2, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_earth", mode: "expert" })
+      // The client's cost picker (costNeedsCardPicker) supplies the paying card.
+      applyOk(onP2, {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "spell.protection_from_earth",
+        mode: "basic",
+        optionIndex: POWER_1,
+        costCardIds: ["stat.power"]
+      })
     );
     expect(result.stack).toEqual([]);
+    expect(result.players.p2.hand, "the Power 1 tier spent the power source").not.toContain("stat.power");
     expect(result.eventLog.find((event) => event.type === "SPELL_CAST_CANCELLED")).toMatchObject({
       cancelledByCardId: "spell.protection_from_earth"
     });
@@ -453,7 +484,7 @@ describe("Protection from X spells", () => {
     expect(reactionOffered(cursed, "p2", "spell.protection_from_fire", "basic")).toBe(true);
 
     const result = passAllReactions(
-      applyOk(cursed, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_fire", mode: "basic" })
+      applyOk(cursed, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.protection_from_fire", mode: "basic", optionIndex: POWER_0 })
     );
     // Curse (−1 defense) reversed → full Defense 5 stands: 6 attack − 5 = 1 damage.
     expect(result.combat!.units.unit_p2_skeletons.damage).toBe(1);

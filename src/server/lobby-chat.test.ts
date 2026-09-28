@@ -60,11 +60,15 @@ describe("LobbyChatBoard", () => {
   });
 
   it("keeps only the last MAX_LOBBY_CHAT_MESSAGES lines (oldest roll off)", () => {
-    const board = new LobbyChatBoard();
+    // e7266e7e (v136) made the anti-flood a rolling per-client time window, so
+    // pace the posts on an injected clock instead of firing them all at once.
+    let t = 1_000_000;
+    const board = new LobbyChatBoard({ now: () => t });
     const senders = ["c1", "c2", "c3"];
     const total = MAX_LOBBY_CHAT_MESSAGES + 8;
     for (let i = 0; i < total; i += 1) {
       board.post({ clientId: senders[i % senders.length], name: "N", text: `m${i}` });
+      t += LOBBY_CHAT_FLOOD_WINDOW_MS / LOBBY_CHAT_FLOOD_LIMIT;
     }
     const list = board.list();
     expect(list).toHaveLength(MAX_LOBBY_CHAT_MESSAGES);

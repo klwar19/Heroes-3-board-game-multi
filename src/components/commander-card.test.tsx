@@ -31,13 +31,16 @@ describe("CommanderStatsPanel", () => {
     }
   });
 
-  it("spells out the Defense grade II '+1 def when attacked' token, gone at grade III", () => {
+  it("spells out the Defense grade II '+1 def when attacked' token, and grade III's token that also pays on a 0", () => {
+    // e4b8f4be (v171): Defense is 1/2/2/2 — grades II and III keep the Defense
+    // token, and grade III also pays its +1 on a "0" roll (reducer.ts).
     const two = render(<CommanderStatsPanel slug="paladin" grades={{ defense: 2 }} />);
     expect(two.getByText(/\+1 def when attacked/i)).toBeTruthy();
+    expect(two.queryByText(/on a “0” or “\+1” Defend roll/i)).toBeNull();
     cleanup();
     const three = render(<CommanderStatsPanel slug="paladin" grades={{ defense: 3 }} />);
     expect(three.queryByText(/\+1 def when attacked/i)).toBeNull();
-    expect(three.getByText(/reliable flat defense/i)).toBeTruthy();
+    expect(three.getByText(/on a “0” or “\+1” Defend roll/i)).toBeTruthy();
   });
 
   it("describes the Damage grade as extra attack dice (not a flat bonus)", () => {
@@ -220,7 +223,10 @@ describe("CommanderLevelUpPicker", () => {
     // The Attack option shows its grade jump (→ II) and the numeric value it buys.
     const attack = container.querySelector('button[data-stat="attack"]') as HTMLButtonElement;
     expect(attack.textContent).toContain("→ II");
-    expect(attack.textContent).toContain("Attack 4"); // grade II Attack value
+    // e4b8f4be (v171): Attack is 2/3/3/4 — grade II keeps Attack 3 and adds the
+    // +1-on-a-−1-roll rider (reducer.ts "Commander Attack").
+    expect(attack.textContent).toContain("3 (+1 on −1 roll)");
+    expect(attack.textContent).toContain("Attack 3; +1 Attack on a −1 Attack die roll");
     // One click spends one point on that stat.
     fireEvent.click(attack);
     expect(picked).toEqual(["attack"]);

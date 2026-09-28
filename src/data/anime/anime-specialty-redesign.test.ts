@@ -7,6 +7,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   FUYUKI_RANK_ABILITY_ICONS,
   HIDDEN_LEAF_RANK_ABILITY_ICONS,
+  UNIT_RANK_ABILITY_ICONS,
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import { SPECIALTY_ICON_BY_HERO } from "@/components/specialty-card-data";
@@ -223,9 +224,11 @@ describe("Fuyuki / Hidden Leaf unit-XP rank emblems", () => {
       const roster = coreFactionDefinitions[factionId].units;
       expect(Object.keys(icons).sort()).toEqual([...roster].sort());
       for (const unitId of roster) {
-        // The resolver really serves the bespoke emblem (not the generic
-        // ability icon or the slayer fallback).
-        const resolved = unitRankAbilityIcon("commander-max-damage", unitId);
+        // 64d90691 (custom unit veterancy): a learned SHARED rule keeps its own
+        // icon on these custom schedules; the bespoke emblem is the line's
+        // fallback for a rule without one (never the generic slayer fallback).
+        expect(unitRankAbilityIcon("commander-max-damage", unitId)).toBe(UNIT_RANK_ABILITY_ICONS["commander-max-damage"]);
+        const resolved = unitRankAbilityIcon("rank-rule-without-shared-icon", unitId);
         expect(resolved).toBe(icons[unitId]);
         expect(seen.has(resolved), `${unitId} emblem must be distinct`).toBe(false);
         seen.add(resolved);

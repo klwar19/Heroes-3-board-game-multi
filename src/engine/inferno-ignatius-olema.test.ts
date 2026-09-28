@@ -549,6 +549,85 @@ describe("Olema VI — targeted instants and follow-up pickers respect the lock"
   });
 });
 
+/** p1 (Olema's side) casts Slow at `targetId`; p2 holds Resistance + Magic Mirror. */
+function slowCastAt(state: GameState, targetId: UnitId): GameState {
+  const next = structuredClone(state);
+  next.players.p1.hand = ["spell.slow"];
+  next.players.p2.hand = ["ability.resistance", "spell.magic_mirror"];
+  const cast = getLegalActions(next, "p1").find(
+    (legal) =>
+      legal.action.type === "CAST_SPELL" &&
+      legal.action.cardId === "spell.slow" &&
+      legal.action.target.type === "unit" &&
+      legal.action.target.unitId === targetId,
+  );
+  expect(cast, `Slow should be castable on ${targetId}`).toBeTruthy();
+  return applyOk(next, cast!.action);
+}
+
+/** The counters p2 is offered on the pending Slow. A cast nobody can answer
+ * opens no reaction window at all (it resolves at once): nothing offered. */
+const p2CounterCards = (state: GameState) =>
+  new Set(
+    state.reactionWindow?.triggerEvent.type === "SPELL_CAST_STARTED"
+      ? (getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent).p2 ?? []).flatMap((legal) =>
+          legal.action.type === "PLAY_REACTION" ? [legal.action.cardId] : [],
+        )
+      : [],
+  );
+
+const slowLandedOn = (state: GameState, unitId: UnitId) =>
+  state.activeEffects.some(
+    (effect) =>
+      effect.source.type === "card" &&
+      effect.source.cardId === "spell.slow" &&
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unitId,
+  );
+
+describe("Olema VI — the owner cannot cancel or redirect a Spell aimed at the locked unit", () => {
+  it("Resistance / Magic Mirror are withheld (CONTROLS: no lock; aimed at another unit)", () => {
+    const { before, after } = olemaLocked("olema-6-counter");
+    const control = p2CounterCards(slowCastAt(before, "unit_p2_vampires"));
+    expect(control.has("ability.resistance"), "CONTROL: Resistance without the lock").toBe(true);
+    expect(control.has("spell.magic_mirror"), "CONTROL: Magic Mirror without the lock").toBe(true);
+
+    const lockedCast = slowCastAt(after, "unit_p2_vampires");
+    const locked = p2CounterCards(lockedCast);
+    expect(locked.has("ability.resistance")).toBe(false);
+    expect(locked.has("spell.magic_mirror")).toBe(false);
+    // With both counters withheld p2 has no answer: the Slow lands on the locked unit.
+    expect(lockedCast.reactionWindow).toBeNull();
+    expect(slowLandedOn(lockedCast, "unit_p2_vampires")).toBe(true);
+
+    const other = p2CounterCards(slowCastAt(after, "unit_p2_skeletons"));
+    expect(other.has("ability.resistance"), "a Spell aimed at another unit may still be resisted").toBe(true);
+    expect(other.has("spell.magic_mirror"), "a Spell aimed at another unit may still be reflected").toBe(true);
+  });
+
+  it("a forged Resistance against a Spell aimed at the locked unit is rejected", () => {
+    const { before, after } = olemaLocked("olema-6-counter-forged");
+    // The lock leaves p2 no counter, so no window opens on its own: open it
+    // before the lock (Resistance offered), then lay the lock on the table —
+    // the reducer's backstop must refuse the now-stale offer.
+    const casting = slowCastAt(before, "unit_p2_vampires");
+    expect(casting.reactionWindow?.triggerEvent.type).toBe("SPELL_CAST_STARTED");
+    expect(p2CounterCards(casting).has("ability.resistance"), "CONTROL: offered before the lock").toBe(true);
+    const lock = after.activeEffects.filter((effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "ENEMY_CARD_TARGET_LOCK"),
+    );
+    expect(lock).toHaveLength(1);
+    casting.activeEffects.push(...structuredClone(lock));
+    const forged = applyAction(casting, {
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "ability.resistance",
+      mode: "basic",
+    } as GameAction);
+    expect(forged.errors.map((error) => error.message).join("; ")).toMatch(/cannot be targeted/);
+  });
+});
+
 describe("Olema VI — the owner's covers and lethal saves", () => {
   it("the owner cannot put a Sandro cover on its locked Skeletons", () => {
     const coverTargets = (state: GameState) =>

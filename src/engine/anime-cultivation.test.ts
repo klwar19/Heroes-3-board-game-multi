@@ -170,7 +170,12 @@ function drainArtifactDraw(state: GameState): GameState {
 }
 
 function handArtifactCount(state: GameState): number {
-  return state.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact").length;
+  // A taken Spell Scroll deck card becomes a live scroll, never a hand card
+  // (materializeArtifactScrolls, 21ae36de) — it is still the Artifact drawn.
+  return (
+    state.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact").length +
+    (state.players.p1.scrolls?.length ?? 0)
+  );
 }
 
 // ===========================================================================

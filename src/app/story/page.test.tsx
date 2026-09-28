@@ -44,7 +44,8 @@ describe("/story (Erathia campaign map)", () => {
     render(<StoryPage />);
     fireEvent.click(screen.getByRole("button", { name: /Open briefing/i }));
     expect(screen.getByRole("dialog", { name: /Homecoming briefing/i })).toBeTruthy();
-    expect(screen.getAllByText("Defeat Terraneus's marked garrison or control 2 towns; then score VP").length).toBeGreaterThan(0);
+    // 7d3a49b4 dropped the "; then score VP" tail: the line is the "Primary goal".
+    expect(screen.getAllByText("Defeat Terraneus's marked garrison or control 2 towns").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Militia Muster/i }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Catherine")).toBeTruthy();
     expect(screen.getByText("Dungeon")).toBeTruthy();

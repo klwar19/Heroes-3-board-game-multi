@@ -28,6 +28,7 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
+import { RUNE_LEVEL_BONUS } from "@/engine/runes";
 import { assetUrl } from "@/lib/asset-url";
 import { playLibrarySound, playSpellBookOpen } from "@/lib/sound";
 import { formatCost } from "@/components/table/utils";
@@ -114,7 +115,7 @@ function bulwarkBoardDescription(building: TownBuildingDefinition): ReactNode | 
     return <><span>At the beginning of each Resource round, choose:</span><span><FactoryGold amount={income?.gold ?? 0} /> OR</span><span>Until the next Resource round, start combats with +{runes?.runesNextCombats ?? 0} Runes.</span></>;
   }
   if (effect?.type === "RUNE_ALTAR" && (building.id === "bulwark.sieidi" || building.id === "bulwark.altar")) {
-    const bonus = effect.levelCap >= 3 ? "+1 Defense" : "+3 Initiative";
+    const bonus = effect.levelCap >= 3 ? `+${RUNE_LEVEL_BONUS.defense} Defense` : `+${RUNE_LEVEL_BONUS.initiative} Initiative`;
     return <><span>Unlocks Rune Level {effect.levelCap} ({bonus}) on the Rune Tracker.</span><span>At the start of combat against neutral units, gain {effect.neutralStartingRunes} {building.id === "bulwark.altar" ? "more " : ""}Runes.</span></>;
   }
   return null;

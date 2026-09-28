@@ -219,7 +219,8 @@ describe("WOG commander combination skills — combat behaviour", () => {
     const next = settle(
       apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: commanderUnitId("p1"), defenderId: "unit_p2_dread_knights" })
     );
-    expect(next.combat!.units.unit_p2_dread_knights.damage).toBe(5); // attack 5, die 0
+    // Attack grade III = 4 since the e4b8f4be (v171) ladder 2/3/3/4; die 0.
+    expect(next.combat!.units.unit_p2_dread_knights.damage).toBe(4);
 
     // CONTROL: speed grade 1 → still a ground unit; the distant strike is illegal.
     const control = comboDuel({ attack: 3, speed: 1 });
@@ -232,14 +233,16 @@ describe("WOG commander combination skills — combat behaviour", () => {
 
   it('Mighty Blow (ATK+DMG): the commander\'s own Attack die always counts as "+1"', () => {
     // Main die "-1" is floored to +1; the two Damage-grade Might dice ('+1'
-    // each) then add 2: (attack 5 + 1) + Might 2 = 8 damage.
+    // each) then add 2: (attack 4 + 1) + Might 2 = 7 damage (Attack grade III = 4
+    // since the e4b8f4be ladder 2/3/3/4).
     let state = comboDuel({ attack: 3, damage: 2 });
     state.combat!.dice.scriptedRolls = [-1, 1, 1];
     state = settle(apply(state, COMMANDER_ATTACK));
-    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(8);
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(7);
 
     // CONTROL: damage grade 1 → Mighty Blow is NOT unlocked, so the main "-1"
-    // stands and the single Might die ('+1') adds 1: (5 - 1) + 1 = 5.
+    // stands (Attack grade III's -1 rider adds +1) and the single Might die
+    // ('+1') adds 1: (4 - 1 + 1) + 1 = 5.
     let control = comboDuel({ attack: 3, damage: 1 });
     control.combat!.dice.scriptedRolls = [-1, 1];
     control = settle(apply(control, COMMANDER_ATTACK));
@@ -250,13 +253,14 @@ describe("WOG commander combination skills — combat behaviour", () => {
     let state = comboDuel({ attack: 3, defense: 2 });
     state.combat!.units.unit_p2_skeletons.defense = 2;
     state = settle(apply(state, COMMANDER_ATTACK));
-    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(5); // 5 + 0 - (2-2)
+    // Attack grade III = 4 (e4b8f4be ladder 2/3/3/4): 4 + 0 - (2-2).
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(4);
 
-    // CONTROL: defense grade 1 → the printed Defense 2 holds: 5 - 2 = 3.
+    // CONTROL: defense grade 1 → the printed Defense 2 holds: 4 - 2 = 2.
     let control = comboDuel({ attack: 3, defense: 1 });
     control.combat!.units.unit_p2_skeletons.defense = 2;
     control = settle(apply(control, COMMANDER_ATTACK));
-    expect(control.combat!.units.unit_p2_skeletons.damage).toBe(3);
+    expect(control.combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 
   it('Fearsome (ATK+HP): a "-1" on the commander\'s Attack die freezes the target with Paralysis', () => {
@@ -366,13 +370,14 @@ describe("WOG commander combination skills — combat behaviour", () => {
     function assault(overrides: Partial<Record<CommanderStatKey, number>>): GameState {
       const state = comboDuel(overrides);
       state.combat!.units[commanderUnitId("p1")].retaliatedThisRound = true;
-      // Attack die 0 first, then the Block die comes up "-1".
-      state.combat!.dice.scriptedRolls = [0, -1];
+      // Attack die 0 first; since e4b8f4be (v171) Defense grade III keeps the
+      // Defense token, so its Defend die rolls next (0), then the Block die "-1".
+      state.combat!.dice.scriptedRolls = [0, 0, -1];
       return enemyStrikesCommander(state, "unit_p2_skeletons", 10, 9);
     }
 
-    // Attack 9 vs Defense 4 would deal 5 — lethal to the 4-HP commander — but
-    // the Block die swallows it whole.
+    // Attack 9 vs Defense 2 (+1 on the 0 Defend roll at grade III) would deal 6
+    // — lethal to the 4-HP commander — but the Block die swallows it whole.
     const blocked = assault({ defense: 3, speed: 2 });
     expect(blocked.combat!.units[commanderUnitId("p1")].damage).toBe(0);
 

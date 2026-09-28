@@ -404,6 +404,10 @@ describe("Set Artifacts — income", () => {
   it("Golden Goose pays +2 gold at 2 pieces and +4 at 3 — on EVERY round, Astrologers included", () => {
     const state = makeState(true, "sets-goose");
     state.players.p1.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    // Keep the Astrologers draw inert: this seed's round-4 card (Gold Dragon)
+    // queues +5 gold for the next Resource round, which is not the set's income.
+    state.decks.astrologers!.drawPile = ["astrologers.dead_silence"];
+    state.decks.astrologers!.discardPile = [];
     ownOnly(state, [GG_MEMBERS[0], GG_MEMBERS[1]]);
     expect(roundIncome(state, 4).gold, "Astrologers round").toBe(2);
     expect(roundIncome(state, 5).gold, "Resource round").toBe(2);

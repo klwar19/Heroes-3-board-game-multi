@@ -28,18 +28,24 @@ function injectField(state: GameState, location: string, spaceId = "50,50"): Map
 }
 
 describe("Market access (Trading Post / War Machine Factory)", () => {
-  it("opens the Trading Post for free — no movement point spent — while a hero is parked on it", () => {
+  it("reopening the Trading Post for a parked hero costs 1 movement point (refused at 0)", () => {
+    // b4509ac6 (v139): reopening a Trading Post costs that hero 1 MP, including
+    // on later turns; the War Machine Factory stays free (CONTROL below).
     const state = makeGame();
     injectField(state, "trading_post");
     const hero = getMainHero(state, "p1")!;
     hero.spaceId = "50,50";
-    hero.movementPoints = 0; // out of movement: the market is still reachable
+    hero.movementPoints = 0;
+    expect(() => openMarket(state, { type: "OPEN_MARKET", playerId: "p1", heroId: hero.id })).toThrow(
+      /1 movement point/
+    );
+    expect(state.adventure!.pendingVisit ?? null).toBeNull();
 
+    hero.movementPoints = 2;
     openMarket(state, { type: "OPEN_MARKET", playerId: "p1", heroId: hero.id });
 
     expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("TRADING_POST");
-    // Free: opening the market never costs a movement point.
-    expect(state.heroes[hero.id].movementPoints).toBe(0);
+    expect(state.heroes[hero.id].movementPoints).toBe(1);
   });
 
   it("offers OPEN_MARKET — not the 1-MP revisit — as a legal action on a market tile", () => {
@@ -78,14 +84,19 @@ describe("Market access (Trading Post / War Machine Factory)", () => {
     };
     state.heroes[secondary.id] = secondary;
 
-    const open = getLegalActions(state, "p1").filter(
-      (legal) => legal.action.type === "OPEN_MARKET" && legal.action.heroId === secondary.id
-    );
-    expect(open).toHaveLength(1);
+    const openFor = () =>
+      getLegalActions(state, "p1").filter(
+        (legal) => legal.action.type === "OPEN_MARKET" && legal.action.heroId === secondary.id
+      );
+    // The reopen costs the Secondary Hero 1 MP too (b4509ac6): not offered at 0.
+    expect(openFor()).toHaveLength(0);
+    secondary.movementPoints = 1;
+    expect(openFor()).toHaveLength(1);
 
     openMarket(state, { type: "OPEN_MARKET", playerId: "p1", heroId: secondary.id });
     expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("TRADING_POST");
     expect(state.adventure!.pendingVisit?.heroId).toBe(secondary.id);
+    expect(state.heroes[secondary.id].movementPoints).toBe(0);
   });
 
   it("rejects opening a market when the hero is not standing on one", () => {

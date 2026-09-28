@@ -1604,7 +1604,21 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Mountain Rams / Snow Elves Few 3 Health; new starting tiles Factory S10,
 // Bulwark S11, Forge S12 (a save's old &S1 id loads as S10). A v189 peer
 // resolves different combats, costs and starting-tile borders.
-export const ENGINE_PROTOCOL_VERSION = 190;
+// v191: Forge Tanks Neutral costs 27 gold (no Valuable). Ghost Dragons'
+// Spectral Ward turns away only ENEMY Spells (own-side Spells land; Spell
+// damage still -1). Olema's Weakness VI also stops the locked unit's side
+// from cancelling / redirecting a Spell aimed at it (Resistance, Protection,
+// Magic Mirror card or innate); the First Aid Tent still heals it. A v190
+// peer offers different reactions and Spell targets.
+// Also v191: Bulwark Rune Level 2 grants +2 Speed (Initiative), not +3; the
+// Yeti Pack (Yeti Runemaster) costs 9 gold, not 10. A v190 peer resolves
+// different Initiative order and recruit costs.
+// Also v191: Necromancy's half-price Stack halves only the gold (a Valuable is
+// paid in full); a designer's center-hex guard beats the Grail/Utopia mode
+// army; an eliminated seat's parked parallel round rewards are dropped; hex
+// mode makes MGQ Giga, Maya, Matis, Sphinx and Spider Princess two-hex
+// bodies (movement, adjacency and reach).
+export const ENGINE_PROTOCOL_VERSION = 191;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

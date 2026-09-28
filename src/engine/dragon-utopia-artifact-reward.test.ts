@@ -81,9 +81,12 @@ function objectiveField(state: GameState): MapFieldState {
 
 function artifactsOwned(state: GameState, playerId: "p1" | "p2"): string[] {
   const player = state.players[playerId]!;
-  return [...player.hand, ...player.deck, ...player.discard].filter((cardId) =>
-    cardId.startsWith("artifact.")
-  );
+  return [
+    ...[...player.hand, ...player.deck, ...player.discard].filter((cardId) => cardId.startsWith("artifact.")),
+    // A taken Spell Scroll deck card becomes a live scroll, never a card
+    // (materializeArtifactScrolls, 21ae36de) — it is still the artifact gained.
+    ...(player.scrolls ?? []).map((scroll) => `artifact.spell_scroll#${scroll.id}`)
+  ];
 }
 
 type DriveResult = {

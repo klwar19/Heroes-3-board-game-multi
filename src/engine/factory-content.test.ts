@@ -60,7 +60,8 @@ const FACTORY_HERO_SPECIALTY_UNIT: Record<string, string> = {
   sam: "Engineers",
   tancred: "Bounty Hunters",
   celestine: "Armadillos",
-  agar: "Sandworms",
+  // 21ae36de redesigned Agar I as "Sandworm Snare I" (enemy -2 Initiative).
+  agar: "Sandworm",
   frederick: "Automatons"
 };
 

@@ -10,7 +10,7 @@ import {
   type GameState,
   type PlayerId
 } from "./index";
-import { EVENTS_DECK_ID, getEventsState, getTownOfPlayer, startAdventureRound } from "./adventure";
+import { EVENTS_DECK_ID, getEventsState, getTownOfPlayer, startAdventureRound, startPlayerTurn } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 
 /**
@@ -152,7 +152,12 @@ describe("Event deck × parallel — every seat resolves the Event in its OWN wi
   it("parks one window per seat, opens it after that seat's draw, and leaves the other seat free to move", () => {
     const state = parallelEventsGame("barrier-par-freeze");
     stackEventDeck(state, "event.stables");
-    startEventResourceRound(state);
+    state.round = 3;
+    startAdventureRound(state);
+    // The real parallel wrap (END_TURN) starts EVERY live seat's turn right after
+    // the round start; that is what arms each seat's start-of-turn draw.
+    for (const id of ["p1", "p2"] as PlayerId[]) startPlayerTurn(state, id);
+    pumpAdventureQueues(state);
 
     // No whole-table barrier and no shared visit: the Event is parked per seat.
     expect(state.adventure?.eventResolution ?? null).toBeNull();

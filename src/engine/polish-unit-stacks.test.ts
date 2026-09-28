@@ -13,7 +13,7 @@ import {
   unitSideRuleOverrides
 } from "./index";
 import { finalizeAdventureCombat } from "./adventure-reducer";
-import { processPendingVisit } from "./adventure";
+import { getUnitSide, processPendingVisit } from "./adventure";
 import { attackIsLethal, unitRemainingHealth } from "./computer/score";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
 import type { CombatState, GameAction, GameState } from "./state";
@@ -550,13 +550,16 @@ describe("Polish Unit Stacks — co-composition fixes", () => {
     )!;
     // One full bar of damage would kill an unstacked Pack but not a 1-stack Pack.
     expect(unitRemainingHealth(unit)).toBe(unit.maxHealth * 2);
+    // Since e940332d the removal read also counts the Pack's Few side (its first
+    // depleted bar flips it, not removes it), so "lethal" = Pack bar + Few bar.
+    const fewHealth = getUnitSide("castle.griffins", "few")!.health;
     const attacker = {
       ...unit,
       id: "attacker",
-      attack: unit.maxHealth,
+      attack: unit.maxHealth + fewHealth,
       defense: 0
     };
-    // Expected damage = max(0, attack - defense) = maxHealth — lethal without stacks.
+    // Expected damage = max(0, attack - defense) = Pack bar + Few bar — lethal without stacks.
     unit.armyStacks = 0;
     expect(attackIsLethal(attacker, unit)).toBe(true);
     unit.armyStacks = 1;

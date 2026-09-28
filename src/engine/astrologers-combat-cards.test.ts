@@ -158,6 +158,10 @@ describe("Astrologers — Rulebook (neutral guards one difficulty lower)", () =>
     expect(drawGuardArmy(state, designed, 2)).toHaveLength(3); // authored Hard row, not Normal's 2
 
     const utopia = field("dragon_utopia", "91,91");
+    // New games default to the fixed 2 Azure + 2 Gold Utopia guard (88e9d44f,
+    // v156), which never reads difficulty; the difficulty-scaled guard is where a
+    // Rulebook weakening would show, so pin that one.
+    state.adventure!.dragonUtopiaGuards = "by-difficulty";
     expect(drawGuardArmy(state, utopia, 7)).toHaveLength(3); // Hard VII, not Normal's 2
   });
 });

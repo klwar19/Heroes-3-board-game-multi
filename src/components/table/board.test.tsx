@@ -1539,9 +1539,10 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
     const baseAttack = unit.attack;
     const baseDefense = unit.defense;
 
-    // Earn straight to Rune Level 3: +1 Attack (L1), +3 Initiative (L2) and +1
+    // Earn straight to Rune Level 3: +1 Attack (L1), +2 Initiative (L2) and +1
     // Defense (L3) all go live.
-    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[2]); // 12 → Level 3
+    // 4938d03d (nine-Rune track): each level needs a fresh nine Runes, so 27 → Level 3.
+    gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[0] + RUNE_LEVEL_THRESHOLDS[1] + RUNE_LEVEL_THRESHOLDS[2]);
 
     const { container } = renderInspect(state, unit.id);
     const stats = container.querySelector(".inspectStats")!;

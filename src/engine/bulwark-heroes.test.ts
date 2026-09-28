@@ -622,16 +622,18 @@ describe("Bulwark hero — Eikthurn's Mountain Rams specialty (the bronze lv2 un
     expect(applyOk(state, play!.action).combat!.units.unit_p1_griffins.maxHealth).toBe(before + 1);
   });
 
-  it("wires IV to Attack + Rune gain and VI to a Rune-priced Defense reaction", () => {
+  it("wires IV to a Rune gain (no Attack) and VI to a Rune-priced Defense reaction", () => {
     expect(adventureCards["specialty.eikthurn.1"].effect).toMatchObject({
       type: "ADD_UNIT_MAX_HEALTH",
       doubleForUnitName: "Mountain Rams"
     });
+    // USER RULING 2026-09-24 (4abc7e59, v173): IV gains 3 Runes on your attack
+    // (6 for Mountain Rams) and no Attack bonus.
     expect(adventureCards["specialty.eikthurn.4"].effect).toMatchObject({
       type: "ADD_COMBAT_STAT",
       stat: "attack",
-      amount: 1,
-      gainRunes: 4,
+      amount: 0,
+      gainRunes: 3,
       doubleForUnitName: "Mountain Rams"
     });
     expect(adventureCards["specialty.eikthurn.6"].effect).toMatchObject({

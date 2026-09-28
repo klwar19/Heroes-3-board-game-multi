@@ -159,13 +159,20 @@ describe("Factory Couatls — first-round targeting protection", () => {
       const target = state.combat!.units.unit_p1_griffins;
       target.controllerId = "p2";
       if (side === "few") target.couatlUntargetableRound = 1;
+      // The sandbox's active unit IS this (now enemy) Couatl, and p1 only casts
+      // on its own side's activation — hand the activation to a p1 unit.
+      state.combat!.activeUnitId = "unit_p1_marksmen";
       state.players.p1.hand = ["spell.magic_arrow"];
       const arrow = state.players.p1.hand.find(id => id.includes("magic_arrow"));
       if (!arrow) continue;
-      const offered = getLegalActions(state, "p1").some(entry =>
-        entry.action.type === "CAST_SPELL" && entry.action.cardId === arrow &&
-        entry.action.target.type === "unit" && entry.action.target.unitId === target.id
+      const arrowTargets = () => getLegalActions(state, "p1").flatMap(entry =>
+        entry.action.type === "CAST_SPELL" && entry.action.cardId === arrow && entry.action.target.type === "unit"
+          ? [entry.action.target.unitId]
+          : []
       );
+      // CONTROL: Magic Arrow really is castable in round 1 — only the Couatl is excluded.
+      expect(arrowTargets(), `${side} arrow castable`).toContain("unit_p2_skeletons");
+      const offered = arrowTargets().includes(target.id);
       expect(offered, side).toBe(false);
       state.combat!.round = 2;
       expect(getLegalActions(state, "p1").some(entry =>

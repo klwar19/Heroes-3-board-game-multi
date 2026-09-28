@@ -979,6 +979,10 @@ describe("Game options — tabbed layout", () => {
       "polish-bank-unit-spells": true,
       "polish-alliance-mode": true,
       "polish-card-balance": true,
+      // Polish rules added after this fixture was written (21ae36de, e940332d):
+      // "the whole group already on" must include them too.
+      "polish-diplomacy-vii": true,
+      "polish-single-dimension-door": true,
     };
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
@@ -1024,6 +1028,8 @@ describe("Game options — tabbed layout", () => {
         "polish-bank-unit-spells": true,
         "polish-alliance-mode": true,
         "polish-card-balance": true,
+        "polish-diplomacy-vii": true,
+        "polish-single-dimension-door": true,
         "discovery-border-gate": true,
       };
     });
@@ -1240,11 +1246,12 @@ describe("Game options — tabbed layout", () => {
     expect(dialog.textContent).toContain(
       "Each physical Spell may be refreshed only once per round",
     );
+    // Rule sheets re-cut from the v1.3 Balance Update in 946ef69a (v133).
     const reference = within(dialog).getByAltText(
-      /H3 BG Rules v1\.2/i,
+      /H3 BG v1\.3 Balance Update/i,
     ) as HTMLImageElement;
     expect(reference.getAttribute("src")).toContain(
-      "/assets/rules/polish/spell-book.webp",
+      "/assets/rules/polish/v13-spell-book.webp",
     );
     fireEvent.click(
       within(dialog).getByRole("button", { name: /Close rule information/i }),

@@ -76,7 +76,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "THIEVES_GUILD":
       return "Once during your turn, choose any one deck in the game (a shared deck, or any player's Might & Magic deck — your own or an opponent's), look at its top 2 cards, then put one of them on that deck's discard pile and the other back on top.";
     case "RUNE_ALTAR":
-      return `Bulwark Runes: unlocks Rune Level ${effect.levelCap} and adds ${effect.neutralStartingRunes} starting Runes against Neutral units. Building grants stack. Each unlocked level needs 9 Runes on the main track; on reaching it, gain its lasting combat bonus, reset the main track to 0, and add 5 Runes to the reserve. Levels grant +1 Attack, then +3 Speed, then +1 Defense to all your units. Rune costs spend reserve first, then main-track Runes. Attack +1 Rune, Retaliate +2 Runes, Defend +3 Runes.`;
+      return `Bulwark Runes: unlocks Rune Level ${effect.levelCap} and adds ${effect.neutralStartingRunes} starting Runes against Neutral units. Building grants stack. Each unlocked level needs 9 Runes on the main track; on reaching it, gain its lasting combat bonus, reset the main track to 0, and add 5 Runes to the reserve. Levels grant +1 Attack, then +2 Speed, then +1 Defense to all your units. Rune costs spend reserve first, then main-track Runes. Attack +1 Rune, Retaliate +2 Runes, Defend +3 Runes.`;
     case "MGQ_SPIRIT_SHRINE":
       return "Outside combat, select one Spirit whose Contract building is built. That choice is snapshotted at combat setup and lasts for that combat.";
     case "MGQ_SPIRIT_CONTRACT": {

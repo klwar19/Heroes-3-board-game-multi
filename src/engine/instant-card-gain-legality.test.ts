@@ -241,13 +241,9 @@ const DOCUMENTED_WINDOW_EXCLUSIONS: Record<string, string> = {
   // override a printed zone restriction (the Shield-of-Naval-Glory rule).
   "wog.artifact.magic_wand#0":
     "printed mapOnly: 'Remove this card: Search (1) the Artifact deck' is a map side",
-  // The shared trap-twin dedupe (`cardHasPrintedTriggerMatch`): when ANOTHER
-  // side of the same card genuinely matches THIS window's printed trigger, the
-  // card's remaining sides never join as trigger-free utility — the join would
-  // be a strictly-worse twin of the real reaction. Kriv VI option 1 is a printed
-  // "React to an enemy attack: gain 3 Runes".
-  "specialty.kriv.6#2":
-    "trap-twin dedupe: option 1 is a printed UNIT_ATTACK_DECLARED reaction on the same card",
+  // (Kriv VI option 2, "Draw 2 cards", is no longer withheld: since 7d3a49b4 a
+  // plain DRAW_CARDS face is an explicit OR arm that stays selectable even when
+  // a sibling matches the window's trigger — legal-actions `explicitDraw`.)
   // MGQ Ilias IV / Granberia I: a printed `mapOnly` pure-draw twin of a real
   // combat face (Ilias' combatAnytime immunity-draw, Granberia's attack-window
   // reaction). A mapOnly side is an absolute window bar; the map play is pinned
@@ -267,8 +263,11 @@ type SweepFace = {
 const cardGainFaces: SweepFace[] = Object.entries(cardLibrary).flatMap(([cardId, card]) => {
   if (card.implementationStatus !== "implemented") return [];
   // A printed MAP card is map-only by definition and a TOWN action is taken from
-  // the town screen; neither is an instant the report is about.
-  if (card.timing === "map" || card.timing === "town") return [];
+  // the town screen; neither is an instant the report is about. A PASSIVE card
+  // is never played from hand: the Spell Scroll artifact (21ae36de) becomes a
+  // live scroll the moment it is taken (materializeArtifactScrolls), and its
+  // `DRAW_CARDS 0` is only a placeholder effect.
+  if (card.timing === "map" || card.timing === "town" || card.timing === "passive") return [];
   const out: SweepFace[] = [];
   if (CARD_GAIN_EFFECT_KINDS.has(card.effect.type)) {
     out.push({ cardId: cardId as CardId, kind: card.effect.type, timing: card.timing });

@@ -94,6 +94,13 @@ describe("Set icons — discard tops", () => {
     // The Artifact deck's own discard top: the most-seen set-member face there is.
     state.decks["artifacts-major"]!.discardPile = [cardId];
     const view: PlayerVisibleState = getPlayerView(state, "p1");
+    // Every shared deck flips its top card onto its discard at game start
+    // (252604bb), so the seed leaves unrelated faces (a Titan's Thunder piece
+    // on the Relic pile) on the OTHER piles. Blank those in the rendered view so
+    // only the pile under test can carry a badge.
+    for (const [deckId, deck] of Object.entries(view.decks)) {
+      if (deckId !== "artifacts-major" && deck) deck.discardPile = [];
+    }
     return withProvider(enabled, <AdventureDecksPanel onShowPile={vi.fn()} view={view} viewerPlayerId="p1" />);
   }
 

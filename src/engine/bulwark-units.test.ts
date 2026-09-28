@@ -453,7 +453,7 @@ describe("Bulwark units — roster & ability wiring", () => {
     expect(rams.pack?.attack).toBe(2); // Argali attack lowered to 2
     const elves = coreUnitDefinitions["bulwark.snow_elves"];
     expect(elves.few?.health).toBe(3);
-    expect(elves.pack?.health).toBe(3);
+    expect(elves.pack?.health).toBe(4); // Steel Elf Health 4 (2026-09-28 ruling; matches the printed face)
     expect(elves.pack?.attack).toBe(3); // Steel Elf attack lowered to 3
     const yetis = coreUnitDefinitions["bulwark.yetis"];
     expect({ attack: yetis.few?.attack, health: yetis.few?.health }).toEqual({ attack: 3, health: 4 });
@@ -462,6 +462,8 @@ describe("Bulwark units — roster & ability wiring", () => {
       defense: 2,
       health: 5
     });
+    expect(yetis.pack?.cost).toEqual({ gold: 9 }); // Yeti Runemaster (Pack) costs 9 gold
+    expect(yetis.few?.cost).toEqual({ gold: 6 });
     const shamans = coreUnitDefinitions["bulwark.shamans"];
     expect({ defense: shamans.few?.defense, initiative: shamans.few?.initiative }).toEqual({ defense: 1, initiative: 5 }); // 2026-09-24 ruling
     // Great Shaman (Pack): attack lowered to 3, health raised to 6.

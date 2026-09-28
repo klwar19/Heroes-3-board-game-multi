@@ -280,8 +280,9 @@ describe("Anime Unit Experience — rank bonus folds onto both sides", () => {
   it("griffins walk their resolved S A S A path: R1 +HP, R2 ability, R3 +Def, R4 ability", () => {
     const state = animeGame({ unitExperience: true }, "xp-fold");
     const rookie = combatUnit(state, { id: "r", unitDefId: "castle.griffins", side: "pack" }, "cu_rookie");
-    // castle.griffins is generator-served (flying flavour): stats at R1/R3 with
-    // the STAT payload coming from the per-unit ladder, abilities at R2/R4.
+    // castle.griffins: stats at R1/R3 with the STAT payload coming from the
+    // per-unit ladder, abilities at R2 (generator) / R4 (the f4662a61 Castle
+    // rank Unstoppable Retaliation, balance sheet).
     const elite = combatUnit(state, { id: "l", unitDefId: "castle.griffins", side: "pack", experience: 13 }, "cu_elite");
     expect(elite.maxHealth - rookie.maxHealth).toBe(1); // R1
     expect(elite.defense - rookie.defense).toBe(1); // R3
@@ -293,7 +294,8 @@ describe("Anime Unit Experience — rank bonus folds onto both sides", () => {
     const legend = combatUnit(state, { id: "l4", unitDefId: "castle.griffins", side: "pack", experience: 17 }, "cu_legend");
     expect(legend.unitRank).toBe(4);
     expect(legend.attack - elite.attack).toBe(0); // R4 is an ability rank
-    expect(legend.abilities).toContain("veteran-soul-feast"); // R4
+    expect(legend.abilities).toContain("town-griffin-counter"); // R4
+    expect(elite.abilities).not.toContain("town-griffin-counter");
 
     // The identical fold lands on the FEW side too.
     const eliteFew = combatUnit(state, { id: "lf", unitDefId: "castle.griffins", side: "few", experience: 13 }, "cu_elite_few");
@@ -317,12 +319,15 @@ describe("Anime Unit Experience — cross-seam with Unit Stacks", () => {
   it("a Stacked veteran card gets stack Attack plus rank stats only on stats ranks", () => {
     const state = animeGame({ unitStacks: true, unitExperience: true }, "xp-stack");
     const plain = combatUnit(state, { ...centaurs, stacks: 0 }, "cu_plain2");
-    // Centaurs strong: R1 stats (+1 Def), R2 ability — rank 2 has no attack fold.
-    // Use R3 (xp 10) = second stats step (+1 Atk) + stack.
+    const stackedRookie = combatUnit(state, { ...centaurs, stacks: 1 }, "cu_stacked_rookie");
+    // Centaurs (custom schedule, balance sheet): R1 +1 HP + Retaliatory Charge,
+    // R2 Guarded Stance, R3 +1 HP + Shock Assault — R1-R3 fold no Attack.
     const both = combatUnit(state, { ...centaurs, stacks: 1, experience: 13 }, "cu_both");
     expect(both.armyStacks).toBe(1);
     expect(both.unitExperience).toBe(13);
     expect(both.unitRank).toBe(3);
-    expect(both.attack - plain.attack).toBe(2); // +1 stack, +1 rank stats Attack
+    expect(both.attack - plain.attack).toBe(1); // +1 stack; no Attack rank at R1-R3
+    expect(both.attack - stackedRookie.attack).toBe(0);
+    expect(both.maxHealth - stackedRookie.maxHealth).toBe(2); // R1 +1 HP, R3 +1 HP
   });
 });

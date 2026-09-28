@@ -73,7 +73,12 @@ describe("a Gate carved over a Blocked Field draws only the printed OUTER arc on
     // the two PvE Gates used to lose all six of the slot's lines. All three
     // carves now behave alike — the three INSIDE edges open, the printed OUTER
     // arc stays drawn — which is also what movement enforces.
-    it(`${location}: the hex opens its INSIDE ring and keeps the printed outer arc`, () => {
+    // Except the bank: CURRENT BANK RULE 2026-09-06 (0bc1b4b3; see
+    // src/data/map/borders.ts creatureBankOpensPrintedArc, mirrored by
+    // isOuterEdgeSealed) — a bank on a bank-hosting tile (F3 is Ⅱ–Ⅲ) ALSO drops
+    // its printed outer arc, so it loses all six lines. The Gates keep the arc.
+    const opensOuterArc = location === "creature_bank";
+    it(`${location}: the hex opens its INSIDE ring and ${opensOuterArc ? "(bank rule) its printed outer arc" : "keeps the printed outer arc"}`, () => {
       const carved = boardWithLocationOnBlockedSlot(location, `gate-board-${location}`);
       const printed = boardWithLocationOnBlockedSlot("blocked_field", `gate-board-control-${location}`);
 
@@ -84,8 +89,10 @@ describe("a Gate carved over a Blocked Field draws only the printed OUTER arc on
       expect(printedLines, "a plain Blocked Field is ringed").toBeGreaterThan(carvedLines);
       expect(
         carvedLines,
-        "the carve keeps only its outward containment arc",
-      ).toBe(printedLines - 3);
+        opensOuterArc
+          ? "the bank drops its inside ring AND its printed outer arc"
+          : "the carve keeps only its outward containment arc",
+      ).toBe(printedLines - (opensOuterArc ? 6 : 3));
     });
 
     // USER RULE 2026-08-22 (supersedes the v24 "designer edges are inert at a

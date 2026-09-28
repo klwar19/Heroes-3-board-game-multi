@@ -105,10 +105,12 @@ SKILL_EMBLEMS = [
     "pathfinding", "resistance", "sorcery", "water_magic", "wisdom",
 ]
 
-# The five abilities with no standalone symbol: recover from the card top art.
+# The abilities with no standalone symbol: recover from the card top art
+# (Learning added 2026-09-28: Darkstorn's starting ability since v171).
 # Boxes are in the 743x1040 printed-card space, tight around each illustration.
 CARD_SYMBOLS = {
     "diplomacy": (188, 104, 560, 420),
+    "learning": (200, 110, 545, 410),
     "mysticism": (150, 112, 592, 312),
     "scholar": (214, 96, 542, 314),
     "scouting": (236, 100, 512, 336),

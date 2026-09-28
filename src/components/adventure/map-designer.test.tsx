@@ -139,11 +139,20 @@ describe("MapDesigner — per-enemy town type (single-player)", () => {
     let popover = container.querySelector(".designerPopover") as HTMLElement;
     fireEvent.click(within(popover).getByRole("button", { name: /Enemy AI/i }));
 
-    // Build an exact army for this AI, then add a body.
-    popover = container.querySelector(".designerPopover") as HTMLElement;
-    fireEvent.click(within(popover).getByRole("button", { name: "Exact army" }));
-    popover = container.querySelector(".designerPopover") as HTMLElement;
-    fireEvent.click(within(popover).getByRole("button", { name: /Random bronze creature/i }));
+    // Build an exact army for this AI, then add a body (v167 "Build army" +
+    // "Add defender" picker; see pickGuardDefender).
+    const enemyArmyEditor = (): HTMLElement => {
+      const label = [...container.querySelectorAll(".designerPopover .popoverSubLabel")].find(
+        (node) => node.textContent === "This enemy's starting army"
+      );
+      if (!label?.nextElementSibling) {
+        throw new Error("the enemy AI starting-army editor is missing");
+      }
+      return label.nextElementSibling as HTMLElement;
+    };
+    fireEvent.click(within(enemyArmyEditor()).getByRole("button", { name: "Build army" }));
+    expect(get()[0].singlePlayer?.army).toEqual({ units: [] });
+    pickGuardDefender(enemyArmyEditor(), "Random bronze Neutral", "Random Neutrals");
     expect(get()[0].singlePlayer?.army).toEqual({ units: ["random:bronze"] });
 
     // The veteran-XP input appears only once an army exists; setting it writes armyExperience.
@@ -201,6 +210,28 @@ function openTilePopover(container: HTMLElement, planIndex: number): HTMLElement
     throw new Error("popover did not open");
   }
   return popover as HTMLElement;
+}
+
+/**
+ * v167 (aaf12233) renamed the guard editor's "Exact army" to "Build army" and
+ * replaced its named-unit select and "+ Random … creature" quick buttons with
+ * one searchable "Add defender" picker (GuardUnitPicker). Click the option whose
+ * label and group caption read as given.
+ */
+function pickGuardDefender(scope: HTMLElement, label: string, group: string): void {
+  const picker = within(scope).getByLabelText("Add defender").closest("details");
+  if (!picker) {
+    throw new Error("the Add defender picker is not a <details>");
+  }
+  const option = Array.from(picker.querySelectorAll<HTMLButtonElement>(".guardUnitPickerChoices > button")).find(
+    (button) =>
+      button.querySelector("span:not([aria-hidden])")?.firstChild?.textContent === label &&
+      (button.querySelector("small")?.textContent ?? "").startsWith(group)
+  );
+  if (!option) {
+    throw new Error(`no "${label}" (${group}) defender option`);
+  }
+  fireEvent.click(option);
 }
 
 /**
@@ -591,16 +622,14 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       onChange
     );
     const armyPopover = openTilePopover(armed, 1);
-    fireEvent.change(within(armyPopover as HTMLElement).getByLabelText(/Add a named guard unit/i), {
-      target: { value: "neutral.cyclopes" }
-    });
+    pickGuardDefender(armyPopover.querySelector(".popoverCenterHex") as HTMLElement, "Cyclopes", "Neutral ·");
     expect(onChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
     );
 
-    // Quick "+ Random gold creature" appends a random-gold-Neutral slot (controlled
-    // re-render for each add; label renamed from "+ Gold" when the Pack-of-tier
-    // quick row joined the editor).
+    // "Random gold Neutral" (the picker's successor to the "+ Random gold
+    // creature" quick button, v167) appends a random-gold-Neutral slot
+    // (controlled re-render for each add).
     let armyUnits: string[] = [];
     const addGold = () => {
       const mixed = renderDesigner(
@@ -617,7 +646,7 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
         onChange
       );
       const mixedPopover = openTilePopover(mixed, 1);
-      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Random gold creature" }));
+      pickGuardDefender(mixedPopover.querySelector(".popoverCenterHex") as HTMLElement, "Random gold Neutral", "Random Neutrals");
       const last = onChange.mock.calls.at(-1)![0] as { centerHex?: { guard?: { units?: string[] } } }[];
       armyUnits = last.find((p) => p.centerHex)?.centerHex?.guard?.units ?? [];
     };
@@ -1232,8 +1261,10 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(hidden.oneOfTileDefIds, "the list survives the flip").toEqual(choices);
     expect(hidden.tileDefId, "no exact pin appears").toBeUndefined();
 
-    // A FACE-DOWN one-of slot: still classified & EDITABLE as one-of, the flip
-    // reads OFF, and the board flower reads as a secret (blue halo + 🔒 badge).
+    // A FACE-DOWN one-of slot: since v185 (5ec8e74b, "a hidden 'one of' list
+    // shows under Secret; 'One of' now always places the list face-up") it is
+    // classified as a Secret tile GROUP — still EDITABLE — and the board flower
+    // reads as a secret (blue halo + 🔒 badge).
     cleanup();
     const onChange2 = vi.fn();
     const container2 = renderDesigner(
@@ -1249,9 +1280,15 @@ describe("MapDesigner — face-down secret pins", () => {
       "a 🔒 '1 of N' badge marks the hidden one-of"
     ).toBe(true);
     const popover2 = openTilePopover(container2, 1);
-    expect(popover2.querySelector(".popoverModeCard.active")?.textContent).toMatch(/One of/i);
-    const flip2 = within(popover2 as HTMLElement).getByTestId("one-of-always-visible");
-    expect(flip2.getAttribute("aria-pressed"), "hidden ⇒ Always visible OFF").toBe("false");
+    expect(popover2.querySelector(".popoverModeCard.active")?.textContent).toMatch(/Secret/i);
+    expect(
+      within(popover2 as HTMLElement).getByRole("button", { name: "Pick a group of tiles" }).getAttribute("aria-pressed"),
+      "the hidden list is the Secret tile-group selection"
+    ).toBe("true");
+    expect(
+      within(popover2 as HTMLElement).queryByTestId("one-of-always-visible"),
+      "the visibility flip belongs to the (face-up) One of mode only"
+    ).toBeNull();
     // The tile grid stays editable while hidden; a new tile joins the list and
     // the slot STAYS face-down (the list-edit must not un-hide it).
     const cards = [...popover2.querySelectorAll(".popoverTileCard")] as HTMLButtonElement[];
@@ -1263,7 +1300,8 @@ describe("MapDesigner — face-down secret pins", () => {
     expect(stillHidden.faceDown, "editing the list keeps it hidden").toBe(true);
     expect(stillHidden.oneOfTileDefIds?.length, "the added tile joins the list").toBe(3);
 
-    // Flip back to visible → list preserved, face-up again (no stranded state).
+    // Back to visible via the "One of" mode card (v185: choosing One of always
+    // places the list face-up) → list preserved, face-up again (no stranded state).
     cleanup();
     const onChange3 = vi.fn();
     const container3 = renderDesigner(
@@ -1274,7 +1312,7 @@ describe("MapDesigner — face-down secret pins", () => {
       onChange3
     );
     const popover3 = openTilePopover(container3, 1);
-    fireEvent.click(within(popover3 as HTMLElement).getByTestId("one-of-always-visible"));
+    fireEvent.click(within(popover3 as HTMLElement).getByRole("button", { name: /One of/i }));
     const afterShow = onChange3.mock.calls.at(-1)![0] as CustomMapTilePlan[];
     const shown = afterShow.find((plan) => plan.group === "near")!;
     expect(shown.faceDown, "flip back ⇒ visible").toBe(false);
@@ -2811,7 +2849,8 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     const panel = placed.querySelector(".designerObjectPopover") as HTMLElement;
     expect(panel, "bank object panel").toBeTruthy();
     expect(panel.textContent).toMatch(/Which bank/i);
-    expect(within(panel).queryByRole("button", { name: "Exact army" }), "no guard editor on a bank").toBeNull();
+    // "Build army" is the guard editor's army chip since v167 (was "Exact army").
+    expect(within(panel).queryByRole("button", { name: "Build army" }), "no guard editor on a bank").toBeNull();
     fireEvent.change(within(panel).getByLabelText(/Creature Bank id/i), {
       target: { value: "imp_cache" }
     });
@@ -2842,7 +2881,7 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     );
     fireEvent.click(barrier.querySelector(".designerObjectToken.standalone")!);
     const panel = barrier.querySelector(".designerObjectPopover") as HTMLElement;
-    expect(within(panel).queryByRole("button", { name: "Exact army" }), "no guard editor on a Barrier").toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Build army" }), "no guard editor on a Barrier").toBeNull();
     expect(panel.textContent).toMatch(/never guarded/i);
   });
 
@@ -2875,15 +2914,13 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     });
     const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
     fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
-    fireEvent.click(within(container).getByRole("button", { name: "Exact army" }));
+    fireEvent.click(within(container).getByRole("button", { name: "Build army" }));
     expect(latest[0].guard).toEqual({ units: [] });
 
     // Re-render with the armed army mode and add a unit through the picker.
     const rerendered = renderWithObjects(faceUpMap, latest, onObjectsChange);
     fireEvent.click(rerendered.querySelector(".designerObjectToken.standalone")!);
-    fireEvent.change(within(rerendered).getByLabelText(/Add a named guard unit/i), {
-      target: { value: "neutral.cyclopes" }
-    });
+    pickGuardDefender(rerendered, "Cyclopes", "Neutral ·");
     expect(latest[0].guard).toEqual({ units: ["neutral.cyclopes"] });
 
     // The board badge shows the tier-derived difficulty (gold Cyclopes → Ⅱ).
@@ -3948,7 +3985,10 @@ describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () =>
   const town = { row: 10, col: 10 };
   const far = tileLatticeNeighbors(town)[1];
 
-  it("rotates + locks a starting tile (onChange carries rotation + lockRotation), draws the lock badge, and offers no toggle on a non-starting tile", () => {
+  // v167 (aaf12233): "blocked-field starting orientation replaces the degree
+  // lock (legacy maps unchanged)" — the Fix-orientation toggle + rotate became a
+  // "Starting tile blocked field position" edge picker (blockedDirection).
+  it("picks a starting tile's blocked-field edge (blockedDirection), draws the lock badge, keeps a legacy degree lock readable, and offers nothing on a non-starting tile", () => {
     let latest: CustomMapTilePlan[] = [
       { row: town.row, col: town.col, group: "starting", faceDown: false },
       { row: far.row, col: far.col, group: "far", faceDown: true }
@@ -3957,45 +3997,49 @@ describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () =>
       latest = next;
     });
     let container = renderDesigner(latest, onChange);
-    // No lock badge on an unlocked starting tile.
+    // No lock badge on a free starting tile.
     expect(container.querySelector(".designerStartLockBadge")).toBeNull();
 
-    // The starting popover offers the Fix-orientation toggle (unpressed) + rotate.
+    // The starting popover offers the edge picker, defaulting to the normal rules.
     const popover = openTilePopover(container, 0);
-    const toggle = popover.querySelector(".popoverLockToggle");
-    expect(toggle, "starting popover offers the fix-orientation toggle").toBeTruthy();
-    expect(toggle!.getAttribute("aria-pressed")).toBe("false");
+    const edge = within(popover).getByLabelText("Starting tile blocked field position") as HTMLSelectElement;
+    expect(edge.value).toBe("free");
+    fireEvent.change(edge, { target: { value: "3" } }); // SW
+    expect(latest[0]).toMatchObject({ group: "starting", blockedDirection: 3 });
+    expect(latest[0].lockRotation, "an edge pick never writes the legacy degree lock").toBeUndefined();
 
-    // Rotate clockwise → onChange carries rotation 1 on the starting plan.
-    fireEvent.click(popover.querySelector('[title="Rotate 60° clockwise"]')!);
-    expect(latest[0].rotation).toBe(1);
-    expect(latest[0].lockRotation, "rotating alone does not lock").toBeUndefined();
-
-    // Re-render with the rotated plan, then toggle the lock ON → the plan now
-    // carries BOTH rotation 1 and lockRotation, and the toggle reads pressed.
+    // Re-render: the board draws the lock badge naming the blocked edge.
     cleanup();
     container = renderDesigner(latest, onChange);
+    expect(container.querySelector(".designerStartLockBadge")?.textContent).toContain("🔒 SW");
+
+    // Back to "free" drops the field entirely.
     const popover2 = openTilePopover(container, 0);
-    expect(popover2.querySelector(".popoverLockToggle")!.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(popover2.querySelector(".popoverLockToggle")!);
-    expect(latest[0]).toMatchObject({ group: "starting", rotation: 1, lockRotation: true });
+    fireEvent.change(within(popover2).getByLabelText("Starting tile blocked field position"), {
+      target: { value: "free" }
+    });
+    expect(latest[0].blockedDirection).toBeUndefined();
 
-    // Re-render: the board now draws the lock badge on the fixed starting tile.
+    // A LEGACY degree lock stays readable (badge in degrees, picker on the saved
+    // orientation) until an edge is chosen, which clears lockRotation.
     cleanup();
-    container = renderDesigner(latest, onChange);
-    expect(container.querySelector(".designerStartLockBadge"), "lock badge renders").toBeTruthy();
+    container = renderDesigner(
+      [{ row: town.row, col: town.col, group: "starting", faceDown: false, rotation: 1, lockRotation: true }, latest[1]],
+      onChange
+    );
+    expect(container.querySelector(".designerStartLockBadge")?.textContent).toContain("🔒 60°");
+    const legacyPopover = openTilePopover(container, 0);
+    const legacyEdge = within(legacyPopover).getByLabelText("Starting tile blocked field position") as HTMLSelectElement;
+    expect(legacyEdge.value).toBe("legacy");
+    fireEvent.change(legacyEdge, { target: { value: "0" } }); // NE
+    expect(latest[0].blockedDirection).toBe(0);
+    expect(latest[0].lockRotation, "choosing an edge replaces the legacy lock").toBeUndefined();
 
-    // Toggling it OFF again round-trips back to no lockRotation.
-    const popover3 = openTilePopover(container, 0);
-    expect(popover3.querySelector(".popoverLockToggle")!.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(popover3.querySelector(".popoverLockToggle")!);
-    expect(latest[0].lockRotation).toBeUndefined();
-
-    // A NON-starting tile's popover offers NO fix-orientation toggle.
+    // A NON-starting tile's popover offers NO blocked-field picker.
     cleanup();
     container = renderDesigner(latest, onChange);
     const farPopover = openTilePopover(container, 1);
-    expect(farPopover.querySelector(".popoverLockToggle")).toBeNull();
+    expect(within(farPopover).queryByLabelText("Starting tile blocked field position")).toBeNull();
   });
 });
 

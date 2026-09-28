@@ -33,14 +33,16 @@ describe("Polish Banks printed set", () => {
     });
   });
 
-  it("pins all eleven supplied guardian stat lines", () => {
+  it("pins all twelve supplied guardian stat lines", () => {
+    // f4662a61 re-supplied the Wolf Riders face (printed Health 4) and added the
+    // Cyclops Hideout guardian face (printed 4/1/5/7).
     const stats: Record<string, [number, number, number, number]> = {
       "guardian:black-dragon": [5, 1, 6, 9], "guardian:evil-eyes": [2, 1, 2, 6],
       "guardian:fire-elementals": [3, 1, 3, 6], "guardian:gold-dragon": [4, 1, 7, 9],
       "guardian:green-dragon": [4, 1, 5, 7], "guardian:liches": [3, 0, 4, 6],
       "guardian:red-dragon": [4, 1, 6, 8], "guardian:steel-golems": [3, 1, 3, 5],
-      "guardian:vampire-lords": [3, 0, 4, 7], "guardian:wolf-riders": [2, 0, 5, 7],
-      "guardian:zombies": [1, 0, 2, 3]
+      "guardian:vampire-lords": [3, 0, 4, 7], "guardian:wolf-riders": [2, 0, 4, 7],
+      "guardian:stockpile-cyclopes": [4, 1, 5, 7], "guardian:zombies": [1, 0, 2, 3]
     };
     for (const [key, [attack, defense, health, initiative]] of Object.entries(stats)) {
       expect(POLISH_CREATURE_BANK_UNIT_SIDES[key]).toMatchObject({ attack, defense, health, initiative });

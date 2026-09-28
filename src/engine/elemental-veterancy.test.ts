@@ -195,11 +195,13 @@ describe("Elemental experience combat outcomes", () => {
     ["conflux.energy_elementals", 1, "veteran-energy-delay"],
     ["conflux.energy_elementals", 3, "veteran-energy-fire-heal"],
     ["conflux.magma_elementals", 1, "veteran-magma-solidify"],
-    ["conflux.magma_elementals", 4, "veteran-earth-shield"],
+    // Balance sheet (docs/unit-experience-balance-sheet.md): Magma R4 = Molten Body.
+    ["conflux.magma_elementals", 4, "veteran-magma-overflow"],
     ["conflux.magic_elementals", 1, "veteran-magic-dispel"],
     ["conflux.magic_elementals", 4, "veteran-magic-copy"],
     ["conflux.phoenixes", 2, "veteran-phoenix-activation"],
-    ["conflux.phoenixes", 4, "veteran-phoenix-nest"],
+    // Balance sheet: Phoenixes R4 = Rising Nest.
+    ["conflux.phoenixes", 4, "veteran-phoenix-rising-nest-heal"],
   ] as const)("routes %s rank %i to %s", (id, rank, ability) => {
     const step = rankScheduleFor(id)[rank];
     expect(step.kind !== "stats" && step.choices).toEqual([ability]);
@@ -365,7 +367,23 @@ describe("Elemental experience combat outcomes", () => {
     expect(cast(s, "spell.cure", A).combat!.units[A].damage).toBe(3);
     s.combat!.units[D].abilities = ["veteran-water-damper"];
     expect(cast(s, "spell.cure", A).combat!.units[A].damage).toBe(4);
-    s.combat!.units[D].abilitiesSuppressed = true;
+    // Since 612e09d5 (v140) the abilitiesSuppressed flag is rebuilt from the
+    // UNIT_ABILITY_SUPPRESSED effect before every action, so suppress through it.
+    s.activeEffects.push(
+      makeActiveEffect(
+        s,
+        {
+          name: "Disrupting Ray",
+          scope: "unit",
+          polarity: "negative",
+          duration: { type: "combat" },
+          modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }],
+        },
+        { type: "system" },
+        "p1",
+        { type: "unit", unitId: D },
+      ),
+    );
     expect(cast(s, "spell.cure", A).combat!.units[A].damage).toBe(3);
   });
   it("Phoenix breath damages the unit directly behind a target without harming unrelated units", () => {
@@ -932,6 +950,9 @@ describe("Elemental experience combat outcomes", () => {
     const position = nest.position;
     s.combat!.round++;
     elementalActivation(s, a);
+    // Since 21ae36de the return is the owner's choice ("choose whether to fly
+    // there"); option 0 flies to the Nest.
+    choose(s);
     expect(a.position).toBe(position);
     expect(a.damage).toBe(2);
     expect(nest.damage).toBe(1);

@@ -632,15 +632,17 @@ describe("guarded Gate — the battle gates the teleport", () => {
     expect(isFieldGuarded(adv(state).fields[entry]!)).toBe(true);
   });
 
-  it("a teleport-guard fight has NO Round limit (user rule 2026-07): round 1 rolls straight into round 2", () => {
+  it("a teleport-guard fight has NO Round limit (user rule 2026-07): only the free rest window, never MP-to-extend", () => {
     const { state: start, entry, exit } = guardedPair("gate-guard-unlimited", 2, 1);
     let state = start;
     startNeutralEncounter(state, state.heroes.hero_p1, adv(state).fields[entry]!);
     expect(state.combat?.context.kind === "neutral" && state.combat.context.unlimitedRounds).toBe(true);
 
-    // Place, start, then run a harmless round (nobody dies): the fight must
-    // roll into round 2 by itself — no continue-or-retreat window, no
-    // MP-to-extend, exactly like a designer outpost.
+    // Place, start, then run a harmless round (nobody dies): the fight reaches
+    // round 2 with no PAID Round-limit window and no MP-to-extend, exactly like
+    // a designer outpost. Since v139 (b4509ac6, USER RULE 2026-09-12) every
+    // non-VII field fight may REST after each round: an optional window whose
+    // continue is FREE — that is the only window allowed here.
     const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
     state = applyOk(state, place!.action);
     state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
@@ -648,10 +650,15 @@ describe("guarded Gate — the battle gates the teleport", () => {
     for (const unit of Object.values(state.combat!.units)) {
       unit.attack = 0;
     }
+    const movementBefore = state.heroes.hero_p1.movementPoints;
     let safety = 120;
     while (state.combat && state.combat.round < 2 && !state.combat.outcome && safety > 0) {
       safety -= 1;
-      expect(state.combat.awaitingContinue, "the round-limit window must never open").toBeFalsy();
+      if (state.combat.awaitingContinue) {
+        expect(state.combat.continueFree, "the paid round-limit window must never open").toBe(true);
+        state = applyOk(state, { type: "CONTINUE_NEUTRAL_COMBAT", playerId: "p1" });
+        continue;
+      }
       const actions = getLegalActions(state, "p1");
       const next =
         actions.find((legal) => legal.action.type === "DEFEND_UNIT") ??
@@ -663,7 +670,8 @@ describe("guarded Gate — the battle gates the teleport", () => {
       }
       state = applyOk(state, next.action);
     }
-    expect(state.combat?.round, "combat rolled into round 2 with no continue window").toBe(2);
+    expect(state.combat?.round, "combat rolled into round 2 with no paid window").toBe(2);
+    expect(state.heroes.hero_p1.movementPoints, "continuing cost no movement").toBe(movementBefore);
 
     // Nothing teleported and the guard still stands mid-fight.
     expect(state.heroes.hero_p1.spaceId).not.toBe(exit);

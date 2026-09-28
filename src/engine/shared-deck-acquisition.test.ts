@@ -73,14 +73,22 @@ describe("shared deck composition", () => {
   it("holds at most ONE copy of each artifact — artifacts are globally unique", () => {
     // Unlike Spells/Abilities (multiple copies each), every artifact exists exactly
     // once in the whole game, so no deck may stock a duplicate.
+    // The one deliberate exception is the Spell Scroll deck card (21ae36de): the
+    // Minor deck stocks FOUR, and taking one becomes a live scroll, never a hand card.
+    const SCROLL = "artifact.spell_scroll";
     for (const deck of [artifactDeckLegacy, artifactDeckBinhMinor, artifactDeckBinhMajor, artifactDeckBinhRelic]) {
       for (const [id, count] of countById(deck)) {
+        if (id === SCROLL) continue;
         expect(count, `${id} should appear at most once`).toBe(1);
       }
     }
+    expect(countById(artifactDeckLegacy).get(SCROLL)).toBe(4);
+    expect(countById(artifactDeckBinhMinor).get(SCROLL)).toBe(4);
     // The BINH Minor/Major/Relic decks are disjoint, so the BINH set as a whole
     // also holds one of each (no artifact is reachable from two decks at once).
-    const binhAll = [...artifactDeckBinhMinor, ...artifactDeckBinhMajor, ...artifactDeckBinhRelic];
+    const binhAll = [...artifactDeckBinhMinor, ...artifactDeckBinhMajor, ...artifactDeckBinhRelic].filter(
+      (id) => id !== SCROLL
+    );
     expect(new Set(binhAll).size).toBe(binhAll.length);
   });
 

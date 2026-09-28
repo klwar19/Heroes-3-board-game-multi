@@ -121,13 +121,11 @@ describe("Grail → Utopia conversion fires when a Grail BATTLE is won", () => {
       const { hero, dug, extra } = twoGrails(state, "trigger");
       hero.spaceId = dug.spaceId;
 
-      // BEFORE any battle both fields are plain Grails: the extra fights Grail
-      // guards (the Utopia draw appends a Black Dragon; the Grail draw never).
-      expect(
-        drawGuardArmy(state, extra, 7).some((draw) => draw.unitDefId === "neutral.black_dragons"),
-        "pre-battle, every Grail field fights Grail guards, not Utopia dragons"
-      ).toBe(false);
+      // BEFORE any battle both fields are plain, unconverted Grails. (Since
+      // 3f2de608, v146, both objectives fight the same mode army — 1 Black
+      // Dragon + 2 random Azure — so the conversion shows on the field itself.)
       expect(extra.location).toBe("grail");
+      expect(extra.grailConverted ?? false, "pre-battle, no Grail has converted").toBe(false);
 
       // The guards fall on the first Grail: THIS field becomes THE Grail (its
       // dig armed, it never turns), and the extra converts IMMEDIATELY —

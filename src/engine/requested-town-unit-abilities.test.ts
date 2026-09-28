@@ -205,21 +205,29 @@ describe("requested town-unit veterancy ranks", () => {
     expect(state.eventLog).toContainEqual(expect.objectContaining({ type: "UNIT_ABILITY_TRIGGERED", abilityId: "town-dragon-fly-landing" }));
   });
 
-  it("Titan advantage grants at most two disposable Chain Lightning cards when neither die is +1", () => {
-    let state = fresh("titan-cache");
-    place(state, ATTACKER, { controllerId: "p1", position: 1, type: "ranged", attack: 1, abilities: ["town-titan-storm-cache"] });
-    place(state, DEFENDER, { controllerId: "p2", position: 13, attack: 0 });
-    script(state, Array(20).fill(0));
-    for (let index = 0; index < 3; index += 1) {
-      state = attack(state);
-      state.combat!.units[DEFENDER].damage = 0;
-      state.combat!.outcome = null;
-    }
+  it("Titan advantage grants one disposable Chain Lightning per combat, only when both dice are -1", () => {
+    // 50607870 (v168) Storm Cache: "If both dice are -1, gain a phantom Chain
+    // Lightning card, maximum 1 per combat".
+    const titanDuel = (seed: string, face: number): GameState => {
+      let state = fresh(seed);
+      place(state, ATTACKER, { controllerId: "p1", position: 1, type: "ranged", attack: 1, abilities: ["town-titan-storm-cache"] });
+      place(state, DEFENDER, { controllerId: "p2", position: 13, attack: 0 });
+      script(state, Array(20).fill(face));
+      for (let index = 0; index < 3; index += 1) {
+        state = attack(state);
+        state.combat!.units[DEFENDER].damage = 0;
+        state.combat!.outcome = null;
+      }
+      return state;
+    };
+    const state = titanDuel("titan-cache", -1);
     const phantoms = state.players.p1.hand.filter(isPhantomCardId);
-    expect(phantoms).toHaveLength(2);
+    expect(phantoms, "three double -1 attacks, capped at one per combat").toHaveLength(1);
     expect(phantoms.every((id) => id.startsWith("spell.chain_lightning"))).toBe(true);
     removeComputerPhantomCards(state);
     expect(state.players.p1.hand.filter(isPhantomCardId)).toEqual([]);
+    // CONTROL: 0/0 dice (neither is +1, but not both -1) grant nothing.
+    expect(titanDuel("titan-cache-zero", 0).players.p1.hand.filter(isPhantomCardId)).toEqual([]);
   });
 
   it("Nix always rolls Defend and gains 1 Defense on a 0 result", () => {

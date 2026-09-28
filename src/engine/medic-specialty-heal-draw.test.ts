@@ -906,6 +906,10 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       "specialty.molian.1",
       "specialty.molian.4",
       "specialty.molian.6",
+      // Piquedram IV (e4b8f4be, v171): "Draw 2 cards and remove a Paralysis
+      // token" — a HEAL_DAMAGE face (paralysis removal) with a draw rider, the
+      // medic shape; its draw is explicitly playable on its own in combat too.
+      "specialty.piquedram.4",
       "specialty.rin_natsume.1",
       "specialty.rin_natsume.4",
       "specialty.rion.1",

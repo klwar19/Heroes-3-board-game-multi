@@ -25,7 +25,7 @@ import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId }
  *  - keep-troops mode: it keeps every unit but discards its entire hand.
  */
 
-function makeGame(opts: { victoryMode?: "conquest" | "grail"; pvpTroopLoss?: "normal" | "none"; thirdSeat?: boolean } = {}): GameState {
+function makeGame(opts: { victoryMode?: "conquest" | "conquer" | "grail"; pvpTroopLoss?: "normal" | "none"; thirdSeat?: boolean } = {}): GameState {
   return createAdventureGameState({
     seed: "give-up-combat",
     difficulty: "normal",
@@ -179,15 +179,24 @@ describe("Give up: a defeat with the Retreat consequences", () => {
     expect(state.heroes[loserHeroId].spaceId).toBe(loserHomeFieldId);
   });
 
-  it("counts as a win for the opponent — records a hero-defeat and can win the game (grail mode)", () => {
-    const state = makeGame({ victoryMode: "grail" });
+  it("counts as a win for the opponent — records a hero-defeat and can win the game (Conquer)", () => {
+    // v127 (186072e7 "Conquest = elimination in every mode, Conquer = distinct
+    // PvP wins"): only Conquer turns PvP wins into victory, and a Give up is one.
+    const state = makeGame({ victoryMode: "conquer" });
     const { winnerId, loserId } = stageGiveUpPvp(state);
 
     finalizeAdventureCombat(state);
 
-    // v127: Grail Hunt records no PvP cube; the win below is last-faction-standing.
-    expect(state.adventure?.heroDefeats).toBeUndefined();
+    expect(state.adventure?.heroDefeats?.[winnerId]).toEqual([loserId]);
     expect(state.adventure?.winnerPlayerId).toBe(winnerId);
+
+    // CONTROL: Grail Hunt records no PvP cube, and nobody was eliminated, so the
+    // same concede does not end the game (no last-faction-standing win either).
+    const grail = makeGame({ victoryMode: "grail" });
+    stageGiveUpPvp(grail);
+    finalizeAdventureCombat(grail);
+    expect(grail.adventure?.heroDefeats).toBeUndefined();
+    expect(grail.adventure?.winnerPlayerId ?? null).toBeNull();
   });
 
   it("grants the opponent a Necromancy window before the military win threshold", () => {

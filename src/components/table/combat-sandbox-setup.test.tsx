@@ -16,8 +16,9 @@ describe("CombatSandboxSetupScreen", () => {
     expect(screen.getByLabelText(/p1 setup/i)).toBeTruthy();
     expect(screen.getByLabelText(/p2 setup/i)).toBeTruthy();
 
-    // Battlefield picker is present.
-    expect(screen.getByLabelText(/battlefield/i)).toBeTruthy();
+    // Battlefield picker is present. Exact label: aaf12233 / 3f09fcaa added the
+    // "Battlefield Conditions" and "Hex Battlefield" option checkboxes.
+    expect(screen.getByLabelText(/^battlefield$/i).id).toBe("sandbox-board");
 
     fireEvent.click(screen.getAllByRole("button", { name: /begin deployment/i })[0]);
     expect(onAction).toHaveBeenCalledWith({ type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });

@@ -64,7 +64,10 @@ function renderDock(state: GameState, onAction = vi.fn()) {
 describe("MapTownBuildingsDock — use town buildings from the map", () => {
   it("shows the button when a controlled town has an actionable special building", () => {
     const state = mapActionState();
-    viewerTown(state).buildings.push("necropolis.cover_of_darkness");
+    // Cover of Darkness ALONE: the default starting Mage Guild
+    // (DEFAULT_SETUP_STARTING_BUILDINGS) is itself actionable (Spell Book token,
+    // 10 starting gold), which would relabel the launcher "Use town buildings (2)".
+    viewerTown(state).buildings = ["necropolis.cover_of_darkness"];
     const { container } = renderDock(state);
     expect(container.querySelector(".mapTownBuildingsButton")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Use Cover of Darkness/i })).toBeTruthy();
@@ -72,7 +75,7 @@ describe("MapTownBuildingsDock — use town buildings from the map", () => {
 
   it("opens a window that renders the Cover of Darkness panel and dispatches USE_TOWN_BUILDING", () => {
     const state = mapActionState();
-    viewerTown(state).buildings.push("necropolis.cover_of_darkness");
+    viewerTown(state).buildings = ["necropolis.cover_of_darkness"];
     const { onAction } = renderDock(state);
 
     fireEvent.click(screen.getByRole("button", { name: /Use Cover of Darkness/i }));

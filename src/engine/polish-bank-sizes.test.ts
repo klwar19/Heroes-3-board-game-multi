@@ -105,6 +105,9 @@ function placeFarTileAwaitingRotation({
   state.adventure!.farTilesOpenedByPlayer = { p1: openings };
   if (pile) {
     state.adventure!.creatureBankTokensFar = [...pile];
+    // Each seat draws from its OWN seeded shuffle of the supply (e7266e7e, v136),
+    // so pin p1's personal pile to exactly this order (last = top).
+    creatureBankPileForPlayer(state, "p1", "far")!.splice(0, Infinity, ...pile);
   }
   state.adventure!.farTileScriptedDraws = [tileDefId];
   state = apply(state, {
@@ -341,6 +344,11 @@ describe("Polish Creature Bank offer", () => {
       "crypt",
       "imp_cache",
     ];
+    // Personal supplies are distinct seeded shuffles (e7266e7e, v136): give both
+    // seats the same order so they really do hold the same top two banks.
+    for (const seat of ["p1", "p2"] as const) {
+      creatureBankPileForPlayer(state, seat, "far")!.splice(0, Infinity, ...state.adventure!.creatureBankTokensFar!);
+    }
     state.adventure!.farTileScriptedDraws = ["F1", "F2"];
     state.heroes.hero_p1.spaceId = "h:7:2";
     state.heroes.hero_p1.movementPoints = 3;
@@ -517,7 +525,8 @@ describe("Polish Creature Bank offer", () => {
   it("CONTROL: rule off preserves the original single-peek, two-option flow", () => {
     const awaiting = placeFarTileAwaitingRotation({ enabled: false });
     const tile = awaiting.adventure!.tiles[awaiting.adventure!.pendingTileChoice!.tileInstanceId];
-    expect(tile.reservedBankId).toBe(awaiting.adventure!.creatureBankTokensFar!.at(-1));
+    // The peek reads p1's personal supply (per-seat shuffle, e7266e7e), not the shared seed pile.
+    expect(tile.reservedBankId).toBe(creatureBankPileForPlayer(awaiting, "p1", "far")!.at(-1));
     expect(tile.reservedBankOptions).toBeUndefined();
     expect(
       awaiting.eventLog.some(

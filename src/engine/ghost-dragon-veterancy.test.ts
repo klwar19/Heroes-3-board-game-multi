@@ -2,7 +2,8 @@
  * Necropolis Ghost Dragons veterancy (user spec 2026-09-27):
  *  R1 Dread Aura      — odd rounds, activation die: -1 Paralyze a chosen enemy,
  *                       0 random enemy -1 Defense this round (no stacking), +1 nothing.
- *  R2 Spectral Ward   — immune to every non-damage Spell effect; Spell damage -1.
+ *  R2 Spectral Ward   — immune to every non-damage ENEMY Spell effect (own-side
+ *                       Spells land, 2026-09-28 ruling); Spell damage -1.
  *  R3 Withering Touch — own attack die "0": attacked enemy -1 max Health for the
  *                       combat, stacking, carried across Pack→Few flips.
  *
@@ -221,7 +222,19 @@ describe("Ghost Dragons R2 — Spectral Ward", () => {
     expect(castAt(control, "spell.slow", "unit_p2_skeletons")).toBeTruthy();
   });
 
-  it("Weakness / Curse reactions are blocked on it (CONTROL: an unwarded unit)", () => {
+  it("its own side's no-damage Spell still targets it (CONTROL: the same ward repels the enemy's)", () => {
+    const state = castState("gd-ward-friendly-haste", ["spell.haste"], null);
+    state.combat!.units.unit_p1_griffins.abilities = [WARD];
+    const cast = castAt(state, "spell.haste", "unit_p1_griffins");
+    expect(cast, "own Haste must stay castable on the warded unit").toBeTruthy();
+    const after = settle(applyOk(state, cast!.action));
+    const griffins = after.combat!.units.unit_p1_griffins;
+    const haste = after.activeEffects.filter((effect) => effect.name === "Haste");
+    expect(haste.length).toBeGreaterThan(0);
+    expect(haste.some((effect) => effectAppliesToUnit(effect, griffins))).toBe(true);
+  });
+
+  it("enemy Weakness / Curse reactions are blocked on it (CONTROLS: an unwarded unit; its own side)", () => {
     for (const [cardId, stat, attackerId, defenderId] of [
       ["spell.weakness", "attack", "unit_p2_skeletons", "unit_p1_griffins"],
       ["spell.curse", "defense", "unit_p1_griffins", "unit_p2_skeletons"]
@@ -237,32 +250,36 @@ describe("Ghost Dragons R2 — Spectral Ward", () => {
       } as unknown as Parameters<typeof spellReactionBlockedByImmunity>[3];
       const effect = { type: "ADD_COMBAT_STAT", stat, amount: -1 } as Parameters<typeof spellReactionBlockedByImmunity>[2];
       const warded = castState(`gd-ward-${cardId}`, [], WARD);
-      expect(spellReactionBlockedByImmunity(warded, cardLibrary[cardId], effect, event), cardId).toBe(true);
+      expect(spellReactionBlockedByImmunity(warded, cardLibrary[cardId], effect, event, "p1"), cardId).toBe(true);
+      // The warded unit's own side (p2) is not turned away.
+      expect(spellReactionBlockedByImmunity(warded, cardLibrary[cardId], effect, event, "p2"), `${cardId} own side`).toBe(false);
       const control = castState(`gd-ward-${cardId}-ctrl`, [], null);
-      expect(spellReactionBlockedByImmunity(control, cardLibrary[cardId], effect, event), `${cardId} control`).toBe(false);
+      expect(spellReactionBlockedByImmunity(control, cardLibrary[cardId], effect, event, "p1"), `${cardId} control`).toBe(false);
     }
   });
 
-  it("no ongoing Spell effect applies, friendly buffs included; non-Spell effects still do", () => {
+  it("no ongoing enemy Spell effect applies; its own side's Spell buffs and non-Spell effects do", () => {
     const state = castState("gd-ward-effects", [], WARD);
     const unit = state.combat!.units.unit_p2_skeletons;
-    const make = (source: SourceRef, polarity: "positive" | "negative", scope: "unit" | "player") =>
+    const make = (source: SourceRef, controllerId: PlayerId, polarity: "positive" | "negative", scope: "unit" | "player") =>
       makeActiveEffect(
         state,
         { name: "probe", scope, duration: { type: "combat" }, polarity, modifiers: [{ type: "ATTACK_BONUS", amount: polarity === "positive" ? 1 : -1 }] },
         source,
-        "p2",
+        controllerId,
         scope === "unit" ? { type: "unit", unitId: unit.id } : undefined
       );
     const blessFromOwner: SourceRef = { type: "card", cardId: "spell.bless", controllerId: "p2" };
+    const blessFromEnemy: SourceRef = { type: "card", cardId: "spell.bless", controllerId: "p1" };
     const slowFromEnemy: SourceRef = { type: "card", cardId: "spell.slow", controllerId: "p1" };
-    expect(effectAppliesToUnit(make(blessFromOwner, "positive", "unit"), unit)).toBe(false);
-    expect(effectAppliesToUnit(make(blessFromOwner, "positive", "player"), unit)).toBe(false);
-    expect(effectAppliesToUnit(make(slowFromEnemy, "negative", "unit"), unit)).toBe(false);
-    expect(effectAppliesToUnit(make({ type: "system" }, "negative", "unit"), unit)).toBe(true);
-    // CONTROL: the same Spell buff reaches an unwarded unit.
+    expect(effectAppliesToUnit(make(blessFromOwner, "p2", "positive", "unit"), unit)).toBe(true);
+    expect(effectAppliesToUnit(make(blessFromOwner, "p2", "positive", "player"), unit)).toBe(true);
+    expect(effectAppliesToUnit(make(slowFromEnemy, "p1", "negative", "unit"), unit)).toBe(false);
+    expect(effectAppliesToUnit(make(blessFromEnemy, "p1", "positive", "unit"), unit)).toBe(false);
+    expect(effectAppliesToUnit(make({ type: "system" }, "p1", "negative", "unit"), unit)).toBe(true);
+    // CONTROL: the same enemy Spell effect reaches an unwarded unit.
     unit.abilities = [];
-    expect(effectAppliesToUnit(make(blessFromOwner, "positive", "unit"), unit)).toBe(true);
+    expect(effectAppliesToUnit(make(slowFromEnemy, "p1", "negative", "unit"), unit)).toBe(true);
   });
 });
 

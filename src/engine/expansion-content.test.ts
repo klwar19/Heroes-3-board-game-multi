@@ -871,8 +871,9 @@ describe("rulebook conformance fixes", () => {
     expect(next.players.p1.resources.gold).toBe(before + 1);
     expect(next.players.p1.hand).toHaveLength(2);
     expect(next.players.p1.removed).toEqual(["spell.lightning_bolt"]);
-    // Selling is the visit's one action: the visit ends with it.
-    expect(next.adventure?.pendingVisit).toBeNull();
+    // USER RULING 2026-09-17 (33405d46, v155): a sale never closes the market —
+    // the same Trading Post visit stays open (counting the sale) until "Done".
+    expect(next.adventure?.pendingVisit?.steps[0]).toMatchObject({ type: "TRADING_POST", sold: 1 });
   });
 
   // USER RULE 2026-08-25: "Cast a Spell card — should be: cannot be sold in

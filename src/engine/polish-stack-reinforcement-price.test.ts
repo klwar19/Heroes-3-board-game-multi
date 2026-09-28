@@ -210,25 +210,31 @@ describe("Polish Unit Stacks — a Stack costs the REINFORCEMENT price + the tie
     expect(polishUnitStackCost("neutral.azure_dragons", "pack")).toBeNull();
   });
 
-  it("every discounted Stack offer derives from that base (Necromancy half of 13 = 6)", () => {
+  it("every discounted Stack offer derives from that base (Necromancy half of Wraiths' 7 = 3)", () => {
     // The half-price surfaces are NOT a second pricing: they halve the ruled
-    // base. This is also the ONE place in the game a Magi Stack can read "6".
+    // base. Necromancy became Undead-only (5ec8e74b, v185), so Magi never get a
+    // Necromancy Stack; the odd Wraiths base (6 printed + bronze 1) proves the floor.
+    expect(polishUnitStackCost("necropolis.wraiths", "pack")).toEqual({ gold: 7 });
     let state = towerGame("stack-price-necromancy");
-    state.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "pack" }];
+    state.players.p1.army = [
+      { id: "u_magi", unitDefId: "tower.magi", side: "pack" },
+      { id: "u_wraiths", unitDefId: "necropolis.wraiths", side: "pack" }
+    ];
     state.players.p1.hand = ["ability.necromancy"];
     queueNecromancyReinforce(state, "p1", "basic", "ability.necromancy");
     pumpAdventureQueues(state);
 
-    expect(label(state, "Add a Stack to Magi"), "half of the 13 base, rounded down").toBe(
-      "Add a Stack to Magi (6 gold)"
+    expect(label(state, "Add a Stack to Magi"), "Magi are not Undead").toBeUndefined();
+    expect(label(state, "Add a Stack to Wraiths"), "half of the 7 base, rounded down").toBe(
+      "Add a Stack to Wraiths (3 gold)"
     );
     const gold = state.players.p1.resources.gold;
     const pick = getLegalActions(state, "p1").find((legal) =>
-      legal.label.includes("Add a Stack to Magi (6 gold)")
+      legal.label.includes("Add a Stack to Wraiths (3 gold)")
     )!;
     state = applyOk(state, pick.action);
-    expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(gold - 6);
+    expect(state.players.p1.army[1].stacks).toBe(1);
+    expect(state.players.p1.resources.gold).toBe(gold - 3);
   });
 
   it("a reserved Legion voucher still comes off the ruled base (13 − 4 = 9)", () => {

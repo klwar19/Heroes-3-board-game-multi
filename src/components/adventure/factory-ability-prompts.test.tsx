@@ -57,11 +57,13 @@ describe("Factory Couatl invulnerability — a clean yes/no prompt", () => {
     const state = createInitialGameState("factory-couatl-click");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
+    // Only the FEW side prompts: since v166 (7cafcf46) the Pack's Ethereal Coil
+    // is a passive first-round untargetability (FIRST_ROUND_UNTARGETABLE).
     Object.assign(state.combat!.units.unit_p1_marksmen, {
       name: "Couatls",
       type: "flying",
-      variant: "pack",
-      abilities: ["couatl-invulnerability-pack"],
+      variant: "few",
+      abilities: ["couatl-invulnerability-few"],
       initiative: 20
     });
     const opened = driveActivation(state, "unit_p1_griffins", "unit_p1_marksmen");
@@ -72,6 +74,25 @@ describe("Factory Couatl invulnerability — a clean yes/no prompt", () => {
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({ type: "CHOOSE_ABILITY_TARGET", targetUnitId: "unit_p1_marksmen" })
     );
+  });
+
+  it("CONTROL: the passive Pack Couatl opens no Activate prompt", () => {
+    const state = createInitialGameState("factory-couatl-pack");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    Object.assign(state.combat!.units.unit_p1_marksmen, {
+      name: "Couatls",
+      type: "flying",
+      variant: "pack",
+      abilities: ["couatl-invulnerability-pack"],
+      initiative: 20
+    });
+    const opened = driveActivation(state, "unit_p1_griffins", "unit_p1_marksmen");
+    expect(opened.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && opened.pendingChoice.kind).not.toBe(
+      "couatl-invulnerability"
+    );
+    render(<PromptTray legalActions={getLegalActions(opened, "p1")} onAction={vi.fn()} state={opened} viewerPlayerId="p1" />);
+    expect(screen.queryByRole("button", { name: /activate ethereal coil/i })).toBeNull();
   });
 });
 

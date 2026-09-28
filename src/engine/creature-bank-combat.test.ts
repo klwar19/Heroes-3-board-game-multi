@@ -34,7 +34,7 @@ import {
 } from "./adventure";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
 import { hexSpaceId, tileFootprint } from "./hex";
-import { finalizeAdventureCombat, getHeroMoveDestinations, setTileRotation, startNeutralEncounter } from "./adventure-reducer";
+import { creatureBankPileForPlayer, finalizeAdventureCombat, getHeroMoveDestinations, setTileRotation, startNeutralEncounter } from "./adventure-reducer";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -311,7 +311,8 @@ describe("Creature Bank — reserved (known) before the tile is rotated", () => 
     const tile = state.adventure!.tiles[tileId];
     // The rotation has NOT been chosen yet…
     expect(tile.awaitingRotation).toBe(true);
-    const pile = state.adventure!.creatureBankTokensFar!;
+    // Each seat draws from its own seeded shuffle of the supply (e7266e7e, v136).
+    const pile = creatureBankPileForPlayer(state, "p1", "far")!;
     // …yet the bank is already known: reservedBankId is the pile's TOP token, and
     // the pile is untouched (peeked, not popped — nothing is consumed until the
     // player accepts the placement).

@@ -704,9 +704,9 @@ describe("computer combat cards (real engine)", () => {
     caster.type = "ground";
     // Park the melee unit far from every enemy so ATTACK_UNIT is not offered —
     // only the spell (and defend/end) remain. That is the case the policy must
-    // not turtle through.
+    // not turtle through. The unit has NOT moved: Magic Arrow is cast before
+    // the active unit moves (legal-actions pre-move carve, 1ca274e9 v161).
     caster.position = 0;
-    caster.movedThisActivation = true;
     for (const unit of Object.values(combat.units)) {
       if (unit.controllerId === "p1") {
         unit.abilities = [];
@@ -849,7 +849,8 @@ describe("computer combat activation", () => {
         decision.action.type === "ATTACK_UNIT" ||
         decision.action.type === "MOVE_AND_ATTACK_UNIT",
     );
-    expect(firstAttack?.policy).toBe("combat.attack-target");
+    // The 3-ply look-ahead (a36a5e21) relabels an ordinary attack it adjusts.
+    expect(firstAttack?.policy).toMatch(/^combat.attack-target(-lookahead)?$/);
     expect((firstAttack?.action as { defenderId: string }).defenderId).toBe(
       "unit_p1_marksmen",
     );
@@ -1242,16 +1243,14 @@ describe("paced computer visible steps (live single-player)", () => {
     expect(step.state.combat).not.toBeNull();
     expect(step.state.combat?.outcome).toBeNull();
     // One (or a short bulk of placement then one) paced combat beat, not the
-    // whole fight: computer unit spent, human still owns a later decision.
-    expect(
-      step.decisions.some(
-        (d) =>
-          d.action.type === "ATTACK_UNIT" ||
-          d.action.type === "MOVE_AND_ATTACK_UNIT" ||
-          d.action.type === "DEFEND_UNIT" ||
-          d.action.type === "END_ACTIVATION",
-      ),
-    ).toBe(true);
+    // whole fight: the step ends on exactly ONE PvP-paced beat (the runner's
+    // own isPvpPacedComputerAction set — a MOVE_UNIT counts; here the policy
+    // repositions rather than swing 4 Attack into Defense 4 for 0 damage).
+    const pacedBeats = step.decisions.filter((d) =>
+      isPacedComputerAction(d.action, step.state),
+    );
+    expect(pacedBeats).toHaveLength(1);
+    expect(step.decisions.at(-1)).toBe(pacedBeats[0]);
   });
 
   /**

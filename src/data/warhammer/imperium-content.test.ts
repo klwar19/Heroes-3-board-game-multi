@@ -37,11 +37,13 @@ describe("Imperium component set", () => {
         pack: [unit.pack!.attack, unit.pack!.defense, unit.pack!.health, unit.pack!.initiative, unit.pack!.cost.gold, unit.pack!.cost.valuables ?? 0]
       }
     ]));
+    // 21ae36de retuned Astra Militarum (2/3 gold) and Rhino (Init 9/13, Pack Atk 3);
+    // docs/unit-experience-balance-sheet.md lists Rhino 3/1/5/9 → 3/1/8/13.
     expect(profiles).toEqual({
-      "imperium.astra_militarum": { type: "ranged", few: [2, 0, 2, 4, 3, 0], pack: [2, 0, 3, 6, 5, 0] },
+      "imperium.astra_militarum": { type: "ranged", few: [2, 0, 2, 4, 2, 0], pack: [2, 0, 3, 6, 3, 0] },
       "imperium.apothecary": { type: "ground", few: [2, 1, 3, 4, 3, 0], pack: [2, 1, 4, 5, 6, 0] },
       "imperium.space_marines": { type: "flying", few: [3, 0, 3, 7, 4, 0], pack: [3, 1, 4, 9, 7, 0] },
-      "imperium.rhino": { type: "ground", few: [3, 1, 5, 5, 6, 0], pack: [4, 1, 8, 9, 12, 0] },
+      "imperium.rhino": { type: "ground", few: [3, 1, 5, 9, 6, 0], pack: [3, 1, 8, 13, 12, 0] },
       "imperium.terminators": { type: "ground", few: [4, 2, 4, 5, 8, 0], pack: [5, 2, 4, 7, 13, 0] },
       "imperium.dreadnought": { type: "ranged", few: [5, 1, 7, 6, 13, 0], pack: [5, 1, 8, 8, 21, 1] },
       "imperium.titan": { type: "ground", few: [6, 3, 9, 4, 20, 1], pack: [7, 3, 9, 6, 29, 2] }

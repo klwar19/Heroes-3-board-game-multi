@@ -154,9 +154,12 @@ describe("WOG commanders — content integrity", () => {
     }
   });
 
-  it("pins the grade ladders — Defense 1/2/2/3 (token at II), Damage as extra-dice counts", () => {
-    expect(COMMANDER_GRADE_VALUES.attack).toEqual([2, 3, 4, 5]);
-    expect(COMMANDER_GRADE_VALUES.defense).toEqual([1, 2, 2, 3]);
+  it("pins the grade ladders — Attack 2/3/3/4, Defense 1/2/2/2 (token from II), Damage as extra-dice counts", () => {
+    // e4b8f4be (v171) grade-ladder redesign: Attack III is 4 (a -1 die grants +1
+    // Attack from grade II); Defense III stays 2 but keeps the token and pays +1
+    // on a 0 Defend roll.
+    expect(COMMANDER_GRADE_VALUES.attack).toEqual([2, 3, 3, 4]);
+    expect(COMMANDER_GRADE_VALUES.defense).toEqual([1, 2, 2, 2]);
     expect(COMMANDER_GRADE_VALUES.health).toEqual([4, 5, 6, 8]);
     expect(COMMANDER_GRADE_VALUES.speed).toEqual([5, 6, 7, 10]);
     // Damage grade = the number of EXTRA attack dice; Magic grade = Power.
@@ -312,13 +315,14 @@ describe("WOG commanders — combat injection", () => {
     expect(deadFight.combat!.units[commanderUnitId("p1")]).toBeUndefined();
   });
 
-  it("builds the unit from the CURRENT grades (attack 5 / health 8 / init 10 at grade 3 — the adjusted grade-III bonuses)", () => {
+  it("builds the unit from the CURRENT grades (attack 4 / health 8 / init 10 at grade 3 — the adjusted grade-III bonuses)", () => {
     const state = adventureWithCommanders("cmd-inject-graded");
     state.players.p1.commander = freshCommander("paladin", { attack: 3, health: 3, speed: 3 });
     const fight = intoNeutralFight(state);
     const unit = fight.combat!.units[commanderUnitId("p1")];
-    // Grade III bonuses are absolute, not summed: Attack +3, Health +4, Speed +5.
-    expect(unit).toMatchObject({ attack: 5, maxHealth: 8, initiative: 10 });
+    // Grade III bonuses are absolute, not summed: Attack +2 (e4b8f4be ladder
+    // 2/3/3/4), Health +4, Speed +5.
+    expect(unit).toMatchObject({ attack: 4, maxHealth: 8, initiative: 10 });
 
     // Grades I/II are +1/+2 over the base (attack 3/4, health 5/6, init 6/7).
     const mid = adventureWithCommanders("cmd-inject-graded-mid");
@@ -717,10 +721,10 @@ describe("WOG commanders — Defense grade II Defense token", () => {
     return after.combat!.units[commanderUnitId("p1")].damage;
   }
 
-  it("only grade II carries commander-defense-token", () => {
+  it("grades II and III carry commander-defense-token (grade III retains it, e4b8f4be)", () => {
     expect(commanderAbilityIds(freshCommander("paladin", { defense: 2 }))).toContain("commander-defense-token");
     expect(commanderAbilityIds(freshCommander("paladin", { defense: 1 }))).not.toContain("commander-defense-token");
-    expect(commanderAbilityIds(freshCommander("paladin", { defense: 3 }))).not.toContain("commander-defense-token");
+    expect(commanderAbilityIds(freshCommander("paladin", { defense: 3 }))).toContain("commander-defense-token");
   });
 
   it("grade II rolls the Defend die when attacked (+1 def on a '+1' face)", () => {
@@ -1022,12 +1026,13 @@ describe("WOG commanders — specialties", () => {
     expect(incomingDamage(2)).toBe(2);
     expect(incomingDamage(3)).toBe(3);
 
-    // CONTROL: a NON-stance bonus persists into round 3. A bound Axe (+2 Attack,
-    // baked) keeps its +2 whether or not the stance holds: round 1 = base 2 + axe
-    // 2 + stance 1 = 5, round 3 = base 2 + axe 2 = 4 (the +2 axe never lapses).
+    // CONTROL: a NON-stance bonus persists into round 3. A bound Axe of Smashing
+    // (1ca274e9, v161: +2 Attack in round 1, +1 from round 2) keeps its bonus
+    // whether or not the stance holds: round 1 = base 2 + axe 2 + stance 1 = 5,
+    // round 3 = base 2 + axe 1 = 3 (one more than the bare round-3 strike).
     const AXE = "wog.artifact.axe_of_smashing";
     expect(attackDamage(1, { weapon: AXE })).toBe(5);
-    expect(attackDamage(3, { weapon: AXE })).toBe(4);
+    expect(attackDamage(3, { weapon: AXE })).toBe(3);
 
     // CONTROL: a Paladin commander has no stance and rejects the action.
     applyError(adventureWithCommanders("cmd-stance-ctrl2"), {
@@ -1115,9 +1120,11 @@ describe("WOG commanders — specialties", () => {
     ).toHaveLength(0);
   });
 
-  it("Undead (Soul Eater): a petrifying attack can never Paralyze the commander", () => {
+  it("Undead (Demon Ancestor): a petrifying attack can never Paralyze the commander", () => {
+    // e4b8f4be (v171) gave the Soul Eater Soul Link; the `undead` specialty
+    // (Paralysis immunity) now lives on the Demon Ancestor.
     // A Stacked Medusa-style attacker (Petrifying Gaze) melees the commander.
-    function petrify(slug: "soul_eater" | "paladin"): GameState {
+    function petrify(slug: "demon_ancestor" | "paladin"): GameState {
       let state = sandboxWithCommander(slug, {}, 9);
       const medusa = state.combat!.units.unit_p2_skeletons;
       medusa.abilities = ["bank-medusa-paralyze-stacked"];
@@ -1140,7 +1147,7 @@ describe("WOG commanders — specialties", () => {
       return state;
     }
 
-    const undead = petrify("soul_eater");
+    const undead = petrify("demon_ancestor");
     expect(
       undead.combat!.units[commanderUnitId("p1")].tokens?.some((token) => token.kind === "paralysis") ?? false
     ).toBe(false);
@@ -1154,8 +1161,17 @@ describe("WOG commanders — specialties", () => {
   });
 
   it("Soul Reformer (Brute): +2 gold after a WON combat; no gold on a loss", () => {
+    // b939c348 (v170): a Neutral combat now opens with the Brute's "pay 2 gold
+    // to draw 1 card" decision; keep the gold so the combat (and the commander)
+    // really starts before the outcome is settled.
+    const keepGold = (state: GameState): GameState => {
+      const choice = state.pendingChoice;
+      expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("brute-combat-draw");
+      return apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 1 });
+    };
     const won = adventureWithCommanders("cmd-brute", "dungeon", undefined);
-    const fight = intoNeutralFight(won);
+    const fight = keepGold(intoNeutralFight(won));
+    expect(fight.combat!.units[commanderUnitId("p1")], "the Brute stands in the combat").toBeTruthy();
     const goldBefore = fight.players.p1.resources.gold;
     fight.combat!.outcome = {
       winnerPlayerId: "p1",
@@ -1167,7 +1183,7 @@ describe("WOG commanders — specialties", () => {
 
     // CONTROL: a lost fight pays nothing.
     const lost = adventureWithCommanders("cmd-brute-loss", "dungeon", undefined);
-    const losing = intoNeutralFight(lost);
+    const losing = keepGold(intoNeutralFight(lost));
     const before = losing.players.p1.resources.gold;
     losing.combat!.outcome = {
       winnerPlayerId: NEUTRAL_PLAYER_ID,
@@ -1304,7 +1320,7 @@ describe("WOG commanders — specialties", () => {
     }
   });
 
-  it("Rune Ritual (Rune Keeper): +1 Rune EVERY time it is attacked AND every time it moves", () => {
+  it("Rune Ritual (Rune Keeper): +3 Runes EVERY time it is attacked AND +1 every time it moves", () => {
     function ritualState(slug: CommanderSlug): GameState {
       const state = sandboxWithCommander(slug, {}, 9);
       state.players.p1.factionId = "bulwark"; // gainRunes gates on the Bulwark faction
@@ -1344,10 +1360,11 @@ describe("WOG commanders — specialties", () => {
     s = attackCommander(s, "unit_p2_vampires", 13);
     expect(s.combat!.runes?.p1?.count).toBe(6); // and so does the second
 
-    // Moved half: moving the commander banks +3 Runes too (cell 9 → the free 10).
+    // Moved half: moving the commander banks +1 Rune (cell 9 → the free 10) —
+    // user ruling 2026-09-24 (was 3; being attacked still gives +3).
     const moved = moveCommander(ritualState("bulwark"), 10);
     expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(10);
-    expect(moved.combat!.runes?.p1?.count).toBe(3);
+    expect(moved.combat!.runes?.p1?.count).toBe(1);
 
     // Level 1 gives the living Rune Keeper its own +1 Speed (user ruling
     // 2026-09-27; it was +1 Attack) on top of the army-wide Rune Power

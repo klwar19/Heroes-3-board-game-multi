@@ -65,18 +65,30 @@ function renderMarket(state: GameState, onAction = vi.fn()) {
 }
 
 describe("MarketPanel — persistent blinking Market tab", () => {
+  // Reopening a Trading Post costs the parked hero 1 movement point (v139,
+  // b4509ac6: OPEN_MARKET legality + reducer), so the parked hero keeps 1 MP.
   it("shows a clear, blinking tab while a hero is parked on a Trading Post", () => {
-    const { state } = gameWithHeroOn("trading_post");
+    const { state, heroId } = gameWithHeroOn("trading_post");
+    state.heroes[heroId].movementPoints = 1;
     renderMarket(state);
 
     const tab = screen.getByRole("button", { name: /Trading Post/ });
     // The blink comes from the `.marketTab` class' CSS animation.
     expect(tab.classList.contains("marketTab")).toBe(true);
-    expect(tab.getAttribute("title")).toMatch(/trade any time/i);
+    expect(tab.getAttribute("title")).toMatch(/costs 1 movement point/i);
   });
 
-  it("opens the market for free when the tab is clicked (OPEN_MARKET, no movement spent)", () => {
+  it("CONTROL: a hero parked on a Trading Post with 0 MP gets no reopen tab", () => {
+    const { state } = gameWithHeroOn("trading_post");
+    const { container } = render(
+      <MarketPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("opens the market when the tab is clicked (OPEN_MARKET; the reopen spends 1 MP)", () => {
     const { state, heroId } = gameWithHeroOn("trading_post");
+    state.heroes[heroId].movementPoints = 1;
     const onAction = renderMarket(state);
 
     fireEvent.click(screen.getByRole("button", { name: /Trading Post/ }));
@@ -86,6 +98,7 @@ describe("MarketPanel — persistent blinking Market tab", () => {
 
   it("keeps the tab available through a Secondary Hero parked on the tile", () => {
     const { state, heroId } = gameWithHeroOn("trading_post", "secondary");
+    state.heroes[heroId].movementPoints = 1;
     const onAction = renderMarket(state);
 
     fireEvent.click(screen.getByRole("button", { name: /Trading Post/ }));

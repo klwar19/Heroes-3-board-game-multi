@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
@@ -11,7 +13,6 @@ import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
 import { commanderSoundKey, unitSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
 import {
-  UNIT_RANK_ABILITY_ICONS,
   hasUniqueRankSchedule,
   rankScheduleFor,
   unitRankAbilityIcon
@@ -429,92 +430,39 @@ describe("Heavenly Demon Palace — behavioural: the Blood Disciples Pack's real
 });
 
 // ---------------------------------------------------------------------------
-// Demon-path veterancy — the Unit Experience REDESIGN (26f6e37f / 2d2da234).
-// A rank is EITHER an explicit per-unit override OR the flavour generator's
-// roll; the old hand-authored per-unit schedule table is DELETED (see
-// experience-rank-abilities.ts) and docs/unit-experience-balance-sheet.md is the
-// design authority. No Heavenly Demon unit owns an override, so all seven are
-// generator-served. Mirrors src/data/anime/azur-lane-content.test.ts.
+// Demon-path veterancy — custom unit veterancy (64d90691). Every Heavenly Demon
+// unit owns an explicit per-unit schedule in custom-experience-overrides.ts,
+// mirrored row by row in docs/unit-experience-balance-sheet.md. Shared rules
+// keep their own names, icons and engine behaviour. Mirrors
+// src/data/anime/azur-lane-content.test.ts.
 // ---------------------------------------------------------------------------
 
 type RankPin = "stats" | readonly string[];
 
 /**
  * The EXACT resolved schedule per unit: per rank, either "stats" or the ability
- * CHOICE ARRAY the resolver offers (offer order matters — the first choice the
- * unit does not already answer is what it gains). Mutation control: change any
- * schedule and the deep-equal below fails.
+ * CHOICE ARRAY the rank grants (a hybrid rank's choices). Mutation control:
+ * change any schedule and the deep-equal below fails.
  */
 const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, RankPin]> = {
-  "heavenly_demon.blood_disciples": [
-    ["veteran-attack-when-attacking"],
-    ["commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance"],
-    "stats",
-    ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"]
-  ],
-  "heavenly_demon.gu_witches": [
-    "stats",
-    ["ranged-extra-shot-on-low-roll", "veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive"],
-    "stats",
-    ["veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight"]
-  ],
-  "heavenly_demon.shadow_wraiths": [
-    ["veteran-attack-when-attacking"],
-    ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
-    "stats",
-    ["unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce", "veteran-rebirth"]
-  ],
-  "heavenly_demon.corpse_puppets": [
-    ["veteran-retaliation-fury"],
-    ["wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge"],
-    "stats",
-    ["veteran-rebirth", "unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce"]
-  ],
-  "heavenly_demon.bone_reavers": [
-    "stats",
-    ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
-    ["ignores-retaliation", "veteran-defense-pierce", "commander-max-damage", "unlimited-retaliation"],
-    ["unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce", "veteran-rebirth"]
-  ],
-  "heavenly_demon.ghost_king": [
-    ["veteran-attack-when-attacking"],
-    ["veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive", "ranged-extra-shot-on-low-roll"],
-    "stats",
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight", "veteran-spell-sunder"]
-  ],
-  "heavenly_demon.demon_avatar": [
-    "stats",
-    ["reduce-spell-damage-1", "wog-no-negative-attack-roll", "wog-fire-shield-1", "veteran-attack-when-attacking"],
-    ["commander-max-damage", "ignores-retaliation", "veteran-double-attack-low-roll", "wog-fire-shield-1"],
-    ["wog-fire-shield-1", "veteran-double-attack-low-roll", "commander-max-damage", "veteran-rebirth"]
-  ]
+  "heavenly_demon.blood_disciples": [["ntv-bone-wall"], ["ntv-potent-venom"], ["ctv-blood-price"], ["town-zealot-loss"]],
+  "heavenly_demon.gu_witches": ["stats", ["veteran-storm-link"], ["town-sorceress-artifact-tax"], ["ntv-bewitching-bolt"]],
+  "heavenly_demon.shadow_wraiths": [["town-seaman-survival-gold"], ["veteran-ranged-fire-shield"], ["ntv-stolen-spark"], ["ntv-searing-passage"]],
+  "heavenly_demon.corpse_puppets": [["veteran-magma-hunter"], ["ntv-putrid-grasp"], ["ntv-deep-roots"], "stats"],
+  "heavenly_demon.bone_reavers": [["ntv-marsh-scavenger"], ["wog-nightmare-fear"], ["veteran-magic-dispel"], ["ntv-infernal-command"]],
+  "heavenly_demon.ghost_king": [["town-sorceress-artifact-tax"], ["ntv-return-fire"], ["ntv-death-cloud"], ["ctv-rule-unravel"]],
+  "heavenly_demon.demon_avatar": [["veteran-fear-aura"], ["ntv-infernal-command"], ["town-devil-draw"], "stats"]
 };
 
-/** The ability each ability-rank actually GRANTS (after the no-op dedupe). */
+/** The ability each ability-rank actually GRANTS at max rank. */
 const EXPECTED_GRANTS: Record<string, readonly string[]> = {
-  "heavenly_demon.blood_disciples": [
-    "veteran-attack-when-attacking",
-    "commander-charge",
-    "veteran-defense-pierce"
-  ],
-  "heavenly_demon.gu_witches": ["ranged-extra-shot-on-low-roll", "veteran-spell-sunder"],
-  "heavenly_demon.shadow_wraiths": ["veteran-attack-when-attacking", "veteran-guarded-stance", "unlimited-retaliation"],
-  "heavenly_demon.corpse_puppets": [
-    "veteran-retaliation-fury",
-    "wog-no-negative-attack-roll",
-    "veteran-rebirth"
-  ],
-  "heavenly_demon.bone_reavers": [
-    "veteran-attack-when-attacking",
-    "veteran-defense-pierce",
-    "unlimited-retaliation"
-  ],
-  "heavenly_demon.ghost_king": [
-    "veteran-attack-when-attacking",
-    "veteran-steady-aim",
-    "ranged-extra-shot-on-low-roll"
-  ],
-  "heavenly_demon.demon_avatar": ["reduce-spell-damage-1", "commander-max-damage", "wog-fire-shield-1"]
+  "heavenly_demon.blood_disciples": ["ntv-bone-wall", "ntv-potent-venom", "ctv-blood-price", "town-zealot-loss"],
+  "heavenly_demon.gu_witches": ["veteran-storm-link", "town-sorceress-artifact-tax", "ntv-bewitching-bolt"],
+  "heavenly_demon.shadow_wraiths": ["town-seaman-survival-gold", "veteran-ranged-fire-shield", "ntv-stolen-spark", "ntv-searing-passage"],
+  "heavenly_demon.corpse_puppets": ["veteran-magma-hunter", "ntv-putrid-grasp", "ntv-deep-roots"],
+  "heavenly_demon.bone_reavers": ["ntv-marsh-scavenger", "wog-nightmare-fear", "veteran-magic-dispel", "ntv-infernal-command"],
+  "heavenly_demon.ghost_king": ["town-sorceress-artifact-tax", "ntv-return-fire", "ntv-death-cloud", "ctv-rule-unravel"],
+  "heavenly_demon.demon_avatar": ["veteran-fear-aura", "ntv-infernal-command", "town-devil-draw"]
 };
 
 /** The resolved schedule as the same [RankPin × 4] shape. */
@@ -525,16 +473,23 @@ function rankPinsOf(schedule: RankSchedule): RankPin[] {
   });
 }
 
+/** A rank icon ships as a published media file, or as a git-tracked code-shipped token. */
+function rankIconShips(icon: string): boolean {
+  return icon.startsWith("/game-tokens/") ? existsSync(join("public", icon)) : hasMediaFile(icon);
+}
+
 describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedules", () => {
-  it("all seven are GENERATOR-served: no explicit override, and every rank pays something", () => {
+  it("all seven own an explicit custom schedule (64d90691), and every rank pays something", () => {
     for (const unitId of coreFactionDefinitions[FACTION].units) {
-      expect(hasUniqueRankSchedule(unitId), unitId).toBe(false);
+      expect(hasUniqueRankSchedule(unitId), unitId).toBe(true);
       const schedule = rankScheduleFor(unitId);
       for (const rank of [1, 2, 3, 4] as const) {
         const step = schedule[rank];
         if (step.kind !== "stats") expect(step.choices.length, `${unitId} R${rank}`).toBeGreaterThan(0);
       }
     }
+    // CONTROL: a generator-served unit owns no override, so the read splits.
+    expect(hasUniqueRankSchedule("wog.air_messenger")).toBe(false);
   });
 
   it("SIGNATURE pins: the exact resolved ladder per unit (fails if any schedule moves)", () => {
@@ -545,8 +500,8 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
       expect(unitRankAbilityIds(unitId, 4), unitId).toEqual([...EXPECTED_GRANTS[unitId]!]);
     }
     // Spot the headline picks explicitly so the intent is legible.
-    expect(unitRankAbilityIds("heavenly_demon.shadow_wraiths", 4)).toContain("unlimited-retaliation");
-    expect(unitRankAbilityIds("heavenly_demon.demon_avatar", 4)).toContain("wog-fire-shield-1");
+    expect(unitRankAbilityIds("heavenly_demon.shadow_wraiths", 4)).toContain("ntv-searing-passage");
+    expect(unitRankAbilityIds("heavenly_demon.demon_avatar", 1)).toContain("veteran-fear-aura");
   });
 
   it("HYGIENE (heavenly_demon-scoped): every choice implemented, non-Stacked; a GRANT is never already printed", () => {
@@ -570,61 +525,67 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
     }
   });
 
-  it("ART: every choice id has an EXPLICIT icon entry resolving to a file on disk", () => {
-    const ids = new Set<string>();
-    for (const ranks of Object.values(EXPECTED_SCHEDULES)) {
-      for (const pin of ranks) if (pin !== "stats") for (const id of pin) ids.add(id);
-    }
-    for (const choiceId of ids) {
-      expect(UNIT_RANK_ABILITY_ICONS[choiceId], `${choiceId} needs an explicit icon`).toBeTruthy();
-      const icon = unitRankAbilityIcon(choiceId);
-      expect(icon.startsWith("/assets/"), choiceId).toBe(true);
-      expect(
-        hasMediaFile(icon),
-        `${choiceId} → ${icon} is not published — run npm run media:publish`
-      ).toBe(true);
+  it("ART: every choice resolves to its own rule icon on the unit's XP board, and that icon ships", () => {
+    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
+      for (const pin of expected) {
+        if (pin === "stats") continue;
+        for (const choiceId of pin) {
+          const icon = unitRankAbilityIcon(choiceId, unitId);
+          // 64d90691: the XP board shows the same icon the rule shows everywhere…
+          expect(icon, `${unitId}:${choiceId}`).toBe(unitRankAbilityIcon(choiceId));
+          // …never the generic slayer fallback, and the art really ships.
+          expect(icon, `${choiceId} needs its own icon`).not.toBe("/assets/spell-icons/slayer.png");
+          expect(rankIconShips(icon), `${choiceId} → ${icon} does not ship`).toBe(true);
+        }
+      }
     }
   });
 
-  // BEHAVIOURAL (effect-level): the Ghost King's schedule actually FOLDS in
-  // combat — an ability rank grants the resolved id and a stats rank moves a
-  // real stat. Fails if withRankAbilities / the schedule wiring is removed, OR
-  // if the schedule moves (R2 would carry a different id).
-  it("Ghost King folds in combat: R1/R2 grant abilities, R3 is the +1 Attack stat rank — below-threshold CONTROLs grant neither", () => {
-    const build = (experience?: number): CombatUnitState =>
+  // BEHAVIOURAL (effect-level): the schedules actually FOLD in combat — ability
+  // ranks grant the resolved ids and a stats rank moves real stats. Fails if
+  // withRankAbilities / the schedule wiring is removed, OR if a schedule moves.
+  it("Ghost King folds in combat: R1/R2 grant abilities and move no stat; Gu Witches' R1 stats rank adds +2 HP/+1 Initiative — below-threshold CONTROLs grant neither", () => {
+    const build = (unitDefId: string, experience?: number): CombatUnitState =>
       makeCombatUnitFromArmy(
-        { id: "gk_army", unitDefId: "heavenly_demon.ghost_king", side: "few", ...(experience ? { experience } : {}) },
+        { id: "hd_army", unitDefId, side: "few", ...(experience ? { experience } : {}) },
         "p1",
-        "unit_p1_gk",
+        "unit_p1_hd",
         0,
         "legacy"
       )!;
 
-    // gold thresholds 8/13/19/25 → R1 at 8 XP, R2 at 13 XP, R3 at 19 XP.
-    const plain = build();
-    const r1 = build(8);
-    const r2 = build(13);
-    const r3 = build(19);
+    // gold thresholds 8/13/19/25 → Ghost King R1 at 8 XP, R2 at 13 XP.
+    const plain = build("heavenly_demon.ghost_king");
+    const r1 = build("heavenly_demon.ghost_king", 8);
+    const r2 = build("heavenly_demon.ghost_king", 13);
 
     expect(r1.unitRank).toBe(1);
     expect(r2.unitRank).toBe(2);
-    expect(r3.unitRank).toBe(3);
 
     // R1 and R2 are ABILITY ranks: the ids land and no stat moves.
     expect(plain.attack).toBe(coreUnitDefinitions["heavenly_demon.ghost_king"].few!.attack);
-    expect(r1.abilities).toContain("veteran-attack-when-attacking");
+    expect(r1.abilities).toContain("town-sorceress-artifact-tax");
     expect(r1.attack).toBe(plain.attack);
-    expect(r2.abilities).toContain("veteran-steady-aim");
+    expect(r2.abilities).toContain("ntv-return-fire");
     expect(r2.attack).toBe(plain.attack);
 
-    // R3 is the stats rank: gold step 0 is +1 Attack — an OBSERVABLE delta.
-    expect(r3.attack).toBe(plain.attack + 1);
-
     // CONTROLs: below each threshold there is NO grant, and the plain card
-    // (no XP) carries neither ability nor the stat bump.
-    expect(r1.abilities).not.toContain("veteran-steady-aim");
-    expect(plain.abilities).not.toContain("veteran-attack-when-attacking");
-    expect(plain.abilities).not.toContain("veteran-steady-aim");
+    // (no XP) carries neither ability.
+    expect(r1.abilities).not.toContain("ntv-return-fire");
+    expect(plain.abilities).not.toContain("town-sorceress-artifact-tax");
+    expect(plain.abilities).not.toContain("ntv-return-fire");
     expect(plain.unitRank ?? 0).toBe(0);
+
+    // bronze thresholds 5/9/13/17 → the Gu Witches' R1 (5 XP) is a stats rank:
+    // +2 HP and +1 Initiative, OBSERVABLE deltas; 4 XP (below) moves nothing.
+    const witch = build("heavenly_demon.gu_witches");
+    const witchR1 = build("heavenly_demon.gu_witches", 5);
+    const witchBelow = build("heavenly_demon.gu_witches", 4);
+    expect(witchR1.unitRank).toBe(1);
+    expect(witchR1.maxHealth).toBe(witch.maxHealth + 2);
+    expect(witchR1.initiative).toBe(witch.initiative + 1);
+    expect(witchR1.abilities).not.toContain("veteran-storm-link"); // R2's grant
+    expect(witchBelow.maxHealth).toBe(witch.maxHealth);
+    expect(witchBelow.initiative).toBe(witch.initiative);
   });
 });

@@ -220,9 +220,10 @@ describe("WOG × Anime artifact coexistence", () => {
       for (const id of wog) {
         expect(countOf(ids, id), `${id} (wog) in ${deckId}`).toBe(1);
       }
-      // Every core artifact of the tier is still present (neither join displaced it).
-      for (const id of core) {
-        expect(countOf(ids, id), `core ${id} still in ${deckId}`).toBe(1);
+      // Every core artifact of the tier is still present (neither join displaced it),
+      // with every printed copy — the Minor deck stocks 4 Spell Scrolls (21ae36de).
+      for (const id of new Set(core)) {
+        expect(countOf(ids, id), `core ${id} still in ${deckId}`).toBe(countOf([...core], id));
       }
       // Total = core + anime + wog: the two joins ADD, never overwrite.
       expect(ids.length, `${deckId} total = core + anime + wog`).toBe(core.length + anime.length + wog.length);

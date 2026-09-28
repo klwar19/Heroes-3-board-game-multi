@@ -115,21 +115,42 @@ describe("Arrow Tower — an armed spell can actually be clicked onto it", () =>
     }
   });
 
-  it("CONTROL: with NOTHING armed the Tower card inspects (it is not permanently a target)", () => {
+  it("CONTROL: with NOTHING armed the Tower card is no cast target — a ranged attacker's click shoots it, otherwise it inspects", () => {
+    // e940332d: with nothing armed, the Tower card resolves the same precedence as
+    // an occupied cell, so the active Marksmen's legal shot makes the whole card
+    // an ATTACK target (the engine's own ATTACK_UNIT) — never a spell cast.
     const { state, legalActions } = armedBoard("ui-idle", "spell.magic_arrow");
+    const shot = legalActions.find(
+      (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === TOWER
+    );
+    expect(shot, "the active Marksmen can shoot the Tower").toBeTruthy();
     const onAction = vi.fn();
     const onInspect = vi.fn();
-    render(
-      <CardZoomProvider>
-        <BattlefieldBoard
-          state={state}
-          viewerPlayerId="p1"
-          legalActions={legalActions}
-          selectedCardAction={null}
-          onAction={onAction}
-          onInspect={onInspect}
-        />
-      </CardZoomProvider>
+    const renderIdle = (actions: LegalAction[]) =>
+      render(
+        <CardZoomProvider>
+          <BattlefieldBoard
+            state={state}
+            viewerPlayerId="p1"
+            legalActions={actions}
+            selectedCardAction={null}
+            onAction={onAction}
+            onInspect={onInspect}
+          />
+        </CardZoomProvider>
+      );
+    renderIdle(legalActions);
+    expect(document.querySelector(".arrowTower.cardTarget")).toBeNull();
+    expect(towerButton()!.getAttribute("title")).toBe("Attack Arrow Tower");
+    fireEvent.click(towerButton()!);
+    expect(onAction).toHaveBeenCalledWith(shot!.action);
+    expect(onAction.mock.calls.some(([action]) => (action as GameAction).type === "CAST_SPELL")).toBe(false);
+    cleanup();
+
+    // With no legal action aimed at the Tower, the card only inspects.
+    onAction.mockClear();
+    renderIdle(
+      legalActions.filter((legal) => !(legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === TOWER))
     );
     const button = towerButton()!;
     expect(button.getAttribute("title")).toMatch(/shoots without positioning penalties/i);

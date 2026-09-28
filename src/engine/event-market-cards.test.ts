@@ -368,8 +368,15 @@ describe("Event — Artifact Merchant", () => {
     const priceOf = (cardId: string) => EVENT_ARTIFACT_PRICES[cardLibrary[cardId]?.artifactTier ?? "minor"];
     let after = chooseVisitOption(state, "p1", new RegExp(`Buy ${cardLibrary[first]?.name} \\(`));
     after = chooseVisitOption(after, "p1", new RegExp(`Buy ${cardLibrary[second]?.name} \\(`));
-    expect(after.players.p1.hand).toContain(first);
-    expect(after.players.p1.hand).toContain(second);
+    // 21ae36de: a bought Spell Scroll materializes as a scroll of spells
+    // (materializeArtifactScrolls), never as a hand card.
+    const bought = [first, second];
+    for (const cardId of bought.filter((id) => id !== "artifact.spell_scroll")) {
+      expect(after.players.p1.hand).toContain(cardId);
+    }
+    expect(after.players.p1.scrolls ?? []).toHaveLength(
+      (state.players.p1.scrolls?.length ?? 0) + bought.filter((id) => id === "artifact.spell_scroll").length,
+    );
     expect(after.players.p1.resources.gold).toBe(30 - priceOf(first) - priceOf(second));
 
     // After a pool buy the printed either/or hides the discard-top option.
@@ -437,8 +444,15 @@ describe("Event — A Shady Auction", () => {
     let after = chooseVisitOption(state, "p1", /^Bid 3 gold$/);
     // Bids stay hidden: the log records only that a bid happened.
     expect(after.eventLog.filter((event) => event.type === "EVENT_AUCTION_BID_PLACED")).toHaveLength(1);
+    const scrollsBefore = after.players.p2.scrolls?.length ?? 0;
     after = chooseVisitOption(after, "p2", /^Bid 5 gold$/);
-    expect(after.players.p2.hand).toContain(lot1);
+    if (lot1 === "artifact.spell_scroll") {
+      // 21ae36de: a won Spell Scroll materializes as a scroll of spells
+      // (materializeArtifactScrolls), never as a hand card.
+      expect(after.players.p2.scrolls ?? []).toHaveLength(scrollsBefore + 1);
+    } else {
+      expect(after.players.p2.hand).toContain(lot1);
+    }
     expect(after.players.p2.resources.gold).toBe(25);
     expect(after.players.p1.resources.gold).toBe(30); // the loser pays nothing
 
