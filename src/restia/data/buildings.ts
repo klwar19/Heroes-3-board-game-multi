@@ -29,24 +29,24 @@ const H = 60;
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   farmhouse: {
     id: "farmhouse",
-    name: "Farmhouse",
-    desc: "Bin's home. Sleep, save, store items and (once expanded) cook.",
+    name: "Garr's Hut",
+    desc: "The family cabin at the edge of Frostbitten. Its back door opens into Pocket Haven. Sleep, save, store items and (once expanded) cook.",
     interior: "home",
     levels: [
-      { level: 1, gold: 0, items: {}, days: 0, effect: "A bed, a chest and a leaky roof." },
-      { level: 2, gold: 3000, items: { wood: 50, stone: 30 }, days: 3, effect: "Kitchen (cooking) and a proper bedroom: +20 max stamina. Needed to marry." },
+      { level: 1, gold: 0, items: {}, days: 0, effect: "Three bunks, a chest and a draughty roof." },
+      { level: 2, gold: 3000, items: { wood: 50, stone: 30 }, days: 3, effect: "A real kitchen (cooking) and a room of your own: +20 max stamina. Needed to marry." },
       { level: 3, gold: 8000, items: { hardwood: 20, ironIngot: 5 }, days: 3, effect: "Master bedroom: +30 max stamina." }
     ]
   },
   field: {
     id: "field",
-    name: "Farm Field",
-    desc: "Tillable land on the farm.",
+    name: "Pocket Haven Field",
+    desc: "The Jester System's pocket-dimension field behind Garr's back door. No snow, ever.",
     interior: "home",
     levels: [
       { level: 1, gold: 0, items: {}, days: 0, effect: "8 x 5 plots." },
       { level: 2, gold: 1500, items: { wood: 30 }, days: 2, effect: "Clear more land: 12 x 6 plots." },
-      { level: 3, gold: 5000, items: { wood: 60, stone: 60 }, days: 3, effect: "The whole valley floor: 16 x 7 plots." }
+      { level: 3, gold: 5000, items: { wood: 60, stone: 60 }, days: 3, effect: "The whole pocket meadow: 16 x 7 plots." }
     ]
   },
   guild: {
@@ -54,7 +54,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     name: "Adventurers' Guild",
     desc: "Requests, rank exams and adventuring supplies.",
     interior: "guild",
-    owner: "guildGirl",
+    owner: "lysa",
     hours: [8 * H, 20 * H],
     levels: [
       { level: 1, gold: 0, items: {}, days: 0, effect: "3 requests a day." },
@@ -64,55 +64,55 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
   store: {
     id: "store",
-    name: "Pip's General Store",
-    desc: "Seeds, supplies and a merchant who buys anything.",
+    name: "Tilde's Trading Post",
+    desc: "Seeds, supplies, tea, and a shopkeeper who buys anything.",
     interior: "store",
-    owner: "pip",
+    owner: "tilde",
     hours: [9 * H, 17 * H],
     closedDay: 6,
     levels: [
       { level: 1, gold: 0, items: {}, days: 0, effect: "Seasonal seeds and basic supplies." },
-      { level: 2, gold: 2000, items: { wood: 30 }, days: 2, effect: "Otherworld seeds (Mana Blossom, Moonberry), greater potions, return scrolls." },
+      { level: 2, gold: 2000, items: { wood: 30 }, days: 2, effect: "Rare seeds (Mana Blossom, Moonberry), greater potions, return scrolls." },
       { level: 3, gold: 6000, items: { hardwood: 15 }, days: 3, effect: "Growth elixirs, lucky charms and fine goods." }
     ]
   },
   shrine: {
     id: "shrine",
-    name: "Sun Shrine",
-    desc: "Hikari's shrine. Faith gathered here powers her blessings.",
+    name: "Weaver's Shrine",
+    desc: "The old shrine of the Weaver of Fools (Peri, in Norheim myth). The Audience it gathers pays for her favours.",
     interior: "shrine",
-    owner: "hikari",
+    owner: "frida",
     levels: [
-      { level: 0, gold: 0, items: {}, days: 0, effect: "In ruins." },
-      { level: 1, gold: 500, items: { stone: 20, wood: 20, dawnLily: 1 }, days: 2, effect: "Restored: Hikari joins the party and blessings become available." },
-      { level: 2, gold: 3000, items: { lightCrystal: 2, stone: 40 }, days: 3, effect: "Radiant shrine: double faith income and stronger blessings.", requires: { kind: "rank", rank: "D" }, requiresText: "Guild rank D" }
+      { level: 0, gold: 0, items: {}, days: 0, effect: "Collapsed under the midwinter snow." },
+      { level: 1, gold: 500, items: { stone: 20, wood: 20, dawnLily: 1 }, days: 2, effect: "Restored: Frida moves in and Peri's favours (Audience) become available." },
+      { level: 2, gold: 3000, items: { lightCrystal: 2, stone: 40 }, days: 3, effect: "Starlit shrine: double Audience and cheaper favours.", requires: { kind: "rank", rank: "D" }, requiresText: "Guild rank D" }
     ]
   },
   smithy: {
     id: "smithy",
-    name: "Smithy",
-    desc: "Tove's forge: smelting, weapons, armor and tool upgrades.",
+    name: "Ironhand Forge",
+    desc: "Hilda's forge: smelting, weapons, armor and tool upgrades.",
     interior: "smithy",
-    owner: "tove",
+    owner: "hilda",
     hours: [10 * H, 18 * H],
     closedDay: 6,
     levels: [
-      { level: 0, gold: 0, items: {}, days: 0, effect: "An empty lot." },
-      { level: 1, gold: 1200, items: { stone: 30, wood: 20, ironOre: 5 }, days: 2, effect: "Tove moves in. Smelting, bronze & iron gear, tool upgrades to Iron.", requires: { kind: "flag", key: "metTove" }, requiresText: "Meet the dwarven smith" },
+      { level: 0, gold: 0, items: {}, days: 0, effect: "The roof caved in under the midwinter snow." },
+      { level: 1, gold: 1200, items: { stone: 30, wood: 20, ironOre: 5 }, days: 2, effect: "Hilda is back at her anvil. Smelting, bronze & iron gear, tool upgrades to Iron.", requires: { kind: "flag", key: "metHilda" }, requiresText: "Talk to Hilda in her tent" },
       { level: 2, gold: 4000, items: { ironIngot: 5, hardwood: 10 }, days: 3, effect: "Silver & mythril gear, tool upgrades to Silver, accessories." },
-      { level: 3, gold: 12000, items: { goldIngot: 3, mythrilOre: 3 }, days: 4, effect: "Dawnsteel gear.", requires: { kind: "rank", rank: "B" }, requiresText: "Guild rank B" }
+      { level: 3, gold: 12000, items: { goldIngot: 3, mythrilOre: 3 }, days: 4, effect: "Starsteel gear.", requires: { kind: "rank", rank: "B" }, requiresText: "Guild rank B" }
     ]
   },
   atelier: {
     id: "atelier",
-    name: "Atelier",
-    desc: "Mina's alchemy workshop.",
+    name: "Apothecary",
+    desc: "Mitia's apothecary: potions, antidotes, fertilizer and bombs.",
     interior: "atelier",
-    owner: "mina",
+    owner: "mitia",
     hours: [10 * H, 19 * H],
     levels: [
-      { level: 0, gold: 0, items: {}, days: 0, effect: "An empty lot." },
-      { level: 1, gold: 1000, items: { wood: 25, clay: 5, wildHerb: 5 }, days: 2, effect: "Mina moves in. Potions, antidotes, fertilizer, bombs.", requires: { kind: "flag", key: "metMina" }, requiresText: "Find the lost alchemist" },
+      { level: 0, gold: 0, items: {}, days: 0, effect: "Burned out last winter. Mitia brews in Garr's kitchen." },
+      { level: 1, gold: 1000, items: { wood: 25, clay: 5, wildHerb: 5 }, days: 2, effect: "Mitia reopens the shop and joins the party. Potions, antidotes, fertilizer, bombs.", requires: { kind: "flag", key: "frostcapFound" }, requiresText: "Solve the frostcap shortage" },
       { level: 2, gold: 3500, items: { manaCrystal: 3, hardwood: 10 }, days: 3, effect: "Advanced alchemy: greater potions, elixirs, phoenix feathers, growth elixirs." }
     ]
   },
@@ -129,14 +129,14 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
   inn: {
     id: "inn",
-    name: "Dawnhollow Inn",
-    desc: "Lodging for travellers and a hot meal.",
+    name: "The Frosted Mug",
+    desc: "Warm food, cold ale and dangerous gossip density.",
     interior: "inn",
     hours: [8 * H, 24 * H],
     levels: [
-      { level: 0, gold: 0, items: {}, days: 0, effect: "An empty lot." },
-      { level: 1, gold: 2500, items: { wood: 40, stone: 20, linen: 5 }, days: 3, effect: "Travellers can stay: new companions arrive. Hot meals for sale.", requires: { kind: "rank", rank: "E" }, requiresText: "Guild rank E" },
-      { level: 2, gold: 6000, items: { hardwood: 20, silverIngot: 2 }, days: 3, effect: "A busier inn: +2 faith a day and the kitchen sells feasts." }
+      { level: 1, gold: 0, items: {}, days: 0, effect: "Soup, ale and a tavern cat. The guest rooms froze shut last winter." },
+      { level: 2, gold: 2500, items: { wood: 40, stone: 20, linen: 5 }, days: 3, effect: "Guest rooms reopen: travellers can stay and new companions arrive.", requires: { kind: "rank", rank: "E" }, requiresText: "Guild rank E" },
+      { level: 3, gold: 6000, items: { hardwood: 20, silverIngot: 2 }, days: 3, effect: "A packed tavern: +2 Audience a day and the kitchen sells feasts." }
     ]
   }
 };
@@ -152,7 +152,7 @@ export const START_LEVELS: Record<BuildingId, number> = {
   smithy: 0,
   atelier: 0,
   barn: 0,
-  inn: 0
+  inn: 1
 };
 
 export function maxLevel(id: BuildingId): number {
@@ -160,8 +160,8 @@ export function maxLevel(id: BuildingId): number {
 }
 
 export const TOWN_RANKS = [
-  { min: 0, name: "Hamlet" },
-  { min: 8, name: "Village" },
-  { min: 14, name: "Town" },
-  { min: 20, name: "City" }
+  { min: 0, name: "Frozen Outpost" },
+  { min: 8, name: "Frontier Town" },
+  { min: 14, name: "Thriving Town" },
+  { min: 20, name: "Jewel of the North" }
 ] as const;

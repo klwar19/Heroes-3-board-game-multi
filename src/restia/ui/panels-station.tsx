@@ -173,7 +173,7 @@ export function CraftPanel({ state, act, station, onClose }: { state: RestiaStat
         })}
         {locked.length ? (
           <div className={s.muted} style={{ marginTop: 8 }}>
-            Locked ({locked.length}): upgrade the {station === "cooking" ? "farmhouse" : station === "forge" ? "Smithy" : "Atelier"} at the Restoration Board to learn more.
+            Locked ({locked.length}): upgrade {station === "cooking" ? "Garr's Hut" : station === "forge" ? "the Ironhand Forge" : "the Apothecary"} at the Outpost Board to learn more.
           </div>
         ) : null}
       </div>
@@ -349,8 +349,8 @@ export function RequestsPanel({ state, act, onClose }: { state: RestiaState; act
 export function BlessingPanel({ state, act, onClose }: { state: RestiaState; act: Act; onClose: () => void }) {
   const used = state.blessingDay === state.day;
   return (
-    <Panel onClose={onClose} title={`Sun Shrine — Faith ${state.faith}`}>
-      <p className={s.muted}>Faith gathers every night from the villagers and your companions. Hikari can grant one blessing a day.</p>
+    <Panel onClose={onClose} title={`Weaver's Shrine — Audience ${state.faith}`}>
+      <p className={s.muted}>Audience gathers every night from the townsfolk and your companions. Peri grants one favour a day.</p>
       <div className={s.list}>
         {BLESSINGS.map((blessing) => {
           const cost = blessingCost(state, blessing.id);
@@ -360,7 +360,7 @@ export function BlessingPanel({ state, act, onClose }: { state: RestiaState; act
                 <div className={s.rowTitle}>{blessing.name}</div>
                 <div className={s.muted}>{blessing.desc}</div>
               </div>
-              <b>{cost} Faith</b>
+              <b>{cost} Audience</b>
               <button className={`${s.btn} ${s.btnSmall}`} disabled={used || state.faith < cost} onClick={() => act({ type: "pray", blessing: blessing.id })} type="button">
                 Pray
               </button>
@@ -434,7 +434,7 @@ export function BarnPanel({ state, act, onClose }: { state: RestiaState; act: Ac
 export function BoardPanel({ state, act, onClose }: { state: RestiaState; act: Act; onClose: () => void }) {
   const project = state.town.project;
   return (
-    <Panel onClose={onClose} title={`Restoration Board — ${townRank(state)} (${townScore(state)})`} wide>
+    <Panel onClose={onClose} title={`Outpost Board — ${townRank(state)} (${townScore(state)})`} wide>
       {project ? (
         <div className={s.card} style={{ marginBottom: 10 }}>
           🔨 Building <b>{BUILDINGS[project.id].name}</b> (level {project.level}) — {project.daysLeft} day(s) left. One project at a time.
@@ -499,12 +499,12 @@ export function DungeonPanel({ state, act, onClose }: { state: RestiaState; act:
   if (!state.flags.catacombsOpen) {
     return (
       <Panel onClose={onClose} title="A dark cave">
-        <p>Cold air breathes out of the cave. The Guild has sealed it: only Rank E adventurers may enter the catacombs beneath the old capital.</p>
+        <p>Cold air breathes out of the old stone doorway. The Guild has sealed it: only Rank E adventurers may enter the Old Temple Ruins.</p>
       </Panel>
     );
   }
   return (
-    <Panel onClose={onClose} title="Catacombs of the Old Capital">
+    <Panel onClose={onClose} title="The Old Temple Ruins">
       <p className={s.muted}>Deepest floor reached: {state.stats.deepest || "—"}. After each guardian you can start from the next floor.</p>
       <div className={s.list}>
         {availableStarts(state).map((floor) => (
@@ -534,7 +534,7 @@ export function GiftPanel({ state, act, npc, onClose }: { state: RestiaState; ac
     <Panel onClose={onClose} title={`Give ${NPCS[npc].name} a gift`}>
       <p className={s.muted}>
         {given ? "You've already given a gift today." : `One gift a day, two a week (${rel.giftWeek === Math.floor((state.day - 1) / 7) ? rel.giftsWeek : 0}/2 this week). Birthdays count five times.`}
-        {NPCS[npc].romance ? " A Dawn Charm at 8 hearts is a confession; an Eternal Ring at 10 hearts is a proposal." : ""}
+        {NPCS[npc].romance ? " A Star Charm at 8 hearts is a confession; an Eternal Ring at 10 hearts is a proposal." : ""}
       </p>
       <div className={s.grid}>
         {items.map((id) => (

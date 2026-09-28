@@ -45,7 +45,7 @@ export function applyEffect(state: RestiaState, effect: Effect, ctx: Ctx): void 
       return;
     case "faith":
       state.faith += effect.n;
-      if (effect.n > 0) ctx.toast(`Faith +${effect.n}`, "system");
+      if (effect.n > 0) ctx.toast(`Audience +${effect.n}`, "system");
       return;
     case "relationship":
       state.social[effect.npc].status = effect.status;
@@ -67,7 +67,13 @@ export function applyEffect(state: RestiaState, effect: Effect, ctx: Ctx): void 
       return;
     case "ap":
       state.admin.ap += effect.n;
-      ctx.toast(`Admin Points +${effect.n}`, "system");
+      ctx.toast(`Jester Points +${effect.n}`, "system");
+      return;
+    case "flagDay":
+      state.flags[effect.key] = state.day;
+      return;
+    case "count":
+      state.stats.counters[effect.key] = (state.stats.counters[effect.key] ?? 0) + effect.n;
       return;
   }
 }

@@ -8,7 +8,7 @@ const level = (id: BuildingId, n: number): Condition => ({ kind: "building", id,
 const all = (...of: Condition[]): Condition => ({ kind: "all", of });
 const any = (...of: Condition[]): Condition => ({ kind: "any", of });
 
-/** Stock per shop building. Pip's store also buys anything (sell). */
+/** Stock per shop building. Tilde's trading post also buys anything (sell). */
 export const SHOPS: Partial<Record<BuildingId, ShopEntry[]>> = {
   store: [
     { item: "seed-turnip", when: season("spring") },
@@ -76,7 +76,7 @@ export const SHOPS: Partial<Record<BuildingId, ShopEntry[]>> = {
     { item: "stew" },
     { item: "herbTea" },
     { item: "omelet" },
-    { item: "feast", when: level("inn", 2) }
+    { item: "feast", when: level("inn", 3) }
   ],
   guild: [
     { item: "potion" },

@@ -1,5 +1,6 @@
 import { assetUrl } from "@/lib/asset-url";
-import type { IconRef, NpcId, SpeakerId } from "../engine/types";
+import type { Face, FxId, IconRef, NpcId, ProjectileId, SpeakerId } from "../engine/types";
+import { BATTLEFIELDS } from "../data/battlefields";
 
 /** Every Restia image/sound path goes through assetUrl (CDN + content-addressed keys). */
 export const A = (path: string) => assetUrl(path);
@@ -19,40 +20,78 @@ export const BACKDROPS: Record<string, string> = {
   farm: `${R}/maps/farm.webp`,
   village: `${R}/maps/village.webp`,
   forest: `${R}/maps/forest.webp`,
-  dungeon: "/assets/battle-hex/battlefields/sub.webp",
-  dawnGate: "/assets/story/backgrounds/dawn-gate.webp",
-  azurePeak: "/assets/story/backgrounds/azure-peak.webp",
-  erathiaShore: "/assets/story/backgrounds/erathia-shore.webp"
+  dungeon: "/assets/battle-hex/battlefields/snmt.webp",
+  earthApartment: `${R}/bg/earth-apartment.webp`,
+  earthCampus: `${R}/bg/earth-campus.webp`,
+  earthKfc: `${R}/bg/earth-kfc.webp`,
+  earthHospital: `${R}/bg/earth-hospital.webp`,
+  earthBookstore: `${R}/bg/earth-bookstore.webp`,
+  eosMeadow: `${R}/bg/eos-meadow.webp`,
+  havenRoad: `${R}/bg/haven-road.webp`,
+  havenGate: `${R}/bg/haven-gate.webp`
 };
 
 export function backdrop(key: string): string {
   return A(BACKDROPS[key] ?? BACKDROPS.home!);
 }
 
-/** Visual-novel standing art. Bin, Hikari, Elise and the System reuse the campaign sprites. */
+/** Visual-novel standing art. Bin's four expressions are the user's own CJS art. */
 export const TACHIE: Partial<Record<SpeakerId, string>> = {
-  bin: "/assets/story/sprites/bin.webp",
-  hikari: "/assets/story/sprites/hikari.webp",
-  guildGirl: "/assets/story/sprites/guild-girl.webp",
-  system: "/assets/story/sprites/system.webp",
-  mina: `${R}/tachie/mina.webp`,
-  tove: `${R}/tachie/tove.webp`,
-  seren: `${R}/tachie/seren.webp`,
-  nell: `${R}/tachie/nell.webp`,
-  pip: `${R}/tachie/pip.webp`,
-  kaito: `${R}/tachie/kaito.webp`
+  bin: `${R}/tachie/bin.webp`,
+  system: `${R}/tachie/system.webp`,
+  peri: `${R}/tachie/peri.webp`,
+  garr: `${R}/tachie/garr.webp`,
+  bowy: `${R}/tachie/bowy.webp`,
+  mitia: `${R}/tachie/mitia.webp`,
+  lysa: `${R}/tachie/lysa.webp`,
+  hilda: `${R}/tachie/hilda.webp`,
+  senna: `${R}/tachie/senna.webp`,
+  mara: `${R}/tachie/mara.webp`,
+  frida: `${R}/tachie/frida.webp`,
+  tilde: `${R}/tachie/tilde.webp`,
+  dain: `${R}/tachie/dain.webp`,
+  tessa: `${R}/tachie/tessa.webp`,
+  lily: `${R}/tachie/lily.webp`,
+  luna: `${R}/tachie/luna.webp`,
+  leo: `${R}/tachie/leo.webp`,
+  meilin: `${R}/tachie/meilin.webp`,
+  jake: `${R}/tachie/jake.webp`
 };
 
-export const CHIBI: Partial<Record<NpcId | "bin", string>> = {
-  bin: `${R}/chibi/bin.webp`,
-  hikari: `${R}/chibi/hikari.webp`,
-  guildGirl: `${R}/chibi/guild-girl.webp`,
-  mina: `${R}/chibi/mina.webp`,
-  tove: `${R}/chibi/tove.webp`,
-  seren: `${R}/chibi/seren.webp`,
-  nell: `${R}/chibi/nell.webp`,
-  pip: `${R}/chibi/pip.webp`,
-  kaito: `${R}/chibi/kaito.webp`
+const BIN_FACES: Record<Face, string> = {
+  happy: `${R}/tachie/bin-happy.webp`,
+  angry: `${R}/tachie/bin-angry.webp`,
+  sad: `${R}/tachie/bin-sad.webp`
+};
+
+/** Bin in his Earth clothes (prologue and Eos scenes). */
+const BIN_EARTH: Record<Face | "normal", string> = {
+  normal: `${R}/tachie/bin-earth.webp`,
+  happy: `${R}/tachie/bin-earth-happy.webp`,
+  angry: `${R}/tachie/bin-earth-angry.webp`,
+  sad: `${R}/tachie/bin-earth-sad.webp`
+};
+
+/** Standing art for a speaker; Bin can wear an expression and his Earth outfit. */
+export function tachieFor(speaker: SpeakerId, face: Face | null, outfit?: "earth"): string | undefined {
+  if (speaker === "bin" && outfit === "earth") return BIN_EARTH[face ?? "normal"];
+  if (speaker === "bin" && face) return BIN_FACES[face];
+  return TACHIE[speaker];
+}
+
+/** Overworld figures use each character's battle atlas (restia-<id>). */
+export const WALKER: Record<NpcId | "bin", string> = {
+  bin: "restia-bin",
+  garr: "restia-garr",
+  bowy: "restia-bowy",
+  mitia: "restia-mitia",
+  lysa: "restia-lysa",
+  hilda: "restia-hilda",
+  senna: "restia-senna",
+  mara: "restia-mara",
+  frida: "restia-frida",
+  tilde: "restia-tilde",
+  dain: "restia-dain"
 };
 
 export const BUILDING_ART: Record<string, string> = {
@@ -77,8 +116,13 @@ export const SHEETS = {
   dungeon: `${R}/dungeon/sheet.webp`
 };
 
-export const BATTLEFIELD = (code: string) => A(`/assets/battle-hex/battlefields/${code}.webp`);
-export const OBSTACLE = A("/assets/battle-hex/obstacles/rocks.webp");
+/** Restia battlefields (data/battlefields.ts) or, for old codes, the H3 battlefield art. */
+export const BATTLEFIELD = (code: string) => A(code in BATTLEFIELDS ? `${R}/battlefields/${code}.webp` : `/assets/battle-hex/battlefields/${code}.webp`);
+/** Impact effects and projectiles: 4x4 frame sheets on black (drawn with screen blending). */
+export const FX_SHEET = (id: FxId) => A(`${R}/fx/${id}.webp`);
+export const PROJECTILE_SHEET = (id: ProjectileId) => A(`${R}/fx/proj-${id}.webp`);
+/** Battle props and ground pieces: 4x4 sheet (see PROP_FRAME in battle-view). */
+export const PROPS_SHEET = A(`${R}/battle/props.webp`);
 
 export const MUSIC = (name: string) => A(`/sounds/music/${name}.mp3`);
 export const SFX = {

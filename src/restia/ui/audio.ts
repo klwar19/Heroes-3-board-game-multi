@@ -83,3 +83,20 @@ export function playSfx(key: keyof typeof SFX): void {
 export function stopMusic(): void {
   playMusic(null);
 }
+
+const lastPlayed = new Map<string, number>();
+
+/**
+ * Plays a sound from the game's shared library by manifest key
+ * (public/sounds/<key>.mp3, e.g. "spells/fireball"). The same sound is not
+ * restarted within 70 ms, so multi-target skills don't stack into noise.
+ */
+export function playSound(key: string): void {
+  if (typeof window === "undefined" || settings.muted || settings.sfx <= 0) return;
+  const now = performance.now();
+  if (now - (lastPlayed.get(key) ?? -1000) < 70) return;
+  lastPlayed.set(key, now);
+  const sound = new Audio(A(`/sounds/${key}.mp3`));
+  sound.volume = settings.sfx * 0.8;
+  void sound.play().catch(() => undefined);
+}

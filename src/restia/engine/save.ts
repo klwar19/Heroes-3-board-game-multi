@@ -1,5 +1,8 @@
-import type { RestiaState } from "./types";
-import { SAVE_VERSION, newGame } from "./state";
+import type { RequestState, RestiaState } from "./types";
+import { PROLOGUE, SAVE_VERSION, newGame, newRelationship } from "./state";
+import { defaultJobs } from "./jobs";
+import { JOBS } from "../data/jobs";
+import { canEquip, clampVitals, healMember, newMember } from "./party";
 import { CHARACTERS } from "../data/characters";
 import { ITEMS } from "../data/items";
 import { MONSTERS } from "../data/monsters";
@@ -31,7 +34,7 @@ function storage(): Storage | null {
 }
 
 function metaOf(state: RestiaState, slot: SlotId): SaveMeta {
-  const place = state.dungeon ? `Catacombs B${state.dungeon.floor}` : ZONES[state.player.zone].name;
+  const place = state.dungeon ? `Old Temple Ruins B${state.dungeon.floor}` : ZONES[state.player.zone].name;
   return {
     slot,
     savedAt: Date.now(),
@@ -62,10 +65,10 @@ function parse(text: string): SaveFile {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error("That file isn't a Restia save.");
+    throw new Error("That file isn't a Restia (Haven) save.");
   }
   const file = raw as Partial<SaveFile>;
-  if (!file || file.format !== "restia-save" || typeof file.version !== "number" || !file.state) throw new Error("That file isn't a Restia save.");
+  if (!file || file.format !== "restia-save" || typeof file.version !== "number" || !file.state) throw new Error("That file isn't a Restia (Haven) save.");
   if (file.version > SAVE_VERSION) throw new Error("This save comes from a newer version of the game.");
   return { ...file, state: migrate(file.state as RestiaState) } as SaveFile;
 }
@@ -75,6 +78,7 @@ function parse(text: string): SaveFile {
  * from a fresh game so old saves keep loading.
  */
 export function migrate(input: RestiaState): RestiaState {
+  if ((input.version ?? 1) < 2) input = fromRestiaWorld(input);
   const fresh = newGame(1);
   const state = { ...fresh, ...input } as RestiaState;
   state.stats = { ...fresh.stats, ...input.stats };
@@ -96,9 +100,21 @@ export function migrate(input: RestiaState): RestiaState {
   state.shipping = knownItems(state.shipping);
   for (const member of Object.values(state.members)) {
     if (!member) continue;
+    // Version 3 added jobs: older members start in their default job.
+    member.jobs = Object.fromEntries(Object.entries(member.jobs ?? {}).filter(([job]) => job in JOBS));
+    if (!member.job || !(member.job in JOBS)) Object.assign(member, { job: defaultJobs(member.id).job });
+    member.jobs[member.job] ??= { level: 1, exp: 0 };
     for (const slot of ["weapon", "armor", "accessory"] as const) {
-      if (member.equip[slot] && !(member.equip[slot]! in ITEMS)) member.equip[slot] = null;
+      const item = member.equip[slot];
+      if (item && !(item in ITEMS)) member.equip[slot] = null;
+      // Renamed version-1 characters can use other gear (Mitia wears robes only): back to the bag.
+      else if (item && !canEquip(member.id, item)) {
+        state.inventory[item] = (state.inventory[item] ?? 0) + 1;
+        member.equip[slot] = null;
+      }
     }
+    // Stats changed (renamed characters, job bonuses): keep HP/MP within the new maximums.
+    clampVitals(state, member.id);
   }
   state.quests = { active: (state.quests?.active ?? []).filter((id) => id in QUESTS), done: (state.quests?.done ?? []).filter((id) => id in QUESTS) };
   if (state.scene && !(state.scene.id in SCENES)) state.scene = null;
@@ -117,6 +133,68 @@ export function migrate(input: RestiaState): RestiaState {
   state.battle = null;
   state.version = SAVE_VERSION;
   return state;
+}
+
+/** Version 1 saves come from the original Restia/Dawnhollow story (same map, farm and systems). */
+const OLD_IDS: Record<string, string> = {
+  guildGirl: "lysa",
+  pip: "tilde",
+  kaito: "dain",
+  hikari: "frida",
+  mina: "mitia",
+  nell: "bowy",
+  tove: "hilda",
+  seren: "senna"
+};
+/** Same role in both stories: the relationship status carries over. Others restart as friends. */
+const SAME_ROLE = new Set(["guildGirl", "tove", "seren"]);
+
+/**
+ * Moves a version-1 save into the Haven story. Farm, town, items, levels and
+ * friendship points are kept; characters are renamed to their Haven
+ * counterparts; the new chapter 1 (prologue through the family dinner) is
+ * treated as already played, so Garr, Bowy and Mitia join straight away.
+ */
+function fromRestiaWorld(old: RestiaState): RestiaState {
+  const input = structuredClone(old) as RestiaState & Record<string, unknown>;
+  const rename = (id: string) => OLD_IDS[id] ?? id;
+  const members: Record<string, unknown> = {};
+  for (const [id, member] of Object.entries(input.members ?? {})) {
+    if (!member || id === "hikari") continue;
+    members[rename(id)] = { ...member, id: rename(id) };
+  }
+  input.members = members as RestiaState["members"];
+  const social: Record<string, unknown> = {};
+  for (const [id, rel] of Object.entries(input.social ?? {})) {
+    if (!rel) continue;
+    social[rename(id)] = SAME_ROLE.has(id) ? rel : { ...rel, status: "none", events: [] };
+  }
+  input.social = social as RestiaState["social"];
+  input.active = (input.active ?? []).filter((id) => id !== "hikari").map(rename);
+  input.requests = (input.requests ?? []).map((request) => ({ ...request, client: rename(request.client) as RequestState["client"] }));
+  const flags = { ...(input.flags ?? {}) };
+  if (flags.metTove) flags.metHilda = true;
+  if (flags.metSeren) flags.metSenna = true;
+  for (const key of ["metDain", "metMara", "metFrida", "frostwoodSeen", "contract", "frostcapFound", "spriteJarred", "catJob", "catFound", "catDone", "dinnerDone", "chapter1Done"]) flags[key] = true;
+  input.flags = flags;
+  input.stats = { ...input.stats, counters: { ...input.stats?.counters, candleCoins: Math.max(10, input.stats?.counters?.candleCoins ?? 0) } };
+  // The Frosted Mug stands from day one in Haven; the old inn levels shift up by one.
+  if (input.town?.levels) input.town.levels.inn = Math.min(3, (input.town.levels.inn ?? 0) + 1);
+  if (input.town?.project?.id === "inn") input.town.project.level = Math.min(3, input.town.project.level + 1);
+  const level = Math.max(1, (input.members.bin?.level ?? 1) - 1);
+  for (const id of ["garr", "bowy", "mitia"] as const) {
+    if (input.members[id]) continue;
+    input.members[id] = newMember(id, level);
+  }
+  for (const id of ["garr", "bowy", "mitia"] as const) healMember(input, id);
+  for (const npc of ["garr", "bowy", "mitia", "lysa", "dain", "mara", "frida"] as const) {
+    // Garr and Mara are new in Haven: chapter 1 counts as played, so they are met too.
+    (input.social[npc] ??= newRelationship()).met = true;
+  }
+  input.seenScenes = [...(input.seenScenes ?? []), ...PROLOGUE];
+  input.scene = null;
+  input.sceneQueue = [];
+  return input;
 }
 
 function isMeta(value: unknown): value is SaveMeta {

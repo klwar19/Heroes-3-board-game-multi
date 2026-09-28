@@ -225,7 +225,7 @@ export function enterDungeon(state: RestiaState, floor: number, ctx: Ctx): void 
   if (!state.flags.catacombsOpen) fail("The Guild hasn't cleared you for the catacombs yet (Rank E).");
   const cave = ZONES.forest.spots.caveMouth!;
   if (state.player.zone !== "forest" || state.player.inside || Math.abs(state.player.x - cave.x) + Math.abs(state.player.y - cave.y) > 1) {
-    fail("The catacombs open through the cave at the end of the Whispering Forest.");
+    fail("The Old Temple Ruins open through the stone doorway at the far end of the Frostwood.");
   }
   if (!availableStarts(state).includes(floor)) fail("You haven't reached that floor yet.");
   state.dungeon = generateFloor(state, floor);

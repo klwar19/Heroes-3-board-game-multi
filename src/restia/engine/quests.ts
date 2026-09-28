@@ -36,7 +36,7 @@ export function track(state: RestiaState, ctx: Ctx, key: string, n: number, subj
     if (mission.progress >= mission.target) {
       mission.done = true;
       state.admin.ap += mission.ap;
-      ctx.toast(`[SYSTEM] Mission complete: ${template.text.replace("{n}", String(mission.target))} (+${mission.ap} AP)`, "system");
+      ctx.toast(`[CJS] Jester Bit complete: ${template.text.replace("{n}", String(mission.target))} (+${mission.ap} JP)`, "system");
     }
   }
   if (key === "defeat" && subject) {
@@ -90,7 +90,7 @@ export function requestTitle(request: RequestState): string {
     case "hunt":
       return `Defeat ${request.amount} ${MONSTERS[request.target]!.name}`;
     case "explore":
-      return `Reach floor ${request.amount} of the catacombs`;
+      return `Reach floor ${request.amount} of the Old Temple Ruins`;
   }
 }
 
@@ -169,7 +169,7 @@ export function refreshRequests(state: RestiaState, ctx: Ctx): void {
 }
 
 function atGuild(state: RestiaState): void {
-  if (state.player.inside !== "guild") fail("Talk to Elise at the Guild counter for that.");
+  if (state.player.inside !== "guild") fail("Talk to Lysa at the Guild counter for that.");
   if (!isOpen(state, "guild")) fail("The Guild counter has closed for today.");
 }
 
@@ -218,7 +218,7 @@ export function addGp(state: RestiaState, n: number, ctx: Ctx): void {
   const before = state.guild.gp;
   state.guild.gp += n;
   if (next && before < RANK_GP[next] && state.guild.gp >= RANK_GP[next]) {
-    ctx.toast(`Enough Guild Points for the Rank ${next} exam! Ask Elise at the Guild.`, "system");
+    ctx.toast(`Enough Guild Points for the Rank ${next} exam! Ask Lysa at the Guild.`, "system");
   }
 }
 
@@ -244,7 +244,7 @@ export function rankUp(state: RestiaState, ctx: Ctx): void {
 }
 
 // ---------------------------------------------------------------------------
-// System missions
+// Jester Bits (daily missions)
 // ---------------------------------------------------------------------------
 
 export function refreshMissions(state: RestiaState): void {

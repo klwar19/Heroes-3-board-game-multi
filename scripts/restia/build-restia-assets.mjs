@@ -6,7 +6,7 @@
  * scripts/restia/codex-gen-batch.mjs from the prompts in scripts/restia/codex-jobs.json). This script turns them into the runtime webps under
  * public/assets/restia/ (gitignored; published to R2 with `npm run media:publish`):
  *
- *   node scripts/restia/build-restia-assets.mjs [--only tachie,chibi,maps,...]
+ *   node scripts/restia/build-restia-assets.mjs [--only tachie,bin,backdrops,buildings,sheets,battle,battleArt]
  *
  * Backgrounds are keyed by flood-filling from each cell's border over pixels
  * close to the border's median colour (Codex paints flat backdrops, not alpha).
@@ -30,6 +30,16 @@ const OUT = path.join(ROOT, "public", "assets", "restia");
 const onlyArg = process.argv.indexOf("--only");
 const ONLY = onlyArg >= 0 ? new Set(process.argv[onlyArg + 1].split(",")) : null;
 const want = (step) => !ONLY || ONLY.has(step);
+
+/** First master that exists (later passes first: hv5- portraits replace hv- drafts). */
+function rawFirst(...names) {
+  for (const name of names) {
+    const file = path.join(RAW, `${name}.png`);
+    if (fs.existsSync(file)) return file;
+  }
+  console.warn(`  (missing ${names.join(" / ")} - skipped)`);
+  return null;
+}
 
 function raw(name) {
   const file = path.join(RAW, `${name}.png`);
@@ -208,71 +218,107 @@ async function extract(img, box) {
 
 // ---------------------------------------------------------------------------
 
+/** Haven cast standing art (Codex masters on a flat backdrop). Bin is handled by binFaces(). */
+const TACHIE_NAMES = ["peri", "system", "garr", "bowy", "mitia", "lysa", "hilda", "senna", "mara", "frida", "tilde", "dain", "tessa", "lily", "luna", "leo", "meilin", "jake"];
+
+async function writeTachie(img, name) {
+  const box = bbox(img, 0, 0, img.width, img.height);
+  const buffer = await extract(img, box);
+  await sharp(buffer).resize({ height: 1280, withoutEnlargement: true }).webp({ quality: 84, alphaQuality: 90 }).toFile(out(`tachie/${name}.webp`));
+  console.log(`tachie ${name}`);
+}
+
 async function tachie() {
-  for (const name of ["mina", "tove", "seren", "nell", "pip", "kaito"]) {
-    const file = raw(`tachie-${name}`);
+  for (const name of TACHIE_NAMES) {
+    const file = rawFirst(`hv6-tachie-${name}`, `hv5-tachie-${name}`, `hv-tachie-${name}`);
     if (!file) continue;
     const img = await rgba(file);
-    // Seed only from near-pure white so cream clothing on the cropped bottom edge survives.
+    // Seed only from near-backdrop pixels so pale clothing on the cropped bottom edge survives.
     keyRect(img, 0, 0, img.width, img.height, { tol: 20, step: 10, seedTol: 8 });
-    keyEnclosedWhite(img);
-    const box = bbox(img, 0, 0, img.width, img.height);
-    const buffer = await extract(img, box);
-    await sharp(buffer).resize({ height: 1280, withoutEnlargement: true }).webp({ quality: 84, alphaQuality: 90 }).toFile(out(`tachie/${name}.webp`));
-    console.log(`tachie ${name}`);
+    // No enclosed-white pass here: it ate white hair, aprons and robes.
+    await writeTachie(img, name);
   }
 }
 
-async function chibi() {
-  const FRAME = 128;
-  for (const name of ["bin", "hikari", "guild-girl", "mina", "tove", "seren", "nell", "pip", "kaito"]) {
-    const file = raw(`chibi-${name}`);
+/**
+ * Bin's four expressions are the creator's own cutouts (user-bin-<face>.png).
+ * Their keying punched a few holes inside the art (e.g. the open mouth); any
+ * transparent pocket not connected to the image border is refilled from the
+ * matching full-backdrop version (user-bin-<face>-vn.png, same size).
+ */
+async function binFaces() {
+  for (const face of ["normal", "happy", "angry", "sad"]) {
+    const cut = raw(`user-bin-${face}`);
+    const full = raw(`user-bin-${face}-vn`);
+    if (!cut || !full) continue;
+    const img = await rgba(cut);
+    const src = await rgba(full);
+    if (src.width !== img.width || src.height !== img.height) throw new Error(`bin ${face}: cutout and full art differ in size`);
+    const { data, width, height } = img;
+    const clear = (p) => data[p * 4 + 3] < 128;
+    const outside = new Uint8Array(width * height);
+    const stack = [];
+    for (let x = 0; x < width; x++) for (const y of [0, height - 1]) if (clear(y * width + x)) stack.push(y * width + x);
+    for (let y = 0; y < height; y++) for (const x of [0, width - 1]) if (clear(y * width + x)) stack.push(y * width + x);
+    for (const p of stack) outside[p] = 1;
+    while (stack.length) {
+      const p = stack.pop();
+      const x = p % width;
+      const y = (p - x) / width;
+      for (const q of [x > 0 ? p - 1 : -1, x < width - 1 ? p + 1 : -1, y > 0 ? p - width : -1, y < height - 1 ? p + width : -1]) {
+        if (q >= 0 && !outside[q] && clear(q)) {
+          outside[q] = 1;
+          stack.push(q);
+        }
+      }
+    }
+    let filled = 0;
+    for (let p = 0; p < width * height; p++) {
+      // Only true holes; the soft (semi-transparent) outline stays as drawn.
+      if (outside[p] || !clear(p)) continue;
+      for (let c = 0; c < 3; c++) data[p * 4 + c] = src.data[p * 4 + c];
+      data[p * 4 + 3] = 255;
+      filled++;
+    }
+    await writeTachie(img, face === "normal" ? "bin" : `bin-${face}`);
+    console.log(`  bin ${face}: refilled ${filled} interior pixels`);
+  }
+}
+
+/** Bin in Earth clothes: Codex edits of the creator's four expressions (flat white backdrop). */
+async function binEarth() {
+  for (const face of ["normal", "happy", "angry", "sad"]) {
+    const file = raw(`hv6-bin-earth-${face}`);
     if (!file) continue;
-    const { img, cells } = await cellsOf(file, 4, 4, { tol: 40, step: 22 });
-    // Union box relative to each cell origin, so every frame shares one anchor.
-    let union = null;
-    for (const cell of cells) {
-      const box = bbox(img, cell.x0, cell.y0, cell.x1, cell.y1);
-      if (!box) continue;
-      const rel = { l: box.left - cell.x0, t: box.top - cell.y0, r: box.left + box.width - cell.x0, b: box.top + box.height - cell.y0 };
-      union = union ? { l: Math.min(union.l, rel.l), t: Math.min(union.t, rel.t), r: Math.max(union.r, rel.r), b: Math.max(union.b, rel.b) } : rel;
-    }
-    const uw = union.r - union.l;
-    const uh = union.b - union.t;
-    const scale = Math.min(FRAME / uw, FRAME / uh);
-    const fw = Math.round(uw * scale);
-    const fh = Math.round(uh * scale);
-    const composites = [];
-    for (let i = 0; i < cells.length; i++) {
-      const cell = cells[i];
-      const box = { left: cell.x0 + union.l, top: cell.y0 + union.t, width: uw, height: uh };
-      box.width = Math.min(box.width, img.width - box.left);
-      box.height = Math.min(box.height, img.height - box.top);
-      const frame = await sharp(await extract(img, box)).resize(fw, fh, { fit: "fill" }).png().toBuffer();
-      composites.push({ input: frame, left: (i % 4) * FRAME + Math.round((FRAME - fw) / 2), top: Math.floor(i / 4) * FRAME + (FRAME - fh) });
-    }
-    await sharp({ create: { width: FRAME * 4, height: FRAME * 4, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-      .composite(composites)
-      .webp({ quality: 86, alphaQuality: 90 })
-      .toFile(out(`chibi/${name}.webp`));
-    console.log(`chibi ${name} ${fw}x${fh}`);
+    const img = await rgba(file);
+    keyRect(img, 0, 0, img.width, img.height, { tol: 20, step: 10, seedTol: 8 });
+    await writeTachie(img, face === "normal" ? "bin-earth" : `bin-earth-${face}`);
   }
 }
 
 async function backdrops() {
   const list = [
+    // Pocket Haven (the farm) stays the original green map: it is a pocket dimension, no snow.
     ["map-farm", "maps/farm"],
-    ["map-village", "maps/village"],
-    ["map-forest", "maps/forest"],
-    ["int-home", "bg/home"],
-    ["int-guild", "bg/guild"],
-    ["int-store", "bg/store"],
-    ["int-smithy", "bg/smithy"],
-    ["int-atelier", "bg/atelier"],
-    ["int-inn", "bg/inn"],
-    ["int-shrine", "bg/shrine"],
-    ["int-barn", "bg/barn"],
-    ["title-keyart", "bg/title"]
+    ["hv-map-village", "maps/village"],
+    ["hv-map-forest", "maps/forest"],
+    ["hv-bg-int-home", "bg/home"],
+    ["hv-bg-int-guild", "bg/guild"],
+    ["hv-bg-int-store", "bg/store"],
+    ["hv-bg-int-smithy", "bg/smithy"],
+    ["hv-bg-int-atelier", "bg/atelier"],
+    ["hv-bg-int-inn", "bg/inn"],
+    ["hv-bg-int-shrine", "bg/shrine"],
+    ["hv-bg-int-barn", "bg/barn"],
+    ["hv-bg-title", "bg/title"],
+    ["hv-bg-earth-apartment", "bg/earth-apartment"],
+    ["hv-bg-earth-campus", "bg/earth-campus"],
+    ["hv-bg-earth-kfc", "bg/earth-kfc"],
+    ["hv-bg-earth-hospital", "bg/earth-hospital"],
+    ["hv-bg-earth-bookstore", "bg/earth-bookstore"],
+    ["hv-bg-eos-meadow", "bg/eos-meadow"],
+    ["hv-bg-haven-road", "bg/haven-road"],
+    ["hv-bg-haven-gate", "bg/haven-gate"]
   ];
   for (const [name, target] of list) {
     const file = raw(name);
@@ -296,15 +342,18 @@ async function backdrops() {
 
 async function buildings() {
   const sheets = [
-    ["bld-sheet-1", ["farmhouse", "barn", "shipping-bin", "notice-board"]],
-    ["bld-sheet-2", ["guild", "store", "smithy", "atelier"]],
-    ["bld-sheet-3", ["inn", "shrine-ruined", "shrine", "construction"]]
+    // Pocket Haven keeps the original farm buildings; the town notice board is the snowy one.
+    ["bld-sheet-1", ["farmhouse", "barn", "shipping-bin", null]],
+    ["hv-bld-1", [null, null, null, "notice-board"]],
+    ["hv-bld-2", ["guild", "store", "smithy", "atelier"]],
+    ["hv-bld-3", ["inn", "shrine-ruined", "shrine", "construction"]]
   ];
   for (const [sheet, names] of sheets) {
     const file = raw(sheet);
     if (!file) continue;
     const { img, cells } = await cellsOf(file, 2, 2, { tol: 36, step: 20 });
     for (let i = 0; i < 4; i++) {
+      if (!names[i]) continue;
       const cell = cells[i];
       const box = bbox(img, cell.x0, cell.y0, cell.x1, cell.y1);
       if (!box) continue;
@@ -354,10 +403,49 @@ async function sheets() {
   if (dungeon) await regrid(dungeon, 4, 4, 96, "dungeon/sheet.webp", { fillCells: new Set([0, 1, 2, 3, 4, 5]), keyOpts: { tol: 38, step: 20 } });
 }
 
+/**
+ * Battle v2 art (hv7-*): impact effects and projectiles are 4x4 frame sheets
+ * flattened onto black (the game draws them with screen blending), board props
+ * are keyed like other sheets, battlefields are cropped to the 800x556 board.
+ */
+async function battleArt() {
+  for (const file of fs.readdirSync(RAW).filter((name) => /^hv7-(fx|proj)-.+\.png$/.test(name))) {
+    const [, kind, id] = file.match(/^hv7-(fx|proj)-(.+)\.png$/);
+    const target = kind === "fx" ? `fx/${id}.webp` : `fx/proj-${id}.webp`;
+    await sharp(path.join(RAW, file)).flatten({ background: "#000000" }).resize(512, 512, { fit: "fill" }).webp({ quality: 84 }).toFile(out(target));
+    console.log(`fx ${target}`);
+  }
+  const props = raw("hv7-props");
+  if (props) await regrid(props, 4, 4, 128, "battle/props.webp", { anchor: "bottom", keyOpts: { tol: 38, step: 20 } });
+  for (const file of fs.readdirSync(RAW).filter((name) => /^hv7-bf-.+\.png$/.test(name))) {
+    const id = file.slice("hv7-bf-".length, -4);
+    await sharp(path.join(RAW, file)).flatten({ background: "#000000" }).resize(800, 556, { fit: "cover", position: "centre" }).webp({ quality: 84 }).toFile(out(`battlefields/${id}.webp`));
+    console.log(`battlefield ${id}`);
+  }
+}
+
 function battle() {
   const rows = "2:8;0:8;12:8;3:4+4:4;5:8;7:4+18:4";
-  for (const name of ["bin", "hikari", "mina", "tove", "seren", "nell", "kaito"]) {
-    const file = raw(`battle-${name}`);
+  // [name, scale option]: party and the rival match an H3 swordsman; the frost beasts are animals.
+  const sheets = [
+    ["bin", ["--ref", "swordsman"]],
+    ["mitia", ["--ref", "swordsman"]],
+    ["bowy", ["--ref", "swordsman"]],
+    ["garr", ["--ref", "swordsman"]],
+    ["hilda", ["--ref", "swordsman"]],
+    // hv6 Senna sheet drew only 7 guard frames in row 4.
+    ["senna", ["--ref", "swordsman"], "2:8;0:8;12:8;3:4+4:3+-:1;5:8;7:4+18:4"],
+    ["dain", ["--ref", "swordsman"]],
+    // Town NPCs: their sheets drive the overworld figures (standing/walk only in practice).
+    ["lysa", ["--ref", "swordsman"]],
+    ["mara", ["--ref", "swordsman"]],
+    ["frida", ["--ref", "swordsman"], "2:8;0:8;12:8;3:4+4:3+-:1;5:7+-:1;7:4+18:4"],
+    ["tilde", ["--ref", "swordsman"]],
+    ["frost-wolf", ["--ref", "boar"]],
+    ["frost-rat", ["--height", "42"]]
+  ];
+  for (const [name, scale, sheetRows = rows] of sheets) {
+    const file = rawFirst(`hv6-battle-${name}`, `hv-battle-${name}`);
     if (!file) continue;
     execFileSync(
       process.execPath,
@@ -366,10 +454,10 @@ function battle() {
         file,
         `restia-${name}`,
         "--grid", "8x6",
-        "--rows", rows,
+        "--rows", sheetRows,
         "--reverse", "8=7",
         "--copy", "11=12,13=12,17=18,19=18",
-        "--ref", "swordsman",
+        ...scale,
         "--out-dir", path.join("public", "assets", "restia", "battle"),
         "--meta", path.join("src", "restia", "data", "battle-atlases.json")
       ],
@@ -379,9 +467,11 @@ function battle() {
 }
 
 if (want("tachie")) await tachie();
-if (want("chibi")) await chibi();
+if (want("bin")) await binFaces();
+if (want("bin")) await binEarth();
 if (want("backdrops")) await backdrops();
 if (want("buildings")) await buildings();
 if (want("sheets")) await sheets();
 if (want("battle")) battle();
+if (want("battleArt")) await battleArt();
 console.log("done");

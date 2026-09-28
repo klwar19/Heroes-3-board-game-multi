@@ -75,8 +75,8 @@ function Title({ onStart }: { onStart: (state: RestiaState) => void }) {
         <div className={s.titleShade} />
         <div className={s.titleContent}>
           <div>
-            <h1 className={s.titleLogo}>Otherworld Life</h1>
-            <p className={s.titleSub}>Bin&apos;s days in Restia — farm, build a village, make friends, and dive into the catacombs.</p>
+            <h1 className={s.titleLogo}>Cosmic Jester: Frostbitten Days</h1>
+            <p className={s.titleSub}>Bin Chen, Peri&apos;s Jester, back in Haven — farm Pocket Haven, rebuild Frostbitten, find his family, and dig into the Old Temple Ruins.</p>
           </div>
           {view === "main" ? (
             <div className={s.titleMenu}>

@@ -11,7 +11,6 @@ import { morning, passOut, sleep, waitFor } from "./day";
 import { consumeItem, fieldSkill, releasePet, setActive, setPetJob } from "./items";
 import { dungeonInteract, dungeonStep, enterDungeon, leaveDungeon } from "./dungeon";
 import {
-  aiTurn,
   battleAttack,
   battleBefriend,
   battleDefend,
@@ -21,15 +20,18 @@ import {
   battleMove,
   battleRush,
   battleSkill,
+  battleSprint,
   battleWait,
   finishBattle
 } from "./battle";
+import { aiTurn } from "./battle-ai";
+import { setJob } from "./jobs";
 import { sceneChoose, sceneNext, startQueuedScene } from "./scenes";
 
-const BATTLE_ACTIONS = new Set(["bMove", "bAttack", "bSkill", "bItem", "bDefend", "bWait", "bBefriend", "bFlee", "bRush", "bEndTurn", "bAiTurn", "bFinish"]);
+const BATTLE_ACTIONS = new Set(["bMove", "bAttack", "bSkill", "bItem", "bDefend", "bWait", "bBefriend", "bFlee", "bRush", "bEndTurn", "bSprint", "bAiTurn", "bFinish"]);
 const DUNGEON_ACTIONS = new Set(["dStep", "dInteract", "leaveDungeon"]);
 /** Menu actions that work anywhere outside battle (world, buildings or dungeon). */
-const MENU_ACTIONS = new Set(["useItem", "fieldSkill", "equip", "setActive", "buyPerk", "petJob", "releasePet"]);
+const MENU_ACTIONS = new Set(["useItem", "fieldSkill", "equip", "setJob", "setActive", "buyPerk", "petJob", "releasePet"]);
 
 export function createGame(seed: number): DispatchResult {
   const state = newGame(seed);
@@ -111,6 +113,8 @@ function route(state: RestiaState, action: RestiaAction, ctx: Ctx): void {
       return fieldSkill(state, action.caster, action.skill, action.target, ctx);
     case "equip":
       return equip(state, action.member, action.item, action.slot);
+    case "setJob":
+      return setJob(state, action.member, action.job, ctx);
     case "setActive":
       return setActive(state, action.active);
     case "store":
@@ -165,6 +169,8 @@ function route(state: RestiaState, action: RestiaAction, ctx: Ctx): void {
       return battleRush(state, ctx);
     case "bEndTurn":
       return battleEndTurn(state, ctx);
+    case "bSprint":
+      return battleSprint(state, ctx);
     case "bAiTurn":
       return aiTurn(state, ctx);
     case "bFinish":

@@ -6,7 +6,7 @@ export type ThemeDef = {
   id: string;
   name: string;
   floors: [number, number];
-  /** Battle backdrop: public/assets/battle-hex/battlefields/<code>.webp */
+  /** Battlefield id (data/battlefields.ts). */
   backdrop: string;
   /** CSS filter applied to the dungeon tiles for this theme. */
   tint: string;
@@ -21,11 +21,11 @@ export type ThemeDef = {
 export const THEMES: ThemeDef[] = [
   {
     id: "catacombs",
-    name: "Catacombs of the Old Capital",
+    name: "Old Temple Ruins: the Frozen Nave",
     floors: [1, 5],
-    backdrop: "sub",
-    tint: "none",
-    music: "dirt",
+    backdrop: "nave",
+    tint: "hue-rotate(185deg) saturate(0.55) brightness(1.08)",
+    music: "snow",
     encounters: [
       { species: "skeleton", weight: 3 },
       { species: "zombie", weight: 3 },
@@ -59,9 +59,9 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "flooded",
-    name: "Flooded Halls",
+    name: "Old Temple Ruins: the Drowned Cloister",
     floors: [6, 10],
-    backdrop: "lp",
+    backdrop: "cloister",
     tint: "hue-rotate(160deg) saturate(0.85)",
     music: "water",
     encounters: [
@@ -96,9 +96,9 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "ember",
-    name: "Ember Depths",
+    name: "Old Temple Ruins: the Ember Vaults",
     floors: [11, 15],
-    backdrop: "lava",
+    backdrop: "ember",
     tint: "sepia(0.5) hue-rotate(-25deg) saturate(1.8) brightness(0.9)",
     music: "stronghold",
     encounters: [
@@ -134,9 +134,9 @@ export const THEMES: ThemeDef[] = [
   },
   {
     id: "abyss",
-    name: "Abyssal Rift",
+    name: "Old Temple Ruins: the Rift",
     floors: [16, 999],
-    backdrop: "cur",
+    backdrop: "rift",
     tint: "grayscale(0.35) hue-rotate(230deg) brightness(0.85)",
     music: "necro-town",
     encounters: [
@@ -182,7 +182,9 @@ export function floorLevel(floor: number): number {
 export const CHECKPOINTS = [1, 6, 11, 16];
 
 export const FOREST_ENCOUNTERS: EncounterEntry[] = [
-  { species: "goblin", weight: 4 },
+  { species: "frostWolf", weight: 4 },
+  { species: "frostRat", weight: 2 },
+  { species: "goblin", weight: 3 },
   { species: "boar", weight: 3 },
   { species: "sprite", weight: 3 },
   { species: "ram", weight: 2 },
@@ -197,9 +199,12 @@ export const FOREST_ENCOUNTERS: EncounterEntry[] = [
 
 export type EventEncounter = {
   id: string;
+  /** Battlefield id (data/battlefields.ts). */
   backdrop: string;
+  /** Board layout (data/battlefields.ts LAYOUTS); default: one the biome allows. */
+  layout?: string;
   enemies: { species: MonsterId; level: number }[];
-  /** Kaito spar: a special rival unit instead of monsters. */
+  /** Dain spar: a special rival unit instead of monsters. */
   rival?: boolean;
   soft: boolean;
   canFlee: boolean;
@@ -209,9 +214,75 @@ export type EventEncounter = {
 };
 
 export const EVENT_ENCOUNTERS: Record<string, EventEncounter> = {
+  // --- Story battles ---
+  eosTrial: {
+    id: "eosTrial",
+    backdrop: "eos",
+    layout: "open",
+    enemies: [
+      { species: "eosGoblin", level: 1 },
+      { species: "eosGoblin", level: 1 }
+    ],
+    soft: true,
+    canFlee: false,
+    winScene: "p6EosWin",
+    loseScene: "p6EosLose"
+  },
+  havenWolf: {
+    id: "havenWolf",
+    backdrop: "frostwood",
+    layout: "open",
+    enemies: [{ species: "frostWolf", level: 1 }],
+    soft: true,
+    canFlee: false,
+    winScene: "h1WolfWin",
+    loseScene: "h1WolfLose"
+  },
+  woodshedRats: {
+    id: "woodshedRats",
+    backdrop: "cellar",
+    layout: "barrels",
+    enemies: [
+      { species: "frostRat", level: 2 },
+      { species: "frostRat", level: 2 },
+      { species: "frostRat", level: 3 }
+    ],
+    soft: true,
+    canFlee: false,
+    winScene: "logWin",
+    loseScene: "logLose"
+  },
+  catWolves: {
+    id: "catWolves",
+    backdrop: "frostwood",
+    layout: "hills",
+    enemies: [
+      { species: "frostWolf", level: 3 },
+      { species: "frostWolf", level: 3 }
+    ],
+    soft: true,
+    canFlee: false,
+    winScene: "catWin",
+    loseScene: "catLose"
+  },
+  doorway: {
+    id: "doorway",
+    backdrop: "village",
+    layout: "open",
+    enemies: [
+      { species: "buyersThug", level: 4 },
+      { species: "buyersThug", level: 3 }
+    ],
+    soft: true,
+    canFlee: false,
+    winScene: "dinnerDoorWin",
+    loseScene: "dinnerDoorLose"
+  },
+  // --- Guild exams ---
   examF: {
     id: "examF",
-    backdrop: "grtr",
+    backdrop: "village",
+    layout: "plateau",
     enemies: [
       { species: "goblinChief", level: 4 },
       { species: "goblin", level: 3 },
@@ -223,7 +294,8 @@ export const EVENT_ENCOUNTERS: Record<string, EventEncounter> = {
   },
   examE: {
     id: "examE",
-    backdrop: "grmt",
+    backdrop: "village",
+    layout: "ring",
     enemies: [],
     rival: true,
     soft: true,

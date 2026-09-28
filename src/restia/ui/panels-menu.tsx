@@ -9,7 +9,10 @@ import { NPCS, NPC_IDS } from "../data/npcs";
 import { MONSTERS } from "../data/monsters";
 import { SKILLS } from "../data/skills";
 import { BUILDINGS, BUILDING_ORDER } from "../data/buildings";
-import { activeLimit, canEquip, hearts, memberSkills, memberStats, petStats } from "../engine/party";
+import { activeLimit, canEquip, hearts, memberPassives, memberSkills, memberStats, petStats } from "../engine/party";
+import { jobLock } from "../engine/jobs";
+import { JOBS, JOB_EXP, JOB_IDS, JOB_MAX } from "../data/jobs";
+import { PASSIVES } from "../data/passives";
 import { check } from "../engine/conditions";
 import { requestTitle, nextRank } from "../engine/quests";
 import { npcWhere } from "../engine/social";
@@ -32,7 +35,7 @@ const TABS: { id: MenuTab; label: string }[] = [
   { id: "quests", label: "Quests" },
   { id: "friends", label: "Friends" },
   { id: "town", label: "Town" },
-  { id: "system", label: "System" },
+  { id: "system", label: "Jester" },
   { id: "options", label: "Options" }
 ];
 
@@ -156,7 +159,7 @@ function PartyTab({ state, act }: { state: RestiaState; act: Act }) {
   const inParty = state.active.includes(selected);
   return (
     <div className={s.columns}>
-      <div className={s.list}>
+      <div className={s.list} style={{ alignContent: "start" }}>
         {ids.map((id) => {
           const m = state.members[id]!;
           const st = memberStats(state, id);
@@ -230,6 +233,7 @@ function PartyTab({ state, act }: { state: RestiaState; act: Act }) {
             ))}
           </div>
         ) : null}
+        <JobSection act={act} member={selected} state={state} />
         <h4 className={s.cardTitle} style={{ marginTop: 10 }}>
           Skills
         </h4>
@@ -240,7 +244,7 @@ function PartyTab({ state, act }: { state: RestiaState; act: Act }) {
               <div className={s.row} key={id}>
                 <div className={s.rowMain}>
                   <div className={s.rowTitle}>
-                    {skill.name} <span className={s.muted}>{skill.mp} MP</span>
+                    {skill.name} <span className={s.muted}>{skill.ap ?? 2} AP · {skill.mp} MP</span>
                   </div>
                   <div className={s.muted}>{skill.desc}</div>
                 </div>
@@ -248,6 +252,16 @@ function PartyTab({ state, act }: { state: RestiaState; act: Act }) {
               </div>
             );
           })}
+        </div>
+        <h4 className={s.cardTitle} style={{ marginTop: 10 }}>
+          Passives
+        </h4>
+        <div className={s.list}>
+          {memberPassives(state, selected).map((id) => (
+            <div className={s.muted} key={id}>
+              <b style={{ color: "inherit" }}>{PASSIVES[id]?.name ?? id}</b> — {PASSIVES[id]?.desc}
+            </div>
+          ))}
         </div>
         {selected !== "bin" ? (
           <button
@@ -261,6 +275,62 @@ function PartyTab({ state, act }: { state: RestiaState; act: Act }) {
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Current job, its progress, and every job this member could switch to. */
+function JobSection({ state, act, member: id }: { state: RestiaState; act: Act; member: CharId }) {
+  const member = state.members[id]!;
+  const [open, setOpen] = useState(false);
+  const job = JOBS[member.job]!;
+  const progress = member.jobs[member.job] ?? { level: 1, exp: 0 };
+  const next = progress.level < JOB_MAX ? job.levels[progress.level]! : null;
+  const teach = (level: (typeof job.levels)[number]) => (level.skill ? `skill ${SKILLS[level.skill]?.name ?? level.skill}` : level.passive ? `passive ${PASSIVES[level.passive]?.name ?? level.passive}` : "stats");
+  const blocked = state.battle ? "Not during a battle." : state.dungeon ? "Change jobs outside the ruins." : null;
+  return (
+    <div className={s.card} style={{ marginTop: 8 }}>
+      <div className={s.row}>
+        <div className={s.rowMain}>
+          <div className={s.rowTitle}>
+            Job: {job.name} Lv {progress.level}
+            {progress.level < JOB_MAX ? <span className={s.muted}> · {progress.exp}/{JOB_EXP[progress.level - 1]} job EXP</span> : <span className={s.muted}> · mastered</span>}
+          </div>
+          <div className={s.muted}>
+            {job.desc}
+            {next ? ` Next level teaches the ${teach(next)}.` : ""}
+          </div>
+        </div>
+        <button className={`${s.btnGhost} ${s.btnSmall}`} onClick={() => setOpen(!open)} type="button">
+          {open ? "Close" : "Jobs"}
+        </button>
+      </div>
+      {open ? (
+        <div className={s.list} style={{ marginTop: 6 }}>
+          <div className={s.muted}>Job EXP only goes to the current job. Everything learned stays when you switch.{blocked ? ` ${blocked}` : ""}</div>
+          {JOB_IDS.filter((jobId) => !JOBS[jobId]!.only || JOBS[jobId]!.only!.includes(id)).map((jobId) => {
+            const def = JOBS[jobId]!;
+            const have = member.jobs[jobId];
+            const lock = jobLock(member, jobId);
+            return (
+              <div className={s.row} key={jobId}>
+                <div className={s.rowMain}>
+                  <div className={s.rowTitle}>
+                    {def.name} <span className={s.muted}>{have ? `Lv ${have.level}` : "new"}{def.tier === 2 ? " · advanced" : ""}</span>
+                  </div>
+                  <div className={s.muted}>
+                    {def.levels.map((level, index) => `${index + 1}: ${teach(level)}`).join(" · ")}
+                  </div>
+                  {lock ? <div className={s.muted}>{lock}</div> : null}
+                </div>
+                <button className={`${s.btn} ${s.btnSmall}`} disabled={!!lock || !!blocked || member.job === jobId} onClick={() => act({ type: "setJob", member: id, job: jobId })} type="button">
+                  {member.job === jobId ? "Current" : "Become"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -317,8 +387,8 @@ function QuestsTab({ state }: { state: RestiaState }) {
         {state.quests.done.length ? <div className={s.muted}>Completed: {state.quests.done.map((id) => QUESTS[id]?.title).join(", ")}</div> : null}
       </div>
       <div className={s.list}>
-        <h3 className={s.cardTitle}>System Missions (today)</h3>
-        {state.missions.list.length ? null : <div className={s.muted}>Register at the Guild to receive daily missions.</div>}
+        <h3 className={s.cardTitle}>Jester Bits (today)</h3>
+        {state.missions.list.length ? null : <div className={s.muted}>Get re-registered at the Guild to receive daily Jester Bits.</div>}
         {state.missions.list.map((mission) => {
           const template = MISSIONS.find((entry) => entry.id === mission.id)!;
           return (
@@ -326,7 +396,7 @@ function QuestsTab({ state }: { state: RestiaState }) {
               <div className={s.rowMain}>
                 <span className={s.system}>{template.text.replace("{n}", String(mission.target))}</span>
                 <div className={s.muted}>
-                  {mission.progress}/{mission.target} · +{mission.ap} AP
+                  {mission.progress}/{mission.target} · +{mission.ap} JP
                 </div>
               </div>
               {mission.done ? <span className={s.good}>Done</span> : null}
@@ -403,10 +473,10 @@ function TownTab({ state }: { state: RestiaState }) {
     <div className={s.columns}>
       <div className={s.card}>
         <h3 className={s.cardTitle}>
-          Dawnhollow — {townRank(state)} (score {townScore(state)})
+          Frostbitten — {townRank(state)} (score {townScore(state)})
         </h3>
         <div className={s.muted}>
-          Companions: {residents} · Monsters: {state.pets.length} · Faith: {state.faith} (+{dailyFaith(state)}/night)
+          Companions: {residents} · Monsters: {state.pets.length} · Audience: {state.faith} (+{dailyFaith(state)}/night)
         </div>
         <div className={s.list} style={{ marginTop: 8 }}>
           {BUILDING_ORDER.map((id) => (
@@ -421,11 +491,11 @@ function TownTab({ state }: { state: RestiaState }) {
             🔨 {BUILDINGS[state.town.project.id].name} ready in {state.town.project.daysLeft} day(s).
           </p>
         ) : null}
-        <p className={s.muted}>Build and upgrade at the Restoration Board in the village plaza.</p>
+        <p className={s.muted}>Build and upgrade at the Outpost Board in the Frostbitten square.</p>
       </div>
       <div className={s.card}>
-        <h3 className={s.cardTitle}>Stars of Dawnhollow</h3>
-        {(["bin", "hikari", "mina", "tove", "seren", "nell"] as CharId[]).map((id) => (
+        <h3 className={s.cardTitle}>The Party</h3>
+        {(["bin", "bowy", "mitia", "garr", "hilda", "senna"] as CharId[]).map((id) => (
           <div className={s.personRow} key={id} style={{ marginBottom: 6 }}>
             <span className={s.portrait} style={{ backgroundImage: TACHIE[id] ? `url(${A(TACHIE[id]!)})` : undefined, filter: state.members[id] ? undefined : "brightness(0)" }} />
             <span>{state.members[id] ? `${CHARACTERS[id].name} — ${CHARACTERS[id].title}` : "??? — not yet recruited"}</span>
@@ -442,9 +512,9 @@ function SystemTab({ state, act }: { state: RestiaState; act: Act }) {
     <div className={s.columns}>
       <div className={s.card}>
         <h3 className={s.cardTitle}>
-          <span className={s.system}>Admin Console</span> — {state.admin.ap} AP
+          <span className={s.system}>Cosmic Jester Shop</span> — {state.admin.ap} JP
         </h3>
-        <div className={s.muted}>Earn Admin Points from daily System Missions and story milestones.</div>
+        <div className={s.muted}>Earn Jester Points from daily Jester Bits, quests and story milestones.</div>
         <div className={s.list} style={{ marginTop: 8 }}>
           {PERKS.map((perk) => {
             const owned = state.admin.perks.includes(perk.id);
@@ -455,10 +525,10 @@ function SystemTab({ state, act }: { state: RestiaState; act: Act }) {
                   <div className={s.muted}>{perk.desc}</div>
                 </div>
                 {owned ? (
-                  <span className={s.good}>Installed</span>
+                  <span className={s.good}>Owned</span>
                 ) : (
-                  <button className={`${s.btn} ${s.btnSmall}`} disabled={state.admin.ap < perk.cost} onClick={() => act({ type: "buyPerk", perk: perk.id })} type="button">
-                    {perk.cost} AP
+                  <button className={`${s.btn} ${s.btnSmall}`} disabled={state.admin.ap < perk.cost || (!!perk.requires && !state.admin.perks.includes(perk.requires))} onClick={() => act({ type: "buyPerk", perk: perk.id })} type="button">
+                    {perk.cost} JP
                   </button>
                 )}
               </div>

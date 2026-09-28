@@ -85,9 +85,9 @@ const FORAGE: ItemDef[] = [
   item("wildHerb", "Wild Herb", "forage", 20, a(12), "A common green herb. Alchemy base.", { tags: ["herb"] }),
   item("medicinalHerb", "Medicinal Herb", "forage", 45, a(13), "Red-leaf herb used in potions.", { tags: ["herb"] }),
   item("mushroom", "Forest Mushroom", "forage", 30, a(14), "Earthy and edible.", { tags: ["mushroom"] }),
-  item("glowcap", "Glowcap", "forage", 90, a(15), "A mushroom that glows faintly blue.", { tags: ["mushroom", "mana"] }),
+  item("glowcap", "Frostcap", "forage", 90, a(15), "A pale-blue mushroom that only grows under snow-heavy pines. The base of every cough drop in Frostbitten.", { tags: ["mushroom", "mana"] }),
   item("wildBerries", "Wild Berries", "forage", 25, a(16), "Tart forest berries.", { tags: ["fruit"] }),
-  item("dawnLily", "Dawn Lily", "forage", 120, a(17), "A white-and-gold lily that only opens at sunrise. Hikari's favourite.", {
+  item("dawnLily", "Starbloom", "forage", 120, a(17), "A white star-shaped flower that opens under the aurora. Norheim folk leave them at the Weaver's shrine.", {
     tags: ["flower"]
   }),
   item("egg", "Egg", "animal", 50, a(18), "Fresh from a friendly monster.", { tags: ["animal"] }),
@@ -106,8 +106,8 @@ const FARM: ItemDef[] = [
   item("growthElixir", "Growth Elixir", "farm", 80, c(23), "Alchemical fertilizer: crops grow an extra day more often.", {
     use: { fertilizer: 2 }
   }),
-  item("dawnCharm", "Dawn Charm", "special", 500, a(31), "A sun pendant. Give it to someone at 8 hearts to confess.", { buy: 1000 }),
-  item("eternalRing", "Eternal Ring", "special", 2500, a(32), "A sunstone ring. Give it to your sweetheart at 10 hearts to propose.", {}),
+  item("dawnCharm", "Star Charm", "special", 500, a(31), "A little star charm on a bracelet. Some things are worth trying twice. Give it to someone at 8 hearts to confess.", { buy: 1000 }),
+  item("eternalRing", "Eternal Ring", "special", 2500, a(32), "A northern silver ring set with a star-stone. Give it to your sweetheart at 10 hearts to propose.", {}),
   item("tamingBrush", "Taming Brush", "special", 100, a(33), "Keeps befriended monsters happy. Raises Befriend chance by 10% when carried.", {
     buy: 400
   }),
@@ -129,7 +129,7 @@ const MATERIALS: ItemDef[] = [
   item("iceCrystal", "Ice Crystal", "ore", 90, b(10), "Never melts.", { tags: ["crystal"] }),
   item("windCrystal", "Wind Crystal", "ore", 90, b(11), "Hums in a breeze.", { tags: ["crystal"] }),
   item("earthCrystal", "Earth Crystal", "ore", 90, b(12), "Heavy and steady.", { tags: ["crystal"] }),
-  item("lightCrystal", "Light Crystal", "ore", 150, b(13), "Glows like the dawn.", { tags: ["crystal"] }),
+  item("lightCrystal", "Light Crystal", "ore", 150, b(13), "Glows like starlight on snow.", { tags: ["crystal"] }),
   item("darkCrystal", "Dark Crystal", "ore", 150, b(14), "Swallows light.", { tags: ["crystal"] }),
   item("ironIngot", "Iron Ingot", "material", 110, b(15), "Forged iron.", { tags: ["ingot"] }),
   item("silverIngot", "Silver Ingot", "material", 210, b(16), "Forged silver.", { tags: ["ingot"] }),
@@ -137,11 +137,11 @@ const MATERIALS: ItemDef[] = [
   item("goblinCloth", "Goblin Cloth", "drop", 12, b(18), "A torn rag. Still cloth.", { tags: ["monster", "cloth"] }),
   item("wolfFang", "Wolf Fang", "drop", 30, b(19), "Sharp and sturdy.", { tags: ["monster"] }),
   item("beastPelt", "Beast Pelt", "drop", 45, b(20), "Thick fur from a forest beast.", { tags: ["monster"] }),
-  item("oldBone", "Old Bone", "drop", 20, b(21), "From the catacombs. Try not to think about it.", { tags: ["monster"] }),
+  item("oldBone", "Old Bone", "drop", 20, b(21), "From the temple ruins. Try not to think about it.", { tags: ["monster"] }),
   item("slimeJelly", "Slime Jelly", "drop", 25, b(22), "Wobbly and oddly useful in alchemy.", { tags: ["monster"] }),
   item("batWing", "Bat Wing", "drop", 35, b(23), "Leathery wing.", { tags: ["monster"] }),
   item("rustyBlade", "Rusty Blade", "drop", 40, b(24), "Can be re-forged.", { tags: ["monster", "metal"] }),
-  item("minotaurHorn", "Minotaur Horn", "drop", 400, b(25), "Trophy of the Labyrinth Lord.", { tags: ["monster", "trophy"] }),
+  item("minotaurHorn", "Chimera Horn", "drop", 400, b(25), "Trophy of the Temple Chimera.", { tags: ["monster", "trophy"] }),
   item("lizardScale", "Lizard Scale", "drop", 60, b(26), "Tough, water-resistant scale.", { tags: ["monster"] }),
   item("venomSac", "Venom Sac", "drop", 70, b(27), "Handle with care.", { tags: ["monster"] }),
   item("dragonScale", "Dragon Scale", "drop", 600, b(28), "Harder than steel.", { tags: ["monster", "trophy"] }),
@@ -211,21 +211,22 @@ const TIERS: Tier[] = [
   { key: "iron", label: "Iron", mult: 2, price: 250 },
   { key: "silver", label: "Silver", mult: 3.2, price: 700 },
   { key: "mythril", label: "Mythril", mult: 4.6, price: 1600 },
-  { key: "dawn", label: "Dawnsteel", mult: 6.2, price: 3500 }
+  { key: "dawn", label: "Starsteel", mult: 6.2, price: 3500 }
 ];
 
+/** Silver tier and up carry the line's passive (data/passives.ts). */
 const WEAPON_LINES = [
-  { type: "sword", icon: c(0), names: ["Bronze Sword", "Iron Sword", "Silver Sword", "Mythril Sword", "Dawn Blade"], stat: "atk", base: 4 },
-  { type: "spear", icon: c(1), names: ["Knight's Spear", "Iron Spear", "Silver Lance", "Mythril Lance", "Dawn Lance"], stat: "atk", base: 5 },
-  { type: "hammer", icon: c(2), names: ["Smith's Hammer", "Iron Maul", "Silver Maul", "Mythril Maul", "Dawn Crusher"], stat: "atk", base: 6 },
-  { type: "bow", icon: c(3), names: ["Hunting Bow", "Composite Bow", "Silver Bow", "Mythril Bow", "Dawn Bow"], stat: "atk", base: 4 },
-  { type: "staff", icon: c(4), names: ["Oak Staff", "Crystal Staff", "Silver Staff", "Mythril Staff", "Sunbeam Staff"], stat: "mag", base: 4 }
+  { type: "sword", icon: c(0), names: ["Bronze Sword", "Iron Sword", "Silver Sword", "Mythril Sword", "Starsteel Blade"], stat: "atk", base: 4, passive: "keenEdge", perk: "Crit +5%" },
+  { type: "spear", icon: c(1), names: ["Knight's Spear", "Iron Spear", "Silver Lance", "Mythril Lance", "Starsteel Glaive"], stat: "atk", base: 5, passive: "longReach", perk: "Strikes first when attacked in melee" },
+  { type: "hammer", icon: c(2), names: ["Smith's Hammer", "Iron Maul", "Silver Maul", "Mythril Maul", "Starsteel Crusher"], stat: "atk", base: 6, passive: "crushing", perk: "Hits may stun (10%)" },
+  { type: "bow", icon: c(3), names: ["Hunting Bow", "Composite Bow", "Silver Bow", "Mythril Bow", "Starsteel Crossbow"], stat: "atk", base: 4, passive: "longshot", perk: "Range +1" },
+  { type: "staff", icon: c(4), names: ["Oak Staff", "Crystal Staff", "Silver Staff", "Mythril Staff", "Sunbeam Staff"], stat: "mag", base: 4, passive: "focus", perk: "Skills cost 10% less MP" }
 ] as const;
 
 const ARMOR_LINES = [
-  { type: "light", icon: c(6), names: ["Leather Vest", "Studded Vest", "Silver Mail", "Mythril Vest", "Dawn Coat"], def: 2, res: 1, spd: 0 },
-  { type: "heavy", icon: c(7), names: ["Bronze Plate", "Iron Plate", "Silver Plate", "Mythril Plate", "Dawn Plate"], def: 4, res: 1, spd: -1 },
-  { type: "robe", icon: c(8), names: ["Linen Robe", "Mage Robe", "Silver Robe", "Mythril Robe", "Dawn Robe"], def: 1, res: 3, spd: 0 }
+  { type: "light", icon: c(6), names: ["Leather Vest", "Studded Vest", "Silver Mail", "Mythril Vest", "Starsteel Coat"], def: 2, res: 1, spd: 0, passive: "lightFoot", perk: "5% dodge" },
+  { type: "heavy", icon: c(7), names: ["Bronze Plate", "Iron Plate", "Silver Plate", "Mythril Plate", "Starsteel Plate"], def: 4, res: 1, spd: -1, passive: "bulwark", perk: "Starts battles shielded (8% HP)" },
+  { type: "robe", icon: c(8), names: ["Linen Robe", "Mage Robe", "Silver Robe", "Mythril Robe", "Starweave Robe"], def: 1, res: 3, spd: 0, passive: "manaWeave", perk: "+3% MP each turn" }
 ] as const;
 
 export function weaponId(type: string, tier: number): string {
@@ -240,11 +241,13 @@ const GEAR: ItemDef[] = [
     TIERS.map((tier, index) => {
       const power = Math.round(line.base * tier.mult);
       const stats = line.stat === "mag" ? { mag: power, atk: Math.round(power / 3) } : { atk: power };
-      return gear(weaponId(line.type, index), line.names[index]!, tier.price, line.icon, `${tier.label} ${line.type}. ${line.stat === "mag" ? "MAG" : "ATK"} +${power}.`, {
+      const perk = index >= 2 ? ` ${line.perk}.` : "";
+      return gear(weaponId(line.type, index), line.names[index]!, tier.price, line.icon, `${tier.label} ${line.type}. ${line.stat === "mag" ? "MAG" : "ATK"} +${power}.${perk}`, {
         slot: "weapon",
         weaponType: line.type,
         stats,
-        ...(index === 4 ? { element: "light" as const } : {})
+        ...(index === 4 ? { element: "light" as const } : {}),
+        ...(index >= 2 ? { passive: line.passive } : {})
       });
     })
   ),
@@ -255,7 +258,7 @@ const GEAR: ItemDef[] = [
         line.names[index]!,
         Math.round(tier.price * 0.9),
         line.icon,
-        `${tier.label} ${line.type} armor.`,
+        `${tier.label} ${line.type} armor.${index >= 2 ? ` ${line.perk}.` : ""}`,
         {
           slot: "armor",
           armorType: line.type,
@@ -264,7 +267,8 @@ const GEAR: ItemDef[] = [
             res: Math.round(line.res * tier.mult),
             maxHp: Math.round(6 * tier.mult),
             ...(line.spd ? { spd: line.spd } : {})
-          }
+          },
+          ...(index >= 2 ? { passive: line.passive } : {})
         }
       )
     )
@@ -275,7 +279,16 @@ const GEAR: ItemDef[] = [
   gear("lifeAmulet", "Life Amulet", 450, c(10), "Max HP +30.", { slot: "accessory", stats: { maxHp: 30 } }),
   gear("swiftCharm", "Swift Charm", 500, c(11), "SPD +3.", { slot: "accessory", stats: { spd: 3 } }),
   gear("luckyCharm", "Lucky Charm", 300, c(11), "LUK +6.", { slot: "accessory", stats: { luk: 6 } }),
-  gear("spellbook", "Grimoire of Dawn", 900, c(5), "MAG +8, RES +4.", { slot: "accessory", stats: { mag: 8, res: 4 } })
+  gear("spellbook", "Grimoire of Stars", 900, c(5), "MAG +8, RES +4.", { slot: "accessory", stats: { mag: 8, res: 4 } }),
+  // Battle-passive accessories (forged; data/recipes.ts).
+  gear("vampireFang", "Vampire Fang", 700, c(9), "ATK +2. Heals 12% of the damage dealt.", { slot: "accessory", stats: { atk: 2 }, passive: "vampireFang" }),
+  gear("thornCharm", "Thorn Charm", 600, c(11), "DEF +2. Returns 20% of melee damage taken.", { slot: "accessory", stats: { def: 2 }, passive: "thornGuard" }),
+  gear("swiftBoots", "Swift Boots", 800, c(11), "SPD +1. Move +1, ignores terrain move costs.", { slot: "accessory", stats: { spd: 1 }, passive: "swiftBoots" }),
+  gear("emberHeart", "Ember Heart", 750, c(10), "MAG +2. Fire damage +15%; hits may burn.", { slot: "accessory", stats: { mag: 2 }, passive: "emberHeart" }),
+  gear("frostHeart", "Frost Heart", 750, c(10), "RES +2. Ice damage +15%; can't be frozen.", { slot: "accessory", stats: { res: 2 }, passive: "frostHeart" }),
+  gear("guardianSeal", "Guardian Seal", 900, c(9), "Max HP +10. Starts battles with a 15% shield.", { slot: "accessory", stats: { maxHp: 10 }, passive: "guardianSeal" }),
+  gear("phoenixFeather", "Phoenix Feather", 1500, c(11), "Once per battle, survive a lethal blow with 1 HP.", { slot: "accessory", stats: {}, passive: "phoenixFeather" }),
+  gear("jestersBell", "Jester's Bell", 2500, c(11), "LUK +3. +1 AP every turn.", { slot: "accessory", stats: { luk: 3 }, passive: "jestersBell" })
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(

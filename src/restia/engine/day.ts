@@ -12,7 +12,7 @@ import { spawnFieldMonsters, spawnForage } from "./world";
 import { spouse } from "./social";
 
 export function sleep(state: RestiaState, ctx: Ctx): void {
-  if (state.player.inside !== "farmhouse") fail("Sleep in your bed at the farmhouse.");
+  if (state.player.inside !== "farmhouse") fail("Sleep in your bunk at Garr's hut.");
   endDay(state, ctx, false, null);
 }
 

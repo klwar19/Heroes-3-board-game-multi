@@ -2,291 +2,277 @@ import type { NpcId, SceneDef } from "../engine/types";
 
 /**
  * Heart events (played when talking to someone whose hearts reached the
- * threshold), confessions (Dawn Charm) and proposals (Eternal Ring).
+ * threshold), confessions (Star Charm) and proposals (Eternal Ring).
+ * Family (Garr, Bowy, Mitia) get friendship events instead of romance.
  */
 export type HeartEvent = { npc: NpcId; hearts: number; scene: string; needsDating?: boolean };
 
+const ROMANCE: NpcId[] = ["lysa", "hilda", "senna", "mara", "frida"];
+const FAMILY: NpcId[] = ["garr", "bowy", "mitia"];
+
 export const HEART_EVENTS: HeartEvent[] = [
-  ...(["hikari", "guildGirl", "mina", "tove", "seren", "nell"] as NpcId[]).flatMap((npc) => [
+  ...ROMANCE.flatMap((npc) => [
     { npc, hearts: 2, scene: `heart-${npc}-2` },
     { npc, hearts: 4, scene: `heart-${npc}-4` },
     { npc, hearts: 6, scene: `heart-${npc}-6` },
     { npc, hearts: 8, scene: `heart-${npc}-8` },
     { npc, hearts: 10, scene: `heart-${npc}-10`, needsDating: true }
+  ]),
+  ...FAMILY.flatMap((npc) => [
+    { npc, hearts: 4, scene: `heart-${npc}-4` },
+    { npc, hearts: 7, scene: `heart-${npc}-7` }
   ])
 ];
 
 const up = (npc: NpcId, n: number) => [{ kind: "points" as const, npc, n }];
 
 export const HEART_SCENES: SceneDef[] = [
-  // ----- Hikari -----
-  { id: "heart-hikari-2", bg: "shrine", once: true, lines: [
-    { who: "hikari", show: ["hikari"], text: "Bin! Quick question! Hypothetically, if a goddess ate the offering bread herself, would that count as fraud?" },
-    { who: "bin", show: ["hikari"], text: "How much bread are we talking about?" },
-    { who: "hikari", show: ["hikari"], text: "...All of it. It was so warm! Nobody's left me warm bread in two hundred years!" },
+  // ----- Lysa (Guild receptionist) -----
+  { id: "heart-lysa-2", bg: "guild", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "Don't look! I'm eating lunch behind the counter again. Corvin says crumbs on the forms are 'unprofessional'. Corvin has never been hungry in his life." },
     { choice: [
-      { text: "\"I'll bake you some. No offering required.\"", effects: up("hikari", 40) },
-      { text: "\"Divine embezzlement. Scandalous.\"", effects: up("hikari", 15) }
+      { text: "\"Take a real break. I'll guard the stamps.\"", effects: up("lysa", 40) },
+      { text: "\"Is that a sandwich or a stack of forms?\"", effects: up("lysa", 20) }
     ] },
-    { who: "hikari", show: ["hikari"], text: "You're a strange hero, you know that? A good strange." }
+    { who: "lysa", show: ["lysa"], text: "Careful, Bin. Be that sweet twice and I'll have to flirt with you on purpose instead of by accident." }
   ] },
-  { id: "heart-hikari-4", bg: "dawnGate", once: true, lines: [
-    { who: "narrator", text: "Hikari is sitting on the Dawn Gate's broken step before sunrise, knees pulled to her chest." },
-    { who: "hikari", show: ["hikari"], text: "Every morning I paint the dawn. Nobody used to watch. I kept doing it anyway. Isn't that silly?" },
+  { id: "heart-lysa-4", bg: "guild", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "Want to know a secret? I remember every adventurer's name. Every single one who ever walked through that door." },
+    { who: "lysa", show: ["lysa"], text: "It's so that when one of them doesn't come back... somebody still says their name out loud. Somebody loud. That's me." },
     { choice: [
-      { text: "\"I'll watch it with you.\"", effects: up("hikari", 40) },
-      { text: "\"It's not silly. It's your job.\"", effects: up("hikari", 20) }
-    ] },
-    { who: "narrator", text: "The sky turns gold. For once, the goddess is not alone to see it." }
-  ] },
-  { id: "heart-hikari-6", bg: "shrine", once: true, lines: [
-    { who: "hikari", show: ["hikari"], text: "The other gods sent a letter. They said I can come back to heaven once my investiture is restored. They said it like a reward." },
-    { who: "hikari", show: ["hikari"], text: "But up there nobody laughs when the bread's too warm. Nobody tracks mud onto my altar. Nobody... is you." },
-    { choice: [
-      { text: "\"Then stay.\"", effects: up("hikari", 50) },
-      { text: "\"Heaven sounds nice, though.\"", effects: up("hikari", -10) }
+      { text: "\"Then say mine a lot. I plan on coming back.\"", effects: up("lysa", 45) },
+      { text: "\"That's a heavy thing to carry behind a smile.\"", effects: up("lysa", 35) }
     ] }
   ] },
-  { id: "heart-hikari-8", bg: "dawnGate", once: true, lines: [
-    { who: "hikari", show: ["hikari"], text: "Bin, humans give each other something when they want to be more than friends, right? A charm, a promise?" },
-    { who: "hikari", show: ["hikari"], text: "I'm not asking! I'm just a goddess doing research! Very academic! ...Pip sells Dawn Charms, by the way. No reason." },
-    { effects: up("hikari", 20) }
+  { id: "heart-lysa-6", bg: "village", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "My day off, and my feet walked me to the square without asking. I think they were hoping to run into someone." },
+    { who: "lysa", show: ["lysa"], text: "When you were 'dead', I kept your card in the top drawer. Not the dead drawer. I told Corvin it was misfiled. For two months." },
+    { choice: [
+      { text: "\"Walk with me. The Frostwood is pretty when nothing's biting.\"", effects: up("lysa", 50) },
+      { text: "\"Thank you for not giving up on me.\"", effects: up("lysa", 45) }
+    ] }
   ] },
-  { id: "heart-hikari-10", bg: "dawnGate", once: true, lines: [
-    { who: "hikari", show: ["hikari"], text: "I made today's dawn just for you. See the pink at the edges? That's my heart. Very unprofessional of me." },
-    { who: "bin", show: ["hikari"], text: "It's the best one yet." },
-    { who: "hikari", show: ["hikari"], text: "If you ever find a ring made of sunstone... I would say yes before you finished asking." },
-    { effects: up("hikari", 30) }
+  { id: "heart-lysa-8", bg: "guild", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "Official announcement from the front desk: the receptionist flirts with everyone equally. That is guild policy." },
+    { who: "lysa", show: ["lysa"], text: "Unofficial announcement: she's been breaking guild policy for one specific adventurer. If he ever gave her a Star Charm, she would NOT file a complaint." },
+    { effects: up("lysa", 20) }
   ] },
-  { id: "confess-hikari", bg: "shrine", once: true, lines: [
-    { who: "hikari", show: ["hikari"], text: "A Dawn Charm... for me? Bin, you know what this means here, right? You're not just being nice?" },
-    { who: "bin", show: ["hikari"], text: "I'm not just being nice." },
-    { who: "hikari", show: ["hikari"], text: "Then... yes! Yes yes yes! The Goddess of Dawn is officially taken! I'm going to make the sunrise heart-shaped tomorrow!" }
+  { id: "heart-lysa-10", bg: "guild", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "I made you a new guild card. 'Bin. Status: alive. Also: mine.' It's not an official field. I added it." },
+    { who: "lysa", show: ["lysa"], text: "If you ever wanted to make it official-official... I hear northern silver rings are very durable." },
+    { effects: up("lysa", 30) }
   ] },
-  { id: "propose-hikari", bg: "dawnGate", once: true, lines: [
-    { who: "hikari", show: ["hikari"], text: "An Eternal Ring. You really mean forever. A goddess's forever is very long, you know." },
-    { who: "bin", show: ["hikari"], text: "Then I'd better start now." },
-    { who: "hikari", show: ["hikari"], text: "I'll marry you, Bin. I'll move into the farmhouse and bless every sprout. Heaven can keep its rent." }
+  { id: "confess-lysa", bg: "guild", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "A Star Charm? For me? Not for the guild? For LYSA?" },
+    { who: "lysa", show: ["lysa"], text: "Yes! Yes yes yes. Give me one moment, I'm going to hide behind the request board and scream a little." }
+  ] },
+  { id: "propose-lysa", bg: "guild", once: true, lines: [
+    { who: "lysa", show: ["lysa"], text: "An Eternal Ring. Bin, I have never filled in a form this happily in my whole life." },
+    { who: "lysa", show: ["lysa"], text: "Yes. I'll marry you. I'm keeping the front desk, obviously. But now I get to go home with the adventurer who always comes back." }
   ] },
 
-  // ----- Elise (Guild Girl) -----
-  { id: "heart-guildGirl-2", bg: "guild", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "Ah! Don't look! I'm eating lunch at the counter again. Paperwork waits for no one." },
+  // ----- Hilda (Ironhand Forge) -----
+  { id: "heart-hilda-2", bg: "smithy", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "Hold this. No. With both hands. That's a billet, not a baby. ...Fine, hold it like a baby. It's the right grip anyway." },
     { choice: [
-      { text: "\"Take a real break. I'll watch the desk.\"", effects: up("guildGirl", 40) },
-      { text: "\"Is that a sandwich or a stack of forms?\"", effects: up("guildGirl", 20) }
+      { text: "\"Teach me how you hear a blade being born.\"", effects: up("hilda", 40) },
+      { text: "\"Do you ever take a day off?\"", effects: up("hilda", 20) }
     ] },
-    { who: "guildGirl", show: ["guildGirl"], text: "You're sweet. The guild manual doesn't have a section for adventurers being sweet." }
+    { who: "hilda", show: ["hilda"], text: "Hm. Your hands aren't hopeless. Don't let it go to your head." }
   ] },
-  { id: "heart-guildGirl-4", bg: "guild", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "May I show you something? It's my 'Came Home Safe' notebook. Every adventurer who returned, with the date." },
-    { who: "guildGirl", show: ["guildGirl"], text: "There's also a second notebook. For the ones who didn't. I read it sometimes, so I never get careless with a request." },
+  { id: "heart-hilda-4", bg: "smithy", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "You keep looking at the hand. Go on. Ask." },
+    { who: "hilda", show: ["hilda"], text: "Frostbite, twelve winters ago, digging a caravan out of a drift. I forged the replacement myself. Took a year. It's a better hand. It doesn't shake." },
     { choice: [
-      { text: "\"I'll only ever be in the first one.\"", effects: up("guildGirl", 45) },
-      { text: "\"That's a heavy thing to carry alone.\"", effects: up("guildGirl", 35) }
+      { text: "\"It's beautiful work. So is the rest of you.\"", effects: up("hilda", 45) },
+      { text: "\"Does it still hurt in the cold?\"", effects: up("hilda", 40) }
     ] }
   ] },
-  { id: "heart-guildGirl-6", bg: "village", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "My day off, and I walked to the plaza without deciding to. I think my feet were hoping to run into you." },
-    { who: "guildGirl", show: ["guildGirl"], text: "When I was small I wanted to be an adventurer. I'm too clumsy. So I became the person who makes sure adventurers come back." },
+  { id: "heart-hilda-6", bg: "village", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "I've been making something after hours. No. You can't see it. It isn't done." },
+    { who: "hilda", show: ["hilda"], text: "People think a smith is patient because the iron is slow. It's the other way round. The iron makes you patient. Some things need heat and time." },
     { choice: [
-      { text: "\"Want to come on a safe little adventure with me? The forest is lovely today.\"", effects: up("guildGirl", 50) },
-      { text: "\"You're the reason I come back.\"", effects: up("guildGirl", 45) }
+      { text: "\"I can wait. I'm good at waiting for things worth it.\"", effects: up("hilda", 50) },
+      { text: "\"Is it a sword? It's a sword. It's definitely a sword.\"", effects: up("hilda", 30) }
     ] }
   ] },
-  { id: "heart-guildGirl-8", bg: "guild", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "Official announcement from the Dawnhollow branch: the receptionist is... very fond of a certain Rank adventurer." },
-    { who: "guildGirl", show: ["guildGirl"], text: "Unofficial announcement: if he ever gave her a Dawn Charm, she would not file a complaint." },
-    { effects: up("guildGirl", 20) }
+  { id: "heart-hilda-8", bg: "smithy", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "Your boots. I can tell them apart from anyone's in town now. I listen for them. That's a problem." },
+    { who: "hilda", show: ["hilda"], text: "If you wanted to make it less of a problem, a Star Charm would do it. Just so you know. Don't make a speech." },
+    { effects: up("hilda", 20) }
   ] },
-  { id: "heart-guildGirl-10", bg: "guild", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "I stamped a new card today. 'Bin. Status: my person.' It isn't an official field. I added it." },
-    { who: "guildGirl", show: ["guildGirl"], text: "If you ever wanted to make it official-official... I hear sunstone rings are very durable." },
-    { effects: up("guildGirl", 30) }
+  { id: "heart-hilda-10", bg: "smithy", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "It's done. The thing I was making. Two rings, cold-forged, star-stone set. I made them in case. I don't do things in case." },
+    { who: "hilda", show: ["hilda"], text: "I'm not going to ask. The forge doesn't ask. But I'll answer, if you do." },
+    { effects: up("hilda", 30) }
   ] },
-  { id: "confess-guildGirl", bg: "guild", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "A Dawn Charm? For... me? Not for the guild? For Elise?" },
-    { who: "guildGirl", show: ["guildGirl"], text: "Yes. Yes! Please give me a moment, I need to hide behind the request board and scream a little." }
+  { id: "confess-hilda", bg: "smithy", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "...A Star Charm. Cheap tin, badly soldered." },
+    { who: "hilda", show: ["hilda"], text: "I'll wear it every day. Yes. Now get out before I burn something, my hands are — my hand is shaking. The real one." }
   ] },
-  { id: "propose-guildGirl", bg: "guild", once: true, lines: [
-    { who: "guildGirl", show: ["guildGirl"], text: "This is... an Eternal Ring. Bin, I have never filled in a form this happily in my life." },
-    { who: "guildGirl", show: ["guildGirl"], text: "Yes. I'll marry you. I'll still work at the guild, of course. But now I get to come home to you." }
+  { id: "propose-hilda", bg: "smithy", once: true, lines: [
+    { who: "hilda", show: ["hilda"], text: "You asked. Good. Then my answer is yes, and it was always going to be yes, and I'm going to hit this anvil very hard now so nobody hears me cry." }
   ] },
 
-  // ----- Mina -----
-  { id: "heart-mina-2", bg: "atelier", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "Could you hold this flask? Don't shake it. Or breathe on it. Or think loud thoughts near it." },
-    { who: "narrator", text: "The flask glows, sparkles, and produces a small, perfect flower." },
-    { who: "mina", show: ["mina"], text: "It worked! It never works when someone's watching! You must be good luck." },
+  // ----- Senna (the Warring Princess) -----
+  { id: "heart-senna-2", bg: "village", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "Three hundred drills done. Spar with me. You won't win. That is not the point." },
     { choice: [
-      { text: "\"Or you're just good at this.\"", effects: up("mina", 40) },
-      { text: "\"I'll be your lucky charm anytime.\"", effects: up("mina", 35) }
+      { text: "\"Then what's the point?\"", effects: up("senna", 30) },
+      { text: "\"Only if you teach me the spear spin after.\"", effects: up("senna", 40) }
+    ] },
+    { who: "senna", show: ["senna"], text: "The point is that I have not had anyone worth sparring with in a year. You flinch well. It is almost charming." }
+  ] },
+  { id: "heart-senna-4", bg: "inn", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "I have never lost a duel. I have never had a reason to win one, either. I fight because it is the only time my head goes quiet." },
+    { choice: [
+      { text: "\"I tell jokes for the same reason.\"", effects: up("senna", 50) },
+      { text: "\"What happens when it gets loud?\"", effects: up("senna", 40) }
+    ] },
+    { who: "senna", show: ["senna"], text: "...Then I look for another war. Or, lately, for you at breakfast. That is new. I have not decided if I like it." }
+  ] },
+  { id: "heart-senna-6", bg: "forest", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "You fight like someone who has read every manual and trusts none of them. It is admirable. And very annoying." },
+    { who: "senna", show: ["senna"], text: "My father's court wanted me to be a princess who sits. You are the first person who asked what I wanted instead." },
+    { choice: [
+      { text: "\"So what do you want?\"", effects: up("senna", 50) },
+      { text: "\"You'd be a terrible sitting princess.\"", effects: up("senna", 45) }
     ] }
   ] },
-  { id: "heart-mina-4", bg: "forest", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "My teacher called me 'the girl who explodes things'. I left before she could say it again." },
-    { who: "mina", show: ["mina"], text: "Here nobody calls me that. Well, Tove does, but she means it as a compliment." },
-    { choice: [
-      { text: "\"Every great alchemist blew up a few ateliers.\"", effects: up("mina", 40) },
-      { text: "\"You're the girl who makes flowers out of glass.\"", effects: up("mina", 50) }
-    ] }
+  { id: "heart-senna-8", bg: "inn", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "I have fought under many banners. I would carry only one into every war left in me." },
+    { who: "senna", show: ["senna"], text: "In the south, one gives a token before an oath. I am told that here, it is a Star Charm." },
+    { effects: up("senna", 20) }
   ] },
-  { id: "heart-mina-6", bg: "atelier", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "I tried to brew a potion of courage. For me. So I could say something to someone." },
-    { who: "mina", show: ["mina"], text: "It turned purple and smelled like socks. So I'll just... say it. I really like spending time with you, Bin." },
-    { choice: [
-      { text: "\"I really like it too.\"", effects: up("mina", 50) },
-      { text: "\"Purple sock potion. Very brave.\"", effects: up("mina", 15) }
-    ] }
+  { id: "heart-senna-10", bg: "havenGate", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "I wrote to my father. I told him I have found a battlefield I intend to hold for the rest of my life. He will not understand. He never did." },
+    { who: "senna", show: ["senna"], text: "An Eternal Ring, if you would. I have never wanted to lose a duel before." },
+    { effects: up("senna", 30) }
   ] },
-  { id: "heart-mina-8", bg: "atelier", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "In elven tradition, if someone gives you a sun charm, you're... promised. Not married! Promised. Courting." },
-    { who: "mina", show: ["mina"], text: "I'm just mentioning it. For cultural education. Pip has some, I think. Not that I checked. Twice." },
-    { effects: up("mina", 20) }
+  { id: "confess-senna", bg: "inn", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "A Star Charm. Then this is my oath: my spear, my back, my breakfasts. Yours." }
   ] },
-  { id: "heart-mina-10", bg: "atelier", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "I finally wrote the last chapter of my recipe book. It's not a recipe. It's a list of every day I spent with you." },
-    { who: "mina", show: ["mina"], text: "I'd like there to be a second volume. And a third. Maybe with a ring on the cover." },
-    { effects: up("mina", 30) }
-  ] },
-  { id: "confess-mina", bg: "atelier", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "For me? A Dawn Charm? Oh no, I'm going to cry into the cauldron again." },
-    { who: "mina", show: ["mina"], text: "Yes. Yes, Bin. I'd love to court you. Properly. With picnics. And no explosions. Mostly." }
-  ] },
-  { id: "propose-mina", bg: "atelier", once: true, lines: [
-    { who: "mina", show: ["mina"], text: "An Eternal Ring... the sunstone is perfect. No bubbles, no cracks. Like it was meant to be." },
-    { who: "mina", show: ["mina"], text: "Yes. I'll marry you. Our house is going to smell like herbs forever, I hope that's okay." }
+  { id: "propose-senna", bg: "havenGate", once: true, lines: [
+    { who: "senna", show: ["senna"], text: "Yes. I accept your terms. Let every war that comes for this town come through both of us." }
   ] },
 
-  // ----- Tove -----
-  { id: "heart-tove-2", bg: "smithy", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "Grab the tongs. No, the OTHER tongs. Now hold that steady while I hit it. Trust me!" },
-    { who: "narrator", text: "Sparks fly. The blade rings true. Tove grins so wide her freckles rearrange." },
+  // ----- Mara (D-rank diviner) -----
+  { id: "heart-mara-2", bg: "guild", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "Pick a card. Any card. No, not that one. That one's bent. Pick a card that isn't bent." },
     { choice: [
-      { text: "\"That was amazing.\"", effects: up("tove", 40) },
-      { text: "\"I think my eyebrows are gone.\"", effects: up("tove", 30) }
-    ] }
-  ] },
-  { id: "heart-tove-4", bg: "smithy", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "My clan said a dwarf girl should forge jewellery, not war-hammers. So I forged a war-hammer out of jewellery." },
-    { who: "tove", show: ["tove"], text: "Then I left. Best decision I ever made. Worst trip. There were so many hills." },
-    { choice: [
-      { text: "\"Your hammer suits you.\"", effects: up("tove", 45) },
-      { text: "\"Could you forge me some jewellery? Sometime?\"", effects: up("tove", 35) }
-    ] }
-  ] },
-  { id: "heart-tove-6", bg: "village", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "Oi. Hold still. I made you something. It's a whetstone shaped like a turnip. Because you're a farmer. And I'm funny." },
-    { choice: [
-      { text: "\"I'll treasure it.\"", effects: up("tove", 50) },
-      { text: "\"It's... very turnip-shaped.\"", effects: up("tove", 25) }
+      { text: "Pick the bent one anyway", effects: up("mara", 40) },
+      { text: "Pick the one she's clearly hoping for", effects: up("mara", 25) }
     ] },
-    { who: "tove", show: ["tove"], text: "Good. Because I'm not good at saying stuff. So I make stuff. Figure out what it means yourself." }
+    { who: "mara", show: ["mara"], text: "The Fool. Upside down. Laughing. ...I keep drawing it when you're around. It's either a sign or my shuffling is terrible." }
   ] },
-  { id: "heart-tove-8", bg: "smithy", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "Humans give sun charms when they're sweet on someone, yeah? Dwarves give anvils. Charms are lighter, I'll give you that." },
-    { who: "tove", show: ["tove"], text: "I'm just saying if YOU were to give ME one, I wouldn't hit you. Much. Lovingly." },
-    { effects: up("tove", 20) }
+  { id: "heart-mara-4", bg: "forest", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "I've never had a reading come true on purpose. Only by accident. The guild thinks I'm a diviner. I'm a very lucky guesser." },
+    { choice: [
+      { text: "\"Lucky guessing is a skill. I've built a life on it.\"", effects: up("mara", 50) },
+      { text: "\"Maybe the cards just need you to believe them.\"", effects: up("mara", 40) }
+    ] },
+    { who: "mara", show: ["mara"], text: "Don't be nice to me, I don't know what to do with my face when people are nice to me." }
   ] },
-  { id: "heart-tove-10", bg: "smithy", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "Remember that secret thing I was making? It's a ring mould. Sunstone setting. Took me forever." },
-    { who: "tove", show: ["tove"], text: "It's for you to fill. With a ring. For me. Stop grinning, I'm going to hit you. Lovingly!" },
-    { effects: up("tove", 30) }
+  { id: "heart-mara-6", bg: "inn", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "I did a reading about you last night. A real one. It said 'Haven is not the first world he has walked away from'. Then my candle went out." },
+    { who: "mara", show: ["mara"], text: "I'm not asking what it means. I'm asking if you're okay. That's all." },
+    { choice: [
+      { text: "\"I'm okay. Better, when you're around.\"", effects: up("mara", 50) },
+      { text: "\"...Ask me again when I have an answer.\"", effects: up("mara", 45) }
+    ] }
   ] },
-  { id: "confess-tove", bg: "smithy", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "You're giving ME a Dawn Charm. In my own smithy. In front of my anvil." },
-    { who: "tove", show: ["tove"], text: "...YES. Obviously yes! Come here, you absolute lump of a human!" }
+  { id: "heart-mara-8", bg: "guild", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "Today's reading: 'a star, given freely, changes the outcome'. I didn't make that up. Okay, I made the wording prettier." },
+    { who: "mara", show: ["mara"], text: "What I'm saying is: Tilde sells Star Charms. For no reason. I'm just reading the cards." },
+    { effects: up("mara", 20) }
   ] },
-  { id: "propose-tove", bg: "smithy", once: true, lines: [
-    { who: "tove", show: ["tove"], text: "It fits the mould perfectly. You made it fit. You clever farmer." },
-    { who: "tove", show: ["tove"], text: "Yes. I'll marry you. My clan can come to the wedding and cry about it. Loudly. Happily." }
+  { id: "heart-mara-10", bg: "forest", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "For the first time ever, I'm not going to read the cards. I don't want to know how this ends. I want to find out." },
+    { effects: up("mara", 30) }
+  ] },
+  { id: "confess-mara", bg: "guild", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "For the record: I did NOT predict this. Which is how I know it's real. ...Yes. Obviously yes." }
+  ] },
+  { id: "propose-mara", bg: "forest", once: true, lines: [
+    { who: "mara", show: ["mara"], text: "A ring. I drew the Fool again this morning. Right side up this time. Yes, Bin. Every reading from now on says yes." }
   ] },
 
-  // ----- Seren -----
-  { id: "heart-seren-2", bg: "village", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "You watch my morning drills. You may join, if you wish. Your stance is... creative." },
+  // ----- Frida (keeper of the Weaver's shrine) -----
+  { id: "heart-frida-2", bg: "village", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "Would you sweep with me? It doesn't take long. The snow always wins, but it's nice to lose together." },
     { choice: [
-      { text: "\"Teach me.\"", effects: up("seren", 40) },
-      { text: "\"Creative is good, right?\"", effects: up("seren", 20) }
+      { text: "Take the other broom", effects: up("frida", 40) },
+      { text: "\"The snow is cheating. I've seen it.\"", effects: up("frida", 30) }
     ] },
-    { who: "seren", show: ["seren"], text: "Feet apart. Shoulders loose. Breathe. ...Good. You learn quickly." }
+    { who: "frida", show: ["frida"], text: "You made me laugh at the shrine steps. The Weaver likes that more than any prayer." }
   ] },
-  { id: "heart-seren-4", bg: "inn", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "I was ordered to burn a village that could not pay its tithe. I refused. I was stripped of my rank the same night." },
-    { who: "seren", show: ["seren"], text: "I still carry the spear. The oath was never to the order. It was to people like the ones in Dawnhollow." },
+  { id: "heart-frida-4", bg: "shrine", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "When I was small, I heard a girl laughing inside the empty shrine. No one was there. I've waited to hear it again ever since." },
+    { who: "peri", show: ["frida", "peri"], text: "(...Oh. That was me. That was a very long time ago. Don't tell her. Actually — don't NOT tell her. Later.)" },
     { choice: [
-      { text: "\"You did the right thing.\"", effects: up("seren", 45) },
-      { text: "\"Dawnhollow is lucky to have you.\"", effects: up("seren", 45) }
+      { text: "\"Maybe she's still listening.\"", effects: up("frida", 45) },
+      { text: "\"I think she'd like you.\"", effects: up("frida", 40) }
     ] }
   ] },
-  { id: "heart-seren-6", bg: "inn", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "The innkeeper brought me pie. I ate it. Then I ate a second pie. I am telling you so that you know I am capable of weakness." },
+  { id: "heart-frida-6", bg: "shrine", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "You make people laugh even when you're hurting. I watch you do it at the Mug. I don't think anyone else notices." },
     { choice: [
-      { text: "\"Next pie's on me.\"", effects: up("seren", 50) },
-      { text: "\"Your secret is safe.\"", effects: up("seren", 35) }
+      { text: "\"You noticed.\"", effects: up("frida", 50) },
+      { text: "\"Occupational hazard.\"", effects: up("frida", 40) }
     ] },
-    { who: "seren", show: ["seren"], text: "...Thank you. I find I can be less of a knight around you. It is a strange relief." }
+    { who: "frida", show: ["frida"], text: "You don't have to be funny at the shrine. The Weaver can do the jokes. You can just be here." }
   ] },
-  { id: "heart-seren-8", bg: "village", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "In Erathia a knight may accept a token from one she holds dear. A charm, in the colours of dawn, is customary." },
-    { who: "seren", show: ["seren"], text: "I tell you this as a matter of cultural record. Only that. Please stop smiling." },
-    { effects: up("seren", 20) }
+  { id: "heart-frida-8", bg: "village", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "I tied a little silver bell to my broom. So I'd hear it when I'm happy. It's been ringing a lot, lately. Mostly when you visit." },
+    { who: "frida", show: ["frida"], text: "They say a Star Charm left on the shrine steps is a question. I'd answer it." },
+    { effects: up("frida", 20) }
   ] },
-  { id: "heart-seren-10", bg: "dawnGate", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "I have knelt before kings. I have never wished to kneel before anyone for my own sake. Until now." },
-    { who: "seren", show: ["seren"], text: "If you offered me an oath of forever, sealed with sunstone, I would take it without hesitation." },
-    { effects: up("seren", 30) }
+  { id: "heart-frida-10", bg: "shrine", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "In the old Norheim weddings, the couple asks the Weaver to bless a ring. Then she plays one small trick on them, for luck." },
+    { who: "peri", show: ["frida", "peri"], text: "(I have SO many tricks prepared.)" },
+    { effects: up("frida", 30) }
   ] },
-  { id: "confess-seren", bg: "inn", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "A Dawn Charm. You understand what accepting this means for a knight of Erathia." },
-    { who: "seren", show: ["seren"], text: "I accept. With all my heart. And I would like you to know my face is red because of the fireplace." }
+  { id: "confess-frida", bg: "shrine", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "A Star Charm... on the shrine steps. The bells are ringing on their own again. I think that's a yes from both of us." }
   ] },
-  { id: "propose-seren", bg: "dawnGate", once: true, lines: [
-    { who: "seren", show: ["seren"], text: "An Eternal Ring. Then I swear my last oath. To stand beside you, in the fields and in the Rift, until the final dawn." },
-    { who: "seren", show: ["seren"], text: "Yes, Bin. I will be your wife. ...May we have pie at the wedding?" }
+  { id: "propose-frida", bg: "shrine", once: true, lines: [
+    { who: "frida", show: ["frida"], text: "Yes. Every morning I'll sweep the steps, and every evening I'll come home to you. The snow can keep winning. I already won." }
   ] },
 
-  // ----- Nell -----
-  { id: "heart-nell-2", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "Shh! There's a leprechaun in that bush. If we're quiet we can- and it's gone. Because you stepped on a stick." },
-    { choice: [
-      { text: "\"Teach me to walk like a fox, then.\"", effects: up("nell", 40) },
-      { text: "\"The stick started it.\"", effects: up("nell", 30) }
-    ] },
-    { who: "nell", show: ["nell"], text: "Heh. You're hopeless. Come back tomorrow. Same time." }
+  // ----- Family -----
+  { id: "heart-garr-4", bg: "home", once: true, lines: [
+    { who: "garr", show: ["garr"], text: "Sit. Hold this. Your old bow. I oiled it every week for two months. Told myself it was for the wood." },
+    { who: "bin", show: ["bin", "garr"], face: "sad", text: "...It was for the wood, right?" },
+    { who: "garr", text: "It was for the wood." },
+    { effects: up("garr", 20) }
   ] },
-  { id: "heart-nell-4", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "Foxkin kids get chased out of villages a lot. Crops go missing, people blame the fox. Easy." },
-    { who: "nell", show: ["nell"], text: "So I stay in the woods. Nobody blames a tree for anything." },
-    { choice: [
-      { text: "\"Nobody will blame you in Dawnhollow. I'll make sure.\"", effects: up("nell", 50) },
-      { text: "\"You can steal from MY farm. I'll allow it.\"", effects: up("nell", 40) }
-    ] }
+  { id: "heart-garr-7", bg: "home", once: true, lines: [
+    { who: "garr", show: ["garr"], text: "There are things I haven't told you. About where you went. About someone I met, a long time ago, who wears a black dress and laughs at the wrong moments." },
+    { who: "garr", text: "Not yet. When I tell you, it'll be all of it. You have my word." },
+    { who: "peri", show: ["garr", "peri"], text: "(...He remembers me. Huh. Good man. Keep your word, old wolf. Not too early.)" },
+    { effects: up("garr", 20) }
   ] },
-  { id: "heart-nell-6", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "Okay. Fine. Five minutes of tail petting. Because you've earned it. Don't make it weird." },
-    { who: "narrator", text: "It is extremely fluffy. Nell's ears go pink at the tips." },
-    { choice: [
-      { text: "\"Best five minutes of my life.\"", effects: up("nell", 45) },
-      { text: "\"Can we make it ten?\"", effects: up("nell", 35) }
-    ] }
+  { id: "heart-bowy-4", bg: "forest", once: true, lines: [
+    { who: "bowy", show: ["bowy"], text: "When you were gone, I kept setting up two targets at the range. Habit." },
+    { who: "bin", show: ["bin", "bowy"], face: "happy", text: "You missed me." },
+    { who: "bowy", text: "I missed the second target. Every time. It was embarrassing. Shut up." },
+    { effects: up("bowy", 20) }
   ] },
-  { id: "heart-nell-8", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "So humans do the charm thing, right? When they like someone? Foxes just bring the other fox a dead rabbit." },
-    { who: "nell", show: ["nell"], text: "I'd prefer the charm. For the record. If you were wondering. Which you weren't. Shut up." },
-    { effects: up("nell", 20) }
+  { id: "heart-bowy-7", bg: "home", once: true, lines: [
+    { who: "bowy", show: ["bowy"], text: "Whatever took you. If it comes back, it goes through me first. That's the whole plan." },
+    { who: "bin", show: ["bin", "bowy"], text: "That's not much of a plan." },
+    { who: "bowy", text: "It's a good plan. It has Thunder in it." },
+    { effects: up("bowy", 20) }
   ] },
-  { id: "heart-nell-10", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "I've stopped counting the days until I leave. I started counting the days I get to stay." },
-    { who: "nell", show: ["nell"], text: "So if you've got a shiny ring in your pocket, now'd be a great time. Just saying!" },
-    { effects: up("nell", 30) }
+  { id: "heart-mitia-4", bg: "atelier", once: true, lines: [
+    { who: "mitia", show: ["mitia"], text: "I dream about a palace made of ice sometimes. Towers like icicles. People bowing. I've never seen anything like it. Isn't that strange?" },
+    { who: "bin", show: ["bin", "mitia"], text: "I used to draw places I'd never seen too. Turned out they were real." },
+    { who: "mitia", text: "...That's not as comforting as you think it is." },
+    { effects: up("mitia", 20) }
   ] },
-  { id: "confess-nell", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "Is that... for me? Seriously? You're not messing with me?" },
-    { who: "nell", show: ["nell"], text: "Yes! Obviously! You're mine now. No take-backs. I have a bow." }
-  ] },
-  { id: "propose-nell", bg: "forest", once: true, lines: [
-    { who: "nell", show: ["nell"], text: "A ring. An actual ring. For a fox." },
-    { who: "nell", show: ["nell"], text: "Yes, you big idiot. Yes. I'm moving in. My tail gets its own pillow." }
+  { id: "heart-mitia-7", bg: "home", once: true, lines: [
+    { who: "mitia", show: ["mitia"], text: "You always make jokes when you're scared. It's fine. I can hear the other part too." },
+    { who: "mitia", text: "Whatever happens with your two homes, this one keeps a plate for you. Garr's rule. And mine." },
+    { effects: up("mitia", 20) }
   ] }
 ];

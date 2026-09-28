@@ -1,9 +1,11 @@
-import type { CharId, ItemId, MemberState, PetState, RestiaState, SkillId, StatKey, Stats } from "./types";
+import type { CharId, ItemId, MemberState, PassiveId, PetState, RestiaState, SkillId, StatKey, Stats } from "./types";
 import { CHARACTERS, MAX_LEVEL, expToNext } from "../data/characters";
 import { MONSTERS } from "../data/monsters";
 import { ITEMS, itemDef } from "../data/items";
 import { POINTS_PER_HEART } from "../data/progression";
 import { Ctx, addItem, fail, perk, removeItem } from "./core";
+import { defaultJobs, jobPassives, jobSkills, jobStats } from "./jobs";
+import { sumPassives } from "./passives";
 
 export const STAT_KEYS: StatKey[] = ["maxHp", "maxMp", "atk", "def", "mag", "res", "spd", "luk"];
 
@@ -14,15 +16,16 @@ export function growStats(base: Stats, growth: Stats, level: number): Stats {
 }
 
 export function newMember(id: CharId, level: number): MemberState {
-  return { id, level, exp: 0, hp: 1, mp: 0, equip: { ...CHARACTERS[id].startEquip } };
+  return { id, level, exp: 0, hp: 1, mp: 0, equip: { ...CHARACTERS[id].startEquip }, ...defaultJobs(id) };
 }
 
-/** Stats with equipment and today's food/blessing buffs (battle modifiers come on top). */
+/** Stats with job levels, equipment and today's food/blessing buffs (battle modifiers come on top). */
 export function memberStats(state: RestiaState, id: CharId): Stats {
   const member = state.members[id];
   if (!member) fail(`${id} has not joined the party`);
   const def = CHARACTERS[id];
   const stats = growStats(def.base, def.growth, member.level);
+  for (const [key, value] of Object.entries(jobStats(member))) stats[key as StatKey] += value ?? 0;
   for (const slot of ["weapon", "armor", "accessory"] as const) {
     const item = member.equip[slot];
     const equip = item ? ITEMS[item]?.equip : undefined;
@@ -32,6 +35,10 @@ export function memberStats(state: RestiaState, id: CharId): Stats {
   for (const buff of state.buffs) {
     for (const [key, value] of Object.entries(buff.stats ?? {})) stats[key as StatKey] += value ?? 0;
   }
+  // Passive max HP/MP bonuses (e.g. Veteran) apply outside battle too, so HP bars stay consistent.
+  const passives = sumPassives(memberPassives(state, id));
+  stats.maxHp = Math.round(stats.maxHp * (1 + (passives.stats.maxHp ?? 0) / 100));
+  stats.maxMp = Math.round(stats.maxMp * (1 + (passives.stats.maxMp ?? 0) / 100));
   for (const key of STAT_KEYS) stats[key] = Math.max(key === "maxHp" ? 1 : 0, stats[key]);
   return stats;
 }
@@ -52,7 +59,23 @@ export function memberSkills(state: RestiaState, id: CharId): SkillId[] {
   const def = CHARACTERS[id];
   const skills = def.skills.filter((entry) => entry.level <= member.level).map((entry) => entry.skill);
   for (const bond of def.bondSkills ?? []) if (hearts(state, id) >= bond.hearts) skills.push(bond.skill);
+  for (const skill of jobSkills(member)) if (!skills.includes(skill)) skills.push(skill);
   return skills;
+}
+
+/** Battle passives: innate, every learned job passive, and gear. */
+export function memberPassives(state: RestiaState, id: CharId): PassiveId[] {
+  const member = state.members[id];
+  if (!member) return [];
+  const out: PassiveId[] = [];
+  const innate = CHARACTERS[id].passive;
+  if (innate) out.push(innate);
+  for (const passive of jobPassives(member)) if (!out.includes(passive)) out.push(passive);
+  for (const slot of ["weapon", "armor", "accessory"] as const) {
+    const passive = member.equip[slot] ? ITEMS[member.equip[slot]!]?.equip?.passive : undefined;
+    if (passive && !out.includes(passive)) out.push(passive);
+  }
+  return out;
 }
 
 export function clampVitals(state: RestiaState, id: CharId): void {

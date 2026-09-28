@@ -22,7 +22,7 @@ function resolveSpot(spot: NpcSpot): NpcWhere {
   return { zone: spot.zone, x: pos.x, y: pos.y };
 }
 
-/** Where an NPC is right now (null = away / not in Dawnhollow yet). */
+/** Where an NPC is right now (null = away / not in Frostbitten yet). */
 export function npcWhere(state: RestiaState, npc: NpcId): NpcWhere {
   const def = NPCS[npc];
   if (def.available && !check(state, def.available)) return null;
@@ -99,12 +99,9 @@ function presentOrFail(state: RestiaState, npc: NpcId): void {
 
 /** Story conversations that replace the daily line when their moment comes. */
 function storyTalk(state: RestiaState, npc: NpcId, ctx: Ctx): boolean {
-  if (npc === "guildGirl" && !state.flags.registered) return playScene(state, "guildRegister", ctx);
-  if (npc === "pip" && !sceneSeen(state, "meetPip")) return playScene(state, "meetPip", ctx);
-  if (npc === "seren" && !state.members.seren && check(state, { kind: "rank", rank: "D" })) return playScene(state, "serenJoins", ctx);
-  if (npc === "nell" && !state.members.nell && hearts(state, "nell") >= 3 && state.town.levels.inn >= 1) {
-    return playScene(state, "nellJoins", ctx);
-  }
+  if (npc === "lysa" && !state.flags.registered) return playScene(state, "guildRegister", ctx);
+  if (npc === "tilde" && !sceneSeen(state, "meetTilde")) return playScene(state, "meetTilde", ctx);
+  if (npc === "senna" && !state.members.senna && check(state, { kind: "rank", rank: "D" })) return playScene(state, "sennaJoins", ctx);
   return false;
 }
 
@@ -174,7 +171,7 @@ function partner(state: RestiaState): NpcId | null {
 function confess(state: RestiaState, npc: NpcId, ctx: Ctx): void {
   const def = NPCS[npc];
   const rel = state.social[npc];
-  if (!def.romance) fail(`${def.name} smiles politely. That charm is meant for a sweetheart.`);
+  if (!def.romance) fail(`${def.name} smiles. That Star Charm is meant for a sweetheart.`);
   if (rel.status !== "none") fail(`You're already together with ${def.name}.`);
   const current = partner(state);
   if (current) fail(`You're already with ${NPCS[current].name}.`);
@@ -193,9 +190,9 @@ function propose(state: RestiaState, npc: NpcId, ctx: Ctx): void {
   const def = NPCS[npc];
   const rel = state.social[npc];
   if (rel.status === "married") fail(`${def.name} is already your spouse.`);
-  if (rel.status !== "dating") fail(`${def.name} blushes. You should be dating first (Dawn Charm at 8 hearts).`);
+  if (rel.status !== "dating") fail(`${def.name} blushes. You should be dating first (Star Charm at 8 hearts).`);
   if (hearts(state, npc) < 10) fail(`${def.name} needs a little more time (10 hearts).`);
-  if (state.town.levels.farmhouse < 2) fail("Expand the farmhouse first (Restoration Board) so there's room for two.");
+  if (state.town.levels.farmhouse < 2) fail("Expand Garr's hut first (Outpost Board) so there's room for two.");
   removeItem(state, "eternalRing", 1);
   rel.status = "married";
   playScene(state, `propose-${npc}`, ctx);

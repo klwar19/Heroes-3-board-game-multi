@@ -13,8 +13,8 @@ import { formatTime, weekday } from "../engine/core";
 import { npcWhere } from "../engine/social";
 import { plotAt } from "../engine/state";
 import { isRipe, toolCost } from "../engine/farm";
-import { A, BUILDING_ART, CHIBI, SHEETS } from "./assets";
-import { Chibi, FarmSprite, IconSprite, ItemIcon, SpriteStill } from "./sprites";
+import { A, BUILDING_ART, SHEETS, WALKER } from "./assets";
+import { FarmSprite, IconSprite, ItemIcon, SpriteStill, Walker } from "./sprites";
 import s from "./restia.module.css";
 
 export type Hot = { kind: "tool"; tool: ToolId } | { kind: "hand" } | { kind: "seed"; item: string } | { kind: "fert"; item: string };
@@ -25,6 +25,8 @@ type Opener = (panel: { kind: string; [key: string]: unknown }) => void;
 const TOOL_ORDER: ToolId[] = ["hoe", "can", "axe", "hammer", "sickle"];
 const TOOL_ICON: Record<ToolId, number> = { hoe: 26, can: 27, axe: 28, hammer: 29, sickle: 30 };
 const TOOL_LABEL: Record<ToolId, string> = { hoe: "Hoe", can: "Watering Can", axe: "Axe", hammer: "Hammer", sickle: "Sickle" };
+/** Height of an overworld figure (battle-atlas frame), in map cells. */
+const FIGURE_CELLS = 1.9;
 
 function dirBetween(a: Cell, b: Cell): Dir {
   if (b.x > a.x) return "right";
@@ -277,8 +279,8 @@ export function WorldView({
           if (level < 1) {
             toast(
               target.building === "shrine"
-                ? "The ruined Sun Shrine. Restore it at the Restoration Board."
-                : `An empty lot for the ${BUILDINGS[target.building].name}. Build it at the Restoration Board.`
+                ? "The snowed-in Weaver's Shrine. Restore it at the Outpost Board."
+                : `The ruined lot of the ${BUILDINGS[target.building].name}. Rebuild it at the Outpost Board.`
             );
             return;
           }
@@ -488,31 +490,29 @@ export function WorldView({
     );
   }
 
+  // Figures stand in a zero-size box at their feet; the atlas anchor lands there.
+  const figure = cell * FIGURE_CELLS;
   for (const { npc, where } of npcs) {
-    const sheet = CHIBI[npc];
-    if (!sheet) continue;
-    const size = cell * 1.9;
     const fresh = state.social[npc].talkedDay !== state.day;
     layers.push(
-      <span className={s.entity} key={`n-${npc}`} style={{ left: (where.x + 0.5) * cell - size / 2, top: (where.y + 1) * cell - size, zIndex: z(where.y + 0.85) }}>
-        <Chibi dir="down" sheet={A(sheet)} size={size} walking={false} />
-        <span className={fresh ? s.talkBubble : s.nameTag}>{fresh ? `💬 ${NPCS[npc].name}` : NPCS[npc].name}</span>
+      <span className={s.entity} key={`n-${npc}`} style={{ left: (where.x + 0.5) * cell, top: (where.y + 0.95) * cell, zIndex: z(where.y + 0.85) }}>
+        <Walker dir={state.player.x < where.x ? "left" : "right"} height={figure} slug={WALKER[npc]} walking={false} />
+        <span className={fresh ? s.talkBubble : s.nameTag} style={{ bottom: figure * 0.95 }}>
+          {fresh ? `💬 ${NPCS[npc].name}` : NPCS[npc].name}
+        </span>
       </span>
     );
   }
 
-  {
-    const size = cell * 1.9;
-    layers.push(
-      <span
-        className={s.entity}
-        key="player"
-        style={{ left: (state.player.x + 0.5) * cell - size / 2, top: (state.player.y + 1) * cell - size, zIndex: z(state.player.y + 0.9), transition: "left 0.12s linear, top 0.12s linear" }}
-      >
-        <Chibi dir={state.player.facing} sheet={A(CHIBI.bin!)} size={size} walking={walking} />
-      </span>
-    );
-  }
+  layers.push(
+    <span
+      className={s.entity}
+      key="player"
+      style={{ left: (state.player.x + 0.5) * cell, top: (state.player.y + 0.95) * cell, zIndex: z(state.player.y + 0.9), transition: "left 0.12s linear, top 0.12s linear" }}
+    >
+      <Walker dir={state.player.facing} height={figure} slug={WALKER.bin} walking={walking} />
+    </span>
+  );
 
   for (const exit of zone.exits) {
     const cx = (exit.rect[0] + exit.rect[2] + 1) / 2;
@@ -625,18 +625,18 @@ function describe(state: RestiaState, target: Target, hot: Hot): string {
     case "door": {
       const def = BUILDINGS[target.building];
       const level = state.town.levels[target.building];
-      if (level < 1) return target.building === "shrine" ? "Ruined Sun Shrine" : `Empty lot (${def.name})`;
+      if (level < 1) return target.building === "shrine" ? "Snowed-in Weaver's Shrine" : `Ruined lot (${def.name})`;
       return `${def.name}${isOpen(state, target.building) ? "" : " (closed)"}`;
     }
     case "bin":
       return "Shipping Bin — sells overnight";
     case "board":
-      return "Restoration Board — build & upgrade";
+      return "Outpost Board — build & upgrade";
     case "well":
     case "water":
       return "Refill watering can";
     case "cave":
-      return state.flags.catacombsOpen ? "Catacombs of the Old Capital" : "A dark cave (Guild rank E needed)";
+      return state.flags.catacombsOpen ? "The Old Temple Ruins" : "A sealed temple doorway (Guild rank E needed)";
     case "forage":
       return `Gather ${itemDef(state.forage[target.index]!.item).name}`;
     case "monster": {

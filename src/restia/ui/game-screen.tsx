@@ -43,6 +43,8 @@ function contextKey(state: RestiaState): string {
 
 function musicFor(state: RestiaState, title: boolean): string {
   if (title) return "main-menu";
+  const sceneMusic = state.scene ? SCENES[state.scene.id]?.music : undefined;
+  if (sceneMusic && !state.battle) return sceneMusic;
   if (state.battle) {
     if (state.battle.boss) return "combat-03";
     return `battle-0${hashString(`${state.day}:${state.battle.units.map((unit) => unit.uid).join(",")}`) % 8}`;

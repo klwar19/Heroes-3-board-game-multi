@@ -1,5 +1,6 @@
 /**
- * Restia — single-player isekai life-sim RPG (Bin's Otherworld Chronicle spin-off).
+ * Restia mode — single-player life-sim RPG set in Haven (the Cosmic Jester
+ * story): Bin, Peri's Jester, back in the frontier town of Frostbitten.
  *
  * The engine is pure TypeScript: `dispatch(state, action)` returns the next state
  * plus presentation events. Everything the player can do goes through one action
@@ -17,10 +18,33 @@ export type SkillId = string;
 export type RecipeId = string;
 export type QuestId = string;
 
-export type CharId = "bin" | "hikari" | "mina" | "tove" | "seren" | "nell";
-/** Everyone Bin can talk to. Bin himself is never an NPC. */
-export type NpcId = Exclude<CharId, "bin"> | "guildGirl" | "pip" | "kaito";
-export type SpeakerId = NpcId | "bin" | "system" | "narrator";
+export type CharId = "bin" | "mitia" | "bowy" | "garr" | "hilda" | "senna";
+/** Everyone Bin can talk to in Frostbitten. Bin himself is never an NPC. */
+export type NpcId = Exclude<CharId, "bin"> | "lysa" | "tilde" | "dain" | "mara" | "frida";
+/** Scene-only speakers (Earth, the goddess, townsfolk without schedules). */
+export type CastId =
+  | "peri"
+  | "lily"
+  | "luna"
+  | "leo"
+  | "meilin"
+  | "jake"
+  | "chad"
+  | "lingling"
+  | "nurse"
+  | "tessa"
+  | "corvin"
+  | "kael"
+  | "twins"
+  | "guard"
+  | "host"
+  | "tuli"
+  | "rolf"
+  | "stranger"
+  | "frostSprite";
+export type SpeakerId = NpcId | CastId | "bin" | "system" | "narrator";
+/** Alternate standing-art expressions (Bin has the full set). */
+export type Face = "happy" | "angry" | "sad";
 
 export type Element = "phys" | "fire" | "ice" | "wind" | "earth" | "light" | "dark";
 export type StatKey = "maxHp" | "maxMp" | "atk" | "def" | "mag" | "res" | "spd" | "luk";
@@ -96,6 +120,8 @@ export type EquipDef = {
   stats: Partial<Stats>;
   /** Basic attacks with this weapon use the element. */
   element?: Element;
+  /** Passive the wearer has in battle (data/passives.ts). */
+  passive?: PassiveId;
 };
 
 export type ItemDef = {
@@ -128,7 +154,59 @@ export type CropDef = {
   sprite: { growing: number; ripe: number };
 };
 
-export type StatusId = "poison" | "burn" | "sleep" | "stun" | "slow" | "freeze";
+export type StatusId =
+  | "poison"
+  | "burn"
+  | "sleep"
+  | "stun"
+  | "slow"
+  | "freeze"
+  /** Loses HP each time it moves. */
+  | "bleed"
+  /** Can't use skills. */
+  | "silence"
+  /** Physical attacks miss far more often. */
+  | "blind"
+  /** Can't move. */
+  | "root"
+  /** Takes +25% damage. */
+  | "mark"
+  /** Must attack the unit that taunted it (StatusInst.source). */
+  | "taunt"
+  /** Heals 8% max HP at turn start. */
+  | "regen"
+  /** +1 move, +25% SPD. */
+  | "haste";
+
+/** Impact effect sheets (public/assets/restia/fx/<id>.webp, 4x4 frames, additive). */
+export type FxId =
+  | "slash"
+  | "smash"
+  | "pierce"
+  | "claw"
+  | "bite"
+  | "fire"
+  | "ice"
+  | "wind"
+  | "earth"
+  | "light"
+  | "dark"
+  | "heal"
+  | "buff"
+  | "debuff"
+  | "poison"
+  | "explosion"
+  | "shield"
+  | "jester"
+  | "drain"
+  | "roar"
+  | "cast";
+
+/** Projectile sheets (public/assets/restia/fx/proj-<id>.webp, 4x4 looping frames, flying right). */
+export type ProjectileId = "arrow" | "fireball" | "ice" | "dark" | "light" | "wind" | "card" | "rock" | "poison";
+
+export type PassiveId = string;
+export type JobId = string;
 
 export type SkillTarget = "enemy" | "ally" | "self" | "area" | "allEnemies" | "allAllies";
 
@@ -154,7 +232,134 @@ export type SkillDef = {
   drain?: number;
   /** Removes negative statuses from the targets. */
   cure?: boolean;
+  /** Action points (default 2). A turn starts with 3 (+ carried AP). */
+  ap?: number;
+  /** Hits this many times (each hit rolls separately). */
+  hits?: number;
+  /** Pushes each target this many hexes away from the caster. */
+  knockback?: number;
+  /** Hits every unit on the straight line from the caster up to `range`. */
+  line?: boolean;
+  /** Absorb shield on each target: power x (MAG + 2 x level). */
+  shield?: number;
+  /** Nearby foes (radius 2 of the caster) must attack the caster for this many turns. */
+  taunt?: number;
+  /** Leaves this terrain on every hex of the area (fire patches, ice, spring...). */
+  terrain?: TileKind;
+  /** Extra critical-hit chance (0-1). */
+  crit?: number;
+  /** Stat changes on the caster itself (drawbacks, self buffs on attacks). */
+  selfMods?: { stat: StatKey; pct: number; turns: number }[];
+  /** Presentation: impact effect, projectile and sound (sounds manifest key). */
+  fx?: FxId;
+  projectile?: ProjectileId;
+  sfx?: string;
 };
+
+/**
+ * Battle passives (jobs, characters, monsters, equipment). Pure data: the battle
+ * engine reads these fields at the matching moment. Percentages are whole numbers.
+ */
+export type PassiveDef = {
+  id: PassiveId;
+  name: string;
+  desc: string;
+  /** Always-on stat bonus (%). */
+  stats?: Partial<Record<StatKey, number>>;
+  /** Extra stat bonus (%) while HP is below `below` (fraction of max). */
+  lowHp?: { below: number; stats: Partial<Record<StatKey, number>> };
+  /** Extra AP every turn. */
+  ap?: number;
+  /** Extra movement. */
+  move?: number;
+  /** Extra range for ranged basic attacks. */
+  range?: number;
+  /** Heals this fraction of max HP / MP at turn start. */
+  regen?: number;
+  mpRegen?: number;
+  /** Basic attacks and physical skills may inflict a status. */
+  onHit?: { status: StatusId; chance: number; turns: number };
+  /** Heals this fraction of damage dealt. */
+  lifesteal?: number;
+  /** Returns this fraction of melee damage taken to the attacker. */
+  thorns?: number;
+  /** Retaliation power (default 0.5 of a basic attack). */
+  counter?: number;
+  /** Strikes back before the attacker's blow lands (melee). */
+  firstStrike?: boolean;
+  /** Foes can't retaliate against this unit's melee attacks. */
+  noRetaliation?: boolean;
+  /** +% damage for each other ally adjacent to the target. */
+  pack?: number;
+  /** +% damage when striking a foe from behind (it faces away). */
+  backstab?: number;
+  /** +% damage with one element. */
+  elementBoost?: { element: Element; pct: number };
+  /** Can't receive these statuses. */
+  immune?: StatusId[];
+  /** Extra chance to dodge physical attacks (0-1). */
+  evasion?: number;
+  /** Extra crit chance (0-1) and crit damage (+x to the 1.5 multiplier). */
+  crit?: number;
+  critDamage?: number;
+  /** Starts every battle with a shield of this fraction of max HP. */
+  shieldStart?: number;
+  /** Explodes on death around its hex. */
+  deathBurst?: { power: number; element: Element; radius: number; status?: StatusId };
+  /** Survives the first lethal blow of the battle at 1 HP. */
+  undying?: boolean;
+  /** Extra % damage while standing higher than the target. */
+  highGround?: number;
+  /** +% healing done. */
+  healBoost?: number;
+  /** -% MP cost of skills. */
+  mpSave?: number;
+  /** Allies (not itself) within 2 hexes get this % bonus. */
+  aura?: Partial<Record<StatKey, number>>;
+  /** Ignores terrain move costs and hazard tiles. */
+  sureFooted?: boolean;
+};
+
+/** One job level: permanent stat gain plus the skill/passive it teaches. */
+export type JobLevel = { stats: Partial<Stats>; skill?: SkillId; passive?: PassiveId };
+
+export type JobDef = {
+  id: JobId;
+  name: string;
+  tier: 1 | 2;
+  desc: string;
+  /** Needs this job at this level (same character). */
+  requires?: { job: JobId; level: number };
+  /** Only these characters can take the job. */
+  only?: CharId[];
+  /** Exactly five levels. */
+  levels: JobLevel[];
+};
+
+/** Monster AI: rules are tried top-down; a rule that fires picks the action, scoring picks where/whom. */
+export type AiCondition =
+  | { kind: "hpBelow"; value: number }
+  | { kind: "hpAbove"; value: number }
+  | { kind: "allyHurt"; value: number }
+  | { kind: "foesInRange"; range: number; count: number }
+  | { kind: "adjacentFoe" }
+  | { kind: "noAdjacentFoe" }
+  | { kind: "round"; from: number }
+  | { kind: "firstTurn" }
+  | { kind: "alone" }
+  | { kind: "outnumbered" }
+  | { kind: "selfLacks"; status: StatusId }
+  | { kind: "chance"; value: number };
+
+export type AiRule = {
+  when: AiCondition[];
+  /** Skill id, or a basic behaviour. */
+  do: SkillId | "attack" | "defend" | "charge" | "retreat";
+};
+
+export type AiStyle = "aggressive" | "sniper" | "support" | "tank" | "swarmer" | "coward" | "caster" | "boss";
+
+export type MonsterAi = { style: AiStyle; rules?: AiRule[] };
 
 export type MonsterDef = {
   id: MonsterId;
@@ -183,6 +388,8 @@ export type MonsterDef = {
   /** Sprite scale on the battle board (big bosses). */
   scale?: number;
   desc: string;
+  passives?: PassiveId[];
+  ai?: MonsterAi;
 };
 
 export type CharacterDef = {
@@ -202,6 +409,10 @@ export type CharacterDef = {
   /** Unlocked by bond hearts (companions only). */
   bondSkills?: { hearts: number; skill: SkillId }[];
   startEquip: { weapon: ItemId | null; armor: ItemId | null; accessory: ItemId | null };
+  /** Innate battle passive. */
+  passive?: PassiveId;
+  /** Job at recruitment. */
+  job: JobId;
 };
 
 export type Condition =
@@ -244,10 +455,14 @@ export type Effect =
   | { kind: "heal" }
   | { kind: "meet"; npc: NpcId }
   | { kind: "stamina"; n: number }
-  | { kind: "ap"; n: number };
+  | { kind: "ap"; n: number }
+  /** Adds to a lifetime counter (story tallies such as coins found). */
+  | { kind: "count"; key: string; n: number }
+  /** Stores today's day number in a flag ("not again today" gates). */
+  | { kind: "flagDay"; key: string };
 
 export type SceneLine =
-  | { who: SpeakerId; text: string; show?: SpeakerId[]; bg?: string }
+  | { who: SpeakerId; text: string; show?: SpeakerId[]; bg?: string; face?: Face }
   | { choice: { text: string; effects?: Effect[]; goto?: string }[]; who?: SpeakerId; text?: string; show?: SpeakerId[] }
   | { label: string }
   | { effects: Effect[] }
@@ -260,6 +475,10 @@ export type SceneDef = {
   lines: SceneLine[];
   /** Played once at most (heart events, story beats). */
   once?: boolean;
+  /** Music track (public/sounds/music/<name>.mp3) while the scene plays. */
+  music?: string;
+  /** Bin's clothes in this scene; default is his Haven gear. */
+  outfit?: "earth";
 };
 
 // ---------------------------------------------------------------------------
@@ -296,6 +515,10 @@ export type MemberState = {
   hp: number;
   mp: number;
   equip: { weapon: ItemId | null; armor: ItemId | null; accessory: ItemId | null };
+  /** Current job; job EXP only goes here. */
+  job: JobId;
+  /** Every job this member has tried: level 1-5 and EXP toward the next level. */
+  jobs: Record<JobId, { level: number; exp: number }>;
 };
 
 export type PetState = {
@@ -328,7 +551,7 @@ export type RequestState = {
 
 export type MissionState = { id: string; target: number; progress: number; done: boolean; ap: number };
 
-export type StatusInst = { id: StatusId; turns: number };
+export type StatusInst = { id: StatusId; turns: number; /** Taunt: who it must attack. */ source?: string };
 /** `skip`: applied during the holder's own turn, so that turn's end does not count down. */
 export type StatMod = { stat: StatKey; pct: number; turns: number; skip?: boolean };
 
@@ -370,6 +593,34 @@ export type BattleUnit = {
   magic: boolean;
   /** Left the battlefield (befriended): not drawn, not targetable. */
   gone?: boolean;
+  /** Action points for the current turn, and AP carried into the next one. */
+  ap: number;
+  apCarry: number;
+  passives: PassiveId[];
+  /** Absorbs damage before HP. */
+  shield: number;
+  /** Undying already used this battle. */
+  spent?: boolean;
+};
+
+/** Ground under a hex. `void` is not part of the board; `water` can't be entered. */
+export type TileKind = "high" | "cover" | "ice" | "mud" | "thorns" | "fire" | "spring" | "crystal" | "water" | "void";
+
+/** Objects standing on a hex: they block movement; most can be destroyed. */
+export type PropKind = "rock" | "pillar" | "crates" | "barrel" | "totem";
+
+export type BattleProp = { uid: string; kind: PropKind; cell: number; hp: number; maxHp: number; /** Totems: whose side they empower. */ side?: BattleSide };
+
+export type BattleWeather = "clear" | "snow" | "blizzard" | "rain" | "storm" | "heat" | "gloom";
+
+/** The Jester System's audience challenge for this fight (Jester Points on success). */
+export type BattleChallenge = {
+  id: "fast" | "weakness" | "crit" | "untouched" | "boom" | "highGround";
+  text: string;
+  target: number;
+  progress: number;
+  failed: boolean;
+  jp: number;
 };
 
 export type BattleOrigin =
@@ -378,23 +629,40 @@ export type BattleOrigin =
   | { kind: "event"; encounter: string };
 
 export type BattleRewards = {
+  /** Bin's EXP (each member's share is scaled by level gap and today's repeats). */
   exp: number;
   gold: number;
   items: Record<ItemId, number>;
   levelUps: { who: string; level: number }[];
+  jobUps: { who: string; job: string; level: number }[];
   befriended: string[];
+  /** Why EXP was reduced, if it was (anti-grind note). */
+  expNote?: string;
+  challenge?: { text: string; ok: boolean; jp: number };
 };
 
 export type BattleState = {
   cols: number;
   rows: number;
   backdrop: string;
-  blocked: number[];
+  /** Ground by hex (plain ground is absent). */
+  tiles: Record<number, TileKind>;
+  /** Rounds left for temporary tiles made by skills (fire, ice...). */
+  tileTimers: Record<number, number>;
+  props: BattleProp[];
+  weather: BattleWeather;
+  /** Hexes marked for next round's falling rocks/icicles. */
+  warnings: number[];
+  /** Round at which hazards start (0 = none). */
+  hazard: { kind: "rockfall" | "icicles"; from: number } | null;
+  /** Enemies that join at a round. */
+  reinforce: { round: number; enemies: { species: MonsterId; level: number }[] } | null;
+  challenge: BattleChallenge | null;
   units: BattleUnit[];
   round: number;
   queue: string[];
   active: string | null;
-  turn: { moved: boolean; acted: boolean; waited: boolean };
+  turn: { moved: boolean; acted: boolean; waited: boolean; sprinted: boolean; item: boolean };
   /** Units that already used Wait this round. */
   waited: string[];
   phase: "turn" | "victory" | "defeat" | "fled";
@@ -536,6 +804,7 @@ export type RestiaAction =
   | { type: "useItem"; item: ItemId; target: string }
   | { type: "fieldSkill"; caster: CharId; skill: SkillId; target: string }
   | { type: "equip"; member: CharId; item: ItemId | null; slot: "weapon" | "armor" | "accessory" }
+  | { type: "setJob"; member: CharId; job: JobId }
   | { type: "setActive"; active: string[] }
   | { type: "store"; item: ItemId; n: number }
   | { type: "retrieve"; item: ItemId; n: number }
@@ -563,16 +832,23 @@ export type RestiaAction =
   | { type: "bFlee" }
   | { type: "bRush" }
   | { type: "bEndTurn" }
+  | { type: "bSprint" }
   | { type: "bAiTurn" }
   | { type: "bFinish" }
   | { type: "tick"; seconds: number };
 
 export type BattleAnim =
   | { kind: "move"; uid: string; path: number[] }
-  | { kind: "attack"; uid: string; target: string; anim: "attack" | "cast" | "shoot" }
-  | { kind: "hit"; uid: string; amount: number; crit: boolean; weak: boolean; resist: boolean; miss: boolean; heal: boolean }
+  | { kind: "attack"; uid: string; target: string; anim: "attack" | "cast" | "shoot"; sound?: string }
+  | { kind: "projectile"; from: number; to: number; sprite: ProjectileId; sound?: string }
+  | { kind: "fx"; cell: number; fx: FxId; sound?: string }
+  | { kind: "sound"; id: string }
+  | { kind: "banner"; text: string }
+  | { kind: "prop"; uid: string; destroyed: boolean }
+  | { kind: "knock"; uid: string; path: number[] }
+  | { kind: "hit"; uid: string; amount: number; crit: boolean; weak: boolean; resist: boolean; miss: boolean; heal: boolean; shielded?: number }
   | { kind: "status"; uid: string; text: string }
-  | { kind: "death"; uid: string }
+  | { kind: "death"; uid: string; sound?: string }
   | { kind: "befriend"; uid: string; ok: boolean }
   | { kind: "area"; cell: number; radius: number; element: Element };
 

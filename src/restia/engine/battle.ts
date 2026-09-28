@@ -1,6 +1,8 @@
 import type {
   BattleAnim,
+  BattleChallenge,
   BattleOrigin,
+  BattleProp,
   BattleRewards,
   BattleState,
   BattleUnit,
@@ -13,15 +15,20 @@ import type {
   StatKey,
   StatusId
 } from "./types";
-import { CHARACTERS, KAITO_BATTLE } from "../data/characters";
+import { CHARACTERS, DAIN_BATTLE } from "../data/characters";
 import { MONSTERS, monsterDef } from "../data/monsters";
 import { SKILLS, skillDef } from "../data/skills";
 import { ITEMS, itemDef } from "../data/items";
 import { EVENT_ENCOUNTERS, themeForFloor } from "../data/dungeon";
 import { ZONES } from "../data/zones";
+import { PROP_NAMES, battlefieldOf } from "../data/battlefields";
+import { unitSound } from "../data/unit-sounds";
 import { Ctx, chance, clamp, count, fail, perk, random, randInt, removeItem } from "./core";
-import { BOARD_COLS, BOARD_ROWS, cellOf, hexDistance, neighbors, reach } from "./hex";
-import { activeLimit, gainExp, growStats, memberSkills, memberStats, petStats } from "./party";
+import { BOARD_COLS, cellOf, colRow, hexDistance, hexRay, neighbors, reachWeighted, stepAway } from "./hex";
+import { activeLimit, gainExp, growStats, memberPassives, memberSkills, memberStats, petStats } from "./party";
+import { gainJobExp } from "./jobs";
+import { pv } from "./passives";
+import { buildField, hasLineOfSight, heightOf, propAt, randomOpenCell, standable, stepCost, weatherMult, weatherRange, blocksSight } from "./battle-field";
 import { barnCapacity } from "./state";
 import { gainSkill, skillLevel } from "./farm";
 import { hasBuff } from "./town";
@@ -33,6 +40,8 @@ export type BattleSpec = {
   enemies: { species: MonsterId; level: number }[];
   rival?: boolean;
   backdrop: string;
+  /** Named board layout (data/battlefields.ts); default: picked for the biome. */
+  layout?: string;
   origin: BattleOrigin;
   canFlee: boolean;
   boss: boolean;
@@ -40,15 +49,56 @@ export type BattleSpec = {
   soft?: boolean;
   winScene?: string;
   loseScene?: string;
+  reinforce?: BattleState["reinforce"];
 };
 
+/** AP every turn starts with (before passives and carried AP). */
+export const BASE_AP = 3;
+/** Sprint: 1 AP for this much extra movement (before moving). */
+export const SPRINT_MOVE = 2;
+export const ITEM_AP = 1;
+/** Defend carries 1 AP into the next turn; ending a turn without acting (Charge) carries 2. */
+export const DEFEND_CARRY = 1;
+export const CHARGE_CARRY = 2;
+
 const DEPLOY_ROWS = [3, 1, 5, 2, 4, 0, 6];
-const NEGATIVE: StatusId[] = ["poison", "burn", "sleep", "stun", "slow", "freeze"];
-const STATUS_NAMES: Record<StatusId, string> = { poison: "Poisoned", burn: "Burning", sleep: "Asleep", stun: "Stunned", slow: "Slowed", freeze: "Frozen" };
+const NEGATIVE: StatusId[] = ["poison", "burn", "sleep", "stun", "slow", "freeze", "bleed", "silence", "blind", "root", "mark", "taunt"];
+const POSITIVE: StatusId[] = ["regen", "haste"];
+const STATUS_NAMES: Record<StatusId, string> = {
+  poison: "Poisoned",
+  burn: "Burning",
+  sleep: "Asleep",
+  stun: "Stunned",
+  slow: "Slowed",
+  freeze: "Frozen",
+  bleed: "Bleeding",
+  silence: "Silenced",
+  blind: "Blinded",
+  root: "Rooted",
+  mark: "Marked",
+  taunt: "Taunted",
+  regen: "Regenerating",
+  haste: "Hasted"
+};
+/** Statuses that count down at the end of the holder's own turn (control effects count down when they skip it). */
+const TICKING: StatusId[] = ["poison", "burn", "slow", "bleed", "silence", "blind", "root", "mark", "taunt", "regen", "haste"];
 
 // ---------------------------------------------------------------------------
 // Units
 // ---------------------------------------------------------------------------
+
+function blankCombat(): Pick<BattleUnit, "statuses" | "mods" | "retaliated" | "defending" | "down" | "ap" | "apCarry" | "shield"> {
+  return { statuses: [], mods: [], retaliated: false, defending: false, down: false, ap: 0, apCarry: 0, shield: 0 };
+}
+
+/** Passive max HP/MP bonuses for units whose stats don't already include them (monsters, pets, the rival). */
+function withPassiveVitals(stats: BattleUnit["stats"], passives: string[]): BattleUnit["stats"] {
+  const sum = pv({ passives } as BattleUnit);
+  const out = { ...stats };
+  out.maxHp = Math.max(1, Math.round(out.maxHp * (1 + (sum.stats.maxHp ?? 0) / 100)));
+  out.maxMp = Math.max(0, Math.round(out.maxMp * (1 + (sum.stats.maxMp ?? 0) / 100)));
+  return out;
+}
 
 function memberUnit(state: RestiaState, id: CharId, cell: number): BattleUnit {
   const def = CHARACTERS[id];
@@ -72,11 +122,7 @@ function memberUnit(state: RestiaState, id: CharId, cell: number): BattleUnit {
     element: weapon?.element ?? def.element,
     resist: def.resist,
     skills: memberSkills(state, id),
-    statuses: [],
-    mods: [],
-    retaliated: false,
-    defending: false,
-    down: false,
+    ...blankCombat(),
     boss: false,
     tame: 0,
     exp: 0,
@@ -84,13 +130,15 @@ function memberUnit(state: RestiaState, id: CharId, cell: number): BattleUnit {
     drops: [],
     sprite: `restia-${id}`,
     scale: 1,
-    magic: def.weapon === "staff"
+    magic: def.weapon === "staff",
+    passives: memberPassives(state, id)
   };
 }
 
 function monsterUnit(species: MonsterId, level: number, uid: string, side: "ally" | "enemy", cell: number): BattleUnit {
   const def = monsterDef(species);
-  const stats = growStats(def.base, def.growth, level);
+  const passives = [...(def.passives ?? [])];
+  const stats = withPassiveVitals(growStats(def.base, def.growth, level), passives);
   return {
     uid,
     side,
@@ -109,11 +157,7 @@ function monsterUnit(species: MonsterId, level: number, uid: string, side: "ally
     element: def.element,
     resist: def.resist,
     skills: [...def.skills],
-    statuses: [],
-    mods: [],
-    retaliated: false,
-    defending: false,
-    down: false,
+    ...blankCombat(),
     boss: !!def.boss,
     tame: def.tame,
     exp: Math.round(def.exp * (1 + 0.25 * (level - 1))),
@@ -121,22 +165,25 @@ function monsterUnit(species: MonsterId, level: number, uid: string, side: "ally
     drops: def.drops,
     sprite: def.sprite,
     scale: def.scale ?? 1,
-    magic: !!def.magic
+    magic: !!def.magic,
+    passives
   };
 }
 
+const RIVAL_PASSIVES = ["weaponTraining", "battleRhythm"];
+
 function rivalUnit(level: number, cell: number): BattleUnit {
-  const stats = growStats(KAITO_BATTLE.base, KAITO_BATTLE.growth, level);
+  const stats = withPassiveVitals(growStats(DAIN_BATTLE.base, DAIN_BATTLE.growth, level), RIVAL_PASSIVES);
   return {
-    uid: "e-kaito",
+    uid: "e-dain",
     side: "enemy",
     kind: "guest",
-    ref: "kaito",
-    name: "Kaito",
+    ref: "dain",
+    name: "Dain",
     level,
     stats,
-    move: KAITO_BATTLE.move,
-    range: KAITO_BATTLE.range,
+    move: DAIN_BATTLE.move,
+    range: DAIN_BATTLE.range,
     flying: false,
     hp: stats.maxHp,
     mp: stats.maxMp,
@@ -144,20 +191,17 @@ function rivalUnit(level: number, cell: number): BattleUnit {
     facing: "left",
     element: "phys",
     resist: {},
-    skills: [...KAITO_BATTLE.skills],
-    statuses: [],
-    mods: [],
-    retaliated: false,
-    defending: false,
-    down: false,
+    skills: [...DAIN_BATTLE.skills],
+    ...blankCombat(),
     boss: true,
     tame: 0,
     exp: 40 * level,
     gold: 0,
     drops: [],
-    sprite: "restia-kaito",
+    sprite: "restia-dain",
     scale: 1,
-    magic: false
+    magic: false,
+    passives: [...RIVAL_PASSIVES]
   };
 }
 
@@ -170,6 +214,35 @@ function aliveFighter(state: RestiaState, id: string): boolean {
 // Setup
 // ---------------------------------------------------------------------------
 
+const CHALLENGES: { id: BattleChallenge["id"]; weight: number; make: (enemies: number) => Omit<BattleChallenge, "progress" | "failed" | "id"> }[] = [
+  { id: "fast", weight: 3, make: (n) => ({ text: `Win within ${n <= 2 ? 3 : 4} rounds`, target: n <= 2 ? 3 : 4, jp: 1 }) },
+  { id: "weakness", weight: 3, make: () => ({ text: "Land 3 hits on a weakness", target: 3, jp: 1 }) },
+  { id: "crit", weight: 2, make: () => ({ text: "Finish a foe with a critical hit", target: 1, jp: 1 }) },
+  { id: "untouched", weight: 2, make: () => ({ text: "Win without anyone falling", target: 1, jp: 1 }) },
+  { id: "boom", weight: 2, make: () => ({ text: "Take out a foe with an explosion", target: 1, jp: 2 }) },
+  { id: "highGround", weight: 2, make: () => ({ text: "Land 3 hits from high ground", target: 3, jp: 1 }) }
+];
+/** Audience challenges per day (Jester Points can't be farmed). */
+export const CHALLENGES_PER_DAY = 3;
+
+function rollChallenge(state: RestiaState, battle: BattleState, spec: BattleSpec): BattleChallenge | null {
+  if (spec.soft || spec.origin.kind === "event") return null;
+  if ((state.stats.today.challenges ?? 0) >= CHALLENGES_PER_DAY || !chance(state, 0.4)) return null;
+  const hasBarrels = battle.props.some((prop) => prop.kind === "barrel");
+  const hasHigh = Object.values(battle.tiles).includes("high");
+  const options = CHALLENGES.filter((entry) => (entry.id !== "boom" || hasBarrels) && (entry.id !== "highGround" || hasHigh));
+  let total = options.reduce((sum, entry) => sum + entry.weight, 0);
+  let roll = random(state) * total;
+  for (const entry of options) {
+    roll -= entry.weight;
+    if (roll > 0) continue;
+    total = spec.enemies.length + (spec.rival ? 1 : 0);
+    state.stats.today.challenges = (state.stats.today.challenges ?? 0) + 1;
+    return { id: entry.id, progress: 0, failed: false, ...entry.make(total) };
+  }
+  return null;
+}
+
 export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): void {
   let ids = state.active.filter((id) => aliveFighter(state, id)).slice(0, activeLimit(state));
   if (!ids.length) {
@@ -180,6 +253,8 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
     passOut(state, ctx, "Your whole party was down. Someone carried you home.");
     return;
   }
+  const level = Math.max(1, Math.round(ids.reduce((sum, id) => sum + (id.startsWith("pet:") ? state.pets.find((pet) => `pet:${pet.uid}` === id)?.level ?? 1 : state.members[id as CharId]?.level ?? 1), 0) / ids.length));
+  const field = buildField(state, { backdrop: spec.backdrop, layout: spec.layout, boss: spec.boss, level });
   const units: BattleUnit[] = [];
   ids.forEach((id, index) => {
     const cell = cellOf(index < DEPLOY_ROWS.length ? 1 : 0, DEPLOY_ROWS[index % DEPLOY_ROWS.length]!);
@@ -187,9 +262,9 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
       const pet = state.pets.find((entry) => `pet:${entry.uid}` === id)!;
       const unit = monsterUnit(pet.species, pet.level, `a-pet-${pet.uid}`, "ally", cell);
       unit.name = pet.name;
-      unit.hp = pet.hp;
-      unit.mp = pet.mp;
-      unit.stats = petStats(pet);
+      unit.stats = withPassiveVitals(petStats(pet), unit.passives);
+      unit.hp = Math.min(pet.hp, unit.stats.maxHp);
+      unit.mp = Math.min(pet.mp, unit.stats.maxMp);
       unit.petUid = pet.uid;
       unit.boss = false;
       units.push(unit);
@@ -198,34 +273,35 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
     }
   });
   spec.enemies.forEach((enemy, index) => {
-    units.push(monsterUnit(enemy.species, enemy.level, `e${index}`, "enemy", cellOf(9, DEPLOY_ROWS[index % DEPLOY_ROWS.length]!)));
+    units.push(monsterUnit(enemy.species, enemy.level, `e${index}`, "enemy", cellOf(index < DEPLOY_ROWS.length ? 9 : 10, DEPLOY_ROWS[index % DEPLOY_ROWS.length]!)));
   });
   if (spec.rival) units.push(rivalUnit(Math.max(8, (state.members.bin?.level ?? 1) + 1), cellOf(9, 3)));
-  const blocked: number[] = [];
-  if (!spec.boss) {
-    const obstacles = randInt(state, 0, 3);
-    let guard = 0;
-    while (blocked.length < obstacles && guard++ < 40) {
-      const cell = cellOf(randInt(state, 3, 7), randInt(state, 0, BOARD_ROWS - 1));
-      if (!blocked.includes(cell)) blocked.push(cell);
-    }
-  }
   for (const unit of units) {
+    const shield = pv(unit).shieldStart;
+    if (shield > 0) unit.shield = Math.round(unit.stats.maxHp * shield);
     if (unit.kind !== "monster") continue;
     const entry = (state.bestiary[unit.ref] ??= { seen: 0, defeated: 0, analyzed: false });
     entry.seen += 1;
     if (perk(state, "autoAnalyze")) entry.analyzed = true;
   }
+  const biome = battlefieldOf(spec.backdrop).biome;
+  // Falling rocks/icicles: some dungeon and Frostwood fights (never story or boss fights).
+  const hazardRoll = spec.origin.kind === "dungeon" ? 0.35 : spec.origin.kind === "field" && biome === "frost" ? 0.2 : 0;
+  const hazard = !spec.boss && !spec.soft && hazardRoll > 0 && chance(state, hazardRoll) ? { kind: biome === "frost" || biome === "nave" ? ("icicles" as const) : ("rockfall" as const), from: 3 } : null;
   const battle: BattleState = {
     cols: BOARD_COLS,
-    rows: BOARD_ROWS,
+    rows: 7,
     backdrop: spec.backdrop,
-    blocked,
+    ...field,
+    warnings: [],
+    hazard,
+    reinforce: spec.reinforce ?? null,
+    challenge: null,
     units,
     round: 0,
     queue: [],
     active: null,
-    turn: { moved: false, acted: false, waited: false },
+    turn: { moved: false, acted: false, waited: false, sprinted: false, item: false },
     waited: [],
     phase: "turn",
     origin: spec.origin,
@@ -238,10 +314,16 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
     ...(spec.loseScene ? { loseScene: spec.loseScene } : {}),
     ...(spec.soft ? { soft: true } : {})
   };
+  battle.challenge = rollChallenge(state, battle, spec);
   state.battle = battle;
+  const anims: BattleAnim[] = [];
+  if (battle.weather !== "clear") battle.log.push(`Weather: ${battle.weather}.`);
+  if (battle.challenge) {
+    battle.log.push(`[CJS] Audience challenge: ${battle.challenge.text} (+${battle.challenge.jp} JP).`);
+    anims.push({ kind: "banner", text: `Audience challenge: ${battle.challenge.text}` });
+  }
   if (spec.initiative === "preemptive") battle.log.push("You caught them off guard! Your party moves first.");
   if (spec.initiative === "ambushed") battle.log.push("Ambush! The enemy moves first.");
-  const anims: BattleAnim[] = [];
   beginTurn(state, battle, anims, ctx);
   if (anims.length) ctx.events.push({ kind: "battle", anims });
 }
@@ -265,16 +347,21 @@ export function startDungeonBattle(state: RestiaState, monster: DungeonMonster, 
   const dungeon = state.dungeon!;
   const theme = themeForFloor(dungeon.floor);
   const boss = monster.boss;
+  const bossFloor = boss && dungeon.floor === theme.boss.floor;
+  // Floor bosses call two of their minions in on round 3.
+  const minions = monster.group.filter((entry) => entry.species !== theme.boss.species).slice(0, 2);
   startBattle(
     state,
     {
       enemies: monster.group,
       backdrop: theme.backdrop,
+      ...(bossFloor ? { layout: "arena" } : {}),
       origin: { kind: "dungeon", monsterUid: monster.uid },
       canFlee: !boss,
       boss,
       initiative: boss ? "normal" : initiative,
-      ...(boss && dungeon.floor === theme.boss.floor ? { winScene: theme.boss.winScene } : {})
+      ...(bossFloor ? { winScene: theme.boss.winScene } : {}),
+      ...(bossFloor && minions.length ? { reinforce: { round: 3, enemies: minions } } : {})
     },
     ctx
   );
@@ -289,6 +376,7 @@ export function startEventBattle(state: RestiaState, id: string, ctx: Ctx): void
       enemies: encounter.enemies,
       rival: encounter.rival,
       backdrop: encounter.backdrop,
+      ...(encounter.layout ? { layout: encounter.layout } : {}),
       origin: { kind: "event", encounter: id },
       canFlee: encounter.canFlee,
       boss: true,
@@ -305,22 +393,43 @@ export function startEventBattle(state: RestiaState, id: string, ctx: Ctx): void
 // Stats & helpers
 // ---------------------------------------------------------------------------
 
-function hasStatus(unit: BattleUnit, id: StatusId): boolean {
+export function hasStatus(unit: BattleUnit, id: StatusId): boolean {
   return unit.statuses.some((status) => status.id === id);
 }
 
+/** Bonus % to a stat from allies' auras and friendly ward totems nearby. */
+function auraPct(battle: BattleState, unit: BattleUnit, stat: StatKey): number {
+  let pct = 0;
+  for (const other of battle.units) {
+    if (other === unit || other.side !== unit.side || other.hp <= 0 || other.gone) continue;
+    const aura = pv(other).aura[stat];
+    if (aura && hexDistance(other.cell, unit.cell) <= 2) pct += aura;
+  }
+  if (stat === "def" || stat === "res") {
+    for (const prop of battle.props) if (prop.kind === "totem" && prop.hp > 0 && prop.side === unit.side && hexDistance(prop.cell, unit.cell) <= 3) pct += 20;
+  }
+  return pct;
+}
+
 export function eff(state: RestiaState, unit: BattleUnit, stat: StatKey): number {
-  let value = unit.stats[stat];
-  const pct = unit.mods.filter((mod) => mod.stat === stat).reduce((sum, mod) => sum + mod.pct, 0);
-  value *= 1 + clamp(pct, -60, 150) / 100;
+  const passives = pv(unit);
+  let pct = unit.mods.filter((mod) => mod.stat === stat).reduce((sum, mod) => sum + mod.pct, 0);
+  if (stat !== "maxHp" && stat !== "maxMp") {
+    pct += passives.stats[stat] ?? 0;
+    for (const low of passives.lowHp) if (unit.hp > 0 && unit.hp < unit.stats.maxHp * low.below) pct += low.stats[stat] ?? 0;
+    if (state.battle) pct += auraPct(state.battle, unit, stat);
+  }
+  let value = unit.stats[stat] * (1 + clamp(pct, -60, 150) / 100);
   if (unit.side === "ally" && (stat === "atk" || stat === "def") && hasBuff(state, "valor")) value *= 1.15;
   if (stat === "spd" && hasStatus(unit, "slow")) value *= 0.7;
+  if (stat === "spd" && hasStatus(unit, "haste")) value *= 1.25;
   if ((stat === "def" || stat === "res") && unit.defending) value *= 1.5;
   return Math.max(0, value);
 }
 
 export function moveRange(unit: BattleUnit): number {
-  return Math.max(1, unit.move - (hasStatus(unit, "slow") ? 1 : 0));
+  if (hasStatus(unit, "root")) return 0;
+  return Math.max(1, unit.move + pv(unit).move - (hasStatus(unit, "slow") ? 1 : 0) + (hasStatus(unit, "haste") ? 1 : 0));
 }
 
 export function living(battle: BattleState): BattleUnit[] {
@@ -341,31 +450,99 @@ export function activeUnit(battle: BattleState): BattleUnit | null {
   return battle.active ? battle.units.find((unit) => unit.uid === battle.active) ?? null : null;
 }
 
-/** Cells the unit can move to this turn, each with its path. */
-export function reachable(battle: BattleState, unit: BattleUnit): Map<number, number[]> {
-  const passable = (cell: number) => {
-    if (battle.blocked.includes(cell) && !unit.flying) return false;
+export function skillAp(skill: SkillDef): number {
+  return skill.ap ?? 2;
+}
+
+export function skillMp(unit: BattleUnit, skill: SkillDef): number {
+  return Math.max(0, Math.round(skill.mp * (1 - pv(unit).mpSave / 100)));
+}
+
+/** Cells the unit can move to this turn, each with its path (Sprint adds 2). */
+export function reachable(battle: BattleState, unit: BattleUnit, extra = 0): Map<number, number[]> {
+  const budget = moveRange(unit) === 0 ? 0 : moveRange(unit) + extra;
+  if (budget <= 0) return new Map();
+  const sure = pv(unit).sureFooted;
+  const cost = (cell: number) => {
     const other = unitAt(battle, cell);
-    if (!other) return true;
-    return unit.flying || other.side === unit.side;
+    if (other && other.side !== unit.side && !unit.flying) return Infinity;
+    return stepCost(battle, unit, cell, sure);
   };
-  const stoppable = (cell: number) => !battle.blocked.includes(cell) && !unitAt(battle, cell);
-  return reach(unit.cell, moveRange(unit), passable, stoppable);
+  const stoppable = (cell: number) => standable(battle, cell) && !unitAt(battle, cell);
+  return reachWeighted(unit.cell, budget, cost, stoppable);
 }
 
-function elementMult(target: BattleUnit, element: Element): number {
-  return target.resist[element] ?? 1;
+/** Basic-attack reach: ranged units gain from high ground and passives, lose to blizzards and storms. */
+export function attackRange(battle: BattleState, unit: BattleUnit): number {
+  if (unit.range <= 1) return 1;
+  return Math.max(2, unit.range + pv(unit).range + heightOf(battle, unit.cell) + weatherRange(battle.weather));
 }
 
-function hitChance(state: RestiaState, attacker: BattleUnit, target: BattleUnit, physical: boolean): number {
+/** A foe this unit must attack (taunt), if any. */
+export function tauntedBy(battle: BattleState, unit: BattleUnit): BattleUnit | null {
+  const status = unit.statuses.find((entry) => entry.id === "taunt");
+  if (!status?.source) return null;
+  const source = battle.units.find((entry) => entry.uid === status.source);
+  return source && source.hp > 0 && !source.gone ? source : null;
+}
+
+/** Why `unit` can't basic-attack `target` from `from` (null = it can). */
+export function attackBlock(battle: BattleState, unit: BattleUnit, target: { cell: number }, from = unit.cell): string | null {
+  const distance = hexDistance(from, target.cell);
+  const saved = unit.cell;
+  unit.cell = from;
+  const range = attackRange(battle, unit);
+  unit.cell = saved;
+  if (distance > range) return "Out of range.";
+  if (distance > 1 && !hasLineOfSight(battle, from, target.cell)) return "No line of sight.";
+  return null;
+}
+
+function elementMult(battle: BattleState, target: BattleUnit, element: Element): number {
+  return (target.resist[element] ?? 1) * weatherMult(battle.weather, element);
+}
+
+/** Target faces away from the attacker (units face left or right). */
+function fromBehind(attacker: BattleUnit, target: BattleUnit): boolean {
+  const a = colRow(attacker.cell).col;
+  const t = colRow(target.cell).col;
+  return (target.facing === "right" && a < t) || (target.facing === "left" && a > t);
+}
+
+function hitChance(state: RestiaState, battle: BattleState, attacker: BattleUnit, target: BattleUnit, physical: boolean): number {
   if (!physical) return 1;
-  return clamp(0.95 + (eff(state, attacker, "luk") - eff(state, target, "luk")) * 0.005, 0.75, 0.99);
+  let p = 0.95 + (eff(state, attacker, "luk") - eff(state, target, "luk")) * 0.005;
+  if (hasStatus(attacker, "blind")) p -= 0.35;
+  if (heightOf(battle, attacker.cell) < heightOf(battle, target.cell)) p -= 0.05;
+  return clamp(p - pv(target).evasion, 0.3, 0.99);
 }
 
 function rawDamage(state: RestiaState, attacker: BattleUnit, target: BattleUnit, power: number, physical: boolean): number {
   const a = physical ? eff(state, attacker, "atk") : eff(state, attacker, "mag");
   const d = physical ? eff(state, target, "def") : eff(state, target, "res");
   return a <= 0 ? 1 : (power * a * a) / (a + d);
+}
+
+type StrikeOpts = { power: number; element: Element; physical: boolean; pointBlank?: boolean; ranged?: boolean; crit?: number };
+
+/** Positional and passive multipliers shared by real hits and forecasts. */
+function situational(state: RestiaState, battle: BattleState, attacker: BattleUnit, target: BattleUnit, opts: StrikeOpts): number {
+  const pa = pv(attacker);
+  let mult = 1;
+  const dh = heightOf(battle, attacker.cell) - heightOf(battle, target.cell);
+  if (dh > 0) mult *= 1.15 + pa.highGround / 100;
+  else if (dh < 0) mult *= 0.9;
+  if (opts.ranged && battle.tiles[target.cell] === "cover") mult *= 0.7;
+  if (hasStatus(target, "mark")) mult *= 1.25;
+  if (target.down) mult *= 1.25;
+  if (opts.pointBlank) mult *= 0.5;
+  if (fromBehind(attacker, target)) mult *= 1.1 + pa.backstab / 100;
+  if (pa.pack > 0) {
+    const flankers = battle.units.filter((unit) => unit !== attacker && unit.side === attacker.side && unit.hp > 0 && !unit.gone && hexDistance(unit.cell, target.cell) === 1).length;
+    mult *= 1 + (pa.pack * flankers) / 100;
+  }
+  mult *= 1 + (pa.elementBoost[opts.element] ?? 0) / 100;
+  return mult;
 }
 
 export function expectedDamage(
@@ -375,91 +552,77 @@ export function expectedDamage(
   power: number,
   element: Element,
   physical: boolean,
-  pointBlank: boolean
+  pointBlank: boolean,
+  ranged = false
 ): number {
-  const mult = elementMult(target, element);
-  return rawDamage(state, attacker, target, power, physical) * mult * (target.down ? 1.25 : 1) * (pointBlank ? 0.5 : 1) * hitChance(state, attacker, target, physical);
+  const battle = state.battle;
+  if (!battle) return 0;
+  const opts = { power, element, physical, pointBlank, ranged };
+  return (
+    rawDamage(state, attacker, target, power, physical) *
+    elementMult(battle, target, element) *
+    situational(state, battle, attacker, target, opts) *
+    hitChance(state, battle, attacker, target, physical)
+  );
 }
 
-function kill(unit: BattleUnit, anims: BattleAnim[]): void {
+// ---------------------------------------------------------------------------
+// Damage, death, statuses
+// ---------------------------------------------------------------------------
+
+function progressChallenge(battle: BattleState, id: BattleChallenge["id"], n = 1): void {
+  if (battle.challenge?.id === id) battle.challenge.progress += n;
+}
+
+function kill(state: RestiaState, battle: BattleState, unit: BattleUnit, anims: BattleAnim[], ctx: Ctx, cause?: "explosion"): void {
   unit.hp = 0;
   unit.statuses = [];
   unit.mods = [];
   unit.down = false;
   unit.defending = false;
-  anims.push({ kind: "death", uid: unit.uid });
+  unit.shield = 0;
+  anims.push({ kind: "death", uid: unit.uid, ...deathSound(unit) });
+  if (unit.side === "ally" && battle.challenge?.id === "untouched") battle.challenge.failed = true;
+  if (unit.side === "enemy" && cause === "explosion") progressChallenge(battle, "boom");
+  const burst = pv(unit).deathBurst;
+  if (burst) {
+    battle.log.push(`${unit.name} bursts!`);
+    explode(state, battle, unit.cell, burst.power, burst.element, burst.radius, burst.status, anims, ctx);
+  }
 }
 
-type StrikeOpts = { power: number; element: Element; physical: boolean; pointBlank?: boolean };
-
-function strike(state: RestiaState, attacker: BattleUnit, target: BattleUnit, opts: StrikeOpts, anims: BattleAnim[]): number {
-  if (!chance(state, hitChance(state, attacker, target, opts.physical))) {
-    anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: false, miss: true, heal: false });
-    return 0;
-  }
-  const mult = elementMult(target, opts.element);
-  if (mult === 0) {
-    anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: true, miss: false, heal: false });
-    return 0;
-  }
-  const crit = chance(state, clamp(0.05 + eff(state, attacker, "luk") * 0.004, 0, 0.35));
-  const variance = 0.9 + random(state) * 0.2;
-  const damage = Math.max(
-    1,
-    Math.round(
-      rawDamage(state, attacker, target, opts.power, opts.physical) *
-        variance *
-        mult *
-        (crit ? 1.5 : 1) *
-        (target.down ? 1.25 : 1) *
-        (opts.pointBlank ? 0.5 : 1)
-    )
-  );
-  target.hp = Math.max(0, target.hp - damage);
-  const weak = mult > 1;
-  anims.push({ kind: "hit", uid: target.uid, amount: damage, crit, weak, resist: mult < 1, miss: false, heal: false });
-  target.statuses = target.statuses.filter((status) => status.id !== "sleep" && !(status.id === "freeze" && opts.element === "fire"));
-  if (target.hp <= 0) {
-    kill(target, anims);
-  } else if (weak && !target.boss && !target.down) {
-    target.down = true;
-    anims.push({ kind: "status", uid: target.uid, text: "DOWN!" });
-  }
-  return damage;
-}
-
-/** Buffs/debuffs; one landing on the unit whose turn it is skips this turn's countdown. */
-function addMods(battle: BattleState, target: BattleUnit, mods: SkillDef["mods"]): void {
-  for (const mod of mods ?? []) target.mods.push({ ...mod, skip: target.uid === battle.active });
+function deathSound(unit: BattleUnit): { sound?: string } {
+  const sound = unit.kind === "monster" || unit.kind === "pet" ? unitSound(unit.sprite, "death") : undefined;
+  return sound ? { sound } : {};
 }
 
 /**
- * Where a fallen unit stands up: its own hex, or (if someone moved onto the
- * corpse) the nearest free hex. null = the whole area is packed.
+ * Applies damage to a unit: shield first, then HP; undying passives keep it at 1 HP once.
+ * Returns the HP actually lost.
  */
-export function revivalCell(battle: BattleState, target: BattleUnit): number | null {
-  const free = (cell: number) => !battle.blocked.includes(cell) && !battle.units.some((unit) => unit !== target && unit.cell === cell && unit.hp > 0 && !unit.gone);
-  if (free(target.cell)) return target.cell;
-  const seen = new Set([target.cell]);
-  const queue = [target.cell];
-  while (queue.length) {
-    const cell = queue.shift()!;
-    for (const next of neighbors(cell)) {
-      if (seen.has(next)) continue;
-      seen.add(next);
-      if (free(next)) return next;
-      queue.push(next);
-    }
+function dealDamage(
+  state: RestiaState,
+  battle: BattleState,
+  target: BattleUnit,
+  amount: number,
+  anims: BattleAnim[],
+  ctx: Ctx,
+  flags: { crit?: boolean; weak?: boolean; resist?: boolean; cause?: "explosion" } = {}
+): number {
+  if (target.hp <= 0 || target.gone) return 0;
+  const absorbed = Math.min(target.shield, amount);
+  target.shield -= absorbed;
+  let loss = amount - absorbed;
+  const passives = pv(target);
+  if (loss >= target.hp && passives.undying && !target.spent) {
+    loss = target.hp - 1;
+    target.spent = true;
+    anims.push({ kind: "status", uid: target.uid, text: "Refuses to fall!" });
   }
-  return null;
-}
-
-function addStatus(target: BattleUnit, id: StatusId, turns: number, anims: BattleAnim[]): void {
-  if (target.hp <= 0) return;
-  const existing = target.statuses.find((status) => status.id === id);
-  if (existing) existing.turns = Math.max(existing.turns, turns);
-  else target.statuses.push({ id, turns });
-  anims.push({ kind: "status", uid: target.uid, text: STATUS_NAMES[id] });
+  target.hp = Math.max(0, target.hp - loss);
+  anims.push({ kind: "hit", uid: target.uid, amount, crit: !!flags.crit, weak: !!flags.weak, resist: !!flags.resist, miss: false, heal: false, ...(absorbed ? { shielded: absorbed } : {}) });
+  if (target.hp <= 0) kill(state, battle, target, anims, ctx, flags.cause);
+  return loss;
 }
 
 function heal(target: BattleUnit, amount: number, anims: BattleAnim[]): void {
@@ -468,14 +631,253 @@ function heal(target: BattleUnit, amount: number, anims: BattleAnim[]): void {
   anims.push({ kind: "hit", uid: target.uid, amount: target.hp - before, crit: false, weak: false, resist: false, miss: false, heal: true });
 }
 
+function addStatus(battle: BattleState, target: BattleUnit, id: StatusId, turns: number, anims: BattleAnim[], source?: BattleUnit): boolean {
+  if (target.hp <= 0 || target.gone) return false;
+  if (pv(target).immune.includes(id)) {
+    anims.push({ kind: "status", uid: target.uid, text: `Immune (${STATUS_NAMES[id]})` });
+    return false;
+  }
+  // Bosses shrug off hard control after one turn of it.
+  const hard = id === "sleep" || id === "stun" || id === "freeze";
+  const length = target.boss && hard ? 1 : turns;
+  const existing = target.statuses.find((status) => status.id === id);
+  if (existing) {
+    existing.turns = Math.max(existing.turns, length);
+    if (source && id === "taunt") existing.source = source.uid;
+  } else target.statuses.push({ id, turns: length, ...(source && id === "taunt" ? { source: source.uid } : {}) });
+  // A status landing on the unit whose turn it is must survive that turn's countdown.
+  if (target.uid === battle.active && TICKING.includes(id)) {
+    const inst = target.statuses.find((status) => status.id === id)!;
+    inst.turns += 1;
+  }
+  anims.push({ kind: "status", uid: target.uid, text: STATUS_NAMES[id] });
+  return true;
+}
+
+/** Buffs/debuffs; one landing on the unit whose turn it is skips this turn's countdown. */
+function addMods(battle: BattleState, target: BattleUnit, mods: SkillDef["mods"]): void {
+  for (const mod of mods ?? []) target.mods.push({ ...mod, skip: target.uid === battle.active });
+}
+
+function strike(state: RestiaState, battle: BattleState, attacker: BattleUnit, target: BattleUnit, opts: StrikeOpts, anims: BattleAnim[], ctx: Ctx): number {
+  const pa = pv(attacker);
+  if (!chance(state, hitChance(state, battle, attacker, target, opts.physical))) {
+    anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: false, miss: true, heal: false });
+    return 0;
+  }
+  const mult = elementMult(battle, target, opts.element);
+  if ((target.resist[opts.element] ?? 1) === 0) {
+    anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: true, miss: false, heal: false });
+    return 0;
+  }
+  const behind = fromBehind(attacker, target);
+  const critChance = clamp(0.05 + eff(state, attacker, "luk") * 0.004 + pa.crit + (opts.crit ?? 0) + (behind ? 0.1 : 0), 0, 0.6);
+  const crit = chance(state, critChance);
+  const variance = 0.9 + random(state) * 0.2;
+  const damage = Math.max(
+    1,
+    Math.round(rawDamage(state, attacker, target, opts.power, opts.physical) * variance * mult * (crit ? 1.5 + pa.critDamage : 1) * situational(state, battle, attacker, target, opts))
+  );
+  const weak = (target.resist[opts.element] ?? 1) > 1;
+  if (attacker.side === "ally") {
+    if (weak) progressChallenge(battle, "weakness");
+    if (heightOf(battle, attacker.cell) > heightOf(battle, target.cell)) progressChallenge(battle, "highGround");
+  }
+  const lost = dealDamage(state, battle, target, damage, anims, ctx, { crit, weak, resist: mult < 1 });
+  if (target.hp <= 0 && crit && attacker.side === "ally") progressChallenge(battle, "crit");
+  target.statuses = target.statuses.filter((status) => status.id !== "sleep" && !(status.id === "freeze" && opts.element === "fire"));
+  if (target.hp > 0) {
+    if (weak && !target.boss && !target.down) {
+      target.down = true;
+      anims.push({ kind: "status", uid: target.uid, text: "DOWN!" });
+    }
+    for (const onHit of pa.onHit) if (chance(state, onHit.chance)) addStatus(battle, target, onHit.status, onHit.turns, anims);
+  }
+  if (lost > 0 && pa.lifesteal > 0 && attacker.hp > 0) heal(attacker, lost * pa.lifesteal, anims);
+  const thorns = pv(target).thorns;
+  if (!opts.ranged && thorns > 0 && attacker.hp > 0 && damage > 0) {
+    dealDamage(state, battle, attacker, Math.max(1, Math.round(damage * thorns)), anims, ctx);
+  }
+  // Ground reacts to elements: fire melts ice and lights barrels, ice puts out fire.
+  groundReaction(battle, target.cell, opts.element);
+  return damage;
+}
+
+function groundReaction(battle: BattleState, cell: number, element: Element): void {
+  const tile = battle.tiles[cell];
+  if (element === "fire" && tile === "ice") {
+    delete battle.tiles[cell];
+    delete battle.tileTimers[cell];
+  } else if (element === "ice" && tile === "fire") {
+    delete battle.tiles[cell];
+    delete battle.tileTimers[cell];
+  }
+}
+
+/** Blast around a hex: hurts everyone (and props) within `radius`. */
+function explode(state: RestiaState, battle: BattleState, cell: number, power: number, element: Element, radius: number, status: StatusId | undefined, anims: BattleAnim[], ctx: Ctx): void {
+  anims.push({ kind: "fx", cell, fx: element === "fire" ? "explosion" : element === "ice" ? "ice" : element === "dark" ? "dark" : "explosion", sound: "spells/fireball-hit" });
+  const level = Math.max(1, ...battle.units.map((unit) => unit.level));
+  for (const unit of living(battle)) {
+    if (hexDistance(unit.cell, cell) > radius) continue;
+    const mult = elementMult(battle, unit, element);
+    if (mult === 0) continue;
+    const amount = Math.max(1, Math.round((18 + 3 * level) * power * mult * (0.9 + random(state) * 0.2)));
+    dealDamage(state, battle, unit, amount, anims, ctx, { weak: mult > 1, resist: mult < 1, cause: "explosion" });
+    if (unit.hp > 0 && status && chance(state, 0.4)) addStatus(battle, unit, status, status === "burn" ? 3 : 1, anims);
+  }
+  for (const prop of [...battle.props]) {
+    if (prop.cell === cell || prop.hp <= 0 || prop.kind === "rock" || hexDistance(prop.cell, cell) > radius) continue;
+    damageProp(state, battle, prop, Math.round((18 + 3 * level) * power), element, anims, ctx);
+  }
+}
+
+/** Damage a destructible prop; barrels explode when they break. */
+export function damageProp(state: RestiaState, battle: BattleState, prop: BattleProp, amount: number, element: Element, anims: BattleAnim[], ctx: Ctx): void {
+  if (prop.kind === "rock" || prop.hp <= 0) return;
+  const dealt = prop.kind === "barrel" ? prop.hp : Math.max(1, Math.round(amount));
+  prop.hp = Math.max(0, prop.hp - dealt);
+  anims.push({ kind: "hit", uid: prop.uid, amount: dealt, crit: false, weak: false, resist: false, miss: false, heal: false });
+  if (prop.hp > 0) return;
+  anims.push({ kind: "prop", uid: prop.uid, destroyed: true });
+  battle.log.push(`${PROP_NAMES[prop.kind]} destroyed.`);
+  if (prop.kind === "barrel") explode(state, battle, prop.cell, 1.2, "fire", 1, "burn", anims, ctx);
+  void element;
+}
+
+// ---------------------------------------------------------------------------
+// Terrain on the move
+// ---------------------------------------------------------------------------
+
+/** Walks a path hex by hex: hazards, pickups and bleeding apply; stops if the unit falls. */
+function walk(state: RestiaState, battle: BattleState, unit: BattleUnit, path: number[], anims: BattleAnim[], ctx: Ctx, kind: "move" | "knock" = "move"): void {
+  if (!path.length) return;
+  // The walk is animated in segments, split wherever something happens on the way.
+  let from = unit.cell;
+  const segment: number[] = [];
+  const flush = () => {
+    if (!segment.length) return;
+    anims.push(kind === "move" ? { kind: "move", uid: unit.uid, path: [from, ...segment] } : { kind: "knock", uid: unit.uid, path: [from, ...segment] });
+    from = segment[segment.length - 1]!;
+    segment.length = 0;
+  };
+  const ground = !unit.flying && !pv(unit).sureFooted;
+  for (const cell of path) {
+    segment.push(cell);
+    unit.cell = cell;
+    const tile = battle.tiles[cell];
+    if (tile === "crystal") {
+      flush();
+      delete battle.tiles[cell];
+      unit.mp = Math.min(unit.stats.maxMp, unit.mp + Math.round(unit.stats.maxMp * 0.3));
+      unit.apCarry += 1;
+      anims.push({ kind: "status", uid: unit.uid, text: "+MP, +1 AP next turn" });
+    }
+    if (!ground) continue;
+    if (tile === "thorns") {
+      flush();
+      dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.06)), anims, ctx);
+    } else if (tile === "fire") {
+      flush();
+      dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.05)), anims, ctx);
+      if (unit.hp > 0) addStatus(battle, unit, "burn", 2, anims);
+    }
+    if (unit.hp <= 0) return;
+  }
+  flush();
+  if (kind === "move" && hasStatus(unit, "bleed") && unit.hp > 0) {
+    anims.push({ kind: "status", uid: unit.uid, text: "Bleeding" });
+    dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.06)), anims, ctx);
+  }
+}
+
+function doMove(state: RestiaState, battle: BattleState, unit: BattleUnit, path: number[], anims: BattleAnim[], ctx: Ctx): void {
+  if (!path.length) return;
+  const previous = path.length > 1 ? path[path.length - 2]! : unit.cell;
+  walk(state, battle, unit, path, anims, ctx);
+  const from = previous % BOARD_COLS;
+  const to = unit.cell % BOARD_COLS;
+  if (to !== from) unit.facing = to > from ? "right" : "left";
+}
+
+/** Shoves a unit away from `from`; collisions hurt both sides (and break props). */
+function knockBack(state: RestiaState, battle: BattleState, from: number, target: BattleUnit, steps: number, anims: BattleAnim[], ctx: Ctx): void {
+  if (target.hp <= 0 || target.boss) return;
+  const path: number[] = [];
+  let at = target.cell;
+  let origin = from;
+  for (let i = 0; i < steps; i++) {
+    const next = stepAway(origin, at);
+    const blocker = next === null ? null : unitAt(battle, next);
+    const prop = next === null ? undefined : propAt(battle, next);
+    const tile = next === null ? "void" : battle.tiles[next];
+    if (next === null || blocker || prop || tile === "void" || tile === "water") {
+      anims.push({ kind: "status", uid: target.uid, text: "Slammed!" });
+      if (path.length) walk(state, battle, target, path, anims, ctx, "knock");
+      dealDamage(state, battle, target, Math.max(1, Math.round(target.stats.maxHp * 0.08)), anims, ctx);
+      if (blocker) dealDamage(state, battle, blocker, Math.max(1, Math.round(blocker.stats.maxHp * 0.05)), anims, ctx);
+      if (prop) damageProp(state, battle, prop, Math.round(target.stats.maxHp * 0.1), "phys", anims, ctx);
+      return;
+    }
+    path.push(next);
+    origin = at;
+    at = next;
+  }
+  walk(state, battle, target, path, anims, ctx, "knock");
+}
+
 // ---------------------------------------------------------------------------
 // Turn flow
 // ---------------------------------------------------------------------------
 
-function newRound(state: RestiaState, battle: BattleState): void {
+function newRound(state: RestiaState, battle: BattleState, anims: BattleAnim[], ctx: Ctx): void {
   battle.round += 1;
   battle.waited = [];
   for (const unit of battle.units) unit.retaliated = false;
+  // Temporary ground (fire, ice from skills) fades.
+  for (const [cell, left] of Object.entries(battle.tileTimers)) {
+    if (left <= 1) {
+      delete battle.tiles[Number(cell)];
+      delete battle.tileTimers[Number(cell)];
+    } else battle.tileTimers[Number(cell)] = left - 1;
+  }
+  // Last round's warnings land now; the next ones are marked a round ahead.
+  if (battle.warnings.length) {
+    const fx = battle.hazard?.kind === "icicles" ? "ice" : "earth";
+    for (const cell of battle.warnings) {
+      anims.push({ kind: "fx", cell, fx, sound: "spells/earthquake" });
+      const unit = unitAt(battle, cell);
+      if (unit) dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.2)), anims, ctx);
+      const prop = propAt(battle, cell);
+      if (prop) damageProp(state, battle, prop, 20, "earth", anims, ctx);
+    }
+    battle.warnings = [];
+  }
+  if (battle.hazard && battle.round >= battle.hazard.from - 1) {
+    const targets: number[] = [];
+    const occupied = living(battle).map((unit) => unit.cell);
+    for (let i = 0; i < 3; i++) {
+      // Aim near units, so the hazard is a real reason to move.
+      const near = occupied.length ? occupied[randInt(state, 0, occupied.length - 1)]! : null;
+      const cell = randomOpenCell(state, battle, (c) => !targets.includes(c) && (near === null || hexDistance(c, near) <= 1));
+      if (cell !== null) targets.push(cell);
+    }
+    battle.warnings = targets;
+    if (targets.length) anims.push({ kind: "banner", text: battle.hazard.kind === "icicles" ? "Icicles creak overhead! (marked hexes)" : "The ceiling rumbles! (marked hexes)" });
+  }
+  if (battle.reinforce && battle.round === battle.reinforce.round) {
+    let index = battle.units.length;
+    for (const enemy of battle.reinforce.enemies) {
+      const cell = randomOpenCell(state, battle, (c) => colRow(c).col >= 8 && !unitAt(battle, c));
+      if (cell === null) continue;
+      const unit = monsterUnit(enemy.species, enemy.level, `r${index++}`, "enemy", cell);
+      battle.units.push(unit);
+      anims.push({ kind: "status", uid: unit.uid, text: "Joins the fight!" });
+    }
+    battle.log.push("Reinforcements arrive!");
+    anims.push({ kind: "banner", text: "Enemy reinforcements!" });
+    battle.reinforce = null;
+  }
   const order = living(battle).sort((a, b) => {
     const diff = eff(state, b, "spd") - eff(state, a, "spd");
     if (Math.abs(diff) > 0.001) return diff;
@@ -491,31 +893,48 @@ function newRound(state: RestiaState, battle: BattleState): void {
 
 function tickEndOfTurn(unit: BattleUnit): void {
   unit.mods = unit.mods.map((mod) => (mod.skip ? { ...mod, skip: false } : { ...mod, turns: mod.turns - 1 })).filter((mod) => mod.turns > 0);
-  unit.statuses = unit.statuses
-    .map((status) => (status.id === "poison" || status.id === "burn" || status.id === "slow" ? { ...status, turns: status.turns - 1 } : status))
-    .filter((status) => status.turns > 0);
+  unit.statuses = unit.statuses.map((status) => (TICKING.includes(status.id) ? { ...status, turns: status.turns - 1 } : status)).filter((status) => status.turns > 0);
+}
+
+/** Start-of-turn upkeep: damage over time, regeneration, ground effects. */
+function upkeep(state: RestiaState, battle: BattleState, unit: BattleUnit, anims: BattleAnim[], ctx: Ctx): void {
+  const passives = pv(unit);
+  for (const status of unit.statuses) {
+    if (status.id !== "poison" && status.id !== "burn") continue;
+    const damage = Math.max(1, Math.round(unit.stats.maxHp * (status.id === "poison" ? 0.08 : 0.06)));
+    dealDamage(state, battle, unit, damage, anims, ctx);
+    if (unit.hp <= 0) return;
+  }
+  const tile = battle.tiles[unit.cell];
+  const grounded = !unit.flying && !passives.sureFooted;
+  if (tile === "fire" && grounded) addStatus(battle, unit, "burn", 2, anims);
+  const regen = passives.regen + (hasStatus(unit, "regen") ? 0.08 : 0) + (tile === "spring" && !unit.flying ? 0.1 : 0);
+  if (regen > 0 && unit.hp < unit.stats.maxHp) heal(unit, unit.stats.maxHp * regen, anims);
+  if (passives.mpRegen > 0) unit.mp = Math.min(unit.stats.maxMp, unit.mp + Math.max(1, Math.round(unit.stats.maxMp * passives.mpRegen)));
 }
 
 function beginTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[], ctx: Ctx): void {
   let guard = 0;
   while (battle.phase === "turn") {
     if (guard++ > 200) throw new Error("Battle turn loop");
-    if (!battle.queue.length) newRound(state, battle);
+    if (!battle.queue.length) {
+      newRound(state, battle, anims, ctx);
+      if (checkEnd(state, battle, ctx)) return;
+    }
     const uid = battle.queue.shift();
     const unit = uid ? battle.units.find((entry) => entry.uid === uid) : undefined;
     if (!unit || unit.hp <= 0 || unit.gone) continue;
+    const returning = battle.waited.includes(unit.uid);
     battle.active = unit.uid;
-    battle.turn = { moved: false, acted: false, waited: battle.waited.includes(unit.uid) };
+    battle.turn = { moved: false, acted: false, waited: returning, sprinted: false, item: false };
     unit.defending = false;
-    // Poison/burn bite once per round: not again when a unit returns after Wait.
-    for (const status of battle.turn.waited ? [] : unit.statuses) {
-      if (status.id !== "poison" && status.id !== "burn") continue;
-      const damage = Math.max(1, Math.round(unit.stats.maxHp * (status.id === "poison" ? 0.08 : 0.06)));
-      unit.hp = Math.max(0, unit.hp - damage);
-      anims.push({ kind: "hit", uid: unit.uid, amount: damage, crit: false, weak: false, resist: false, miss: false, heal: false });
+    if (!returning) {
+      // Poison/burn/regen once per round: not again when a unit returns after Wait.
+      unit.ap = BASE_AP + pv(unit).ap + unit.apCarry;
+      unit.apCarry = 0;
+      upkeep(state, battle, unit, anims, ctx);
     }
     if (unit.hp <= 0) {
-      kill(unit, anims);
       battle.log.push(`${unit.name} succumbed.`);
       if (checkEnd(state, battle, ctx)) return;
       continue;
@@ -538,7 +957,7 @@ function beginTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[],
   }
 }
 
-function finishTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[], ctx: Ctx): void {
+export function finishTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[], ctx: Ctx): void {
   const unit = activeUnit(battle);
   if (unit) tickEndOfTurn(unit);
   battle.active = null;
@@ -550,6 +969,7 @@ function checkEnd(state: RestiaState, battle: BattleState, ctx: Ctx): boolean {
   if (battle.phase !== "turn") return true;
   const allies = living(battle).filter((unit) => unit.side === "ally");
   const enemies = living(battle).filter((unit) => unit.side === "enemy");
+  // Beating everyone on the field wins (reinforcements that never arrived don't matter).
   if (!enemies.length) {
     battle.phase = "victory";
     battle.active = null;
@@ -571,27 +991,46 @@ function copyBack(state: RestiaState, battle: BattleState): void {
     if (unit.kind === "member") {
       const member = state.members[unit.ref as CharId];
       if (member) {
-        member.hp = unit.hp;
-        member.mp = unit.mp;
+        member.hp = Math.min(unit.hp, memberStats(state, member.id).maxHp);
+        member.mp = Math.min(unit.mp, memberStats(state, member.id).maxMp);
       }
     } else if (unit.petUid) {
       const pet = state.pets.find((entry) => entry.uid === unit.petUid);
       if (pet) {
-        pet.hp = unit.hp;
-        pet.mp = unit.mp;
+        const stats = petStats(pet);
+        pet.hp = Math.min(unit.hp, stats.maxHp);
+        pet.mp = Math.min(unit.mp, stats.maxMp);
       }
     }
   }
 }
 
+/** EXP share for a fighter of `level` against an enemy of `enemyLevel`: weak foes teach little. */
+export function levelGapMult(level: number, enemyLevel: number): number {
+  return clamp(1 + 0.12 * (enemyLevel - level), 0.15, 1.5);
+}
+
+/** Repeats of the same species on the same day teach less (resets every morning). */
+export function repeatMult(killsToday: number): number {
+  return killsToday < 3 ? 1 : Math.max(0.25, 1 - 0.15 * (killsToday - 2));
+}
+
 function victory(state: RestiaState, battle: BattleState, ctx: Ctx): void {
   copyBack(state, battle);
-  const rewards: BattleRewards = { exp: 0, gold: 0, items: {}, levelUps: [], befriended: [] };
+  const rewards: BattleRewards = { exp: 0, gold: 0, items: {}, levelUps: [], jobUps: [], befriended: [] };
   const goldMult = (perk(state, "treasureSense") ? 1.25 : 1) * (hasBuff(state, "fortune") ? 1.3 : 1);
   const dropMult = perk(state, "treasureSense") ? 1.1 : 1;
+  const expMult = perk(state, "quickLearner") ? 1.2 : 1;
+  // Each defeated foe: base EXP x today's repeat factor (per species).
+  const foes: { exp: number; level: number }[] = [];
+  let repeated = false;
   for (const unit of battle.units) {
     if (unit.side !== "enemy") continue;
-    rewards.exp += unit.exp;
+    const key = `kill:${unit.ref}`;
+    const fresh = unit.kind === "monster" ? repeatMult(state.stats.today[key] ?? 0) : 1;
+    if (fresh < 1) repeated = true;
+    foes.push({ exp: unit.exp * fresh * expMult, level: unit.level });
+    if (unit.kind === "monster") state.stats.today[key] = (state.stats.today[key] ?? 0) + 1;
     if (unit.gone) {
       rewards.befriended.push(unit.name);
       continue;
@@ -608,23 +1047,41 @@ function victory(state: RestiaState, battle: BattleState, ctx: Ctx): void {
       track(state, ctx, "defeat", 1, unit.ref);
     }
   }
-  rewards.exp = Math.round(rewards.exp * (perk(state, "quickLearner") ? 1.2 : 1));
+  const shareFor = (level: number) => Math.round(foes.reduce((sum, foe) => sum + foe.exp * levelGapMult(level, foe.level), 0));
   rewards.gold = Math.round(rewards.gold * goldMult);
   state.gold += rewards.gold;
   for (const [item, n] of Object.entries(rewards.items)) state.inventory[item] = (state.inventory[item] ?? 0) + n;
   const fought = new Set<string>();
+  let lowGap = false;
   for (const unit of battle.units) {
     if (unit.side !== "ally") continue;
     const who = unit.kind === "member" ? unit.ref : `pet:${unit.petUid}`;
     fought.add(who);
     if (unit.hp <= 0 || unit.gone) continue;
-    const up = gainExp(state, who, rewards.exp, ctx);
+    const share = shareFor(unit.level);
+    if (foes.some((foe) => levelGapMult(unit.level, foe.level) < 0.6)) lowGap = true;
+    if (unit.ref === "bin") rewards.exp = share;
+    const up = gainExp(state, who, share, ctx);
     if (up) rewards.levelUps.push({ who: unit.name, level: up.level });
+    if (unit.kind === "member") {
+      const jobUp = gainJobExp(state, unit.ref as CharId, Math.round(share * 0.6), ctx);
+      if (jobUp) rewards.jobUps.push({ who: unit.name, job: jobUp.job, level: jobUp.level });
+    }
   }
-  for (const id of Object.keys(state.members)) {
+  for (const id of Object.keys(state.members) as CharId[]) {
     if (fought.has(id)) continue;
-    const up = gainExp(state, id, Math.round(rewards.exp * 0.3), ctx);
-    if (up) rewards.levelUps.push({ who: CHARACTERS[id as CharId].name, level: up.level });
+    const up = gainExp(state, id, Math.round(shareFor(state.members[id]!.level) * 0.3), ctx);
+    if (up) rewards.levelUps.push({ who: CHARACTERS[id].name, level: up.level });
+  }
+  if (repeated || lowGap) rewards.expNote = repeated ? "Less EXP: you've fought a lot of these today." : "Less EXP: these foes are far below your level.";
+  const challenge = battle.challenge;
+  if (challenge) {
+    const ok = challenge.id === "fast" ? battle.round <= challenge.target : challenge.id === "untouched" ? !challenge.failed : challenge.progress >= challenge.target;
+    rewards.challenge = { text: challenge.text, ok, jp: ok ? challenge.jp : 0 };
+    if (ok) {
+      state.admin.ap += challenge.jp;
+      ctx.toast(`[CJS] The audience loved it! "${challenge.text}" (+${challenge.jp} JP)`, "system");
+    }
   }
   battle.rewards = rewards;
   state.minute += 20;
@@ -648,163 +1105,344 @@ function face(unit: BattleUnit, toward: number): void {
   if (to !== from) unit.facing = to > from ? "right" : "left";
 }
 
+function spend(unit: BattleUnit, ap: number): void {
+  if (unit.ap < ap) fail(`Needs ${ap} AP (you have ${unit.ap}). Defend (+1) or Charge (+2) to carry AP into next turn.`);
+  unit.ap -= ap;
+}
+
 export function battleMove(state: RestiaState, cell: number, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
   if (battle.turn.moved || battle.turn.acted) fail("This unit already moved.");
-  const path = reachable(battle, unit).get(cell);
+  const path = reachable(battle, unit, battle.turn.sprinted ? SPRINT_MOVE : 0).get(cell);
   if (!path) fail("Can't move there.");
   const anims: BattleAnim[] = [];
-  doMove(unit, path, anims);
+  doMove(state, battle, unit, path, anims, ctx);
   battle.turn.moved = true;
+  if (unit.hp <= 0) finishTurn(state, battle, anims, ctx);
+  else checkEnd(state, battle, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
-function doMove(unit: BattleUnit, path: number[], anims: BattleAnim[]): void {
-  if (!path.length) return;
-  const previous = path.length > 1 ? path[path.length - 2]! : unit.cell;
-  anims.push({ kind: "move", uid: unit.uid, path: [unit.cell, ...path] });
-  unit.cell = path[path.length - 1]!;
-  const from = previous % BOARD_COLS;
-  const to = unit.cell % BOARD_COLS;
-  if (to !== from) unit.facing = to > from ? "right" : "left";
+export function battleSprint(state: RestiaState, ctx: Ctx): void {
+  const { battle, unit } = activeAlly(state);
+  if (battle.turn.moved || battle.turn.acted) fail("Sprint before moving.");
+  if (battle.turn.sprinted) fail("Already sprinting.");
+  if (moveRange(unit) === 0) fail("Rooted: can't move.");
+  spend(unit, 1);
+  battle.turn.sprinted = true;
+  ctx.events.push({ kind: "battle", anims: [{ kind: "status", uid: unit.uid, text: `Sprint (+${SPRINT_MOVE} move)` }] });
 }
 
-function basicAttack(state: RestiaState, attacker: BattleUnit, target: BattleUnit, anims: BattleAnim[]): void {
+/** A basic attack (and the defender's counter). Shared with the enemy AI. */
+export function basicAttack(state: RestiaState, battle: BattleState, attacker: BattleUnit, target: BattleUnit, anims: BattleAnim[], ctx: Ctx): void {
   const distance = hexDistance(attacker.cell, target.cell);
+  const ranged = attacker.range > 1 && distance > 1;
   face(attacker, target.cell);
-  anims.push({ kind: "attack", uid: attacker.uid, target: target.uid, anim: attacker.range > 1 && distance > 1 ? "shoot" : attacker.magic ? "cast" : "attack" });
-  strike(state, attacker, target, { power: 1, element: attacker.element, physical: !attacker.magic, pointBlank: attacker.range > 1 && distance === 1 }, anims);
-  const canRetaliate =
+  const sound = attackSound(attacker, ranged);
+  const canCounter = () =>
     distance === 1 &&
     target.hp > 0 &&
+    attacker.hp > 0 &&
     !target.retaliated &&
     !target.down &&
+    !pv(attacker).noRetaliation &&
     !target.statuses.some((status) => status.id === "sleep" || status.id === "stun" || status.id === "freeze");
-  if (canRetaliate && attacker.hp > 0) {
+  const counter = () => {
     target.retaliated = true;
     face(target, attacker.cell);
-    anims.push({ kind: "attack", uid: target.uid, target: attacker.uid, anim: "attack" });
-    strike(state, target, attacker, { power: 0.5, element: target.element, physical: !target.magic }, anims);
+    anims.push({ kind: "attack", uid: target.uid, target: attacker.uid, anim: "attack", ...(attackSound(target, false) ? { sound: attackSound(target, false) } : {}) });
+    strike(state, battle, target, attacker, { power: pv(target).counter, element: target.element, physical: !target.magic }, anims, ctx);
+  };
+  const first = pv(target).firstStrike && canCounter();
+  if (first) {
+    anims.push({ kind: "status", uid: target.uid, text: "First strike!" });
+    counter();
+    if (attacker.hp <= 0) return;
   }
+  anims.push({ kind: "attack", uid: attacker.uid, target: target.uid, anim: ranged ? "shoot" : attacker.magic ? "cast" : "attack", ...(sound ? { sound } : {}) });
+  if (ranged) anims.push({ kind: "projectile", from: attacker.cell, to: target.cell, sprite: attacker.magic ? magicBolt(attacker.element) : "arrow" });
+  if (attacker.magic && distance > 1) anims.push({ kind: "fx", cell: target.cell, fx: elementFx(attacker.element) });
+  strike(state, battle, attacker, target, { power: 1, element: attacker.element, physical: !attacker.magic, pointBlank: attacker.range > 1 && distance === 1, ranged }, anims, ctx);
+  if (!first && canCounter()) counter();
+}
+
+function attackSound(unit: BattleUnit, ranged: boolean): string | undefined {
+  if (unit.kind === "monster" || unit.kind === "pet") return unitSound(unit.sprite, ranged ? "shoot" : "attack");
+  const byChar: Record<string, string> = {
+    bin: "units/swordsman-attack",
+    mitia: "spells/ice-bolt",
+    bowy: "units/sharpshooter-shoot",
+    garr: "units/rogue-attack",
+    hilda: "units/champion-attack",
+    senna: "units/crusader-attack",
+    dain: "units/swordsman-attack"
+  };
+  return byChar[unit.ref];
+}
+
+function magicBolt(element: Element): "fireball" | "ice" | "dark" | "light" | "wind" | "rock" {
+  return element === "fire" ? "fireball" : element === "ice" ? "ice" : element === "dark" ? "dark" : element === "wind" ? "wind" : element === "earth" ? "rock" : "light";
+}
+
+export function elementFx(element: Element): "fire" | "ice" | "wind" | "earth" | "light" | "dark" | "slash" {
+  return element === "phys" ? "slash" : element;
 }
 
 export function battleAttack(state: RestiaState, targetUid: string, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
   if (battle.turn.acted) fail("Already acted.");
-  const target = findUnit(battle, targetUid);
-  if (target.side === unit.side || target.hp <= 0 || target.gone) fail("Pick an enemy.");
-  if (hexDistance(unit.cell, target.cell) > unit.range) fail("Out of range.");
   const anims: BattleAnim[] = [];
-  basicAttack(state, unit, target, anims);
-  battle.log.push(`${unit.name} attacks ${target.name}.`);
+  if (targetUid.startsWith("prop-")) {
+    const prop = battle.props.find((entry) => entry.uid === targetUid && entry.hp > 0);
+    if (!prop) fail("Nothing to hit there.");
+    const block = attackBlock(battle, unit, prop);
+    if (block) fail(block);
+    spend(unit, 1);
+    face(unit, prop.cell);
+    const ranged = unit.range > 1 && hexDistance(unit.cell, prop.cell) > 1;
+    anims.push({ kind: "attack", uid: unit.uid, target: prop.uid, anim: ranged ? "shoot" : unit.magic ? "cast" : "attack", ...(attackSound(unit, ranged) ? { sound: attackSound(unit, ranged) } : {}) });
+    if (ranged) anims.push({ kind: "projectile", from: unit.cell, to: prop.cell, sprite: unit.magic ? magicBolt(unit.element) : "arrow" });
+    damageProp(state, battle, prop, eff(state, unit, unit.magic ? "mag" : "atk"), unit.element, anims, ctx);
+    battle.log.push(`${unit.name} strikes the ${PROP_NAMES[prop.kind]}.`);
+  } else {
+    const target = findUnit(battle, targetUid);
+    if (target.side === unit.side || target.hp <= 0 || target.gone) fail("Pick an enemy.");
+    const taunt = tauntedBy(battle, unit);
+    if (taunt && taunt !== target) fail(`Taunted: ${unit.name} must attack ${taunt.name}.`);
+    const block = attackBlock(battle, unit, target);
+    if (block) fail(block);
+    spend(unit, 1);
+    basicAttack(state, battle, unit, target, anims, ctx);
+    battle.log.push(`${unit.name} attacks ${target.name}.`);
+  }
   battle.turn.acted = true;
   finishTurn(state, battle, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
-/** Units a skill would affect if aimed at `cell` (validates range and target). */
-export function skillTargets(state: RestiaState, battle: BattleState, caster: BattleUnit, skill: SkillDef, cell: number): BattleUnit[] | string {
+export type SkillHits = { units: BattleUnit[]; props: BattleProp[]; cells: number[] };
+
+function hostileSkill(skill: SkillDef): boolean {
+  return skill.kind === "physical" || skill.kind === "magic" || skill.kind === "debuff" || skill.kind === "analyze";
+}
+
+/** What a skill would affect if aimed at `cell` (validates range, sight and target). */
+export function skillTargets(state: RestiaState, battle: BattleState, caster: BattleUnit, skill: SkillDef, cell: number): SkillHits | string {
+  void state;
   const friendly = (unit: BattleUnit) => unit.side === caster.side;
   const all = battle.units.filter((unit) => !unit.gone);
+  const reach = skill.range + (skill.projectile ? weatherRange(battle.weather) : 0);
+  const none = { props: [] as BattleProp[], cells: [] as number[] };
   switch (skill.target) {
     case "self":
-      return [caster];
-    case "allAllies":
-      return all.filter((unit) => friendly(unit) && (skill.kind === "revive" ? unit.hp <= 0 : unit.hp > 0));
-    case "allEnemies":
-      return all.filter((unit) => !friendly(unit) && unit.hp > 0);
+      return { units: [caster], ...none, cells: [caster.cell] };
+    case "allAllies": {
+      const units = all.filter((unit) => friendly(unit) && (skill.kind === "revive" ? unit.hp <= 0 : unit.hp > 0));
+      return units.length ? { units, ...none, cells: units.map((unit) => unit.cell) } : "No one to affect.";
+    }
+    case "allEnemies": {
+      const units = all.filter((unit) => !friendly(unit) && unit.hp > 0);
+      return units.length ? { units, ...none, cells: units.map((unit) => unit.cell) } : "No targets.";
+    }
     case "enemy": {
-      if (hexDistance(caster.cell, cell) > skill.range) return "Out of range.";
+      if (hexDistance(caster.cell, cell) > Math.max(1, reach)) return "Out of range.";
+      if (skill.line) {
+        // Travels the whole line; stops at the first sight-blocking prop (which takes the hit).
+        const cells: number[] = [];
+        const props: BattleProp[] = [];
+        for (const step of hexRay(caster.cell, cell, skill.range)) {
+          const prop = propAt(battle, step);
+          cells.push(step);
+          if (prop) {
+            if (prop.kind !== "rock") props.push(prop);
+            if (blocksSight(prop)) break;
+          }
+        }
+        const units = all.filter((unit) => unit.hp > 0 && !friendly(unit) && cells.includes(unit.cell));
+        return units.length || props.length ? { units, props, cells } : "Nothing on that line.";
+      }
+      if (skill.projectile && hexDistance(caster.cell, cell) > 1 && !hasLineOfSight(battle, caster.cell, cell)) return "No line of sight.";
       const target = all.find((unit) => unit.cell === cell && unit.hp > 0 && !friendly(unit));
-      return target ? [target] : "Pick an enemy.";
+      if (target) {
+        const taunt = tauntedBy(battle, caster);
+        if (taunt && taunt !== target && skill.kind !== "analyze") return `Taunted: must target ${taunt.name}.`;
+        return { units: [target], ...none, cells: [cell] };
+      }
+      const prop = propAt(battle, cell);
+      if (prop && prop.kind !== "rock" && (skill.kind === "physical" || skill.kind === "magic")) return { units: [], props: [prop], cells: [cell] };
+      return "Pick an enemy.";
     }
     case "ally": {
       if (hexDistance(caster.cell, cell) > skill.range) return "Out of range.";
       const target = all.find((unit) => unit.cell === cell && friendly(unit) && (skill.kind === "revive" ? unit.hp <= 0 : unit.hp > 0));
-      return target ? [target] : skill.kind === "revive" ? "Pick a fallen ally." : "Pick an ally.";
+      return target ? { units: [target], ...none, cells: [cell] } : skill.kind === "revive" ? "Pick a fallen ally." : "Pick an ally.";
     }
     case "area": {
       const center = skill.range === 0 ? caster.cell : cell;
       if (hexDistance(caster.cell, center) > skill.range) return "Out of range.";
-      const hostileKind = skill.kind === "physical" || skill.kind === "magic" || skill.kind === "debuff";
-      const hits = all.filter(
-        (unit) => unit.hp > 0 && hexDistance(unit.cell, center) <= (skill.radius ?? 0) && (hostileKind ? !friendly(unit) : friendly(unit))
-      );
-      return hits.length ? hits : "No targets there.";
+      const radius = skill.radius ?? 0;
+      const cells: number[] = [];
+      for (let c = 0; c < battle.cols * battle.rows; c++) if (hexDistance(c, center) <= radius && battle.tiles[c] !== "void") cells.push(c);
+      const hostile = hostileSkill(skill);
+      const units = all.filter((unit) => unit.hp > 0 && cells.includes(unit.cell) && (hostile ? !friendly(unit) : friendly(unit)));
+      const props = hostile && skill.kind !== "debuff" ? battle.props.filter((prop) => prop.hp > 0 && prop.kind !== "rock" && cells.includes(prop.cell)) : [];
+      return units.length || props.length || skill.terrain ? { units, props, cells } : "No targets there.";
     }
   }
 }
 
-function applySkill(state: RestiaState, battle: BattleState, caster: BattleUnit, skill: SkillDef, cell: number, targets: BattleUnit[], anims: BattleAnim[], ctx: Ctx): void {
-  caster.mp -= skill.mp;
-  const first = targets[0];
-  if (first && first !== caster) face(caster, first.cell);
-  anims.push({ kind: "attack", uid: caster.uid, target: first?.uid ?? caster.uid, anim: skill.anim === "cast" ? "cast" : caster.range > 1 ? "shoot" : "attack" });
-  if (skill.target === "area") anims.push({ kind: "area", cell: skill.range === 0 ? caster.cell : cell, radius: skill.radius ?? 0, element: skill.element ?? "phys" });
+/** Where fallen allies stand up: own hex or the nearest free one (null = packed). */
+export function revivalCell(battle: BattleState, target: BattleUnit): number | null {
+  const free = (cell: number) => standable(battle, cell) && !battle.units.some((unit) => unit !== target && unit.cell === cell && unit.hp > 0 && !unit.gone);
+  if (free(target.cell)) return target.cell;
+  const seen = new Set([target.cell]);
+  const queue = [target.cell];
+  while (queue.length) {
+    const cell = queue.shift()!;
+    for (const next of neighbors(cell)) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      if (free(next)) return next;
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
+/** Performs a skill (costs already checked). Shared with the enemy AI. */
+export function applySkill(state: RestiaState, battle: BattleState, caster: BattleUnit, skill: SkillDef, cell: number, hits: SkillHits, anims: BattleAnim[], ctx: Ctx): void {
+  caster.mp -= skillMp(caster, skill);
+  caster.ap -= skillAp(skill);
+  const first = hits.units[0] ?? null;
+  const aim = first?.cell ?? hits.props[0]?.cell ?? cell;
+  if (aim !== caster.cell) face(caster, aim);
+  const casting = skill.anim === "cast";
+  if (casting) anims.push({ kind: "fx", cell: caster.cell, fx: "cast" });
+  anims.push({ kind: "attack", uid: caster.uid, target: first?.uid ?? caster.uid, anim: casting ? "cast" : caster.range > 1 && hexDistance(caster.cell, aim) > 1 ? "shoot" : "attack" });
+  const fx = skill.fx ?? (skill.kind === "heal" || skill.kind === "revive" ? "heal" : skill.kind === "buff" ? "buff" : skill.kind === "debuff" ? "debuff" : elementFx(skill.element ?? caster.element));
+  if (skill.projectile && aim !== caster.cell) anims.push({ kind: "projectile", from: caster.cell, to: aim, sprite: skill.projectile });
+  if (skill.target === "area") {
+    anims.push({ kind: "fx", cell: skill.range === 0 ? caster.cell : cell, fx, ...(skill.sfx ? { sound: skill.sfx } : {}) });
+  } else if (skill.line) {
+    let played = false;
+    for (const step of hits.cells) {
+      anims.push({ kind: "fx", cell: step, fx, ...(skill.sfx && !played ? { sound: skill.sfx } : {}) });
+      played = true;
+    }
+  } else {
+    const cells = hits.units.length ? hits.units.map((unit) => unit.cell) : hits.cells;
+    cells.forEach((c, index) => anims.push({ kind: "fx", cell: c, fx, ...(skill.sfx && index === 0 ? { sound: skill.sfx } : {}) }));
+  }
   battle.log.push(`${caster.name} uses ${skill.name}.`);
-  for (const target of targets) {
+  const physical = skill.kind === "physical";
+  const ranged = hexDistance(caster.cell, aim) > 1;
+  for (const target of hits.units) {
     switch (skill.kind) {
       case "physical":
       case "magic": {
-        const dealt = strike(state, caster, target, { power: skill.power ?? 1, element: skill.element ?? caster.element, physical: skill.kind === "physical" }, anims);
+        let dealt = 0;
+        for (let i = 0; i < (skill.hits ?? 1) && target.hp > 0; i++) {
+          dealt += strike(state, battle, caster, target, { power: skill.power ?? 1, element: skill.element ?? caster.element, physical, ranged, crit: skill.crit }, anims, ctx);
+        }
         if (dealt > 0 && target.hp > 0) {
-          if (skill.status && chance(state, skill.status.chance)) addStatus(target, skill.status.id, skill.status.turns, anims);
+          if (skill.status && chance(state, skill.status.chance)) addStatus(battle, target, skill.status.id, skill.status.turns, anims, caster);
           addMods(battle, target, skill.mods);
+          if (skill.knockback) knockBack(state, battle, caster.cell, target, skill.knockback, anims, ctx);
         }
         if (dealt > 0 && skill.drain) heal(caster, dealt * skill.drain, anims);
         break;
       }
-      case "heal":
-        heal(target, (skill.power ?? 1) * (eff(state, caster, "mag") + caster.level * 2), anims);
+      case "heal": {
+        const boost = 1 + pv(caster).healBoost / 100;
+        if ((skill.power ?? 0) > 0) heal(target, (skill.power ?? 1) * (eff(state, caster, "mag") + caster.level * 2) * boost, anims);
         if (skill.cure) target.statuses = target.statuses.filter((status) => !NEGATIVE.includes(status.id));
+        if (skill.status && POSITIVE.includes(skill.status.id) && chance(state, skill.status.chance)) addStatus(battle, target, skill.status.id, skill.status.turns, anims);
         addMods(battle, target, skill.mods);
         break;
-      case "revive":
+      }
+      case "revive": {
         target.cell = revivalCell(battle, target) ?? target.cell;
         target.hp = Math.max(1, Math.round(target.stats.maxHp * (skill.power ?? 0.5)));
         target.statuses = [];
         anims.push({ kind: "hit", uid: target.uid, amount: target.hp, crit: false, weak: false, resist: false, miss: false, heal: true });
         break;
+      }
       case "buff":
         addMods(battle, target, skill.mods);
-        anims.push({ kind: "status", uid: target.uid, text: skill.name });
+        if (skill.status && POSITIVE.includes(skill.status.id) && chance(state, skill.status.chance)) addStatus(battle, target, skill.status.id, skill.status.turns, anims);
+        if (!skill.shield && !skill.taunt) anims.push({ kind: "status", uid: target.uid, text: skill.name });
         break;
       case "debuff":
         addMods(battle, target, skill.mods);
-        if (skill.status && chance(state, skill.status.chance)) addStatus(target, skill.status.id, skill.status.turns, anims);
+        if (skill.status && chance(state, skill.status.chance)) addStatus(battle, target, skill.status.id, skill.status.turns, anims, caster);
         else if (!skill.mods?.length) anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: false, miss: true, heal: false });
         break;
       case "analyze":
         if (target.kind === "monster") {
           const entry = (state.bestiary[target.ref] ??= { seen: 1, defeated: 0, analyzed: false });
           entry.analyzed = true;
-          ctx.toast(`[SYSTEM] ${target.name} analyzed: weaknesses revealed.`, "system");
+          ctx.toast(`[CJS] ${target.name} analyzed: weaknesses revealed.`, "system");
         }
         anims.push({ kind: "status", uid: target.uid, text: "Analyzed" });
         break;
     }
+    if (skill.shield && target.hp > 0) {
+      const amount = Math.round(skill.shield * (eff(state, caster, "mag") + caster.level * 2) * (1 + pv(caster).healBoost / 100));
+      target.shield += amount;
+      anims.push({ kind: "status", uid: target.uid, text: `Shield ${amount}` });
+    }
   }
+  for (const prop of hits.props) {
+    if (skill.kind !== "physical" && skill.kind !== "magic") continue;
+    damageProp(state, battle, prop, (skill.power ?? 1) * eff(state, caster, physical ? "atk" : "mag"), skill.element ?? caster.element, anims, ctx);
+  }
+  if (skill.taunt) {
+    for (const foe of living(battle).filter((unit) => unit.side !== caster.side && hexDistance(unit.cell, caster.cell) <= 2)) addStatus(battle, foe, "taunt", skill.taunt, anims, caster);
+  }
+  if (skill.terrain) {
+    for (const c of hits.cells) {
+      if (battle.tiles[c] === "void" || battle.tiles[c] === "water" || propAt(battle, c)) continue;
+      battle.tiles[c] = skill.terrain;
+      battle.tileTimers[c] = 3;
+    }
+  }
+  if (skill.element === "fire" || skill.element === "ice") for (const c of hits.cells) groundReaction(battle, c, skill.element);
+  if (skill.selfMods?.length && caster.hp > 0) {
+    for (const mod of skill.selfMods) caster.mods.push({ ...mod, skip: true });
+  }
+}
+
+/** Why the active unit can't use a skill right now (null = it can). */
+export function skillBlock(battle: BattleState, unit: BattleUnit, skill: SkillDef): string | null {
+  if (!unit.skills.includes(skill.id)) return "Not known.";
+  if (hasStatus(unit, "silence")) return "Silenced.";
+  if (unit.mp < skillMp(unit, skill)) return "Not enough MP.";
+  if (unit.ap < skillAp(skill)) return `Needs ${skillAp(skill)} AP.`;
+  void battle;
+  return null;
 }
 
 export function battleSkill(state: RestiaState, skillId: string, cell: number, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
   if (battle.turn.acted) fail("Already acted.");
-  if (!unit.skills.includes(skillId)) fail("That unit doesn't know this skill.");
   const skill = skillDef(skillId);
-  if (unit.mp < skill.mp) fail("Not enough MP.");
-  const targets = skillTargets(state, battle, unit, skill, cell);
-  if (typeof targets === "string") fail(targets);
-  if (skill.kind === "revive" && targets.some((target) => revivalCell(battle, target) === null)) fail("There's no room around that fallen ally.");
+  const block = skillBlock(battle, unit, skill);
+  if (block) fail(block === `Needs ${skillAp(skill)} AP.` ? `${skill.name} needs ${skillAp(skill)} AP (you have ${unit.ap}). Defend (+1) or Charge (+2) first.` : block);
+  const hits = skillTargets(state, battle, unit, skill, cell);
+  if (typeof hits === "string") fail(hits);
+  if (skill.kind === "revive" && hits.units.some((target) => revivalCell(battle, target) === null)) fail("There's no room around that fallen ally.");
   const anims: BattleAnim[] = [];
-  applySkill(state, battle, unit, skill, cell, targets, anims, ctx);
+  applySkill(state, battle, unit, skill, cell, hits, anims, ctx);
   battle.turn.acted = true;
   finishTurn(state, battle, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
+/** Items are a quick action: 1 AP, once per turn, and the turn goes on. */
 export function battleItem(state: RestiaState, itemId: string, cell: number, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
   if (battle.turn.acted) fail("Already acted.");
+  if (battle.turn.item) fail("One item per turn.");
   const def = itemDef(itemId);
   const use = def.use;
   if (!use || count(state, itemId) < 1) fail(`You have no ${def.name}.`);
@@ -821,21 +1459,25 @@ export function battleItem(state: RestiaState, itemId: string, cell: number, ctx
   }
   if (use.bomb) {
     if (hexDistance(unit.cell, cell) > 3) fail("Too far to throw (3 hexes).");
+    spend(unit, ITEM_AP);
     removeItem(state, itemId, 1);
     anims.push({ kind: "attack", uid: unit.uid, target: unit.uid, anim: "attack" });
-    anims.push({ kind: "area", cell, radius: use.bomb.radius, element: use.bomb.element });
+    anims.push({ kind: "projectile", from: unit.cell, to: cell, sprite: "rock" });
+    anims.push({ kind: "fx", cell, fx: use.bomb.element === "ice" ? "ice" : "explosion", sound: use.bomb.element === "ice" ? "spells/frost-ring" : "spells/fireball-hit" });
     for (const target of living(battle).filter((entry) => entry.side !== unit.side && hexDistance(entry.cell, cell) <= use.bomb!.radius)) {
-      const mult = elementMult(target, use.bomb.element);
-      const damage = Math.max(1, Math.round(use.bomb.power * (25 + 4 * unit.level) * mult * (0.9 + random(state) * 0.2)));
+      const mult = elementMult(battle, target, use.bomb.element);
       if (mult === 0) {
         anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: true, miss: false, heal: false });
         continue;
       }
-      target.hp = Math.max(0, target.hp - damage);
-      anims.push({ kind: "hit", uid: target.uid, amount: damage, crit: false, weak: mult > 1, resist: mult < 1, miss: false, heal: false });
-      if (target.hp <= 0) kill(target, anims);
-      else if (use.bomb.status && chance(state, 0.35)) addStatus(target, use.bomb.status, use.bomb.status === "burn" ? 3 : 1, anims);
+      const damage = Math.max(1, Math.round(use.bomb.power * (25 + 4 * unit.level) * mult * (0.9 + random(state) * 0.2)));
+      dealDamage(state, battle, target, damage, anims, ctx, { weak: mult > 1, resist: mult < 1, cause: "explosion" });
+      if (target.hp > 0 && use.bomb.status && chance(state, 0.35)) addStatus(battle, target, use.bomb.status, use.bomb.status === "burn" ? 3 : 1, anims);
     }
+    for (const prop of [...battle.props]) {
+      if (prop.hp > 0 && prop.kind !== "rock" && hexDistance(prop.cell, cell) <= use.bomb.radius) damageProp(state, battle, prop, use.bomb.power * (25 + 4 * unit.level), use.bomb.element, anims, ctx);
+    }
+    for (let c = 0; c < battle.cols * battle.rows; c++) if (hexDistance(c, cell) <= use.bomb.radius) groundReaction(battle, c, use.bomb.element);
   } else {
     if (hexDistance(unit.cell, cell) > 1) fail("Items reach yourself or an adjacent ally.");
     const target = battle.units.find((entry) => entry.cell === cell && entry.side === unit.side && !entry.gone && (use.revivePct ? entry.hp <= 0 : entry.hp > 0));
@@ -843,8 +1485,10 @@ export function battleItem(state: RestiaState, itemId: string, cell: number, ctx
     if (!use.hp && !use.hpPct && !use.mp && !use.mpPct && !use.cure && !use.revivePct) fail(`${def.name} can't be used in battle.`);
     const revival = use.revivePct ? revivalCell(battle, target) : null;
     if (use.revivePct && revival === null) fail("There's no room around that fallen ally.");
+    spend(unit, ITEM_AP);
     removeItem(state, itemId, 1);
     anims.push({ kind: "attack", uid: unit.uid, target: target.uid, anim: "cast" });
+    anims.push({ kind: "fx", cell: target.cell, fx: "heal", sound: "spells/cure" });
     if (use.revivePct) {
       target.cell = revival!;
       target.hp = Math.max(1, Math.round((target.stats.maxHp * use.revivePct) / 100));
@@ -852,21 +1496,29 @@ export function battleItem(state: RestiaState, itemId: string, cell: number, ctx
     } else {
       if (use.hp || use.hpPct) heal(target, (use.hp ?? 0) + (target.stats.maxHp * (use.hpPct ?? 0)) / 100, anims);
       if (use.mp || use.mpPct) target.mp = Math.min(target.stats.maxMp, target.mp + (use.mp ?? 0) + Math.round((target.stats.maxMp * (use.mpPct ?? 0)) / 100));
-      if (use.cure) target.statuses = [];
+      if (use.cure) target.statuses = target.statuses.filter((status) => !NEGATIVE.includes(status.id));
     }
   }
   battle.log.push(`${unit.name} uses ${def.name}.`);
-  battle.turn.acted = true;
-  finishTurn(state, battle, anims, ctx);
+  battle.turn.item = true;
+  if (!checkEnd(state, battle, ctx) && unit.hp <= 0) finishTurn(state, battle, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
+}
+
+/** Defend: DEF/RES x1.5 until the next turn, +10% MP, and 1 AP carried over. Shared with the AI. */
+export function defendAction(battle: BattleState, unit: BattleUnit, anims: BattleAnim[]): void {
+  unit.defending = true;
+  unit.apCarry += DEFEND_CARRY;
+  unit.mp = Math.min(unit.stats.maxMp, unit.mp + Math.round(unit.stats.maxMp * 0.1));
+  anims.push({ kind: "status", uid: unit.uid, text: `Defending (+${DEFEND_CARRY} AP)` });
+  void battle;
 }
 
 export function battleDefend(state: RestiaState, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
   if (battle.turn.acted) fail("Already acted.");
-  // Defending lasts until the unit's next turn starts (beginTurn clears it).
-  unit.defending = true;
-  const anims: BattleAnim[] = [{ kind: "status", uid: unit.uid, text: "Defending" }];
+  const anims: BattleAnim[] = [];
+  defendAction(battle, unit, anims);
   battle.turn.acted = true;
   finishTurn(state, battle, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
@@ -874,7 +1526,7 @@ export function battleDefend(state: RestiaState, ctx: Ctx): void {
 
 export function battleWait(state: RestiaState, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
-  if (battle.turn.moved || battle.turn.acted) fail("Wait is only possible before moving or acting.");
+  if (battle.turn.moved || battle.turn.acted || battle.turn.sprinted || battle.turn.item) fail("Wait is only possible before doing anything.");
   if (battle.turn.waited) fail("This unit already waited this round.");
   if (!battle.queue.length) fail("Everyone else has acted; end the turn instead.");
   battle.waited.push(unit.uid);
@@ -885,9 +1537,17 @@ export function battleWait(state: RestiaState, ctx: Ctx): void {
   ctx.events.push({ kind: "battle", anims });
 }
 
+/** Ends the turn. Without a main action this is Charge: 2 AP carried into the next turn. */
+export function chargeAction(battle: BattleState, unit: BattleUnit, anims: BattleAnim[]): void {
+  if (battle.turn.acted) return;
+  unit.apCarry += CHARGE_CARRY;
+  anims.push({ kind: "status", uid: unit.uid, text: `Charging (+${CHARGE_CARRY} AP)` });
+}
+
 export function battleEndTurn(state: RestiaState, ctx: Ctx): void {
-  const { battle } = activeAlly(state);
+  const { battle, unit } = activeAlly(state);
   const anims: BattleAnim[] = [];
+  chargeAction(battle, unit, anims);
   finishTurn(state, battle, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
@@ -909,8 +1569,9 @@ export function battleBefriend(state: RestiaState, targetUid: string, ctx: Ctx):
   if (target.side === unit.side || target.hp <= 0 || target.gone) fail("Pick a monster.");
   if (target.kind !== "monster" || target.tame <= 0 || target.boss) fail(`${target.name} can't be befriended.`);
   if (hexDistance(unit.cell, target.cell) > 1) fail("Get next to it first.");
-  if (state.town.levels.barn < 1) fail("Build a Monster Barn first (Restoration Board).");
+  if (state.town.levels.barn < 1) fail("Build a Monster Barn first (Outpost Board).");
   if (state.pets.length >= barnCapacity(state)) fail("The barn is full.");
+  spend(unit, 1);
   const p = befriendChance(state, target);
   if (count(state, "monsterTreat") > 0) removeItem(state, "monsterTreat", 1);
   const anims: BattleAnim[] = [{ kind: "attack", uid: unit.uid, target: target.uid, anim: "cast" }];
@@ -975,114 +1636,17 @@ export function battleRush(state: RestiaState, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
   if (battle.turn.acted) fail("Already acted.");
   if (!rushReady(battle)) fail("Rush needs every enemy to be down.");
-  const anims: BattleAnim[] = [{ kind: "area", cell: cellOf(8, 3), radius: 3, element: "phys" }];
+  spend(unit, 1);
+  const anims: BattleAnim[] = [{ kind: "banner", text: "ALL-OUT RUSH!" }];
   for (const ally of living(battle).filter((entry) => entry.side === "ally")) {
     for (const enemy of living(battle).filter((entry) => entry.side === "enemy")) {
       anims.push({ kind: "attack", uid: ally.uid, target: enemy.uid, anim: "attack" });
-      strike(state, ally, enemy, { power: 0.8, element: ally.element, physical: !ally.magic }, anims);
+      anims.push({ kind: "fx", cell: enemy.cell, fx: "slash" });
+      strike(state, battle, ally, enemy, { power: 0.8, element: ally.element, physical: !ally.magic }, anims, ctx);
     }
   }
   for (const enemy of living(battle).filter((entry) => entry.side === "enemy")) enemy.down = false;
   battle.log.push(`${unit.name} leads an all-out RUSH!`);
-  battle.turn.acted = true;
-  finishTurn(state, battle, anims, ctx);
-  ctx.events.push({ kind: "battle", anims });
-}
-
-// ---------------------------------------------------------------------------
-// Enemy AI
-// ---------------------------------------------------------------------------
-
-type Plan = { score: number; cell: number; path: number[]; act: null | { kind: "attack"; target: BattleUnit } | { kind: "skill"; skill: SkillDef; cell: number; targets: BattleUnit[] } };
-
-function evaluate(state: RestiaState, battle: BattleState, unit: BattleUnit, from: number, pathLength: number): Plan[] {
-  const plans: Plan[] = [];
-  const saved = unit.cell;
-  unit.cell = from;
-  const hostiles = living(battle).filter((entry) => entry.side !== unit.side);
-  const friends = living(battle).filter((entry) => entry.side === unit.side);
-  const nearHostile = hostiles.some((entry) => hexDistance(entry.cell, from) === 1);
-  const cost = pathLength * 0.2 + (unit.range > 1 && nearHostile ? 8 : 0);
-  for (const target of hostiles) {
-    const distance = hexDistance(from, target.cell);
-    if (distance > unit.range) continue;
-    const damage = expectedDamage(state, unit, target, 1, unit.element, !unit.magic, unit.range > 1 && distance === 1);
-    let score = damage + (damage >= target.hp ? 40 : 0) + (1 - target.hp / target.stats.maxHp) * 10;
-    if (distance === 1 && !target.retaliated && !target.down) score -= expectedDamage(state, target, unit, 0.5, target.element, !target.magic, false) * 0.4;
-    plans.push({ score: score - cost, cell: from, path: [], act: { kind: "attack", target } });
-  }
-  for (const id of unit.skills) {
-    const skill = SKILLS[id];
-    if (!skill || unit.mp < skill.mp || skill.kind === "analyze" || skill.kind === "revive") continue;
-    const centers =
-      skill.target === "enemy" || skill.target === "area"
-        ? skill.range === 0
-          ? [from]
-          : hostiles.map((entry) => entry.cell)
-        : skill.target === "ally"
-          ? friends.map((entry) => entry.cell)
-          : [from];
-    for (const center of centers) {
-      const targets = skillTargets(state, battle, unit, skill, center);
-      if (typeof targets === "string" || !targets.length) continue;
-      let value = 0;
-      for (const target of targets) {
-        if (skill.kind === "physical" || skill.kind === "magic") {
-          const damage = expectedDamage(state, unit, target, skill.power ?? 1, skill.element ?? unit.element, skill.kind === "physical", false);
-          value += damage + (damage >= target.hp ? 40 : 0) + (skill.status ? 10 * skill.status.chance : 0);
-        } else if (skill.kind === "heal") {
-          const missing = target.stats.maxHp - target.hp;
-          if (target.hp < target.stats.maxHp * 0.7) value += Math.min(missing, (skill.power ?? 1) * (eff(state, unit, "mag") + unit.level * 2)) * 1.2;
-        } else if (skill.kind === "buff") {
-          const fresh = (skill.mods ?? []).some((mod) => !target.mods.some((existing) => existing.stat === mod.stat && existing.pct > 0));
-          if (fresh && hostiles.some((entry) => hexDistance(entry.cell, target.cell) <= 6)) value += 12;
-        } else if (skill.kind === "debuff") {
-          const fresh = (skill.mods ?? []).some((mod) => !target.mods.some((existing) => existing.stat === mod.stat && existing.pct < 0));
-          value += (fresh ? 10 : 0) + (skill.status ? 14 * skill.status.chance : 0);
-        }
-      }
-      if (value <= 0) continue;
-      plans.push({ score: value - skill.mp * 0.3 - cost, cell: from, path: [], act: { kind: "skill", skill, cell: center, targets } });
-    }
-  }
-  unit.cell = saved;
-  return plans;
-}
-
-export function aiTurn(state: RestiaState, ctx: Ctx): void {
-  const battle = state.battle;
-  if (!battle || battle.phase !== "turn") fail("No battle in progress.");
-  const unit = activeUnit(battle);
-  if (!unit || unit.side !== "enemy") fail("Not the enemy's turn.");
-  const anims: BattleAnim[] = [];
-  const options = new Map<number, number[]>([[unit.cell, []], ...reachable(battle, unit)]);
-  let best: Plan | null = null;
-  for (const [cell, path] of options) {
-    for (const plan of evaluate(state, battle, unit, cell, path.length)) {
-      if (!best || plan.score > best.score) best = { ...plan, path };
-    }
-  }
-  if (best && best.act && best.score > 1) {
-    doMove(unit, best.path, anims);
-    if (best.act.kind === "attack") {
-      basicAttack(state, unit, best.act.target, anims);
-      battle.log.push(`${unit.name} attacks ${best.act.target.name}.`);
-    } else {
-      const targets = skillTargets(state, battle, unit, best.act.skill, best.act.cell);
-      if (typeof targets !== "string") applySkill(state, battle, unit, best.act.skill, best.act.cell, targets, anims, ctx);
-    }
-  } else {
-    // Close in on the nearest foe (ranged units try to stay at their range).
-    const hostiles = living(battle).filter((entry) => entry.side !== unit.side);
-    const want = unit.range > 1 ? unit.range : 1;
-    let target: { cell: number; path: number[]; score: number } | null = null;
-    for (const [cell, path] of options) {
-      const nearest = Math.min(...hostiles.map((entry) => hexDistance(cell, entry.cell)));
-      const score = Math.abs(nearest - want) * 10 + nearest + path.length * 0.01;
-      if (!target || score < target.score) target = { cell, path, score };
-    }
-    if (target && target.path.length) doMove(unit, target.path, anims);
-  }
   battle.turn.acted = true;
   finishTurn(state, battle, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
@@ -1132,4 +1696,5 @@ export function bestiaryAnalyzed(state: RestiaState, species: string): boolean {
   return !!state.bestiary[species]?.analyzed;
 }
 
-export { NEGATIVE, STATUS_NAMES };
+// Engine internals the AI module plays through.
+export { NEGATIVE, POSITIVE, STATUS_NAMES, doMove, strike, knockBack };

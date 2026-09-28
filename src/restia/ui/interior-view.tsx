@@ -24,7 +24,7 @@ export function InteriorView({ state, act, open }: { state: RestiaState; act: (a
       actions.push({ label: "Sleep (end the day)", primary: true, run: () => open({ kind: "sleep" }), hint: "Crops grow, the bin pays out, everyone heals, the game saves." });
       actions.push({ label: "Storage chest", run: () => open({ kind: "storage" }) });
       if (level >= 2) actions.push({ label: "Cook in the kitchen", run: () => open({ kind: "craft", station: "cooking" }) });
-      else actions.push({ label: "Kitchen (expand the farmhouse)", run: () => open({ kind: "info", text: "Expand the farmhouse at the Restoration Board to get a kitchen." }) });
+      else actions.push({ label: "Kitchen (expand Garr's Hut)", run: () => open({ kind: "info", text: "Expand Garr's Hut at the Outpost Board to get a kitchen of your own." }) });
       actions.push({ label: "Save game", run: () => open({ kind: "save" }) });
       break;
     case "guild":
@@ -46,7 +46,7 @@ export function InteriorView({ state, act, open }: { state: RestiaState; act: (a
       actions.push({ label: "Order food", primary: true, run: () => open({ kind: "shop", building }) });
       break;
     case "shrine":
-      actions.push({ label: "Pray for a blessing", primary: true, run: () => open({ kind: "blessing" }) });
+      actions.push({ label: "Ask Peri for a favour", primary: true, run: () => open({ kind: "blessing" }) });
       break;
     case "barn":
       actions.push({ label: "Your monsters", primary: true, run: () => open({ kind: "barn" }) });

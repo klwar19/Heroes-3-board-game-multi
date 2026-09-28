@@ -6,8 +6,8 @@ import { themeForFloor } from "../data/dungeon";
 import { MONSTERS } from "../data/monsters";
 import { tileAt } from "../engine/dungeon";
 import { hashString } from "../engine/core";
-import { A, CHIBI, SHEETS } from "./assets";
-import { Chibi, DungeonSprite, SpriteStill } from "./sprites";
+import { A, SHEETS, WALKER } from "./assets";
+import { DungeonSprite, SpriteStill, Walker } from "./sprites";
 import s from "./restia.module.css";
 
 const VIEW_COLS = 17;
@@ -214,8 +214,8 @@ export function DungeonView({ state, act, locked }: { state: RestiaState; act: (
             </span>
           ) : null
         )}
-        <span style={{ position: "absolute", left: (dungeon.x + 0.5) * size - size * 0.9, top: (dungeon.y + 1) * size - size * 1.8, zIndex: 4 + dungeon.y, transition: "left 0.12s linear, top 0.12s linear" }}>
-          <Chibi dir={dungeon.facing} sheet={A(CHIBI.bin!)} size={size * 1.8} walking={walking} />
+        <span style={{ position: "absolute", left: (dungeon.x + 0.5) * size, top: (dungeon.y + 0.95) * size, zIndex: 4 + dungeon.y, transition: "left 0.12s linear, top 0.12s linear" }}>
+          <Walker dir={dungeon.facing} height={size * 1.6} slug={WALKER.bin} walking={walking} />
         </span>
         <div
           onClick={(event) => {

@@ -1,10 +1,10 @@
 {
   "restia-bin": {
     "image": "/assets/restia/battle/restia-bin.webp",
-    "frameWidth": 89,
-    "frameHeight": 89,
+    "frameWidth": 87,
+    "frameHeight": 87,
     "columns": 8,
-    "anchorX": 37,
+    "anchorX": 43,
     "anchorY": 85,
     "groups": {
       "0": {
@@ -61,13 +61,13 @@
       }
     }
   },
-  "restia-hikari": {
-    "image": "/assets/restia/battle/restia-hikari.webp",
-    "frameWidth": 94,
-    "frameHeight": 94,
+  "restia-bowy": {
+    "image": "/assets/restia/battle/restia-bowy.webp",
+    "frameWidth": 104,
+    "frameHeight": 92,
     "columns": 8,
-    "anchorX": 40,
-    "anchorY": 88,
+    "anchorX": 46,
+    "anchorY": 89,
     "groups": {
       "0": {
         "row": 0,
@@ -123,136 +123,12 @@
       }
     }
   },
-  "restia-kaito": {
-    "image": "/assets/restia/battle/restia-kaito.webp",
-    "frameWidth": 95,
-    "frameHeight": 95,
+  "restia-dain": {
+    "image": "/assets/restia/battle/restia-dain.webp",
+    "frameWidth": 87,
+    "frameHeight": 87,
     "columns": 8,
-    "anchorX": 45,
-    "anchorY": 91,
-    "groups": {
-      "0": {
-        "row": 0,
-        "frames": 8
-      },
-      "2": {
-        "row": 1,
-        "frames": 8
-      },
-      "3": {
-        "row": 2,
-        "frames": 4
-      },
-      "4": {
-        "row": 3,
-        "frames": 4
-      },
-      "5": {
-        "row": 4,
-        "frames": 8
-      },
-      "7": {
-        "row": 5,
-        "frames": 4
-      },
-      "8": {
-        "row": 6,
-        "frames": 4
-      },
-      "11": {
-        "row": 7,
-        "frames": 8
-      },
-      "12": {
-        "row": 7,
-        "frames": 8
-      },
-      "13": {
-        "row": 7,
-        "frames": 8
-      },
-      "17": {
-        "row": 8,
-        "frames": 4
-      },
-      "18": {
-        "row": 8,
-        "frames": 4
-      },
-      "19": {
-        "row": 8,
-        "frames": 4
-      }
-    }
-  },
-  "restia-mina": {
-    "image": "/assets/restia/battle/restia-mina.webp",
-    "frameWidth": 100,
-    "frameHeight": 100,
-    "columns": 8,
-    "anchorX": 50,
-    "anchorY": 91,
-    "groups": {
-      "0": {
-        "row": 0,
-        "frames": 8
-      },
-      "2": {
-        "row": 1,
-        "frames": 8
-      },
-      "3": {
-        "row": 2,
-        "frames": 4
-      },
-      "4": {
-        "row": 3,
-        "frames": 4
-      },
-      "5": {
-        "row": 4,
-        "frames": 8
-      },
-      "7": {
-        "row": 5,
-        "frames": 4
-      },
-      "8": {
-        "row": 6,
-        "frames": 4
-      },
-      "11": {
-        "row": 7,
-        "frames": 8
-      },
-      "12": {
-        "row": 7,
-        "frames": 8
-      },
-      "13": {
-        "row": 7,
-        "frames": 8
-      },
-      "17": {
-        "row": 8,
-        "frames": 4
-      },
-      "18": {
-        "row": 8,
-        "frames": 4
-      },
-      "19": {
-        "row": 8,
-        "frames": 4
-      }
-    }
-  },
-  "restia-nell": {
-    "image": "/assets/restia/battle/restia-nell.webp",
-    "frameWidth": 90,
-    "frameHeight": 90,
-    "columns": 8,
-    "anchorX": 36,
+    "anchorX": 44,
     "anchorY": 87,
     "groups": {
       "0": {
@@ -309,13 +185,75 @@
       }
     }
   },
-  "restia-seren": {
-    "image": "/assets/restia/battle/restia-seren.webp",
-    "frameWidth": 86,
-    "frameHeight": 86,
+  "restia-frida": {
+    "image": "/assets/restia/battle/restia-frida.webp",
+    "frameWidth": 90,
+    "frameHeight": 90,
     "columns": 8,
-    "anchorX": 39,
-    "anchorY": 84,
+    "anchorX": 45,
+    "anchorY": 87,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 3
+      },
+      "5": {
+        "row": 4,
+        "frames": 7
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-frost-rat": {
+    "image": "/assets/restia/battle/restia-frost-rat.webp",
+    "frameWidth": 70,
+    "frameHeight": 70,
+    "columns": 8,
+    "anchorX": 29,
+    "anchorY": 61,
     "groups": {
       "0": {
         "row": 0,
@@ -371,13 +309,447 @@
       }
     }
   },
-  "restia-tove": {
-    "image": "/assets/restia/battle/restia-tove.webp",
-    "frameWidth": 95,
+  "restia-frost-wolf": {
+    "image": "/assets/restia/battle/restia-frost-wolf.webp",
+    "frameWidth": 163,
+    "frameHeight": 163,
+    "columns": 8,
+    "anchorX": 75,
+    "anchorY": 137,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 4
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-garr": {
+    "image": "/assets/restia/battle/restia-garr.webp",
+    "frameWidth": 102,
+    "frameHeight": 90,
+    "columns": 8,
+    "anchorX": 43,
+    "anchorY": 89,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 4
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-hilda": {
+    "image": "/assets/restia/battle/restia-hilda.webp",
+    "frameWidth": 89,
+    "frameHeight": 89,
+    "columns": 8,
+    "anchorX": 47,
+    "anchorY": 86,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 4
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-lysa": {
+    "image": "/assets/restia/battle/restia-lysa.webp",
+    "frameWidth": 96,
+    "frameHeight": 96,
+    "columns": 8,
+    "anchorX": 45,
+    "anchorY": 92,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 4
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-mara": {
+    "image": "/assets/restia/battle/restia-mara.webp",
+    "frameWidth": 92,
     "frameHeight": 92,
     "columns": 8,
-    "anchorX": 50,
-    "anchorY": 89,
+    "anchorX": 37,
+    "anchorY": 88,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 4
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-mitia": {
+    "image": "/assets/restia/battle/restia-mitia.webp",
+    "frameWidth": 93,
+    "frameHeight": 93,
+    "columns": 8,
+    "anchorX": 42,
+    "anchorY": 90,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 4
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-senna": {
+    "image": "/assets/restia/battle/restia-senna.webp",
+    "frameWidth": 98,
+    "frameHeight": 98,
+    "columns": 8,
+    "anchorX": 41,
+    "anchorY": 93,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4
+      },
+      "4": {
+        "row": 3,
+        "frames": 3
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "7": {
+        "row": 5,
+        "frames": 4
+      },
+      "8": {
+        "row": 6,
+        "frames": 4
+      },
+      "11": {
+        "row": 7,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "17": {
+        "row": 8,
+        "frames": 4
+      },
+      "18": {
+        "row": 8,
+        "frames": 4
+      },
+      "19": {
+        "row": 8,
+        "frames": 4
+      }
+    }
+  },
+  "restia-tilde": {
+    "image": "/assets/restia/battle/restia-tilde.webp",
+    "frameWidth": 85,
+    "frameHeight": 87,
+    "columns": 8,
+    "anchorX": 43,
+    "anchorY": 86,
     "groups": {
       "0": {
         "row": 0,

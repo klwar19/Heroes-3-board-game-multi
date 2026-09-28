@@ -46,7 +46,7 @@ export const ROWS = 18;
 export const ZONES: Record<ZoneId, ZoneDef> = {
   farm: {
     id: "farm",
-    name: "Dawnhollow Farm",
+    name: "Pocket Haven",
     image: "/assets/restia/maps/farm.webp",
     cols: COLS,
     rows: ROWS,
@@ -68,7 +68,7 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
       [27, 12, 31, 12],
       [24, 15, 24, 17]
     ],
-    exits: [{ rect: [0, 7, 0, 9], to: "village", arrive: { x: 1, y: 4, facing: "right" }, label: "Dawnhollow Village" }],
+    exits: [{ rect: [0, 7, 0, 9], to: "village", arrive: { x: 1, y: 4, facing: "right" }, label: "Frostbitten" }],
     lots: {
       farmhouse: { rect: [1, 1, 5, 4], door: { x: 3, y: 5 }, spriteW: 6, minLevel: 1 },
       barn: { rect: [7, 1, 10, 4], door: { x: 8, y: 5 }, spriteW: 5, minLevel: 1 }
@@ -80,11 +80,11 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
       fieldEdge: { x: 12, y: 6 },
       farmPath: { x: 4, y: 8 }
     },
-    battleBackdrop: "grtr"
+    battleBackdrop: "pocket"
   },
   village: {
     id: "village",
-    name: "Dawnhollow Village",
+    name: "Frostbitten",
     image: "/assets/restia/maps/village.webp",
     cols: COLS,
     rows: ROWS,
@@ -108,8 +108,8 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
     ],
     water: [],
     exits: [
-      { rect: [0, 4, 0, 4], to: "farm", arrive: { x: 1, y: 8, facing: "right" }, label: "Your Farm" },
-      { rect: [15, 0, 17, 0], to: "forest", arrive: { x: 16, y: 16, facing: "up" }, label: "Whispering Forest" }
+      { rect: [0, 4, 0, 4], to: "farm", arrive: { x: 1, y: 8, facing: "right" }, label: "Pocket Haven (Garr's back door)" },
+      { rect: [15, 0, 17, 0], to: "forest", arrive: { x: 16, y: 16, facing: "up" }, label: "The Frostwood" }
     ],
     lots: {
       store: { rect: [9, 1, 13, 3], door: { x: 11, y: 4 }, spriteW: 6, minLevel: 1 },
@@ -136,15 +136,15 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
       shrineFront: { x: 21, y: 14 },
       benchSouth: { x: 26, y: 12 }
     },
-    battleBackdrop: "grmt"
+    battleBackdrop: "village"
   },
   forest: {
     id: "forest",
-    name: "Whispering Forest",
+    name: "The Frostwood",
     image: "/assets/restia/maps/forest.webp",
     cols: COLS,
     rows: ROWS,
-    music: "rough",
+    music: "snow",
     blocked: [
       [0, 0, 31, 1],
       [0, 0, 3, 17],
@@ -169,7 +169,7 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
       [8, 11, 13, 13],
       [12, 14, 13, 14]
     ],
-    exits: [{ rect: [16, 17, 17, 17], to: "village", arrive: { x: 16, y: 1, facing: "down" }, label: "Dawnhollow Village" }],
+    exits: [{ rect: [16, 17, 17, 17], to: "village", arrive: { x: 16, y: 1, facing: "down" }, label: "Frostbitten" }],
     lots: {},
     objects: [{ kind: "cave", x: 27, y: 2 }],
     spots: {
@@ -200,7 +200,7 @@ export const ZONES: Record<ZoneId, ZoneDef> = {
       [10, 3, 25, 9],
       [18, 9, 28, 13]
     ],
-    battleBackdrop: "grtr"
+    battleBackdrop: "frostwood"
   }
 };
 

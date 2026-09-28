@@ -206,32 +206,29 @@ export function DungeonSprite({ index, size, className, style }: { index: number
   return gridCell(SHEETS.dungeon, 4, index, size, className, style);
 }
 
-const DIR_ROW: Record<Dir, number> = { down: 0, left: 1, right: 2, up: 3 };
-
-/** Chibi walker (4x4 sheet: rows down/left/right/up, 4-frame walk). */
-export function Chibi({ sheet, dir, walking, size, className, style }: { sheet: string; dir: Dir; walking: boolean; size: number; className?: string; style?: CSSProperties }) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!walking) return;
-    const timer = window.setInterval(() => setTick((value) => (value + 1) % 4), 140);
-    return () => window.clearInterval(timer);
-  }, [walking]);
-  const frame = walking ? tick : 0;
-  const row = DIR_ROW[dir];
+/**
+ * Overworld figure drawn with the character's battle atlas: the walk clip while
+ * moving, the standing loop otherwise. Atlases face right; walking left mirrors
+ * them and walking up/down keeps the last side. Render it inside a zero-size box
+ * at the character's feet: the atlas anchor lands on that point.
+ */
+export function Walker({ slug, dir, walking, height }: { slug: string; dir: Dir; walking: boolean; height: number }) {
+  const [side, setSide] = useState<"left" | "right">(dir === "left" ? "left" : "right");
+  if ((dir === "left" || dir === "right") && dir !== side) setSide(dir);
+  const atlas = atlasFor(slug);
+  if (!atlas) return null;
+  const scale = height / atlas.frameHeight;
+  const flip = side === "left";
+  const anchorX = flip ? atlas.frameWidth - atlas.anchorX : atlas.anchorX;
   return (
-    <span
-      aria-hidden
-      className={className}
-      style={{
-        display: "block",
-        width: size,
-        height: size,
-        backgroundImage: `url(${A(sheet)})`,
-        backgroundSize: "400% 400%",
-        backgroundPosition: `${(frame / 3) * 100}% ${(row / 3) * 100}%`,
-        backgroundRepeat: "no-repeat",
-        ...style
-      }}
+    <SpriteClip
+      atlas={atlas}
+      flip={flip}
+      fps={walking ? 12 : 6}
+      group={walking ? G.move : G.standing}
+      loop
+      scale={scale}
+      style={{ position: "absolute", left: -anchorX * scale, top: -atlas.anchorY * scale }}
     />
   );
 }

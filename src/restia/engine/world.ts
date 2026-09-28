@@ -88,7 +88,7 @@ export function enter(state: RestiaState, building: BuildingId): void {
   const def = BUILDINGS[building];
   if (!door || door.zone !== state.player.zone) fail(`${def.name} isn't here.`);
   if (Math.abs(state.player.x - door.x) + Math.abs(state.player.y - door.y) > 1) fail("Walk up to the door first.");
-  if (state.town.levels[building] < 1) fail(`${def.name} hasn't been built yet. Use the Restoration Board in the village.`);
+  if (state.town.levels[building] < 1) fail(`${def.name} hasn't been built yet. Use the Outpost Board in the Frostbitten square.`);
   if (!isOpen(state, building)) {
     const hours = def.hours;
     const when = hours ? `Open ${formatTime(hours[0])} - ${formatTime(hours[1])}` : "";
@@ -103,7 +103,7 @@ export function leave(state: RestiaState): void {
 }
 
 // ---------------------------------------------------------------------------
-// Forage (Whispering Forest)
+// Forage (the Frostwood)
 // ---------------------------------------------------------------------------
 
 const FORAGE_TABLE: Record<string, { item: string; weight: number }[]> = {
@@ -111,6 +111,7 @@ const FORAGE_TABLE: Record<string, { item: string; weight: number }[]> = {
     { item: "wildHerb", weight: 4 },
     { item: "medicinalHerb", weight: 2 },
     { item: "mushroom", weight: 1 },
+    { item: "glowcap", weight: 4 },
     { item: "dawnLily", weight: 2 },
     { item: "wildBerries", weight: 1 },
     { item: "wood", weight: 2 },
@@ -121,12 +122,13 @@ const FORAGE_TABLE: Record<string, { item: string; weight: number }[]> = {
     { item: "medicinalHerb", weight: 2 },
     { item: "wildBerries", weight: 3 },
     { item: "honey", weight: 1 },
+    { item: "glowcap", weight: 3 },
     { item: "dawnLily", weight: 1 },
     { item: "wood", weight: 2 }
   ],
   autumn: [
     { item: "mushroom", weight: 3 },
-    { item: "glowcap", weight: 2 },
+    { item: "glowcap", weight: 3 },
     { item: "wildBerries", weight: 2 },
     { item: "medicinalHerb", weight: 1 },
     { item: "dawnLily", weight: 1 },
@@ -134,7 +136,7 @@ const FORAGE_TABLE: Record<string, { item: string; weight: number }[]> = {
     { item: "ironOre", weight: 1 }
   ],
   winter: [
-    { item: "glowcap", weight: 1 },
+    { item: "glowcap", weight: 2 },
     { item: "wood", weight: 3 },
     { item: "stone", weight: 2 },
     { item: "ironOre", weight: 1 },
@@ -257,15 +259,29 @@ export function moveFieldMonsters(state: RestiaState, ctx: Ctx): void {
 export function locationTriggers(state: RestiaState, ctx: Ctx): void {
   if (state.scene || state.battle) return;
   const { zone, inside } = state.player;
-  if (zone === "forest" && !inside && !state.flags.metNell && state.flags.registered) {
-    playScene(state, "meetNell", ctx);
-  } else if (zone === "forest" && !inside && !state.flags.metMina && state.quests.done.includes("q4Forest")) {
-    playScene(state, "meetMina", ctx);
-  } else if (zone === "village" && !inside && !state.flags.metTove && state.day >= 3 && state.flags.registered) {
-    playScene(state, "meetTove", ctx);
-  } else if (inside === "inn" && state.flags.chapter2 && !state.flags.metSeren) {
-    playScene(state, "serenArrives", ctx);
-  } else if (inside === "guild" && state.flags.chapter2 && !state.flags.metKaito) {
-    playScene(state, "meetKaito", ctx);
+  const flags = state.flags;
+  const active = (id: string) => state.quests.active.includes(id);
+  if (!inside && zone === "forest" && flags.registered && !flags.frostwoodSeen) {
+    playScene(state, "frostwoodFirst", ctx);
+  } else if (!inside && zone === "forest" && flags.catJob && !flags.catFound) {
+    playScene(state, "rolfHut", ctx);
+  } else if (!inside && zone === "village" && flags.registered && !flags.metFrida) {
+    playScene(state, "meetFrida", ctx);
+  } else if (!inside && zone === "village" && flags.registered && state.day >= 2 && !flags.metHilda) {
+    playScene(state, "meetHilda", ctx);
+  } else if (inside === "inn" && active("q5Log") && !flags.spriteJarred && flags.logLostDay !== state.day) {
+    playScene(state, "mugLog", ctx);
+  } else if (inside === "inn" && active("q7Cat") && !flags.catJob) {
+    playScene(state, "tuliCat", ctx);
+  } else if (
+    inside === "farmhouse" &&
+    active("q9Dinner") &&
+    !flags.dinnerDone &&
+    state.town.levels.atelier >= 1 &&
+    state.minute >= 17 * 60
+  ) {
+    playScene(state, "dinner", ctx);
+  } else if (inside === "inn" && flags.chapter2 && state.town.levels.inn >= 2 && !flags.metSenna) {
+    playScene(state, "sennaArrives", ctx);
   }
 }

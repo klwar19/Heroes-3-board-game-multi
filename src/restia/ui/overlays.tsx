@@ -1,22 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { DaySummary, NpcId, RestiaState, SceneLine, SpeakerId } from "../engine/types";
+import type { CastId, DaySummary, Face, NpcId, RestiaState, SceneLine, SpeakerId } from "../engine/types";
 import { SCENES } from "../engine/scenes";
-import { NPCS } from "../data/npcs";
+import { CAST_NAMES, NPCS } from "../data/npcs";
 import { CHARACTERS } from "../data/characters";
 import { itemDef } from "../data/items";
 import { formatDate, formatTime, seasonOf } from "../engine/core";
 import { maxStamina } from "../engine/state";
 import { memberStats, petStats } from "../engine/party";
-import { A, TACHIE, backdrop } from "./assets";
+import { A, TACHIE, backdrop, tachieFor } from "./assets";
 import s from "./restia.module.css";
 
 export function speakerName(who: SpeakerId): string {
   if (who === "bin") return "Bin";
-  if (who === "system") return "System";
+  if (who === "system") return "Jess (CJS)";
   if (who === "narrator") return "";
-  return NPCS[who as NpcId]?.name ?? who;
+  return NPCS[who as NpcId]?.name ?? CAST_NAMES[who as CastId] ?? who;
 }
 
 function useTypewriter(text: string, key: string): [string, boolean, () => void] {
@@ -62,6 +62,15 @@ export function ScenePlayer({
       if (entry && "show" in entry && entry.show) return entry.show;
     }
     return [] as SpeakerId[];
+  }, [def, scene.index]);
+  // Bin keeps an expression until his next line without one.
+  const binFace = useMemo(() => {
+    for (let i = scene.index; i >= 0; i--) {
+      const entry = def.lines[i];
+      if (entry && "face" in entry && entry.face) return entry.face as Face;
+      if (entry && "who" in entry && entry.who === "bin") return null;
+    }
+    return null;
   }, [def, scene.index]);
   const bgKey = useMemo(() => {
     for (let i = scene.index; i >= 0; i--) {
@@ -113,18 +122,19 @@ export function ScenePlayer({
         Skip ▸▸
       </button>
       <div className={s.sceneCast}>
-        {cast.map((speaker) =>
-          TACHIE[speaker] ? (
+        {cast.map((speaker) => {
+          const src = tachieFor(speaker, speaker === "bin" ? binFace : null, def.outfit);
+          return src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               alt={speakerName(speaker)}
               className={speaker === who || isChoice ? s.tachie : s.tachieDim}
               draggable={false}
               key={speaker}
-              src={A(TACHIE[speaker]!)}
+              src={A(src)}
             />
-          ) : null
-        )}
+          ) : null;
+        })}
       </div>
       <div className={system ? s.dialogSystem : s.dialog}>
         {name ? <span className={s.dialogName}>{name}</span> : null}

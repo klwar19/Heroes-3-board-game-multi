@@ -14,7 +14,7 @@ import { playScene } from "./scenes";
 import { isOpen } from "./world";
 
 // ---------------------------------------------------------------------------
-// Restoration Board (base development)
+// Outpost Board (base development)
 // ---------------------------------------------------------------------------
 
 export function townScore(state: RestiaState): number {
@@ -32,9 +32,9 @@ export function nextLevelInfo(state: RestiaState, id: BuildingId) {
 }
 
 export function build(state: RestiaState, id: BuildingId, ctx: Ctx): void {
-  if (state.player.zone !== "village" || state.player.inside) fail("Use the Restoration Board in the village plaza.");
+  if (state.player.zone !== "village" || state.player.inside) fail("Use the Outpost Board in the Frostbitten square.");
   const board = ZONES.village.objects.find((object) => object.kind === "board")!;
-  if (Math.max(Math.abs(state.player.x - board.x), Math.abs(state.player.y - board.y)) > 1) fail("Walk up to the Restoration Board first.");
+  if (Math.max(Math.abs(state.player.x - board.x), Math.abs(state.player.y - board.y)) > 1) fail("Walk up to the Outpost Board first.");
   if (state.town.project) fail(`Builders are busy with ${BUILDINGS[state.town.project.id].name}. One project at a time.`);
   const def = BUILDINGS[id];
   if (state.town.levels[id] >= maxLevel(id)) fail(`${def.name} is fully upgraded.`);
@@ -72,7 +72,7 @@ export function dailyFaith(state: RestiaState): number {
   const shrine = state.town.levels.shrine;
   if (shrine < 1) return 0;
   const residents = Object.keys(state.members).length - 1 + Math.floor(state.pets.length / 2);
-  const inn = state.town.levels.inn >= 2 ? 2 : 0;
+  const inn = state.town.levels.inn >= 3 ? 2 : 0;
   return (5 + residents + inn) * (shrine >= 2 ? 2 : 1);
 }
 
@@ -83,10 +83,10 @@ export function blessingCost(state: RestiaState, id: string): number {
 }
 
 export function pray(state: RestiaState, id: string, ctx: Ctx): void {
-  if (state.player.inside !== "shrine") fail("Pray at the Sun Shrine.");
-  if (state.blessingDay === state.day) fail("Hikari already blessed you today.");
+  if (state.player.inside !== "shrine") fail("Ask for Peri's favours at the Weaver's Shrine.");
+  if (state.blessingDay === state.day) fail("Peri already did you a favour today. \"Don't get greedy, it's bad for ratings.\"");
   const cost = blessingCost(state, id);
-  if (state.faith < cost) fail(`Not enough Faith (${cost} needed).`);
+  if (state.faith < cost) fail(`Not enough Audience (${cost} needed).`);
   state.faith -= cost;
   state.blessingDay = state.day;
   switch (id) {
@@ -113,18 +113,20 @@ export function hasBuff(state: RestiaState, id: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Admin Console
+// Cosmic Jester Shop
 // ---------------------------------------------------------------------------
 
 export function buyPerk(state: RestiaState, id: string, ctx: Ctx): void {
   const def = PERKS.find((entry) => entry.id === id);
   if (!def) fail("Unknown perk.");
-  if (state.admin.perks.includes(id)) fail("Already installed.");
-  if (state.admin.ap < def.cost) fail(`Not enough Admin Points (${def.cost} needed).`);
+  if (state.admin.perks.includes(id)) fail("Already bought.");
+  if (def.requires && !state.admin.perks.includes(def.requires)) fail(`Buy ${PERKS.find((entry) => entry.id === def.requires)?.name ?? "the previous item"} first.`);
+  if (state.admin.ap < def.cost) fail(`Not enough Jester Points (${def.cost} needed).`);
   state.admin.ap -= def.cost;
   state.admin.perks.push(id);
   if (id === "bigCan") state.water = Math.min(state.water * 2, [0, 20, 40, 80][state.tools.can]! * 2);
-  ctx.toast(`[SYSTEM] Perk installed: ${def.name}`, "system");
+  ctx.toast(`[CJS] Purchased: ${def.name}`, "system");
+  if (def.scene) playScene(state, def.scene, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +161,7 @@ export function buy(state: RestiaState, item: string, n: number, ctx: Ctx): void
 }
 
 export function sell(state: RestiaState, item: string, n: number, ctx: Ctx): void {
-  if (state.player.inside !== "store") fail("Pip buys goods at the General Store.");
+  if (state.player.inside !== "store") fail("Tilde buys goods at the Trading Post.");
   if (!isOpen(state, "store")) fail("The shop has closed for today.");
   if (!Number.isInteger(n) || n < 1) fail("Invalid amount.");
   if (!removeItem(state, item, n)) fail("You don't have that many.");
@@ -190,13 +192,13 @@ export function unship(state: RestiaState, item: string, n: number): void {
 }
 
 export function store(state: RestiaState, item: string, n: number): void {
-  if (state.player.inside !== "farmhouse") fail("Your storage chest is in the farmhouse.");
+  if (state.player.inside !== "farmhouse") fail("Your storage chest is in Garr's hut.");
   if (!Number.isInteger(n) || n < 1 || !removeItem(state, item, n)) fail("You don't have that many.");
   state.storage[item] = (state.storage[item] ?? 0) + n;
 }
 
 export function retrieve(state: RestiaState, item: string, n: number): void {
-  if (state.player.inside !== "farmhouse") fail("Your storage chest is in the farmhouse.");
+  if (state.player.inside !== "farmhouse") fail("Your storage chest is in Garr's hut.");
   const have = state.storage[item] ?? 0;
   if (!Number.isInteger(n) || n < 1 || have < n) fail("Not in the chest.");
   if (have === n) delete state.storage[item];
@@ -251,7 +253,7 @@ export function craft(state: RestiaState, recipeId: string, times: number, ctx: 
   if (!recipe) fail("Unknown recipe.");
   if (!Number.isInteger(times) || times < 1 || times > 20 || (recipe.toolUpgrade && times !== 1)) fail("Invalid amount.");
   const building = STATION_BUILDING[recipe.station];
-  if (state.player.inside !== building) fail(`Craft this at the ${building === "farmhouse" ? "farmhouse kitchen" : building}.`);
+  if (state.player.inside !== building) fail(`Craft this at the ${building === "farmhouse" ? "kitchen in Garr's hut" : BUILDINGS[building as BuildingId]?.name ?? building}.`);
   if (!isOpen(state, building)) fail("The workshop has closed for today.");
   if (!recipeUnlocked(state, recipe)) fail("You can't make that yet.");
   const gold = recipe.gold * times;

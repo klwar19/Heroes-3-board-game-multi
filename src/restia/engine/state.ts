@@ -5,9 +5,24 @@ import { FIELD_H, FIELD_MAX, FIELD_RECTS, FIELD_W, PAINTED_DEBRIS, inRect } from
 import { DAY_START, chance, perk, pick, randInt, rollWeather } from "./core";
 import { healMember, newMember } from "./party";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 3;
 export const BASE_STAMINA = 100;
 export const BARN_CAPACITY = [0, 4, 8];
+
+export const PROLOGUE = [
+  "p0Bracelet",
+  "p1Kfc",
+  "p2Ward",
+  "p3TrashCan",
+  "p4Goddess",
+  "p5Eos",
+  "p7NextDay",
+  "p8Contract",
+  "h1Road",
+  "h1Gate",
+  "h1Home",
+  "farmArrive"
+];
 
 export function newRelationship(): Relationship {
   return { points: 0, met: false, talkedDay: 0, giftDay: 0, giftsWeek: 0, giftWeek: 0, events: [], status: "none" };
@@ -94,7 +109,9 @@ export function newGame(seed: number): RestiaState {
     if (plot) plot.debris = painted.kind;
   }
   state.tomorrow = rollWeather(state, 2);
-  state.sceneQueue = ["intro", "farmArrive"];
+  // Earth prologue -> Eos trial -> the Contract -> Haven. The two battles
+  // (Eos, the frost wolf) pause the queue; their win/lose scenes play first.
+  state.sceneQueue = [...PROLOGUE];
   return state;
 }
 
