@@ -1,0 +1,392 @@
+{
+  "gw-pot-helm": {
+    "image": "/assets/garrison/creatures/gw-pot-helm.webp",
+    "frameWidth": 167,
+    "frameHeight": 129,
+    "columns": 10,
+    "anchorX": 84,
+    "anchorY": 125,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-herald": {
+    "image": "/assets/garrison/creatures/gw-herald.webp",
+    "frameWidth": 141,
+    "frameHeight": 128,
+    "columns": 10,
+    "anchorX": 50,
+    "anchorY": 125,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-coffin": {
+    "image": "/assets/garrison/creatures/gw-coffin.webp",
+    "frameWidth": 128,
+    "frameHeight": 126,
+    "columns": 10,
+    "anchorX": 51,
+    "anchorY": 120,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-great-helm": {
+    "image": "/assets/garrison/creatures/gw-great-helm.webp",
+    "frameWidth": 166,
+    "frameHeight": 128,
+    "columns": 10,
+    "anchorX": 84,
+    "anchorY": 123,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-tome": {
+    "image": "/assets/garrison/creatures/gw-tome.webp",
+    "frameWidth": 126,
+    "frameHeight": 120,
+    "columns": 10,
+    "anchorX": 53,
+    "anchorY": 114,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-gravedigger": {
+    "image": "/assets/garrison/creatures/gw-gravedigger.webp",
+    "frameWidth": 182,
+    "frameHeight": 138,
+    "columns": 10,
+    "anchorX": 91,
+    "anchorY": 130,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-keg": {
+    "image": "/assets/garrison/creatures/gw-keg.webp",
+    "frameWidth": 155,
+    "frameHeight": 133,
+    "columns": 10,
+    "anchorX": 71,
+    "anchorY": 125,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 10
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 9
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-abomination": {
+    "image": "/assets/garrison/creatures/gw-abomination.webp",
+    "frameWidth": 216,
+    "frameHeight": 162,
+    "columns": 9,
+    "anchorX": 105,
+    "anchorY": 150,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 9
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "5": {
+        "row": 4,
+        "frames": 8
+      },
+      "11": {
+        "row": 5,
+        "frames": 7
+      },
+      "12": {
+        "row": 6,
+        "frames": 7
+      },
+      "13": {
+        "row": 7,
+        "frames": 7
+      }
+    }
+  },
+  "gw-necromancer": {
+    "image": "/assets/garrison/creatures/gw-necromancer.webp",
+    "frameWidth": 148,
+    "frameHeight": 128,
+    "columns": 9,
+    "anchorX": 64,
+    "anchorY": 122,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "5": {
+        "row": 4,
+        "frames": 7
+      },
+      "11": {
+        "row": 5,
+        "frames": 8
+      },
+      "12": {
+        "row": 6,
+        "frames": 8
+      },
+      "13": {
+        "row": 7,
+        "frames": 8
+      },
+      "14": {
+        "row": 8,
+        "frames": 9
+      },
+      "15": {
+        "row": 9,
+        "frames": 9
+      },
+      "16": {
+        "row": 10,
+        "frames": 9
+      }
+    }
+  }
+}

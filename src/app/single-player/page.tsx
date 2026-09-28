@@ -24,6 +24,21 @@ function SinglePlayerMenuArt({ path }: { path: string }) {
   );
 }
 
+/**
+ * Garrison Wars entry. There is no painted button for it yet, so it renders a
+ * lettered label directly (no request for art that does not exist). Swap in
+ * <SinglePlayerMenuArt path=…/> once a garrison-wars.webp button is published.
+ */
+function GarrisonMenuArt() {
+  return (
+    <span
+      style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", color: "#ffd65a", font: "bold 22px Georgia, serif", letterSpacing: "0.08em", textShadow: "0 2px 4px #000" }}
+    >
+      GARRISON WARS
+    </span>
+  );
+}
+
 export default function SinglePlayerPage() {
   const router = useRouter();
   const [computerOpen, setComputerOpen] = useState(false);
@@ -58,6 +73,9 @@ export default function SinglePlayerPage() {
         </button>
         <Link aria-label="CAMPAIGN" className="menuNavButton" href="/story">
           <SinglePlayerMenuArt path="/assets/ui/menu/buttons/campaign.webp" />
+        </Link>
+        <Link aria-label="GARRISON WARS" className="menuNavButton" href="/garrison">
+          <GarrisonMenuArt />
         </Link>
         <Link aria-label="BACK" className="menuNavButton" href="/menu">
           <SinglePlayerMenuArt path="/assets/ui/menu/buttons/back.webp" />
