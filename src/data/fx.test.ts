@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   abilityFxPlans,
   cardShotFxPlans,
+  getFxSheet,
   healFxPlans,
   MAX_PRESENTATION_MS,
   MAX_PROJECTILE_FLIGHT_MS,
@@ -20,7 +21,7 @@ import { GRANTED_WAR_MACHINE_CARD_IDS, WAR_MACHINE_CARD_IDS } from "./cards/perm
 describe("elemental experience presentation", () => {
   it.each([
     "veteran-ice-bolt", "veteran-sprite-spell-block", "veteran-arcane-echo",
-    "veteran-energy-fire-heal", "veteran-magma-solidify", "veteran-storm-link",
+    "veteran-energy-fire-heal", "veteran-magma-solidify",
   ])("%s uses an existing animation and measured sound", (id) => {
     const plan = abilityFxPlans[id];
     expect(plan).toBeDefined();
@@ -28,6 +29,15 @@ describe("elemental experience presentation", () => {
     expect(sprites.length).toBeGreaterThan(0);
     for (const sprite of sprites) expect(spriteDurationMs(sprite), sprite).toBeGreaterThan(0);
     expect(soundDurationMs(plan.sound ?? plan.hitSound)).toBeGreaterThan(0);
+  });
+
+  // 88e9d44f: Lightning Link draws page.tsx's dedicated `line` cue with the
+  // storm-link-animated atlas between the linked units; its plan keeps the sound.
+  it.each(["veteran-storm-link", "veteran-storm-link-2"])("%s draws the animated link line with a measured sound", (id) => {
+    const plan = abilityFxPlans[id];
+    expect(plan).toBeDefined();
+    expect(spriteDurationMs("storm-link-animated")).toBeGreaterThan(0);
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
   });
 });
 
@@ -148,7 +158,11 @@ describe("spellPresentationMs", () => {
       for (const sprite of spritesOf(plan)) {
         expect(gate).toBeGreaterThanOrEqual(spriteDurationMs(sprite));
       }
-      expect(gate).toBeGreaterThanOrEqual(soundDurationMs(playedSound(plan)));
+      // 1ca274e9: Counterfeit Cataclysm's explicit presentationMs deliberately
+      // lets the Armageddon tail ring on without blocking combat; and no gate
+      // exceeds the MAX_PRESENTATION_MS safety bound pinned above.
+      if (plan === abilityFxPlans["commander-artifact-counterfeit-cataclysm"]) continue;
+      expect(gate).toBeGreaterThanOrEqual(Math.min(MAX_PRESENTATION_MS, soundDurationMs(playedSound(plan))));
     }
   });
 
@@ -227,9 +241,10 @@ describe("previously-silent monster abilities now carry a cue", () => {
   it.each([
     ["fortress-gorgon-death-stare", "death-stare", "spells/death-stare"],
     ["dragon-fly-dispel", "dispel", "spells/dispel"],
-    ["wraith-heal-1", "cure", "spells/cure"],
-    ["wraith-heal-2", "cure", "spells/cure"],
-    ["troll-heal-3", "cure", "spells/cure"]
+    // 016b95ef (v158): Wraith/Troll heals play H3's native Regeneration orb.
+    ["wraith-heal-1", "regeneration", "effects/regeneration"],
+    ["wraith-heal-2", "regeneration", "effects/regeneration"],
+    ["troll-heal-3", "regeneration", "effects/regeneration"]
   ])("%s plays the %s sprite + sound", (abilityId, sheetKey, sound) => {
     const plan = abilityFxPlans[abilityId];
     expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();
@@ -323,12 +338,13 @@ describe("unit ranged shots that ARE spell bolts", () => {
     // The Santa Gremlin "attacks with Ice Bolt", so page.tsx flies the real ice-bolt
     // projectile + hit (with the Ice Bolt spell's launch/impact sounds) for its shot
     // instead of the generic arrow bolt. The cue dies if this plan is dropped.
+    // 09fba1bc: ranged shots fly phased projectile sheets (launch → flight →
+    // impact in one sheet), so the ice bolt is "ice-shot-phases", no separate hit.
     const plan = unitShotFxPlan("wog.santa_gremlin");
     expect(plan, "Santa Gremlin needs a shot FX plan").toBeTruthy();
-    expect(plan!.projectile).toBe("ice-bolt-projectile-0");
+    expect(plan!.projectile).toBe("ice-shot-phases");
+    expect(getFxSheet(plan!.projectile!)?.projectilePhases).toBeTruthy();
     expect(spriteDurationMs(plan!.projectile)).toBeGreaterThan(0);
-    expect(plan!.hit).toBe("ice-bolt-hit");
-    expect(spriteDurationMs(plan!.hit)).toBeGreaterThan(0);
     expect(plan!.sound).toBe("spells/ice-bolt");
     expect(soundDurationMs(plan!.sound)).toBeGreaterThan(0);
     expect(plan!.hitSound).toBe("spells/ice-bolt-hit");
@@ -336,8 +352,11 @@ describe("unit ranged shots that ARE spell bolts", () => {
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 
-  it("gives an ordinary shooter no shot plan (it keeps the plain arrow bolt)", () => {
-    expect(unitShotFxPlan("castle.marksmen")).toBeUndefined();
+  it("gives an ordinary shooter its own phased weapon, an unknown one the arrow", () => {
+    // 09fba1bc: every shooter flies a phased sheet — the Marksmen their crossbow
+    // bolt, an unmapped shooter the plain arrow; no unit id means no plan.
+    expect(unitShotFxPlan("castle.marksmen")).toEqual({ projectile: "crossbow-shot-phases" });
+    expect(unitShotFxPlan("test.unmapped_shooter")).toEqual({ projectile: "arrow-shot-phases" });
     expect(unitShotFxPlan(undefined)).toBeUndefined();
   });
 });
@@ -362,14 +381,16 @@ describe("Faerie Dragon Ice Bolt animates as a flying cast (presented before the
 });
 
 describe("war-machine ABILITY cards carry their own shot / heal cue", () => {
-  it("the First Aid ability card heals with the Cure shimmer + chime (like the Tent)", () => {
+  it("the First Aid ability card heals with the Regeneration orb + sound (like the Tent)", () => {
     // Its basic side removes 1 damage; the heal logs DAMAGE_HEALED with the card
     // as the source, so healFxPlans answers it the same way the Tent's heal is.
+    // 016b95ef (v158): the Tent and First Aid use H3's native Regeneration orb.
     const plan = healFxPlans["ability.first_aid"];
     expect(plan, "First Aid ability card needs a heal FX plan").toBeTruthy();
-    expect(plan.affect?.[0]?.key).toBe("cure");
+    expect(plan).toBe(healFxPlans["war_machine.first_aid_tent"]);
+    expect(plan.affect?.[0]?.key).toBe("regeneration");
     expect(spriteDurationMs(plan.affect?.[0]?.key)).toBeGreaterThan(0);
-    expect(plan.sound).toBe("spells/cure");
+    expect(plan.sound).toBe("effects/regeneration");
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
@@ -527,8 +548,6 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
   const SPECIALTY_FX: [string, string, string][] = [
     ["specialty.deemer.1", "meteor-shower", "spells/meteor-shower"],
     ["specialty.deemer.6", "meteor-shower", "spells/meteor-shower"],
-    ["specialty.kudryavka_noumi.1", "inferno", "little-busters/effects/bazooka"],
-    ["specialty.kudryavka_noumi.6", "inferno", "little-busters/effects/bazooka"],
     ["specialty.xyron.1", "inferno", "spells/inferno"],
     ["specialty.xyron.4", "inferno", "spells/inferno"],
     ["specialty.xyron.6", "inferno", "spells/inferno"],
@@ -554,6 +573,29 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
     expect(plan.sound).toBe(sound);
     expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+  });
+
+  // 612e09d5 / 88e9d44f: Kud's I/VI damage faces present as her Rocket Launcher —
+  // a rocket shot bursting into the inferno sheet with the launch + impact clips.
+  it.each(["specialty.kudryavka_noumi.1", "specialty.kudryavka_noumi.6"])(
+    "wires %s as a rocket shot bursting into inferno",
+    (id) => {
+      const plan = spellFxPlans[id];
+      expect(plan, `${id} needs an FX plan`).toBeTruthy();
+      expect(plan.projectile).toBe("anime-rocket-shot-phases");
+      expect(spriteDurationMs(plan.projectile)).toBeGreaterThan(0);
+      expect(plan.hit).toBe("inferno");
+      expect(spriteDurationMs(plan.hit)).toBeGreaterThan(0);
+      expect(plan.sound).toBe("doom/dsrlaunc");
+      expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+      expect(plan.hitSound).toBe("custom-ability/kud-impact");
+      expect(soundDurationMs(plan.hitSound)).toBeGreaterThan(0);
+      expect(spellPresentationMs(plan)).toBeGreaterThan(0);
+    }
+  );
+  // Kud IV is utility/Power: it must not fake a launcher shot.
+  it("does NOT give Kud IV a rocket FX", () => {
+    expect(spellFxPlans["specialty.kudryavka_noumi.4"]).toBeUndefined();
   });
 
   // Glacius IV casts no ring (a card-economy instant) — it must stay FX-less so a
@@ -792,7 +834,8 @@ describe("additional monster ability cues (SFX + animation)", () => {
     ["mechanics-repair-1", "cure", "spells/repair"],
     ["mechanics-repair-2", "cure", "spells/repair"],
     ["enchanter-heal-or-buff", "cure", "spells/cure"],
-    ["commander-regeneration", "cure", "spells/cure"]
+    // 016b95ef (v158): Regeneration plays H3's native Regeneration orb.
+    ["commander-regeneration", "regeneration", "effects/regeneration"]
   ] as const)("%s plays the %s sprite + sound", (abilityId, sheetKey, sound) => {
     const plan = abilityFxPlans[abilityId];
     expect(plan, `${abilityId} needs an ability FX plan`).toBeTruthy();

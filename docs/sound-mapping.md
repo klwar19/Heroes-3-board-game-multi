@@ -125,11 +125,24 @@ play the matching sound:
 
 Every unit currently in the app has a full sound set, and the mapping lives
 in code at `src/data/unit-sounds.ts`. Non-obvious id
-mappings: dendroids → `dendroid-soldier`, marksmen → `archer` (the original
-game shares Archer files with Marksman), elves → `wood-elf`, zombies →
-`zombie-lord` (same files serve the base Walking Dead), efreet →
+mappings on the 4x5 card board: dendroids → `dendroid-soldier`, marksmen →
+`archer`, elves → `wood-elf`, zombies → `zombie-lord`, efreet →
 `efreet`/`efreet-sultan`, cerberi → `cerberus`. Everything else is the
-singular kebab-case of the app name. Creatures not in the app yet (gnolls,
+singular kebab-case of the app name. (On the PC the Marksman actually uses the
+HCRS set, shared with the Sharpshooter and stored as `units/sharpshooter-*`,
+and the Walking Dead its own ZOMB set, `units/walking-dead-*`.)
+
+**Hex Battlefield figures.** The hex board draws a card's Few side as the base
+creature and its Pack side as the upgrade (Halberdiers: Pikeman / Halberdier),
+so there each side speaks with the PC sound set of the creature it shows
+(`hexFigureVoices` in `unit-sounds.ts`, `unitSoundKey(..., hexFigure)`):
+Few Marksmen = `archer` (LCRS), Pack = `sharpshooter` (HCRS); Few Zombies =
+`walking-dead`, Pack = `zombie-lord`; a Devil teleports with
+`units/devil-teleport` (DEVLEXT1/EXT2 are byte-identical, like the Arch
+Devil's). A neutral card shows its town card's Few creature and speaks with
+it. HotA upgrades that reuse their base's files on the PC keep one voice; the
+Halfling Grenadier throws with its own `halfling-grenadier-shoot` (HALGSHOT)
+and the Crimson Couatl has its own set. Creatures not in the app yet (gnolls,
 ogres, rocs, titans, nagas, the full Conflux/Stronghold/Tower rosters, etc.)
 are converted and ready under the same pattern.
 
@@ -168,7 +181,7 @@ converter. Decoding is identical — `<4-letter creature><4-letter action>`, e.g
 `ARMAATTK` → `units/armadillo-attack`.
 
 **Creature voices** (one sound set per prefix; the upgrade reuses the base
-creature's set, matching the base-game convention like Marksman→Archer):
+creature's set, as the VCMI HotA configs assign it):
 
 | Prefix | File name | Used by |
 |---|---|---|

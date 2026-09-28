@@ -1,5 +1,6 @@
 import atlases from "./creature-sprite-atlases.json";
 import animTimes from "./creature-anim-times.json";
+import { getHexBattleSpeed } from "@/lib/hex-battle-speed";
 
 /**
  * Hex Battlefield creature sprites (the PC-style board). Each atlas is built from
@@ -216,7 +217,58 @@ const CARD_SPRITES: Readonly<Record<string, readonly [few: string, pack: string 
   "little_busters.masato": ["lb-masato", "lb-masato"],
   "little_busters.softball_club": ["lb-softball", "lb-softball"],
   "little_busters.saya": ["lb-saya", "lb-saya"],
-  "little_busters.mio": ["lb-mio", "lb-mio"]
+  "little_busters.mio": ["lb-mio", "lb-mio"],
+  // Monster Girl Quest: Paradox: each girl drawn from her card art over the real
+  // H3/HotA animation of the body she shares (lamia on the Medusa, mermaids on
+  // the Water Elemental, taurs on the Centaurs, Queen Harpy on the Harpy Hag…;
+  // scripts/pose-sprite-manifest.json); one figure for both card sides. Kamuro &
+  // Kitsu are two rotoscoped girls merged into one figure
+  // (scripts/merge-duo-sprite.mjs); the Four Spirits are the summoned spirit units.
+  "mgq.pochi": ["mgq-pochi", "mgq-pochi"],
+  "mgq.shesta": ["mgq-shesta", "mgq-shesta"],
+  "mgq.gigi": ["mgq-gigi", "mgq-gigi"],
+  "mgq.kamuro_kitsu": ["mgq-kamuro-kitsu", "mgq-kamuro-kitsu"],
+  "mgq.fleesia": ["mgq-fleesia", "mgq-fleesia"],
+  "mgq.sofia": ["mgq-sofia", "mgq-sofia"],
+  "mgq.miyabi": ["mgq-miyabi", "mgq-miyabi"],
+  "mgq.eater": ["mgq-eater", "mgq-eater"],
+  "mgq.hild": ["mgq-hild", "mgq-hild"],
+  "mgq.chrome_frederica": ["mgq-chrome-frederica", "mgq-chrome-frederica"],
+  "mgq.shizuku": ["mgq-shizuku", "mgq-shizuku"],
+  "mgq.regina": ["mgq-regina", "mgq-regina"],
+  "mgq.maiden": ["mgq-maiden", "mgq-maiden"],
+  "mgq.seraphy": ["mgq-seraphy", "mgq-seraphy"],
+  "mgq.lisa": ["mgq-lisa", "mgq-lisa"],
+  "mgq.tama": ["mgq-tama", "mgq-tama"],
+  "mgq.maya": ["mgq-maya", "mgq-maya"],
+  "mgq.matis": ["mgq-matis", "mgq-matis"],
+  "mgq.ooma": ["mgq-ooma", "mgq-ooma"],
+  "mgq.jessie": ["mgq-jessie", "mgq-jessie"],
+  "mgq.aria": ["mgq-aria", "mgq-aria"],
+  "mgq.carmilla": ["mgq-carmilla", "mgq-carmilla"],
+  "mgq.giga": ["mgq-giga", "mgq-giga"],
+  "mgq.lucretia": ["mgq-lucretia", "mgq-lucretia"],
+  "mgq.cupi": ["mgq-cupi", "mgq-cupi"],
+  "mgq.sphinx": ["mgq-sphinx", "mgq-sphinx"],
+  "mgq.lucifina_chan": ["mgq-lucifina-chan", "mgq-lucifina-chan"],
+  "mgq.spider_princess": ["mgq-spider-princess", "mgq-spider-princess"],
+  "mgq.emily": ["mgq-emily", "mgq-emily"],
+  "mgq.spirit_sylph": ["mgq-sylph", "mgq-sylph"],
+  "mgq.spirit_gnome": ["mgq-gnome", "mgq-gnome"],
+  "mgq.spirit_undine": ["mgq-undine", "mgq-undine"],
+  "mgq.spirit_salamander": ["mgq-salamander", "mgq-salamander"],
+  // Azur Lane: each shipgirl drawn from her official art (with her rigging) over
+  // a real H3/HotA animation (scripts/pose-sprite-manifest.json); one figure for
+  // both card sides.
+  "azur_lane.laffey": ["al-laffey", "al-laffey"],
+  "azur_lane.javelin": ["al-javelin", "al-javelin"],
+  "azur_lane.honolulu": ["al-honolulu", "al-honolulu"],
+  "azur_lane.unicorn": ["al-unicorn", "al-unicorn"],
+  "azur_lane.yukikaze": ["al-yukikaze", "al-yukikaze"],
+  "azur_lane.ayanami": ["al-ayanami", "al-ayanami"],
+  "azur_lane.prinz_eugen": ["al-prinz-eugen", "al-prinz-eugen"],
+  "azur_lane.i19": ["al-i-19", "al-i-19"],
+  "azur_lane.akagi": ["al-akagi", "al-akagi"]
 };
 
 /**
@@ -266,6 +318,30 @@ const WOG_SPRITES: Readonly<Record<string, string>> = {
   "wog.dracolich": "wog-dracolich"
 };
 
+/**
+ * The classic Doom monsters (neutral-only): each is its original DOOM / DOOM II
+ * sprite design repainted over a real H3 creature's animation
+ * (scripts/pose-sprite-manifest.json).
+ */
+const DOOM_SPRITES: Readonly<Record<string, string>> = {
+  "doom.demon": "doom-demon",
+  "doom.former_human": "doom-former-human",
+  "doom.former_human_sergeant": "doom-former-human-sergeant",
+  "doom.imp": "doom-imp",
+  "doom.lost_soul": "doom-lost-soul",
+  "doom.cacodemon": "doom-cacodemon",
+  "doom.hell_knight": "doom-hell-knight",
+  "doom.arachnotron": "doom-arachnotron",
+  "doom.former_commando": "doom-former-commando",
+  "doom.baron_of_hell": "doom-baron-of-hell",
+  "doom.revenant": "doom-revenant",
+  "doom.mancubus": "doom-mancubus",
+  "doom.pain_elemental": "doom-pain-elemental",
+  "doom.arch_vile": "doom-arch-vile",
+  "doom.spider_mastermind": "doom-spider-mastermind",
+  "doom.cyberdemon": "doom-cyberdemon"
+};
+
 /** WoG town Commanders (and the Forge's Mech Princess, Blue Archive's Ibuki), by commander slug. */
 const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   paladin: "commander-paladin",
@@ -287,7 +363,11 @@ const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   // Sea Marshal / Artificer / Rune Keeper: card art over the Sea Dog's, Swordsman's and Minotaur King's animations.
   corsair: "commander-corsair",
   factory: "commander-factory",
-  bulwark: "commander-bulwark"
+  bulwark: "commander-bulwark",
+  // Sonya (MGQ) and Belfast (Azur Lane): their card art over the Crusader's and
+  // the Sea Witch's animations.
+  sonya: "mgq-sonya",
+  belfast: "al-belfast"
 };
 
 /**
@@ -309,6 +389,9 @@ const ATLASES = atlases as Record<string, Omit<CreatureSpriteAtlas, "slug">>;
 function spriteSlugFor(unitDefId: string, variant: "few" | "pack" | "neutral" | undefined): string | undefined {
   if (WOG_SPRITES[unitDefId]) {
     return WOG_SPRITES[unitDefId];
+  }
+  if (DOOM_SPRITES[unitDefId]) {
+    return DOOM_SPRITES[unitDefId];
   }
   if (unitDefId.startsWith("neutral.")) {
     const own = NEUTRAL_SPRITES[unitDefId];
@@ -407,28 +490,63 @@ export function spriteTeleports(atlas: CreatureSpriteAtlas): boolean {
 }
 
 /**
+ * Hex board animation pace. Every clip runs at VCMI's battle "speedFactor"
+ * (1 = the PC's slow combat speed, H3 10 frames a second; 2 normal; 3 fast):
+ * 10·speed frames a second (client/battle/CreatureAnimation.cpp). The player
+ * sets one speed per channel in the battle bar's Options
+ * (src/lib/hex-battle-speed.ts):
+ *  - move: the walk or flight, its start- and stop-moving frames, the turns
+ *    inside it and a teleport's vanish / appear (VCMI paces MOVING,
+ *    MOVE_START / MOVE_END, TURN_L / TURN_R and TELEPORT_START / TELEPORT_END
+ *    by the one factor); default 3, the PC's fast setting
+ *  - attack: melee, shoot and cast clips and the beats they land on; default 1.25
+ *  - reaction: hit, defend, death / rise and turning to face; default 1.25
+ * Every function below reads the live setting, so a change applies from the
+ * next action on.
+ */
+function moveFrameMs(): number {
+  return 100 / getHexBattleSpeed().move;
+}
+
+function actionFrameMs(): number {
+  return 100 / getHexBattleSpeed().attack;
+}
+
+/**
+ * The attack speed the hex strike beats (impact, shot release, cast release,
+ * projectile flight, a shooter's early draw, the aim turn) are authored at:
+ * the attack channel's default. At that speed every beat is its authored value.
+ */
+export const HEX_ANIMATION_SPEED = 1.25;
+
+/**
+ * A strike-sequence beat authored at HEX_ANIMATION_SPEED, at the player's
+ * attack speed: a faster setting shortens the blow's wind-up, the shot's draw
+ * and flight and the cast's wind-up together, so the figure, its projectile,
+ * the damage number and the cry stay on one shared beat.
+ */
+export function hexActionBeatMs(ms: number): number {
+  return (ms * HEX_ANIMATION_SPEED) / getHexBattleSpeed().attack;
+}
+
+/**
  * Hex board shot release: a shooter's arrow/bolt leaves on this beat after its
  * shoot animation starts (the bow is drawn first), still landing on the shared
- * impact beat. The card boards keep fx.tsx's quicker RANGED_RELEASE_MS kick.
+ * impact beat (300 ms at the default attack speed). The card boards keep
+ * fx.tsx's quicker RANGED_RELEASE_MS kick.
  */
-export const HEX_RANGED_RELEASE_MS = 300;
+export function hexRangedReleaseMs(): number {
+  return hexActionBeatMs(300);
+}
 
 /**
  * Hex board cast release: a casting creature's spell leaves it this long after
- * its cast cue starts (the figure's wind-up). The figure and the FX timeline
- * both read this one value.
+ * its cast cue starts (the figure's wind-up; 450 ms at the default attack
+ * speed). The figure and the FX timeline both read this one value.
  */
-export const HEX_CAST_RELEASE_MS = 450;
-
-/**
- * Hex board animation speed, as VCMI's battle "speedFactor" (1 = the PC's
- * slowest setting, H3 10 frames a second; VCMI's default is 2). Every creature
- * clip runs at 10·speed frames a second (client/battle/CreatureAnimation.cpp):
- * a calm, readable pace — each frame of a swing, a flinch or a turn reads.
- */
-export const HEX_ANIMATION_SPEED = 1.25;
-/** One PC animation frame at HEX_ANIMATION_SPEED (80 ms). */
-const HEX_BASE_FRAME_MS = 100 / HEX_ANIMATION_SPEED;
+export function hexCastReleaseMs(): number {
+  return hexActionBeatMs(450);
+}
 
 /** A shot's launch point per direction: PC pixels from the feet, facing right. */
 export type MissileOffsets = { up: [number, number]; straight: [number, number]; down: [number, number] };
@@ -466,19 +584,20 @@ export function creatureWalkTime(atlas: Pick<CreatureSpriteAtlas, "slug"> | null
  * 250·speed / walk PC pixels a second (one hex = 44 PC px), and plays the move
  * frames at 10·speed / walk frames a second — the legs keep the stride the
  * artists drew for that ground speed, the cycle running on across hexes.
+ * `speed` here is the move channel.
  */
 export function hexWalkStepMs(walkTime: number): number {
-  return (1000 * walkTime) / (2 * HEX_ANIMATION_SPEED);
+  return (1000 * walkTime) / (2 * getHexBattleSpeed().move);
 }
 
 /** Flight pace: ms per hex of straight-line (or routed) distance. */
 export function hexFlyStepMs(walkTime: number): number {
-  return (44 * 1000 * walkTime) / (250 * HEX_ANIMATION_SPEED);
+  return (44 * 1000 * walkTime) / (250 * getHexBattleSpeed().move);
 }
 
 /** Move-group (walk / flight) frame duration. */
 export function hexWalkFrameMs(walkTime: number): number {
-  return HEX_BASE_FRAME_MS * walkTime;
+  return moveFrameMs() * walkTime;
 }
 
 /**
@@ -491,22 +610,24 @@ export function hexAnimationTempo(initiativeDelta: number): number {
   return Math.min(1.8, Math.max(0.5, 1 + 0.18 * initiativeDelta));
 }
 
-/** Teleport vanish/appear frame duration (VCMI TELEPORT_START/END = speed). */
-export const HEX_TELEPORT_FRAME_MS = HEX_BASE_FRAME_MS;
-/** Turn-around frame duration (H3 turn-left group, flip, turn-right group). */
-export const HEX_TURN_FRAME_MS = HEX_BASE_FRAME_MS;
-/** Start-moving / stop-moving frame duration (a walk's first and last beats). */
-export const HEX_MOVE_EDGE_FRAME_MS = HEX_BASE_FRAME_MS;
 /**
- * Melee / shoot / cast frame duration at normal tempo. VCMI plays melee
- * attacks at the one common rate so every blow lasts alike; the wind-up still
- * fits the shared impact beat (hex-figures playActionClip).
+ * Melee / shoot / cast frame duration at normal tempo (the attack channel).
+ * VCMI plays melee attacks at the one common rate so every blow lasts alike;
+ * the wind-up still fits the shared impact beat (hex-figures playActionClip).
  */
-export const HEX_ACTION_FRAME_MS = HEX_BASE_FRAME_MS;
-/** Hit (hurt) and defend frame durations. */
-export const HEX_HIT_FRAME_MS = HEX_BASE_FRAME_MS;
-/** Death frames (the fall, then the corpse holds its last frame). */
-export const HEX_DEATH_FRAME_MS = HEX_BASE_FRAME_MS;
+export function hexActionFrameMs(): number {
+  return actionFrameMs();
+}
+
+/**
+ * Reaction frame duration (the reaction channel): the hit (hurt) and defend
+ * clips, the death fall (and a resurrected stack rising), and the turn-around
+ * (H3 turn-left group, flip, turn-right group) a figure plays to face or aim.
+ * The turns inside a move play at the move pace (hexMovePlan).
+ */
+export function hexReactionFrameMs(): number {
+  return 100 / getHexBattleSpeed().reaction;
+}
 /**
  * Idle frames: the standing loop (H3 HOLDING) and the mouse-over row both play
  * at the PC's 10 frames a second whatever the speed setting (VCMI: HOLDING
@@ -547,7 +668,7 @@ export function creatureHasFidget(atlas: Pick<CreatureSpriteAtlas, "slug"> | nul
  */
 export function creatureShootFrameMs(atlas: Pick<CreatureSpriteAtlas, "slug"> | null): number {
   const attack = atlas ? ANIM_TIMES[atlas.slug]?.attack : undefined;
-  return HEX_BASE_FRAME_MS * (attack && Number.isFinite(attack) && attack > 0 ? attack : 1);
+  return actionFrameMs() * (attack && Number.isFinite(attack) && attack > 0 ? attack : 1);
 }
 
 /**
@@ -566,7 +687,7 @@ export function creatureShotClimaxFrame(atlas: CreatureSpriteAtlas | null, group
  * How long a creature draws before its shot leaves at normal tempo: its
  * straight shoot row played at its own pace up to the climax frame. The page
  * starts a hex shooter's clip this much before the shot's release beat (less
- * the shared HEX_RANGED_RELEASE_MS), so the draw is never squeezed.
+ * the shared hexRangedReleaseMs()), so the draw is never squeezed.
  */
 export function creatureShotDrawMs(atlas: CreatureSpriteAtlas | null): number {
   if (!atlas) return 0;
@@ -602,8 +723,22 @@ export function spriteTurnFrames(atlas: CreatureSpriteAtlas | null): number {
   return spriteGroupFrames(atlas, SPRITE_GROUP.turnLeft) + spriteGroupFrames(atlas, SPRITE_GROUP.turnRight);
 }
 
-/** The shortest any hex move may play (one quick hop still reads as a move). */
-const HEX_MOVE_MIN_MS = 400;
+/**
+ * The shortest a walk or flight may travel: one hex at the common walk time
+ * (1.0), so a one-hex flight still reads as a move without dragging a short
+ * hop to a slower pace than a long run.
+ */
+function hexMoveMinMs(): number {
+  return hexWalkStepMs(1);
+}
+
+/**
+ * The shortest a teleport may play, so a blink out and in still reads: 400 ms
+ * at the default move speed (3), longer or shorter with the move channel.
+ */
+function hexTeleportMinMs(): number {
+  return (400 * 3) / getHexBattleSpeed().move;
+}
 
 export type HexMoveOptions = {
   unitDefId?: string;
@@ -648,27 +783,31 @@ export function hexMovePlan(options: HexMoveOptions): {
   const tempo = hexAnimationTempo(options.initiativeDelta ?? 0);
   const walkTime = creatureWalkTime(atlas);
   const walkFrameMs = hexWalkFrameMs(walkTime) / tempo;
-  const turnFrameMs = HEX_TURN_FRAME_MS / tempo;
-  const edgeFrameMs = HEX_MOVE_EDGE_FRAME_MS / tempo;
-  const teleportFrameMs = HEX_TELEPORT_FRAME_MS / tempo;
+  // A move's own turns, start / stop frames and teleport blink all play at
+  // the move pace (VCMI TURN_L/R, MOVE_START/END, TELEPORT_START/END).
+  const moveFrame = moveFrameMs() / tempo;
+  const turnFrameMs = moveFrame;
+  const edgeFrameMs = moveFrame;
+  const teleportFrameMs = moveFrame;
+  const teleportMinMs = hexTeleportMinMs();
   if (atlas && (options.teleport || spriteTeleports(atlas))) {
     const frames = spriteMoveEdgeFrames(atlas);
     return {
-      totalMs: Math.round(Math.max(HEX_MOVE_MIN_MS, frames * teleportFrameMs)),
+      totalMs: Math.round(Math.max(teleportMinMs, frames * teleportFrameMs)),
       legsMs: 0,
       turnFrameMs,
       edgeFrameMs,
-      teleportFrameMs: frames > 0 ? Math.max(HEX_MOVE_MIN_MS, frames * teleportFrameMs) / frames : teleportFrameMs,
+      teleportFrameMs: frames > 0 ? Math.max(teleportMinMs, frames * teleportFrameMs) / frames : teleportFrameMs,
       walkFrameMs
     };
   }
   if (options.teleport) {
-    return { totalMs: HEX_MOVE_MIN_MS, legsMs: 0, turnFrameMs, edgeFrameMs, teleportFrameMs, walkFrameMs };
+    return { totalMs: Math.round(teleportMinMs), legsMs: 0, turnFrameMs, edgeFrameMs, teleportFrameMs, walkFrameMs };
   }
   const flyer = options.flyer ?? options.flying;
   const hexes = options.flying ? options.distance : options.steps;
   const stepMs = flyer ? hexFlyStepMs(walkTime) : hexWalkStepMs(walkTime);
-  const legsMs = Math.max(HEX_MOVE_MIN_MS, (hexes * stepMs) / tempo);
+  const legsMs = Math.max(hexMoveMinMs(), (hexes * stepMs) / tempo);
   const totalMs = legsMs + (options.turns ?? 0) * spriteTurnFrames(atlas) * turnFrameMs +
     spriteMoveEdgeFrames(atlas) * edgeFrameMs;
   return { totalMs: Math.round(totalMs), legsMs, turnFrameMs, edgeFrameMs, teleportFrameMs, walkFrameMs };

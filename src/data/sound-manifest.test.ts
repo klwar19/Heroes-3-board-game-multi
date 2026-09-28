@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -22,7 +22,19 @@ const publicDir = fileURLToPath(new URL("../../public", import.meta.url));
 // path, so a `src` whose casing differs from the published file is a failure even
 // though existsSync() would pass on Windows/macOS. It is also the CDN's truth: a
 // clip that was never published 404s off R2 (`npm run media:publish` is the fix).
+// assetUrl() deliberately serves these code-shipped roots from the app deployment
+// (git-tracked under public/, never on the media CDN) — so check them on disk,
+// segment by segment, with exact casing.
+const CODE_SHIPPED_ROOTS = ["/game-tokens/", "/fx/", "/factory-cards/"];
 function fileExistsCaseSensitive(src: string): boolean {
+  if (CODE_SHIPPED_ROOTS.some((root) => src.startsWith(root))) {
+    let dir = publicDir;
+    for (const part of src.split("/").filter(Boolean)) {
+      if (!existsSync(dir) || !readdirSync(dir).includes(part)) return false;
+      dir = path.join(dir, part);
+    }
+    return true;
+  }
   return hasMediaFile(src);
 }
 

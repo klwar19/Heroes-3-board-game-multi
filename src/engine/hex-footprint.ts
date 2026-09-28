@@ -106,7 +106,15 @@ export const HEX_DOUBLE_WIDE_UNIT_IDS: ReadonlySet<string> = new Set([
   "bulwark.jotunns",
   // Forge (no PC original): the tracked Tank and the hulking Cyberbrute are long bodies
   "forge.tanks",
-  "forge.cyberbrutes"
+  "forge.cyberbrutes",
+  // MGQ (no PC original): Giga, the colossal dragon-gigas, coils over two hexes,
+  // and the four taur bodies stand on two like the PC's Centaurs (user rulings
+  // 2026-09-28)
+  "mgq.giga",
+  "mgq.maya",
+  "mgq.matis",
+  "mgq.sphinx",
+  "mgq.spider_princess"
 ]);
 
 /**

@@ -259,6 +259,16 @@ describe("hex walk footsteps (playUnitSoundFor)", () => {
     vi.advanceTimersByTime(1300);
     expect(steps.paused).toBe(true);
   });
+
+  it("a hex figure walks on the footsteps of the creature it shows (Few Halberdiers = Pikeman; CONTROL: the card board's Halberdier)", () => {
+    playUnitSoundFor("castle.halberdiers", "move", 0, 1200, "few", undefined, true);
+    playUnitSoundFor("castle.halberdiers", "move", 0, 1200, "pack", undefined, true);
+    playUnitSoundFor("castle.halberdiers", "move", 0, 1200, "few");
+    const [few, pack, card] = FakeAudio.instances;
+    expect(few.src).toContain("/sounds/units/pikeman-move.mp3");
+    expect(pack.src).toContain("/sounds/units/halberdier-move.mp3");
+    expect(card.src).toContain("/sounds/units/halberdier-move.mp3");
+  });
 });
 
 describe("sequenceDelayMs (paced virtual sequences)", () => {

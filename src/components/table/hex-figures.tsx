@@ -38,14 +38,8 @@ import { unitIsPetrified } from "@/engine/tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "@/engine";
 import { cardLibrary } from "@/data/cards/library";
 import {
-  HEX_ACTION_FRAME_MS,
-  HEX_CAST_RELEASE_MS,
-  HEX_DEATH_FRAME_MS,
-  HEX_HIT_FRAME_MS,
   HEX_IDLE_FIDGET_CHANCE,
   HEX_IDLE_FRAME_MS,
-  HEX_RANGED_RELEASE_MS,
-  HEX_TURN_FRAME_MS,
   SPRITE_GROUP,
   creatureHasFidget,
   creatureIdleFrameMs,
@@ -53,8 +47,13 @@ import {
   creatureShootFrameMs,
   creatureShotClimaxFrame,
   creatureSpriteForSlug,
+  hexActionBeatMs,
+  hexActionFrameMs,
   hexAnimationTempo,
+  hexCastReleaseMs,
   hexMovePlan,
+  hexRangedReleaseMs,
+  hexReactionFrameMs,
   spriteFrameOffset,
   spriteGroupFrames,
   spriteTeleports,
@@ -103,11 +102,12 @@ const PC_PIXEL = HEX_WIDTH / 44;
 /** ATTACK_IMPACT_MS / ATTACK_ANIM_MS mirrored from fx.tsx (fx.tsx imports this module chain). */
 const IMPACT_MS = 500;
 const STRIKE_MS = 900;
-/** A cast's release beat (the spell leaves the caster; shared with fx.tsx) and its whole clip. */
-const CAST_RELEASE_MS = HEX_CAST_RELEASE_MS;
+/** A card token's cast pulse (a figure casts on hexCastReleaseMs(), shared with fx.tsx). */
 const CAST_MS = 900;
+/** The shared impact beat at the player's attack speed (page.tsx scales ATTACK_IMPACT_MS alike). */
+const impactMs = (): number => hexActionBeatMs(IMPACT_MS);
 /** A shot's flight, release beat to impact beat (the shooter holds its release frame meanwhile). */
-const SHOT_FLIGHT_MS = IMPACT_MS - HEX_RANGED_RELEASE_MS;
+const shotFlightMs = (): number => impactMs() - hexRangedReleaseMs();
 /** A shot or cast within this slope of level plays the straight row (VCMI straightAngle 0.2 rad). */
 const RANGED_STRAIGHT_SLOPE = Math.tan(0.2);
 /** At most this share of an attack's wind-up is spent turning toward the target. */
@@ -402,7 +402,7 @@ function createController(options: ControllerOptions): Controller {
    * H3 turn-around: turn-left frames, flip, turn-right frames. A newer cue
    * (another figure clip) cuts it short with the flip already applied.
    */
-  const turnTo = async (right: boolean, frameMs = paced(HEX_TURN_FRAME_MS), startAt?: number) => {
+  const turnTo = async (right: boolean, frameMs = paced(hexReactionFrameMs()), startAt?: number) => {
     if (facing === right) return;
     const gen = generation;
     if (atlas && frameMs > 0 && frames(SPRITE_GROUP.turnLeft) > 0 && frames(SPRITE_GROUP.turnRight) > 0) {
@@ -432,7 +432,7 @@ function createController(options: ControllerOptions): Controller {
       setFacing(right);
       return 0;
     }
-    const frameMs = Math.max(16, Math.min(paced(HEX_TURN_FRAME_MS), (beat * TURN_SHARE_OF_BEAT) / count));
+    const frameMs = Math.max(16, Math.min(paced(hexReactionFrameMs()), (beat * TURN_SHARE_OF_BEAT) / count));
     await turnTo(right, frameMs);
     return frameMs * count;
   };
@@ -678,7 +678,7 @@ function createController(options: ControllerOptions): Controller {
   const playActionClip = (group: number, beat: number, kind: "melee" | "shot" | "cast" = "melee"): Promise<void> => {
     const count = frames(group);
     if (count === 0) return Promise.resolve();
-    const frameMs = paced(kind === "melee" ? HEX_ACTION_FRAME_MS : creatureShootFrameMs(atlas));
+    const frameMs = paced(kind === "melee" ? hexActionFrameMs() : creatureShootFrameMs(atlas));
     if (beat <= 0) return playClip(group, even(group, frameMs));
     const climax = kind === "shot" ? creatureShotClimaxFrame(atlas, group) : null;
     const contact = climax ?? (kind === "cast" ? Math.floor(count / 2) : Math.ceil(count / 2));
@@ -687,7 +687,7 @@ function createController(options: ControllerOptions): Controller {
     const holdMs = beat - windUpMs * hitIndex;
     const durations = Array.from({ length: count }, (_, index) => (index < hitIndex ? windUpMs : frameMs));
     // The bow stays drawn / the arm stays out until the projectile lands.
-    if (kind === "shot") durations[hitIndex] += SHOT_FLIGHT_MS;
+    if (kind === "shot") durations[hitIndex] += shotFlightMs();
     // The hold is the standing frame, then the swing; a newer cue arriving
     // during the hold cancels the swing (it never cuts the newer clip).
     const gen = generation;
@@ -710,13 +710,13 @@ function createController(options: ControllerOptions): Controller {
     if (ranged) figure.dataset.hexShot = direction;
     // Face the target with a (quick) H3 turn inside the wind-up; the figure
     // turns back to face the enemy once it is idle again (see handle).
-    const turnedMs = b.x !== a.x ? await quickTurn(b.x > a.x, cue.releaseMs ?? (ranged ? HEX_RANGED_RELEASE_MS : IMPACT_MS)) : 0;
+    const turnedMs = b.x !== a.x ? await quickTurn(b.x > a.x, cue.releaseMs ?? (ranged ? hexRangedReleaseMs() : impactMs())) : 0;
     if (disposed) return;
     if (atlas) {
       const shoot = { up: SPRITE_GROUP.shootUp, straight: SPRITE_GROUP.shootStraight, down: SPRITE_GROUP.shootDown }[direction];
       const strike = { up: SPRITE_GROUP.attackUp, straight: SPRITE_GROUP.attackStraight, down: SPRITE_GROUP.attackDown }[direction];
       const group = ranged && frames(shoot) > 0 ? shoot : frames(strike) > 0 ? strike : SPRITE_GROUP.attackStraight;
-      const fullBeat = cue.releaseMs ?? (ranged ? HEX_RANGED_RELEASE_MS : IMPACT_MS);
+      const fullBeat = cue.releaseMs ?? (ranged ? hexRangedReleaseMs() : impactMs());
       const beat = fullBeat <= 0 ? fullBeat : Math.max(1, fullBeat - turnedMs);
       await playActionClip(group, beat, ranged && group === shoot ? "shot" : "melee");
     } else {
@@ -725,7 +725,7 @@ function createController(options: ControllerOptions): Controller {
       const reach = cue.attackKind === "ranged" ? -0.12 : 0.42;
       const base = offset;
       await new Promise<void>((resolve) => {
-        const duration = cue.attackKind === "ranged" ? 440 : 820;
+        const duration = hexActionBeatMs(cue.attackKind === "ranged" ? 440 : 820);
         let start = -1;
         onClock((now) => {
           if (disposed) {
@@ -757,7 +757,7 @@ function createController(options: ControllerOptions): Controller {
    */
   const runCast = async (cue: Extract<HexUnitCueDetail["cue"], { kind: "cast" }>) => {
     const target = cue.to ? parseCellAnchor(cue.to) : null;
-    const fullBeat = cue.releaseMs ?? CAST_RELEASE_MS;
+    const fullBeat = cue.releaseMs ?? hexCastReleaseMs();
     let beat = fullBeat;
     let direction: "up" | "straight" | "down" = "straight";
     if (target !== null && isHexPosition(target) && !options.ownCells().includes(target)) {
@@ -778,7 +778,7 @@ function createController(options: ControllerOptions): Controller {
       return;
     }
     await figure
-      .animate([{ scale: "1" }, { scale: "1.08", offset: 0.5 }, { scale: "1" }], { duration: CAST_MS })
+      .animate([{ scale: "1" }, { scale: "1.08", offset: 0.5 }, { scale: "1" }], { duration: hexActionBeatMs(CAST_MS) })
       .finished.catch(() => undefined);
   };
 
@@ -788,15 +788,15 @@ function createController(options: ControllerOptions): Controller {
    */
   const runShake = async (defending = false) => {
     if (defending && atlas && frames(SPRITE_GROUP.defend) > 0) {
-      await playClip(SPRITE_GROUP.defend, even(SPRITE_GROUP.defend, paced(HEX_HIT_FRAME_MS)));
+      await playClip(SPRITE_GROUP.defend, even(SPRITE_GROUP.defend, paced(hexReactionFrameMs())));
       return;
     }
     if (atlas && frames(SPRITE_GROUP.hit) > 0) {
-      await playClip(SPRITE_GROUP.hit, even(SPRITE_GROUP.hit, paced(HEX_HIT_FRAME_MS)));
+      await playClip(SPRITE_GROUP.hit, even(SPRITE_GROUP.hit, paced(hexReactionFrameMs())));
       return;
     }
     await figure
-      .animate([{ scale: "1" }, { scale: "1.06" }, { scale: "0.97" }, { scale: "1" }], { duration: 360 })
+      .animate([{ scale: "1" }, { scale: "1.06" }, { scale: "0.97" }, { scale: "1" }], { duration: hexReactionFrameMs() * 4.5 })
       .finished.catch(() => undefined);
   };
 
@@ -811,12 +811,12 @@ function createController(options: ControllerOptions): Controller {
     const b = options.cellPoint(target);
     const a = nearestOwnPoint(b);
     if (b.x === a.x || (b.x > a.x) === facing) return;
-    await quickTurn(b.x > a.x, Math.max(1, cue.beatMs ?? IMPACT_MS));
+    await quickTurn(b.x > a.x, Math.max(1, cue.beatMs ?? impactMs()));
   };
 
   const runPose = async () => {
     if (atlas && frames(SPRITE_GROUP.defend) > 0) {
-      await playClip(SPRITE_GROUP.defend, even(SPRITE_GROUP.defend, paced(HEX_HIT_FRAME_MS)));
+      await playClip(SPRITE_GROUP.defend, even(SPRITE_GROUP.defend, paced(hexReactionFrameMs())));
     }
   };
 
@@ -901,7 +901,7 @@ function createController(options: ControllerOptions): Controller {
       busy += 1;
       haltIdle();
       showFrame(SPRITE_GROUP.death, count - 1);
-      void playClip(SPRITE_GROUP.death, even(SPRITE_GROUP.death, paced(HEX_DEATH_FRAME_MS)), false, undefined, true).finally(() => {
+      void playClip(SPRITE_GROUP.death, even(SPRITE_GROUP.death, paced(hexReactionFrameMs())), false, undefined, true).finally(() => {
         busy = Math.max(0, busy - 1);
         if (busy === 0) resumeIdle();
       });
@@ -927,11 +927,11 @@ function createController(options: ControllerOptions): Controller {
       // walk allows.
       const waited = performance.now() - arrived;
       if (cue.kind === "lunge") {
-        const beat = cue.releaseMs ?? (cue.attackKind === "ranged" ? HEX_RANGED_RELEASE_MS : IMPACT_MS);
+        const beat = cue.releaseMs ?? (cue.attackKind === "ranged" ? hexRangedReleaseMs() : impactMs());
         return runLunge(waited > 1 && beat > 0 ? { ...cue, releaseMs: Math.max(1, beat - waited) } : cue);
       }
       if (cue.kind === "cast") {
-        const beat = cue.releaseMs ?? CAST_RELEASE_MS;
+        const beat = cue.releaseMs ?? hexCastReleaseMs();
         return runCast(waited > 1 && beat > 0 ? { ...cue, releaseMs: Math.max(1, beat - waited) } : cue);
       }
       if (cue.kind === "face") return runFace(cue);
@@ -1839,10 +1839,10 @@ function HexFallen({
 }
 
 /** The death group's frame `elapsed` ms after the fall (the last frame — the corpse — holds). */
-function deathFrameAt(atlas: CreatureSpriteAtlas, elapsed: number): string | null {
+function deathFrameAt(atlas: CreatureSpriteAtlas, elapsed: number, frameMs: number): string | null {
   const info = atlas.groups[String(SPRITE_GROUP.death)];
   if (!info || info.frames < 1) return null;
-  const offset = spriteFrameOffset(atlas, info, Math.floor(elapsed / HEX_DEATH_FRAME_MS));
+  const offset = spriteFrameOffset(atlas, info, Math.floor(elapsed / frameMs));
   return `${-offset.x}px ${-offset.y}px`;
 }
 
@@ -1880,14 +1880,16 @@ const HexFallenFigure = memo(function HexFallenFigure({ entry, flipped }: { entr
     const info = atlas.groups[String(SPRITE_GROUP.death)];
     if (!info) return;
     let shown = sprite.style.backgroundPosition;
+    // The fall's pace (reaction speed) is fixed when it starts.
+    const frameMs = hexReactionFrameMs();
     return onClock((now) => {
       const elapsed = now - entry.diedAt;
-      const frame = deathFrameAt(atlas, elapsed);
+      const frame = deathFrameAt(atlas, elapsed, frameMs);
       if (frame && frame !== shown) {
         shown = frame;
         sprite.style.backgroundPosition = frame;
       }
-      return elapsed < info.frames * HEX_DEATH_FRAME_MS;
+      return elapsed < info.frames * frameMs;
     });
     // One clip per fall: keyed to the art and the moment of death only.
   }, [slug, entry.diedAt]);
@@ -1915,7 +1917,7 @@ const HexFallenFigure = memo(function HexFallenFigure({ entry, flipped }: { entr
             // one leaving alive stands as it was.
             backgroundPosition: standingOffset
               ? `${-standingOffset.x}px ${-standingOffset.y}px`
-              : deathFrameAt(atlas, performance.now() - entry.diedAt) ?? undefined,
+              : deathFrameAt(atlas, performance.now() - entry.diedAt, hexReactionFrameMs()) ?? undefined,
             ["--face" as string]: facesRight ? "1" : "-1"
           }}
         />

@@ -228,7 +228,8 @@ describe("unit combat voices", () => {
     expect(unitSoundKey("doom.imp", "attack")).toBe("units/doom-imp-attack");
   });
   it("uses the documented shared-audio pairings", () => {
-    // The original game shares these creatures' files (docs/sound-mapping.md).
+    // The 4x5 card board's one voice per card (docs/sound-mapping.md); the hex
+    // board's figures speak per side (see "hex battlefield figure voices").
     expect(unitSoundKey("castle.marksmen", "shoot")).toBe("units/archer-shoot");
     expect(unitSoundKey("necropolis.zombies", "attack")).toBe("units/zombie-lord-attack");
     expect(unitSoundKey("rampart.elves", "shoot")).toBe("units/wood-elf-shoot");
@@ -633,5 +634,71 @@ describe("unit combat voices", () => {
     expect(unitSoundKey("boss.avatar_of_erebos", "death")).toBe("units/naruto-boss-kaguya-death");
     expect(unitSoundKey("boss.colossal_titan", "attack")).toBe("units/naruto-boss-gaara-attack");
     expect(unitSoundKey("boss.colossal_titan", "move")).toBe("units/naruto-boss-gaara-move");
+  });
+});
+
+describe("hex battlefield figure voices", () => {
+  it("a Few side speaks as the base creature its figure shows, a Pack side as the upgrade (CONTROL: the card board keeps the card voice)", () => {
+    expect(unitSoundKey("castle.halberdiers", "attack", "few", true)).toBe("units/pikeman-attack");
+    expect(unitSoundKey("castle.halberdiers", "attack", "pack", true)).toBe("units/halberdier-attack");
+    expect(unitSoundKey("castle.halberdiers", "attack", "few")).toBe("units/halberdier-attack");
+    // The PC's Marksman shoots with the HCRS set (the Sharpshooter's), the Archer with LCRS.
+    expect(unitSoundKey("castle.marksmen", "shoot", "few", true)).toBe("units/archer-shoot");
+    expect(unitSoundKey("castle.marksmen", "shoot", "pack", true)).toBe("units/sharpshooter-shoot");
+    expect(unitSoundKey("castle.marksmen", "shoot", "pack")).toBe("units/archer-shoot");
+    expect(unitSoundKey("necropolis.zombies", "hurt", "few", true)).toBe("units/walking-dead-hurt");
+    expect(unitSoundKey("necropolis.zombies", "hurt", "pack", true)).toBe("units/zombie-lord-hurt");
+    expect(unitSoundKey("stronghold.wolf_raiders", "move", "pack", true)).toBe("units/hobgoblin-wolf-rider-move");
+    expect(unitSoundKey("stronghold.wolf_raiders", "move", "few", true)).toBe("units/goblin-wolf-rider-move");
+    expect(unitSoundKey("factory.couatls", "death", "pack", true)).toBe("units/crimson-couatl-death");
+    expect(unitSoundKey("bulwark.jotunns", "death", "pack", true)).toBe("units/jotunn-warlord-death");
+  });
+
+  it("a neutral card speaks as the Few creature its figure shows", () => {
+    expect(unitSoundKey("neutral.titans", "attack", "neutral", true)).toBe("units/giant-attack");
+    expect(unitSoundKey("neutral.titans", "attack", "neutral")).toBe("units/titan-attack");
+    expect(unitSoundKey("neutral.halflings", "shoot", "neutral", true)).toBe("units/halfling-shoot");
+  });
+
+  it("the Grenadier throws with its own HALGSHOT and otherwise keeps the Halfling voice", () => {
+    expect(unitSoundKey("factory.halflings", "shoot", "pack", true)).toBe("units/halfling-grenadier-shoot");
+    expect(unitSoundKey("factory.halflings", "attack", "pack", true)).toBe("units/halfling-attack");
+    expect(unitSoundKey("factory.halflings", "shoot", "few", true)).toBe("units/halfling-shoot");
+  });
+
+  it("a Few Devil teleports with its own EXT1 + EXT2 pair, the Pack Arch Devil with its own", () => {
+    expect(unitSoundKey("inferno.arch_devils", "move", "few", true)).toBe("units/devil-teleport");
+    expect(unitSoundKey("inferno.arch_devils", "move", "pack", true)).toBe("units/arch-devil-teleport");
+    expect(unitSoundKey("inferno.arch_devils", "attack", "few", true)).toBe("units/devil-attack");
+    expect(soundLibrary["units/devil-teleport"]?.sequence).toEqual(["units/devil-special", "units/devil-special"]);
+    for (const src of clipSrcs("units/devil-teleport")) {
+      expect(hasMediaFile(src), `${src} should exist on disk`).toBe(true);
+    }
+  });
+
+  it("HotA upgrades that reuse their base's files on the PC keep the card's one voice", () => {
+    expect(unitSoundKey("cove.sea_dogs", "attack", "pack", true)).toBe("units/pirate-attack");
+    expect(unitSoundKey("factory.dreadnoughts", "move", "pack", true)).toBe(unitSoundKey("factory.dreadnoughts", "move", "pack"));
+    expect(unitSoundKey("bulwark.kobolds", "attack", "pack", true)).toBe("units/kobold-attack");
+  });
+
+  it("every unit's hex figure resolves every action it has on the card board to clips on disk", () => {
+    const lost: string[] = [];
+    for (const unit of roster) {
+      for (const variant of ["few", "pack", "neutral"] as const) {
+        for (const action of [...coreActions, "shoot"] as UnitSoundAction[]) {
+          if (!unitSoundKey(unit.id, action, variant)) continue;
+          const key = unitSoundKey(unit.id, action, variant, true);
+          if (!key) {
+            lost.push(`${unit.id}:${variant}:${action}`);
+            continue;
+          }
+          for (const src of clipSrcs(key)) {
+            if (!hasMediaFile(src)) lost.push(src);
+          }
+        }
+      }
+    }
+    expect(lost).toEqual([]);
   });
 });

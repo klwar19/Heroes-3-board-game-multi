@@ -220,19 +220,22 @@ export function playTableUiClickSound(event: { target: EventTarget | null }): vo
 
 /**
  * Creature voice for a combat moment: the unit's own H3 clip for placing
- * its card, striking, blocking, wincing, moving or dying. Unknown units and
- * missing clips stay silent.
+ * its card, striking, blocking, wincing, moving or dying. `hexFigure`: on the
+ * Hex Battlefield the unit speaks with the creature its figure shows (Few =
+ * the base creature, Pack = the upgrade; unit-sounds.ts hexFigureVoices).
+ * Unknown units and missing clips stay silent.
  */
 export function playUnitSound(
   unitDefId: string | undefined,
   action: UnitSoundAction,
   delayMs = 0,
-  variant?: UnitSoundVariant
+  variant?: UnitSoundVariant,
+  hexFigure = false
 ): void {
   if (!unitDefId || typeof window === "undefined") {
     return;
   }
-  const key = unitSoundKey(unitDefId, action, variant);
+  const key = unitSoundKey(unitDefId, action, variant, hexFigure);
   const layerKey = unitSoundLayerKey(unitDefId, action);
   if (!key && !layerKey) {
     return;
@@ -304,12 +307,13 @@ export function playUnitSoundFor(
   delayMs: number,
   durationMs: number,
   variant?: UnitSoundVariant,
-  gaitKey?: string
+  gaitKey?: string,
+  hexFigure = false
 ): void {
   if (!unitDefId || typeof window === "undefined") {
     return;
   }
-  const key = unitSoundKey(unitDefId, action, variant);
+  const key = unitSoundKey(unitDefId, action, variant, hexFigure);
   const layerKey = unitSoundLayerKey(unitDefId, action);
   if (!key && !layerKey) {
     return;

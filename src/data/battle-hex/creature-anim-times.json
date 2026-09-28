@@ -4,6 +4,166 @@
     "attack": 1,
     "idle": 100
   },
+  "al-akagi": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        43,
+        -76
+      ],
+      "straight": [
+        57,
+        -80
+      ],
+      "down": [
+        31,
+        -15
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "al-ayanami": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/swordsman-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "al-belfast": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        46,
+        -80
+      ],
+      "straight": [
+        60,
+        -83
+      ],
+      "down": [
+        32,
+        -16
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "al-honolulu": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        32,
+        -83
+      ],
+      "straight": [
+        51,
+        -66
+      ],
+      "down": [
+        25,
+        -49
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "al-i-19": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/rogue-move",
+    "idle": 244,
+    "fidget": false
+  },
+  "al-javelin": {
+    "walk": 1.15,
+    "attack": 1,
+    "gait": "units/pikeman-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "al-laffey": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -75
+      ],
+      "straight": [
+        36,
+        -52
+      ],
+      "down": [
+        17,
+        -28
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "al-prinz-eugen": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 7,
+    "missile": {
+      "up": [
+        32,
+        -73
+      ],
+      "straight": [
+        39,
+        -60
+      ],
+      "down": [
+        18,
+        -51
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "al-unicorn": {
+    "walk": 1.2,
+    "attack": 2.5,
+    "gait": "units/leprechaun-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "al-yukikaze": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -77
+      ],
+      "straight": [
+        37,
+        -53
+      ],
+      "down": [
+        17,
+        -29
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
   "ancient-behemoth": {
     "walk": 1.17,
     "attack": 1,
@@ -795,6 +955,253 @@
     "walk": 1.27,
     "attack": 1,
     "idle": 220
+  },
+  "doom-arachnotron": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/gorgon-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "doom-arch-vile": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        42,
+        -95
+      ],
+      "straight": [
+        60,
+        -81
+      ],
+      "down": [
+        30,
+        -14
+      ]
+    },
+    "gait": "units/power-lich-move",
+    "idle": 188,
+    "fidget": false
+  },
+  "doom-baron-of-hell": {
+    "walk": 0.93,
+    "attack": 1,
+    "gait": "units/horned-demon-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "doom-cacodemon": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        11,
+        -55
+      ],
+      "straight": [
+        11,
+        -53
+      ],
+      "down": [
+        7,
+        -46
+      ]
+    },
+    "gait": "units/beholder-move",
+    "idle": 214,
+    "fidget": false
+  },
+  "doom-cyberdemon": {
+    "walk": 1.38,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        13,
+        -159
+      ],
+      "straight": [
+        92,
+        -106
+      ],
+      "down": [
+        23,
+        -1
+      ]
+    },
+    "gait": "units/titan-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "doom-demon": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/troll-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "doom-former-commando": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        32,
+        -73
+      ],
+      "straight": [
+        39,
+        -60
+      ],
+      "down": [
+        18,
+        -51
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "doom-former-human": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        31,
+        -82
+      ],
+      "straight": [
+        49,
+        -64
+      ],
+      "down": [
+        25,
+        -48
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "doom-former-human-sergeant": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        32,
+        -82
+      ],
+      "straight": [
+        50,
+        -65
+      ],
+      "down": [
+        25,
+        -48
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 244,
+    "fidget": false
+  },
+  "doom-hell-knight": {
+    "walk": 0.93,
+    "attack": 1,
+    "gait": "units/demon-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "doom-imp": {
+    "walk": 1.27,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        39,
+        -92
+      ],
+      "straight": [
+        72,
+        -53
+      ],
+      "down": [
+        15,
+        -6
+      ]
+    },
+    "gait": "units/gog-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "doom-lost-soul": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/wight-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "doom-mancubus": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 4,
+    "missile": {
+      "up": [
+        53,
+        -110
+      ],
+      "straight": [
+        51,
+        -81
+      ],
+      "down": [
+        36,
+        -52
+      ]
+    },
+    "gait": "units/cyclops-king-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "doom-pain-elemental": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 5,
+    "missile": {
+      "up": [
+        10,
+        -53
+      ],
+      "straight": [
+        10,
+        -51
+      ],
+      "down": [
+        5,
+        -45
+      ]
+    },
+    "gait": "units/evil-eye-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "doom-revenant": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/skeleton-warrior-move",
+    "idle": 214,
+    "fidget": false
+  },
+  "doom-spider-mastermind": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/mighty-gorgon-move",
+    "idle": 300,
+    "fidget": false
   },
   "dragon-fly": {
     "walk": 0.77,
@@ -1758,6 +2165,418 @@
       ]
     },
     "idle": 100
+  },
+  "mgq-aria": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/genie-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-carmilla": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/magic-elemental-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-chrome": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/gremlin-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-chrome-frederica": {
+    "walk": 1.45,
+    "attack": 1,
+    "gait": "units/iron-golem-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-cupi": {
+    "walk": 1.02,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        37,
+        -63
+      ],
+      "straight": [
+        35,
+        -57
+      ],
+      "down": [
+        20,
+        -49
+      ]
+    },
+    "gait": "units/wood-elf-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-eater": {
+    "walk": 1.25,
+    "attack": 1,
+    "gait": "units/sandworm-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-emily": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/magic-elemental-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-fleesia": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/water-elemental-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-frederica": {
+    "walk": 1.45,
+    "attack": 1,
+    "gait": "units/iron-golem-move",
+    "idle": 188,
+    "fidget": false
+  },
+  "mgq-giga": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        88,
+        -76
+      ],
+      "straight": [
+        88,
+        -58
+      ],
+      "down": [
+        82,
+        -52
+      ]
+    },
+    "gait": "units/medusa-queen-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-gigi": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/water-elemental-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-gnome": {
+    "walk": 0.98,
+    "attack": 1,
+    "gait": "units/dwarf-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-hild": {
+    "walk": 1.8,
+    "attack": 1.5,
+    "climax": 6,
+    "missile": {
+      "up": [
+        32,
+        -83
+      ],
+      "straight": [
+        51,
+        -66
+      ],
+      "down": [
+        25,
+        -49
+      ]
+    },
+    "gait": "units/gunslinger-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-jessie": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/water-elemental-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-kamuro": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/rogue-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "mgq-kamuro-kitsu": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/rogue-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "mgq-kitsu": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/rogue-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "mgq-lisa": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/wight-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-lucifina-chan": {
+    "walk": 0.82,
+    "attack": 1,
+    "gait": "units/angel-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-lucretia": {
+    "walk": 0.85,
+    "attack": 1,
+    "gait": "units/harpy-hag-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-maiden": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/magic-elemental-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-matis": {
+    "walk": 0.5,
+    "attack": 1,
+    "missile": {
+      "up": [
+        10,
+        -71
+      ],
+      "straight": [
+        10,
+        -71
+      ],
+      "down": [
+        10,
+        -71
+      ]
+    },
+    "gait": "units/centaur-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-maya": {
+    "walk": 0.5,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        9,
+        -64
+      ],
+      "straight": [
+        9,
+        -64
+      ],
+      "down": [
+        9,
+        -64
+      ]
+    },
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-miyabi": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/wight-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-ooma": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/genie-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-pochi": {
+    "walk": 1.15,
+    "attack": 1,
+    "gait": "units/kobold-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-regina": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/swordsman-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-salamander": {
+    "walk": 0.5,
+    "attack": 1,
+    "gait": "units/fire-elemental-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-seraphy": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        77,
+        -80
+      ],
+      "straight": [
+        73,
+        -64
+      ],
+      "down": [
+        54,
+        -54
+      ]
+    },
+    "gait": "units/medusa-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-shesta": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        41,
+        -71
+      ],
+      "straight": [
+        53,
+        -74
+      ],
+      "down": [
+        29,
+        -14
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-shizuku": {
+    "walk": 1.28,
+    "attack": 1,
+    "gait": "units/ogre-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-sofia": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        79,
+        -83
+      ],
+      "straight": [
+        75,
+        -66
+      ],
+      "down": [
+        55,
+        -55
+      ]
+    },
+    "gait": "units/medusa-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-sonya": {
+    "walk": 0.95,
+    "attack": 1,
+    "gait": "units/crusader-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-sphinx": {
+    "walk": 0.5,
+    "attack": 1,
+    "missile": {
+      "up": [
+        9,
+        -65
+      ],
+      "straight": [
+        9,
+        -65
+      ],
+      "down": [
+        9,
+        -65
+      ]
+    },
+    "gait": "units/centaur-captain-move",
+    "idle": 244,
+    "fidget": false
+  },
+  "mgq-spider-princess": {
+    "walk": 0.5,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        11,
+        -73
+      ],
+      "straight": [
+        11,
+        -73
+      ],
+      "down": [
+        11,
+        -73
+      ]
+    },
+    "idle": 300,
+    "fidget": false
+  },
+  "mgq-sylph": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/sprite-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "mgq-tama": {
+    "walk": 1.4,
+    "attack": 1.5,
+    "gait": "units/halfling-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "mgq-undine": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/water-elemental-move",
+    "idle": 275,
+    "fidget": false
   },
   "mighty-gorgon": {
     "walk": 1,

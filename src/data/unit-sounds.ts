@@ -292,6 +292,147 @@ const bulwarkPackVoices: Record<string, string> = {
 };
 
 /**
+ * Hex Battlefield figures (creature-sprites.ts CARD_SPRITES): a town card's Few
+ * side is drawn as the base H3 creature and its Pack side as the upgrade
+ * (Halberdiers: Pikeman / Halberdier), so on the hex board each side speaks
+ * with the PC's own sound set for the creature it shows (VCMI
+ * config/creatures/*.json "sound"; docs/h3-sound-reference.csv). [Few, Pack]
+ * voice bases under units/. Only cards whose two figures sound different on the
+ * PC are listed: every HotA upgrade that reuses its base's files there (Oceanid
+ * = Nymph, Seaman = Crew Mate, Sea Dog = Pirate, Ayssid = Stormbird, Sorceress
+ * = Sea Witch, Nix Warrior = Nix, Haspid = Sea Serpent, Engineer = Mechanic,
+ * Bellwether = Armadillo, Sentinel = Automaton, Olgoi-Khorkhoi = Sandworm,
+ * Juggernaut = Dreadnought, Bounty Hunter = Gunslinger, Kobold Foreman, Argali,
+ * Yeti Runemaster, Great Shaman) already speaks with its card's one voice. The
+ * 4x5 card board shows one creature for both sides and keeps the card voice.
+ */
+const hexFigureVoices: Record<string, readonly [few: string, pack: string]> = {
+  "castle.halberdiers": ["pikeman", "halberdier"],
+  // The PC's Marksman uses the HCRS set (shared with the neutral Sharpshooter,
+  // stored as units/sharpshooter-*); the Archer its own LCRS set.
+  "castle.marksmen": ["archer", "sharpshooter"],
+  "castle.griffins": ["griffin", "royal-griffin"],
+  "castle.crusaders": ["swordsman", "crusader"],
+  "castle.zealots": ["monk", "zealot"],
+  "castle.champions": ["cavalier", "champion"],
+  "castle.archangels": ["angel", "archangel"],
+  "necropolis.skeletons": ["skeleton", "skeleton-warrior"],
+  // ZOMB (Walking Dead) / ZMBL (Zombie).
+  "necropolis.zombies": ["walking-dead", "zombie-lord"],
+  "necropolis.wraiths": ["wight", "wraith"],
+  "necropolis.vampires": ["vampire", "vampire-lord"],
+  "necropolis.liches": ["lich", "power-lich"],
+  "necropolis.dread_knights": ["black-knight", "dread-knight"],
+  "necropolis.ghost_dragons": ["bone-dragon", "ghost-dragon"],
+  "dungeon.troglodytes": ["troglodyte", "infernal-troglodyte"],
+  "dungeon.harpies": ["harpy", "harpy-hag"],
+  "dungeon.evil_eyes": ["beholder", "evil-eye"],
+  "dungeon.medusas": ["medusa", "medusa-queen"],
+  "dungeon.minotaurs": ["minotaur", "minotaur-king"],
+  "dungeon.manticores": ["manticore", "scorpicore"],
+  "dungeon.black_dragons": ["red-dragon", "black-dragon"],
+  "rampart.centaurs": ["centaur", "centaur-captain"],
+  "rampart.dwarves": ["dwarf", "battle-dwarf"],
+  "rampart.elves": ["wood-elf", "grand-elf"],
+  "rampart.pegasi": ["pegasus", "silver-pegasus"],
+  "rampart.dendroids": ["dendroid-guard", "dendroid-soldier"],
+  "rampart.unicorns": ["unicorn", "war-unicorn"],
+  "rampart.gold_dragons": ["green-dragon", "gold-dragon"],
+  "inferno.familiars": ["imp", "familiar"],
+  "inferno.magogs": ["gog", "magog"],
+  "inferno.cerberi": ["hell-hound", "cerberus"],
+  "inferno.demons": ["demon", "horned-demon"],
+  "inferno.pit_lords": ["pit-fiend", "pit-lord"],
+  "inferno.efreet": ["efreet", "efreet-sultan"],
+  "inferno.arch_devils": ["devil", "arch-devil"],
+  "stronghold.goblins": ["goblin", "hobgoblin"],
+  "stronghold.wolf_raiders": ["goblin-wolf-rider", "hobgoblin-wolf-rider"],
+  "stronghold.orcs": ["orc", "orc-chieftain"],
+  "stronghold.ogres": ["ogre", "ogre-mage"],
+  "stronghold.thunderbirds": ["roc", "thunderbird"],
+  "stronghold.cyclopes": ["cyclops", "cyclops-king"],
+  "stronghold.behemoths": ["behemoth", "ancient-behemoth"],
+  "fortress.gnolls": ["gnoll", "gnoll-marauder"],
+  "fortress.lizardmen": ["lizardman", "lizard-warrior"],
+  "fortress.dragon_flies": ["serpent-fly", "fire-dragon-fly"],
+  "fortress.basilisks": ["basilisk", "greater-basilisk"],
+  "fortress.gorgons": ["gorgon", "mighty-gorgon"],
+  "fortress.wyverns": ["wyvern", "wyvern-monarch"],
+  "fortress.hydras": ["hydra", "chaos-hydra"],
+  "tower.gremlins": ["gremlin", "master-gremlin"],
+  "tower.gargoyles": ["stone-gargoyle", "obsidian-gargoyle"],
+  "tower.iron_golems": ["stone-golem", "iron-golem"],
+  "tower.magi": ["mage", "arch-mage"],
+  "tower.genies": ["genie", "master-genie"],
+  "tower.nagas": ["naga", "naga-queen"],
+  "tower.titans": ["giant", "titan"],
+  "conflux.sprites": ["pixie", "sprite"],
+  "conflux.storm_elementals": ["air-elemental", "storm-elemental"],
+  "conflux.ice_elementals": ["water-elemental", "ice-elemental"],
+  "conflux.energy_elementals": ["fire-elemental", "energy-elemental"],
+  "conflux.magma_elementals": ["earth-elemental", "magma-elemental"],
+  "conflux.magic_elementals": ["psychic-elemental", "magic-elemental"],
+  "conflux.phoenixes": ["firebird", "phoenix"],
+  // HotA: the Grenadier keeps the Halfling's voice but throws with its own
+  // HALGSHOT; the Crimson Couatl has a set of its own.
+  "factory.halflings": ["halfling", "halfling-grenadier"],
+  "factory.couatls": ["couatl", "crimson-couatl"],
+  "bulwark.snow_elves": ["snow-elf", "steel-elf"],
+  "bulwark.mammoths": ["mammoth", "war-mammoth"],
+  "bulwark.jotunns": ["jotunn", "jotunn-warlord"]
+};
+
+/** A figure voice with only some clips of its own borrows the rest from its base (HotA Grenadier: HALGSHOT only). */
+const hexFigureVoiceFallbacks: Record<string, string> = {
+  "halfling-grenadier": "halfling"
+};
+
+/**
+ * Figures whose move is a teleport (Devil and Arch Devil blink out and in):
+ * their move sound is the EXT1 + EXT2 pair, as the card's arch_devils override.
+ */
+const hexFigureMoveSounds: Record<string, string> = {
+  devil: "units/devil-teleport",
+  "arch-devil": "units/arch-devil-teleport"
+};
+
+/**
+ * The voice of the creature a unit's hex figure shows: its card side's
+ * creature (Few = base, Pack = upgrade); a neutral card always shows the Few
+ * creature of the town card with its name (creature-sprites.ts spriteSlugFor).
+ * Undefined when the card's two figures share one voice.
+ */
+function hexFigureVoice(unitDefId: string, variant?: UnitSoundVariant): string | undefined {
+  if (unitDefId.startsWith("neutral.")) {
+    const suffix = unitDefId.slice("neutral.".length);
+    const townCard = Object.keys(hexFigureVoices).find((id) => id.endsWith(`.${suffix}`));
+    return townCard ? hexFigureVoices[townCard][0] : undefined;
+  }
+  const pair = hexFigureVoices[unitDefId];
+  return pair ? pair[variant === "pack" ? 1 : 0] : undefined;
+}
+
+function hexFigureSoundKey(voice: string, action: UnitSoundAction): string | undefined {
+  if (action === "move") {
+    const moveKey = hexFigureMoveSounds[voice];
+    if (moveKey && soundLibrary[moveKey]) {
+      return moveKey;
+    }
+  }
+  const fallback = hexFigureVoiceFallbacks[voice];
+  const voices = fallback ? [voice, fallback] : [voice];
+  for (const candidate of actionCandidates[action]) {
+    for (const base of voices) {
+      const key = `units/${base}-${candidate}`;
+      if (soundLibrary[key]) {
+        return key;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
  * Raid Bosses & Dungeon-floor wardens (src/data/anime/bosses.ts). A boss combat
  * unit's `unitDefId` is `boss.<id>` (makeRaidBossCombatUnit), so it never
  * resolved through `creatureVoices` and fought SILENT. Each id reuses the
@@ -800,13 +941,17 @@ export function unitSoundLayerKey(
 /**
  * Manifest key of a creature action clip, e.g. ("castle.marksmen", "shoot")
  * -> "units/archer-shoot". A `commander:<slug>` voice id routes to the
- * commander voice map. Undefined when the unit or clip is unknown so
- * callers degrade to silence instead of requesting a missing file.
+ * commander voice map. `hexFigure`: the unit fights on the Hex Battlefield,
+ * where it speaks with the creature its figure shows (a Few Halberdiers card
+ * is a Pikeman, its Pack side a Halberdier — hexFigureVoices). Undefined when
+ * the unit or clip is unknown so callers degrade to silence instead of
+ * requesting a missing file.
  */
 export function unitSoundKey(
   unitDefId: string,
   action: UnitSoundAction,
-  variant?: UnitSoundVariant
+  variant?: UnitSoundVariant,
+  hexFigure = false
 ): string | undefined {
   if (unitDefId.startsWith(COMMANDER_VOICE_PREFIX)) {
     return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
@@ -838,6 +983,13 @@ export function unitSoundKey(
   const azurLaneSlug = azurLaneUnitVoices[bareName];
   if (azurLaneSlug) {
     return azurLaneVoiceKey(azurLaneSlug, action);
+  }
+  if (hexFigure) {
+    const figureVoice = hexFigureVoice(unitDefId, variant);
+    const figureKey = figureVoice ? hexFigureSoundKey(figureVoice, action) : undefined;
+    if (figureKey) {
+      return figureKey;
+    }
   }
   // Raid/Dungeon bosses (unitDefId `boss.<id>`) borrow a converted H3 voice.
   const voice = unitDefId.startsWith("boss.")

@@ -30,7 +30,7 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   ruler: "spell.bloodlust", // Command Seal
   sword_saint: "spell.precision", // Sword Intent
   might_guy: "spell.haste", // Body Flicker (reuses the Shaman's Haste cast + fx)
-  belfast: "spell.magic_arrow", // Royal Salvo (enemy damage → the Magic Arrow bolt + impact fx)
+  belfast: "commander.belfast.royal-salvo", // Royal Salvo (a three-shell naval salvo from her hip turrets)
   demon_ancestor: "spell.bloodlust", // Blood Frenzy (reuses the Brute's Bloodlust cast + fx)
   kyousuke_natsume: "spell.prayer", // Little Busters, Assemble! (a rally over the adjacent allies)
   ibuki: "commander.ibuki.executive", // Executive Order

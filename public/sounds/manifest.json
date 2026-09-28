@@ -2208,6 +2208,10 @@
   "units/devil-special": {
     "src": "/sounds/units/devil-special.mp3"
   },
+  "units/devil-teleport": {
+    "sequence": ["units/devil-special", "units/devil-special"],
+    "note": "Devil move = teleport: EXT1 (move-out) then EXT2 (move-in); DEVLEXT1 and DEVLEXT2 are byte-identical in Heroes3.snd, so the one clip plays twice"
+  },
   "units/diamond-golem-attack": {
     "src": "/sounds/units/diamond-golem-attack.mp3"
   },

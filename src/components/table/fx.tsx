@@ -261,7 +261,8 @@ export type FxCue =
       flip?: boolean;
       /**
        * Hex figure only: the blow / shot lands this long after the cue starts
-       * (default: the shared impact beat, or HEX_RANGED_RELEASE_MS for a shot).
+       * (default: the shared impact beat, or hexRangedReleaseMs() for a shot).
+       * The page scales every hex beat to the player's attack speed.
        */
       releaseMs?: number;
       delayMs?: number;
@@ -373,11 +374,12 @@ export const ATTACK_IMPACT_MS = 500;
 export const RANGED_RELEASE_MS = 120;
 /**
  * Hex battlefield: a casting creature's spell leaves it this long after its
- * cast cue starts (the figure's wind-up). The page holds the spell's FX / sound
- * until then; the value lives with the sprite timings.
+ * cast cue starts (the figure's wind-up, at the player's attack speed). The
+ * page holds the spell's FX / sound until then; the value lives with the
+ * sprite timings.
  */
-export { HEX_CAST_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
-import { HEX_CAST_RELEASE_MS } from "@/data/battle-hex/creature-sprites";
+export { hexCastReleaseMs } from "@/data/battle-hex/creature-sprites";
+import { hexCastReleaseMs } from "@/data/battle-hex/creature-sprites";
 const BOLT_FLIGHT_MS = ATTACK_IMPACT_MS - RANGED_RELEASE_MS;
 /**
  * Time reserved for one unit's whole strike to play out (lunge in, hit, recover)
@@ -2833,7 +2835,7 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
           case "cast": {
             const hexFigure = hexUnitFigure(cue.unitId);
             return hexFigure
-              ? playHexUnitCue(hexFigure, { kind: "cast", to: cue.to, releaseMs: cue.releaseMs ?? HEX_CAST_RELEASE_MS })
+              ? playHexUnitCue(hexFigure, { kind: "cast", to: cue.to, releaseMs: cue.releaseMs ?? hexCastReleaseMs() })
               : undefined;
           }
           case "hero":

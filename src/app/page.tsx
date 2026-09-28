@@ -238,7 +238,6 @@ import {
   FLIGHT_MS,
   FLIGHT_OUT_MS,
   FxStage,
-  HEX_CAST_RELEASE_MS,
   HOLD_CENTER_MS,
   NEUTRAL_ATTACK_PAUSE_MS,
   preloadRuneBurstArt,
@@ -296,17 +295,19 @@ import { cellBehindTarget } from "@/engine/reducer";
 import { isHexAreaAttackAbility } from "@/engine/hex-area-attacks";
 import { hexPcSpellArea } from "@/engine/hex-spell-areas";
 import {
-  HEX_RANGED_RELEASE_MS,
   creatureGaitSound,
   creatureShotDrawMs,
+  hexActionBeatMs,
+  hexCastReleaseMs,
+  hexRangedReleaseMs,
   unitCreatureSprite,
   warMachineShotLeadMs
 } from "@/data/battle-hex/creature-sprites";
 import { hexWarMachineStands } from "@/components/table/hex-figures";
 
-/** Longest a hex shooter starts drawing before its release beat (inside its die's read). */
+/** Longest a hex shooter starts drawing before its release beat (inside its die's read); scaled like every strike beat. */
 const HEX_SHOT_LEAD_MAX_MS = 450;
-/** A hex striker turns toward its target this long before its strike / draw (while its die is read). */
+/** A hex striker turns toward its target this long before its strike / draw (while its die is read); scaled like every strike beat. */
 const HEX_AIM_TURN_LEAD_MS = 700;
 import { HERO_CAST_RELEASE_MS } from "@/data/battle-hex/hero-sprites";
 import { buildForcedHandFx } from "@/components/table/astrologers-hand-fx";
@@ -2493,6 +2494,12 @@ export default function Home() {
       // move (die, strike, burn) waits for it to actually arrive.
       const glideMsFor = (event: Extract<GameEvent, { type: "UNIT_MOVED" }>): number =>
         hexMoveEventDurationMs(nextState.combat, event, isTeleportMove(event), nextState.activeEffects) ?? COMBAT_MOVE_MS;
+      // A strike beat (impact, shot release and flight, slash contact, aim
+      // turn) at the player's hex attack speed (battle bar Options): at the
+      // default speed, and always on the card board, it is the authored value.
+      // Every beat of one strike is scaled alike, so the figure, projectile,
+      // slash, cry and damage number stay on one shared impact.
+      const hexBeat = (ms: number): number => (isHexCombat(nextState.combat) ? hexActionBeatMs(ms) : ms);
       const approachGlideByUnit = new Map<string, number>();
       for (const move of approachMoves) {
         if (!approachGlideByUnit.has(move.unitId)) approachGlideByUnit.set(move.unitId, glideMsFor(move));
@@ -2557,7 +2564,7 @@ export default function Home() {
             castMs: plan ? spellPresentationMs(plan) : 0,
             holdMs: plan ? DAMAGE_REVEAL_DELAY_MS : 0,
             // Hex battlefield: the caster's figure winds up its cast first.
-            windUpMs: plan && isHexCombat(nextState.combat) ? HEX_CAST_RELEASE_MS : 0
+            windUpMs: plan && isHexCombat(nextState.combat) ? hexCastReleaseMs() : 0
           };
         }
       );
@@ -2571,7 +2578,7 @@ export default function Home() {
         presentationEvents.some(
           (event) => event.type === "HEX_AREA_ATTACK" && !event.centreUnitId && !seenFxIdsRef.current.has(event.id)
         )
-          ? ATTACK_IMPACT_MS + HEX_AREA_BURST_HOLD_MS
+          ? hexBeat(ATTACK_IMPACT_MS) + HEX_AREA_BURST_HOLD_MS
           : 0;
       const activationSpellLeadMs = activationSpellPreamble.leadMs + aimedAreaShotLeadMs;
 
@@ -2902,7 +2909,7 @@ export default function Home() {
         // so damage numbers, ability splashes and heals never pre-empt the roll.
         // Each attack's own strike is pinned to its die more precisely below.
         // With no dice the timeline still starts after any leading-spell preamble.
-        let timeline = fresh.length > 0 ? diceClock + ATTACK_IMPACT_MS : activationSpellLeadMs;
+        let timeline = fresh.length > 0 ? diceClock + hexBeat(ATTACK_IMPACT_MS) : activationSpellLeadMs;
         let viewerDraws = 0;
         // defender unitId -> when its blow lands (its die's dismiss + the strike).
         const impactByTarget = new Map<string, number>();
@@ -3214,7 +3221,7 @@ export default function Home() {
         };
         /**
          * The caster's figure turns toward its target and plays its cast; the
-         * spell leaves it HEX_CAST_RELEASE_MS later. Returns how long the
+         * spell leaves it hexCastReleaseMs() later. Returns how long the
          * caller holds the spell's FX / sound for that release (0 when the
          * caster is not a figure on a hex board).
          */
@@ -3228,15 +3235,16 @@ export default function Home() {
           if (!hexCombat || !casterId || !caster || caster.position < 0) {
             return 0;
           }
+          const releaseMs = hexCastReleaseMs();
           cues.push({
             kind: "cast",
             id: `${cueId}-cast`,
             unitId: casterId,
             to: targetUnitId && targetUnitId !== casterId ? unitCellAnchor(targetUnitId) : undefined,
-            releaseMs: HEX_CAST_RELEASE_MS,
+            releaseMs,
             delayMs: at
           });
-          return HEX_CAST_RELEASE_MS;
+          return releaseMs;
         };
         /**
          * Hex battlefield: a unit re-placed onto another hex without walking
@@ -3343,7 +3351,7 @@ export default function Home() {
           const creatureCasterId = creatureSpellCasters.get(`${playerId}|${spellCardId}`);
           const creatureCaster = creatureCasterId ? nextState.combat?.units[creatureCasterId] : undefined;
           if (creatureCaster && creatureCaster.position >= 0) {
-            pushHexCast(cueId, creatureCaster.id, targetUnitId, Math.max(0, releaseAt - HEX_CAST_RELEASE_MS));
+            pushHexCast(cueId, creatureCaster.id, targetUnitId, Math.max(0, releaseAt - hexCastReleaseMs()));
             return `unit:${creatureCaster.id}`;
           }
           cues.push({
@@ -3365,7 +3373,8 @@ export default function Home() {
               at,
               glideMsFor(event),
               unitVariant(event.unitId),
-              creatureGaitSound(walker ? unitCreatureSprite(walker) : null) ?? undefined
+              creatureGaitSound(walker ? unitCreatureSprite(walker) : null) ?? undefined,
+              true
             );
           } else {
             playUnitSound(unitVoice(event.unitId), "move", at, unitVariant(event.unitId));
@@ -3536,9 +3545,9 @@ export default function Home() {
         const lastImpactByAttacker = new Map<string, number>();
         fresh.forEach((roll, index) => {
           const strikeAt = diceDismissAt[index];
-          const impactAt = strikeAt + ATTACK_IMPACT_MS;
+          const impactAt = strikeAt + hexBeat(ATTACK_IMPACT_MS);
           // Hex board figures draw their bow before the shot leaves (same impact beat).
-          const releaseMs = isHexCombat(nextState.combat) ? HEX_RANGED_RELEASE_MS : RANGED_RELEASE_MS;
+          const releaseMs = isHexCombat(nextState.combat) ? hexRangedReleaseMs() : RANGED_RELEASE_MS;
           impactByRollId.set(roll.id, impactAt);
           impactByTarget.set(roll.defenderId, impactAt);
           const strikeEnd = impactAt + 1200;
@@ -3623,7 +3632,7 @@ export default function Home() {
           // still being read — so the draw is never squeezed. The shot still
           // leaves on the release beat and lands on the impact beat.
           const shotLeadMs = hexCombat && usesProjectilePresentation && !dracolichMelee
-            ? Math.min(HEX_SHOT_LEAD_MAX_MS, Math.max(0, Math.round(creatureShotDrawMs(unitCreatureSprite(attacker)) - HEX_RANGED_RELEASE_MS)))
+            ? Math.min(hexBeat(HEX_SHOT_LEAD_MAX_MS), Math.max(0, Math.round(creatureShotDrawMs(unitCreatureSprite(attacker)) - releaseMs)))
             : 0;
           if (!quietFollowUp && !spreadFrom) {
             playUnitSound(
@@ -3633,7 +3642,8 @@ export default function Home() {
               // figure's later release moves that beat with it); a plain shot
               // as the draw begins.
               strikeAt + (phasedShot && !dracolichMelee ? releaseMs : -shotLeadMs),
-              unitVariant(roll.attackerId)
+              unitVariant(roll.attackerId),
+              hexCombat
             );
           }
           // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
@@ -3654,7 +3664,11 @@ export default function Home() {
               // Cards always stand upright now, so the lunge uses the plain
               // screen-space direction to the target.
               flip: false,
-              ...(shotLeadMs > 0 ? { releaseMs: HEX_RANGED_RELEASE_MS + shotLeadMs } : {}),
+              // Hex: the beat this strike was built on (a speed change while
+              // its die is read never splits the blow from its number).
+              ...(hexCombat
+                ? { releaseMs: usesProjectilePresentation && !dracolichMelee ? releaseMs + shotLeadMs : hexBeat(ATTACK_IMPACT_MS) }
+                : {}),
               delayMs: strikeAt - shotLeadMs
             });
             // Hex battlefield (PC): the striker turns toward its target while
@@ -3662,13 +3676,14 @@ export default function Home() {
             // instead of spending the wind-up turning round.
             const pivotCell = harpyHoldCellByUnit.get(roll.attackerId) ?? attacker.position;
             if (hexCombat && pivotCell >= 0 && defender && defender.position >= 0) {
+              const aimLeadMs = hexBeat(HEX_AIM_TURN_LEAD_MS);
               cues.push({
                 kind: "face",
                 id: `${roll.id}-aim`,
                 unitId: roll.attackerId,
                 to: defenderCell,
-                beatMs: HEX_AIM_TURN_LEAD_MS,
-                delayMs: Math.max(0, strikeAt - HEX_AIM_TURN_LEAD_MS - shotLeadMs)
+                beatMs: aimLeadMs,
+                delayMs: Math.max(0, strikeAt - aimLeadMs - shotLeadMs)
               });
             }
           }
@@ -3694,7 +3709,7 @@ export default function Home() {
               id: `${roll.id}-face`,
               unitId: roll.defenderId,
               to: `cell:${strikeFromCell}`,
-              beatMs: ATTACK_IMPACT_MS - 120,
+              beatMs: hexBeat(ATTACK_IMPACT_MS - 120),
               delayMs: strikeAt
             });
           }
@@ -3722,10 +3737,10 @@ export default function Home() {
               // clock as damage. Rapid-fire profiles stagger 3–4 visible rounds
               // around that same impact beat without changing damage resolution.
               const projectileCount = Math.max(1, shotPlan.projectileCount ?? 1);
-              const projectileIntervalMs = shotPlan.projectileIntervalMs ?? 60;
+              const projectileIntervalMs = hexBeat(shotPlan.projectileIntervalMs ?? 60);
               const flightMs = Math.max(
-                180,
-                ATTACK_IMPACT_MS - releaseMs - ((projectileCount - 1) * projectileIntervalMs) / 2,
+                hexBeat(180),
+                hexBeat(ATTACK_IMPACT_MS) - releaseMs - ((projectileCount - 1) * projectileIntervalMs) / 2,
               );
               for (let projectileIndex = 0; projectileIndex < projectileCount; projectileIndex += 1) {
                 cues.push({
@@ -3756,7 +3771,7 @@ export default function Home() {
                   from: attackerCell,
                   at: defenderCell,
                   ...(hexCombat ? { impactDelayMs: ATTACK_IMPACT_MS - 276 } : {}),
-                  delayMs: strikeAt + 276
+                  delayMs: strikeAt + hexBeat(ATTACK_IMPACT_MS) - (ATTACK_IMPACT_MS - 276)
                 });
               }
             } else {
@@ -3766,7 +3781,7 @@ export default function Home() {
                 from: attackerCell,
                 to: defenderCell,
                 // Lands on the impact beat whatever the release (hex: later).
-                ...(hexCombat ? { flightMs: ATTACK_IMPACT_MS - releaseMs } : {}),
+                ...(hexCombat ? { flightMs: hexBeat(ATTACK_IMPACT_MS) - releaseMs } : {}),
                 delayMs: strikeAt + releaseMs
               });
             }
@@ -3784,13 +3799,16 @@ export default function Home() {
             // travelling slash / thrust keeps its start (it reaches the target
             // on that beat) and holds its contact sound for the blow.
             const clawSwipe = meleeFxKey === "melee-claw-rake-animated" || meleeFxKey === "cyberbrute-claw-rake-animated";
-            const slashLeadMs = meleeFxKey === "melee-thrust-impact" ? 250 : 276;
+            // The slash / thrust sheets travel a fixed time to their target
+            // (authored so a 276 / 250 ms lead meets the 500 ms impact): at any
+            // attack speed the sheet starts that travel before the impact.
+            const slashLeadMs = hexBeat(ATTACK_IMPACT_MS) - (ATTACK_IMPACT_MS - (meleeFxKey === "melee-thrust-impact" ? 250 : 276));
             for (let repeat = 0; repeat < repeats; repeat += 1) cues.push(targetOnly ? {
                 kind: "sprite",
                 id: `${roll.id}-melee-${repeat}`,
                 fxKey: meleeFxKey,
                 at: defenderCell,
-                delayMs: strikeAt + 180 + repeat * 135
+                delayMs: strikeAt + hexBeat(ATTACK_IMPACT_MS) - (ATTACK_IMPACT_MS - 180) + repeat * hexBeat(135)
               } : {
                 kind: "slash",
                 id: `${roll.id}-slash-${repeat}`,
@@ -3801,8 +3819,8 @@ export default function Home() {
                 scaleMultiplier: behemothClaw ? 1.45 : undefined,
                 // Directional atlases are rotated from the live attacker toward
                 // the live target; Hydra's consecutive bites live in one atlas.
-                ...(hexCombat && !clawSwipe ? { impactDelayMs: ATTACK_IMPACT_MS - slashLeadMs } : {}),
-                delayMs: (hexCombat && clawSwipe ? impactAt : strikeAt + slashLeadMs) + repeat * 135
+                ...(hexCombat && !clawSwipe ? { impactDelayMs: hexBeat(ATTACK_IMPACT_MS) - slashLeadMs } : {}),
+                delayMs: (hexCombat && clawSwipe ? impactAt : strikeAt + slashLeadMs) + repeat * hexBeat(135)
               });
           }
           // The struck unit recoils at the moment of impact (a defending one
@@ -4525,11 +4543,13 @@ export default function Home() {
                 const shooter = nextState.combat?.units[event.attackerId];
                 const shooterVoice = unitVoice(event.attackerId);
                 const strikeAt = aimedAreaShotStart;
+                const areaImpactMs = hexBeat(ATTACK_IMPACT_MS);
                 if (shooter && shooter.position >= 0) {
                   const shot = unitShotFxPlan(shooterVoice);
                   const shotSheet = shot?.projectile ? getFxSheet(shot.projectile) : undefined;
                   const phased = Boolean(shotSheet?.projectilePhases || shotSheet?.beamFrames);
-                  playUnitSound(shooterVoice, "shoot", strikeAt + (phased ? HEX_RANGED_RELEASE_MS : 0), unitVariant(event.attackerId));
+                  const areaReleaseMs = hexRangedReleaseMs();
+                  playUnitSound(shooterVoice, "shoot", strikeAt + (phased ? areaReleaseMs : 0), unitVariant(event.attackerId), true);
                   cues.push({
                     kind: "lunge",
                     id: `${event.id}-area-shot`,
@@ -4537,6 +4557,7 @@ export default function Home() {
                     to: `cell:${event.centre}`,
                     attackKind: "ranged",
                     flip: false,
+                    releaseMs: areaReleaseMs,
                     delayMs: strikeAt
                   });
                   cues.push(shot?.projectile ? {
@@ -4546,18 +4567,18 @@ export default function Home() {
                     from: `cell:${shooter.position}`,
                     to: `cell:${event.centre}`,
                     sound: shot.sound,
-                    flightMs: Math.max(180, ATTACK_IMPACT_MS - HEX_RANGED_RELEASE_MS),
-                    delayMs: strikeAt + (phased ? HEX_RANGED_RELEASE_MS - RANGED_RELEASE_MS : HEX_RANGED_RELEASE_MS)
+                    flightMs: Math.max(hexBeat(180), areaImpactMs - areaReleaseMs),
+                    delayMs: strikeAt + (phased ? areaReleaseMs - RANGED_RELEASE_MS : areaReleaseMs)
                   } : {
                     kind: "bolt",
                     id: `${event.id}-area-bolt`,
                     from: `cell:${shooter.position}`,
                     to: `cell:${event.centre}`,
-                    flightMs: ATTACK_IMPACT_MS - HEX_RANGED_RELEASE_MS,
-                    delayMs: strikeAt + HEX_RANGED_RELEASE_MS
+                    flightMs: areaImpactMs - areaReleaseMs,
+                    delayMs: strikeAt + areaReleaseMs
                   });
                 }
-                burstAt = strikeAt + ATTACK_IMPACT_MS;
+                burstAt = strikeAt + areaImpactMs;
               }
               const centreAnchor = (event.centreUnitId ? standingAnchor(event.centreUnitId) : undefined) ?? `cell:${event.centre}`;
               cues.push({
@@ -4968,7 +4989,7 @@ export default function Home() {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                 }
-                playUnitSound(unitVoice(targetId), "hurt", at, unitVariant(targetId));
+                playUnitSound(unitVoice(targetId), "hurt", at, unitVariant(targetId), hexCombat);
                 cues.push({
                   kind: "floater",
                   id: `${event.id}-floater`,
@@ -5136,10 +5157,10 @@ export default function Home() {
               const followUpStrike = followUpStrikeFx[event.abilityId];
               const striker = nextState.combat?.units[event.unitId];
               if (followUpStrike && striker && event.targetUnitId && event.targetUnitId !== event.unitId) {
-                const start = Math.max(timeline, (lastImpactByAttacker.get(event.unitId) ?? -Infinity) + 260);
+                const start = Math.max(timeline, (lastImpactByAttacker.get(event.unitId) ?? -Infinity) + hexBeat(260));
                 const strikerVoice = unitVoice(event.unitId);
                 const victimCell = unitCellAnchor(event.targetUnitId);
-                playUnitSound(strikerVoice, "attack", start, unitVariant(event.unitId));
+                playUnitSound(strikerVoice, "attack", start, unitVariant(event.unitId), hexCombat);
                 cues.push({
                   kind: "lunge",
                   id: `${event.id}-follow-lunge`,
@@ -5147,6 +5168,7 @@ export default function Home() {
                   to: victimCell,
                   attackKind: "melee",
                   flip: false,
+                  ...(hexCombat ? { releaseMs: hexBeat(ATTACK_IMPACT_MS) } : {}),
                   delayMs: start
                 });
                 cues.push({
@@ -5156,9 +5178,9 @@ export default function Home() {
                   from: striker.position >= 0 ? `cell:${striker.position}` : `unit:${event.unitId}`,
                   at: victimCell,
                   ...(hexCombat ? { impactDelayMs: ATTACK_IMPACT_MS - 276 } : {}),
-                  delayMs: start + 276
+                  delayMs: start + hexBeat(ATTACK_IMPACT_MS) - (ATTACK_IMPACT_MS - 276)
                 });
-                timeline = start + ATTACK_IMPACT_MS;
+                timeline = start + hexBeat(ATTACK_IMPACT_MS);
                 lastImpactByAttacker.set(event.unitId, timeline);
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 900);
@@ -5180,6 +5202,7 @@ export default function Home() {
                   // release like the primary shot's did.
                   const extraSheet = getFxSheet(unitExtraShotFxPlan(unitVoice(event.unitId)).projectile ?? "");
                   const extraPhased = Boolean(extraSheet?.projectilePhases || extraSheet?.beamFrames);
+                  const extraReleaseMs = hexRangedReleaseMs();
                   cues.push({
                     kind: "lunge",
                     id: `${event.id}-extra-shot-lunge`,
@@ -5187,14 +5210,15 @@ export default function Home() {
                     to: unitCellAnchor(targetUnitId),
                     attackKind: "ranged",
                     flip: false,
+                    releaseMs: extraReleaseMs,
                     delayMs: timeline
                   });
-                  // The figure looses the shot HEX_RANGED_RELEASE_MS into its
+                  // The figure looses the shot hexRangedReleaseMs() into its
                   // lunge: the cry lands on that release beat for every shot. A
                   // phased sheet starts its launch frames RANGED_RELEASE_MS
                   // earlier, so its timeline sits that much before the release.
-                  extraShotCryAt = timeline + HEX_RANGED_RELEASE_MS;
-                  timeline += HEX_RANGED_RELEASE_MS - (extraPhased ? RANGED_RELEASE_MS : 0);
+                  extraShotCryAt = timeline + extraReleaseMs;
+                  timeline += extraReleaseMs - (extraPhased ? RANGED_RELEASE_MS : 0);
                 }
                 cues.push({
                   kind: "floater",
@@ -5207,7 +5231,7 @@ export default function Home() {
                 const shooterId = unitVoice(event.unitId);
                 const extraShotPlan = unitExtraShotFxPlan(shooterId);
                 if (shooterId) {
-                  playUnitSound(shooterId, "shoot", extraShotCryAt ?? timeline + RANGED_RELEASE_MS, unitVariant(event.unitId));
+                  playUnitSound(shooterId, "shoot", extraShotCryAt ?? timeline + RANGED_RELEASE_MS, unitVariant(event.unitId), hexCombat);
                 }
                 queueBoardFx(extraShotPlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
                 extraShotDamageAt.set(targetUnitId, timeline);
@@ -5318,7 +5342,7 @@ export default function Home() {
                     delayMs: start + (entry.delayMs ?? 0)
                   });
                 });
-                playUnitSound(unitVoice(event.unitId), "defend", start, unitVariant(event.unitId));
+                playUnitSound(unitVoice(event.unitId), "defend", start, unitVariant(event.unitId), hexCombat);
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, start + spellPresentationMs(plan) + 400);
                 break;
@@ -5360,7 +5384,7 @@ export default function Home() {
                 pushHexPlace(event.id, event.unitId, timeline);
                 break;
               }
-              playUnitSound(unitVoice(event.unitId), "move", timeline, unitVariant(event.unitId));
+              playUnitSound(unitVoice(event.unitId), "move", timeline, unitVariant(event.unitId), hexCombat);
               break;
             }
             case "COMBAT_UNITS_SWAPPED": {
@@ -5385,7 +5409,7 @@ export default function Home() {
               break;
             }
             case "UNIT_DEFENDED": {
-              playUnitSound(unitVoice(event.unitId), "defend", timeline, unitVariant(event.unitId));
+              playUnitSound(unitVoice(event.unitId), "defend", timeline, unitVariant(event.unitId), hexCombat);
               // Hex board: the figure takes its defend stance with the sound.
               if (isHexCombat(nextState.combat)) {
                 cues.push({ kind: "pose", id: `${event.id}-pose`, unitId: event.unitId, pose: "defend", delayMs: timeline });
@@ -5401,12 +5425,12 @@ export default function Home() {
                 attackImpactBeforeEvent(event.id, event.unitId) ?? impactByTarget.get(event.unitId);
               const spellFallAt = spellRevealAt.get(event.unitId);
               if (impactAt !== undefined) {
-                playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS, unitVariant(event.unitId));
+                playUnitSound(unitVoice(event.unitId), "death", impactAt + DAMAGE_REVEAL_DELAY_MS, unitVariant(event.unitId), hexCombat);
               } else if (spellFallAt !== undefined) {
-                playUnitSound(unitVoice(event.unitId), "death", spellFallAt, unitVariant(event.unitId));
+                playUnitSound(unitVoice(event.unitId), "death", spellFallAt, unitVariant(event.unitId), hexCombat);
                 combatPresentationEnd = Math.max(combatPresentationEnd, spellFallAt + 1200);
               } else {
-                playUnitSound(unitVoice(event.unitId), "death", timeline, unitVariant(event.unitId));
+                playUnitSound(unitVoice(event.unitId), "death", timeline, unitVariant(event.unitId), hexCombat);
                 timeline += 650;
               }
               break;

@@ -163,6 +163,14 @@ for (const [key, label] of [
   ["anime-naval-melee", "Point-blank naval barrage"],
   ["blue-archive-melee", "Kivotos tactical baton strike"],
   ["mgq-tentacle-lash", "Monster tentacle lash"],
+  // The purple lash recoloured (Seraphy's crimson octopus, Emily's yellow
+  // scylla tentacles) and new lashes in the same layout for the plant, water
+  // and wind girls.
+  ["mgq-tentacle-lash-red", "Crimson tentacle lash"],
+  ["mgq-tentacle-lash-yellow", "Yellow tentacle lash"],
+  ["mgq-vine-lash", "Thorny vine lash"],
+  ["mgq-water-lash", "Water whip lash"],
+  ["mgq-wind-gust", "Wind gust"],
   ["little-busters-warning-strike", "Disciplinary warning strike"],
   ["saya-multi-slash", "Saya multi-slash"],
   ["softball-melee-strike", "Softball Club bat strike"],
@@ -190,6 +198,7 @@ export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee
   | "crystal-red-strike-animated" | "rust-acid-breath-animated" | "arch-devil-hellfire-slash"
   | "hydra-multi-bite" | "haspid-poison-bite" | "town-ram-earth-spike"
   | "anime-naval-melee" | "blue-archive-melee" | "mgq-tentacle-lash"
+  | "mgq-tentacle-lash-red" | "mgq-tentacle-lash-yellow" | "mgq-vine-lash" | "mgq-water-lash" | "mgq-wind-gust"
   | "little-busters-warning-strike" | "saya-multi-slash" | "softball-melee-strike"
   | "haruka-marble-strike" | "masato-muscle-punch" | "mio-parasol-thrust"
   | "rins-cats-pounce" | "sasami-softball-strike" | "riki-team-heart-strike"
@@ -239,47 +248,61 @@ const animeMeleeFxByUnit: Record<string, MeleeFxKey> = {
   rin_natsume: "rin-catlike-combo",
   yuiko_kurugaya: "melee-crescent-slash",
 
-  // Monster Girl Quest Paradox anatomy/weapon profiles. Ranged cards use the
-  // same profile when adjacency makes their attack melee.
-  "mgq.spirit_sylph": "melee-starry-strike",
-  "mgq.spirit_gnome": "melee-thrust-impact",
-  "mgq.spirit_undine": "mgq-tentacle-lash",
+  // Monster Girl Quest Paradox anatomy/weapon profiles, matched to what each
+  // hex figure strikes with (Gigi's electric palm, Frederica's fist, Matis's
+  // scythes, the plant girls' vines, Giga's two-hex claws…). Ranged cards use
+  // the same profile when adjacency makes their attack melee.
+  "mgq.spirit_sylph": "mgq-wind-gust",
+  "mgq.spirit_gnome": "town-ram-earth-spike",
+  "mgq.spirit_undine": "mgq-water-lash",
   "mgq.spirit_salamander": "dragon-fire-breath-animated",
-  "mgq.pochi": "melee-bite-snap-animated",
+  "mgq.pochi": "melee-claw-rake-animated",
   "mgq.shesta": "melee-claw-rake-animated",
-  "mgq.gigi": "melee-bite-snap-animated",
-  "mgq.kamuro_kitsu": "melee-claw-rake-animated",
-  "mgq.fleesia": "mgq-tentacle-lash",
-  "mgq.sofia": "melee-bite-snap-animated",
+  "mgq.gigi": "thunderbird-trident-zap-animated",
+  "mgq.kamuro_kitsu": "saya-multi-slash",
+  "mgq.fleesia": "mgq-vine-lash",
+  "mgq.sofia": "melee-starry-strike",
   "mgq.miyabi": "mgq-tentacle-lash",
   "mgq.eater": "melee-bite-snap-animated",
   "mgq.hild": "melee-starry-strike",
-  "mgq.chrome_frederica": "melee-claw-rake-animated",
+  "mgq.chrome_frederica": "masato-muscle-punch",
   "mgq.shizuku": "melee-starry-strike",
   "mgq.regina": "melee-crescent-slash",
   "mgq.maiden": "melee-thrust-impact",
-  "mgq.seraphy": "melee-bite-snap-animated",
+  "mgq.seraphy": "mgq-tentacle-lash-red",
   "mgq.lisa": "melee-starry-strike",
   "mgq.tama": "melee-claw-rake-animated",
-  "mgq.maya": "mgq-tentacle-lash",
-  "mgq.matis": "melee-claw-rake-animated",
+  "mgq.maya": "melee-starry-strike",
+  "mgq.matis": "melee-crescent-slash",
   "mgq.ooma": "mgq-tentacle-lash",
   "mgq.jessie": "melee-thrust-impact",
-  "mgq.aria": "mgq-tentacle-lash",
-  "mgq.carmilla": "melee-bite-snap-animated",
-  "mgq.giga": "dragon-fierce-breath-animated",
+  "mgq.aria": "mgq-vine-lash",
+  "mgq.carmilla": "melee-claw-rake-animated",
+  "mgq.giga": "cyberbrute-claw-rake-animated",
   "mgq.lucretia": "melee-claw-rake-animated",
   "mgq.cupi": "melee-starry-strike",
   "mgq.sphinx": "melee-bite-snap-animated",
   "mgq.lucifina_chan": "melee-starry-strike",
-  "mgq.spider_princess": "melee-bite-snap-animated",
-  "mgq.emily": "mgq-tentacle-lash",
+  "mgq.spider_princess": "melee-thrust-impact",
+  "mgq.emily": "mgq-tentacle-lash-yellow",
+};
+
+const azurLaneMeleeFxByUnit: Record<string, MeleeFxKey> = {
+  "azur_lane.javelin": "melee-thrust-impact",
+  "azur_lane.ayanami": "melee-crescent-slash",
+  "azur_lane.unicorn": "melee-starry-strike",
+  "azur_lane.akagi": "dragon-small-breath-animated",
 };
 
 export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
   // The Forge commander's lightning blade: an electric zap, not a fire slash.
   if (unitDefId === "commander:forge") return "thunderbird-trident-zap-animated";
-  if (unitDefId?.startsWith("azur_lane.")) return "anime-naval-melee";
+  // Azur Lane: the point-blank barrage, except the shipgirls whose figures
+  // strike with something else (Javelin's spear, Ayanami's blade, Unicorn's
+  // plush, Akagi's foxfire); Belfast fires her hip turrets like the rest.
+  const azurLaneProfile = unitDefId ? azurLaneMeleeFxByUnit[unitDefId] : undefined;
+  if (azurLaneProfile) return azurLaneProfile;
+  if (unitDefId?.startsWith("azur_lane.") || unitDefId === "commander:belfast") return "anime-naval-melee";
   if (unitDefId === "blue_archive.mika") return "masato-muscle-punch";
   if (unitDefId === "blue_archive.seia") return "melee-starry-strike";
   if (unitDefId === "blue_archive.kei") return "thunderbird-trident-zap-animated";
@@ -478,8 +501,9 @@ for (const [name, label, widthInCells, impactWidthInCells] of [
   };
 }
 
-// Kud's launcher and Akagi's carrier strike share this original right-facing
-// rocket atlas. The standard projectile stage mirrors it from live geometry.
+// Kud's launcher uses this original right-facing rocket atlas (Akagi's carrier
+// strike has its own plane below). The standard projectile stage mirrors it
+// from live geometry.
 sheets["anime-rocket-shot-phases"] = {
   src: "/fx/anime-rocket-shot-phases.webp", label: "Anime rocket shot", group: "ranged-attacks", role: "projectile",
   frames: 16, cols: 4, rows: 4, frameWidth: 314, frameHeight: 314,
@@ -502,6 +526,29 @@ for (const [key, src, label, widthInCells, impactWidthInCells] of [
     sourceDef: `imagegen-${key}`,
     projectilePhases: {
       launch: [0, 4], flight: [4, 8], impact: [12, 4],
+      widthInCells, impactWidthInCells,
+    },
+  };
+}
+
+// MGQ / Azur Lane shooters' own weapons, drawn as the hex figures fire them:
+// Hild's clockwork cannon, Maya's shrine-maiden spirit arrow, Cupi's Love
+// Arrow and Akagi's carrier plane (Air Strike). Original 4x4 phase atlases.
+// Hild's bolt shrinks through its third row and Cupi's last flight frame
+// already rings the impact, so their flights loop the steady second row only.
+for (const [key, label, widthInCells, impactWidthInCells, flightFrames] of [
+  ["hild-cannon-shot-phases", "Hild clockwork cannon shot", 0.8, 1.25, 4],
+  ["maya-spirit-arrow-shot-phases", "Maya spirit arrow", 0.7, 1.0, 8],
+  ["cupi-love-arrow-shot-phases", "Cupi love arrow", 0.7, 1.1, 4],
+  ["akagi-plane-shot-phases", "Akagi carrier plane strike", 0.85, 1.3, 8],
+] as const) {
+  sheets[key] = {
+    src: `/fx/${key}.webp`, label, group: "ranged-attacks", role: "projectile",
+    frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256,
+    fps: 24, anchor: "center", sequentialFrames: true,
+    sourceDef: `imagegen-${key}`,
+    projectilePhases: {
+      launch: [0, 4], flight: [4, flightFrames], impact: [12, 4],
       widthInCells, impactWidthInCells,
     },
   };
@@ -728,6 +775,13 @@ const regenerationFxPlan: SpellFxPlan = {
 
 export const spellFxPlans: Record<string, SpellFxPlan> = {
   "commander.ibuki.executive": { affect: [{ key: "counterstrike" }], sound: "blue-archive/voices/ibuki/executive-order" },
+  // Belfast's Royal Salvo: her hip turrets fire a three-shell naval salvo.
+  "commander.belfast.royal-salvo": {
+    projectile: "azur-lane-shot-phases",
+    projectileCount: 3,
+    projectileIntervalMs: 90,
+    sound: "units/cannon-shoot",
+  },
   "spell.magic_arrow": {
     // projectile-0 is the horizontal arrow; the stage rotates it in flight.
     projectile: "magic-arrow-projectile-0",
@@ -1109,7 +1163,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-lava-burn": { affect: [{ key: "fire-shield" }], sound: "spells/fire-wall" },
   ...neutralTownAbilityFxPlans,
   "town-dragon-fly-landing": { affect: [{ key: "town-dragon-fly-venomous-landing" }], sound: "spells/poison" },
-  "town-gnoll-gold": { affect: [{ key: "town-gnoll-gold-coin" }], sound: "ambient/warehouse-gold" },
+  // Raiders' Pay gains 1 Gold: the map's coin pickup (map-sounds "coins"), not the
+  // 6.7 s looping Warehouse ambience, which held the combat presentation ~6 s.
+  "town-gnoll-gold": { affect: [{ key: "town-gnoll-gold-coin" }], sound: "adventure/pickup-03" },
   "town-hydra-forced-reroll-bite": { affect: [{ key: "hydra-multi-bite" }], sound: "units/hydra-attack" },
   "town-titan-storm-cache": { affect: [{ key: "lightning-bolt" }], sound: "spells/chain-lightning" },
   "town-nix-guarded": { affect: [{ key: "shield" }], sound: "spells/shield" },
@@ -1548,9 +1604,9 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   zealots: { projectile: "zealot-shot-phases" },
   war_zealot: { projectile: "zealot-shot-phases" },
   wog_war_zealot: { projectile: "zealot-shot-phases" },
-  hild: { projectile: "evil-eye-shot-phases" },
-  maya: { projectile: "ice-shot-phases" },
-  cupi: { projectile: "arrow-shot-phases" },
+  hild: { projectile: "hild-cannon-shot-phases" },
+  maya: { projectile: "maya-spirit-arrow-shot-phases" },
+  cupi: { projectile: "cupi-love-arrow-shot-phases" },
   disciplinary_committee: { projectile: "little-busters-warning-shot-phases" },
   mio: { projectile: "magi-shot-phases" },
   spider_overmind: { projectile: "plasma-shot-phases" },
@@ -1716,7 +1772,8 @@ export function unitShotFxPlan(unitDefId: string | undefined): SpellFxPlan | und
     };
   }
   if (unitDefId === "azur_lane.akagi") {
-    return { projectile: "anime-rocket-shot-phases", sound: "units/cannon-shoot" };
+    // Air Strike: a carrier plane launched in foxfire, bursting into flame.
+    return { projectile: "akagi-plane-shot-phases", sound: "spells/fly", hitSound: "spells/fireball-hit" };
   }
   if (unitDefId.startsWith("azur_lane.")) {
     return { projectile: "azur-lane-shot-phases", sound: "units/cannon-shoot" };

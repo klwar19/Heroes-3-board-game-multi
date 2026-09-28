@@ -49799,6 +49799,133 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   background: rgb(201 165 90 / 20%);
 }
 
+/* Options (hex-battle-options.tsx): the PC combat options' animation speed,
+   one slider per channel (movement / attacks / reactions) plus PC presets. */
+.hexBarButton.options {
+  display: grid;
+  place-items: center;
+  color: #f1dfae;
+  background: radial-gradient(circle at 50% 40%, #4a3a26, #1d170f);
+}
+
+.hexBarButton.options svg {
+  width: 62%;
+  height: 62%;
+  stroke-width: 1.8;
+  filter: drop-shadow(0 1px 0 rgb(0 0 0 / 70%));
+}
+
+.hexBarButton.options[aria-expanded="true"] {
+  border-color: #ffe7a0;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 60%), 0 0 8px 1px rgb(255 216 115 / 55%);
+}
+
+.hexSpeedPanel {
+  box-sizing: border-box;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  width: min(340px, calc(100vw - 24px));
+  padding: 10px 12px 12px;
+  border: 1px solid #c9a55a;
+  border-radius: 3px;
+  background: linear-gradient(#2c2318, #16110b);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 60%), inset 0 0 0 1px rgb(255 226 150 / 12%);
+  color: #f1dfae;
+  font: 600 13px/1.25 "Times New Roman", serif;
+  text-align: left;
+}
+
+.hexSpeedHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hexSpeedHead strong {
+  color: #ffe7a0;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.hexSpeedClose {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: #f1dfae;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hexSpeedPresets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.hexSpeedPresets button {
+  padding: 4px 0;
+  border: 1px solid #8a6d35;
+  border-radius: 2px;
+  background: #2a2117;
+  color: #f1dfae;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hexSpeedPresets button:hover {
+  border-color: #ffe7a0;
+}
+
+.hexSpeedPresets button[aria-pressed="true"] {
+  border-color: #ffd873;
+  background: #5a4424;
+  color: #fff3cf;
+}
+
+.hexSpeedRow {
+  display: grid;
+  grid-template-areas: "name value" "slider slider";
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.hexSpeedName {
+  display: flex;
+  grid-area: name;
+  flex-direction: column;
+}
+
+.hexSpeedName small {
+  color: #c9b58a;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.hexSpeedRow input[type="range"] {
+  grid-area: slider;
+  width: 100%;
+  accent-color: #d8b25e;
+  cursor: pointer;
+}
+
+.hexSpeedRow output {
+  grid-area: value;
+  color: #ffe7a0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hexSpeedNote {
+  color: #bba97f;
+  font-size: 11px;
+  font-weight: 400;
+}
+
 /* Unit Skills (hex-unit-skills.ts): the active creature's skills, one symbol
    each. The button breathes gold while a skill is ready, glows violet while
    one is armed (its targets are highlighted on the board). */

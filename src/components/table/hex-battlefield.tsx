@@ -38,6 +38,7 @@ import { getFxSheet } from "@/data/fx";
 import siegeArt from "@/data/battle-hex/siege-art.json";
 import { formatEvent } from "./utils";
 import { HEX_SKILL_ICONS, type HexUnitSkill } from "./hex-unit-skills";
+import { HexBattleOptions } from "./hex-battle-options";
 
 export const HEX_BOARD_WIDTH = 800;
 export const HEX_BOARD_HEIGHT = 556;
@@ -712,6 +713,8 @@ export function HexCommandBar({
   return (
     <div className="hexCommandBar" role="toolbar" aria-label="Battle commands">
       <div className="hexBarGroup">
+        {/* PC order: Options, then Surrender and Retreat. */}
+        <HexBattleOptions />
         {button("surrender", "Surrender", "/assets/battle-hex/ui/surrender.webp", surrender)}
         {button("retreat", "Retreat", "/assets/battle-hex/ui/retreat.webp", retreat)}
       </div>

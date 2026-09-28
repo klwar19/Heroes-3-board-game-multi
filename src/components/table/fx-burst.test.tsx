@@ -27,11 +27,22 @@ afterEach(() => {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 5));
 
+/**
+ * e940332d: FX aim at the first VISIBLE anchor (non-zero rect), and jsdom lays
+ * nothing out — so give each test anchor a real on-screen box.
+ */
+function visibleAnchor(key: string): HTMLDivElement {
+  const anchor = document.createElement("div");
+  anchor.setAttribute("data-fx-anchor", key);
+  anchor.getBoundingClientRect = () =>
+    ({ x: 40, y: 40, left: 40, top: 40, width: 80, height: 60, right: 120, bottom: 100, toJSON: () => ({}) }) as DOMRect;
+  document.body.appendChild(anchor);
+  return anchor;
+}
+
 describe("runBurst — construction / tile-reveal FX", () => {
   it("builds a golden burst (ring + flash + sparks) over the matching fx anchor", async () => {
-    const anchor = document.createElement("div");
-    anchor.setAttribute("data-fx-anchor", "building:necro.city_hall");
-    document.body.appendChild(anchor);
+    const anchor = visibleAnchor("building:necro.city_hall");
 
     const cue: FxCue = { kind: "burst", id: "b1", at: "building:necro.city_hall", tone: "build" };
     render(<FxStage cues={[cue]} onDone={() => {}} />);
@@ -46,9 +57,7 @@ describe("runBurst — construction / tile-reveal FX", () => {
   });
 
   it("tags the tile burst with its own tone", async () => {
-    const anchor = document.createElement("div");
-    anchor.setAttribute("data-fx-anchor", "tile:t1");
-    document.body.appendChild(anchor);
+    const anchor = visibleAnchor("tile:t1");
 
     render(<FxStage cues={[{ kind: "burst", id: "b2", at: "tile:t1", tone: "tile" }]} onDone={() => {}} />);
     await flush();

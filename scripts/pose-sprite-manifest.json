@@ -616,6 +616,663 @@
       "prefer": {
         "0": "commander-bulwark.walk"
       }
+    },
+    "mgq-sofia": {
+      "donor": "medusa",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 90,
+      "sheets": [
+        "mgq-sofia"
+      ]
+    },
+    "doom-demon": {
+      "donor": "troll",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 72,
+      "sheets": [
+        "doom-demon"
+      ]
+    },
+    "doom-former-human": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "doom-former-human"
+      ]
+    },
+    "doom-former-human-sergeant": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "doom-former-human-sergeant"
+      ]
+    },
+    "doom-imp": {
+      "donor": "gog",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "doom-imp"
+      ]
+    },
+    "doom-lost-soul": {
+      "donor": "wight",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 56,
+      "sheets": [
+        "doom-lost-soul"
+      ]
+    },
+    "doom-cacodemon": {
+      "donor": "beholder",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 64,
+      "sheets": [
+        "doom-cacodemon"
+      ],
+      "note": "sheet row bands pre-shifted down 0/11/19/18/33 px (Codex drifted the lower rows up past the importer registration search); the unshifted sheet is tmp/gen/pose-sheets/rejected/doom-cacodemon.attempt3.original.png"
+    },
+    "doom-hell-knight": {
+      "donor": "demon",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 100,
+      "sheets": [
+        "doom-hell-knight"
+      ]
+    },
+    "doom-baron-of-hell": {
+      "donor": "horned-demon",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 106,
+      "sheets": [
+        "doom-baron-of-hell"
+      ]
+    },
+    "doom-arachnotron": {
+      "donor": "gorgon",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 64,
+      "sheets": [
+        "doom-arachnotron"
+      ]
+    },
+    "doom-former-commando": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 88,
+      "sheets": [
+        "doom-former-commando"
+      ]
+    },
+    "doom-revenant": {
+      "donor": "skeleton-warrior",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 100,
+      "sheets": [
+        "doom-revenant"
+      ]
+    },
+    "doom-mancubus": {
+      "donor": "cyclops-king",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 92,
+      "sheets": [
+        "doom-mancubus"
+      ]
+    },
+    "doom-pain-elemental": {
+      "donor": "evil-eye",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 70,
+      "sheets": [
+        "doom-pain-elemental"
+      ]
+    },
+    "doom-arch-vile": {
+      "donor": "power-lich",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 108,
+      "sheets": [
+        "doom-arch-vile"
+      ]
+    },
+    "doom-spider-mastermind": {
+      "donor": "mighty-gorgon",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 92,
+      "sheets": [
+        "doom-spider-mastermind"
+      ]
+    },
+    "doom-cyberdemon": {
+      "donor": "titan",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 124,
+      "sheets": [
+        "doom-cyberdemon"
+      ]
+    },
+    "mgq-pochi": {
+      "donor": "kobold",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 62,
+      "sheets": [
+        "mgq-pochi"
+      ]
+    },
+    "mgq-shesta": {
+      "donor": "sorceress",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "mgq-shesta"
+      ]
+    },
+    "mgq-gigi": {
+      "donor": "water-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 78,
+      "sheets": [
+        "mgq-gigi"
+      ]
+    },
+    "al-laffey": {
+      "donor": "sea-dog",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 72,
+      "sheets": [
+        "al-laffey"
+      ]
+    },
+    "mgq-kitsu": {
+      "donor": "rogue",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 74,
+      "sheets": [
+        "mgq-kitsu"
+      ]
+    },
+    "mgq-kamuro": {
+      "donor": "rogue",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 76,
+      "sheets": [
+        "mgq-kamuro"
+      ]
+    },
+    "mgq-fleesia": {
+      "donor": "water-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 80,
+      "sheets": [
+        "mgq-fleesia"
+      ]
+    },
+    "mgq-miyabi": {
+      "donor": "wight",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 76,
+      "sheets": [
+        "mgq-miyabi"
+      ]
+    },
+    "mgq-eater": {
+      "donor": "sandworm",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 86,
+      "sheets": [
+        "mgq-eater"
+      ]
+    },
+    "mgq-hild": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 86,
+      "sheets": [
+        "mgq-hild"
+      ]
+    },
+    "mgq-shizuku": {
+      "donor": "ogre",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 68,
+      "sheets": [
+        "mgq-shizuku"
+      ]
+    },
+    "mgq-regina": {
+      "donor": "swordsman",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 82,
+      "sheets": [
+        "mgq-regina"
+      ]
+    },
+    "mgq-maiden": {
+      "donor": "magic-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 90,
+      "sheets": [
+        "mgq-maiden"
+      ]
+    },
+    "mgq-seraphy": {
+      "donor": "medusa",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 88,
+      "sheets": [
+        "mgq-seraphy"
+      ]
+    },
+    "mgq-lisa": {
+      "donor": "wight",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 86,
+      "sheets": [
+        "mgq-lisa"
+      ]
+    },
+    "mgq-tama": {
+      "donor": "halfling",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 60,
+      "sheets": [
+        "mgq-tama"
+      ]
+    },
+    "mgq-maya": {
+      "donor": "wog-sylvan-centaur",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 92,
+      "sheets": [
+        "mgq-maya"
+      ]
+    },
+    "mgq-matis": {
+      "donor": "centaur",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 96,
+      "sheets": [
+        "mgq-matis"
+      ]
+    },
+    "mgq-ooma": {
+      "donor": "genie",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 90,
+      "sheets": [
+        "mgq-ooma"
+      ]
+    },
+    "mgq-jessie": {
+      "donor": "water-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 84,
+      "sheets": [
+        "mgq-jessie"
+      ]
+    },
+    "mgq-carmilla": {
+      "donor": "magic-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 92,
+      "sheets": [
+        "mgq-carmilla"
+      ]
+    },
+    "mgq-giga": {
+      "donor": "medusa-queen",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 106,
+      "sheets": [
+        "mgq-giga"
+      ]
+    },
+    "mgq-aria": {
+      "donor": "genie",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "mgq-aria"
+      ]
+    },
+    "mgq-lucretia": {
+      "donor": "harpy-hag",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 88,
+      "sheets": [
+        "mgq-lucretia"
+      ]
+    },
+    "mgq-cupi": {
+      "donor": "wood-elf",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 74,
+      "sheets": [
+        "mgq-cupi"
+      ]
+    },
+    "mgq-sphinx": {
+      "donor": "centaur-captain",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 104,
+      "sheets": [
+        "mgq-sphinx"
+      ]
+    },
+    "mgq-lucifina-chan": {
+      "donor": "angel",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 72,
+      "sheets": [
+        "mgq-lucifina-chan"
+      ]
+    },
+    "mgq-spider-princess": {
+      "donor": "wog-sylvan-centaur",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 104,
+      "sheets": [
+        "mgq-spider-princess"
+      ]
+    },
+    "mgq-emily": {
+      "donor": "magic-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 94,
+      "sheets": [
+        "mgq-emily"
+      ]
+    },
+    "mgq-sylph": {
+      "donor": "sprite",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 58,
+      "sheets": [
+        "mgq-sylph"
+      ]
+    },
+    "mgq-gnome": {
+      "donor": "dwarf",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 60,
+      "sheets": [
+        "mgq-gnome"
+      ]
+    },
+    "mgq-undine": {
+      "donor": "water-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto"
+      },
+      "height": 80,
+      "sheets": [
+        "mgq-undine"
+      ]
+    },
+    "mgq-salamander": {
+      "donor": "fire-elemental",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 86,
+      "sheets": [
+        "mgq-salamander"
+      ]
+    },
+    "mgq-sonya": {
+      "donor": "crusader",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 84,
+      "sheets": [
+        "mgq-sonya"
+      ]
+    },
+    "al-javelin": {
+      "donor": "pikeman",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 76,
+      "sheets": [
+        "al-javelin"
+      ]
+    },
+    "al-honolulu": {
+      "donor": "gunslinger",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 86,
+      "sheets": [
+        "al-honolulu"
+      ]
+    },
+    "al-unicorn": {
+      "donor": "leprechaun",
+      "guide": {
+        "groups": "2,0,18,12,3,4,5,7,8,20,21"
+      },
+      "height": 66,
+      "groups": "0,1,2,3,4,5,7,8,11,12,13,17,18,19,20,21",
+      "sheets": [
+        "al-unicorn"
+      ]
+    },
+    "al-yukikaze": {
+      "donor": "pirate",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 72,
+      "sheets": [
+        "al-yukikaze"
+      ]
+    },
+    "al-ayanami": {
+      "donor": "swordsman",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 76,
+      "sheets": [
+        "al-ayanami"
+      ]
+    },
+    "al-prinz-eugen": {
+      "donor": "bounty-hunter",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 88,
+      "sheets": [
+        "al-prinz-eugen"
+      ]
+    },
+    "al-i-19": {
+      "donor": "rogue",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 72,
+      "sheets": [
+        "al-i-19"
+      ]
+    },
+    "al-akagi": {
+      "donor": "sorceress",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21"
+      },
+      "height": 88,
+      "sheets": [
+        "al-akagi"
+      ]
+    },
+    "al-belfast": {
+      "donor": "sea-witch",
+      "guide": {
+        "groups": "2,0,18,12,3,4,5,7,8,20,21"
+      },
+      "height": 88,
+      "groups": "0,1,2,3,4,5,7,8,11,12,13,17,18,19,20,21",
+      "sheets": [
+        "al-belfast"
+      ]
+    },
+    "mgq-frederica": {
+      "donor": "iron-golem",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 100,
+      "sheets": [
+        "mgq-frederica"
+      ]
+    },
+    "mgq-chrome": {
+      "donor": "gremlin",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21"
+      },
+      "height": 62,
+      "sheets": [
+        "mgq-chrome"
+      ]
+    },
+    "mgq-kamuro-kitsu": {
+      "donor": "rogue",
+      "merged": {
+        "front": "mgq-kitsu",
+        "back": "mgq-kamuro",
+        "frontOffset": "8,3",
+        "backOffset": "-10,-5",
+        "note": "scripts/merge-duo-sprite.mjs mgq-kamuro-kitsu mgq-kitsu mgq-kamuro"
+      },
+      "sheets": []
+    },
+    "mgq-chrome-frederica": {
+      "donor": "iron-golem",
+      "merged": {
+        "front": "mgq-chrome",
+        "back": "mgq-frederica",
+        "frontOffset": "-14,5",
+        "backOffset": "7,-3",
+        "note": "scripts/merge-duo-sprite.mjs mgq-chrome-frederica mgq-chrome mgq-frederica --front -14,5 --back 7,-3"
+      },
+      "sheets": []
     }
   }
 }

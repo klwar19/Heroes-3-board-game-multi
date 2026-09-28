@@ -2,8 +2,9 @@
 /**
  * Hex Battlefield siege set for the FORGE (no PC original): Codex paintings of
  * the whole fortress, cut into the PC siege pieces. The same recipe paints the
- * other towns without a PC siege set (PAINTED_TOWNS below: Little Busters on
- * the Castle's layout, Blue Archive on the Tower's).
+ * other towns without a PC siege set (PAINTED_TOWNS below: Little Busters and
+ * MGQ on the Castle's layout, Blue Archive on the Tower's, Azur Lane on the
+ * Cove's).
  *
  * The Forge's fortress is laid out exactly like the Factory's (HotA) siege set:
  * Codex repainted a composite of the Factory pieces (intact, and a second
@@ -44,11 +45,18 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  *    clock-tower school building as the keep); guard the Softball Club pitcher.
  *  - blue_archive: the Tower's layout (Kivotos academy: white concrete, glass
  *    and halo rings; no moat, as the Tower); guard Miyo, the sniper.
+ *  - mgq: the Castle's layout (MGQ: Paradox's seaside kingdom: white limestone,
+ *    teal roofs, wisteria, a blue canal moat); guard Cupi, the archer.
+ *  - azur_lane: the Cove's layout (the Naval Base harbour: concrete and riveted
+ *    steel, gun-turret bastions, the command tower as the keep, a sea-water
+ *    channel moat); guard Honolulu, the cruiser gunner.
  */
 const PAINTED_TOWNS = {
   forge: { layout: "factory", guard: "forge-grunt" },
   little_busters: { layout: "castle", guard: "lb-softball" },
-  blue_archive: { layout: "tower", guard: "ba-miyo" }
+  blue_archive: { layout: "tower", guard: "ba-miyo" },
+  mgq: { layout: "castle", guard: "mgq-cupi" },
+  azur_lane: { layout: "cove", guard: "al-honolulu" }
 };
 const TOWN = process.argv[2] ?? "forge";
 if (!PAINTED_TOWNS[TOWN]) throw new Error(`no painted siege set for ${TOWN} (${Object.keys(PAINTED_TOWNS).join(", ")})`);
