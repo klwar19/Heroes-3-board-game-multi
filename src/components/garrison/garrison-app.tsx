@@ -451,6 +451,21 @@ export function GarrisonApp() {
   );
 }
 
+/** Home-screen mode buttons: the same emblem + golden-lettering art as the main menu's buttons. */
+const MODE_ART = {
+  adventure: "/assets/ui/menu/buttons/gw-adventure.webp",
+  endless: "/assets/ui/menu/buttons/gw-endless-siege.webp",
+  conveyor: "/assets/ui/menu/buttons/gw-summoning-belt.webp",
+  raids: "/assets/ui/menu/buttons/gw-raids.webp",
+  versus: "/assets/ui/menu/buttons/gw-versus.webp",
+  almanac: "/assets/ui/menu/buttons/gw-almanac.webp",
+  back: "/assets/ui/menu/buttons/back.webp",
+} as const;
+
+function ModeArt({ src }: { src: string }) {
+  return <img alt="" aria-hidden className={styles.artModeImg} draggable={false} src={assetUrl(src)} />;
+}
+
 function Home({ onPick, onConveyor, progress: p }: { onPick(next: Screen): void; onConveyor(): void; progress: GarrisonProgress }) {
   return (
     <>
@@ -459,43 +474,72 @@ function Home({ onPick, onConveyor, progress: p }: { onPick(next: Screen): void;
           <h1>Garrison Wars</h1>
           <p>Hold the gate, or break it. Every town of Antagarich can defend a castle — or march against one.</p>
         </div>
-        <Link className={`${styles.ghostButton} ${styles.back}`} href="/single-player" style={{ marginLeft: "auto", marginRight: 0 }}>Back</Link>
       </div>
-      <div className={styles.modes}>
-        <button className={styles.mode} onClick={() => onPick({ s: "adventure" })} type="button">
-          <img alt="" src={assetUrl("/assets/tide/mode-adventure.webp")} />
-          <strong>Adventure</strong>
-          <span>{ADVENTURE.length} nights against the Undead Tide and everything that marches with it — Eeofol&apos;s demons, DOOM&apos;s hell-spawn, Nighon raiders, sellswords — ending with the Dracolich. Unlocks troops, spells and other fronts. ({adventureStage(p.cleared)} / {ADVENTURE.length})</span>
-        </button>
-        <button className={styles.mode} onClick={() => onPick({ s: "loadout", level: ENDLESS_LEVEL })} type="button">
-          <img alt="" src={assetUrl("/assets/tide/mode-endless.webp")} />
-          <strong>Endless Siege</strong>
-          <span>Survive forever; pick an artifact after every flag.{p.bestEndless ? ` Best: wave ${p.bestEndless}.` : ""}</span>
-        </button>
+      <div className={styles.artModes}>
         <button
-          className={styles.mode}
-          onClick={onConveyor}
+          aria-label="Adventure"
+          className={styles.artMode}
+          onClick={() => onPick({ s: "adventure" })}
+          title={`${ADVENTURE.length} nights against the Undead Tide and everything that marches with it — Eeofol's demons, DOOM's hell-spawn, Nighon raiders, sellswords — ending with the Dracolich. Unlocks troops, spells and other fronts.`}
           type="button"
         >
-          <img alt="" src={assetUrl("/assets/tide/mode-conveyor.webp")} />
-          <strong>Summoning Belt</strong>
-          <span>No gold: creatures of every town arrive on a belt. Fuse them into hybrids.</span>
+          <ModeArt src={MODE_ART.adventure} />
+          <small>{adventureStage(p.cleared)} / {ADVENTURE.length}</small>
         </button>
-        <button className={styles.mode} onClick={() => onPick({ s: "raids" })} type="button">
-          <img alt="" src={assetUrl("/assets/tide/mode-raider.webp")} />
-          <strong>Raids</strong>
-          <span>Play the attacker against a prepared garrison. Break every lane. ({p.raids.length} / {RAIDS.length})</span>
+        <button
+          aria-label="Endless Siege"
+          className={styles.artMode}
+          onClick={() => onPick({ s: "loadout", level: ENDLESS_LEVEL })}
+          title="Survive forever; pick an artifact after every flag."
+          type="button"
+        >
+          <ModeArt src={MODE_ART.endless} />
+          <small>{p.bestEndless ? `Best: wave ${p.bestEndless}` : " "}</small>
         </button>
-        <button className={styles.mode} onClick={() => onPick({ s: "versus" })} type="button">
-          <img alt="" src={assetUrl("/assets/tide/mode-versus.webp")} />
-          <strong>Versus</strong>
-          <span>Defender vs attacker: against the computer, two players on one screen, or online.</span>
+        <button
+          aria-label="Summoning Belt"
+          className={styles.artMode}
+          onClick={onConveyor}
+          title="No gold: creatures of every town arrive on a belt. Fuse them into hybrids."
+          type="button"
+        >
+          <ModeArt src={MODE_ART.conveyor} />
+          <small>{" "}</small>
         </button>
-        <button className={styles.mode} onClick={() => onPick({ s: "almanac" })} type="button">
-          <img alt="" src={assetUrl("/assets/spells-visions.webp")} />
-          <strong>Almanac</strong>
-          <span>Every garrison, warband, fusion, spell and artifact.</span>
+        <button
+          aria-label="Raids"
+          className={styles.artMode}
+          onClick={() => onPick({ s: "raids" })}
+          title="Play the attacker against a prepared garrison. Break every lane."
+          type="button"
+        >
+          <ModeArt src={MODE_ART.raids} />
+          <small>{p.raids.length} / {RAIDS.length}</small>
         </button>
+        <button
+          aria-label="Versus"
+          className={styles.artMode}
+          onClick={() => onPick({ s: "versus" })}
+          title="Defender vs attacker: against the computer, two players on one screen, or online."
+          type="button"
+        >
+          <ModeArt src={MODE_ART.versus} />
+          <small>{" "}</small>
+        </button>
+        <button
+          aria-label="Almanac"
+          className={styles.artMode}
+          onClick={() => onPick({ s: "almanac" })}
+          title="Every garrison, warband, fusion, spell and artifact."
+          type="button"
+        >
+          <ModeArt src={MODE_ART.almanac} />
+          <small>{" "}</small>
+        </button>
+        <Link aria-label="Back" className={styles.artMode} href="/menu?view=singlePlayer">
+          <ModeArt src={MODE_ART.back} />
+          <small>{" "}</small>
+        </Link>
       </div>
     </>
   );

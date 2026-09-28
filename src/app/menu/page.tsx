@@ -26,6 +26,7 @@ export const MENU_ART = {
   singlePlayer: "/assets/ui/menu/buttons/single-player.webp",
   scenario: "/assets/ui/menu/buttons/scenario.webp",
   campaign: "/assets/ui/menu/buttons/campaign.webp",
+  garrisonWars: "/assets/ui/menu/buttons/garrison-wars.webp",
   multiplayer: "/assets/ui/menu/buttons/multiplayer.webp",
   mapEditor: "/assets/ui/menu/buttons/map-editor.webp",
   miscellaneous: "/assets/ui/menu/buttons/miscellaneous.webp",
@@ -66,7 +67,7 @@ export default function MenuPage() {
     if (started.current) return;
     started.current = true;
     // Campaign's Back button returns to this same main-menu presentation with
-    // its Single Player submenu already open (Scenario + Campaign), instead of
+    // its Single Player submenu already open (Scenario, Campaign, Garrison Wars), instead of
     // the obsolete standalone /single-player screen.
     if (new URLSearchParams(window.location.search).get("view") === "singlePlayer") {
       setView("singlePlayer");
@@ -228,6 +229,13 @@ export default function MenuPage() {
                 href="/story"
               >
                 <MenuArt src={MENU_ART.campaign} />
+              </Link>
+              <Link
+                aria-label="GARRISON WARS"
+                className="menuNavButton"
+                href="/garrison"
+              >
+                <MenuArt src={MENU_ART.garrisonWars} />
               </Link>
               <button
                 aria-label="BACK"

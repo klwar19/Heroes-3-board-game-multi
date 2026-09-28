@@ -1349,3 +1349,49 @@
   background: rgba(227, 181, 74, 0.2);
   color: var(--gw-gold-hi);
 }
+
+/* Home mode buttons: floating emblem + golden-lettering art, no card chrome
+   (same look as the main menu's buttons). */
+.artModes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 18px;
+  max-width: 1200px;
+  margin: 0 auto;
+  justify-items: center;
+}
+
+.artMode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 300px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.artMode:hover,
+.artMode:focus-visible {
+  filter: brightness(1.13) saturate(1.08) drop-shadow(0 0 10px rgba(255, 214, 120, 0.35));
+  transform: translateY(-4px);
+}
+
+.artModeImg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6));
+}
+
+.artMode small {
+  margin-top: -6px;
+  color: var(--gw-gold-hi);
+  font-size: 13px;
+  text-shadow: 0 1px 3px #000;
+}
