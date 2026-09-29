@@ -1636,7 +1636,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // unit, Attack die: +1 hits it, 0 hits a unit adjacent to it; roundStart kind
 // "lightning-strike"), sold at 6 / 9 gold in the war-machine supply; Forge
 // Grunts Pack 3 gold.
-export const ENGINE_PROTOCOL_VERSION = 192;
+// v193: Forge commander (Mech Princess) Storm Conductor — while alive in combat, a
+// "-1" on her side's Lightning Generator still deals 1 damage to the chosen unit.
+export const ENGINE_PROTOCOL_VERSION = 193;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

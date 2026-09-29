@@ -638,6 +638,11 @@ export interface CommanderDefinition {
   /** Optional additional commands sharing the normal once-per-round cast budget. */
   additionalCasts?: readonly CommanderCastDefinition[];
   specialty: CommanderSpecialtyDefinition;
+  /**
+   * A second always-on ability printed under the specialty (engine gate keys off
+   * the id). Forge "storm-conductor": see permanents.ts lightningStrike.
+   */
+  passive?: { id: "storm-conductor"; name: string; text: string };
   /** Built card asset (frame + art only; name, abilities and stats are overlaid). */
   cardImage: string;
 }
@@ -1395,6 +1400,13 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       id: "storm-salvage",
       name: "Storm Salvage",
       text: "At the start of neutral or Creature Bank combat, buy a phantom Scroll with Chain Lightning and Stone Skin for 1 building material and 2 gold, or decline. In PvP, buy a Chain Lightning Scroll for 1 Valuable, or decline. Scroll spells cast at Power 0 without using the Spell limit. If you win and the Scroll still contains a spell after combat, gain 1 building material, then the Scroll disappears."
+    },
+    // Engine: permanents.ts lightningStrike (the Mech Princess must be alive on
+    // the Lightning Generator owner's side of this combat).
+    passive: {
+      id: "storm-conductor",
+      name: "Storm Conductor",
+      text: "While the commander is alive in combat, your Lightning Generator never fizzles: on a \"-1\" it still deals 1 damage to the chosen unit."
     },
     cardImage: "/assets/units-commander-forge.webp"
   }

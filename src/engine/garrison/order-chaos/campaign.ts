@@ -351,7 +351,7 @@ export const OC_WORLDS: readonly OcWorld[] = [
       lvl({ id: "w10-2", world: 10, name: "Stalkers in the Mist", waves: 18, terrain: "graveyard", difficulty: 1.1, startGold: 200,
         brief: "Werewolf Stalkers bound from lane to lane every couple of tiles. Cover the neighbouring lanes, not just the one they start in.",
         enemies: ["oc-imp", "oc-sellsword", "oc-wolf", "oc-hellhound", "oc-dragonfly", "oc-werewolf", "oc-phantom"], featured: "oc-werewolf", goals: [lost(3), noCharge],
-        reward: { units: ["oc-nymph"], spell: "lightning-bolt" } }),
+        reward: { units: ["oc-nymph"] } }),
       lvl({ id: "w10-3", world: 10, name: "The Revel", waves: 20, terrain: "graveyard", difficulty: 1.1, startGold: 200,
         brief: "The Revel Queen stops to dance and calls four Revellers around her — above, below, ahead and behind. Break the ring before she calls them back.",
         enemies: ["oc-shambler", "oc-trog-helm", "oc-satyr", "oc-goblin", "oc-werewolf", "oc-revel-queen"], featured: "oc-revel-queen", herald: "oc-revel-queen",

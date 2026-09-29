@@ -23,6 +23,7 @@ import {
   footprintStep,
   hasStatus,
   living,
+  pathCost,
   reachable,
   shapePlan,
   skillAp,
@@ -404,18 +405,19 @@ function bestPlan(state: RestiaState, battle: BattleState, unit: BattleUnit, opt
   return best;
 }
 
-function execute(state: RestiaState, battle: BattleState, unit: BattleUnit, plan: Plan, anims: BattleAnim[], ctx: Ctx): void {
+/** Plays a plan; true when it struck (an attack, a shot at a prop, or a skill). */
+function execute(state: RestiaState, battle: BattleState, unit: BattleUnit, plan: Plan, anims: BattleAnim[], ctx: Ctx): boolean {
   doMove(state, battle, unit, plan.path, anims, ctx);
-  if (unit.hp <= 0) return;
+  if (unit.hp <= 0) return false;
   const act = plan.act;
   if (act.kind === "attack") {
     // The move may have changed things (hazards); re-check before swinging.
-    if (act.target.hp <= 0 || attackBlock(battle, unit, act.target)) return;
+    if (act.target.hp <= 0 || attackBlock(battle, unit, act.target)) return false;
     unit.ap -= 1;
     basicAttack(state, battle, unit, act.target, anims, ctx);
     battle.log.push(`${unit.name} attacks ${act.target.name}.`);
   } else if (act.kind === "prop") {
-    if (act.prop.hp <= 0 || attackBlock(battle, unit, act.prop)) return;
+    if (act.prop.hp <= 0 || attackBlock(battle, unit, act.prop)) return false;
     unit.ap -= 1;
     anims.push({ kind: "attack", uid: unit.uid, target: act.prop.uid, anim: unit.range > 1 && distanceTo(unit, act.prop.cell) > 1 ? "shoot" : "attack" });
     if (unit.range > 1 && distanceTo(unit, act.prop.cell) > 1) anims.push({ kind: "projectile", from: unit.cell, to: act.prop.cell, sprite: "arrow" });
@@ -423,10 +425,40 @@ function execute(state: RestiaState, battle: BattleState, unit: BattleUnit, plan
     battle.log.push(`${unit.name} shoots the powder barrel!`);
   } else if (act.kind === "skill") {
     const hits = skillTargets(state, battle, unit, act.skill, act.cell);
-    if (typeof hits === "string" || unit.ap < skillAp(act.skill) || unit.mp < skillMp(unit, act.skill)) return;
+    if (typeof hits === "string" || unit.ap < skillAp(act.skill) || unit.mp < skillMp(unit, act.skill)) return false;
     applySkill(state, battle, unit, act.skill, act.cell, hits, anims, ctx);
   } else {
     defendAction(battle, unit, anims);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Plays a plan, then hit and run: a distance-keeper (shooters, casters, supports,
+ * cowards) spends the movement its approach left over to step out of melee reach,
+ * onto better ground or back towards cover, while staying close enough to act
+ * next turn (moveValue + placeScore, from where it now stands). It only moves for
+ * a clear gain, so a shooter already safe on a good hex stays put.
+ */
+function executeAndRun(state: RestiaState, battle: BattleState, unit: BattleUnit, plan: Plan, style: AiStyle, anims: BattleAnim[], ctx: Ctx): void {
+  const leftover = battle.turn.movePts - pathCost(battle, unit, plan.path);
+  if (!execute(state, battle, unit, plan, anims, ctx)) return;
+  if (battle.phase !== "turn" || unit.hp <= 0 || unit.gone || leftover <= 0 || !keepsAway(unit, style)) return;
+  if (hasStatus(unit, "sleep") || hasStatus(unit, "stun") || hasStatus(unit, "freeze")) return;
+  if (!foesOf(battle, unit).length) return;
+  const turn: TurnView = { start: unit.cell, engage: false };
+  const worth = (cell: number) => moveValue(battle, unit, cell, style, turn) + placeScore(state, battle, unit, cell, style);
+  const stay = worth(unit.cell);
+  let best: { path: number[]; score: number } | null = null;
+  for (const [cell, path] of reachable(battle, unit, leftover)) {
+    const score = worth(cell) + cacheScore(battle, unit, path) - path.length * 0.2;
+    if (!best || score > best.score) best = { path, score };
+  }
+  if (best && best.score > stay + 1) {
+    const cost = pathCost(battle, unit, best.path);
+    doMove(state, battle, unit, best.path, anims, ctx);
+    battle.turn.movePts = Math.max(0, leftover - cost);
   }
 }
 
@@ -502,7 +534,7 @@ export function aiTurn(state: RestiaState, ctx: Ctx): void {
     if (action === "attack") {
       const plan = bestPlan(state, battle, unit, options, style, turn, "attack");
       if (plan) {
-        execute(state, battle, unit, plan, anims, ctx);
+        executeAndRun(state, battle, unit, plan, style, anims, ctx);
         done = true;
       }
     } else if (action === "defend") {
@@ -527,14 +559,14 @@ export function aiTurn(state: RestiaState, ctx: Ctx): void {
       const plan = bestPlan(state, battle, unit, options, style, turn, skill);
       // A movement skill whose best use still leaves the unit somewhere bad is skipped.
       if (!plan || (skill.move && plan.score <= 0)) continue;
-      execute(state, battle, unit, plan, anims, ctx);
+      executeAndRun(state, battle, unit, plan, style, anims, ctx);
       done = true;
     }
   }
   if (!done) {
     const plan = bestPlan(state, battle, unit, options, style, turn);
     if (plan && plan.score > 1) {
-      execute(state, battle, unit, plan, anims, ctx);
+      executeAndRun(state, battle, unit, plan, style, anims, ctx);
     } else if (style === "coward" && unit.hp < unit.stats.maxHp * 0.4) {
       const path = retreatCell(state, battle, unit, options);
       if (path && path.length) doMove(state, battle, unit, path, anims, ctx);

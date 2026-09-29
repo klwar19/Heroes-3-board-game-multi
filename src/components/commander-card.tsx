@@ -887,6 +887,11 @@ export function CommanderStatsPanel({
         <div style={{ marginTop: 2 }}>
           <b style={{ color: PALE }}>{def.specialty.name}.</b> <span style={{ opacity: 0.9 }}>{def.specialty.text}</span>
         </div>
+        {def.passive ? (
+          <div style={{ marginTop: 4 }}>
+            <b style={{ color: PALE }}>{def.passive.name}.</b> <span style={{ opacity: 0.9 }}>{def.passive.text}</span>
+          </div>
+        ) : null}
       </div>
 
       {/* Commander Artifacts (Task 2) — the three permanent slots. Bound chips

@@ -585,7 +585,16 @@ export function skillMp(unit: BattleUnit, skill: SkillDef): number {
 export function reachable(battle: BattleState, unit: BattleUnit, budget = moveRange(unit)): Map<number, number[]> {
   if (moveRange(unit) === 0 || budget <= 0) return new Map();
   const sure = pv(unit).sureFooted;
-  return reachWeighted(unit.cell, budget, (cell, from) => footprintStep(battle, unit, from, cell, sure), (cell) => canStandAt(battle, unit, cell));
+  const step = (cell: number, from: number) => footprintStep(battle, unit, from, cell, sure);
+  const out = reachWeighted(unit.cell, budget, step, (cell) => canStandAt(battle, unit, cell));
+  // With its movement still unspent a unit can always take one step, even one dearer
+  // than its whole move (a 2-move unit climbing a level); that step uses it all up.
+  if (budget >= moveRange(unit)) {
+    for (const cell of neighbors(unit.cell)) {
+      if (!out.has(cell) && Number.isFinite(step(cell, unit.cell)) && canStandAt(battle, unit, cell)) out.set(cell, [cell]);
+    }
+  }
+  return out;
 }
 
 /**
@@ -1491,7 +1500,7 @@ function face(unit: BattleUnit, toward: number): void {
 }
 
 function spend(unit: BattleUnit, ap: number): void {
-  if (unit.ap < ap) fail(`Needs ${ap} AP (you have ${unit.ap}). Defend (+1) or Charge (+2) to carry AP into next turn.`);
+  if (unit.ap < ap) fail(`Needs ${ap} AP (you have ${unit.ap}). Defend (+1) or Charge (+2, end the turn without moving or acting) to carry AP into next turn.`);
   unit.ap -= ap;
 }
 
@@ -2091,9 +2100,14 @@ export function battleWait(state: RestiaState, ctx: Ctx): void {
   ctx.events.push({ kind: "battle", anims });
 }
 
-/** Ends the turn. Without a main action this is Charge: 2 AP carried into the next turn. */
+/** Charge: a turn ended without acting or moving (a Sprint counts as moving). */
+export function canCharge(turn: BattleState["turn"]): boolean {
+  return !turn.acted && !turn.moved && !turn.sprinted;
+}
+
+/** Ends the turn. Without a main action or any movement this is Charge: 2 AP carried into the next turn. */
 export function chargeAction(battle: BattleState, unit: BattleUnit, anims: BattleAnim[]): void {
-  if (battle.turn.acted) return;
+  if (!canCharge(battle.turn)) return;
   unit.apCarry += CHARGE_CARRY;
   anims.push({ kind: "pose", uid: unit.uid, pose: "charge" });
   anims.push({ kind: "status", uid: unit.uid, text: `Charging (+${CHARGE_CARRY} AP)` });

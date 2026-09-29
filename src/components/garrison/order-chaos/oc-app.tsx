@@ -59,6 +59,7 @@ const ART = {
   barracks: "/assets/ui/menu/buttons/oc-barracks.webp",
   camp: "/assets/ui/menu/buttons/oc-mercenaries.webp",
   almanac: "/assets/ui/menu/buttons/oc-almanac.webp",
+  versus: "/assets/ui/menu/buttons/gw-versus.webp",
   back: "/assets/ui/menu/buttons/back.webp",
   seal: "/assets/order-chaos/icons/seal.webp",
   star: "/assets/order-chaos/icons/star.webp",
@@ -450,6 +451,10 @@ function Home({ onPick, progress: p, unlocks: u, update }: {
           <ArtFace label="Almanac" src={ART.almanac} />
           <small>{" "}</small>
         </button>
+        <Link aria-label="Garrison Wars" className={styles.artMode} href="/garrison" title="Garrison Wars, the faction duel: every town defends a castle or marches on one — against the computer, on one screen or online.">
+          <ArtFace label="Garrison Wars" src={ART.versus} />
+          <small>Faction duels</small>
+        </Link>
         <Link aria-label="Back" className={styles.artMode} href="/menu?view=singlePlayer">
           <ArtFace label="Back" src={ART.back} />
           <small>{" "}</small>

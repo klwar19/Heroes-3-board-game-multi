@@ -11,6 +11,7 @@ import { PASSIVES } from "../data/passives";
 import { BOARD_SIZE_NAMES, CRAG_HELP, CRAG_NAME, HEIGHT_HELP, POINT_HELP, POINT_NAMES, PROP_NAMES, TILE_HELP, TILE_NAMES, WEATHER_TEXT, battlefieldOf } from "../data/battlefields";
 import {
   CHARGE_CARRY,
+  canCharge,
   DEFEND_CARRY,
   SPRINT_MOVE,
   activeUnit,
@@ -658,8 +659,8 @@ export function BattleView({
                   <ActionIcon icon={ICON.flee} /> Flee
                 </button>
               ) : null}
-              <button className={`${battle.turn.acted ? s.btn : s.btnGhost} ${s.btnSmall} ${s.actionBtn}`} onClick={() => act({ type: "bEndTurn" })} title={`Enter · ending without acting carries +${CHARGE_CARRY} AP`} type="button">
-                <ActionIcon icon={battle.turn.acted ? ICON.endTurn : ICON.charge} /> {battle.turn.acted ? "End turn" : `Charge (+${CHARGE_CARRY} AP)`}
+              <button className={`${canCharge(battle.turn) ? s.btnGhost : s.btn} ${s.btnSmall} ${s.actionBtn}`} onClick={() => act({ type: "bEndTurn" })} title={`Enter · ending without moving or acting carries +${CHARGE_CARRY} AP`} type="button">
+                <ActionIcon icon={canCharge(battle.turn) ? ICON.charge : ICON.endTurn} /> {canCharge(battle.turn) ? `Charge (+${CHARGE_CARRY} AP)` : "End turn"}
               </button>
               {mode.kind !== "idle" ? (
                 <button className={`${s.btnGhost} ${s.btnSmall}`} onClick={() => setMode({ kind: "idle" })} type="button">

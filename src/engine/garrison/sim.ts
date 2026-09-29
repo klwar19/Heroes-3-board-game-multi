@@ -430,6 +430,9 @@ export type GarrisonState = {
     raided: number[];
     /** Chaos spells cast so far (Order & Chaos raids limit them per battle). */
     casts: Partial<Record<SpellId, number>>;
+    /** Raids: the last tick the horde made headway, and the lows it had reached then
+     *  (absent in old snapshots; see raidStalled). */
+    stall?: { at: number; defHp: number; foeHp: number; foes: number; ids: number; x: number };
   };
   defenders: Defender[];
   enemies: Enemy[];
@@ -691,6 +694,12 @@ export function grounded(e: Enemy): boolean {
 
 export function isStructure(e: Enemy): boolean {
   return ENEMIES[e.kind]?.structure === true;
+}
+
+/** Whether losing this defender counts as a lost troop: a mine a unit laid for itself
+ *  (Azusa) and anything summoned for a while (Surge copies, earthen walls) do not. */
+function countsAsTroop(d: Defender): boolean {
+  return !d.owner && d.expireAt === 0;
 }
 
 /** A defender with nothing but a body: skipped by Mage bolts. */
@@ -1341,8 +1350,7 @@ function hurtDefender(s: GarrisonState, d: Defender, amount: number, hit: DefHit
     return;
   }
   d.dead = true;
-  // A mine a unit laid for itself (Azusa) is not one of your troops.
-  if (!d.owner) s.stats.lost += 1;
+  if (countsAsTroop(d)) s.stats.lost += 1;
   s.events.push({ e: "defDie", id: d.id, kind: d.kind, lane: d.lane, col: d.col, crushed: hit.crush === true });
   // Summoned troops (Surge copies, earthen walls) are not there to be raised again.
   if (!isFlat(d) && d.expireAt === 0) {
@@ -3824,7 +3832,7 @@ function snatchAct(s: GarrisonState, e: Enemy): boolean {
     const taken = victim !== undefined && victim.invulnUntil <= s.tick && victim.lane === e.lane && Math.abs(victim.col + 0.5 - e.x) < 0.05;
     if (taken) {
       victim.dead = true;
-      s.stats.lost += 1;
+      if (countsAsTroop(victim)) s.stats.lost += 1;
     }
     s.events.push({ e: "snatched", id: e.id, target: taken ? victim.id : -1, kind: taken ? victim.kind : "" });
     e.dead = true;
@@ -4338,6 +4346,43 @@ function finish(s: GarrisonState, winner: Side, reason: string): void {
   s.events.push({ e: "outcome", winner });
 }
 
+/** How long a raid may go without any headway before the defenders are declared to hold. */
+const RAID_STALL_TICKS = sec(40);
+
+/**
+ * Raids: true once the horde has made no headway for RAID_STALL_TICKS while it has
+ * nothing left to add (e.g. a Medusa parked out of reach of every defender, shooting a
+ * troop the Clerics keep healing). Headway = a new low in the defenders' total HP, a new
+ * low in the horde's total HP (the defenders are winning), an attacker moving, or the
+ * horde changing (deploys, deaths, raises). While the player can still deploy, or is
+ * saving mana for a spell with charges left, the clock does not run.
+ */
+function raidStalled(s: GarrisonState, cheapest: number): boolean {
+  let defHp = 0;
+  for (const d of s.defenders) if (!d.dead) defHp += d.hp + d.shell;
+  let foeHp = 0;
+  let foes = 0;
+  let ids = 0;
+  let x = 0;
+  for (const e of s.enemies) {
+    if (e.dead || isStructure(e)) continue;
+    foeHp += e.hp + e.shield + e.armor;
+    foes += 1;
+    ids += e.id;
+    x += e.x;
+  }
+  const waiting = s.atk.might >= cheapest
+    || s.cfg.atkSpells.some((spell) => spellsLeft(s, spell) > 0 && s.atk.mana < MANA_MAX);
+  const w = s.atk.stall;
+  const headway = !w || waiting || defHp < w.defHp || foeHp < w.foeHp || foes !== w.foes || ids !== w.ids || Math.abs(x - w.x) > 1e-6;
+  if (headway) {
+    s.atk.stall = { at: s.tick, defHp, foeHp, foes, ids, x };
+    return false;
+  }
+  w.x = x;
+  return s.tick - w.at >= RAID_STALL_TICKS;
+}
+
 function checkOutcome(s: GarrisonState): void {
   const { cfg } = s;
   if (cfg.mode === "raid") {
@@ -4347,7 +4392,8 @@ function checkOutcome(s: GarrisonState): void {
     const marching = s.enemies.some((e) => !isStructure(e));
     // Resurrection can still raise the fallen (mana keeps regenerating).
     const canRaise = cfg.atkSpells.includes("resurrection") && s.atk.fallen.length > 0 && spellsLeft(s, "resurrection") > 0;
-    if (!marching && !canRaise && s.atk.might < cheapest) finish(s, "def", "Your Might ran dry and the raid stalled.");
+    if (!marching && !canRaise && s.atk.might < cheapest) return finish(s, "def", "Your Might ran dry and the raid stalled.");
+    if (marching && raidStalled(s, cheapest)) finish(s, "def", "Your horde can make no headway: the defenders hold.");
     return;
   }
   // Order & Chaos: the ward you were sent to guard must stand.

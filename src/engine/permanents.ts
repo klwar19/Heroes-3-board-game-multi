@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { allTileDefinitions } from "@/data/map/tiles";
+import { commanderDefinitions, type CommanderSlug } from "@/data/commanders";
 import { countExtraBallistas, effectiveInitiative, hasBallistaChooseTarget, makeActiveEffect } from "./active-effects";
 import {
   gainResources,
@@ -1119,10 +1120,27 @@ function lightningStrikeTargets(state: GameState): CombatUnitState[] {
 }
 
 /**
+ * The owner's living Forge commander (Mech Princess, "Storm Conductor") on this
+ * combat's field, if any: a "-1" on its side's Lightning Generator still deals 1
+ * damage to the chosen unit.
+ */
+function stormConductorOf(state: GameState, playerId: PlayerId): CombatUnitState | null {
+  const units = Object.values(state.combat?.units ?? {});
+  return units.find((unit) =>
+    unit.controllerId === playerId &&
+    isAlive(unit) &&
+    unit.position >= 0 &&
+    commanderDefinitions[unit.commanderSlug as CommanderSlug]?.passive?.id === "storm-conductor"
+  ) ?? null;
+}
+
+/**
  * Rolls the Lightning Generator's Attack die at the chosen unit. "+1": that
  * unit takes the damage. "0": a unit adjacent to it takes the damage (the
- * owner picks when several are adjacent). "-1": nothing. Returns true when the
- * "0" adjacent pick was opened (the queue waits for it).
+ * owner picks when several are adjacent). "-1": nothing — unless the owner's
+ * Forge commander is alive on the field (Storm Conductor: 1 damage to the
+ * chosen unit). Returns true when the "0" adjacent pick was opened (the queue
+ * waits for it).
  */
 function lightningStrike(state: GameState, playerId: PlayerId, targetUnitId: UnitId, amount: number): boolean {
   const combat = state.combat;
@@ -1137,6 +1155,7 @@ function lightningStrike(state: GameState, playerId: PlayerId, targetUnitId: Uni
     roll === 0
       ? lightningStrikeTargets(state).filter((unit) => unit.id !== target.id && unitsAdjacent(combat, target, unit))
       : [];
+  const conductor = roll < 0 ? stormConductorOf(state, playerId) : null;
   const caption =
     roll === 1
       ? `${target.cardName} takes ${amount} damage!`
@@ -1144,17 +1163,23 @@ function lightningStrike(state: GameState, playerId: PlayerId, targetUnitId: Uni
         ? neighbours.length > 0
           ? `A unit adjacent to ${target.cardName} takes ${amount} damage!`
           : "No unit adjacent — no effect."
-        : "No effect.";
+        : conductor
+          ? `Storm Conductor: ${conductor.cardName} grounds the spark — ${target.cardName} takes 1 damage!`
+          : "No effect.";
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: target.id,
     targetUnitId: target.id,
     abilityId: "war-machine-lightning-roll",
     message: `${name} rolls ${face} at ${target.cardName}: ${caption}`,
-    dice: { rolls: [roll], success: roll === 1 || neighbours.length > 0, label: name, caption },
+    dice: { rolls: [roll], success: roll === 1 || neighbours.length > 0 || conductor !== null, label: name, caption },
   });
   if (roll === 1) {
     applyWarMachineDamage(state, playerId, target.id, amount);
+    return false;
+  }
+  if (conductor) {
+    applyWarMachineDamage(state, playerId, target.id, 1);
     return false;
   }
   if (neighbours.length === 1) {

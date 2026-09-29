@@ -337,7 +337,6 @@ export function GarrisonApp() {
 const MODE_ART = {
   versus: "/assets/ui/menu/buttons/gw-versus.webp",
   almanac: "/assets/ui/menu/buttons/gw-almanac.webp",
-  orderChaos: "/assets/ui/menu/buttons/oc-order-chaos.webp",
   back: "/assets/ui/menu/buttons/back.webp",
 } as const;
 
@@ -351,7 +350,7 @@ function Home({ onPick }: { onPick(next: Screen): void }) {
       <div className={styles.menuHead}>
         <div>
           <h1>Garrison Wars</h1>
-          <p>The faction duel: every town of Antagarich can defend a castle — or march against one. Against the computer, on one screen or online. For the campaign, Endless Siege and raids, play Order &amp; Chaos.</p>
+          <p>The faction duel: every town of Antagarich can defend a castle — or march against one. Against the computer, on one screen or online. Part of Order &amp; Chaos.</p>
         </div>
       </div>
       <div className={styles.artModes}>
@@ -375,11 +374,7 @@ function Home({ onPick }: { onPick(next: Screen): void }) {
           <ModeArt src={MODE_ART.almanac} />
           <small>{" "}</small>
         </button>
-        <Link aria-label="Order and Chaos" className={styles.artMode} href="/order-chaos" title="The Lawful-vs-Chaos campaign, Endless Siege and Chaos Raids.">
-          <ModeArt src={MODE_ART.orderChaos} />
-          <small>{" "}</small>
-        </Link>
-        <Link aria-label="Back" className={styles.artMode} href="/menu?view=singlePlayer">
+        <Link aria-label="Back" className={styles.artMode} href="/order-chaos" title="Back to Order & Chaos.">
           <ModeArt src={MODE_ART.back} />
           <small>{" "}</small>
         </Link>
