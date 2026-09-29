@@ -48,7 +48,9 @@ import {
   applyUndoMove,
   clearUndoHistory,
   recordUndoSnapshot,
-  undoModeEnabled
+  trackDuelUndo,
+  undoModeEnabled,
+  undoTrackingMark
 } from "@/server/undo-history";
 import { prepareSinglePlayerLoad, singlePlayerSaveAccess } from "@/server/single-player-save";
 import { httpTokenVerifier, memoizeVerifier, type TokenVerifier, type VerifiedIdentity } from "@/server/verified-actor";
@@ -1950,6 +1952,8 @@ export default class GameRoomServer implements Party.Server {
         const applyStartedAt = Date.now();
         const replayEntropy = freshEntropy();
         const replayNow = Date.now();
+        // 1v1 Undo: random-draw mark (did this transaction roll / shuffle?).
+        const undoMark = undoTrackingMark();
         const result = applyAction(current.state, message.action, {
           // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
           // tile flip genuinely unpredictable and non-reproducible (true random),
@@ -2022,6 +2026,9 @@ export default class GameRoomServer implements Party.Server {
           message.action.type === "ADVANCE_COMPUTER"
             ? applyHumanComputerAdvance(afkSettled).state
             : settleComputerForLiveAction(afkSettled);
+        // 1v1 Undo: record/lock the safe-undo history and stamp the public
+        // `undoStatus` before the settled state is committed (no-op when off).
+        trackDuelUndo(this.room.id, current.state, message.action, settled, undoMark, result.state);
         const startsRankedAdventure =
           !rankedClashReplayEligible(current.state) && rankedClashReplayEligible(result.state);
         // Every capture below hashes the SETTLED state (what the snapshot
@@ -2196,7 +2203,10 @@ export default class GameRoomServer implements Party.Server {
     if (!actorIsRoomParticipant(current.state, actorClientId, actorUserId)) {
       return reject("Only a member of this room can undo.");
     }
-    const outcome = applyUndoMove(this.room.id, current.state, playerId);
+    const outcome = applyUndoMove(this.room.id, current.state, playerId, {
+      ...(actorClientId ? { clientId: actorClientId } : {}),
+      ...(actorUserId ? { userId: actorUserId } : {})
+    });
     if (!outcome.undone) {
       return reject(outcome.reason);
     }
@@ -2605,7 +2615,10 @@ export default class GameRoomServer implements Party.Server {
             if (!actorIsRoomParticipant(current.state, actorClientId, actorUserId)) {
               return undoFail("Only a member of this room can undo.");
             }
-            const undone = applyUndoMove(this.room.id, current.state, action.playerId);
+            const undone = applyUndoMove(this.room.id, current.state, action.playerId, {
+              ...(actorClientId ? { clientId: actorClientId } : {}),
+              ...(actorUserId ? { userId: actorUserId } : {})
+            });
             if (!undone.undone) {
               return undoFail(undone.reason);
             }
@@ -2632,6 +2645,7 @@ export default class GameRoomServer implements Party.Server {
           recordUndoSnapshot(this.room.id, current.state);
           const replayEntropy = freshEntropy();
           const replayNow = Date.now();
+          const undoMark = undoTrackingMark();
           const result = applyAction(current.state, action, {
             entropy: replayEntropy,
             now: replayNow,
@@ -2649,6 +2663,7 @@ export default class GameRoomServer implements Party.Server {
               action.type === "ADVANCE_COMPUTER"
                 ? applyHumanComputerAdvance(afkSettled).state
                 : settleComputerForLiveAction(afkSettled);
+            trackDuelUndo(this.room.id, current.state, action, settled, undoMark, result.state);
             const startsRankedAdventure =
               !rankedClashReplayEligible(current.state) && rankedClashReplayEligible(result.state);
             if (startsRankedAdventure && this.rankedReplayCaptureEnabled()) {

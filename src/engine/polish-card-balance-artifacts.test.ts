@@ -738,6 +738,10 @@ describe("Balance Pack artifacts — Hourglass of the Evil Hour", () => {
   it("keeps the ongoing arm on the owner's activation while the instant arm remains available off-turn", () => {
     const state = combat(true);
     state.players.p1.hand = ["artifact.hourglass_of_the_evil_hour" as CardId];
+    // Past the start-of-combat window: before any unit acts the ↻ arm is also
+    // playable off-turn (combatStartOrActivation, USER RULING 2026-09-29 —
+    // covered in polish-combat-start-cards.test.ts).
+    state.combat!.round = 2;
     state.combat!.activeUnitId = "unit_p2_skeletons";
     state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
     state.combat!.units.unit_p2_skeletons.attackedThisActivation = false;

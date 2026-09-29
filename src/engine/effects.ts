@@ -1341,9 +1341,9 @@ export function describePermanentEffect(card: CardDefinition): string {
       `each combat round: may pay 1 building material to hit 2 adjacent targets for ${permanent.roundStart.amount} each`,
     );
   }
-  if (permanent.roundStart?.kind === "damage-chosen-enemy") {
+  if (permanent.roundStart?.kind === "lightning-strike") {
     parts.push(
-      `each combat round: ${permanent.roundStart.amount} damage to an enemy unit of your choice (ignores Defense)`,
+      `each combat round: choose a unit and roll the Attack die — on +1 it takes ${permanent.roundStart.amount} damage, on 0 a unit adjacent to it takes ${permanent.roundStart.amount} damage`,
     );
   }
   if (permanent.roundStart?.kind === "expert-shot") {

@@ -517,7 +517,7 @@ describe("computer long-horizon development plan", () => {
     state.players.p2.army.push(neutral);
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("improve-army");
     const cost = polishUnitStackCost(neutral.unitDefId, "neutral")?.gold ?? 0;
-    expect(cost, "neutral.griffins Stack = 7 printed + bronze 1").toBe(8);
+    expect(cost, "neutral.griffins first Stack layer = 1 gold (ladder, 2026-09-29)").toBe(1);
     const target = developmentResourceTargets(state, "p2");
     const buyStack: GameAction = {
       type: "POPULATION_ACTION",

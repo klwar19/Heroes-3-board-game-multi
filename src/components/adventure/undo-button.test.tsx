@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AdventureHud } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
-import { createAdventureGameState, type GameState } from "@/engine";
+import { createAdventureGameState, undoStatusStamp, type GameState } from "@/engine";
 
 afterEach(cleanup);
 
@@ -41,5 +41,43 @@ describe("map HUD Undo button (optional undo mode)", () => {
     const button = screen.getByRole("button", { name: /Undo/ });
     fireEvent.click(button);
     expect(onAction).toHaveBeenCalledWith({ type: "UNDO_MOVE", playerId: "p1" });
+  });
+});
+
+/**
+ * The 1v1 Undo (`adventure.duelUndo`) on the map HUD: always visible to both
+ * seats, ENABLED only for the seat whose own safe step the server stamped on
+ * `undoStatus`, disabled with the reason as its tooltip otherwise.
+ */
+describe("map HUD 1v1 Undo button (duelUndo)", () => {
+  function duelState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, playerCount: 2, rollFirstPlayer: false, duelUndo: true });
+    expect(state.adventure?.duelUndo).toBe(true);
+    return state;
+  }
+
+  it("is enabled for the seat whose step is on the stack and dispatches UNDO_MOVE", () => {
+    const state = duelState("duel-hud-own");
+    state.undoStatus = { playerId: "p1", depth: 2, atEvent: undoStatusStamp(state) };
+    const onAction = renderHud(state);
+    const button = screen.getByRole("button", { name: /Undo/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith({ type: "UNDO_MOVE", playerId: "p1" });
+  });
+
+  it("CONTROL — the opponent's step (or a stale stamp) leaves it disabled with the reason", () => {
+    const state = duelState("duel-hud-other");
+    state.undoStatus = { playerId: "p2", depth: 1, atEvent: undoStatusStamp(state) };
+    renderHud(state);
+    const button = screen.getByRole("button", { name: /Undo/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toMatch(/Only/);
+    cleanup();
+
+    const stale = duelState("duel-hud-stale");
+    stale.undoStatus = { playerId: "p1", depth: 1, atEvent: undoStatusStamp(stale) - 1 };
+    renderHud(stale);
+    expect((screen.getByRole("button", { name: /Undo/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

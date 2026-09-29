@@ -13,6 +13,7 @@ import {
   RAID_BOSS_ABILITY_CHOICES
 } from "@/data/anime/bosses";
 import { unitAbilities } from "@/data/units/abilities";
+import { coreFactionDefinitions } from "@/data/factions/core";
 import {
   CUSTOM_BOSS_LIMITS,
   MAX_CUSTOM_RAID_BOSSES,
@@ -86,7 +87,7 @@ const MAP_DESIGN_ART = {
   objects: "/map-designer/category-objects.webp"
 } as const;
 
-type MapObjectPanel = "breaks" | "center" | "obelisk" | "mine" | "random-town" | "settlement" | "temple-of-the-sea";
+type MapObjectPanel = "breaks" | "center" | "obelisk" | "mine" | "random-town" | "cyclops" | "settlement" | "temple-of-the-sea";
 
 /** The Global | Specific kind each object panel's mode tabs drive ("breaks" has none). */
 const MAP_OBJECT_PANEL_KIND: Record<Exclude<MapObjectPanel, "breaks">, SpecificPickKind> = {
@@ -94,15 +95,22 @@ const MAP_OBJECT_PANEL_KIND: Record<Exclude<MapObjectPanel, "breaks">, SpecificP
   obelisk: "obelisk",
   mine: "mine",
   "random-town": "center",
+  cyclops: "center",
   settlement: "settlement",
   "temple-of-the-sea": "temple_of_the_sea"
 };
 
+
+/** Factions a Random Town may be fixed to (any faction with a unit roster). */
+const RANDOM_TOWN_FACTION_CHOICES = Object.values(coreFactionDefinitions)
+  .filter((faction) => faction.units.length > 0 && faction.playable !== false)
+  .map((faction) => ({ id: faction.id as string, name: faction.name }));
 const MAP_OBJECT_CARDS: { id: MapObjectPanel; title: string; description: string; images: string[]; glyph?: string }[] = [
   { id: "center", title: "Center objectives", description: "Grail, Dragon Utopia and other Ⅶ fields", images: ["vii-grail.webp", "vii-dragon-utopia.webp"] },
   { id: "obelisk", title: "Obelisks", description: "Role, guard and first-clear reward", images: ["obelisk.webp"] },
   { id: "mine", title: "Mines", description: "Guards, breaks and rewards", images: ["mine-gold.webp", "mine-materials.webp", "mine-valuable.webp"] },
   { id: "random-town", title: "Random Town", description: "Army, capture and income", images: ["vii-random-town.webp"] },
+  { id: "cyclops", title: "Cyclops Cavern", description: "Cyclops Stockpile guard and reward", images: [], glyph: "👁" },
   { id: "settlement", title: "Settlements", description: "Guard, reward and control VP", images: ["settlement.webp"] },
   { id: "temple-of-the-sea", title: "Temple of the Sea", description: "Guard, award and VP", images: ["vii-temple-of-seas.webp"] },
   { id: "breaks", title: "Break rules", description: "Entry gates and team scope", images: ["/map-designer/icon-break.webp"] }
@@ -265,6 +273,10 @@ function mineConfigHasValue(config: NonNullable<CustomMapPreset["mines"]>): bool
 /** Whether a map-wide Temple of the Sea config still carries any setting. */
 function templeConfigHasValue(config: NonNullable<CustomMapPreset["templesOfTheSea"]>): boolean {
   return Boolean(config.guard || config.reward || config.vp);
+}
+
+function cyclopsConfigHasValue(config: NonNullable<CustomMapPreset["cyclopsStockpiles"]>): boolean {
+  return Boolean(config.guard || config.combatRoundLimit || config.extraCyclopes !== undefined || config.reward || config.vp);
 }
 
 /** The Global | Specific mode chips one object section shows at its top. */
@@ -969,6 +981,7 @@ export function MapPresetEditor({
       (value.mines ? 1 : 0) +
       (value.templesOfTheSea ? 1 : 0) +
       (value.randomTowns ? 1 : 0) +
+      (value.cyclopsStockpiles ? 1 : 0) +
       (value.hexEvents?.length ?? 0) +
       // SPECIFIC per-tile settings count toward the group badge too.
       (tiles ?? []).reduce(
@@ -3021,6 +3034,40 @@ export function MapPresetEditor({
           Random Town, Grail, Dragon Utopia and printed center objects; map-wide Grail &amp; Utopia tuning
           lives under Victory &amp; scoring.
         </small>
+        <ObjectConfigHeading kind="encounter">Town faction</ObjectConfigHeading>
+        <label className="mapPresetObjectiveLabel" title="Ticked: each Random Town rolls an unused faction (classic). Unticked: every Random Town uses the faction chosen below.">
+          <input
+            aria-label="Work as Random Town"
+            checked={!value.randomTowns?.fixedFaction}
+            onChange={(e) => {
+              const next = { ...(value.randomTowns ?? {}) };
+              if (e.target.checked) delete next.fixedFaction;
+              else next.fixedFaction = RANDOM_TOWN_FACTION_CHOICES[0]?.id;
+              patch({
+                randomTowns:
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp || next.fixedFaction
+                    ? next
+                    : undefined
+              });
+            }}
+            type="checkbox"
+          />{" "}
+          Work as Random Town (roll an unused faction)
+        </label>
+        {value.randomTowns?.fixedFaction ? (
+          <select
+            aria-label="Random Town fixed faction"
+            className="mapPresetSelect"
+            onChange={(e) => patch({ randomTowns: { ...(value.randomTowns ?? {}), fixedFaction: e.target.value } })}
+            value={value.randomTowns.fixedFaction}
+          >
+            {RANDOM_TOWN_FACTION_CHOICES.map((faction) => (
+              <option key={faction.id} value={faction.id}>
+                {faction.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <ObjectConfigHeading kind="encounter">Town defense</ObjectConfigHeading>
         <GuardLevelChips
           ariaLabel="Random Town guard"
@@ -3032,7 +3079,7 @@ export function MapPresetEditor({
             else delete next.guard;
             patch({
               randomTowns:
-                next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp || next.fixedFaction
                   ? next
                   : undefined
             });
@@ -3051,7 +3098,7 @@ export function MapPresetEditor({
                 : Number(selected) as 1 | 2 | 3;
               patch({
                 randomTowns:
-                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp || next.fixedFaction
                     ? next
                     : undefined
               });
@@ -3075,7 +3122,7 @@ export function MapPresetEditor({
             else delete next.reward;
             patch({
               randomTowns:
-                next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp || next.fixedFaction
                   ? next
                   : undefined
             });
@@ -3120,7 +3167,7 @@ export function MapPresetEditor({
               }
               patch({
                 randomTowns:
-                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp || next.fixedFaction
                     ? next
                     : undefined
               });
@@ -3141,7 +3188,7 @@ export function MapPresetEditor({
               else delete next.vp;
               patch({
                 randomTowns:
-                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp || next.fixedFaction
                     ? next
                     : undefined
               });
@@ -3151,6 +3198,88 @@ export function MapPresetEditor({
             value={value.randomTowns?.vp ?? 0}
           />
         </div>
+        </div>
+      </section>
+
+      <section className="mapPresetSection mapObjectPanel" data-active={activeMapObject === "cyclops"} aria-label="Cyclops Cavern">
+        <div className="mapPresetSectionLabel">👁 Cyclops Cavern</div>
+        {modeTabs("center")}
+        {objectMode("center") === "specific"
+          ? specificPanel("center", "No Ⅶ tile is placed yet — the Cyclops Stockpile is the Ⅶ object of underground boss tiles.")
+          : null}
+        <div className="mapObjectConfigStack" hidden={objectMode("center") !== "global"}>
+        <small className="mapPresetHint">
+          Applies to every Cyclops Cavern (the printed Cyclops Stockpile). Printed: the Ⅶ Neutral army plus 2 golden
+          Cyclopes; reward four Resource dice. A tile&apos;s own center settings (📍 Specific) override these.
+        </small>
+        <ObjectConfigHeading kind="encounter">Encounter</ObjectConfigHeading>
+        <GuardLevelChips
+          ariaLabel="Cyclops Cavern guard"
+          guard={value.cyclopsStockpiles?.guard}
+          label="Guard army"
+          onChange={(guard) => {
+            const next = { ...(value.cyclopsStockpiles ?? {}) };
+            if (guard) next.guard = guard;
+            else delete next.guard;
+            patch({ cyclopsStockpiles: cyclopsConfigHasValue(next) ? next : undefined });
+          }}
+        />
+        <label className="mapPresetObjectiveRow" title="Golden Cyclopes added to the drawn Ⅶ army (ignored when a custom guard army replaces it).">
+          Extra golden Cyclopes
+          <input
+            aria-label="Cyclops Cavern extra Cyclopes"
+            className="mapPresetNumber"
+            max={4}
+            min={0}
+            onChange={(e) => {
+              const next = { ...(value.cyclopsStockpiles ?? {}) };
+              const count = Math.max(0, Math.min(4, Math.floor(Number(e.target.value) || 0)));
+              if (count === 2) delete next.extraCyclopes;
+              else next.extraCyclopes = count;
+              patch({ cyclopsStockpiles: cyclopsConfigHasValue(next) ? next : undefined });
+            }}
+            type="number"
+            value={value.cyclopsStockpiles?.extraCyclopes ?? 2}
+          />
+        </label>
+        <label className="mapPresetObjectiveRow">Combat round limit
+          <select
+            aria-label="Cyclops Cavern combat round limit"
+            className="mapPresetSelect"
+            onChange={(event) => {
+              const next = { ...(value.cyclopsStockpiles ?? {}) };
+              const selected = event.target.value;
+              if (selected === "default") delete next.combatRoundLimit;
+              else next.combatRoundLimit = selected === "unlimited" ? "unlimited" : (Number(selected) as 1 | 2 | 3);
+              patch({ cyclopsStockpiles: cyclopsConfigHasValue(next) ? next : undefined });
+            }}
+            value={value.cyclopsStockpiles?.combatRoundLimit ?? "default"}
+          >
+            <option value="default">Default rules</option>
+            <option value="1">1 free round, then pay MP</option>
+            <option value="2">2 free rounds, then pay MP</option>
+            <option value="3">3 free rounds, then pay MP</option>
+            <option value="unlimited">Unlimited</option>
+          </select>
+        </label>
+        <RewardSectionTitle>Extra first-clear reward</RewardSectionTitle>
+        <FieldRewardEditor
+          ariaLabel="Cyclops Cavern extra reward"
+          reward={value.cyclopsStockpiles?.reward}
+          onChange={(reward) => {
+            const next = { ...(value.cyclopsStockpiles ?? {}) };
+            if (reward) next.reward = reward;
+            else delete next.reward;
+            patch({ cyclopsStockpiles: cyclopsConfigHasValue(next) ? next : undefined });
+          }}
+          vp={value.cyclopsStockpiles?.vp}
+          onVpChange={(vp) => {
+            const next = { ...(value.cyclopsStockpiles ?? {}) };
+            if (vp) next.vp = vp;
+            else delete next.vp;
+            patch({ cyclopsStockpiles: cyclopsConfigHasValue(next) ? next : undefined });
+          }}
+        />
         </div>
       </section>
 

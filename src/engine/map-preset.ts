@@ -52,6 +52,7 @@ import type {
   CustomHexEvent,
   CustomMapMinesConfig,
   CustomMapTemplesOfTheSeaConfig,
+  CustomMapCyclopsStockpilesConfig,
   CustomMapObeliskBonus,
   CustomMapObeliskConfig,
   CustomMapRandomTownsConfig,
@@ -507,6 +508,12 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   if (!centerHex.holdRoundsToWin) {
     delete centerHex.holdRequiresGrail;
   }
+  if (centerHex.holdRoundsToWin && (raw.holdOutcome === "vp" || raw.holdOutcome === "both")) {
+    centerHex.holdOutcome = raw.holdOutcome;
+    if (typeof raw.holdVp === "number" && Number.isFinite(raw.holdVp) && raw.holdVp > 0) {
+      centerHex.holdVp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.holdVp));
+    }
+  }
   if (raw.winCondition === true) {
     centerHex.winCondition = true;
   }
@@ -516,6 +523,9 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   if (raw.noExperience === true) centerHex.noExperience = true;
   if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") centerHex.combatRoundLimit = raw.combatRoundLimit;
   if (raw.flaggableDragonUtopia === true) centerHex.flaggableDragonUtopia = true;
+  if (typeof raw.utopiaObelisksRequired === "number" && Number.isFinite(raw.utopiaObelisksRequired) && raw.utopiaObelisksRequired > 0) {
+    centerHex.utopiaObelisksRequired = Math.min(8, Math.floor(raw.utopiaObelisksRequired));
+  }
   return Object.keys(centerHex).length > 0 ? centerHex : undefined;
 }
 
@@ -1361,6 +1371,8 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
     vp?: unknown;
     holdRoundsToWin?: unknown;
     holdRequiresGrail?: unknown;
+    holdOutcome?: unknown;
+    holdVp?: unknown;
     ownerStart?: unknown;
   };
   const plan: CustomMapSettlementFieldPlan = {};
@@ -1396,6 +1408,12 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   }
   if (!plan.holdRoundsToWin) {
     delete plan.holdRequiresGrail;
+  }
+  if (plan.holdRoundsToWin && (raw.holdOutcome === "vp" || raw.holdOutcome === "both")) {
+    plan.holdOutcome = raw.holdOutcome;
+    if (typeof raw.holdVp === "number" && Number.isFinite(raw.holdVp) && raw.holdVp > 0) {
+      plan.holdVp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.holdVp));
+    }
   }
   if (raw.winCondition === true) {
     plan.winCondition = true;
@@ -1625,6 +1643,31 @@ function sanitizeTemplesOfTheSeaConfig(input: unknown): CustomMapTemplesOfTheSea
   return config.guard || config.reward || config.vp ? config : undefined;
 }
 
+/** Sanitize MAP-WIDE Cyclops Cavern (Cyclops Stockpile) options. Empty → undefined. */
+function sanitizeCyclopsStockpilesConfig(input: unknown): CustomMapCyclopsStockpilesConfig | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { guard?: unknown; combatRoundLimit?: unknown; extraCyclopes?: unknown; reward?: unknown; vp?: unknown };
+  const config: CustomMapCyclopsStockpilesConfig = {};
+  const guard = sanitizeCustomGuardSpec(raw.guard, true);
+  if (guard) config.guard = guard;
+  if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") {
+    config.combatRoundLimit = raw.combatRoundLimit;
+  }
+  if (typeof raw.extraCyclopes === "number" && Number.isFinite(raw.extraCyclopes)) {
+    config.extraCyclopes = Math.max(0, Math.min(4, Math.floor(raw.extraCyclopes)));
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) config.reward = reward;
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    config.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  return config.guard || config.combatRoundLimit || config.extraCyclopes !== undefined || config.reward || config.vp
+    ? config
+    : undefined;
+}
+
 /** Sanitize MAP-WIDE difficulty-Ⅶ center-object defaults. */
 function sanitizeCenterHexesConfig(input: unknown): CustomMapPreset["centerHexes"] | undefined {
   const plan = sanitizeObjectFieldPlan(input);
@@ -1645,8 +1688,15 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
     captureReward?: unknown;
     incomeGold?: unknown;
     vp?: unknown;
+    fixedFaction?: unknown;
   };
   const config: CustomMapRandomTownsConfig = {};
+  if (
+    typeof raw.fixedFaction === "string" &&
+    (coreFactionDefinitions[raw.fixedFaction as keyof typeof coreFactionDefinitions]?.units.length ?? 0) > 0
+  ) {
+    config.fixedFaction = raw.fixedFaction;
+  }
   const guard = sanitizeCustomGuardSpec(raw.guard, true);
   if (guard) config.guard = guard;
   if (
@@ -1678,7 +1728,7 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
   if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
     config.vp = Math.min(MAX_SETTLEMENT_VP, Math.floor(raw.vp));
   }
-  return config.guard || config.combatRoundLimit || config.reward || config.captureReward || config.incomeGold !== undefined || config.vp
+  return config.guard || config.combatRoundLimit || config.reward || config.captureReward || config.incomeGold !== undefined || config.vp || config.fixedFaction
     ? config
     : undefined;
 }
@@ -2827,6 +2877,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.templesOfTheSea = temples;
     }
   }
+  if (raw.cyclopsStockpiles !== undefined) {
+    const cyclops = sanitizeCyclopsStockpilesConfig(raw.cyclopsStockpiles);
+    if (cyclops) {
+      preset.cyclopsStockpiles = cyclops;
+    }
+  }
   if (raw.randomTowns !== undefined) {
     const randomTowns = sanitizeRandomTownsConfig(raw.randomTowns);
     if (randomTowns) {
@@ -2902,6 +2958,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       Boolean(preset.settlements) ||
       Boolean(preset.mines) ||
       Boolean(preset.templesOfTheSea) ||
+      Boolean(preset.cyclopsStockpiles) ||
       Boolean(preset.randomTowns) ||
       (preset.objects && preset.objects.length > 0) ||
       Boolean(preset.objectives) ||
@@ -3271,7 +3328,16 @@ export function describeSettlementFieldPlan(plan: CustomMapSettlementFieldPlan):
     parts.push(`+${plan.vp} VP`);
   }
   if (plan.holdRoundsToWin) {
-    parts.push(`hold ${plan.holdRoundsToWin} round${plan.holdRoundsToWin === 1 ? "" : "s"} to win`);
+    const rounds = `${plan.holdRoundsToWin} round${plan.holdRoundsToWin === 1 ? "" : "s"}`;
+    // Scoring holds (map editor holdOutcome): VP default = the rounds.
+    const vp = plan.holdVp ?? plan.holdRoundsToWin;
+    parts.push(
+      plan.holdOutcome === "vp"
+        ? `hold ${rounds} to score ${vp} VP`
+        : plan.holdOutcome === "both"
+          ? `hold ${rounds} to score ${vp} VP and win`
+          : `hold ${rounds} to win`
+    );
   }
   return `This settlement: ${parts.length > 0 ? parts.join(", ") : "classic"}`;
 }
@@ -3359,7 +3425,7 @@ export function describeCustomMapPresetEntries(
   // built even when the preset itself carries nothing "active" (a centre-hex
   // reward lives on the tile, not the preset) — players must see before they
   // start that a Ⅶ objective pays more than its standard reward.
-  const stackEntries = describeViiRewardStackEntries(plans, preset);
+  const stackEntries = [...describeViiRewardStackEntries(plans, preset), ...describeUtopiaGateEntries(plans)];
   if (!preset || !customMapPresetIsActive(preset)) {
     return stackEntries;
   }
@@ -3585,6 +3651,16 @@ export function describeCustomMapPresetEntries(
     if (preset.mines.unlimitedRounds && !preset.mines.combatRoundLimit) parts.push("unlimited rounds");
     entries.push({ icon: "⛏️", text: `Mines: ${parts.join(", ") || "custom"}` });
   }
+  if (preset.cyclopsStockpiles) {
+    const cyc = preset.cyclopsStockpiles;
+    const parts: string[] = [];
+    if (cyc.guard) parts.push(`guard ${describeGuardSpec(cyc.guard)}`);
+    if (cyc.extraCyclopes !== undefined) parts.push(`${cyc.extraCyclopes} extra golden Cyclopes`);
+    if (cyc.combatRoundLimit) parts.push(cyc.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${cyc.combatRoundLimit} free combat rounds`);
+    if (cyc.reward) parts.push(`extra reward: ${describeFieldReward(cyc.reward)}`);
+    if (cyc.vp) parts.push(`+${cyc.vp} VP first clear`);
+    entries.push({ icon: "👁", text: `Cyclops Caverns: ${parts.join(", ") || "custom"}` });
+  }
   if (preset.templesOfTheSea) {
     const parts: string[] = [];
     if (preset.templesOfTheSea.guard) parts.push(`guard ${describeGuardSpec(preset.templesOfTheSea.guard)}`);
@@ -3594,6 +3670,9 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.randomTowns) {
     const parts: string[] = [];
+    if (preset.randomTowns.fixedFaction) {
+      parts.push(`fixed faction ${coreFactionDefinitions[preset.randomTowns.fixedFaction as keyof typeof coreFactionDefinitions]?.name ?? preset.randomTowns.fixedFaction}`);
+    }
     if (preset.randomTowns.guard) parts.push(`guard ${describeGuardSpec(preset.randomTowns.guard)}`);
     if (preset.randomTowns.combatRoundLimit) {
       parts.push(preset.randomTowns.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${preset.randomTowns.combatRoundLimit} free combat rounds`);
@@ -3662,6 +3741,33 @@ function describeViiRewardStackEntries(
       text: `Extra rewards stack on ${stacks.length === 1 ? "the" : `${stacks.length}`} Ⅶ ${names} field${
         stacks.length === 1 ? "" : "s"
       } — the standard objective reward still pays too`
+    }
+  ];
+}
+
+/**
+ * Utopia custom feature (per-tile centre plan `utopiaObelisksRequired`): the
+ * table must know before it starts that a Dragon Utopia cannot be ENTERED
+ * until the hero's side has flagged that many Obelisks (the move is simply
+ * not offered until then — see utopiaEntryAllowed in adventure.ts).
+ */
+function describeUtopiaGateEntries(plans: CustomMapTilePlan[] | null | undefined): CustomMapPresetEntry[] {
+  const counts = Array.from(
+    new Set(
+      (plans ?? [])
+        .map((plan) => plan.centerHex?.utopiaObelisksRequired ?? 0)
+        .filter((count) => count > 0)
+    )
+  ).sort((a, b) => a - b);
+  if (counts.length === 0) {
+    return [];
+  }
+  const needed = counts.map((count) => `${count}`).join(" / ");
+  const plural = counts.length === 1 && counts[0] === 1 ? "" : "s";
+  return [
+    {
+      icon: "🐉",
+      text: `Dragon Utopia: a hero may enter it only after their player (or an ally) has flagged ${needed} Obelisk${plural}`
     }
   ];
 }

@@ -1618,7 +1618,25 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // army; an eliminated seat's parked parallel round rewards are dropped; hex
 // mode makes MGQ Giga, Maya, Matis, Sphinx and Spider Princess two-hex
 // bodies (movement, adjacency and reach).
-export const ENGINE_PROTOCOL_VERSION = 191;
+// v192: Polish Unit Stacks escalating price (Nth layer = N gold per card; free
+// Stack sources cover 1 gold; settlement Few→Pack = Pack − Few) + the new
+// "polish-unlimited-stacks" rule (no cap, one Necromancy per unit per combat,
+// one Pit Lords summoning per player per combat); First Aid expert and the
+// Shaman's Puppet / Cards of Prophecy / Hourglass ↻ arms playable at combat
+// start OR own activation (combatStartOrActivation); LEAVE_GAME departure
+// vote + "ai" votes (both outcomes unanimous); 1v1 duelUndo option +
+// public undoStatus; map editor Random Town fixed faction, Cyclops Cavern
+// options (cyclopsStockpiles / field.cyclopsExtraGuards), scoring hold
+// objectives (holdOutcome / holdVp, VP ledger holdVp) and the Utopia Obelisk
+// entry requirement (utopiaObelisksRequired). Also Jabarkas's Orcs I/VI
+// modifiers (IGNORE_ADJACENT_RANGED_PENALTY, ADJACENT_TARGET_ATTACK_BONUS,
+// IGNORES_DEFENSE adjacentOnly) read by the attack resolver.
+// Also v192: Henrietta's Halflings I start-of-combat offer (warMachineRound
+// henriettaRally entry); Forge Lightning Generator = printed card (choose any
+// unit, Attack die: +1 hits it, 0 hits a unit adjacent to it; roundStart kind
+// "lightning-strike"), sold at 6 / 9 gold in the war-machine supply; Forge
+// Grunts Pack 3 gold.
+export const ENGINE_PROTOCOL_VERSION = 192;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

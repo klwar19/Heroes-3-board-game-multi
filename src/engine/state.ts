@@ -180,6 +180,11 @@ export type HouseRuleId =
   // at a Citadel (bank-guard Neutrals use the higher bank max). +1 Attack while
   // stacked; each layer absorbs one full health bar.
   | "polish-unit-stacks"
+  // Polish house rule (test mode, default OFF — USER RULING 2026-09-29): Stack
+  // layers have no tier cap (same escalating N-gold price). Each army unit may
+  // receive only ONE Necromancy per combat and each player only ONE Pit Lords
+  // Demon summoning per combat while it is on.
+  | "polish-unlimited-stacks"
   // Polish house rule: replace the difficulty-scaled starting bonus with a
   // fixed reduced choice — draw 2 Minor Artifacts and keep 1, OR take one of
   // 3 gold / 2 building materials / 1 valuables.
@@ -1052,6 +1057,15 @@ export type ActiveEffectModifier =
   | { type: "DACE_PACK_BREAK" }
   | { type: "DACE_MINOTAUR_DRAW" }
   | { type: "DARKSTORN_PLUS_ONE_DEFENSE" }
+  /**
+   * Jabarkas's Orcs I: "ignore combat penalty and +1 Attack if the target of
+   * attack is adjacent" — the adjacent-target ranged penalty is waived
+   * (legal-actions getAttackRollMode) and the attack gains `amount` while the
+   * attacker and its target are adjacent (getActiveAttackBonus). The
+   * long-range penalty is untouched.
+   */
+  | { type: "IGNORE_ADJACENT_RANGED_PENALTY" }
+  | { type: "ADJACENT_TARGET_ATTACK_BONUS"; amount: number }
   | {
       type: "RANGED_ATTACK_BONUS";
       amount: number;
@@ -1768,6 +1782,8 @@ export type ActiveEffectModifier =
       type: "IGNORES_DEFENSE";
       /** Tancred VI only: adjacent attacks still use the target's Defense. */
       nonAdjacentOnly?: boolean;
+      /** Jabarkas VI only: ONLY attacks on an adjacent target ignore Defense. */
+      adjacentOnly?: boolean;
     }
   | {
       /**
@@ -4329,10 +4345,14 @@ export type WarMachineRoundStartDefinition =
     }
   | {
       /**
-       * Forge Lightning Generator: `amount` flat damage (ignores Defense) to an
-       * enemy unit of the owner's choice at the start of every combat round.
+       * Forge Lightning Generator (printed): "At the beginning of each Combat
+       * round, choose a unit and roll an Attack die. On a "+1", deal it 1
+       * damage. On a "0", deal 1 damage to a unit adjacent to it." The owner
+       * picks ANY unit on the battlefield; on "0" the owner also picks which
+       * adjacent unit (any side) is hit; "-1" does nothing. Flat war-machine
+       * damage (`amount`), so Defense never applies.
        */
-      kind: "damage-chosen-enemy";
+      kind: "lightning-strike";
       amount: number;
     };
 
@@ -4424,6 +4444,14 @@ export type CardOptionDefinition = {
   combatOnly?: boolean;
   /** Polish Balance: this option closes as soon as any unit has activated. */
   combatStartOnly?: boolean;
+  /**
+   * Polish Balance (USER RULING 2026-09-29 — First Aid expert, Shaman's Puppet,
+   * Cards of Prophecy, Hourglass of the Evil Hour: "You can play this card at
+   * the start of a Combat"): playable in the start-of-combat window (before any
+   * unit acts, whoever owns the first activation) OR during one of the owner's
+   * own unit activations. Never off-turn / in an enemy's reaction window.
+   */
+  combatStartOrActivation?: boolean;
   /**
    * Polish Balance (Ballistics reprint): "at the beginning of a combat ROUND".
    * Like `combatStartOnly` the option closes the moment a unit acts, but unlike
@@ -6406,6 +6434,9 @@ type GameActionPayload =
        * `submitRoomAction` and the PartyKit edge), which pops a server-side,
        * broadcast-free per-room snapshot stack and restores it. With the option
        * OFF (or no history) the server rejects it. See src/server/undo-history.ts.
+       * With the 1v1 Undo (`adventure.duelUndo`) instead, it takes back the
+       * actor's OWN latest safe action only (no randomness / reveal / opponent
+       * action since) — see src/engine/undo-safety.ts.
        */
       type: "UNDO_MOVE";
       playerId: PlayerId;
@@ -6425,16 +6456,37 @@ type GameActionPayload =
       type: "START_AFK_VOTE";
       playerId: PlayerId;
       targetPlayerId: PlayerId;
+      /**
+       * The starter's own vote: "kick" (default — remove the seat) or "ai"
+       * (a computer takes the seat over from this moment). See CAST_AFK_VOTE.
+       */
+      vote?: "kick" | "ai";
     }
   | {
       /**
-       * Answer the open AFK vote: "kick" (drop the target once every live
-       * voter agrees) or "wait" (close the vote; it can be re-opened
-       * AFK_REASK_MS later). The target cannot vote.
+       * Answer the open AFK / departure vote: "kick" (remove the seat), "ai"
+       * (a computer takes the seat over from this moment) or "wait" (AFK votes
+       * only: close the vote; it can be re-opened AFK_REASK_MS later). The
+       * vote resolves once every live human voter agrees: a UNANIMOUS "kick"
+       * removes the seat (the existing kick rule), a UNANIMOUS "ai" hands it
+       * to the computer; a split stays open and voters may change their
+       * answer (USER RULING 2026-09-29). The target cannot vote.
        */
       type: "CAST_AFK_VOTE";
       playerId: PlayerId;
-      vote: "kick" | "wait";
+      vote: "kick" | "wait" | "ai";
+    }
+  | {
+      /**
+       * Voluntarily leave a running multiplayer adventure. Opens a departure
+       * vote (`afk.vote` with `kind: "left"`) for the remaining live human
+       * seats: remove the seat, or let a computer take it over (CAST_AFK_VOTE
+       * "kick" / "ai"; there is no "wait"). With no human voter left the seat
+       * is removed at once. Exempt from the turn/barrier gates like the AFK
+       * vote: a player must be able to leave whenever they have to go.
+       */
+      type: "LEAVE_GAME";
+      playerId: PlayerId;
     }
   | {
       /**
@@ -8591,13 +8643,14 @@ type GameEventPayload =
       id: string;
       type: "AFK_VOTE_CAST";
       playerId: PlayerId;
-      vote: "kick" | "wait";
+      vote: "kick" | "wait" | "ai";
     }
   | {
       id: string;
       type: "AFK_VOTE_RESOLVED";
       targetPlayerId: PlayerId;
-      outcome: "kick" | "wait" | "cancelled";
+      /** "ai": the seat was handed to a computer player (departure / AFK vote). */
+      outcome: "kick" | "wait" | "cancelled" | "ai";
       message: string;
     }
   | {
@@ -10136,6 +10189,17 @@ export type PlayerState = {
    * instead of a plain loss — see src/server/match-report.ts.
    */
   kickedByVote?: boolean;
+  /**
+   * True when this seat's human pressed "Leave game" mid-adventure. Kept after
+   * the departure vote resolves (removed or handed to the computer) so the
+   * ladder still reports the leaver as "abandon" — see match-report.ts.
+   */
+  leftGame?: boolean;
+  /**
+   * True once a departure / AFK vote handed this seat to a computer player
+   * (`controllers[seat]` became a computer from that moment on).
+   */
+  replacedByComputer?: boolean;
   /**
    * Player Elimination clock (rulebook p.11, house rule: 2 of the player's own
    * turns instead of 3 full Rounds). Set while the player controls no Town and
@@ -11782,6 +11846,13 @@ export type CombatState = {
       /** Henrietta VI: optional round-start activation while the specialty remains in hand. */
       henriettaHalflings?: boolean;
       /**
+       * Henrietta I (Halflings rally): the START-OF-COMBAT offer (combat round
+       * 1, before any unit acts) to play the specialty from hand. Asked so the
+       * holder gets the printed window even when the enemy owns the first
+       * activation; accepting resolves the ordinary PLAY_CARD of option 0.
+       */
+      henriettaRally?: boolean;
+      /**
        * Dark Mullich VI (Overclock): optional round-start play from hand — all
        * the holder's units gain +2 Initiative until the end of that round. Asked
        * each round start so BOTH seats get the printed "beginning of the Combat
@@ -11970,6 +12041,12 @@ export type CombatState = {
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
    */
   unitRemovedControllerIds?: PlayerId[];
+  /**
+   * Polish Unlimited Stacks (USER RULING 2026-09-29, "1 combat = 1 demon
+   * summoning"): controllers who already used a Pit Lords Summon Demons action
+   * this combat. Written always; read only while that rule is on.
+   */
+  demonSummonControllerIds?: PlayerId[];
   /**
    * Neutral Skeletons: set once a Skeleton guard has been destroyed this
    * combat, so the attacker's Necropolis hero gets the free bronze reinforce.
@@ -12479,6 +12556,12 @@ export type MapFieldState = {
    * {@link CustomCenterHexPlan.holdRequiresGrail}.
    */
   holdRequiresGrail?: boolean;
+  /** Designer hold outcome (see CustomMapSettlementFieldPlan.holdOutcome). Absent = "win". */
+  holdOutcome?: "win" | "vp" | "both";
+  /** VP for completing the hold (holdOutcome vp/both). */
+  holdVp?: number;
+  /** Players already paid {@link holdVp} for this field (once per holder). */
+  holdVpPaidPlayerIds?: PlayerId[];
   /** Owner currently counting toward {@link holdRoundsToWin} (reset on recapture). */
   holdControlOwnerId?: PlayerId;
   /**
@@ -12637,6 +12720,17 @@ export type MapFieldState = {
   breakTileGate?: boolean;
   /** Designer-opted capturable Dragon Utopia with an Astrologers-round recruit benefit. */
   flaggableDragonUtopia?: boolean;
+  /**
+   * Map editor Utopia custom feature (2026-09-29): a hero may ENTER this Dragon
+   * Utopia only when its player (or an ally) has flagged at least this many
+   * Obelisks. Absent = no requirement.
+   */
+  utopiaObelisksRequired?: number;
+  /**
+   * Map editor Cyclops Cavern (Cyclops Stockpile) option: how many golden
+   * Cyclopes join the drawn Ⅶ Neutral army (printed 2). Absent = 2.
+   */
+  cyclopsExtraGuards?: number;
   /**
    * Persistent certain army: on a lost / retreated neutral fight the living
    * guards stay as `customGuardUnits` for a later re-fight (dead units do not
@@ -15291,6 +15385,12 @@ export type AdventureState = {
           heroId?: HeroId;
           fieldId?: MapSpaceId;
         };
+    /**
+     * Polish Unlimited Stacks (USER RULING 2026-09-29): army unit ids already
+     * reinforced / stacked by a Necromancy in THIS after-combat window — each
+     * unit may be affected by only one Necromancy per combat. Unused otherwise.
+     */
+    affectedArmyUnitIds?: string[];
     /** Necromancy banks created in this window; unused ones expire on Resolve. */
     discountIds?: string[];
   } | null;
@@ -15451,6 +15551,16 @@ export type AdventureState = {
    * src/server/undo-history.ts.
    */
   undoMoves?: boolean;
+  /**
+   * OPTIONAL "Undo button for 1v1 games" (normal play, default OFF). Frozen
+   * from GameSetupOptions.duelUndo ONLY when the game has exactly two seats.
+   * The server keeps a per-room stack of the acting seat's own recent SAFE
+   * actions (no die roll / randomness, no hidden card / tile / trap revealed,
+   * opponent has not acted since) — see src/engine/undo-safety.ts and
+   * src/server/undo-history.ts. The public availability summary is
+   * `GameState.undoStatus`.
+   */
+  duelUndo?: boolean;
   /**
    * OPTIONAL Manual guard control (default OFF). Frozen from
    * GameSetupOptions.manualGuardControl at setup: the FIGHTER of a Neutral
@@ -15915,6 +16025,17 @@ export type GameSetupOptions = {
    * recorded and `UNDO_MOVE` is rejected — zero behaviour change.
    */
   undoMoves?: boolean;
+  /**
+   * OPTIONAL "Undo button for 1v1 games" (default OFF). Only offered/active in
+   * 2-player games (ranked tables too — USER RULING 2026-09-29). Unlike the testing "Undo moves"
+   * it is a normal-play rule with a strict safety line: a player may take back
+   * their OWN latest actions (hero moves, unit moves, choices…) until the
+   * opponent acts, but NEVER past a die roll / any randomness or a reveal of
+   * hidden information (card draw, deck search, face-down tile, trap), so no
+   * result can be re-rolled or peeked at. Every undo is announced in the feed.
+   * Frozen onto `adventure.duelUndo`; see src/engine/undo-safety.ts.
+   */
+  duelUndo?: boolean;
   /**
    * OPTIONAL "Manual guard control" mode (default OFF/absent, Game options —
    * like Undo moves). With it ON, the FIGHTER of a Neutral combat (guard
@@ -16416,6 +16537,21 @@ export type CustomMapPreset = {
     vp?: number;
   };
   /**
+   * MAP-WIDE Cyclops Cavern (the printed Cyclops Stockpile Ⅶ object)
+   * customization. Absent = printed rules (Ⅶ army + 2 golden Cyclopes, four
+   * Resource dice). A per-tile center-hex plan still overrides value by value.
+   *   - guard: replaces the whole drawn army
+   *   - extraCyclopes: golden Cyclopes added to the drawn army (0–4, printed 2)
+   *   - reward: extra first-clear reward; vp: first-clear VP (VP mode)
+   */
+  cyclopsStockpiles?: {
+    guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    extraCyclopes?: number;
+    reward?: CustomFieldReward;
+    vp?: number;
+  };
+  /**
    * MAP-WIDE Random Town customization. Absent = classic Random Town (rolled
    * faction Packs 1 bronze + 2 silver + 2 gold, +10 gold income, +10 gold on
    * first capture).
@@ -16442,6 +16578,13 @@ export type CustomMapPreset = {
      * ON TOP of any per-center {@link CustomCenterHexPlan.controlVp}.
      */
     vp?: number;
+    /**
+     * Map editor "Work as Random Town" UNTICKED (2026-09-29): every Random Town
+     * is defended by (and recruits as) this FIXED faction instead of a rolled
+     * unused one. Absent = the classic random roll. Ignored at play time when
+     * that faction is not playable on the table (its Anime module is off).
+     */
+    fixedFaction?: string;
   };
   /**
    * Designer HEX EVENTS — invisible triggers on chosen board hexes (the PC
@@ -16728,6 +16871,8 @@ export type VpLedgerEntry = {
    * `computeVictoryPoints`.
    */
   viiCenterVp?: number;
+  /** VP from designer hold objectives that score instead of (or as well as) winning. */
+  holdVp?: number;
   /** WoG era Loan Bank: VP lost to a defaulted loan with no building to seize. */
   loanDefaultVp?: number;
 };
@@ -16903,6 +17048,7 @@ export type CustomMapObjectivesConfig = NonNullable<
 /** The MAP-WIDE mine options block of a {@link CustomMapPreset}. */
 export type CustomMapMinesConfig = NonNullable<CustomMapPreset["mines"]>;
 export type CustomMapTemplesOfTheSeaConfig = NonNullable<CustomMapPreset["templesOfTheSea"]>;
+export type CustomMapCyclopsStockpilesConfig = NonNullable<CustomMapPreset["cyclopsStockpiles"]>;
 
 /** The MAP-WIDE Random Town options block of a {@link CustomMapPreset}. */
 export type CustomMapRandomTownsConfig = NonNullable<
@@ -17459,6 +17605,14 @@ export type CustomMapSettlementFieldPlan = {
    * field they control). Shortens Grail scenarios without auto-winning on dig.
    */
   holdRequiresGrail?: boolean;
+  /**
+   * Map editor (2026-09-29): what reaching {@link holdRoundsToWin} does —
+   * "win" (default, the classic early end), "vp" (score {@link holdVp} Victory
+   * Points instead, once per holder, the game goes on) or "both".
+   */
+  holdOutcome?: "win" | "vp" | "both";
+  /** VP scored by the holder when the hold completes (default = the rounds). */
+  holdVp?: number;
   winCondition?: boolean;
   /**
    * PRE-ASSIGNED OWNER (map designer): the 0-based index of a designer STARTING
@@ -17657,6 +17811,19 @@ export type CustomCenterHexPlan = {
   holdRoundsToWin?: number;
   /** With {@link holdRoundsToWin}: only count rounds while possessing the Grail. */
   holdRequiresGrail?: boolean;
+  /**
+   * Utopia custom feature (map editor, default off): entering this Dragon
+   * Utopia needs this many Obelisks flagged by the player or an ally (1–8).
+   */
+  utopiaObelisksRequired?: number;
+  /**
+   * Map editor (2026-09-29): what reaching {@link holdRoundsToWin} does —
+   * "win" (default, the classic early end), "vp" (score {@link holdVp} Victory
+   * Points instead, once per holder, the game goes on) or "both".
+   */
+  holdOutcome?: "win" | "vp" | "both";
+  /** VP scored by the holder when the hold completes (default = the rounds). */
+  holdVp?: number;
   /** First player to clear / capture THIS objective wins the game immediately. */
   winCondition?: boolean;
   /** PC-style break: Pathfinding cannot pass this guarded VII field. */
@@ -19810,6 +19977,13 @@ export type GameState = {
    * no hidden information. See src/engine/game-pause.ts.
    */
   pause?: GamePauseState | null;
+  /**
+   * 1v1 Undo (`adventure.duelUndo`) public availability, stamped by the SERVER
+   * action transaction after every committed action (the undo history itself
+   * stays server-side). Absent when the option is off. Holds no hidden
+   * information: which seat may undo, how many steps, and why not.
+   */
+  undoStatus?: UndoStatus | null;
 };
 
 /**
@@ -19860,11 +20034,29 @@ export type ResetVoteState = {
   confirmations: Record<PlayerId, boolean>;
 };
 
+/** Public summary of the 1v1 Undo stack (see GameState.undoStatus). */
+export type UndoStatus = {
+  /** The seat that may undo right now (its own latest action), or null. */
+  playerId: PlayerId | null;
+  /** How many of that seat's consecutive safe actions can be undone. */
+  depth: number;
+  /** Why nothing can be undone right now (shown on the disabled button). */
+  lockedReason?: string;
+  /**
+   * The event stamp (`undoStatusStamp`: the event counter) when stamped. A
+   * later step the server committed without restamping (a computer pump beat)
+   * moves it, so a client treats the status as stale — the server would refuse
+   * that undo anyway.
+   */
+  atEvent: number;
+};
+
 /**
- * One open AFK kick-or-wait vote. A single vote runs at a time; it ends the
- * moment any voter chooses "wait" (ask again later), every live voter chooses
- * "kick" (the target is force-dropped), or the target acts (auto-cancelled —
- * they are back).
+ * One open AFK or departure ("Leave game") vote. A single vote runs at a time;
+ * it ends the moment any voter chooses "wait" (AFK votes only — ask again
+ * later), every live voter chooses "kick" (the target is force-dropped) or
+ * every live voter chooses "ai" (a computer takes the seat over), or the
+ * target acts (auto-cancelled — they are back / they stayed).
  */
 export type AfkVoteState = {
   /** The seat accused of being AFK. */
@@ -19874,7 +20066,13 @@ export type AfkVoteState = {
   /** Server wall-clock ms when the vote opened. */
   startedAt: number;
   /** Each live voter's choice so far (the target never votes). */
-  votes: Record<PlayerId, "kick" | "wait">;
+  votes: Record<PlayerId, "kick" | "wait" | "ai">;
+  /**
+   * "afk" (absent on legacy snapshots): an idle seat accused of being away —
+   * kick / AI takes over / wait. "left": the target pressed Leave game —
+   * remove / AI takes over, no "wait" (they are gone by their own choice).
+   */
+  kind?: "afk" | "left";
 };
 
 export type AfkState = {

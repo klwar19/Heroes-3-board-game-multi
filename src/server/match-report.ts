@@ -163,7 +163,15 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     participants.push({ accountId, nickname: live.nickname, result });
   }
   for (const [seat, bound] of Object.entries(next.room?.matchSeats ?? {})) {
-    if (!bound.userId || isComputerPlayer(next, seat) || (seatsPerAccount.get(bound.userId) ?? 0) > 1) {
+    // A seat a departure / AFK vote handed to the computer mid-game WAS a human
+    // seat at the start: its account left, so it is a deserter ("abandon") —
+    // and never credited with a win the computer earned after they left.
+    const handedToComputer = Boolean(next.players?.[seat]?.replacedByComputer);
+    if (
+      !bound.userId ||
+      (isComputerPlayer(next, seat) && !handedToComputer) ||
+      (seatsPerAccount.get(bound.userId) ?? 0) > 1
+    ) {
       continue; // guest seat, a computer seat, or an ambiguous multi-seat account.
     }
     if (liveByAccount.has(bound.userId) || participants.some((p) => p.accountId === bound.userId)) {
@@ -173,7 +181,7 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     participants.push({
       accountId: bound.userId,
       nickname: bound.name,
-      result: seat === winnerSeat ? "win" : "abandon"
+      result: seat === winnerSeat && !handedToComputer ? "win" : "abandon"
     });
   }
   const hasWinner = participants.some((p) => p.result === "win");

@@ -70,7 +70,7 @@ import {
   intelligenceCastWindowClosed,
   polishIntelligenceHandReadingActive,
 } from "./combat-timing";
-import { intelligenceCastOwner } from "./active-effects";
+import { intelligenceCastOwner, activeEffectIgnoresAdjacentRangedPenalty } from "./active-effects";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
   applyUnitCurrentSide,
@@ -352,6 +352,8 @@ import {
   polishBallistaOfferOpen,
   polishBallistaTiming,
   processWarMachineRound,
+  HENRIETTA_RALLY_ID,
+  playerCanStartHenriettaRally,
   isLowestInitiativeEnemy,
   openBallisticsOpeningBombard,
   playerCanUseFirstAidVolley,
@@ -454,6 +456,7 @@ import { nextWaitTokenNumber } from "./polish-house-rules";
 import {
   polishArmyUnitCanBuyStack,
   polishUnitStackCap,
+  polishUnlimitedStacksEnabled,
 } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
@@ -551,6 +554,7 @@ import {
   castAfkVote,
   forceAfkKick,
   forceTurnTimeout,
+  leaveGame,
   startAfkVote,
   turnClockPausedFor,
   turnClockRunningSeats,
@@ -9644,7 +9648,9 @@ function finishResolvedAttack(
     !details.isRetaliation &&
     details.attacker.type === "ranged" &&
     details.attackKind === "melee" &&
-    equipmentIgnoresAdjacentRangedPenalty(state, details.attacker, false)
+    equipmentIgnoresAdjacentRangedPenalty(state, details.attacker, false) &&
+    // Jabarkas's Orcs I already waives this penalty: keep the Kunai charge.
+    !activeEffectIgnoresAdjacentRangedPenalty(state, details.attacker)
   ) {
     markEquipmentAdjacentRangedWaiverUsed(state, details.attacker);
   }
@@ -28850,6 +28856,51 @@ function applyPlayCardWithWindowTail(
   }
 }
 
+/**
+ * Henrietta I's start-of-combat offer (queued by startWarMachineRound): option
+ * 0 plays the specialty from hand through the ordinary PLAY_CARD path — the
+ * same resolution, Ongoing-tray hold and log a from-hand play gets — then the
+ * round-start queue moves on; option 1 skips it (the card stays in hand and
+ * stays playable from hand while the start window is open).
+ */
+function resolveHenriettaRallyOffer(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary,
+): void {
+  const queue = state.combat?.warMachineRound;
+  const head = queue?.pending[0];
+  if (!queue || !head?.henriettaRally || head.playerId !== action.playerId) {
+    throw new Error("No Halflings I offer is waiting for that player.");
+  }
+  if (action.optionIndex !== 0 && action.optionIndex !== 1) {
+    throw new Error("That Halflings I option does not exist.");
+  }
+  if (action.optionIndex === 0 && !playerCanStartHenriettaRally(state, action.playerId)) {
+    throw new Error("Halflings I cannot be played right now.");
+  }
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  queue.pending.shift();
+  if (action.optionIndex === 1) {
+    processWarMachineRound(state);
+    return;
+  }
+  const play: Extract<GameAction, { type: "PLAY_CARD" }> = {
+    type: "PLAY_CARD",
+    playerId: action.playerId,
+    cardId: HENRIETTA_RALLY_ID,
+    mode: "basic",
+    optionIndex: 0,
+    target: { type: "none" },
+  };
+  // Same dispatch as a from-hand PLAY_CARD that closes a war-machine offer:
+  // the tail re-runs the round-start queue once the play has resolved.
+  if (offerHelmCounterForPlay(state, play, cards, true)) return;
+  applyPlayCardWithWindowTail(state, play, cards, true);
+}
+
 function playCard(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
@@ -34038,6 +34089,8 @@ function summonDemons(
     unit.movedThisActivation ||
     unit.attackedThisActivation ||
     unit.summonedThisCombat ||
+    (polishUnlimitedStacksEnabled(state) &&
+      Boolean(combat.demonSummonControllerIds?.includes(action.playerId))) ||
     ability?.effect?.type !== "SUMMON_OR_REINFORCE_DEMONS" ||
     ability.implementationStatus !== "implemented" ||
     !combat.unitRemovedControllerIds?.includes(action.playerId)
@@ -34127,7 +34180,7 @@ function summonDemons(
       (candidate) => candidate.id === targetUnit.armyUnitId,
     );
     if (armyUnit) {
-      if (!polishArmyUnitCanBuyStack(armyUnit)) {
+      if (!polishArmyUnitCanBuyStack(armyUnit, state)) {
         throw new Error("Those Demons are already at their Stack cap.");
       }
       armyUnit.stacks = (armyUnit.stacks ?? 0) + 1;
@@ -34141,7 +34194,7 @@ function summonDemons(
     } else {
       // Combat-only body (shouldn't happen for real Demons, but keep the fight
       // progressing): respect the tier cap off the combat unit alone.
-      const cap = polishUnitStackCap(demonDefId, "pack");
+      const cap = polishUnitStackCap(demonDefId, "pack", state);
       if ((targetUnit.armyStacks ?? 0) >= cap) {
         throw new Error("Those Demons are already at their Stack cap.");
       }
@@ -34210,6 +34263,9 @@ function summonDemons(
 
   // The Pit Lords used their action instead of moving or attacking.
   unit.summonedThisCombat = true;
+  if (!combat.demonSummonControllerIds?.includes(action.playerId)) {
+    combat.demonSummonControllerIds = [...(combat.demonSummonControllerIds ?? []), action.playerId];
+  }
   markActivatedThisRound(unit);
   advanceActiveUnit(state);
   state.phase = "combat";
@@ -39842,6 +39898,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "SEND_CHAT",
   "START_AFK_VOTE",
   "CAST_AFK_VOTE",
+  "LEAVE_GAME",
   "RESOLVE_AFK_DROP",
   "FORCE_AFK_KICK",
   "FORCE_TURN_TIMEOUT",
@@ -40175,6 +40232,7 @@ function applyActionInContext(
   const isTableMetaAction =
     action.type === "START_AFK_VOTE" ||
     action.type === "CAST_AFK_VOTE" ||
+    action.type === "LEAVE_GAME" ||
     action.type === "RESOLVE_AFK_DROP" ||
     action.type === "FORCE_AFK_KICK" ||
     action.type === "FORCE_TURN_TIMEOUT" ||
@@ -40980,6 +41038,15 @@ function applyActionInContext(
             resolveActivationOrderChoice(nextState, action);
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "war-machine" &&
+            nextState.combat?.warMachineRound?.pending[0]?.henriettaRally
+          ) {
+            // Henrietta I's start-of-combat ask: accepting is a real PLAY_CARD,
+            // which lives here in the combat reducer (playCard), not in the
+            // adventure reducer's war-machine resolver.
+            resolveHenriettaRallyOffer(nextState, action, cards);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             nextState.pendingChoice.context === "spell-deck-pick"
           ) {
             // The Tome's "which Spell deck?" pick — its resolver (and the dig it
@@ -41042,6 +41109,9 @@ function applyActionInContext(
           break;
         case "CAST_AFK_VOTE":
           castAfkVote(nextState, action, options.now);
+          break;
+        case "LEAVE_GAME":
+          leaveGame(nextState, action, options.now);
           break;
         case "RESOLVE_AFK_DROP":
           resolveAfkDrop(nextState, action);

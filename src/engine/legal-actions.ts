@@ -55,6 +55,7 @@ import {
   playerHasPlaceableFarTile,
   reinforcementDiscountCostFor,
   reinforceCostFor,
+  settlementReinforceCostFor,
   secondaryHeroPlacementFields,
   getActiveAstrologersCard,
   explorersHandStepActive,
@@ -155,6 +156,7 @@ import {
   cardDamageNullified,
   specialtyImmunityActive,
   unitCardTargetLocked,
+  activeEffectIgnoresAdjacentRangedPenalty,
 } from "./active-effects";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -402,6 +404,7 @@ import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
   polishUnitStackCap,
+  polishUnlimitedStacksEnabled,
 } from "./polish-unit-stacks";
 import type {
   ArmyUnitState,
@@ -507,6 +510,21 @@ export function ongoingCombatPlayWindowOpen(
   effect: EffectDefinition,
   option?: CardOptionDefinition,
 ): boolean {
+  if (state.combat && option?.combatStartOrActivation) {
+    if (combatStartWindowOpen(state.combat)) {
+      return true;
+    }
+    if (!effectCreatesLastingEffect(effect)) {
+      // A one-shot arm: any time during the owner's own unit activation.
+      const active = state.combat.activeUnitId
+        ? state.combat.units[state.combat.activeUnitId]
+        : undefined;
+      return Boolean(
+        active && active.controllerId === playerId && !active.activatedThisRound,
+      );
+    }
+    // A lasting arm falls through to the standard own-activation window.
+  }
   if (!state.combat || !effectCreatesLastingEffect(effect)) {
     return true;
   }
@@ -2571,6 +2589,9 @@ export function getAttackRollMode(
       attacker,
       "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION",
     ) ||
+    // Jabarkas's Orcs I: the ongoing "ignore combat penalty if the target is
+    // adjacent" (a standing effect, so retaliations are covered too).
+    Boolean(state && activeEffectIgnoresAdjacentRangedPenalty(state, attacker)) ||
     Boolean(
       state &&
       equipmentIgnoresAdjacentRangedPenalty(state, attacker, isRetaliation),
@@ -4649,6 +4670,7 @@ function addPlayableCardActions(
       card.effect.type === "CHOOSE_ONE" &&
       card.effect.options.some((option) =>
         (option.combatStartOnly && combatStartWindowOpen(combat)) ||
+        (option.combatStartOrActivation && combatStartWindowOpen(combat)) ||
         (option.combatRoundStartOnly && combatRoundStartWindowOpen(combat))
       );
     if (needsOwnActivation && !ownActivationOpen && !startWindowOptionOpen) {
@@ -4725,7 +4747,12 @@ function addPlayableCardActions(
       addOptionPlays(
         actions, state, playerId, card, cardId, "combat", cards,
         needsOwnActivation && !ownActivationOpen
-          ? (option) => Boolean(option.combatStartOnly || option.combatRoundStartOnly)
+          ? (option) =>
+              Boolean(
+                option.combatStartOnly ||
+                  option.combatRoundStartOnly ||
+                  (option.combatStartOrActivation && combatStartWindowOpen(combat)),
+              )
           : undefined,
       );
       // NOTE (2026-08-08): the medic draw-only twin below is deliberately NOT
@@ -8320,7 +8347,12 @@ function addUnitAbilityActions(
     if (
       ability.effect?.type === "SUMMON_OR_REINFORCE_DEMONS" &&
       combat.unitRemovedControllerIds?.includes(playerId) &&
-      !activeUnit.summonedThisCombat
+      !activeUnit.summonedThisCombat &&
+      // Polish Unlimited Stacks: one Demon summoning per player per combat.
+      !(
+        polishUnlimitedStacksEnabled(state) &&
+        combat.demonSummonControllerIds?.includes(playerId)
+      )
     ) {
       const demonDefId = ability.effect.demonUnitDefId;
       const demonName = coreUnitDefinitions[demonDefId]?.name ?? "Demons";
@@ -8389,9 +8421,9 @@ function addUnitAbilityActions(
           // Prefer the army card (cap + side), fall back to the combat unit's
           // live stack count when the army card is missing (shouldn't happen).
           const canStack = armyCard
-            ? polishArmyUnitCanBuyStack(armyCard)
+            ? polishArmyUnitCanBuyStack(armyCard, state)
             : (candidate.armyStacks ?? 0) <
-              polishUnitStackCap(demonDefId, "pack");
+              polishUnitStackCap(demonDefId, "pack", state);
           if (!canStack) {
             continue;
           }
@@ -10346,6 +10378,11 @@ function getLegalActionsCore(
           ? `Mithril ${choice.abilityName}: +1 Attack for`
           : choice.kind === "war-machine" && choice.abilityId?.startsWith("specialty.dark_mullich.")
           ? `${choice.abilityName}: overclock`
+          // Lightning Generator's first pick only aims the Attack-die roll; the
+          // "0" follow-up pick (firstTargetUnitId set) is a plain hit.
+          : choice.kind === "war-machine" && choice.abilityId === "war_machine.lightning_generator" &&
+              !state.combat?.warMachineRound?.firstTargetUnitId
+          ? `${choice.abilityName}: roll the Attack die at`
           : choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
           : choice.kind === "enchanter-activation"
@@ -15446,11 +15483,11 @@ function addVisitStepActions(
       return tier === "bronze" || tier === "silver";
     });
     fewUnits.forEach((unit, index) => {
-      // Half cost (rounded up) applies first, then every distinct Legion voucher
-      // reserved for this unit reduces the remaining gold.
+      // Half cost (rounded up) — or, with Unit Stacks, the Pack − Few difference —
+      // then every distinct Legion voucher reserved for this unit reduces it.
       const halfCost =
         Object.entries(
-          reinforceCostFor(state, playerId, unit.id, true, false, false) ?? {},
+          settlementReinforceCostFor(state, playerId, unit.id) ?? {},
         )
           .filter(([, amount]) => amount)
           .map(([resource, amount]) => `${amount} ${resource}`)
@@ -15471,7 +15508,7 @@ function addVisitStepActions(
         const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
         return (
           (tier === "bronze" || tier === "silver") &&
-          polishArmyUnitCanBuyStack(unit) &&
+          polishArmyUnitCanBuyStack(unit, state) &&
           Boolean(polishArmyUnitStackCost(unit))
         );
       });
@@ -16449,7 +16486,7 @@ function addTownActions(
     // Guild substitution (both mirror the reducer's charge exactly).
     if (armyUnitStacksActive(state) && canReinforce) {
       for (const target of player.army) {
-        if (!polishArmyUnitCanBuyStack(target)) {
+        if (!polishArmyUnitCanBuyStack(target, state)) {
           continue;
         }
         const baseCost = polishArmyUnitStackCost(target);

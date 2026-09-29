@@ -124,6 +124,7 @@ import {
   playerPossessesGrail,
   recordVpUtopiaDefeat,
   recordVpViiCenter,
+  recordVpHoldObjective,
   townsControlledBy,
   victoryPointsConfig,
   victoryPointsModeActive
@@ -154,7 +155,9 @@ import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
   polishStackTier,
-  polishUnitStackCap
+  polishUnitStackCap,
+  polishFreeStackTopUpGold,
+  polishUnlimitedStacksEnabled
 } from "./polish-unit-stacks";
 import {
   polishQuickCombatArmyStrength,
@@ -1260,13 +1263,25 @@ export function materializeTileFields(
       const randomTownDefaults = fieldDef.location === "random_town"
         ? adventure.mapPreset?.randomTowns
         : undefined;
+      // Map editor Cyclops Cavern: map-wide defaults for every Cyclops Stockpile
+      // (a per-tile center-hex plan still overrides value by value).
+      const cyclopsDefaults = fieldDef.location === "cyclops_stockpile"
+        ? adventure.mapPreset?.cyclopsStockpiles
+        : undefined;
+      if (cyclopsDefaults?.extraCyclopes !== undefined) {
+        field.cyclopsExtraGuards = cyclopsDefaults.extraCyclopes;
+      }
       const globalCenter = adventure.mapPreset?.centerHexes;
-      const centerHex = globalCenter || randomTownDefaults || tile.centerHex
+      const centerHex = globalCenter || randomTownDefaults || cyclopsDefaults || tile.centerHex
         ? {
             ...(globalCenter ?? {}),
             ...(randomTownDefaults?.guard ? { guard: randomTownDefaults.guard } : {}),
             ...(randomTownDefaults?.combatRoundLimit ? { combatRoundLimit: randomTownDefaults.combatRoundLimit } : {}),
             ...(randomTownDefaults?.reward ? { reward: randomTownDefaults.reward } : {}),
+            ...(cyclopsDefaults?.guard ? { guard: cyclopsDefaults.guard } : {}),
+            ...(cyclopsDefaults?.combatRoundLimit ? { combatRoundLimit: cyclopsDefaults.combatRoundLimit } : {}),
+            ...(cyclopsDefaults?.reward ? { reward: cyclopsDefaults.reward } : {}),
+            ...(cyclopsDefaults?.vp ? { vp: cyclopsDefaults.vp } : {}),
             ...(tile.centerHex ?? {})
           }
         : undefined;
@@ -1318,6 +1333,9 @@ export function materializeTileFields(
       });
       if (field.location === "dragon_utopia" && centerHex?.flaggableDragonUtopia) {
         field.flaggableDragonUtopia = true;
+      }
+      if (field.location === "dragon_utopia" && centerHex?.utopiaObelisksRequired) {
+        field.utopiaObelisksRequired = centerHex.utopiaObelisksRequired;
       }
       if (tile.viiField) {
         // Legacy `viiFieldReward` is resources-only (gold/materials/valuables),
@@ -1430,9 +1448,14 @@ export function materializeTileFields(
         } else {
           delete field.holdRequiresGrail;
         }
+        // Scoring hold (map editor): only a SPECIFIC settlement's own plan —
+        // a Ⅶ Random Settlement's center plan keeps the classic win.
+        stampHoldOutcome(field, perTile?.holdRoundsToWin ? perTile : undefined, holdRounds);
       } else {
         delete field.holdRoundsToWin;
         delete field.holdRequiresGrail;
+        delete field.holdOutcome;
+        delete field.holdVp;
         delete field.holdControlOwnerId;
         delete field.holdControlRounds;
       }
@@ -1478,6 +1501,7 @@ export function materializeTileFields(
         } else {
           delete field.holdRequiresGrail;
         }
+        stampHoldOutcome(field, centerHex, centerHex.holdRoundsToWin);
       }
       if (centerHex?.winCondition) {
         field.designerWinCondition = true;
@@ -3162,6 +3186,35 @@ function designatedBreakGateSealsField(state: GameState, hero: HeroState, field:
   return false;
 }
 
+/** Obelisk fields flagged by this player or an ally (distinct fields). */
+export function obelisksFlaggedByTeam(state: GameState, playerId: PlayerId): number {
+  const fields = state.adventure?.fields ?? {};
+  let count = 0;
+  for (const field of Object.values(fields)) {
+    if (field.location !== "obelisk") continue;
+    const flaggers = [field.flagOwnerId, ...(field.extraFlagOwnerIds ?? [])];
+    if (flaggers.some((owner) => owner && owner !== NEUTRAL_PLAYER_ID && playersAreAllied(state, owner, playerId))) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Utopia custom feature (map editor): may this player's hero enter the Dragon
+ * Utopia? Always true without a requirement, and for the team already holding
+ * its flag. Otherwise the team needs {@link MapFieldState.utopiaObelisksRequired}
+ * flagged Obelisks.
+ */
+export function utopiaEntryAllowed(state: GameState, playerId: PlayerId, field: MapFieldState): boolean {
+  const needed = field.utopiaObelisksRequired ?? 0;
+  if (needed <= 0) return true;
+  if (field.flagOwnerId && field.flagOwnerId !== NEUTRAL_PLAYER_ID && playersAreAllied(state, field.flagOwnerId, playerId)) {
+    return true;
+  }
+  return obelisksFlaggedByTeam(state, playerId) >= needed;
+}
+
 export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
@@ -3189,6 +3242,13 @@ export function classifyHeroStep(
   // you visited the keymaster's tent in its color"). To everyone else it
   // behaves exactly like a Blocked Field — Fly may pass over, never land.
   if (field.location === "barrier" && !playerHoldsTentFlag(state, playerId, field.gatePair)) {
+    return movement.moveThrough ? "pass-only" : "block";
+  }
+
+  // Map editor Utopia custom feature: entering needs X Obelisks flagged by the
+  // player or an ally (like the Grail dig unlock). Until then it behaves like
+  // a Blocked Field — Fly may pass over, never land.
+  if (field.location === "dragon_utopia" && !utopiaEntryAllowed(state, playerId, field)) {
     return movement.moveThrough ? "pass-only" : "block";
   }
 
@@ -5657,6 +5717,9 @@ export function tickSettlementHoldControl(state: GameState): void {
       field.holdControlRounds = 0;
     }
     field.holdControlRounds = (field.holdControlRounds ?? 0) + 1;
+    if (field.holdControlRounds >= field.holdRoundsToWin) {
+      payHoldObjectiveVp(state, field, owner);
+    }
   }
   // Abstract hold-with-grail custom win conditions (Starting Town / any settlement /
   // Random Town / Random Settlement / specific field).
@@ -5707,6 +5770,43 @@ function tickHoldWithGrailProgress(state: GameState): void {
   }
 }
 
+/**
+ * Stamp a designer hold objective's outcome (map editor 2026-09-29): "vp" /
+ * "both" score {@link MapFieldState.holdVp} (default = the rounds) instead of /
+ * as well as winning. Absent plan or "win" = the classic hold-to-win.
+ */
+function stampHoldOutcome(
+  field: MapFieldState,
+  plan: { holdOutcome?: "win" | "vp" | "both"; holdVp?: number } | undefined,
+  rounds: number
+): void {
+  if (plan?.holdOutcome === "vp" || plan?.holdOutcome === "both") {
+    field.holdOutcome = plan.holdOutcome;
+    field.holdVp = plan.holdVp && plan.holdVp > 0 ? plan.holdVp : rounds;
+  } else {
+    delete field.holdOutcome;
+    delete field.holdVp;
+  }
+}
+
+/**
+ * Scoring holds: when the continuous holder reaches the threshold on a field
+ * whose outcome is "vp"/"both", pay {@link MapFieldState.holdVp} once per
+ * holder (a later re-hold by the same player never re-pays).
+ */
+function payHoldObjectiveVp(state: GameState, field: MapFieldState, owner: PlayerId): void {
+  if (
+    (field.holdOutcome !== "vp" && field.holdOutcome !== "both") ||
+    !field.holdVp ||
+    field.holdVp <= 0 ||
+    field.holdVpPaidPlayerIds?.includes(owner)
+  ) {
+    return;
+  }
+  field.holdVpPaidPlayerIds = [...(field.holdVpPaidPlayerIds ?? []), owner];
+  recordVpHoldObjective(state, owner, field.holdVp);
+}
+
 /** Declare a winner if any hold-to-win field has reached its round threshold. */
 function checkSettlementHoldWins(state: GameState): boolean {
   const adventure = state.adventure;
@@ -5715,7 +5815,8 @@ function checkSettlementHoldWins(state: GameState): boolean {
   }
   for (const field of Object.values(adventure.fields)) {
     const needed = field.holdRoundsToWin;
-    if (!needed || needed <= 0) {
+    // A scoring-only hold (map editor holdOutcome "vp") never ends the game.
+    if (!needed || needed <= 0 || field.holdOutcome === "vp") {
       continue;
     }
     const owner = field.flagOwnerId;
@@ -11394,7 +11495,7 @@ export function processPendingVisit(state: GameState): void {
             step.stacks > 0 &&
             (step.side ?? "few") === "pack"
           ) {
-            const cap = polishUnitStackCap(step.unitDefId, "pack");
+            const cap = polishUnitStackCap(step.unitDefId, "pack", state);
             const layers = Math.min(cap, Math.max(0, Math.trunc(step.stacks)));
             if (layers > 0) {
               added.stacks = layers;
@@ -12163,9 +12264,16 @@ export function processPendingVisit(state: GameState): void {
       }
       case "REINFORCE_HALF_GOLD": {
         const target = state.players[visit.playerId]?.army.find((unit) => unit.id === step.armyUnitId);
-        const upgraded = target && (!step.consumeCardId || isUndeadUnitDefinition(target.unitDefId))
+        // Unlimited Stacks: a unit already upgraded by a Necromancy this combat
+        // is a no-op pick (card kept) — two queued offers can race.
+        const upgraded = target &&
+          (!step.consumeCardId || isUndeadUnitDefinition(target.unitDefId)) &&
+          !(step.consumeCardId && necromancyUnitSpent(state, visit.playerId, target.id))
           ? reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, true, step.roundDown ?? false)
           : false;
+        if (upgraded && step.consumeCardId) {
+          markNecromancyUnitSpent(state, visit.playerId, step.armyUnitId);
+        }
         // Necromancy is spent ONLY on a successful upgrade. The card was held in
         // hand through the play (the discard was deferred); discard it now that a
         // unit was actually reinforced. A failed/declined reinforce leaves it.
@@ -12273,8 +12381,9 @@ export function processPendingVisit(state: GameState): void {
           !player ||
           !unit ||
           (step.source === "Necromancy" && !isUndeadUnitDefinition(unit.unitDefId)) ||
+          (step.source === "Necromancy" && necromancyUnitSpent(state, visit.playerId, unit.id)) ||
           !armyUnitStacksActive(state) ||
-          !polishArmyUnitCanBuyStack(unit) ||
+          !polishArmyUnitCanBuyStack(unit, state) ||
           !hasRecruitResources(state, visit.playerId, step.cost)
         ) {
           break;
@@ -12285,6 +12394,9 @@ export function processPendingVisit(state: GameState): void {
           spendRecruitResources(state, visit.playerId, step.cost, `${step.source} (Unit Stack)`);
         }
         unit.stacks = (unit.stacks ?? 0) + 1;
+        if (step.source === "Necromancy") {
+          markNecromancyUnitSpent(state, visit.playerId, unit.id);
+        }
         // Unit Experience: the added Stack layer dilutes the veterans (-1 XP).
         diluteUnitExperienceForUpgrade(state, visit.playerId, unit, "stack");
         appendEvent(state, {
@@ -18502,7 +18614,9 @@ function drawGuardArmyBase(
     // "Find 2 golden Cyclopes and add them to the Neutral Army." The single
     // copy in the gold deck is left in place (this build holds one of each
     // Neutral card); the two stockpile guards are minted for the fight.
-    for (let index = 0; index < 2; index += 1) {
+    // Map editor Cyclops Cavern may change the count (0–4); printed 2.
+    const extra = field.cyclopsExtraGuards ?? 2;
+    for (let index = 0; index < extra; index += 1) {
       draws.push({ unitDefId: "neutral.cyclopes", tier: "gold", bankGuard: true });
     }
   }
@@ -19102,6 +19216,13 @@ export function playerRecruitUnitSide(
 function ensureRandomTownFaction(state: GameState, field: MapFieldState): string {
   if (field.faction) {
     return field.faction;
+  }
+  // Map editor: "Work as Random Town" unticked → a FIXED faction for every
+  // Random Town (when that faction is playable on this table).
+  const fixed = state.adventure?.mapPreset?.randomTowns?.fixedFaction;
+  if (fixed && isPlayableFaction(fixed, state.anime) && (coreFactionDefinitions[fixed]?.units.length ?? 0) > 0) {
+    field.faction = fixed;
+    return fixed;
   }
   const used = new Set<string>();
   for (const player of Object.values(state.players)) {
@@ -21900,7 +22021,9 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
     if (target.unit.unitDefId !== unitDefId) {
       continue;
     }
-    const option = stackOfferOption(state, playerId, target, 0, coreBuildingDefinitions[buildingId]?.name ?? "Garden of Life");
+    // USER RULING 2026-09-29: the free Garden Stack covers 1 gold; a higher
+    // layer pays the difference (layer 2 pays 1, layer 3 pays 2 …).
+    const option = stackOfferOption(state, playerId, target, polishFreeStackTopUpGold(target.unit), coreBuildingDefinitions[buildingId]?.name ?? "Garden of Life");
     if (option) {
       options.push(option);
     }
@@ -24354,6 +24477,40 @@ export function reinforceCostFor(
   return cost;
 }
 
+/**
+ * Price of a Settlement's Few→Pack reinforcement (non-first flag; a first flag
+ * is free). Normally half the Pack cost (reinforceCostFor, half=true). With
+ * army Unit Stacks active — USER RULING 2026-09-29 — it is instead the
+ * DIFFERENCE between the unit's Pack (group) cost and its Few cost, per
+ * resource (min 0), after which every Legion voucher reserved for this unit
+ * still knocks its gold/valuables off (same seam as reinforceCostFor).
+ */
+export function settlementReinforceCostFor(
+  state: GameState,
+  playerId: PlayerId,
+  armyUnitId: string
+): ResourceCost | null {
+  if (!armyUnitStacksActive(state)) {
+    return reinforceCostFor(state, playerId, armyUnitId, true, false, false);
+  }
+  const armyUnit = state.players[playerId]?.army.find((candidate) => candidate.id === armyUnitId);
+  const packSide = armyUnit ? getUnitSide(armyUnit.unitDefId, "pack") : null;
+  const fewSide = armyUnit ? getUnitSide(armyUnit.unitDefId, "few") : null;
+  if (!armyUnit || !packSide) {
+    return null;
+  }
+  const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
+  const cost: ResourceCost = {};
+  for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
+    cost[resource] = Math.max(0, (amount ?? 0) - (fewSide?.cost[resource] ?? 0));
+  }
+  cost.gold = Math.max(0, (cost.gold ?? 0) - totalRecruitGoldDiscount(state, playerId, purchase));
+  if (cost.valuables !== undefined) {
+    cost.valuables = Math.max(0, cost.valuables - totalRecruitValuablesDiscount(state, playerId, purchase));
+  }
+  return cost;
+}
+
 export function reinforceArmyUnit(
   state: GameState,
   playerId: PlayerId,
@@ -24450,11 +24607,15 @@ export function reinforcementDiscountCostFor(
   if (bank.source === "necromancy" && !isUndeadUnitDefinition(unit.unitDefId)) {
     return null;
   }
+  // Unlimited Stacks: one Necromancy per unit per combat (USER RULING 2026-09-29).
+  if (bank.source === "necromancy" && necromancyUnitSpent(state, playerId, unit.id)) {
+    return null;
+  }
 
   let baseCost: ResourceCost | null = null;
   let purchase: RecruitPurchaseRef;
   if (kind === "stack") {
-    if (!bank.allowStack || !armyUnitStacksActive(state) || !polishArmyUnitCanBuyStack(unit)) {
+    if (!bank.allowStack || !armyUnitStacksActive(state) || !polishArmyUnitCanBuyStack(unit, state)) {
       return null;
     }
     baseCost = polishArmyUnitStackCost(unit);
@@ -24515,6 +24676,9 @@ export function redeemReinforcementDiscount(
   }
 
   spendRecruitResources(state, playerId, cost, `${bank.sourceName} reinforcement`);
+  if (bank.source === "necromancy") {
+    markNecromancyUnitSpent(state, playerId, unit.id);
+  }
   const purchase: RecruitPurchaseRef =
     kind === "stack"
       ? { kind: "stack", unitDefId: unit.unitDefId, armyUnitId: unit.id }
@@ -24569,7 +24733,7 @@ function stackOfferTargets(
   }
   const targets: { unit: ArmyUnitState; name: string; baseGold: number; baseCost: ResourceCost }[] = [];
   for (const unit of state.players[playerId]?.army ?? []) {
-    if (!polishArmyUnitCanBuyStack(unit)) {
+    if (!polishArmyUnitCanBuyStack(unit, state)) {
       continue;
     }
     const tier = polishStackTier(unit.unitDefId);
@@ -24654,7 +24818,8 @@ export function queueFreeBronzeReinforce(
   }
   if (options2?.includeStacks) {
     for (const target of stackOfferTargets(state, playerId, ["bronze"])) {
-      const option = stackOfferOption(state, playerId, target, 0, "City Hall");
+      // Free source: covers 1 gold, the player pays the difference (2026-09-29).
+      const option = stackOfferOption(state, playerId, target, polishFreeStackTopUpGold(target.unit), "City Hall");
       if (option) {
         options.push(option);
       }
@@ -24683,7 +24848,11 @@ export function queueFreeBronzeReinforce(
  * take a free Stack (even with no Few bronze left to flip).
  */
 export function hasFreeBronzeStackTarget(state: GameState, playerId: PlayerId): boolean {
-  return stackOfferTargets(state, playerId, ["bronze"]).length > 0;
+  // A higher layer's top-up (the free part covers 1 gold) must be payable.
+  return stackOfferTargets(state, playerId, ["bronze"]).some((target) => {
+    const topUp = polishFreeStackTopUpGold(target.unit);
+    return topUp <= 0 || hasRecruitResources(state, playerId, { gold: topUp });
+  });
 }
 
 /**
@@ -24746,6 +24915,32 @@ export function hasFreeBronzeReinforceTarget(state: GameState, playerId: PlayerI
     const def = coreUnitDefinitions[unit.unitDefId];
     return Boolean(def && def.tier === "bronze" && getUnitSide(unit.unitDefId, "pack"));
   });
+}
+
+/**
+ * Polish Unlimited Stacks (USER RULING 2026-09-29): "multiple Necromancy can be
+ * used after one Combat, but 1 unit can be affected only by one". True when
+ * this army unit already took a Necromancy reinforce/Stack in the current
+ * after-combat window. Always false with the rule off (byte-identical).
+ */
+export function necromancyUnitSpent(state: GameState, playerId: PlayerId, armyUnitId: string): boolean {
+  if (!polishUnlimitedStacksEnabled(state)) {
+    return false;
+  }
+  const pending = state.adventure?.pendingNecromancy;
+  return Boolean(pending && pending.playerId === playerId && pending.affectedArmyUnitIds?.includes(armyUnitId));
+}
+
+/** Record a Necromancy upgrade on this unit for the current window (rule-gated). */
+export function markNecromancyUnitSpent(state: GameState, playerId: PlayerId, armyUnitId: string): void {
+  if (!polishUnlimitedStacksEnabled(state)) {
+    return;
+  }
+  const pending = state.adventure?.pendingNecromancy;
+  if (!pending || pending.playerId !== playerId) {
+    return;
+  }
+  pending.affectedArmyUnitIds = [...(pending.affectedArmyUnitIds ?? []), armyUnitId];
 }
 
 /**
@@ -24855,6 +25050,9 @@ export function queueNecromancyReinforce(
     if (!def || !packSide || !tierAllowed(def.tier) || !isUndeadUnitDefinition(unit.unitDefId)) {
       continue;
     }
+    if (necromancyUnitSpent(state, playerId, unit.id)) {
+      continue;
+    }
 
     // Half the printed gold (rounded down) applies first; all distinct Legion
     // vouchers then reduce what remains. Price and gate on the actual charge.
@@ -24882,6 +25080,7 @@ export function queueNecromancyReinforce(
   // Stack is really added (consumeCardId, like the reinforce options).
   for (const target of stackOfferTargets(state, playerId, allowedTiers.filter(tierAllowed))) {
     if (!isUndeadUnitDefinition(target.unit.unitDefId)) continue;
+    if (necromancyUnitSpent(state, playerId, target.unit.id)) continue;
     const option = stackOfferOption(
       state,
       playerId,

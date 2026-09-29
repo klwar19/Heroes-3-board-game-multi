@@ -509,7 +509,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
     target: { type: "friendly-unit" },
     tags: tags(
       "artifact.cards_of_prophecy",
-      "Choose one of your units. Until its activation in the next round, for its every attack the unit rolls 2 dice and resolves the HIGHER result. — OR — When you are about to roll any die, play this BEFORE the roll: that die is rolled 3 times and you resolve 1 chosen result.",
+      "You can play this card at the start of a Combat (or during your unit's activation). Choose one of your units. Until its activation in the next round, for its every attack the unit rolls 2 dice and resolves the HIGHER result. — OR — When you are about to roll any die, play this BEFORE the roll: that die is rolled 3 times and you resolve 1 chosen result.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -518,6 +518,8 @@ export const polishBalanceArtifactCards: CardLibrary = {
           label:
             "Your unit rolls 2 Attack dice and keeps the higher until its next activation",
           combatOnly: true,
+          // USER RULING 2026-09-29: "You can play this card at the start of a Combat."
+          combatStartOrActivation: true,
           target: { type: "friendly-unit" },
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -541,7 +543,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
   "artifact.shamans_puppet": reprint("artifact.shamans_puppet", {
     tags: tags(
       "artifact.shamans_puppet",
-      "Choose a unit. Until the end of the next combat round, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit.",
+      "You can play this card at the start of a Combat (or during your unit's activation). Choose a unit. Until the end of the next combat round, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -550,6 +552,8 @@ export const polishBalanceArtifactCards: CardLibrary = {
           label:
             "Unit rolls the lower of 2 Attack dice until the end of the next round",
           combatOnly: true,
+          // USER RULING 2026-09-29: "You can play this card at the start of a Combat."
+          combatStartOrActivation: true,
           target: { type: "enemy-unit" },
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -585,7 +589,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
     {
       tags: tags(
         "artifact.hourglass_of_the_evil_hour",
-        'If the enemy has positive morale, they gain negative. — OR — For this combat round, reroll once each "+1" result on your enemy\'s Attack die.',
+        'If the enemy has positive morale, they gain negative. — OR — You can play this card at the start of a Combat (or during your unit\'s activation): for this combat round, reroll once each "+1" result on your enemy\'s Attack die.',
       ),
       effect: {
         type: "CHOOSE_ONE",
@@ -598,6 +602,8 @@ export const polishBalanceArtifactCards: CardLibrary = {
             label:
               'For this combat round, reroll once each "+1" result on your enemy\'s Attack die',
             combatOnly: true,
+            // USER RULING 2026-09-29: "You can play this card at the start of a Combat."
+            combatStartOrActivation: true,
             effect: {
               type: "CREATE_ACTIVE_EFFECT",
               effect: {

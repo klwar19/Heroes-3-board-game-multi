@@ -1,42 +1,35 @@
 import { describe, expect, it } from "vitest";
 
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
-import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingEffect } from "@/data/factions/types";
-import { marketGoldValueOf } from "@/data/map/locations";
 
-import { queueNecromancyReinforce, reinforceCostFor } from "./adventure";
+import {
+  markNecromancyUnitSpent,
+  necromancyUnitSpent,
+  queueNecromancyReinforce,
+  reinforceCostFor,
+  settlementReinforceCostFor
+} from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { POLISH_UNIT_STACK_RULES, polishUnitStackCost } from "./polish-unit-stacks";
-import type { GameAction, GameState, ResourceCost } from "./state";
+import {
+  polishArmyUnitCanBuyStack,
+  polishFreeStackTopUpGold,
+  polishStackLayerPrice,
+  polishUnitStackCap,
+  polishUnitStackCost
+} from "./polish-unit-stacks";
+import type { GameAction, GameState } from "./state";
 
 /**
- * USER RULING (2026-08-12, verbatim):
- *   "Cost of stack should be: cost of reinforsment + nr of tier. fe. for Magi:
- *    11 + 2 = 13 (but now in game is 6+1) - so wrong"
- *
- * LEAD WITH THE FINDING: the price half of that report did NOT reproduce. HEAD
- * already charges a Tower Magi Stack 13 gold at the Citadel — the Pack (i.e.
- * REINFORCEMENT) price 11 plus the silver tier number 2 — and has since
- * 9a443726 (2026-07-16). What was missing is any test tying the Stack price to
- * the REINFORCEMENT price: the shipped cases pinned per-unit literals, so a
- * future edit could have re-based the price on the Few (recruit) side — the
- * "6 + 1" shape the report describes — with every existing test still green.
- * That is what this file closes, as an INVARIANT over the whole unit catalog
- * (CLAUDE.md rule #1a habit 5) rather than N more one-offs.
- *
- * The reading, stated once:
- *   one Stack = reinforceCostFor(no discounts)  +  the tier number in gold
- *   bronze 1 · silver 2 · gold 3 · azure counts as gold (3) — the same
- *   azure→gold convention the cap uses (POLISH_UNIT_STACK_RULES has no azure
- *   row). A recruited NEUTRAL card has no Few→Pack reinforcement at all, so its
- *   base is its own printed (recruit) cost — documented at the seam.
+ * USER RULING (2026-09-29) — supersedes the 2026-08-12 "reinforcement + tier"
+ * price: "Each stack cost +1 gold more then previous. So 1st cost 1 gold,
+ * second 2 gold etc." Counted PER UNIT CARD, tier and valuables ignored.
+ * New Polish test rule "polish-unlimited-stacks" removes the tier cap and adds
+ * two anti-farming limits (one Necromancy per unit per combat; one Pit Lords
+ * summoning per player per combat). Free Stack sources cover 1 gold. With Unit
+ * Stacks on, a Settlement's Few→Pack reinforcement costs Pack − Few.
  */
-
-/** The "nr of tier" the ruling names. Literal on purpose: an edit to the
- *  engine's POLISH_UNIT_STACK_RULES surcharges must fail this file. */
-const TIER_NUMBER = { bronze: 1, silver: 2, gold: 3 } as const;
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -60,8 +53,11 @@ function buildingWith(
   return buildingId;
 }
 
-/** A Tower table with the Citadel + silver dwelling, ready to reinforce/stack Magi. */
-function towerGame(seed: string, stacksOn = true): GameState {
+/** A Tower table with the Citadel + silver dwelling and a Pack of Magi. */
+function towerGame(
+  seed: string,
+  rules: { stacks?: boolean; unlimited?: boolean } = { stacks: true }
+): GameState {
   let state = createAdventureGameState({
     seed,
     startingBuildings: [],
@@ -73,7 +69,10 @@ function towerGame(seed: string, stacksOn = true): GameState {
       { id: "p1", name: "Solmyr", factionId: "tower", heroDefId: "solmyr" },
       { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
     ],
-    houseRules: { "polish-unit-stacks": stacksOn }
+    houseRules: {
+      "polish-unit-stacks": rules.stacks ?? false,
+      "polish-unlimited-stacks": rules.unlimited ?? false
+    }
   });
   state.pendingChoice = null;
   if (state.adventure) {
@@ -89,7 +88,7 @@ function towerGame(seed: string, stacksOn = true): GameState {
   ];
   state.players.p1.townTokens.population = true;
   state.players.p1.resources = { gold: 500, buildingMaterials: 100, valuables: 100 };
-  state.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "few" }];
+  state.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "pack" }];
   return state;
 }
 
@@ -97,192 +96,82 @@ function label(state: GameState, text: string): string | undefined {
   return getLegalActions(state, "p1").find((legal) => legal.label.includes(text))?.label;
 }
 
-describe("Polish Unit Stacks — a Stack costs the REINFORCEMENT price + the tier number", () => {
-  it("WORKED EXAMPLE (the ruling): Magi reinforce 11 gold, then a Stack 13 = 11 + 2", () => {
-    let state = towerGame("stack-price-magi");
-
-    // (a) The reinforcement price the ruling names, from the engine's own
-    //     reinforcement pricing (no discounts in this fixture).
-    expect(
-      reinforceCostFor(state, "p1", "u_magi", false, false, false),
-      "Tower Magi Few→Pack reinforcement = the printed Pack cost"
-    ).toEqual({ gold: 11 });
-
-    // ...and it is really CHARGED as 11 through the normal Population action.
-    expect(label(state, "Reinforce Magi to a pack")).toBeTruthy();
-    let gold = state.players.p1.resources.gold;
-    state = applyOk(state, {
-      type: "POPULATION_ACTION",
-      playerId: "p1",
-      purchases: [{ kind: "reinforce", unitDefId: "tower.magi", armyUnitId: "u_magi" }]
-    });
-    expect(state.players.p1.army[0].side).toBe("pack");
-    expect(gold - state.players.p1.resources.gold, "reinforcement really costs 11 gold").toBe(11);
-
-    // (b) One Stack on that same card = that 11 + the silver tier number 2.
-    expect(label(state, "Add Stack to Magi"), "the offer names the real price").toBe(
-      "Add Stack to Magi (13 gold)"
-    );
-    gold = state.players.p1.resources.gold;
-    state = applyOk(state, {
-      type: "POPULATION_ACTION",
-      playerId: "p1",
-      purchases: [{ kind: "stack", unitDefId: "tower.magi", armyUnitId: "u_magi" }]
-    });
-    expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold, "one Stack really costs 13 gold").toBe(gold - 13);
-    expect(11 + TIER_NUMBER.silver, "the ruling's arithmetic").toBe(13);
+function buyStack(state: GameState): GameState {
+  return applyOk(state, {
+    type: "POPULATION_ACTION",
+    playerId: "p1",
+    purchases: [{ kind: "stack", unitDefId: "tower.magi", armyUnitId: "u_magi" }]
   });
+}
 
-  it("CONTROL: the price is NOT built from the Few (recruit) side — not 6+1, not 6+2", () => {
-    // The reported "6+1" shape: Magi's FEW card prints 6 gold and bronze's tier
-    // number is 1. Neither the Few cost nor the bronze surcharge may enter the
-    // price of a silver Pack's Stack. This case fails the moment anyone re-bases
-    // the Stack price on the recruit side.
-    const state = towerGame("stack-price-magi-control");
-    expect(coreUnitDefinitions["tower.magi"].few!.cost, "the Few (recruit) cost the report quotes").toEqual({
-      gold: 6
-    });
-    const stack = polishUnitStackCost("tower.magi", "pack");
-    expect(stack).toEqual({ gold: 13 });
-    expect(stack!.gold).not.toBe(7); // few 6 + bronze 1
-    expect(stack!.gold).not.toBe(8); // few 6 + silver 2
-    expect(stack!.gold).not.toBe(19); // few 6 + pack 11 + silver 2 (the retired 2026-07-16 reading)
+describe("Polish Unit Stacks — escalating price (1st layer 1 gold, 2nd 2 gold …)", () => {
+  it("charges 1 then 2 gold for a silver Pack's two layers (not the old 13 = 11 + 2)", () => {
+    let state = towerGame("stack-ladder-magi");
+    expect(label(state, "Add Stack to Magi")).toBe("Add Stack to Magi (1 gold)");
+    let gold = state.players.p1.resources.gold;
+    state = buyStack(state);
+    expect(state.players.p1.army[0].stacks).toBe(1);
+    expect(gold - state.players.p1.resources.gold).toBe(1);
 
-    // ...and no OTHER surface prices it off the Few side either: with the rule
-    // on and the card still a Few, no Stack is sold at all.
+    expect(label(state, "Add Stack to Magi")).toBe("Add Stack to Magi (2 gold)");
+    gold = state.players.p1.resources.gold;
+    state = buyStack(state);
+    expect(state.players.p1.army[0].stacks).toBe(2);
+    expect(gold - state.players.p1.resources.gold).toBe(2);
+
+    // Silver cap 2 in the capped rule: no third layer is sold.
     expect(label(state, "Add Stack to Magi")).toBeUndefined();
   });
 
-  it("INVARIANT: every unit's Stack price is its reinforcement cost + the tier number", () => {
-    // Derived from the engine's OWN reinforcement pricing (reinforceCostFor),
-    // not a hand-copied table, so a change to either side fails here.
-    const state = towerGame("stack-price-invariant");
-    let checked = 0;
-    const wrong: string[] = [];
-    for (const [unitDefId, def] of Object.entries(coreUnitDefinitions)) {
-      if (!def.pack) {
-        continue;
-      }
-      const tier = def.tier === "azure" ? "gold" : def.tier;
-      const tierNumber = TIER_NUMBER[tier as keyof typeof TIER_NUMBER];
-      if (!tierNumber) {
-        continue;
-      }
-      state.players.p1.army = [{ id: "probe", unitDefId, side: "few" }];
-      const reinforce = reinforceCostFor(state, "p1", "probe", false, false, false);
-      if (!reinforce) {
-        continue;
-      }
-      const expected: ResourceCost = { ...reinforce, gold: (reinforce.gold ?? 0) + tierNumber };
-      const actual = polishUnitStackCost(unitDefId, "pack");
-      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-        wrong.push(`${unitDefId}: got ${JSON.stringify(actual)} want ${JSON.stringify(expected)}`);
-      }
-      checked += 1;
-    }
-    expect(wrong).toEqual([]);
-    expect(checked, "non-vacuity: the whole faction catalog is swept").toBeGreaterThan(100);
-  });
-
-  it("the engine's tier surcharge IS the tier number (bronze 1 · silver 2 · gold 3, azure→gold)", () => {
-    expect(POLISH_UNIT_STACK_RULES.bronze?.goldSurcharge).toBe(TIER_NUMBER.bronze);
-    expect(POLISH_UNIT_STACK_RULES.silver?.goldSurcharge).toBe(TIER_NUMBER.silver);
-    expect(POLISH_UNIT_STACK_RULES.gold?.goldSurcharge).toBe(TIER_NUMBER.gold);
-    // Azure has no row of its own: it is priced (and capped) as gold. A literal
-    // "nr of tier" reading would be 4 — the azure→gold convention is the
-    // shipped reading and is pinned here so a change is a conscious one.
-    expect(POLISH_UNIT_STACK_RULES.azure).toBeUndefined();
-    expect(
-      polishUnitStackCost("neutral.azure_dragons", "neutral"),
-      "azure Neutral: printed 45 gold + 3 (gold tier), + its printed 2 valuables"
-    ).toEqual({ gold: 48, valuables: 2 });
-  });
-
-  it("a recruited NEUTRAL card has no reinforcement, so its base is its own printed cost", () => {
-    // Documented reading (there is no Few→Pack for a Neutral card): the printed
-    // recruit cost stands in for "the reinforcement cost". Neutral Magi prints
-    // the same 11 gold as the Tower Pack, so it prices identically: 11 + 2.
-    expect(coreUnitDefinitions["neutral.magi"].neutral!.cost).toEqual({ gold: 11 });
-    expect(polishUnitStackCost("neutral.magi", "neutral")).toEqual({ gold: 13 });
-    // CONTROL: asking for the (nonexistent) Pack side of a Neutral-only card
-    // must yield no price at all rather than a silently wrong one.
+  it("prices per unit card, ignoring tier and printed valuables", () => {
+    expect(polishStackLayerPrice(0)).toBe(1);
+    expect(polishStackLayerPrice(4)).toBe(5);
+    // A gold-tier Pack that prints valuables: still just 1 gold for layer 1.
+    expect(polishUnitStackCost("castle.archangels", "pack")).toEqual({ gold: 1 });
+    expect(polishUnitStackCost("castle.griffins", "pack", 2)).toEqual({ gold: 3 });
+    expect(polishUnitStackCost("neutral.magi", "neutral")).toEqual({ gold: 1 });
+    // CONTROL: no Pack side on a Neutral-only card → no price at all.
     expect(polishUnitStackCost("neutral.azure_dragons", "pack")).toBeNull();
   });
 
-  it("every discounted Stack offer derives from that base (Necromancy half of Wraiths' 7 = 3)", () => {
-    // The half-price surfaces are NOT a second pricing: they halve the ruled
-    // base. Necromancy became Undead-only (5ec8e74b, v185), so Magi never get a
-    // Necromancy Stack; the odd Wraiths base (6 printed + bronze 1) proves the floor.
-    expect(polishUnitStackCost("necropolis.wraiths", "pack")).toEqual({ gold: 7 });
-    let state = towerGame("stack-price-necromancy");
-    state.players.p1.army = [
-      { id: "u_magi", unitDefId: "tower.magi", side: "pack" },
-      { id: "u_wraiths", unitDefId: "necropolis.wraiths", side: "pack" }
+  it("a Legion voucher still comes off the ladder price (min 0)", () => {
+    let state = towerGame("stack-ladder-legion");
+    state.players.p1.army[0].stacks = 1;
+    state.players.p1.recruitDiscounts = [
+      { cardId: "artifact.legs_of_legion", amount: 1, target: { kind: "stack", armyUnitId: "u_magi" } }
     ];
+    expect(label(state, "Add Stack to Magi")).toBe("Add Stack to Magi (1 gold)");
+    const gold = state.players.p1.resources.gold;
+    state = buyStack(state);
+    expect(gold - state.players.p1.resources.gold).toBe(1);
+    expect(state.players.p1.recruitDiscounts).toHaveLength(0);
+  });
+
+  it("Necromancy halves the ladder price (rounded down) for an Undead card", () => {
+    let state = towerGame("stack-ladder-necromancy");
+    state.players.p1.army = [{ id: "u_wraiths", unitDefId: "necropolis.wraiths", side: "pack", stacks: 2 }];
     state.players.p1.hand = ["ability.necromancy"];
     queueNecromancyReinforce(state, "p1", "basic", "ability.necromancy");
     pumpAdventureQueues(state);
-
-    expect(label(state, "Add a Stack to Magi"), "Magi are not Undead").toBeUndefined();
-    expect(label(state, "Add a Stack to Wraiths"), "half of the 7 base, rounded down").toBe(
-      "Add a Stack to Wraiths (3 gold)"
-    );
-    const gold = state.players.p1.resources.gold;
+    // Wraiths are bronze (cap 3): layer 3 costs 3 → floor(3 / 2) = 1.
     const pick = getLegalActions(state, "p1").find((legal) =>
-      legal.label.includes("Add a Stack to Wraiths (3 gold)")
-    )!;
-    state = applyOk(state, pick.action);
-    expect(state.players.p1.army[1].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(gold - 3);
-  });
-
-  it("a reserved Legion voucher still comes off the ruled base (13 − 4 = 9)", () => {
-    let state = towerGame("stack-price-legion");
-    state.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "pack" }];
-    state.players.p1.recruitDiscounts = [
-      { cardId: "artifact.legs_of_legion", amount: 4, target: { kind: "stack", armyUnitId: "u_magi" } }
-    ];
-    expect(label(state, "Add Stack to Magi")).toBe("Add Stack to Magi (9 gold)");
+      legal.label.includes("Add a Stack to Wraiths (1 gold)")
+    );
+    expect(pick).toBeTruthy();
     const gold = state.players.p1.resources.gold;
-    state = applyOk(state, {
-      type: "POPULATION_ACTION",
-      playerId: "p1",
-      purchases: [{ kind: "stack", unitDefId: "tower.magi", armyUnitId: "u_magi" }]
-    });
-    expect(state.players.p1.resources.gold).toBe(gold - 9);
-    expect(state.players.p1.recruitDiscounts, "the voucher is single-use").toHaveLength(0);
+    state = applyOk(state, pick!.action);
+    expect(state.players.p1.army[0].stacks).toBe(3);
+    expect(gold - state.players.p1.resources.gold).toBe(1);
   });
 
-  it("the ruled price is paid through the recruit path (Freelancer's Guild substitution)", () => {
-    // 13 gold owed, only 10 in the treasury: the Guild substitutes materials /
-    // valuables for the missing 3, exactly like any recruit purchase.
-    let state = towerGame("stack-price-guild");
-    state.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "pack" }];
-    state.players.p1.resources = { gold: 10, buildingMaterials: 10, valuables: 10 };
-    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
-    town.buildings = [...town.buildings, "stronghold.freelancers_guild"];
-    const before = { ...state.players.p1.resources };
-    state = applyOk(state, {
-      type: "POPULATION_ACTION",
-      playerId: "p1",
-      purchases: [{ kind: "stack", unitDefId: "tower.magi", armyUnitId: "u_magi" }]
-    });
-    const after = state.players.p1.resources;
-    const spentGold = before.gold - after.gold;
-    // The Guild substitutes at MARKET rates in whole lots (1 material = 1 gold,
-    // 1 valuable = 3 gold), so count the gold EQUIVALENT, not raw resource units.
-    const substituted =
-      (before.buildingMaterials - after.buildingMaterials) * marketGoldValueOf("buildingMaterials") +
-      (before.valuables - after.valuables) * marketGoldValueOf("valuables");
-    expect(state.players.p1.army[0].stacks, "the Stack was bought without 13 gold in hand").toBe(1);
-    expect(spentGold, "every gold coin is spent first").toBe(10);
-    expect(spentGold + substituted, "the full ruled price is still paid").toBe(13);
+  it("free Stack sources cover 1 gold: layer 1 free, layer 2 pays 1, layer 3 pays 2", () => {
+    expect(polishFreeStackTopUpGold({ stacks: 0 })).toBe(0);
+    expect(polishFreeStackTopUpGold({ stacks: 1 })).toBe(1);
+    expect(polishFreeStackTopUpGold({ stacks: 2 })).toBe(2);
   });
 
   it("CONTROL: with the rule off no Stack is priced or sold at all", () => {
-    const off = towerGame("stack-price-off", false);
-    off.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "pack" }];
+    const off = towerGame("stack-ladder-off", { stacks: false });
     expect(label(off, "Add Stack to Magi")).toBeUndefined();
     expect(
       applyAction(off, {
@@ -291,5 +180,65 @@ describe("Polish Unit Stacks — a Stack costs the REINFORCEMENT price + the tie
         purchases: [{ kind: "stack", unitDefId: "tower.magi", armyUnitId: "u_magi" }]
       }).errors[0]?.message
     ).toContain("not enabled");
+  });
+});
+
+describe("Polish Unlimited Stacks (test rule)", () => {
+  it("removes the tier cap: a silver Pack buys a 3rd layer for 3 gold", () => {
+    let state = towerGame("stack-unlimited", { stacks: true, unlimited: true });
+    state.players.p1.army[0].stacks = 2;
+    expect(polishUnitStackCap("tower.magi", "pack", state)).toBe(Number.POSITIVE_INFINITY);
+    expect(label(state, "Add Stack to Magi")).toBe("Add Stack to Magi (3 gold)");
+    const gold = state.players.p1.resources.gold;
+    state = buyStack(state);
+    expect(state.players.p1.army[0].stacks).toBe(3);
+    expect(gold - state.players.p1.resources.gold).toBe(3);
+  });
+
+  it("CONTROL: the capped rule stops the same card at 2 layers", () => {
+    const state = towerGame("stack-capped", { stacks: true, unlimited: false });
+    state.players.p1.army[0].stacks = 2;
+    expect(polishArmyUnitCanBuyStack(state.players.p1.army[0], state)).toBe(false);
+    expect(label(state, "Add Stack to Magi")).toBeUndefined();
+  });
+
+  it("CONTROL: Unlimited Stacks without Unit Stacks does nothing (cap stays printed)", () => {
+    const state = towerGame("stack-unlimited-alone", { stacks: false, unlimited: true });
+    expect(polishUnitStackCap("tower.magi", "pack", state)).toBe(2);
+  });
+
+  it("one Necromancy per unit per combat — only with Unlimited Stacks", () => {
+    for (const unlimited of [true, false]) {
+      const state = towerGame(`necro-once-${unlimited}`, { stacks: true, unlimited });
+      state.players.p1.army = [{ id: "u_wraiths", unitDefId: "necropolis.wraiths", side: "pack", stacks: 0 }];
+      state.players.p1.hand = ["ability.necromancy", "ability.necromancy"];
+      state.adventure!.pendingNecromancy = { playerId: "p1", remaining: 2, discountIds: [] };
+      markNecromancyUnitSpent(state, "p1", "u_wraiths");
+      expect(necromancyUnitSpent(state, "p1", "u_wraiths")).toBe(unlimited);
+      queueNecromancyReinforce(state, "p1", "basic", "ability.necromancy");
+      pumpAdventureQueues(state);
+      const offered = label(state, "Add a Stack to Wraiths");
+      if (unlimited) {
+        expect(offered, "the already-affected unit is not offered again").toBeUndefined();
+      } else {
+        expect(offered, "CONTROL: capped rule keeps today's behaviour").toBeTruthy();
+      }
+    }
+  });
+});
+
+describe("Settlement Few→Pack reinforcement with Unit Stacks: Pack − Few", () => {
+  it("Magi (Few 6, Pack 11) cost 5 gold instead of the half-Pack 6", () => {
+    const on = towerGame("settle-diff");
+    on.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "few" }];
+    expect(settlementReinforceCostFor(on, "p1", "u_magi")).toEqual({ gold: 5 });
+
+    // CONTROL: without Unit Stacks the settlement keeps half the Pack cost.
+    const off = towerGame("settle-diff-off", { stacks: false });
+    off.players.p1.army = [{ id: "u_magi", unitDefId: "tower.magi", side: "few" }];
+    expect(settlementReinforceCostFor(off, "p1", "u_magi")).toEqual(
+      reinforceCostFor(off, "p1", "u_magi", true, false, false)
+    );
+    expect(settlementReinforceCostFor(off, "p1", "u_magi")).toEqual({ gold: 6 });
   });
 });

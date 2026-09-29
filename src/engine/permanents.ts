@@ -12,7 +12,8 @@ import {
 } from "./adventure";
 import { mithrilCatapultAnyTargets, mithrilRoundStartBonus, mithrilWarMachineForged } from "./wog-era";
 import { isAdjacent } from "./battlefield";
-import { unitCells } from "./hex-footprint";
+import { unitCells, unitsAdjacent } from "./hex-footprint";
+import { rollCombatAttackDie } from "./forge";
 import { combatRoundStartWindowOpen, combatStartWindowOpen } from "./combat-timing";
 import { isHandLockedInCombat } from "./legal-actions";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
@@ -1112,6 +1113,68 @@ function enemiesOf(state: GameState, playerId: PlayerId): CombatUnitState[] {
   return livingUnits(state).filter((unit) => unit.controllerId !== playerId);
 }
 
+/** Lightning Generator: "choose a unit" — any living unit on the battlefield. */
+function lightningStrikeTargets(state: GameState): CombatUnitState[] {
+  return livingUnits(state).filter((unit) => unit.position >= 0);
+}
+
+/**
+ * Rolls the Lightning Generator's Attack die at the chosen unit. "+1": that
+ * unit takes the damage. "0": a unit adjacent to it takes the damage (the
+ * owner picks when several are adjacent). "-1": nothing. Returns true when the
+ * "0" adjacent pick was opened (the queue waits for it).
+ */
+function lightningStrike(state: GameState, playerId: PlayerId, targetUnitId: UnitId, amount: number): boolean {
+  const combat = state.combat;
+  const target = combat?.units[targetUnitId];
+  if (!combat || !target || !isAlive(target)) {
+    return false;
+  }
+  const name = warMachineName(state, playerId);
+  const roll = rollCombatAttackDie(state);
+  const face = roll > 0 ? `+${roll}` : `${roll}`;
+  const neighbours =
+    roll === 0
+      ? lightningStrikeTargets(state).filter((unit) => unit.id !== target.id && unitsAdjacent(combat, target, unit))
+      : [];
+  const caption =
+    roll === 1
+      ? `${target.cardName} takes ${amount} damage!`
+      : roll === 0
+        ? neighbours.length > 0
+          ? `A unit adjacent to ${target.cardName} takes ${amount} damage!`
+          : "No unit adjacent — no effect."
+        : "No effect.";
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: target.id,
+    targetUnitId: target.id,
+    abilityId: "war-machine-lightning-roll",
+    message: `${name} rolls ${face} at ${target.cardName}: ${caption}`,
+    dice: { rolls: [roll], success: roll === 1 || neighbours.length > 0, label: name, caption },
+  });
+  if (roll === 1) {
+    applyWarMachineDamage(state, playerId, target.id, amount);
+    return false;
+  }
+  if (neighbours.length === 1) {
+    applyWarMachineDamage(state, playerId, neighbours[0]!.id, amount);
+    return false;
+  }
+  if (neighbours.length > 1 && combat.warMachineRound) {
+    combat.warMachineRound.firstTargetUnitId = target.id;
+    openWarMachineTargetChoice(
+      state,
+      playerId,
+      `${name} rolled "0": choose the unit adjacent to ${target.cardName} that takes ${amount} damage.`,
+      neighbours.map((unit) => unit.id),
+      amount
+    );
+    return true;
+  }
+  return false;
+}
+
 /**
  * The living enemy unit(s) of `playerId` with the lowest effective initiative —
  * the Ballista's and Artillery's legal targets. Empty when no enemy is alive; a
@@ -1358,6 +1421,13 @@ export function startWarMachineRound(state: GameState): void {
     ...(playerCanUseBallisticsRoundStartBombard(state, playerId)
       ? [{ playerId, cardId: BALLISTICS_ABILITY_ID, handBallistics: true }]
       : []),
+    // Henrietta I "can be played at the start of Combat": asked once, in combat
+    // round 1 before any unit acts, while the holder has a Halflings/Grenadiers
+    // unit for it to rally (the from-hand play only reaches the seat whose
+    // unit is active first).
+    ...(playerCanStartHenriettaRally(state, playerId)
+      ? [{ playerId, cardId: HENRIETTA_RALLY_ID, henriettaRally: true }]
+      : []),
     // Henrietta VI may be established at the start of any combat round. Once
     // accepted it leaves the hand for the Ongoing tray and stops re-prompting.
     ...(playerCanStartHenriettaHalflings(state, playerId)
@@ -1533,6 +1603,7 @@ export function playerCanUseBasicArtilleryVolley(state: GameState, playerId: Pla
 const BALLISTA_CARD_ID = "war_machine.ballista" as CardId;
 const BALLISTICS_ABILITY_ID = "ability.ballistics" as CardId;
 const HENRIETTA_HALFLINGS_ID = "specialty.henrietta.6" as CardId;
+export const HENRIETTA_RALLY_ID = "specialty.henrietta.1" as CardId;
 /** Polish Balance Pack: the reprinted Ballistics EXPERT doubles a Catapult volley. */
 export const BALLISTICS_CATAPULT_SHOTS = 2;
 
@@ -1666,6 +1737,34 @@ function playerCanStartForgeOverclock(state: GameState, playerId: PlayerId): boo
       !isHandLockedInCombat(state, playerId) &&
       combatRoundStartWindowOpen(state.combat) &&
       player.hand.includes(MULLICH_OVERCLOCK_ID),
+  );
+}
+
+/**
+ * Henrietta I (start of Combat): combat round 1 before any unit acts (the
+ * shared combatStartWindowOpen read the from-hand offer uses), the card in a
+ * hand that may play cards, and at least one living friendly unit the rally
+ * would touch (printed-name match, the same read the resolution uses) — with
+ * none the ask would be a dead prompt.
+ */
+export function playerCanStartHenriettaRally(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  const combat = state.combat;
+  const card = cardLibrary[HENRIETTA_RALLY_ID];
+  const rally = card?.effect.type === "CHOOSE_ONE" ? card.effect.options[0]?.effect : undefined;
+  if (
+    !combat ||
+    combat.round !== 1 ||
+    !player ||
+    rally?.type !== "HALFLINGS_RALLY" ||
+    isHandLockedInCombat(state, playerId) ||
+    !combatStartWindowOpen(combat) ||
+    !player.hand.includes(HENRIETTA_RALLY_ID)
+  ) {
+    return false;
+  }
+  return livingUnits(state).some(
+    (unit) => unit.controllerId === playerId && rally.unitNames.includes(unit.name),
   );
 }
 
@@ -2081,6 +2180,26 @@ export function processWarMachineRound(state: GameState): void {
       return;
     }
 
+    // Henrietta I: an ASK to play the card from hand at the start of the
+    // combat. Accepting is resolved by the reducer as the ordinary PLAY_CARD
+    // (resolveHenriettaRallyOffer), so the rally, the Ongoing tray and the log
+    // match a from-hand play exactly. Re-checked here: a copy already played
+    // (or a window already closed) drops out instead of opening a dead prompt.
+    if (head.henriettaRally) {
+      if (!playerCanStartHenriettaRally(state, playerId)) {
+        queue.pending.shift();
+        continue;
+      }
+      openWarMachineOffer(
+        state,
+        playerId,
+        "Halflings I: for this combat, give all your Halflings/Grenadiers +1 Defense (and your neutral ones +1 Health)?",
+        "Play Halflings I",
+        "Skip",
+      );
+      return;
+    }
+
     if (head.henriettaHalflings) {
       if (!playerCanStartHenriettaHalflings(state, playerId)) {
         queue.pending.shift();
@@ -2297,23 +2416,26 @@ export function processWarMachineRound(state: GameState): void {
       return;
     }
 
-    // Forge Lightning Generator: a free shot at any enemy unit the owner picks
-    // (flat war-machine damage, so Defense never applies).
-    if (roundStart.kind === "damage-chosen-enemy") {
-      const candidates = enemiesOf(state, playerId);
+    // Forge Lightning Generator: the owner chooses a unit (any side, printed
+    // "choose a unit"), then the Attack die decides where the bolt lands —
+    // resolved in resolveWarMachineTarget / lightningStrike.
+    if (roundStart.kind === "lightning-strike") {
+      const candidates = lightningStrikeTargets(state);
       if (candidates.length === 0) {
         queue.pending.shift();
         continue;
       }
       if (candidates.length === 1) {
-        applyWarMachineDamage(state, playerId, candidates[0].id, roundStart.amount);
+        if (lightningStrike(state, playerId, candidates[0]!.id, roundStart.amount)) {
+          return;
+        }
         queue.pending.shift();
         continue;
       }
       openWarMachineTargetChoice(
         state,
         playerId,
-        `${name}: choose which enemy unit takes ${roundStart.amount} damage.`,
+        `${name}: choose a unit and roll the Attack die — on "+1" it takes ${roundStart.amount} damage, on "0" a unit adjacent to it takes ${roundStart.amount} damage.`,
         candidates.map((unit) => unit.id),
         roundStart.amount
       );
@@ -2679,6 +2801,22 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
   }
 
   const roundStart = activeWarMachineEntry(state, playerId)?.roundStart ?? null;
+
+  // Lightning Generator: the first pick rolls the die; a "0" with several
+  // adjacent units opens a second pick (firstTargetUnitId marks it), which
+  // takes the bolt directly.
+  if (roundStart?.kind === "lightning-strike") {
+    if (queue.firstTargetUnitId) {
+      queue.firstTargetUnitId = null;
+      applyWarMachineDamage(state, playerId, targetUnitId, amount);
+    } else if (lightningStrike(state, playerId, targetUnitId, amount)) {
+      return;
+    }
+    queue.pending.shift();
+    processWarMachineRound(state);
+    return;
+  }
+
   const isSplash = roundStart?.kind === "pay-to-splash";
 
   if (isSplash && !queue.firstTargetUnitId) {

@@ -876,7 +876,13 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "AFK_VOTE_STARTED":
       return event.message;
     case "AFK_VOTE_CAST":
-      return `${playerName(state, event.playerId)} votes to ${event.vote === "kick" ? "kick the AFK player" : "keep waiting"}.`;
+      return `${playerName(state, event.playerId)} votes to ${
+        event.vote === "kick"
+          ? "remove the player's seat"
+          : event.vote === "ai"
+            ? "let the computer take over the seat"
+            : "keep waiting"
+      }.`;
     case "AFK_VOTE_RESOLVED":
       return event.message;
     case "AFK_AUTO_KICKED":

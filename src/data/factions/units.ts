@@ -1520,7 +1520,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "bronze",
     type: "ranged",
     few: { attack: 2, defense: 0, health: 3, initiative: 3, cost: { gold: 2 }, abilities: [], cardImage: "/assets/units-forge-bronze-grunts-few.webp" },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 4 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-pack.webp" },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 3 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 5 }, abilities: ["attack-die-reroll"], abilityText: "[unit_attack] You can reroll every \"0\" on this unit's Attack die.", cardImage: "/assets/units-forge-bronze-grunts-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {

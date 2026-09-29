@@ -258,7 +258,7 @@ describe("Stronghold content", () => {
       type: "HALL_OF_VALHALLA",
       amount: 1
     });
-    expect(faction.heroes).toEqual(["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog"]);
+    expect(faction.heroes).toEqual(["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog", "jabarkas"]);
 
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];

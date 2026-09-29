@@ -16,6 +16,7 @@ import {
   AFK_REASK_MS,
   awaitedIdleMillis,
   gamePaused,
+  isComputerPlayer,
   pauseClockNow,
   pausedMillis,
   pauseOverrideAvailableAt,
@@ -4653,26 +4654,44 @@ export function AfkVotePanel({
 
   function renderVotePanel() {
     const vote = afk?.vote ?? null;
+    // A DEPARTURE vote ("Leave game") has its own panel that also runs on open
+    // tables — see LeaveGameVotePanel (leave-game-panel.tsx).
+    if (vote?.kind === "left") {
+      return null;
+    }
     if (vote) {
     const targetName = state.players[vote.targetPlayerId]?.name ?? vote.targetPlayerId;
     const myVote = vote.votes[viewerPlayerId];
-    const canVote = viewerLive && viewerPlayerId !== vote.targetPlayerId && !myVote;
     const kicks = Object.values(vote.votes).filter((entry) => entry === "kick").length;
-    const needed = liveSeats.filter((seat) => seat !== vote.targetPlayerId).length;
+    const takeovers = Object.values(vote.votes).filter((entry) => entry === "ai").length;
+    const needed = liveSeats.filter((seat) => seat !== vote.targetPlayerId && !isComputerPlayer(state, seat)).length;
+    // Kick and AI each need every voter; on a full split voters may re-vote.
+    const split = kicks + takeovers >= needed && kicks > 0 && takeovers > 0;
+    const canVote = viewerLive && viewerPlayerId !== vote.targetPlayerId && (!myVote || split);
     return (
       <div className="afkVotePanel" role="dialog" aria-label="AFK vote">
         <Hourglass aria-hidden="true" size={14} />
         <span>
-          <strong>{targetName}</strong> seems to be away — kick them from the game? ({kicks}/{needed} votes)
+          <strong>{targetName}</strong> seems to be away — kick them, or let the computer take over their seat? (
+          {kicks + takeovers}/{needed} votes{takeovers > 0 ? `, ${takeovers} for AI` : ""})
         </span>
         {canVote ? (
           <span className="afkVoteButtons">
             <button
               className="commandButton danger"
               type="button"
+              title="Remove their seat from the game. Needs every player's Kick vote."
               onClick={() => onAction({ type: "CAST_AFK_VOTE", playerId: viewerPlayerId, vote: "kick" })}
             >
               Kick
+            </button>
+            <button
+              className="commandButton"
+              type="button"
+              title="A computer player takes over their seat from this moment. Needs every player's AI vote."
+              onClick={() => onAction({ type: "CAST_AFK_VOTE", playerId: viewerPlayerId, vote: "ai" })}
+            >
+              AI takes over
             </button>
             <button
               className="commandButton"
@@ -4736,6 +4755,22 @@ export function AfkVotePanel({
             }}
           >
             Confirm vote
+          </button>
+          <button
+            className="commandButton"
+            type="button"
+            title="Open the vote proposing that a computer player takes over their seat instead of removing it."
+            onClick={() => {
+              onAction({
+                type: "START_AFK_VOTE",
+                playerId: viewerPlayerId,
+                targetPlayerId: pendingKickTarget,
+                vote: "ai"
+              });
+              setPendingKickTarget(null);
+            }}
+          >
+            Vote: AI takes over
           </button>
           <button className="commandButton" type="button" onClick={() => setPendingKickTarget(null)}>
             Cancel

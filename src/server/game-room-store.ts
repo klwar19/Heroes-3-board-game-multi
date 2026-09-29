@@ -49,6 +49,8 @@ import {
   applyUndoMove,
   clearUndoHistory,
   recordUndoSnapshot,
+  trackDuelUndo,
+  undoTrackingMark,
   undoModeEnabled
 } from "@/server/undo-history";
 import { prepareSinglePlayerLoad, singlePlayerSaveAccess } from "@/server/single-player-save";
@@ -605,6 +607,9 @@ export function submitRoomAction(
   // otherwise). Done before applyAction so an undo rolls back exactly this
   // action (and any AI settle that rides with it).
   recordUndoSnapshot(roomId, current.state);
+  // 1v1 Undo: note the random-draw count so the safe-undo history can tell
+  // whether this transaction rolled dice / used randomness (never undoable).
+  const undoMark = undoTrackingMark();
 
   // Fresh crypto entropy per action: every die roll, shuffle and Ⅱ–Ⅲ tile flip is
   // genuinely unpredictable and non-reproducible from the game seed (true random
@@ -656,6 +661,10 @@ export function submitRoomAction(
   } else {
     settledState = settleComputerForLiveAction(afkSettledState);
   }
+
+  // 1v1 Undo: record/lock the safe-undo history and stamp the public
+  // `undoStatus` on the state about to be committed (no-op when the option is off).
+  trackDuelUndo(roomId, current.state, action, settledState, undoMark, result.state);
 
   // The replay's after-state is the state the room COMMITS (post AFK-drive /
   // computer settle), never the bare reducer result: the next entry hashes the
@@ -757,7 +766,10 @@ function undoRoomAction(
   if (!actorIsRoomParticipant(current.state, actorClientId, actorUserId)) {
     return undoRejection(current, "Only a member of this room can undo.");
   }
-  const outcome = applyUndoMove(roomId, current.state, playerId);
+  const outcome = applyUndoMove(roomId, current.state, playerId, {
+    ...(actorClientId ? { clientId: actorClientId } : {}),
+    ...(actorUserId ? { userId: actorUserId } : {})
+  });
   if (!outcome.undone) {
     return undoRejection(current, outcome.reason);
   }

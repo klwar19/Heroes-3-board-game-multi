@@ -219,8 +219,10 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     const field = injectSettlement(state, "p1", true);
     field.settlementResource = "gold";
     state.players.p1.production.gold = 7;
+    // Escalating Stack price (USER RULING 2026-09-29): the card's 3rd layer
+    // costs 3 gold, so half rounded up = 2 (rounding down would charge 1).
     state.players.p2.army = [
-      { id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack" }
+      { id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack", stacks: 2 }
     ];
     state.players.p2.resources.gold = 10;
 
@@ -238,7 +240,7 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     );
 
     expect(state.players.p2.resources.gold).toBe(8);
-    expect(state.players.p2.army[0].stacks).toBe(1);
+    expect(state.players.p2.army[0].stacks).toBe(3);
     expect(field.flagOwnerId).toBe("p2");
     expect(field.settlementResource).toBeNull();
     expect(state.players.p1.production.gold).toBe(2);

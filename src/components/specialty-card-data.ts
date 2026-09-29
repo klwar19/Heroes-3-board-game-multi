@@ -30,12 +30,15 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   korbac: "/assets/specialty-card/icon-korbac-dragon_flies.webp", // Dragon Flies
   verdish: "/assets/specialty-card/icon-verdish-first_aid_tent.webp", // First Aid Tent
   piquedram: "/assets/specialty-card/icon-piquedram-gargoyles.webp", // Gargoyles
-  // Cuthbert's specialty IS the Weakness spell: its SPELL SYMBOL in the same
-  // cartouche format as Stone Skin / Cure (scripts/build-cuthbert-weakness-icon.mjs),
-  // never the whole Weakness spell card.
-  cuthbert: "/assets/specialty-card/icon-weakness.webp",
-  kastore: "/game-tokens/necropolis-heroes/specialty-kastore-sorcery.webp",
-  isra: "/game-tokens/necropolis-heroes/specialty-isra-necromancy.webp",
+  // Cuthbert's specialty IS the Weakness spell: the printed Weakness SYMBOL
+  // alone (crouching knight, dropped sword, ribbon + shell) exactly as on his
+  // and Olema's printed cards — never the spell card's cartouche.
+  // These five symbols are keyed off real printed cards by
+  // scripts/build-specialty-card-faces.mjs (the same cut their cards carry).
+  cuthbert: "/assets/specialty-card/icon-weakness-symbol.webp",
+  kastore: "/assets/specialty-card/icon-kastore-sorcery.webp", // Sorcery (ability card picture)
+  isra: "/assets/specialty-card/icon-isra-necromancy.webp", // Necromancy (Vidomina's printed symbol)
+  jabarkas: "/assets/specialty-card/icon-jabarkas-orcs.webp", // Orcs (cut from the real unit card)
   emperor_of_mankind: "/assets/warhammer/icons/specialty-emperor-protects.webp",
   roboute_guilliman: "/assets/warhammer/icons/specialty-codex-astartes.webp",
   rogal_dorn: "/assets/warhammer/icons/specialty-praetorian-bulwark.webp",
@@ -59,7 +62,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   cassiopeia: "/assets/units-oceanid-portrait.webp", // Oceanids (Cove)
   lorelei: "/assets/units-harpy-portrait.webp", // Harpies (Dungeon)
   dace: "/assets/specialty-card/icon-dace-minotaur.webp", // Minotaur from the game's Dungeon unit card
-  darkstorn: "/assets/specialty-card/icon-stone_skin.webp", // Stone Skin spell
+  darkstorn: "/assets/specialty-card/icon-darkstorn-stone_skin.webp", // Stone Skin (Merist's printed symbol)
   tarnum_dungeon: "/assets/units-black_dragon-portrait.webp", // Dragons (Dungeon)
   tarnum_fortress: "/assets/units-basilisk-portrait.webp", // Basilisks (Fortress)
   tarnum_rampart: "/assets/units-sharpshooter-portrait.webp", // Sharpshooters (Rampart)
@@ -180,7 +183,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // heroes.thelazy.net, same script) — not the First Aid Tent war-machine emblem
   // (abilities-first_aid.webp) she used to (wrongly) borrow.
   astra: "/assets/specialty-card/icon-cure.webp", // Cure spell icon
-  uland: "/assets/specialty-card/icon-cure.webp", // Cure spell icon
+  uland: "/assets/specialty-card/icon-uland-cure.webp", // Cure (Astra's printed symbol)
   // Aoko's Leyline Mending IS a heal/cleanse set (the generic medic wiring), so
   // she shares the Cure SPELL icon like Astra.
   aoko: "/assets/specialty-card/icon-cure.webp",
@@ -214,7 +217,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Ignatius / Olema (Gamefound preview): the Familiars imp picture cut from his
   // card art, and the Weakness SPELL SYMBOL (never the whole card), as printed.
   ignatius: "/assets/specialty-card/icon-ignatius-familiars.webp", // Familiars (imp)
-  olema: "/assets/specialty-card/icon-weakness.webp", // Weakness spell symbol
+  olema: "/assets/specialty-card/icon-weakness-symbol.webp", // Weakness symbol (as printed on her card)
   // Melodia's specialty IS Fortune — the actual Fortune SPELL icon
   // (scripts/fetch-fortune-icon.py), not the generic Luck skill emblem.
   melodia: "/assets/specialty-card/icon-fortune.webp", // Fortune spell icon

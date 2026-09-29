@@ -1,5 +1,15 @@
-import type { GameState, PlayerId } from "@/engine";
-import { appendEvent } from "@/engine";
+import type { GameAction, GameState, PlayerId, UndoStatus } from "@/engine";
+import {
+  actionNeverUndoable,
+  appendEvent,
+  duelSeats,
+  gamePaused,
+  duelUndoBlockReason,
+  gameProgressKey,
+  hiddenInfoKey,
+  randomDrawCount,
+  undoStatusStamp
+} from "@/engine";
 
 /**
  * OPTIONAL "Undo moves" mode (`GameSetupOptions.undoMoves`, default OFF) — a
@@ -39,9 +49,18 @@ export const UNDO_HISTORY_LIMIT = 10;
 // roomId -> stack of serialized pre-action states (top = most recent).
 const undoHistories = new Map<string, GameState[]>();
 
-/** Whether the OPTIONAL undo mode is ON for this game (reads the frozen flag). */
-export function undoModeEnabled(state: GameState | null | undefined): boolean {
+/** Whether the testing "Undo moves" mode is ON (rewind anything, anyone). */
+export function testingUndoEnabled(state: GameState | null | undefined): boolean {
   return Boolean(state?.adventure?.undoMoves);
+}
+
+/**
+ * Whether ANY undo mode is ON for this game (reads the frozen flags): the
+ * testing "Undo moves" mode, or the 1v1 "Undo button" (`adventure.duelUndo`).
+ * The transports gate UNDO_MOVE on this; `applyUndoMove` picks the mode.
+ */
+export function undoModeEnabled(state: GameState | null | undefined): boolean {
+  return Boolean(state?.adventure?.undoMoves || state?.adventure?.duelUndo);
 }
 
 /**
@@ -83,7 +102,7 @@ function clone(state: GameState): GameState {
  * {@link UNDO_HISTORY_LIMIT} (oldest dropped).
  */
 export function recordUndoSnapshot(roomId: string, preActionState: GameState): void {
-  if (!undoModeEnabled(preActionState)) {
+  if (!testingUndoEnabled(preActionState)) {
     // Also drop any stale history if the option was somehow turned off (e.g. a
     // reset into a non-undo game reusing the room id) so nothing lingers.
     undoHistories.delete(roomId);
@@ -121,11 +140,218 @@ export function popUndoSnapshot(roomId: string): GameState | null {
 /** Forget a room's undo history (room close / reset / ranked force-close). */
 export function clearUndoHistory(roomId: string): void {
   undoHistories.delete(roomId);
+  duelHistories.delete(roomId);
 }
 
 /** Test-only: wipe every room's undo history so specs start from a clean slate. */
 export function __resetUndoHistoriesForTests(): void {
   undoHistories.clear();
+  duelHistories.clear();
+}
+
+// ---------------------------------------------------------------------------
+// 1v1 Undo (`adventure.duelUndo`) — a NORMAL-play rule, unlike the testing mode
+// above. Safety rules live in src/engine/undo-safety.ts; this is the per-room
+// server history that enforces them. Like the testing stack it never enters
+// state (only the public `undoStatus` summary does), so no hidden information
+// is broadcast.
+// ---------------------------------------------------------------------------
+
+/** One undoable step: the pre-action state, who acted, and the resulting position. */
+type DuelUndoEntry = { pre: GameState; actorId: PlayerId; postKey: string };
+
+// roomId -> the CURRENT actor's consecutive safe steps (top = most recent).
+const duelHistories = new Map<string, DuelUndoEntry[]>();
+
+/** Read before applyAction: the random-draw mark `trackDuelUndo` compares against. */
+export function undoTrackingMark(): number {
+  return randomDrawCount();
+}
+
+function stampUndoStatus(state: GameState, stack: readonly DuelUndoEntry[], lockedReason?: string): void {
+  const top = stack.at(-1);
+  const status: UndoStatus = {
+    playerId: top?.actorId ?? null,
+    depth: stack.length,
+    atEvent: undoStatusStamp(state),
+    ...(lockedReason ? { lockedReason } : {})
+  };
+  state.undoStatus = status;
+}
+
+/** The acting seat of an action, when it names one. */
+function actionSeat(action: GameAction): PlayerId | null {
+  const candidate = (action as { playerId?: unknown }).playerId;
+  return typeof candidate === "string" ? candidate : null;
+}
+
+/**
+ * Post-commit bookkeeping for the 1v1 Undo, called by every transport right
+ * after an action (plus its AFK drive / computer settle) succeeded, BEFORE the
+ * settled state is persisted + broadcast. `pre` is the committed state the
+ * action ran against, `post` the settled state (its `undoStatus` is stamped
+ * here), `mark` the `undoTrackingMark()` read just before applyAction and
+ * `reducerState` the bare applyAction result (before the AFK drive / computer
+ * settle), when the transport has it.
+ *
+ *  - No game change (chat, membership, a vote that changes no game state):
+ *    the history is left untouched.
+ *  - A game change no seat of the duel made (no acting seat): nothing before
+ *    it can be undone any more — the history is cleared.
+ *  - Randomness drawn, hidden information revealed to the actor, or the
+ *    computer / a forced resolution acting inside the same transaction (the
+ *    settle after the seat's action changed the game): the history is cleared
+ *    and locked with the reason (nothing before it can be undone any more).
+ *  - Otherwise the step is pushed; an action by the OTHER seat, or a position
+ *    that no longer matches the top entry (an unrecorded computer beat),
+ *    first clears the older steps.
+ * No-op (and no state change) on games without the option.
+ */
+export function trackDuelUndo(
+  roomId: string,
+  pre: GameState,
+  action: GameAction,
+  post: GameState,
+  mark: number,
+  reducerState?: GameState
+): void {
+  if (!pre.adventure?.duelUndo && !post.adventure?.duelUndo) {
+    duelHistories.delete(roomId);
+    return;
+  }
+  const blocked = duelUndoBlockReason(post);
+  if (blocked) {
+    duelHistories.delete(roomId);
+    if (blocked !== "off") stampUndoStatus(post, [], blocked);
+    return;
+  }
+  const stack = duelHistories.get(roomId) ?? [];
+  const actorId = actionSeat(action);
+  const preKey = gameProgressKey(pre);
+  const postKey = gameProgressKey(post);
+  if (preKey === postKey) {
+    // No game change: keep whatever history exists.
+    stampUndoStatus(post, stack, stack.length === 0 ? pre.undoStatus?.lockedReason : undefined);
+    return;
+  }
+  if (!actorId || !duelSeats(post)?.includes(actorId)) {
+    // The game changed without a duel seat acting: the recorded steps can no
+    // longer be reached (applyUndoMove's chain check would refuse them), so
+    // drop them and say so instead of showing a live button the server refuses.
+    duelHistories.delete(roomId);
+    stampUndoStatus(post, [], "The game moved on — nothing to undo.");
+    return;
+  }
+  const randomUsed = randomDrawCount() !== mark;
+  const revealed = hiddenInfoKey(pre, actorId) !== hiddenInfoKey(post, actorId);
+  const tableDecision = actionNeverUndoable(action.type);
+  // The AFK drive / computer settle that rode with this action changed the
+  // game (a computer opponent's PvP beat): the opponent acted — rule 3.
+  const othersActed =
+    reducerState !== undefined && reducerState !== post && gameProgressKey(reducerState) !== postKey;
+  if (randomUsed || revealed || tableDecision || othersActed) {
+    duelHistories.delete(roomId);
+    stampUndoStatus(
+      post,
+      [],
+      randomUsed
+        ? "The last action rolled dice or used a random result — it cannot be undone."
+        : revealed
+          ? "The last action revealed hidden information (a card, tile, trap or a reaction) — it cannot be undone."
+          : tableDecision
+            ? "The last action was a table decision (leave, vote, concede, retake) — it cannot be undone."
+            : "Your opponent has acted since — nothing to undo."
+    );
+    return;
+  }
+  const top = stack.at(-1);
+  if (top && (top.actorId !== actorId || top.postKey !== preKey)) {
+    stack.length = 0;
+  }
+  stack.push({ pre: clone(pre), actorId, postKey });
+  while (stack.length > UNDO_HISTORY_LIMIT) {
+    stack.shift();
+  }
+  duelHistories.set(roomId, stack);
+  stampUndoStatus(post, stack);
+}
+
+/**
+ * Whether the member acting may act for `playerId`'s seat: on a HOSTED table
+ * the verified account / tab must be the member seated there; an OPEN table
+ * (the single-browser seat switcher model) lets any client act as any seat.
+ */
+function actorHoldsSeat(state: GameState, playerId: PlayerId, actor: UndoActor): boolean {
+  const room = state.room;
+  if (!room || !room.hosted) return true;
+  const members = room.members ?? [];
+  if (members.length === 0) return true;
+  return members.some(
+    (member) =>
+      member.seat === playerId &&
+      ((actor.userId !== undefined && member.userId === actor.userId) ||
+        (actor.clientId !== undefined && member.clientId === actor.clientId))
+  );
+}
+
+export type UndoActor = { clientId?: string; userId?: string };
+
+function applyDuelUndo(roomId: string, state: GameState, playerId: PlayerId, actor: UndoActor): UndoOutcome {
+  const blocked = duelUndoBlockReason(state);
+  if (blocked) {
+    return { undone: false, reason: blocked === "off" ? "Undo is off for this game." : blocked };
+  }
+  if (!duelSeats(state)?.includes(playerId)) {
+    return { undone: false, reason: "Only a player of this 1v1 game can undo." };
+  }
+  if (!actorHoldsSeat(state, playerId, actor)) {
+    return { undone: false, reason: "You can only undo for your own seat." };
+  }
+  // A paused table is frozen for every game change (the engine refuses moves
+  // while paused; UNDO_MOVE bypasses the engine, so the same rule lives here).
+  if (gamePaused(state)) {
+    return { undone: false, reason: "The table is paused — undo once it resumes." };
+  }
+  const stack = duelHistories.get(roomId);
+  const top = stack?.at(-1);
+  if (!stack || !top) {
+    return { undone: false, reason: state.undoStatus?.lockedReason ?? "There is nothing to undo." };
+  }
+  if (top.actorId !== playerId) {
+    return {
+      undone: false,
+      reason: `Only ${state.players[top.actorId]?.name ?? top.actorId} can undo — it was their move.`
+    };
+  }
+  if (gameProgressKey(state) !== top.postKey) {
+    duelHistories.delete(roomId);
+    return { undone: false, reason: "The game has moved on since that action — it can no longer be undone." };
+  }
+  stack.pop();
+  if (stack.length === 0) {
+    duelHistories.delete(roomId);
+  }
+  const restored = clone(top.pre);
+  // Table data belongs to the CURRENT timeline: membership/chat, the public
+  // feed, AFK clocks, pause, the reset vote and emotes are never rolled back.
+  restored.room = state.room;
+  restored.eventLog = state.eventLog;
+  restored.eventCounter = state.eventCounter;
+  restored.afk = state.afk;
+  restored.pause = state.pause;
+  restored.resetVote = state.resetVote;
+  restored.tableReactions = state.tableReactions;
+  restored.tableReactionSeq = state.tableReactionSeq;
+  const next = clone(restored);
+  const name = next.players[playerId]?.name ?? "A player";
+  appendEvent(next, {
+    type: "MOVES_UNDONE",
+    playerId,
+    count: 1,
+    message: `${name} took back their last move (1v1 undo).`
+  });
+  stampUndoStatus(next, stack);
+  return { undone: true, state: next, count: 1 };
 }
 
 export type UndoOutcome =
@@ -143,9 +369,14 @@ export type UndoOutcome =
 export function applyUndoMove(
   roomId: string,
   state: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
+  /** The transport identity (1v1 Undo: only a seat's own member may undo it). */
+  actor: UndoActor = {}
 ): UndoOutcome {
-  if (!undoModeEnabled(state)) {
+  if (!testingUndoEnabled(state) && state.adventure?.duelUndo) {
+    return applyDuelUndo(roomId, state, playerId, actor);
+  }
+  if (!testingUndoEnabled(state)) {
     return { undone: false, reason: "Undo mode is off for this game." };
   }
   const restored = popUndoSnapshot(roomId);

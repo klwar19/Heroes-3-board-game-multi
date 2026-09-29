@@ -388,6 +388,12 @@ function scoreAbilityTarget(
     choice?.type === "ABILITY_TARGET_CHOICE" &&
     choice.kind === "war-machine" &&
     choice.abilityId === "war_machine.catapult";
+  // Forge Lightning Generator: both picks ("choose a unit", then on a "0" the
+  // unit adjacent to it) may name either side, and both only ever deal damage.
+  const isLightningGenerator =
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "war-machine" &&
+    choice.abilityId === "war_machine.lightning_generator";
   if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.kind === "chain-lightning") {
     const state = observation.state as unknown as GameState;
     const card = balanceCardLibrary(state, cardLibrary)[choice.abilityId ?? ""];
@@ -460,7 +466,25 @@ function scoreAbilityTarget(
       // War-machine choices are not uniformly offensive: First Aid Tent heals.
       // Catapult specifically damages either side, so never score an allied
       // target as a desirable heal/buff.
-      isCatapult);
+      isCatapult ||
+      isLightningGenerator);
+
+  // Lightning Generator FIRST pick: a "0" sends the bolt to a unit adjacent to
+  // the chosen one (mandatory when one stands there), so prefer a target with
+  // an enemy neighbour and avoid one whose only neighbours are our own stacks.
+  const lightningNeighbourAdjustment =
+    isLightningGenerator && !combat.warMachineRound?.firstTargetUnitId
+      ? (() => {
+          const neighbours = Object.values(combat.units).filter((candidate) =>
+            candidate.id !== unit.id &&
+            candidate.position >= 0 &&
+            candidate.damage < candidate.maxHealth &&
+            unitsAdjacent(combat, candidate, unit)
+          );
+          if (neighbours.some((candidate) => candidate.controllerId !== observation.playerId)) return 10;
+          return neighbours.length > 0 ? -25 : 0;
+        })()
+      : 0;
 
   // On the FIRST Catapult pick, score the best adjacent second hit too. This
   // prevents a tempting high-threat enemy from being selected when its only
@@ -507,7 +531,7 @@ function scoreAbilityTarget(
     if (isDamagePick) {
       // Friendly fire: legal (Magog/Lich) but never preferred over an enemy.
       // Prefer the weakest ally if forced — spare the stronger stack.
-      return CHOICE_BASE - 40 - remaining + catapultPairAdjustment - (isCatapult ? 200 : 0);
+      return CHOICE_BASE - 40 - remaining + catapultPairAdjustment - (isCatapult || isLightningGenerator ? 200 : 0);
     }
     // Friendly target (heal / buff): prefer more wounded, then higher threat.
     const missing = unit.maxHealth - remaining;
@@ -557,7 +581,8 @@ function scoreAbilityTarget(
     Math.min(60, Math.round(unitThreatValue(unit) / 2)) +
     (removesNow ? 45 : 0) +
     (remaining <= 2 ? 15 : 0) +
-    catapultPairAdjustment -
+    catapultPairAdjustment +
+    lightningNeighbourAdjustment -
     (alreadyDebuffedByCaster ? 40 : 0)
   );
 }

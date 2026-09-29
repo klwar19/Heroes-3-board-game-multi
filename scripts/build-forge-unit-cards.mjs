@@ -37,7 +37,7 @@ const filter = process.argv[2] ?? "";
 // Ability tokens: "{glyph}" inserts a card glyph; plain strings are text.
 const units = [
   { slug: "grunts", name: "Grunts", tier: "bronze", type: "ranged", focus: "north",
-    few: { stats: [2, 0, 3, 3], cost: [2], upgrade: [4], text: [] },
+    few: { stats: [2, 0, 3, 3], cost: [2], upgrade: [3], text: [] },
     pack: { stats: [3, 0, 3, 4], text: ["{unit_attack}", "You can reroll every \"0\" on this unit's Attack die."] },
     neutral: { stats: [3, 0, 3, 4], cost: [5], text: ["{unit_attack}", "You can reroll every \"0\" on this unit's Attack die."] } },
   { slug: "cyber_zombies", name: "Cyber Zombies", tier: "bronze", type: "ground", focus: "north",
@@ -237,6 +237,14 @@ async function tilePatch(img, strip, region) {
   return { input, left: region.left, top: region.top };
 }
 const kr = (r) => ({ left: k(r.left), top: k(r.top), width: k(r.width), height: k(r.height) });
+/** Printed art-window inner shade: a thin dark falloff on all four edges. */
+function artWindowShade(width, height, depth) {
+  const stop = (id, x1, y1, x2, y2) => `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="#140c06" stop-opacity=".6"/><stop offset="1" stop-color="#140c06" stop-opacity="0"/></linearGradient>`;
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><defs>` +
+    stop("l", 0, 0, 1, 0) + stop("r", 1, 0, 0, 0) + stop("t", 0, 0, 0, 1) + stop("b", 0, 1, 0, 0) + `</defs>` +
+    `<rect x="0" y="0" width="${depth}" height="${height}" fill="url(#l)"/><rect x="${width - depth}" y="0" width="${depth}" height="${height}" fill="url(#r)"/>` +
+    `<rect x="0" y="0" width="${width}" height="${depth}" fill="url(#t)"/><rect x="0" y="${height - depth}" width="${width}" height="${depth}" fill="url(#b)"/></svg>`);
+}
 /** Bright-gold icon clusters inside a Kx region → [{left,width}] by x gaps. */
 async function iconClusters(img, region) {
   const { data, info } = await sharp(img).extract(region).raw().toBuffer({ resolveWithObject: true });
@@ -436,8 +444,11 @@ for (const u of units) {
 // ---- commander card + Lightning Generator war machine ------------------------
 // Commander: the real commander frame (numbers are drawn live by CommanderCard),
 // only its art window (measured by diffing two real commander cards) is replaced.
-// War machine: the real Ballista card template; the Lightning Generator is not
-// sold (the Toxic Moat grants it), so its cost bar states that instead of prices.
+// War machine: the real Ballista card template. Its printed cost bar is kept
+// (War Machine Factory / Trading Post icons); only the prices change to the
+// official Lightning Generator's 6 / 9 gold, drawn with the REAL printed "6"
+// glyph cut from the First Aid Tent (the "9" is that Times bold glyph turned
+// 180 degrees).
 if (!filter || "commander".includes(filter)) {
   const frame = await upscale("public/assets/units-commander-factory.webp");
   // The Storm Engineer (a woman) wielding her lightning blade. Written at the
@@ -452,13 +463,22 @@ if ((!filter || "lightning".includes(filter)) && existsSync("generated-session-a
   const ops = [
     await tilePatch(tpl, { left: k(640), top: k(76), width: k(30), height: k(74) }, { left: k(88), top: k(74), width: k(566), height: k(80) }),
     await centred("Lightning Generator", k(44), "#ead48c", k(372), k(78)),
-    { input: await sharp(readFileSync("generated-session-art/forge/war-machines/lightning_generator.png")).resize(k(616), k(575), { fit: "cover", position: "centre" }).png().toBuffer(), left: k(64), top: k(160) },
-    await tilePatch(tpl, { left: k(343), top: k(743), width: k(22), height: k(44) }, { left: k(70), top: k(741), width: k(606), height: k(48) }),
-    await centred("Gained when the Toxic Moat is built", k(25), CREAM, k(372), k(746)),
+    // The Ballista's printed art window sits INSIDE its thin gold line
+    // (1x x 64..676, y 162..729); the art must never cover that line.
+    { input: await sharp(readFileSync("generated-session-art/forge/war-machines/lightning_generator.png")).resize(k(612), k(567), { fit: "cover", position: "centre" }).png().toBuffer(), left: k(64), top: k(162) },
+    // The print's soft inner edge: a few pixels of shade where the art meets the gold line.
+    { input: artWindowShade(k(612), k(567), k(4)), left: k(64), top: k(162) },
+    // Erase the Ballista's "7" (1x 320..336) and "10" (620..652) with the cost
+    // cell's own leather, then set the printed 6 / 9 at the same digit origins.
+    await tilePatch(tpl, kr({ left: 342, top: 752, width: 14, height: 29 }), kr({ left: 317, top: 752, width: 24, height: 29 })),
+    await tilePatch(tpl, kr({ left: 342, top: 752, width: 14, height: 29 }), kr({ left: 616, top: 752, width: 42, height: 29 })),
     await tilePatch(tpl, { left: k(74), top: k(812), width: k(18), height: k(140) }, { left: k(76), top: k(806), width: k(598), height: k(154) })
   ];
+  const six = await cutOut(await sharp(await upscale("public/assets/war_machines-first_aid_tent.webp")).extract(kr({ left: 623, top: 754, width: 19, height: 25 })).png().toBuffer());
+  const nine = await sharp(six).rotate(180).png().toBuffer();
+  ops.push({ input: six, left: k(320), top: k(755) }, { input: nine, left: k(624), top: k(755) });
   const box = { left: k(84), top: k(810), width: k(578), height: k(146) };
-  ops.push(...placeText(await fitText(["{permanent}", "At the beginning of each Combat round, deal 1", "{damage}", "to an enemy unit of your choice."], box), box));
+  ops.push(...placeText(await fitText(["{permanent}", "At the beginning of each Combat round, choose a unit and roll an Attack die. On a \"+1\", deal it 1", "{damage}", ". On a \"0\", deal 1", "{damage}", "to a unit adjacent to it."], box), box));
   writeFileSync("public/assets/war_machines-lightning_generator.webp", await sharp(tpl).composite(ops).webp(WEBP).toBuffer());
   console.log("wrote public/assets/war_machines-lightning_generator.webp");
 }

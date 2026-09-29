@@ -1294,6 +1294,41 @@ button {
   height: 8px;
 }
 
+/* Shared look for EVERY undo-style control (undo-button.tsx): testing Undo,
+   1v1 Undo, combat turn retake, map editor undo. Icon + label, optional ×N
+   step count, and a clearly dimmed disabled state whose reason is the tooltip. */
+.undoControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.undoControl .undoControlIcon {
+  flex: none;
+}
+
+.undoControl .undoControlCount {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(214, 168, 96, 0.22);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.undoControl:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+.undoVoteGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 /* Undo is a small utility at the very top of the combat strip, not a full-width
    combat panel. Grid items stretch by default, so opt this one out explicitly. */
 .combatUndoMove {
@@ -32765,6 +32800,17 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 .afkVotePanel .afkVoteWaiting {
   opacity: 0.75;
   font-style: italic;
+}
+
+/* "Leave game" departure vote (remove the seat / AI takes over). Sits below the
+   AFK and reset/pause banners so none of them overlap. */
+.leaveGameVotePanel {
+  top: 100px;
+  max-width: min(640px, calc(100vw - 24px));
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+  border-color: rgba(230, 140, 110, 0.65);
 }
 
 /* "Start a new adventure" table-consent vote. Sits just below the AFK panel so

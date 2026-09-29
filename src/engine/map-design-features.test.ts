@@ -12,8 +12,11 @@ import {
   classifyHeroStep,
   customGuardArmyDifficulty,
   drawGuardArmy,
+  ensureRevealedRandomTownFactions,
   getMainHero,
-  isFieldGuarded
+  isFieldGuarded,
+  materializeTileFields,
+  tickSettlementHoldControl
 } from "./adventure";
 import { flaggedMineSettlementCount } from "./victory-points";
 import { applyAction, createAdventureGameState } from "./index";
@@ -34,11 +37,14 @@ import {
 } from "./map-design-features";
 import {
   defaultObeliskBonusForKind,
+  describeCustomMapPresetEntries,
   describeObeliskBonus,
+  sanitizeCenterHexPlan,
   sanitizeCustomGuardSpec,
-  sanitizeCustomMapPreset
+  sanitizeCustomMapPreset,
+  sanitizeSettlementFieldPlan
 } from "./map-preset";
-import type { GameAction, GameState, MapFieldState, PlayerId } from "./state";
+import type { CustomMapTilePlan, GameAction, GameState, MapFieldState, MapTileState, PlayerId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import {
   finalizeAdventureCombat,
@@ -1019,5 +1025,144 @@ describe("map-design-features — Built Grail control fight", () => {
     cDefender.spaceId = cFieldId;
     startPlayerCombat(control, cAttacker, cDefender, cFieldId);
     expect(control.combat?.context.kind === "player" && control.combat.context.siege).toBeFalsy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Map editor 2026-09-29 (engine protocol v192): Cyclops Cavern options, Utopia
+// Obelisk entry requirement, scoring hold objectives, Random Town fixed
+// faction. Each behaviour has a CONTROL where the classic rule must apply.
+// ---------------------------------------------------------------------------
+describe("map editor 2026-09-29 — Cyclops Cavern / Utopia gate / scoring holds / fixed Random Town", () => {
+  const bankCyclopes = (state: GameState, field: MapFieldState) =>
+    drawGuardArmy(state, field, 7).filter((draw) => draw.unitDefId === "neutral.cyclopes" && draw.bankGuard).length;
+
+  it("Cyclops Cavern: the map-wide extra-Cyclopes option is stamped on reveal and drawn (printed 2 is the CONTROL)", () => {
+    const control = makeGame("cyclops-control");
+    const controlTile: MapTileState = { id: "cyc-c", tileDefId: "U7", centerRow: 40, centerCol: 40, rotation: 0, faceDown: false, group: "subterranean" };
+    control.adventure!.tiles[controlTile.id] = controlTile;
+    materializeTileFields(control.adventure!, controlTile);
+    const controlField = Object.values(control.adventure!.fields).find((field) => field.tileInstanceId === "cyc-c" && field.location === "cyclops_stockpile")!;
+    expect(controlField.cyclopsExtraGuards).toBeUndefined();
+    expect(bankCyclopes(control, controlField)).toBe(2);
+
+    const state = makeGame("cyclops-extra");
+    state.adventure!.mapPreset = sanitizeCustomMapPreset({ cyclopsStockpiles: { extraCyclopes: 4 } }) ?? null;
+    const tile: MapTileState = { id: "cyc-x", tileDefId: "U7", centerRow: 40, centerCol: 40, rotation: 0, faceDown: false, group: "subterranean" };
+    state.adventure!.tiles[tile.id] = tile;
+    materializeTileFields(state.adventure!, tile);
+    const field = Object.values(state.adventure!.fields).find((candidate) => candidate.tileInstanceId === "cyc-x" && candidate.location === "cyclops_stockpile")!;
+    expect(field.cyclopsExtraGuards).toBe(4);
+    expect(bankCyclopes(state, field)).toBe(4);
+    field.cyclopsExtraGuards = 0;
+    expect(bankCyclopes(state, field)).toBe(0);
+  });
+
+  it("Utopia gate: a hero cannot enter until their side flagged N Obelisks (no requirement is the CONTROL)", () => {
+    const plans: CustomMapTilePlan[] = [
+      { row: 8, col: 2, group: "starting", faceDown: false },
+      { row: 10, col: 7, group: "starting", faceDown: false },
+      { row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C4", viiField: "dragon_utopia", centerHex: { utopiaObelisksRequired: 2 } }
+    ];
+    const state = createAdventureGameState({ seed: "utopia-gate", difficulty: "normal", rollFirstPlayer: false, victoryMode: "conquest", customMap: plans });
+    const utopia = Object.values(state.adventure!.fields).find((field) => field.location === "dragon_utopia")!;
+    expect(utopia.utopiaObelisksRequired).toBe(2);
+    const hero = getMainHero(state, "p1")!;
+    expect(classifyHeroStep(state, hero, utopia.spaceId)).toBe("block");
+    // One flagged Obelisk is still short.
+    injectField(state, "obelisk", "70,70", { flagOwnerId: "p1" });
+    expect(classifyHeroStep(state, hero, utopia.spaceId)).toBe("block");
+    // The opponent's Obelisks never count for p1.
+    injectField(state, "obelisk", "71,71", { flagOwnerId: "p2" });
+    expect(classifyHeroStep(state, hero, utopia.spaceId)).toBe("block");
+    injectField(state, "obelisk", "72,72", { flagOwnerId: "p1" });
+    expect(classifyHeroStep(state, hero, utopia.spaceId)).not.toBe("block");
+
+    // CONTROL: the same Utopia without the option is enterable at once.
+    const open = createAdventureGameState({
+      seed: "utopia-gate",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: plans.map((plan) => (plan.group === "center" ? { ...plan, centerHex: undefined } : plan))
+    });
+    const openUtopia = Object.values(open.adventure!.fields).find((field) => field.location === "dragon_utopia")!;
+    expect(openUtopia.utopiaObelisksRequired).toBeUndefined();
+    expect(classifyHeroStep(open, getMainHero(open, "p1")!, openUtopia.spaceId)).not.toBe("block");
+    // The lobby banner explains the gate before the game starts.
+    expect(describeCustomMapPresetEntries(undefined, plans).some((entry) => /Obelisk/.test(entry.text))).toBe(true);
+    expect(describeCustomMapPresetEntries(undefined, plans.slice(0, 2)).some((entry) => /Obelisk/.test(entry.text))).toBe(false);
+  });
+
+  it("scoring hold: 'vp' pays the hold VP once and never ends the game; 'both' pays and wins; classic 'win' is the CONTROL", () => {
+    const hold = (seed: string, outcome: "vp" | "both" | undefined) => {
+      const state = makeGame(seed);
+      const field = injectField(state, "settlement", "60,60", { flagOwnerId: "p1", holdRoundsToWin: 2 });
+      if (outcome) {
+        field.holdOutcome = outcome;
+        field.holdVp = 5;
+      }
+      return { state, field };
+    };
+    const vp = hold("hold-vp", "vp");
+    tickSettlementHoldControl(vp.state);
+    expect(vp.state.adventure!.vpLedger?.p1?.holdVp ?? 0).toBe(0);
+    tickSettlementHoldControl(vp.state);
+    expect(vp.state.adventure!.vpLedger?.p1?.holdVp).toBe(5);
+    expect(vp.state.adventure!.winnerPlayerId ?? null).toBeNull();
+    tickSettlementHoldControl(vp.state);
+    expect(vp.state.adventure!.vpLedger?.p1?.holdVp).toBe(5); // paid once per holder
+
+    const both = hold("hold-both", "both");
+    tickSettlementHoldControl(both.state);
+    tickSettlementHoldControl(both.state);
+    expect(both.state.adventure!.vpLedger?.p1?.holdVp).toBe(5);
+    expect(both.state.adventure!.winnerPlayerId).toBe("p1");
+
+    const classic = hold("hold-win", undefined);
+    tickSettlementHoldControl(classic.state);
+    tickSettlementHoldControl(classic.state);
+    expect(classic.state.adventure!.winnerPlayerId).toBe("p1");
+    expect(classic.state.adventure!.vpLedger?.p1?.holdVp ?? 0).toBe(0);
+  });
+
+  it("Random Town fixed faction: every revealed Random Town uses it (the rolled unused faction is the CONTROL)", () => {
+    const used = (state: GameState) => state.players.p1.factionId!;
+    const control = makeGame("rt-fixed-control");
+    const controlField = injectField(control, "random_town", "61,61");
+    ensureRevealedRandomTownFactions(control);
+    // The classic roll never picks a faction a player already uses.
+    expect(controlField.faction).toBeTruthy();
+    expect(controlField.faction).not.toBe(used(control));
+
+    const state = makeGame("rt-fixed");
+    state.adventure!.mapPreset = sanitizeCustomMapPreset({ randomTowns: { fixedFaction: used(state) } }) ?? null;
+    const field = injectField(state, "random_town", "61,61");
+    ensureRevealedRandomTownFactions(state);
+    expect(field.faction).toBe(used(state));
+  });
+
+  it("new preset fields round-trip through the sanitizer; legacy presets and garbage get safe defaults", () => {
+    const preset = sanitizeCustomMapPreset({
+      cyclopsStockpiles: { extraCyclopes: 9, vp: 3 },
+      randomTowns: { fixedFaction: "tower" }
+    });
+    expect(preset?.cyclopsStockpiles).toEqual({ extraCyclopes: 4, vp: 3 });
+    expect(preset?.randomTowns?.fixedFaction).toBe("tower");
+    expect(sanitizeCustomMapPreset({ randomTowns: { fixedFaction: "no-such-faction" } })?.randomTowns).toBeUndefined();
+    const legacy = sanitizeCustomMapPreset({ randomTowns: { vp: 2 } });
+    expect(legacy?.cyclopsStockpiles).toBeUndefined();
+    expect(legacy?.randomTowns?.fixedFaction).toBeUndefined();
+
+    expect(sanitizeCenterHexPlan({ holdRoundsToWin: 3, holdOutcome: "vp", holdVp: 4, utopiaObelisksRequired: 12 })).toMatchObject({
+      holdRoundsToWin: 3,
+      holdOutcome: "vp",
+      holdVp: 4,
+      utopiaObelisksRequired: 8
+    });
+    // An outcome without a hold has nothing to score.
+    expect(sanitizeCenterHexPlan({ holdOutcome: "vp", holdVp: 4, vp: 1 })?.holdOutcome).toBeUndefined();
+    expect(sanitizeSettlementFieldPlan({ holdRoundsToWin: 2, holdOutcome: "both" })).toMatchObject({ holdRoundsToWin: 2, holdOutcome: "both" });
+    expect(sanitizeSettlementFieldPlan({ holdRoundsToWin: 2, holdOutcome: "sideways" })?.holdOutcome).toBeUndefined();
   });
 });

@@ -23,16 +23,11 @@ function abilitySource(slug: string) {
 export const WAR_MACHINE_CARD_IDS = [
   "war_machine.first_aid_tent",
   "war_machine.ammo_cart",
+  "war_machine.lightning_generator",
   "war_machine.ballista",
   "war_machine.catapult",
   "war_machine.cannon"
 ] as const;
-
-/**
- * War machines that are never sold at a shop: they only enter a hand through a
- * specific source (Forge Toxic Moat grants the Lightning Generator).
- */
-export const GRANTED_WAR_MACHINE_CARD_IDS = ["war_machine.lightning_generator"] as const;
 
 /**
  * School of Magic ability cards (Tower expansion): permanents that boost the
@@ -219,8 +214,10 @@ export const permanentCards: CardLibrary = {
     source: warMachineSource("cannon")
   },
 
-  // Forge Lightning Generator (Forge box, 4 cards). Gained only from the Forge
-  // Toxic Moat ("When built: gain a Lightning Generator"); not in the shop supply.
+  // Forge Lightning Generator (Forge box, 4 cards). Sold like every other war
+  // machine (printed cost bar: War Machine Factory 6 gold, Trading Post 9 gold);
+  // the Forge Toxic Moat also grants one ("When built: gain a Lightning
+  // Generator").
   "war_machine.lightning_generator": {
     id: "war_machine.lightning_generator",
     name: "Lightning Generator",
@@ -229,8 +226,12 @@ export const permanentCards: CardLibrary = {
     tags: ["war-machine", "permanent", "damage", "forge"],
     permanent: true,
     permanentEffect: {
-      roundStart: { kind: "damage-chosen-enemy", amount: 1 }
+      // "At the beginning of each Combat round, choose a unit and roll an
+      // Attack die. On a "+1", deal it 1 damage. On a "0", deal 1 damage to a
+      // unit adjacent to it." See permanents.ts lightningStrike.
+      roundStart: { kind: "lightning-strike", amount: 1 }
     },
+    warMachineCosts: { factory: { gold: 6 }, tradingPost: { gold: 9 } },
     effect: { type: "ENTER_PLAY" },
     assets: {
       cardImage: "/assets/war_machines-lightning_generator.webp",
@@ -239,7 +240,7 @@ export const permanentCards: CardLibrary = {
     implementationStatus: "implemented",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Forge Expansion)",
-      credit: "Forge Faction Focus: the Forge box ships 4 Lightning Generator war machine cards. Effect per the project Forge spec; verify against official components.",
+      credit: "Forge Faction Focus: the Forge box ships 4 Lightning Generator war machine cards. Effect text and cost bar (Factory 6 / Trading Post 9 gold) from the official card preview.",
       url: "https://heroes.thelazy.net/index.php/Forge_(NWC)"
     }
   },

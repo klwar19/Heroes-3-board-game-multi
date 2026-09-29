@@ -74,6 +74,7 @@ export {
   AFK_REASK_MS,
   awaitedIdleMillis,
   getAfkState,
+  handSeatToComputer,
   idleMillis,
   seatIsAwaitedInOrderedPlay,
   timeControlsActive,
@@ -269,7 +270,17 @@ export {
 export type { SpellLadderRow, SpellPowerSide, SpellTimingKind } from "./effects";
 export { appendEvent } from "./events";
 export { getPlayerView, OBSERVER_VIEWER_SEAT, PASSWORD_REDACTED, redactStateForSeat } from "./player-view";
-export { createSeededRandom } from "./random";
+export { createSeededRandom, randomDrawCount } from "./random";
+export {
+  actionNeverUndoable,
+  DUEL_UNDO_RULE_TEXT,
+  duelSeats,
+  duelUndoBlockReason,
+  duelUndoButtonState,
+  gameProgressKey,
+  hiddenInfoKey,
+  undoStatusStamp
+} from "./undo-safety";
 export {
   canonicalActionKey,
   chooseComputerAction,
@@ -1245,6 +1256,7 @@ export type {
   ResolutionStackItem,
   ResetVoteState,
   GamePauseState,
+  UndoStatus,
   RoomMember,
   RoomMembershipState,
   RoomSeat,

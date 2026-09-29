@@ -983,6 +983,8 @@ describe("Game options — tabbed layout", () => {
       // "the whole group already on" must include them too.
       "polish-diplomacy-vii": true,
       "polish-single-dimension-door": true,
+      // Unlimited Stacks (test rule, v192) is part of the Polish group too.
+      "polish-unlimited-stacks": true,
     };
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
@@ -1030,6 +1032,7 @@ describe("Game options — tabbed layout", () => {
         "polish-card-balance": true,
         "polish-diplomacy-vii": true,
         "polish-single-dimension-door": true,
+        "polish-unlimited-stacks": true,
         "discovery-border-gate": true,
       };
     });

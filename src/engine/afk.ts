@@ -1,4 +1,4 @@
-import { isComputerPlayer } from "./computer/control";
+import { isComputerPlayer, standardComputerController } from "./computer/control";
 import { parallelPvpPinOwner, parallelStateForPlayer } from "./parallel-combats";
 import { appendEvent } from "./events";
 import { combatUnitDecisionOwnerId } from "./neutral-control";
@@ -117,6 +117,7 @@ function isAfkMetaAction(action: GameAction): boolean {
   return (
     action.type === "START_AFK_VOTE" ||
     action.type === "CAST_AFK_VOTE" ||
+    action.type === "LEAVE_GAME" ||
     action.type === "RESOLVE_AFK_DROP" ||
     action.type === "FORCE_AFK_KICK" ||
     action.type === "FORCE_TURN_TIMEOUT" ||
@@ -286,15 +287,23 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
     delete afk.awaitedIdleSince[actorId];
   }
 
-  // The accused seat took a real action: the vote is moot — cancel it.
+  // The accused seat took a real action: the vote is moot — cancel it. For a
+  // departure vote ("Leave game") the leaver acting again means they stayed:
+  // the vote is withdrawn and their seat is theirs as before.
   if (afk.vote && afk.vote.targetPlayerId === actorId) {
     const target = afk.vote.targetPlayerId;
+    const departure = afk.vote.kind === "left";
     afk.vote = null;
+    if (departure && state.players[target]) {
+      state.players[target].leftGame = false;
+    }
     appendEvent(state, {
       type: "AFK_VOTE_RESOLVED",
       targetPlayerId: target,
       outcome: "cancelled",
-      message: `${playerName(state, target)} is back — the AFK vote was cancelled.`
+      message: departure
+        ? `${playerName(state, target)} stayed in the game — the leave vote was cancelled.`
+        : `${playerName(state, target)} is back — the AFK vote was cancelled.`
     });
   }
 }
@@ -444,7 +453,8 @@ export function startAfkVote(
     targetPlayerId: action.targetPlayerId,
     startedByPlayerId: action.playerId,
     startedAt: now,
-    votes: { [action.playerId]: "kick" }
+    votes: { [action.playerId]: action.vote === "ai" ? "ai" : "kick" },
+    kind: "afk"
   };
   appendEvent(state, {
     type: "AFK_VOTE_STARTED",
@@ -452,12 +462,133 @@ export function startAfkVote(
     byPlayerId: action.playerId,
     message:
       `${playerName(state, action.playerId)} calls a vote: ${playerName(state, action.targetPlayerId)} ` +
-      "seems to be away — kick them from the game, or keep waiting?"
+      "seems to be away — remove them, let the computer take over their seat, or keep waiting?"
   });
   maybeResolveAfkVote(state, now);
 }
 
-/** CAST_AFK_VOTE: answer the open vote. Any "wait" closes it immediately. */
+/**
+ * LEAVE_GAME: a player voluntarily leaves a running multiplayer adventure
+ * ("I have to go at round 4"). Opens a DEPARTURE vote (`kind: "left"`) for the
+ * remaining live human seats — "Remove player" (the seat is force-dropped
+ * through the same pipeline a passed AFK kick uses: pending inputs
+ * default-resolved, open combat conceded, then eliminated like a give-up) or
+ * "AI takes over" (the seat becomes a computer seat from this moment). There
+ * is no "wait": the player is leaving by choice. The same resolution rule as
+ * the AFK vote applies: removal needs every voter's "kick"; the computer
+ * takeover needs every voter's "ai"; a split stays open until they agree. Works on OPEN and hosted tables
+ * alike (it is not a time control). With no human left to vote (everyone
+ * else is a computer or out) the seat is removed at once.
+ */
+export function leaveGame(
+  state: GameState,
+  action: Extract<GameAction, { type: "LEAVE_GAME" }>,
+  now: number | undefined
+): void {
+  const afk = assertVoteContext(state);
+  if (state.setupLobby) {
+    throw new Error("The adventure has not started yet — just leave your seat in the lobby.");
+  }
+  const playerId = action.playerId;
+  const player = state.players[playerId];
+  if (!player || player.eliminated || !state.turnOrder.includes(playerId) || playerId === NEUTRAL_PLAYER_ID) {
+    throw new Error("Only a player still in the game can leave it.");
+  }
+  if (isComputerPlayer(state, playerId)) {
+    throw new Error("A computer seat cannot leave the game.");
+  }
+  if (afk.droppingPlayerId) {
+    throw new Error("A player is already being removed — try again in a moment.");
+  }
+  if (afk.vote) {
+    if (afk.vote.targetPlayerId !== playerId) {
+      throw new Error("Another vote is open — wait for it to finish, then leave.");
+    }
+    if (afk.vote.kind === "left") {
+      throw new Error("You already asked to leave — the table is voting.");
+    }
+    // An AFK vote about this very seat turns into the departure vote: the
+    // player confirmed they are going, so "wait" is no longer an option.
+  }
+
+  player.leftGame = true;
+  const voters = liveSeats(state).filter((seat) => seat !== playerId);
+  appendEvent(state, {
+    type: "AFK_VOTE_STARTED",
+    targetPlayerId: playerId,
+    byPlayerId: playerId,
+    message:
+      voters.length > 0
+        ? `${playerName(state, playerId)} has to leave the game — remove their seat, or let the computer take over?`
+        : `${playerName(state, playerId)} left the game.`
+  });
+  if (voters.length === 0) {
+    afk.vote = null;
+    afk.droppingPlayerId = playerId;
+    appendEvent(state, {
+      type: "AFK_VOTE_RESOLVED",
+      targetPlayerId: playerId,
+      outcome: "kick",
+      message: `${playerName(state, playerId)} left — no player remains to vote, so their seat is removed.`
+    });
+    return;
+  }
+  // Keep any "kick"/"ai" answers already given in an AFK vote about this seat;
+  // a "wait" is void now that the player is leaving by choice.
+  const carried: Record<PlayerId, "kick" | "wait" | "ai"> = {};
+  for (const [seat, vote] of Object.entries(afk.vote?.votes ?? {})) {
+    if (vote !== "wait") carried[seat] = vote;
+  }
+  afk.vote = {
+    targetPlayerId: playerId,
+    startedByPlayerId: playerId,
+    startedAt: now ?? afk.vote?.startedAt ?? 0,
+    votes: carried,
+    kind: "left"
+  };
+  maybeResolveAfkVote(state, now);
+}
+
+/**
+ * Hand a live human seat to the computer from this moment on (a departure /
+ * AFK vote resolved "AI takes over"). Reuses the existing computer-seat
+ * machinery end to end: the persisted controller becomes the standard
+ * computer, which `isComputerPlayer` / the server pump / computerDecisionOwner
+ * already drive in co-op and clash tables — the pump picks the seat's open
+ * turn, battle or pending choice up on its next beat. The human member bound
+ * to the seat steps down to observer (a computer seat is never sit-able, and
+ * the member must not act for it any more). Time controls stop for the seat
+ * (`liveSeats` excludes computers) and a turn timeout armed against it is
+ * dropped so the forced-resolution driver does not fight the pump.
+ */
+export function handSeatToComputer(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player || player.eliminated || playerId === NEUTRAL_PLAYER_ID) {
+    return;
+  }
+  state.controllers = { ...(state.controllers ?? {}), [playerId]: standardComputerController() };
+  player.replacedByComputer = true;
+  for (const member of state.room?.members ?? []) {
+    if (member.seat === playerId) {
+      member.seat = "observer";
+    }
+  }
+  const afk = state.afk;
+  if (afk) {
+    if (afk.turnTimeoutPlayerId === playerId) {
+      afk.turnTimeoutPlayerId = null;
+    }
+    delete afk.lastActionAt[playerId];
+    if (afk.turnOpenSince) delete afk.turnOpenSince[playerId];
+    if (afk.awaitedIdleMs) delete afk.awaitedIdleMs[playerId];
+    if (afk.awaitedIdleSince) delete afk.awaitedIdleSince[playerId];
+  }
+}
+
+/**
+ * CAST_AFK_VOTE: answer the open vote. Any "wait" closes an AFK vote
+ * immediately (a departure vote has no "wait").
+ */
 export function castAfkVote(
   state: GameState,
   action: Extract<GameAction, { type: "CAST_AFK_VOTE" }>,
@@ -473,6 +604,9 @@ export function castAfkVote(
   }
   if (!liveSeats(state).includes(action.playerId)) {
     throw new Error("Only players still in the game vote.");
+  }
+  if (action.vote === "wait" && vote.kind === "left") {
+    throw new Error(`${playerName(state, vote.targetPlayerId)} chose to leave — vote to remove the seat or let the computer take over.`);
   }
 
   vote.votes[action.playerId] = action.vote;
@@ -495,7 +629,11 @@ export function castAfkVote(
   maybeResolveAfkVote(state, now);
 }
 
-/** Unanimous "kick" among every live non-target seat → begin the force-drop. */
+/**
+ * Resolve once every live non-target human seat agrees: a UNANIMOUS "kick"
+ * begins the force-drop (the existing kick rule, unchanged); a UNANIMOUS "ai"
+ * hands the seat to the computer. A split stays open until voters agree.
+ */
 function maybeResolveAfkVote(state: GameState, now: number | undefined): void {
   const afk = state.afk;
   const vote = afk?.vote;
@@ -503,17 +641,39 @@ function maybeResolveAfkVote(state: GameState, now: number | undefined): void {
     return;
   }
   const voters = liveSeats(state).filter((seat) => seat !== vote.targetPlayerId);
-  if (voters.length === 0 || !voters.every((seat) => vote.votes[seat] === "kick")) {
+  if (voters.length === 0 || !voters.every((seat) => vote.votes[seat] === "kick" || vote.votes[seat] === "ai")) {
     return;
   }
+  const allKick = voters.every((seat) => vote.votes[seat] === "kick");
+  const allAi = voters.every((seat) => vote.votes[seat] === "ai");
+  // USER RULING 2026-09-29: "AI takes over" ALSO needs every voter — a single
+  // AI voice no longer overrides a Remove. A split (some Remove, some AI)
+  // keeps the vote open; voters may change their answer (CAST_AFK_VOTE
+  // overwrites) until the table agrees.
+  if (!allKick && !allAi) {
+    return;
+  }
+  const departure = vote.kind === "left";
   afk.vote = null;
   (afk.lastVoteEndedAt ??= {})[vote.targetPlayerId] = now ?? vote.startedAt;
-  afk.droppingPlayerId = vote.targetPlayerId;
+  if (allKick) {
+    afk.droppingPlayerId = vote.targetPlayerId;
+    appendEvent(state, {
+      type: "AFK_VOTE_RESOLVED",
+      targetPlayerId: vote.targetPlayerId,
+      outcome: "kick",
+      message: departure
+        ? `The table voted: ${playerName(state, vote.targetPlayerId)} left and their seat is removed from the game.`
+        : `The vote passed — ${playerName(state, vote.targetPlayerId)} is removed from the game (AFK).`
+    });
+    return;
+  }
+  handSeatToComputer(state, vote.targetPlayerId);
   appendEvent(state, {
     type: "AFK_VOTE_RESOLVED",
     targetPlayerId: vote.targetPlayerId,
-    outcome: "kick",
-    message: `The vote passed — ${playerName(state, vote.targetPlayerId)} is removed from the game (AFK).`
+    outcome: "ai",
+    message: `The table voted: the computer takes over ${playerName(state, vote.targetPlayerId)}'s seat from now on.`
   });
 }
 

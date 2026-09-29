@@ -109,6 +109,8 @@ import {
   type EventDrawnCue,
   type MapEventCue
 } from "@/components/table/overlays";
+import { LeaveGameVotePanel } from "@/components/table/leave-game-panel";
+import { DuelUndoButton, UndoButton } from "@/components/table/undo-button";
 import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
 import {
   attackDeclarationForRoll,
@@ -7613,6 +7615,13 @@ export default function Home() {
         viewerPlayerId={viewerPlayerId}
         onAction={(action) => void submitAction(action)}
       />
+      {/* "Leave game" departure vote: remove the seat or AI takes over (open
+          and hosted tables alike — see leave-game-panel.tsx). */}
+      <LeaveGameVotePanel
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+        onAction={(action) => void submitAction(action)}
+      />
       <ResetVotePanel
         state={state}
         viewerPlayerId={viewerPlayerId}
@@ -9467,14 +9476,22 @@ export default function Home() {
       <div className="tableTopRow">
         <div className="combatCardStrip">
           {isSeated && adventureMode && state.combat && state.adventure?.undoMoves ? (
-            <button
-              className="commandButton undoMove combatUndoMove"
+            <UndoButton
+              className="undoMove combatUndoMove"
+              label="Undo (testing)"
               onClick={() => submitAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })}
               title="Testing aid: roll the game back to before your most recent action."
-              type="button"
-            >
-              ↩ Undo
-            </button>
+            />
+          ) : isSeated && adventureMode && state.combat ? (
+            // 1v1 Undo in battle: a unit move before any die is rolled (and
+            // before a reaction window opens) can be taken back (renders
+            // nothing unless the option is on).
+            <DuelUndoButton
+              className="combatUndoMove"
+              state={state}
+              viewerPlayerId={viewerPlayerId}
+              onAction={(action) => void submitAction(action)}
+            />
           ) : null}
           {isSeated ? (
             <div className="combatOpponentRow">

@@ -840,6 +840,11 @@ export function getActiveAttackBonus(state: GameState, context: AttackContext): 
           return modifierTotal + modifier.amount;
         }
         if (modifier.type === "NEUTRAL_NEXT_ATTACK_PENALTY") return modifierTotal - modifier.amount;
+        if (modifier.type === "ADJACENT_TARGET_ATTACK_BONUS") {
+          return unitsAdjacent(state.combat, context.attacker, context.defender)
+            ? modifierTotal + modifier.amount
+            : modifierTotal;
+        }
 
         if (modifier.type !== "RANGED_ATTACK_BONUS" || context.attacker.type !== "ranged") {
           return modifierTotal;
@@ -941,7 +946,17 @@ export function hasActiveIgnoresDefense(state: GameState, unit: CombatUnitState,
     (effect) =>
       effectAppliesToUnit(effect, unit) &&
       effect.modifiers.some((modifier) => modifier.type === "IGNORES_DEFENSE" &&
-        (!modifier.nonAdjacentOnly || (defender !== undefined && !unitsAdjacent(state.combat, unit, defender))))
+        (!modifier.nonAdjacentOnly || (defender !== undefined && !unitsAdjacent(state.combat, unit, defender))) &&
+        (!modifier.adjacentOnly || (defender !== undefined && unitsAdjacent(state.combat, unit, defender))))
+  );
+}
+
+/** Jabarkas's Orcs I: an ongoing effect waives the adjacent-target ranged penalty. */
+export function activeEffectIgnoresAdjacentRangedPenalty(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "IGNORE_ADJACENT_RANGED_PENALTY")
   );
 }
 

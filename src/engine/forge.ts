@@ -144,7 +144,7 @@ export function forgeCombatRoundStart(state: GameState): void {
 }
 
 /** One Attack die from the shared combat dice cursor (seeded, scriptable). */
-function rollCombatAttackDie(state: GameState): number {
+export function rollCombatAttackDie(state: GameState): number {
   const dice = state.combat!.dice;
   const rollIndex = dice.rollCount++;
   if (dice.scriptedRolls && rollIndex < dice.scriptedRolls.length) {

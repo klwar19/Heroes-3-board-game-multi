@@ -31,6 +31,20 @@ export type SeededRandom = {
 
 let activeEntropy: string | undefined;
 
+/**
+ * Process-wide count of random numbers drawn from ANY seeded stream. Pure
+ * bookkeeping — it never influences a result. The server reads it before and
+ * after an action transaction: if it moved, the action consumed randomness (a
+ * die roll, shuffle, tile flip, random pick) and the 1v1 Undo refuses to rewind
+ * past it, so a roll can never be retried (see src/engine/undo-safety.ts).
+ */
+let randomDraws = 0;
+
+/** Monotonic count of random draws so far (see `randomDraws`). */
+export function randomDrawCount(): number {
+  return randomDraws;
+}
+
 /** Park the fresh per-action entropy (or `undefined` to clear). Returns the previous value so callers can restore it (re-entrant). */
 export function setActiveEntropy(value: string | undefined): string | undefined {
   const previous = activeEntropy;
@@ -70,6 +84,7 @@ export function createSeededRandom(seed: string, options?: { salt?: boolean }): 
   let state = hashSeed(salted) || 0x9e3779b9;
 
   const next = () => {
+    randomDraws += 1;
     state += 0x6d2b79f5;
     let value = state;
     value = Math.imul(value ^ (value >>> 15), value | 1);

@@ -51,54 +51,22 @@ function addCitadel(state: GameState): void {
 const griffin = { id: "stack_griffins", unitDefId: "castle.griffins", side: "pack" as const };
 
 describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
-  it("uses Pack gold + tier-gold cost plus the Pack's printed valuables (the Few→Pack fee)", () => {
-    // Valuables = the side's printed valuables (same as a Few→Pack reinforce):
-    // a Pack that prints no valuables adds none; a Gold Dragon Pack prints 2.
-    expect(polishUnitStackCost("rampart.centaurs"), "Centaur: 3 Pack gold + tier 1, no valuables").toEqual({
-      gold: 4
-    });
-    expect(polishUnitStackCost("castle.griffins")).toEqual({ gold: 7 });
-    expect(polishUnitStackCost("castle.crusaders")).toEqual({ gold: 12 });
-    expect(
-      polishUnitStackCost("rampart.gold_dragons"),
-      "Gold Dragon: 30 Pack gold + tier 3, + the Pack's 2 valuables"
-    ).toEqual({ gold: 33, valuables: 2 });
-    expect(
-      polishUnitStackCost("castle.archangels"),
-      "Archangel: 30 Pack gold + tier 3, + the Pack's 2 valuables"
-    ).toEqual({ gold: 33, valuables: 2 });
+  it("prices each layer by the ladder (USER RULING 2026-09-29): 1st 1 gold, 2nd 2 gold — tier and valuables ignored", () => {
+    // The old 2026-08-12 price (Pack cost + tier, + the Pack's valuables) is gone:
+    // a Gold Dragon Pack's first layer is 1 gold like a Centaur's.
+    expect(polishUnitStackCost("rampart.centaurs")).toEqual({ gold: 1 });
+    expect(polishUnitStackCost("castle.griffins", "pack", 1)).toEqual({ gold: 2 });
+    expect(polishUnitStackCost("castle.crusaders", "pack", 1)).toEqual({ gold: 2 });
+    expect(polishUnitStackCost("rampart.gold_dragons")).toEqual({ gold: 1 });
+    expect(polishUnitStackCost("castle.archangels")).toEqual({ gold: 1 });
     expect(polishUnitStackCap("castle.griffins")).toBe(3);
     expect(polishUnitStackCap("castle.crusaders")).toBe(2);
     expect(polishUnitStackCap("castle.archangels")).toBe(1);
   });
 
-  it("reflects each side's printed RECRUITMENT valuables for every tier — gold LV6 and azure Neutrals too", () => {
-    // A gold LV6 faction Pack prints 1 valuable to reinforce Few→Pack, so its
-    // Stack also costs 1 valuable — the same fee, not only the LV7 (2 valuables)
-    // Packs. (Champions: 20 Pack gold + tier 3 = 23, + the Pack's 1 valuable.)
-    expect(
-      polishUnitStackCost("castle.champions", "pack"),
-      "gold LV6 Pack (Champions): 20 + 3 gold, + the Pack's 1 valuable"
-    ).toEqual({ gold: 23, valuables: 1 });
-    expect(polishUnitStackCost("necropolis.dread_knights", "pack")).toEqual({ gold: 23, valuables: 1 });
-
-    // Recruited NEUTRALS (incl. AZURE, which has no Pack side) mirror the
-    // Neutral card's own printed recruitment cost: charge valuables iff its
-    // recruit cost lists them, exactly like buying that Neutral.
-    expect(
-      polishUnitStackCost("neutral.azure_dragons", "neutral"),
-      "azure Neutral recruits for 2 valuables → Stack costs 2"
-    ).toEqual({ gold: 48, valuables: 2 });
-    expect(
-      polishUnitStackCost("neutral.rust_dragons", "neutral"),
-      "azure Neutral recruits for 1 valuable → Stack costs 1"
-    ).toEqual({ gold: 41, valuables: 1 });
-    // Azure Neutrals whose recruit cost lists NO valuables charge none.
-    expect(polishUnitStackCost("neutral.titans", "neutral")).toEqual({ gold: 42 });
-    expect(polishUnitStackCost("neutral.gold_dragons", "neutral")).toEqual({ gold: 45 });
-    // Gold LV6 Neutral (cheaper recruit cost, no printed valuables) charges none.
-    expect(polishUnitStackCost("neutral.champions", "neutral")).toEqual({ gold: 21 });
-
+  it("recruited Neutrals (incl. azure) use the same ladder and the army caps", () => {
+    expect(polishUnitStackCost("neutral.azure_dragons", "neutral")).toEqual({ gold: 1 });
+    expect(polishUnitStackCost("neutral.titans", "neutral", 3)).toEqual({ gold: 4 });
     // Azure counts as gold for the cap (human cap 1).
     expect(polishUnitStackCap("neutral.azure_dragons", "neutral")).toBe(1);
     expect(polishUnitStackCap("neutral.titans", "neutral")).toBe(1);
@@ -125,13 +93,13 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     });
 
     expect(state.players.p1.army[0].stacks).toBe(2);
-    // Two bronze Griffin Stacks: 2 × 7 gold (the Griffin Pack prints no valuables).
-    expect(state.players.p1.resources.gold).toBe(beforeGold - 14);
+    // Two Griffin layers in one batch: 1 + 2 gold (the ladder re-prices per layer).
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 3);
     expect(state.players.p1.townTokens.population, "the normal multi-purchase window stays open").toBe(true);
     expect(state.eventLog.filter((event) => event.type === "ARMY_STACK_PURCHASED")).toHaveLength(2);
   });
 
-  it("charges the Pack's printed valuables (the Few→Pack fee) in real valuables", () => {
+  it("no longer charges the Pack's printed valuables — a Gold Dragon layer costs 1 gold", () => {
     let state = makeState();
     addCitadel(state);
     const dragon = { id: "stack_gd", unitDefId: "rampart.gold_dragons", side: "pack" as const };
@@ -142,7 +110,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     const offered = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases[0]?.kind === "stack"
     );
-    expect(offered?.label).toContain("33 gold + 2 valuables");
+    expect(offered?.label).toContain("(1 gold)");
 
     state = applyOk(state, {
       type: "POPULATION_ACTION",
@@ -150,10 +118,9 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
       purchases: [{ kind: "stack", unitDefId: dragon.unitDefId, armyUnitId: dragon.id }]
     });
 
-    // Gold Dragon Pack: 30 gold + 2 valuables → one Stack = 33 gold + 2 valuables.
     expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(beforeGold - 33);
-    expect(state.players.p1.resources.valuables).toBe(beforeValuables - 2);
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 1);
+    expect(state.players.p1.resources.valuables).toBe(beforeValuables);
   });
 
   it("enforces the cap across a batch and leaves state unchanged on rejection", () => {
@@ -210,24 +177,24 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
   });
 
   it("lets recruited Neutrals buy Stacks using neutral gold + army caps (bronze 3 / silver 2 / gold 1)", () => {
-    // CONTROL: Pack griffin cost/cap unchanged (gold 6 + bronze 1 = 7, no valuables; cap 3).
-    expect(polishUnitStackCost("castle.griffins", "pack")).toEqual({ gold: 7 });
+    // CONTROL: Pack griffin first layer 1 gold, cap 3.
+    expect(polishUnitStackCost("castle.griffins", "pack")).toEqual({ gold: 1 });
     expect(polishUnitStackCap("castle.griffins", "pack")).toBe(3);
 
-    // Bronze neutral: cost = 7 gold + 1; human army cap is always bronze 3
+    // Bronze neutral: first layer 1 gold; human army cap is always bronze 3
     // (bank combat punch-up does NOT apply once the unit is player-owned).
     const neutralGriffin = {
       id: "army_neutral_griffins",
       unitDefId: "neutral.griffins",
       side: "neutral" as const
     };
-    expect(polishUnitStackCost("neutral.griffins", "neutral")).toEqual({ gold: 8 });
+    expect(polishUnitStackCost("neutral.griffins", "neutral")).toEqual({ gold: 1 });
     expect(polishUnitStackCap("neutral.griffins", "neutral")).toBe(3);
     expect(polishArmyUnitCanBuyStack(neutralGriffin)).toBe(true);
 
     // Gold Neutral (Nagas): human cap is 1. Nagas print no valuables.
     expect(polishUnitStackCap("neutral.nagas", "neutral")).toBe(1);
-    expect(polishUnitStackCost("neutral.nagas", "neutral")).toEqual({ gold: 16 + 3 });
+    expect(polishUnitStackCost("neutral.nagas", "neutral")).toEqual({ gold: 1 });
 
     // CONTROL: Pack gold unit still uses army cap 1.
     expect(polishUnitStackCap("castle.archangels", "pack")).toBe(1);
@@ -251,7 +218,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
       purchases: [{ kind: "stack", unitDefId: "neutral.griffins", armyUnitId: neutralGriffin.id }]
     });
     expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(beforeGold - 8);
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 1);
 
     // Combat: neutral stacks grant +1 Attack and peel full health layers.
     const combatUnit = makeCombatUnitFromArmy(

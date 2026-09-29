@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, FilePlus2, FolderOpen, Lock, Save, Undo2 } from "lucide-react";
+import { ArrowLeft, FilePlus2, FolderOpen, Lock, Save } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
+import { UndoButton } from "@/components/table/undo-button";
 import { MapPresetEditor } from "@/components/adventure/map-preset-editor";
 import { DesignerMapLibraryModal } from "@/components/adventure/designer-map-library-modal";
 import {
@@ -335,16 +336,14 @@ export default function MapDesignerPage() {
                 ))}
               </select>
             </label>
-            <button
-              aria-label="Undo last map edit"
-              className="commandButton ghost"
-              disabled={undoHistory.length === 0}
+            <UndoButton
+              ariaLabel="Undo last map edit"
+              className="ghost"
+              count={undoHistory.length}
+              disabledReason={undoHistory.length > 0 ? null : "Nothing to undo"}
               onClick={undoEditorChange}
-              title={undoHistory.length > 0 ? "Undo the last map or rules edit" : "Nothing to undo"}
-              type="button"
-            >
-              <Undo2 aria-hidden="true" size={14} /> Undo
-            </button>
+              title="Undo the last map or rules edit"
+            />
             {currentId && !canModifyCurrent ? (
               // The loaded map belongs to someone else — you can't overwrite it,
               // only fork it. The primary action becomes "Save as copy".

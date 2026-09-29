@@ -257,6 +257,7 @@ import {
   clearPendingLevelUpAbilitySearch,
   reinforceArmyUnit,
   reinforceCostFor,
+  settlementReinforceCostFor,
   redeemReinforcementDiscount,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
@@ -600,7 +601,8 @@ import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
   polishUnitStackCost,
-  polishUnitStackCap
+  polishUnitStackCap,
+  polishFreeStackTopUpGold
 } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
@@ -1007,10 +1009,14 @@ export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId
     ? player.army
         .filter((unit) => {
           const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+          // USER RULING 2026-09-29: a free Stack covers the 1st layer's price;
+          // a higher layer pays the difference, so it needs that much gold.
+          const topUp = polishFreeStackTopUpGold(unit);
           return (
             (tier === "bronze" || tier === "silver") &&
-            polishArmyUnitCanBuyStack(unit) &&
-            Boolean(polishArmyUnitStackCost(unit))
+            polishArmyUnitCanBuyStack(unit, state) &&
+            Boolean(polishArmyUnitStackCost(unit)) &&
+            (topUp <= 0 || hasRecruitResources(state, playerId, { gold: topUp }))
           );
         })
         .map((unit) => unit.id)
@@ -1030,8 +1036,11 @@ export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId
         return { label: `Reinforce ${coreUnitDefinitions[unitDefId]?.name ?? "unit"} (free)` };
       }),
       ...stackTargetIds.map((id) => {
-        const unitDefId = player.army.find((unit) => unit.id === id)?.unitDefId ?? "";
-        return { label: `Add a Stack to ${coreUnitDefinitions[unitDefId]?.name ?? "unit"} (free)` };
+        const unit = player.army.find((candidate) => candidate.id === id);
+        const topUp = unit ? polishFreeStackTopUpGold(unit) : 0;
+        return {
+          label: `Add a Stack to ${coreUnitDefinitions[unit?.unitDefId ?? ""]?.name ?? "unit"} (${topUp > 0 ? `${topUp} gold` : "free"})`
+        };
       }),
       { label: "Skip" }
     ],
@@ -1063,7 +1072,15 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
   if (!armyUnitId && stackTargetId) {
     const player = state.players[playerId];
     const stackTarget = player?.army.find((unit) => unit.id === stackTargetId);
-    if (stackTarget) {
+    if (stackTarget && polishArmyUnitCanBuyStack(stackTarget, state)) {
+      const topUp = polishFreeStackTopUpGold(stackTarget);
+      const cost: ResourceCost = topUp > 0 ? { gold: topUp } : {};
+      if (topUp > 0 && !hasRecruitResources(state, playerId, cost)) {
+        throw new Error(`Adding that Stack needs ${topUp} gold (the free part covers 1 gold).`);
+      }
+      if (topUp > 0) {
+        spendRecruitResources(state, playerId, cost, "Skeletons reward (Unit Stack)");
+      }
       stackTarget.stacks = (stackTarget.stacks ?? 0) + 1;
       diluteUnitExperienceForUpgrade(state, playerId, stackTarget, "stack");
       appendEvent(state, {
@@ -1072,7 +1089,7 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
         armyUnitId: stackTarget.id,
         unitDefId: stackTarget.unitDefId,
         stacks: stackTarget.stacks,
-        cost: {}
+        cost
       });
     }
     return;
@@ -5566,7 +5583,7 @@ function resolveSettlementChoice(
           const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
           return (
             (tier === "bronze" || tier === "silver") &&
-            polishArmyUnitCanBuyStack(unit) &&
+            polishArmyUnitCanBuyStack(unit, state) &&
             Boolean(polishArmyUnitStackCost(unit))
           );
         })
@@ -5612,7 +5629,8 @@ function resolveSettlementChoice(
   // Half cost (all resources, rounded up) — but a Legion voucher reserved for
   // this unit may make it cheaper still (non-stacking; see reinforceCostFor), so
   // charge the actual best cost. A free first flag charges nothing.
-  const cost: ResourceCost = free ? {} : (reinforceCostFor(state, action.playerId, target.id, true, false, false) ?? {});
+  // Unit Stacks games: Pack − Few difference instead (settlementReinforceCostFor).
+  const cost: ResourceCost = free ? {} : (settlementReinforceCostFor(state, action.playerId, target.id) ?? {});
   if (!free) {
     if (!hasResources(player, cost)) {
       throw new Error("Not enough resources to reinforce at half cost.");
@@ -10355,7 +10373,7 @@ export function revealNeutralArmy(
       if (!unit.unitDefId) return;
       let changed = false;
       if (draw.designerStacks && armyUnitStacksActive(state) && (unit.variant === "pack" || unit.variant === "neutral")) {
-        unit.armyStacks = Math.min(draw.designerStacks, polishUnitStackCap(unit.unitDefId, unit.variant));
+        unit.armyStacks = Math.min(draw.designerStacks, polishUnitStackCap(unit.unitDefId, unit.variant, state));
         changed = true;
       }
       if (draw.designerVeteranRank && unitExperienceActive(state)) {
@@ -18924,7 +18942,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         throw new Error("Buying a Unit Stack needs a Citadel.");
       }
       const target = armyCopy.find((unit) => unit.id === purchase.armyUnitId);
-      if (!target || target.unitDefId !== purchase.unitDefId || !polishArmyUnitCanBuyStack(target)) {
+      if (!target || target.unitDefId !== purchase.unitDefId || !polishArmyUnitCanBuyStack(target, state)) {
         throw new Error("Choose an eligible Pack or Neutral unit below its Stack cap.");
       }
       // Cost follows the card's actual side (Pack gold or Neutral gold + tier).
@@ -22283,7 +22301,9 @@ export function resolveAfkDrop(state: GameState, action: Extract<GameAction, { t
 
   player.kickedByVote = true;
   afk.droppingPlayerId = null;
-  const reason = "was removed by the table's AFK vote";
+  // A player who pressed "Leave game" and whose seat the table voted to remove
+  // (LEAVE_GAME, src/engine/afk.ts) takes this same path; only the wording differs.
+  const reason = player.leftGame ? "left the game and the table removed their seat" : "was removed by the table's AFK vote";
   if (parallelTurnsActive(state)) {
     // Marks their open turn done (a no-op if already ended), eliminates them,
     // and wraps the round once nobody live still owes a turn.

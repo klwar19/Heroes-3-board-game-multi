@@ -20,6 +20,7 @@ import {
   unitOccupiesCell,
 } from "../hex-footprint";
 import { hexPcSpellArea, hexPcSpellBlast } from "../hex-spell-areas";
+import { unitsAdjacent } from "../hex-footprint";
 import { cancelSpellAllowsSchoolAndLevel, deathRippleReachesUnit, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
@@ -2110,7 +2111,25 @@ function scoreEffect(
     }
     if (card.id === "specialty.isra.6") {
       const unit = combatUnitFromTarget(observation, target);
-      return unit ? 700 + Math.min(85, unitThreatValue(unit) / 2) : 180;
+      // Once per Combat: a unit whose save already fired, or which already
+      // carries an unspent Necromancy VI save, gains nothing from a second copy.
+      const alreadySaved = unit && (unit.israDeathSaveUsedThisCombat ||
+        state.activeEffects.some((active) =>
+          active.target?.type === "unit" && active.target.unitId === unit.id &&
+          active.modifiers.some((modifier) => modifier.type === "ISRA_DEATH_SAVE")));
+      return unit && !alreadySaved ? 700 + Math.min(85, unitThreatValue(unit) / 2) : 180;
+    }
+    // Jabarkas's Orcs I (no adjacent penalty, +1 Attack vs adjacent) and VI
+    // (ignore Defense vs adjacent): only worth it with living Orcs, and most
+    // when one of them is already engaged with an enemy.
+    if (card.id === "specialty.jabarkas.1" || card.id === "specialty.jabarkas.6") {
+      const units = Object.values(state.combat?.units ?? {}).filter((unit) => unitRemainingHealth(unit) > 0);
+      const orcs = units.filter((unit) =>
+        unit.controllerId === observation.playerId && unitMatchesSpecialtyName(unit.name, "Orcs"));
+      if (!orcs.length) return 180;
+      const engaged = orcs.some((orc) => units.some((enemy) =>
+        enemy.controllerId !== observation.playerId && unitsAdjacent(state.combat, orc, enemy)));
+      return (engaged ? 735 : 660) + Math.min(40, orcs.length * 20);
     }
     if (card.id === "specialty.henrietta.6") {
       return observation.state.combat ? 735 : 180;

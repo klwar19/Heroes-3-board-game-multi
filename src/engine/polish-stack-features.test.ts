@@ -99,6 +99,21 @@ describe("Necropolis City Hall: free Stack for a bronze card", () => {
     expect(state.eventLog.some((event) => event.type === "ARMY_STACK_PURCHASED")).toBe(true);
   });
 
+  it("a higher layer pays the difference: the free part covers 1 gold (USER RULING 2026-09-29)", () => {
+    let state = makeGame("necro-ch-stack-topup", true);
+    p1Town(state).buildings = ["necropolis.city_hall"];
+    state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "pack", stacks: 1 }];
+    const goldBefore = state.players.p1.resources.gold;
+    state = cityHallPick(state);
+    // Layer 2 costs 2; the City Hall covers 1 → pay 1.
+    const stackPick = visitAction(state, "Add a Stack to Skeletons (1 gold)");
+    expect(stackPick, "the top-up price is shown").toBeTruthy();
+    expect(visitAction(state, "Add a Stack to Skeletons (free)"), "CONTROL: not free any more").toBeUndefined();
+    state = applyOk(state, stackPick!.action);
+    expect(state.players.p1.army[0].stacks).toBe(2);
+    expect(state.players.p1.resources.gold).toBe(goldBefore - 1);
+  });
+
   it("a stack-only army still qualifies for the option (no Few bronze needed)", () => {
     // The army holds ONLY a bronze Pack — nothing to reinforce, but the new
     // hasFreeBronzeStackTarget gate keeps the City Hall option meaningful.
@@ -132,10 +147,10 @@ describe("Necromancy: half-price Stack purchases", () => {
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.resources.gold = 50;
     state.players.p1.army = [
-      // Skeletons Pack: Stack gold 4 (3 printed + bronze 1) → half, floored = 2.
-      { id: "army_skel", unitDefId: "necropolis.skeletons", side: "pack" },
+      // Skeletons Pack with 2 layers: layer 3 costs 3 (ladder, 2026-09-29) → half, floored = 1.
+      { id: "army_skel", unitDefId: "necropolis.skeletons", side: "pack", stacks: 2 },
       // Necromancy Stacks are Undead-only (5ec8e74b, v185), so the gold-tier card
-      // is Dread Knights Pack: Stack gold 23 (20 printed + gold 3) → half, floored = 11.
+      // is Dread Knights Pack: layer 1 costs 1 → half, floored = 0 (free).
       { id: "army_dk", unitDefId: "necropolis.dread_knights", side: "pack" },
       // Archangels Pack: gold tier but NOT Undead — never a Necromancy target.
       { id: "army_arch", unitDefId: "castle.archangels", side: "pack" }
@@ -148,43 +163,33 @@ describe("Necromancy: half-price Stack purchases", () => {
     queueNecromancyReinforce(state, "p1", "basic", "ability.necromancy");
     pumpAdventureQueues(state);
 
-    expect(visitAction(state, "Add a Stack to Skeletons (2 gold)")).toBeTruthy();
+    expect(visitAction(state, "Add a Stack to Skeletons (1 gold)")).toBeTruthy();
     expect(visitAction(state, "Add a Stack to Dread Knights"), "gold tier is expert-only").toBeUndefined();
 
     const goldBefore = state.players.p1.resources.gold;
-    state = applyOk(state, visitAction(state, "Add a Stack to Skeletons (2 gold)")!.action);
-    expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(goldBefore - 2);
+    state = applyOk(state, visitAction(state, "Add a Stack to Skeletons (1 gold)")!.action);
+    expect(state.players.p1.army[0].stacks).toBe(3);
+    expect(state.players.p1.resources.gold).toBe(goldBefore - 1);
     // The Necromancy card is spent ONLY because the Stack was really added.
     expect(state.players.p1.hand).not.toContain("ability.necromancy");
     expect(state.players.p1.discard).toContain("ability.necromancy");
   });
 
-  it("expert extends the half-price Stack to gold-tier Undead cards (floor(23/2) = 11 gold + the Valuable)", () => {
+  it("expert extends the half-price Stack to gold-tier Undead cards (layer 1: floor(1/2) = free, no Valuable)", () => {
     let state = necroState("necromancy-expert");
-    state.players.p1.resources.valuables = 2;
+    state.players.p1.resources.valuables = 0;
     queueNecromancyReinforce(state, "p1", "expert", "ability.necromancy");
     pumpAdventureQueues(state);
 
-    // USER RULING 2026-09-28: only the GOLD is halved — the Dread Knights
-    // Stack's printed Valuable is still paid, as on Necromancy's reinforce.
-    const dkStack = visitAction(state, "Add a Stack to Dread Knights (11 gold + 1 valuables)");
+    // The ladder price is gold only (2026-09-29), so no Valuable is needed.
+    const dkStack = visitAction(state, "Add a Stack to Dread Knights (free)");
     expect(dkStack, "expert Necromancy reaches the gold tier").toBeTruthy();
     expect(visitAction(state, "Add a Stack to Archangels"), "Undead-only (5ec8e74b)").toBeUndefined();
     const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, dkStack!.action);
     expect(state.players.p1.army[1].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(goldBefore - 11);
-    expect(state.players.p1.resources.valuables).toBe(1);
-  });
-
-  it("CONTROL: without the Valuable the gold-tier half-price Stack is not offered", () => {
-    const state = necroState("necromancy-expert-no-valuable");
-    state.players.p1.resources.valuables = 0;
-    queueNecromancyReinforce(state, "p1", "expert", "ability.necromancy");
-    pumpAdventureQueues(state);
-    expect(visitAction(state, "Add a Stack to Dread Knights")).toBeUndefined();
-    expect(visitAction(state, "Add a Stack to Skeletons (2 gold)"), "the gold-only bronze Stack stays").toBeTruthy();
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+    expect(state.players.p1.resources.valuables).toBe(0);
   });
 
   it("Skip keeps the Necromancy card (the Stack option never pre-spends it)", () => {
@@ -218,8 +223,8 @@ describe("Rampart Saplings: half-gold Stack purchases", () => {
     p1Town(state).buildings = ["rampart.saplings"];
     state.players.p1.resources.gold = 20;
     state.players.p1.army = [
-      // Centaurs Pack: Stack gold 4 → half, rounded up = 2.
-      { id: "army_cent", unitDefId: "rampart.centaurs", side: "pack" },
+      // Centaurs Pack with 2 layers: layer 3 costs 3 → half, rounded up = 2.
+      { id: "army_cent", unitDefId: "rampart.centaurs", side: "pack", stacks: 2 },
       // Gold Dragons Pack: gold tier — outside the Saplings' bronze/silver list.
       { id: "army_gd", unitDefId: "rampart.gold_dragons", side: "pack" }
     ];
@@ -238,7 +243,7 @@ describe("Rampart Saplings: half-gold Stack purchases", () => {
 
     const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, stackPick!.action);
-    expect(state.players.p1.army[0].stacks).toBe(1);
+    expect(state.players.p1.army[0].stacks).toBe(3);
     expect(state.players.p1.resources.gold).toBe(goldBefore - 2);
   });
 
@@ -264,7 +269,7 @@ describe("Freelancer's Guild: Stack purchases substitute resources for gold", ()
       ? ["stronghold.citadel", "stronghold.freelancers_guild"]
       : ["stronghold.citadel"];
     state.players.p1.townTokens.population = true;
-    // Goblins Pack: Stack gold 3 — but the player holds NO gold at all.
+    // Goblins Pack: first layer 1 gold — but the player holds NO gold at all.
     state.players.p1.army = [{ id: "army_gob", unitDefId: "stronghold.goblins", side: "pack" }];
     state.players.p1.resources = { gold: 0, buildingMaterials: 10, valuables: 10 };
     return state;
@@ -282,7 +287,7 @@ describe("Freelancer's Guild: Stack purchases substitute resources for gold", ()
     expect(state.players.p1.resources.gold).toBe(0);
     expect(
       state.players.p1.resources.buildingMaterials + state.players.p1.resources.valuables,
-      "the 3 missing gold was paid in substituted resources"
+      "the missing gold was paid in substituted resources"
     ).toBeLessThan(20);
   });
 
@@ -333,6 +338,23 @@ describe("Conflux Garden of Life: free Stack on the Sprites Pack", () => {
     expect(state.players.p1.resources.gold).toBe(goldBefore);
   });
 
+  it("a 2nd Sprite layer pays 1 gold (the Garden covers 1 gold — USER RULING 2026-09-29)", () => {
+    const state = makeGame("garden-stack-topup", true, { id: "p1", name: "Luna", factionId: "conflux", heroDefId: "luna" });
+    p1Town(state).buildings = ["conflux.garden_of_life"];
+    state.players.p1.army = [{ id: "army_spr", unitDefId: "conflux.sprites", side: "pack", stacks: 1 }];
+    state.round = 2;
+    state.decks.astrologers!.drawPile = ["astrologers.dead_silence"];
+    startAdventureRound(state);
+    pumpAdventureQueues(state);
+    const stackPick = visitAction(state, "Add a Stack to Sprites (1 gold)");
+    expect(stackPick).toBeTruthy();
+    expect(visitAction(state, "Add a Stack to Sprites (free)"), "CONTROL: layer 2 is not free").toBeUndefined();
+    const goldBefore = state.players.p1.resources.gold;
+    const next = applyOk(state, stackPick!.action);
+    expect(next.players.p1.army[0].stacks).toBe(2);
+    expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
+  });
+
   it("CONTROL: with the rule OFF a Sprites Pack gets NO Garden offer at all", () => {
     // A Pack cannot be recruited (owned) nor reinforced (not Few) — without the
     // Stack extension the Garden queues nothing for it.
@@ -351,8 +373,8 @@ describe("Cove Pub: flat −3 gold Stack purchases", () => {
     const state = makeGame(seed, stacksOn, { id: "p1", name: "Astra", factionId: "cove", heroDefId: "astra" });
     p1Town(state).buildings = ["cove.pub"];
     state.players.p1.resources.gold = 20;
-    // Sea Dogs Pack: Stack gold 7 (6 printed + bronze 1) → −3 = 4.
-    state.players.p1.army = [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "pack" }];
+    // Sea Dogs Pack with 2 layers: layer 3 costs 3 (ladder) → −3 = free.
+    state.players.p1.army = [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "pack", stacks: 2 }];
     state.round = 2;
     state.decks.astrologers!.drawPile = ["astrologers.dead_silence"];
     startAdventureRound(state);
@@ -384,15 +406,14 @@ describe("Cove Pub: flat −3 gold Stack purchases", () => {
     return current;
   }
 
-  it("offers the Stack at 3 less gold and charges the discounted price", () => {
+  it("offers the Stack at 3 less gold (min 0) and charges the discounted price", () => {
     let state = takeHandStep(pubRound("pub-stack", true));
     const stackPick = pubStackAction(state);
-    expect(stackPick, "the Pub deal covers the Sea Dogs Stack at 7−3").toBeTruthy();
-    expect(stackPick!.label, "priced 7 − 3").toContain("4 gold");
+    expect(stackPick, "the Pub deal covers the Sea Dogs Stack at 3−3").toBeTruthy();
     const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, stackPick!.action);
-    expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(goldBefore - 4);
+    expect(state.players.p1.army[0].stacks).toBe(3);
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
   });
 
   it("CONTROL: with the rule OFF the Pub offers no Stack purchase", () => {
@@ -412,7 +433,8 @@ describe("Legion artifacts: vouchers apply to Stack purchases", () => {
     p1Town(state).buildings = ["cove.citadel"];
     state.players.p1.townTokens.population = true;
     state.players.p1.resources.gold = 20;
-    state.players.p1.army = [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "pack" }];
+    // Two layers already: the next (3rd) layer costs 3 gold on the ladder.
+    state.players.p1.army = [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "pack", stacks: 2 }];
     return state;
   }
 
@@ -430,7 +452,7 @@ describe("Legion artifacts: vouchers apply to Stack purchases", () => {
   it("a banked stack voucher knocks its gold off the purchase and is consumed", () => {
     let state = legionState("legion-stack-buy", true);
     state.players.p1.recruitDiscounts = [
-      { cardId: "artifact.legs_of_legion", amount: 4, target: { kind: "stack", armyUnitId: "army_sd" } }
+      { cardId: "artifact.legs_of_legion", amount: 2, target: { kind: "stack", armyUnitId: "army_sd" } }
     ];
     const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, {
@@ -438,9 +460,9 @@ describe("Legion artifacts: vouchers apply to Stack purchases", () => {
       playerId: "p1",
       purchases: [{ kind: "stack", unitDefId: "cove.sea_dogs", armyUnitId: "army_sd" }]
     });
-    // Sea Dogs Stack gold 7 − 4 voucher = 3.
-    expect(state.players.p1.resources.gold).toBe(goldBefore - 3);
-    expect(state.players.p1.army[0].stacks).toBe(1);
+    // Sea Dogs layer 3 costs 3 − 2 voucher = 1.
+    expect(state.players.p1.resources.gold).toBe(goldBefore - 1);
+    expect(state.players.p1.army[0].stacks).toBe(3);
     expect(state.players.p1.recruitDiscounts, "the voucher is single-use").toHaveLength(0);
   });
 
@@ -455,7 +477,7 @@ describe("Legion artifacts: vouchers apply to Stack purchases", () => {
       playerId: "p1",
       purchases: [{ kind: "stack", unitDefId: "cove.sea_dogs", armyUnitId: "army_sd" }]
     });
-    expect(state.players.p1.resources.gold, "full price — the reinforce voucher does not match").toBe(goldBefore - 7);
+    expect(state.players.p1.resources.gold, "full price — the reinforce voucher does not match").toBe(goldBefore - 3);
     expect(state.players.p1.recruitDiscounts, "the mismatched voucher is kept").toHaveLength(1);
   });
 });

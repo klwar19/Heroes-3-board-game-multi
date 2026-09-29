@@ -277,7 +277,7 @@ const MITHRIL_MACHINES = [
   {
     slug: "lightning_generator",
     title: "Mithril Lightning Generator",
-    text: "At the start of each Combat round, deal 1 damage to an enemy unit of your choice — 2 damage in even Combat rounds."
+    text: "At the start of each Combat round, choose a unit and roll an Attack die: on \"+1\" deal it 1 damage, on \"0\" deal 1 damage to a unit adjacent to it — 2 damage in even Combat rounds."
   }
 ];
 

@@ -551,6 +551,7 @@ export function UnitSideCards({
  * clear Add Stack / Max button so the army table is obvious in the town UI.
  */
 function UnitStackPurchaseControls({
+  state,
   owned,
   unitName,
   tier,
@@ -559,6 +560,7 @@ function UnitStackPurchaseControls({
   resources,
   onAction
 }: {
+  state: GameState;
   owned: ArmyUnitState;
   unitName: string;
   tier: string;
@@ -571,8 +573,10 @@ function UnitStackPurchaseControls({
   // the Few→Pack "Reinforce" button beside it — no arm/Confirm/Cancel step. The
   // cost is spelled out on the button (and its title) before the click. The AI
   // path never renders this — it dispatches the POPULATION_ACTION directly.
-  const stackCap = polishArmyUnitStackCap(owned);
+  // Unlimited Stacks (Polish test rule): the cap is Infinity — shown as "no cap".
+  const stackCap = polishArmyUnitStackCap(owned, state);
   const stackCost = polishArmyUnitStackCost(owned);
+  const capText = Number.isFinite(stackCap) ? String(stackCap) : "∞";
   if (!stackCost || stackCap <= 0) {
     return null;
   }
@@ -587,7 +591,7 @@ function UnitStackPurchaseControls({
       legal.action.purchases[0].armyUnitId === owned.id
   );
   const kindLabel = owned.side === "neutral" ? "Neutral" : "Pack";
-  const capLabel = polishUnitStackCapLabel(owned.unitDefId);
+  const capLabel = polishUnitStackCapLabel(owned.unitDefId, state);
   const goldCost = stackCost.gold ?? 0;
   const valuablesCost = stackCost.valuables ?? 0;
   const costLabel = valuablesCost > 0 ? `${goldCost} gold + ${valuablesCost} valuables` : `${goldCost} gold`;
@@ -597,7 +601,7 @@ function UnitStackPurchaseControls({
     <div className="stackPurchasePanel" role="group" aria-label={`Unit Stacks for ${unitName}`}>
       <span
         className={`armyStackBadge count-${Math.min(3, stackCount)} ${stackCount > 0 ? "active" : "empty"}`}
-        title={`${stackCount} of ${stackCap} Unit Stacks · +1 Attack while any remain`}
+        title={`${stackCount} of ${capText} Unit Stacks · +1 Attack while any remain`}
       >
         <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
         ×{stackCount}
@@ -607,8 +611,8 @@ function UnitStackPurchaseControls({
           Stacks <span className="stackPurchaseKind">{kindLabel}</span>
         </strong>
         <small className="stackPurchaseCost">
-          {stackCount}/{stackCap}
-          {capLabel ? ` · ${capLabel}` : ""} · {costLabel} each
+          {stackCount}/{capText}
+          {capLabel ? ` · ${capLabel}` : ""} · next layer {costLabel} (+1 gold per layer)
         </small>
         <small className="stackPurchaseHint">
           +1 Attack while stacked · each Stack is one full health bar
@@ -810,7 +814,8 @@ export function TownRecruitSection({
           <>
             {" "}
             With Unit Stacks: at the Citadel, <b>Packs</b> and recruited <b>Neutrals</b> may buy layers (bronze max 3 /
-            silver 2 / gold 1) for that side&apos;s gold + tier, plus the side&apos;s printed valuables.
+            silver 2 / gold 1; no cap with Unlimited Stacks). Each layer costs 1 gold more than that card&apos;s
+            previous one: 1st layer 1 gold, 2nd 2 gold, 3rd 3 gold.
           </>
         ) : null}
       </small>
@@ -930,7 +935,7 @@ export function TownRecruitSection({
         // Pack (or other non-Few): the card is complete for recruit; Stacks may still apply.
         if (owned && owned.side !== "few") {
           const canStack =
-            polishStacksEnabled && (owned.side === "pack" || owned.side === "neutral") && polishArmyUnitStackCap(owned) > 0;
+            polishStacksEnabled && (owned.side === "pack" || owned.side === "neutral") && polishArmyUnitStackCap(owned, state) > 0;
           return (
             <div className={`recruitRow unitRosterRow done owned-${owned.side} ${canStack ? "unitStackRow" : ""}`} key={rowKey} data-army-unit-id={owned.id}>
               {unitCards}
@@ -941,6 +946,7 @@ export function TownRecruitSection({
               </span>
               {canStack ? (
                 <UnitStackPurchaseControls
+                  state={state}
                   canReinforce={canReinforce}
                   legalActions={legalActions}
                   onAction={onAction}
@@ -1098,7 +1104,7 @@ export function TownRecruitSection({
       {polishStacksEnabled && canReinforce
         ? (() => {
             const neutrals = player.army.filter(
-              (owned) => owned.side === "neutral" && polishArmyUnitStackCap(owned) > 0
+              (owned) => owned.side === "neutral" && polishArmyUnitStackCap(owned, state) > 0
             );
             if (neutrals.length === 0) {
               return null;
@@ -1122,6 +1128,7 @@ export function TownRecruitSection({
                         <span className="neutralBadge">Neutral</span>
                       </span>
                       <UnitStackPurchaseControls
+                  state={state}
                         canReinforce={canReinforce}
                         legalActions={legalActions}
                         onAction={onAction}

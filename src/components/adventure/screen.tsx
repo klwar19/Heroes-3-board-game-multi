@@ -232,6 +232,9 @@ import "@/data/anime/field-overrides";
 import "@/data/wog/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 import { CardFrame } from "@/components/table/seats";
+import { LeaveGameButton } from "@/components/table/leave-game-panel";
+import { DuelUndoButton, UndoButton } from "@/components/table/undo-button";
+import { DUEL_UNDO_RULE_TEXT } from "@/engine/undo-safety";
 import { isPolishBalanceCard } from "@/data/cards/polish-balance-art";
 import { isCommunityBalanceCard } from "@/data/cards/community-balance-art";
 import {
@@ -5148,17 +5151,18 @@ export function AdventureHud({
             the mode is on; if there is nothing to undo the server replies with a
             harmless "nothing to undo" rejection. */}
         {state.adventure?.undoMoves ? (
-          <button
-            className="commandButton undoMove"
+          <UndoButton
+            className="undoMove"
+            label="Undo (testing)"
             onClick={() =>
               onAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })
             }
             title="Testing aid: roll the game back to before your most recent action. Every undo is announced in the feed."
-            type="button"
-          >
-            ↩ Undo
-          </button>
-        ) : null}
+          />
+        ) : (
+          // 1v1 Undo (normal play): own safe moves only — see undo-safety.ts.
+          <DuelUndoButton state={state} viewerPlayerId={viewerPlayerId} onAction={onAction} />
+        )}
         {eventLogControl}
         {endTurn ? (
           <button
@@ -5200,6 +5204,9 @@ export function AdventureHud({
             </button>
           )
         ) : null}
+        {/* Multiplayer: leave mid-game — the others vote to remove the seat or
+            let the computer take it over (LEAVE_GAME, src/engine/afk.ts). */}
+        <LeaveGameButton state={state} viewerPlayerId={viewerPlayerId} onAction={onAction} />
       </div>
     </div>
   );
@@ -6847,7 +6854,7 @@ export function ArmyPanel({
                 {(unit.stacks ?? 0) > 0 ? (
                   <span
                     className={`armyStackBadge count-${Math.min(3, unit.stacks ?? 0)} active`}
-                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${polishArmyUnitStackCap(unit) || unit.stacks}`}
+                    title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${Number.isFinite(polishArmyUnitStackCap(unit, state)) ? polishArmyUnitStackCap(unit, state) || unit.stacks : "∞"}`}
                   >
                     <img
                       alt=""
@@ -12448,7 +12455,8 @@ function houseRuleToggleDisabled(
 ): boolean {
   return (
     ((ruleId === "polish-creature-banks" || ruleId === "polish-bank-sizes") && !creatureBanksEnabled) ||
-    (ruleId === "polish-random-artifacts" && !houseRules["split-decks"])
+    (ruleId === "polish-random-artifacts" && !houseRules["split-decks"]) ||
+    (ruleId === "polish-unlimited-stacks" && !houseRules["polish-unit-stacks"])
   );
 }
 
@@ -12527,7 +12535,9 @@ const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "polish-bank-sizes":
     "Reveal up to two Banks; the chosen I–IV size fixes its Stack Tokens.",
   "polish-unit-stacks":
-    "Pack Groups and recruited Neutrals may buy persistent Stack layers.",
+    "Pack Groups and recruited Neutrals buy Stack layers: 1st 1 gold, 2nd 2 gold, …",
+  "polish-unlimited-stacks":
+    "Test rule: no Stack cap; one Necromancy per unit and one Demon summon per combat.",
   "polish-reduced-starting-bonus":
     "Choose a reduced Minor-Artifact or resource-die starting bonus.",
   "polish-rule-111":
@@ -12611,6 +12621,8 @@ function HouseRuleToggleButton({
             : disabled
               ? rule.id === "polish-random-artifacts"
                 ? `${rule.description} Turn Split Spell/Artifact decks on first.`
+                : rule.id === "polish-unlimited-stacks"
+                ? `${rule.description} Turn Purchasable Unit Stacks on first.`
                 : `${rule.description} Turn Creature Banks on in Map & Setup first.`
               : visibleDescription
         }
@@ -15292,6 +15304,9 @@ function GameOptionsPanel({
               !polishSpellBookOn &&
               (options.spellBook ?? options.ruleset === "binh");
             const undoMovesOn = options.undoMoves ?? false;
+            // 1v1 Undo: offered (and frozen at start) only for a 2-seat table.
+            const duelUndoOffered = lobby.seats.length === 2;
+            const duelUndoOn = options.duelUndo ?? false;
             const manualGuardControlOn = options.manualGuardControl ?? false;
             // CO-OP (step 2 engine rule): in co-op NOBODY plays the Neutral units —
             // `coopDisablesManualNeutralControl` nulls both controllers always. The
@@ -15500,6 +15515,36 @@ function GameOptionsPanel({
                       : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
                   </small>
                 </div>
+
+                {duelUndoOffered ? (
+                  <div className="optionRow duelUndoRow">
+                    <OptionRowLabel
+                      hint={DUEL_UNDO_RULE_TEXT}
+                      iconClassName="optionRowIcon crest"
+                      iconSrc="/assets/ui/option-undo-moves-clear.webp"
+                      title="Undo button for 1v1 games"
+                    />
+                    <div className="optionButtons">
+                      {BOOLEAN_OPTION_ORDER.map((on) => (
+                        <button
+                          aria-pressed={duelUndoOn === on}
+                          className={duelUndoOn === on ? "selected" : ""}
+                          key={String(on)}
+                          onClick={() => send({ duelUndo: on })}
+                          title={on ? "1v1 Undo on" : "1v1 Undo off"}
+                          type="button"
+                        >
+                          {on ? "On" : "Off"}
+                        </button>
+                      ))}
+                    </div>
+                    <small className="optionHint">
+                      {duelUndoOn
+                        ? `${DUEL_UNDO_RULE_TEXT} Every undo is announced in the feed (ranked tables too).`
+                        : "Off by default. 2-player games only: an Undo button that takes back your own moves, never dice, draws or reveals."}
+                    </small>
+                  </div>
+                ) : null}
 
                 <div className="optionRow manualGuardControlRow">
                   <OptionRowLabel

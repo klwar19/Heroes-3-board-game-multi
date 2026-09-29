@@ -16,7 +16,7 @@ import {
   type SpellFxPlan
 } from "./fx";
 import { cardLibrary } from "./cards/library";
-import { GRANTED_WAR_MACHINE_CARD_IDS, WAR_MACHINE_CARD_IDS } from "./cards/permanents";
+import { WAR_MACHINE_CARD_IDS } from "./cards/permanents";
 
 describe("elemental experience presentation", () => {
   it.each([
@@ -418,9 +418,9 @@ describe("warMachineFxPlans", () => {
     (cardId) => cardLibrary[cardId]?.permanentEffect?.roundStart
   );
 
-  it("covers exactly the three firing war machines (Ballista, Catapult, Cannon)", () => {
+  it("covers exactly the four firing war machines (Ballista, Catapult, Cannon, Lightning Generator)", () => {
     expect([...firingMachines].sort()).toEqual(
-      ["war_machine.ballista", "war_machine.cannon", "war_machine.catapult"].sort()
+      ["war_machine.ballista", "war_machine.cannon", "war_machine.catapult", "war_machine.lightning_generator"].sort()
     );
   });
 
@@ -441,7 +441,7 @@ describe("warMachineFxPlans", () => {
   });
 
   it("references only real war machine cards", () => {
-    const allMachines: readonly string[] = [...WAR_MACHINE_CARD_IDS, ...GRANTED_WAR_MACHINE_CARD_IDS];
+    const allMachines: readonly string[] = [...WAR_MACHINE_CARD_IDS];
     for (const cardId of Object.keys(warMachineFxPlans)) {
       expect(allMachines).toContain(cardId);
     }

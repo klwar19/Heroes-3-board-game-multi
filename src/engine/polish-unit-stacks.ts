@@ -1,9 +1,24 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 
-import type { ArmyUnitState, ResourceCost, UnitGrade } from "./state";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
+import type { ArmyUnitState, GameState, ResourceCost, UnitGrade } from "./state";
+
+/** Game state slice the Stack cap reads (the Unlimited Stacks house rule). */
+export type PolishStackRulesView = Pick<GameState, "ruleset" | "adventure" | "anime">;
 
 /**
- * Printed Polish house-rule cap and gold surcharge for each faction tier.
+ * Polish house rule "Unlimited Stacks" (USER RULING 2026-09-29): Stack layers
+ * have NO tier cap. Only meaningful while army Unit Stacks are active; the
+ * price ladder is the same escalating one (see polishStackLayerPrice).
+ */
+export function polishUnlimitedStacksEnabled(state?: PolishStackRulesView | null): boolean {
+  return Boolean(state && houseRuleEnabled(state, "polish-unlimited-stacks") && armyUnitStacksActive(state));
+}
+
+/**
+ * Printed Polish house-rule cap for each faction tier. `goldSurcharge` is the
+ * PRE-2026-09-29 tier fee, kept only for the Dracon IV refund text and old
+ * readers — the Stack PRICE is now the escalating ladder (polishStackLayerPrice).
  * The surcharge IS the "nr of tier" of the user ruling (bronze 1 / silver 2 /
  * gold 3). AZURE has no row on purpose: it is priced (and capped) as gold, the
  * same azure→gold convention the cap uses — a literal tier number would be 4,
@@ -23,10 +38,17 @@ export type PolishStackSide = "pack" | "neutral";
  * Number of persistent Stack layers a human-controlled army card may carry.
  * Always the army table — bronze 3 / silver 2 / gold 1 (azure counted as gold → 1).
  */
-export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "pack"): number {
+export function polishUnitStackCap(
+  unitDefId: string,
+  _side: PolishStackSide = "pack",
+  state?: PolishStackRulesView | null
+): number {
   const tier = coreUnitDefinitions[unitDefId]?.tier;
   if (!tier) {
     return 0;
+  }
+  if (polishUnlimitedStacksEnabled(state)) {
+    return Number.POSITIVE_INFINITY;
   }
   if (tier === "azure") {
     return POLISH_UNIT_STACK_RULES.gold?.cap ?? 0;
@@ -35,51 +57,53 @@ export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "
 }
 
 /**
- * Cost of one Stack — the USER RULING (2026-08-12): "cost of reinforsment + nr
- * of tier" (e.g. Tower Magi 11 + 2 = 13).
- * - Pack: the Few→Pack REINFORCEMENT price (`reinforceCostFor` before any
- *   discount = the printed Pack cost, valuables included) + the tier number in
- *   gold. That equality is swept over the WHOLE unit catalog in
- *   `polish-stack-reinforcement-price.test.ts` — keep the two in lockstep.
- * - Neutral: a recruited Neutral card has NO Few→Pack reinforcement, so its own
- *   printed (recruit) cost stands in as the base, + the same tier number.
- * No printed Pack/Neutral side costs building materials today (asserted by that
- * sweep), so the gold+valuables shape below is the complete reinforcement fee.
- * This is the BASE price only: the town
- * Population purchase still folds a reserved {kind:"stack"} Legion voucher via
- * applyRecruitGoldDiscount and pays through spendRecruitResources, where the
- * Freelancer's Guild may substitute for missing gold (see BUY_UNIT_STACK in
- * adventure-reducer.ts).
+ * Gold price of a unit card's NEXT Stack layer — USER RULING 2026-09-29: "each
+ * stack costs +1 gold more than the previous": the card's 1st layer costs 1
+ * gold, its 2nd 2 gold, its Nth N gold. Counted PER UNIT CARD; tier, side and
+ * printed valuables no longer matter. `currentStacks` is the layer count the
+ * card already carries.
+ */
+export function polishStackLayerPrice(currentStacks: number): number {
+  return Math.max(0, Math.trunc(currentStacks)) + 1;
+}
+
+/**
+ * Cost of one Stack layer for a card of this unit that carries `currentStacks`
+ * layers (default 0 = its first layer). Null when the unit cannot carry Stacks
+ * (no tier / no such side). Gold only — the whole price is the ladder.
+ * This is the BASE price only: the town Population purchase still folds a
+ * reserved {kind:"stack"} Legion voucher via applyRecruitGoldDiscount and pays
+ * through spendRecruitResources, where the Freelancer's Guild may substitute for
+ * missing gold (see BUY_UNIT_STACK in adventure-reducer.ts).
  */
 export function polishUnitStackCost(
   unitDefId: string,
-  side: PolishStackSide = "pack"
+  side: PolishStackSide = "pack",
+  currentStacks = 0
 ): ResourceCost | null {
   const unit = coreUnitDefinitions[unitDefId];
   if (!unit) {
     return null;
   }
   const tier = unit.tier === "azure" ? "gold" : unit.tier;
-  const rule = POLISH_UNIT_STACK_RULES[tier];
-  if (!rule) {
+  if (!POLISH_UNIT_STACK_RULES[tier]) {
     return null;
   }
   const printed = side === "pack" ? unit.pack : unit.neutral;
   if (!printed) {
     return null;
   }
-  // Gold: printed gold + the tier surcharge (0 printed gold still pays the fee).
-  // Every OTHER printed cost resource is charged unchanged — valuables, and
-  // building materials on the rare side that carries them (e.g. MGQ Lisa) — so a
-  // Stack costs exactly the reinforcement price + the tier number, whatever the
-  // side's cost shape.
-  const materials = printed.cost.buildingMaterials ?? 0;
-  const valuables = printed.cost.valuables ?? 0;
-  return {
-    gold: (printed.cost.gold ?? 0) + rule.goldSurcharge,
-    ...(materials > 0 ? { buildingMaterials: materials } : {}),
-    ...(valuables > 0 ? { valuables } : {})
-  };
+  return { gold: polishStackLayerPrice(currentStacks) };
+}
+
+/**
+ * A FREE-Stack source (Garden of Life, Necropolis City Hall, the Skeletons
+ * reward) — USER RULING 2026-09-29: the free part covers the 1st layer's price
+ * (1 gold); the player pays the difference for a higher layer (layer 1 free,
+ * layer 2 pays 1, layer 3 pays 2 …). Gold owed for this card's next layer.
+ */
+export function polishFreeStackTopUpGold(unit: Pick<ArmyUnitState, "stacks">): number {
+  return Math.max(0, polishStackLayerPrice(unit.stacks ?? 0) - polishStackLayerPrice(0));
 }
 
 /**
@@ -96,12 +120,12 @@ export function polishStackTier(unitDefId: string): "bronze" | "silver" | "gold"
 }
 
 /** Pure eligibility check used by legal actions, the reducer, and town UI. */
-export function polishArmyUnitCanBuyStack(unit: ArmyUnitState): boolean {
+export function polishArmyUnitCanBuyStack(unit: ArmyUnitState, state?: PolishStackRulesView | null): boolean {
   if (unit.side !== "pack" && unit.side !== "neutral") {
     return false;
   }
   const side: PolishStackSide = unit.side;
-  const cap = polishUnitStackCap(unit.unitDefId, side);
+  const cap = polishUnitStackCap(unit.unitDefId, side, state);
   return cap > 0 && (unit.stacks ?? 0) < cap;
 }
 
@@ -110,23 +134,26 @@ export function polishArmyUnitStackCost(unit: ArmyUnitState): ResourceCost | nul
   if (unit.side !== "pack" && unit.side !== "neutral") {
     return null;
   }
-  return polishUnitStackCost(unit.unitDefId, unit.side);
+  return polishUnitStackCost(unit.unitDefId, unit.side, unit.stacks ?? 0);
 }
 
 /** Cap for the army card's actual side (always army bronze/silver/gold table). */
-export function polishArmyUnitStackCap(unit: ArmyUnitState): number {
+export function polishArmyUnitStackCap(unit: ArmyUnitState, state?: PolishStackRulesView | null): number {
   if (unit.side !== "pack" && unit.side !== "neutral") {
     return 0;
   }
-  return polishUnitStackCap(unit.unitDefId, unit.side);
+  return polishUnitStackCap(unit.unitDefId, unit.side, state);
 }
 
 /** Plain-words tier cap for UI (e.g. "bronze · max 3"). */
-export function polishUnitStackCapLabel(unitDefId: string): string {
+export function polishUnitStackCapLabel(unitDefId: string, state?: PolishStackRulesView | null): string {
   const tier = coreUnitDefinitions[unitDefId]?.tier;
-  const cap = polishUnitStackCap(unitDefId);
+  const cap = polishUnitStackCap(unitDefId, "pack", state);
   if (!tier || cap <= 0) {
     return "";
+  }
+  if (!Number.isFinite(cap)) {
+    return `${tier} · no cap`;
   }
   const tierName = tier === "azure" ? "azure (gold cap)" : tier;
   return `${tierName} · max ${cap}`;

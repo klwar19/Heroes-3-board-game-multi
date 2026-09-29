@@ -46,6 +46,12 @@ const infernoIgnatiusOlemaPreviewSource = {
   url: "https://imgcdn.gamefound.com/productimage/projects/8492/ac2ce3b5-9542-4970-8bf2-d207eefefa83.png",
 };
 
+const strongholdJabarkasPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board and Orcs specialty cards from the supplied preview; hidden wording supplied by the player.",
+  url: "https://gamefound.com/en/projects/archon-studio/heroes-of-might-and-magic-iii-the-board-game",
+};
+
 const necropolisHeroPreviewSource = {
   product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
   credit: "Specialty rules supplied by the player; card emblems generated for this adaptation.",
@@ -1865,7 +1871,7 @@ export const adventureCards: CardLibrary = {
       "heal",
       "wiki-reference",
       "Basic: Remove 1 damage from one of your units. Expert: when using the First Aid Tent, resolve its effect against the same target 3 times.",
-      "Balance pack: Basic: remove 1 damage from one of your units, OR First Aid ability: use First Aid Tent on the selected unit 3 times (no crown). Expert: with a First Aid Tent in play, the selected unit gains +2 Health for its current Stack/Pack/Few life only.",
+      "Balance pack: Basic: remove 1 damage from one of your units, OR First Aid ability: use First Aid Tent on the selected unit 3 times (no crown). Expert: with a First Aid Tent in play, play it at the start of a Combat OR during an activation of your unit — the selected unit gains +2 Health for its current Stack/Pack/Few life only.",
     ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
@@ -1890,20 +1896,18 @@ export const adventureCards: CardLibrary = {
           // Balance Pack expert: gated on a First Aid Tent actually in play (the
           // Jeremy-Cannon `requiresWarMachine` gate), and it targets ANY of your
           // units — not only a damaged one — so it carries its own target.
-          // INSTANT (any time during Combat): a +2-Health buff is naturally used
-          // DEFENSIVELY, before a hit lands, so it joins the open attack window
-          // like the other pre-hit reactions (`combatAnytime` — the standing user
-          // ruling that instant abilities are reaction-playable "before counter
-          // attack, when attack and when defend"). The offer stays gated on the
-          // house rule + Tent + a payable crown in addOptionPlays, so rule-off and
-          // Tent-less games are byte-identical; the unit about to be hit opens the
-          // window with it (combatAnytimeInstantWindowJoins / reactionOfferOpensWindow).
+          // TIMING — USER RULING 2026-09-29 (updated Balance-Pack face): "you may
+          // play it at the start of a Combat" OR during an activation of your own
+          // unit (`combatStartOrActivation`). It is no longer an any-time
+          // off-turn reaction. The offer stays gated on the house rule + Tent + a
+          // payable crown in addOptionPlays, so rule-off and Tent-less games are
+          // byte-identical.
           label:
             "Balance expert (spend a crown; First Aid Tent in play): one unit gains +2 Health for its current life",
           requiresHouseRule: "polish-card-balance",
           requiresWarMachine: "war_machine.first_aid_tent",
           combatOnly: true,
-          combatAnytime: true,
+          combatStartOrActivation: true,
           expertOnly: true,
           target: { type: "friendly-unit" },
           effect: {
@@ -6547,6 +6551,94 @@ export const adventureCards: CardLibrary = {
     source: infernoIgnatiusOlemaPreviewSource,
   }),
 
+  // Jabarkas (Stronghold, Barbarian, A4 D0 P1 K1, Offense): the "Orcs"
+  // specialist (Gamefound preview; I wording supplied by the player).
+  //  I  — Ongoing: for this Combat your Orcs ignore the combat penalty and get
+  //       +1 Attack when the target of the attack is adjacent (the adjacent
+  //       ranged penalty only — the long-range penalty still applies).
+  //  IV — Ongoing: the selected unit's Health +1 this Combat, doubled for Orcs
+  //       (Dace I's ADD_UNIT_MAX_HEALTH path).
+  //  VI — Ongoing: for this Combat your Orcs ignore enemy Defense when the
+  //       target of the attack is adjacent (IGNORES_DEFENSE adjacentOnly).
+  // I and VI are player-scoped effects gated by printed unit name, so a
+  // Pack→Few flip keeps them.
+  "specialty.jabarkas.1": withSpecialtyArt({
+    id: "specialty.jabarkas.1",
+    name: "Orcs I",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "jabarkas",
+      "Ongoing: For this Combat, your Orcs units ignore the combat penalty and gain +1 Attack if the target of attack is adjacent.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Orcs I",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        appliesOnlyToUnitNames: ["Orcs"],
+        modifiers: [
+          { type: "IGNORE_ADJACENT_RANGED_PENALTY" },
+          { type: "ADJACENT_TARGET_ATTACK_BONUS", amount: 1 },
+        ],
+      },
+    },
+    implementationStatus: "implemented",
+    source: strongholdJabarkasPreviewSource,
+  }),
+  "specialty.jabarkas.4": withSpecialtyArt({
+    id: "specialty.jabarkas.4",
+    name: "Orcs IV",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "jabarkas",
+      "Ongoing: For this Combat, your selected unit's Health is increased by 1. The effect doubles for the Orcs unit.",
+    ],
+    target: { type: "friendly-unit" },
+    effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Orcs" },
+    implementationStatus: "implemented",
+    source: strongholdJabarkasPreviewSource,
+  }),
+  "specialty.jabarkas.6": withSpecialtyArt({
+    id: "specialty.jabarkas.6",
+    name: "Orcs VI",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "jabarkas",
+      "Ongoing: For this Combat, your Orcs units ignore enemy Defense if the target of attack is adjacent.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Orcs VI",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        appliesOnlyToUnitNames: ["Orcs"],
+        modifiers: [{ type: "IGNORES_DEFENSE", adjacentOnly: true }],
+      },
+    },
+    implementationStatus: "implemented",
+    source: strongholdJabarkasPreviewSource,
+  }),
+
   // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —
   // single-option (no OR) economic plays, EXACTLY as printed (USER RULINGS
   // 2026-09-24 "must match card image" / "only I should be instant window"):
@@ -7134,6 +7226,16 @@ export const adventureCards: CardLibrary = {
     source: heroSource("casmetra"),
   },
 };
+
+// Preview heroes whose specialty faces are now printed-format cards built over
+// real same-faction scans (scripts/build-specialty-card-faces.mjs) instead of
+// the native art-less renderer: attach the face; the rules are unchanged.
+for (const heroSlug of ["cuthbert", "urftin", "uland", "kastore", "isra", "dace", "darkstorn", "korbac", "verdish"]) {
+  for (const level of [1, 4, 6] as const) {
+    const id = `specialty.${heroSlug}.${level}`;
+    adventureCards[id] = withSpecialtyArt(adventureCards[id]);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Anime Realms magic heroes — themed clones of proven GENERIC specialties.

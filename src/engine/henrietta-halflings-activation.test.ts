@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, makeCombatUnitFromArmy } from "./index";
 import { getActiveDefenseBonus, unitAttackRollAdvantaged } from "./active-effects";
+import { startWarMachineRound } from "./permanents";
 import type { GameAction, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -95,6 +96,52 @@ describe("Henrietta Halflings specialties", () => {
     expect(getLegalActions(late, "p1").some((entry) =>
       entry.action.type === "PLAY_CARD" && entry.action.cardId === "specialty.henrietta.1"
     )).toBe(false);
+  });
+
+  it("I is ASKED at combat start even when the enemy acts first; accepting plays the real rally", () => {
+    // The round-start queue opens before any activation, exactly as
+    // finalizeCombatStart runs it.
+    function atCombatStart(state: GameState): GameState {
+      state.players.p1.permanents = [];
+      state.players.p2.permanents = [];
+      state.combat!.activeUnitId = null;
+      state.pendingChoice = null;
+      startWarMachineRound(state);
+      return state;
+    }
+    const asked = atCombatStart(combatWithHalflings("specialty.henrietta.1"));
+    const offer = asked.pendingChoice;
+    expect(offer?.type === "OPTION_CHOICE" && offer.context === "war-machine" && offer.playerId === "p1").toBe(true);
+    expect(offer?.type === "OPTION_CHOICE" ? offer.prompt : "").toMatch(/^Halflings I:/);
+    const faction = asked.combat!.units.unit_p1_griffins;
+    const neutral = asked.combat!.units.unit_p1_marksmen;
+    const baseDefense = getActiveDefenseBonus(asked, faction);
+    const baseNeutralHealth = neutral.maxHealth;
+
+    const accepted = applyOk(asked, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: offer!.id, optionIndex: 0 });
+    expect(getActiveDefenseBonus(accepted, accepted.combat!.units.unit_p1_griffins)).toBe(baseDefense + 1);
+    expect(accepted.combat!.units.unit_p1_marksmen.maxHealth).toBe(baseNeutralHealth + 1);
+    expect(accepted.players.p1.hand).not.toContain("specialty.henrietta.1");
+    expect(accepted.players.p1.ongoingCards?.some((entry) => entry.cardId === "specialty.henrietta.1")).toBe(true);
+    expect(accepted.combat!.warMachineRound).toBeNull();
+
+    // Skip: nothing lands and the card stays in hand.
+    const skipState = atCombatStart(combatWithHalflings("specialty.henrietta.1"));
+    const skipped = applyOk(skipState, {
+      type: "CHOOSE_OPTION", playerId: "p1", choiceId: skipState.pendingChoice!.id, optionIndex: 1,
+    });
+    expect(getActiveDefenseBonus(skipped, skipped.combat!.units.unit_p1_griffins)).toBe(baseDefense);
+    expect(skipped.players.p1.hand).toContain("specialty.henrietta.1");
+
+    // CONTROL: no Halflings/Grenadiers on the field — no dead prompt.
+    const none = combatWithHalflings("specialty.henrietta.1");
+    delete none.combat!.units.unit_p1_griffins;
+    delete none.combat!.units.unit_p1_marksmen;
+    expect(atCombatStart(none).pendingChoice).toBeNull();
+    // CONTROL: combat round 2 is no longer the start of the Combat.
+    const later = combatWithHalflings("specialty.henrietta.1");
+    later.combat!.round = 2;
+    expect(atCombatStart(later).pendingChoice).toBeNull();
   });
 
   it("VI gives every friendly unit attack advantage in a later round, not enemy units", () => {

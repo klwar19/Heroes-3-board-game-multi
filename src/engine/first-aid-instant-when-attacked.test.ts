@@ -3,8 +3,6 @@ import { healFxPlans } from "@/data/fx";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { applyPermanentCombatEffects } from "./permanents";
 import { combatAnytimeInstantWindowJoins } from "./legal-actions";
-import { scoreCardAction } from "./computer/card-policy";
-import type { ComputerObservation } from "./computer/types";
 import type { CardId, GameAction, GameState } from "./state";
 
 /**
@@ -137,16 +135,14 @@ describe("First Aid Tent — instant heal when attacked (before damage calculati
 });
 
 // ===========================================================================
-// Balance Pack First Aid EXPERT (+2 Health) is an INSTANT reaction: a defensive
-// overheal played in the OPEN attack window, before the hit lands, on ANY
-// friendly unit — including a fully-healthy one. This is the game-author bug:
-// "I have a Tent and 1 crown but cannot play the Expert effect" while nothing is
-// wounded. The +2 arm carries `combatAnytime`, so the unit about to be hit opens
-// the window with it (combatAnytimeInstantWindowJoins / reactionOfferOpensWindow),
-// gated on polish-card-balance + a First Aid Tent in play + a payable crown.
+// Balance Pack First Aid EXPERT (+2 Health) — USER RULING 2026-09-29 (updated
+// face): "you may play it at the start of a Combat" OR during an activation of
+// your own unit (`combatStartOrActivation`). It is NO LONGER an any-time
+// off-turn reaction in the enemy's attack window (the 2026-08 reading).
+// Gated on polish-card-balance + a First Aid Tent in play + a payable crown.
 // ===========================================================================
 
-describe("First Aid balance-expert (+2 Health) — instant reaction before a hit", () => {
+describe("First Aid balance-expert (+2 Health) — start of combat or own activation", () => {
   function balanceAttack(opts: { balance?: boolean; tent?: boolean; crowns?: number } = {}): GameState {
     const { balance = true, tent = true, crowns = 1 } = opts;
     const state = createInitialGameState("first-aid-balance-window");
@@ -184,91 +180,50 @@ describe("First Aid balance-expert (+2 Health) — instant reaction before a hit
     return state;
   }
 
-  it("opens the attack window on a full-health unit, buffs +2 before the hit, and it survives", () => {
-    const state = balanceAttack();
-    const declared = applyOk(state, {
-      type: "ATTACK_UNIT",
-      playerId: "p2",
-      attackerId: "unit_p2_skeletons",
-      defenderId: "unit_p1_crusaders"
-    });
-    // The +2 Health opener PAUSED the attack even though nothing is wounded.
-    expect(declared.reactionWindow, "the balance-expert opener paused the attack").toBeTruthy();
-    expect(declared.combat!.units.unit_p1_crusaders.damage, "no damage applied yet").toBe(0);
-
-    const play = getLegalActions(declared, "p1").find(
+  const firstAidExpert = (state: GameState) =>
+    getLegalActions(state, "p1").find(
       (legal) =>
         legal.action.type === "PLAY_CARD" &&
         legal.action.cardId === "ability.first_aid" &&
         legal.action.optionIndex === 2 &&
-        legal.action.mode === "expert" &&
-        legal.action.target?.type === "unit" &&
-        legal.action.target.unitId === "unit_p1_crusaders"
+        legal.action.mode === "expert"
     );
-    expect(play, "+2 Health must be offered in the attack window on the full-health target").toBeTruthy();
 
-    const before = declared.combat!.units.unit_p1_crusaders.maxHealth;
-    // Playing the +2 spends the last reaction, so the window closes and the
-    // parked 7-damage attack resolves in the same step — onto the now-8-max unit.
-    const resolved = applyOk(declared, play!.action);
-    const crusaders = resolved.combat!.units.unit_p1_crusaders;
-    expect(crusaders.maxHealth, "+2 current-life Health applied before the hit").toBe(before + 2);
-    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound, "one crown spent").toBe(1);
-    // The 7-damage hit lands, but the overheal (max 8) kept it alive — proving
-    // the +2 resolved BEFORE the attack, not after. Base max 6 would have died.
-    expect(crusaders.damage, "the 7-damage hit landed").toBe(7);
-    expect(crusaders.damage, "and the +2 overheal kept it alive").toBeLessThan(crusaders.maxHealth);
-  });
-
-  it("CONTROL: rule OFF — the +2 Health arm never joins the window", () => {
-    const state = balanceAttack({ balance: false });
-    const joins = combatAnytimeInstantWindowJoins(state, "p1").filter(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.first_aid"
-    );
-    expect(joins).toHaveLength(0);
-  });
-
-  it("CONTROL: no First Aid Tent in play — the +2 Health arm never joins the window", () => {
-    const state = balanceAttack({ tent: false });
-    const joins = combatAnytimeInstantWindowJoins(state, "p1").filter(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.first_aid"
-    );
-    expect(joins).toHaveLength(0);
-  });
-
-  it("CONTROL: no crown available — the +2 Health arm never joins the window", () => {
-    const state = balanceAttack({ crowns: 0 });
-    const joins = combatAnytimeInstantWindowJoins(state, "p1").filter(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.first_aid"
-    );
-    expect(joins).toHaveLength(0);
-  });
-
-  it("AI SAFETY: a computer owner scores the +2 Health reaction BELOW PASS (1050), so it passes", () => {
+  it("is offered in the start-of-combat window even while the enemy owns the first activation", () => {
     const state = balanceAttack();
-    const declared = applyOk(state, {
-      type: "ATTACK_UNIT",
-      playerId: "p2",
-      attackerId: "unit_p2_skeletons",
-      defenderId: "unit_p1_crusaders"
-    });
-    const play = getLegalActions(declared, "p1").find(
-      (legal) =>
-        legal.action.type === "PLAY_CARD" &&
-        legal.action.cardId === "ability.first_aid" &&
-        legal.action.optionIndex === 2
+    expect(state.activePlayerId).toBe("p2");
+    const play = firstAidExpert(state);
+    expect(play, "start-of-combat window: playable before any unit acts").toBeTruthy();
+    const target = play!.action.type === "PLAY_CARD" && play!.action.target?.type === "unit" ? play!.action.target.unitId : "";
+    const before = state.combat!.units[target].maxHealth;
+    const after = applyOk(state, play!.action);
+    expect(after.combat!.units[target].maxHealth, "+2 current-life Health").toBe(before + 2);
+    expect(after.players.p1.combatStats.expertUsesSpentThisRound, "one crown spent").toBe(1);
+  });
+
+  it("CONTROL: once a unit has acted it is NOT offered on the enemy's turn, nor in the attack window", () => {
+    const state = balanceAttack();
+    // Some unit already acted this combat → the start window is closed.
+    const other = Object.values(state.combat!.units).find(
+      (unit) => unit.controllerId === "p2" && unit.id !== "unit_p2_skeletons"
+    ) ?? state.combat!.units.unit_p1_crusaders;
+    other.activatedThisRound = true;
+    expect(firstAidExpert(state), "off-turn after the start: not playable").toBeUndefined();
+    const joins = combatAnytimeInstantWindowJoins(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.first_aid"
     );
-    expect(play).toBeTruthy();
-    // The reaction is a plain combat buff (COMBAT_BUFF band ~660), never a
-    // save-tier reaction, so it scores below PASS_REACTION (1050): the runner
-    // always has PASS_REACTION and prefers it — no stall, no wasted overheal.
-    const observation = {
-      playerId: "p1",
-      state: declared,
-      legalActions: getLegalActions(declared, "p1")
-    } as unknown as ComputerObservation;
-    const score = scoreCardAction(observation, play!.action);
-    expect(score, "the reaction is scored by the AI").toBeTruthy();
-    expect(score!.score, "below PASS_REACTION → the AI passes").toBeLessThan(1050);
+    expect(joins, "never joins the enemy's attack window any more").toHaveLength(0);
+  });
+
+  it("CONTROL: rule OFF — no +2 Health arm at the start of combat", () => {
+    expect(firstAidExpert(balanceAttack({ balance: false }))).toBeUndefined();
+  });
+
+  it("CONTROL: no First Aid Tent in play — no +2 Health arm", () => {
+    expect(firstAidExpert(balanceAttack({ tent: false }))).toBeUndefined();
+  });
+
+  it("CONTROL: no crown available — no +2 Health arm", () => {
+    expect(firstAidExpert(balanceAttack({ crowns: 0 }))).toBeUndefined();
   });
 });

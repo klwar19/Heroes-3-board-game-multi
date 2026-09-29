@@ -165,6 +165,15 @@ export function recordVpViiCenter(state: GameState, playerId: PlayerId, vp: numb
   entry.viiCenterVp = (entry.viiCenterVp ?? 0) + vp;
 }
 
+/** Record VP from a designer hold objective that scores (map editor holdOutcome). */
+export function recordVpHoldObjective(state: GameState, playerId: PlayerId, vp: number): void {
+  if (playerId === NEUTRAL_PLAYER_ID || vp <= 0) {
+    return;
+  }
+  const entry = vpLedgerEntry(state, playerId);
+  entry.holdVp = (entry.holdVp ?? 0) + vp;
+}
+
 // ---------------------------------------------------------------------------
 // At-scoring-time reads (live state, never stored).
 // ---------------------------------------------------------------------------
@@ -443,6 +452,7 @@ function buildBreakdown(
   add("Secondary Heroes defeated", ledger.secondaryHeroDefeats ?? 0);
   add("Heroes surrendered to you", ledger.surrenders ?? 0);
   add("Ⅶ objectives captured", ledger.viiCenterVp ?? 0);
+  add("Held objectives", ledger.holdVp ?? 0);
   add("Buildings in controlled Towns", Math.min(8, controlledBuildingCount(state, playerId)));
   add("Hero Experience Levels", mainHeroOf(state, playerId)?.level ?? 0);
   add("Flagged Mines / Settlements", flaggedMineSettlementCount(state, playerId));

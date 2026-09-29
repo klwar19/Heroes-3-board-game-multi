@@ -250,6 +250,7 @@ const ADVANCED_OWNED_KEYS = [
   "parallelTurns",
   "parallelPvp",
   "undoMoves",
+  "duelUndo",
   "manualGuardControl",
   "startingHandMulligan",
   "unitExperience",
@@ -283,6 +284,7 @@ const ADVANCED_KEY_DEFAULTS: Partial<Record<keyof GameSetupOptions, unknown>> = 
   // The lobby freezes an untouched choice as "keep" (buildAdventureFromLobby).
   parallelPvp: "keep",
   undoMoves: false,
+  duelUndo: false,
   unitExperience: false
 };
 

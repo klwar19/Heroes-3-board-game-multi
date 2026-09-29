@@ -144,10 +144,12 @@ describe("Fortress card art", () => {
           if (!src || !hasMediaFile(src)) {
             broken.push(`${heroId} specialty ${level} ${src ?? "(none)"}`);
           }
-        } else if (src) {
+        } else if (src && !hasMediaFile(src)) {
           // A placeholder-art hero must not reference a specialty face that does
-          // not exist — its specialty cards are face-less.
-          broken.push(`${heroId} specialty ${level} should be face-less but is ${src}`);
+          // not exist. Its cards are face-less, or (2026-09-29: Korbac, Verdish)
+          // printed-format faces built over real scans by
+          // scripts/build-specialty-card-faces.mjs — which must then exist.
+          broken.push(`${heroId} specialty ${level} ${src} does not exist`);
         }
       }
     }

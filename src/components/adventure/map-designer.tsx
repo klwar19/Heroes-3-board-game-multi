@@ -404,11 +404,20 @@ function nextCenterHex(
   if (!next.controlVp) {
     delete next.controlVp;
   }
+  if (!next.utopiaObelisksRequired) {
+    delete next.utopiaObelisksRequired;
+  }
   if (!next.holdRoundsToWin) {
     delete next.holdRoundsToWin;
   }
   if (!next.holdRoundsToWin || !next.holdRequiresGrail) {
     delete next.holdRequiresGrail;
+  }
+  if (!next.holdRoundsToWin || !next.holdOutcome || next.holdOutcome === "win") {
+    delete next.holdOutcome;
+  }
+  if (!next.holdOutcome || !next.holdVp) {
+    delete next.holdVp;
   }
   if (!next.winCondition) {
     delete next.winCondition;
@@ -436,6 +445,12 @@ function nextSettlementPlan(
   }
   if (!next.holdRoundsToWin || !next.holdRequiresGrail) {
     delete next.holdRequiresGrail;
+  }
+  if (!next.holdRoundsToWin || !next.holdOutcome || next.holdOutcome === "win") {
+    delete next.holdOutcome;
+  }
+  if (!next.holdOutcome || !next.holdVp) {
+    delete next.holdVp;
   }
   if (!next.winCondition) {
     delete next.winCondition;
@@ -639,11 +654,13 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
           vp?: number;
           winCondition?: boolean;
           holdRoundsToWin?: number;
+          holdOutcome?: "win" | "vp" | "both";
           breakField?: boolean;
           persistentGuard?: boolean;
           unlimitedRounds?: boolean;
           combatRoundLimit?: 1 | 2 | 3 | "unlimited";
           flaggableDragonUtopia?: boolean;
+          utopiaObelisksRequired?: number;
           noExperience?: boolean;
           individual?: boolean;
         }
@@ -660,13 +677,22 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     }
     if (p.reward) bits.push("reward");
     if (p.vp) bits.push(`+${p.vp} VP`);
-    if (p.holdRoundsToWin) bits.push(`hold ${p.holdRoundsToWin}r wins`);
+    if (p.holdRoundsToWin) {
+      bits.push(
+        p.holdOutcome === "vp"
+          ? `hold ${p.holdRoundsToWin}r scores VP`
+          : p.holdOutcome === "both"
+            ? `hold ${p.holdRoundsToWin}r scores VP + wins`
+            : `hold ${p.holdRoundsToWin}r wins`
+      );
+    }
     if (p.winCondition) bits.push("first clear WINS");
     if (p.breakField) bits.push("Break field");
     if (p.persistentGuard) bits.push("persistent army");
     if (p.combatRoundLimit !== undefined) bits.push(p.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${p.combatRoundLimit} free round${p.combatRoundLimit === 1 ? "" : "s"}, then pay MP`);
     else if (p.unlimitedRounds) bits.push("unlimited rounds");
     if (p.flaggableDragonUtopia) bits.push("flaggable Utopia + Azure recruit");
+    if (p.utopiaObelisksRequired) bits.push(`Utopia needs ${p.utopiaObelisksRequired} Obelisk${p.utopiaObelisksRequired === 1 ? "" : "s"}`);
     if (p.noExperience) bits.push("no experience");
   };
   if (kind === "obelisk" || kind === "mine") {
@@ -779,7 +805,7 @@ export function tileSpecificOverrides(plan: CustomMapTilePlan): TileSpecificOver
       group: SPECIFIC_POPOVER_GROUP.settlement,
       label: "Settlement",
       summary: bits.join(" · ") || "custom",
-      win: Boolean(plan.settlement.winCondition || plan.settlement.holdRoundsToWin)
+      win: Boolean(plan.settlement.winCondition || (plan.settlement.holdRoundsToWin && plan.settlement.holdOutcome !== "vp"))
     });
   }
   if (plan.group === "center" && (plan.centerHex || plan.viiField || plan.viiFields?.length)) {
@@ -790,7 +816,7 @@ export function tileSpecificOverrides(plan: CustomMapTilePlan): TileSpecificOver
       group: SPECIFIC_POPOVER_GROUP.center,
       label: "Center objective",
       summary: summary || "custom",
-      win: Boolean(plan.centerHex?.winCondition || plan.centerHex?.holdRoundsToWin)
+      win: Boolean(plan.centerHex?.winCondition || (plan.centerHex?.holdRoundsToWin && plan.centerHex.holdOutcome !== "vp"))
     });
   }
   // Exact-hex guards pin a PHYSICAL board hex; when the tile identity is known
@@ -4591,7 +4617,13 @@ export function MapDesigner({
         if (plan.settlement.guard) bits.push("guard");
         if (plan.settlement.reward) bits.push("reward");
         if (plan.settlement.vp) bits.push(`+${plan.settlement.vp} VP`);
-        if (plan.settlement.holdRoundsToWin) bits.push(`hold ${plan.settlement.holdRoundsToWin}r to win`);
+        if (plan.settlement.holdRoundsToWin) {
+          bits.push(
+            plan.settlement.holdOutcome === "vp"
+              ? `hold ${plan.settlement.holdRoundsToWin}r for VP`
+              : `hold ${plan.settlement.holdRoundsToWin}r to win`
+          );
+        }
         if (plan.settlement.winCondition) bits.push("WIN on flag");
         if (plan.settlement.ownerStart !== undefined) {
           bits.push(`owned by S${plan.settlement.ownerStart + 1}`);
@@ -7121,6 +7153,29 @@ export function MapDesigner({
                         <span>🐉 Flaggable Utopia — Astrologers: Search(2) Azure units, recruit one</span>
                       </label>
                     ) : null}
+                    {(selected.viiField === "dragon_utopia" || selected.viiFields?.includes("dragon_utopia")) ? (
+                      <label
+                        className="popoverViiField_num"
+                        title="Utopia custom feature: a hero may enter this Dragon Utopia only after its player (or an ally) has flagged this many Obelisks. 0 = no requirement."
+                      >
+                        <span>Obelisks needed to enter</span>
+                        <input
+                          aria-label="Obelisks needed to enter Utopia"
+                          max={8}
+                          min={0}
+                          onChange={(event) => {
+                            const count = Math.max(0, Math.min(8, Math.floor(Number(event.target.value) || 0)));
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                utopiaObelisksRequired: count > 0 ? count : undefined
+                              })
+                            });
+                          }}
+                          type="number"
+                          value={selected.centerHex?.utopiaObelisksRequired ?? ""}
+                        />
+                      </label>
+                    ) : null}
 
                     <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
                     <small className="popoverHint">
@@ -7212,6 +7267,49 @@ export function MapDesigner({
                         />
                         <span>Requires Grail possession</span>
                       </label>
+                    ) : null}
+                    {selected.centerHex?.holdRoundsToWin ? (
+                      <div className="popoverViiRewardRow" role="group" aria-label="Center hex hold outcome">
+                        <label className="popoverViiField_num">
+                          <span>When held</span>
+                          <select
+                            aria-label="Center hex hold outcome"
+                            onChange={(event) => {
+                              const outcome = event.target.value as "win" | "vp" | "both";
+                              updateTile(selectedIndex as number, {
+                                centerHex: nextCenterHex(selected.centerHex, {
+                                  holdOutcome: outcome === "win" ? undefined : outcome
+                                })
+                              });
+                            }}
+                            title="Win: the holder wins the game (classic). Score VP: the holder scores VP once and the game goes on (VP mode). Both: score the VP and win."
+                            value={selected.centerHex?.holdOutcome ?? "win"}
+                          >
+                            <option value="win">Wins the game</option>
+                            <option value="vp">Scores VP</option>
+                            <option value="both">Scores VP and wins</option>
+                          </select>
+                        </label>
+                        {selected.centerHex?.holdOutcome ? (
+                          <label className="popoverViiField_num popoverViiVp">
+                            <span>Hold VP</span>
+                            <input
+                              aria-label="Center hex hold VP"
+                              max={10}
+                              min={0}
+                              onChange={(event) => {
+                                const vp = Math.max(0, Math.min(10, Math.floor(Number(event.target.value) || 0)));
+                                updateTile(selectedIndex as number, {
+                                  centerHex: nextCenterHex(selected.centerHex, { holdVp: vp > 0 ? vp : undefined })
+                                });
+                              }}
+                              title="VP scored once per player who completes the hold (default = the number of rounds)."
+                              type="number"
+                              value={selected.centerHex?.holdVp ?? selected.centerHex?.holdRoundsToWin ?? ""}
+                            />
+                          </label>
+                        ) : null}
+                      </div>
                     ) : null}
                     <div className="popoverSubLabel">Marked scenario objective — this exact encounter at this location</div>
                     <label className="popoverCheckRow" title="The first player to clear / capture THIS objective wins the game immediately (in Victory-Points mode the completion scores the table instead).">
@@ -7438,6 +7536,49 @@ export function MapDesigner({
                         />
                         <span>Requires Grail possession</span>
                       </label>
+                    ) : null}
+                    {selected.settlement?.holdRoundsToWin ? (
+                      <div className="popoverViiRewardRow" role="group" aria-label="Settlement hold outcome">
+                        <label className="popoverViiField_num">
+                          <span>When held</span>
+                          <select
+                            aria-label="Settlement hold outcome"
+                            onChange={(event) => {
+                              const outcome = event.target.value as "win" | "vp" | "both";
+                              updateTile(selectedIndex as number, {
+                                settlement: nextSettlementPlan(selected.settlement, {
+                                  holdOutcome: outcome === "win" ? undefined : outcome
+                                })
+                              });
+                            }}
+                            title="Win: the holder wins the game (classic). Score VP: the holder scores VP once and the game goes on (VP mode). Both: score the VP and win."
+                            value={selected.settlement?.holdOutcome ?? "win"}
+                          >
+                            <option value="win">Wins the game</option>
+                            <option value="vp">Scores VP</option>
+                            <option value="both">Scores VP and wins</option>
+                          </select>
+                        </label>
+                        {selected.settlement?.holdOutcome ? (
+                          <label className="popoverViiField_num popoverViiVp">
+                            <span>Hold VP</span>
+                            <input
+                              aria-label="Settlement hold VP"
+                              max={10}
+                              min={0}
+                              onChange={(event) => {
+                                const vp = Math.max(0, Math.min(10, Math.floor(Number(event.target.value) || 0)));
+                                updateTile(selectedIndex as number, {
+                                  settlement: nextSettlementPlan(selected.settlement, { holdVp: vp > 0 ? vp : undefined })
+                                });
+                              }}
+                              title="VP scored once per player who completes the hold (default = the number of rounds)."
+                              type="number"
+                              value={selected.settlement?.holdVp ?? selected.settlement?.holdRoundsToWin ?? ""}
+                            />
+                          </label>
+                        ) : null}
+                      </div>
                     ) : null}
                     <div className="popoverSubLabel">Marked scenario objective — this exact settlement at this location</div>
                     <label className="popoverCheckRow" title="The first player to flag THIS settlement wins the game immediately (the instant twin of hold-to-win).">

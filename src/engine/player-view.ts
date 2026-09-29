@@ -58,7 +58,8 @@ function getVisibleReactionWindow(window: ReactionWindow | null, viewerPlayerId:
   };
 }
 
-function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId): PendingChoice {
+/** A pending choice as `viewerPlayerId` may see it (also read by undo-safety.ts). */
+export function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId): PendingChoice {
   if (!choice) {
     return null;
   }
@@ -646,7 +647,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
                 ...base.combat.warMachineRound,
                 pending: base.combat.warMachineRound.pending.map((entry) =>
                   entry.playerId !== viewerPlayerId &&
-                  (entry.handBallistics || entry.henriettaHalflings ||
+                  (entry.handBallistics || entry.henriettaHalflings || entry.henriettaRally ||
                     entry.forgeOverclock || entry.forgeOverclockStart !== undefined)
                     ? { ...entry, cardId: HIDDEN_CARD_ID }
                     : entry

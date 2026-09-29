@@ -84,6 +84,12 @@ const infernoIgnatiusOlemaPreviewSource = {
   url: "https://imgcdn.gamefound.com/productimage/projects/8492/ac2ce3b5-9542-4970-8bf2-d207eefefa83.png",
 };
 
+const strongholdJabarkasPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board and specialty cards from the supplied preview; portrait repainted from that visual reference. Hidden specialty wording supplied by the player.",
+  url: "https://gamefound.com/en/projects/archon-studio/heroes-of-might-and-magic-iii-the-board-game",
+};
+
 const fortressHeroPreviewSource = {
   product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
   credit: "Hero identities and stats from the WIP preview; specialty rules supplied by the player. Portraits generated for this adaptation.",
@@ -2615,6 +2621,23 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-inferno-magic-olema.webp",
     source: infernoIgnatiusOlemaPreviewSource
   },
+  jabarkas: {
+    id: "jabarkas",
+    name: "Jabarkas",
+    faction: "stronghold",
+    class: "Barbarian",
+    type: "might",
+    startingStats: { attack: 4, defense: 0, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: {
+      1: "specialty.jabarkas.1",
+      4: "specialty.jabarkas.4",
+      6: "specialty.jabarkas.6"
+    },
+    portrait: "/assets/hero_boardart-jabarkas.webp",
+    boardScan: "/assets/heroes-stronghold-might-jabarkas.webp",
+    source: strongholdJabarkasPreviewSource
+  },
   melodia: {
     id: "melodia",
     name: "Melodia",
@@ -3091,7 +3114,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Stronghold",
     color: "#b06a2d",
     startingTileId: "S7",
-    heroes: ["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog"],
+    heroes: ["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog", "jabarkas"],
     buildings: buildingsOfFaction("stronghold"),
     units: unitsOfFaction("stronghold"),
     townImage: "/assets/towns-stronghold-empty.webp",

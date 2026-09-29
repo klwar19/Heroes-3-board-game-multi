@@ -658,6 +658,11 @@ export type AdventureSetupOptions = {
    */
   undoMoves?: boolean;
   /**
+   * OPTIONAL "Undo button for 1v1 games" (default off). See
+   * GameSetupOptions.duelUndo / src/engine/undo-safety.ts.
+   */
+  duelUndo?: boolean;
+  /**
    * OPTIONAL "Manual guard control" mode (default off): the FIGHTER of a
    * Neutral combat commands the guards (must-attack discipline) or delegates
    * single activations to the AI. See GameSetupOptions.manualGuardControl.
@@ -3013,6 +3018,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.parallelTurns !== undefined ? { parallelTurns: options.parallelTurns } : {}),
     ...(options.parallelPvp !== undefined ? { parallelPvp: options.parallelPvp } : {}),
     ...(options.undoMoves !== undefined ? { undoMoves: options.undoMoves } : {}),
+    ...(options.duelUndo !== undefined ? { duelUndo: options.duelUndo } : {}),
     ...(options.unitExperience !== undefined ? { unitExperience: options.unitExperience } : {}),
     ...(options.spellBook !== undefined ? { spellBook: options.spellBook } : {}),
     ...(options.moraleCards !== undefined ? { moraleCards: options.moraleCards } : {}),
@@ -3538,6 +3544,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // multiplayer-only options above, undo is available in solo/single-player
     // too (it is a testing aid, not a competitive rule).
     ...(setupOptions.undoMoves ? { undoMoves: true } : {}),
+    // OPTIONAL 1v1 Undo (normal-play rule, default OFF): frozen ONLY for a
+    // 2-player game — the option is offered/active in 1v1 alone. The server
+    // action transaction keeps the per-room safe-undo stack (see
+    // src/engine/undo-safety.ts + src/server/undo-history.ts).
+    ...(setupOptions.duelUndo && playerConfigs.length === 2 ? { duelUndo: true } : {}),
     // Unit Experience (optional rule): frozen so every engine read (XP awards,
     // rank folds, DRILL_UNIT) checks one plain boolean. Default OFF.
     ...(unitExperienceOn ? { unitExperience: true } : {}),
@@ -5923,6 +5934,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     changes.push(`Undo moves (testing) ${lobby.options.undoMoves ? "on" : "off"}`);
   }
 
+  if (next.duelUndo !== undefined) {
+    lobby.options.duelUndo = Boolean(next.duelUndo);
+    changes.push(`Undo button for 1v1 games ${lobby.options.duelUndo ? "on" : "off"}`);
+  }
+
   if (next.manualGuardControl !== undefined) {
     lobby.options.manualGuardControl = Boolean(next.manualGuardControl);
     changes.push(`Manual guard control ${lobby.options.manualGuardControl ? "on" : "off"}`);
@@ -7412,6 +7428,7 @@ function buildAdventureFromLobby(state: GameState): void {
     // the choice); an explicit "stop" keeps the classic behaviour.
     parallelPvp: lobby.options.parallelPvp ?? "keep",
     undoMoves: lobby.options.undoMoves,
+    duelUndo: lobby.options.duelUndo,
     unitExperience: lobby.options.unitExperience,
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
