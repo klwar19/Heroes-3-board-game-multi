@@ -3,7 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
 import { BLESSINGS, CARDS, DEFENDERS, ENEMIES, FUSIONS, GW_TPS, SPELLS, type CardId, type EnemyKind, type SpellId } from "@/engine/garrison/content";
-import type { GarrisonState, Side } from "@/engine/garrison/sim";
+import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
+import { baseKind } from "@/engine/garrison/order-chaos/forms";
+import { cardCost, spellCooldown, spellsLeft, type GarrisonState, type Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import styles from "./garrison.module.css";
 import { PROP } from "./scene";
@@ -21,21 +23,27 @@ export type Selection =
   | { t: "spell"; spell: SpellId; side: Side }
   | { t: "shovel" }
   | { t: "atk"; kind: EnemyKind }
+  /** Order & Chaos: a Surge orb in hand, to drop on a unit. */
+  | { t: "surge" }
+  /** Order & Chaos: a Valor crown in hand, to Ascend a unit. */
+  | { t: "ascend" }
   | null;
 
 export type Tip = { title: string; lines: string[] } | null;
 
 export const DEF_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
-export const DEF_SPELL_KEYS = ["q", "w", "e", "r", "t"];
+export const DEF_SPELL_KEYS = ["q", "w", "e", "r", "t", "y"];
 export const ATK_KEYS = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"];
 export const ATK_SPELL_KEYS = ["z", "x", "c"];
 
 function fusionHints(card: CardId): string[] {
   const hints: string[] = [];
+  // Order & Chaos packets carry their Barracks level (`oc-longbow@3`); recipes name the unit.
+  const plain = baseKind(card);
   for (const recipe of FUSIONS) {
     const result = DEFENDERS[recipe.result]!.name;
-    if (recipe.b.includes(card)) hints.push(`Drop on ${recipe.a.map((id) => CARDS[id]!.name).join(" / ")} → ${result}`);
-    if (recipe.a.includes(card) && CARDS[card]?.places) hints.push(`Drop ${recipe.b.map((id) => CARDS[id]!.name).join(" / ")} on it → ${result}`);
+    if (recipe.b.includes(plain)) hints.push(`Drop on ${recipe.a.map((id) => CARDS[id]!.name).join(" / ")} → ${result}`);
+    if (recipe.a.includes(plain) && CARDS[card]?.places) hints.push(`Drop ${recipe.b.map((id) => CARDS[id]!.name).join(" / ")} on it → ${result}`);
   }
   return hints;
 }
@@ -47,7 +55,9 @@ export function cardTip(card: CardId): Tip {
   const up = def.places ? DEFENDERS[def.places]?.upgrade : undefined;
   if (up) lines.push(`Upgrade → ${DEFENDERS[up.to]!.name} (${up.cost} gold): ${DEFENDERS[up.to]!.blurb}`);
   lines.push(...fusionHints(card));
-  return { title: def.name, lines };
+  const unit = def.places ? DEFENDERS[def.places] : undefined;
+  if (unit?.surge) lines.push(`Surge: ${surgeText(unit)}`);
+  return { title: unit?.level && unit.level > 1 ? `${def.name} · Lv ${unit.level}` : def.name, lines };
 }
 
 export function formatTime(ticks: number): string {
@@ -91,14 +101,16 @@ export function DefTray({ s, gold = s.def.gold, selection, onSelect, onTip }: {
     <div className={styles.tray}>
       {s.def.cards.map((slot, index) => {
         const def = CARDS[slot.id]!;
-        const wait = Math.max(0, slot.readyAt - s.tick);
+        const cost = cardCost(s, slot.id);
+        // Last Stand planning: nothing recharges while the field is frozen.
+        const wait = s.planning ? 0 : Math.max(0, slot.readyAt - s.tick);
         const charge = wait > 0 ? wait / def.recharge : 0;
-        const poor = gold < def.cost;
+        const poor = gold < cost;
         const active = selection?.t === "card" && selection.card === slot.id;
         const faction = CARDS[slot.id]!.faction;
         return (
           <button
-            aria-label={`${def.name}, ${def.cost} gold`}
+            aria-label={`${def.name}, ${cost} gold`}
             className={`${styles.card} ${styles.packet} ${active ? styles.cardSelected : ""} ${poor || wait > 0 ? styles.cardDim : ""} ${!poor && wait === 0 ? styles.cardReady : ""}`}
             data-faction={faction}
             key={slot.id}
@@ -108,7 +120,7 @@ export function DefTray({ s, gold = s.def.gold, selection, onSelect, onTip }: {
             type="button"
           >
             <CardArt card={slot.id} size={54} />
-            <span className={`${styles.cost} ${poor ? styles.costPoor : ""}`}>{def.cost}</span>
+            <span className={`${styles.cost} ${poor ? styles.costPoor : ""}`}>{cost}</span>
             {charge > 0 ? <span className={styles.recharge} style={{ height: `${charge * 100}%` }} /> : null}
             {index < 10 ? <kbd className={styles.key}>{DEF_KEYS[index]}</kbd> : null}
           </button>
@@ -139,21 +151,25 @@ export function SpellBar({ s, side, keys, selection, onChoose, onTip }: {
       {pool.map((spell, index) => {
         const def = SPELLS[spell];
         const wait = Math.max(0, (book.spellReady[spell] ?? 0) - s.tick);
-        const poor = book.mana < def.mana;
+        // Order & Chaos raids: Chaos spells have a few casts per battle.
+        const left = side === "atk" ? spellsLeft(s, spell) : Number.POSITIVE_INFINITY;
+        const limited = Number.isFinite(left);
+        const poor = book.mana < def.mana || left <= 0;
         const active = selection?.t === "spell" && selection.spell === spell;
         return (
           <button
-            aria-label={`${def.name}, ${def.mana} mana`}
+            aria-label={`${def.name}, ${def.mana} mana${limited ? `, ${left} left` : ""}`}
             className={`${styles.spell} ${active ? styles.cardSelected : ""} ${poor || wait > 0 ? styles.cardDim : ""}`}
             key={spell}
             onClick={() => onChoose(side, spell)}
-            onMouseEnter={() => onTip({ title: def.name, lines: [`${def.mana} mana`, def.blurb] })}
+            onMouseEnter={() => onTip({ title: def.name, lines: [`${def.mana} mana${limited ? ` · ${left} cast${left === 1 ? "" : "s"} left this battle` : ""}`, def.blurb] })}
             onMouseLeave={() => onTip(null)}
             type="button"
           >
             <img alt="" draggable={false} src={assetUrl(def.icon)} />
             <span className={styles.spellCost}>{def.mana}</span>
-            {wait > 0 ? <span className={styles.recharge} style={{ height: `${(wait / def.cooldown) * 100}%` }} /> : null}
+            {limited ? <span className={styles.spellCharges}>×{left}</span> : null}
+            {wait > 0 ? <span className={styles.recharge} style={{ height: `${Math.min(1, wait / spellCooldown(s, side, spell)) * 100}%` }} /> : null}
             {keys[index] ? <kbd className={styles.key}>{keys[index]!.toUpperCase()}</kbd> : null}
           </button>
         );

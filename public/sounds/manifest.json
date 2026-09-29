@@ -1276,6 +1276,16 @@
     "src": "/sounds/music/water.mp3",
     "loop": true
   },
+  "music/order-chaos/choose-your-seeds": {
+    "src": "/sounds/music/order-chaos/choose-your-seeds.mp3",
+    "loop": true,
+    "note": "Plants vs. Zombies OST 03 Choose Your Seeds (third-party, supplied by the user; re-encoded to LAME VBR -q:a 5 with the embedded cover art stripped, same duration). Order & Chaos preparation music: loops on the pre-battle loadout screen and during Last Stand planning (src/lib/music.ts oc-prep)"
+  },
+  "music/order-chaos/grasswalk": {
+    "src": "/sounds/music/order-chaos/grasswalk.mp3",
+    "loop": true,
+    "note": "Plants vs. Zombies OST 04 Grasswalk (third-party, supplied by the user; re-encoded to LAME VBR -q:a 5 with the embedded cover art stripped, same duration). Order & Chaos battle opener: plays first every battle, then the combat rotation takes over (src/lib/music.ts oc-battle)"
+  },
   "spells/air-elemental": {
     "src": "/sounds/spells/air-elemental.mp3"
   },

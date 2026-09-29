@@ -163,8 +163,9 @@ describe("/menu (main menu, guest-only build)", () => {
       fireEvent.click(screen.getByRole("button", { name: /Miscellaneous/i }));
       auditVisibleButtons();
 
-      // Main 5 + single-player 3 + multiplayer 4 + miscellaneous 5 = 17.
-      expect(checked).toBe(17);
+      // Main 5 + single-player 5 (Scenario, Campaign, Garrison Wars, Order &
+      // Chaos, Back) + multiplayer 4 + miscellaneous 5 = 19.
+      expect(checked).toBe(19);
     } finally {
       delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
     }

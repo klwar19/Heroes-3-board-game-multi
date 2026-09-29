@@ -9,15 +9,15 @@
  * simulation ticks (GW_TPS per second), distance in lawn tiles.
  */
 
-export const GW_TPS = 20;
-export const GW_TICK_MS = 1000 / GW_TPS;
+import { GW_TPS, GW_TICK_MS, pace, sec } from "./clock";
+import { OC_BLESSINGS, OC_DEFENDERS, OC_ENEMIES, OC_FUSIONS } from "./order-chaos/roster";
+
+export { GW_TPS, GW_TICK_MS, pace, sec };
 export const GW_COLS = 9;
 export const GW_LANES = 5;
 
-/** Seconds -> ticks. */
-export const sec = (s: number): number => Math.round(s * GW_TPS);
-/** "One tile every `s` seconds" -> tiles per tick. */
-export const pace = (s: number): number => 1 / (s * GW_TPS);
+/** Order & Chaos splits every creature into two sides instead of towns. */
+export type OcSide = "lawful" | "chaos";
 
 export type Faction = "castle" | "rampart" | "tower" | "inferno" | "necropolis" | "dungeon" | "stronghold" | "fortress" | "conflux" | "doom";
 export type DefKind = string;
@@ -94,7 +94,73 @@ export type ShotDef = {
   cloud?: boolean;
   /** Hero mana gained per hit. */
   manaOnHit?: number;
+  /** Order & Chaos: every `every`th shot deals `mult` times the damage. */
+  crit?: { every: number; mult: number };
+  /** A hit hops on to the nearest other foe within 1.6 tiles (`jumps` times, damage x`falloff` per hop). */
+  chain?: { jumps: number; falloff: number };
+  /** Straight shots that also strike flying foes. */
+  air?: boolean;
+  /** Lobs: every `every`th one stuns its target for `dur` ticks. */
+  stunEvery?: { every: number; dur: number };
+  /** Order & Chaos: also shoots behind it (straight shots) when a foe is there. */
+  back?: boolean;
+  /** Straight shots fly out to the end of their range and come back, striking again on the way home. */
+  boomerang?: boolean;
+  /** Double damage to the undead. */
+  holy?: boolean;
+  /** Straight shots that run beneath shields (a shield soaks none of it). */
+  underShield?: boolean;
 };
+
+/**
+ * Order & Chaos: what a unit does when the player drops a Surge orb on it
+ * (the mode's power-up). Every Lawful unit has its own.
+ */
+export type SurgeDef =
+  | { kind: "gold"; coins: number; value: number }
+  | { kind: "audit"; bonus: number }
+  | { kind: "rainbow"; coins: number; value: number }
+  | { kind: "mana" }
+  | { kind: "storm"; shots: number; gap: number; dmg: number; lanes: 1 | 3; back?: boolean }
+  | { kind: "freeze-lane"; dur: number; dmg: number }
+  | { kind: "chain"; hops: number; dmg: number }
+  | { kind: "rockfall"; count: number; dmg: number }
+  | { kind: "headshot"; count: number; dmg: number }
+  | { kind: "cluster"; count: number; dmg: number }
+  | { kind: "smite"; dmg: number }
+  | { kind: "bolts"; count: number; dmg: number }
+  | { kind: "broadside"; dmg: number }
+  | { kind: "beam" }
+  | { kind: "plate"; amount: number }
+  | { kind: "stomp"; dur: number; dmg: number }
+  | { kind: "phalanx"; life: number }
+  | { kind: "charge"; dmg: number }
+  | { kind: "rampage"; dmg: number }
+  | { kind: "sanctuary"; dur: number }
+  | { kind: "mass-heal"; amount: number }
+  | { kind: "mass-slow"; dur: number }
+  | { kind: "resurrect-all" }
+  | { kind: "stare"; bossDmg: number }
+  | { kind: "meteors"; count: number; dmg: number }
+  | { kind: "supernova"; dmg: number }
+  | { kind: "tempest"; push: number }
+  | { kind: "quake"; dmg: number }
+  | { kind: "tide"; amount: number }
+  | { kind: "fire-lane"; dmg: number }
+  | { kind: "rearm" }
+  | { kind: "hospital" }
+  | { kind: "reload" }
+  | { kind: "overload"; dmg: number }
+  | { kind: "air-raid"; dmg: number }
+  | { kind: "whirl"; dmg: number; dur: number }
+  | { kind: "skyfall"; dmg: number }
+  | { kind: "roots"; dur: number; reach: number }
+  | { kind: "blizzard"; dur: number; dmg: number }
+  | { kind: "minefield" }
+  | { kind: "scatter"; dur: number }
+  | { kind: "magnetize" }
+  | { kind: "feast"; count: number; reach: number }
+  | { kind: "charm"; count: number };
 
 export type MeleeDef = {
   dmg: number;
@@ -118,19 +184,22 @@ export type MeleeDef = {
   chill?: number;
   /** Double damage to cavalry (pikes). */
   antiCavalry?: boolean;
+  /** Order & Chaos: also strikes flyers passing over its tile. */
+  air?: boolean;
 };
 
 export type DefDef = {
   kind: DefKind;
   name: string;
-  faction: Faction | "neutral";
+  faction: Faction | "neutral" | OcSide;
   sprite: string;
   hp: number;
   blurb: string;
   /** Base units are cards; upgrades and fusions are not. */
   card?: { cost: number; recharge: number; stage: number };
   shot?: ShotDef;
-  produce?: { value: number; every: number; first: [number, number]; luck?: number; mana?: number };
+  /** `value` 0 = mana only (no coin). `grow`: each payout is `step` larger than the last, up to `max`. */
+  produce?: { value: number; every: number; first: [number, number]; luck?: number; mana?: number; grow?: { step: number; max: number } };
   upgrade?: { to: DefKind; cost: number };
   tall?: boolean;
   gaze?: { front: number; back: number; recover: number; bossDmg: number };
@@ -165,6 +234,65 @@ export type DefDef = {
   deathSouls?: number;
   /** Arch-vile: every `every` ticks engulfs the healthiest foe within `range` ahead in its lane (ignores shields and armour). */
   flame?: { every: number; range: number; dmg: number };
+
+  // --- Order & Chaos ----------------------------------------------------------
+  /** What a Surge orb dropped on it does. */
+  surge?: SurgeDef;
+  /** A buried charge: arms after `arm` ticks, then the first foe on it sets off `dmg` within `radius` (lies flat like a Land Mine). */
+  trap?: { arm: number; dmg: number; radius: number };
+  /** Ground spikes: never blocks and is never shot at; every `every` ticks hurts each foe walking over its tile (and wears down by the same). */
+  spikes?: { dmg: number; every: number };
+  /** Acts once `delay` ticks after it is placed, then is gone. */
+  instant?: { kind: "immolate" | "storm" | "frost"; delay: number; dmg: number; freeze?: number };
+  /** Shoots the bulkiest foe in its lane, anywhere on the lawn (through armour, at flyers too). */
+  snipe?: { dmg: number; every: number };
+  /** Planes bomb a random foe anywhere on the lawn (flyers too); `splash` = share dealt to foes within a tile. */
+  airstrike?: { dmg: number; every: number; splash: number };
+  /** Charges while a foe is in its lane, then a beam hits every foe ahead in the lane. */
+  beam?: { charge: number; dmg: number };
+  /** Each foe its melee slays makes it strike `per` faster, up to `max` times. */
+  zeal?: { per: number; max: number };
+  /** Every `every` ticks leaps on the nearest foe within `range` ahead. */
+  pounce?: { dmg: number; every: number; range: number };
+  /** Defenders in its 3x3 (itself included) take this share less damage. */
+  ward?: number;
+  /** Heals every defender in its lane. */
+  laneHeal?: { amount: number; every: number };
+  /** Casts a random bolt (frost, fire or lightning) at the nearest foe in its lane. */
+  caster?: { dmg: number; every: number };
+  /** Burns every foe within `reach` in front of it. */
+  burnAura?: { dmg: number; every: number; reach: number };
+  /** Blows foes in its lane back `push` tiles; flying foes are blown off the field. */
+  gust?: { every: number; push: number; range: number };
+  /** Wraps an unshielded neighbour (3x3) in a shell of `amount`. */
+  shellGift?: { amount: number; every: number };
+  /** Shooters in its 3x3 fire this many extra shots per volley. */
+  ammo?: number;
+  /** Lightning that leaps from the nearest foe in its lane to `jumps` more nearby foes. */
+  chainLightning?: { dmg: number; every: number; jumps: number };
+  /** A foe slain in its lane or the neighbouring ones has `chance` to drop `value` gold. */
+  luckyKills?: { chance: number; value: number };
+  /** Order & Chaos Gold Golem: sheds a coin of `value` gold for every `every` damage it takes. */
+  nuggets?: { every: number; value: number };
+  /** Order & Chaos: lays a Land Mine on an empty tile up to `reach` tiles ahead (at most `max` of its own at once). */
+  mineLayer?: { every: number; reach: number; max: number };
+  /** Order & Chaos: cannot be stunned, cursed, webbed or turned to stone. */
+  steadfast?: boolean;
+  /** Order & Chaos: every foe that bites it is bewildered into a neighbouring lane (slowed for `slow` ticks). */
+  divert?: { slow: number };
+  /** Order & Chaos: every `every` ticks pulls the helm, armour or shield off the nearest armoured foe within `range` tiles (its lane and both beside it). */
+  magnet?: { every: number; range: number };
+  /** Order & Chaos: swallows the nearest foe within `reach` ahead whole (bulk up to `cap`), then digests for `digest` ticks; bigger foes and bosses take `bite`. */
+  devour?: { reach: number; cap: number; digest: number; bite: number };
+  /** Order & Chaos: the first foe to bite it is charmed and fights for Order (`mult`: its strikes, and it is healed in full when above 1). */
+  charm?: { mult: number };
+  /** Order & Chaos: when a foe comes within `near` tiles in front, it falls back a tile (if free); `every` ticks between retreats. */
+  kite?: { near: number; every: number };
+  /** Order & Chaos ascended form: the unit it reverts to when the Ascension ends. */
+  ascendedFrom?: DefKind;
+  /** Order & Chaos unit level (Barracks). `power` scales its Surge. */
+  level?: number;
+  power?: number;
 };
 
 const shot =(projectile: ProjectileKind, dmg: number, every: number, extra: Partial<ShotDef> = {}): ShotDef => ({
@@ -526,7 +654,7 @@ const DEFENDER_LIST: DefDef[] = [
     blurb: "Monk + Imp: every 8 s the healthiest foe within 7 tiles erupts in flame (350, through shields and armour); every 40 s raises the last fallen defender nearby." }
 ];
 
-export const DEFENDERS: Record<DefKind, DefDef> = Object.fromEntries(DEFENDER_LIST.map((def) => [def.kind, def]));
+export const DEFENDERS: Record<DefKind, DefDef> = Object.fromEntries([...DEFENDER_LIST, ...OC_DEFENDERS].map((def) => [def.kind, def]));
 
 /** Base (card) unit of an upgraded unit. */
 const FAMILY: Record<DefKind, DefKind> = {};
@@ -557,7 +685,7 @@ export function upgradeChain(kind: DefKind): DefKind[] {
 export type CardDef = {
   id: CardId;
   name: string;
-  faction: Faction | "neutral";
+  faction: Faction | "neutral" | OcSide;
   cost: number;
   recharge: number;
   /** Adventure stage (levels cleared) that unlocks it. */
@@ -580,7 +708,7 @@ const SPELL_CARDS: CardDef[] = [
 ];
 
 export const CARDS: Record<CardId, CardDef> = Object.fromEntries([
-  ...DEFENDER_LIST.filter((def) => def.card).map((def): [CardId, CardDef] => [def.kind, {
+  ...[...DEFENDER_LIST, ...OC_DEFENDERS].filter((def) => def.card).map((def): [CardId, CardDef] => [def.kind, {
     id: def.kind, name: def.name, faction: def.faction, cost: def.card!.cost, recharge: def.card!.recharge,
     stage: def.card!.stage, places: def.kind, blurb: def.blurb
   }]),
@@ -621,16 +749,25 @@ export const FUSIONS: readonly FusionRecipe[] = [
   { a: ["hydra"], b: ["green-dragon", "red-dragon", "firebird"], result: "gorynych" },
   { a: ["stone-golem", "earth-elemental", "dwarf"], b: ["fireball"], result: "diamond-golem" },
   { a: ["skeleton"], b: ["doom-imp"], result: "revenant" },
-  { a: ["monk"], b: ["doom-imp"], result: "arch-vile" }
+  { a: ["monk"], b: ["doom-imp"], result: "arch-vile" },
+  // Order & Chaos hybrids.
+  ...OC_FUSIONS
 ];
+
+/** A card or unit id without its Order & Chaos level (`@2`) or Ascension (`^`) suffix. */
+function plainKind(kind: string): string {
+  const cut = kind.search(/[@^]/);
+  return cut >= 0 ? kind.slice(0, cut) : kind;
+}
 
 /** The fused unit when `card` is dropped on a placed `placed` unit, or null. */
 export function fusionFor(placed: DefKind, cardId: CardId): DefKind | null {
-  if (DEFENDERS[placed]?.fusion || placed === "mine") return null;
-  const family = defFamily(placed);
+  if (DEFENDERS[placed]?.fusion || DEFENDERS[placed]?.ascendedFrom || placed === "mine") return null;
+  const family = defFamily(plainKind(placed));
+  const card = plainKind(cardId);
   for (const recipe of FUSIONS) {
-    if (recipe.a.includes(family) && recipe.b.includes(cardId)) return recipe.result;
-    if (CARDS[cardId]?.places && recipe.b.includes(family) && recipe.a.includes(cardId)) return recipe.result;
+    if (recipe.a.includes(family) && recipe.b.includes(card)) return recipe.result;
+    if (CARDS[cardId]?.places && recipe.b.includes(family) && recipe.a.includes(card)) return recipe.result;
   }
   return null;
 }
@@ -658,6 +795,8 @@ export type RangedDef = {
   hitscan?: "bullet" | "flame";
   /** Mancubus: each volley fans two shots across its lane and a neighbour (left+centre, centre+right, left+right). */
   spread?: boolean;
+  /** Order & Chaos: the defender it hits acts at half speed for this many ticks. */
+  curse?: number;
   /** A straight shot that blows up on impact: the defenders around the one it hits take half. */
   blast?: boolean;
 };
@@ -665,7 +804,7 @@ export type RangedDef = {
 export type EnemyDef = {
   kind: EnemyKind;
   name: string;
-  faction: Faction | "neutral";
+  faction: Faction | "neutral" | OcSide;
   sprite: string;
   hp: number;
   /** Tiles per tick while walking. */
@@ -744,12 +883,54 @@ export type EnemyDef = {
   revive?: { every: number };
   /** Share of melee damage reflected onto the striker. */
   fireShield?: number;
+  /** Order & Chaos: flies over every defender to the gate; only anti-air shots, gusts, lightning and spells reach it. */
+  flying?: boolean;
+  /** Bounds over every defender that is not tall (a tall one stops it for good). */
+  pogo?: boolean;
+  /** Once on the lawn, raises a grave on an empty tile near it every `every` ticks. */
+  graves?: { every: number };
+  /** A grave (structure): blocks planting and soaks shots; every great assault raises `raise` out of it. */
+  grave?: { raise: EnemyKind };
+  /** Drops from the sky onto your costliest defender and carries it off after `delay` ticks unless slain. */
+  snatch?: { delay: number };
   undead?: boolean;
   boss?: boolean;
   structure?: boolean;
   scale?: number;
   /** Hit radius in tiles. */
   radius?: number;
+  /** Order & Chaos mercenary: drops this much gold (its pay) when slain. */
+  purse?: number;
+  /** Order & Chaos: unseen (no shot, spell or ability can single it out) while beyond this x, until it takes damage. */
+  stealth?: number;
+  /** Order & Chaos: sidesteps into a free neighbouring lane the first time a defender blocks it. */
+  swerve?: boolean;
+  /** Order & Chaos flyer too heavy for a gale: pushed back instead of blown off the field. */
+  anchored?: boolean;
+  /** Order & Chaos: drifts through the defenders in its way untouchable (only blasts and spells reach it), then must wait `every` ticks to phase again. */
+  phase?: { every: number; speed: number };
+  /** Order & Chaos: every `every` tiles it leaps diagonally into a neighbouring lane (flyers flit). */
+  zigzag?: { every: number };
+  /** Order & Chaos: on the lawn it stops to dance (`dance` ticks) and calls backup dancers into the four tiles around it; it calls the missing ones again every `every` ticks, and they hold while it dances. */
+  troupe?: { kind: EnemyKind; every: number; dance: number };
+  /** Order & Chaos: channels over an ally that fell within `range` tiles (its lane and both beside it) in the last `fresh` ticks and raises it where it fell after `channel` ticks, unless stunned, frozen, blown back or slain first; `every` ticks between raisings. */
+  raiseDead?: { range: number; channel: number; every: number; fresh: number };
+  /** Order & Chaos: rolls over the defenders in its lane (`dmg` to each); a tall one stops it, spikes pop it. */
+  roller?: { dmg: number };
+  /** Order & Chaos: knocks the defender it strikes a tile back (if the tile is free) and stuns it `dur` ticks, `dmg` extra; `every` 0 = its first strike only, else every Nth strike. */
+  shove?: { every: number; dur: number; dmg: number };
+  /** Order & Chaos: once, a killing blow (not fire, not a blast) leaves it going on at this share of its health. */
+  lastGasp?: number;
+  /** Order & Chaos: blinks past the first defender it meets (not a tall one). */
+  blink?: boolean;
+  /** Order & Chaos: dazed this many ticks when its helm or armour is knocked off. */
+  daze?: number;
+  /** Order & Chaos: turns and runs off the field once it carries `loot` stolen gold, or when below `below` of its health (escaping with its pay). */
+  flee?: { loot?: number; below?: number };
+  /** Order & Chaos flyers: every `every` ticks strike the defender beneath them (`dmg`; a breath also scorches the tile ahead; a dive may poison). */
+  skyAttack?: { kind: "dive" | "spit" | "breath"; dmg: number; every: number; poison?: { dps: number; dur: number } };
+  /** Order & Chaos: its ranged attack picks the costliest defender in range, not the nearest. */
+  costliest?: boolean;
 };
 
 type EnemyInput = Omit<EnemyDef, "might" | "recharge" | "biteEvery" | "sprite"> & { biteEvery?: number; sprite?: string; might?: number; recharge?: number };
@@ -1031,7 +1212,7 @@ const ENEMY_LIST: EnemyDef[] = [
     blurb: "Versus: the defender wins by toppling three." })
 ];
 
-export const ENEMIES: Record<EnemyKind, EnemyDef> = Object.fromEntries(ENEMY_LIST.map((def) => [def.kind, def]));
+export const ENEMIES: Record<EnemyKind, EnemyDef> = Object.fromEntries([...ENEMY_LIST, ...OC_ENEMIES].map((def) => [def.kind, def]));
 
 /** A faction's warband, cheapest first. */
 export function factionWarband(faction: Faction): EnemyKind[] {
@@ -1048,7 +1229,12 @@ export const PASSIVE_MIGHT = { value: 25, every: sec(6) };
 
 export type SpellId =
   | "magic-arrow" | "frost-ring" | "haste" | "meteor-shower" | "armageddon"
-  | "earthquake" | "war-cry" | "resurrection";
+  | "earthquake" | "war-cry" | "resurrection"
+  // Order & Chaos heroes' signature spells.
+  | "royal-charge" | "rain-of-arrows" | "chain-lightning" | "prayer" | "earthen-bulwark" | "supply-drop"
+  | "frenzy" | "inferno"
+  // Order & Chaos general spells (found in the campaign).
+  | "lightning-bolt" | "ice-bolt" | "blind" | "implosion" | "cure" | "death-ripple";
 
 export type SpellDef = {
   id: SpellId;
@@ -1079,7 +1265,35 @@ export const SPELLS: Record<SpellId, SpellDef> = {
   "war-cry": { id: "war-cry", name: "War Cry", side: "atk", mana: 8, cooldown: sec(12), target: "none", stage: 0,
     icon: "/assets/spells-bloodlust.webp", blurb: "All attackers march and strike 50% faster for 8 s." },
   resurrection: { id: "resurrection", name: "Resurrection", side: "atk", mana: 15, cooldown: sec(10), target: "none", stage: 0,
-    icon: "/assets/spell-icons/resurrection.png", blurb: "The last three fallen attackers rise at the edge of their lanes." }
+    icon: "/assets/spell-icons/resurrection.png", blurb: "The last three fallen attackers rise at the edge of their lanes." },
+  "royal-charge": { id: "royal-charge", name: "Royal Charge", side: "def", mana: 12, cooldown: sec(25), target: "area", stage: 99,
+    icon: "/assets/spells-bless.webp", blurb: "A Champion thunders down the chosen lane: 1200 to every foe in it." },
+  "rain-of-arrows": { id: "rain-of-arrows", name: "Rain of Arrows", side: "def", mana: 10, cooldown: sec(8), target: "area", stage: 99,
+    icon: "/assets/spells-precision.webp", blurb: "Five volleys of 90 over 2.5 s on a 3×3 area — flyers too." },
+  "chain-lightning": { id: "chain-lightning", name: "Chain Lightning", side: "def", mana: 12, cooldown: sec(6), target: "enemy", stage: 99,
+    icon: "/assets/spells-chain_lightning.webp", blurb: "600 to one foe, then leaps to four more nearby, halving each time." },
+  prayer: { id: "prayer", name: "Prayer", side: "def", mana: 14, cooldown: sec(20), target: "none", stage: 99,
+    icon: "/assets/spells-prayer.webp", blurb: "Heals every defender for 300 and hastens them by 30% for 10 s." },
+  "earthen-bulwark": { id: "earthen-bulwark", name: "Earthen Bulwark", side: "def", mana: 12, cooldown: sec(25), target: "area", stage: 99,
+    icon: "/assets/spells-stone_skin.webp", blurb: "Raises stone walls (2500 HP, 30 s) on the empty tiles of the chosen column in three lanes." },
+  "supply-drop": { id: "supply-drop", name: "Supply Drop", side: "def", mana: 18, cooldown: sec(40), target: "none", stage: 99,
+    icon: "/assets/order-chaos/icons/surge.webp", blurb: "A crate falls from the sky: one Surge orb." },
+  frenzy: { id: "frenzy", name: "Labyrinth Frenzy", side: "def", mana: 12, cooldown: sec(25), target: "none", stage: 99,
+    icon: "/assets/spells-frenzy.webp", blurb: "Every melee troop strikes twice as hard for 10 s." },
+  inferno: { id: "inferno", name: "Inferno", side: "def", mana: 20, cooldown: sec(30), target: "area", stage: 99,
+    icon: "/assets/spells-inferno.webp", blurb: "Walls of fire sweep the chosen lane and both beside it: 700 to every foe in them." },
+  "lightning-bolt": { id: "lightning-bolt", name: "Lightning Bolt", side: "def", mana: 8, cooldown: sec(3), target: "enemy", stage: 99,
+    icon: "/assets/spells-lightning_bolt.webp", blurb: "350 to one foe — flyers too." },
+  "ice-bolt": { id: "ice-bolt", name: "Ice Bolt", side: "def", mana: 9, cooldown: sec(5), target: "enemy", stage: 99,
+    icon: "/assets/order-chaos/icons/ice-bolt.webp", blurb: "250 to one foe and freezes it solid for 4 s." },
+  blind: { id: "blind", name: "Blind", side: "def", mana: 10, cooldown: sec(10), target: "enemy", stage: 99,
+    icon: "/assets/spells-blind.webp", blurb: "One foe (not a boss) stands blinded for 8 s — no marching, biting or shooting." },
+  implosion: { id: "implosion", name: "Implosion", side: "def", mana: 22, cooldown: sec(15), target: "enemy", stage: 99,
+    icon: "/assets/spells-implosion.webp", blurb: "1500 to one foe, through armour." },
+  cure: { id: "cure", name: "Cure", side: "def", mana: 8, cooldown: sec(12), target: "none", stage: 99,
+    icon: "/assets/spells-cure.webp", blurb: "Every troop is cured of poison, curses, webs and stuns, and heals 150." },
+  "death-ripple": { id: "death-ripple", name: "Death Ripple", side: "def", mana: 14, cooldown: sec(12), target: "none", stage: 99,
+    icon: "/assets/spells-death_ripple.webp", blurb: "A ripple of death: 200 to every living foe on the field (the undead are untouched)." }
 };
 
 export const DEF_SPELL_ORDER: readonly SpellId[] = ["magic-arrow", "frost-ring", "haste", "meteor-shower", "armageddon"];
@@ -1093,7 +1307,10 @@ export const MANA_REGEN_EVERY = sec(2);
 export type BlessingId =
   | "elven-bow" | "golden-bow" | "orb-of-fire" | "sack-of-gold" | "estates" | "cards-of-prophecy"
   | "armor-of-wonder" | "vial-of-lifeblood" | "orb-of-mana" | "necklace-of-swiftness"
-  | "lions-shield" | "shackles-of-war" | "yawning-dead" | "ogres-club" | "dragon-scale-shield";
+  | "lions-shield" | "shackles-of-war" | "yawning-dead" | "ogres-club" | "dragon-scale-shield"
+  // Order & Chaos only.
+  | "surge-chalice" | "crown-of-dragontooth" | "helm-of-enlightenment" | "ambassadors-sash" | "charm-of-mana" | "endless-purse"
+  | "spirit-of-oppression";
 
 export type BlessingDef = { id: BlessingId; name: string; icon: string; blurb: string; repeatable?: boolean };
 
@@ -1112,10 +1329,12 @@ export const BLESSINGS: Record<BlessingId, BlessingDef> = {
   "shackles-of-war": { id: "shackles-of-war", name: "Shackles of War", icon: "/assets/artifacts_major-shackles_of_war.webp", blurb: "Attackers march 15% slower." },
   "yawning-dead": { id: "yawning-dead", name: "Shield of the Yawning Dead", icon: "/assets/artifacts_minor-shield_of_the_yawning_dead.webp", blurb: "One slain foe in five drops 15 gold." },
   "ogres-club": { id: "ogres-club", name: "Ogre's Club of Havoc", icon: "/assets/artifacts_major-ogres_club_of_havoc.webp", blurb: "Melee, gazes and lightning hit 50% harder." },
-  "dragon-scale-shield": { id: "dragon-scale-shield", name: "Dragon Scale Shield", icon: "/assets/artifacts_major-dragon_scale_shield.webp", blurb: "Defenders take 25% less damage from attackers." }
+  "dragon-scale-shield": { id: "dragon-scale-shield", name: "Dragon Scale Shield", icon: "/assets/artifacts_major-dragon_scale_shield.webp", blurb: "Defenders take 25% less damage from attackers." },
+  ...OC_BLESSINGS
 };
 
-export const BLESSING_ORDER = Object.keys(BLESSINGS) as BlessingId[];
+/** Garrison Wars' Endless offers (Order & Chaos passes its own pool in the config). */
+export const BLESSING_ORDER = (Object.keys(BLESSINGS) as BlessingId[]).filter((id) => !(id in OC_BLESSINGS));
 
 // ---------------------------------------------------------------------------
 // Terrain

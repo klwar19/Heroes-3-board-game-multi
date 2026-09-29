@@ -3,15 +3,18 @@
 /* eslint-disable @next/next/no-img-element */
 import { useCallback, useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
-  BLESSINGS, CARDS, DEFENDERS, SPELLS,
+  BLESSINGS, CARDS, DEFENDERS, ENEMIES, GW_TPS, SPELLS,
   type EnemyKind, type SpellId
 } from "@/engine/garrison/content";
+import { VALOR_NEED, baseKind } from "@/engine/garrison/order-chaos/forms";
+import { OC_ULTIMATES } from "@/engine/garrison/order-chaos/roster";
+import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
 import {
-  checkCast, checkMuster, checkPlace, defenderAt,
+  checkAscend, checkCast, checkMuster, checkPlace, checkSurge, defenderAt,
   type GarrisonState, type Side, type SidedCommand
 } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
-import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, playCombatSting, useBackgroundMusic } from "@/lib/music";
+import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, isMusicMuted, playCombatSting, setMusicHeld, setMusicMuted, subscribeMusic, useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { isSoundMuted, setSoundMuted } from "@/lib/sound";
 import { playEventSounds } from "./audio";
 import type { GarrisonDriver } from "./driver";
@@ -63,9 +66,20 @@ type Props = {
   defColor?: string;
   /** Level intro (local games), or null. */
   intro?: GameIntro | null;
+  /**
+   * "order-chaos": the mode's own score (preparation theme while Last Stand
+   * planning, battle opener + combat rotation once it runs, held while paused).
+   * Default: the classic combat rotation.
+   */
+  music?: "order-chaos";
 };
 
 const HOVER_COLLECT_KEY = "garrison:hover-collect";
+/** Order & Chaos battle-HUD icons (IconOr routes them through assetUrl). */
+const OC_HUD_ICON = {
+  surge: "/assets/order-chaos/icons/surge.webp",
+  valor: "/assets/order-chaos/icons/valor.webp"
+} as const;
 
 function readHoverCollect(): boolean {
   try {
@@ -75,8 +89,7 @@ function readHoverCollect(): boolean {
   }
 }
 
-export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, next, unlockNote, defColor, intro: introProp = null }: Props) {
-  useBackgroundMusic("combat");
+export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, next, unlockNote, defColor, intro: introProp = null, music }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewRef = useRef(createView(town, defColor));
   /** HUD overlay: coins flying to the counter (in page space, above the bars). */
@@ -142,6 +155,20 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   const s = driver.state();
   const localDef = driver.local.includes("def");
   const localAtk = driver.local.includes("atk");
+
+  // ---- Music ------------------------------------------------------------------
+  const ocMusic = music === "order-chaos";
+  const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : "oc-battle") : "combat";
+  useBackgroundMusic(musicScene);
+  // Order & Chaos: a pause holds the track and resuming continues it where it stopped.
+  // Declared after useBackgroundMusic so on unmount the scene stops before the hold lifts.
+  const holdMusic = ocMusic && paused && !s.outcome;
+  useEffect(() => {
+    setMusicHeld(holdMusic);
+  }, [holdMusic]);
+  useEffect(() => () => setMusicHeld(false), []);
+  const [musicMuted, setMusicMutedState] = useState(isMusicMuted);
+  useEffect(() => subscribeMusic(() => setMusicMutedState(isMusicMuted())), []);
 
   const select = useCallback((next: Selection) => {
     selectionRef.current = next;
@@ -231,6 +258,56 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     if (current?.t === "spell" && current.spell === spell) select(null);
     else chooseSpell(side, spell);
   }, [chooseSpell, select]);
+
+  /** Order & Chaos: take a Surge orb in hand (then click a unit). */
+  const chooseSurge = useCallback(() => {
+    const state = driver.state();
+    if (!state.cfg.oc || state.cfg.mode === "raid") return;
+    if (selectionRef.current?.t === "surge") {
+      select(null);
+      return;
+    }
+    if (state.def.surges <= 0) {
+      flashHint("No Surge orbs — slay the glowing foes to gather them.");
+      return;
+    }
+    select({ t: "surge" });
+  }, [driver, flashHint, select]);
+
+  const surgeOn = useCallback((id: number) => {
+    const check = checkSurge(driver.state(), id);
+    if (!check.ok) {
+      flashHint(check.reason);
+      return false;
+    }
+    submit({ t: "surge", id, by: "def" });
+    return true;
+  }, [driver, flashHint, submit]);
+
+  /** Order & Chaos: take a Valor crown in hand (then click a unit to Ascend it). */
+  const chooseAscend = useCallback(() => {
+    const state = driver.state();
+    if (!state.cfg.oc?.ultimates?.length || state.cfg.mode === "raid") return;
+    if (selectionRef.current?.t === "ascend") {
+      select(null);
+      return;
+    }
+    if (state.def.crowns <= 0) {
+      flashHint("No Valor crown yet — slay the horde to fill it.");
+      return;
+    }
+    select({ t: "ascend" });
+  }, [driver, flashHint, select]);
+
+  const ascendOn = useCallback((id: number) => {
+    const check = checkAscend(driver.state(), id);
+    if (!check.ok) {
+      flashHint(check.reason);
+      return false;
+    }
+    submit({ t: "ascend", id, by: "def" });
+    return true;
+  }, [driver, flashHint, submit]);
 
   const pickAtk = useCallback((kind: EnemyKind) => {
     if (hotseat) {
@@ -333,13 +410,20 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
             announceNow("A huge wave is approaching!", "huge", 2600);
             if (ev.final) window.setTimeout(() => announceNow("Final wave!", "final", 2200), 2700);
           } else if (ev.e === "wave" && ev.wave === 1) showToast("The attack begins!", "info");
-          else if (ev.e === "collect" && driver.local.includes("def")) launchCoin(ev.id, ev.value, now);
+          else if (ev.e === "collect" && !ev.surge && driver.local.includes("def")) launchCoin(ev.id, ev.value, now);
+          else if (ev.e === "horn") announceNow("Here they come!", "go", 1400);
+          else if (ev.e === "snatchDrop") {
+            const d = state.defenders.find((unit) => unit.id === ev.target);
+            showToast(`A Harpy is snatching your ${d ? DEFENDERS[d.kind]!.name : "troop"}! Slay her!`, "warn");
+          } else if (ev.e === "snatched" && ev.target >= 0) showToast(`Your ${DEFENDERS[ev.kind]?.name ?? "troop"} was carried off!`, "boss");
           else if (ev.e === "overtime") showToast("Overtime! Might flows twice as fast; no more gold from the sky.", "warn");
           else if (ev.e === "raided") showToast("A lane is broken!", "boss");
+          else if (ev.e === "crown" && driver.local.includes("def")) showToast("A Valor crown is ready! Press U and pick a unit to Ascend it.", "info");
+          else if (ev.e === "ascend") announceNow(`${DEFENDERS[ev.kind]?.name ?? "Ascension"}!`, "go", 1500);
           else if (ev.e === "charger") showToast("Last line! The gate charger rides out.", "warn");
           else if (ev.e === "bossAction") {
             showToast(ev.action === "summon" ? "The Dracolich raises the dead!" : ev.action === "breath" ? "The Dracolich breathes death down its lane!"
-              : ev.action === "dragon" ? "A Bone Dragon falls from the sky!" : "The Dracolich shifts lanes.", "boss");
+              : ev.action === "dragon" ? `A ${ENEMIES[state.cfg.oc?.bossDragon ?? "bone-dragon"]?.name ?? "dragon"} falls from the sky!` : "The Dracolich shifts lanes.", "boss");
           }
           if (ev.e === "outcome" || ev.e === "blessingOffer" || ev.e === "defDie" || ev.e === "upgrade" || ev.e === "fuse") urgent = true;
         }
@@ -450,6 +534,24 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
       select(null);
       return;
     }
+    if (sel?.t === "surge") {
+      const d = defenderAt(state, cell.lane, cell.col);
+      if (!d) {
+        flashHint("Drop the Surge on one of your troops.");
+        return;
+      }
+      if (surgeOn(d.id)) select(null);
+      return;
+    }
+    if (sel?.t === "ascend") {
+      const d = defenderAt(state, cell.lane, cell.col);
+      if (!d) {
+        flashHint("Pick one of your troops to Ascend.");
+        return;
+      }
+      if (ascendOn(d.id)) select(null);
+      return;
+    }
     if (sel?.t === "atk") {
       if (state.cfg.mode === "raid" && cell.x < (state.cfg.atkMinX ?? 6)) {
         flashHint("Muster your troops right of the red line.");
@@ -536,6 +638,9 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           return;
         }
         if (key === "s") select(selectionRef.current?.t === "shovel" ? null : { t: "shovel" });
+        if (key === "g") chooseSurge();
+        if (key === "u") chooseAscend();
+        if (key === "enter" && state.planning) submit({ t: "begin", by: "def" });
       }
       if (key === "f" && driver.canPause) {
         const nextSpeed = speedRef.current === 1 ? 2 : 1;
@@ -545,7 +650,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [castAt, chooseSpell, driver, hotseat, localAtk, localDef, mustAtkLane, openPopover, select, setPausedBoth, skipIntro]);
+  }, [castAt, chooseAscend, chooseSpell, chooseSurge, driver, hotseat, localAtk, localDef, mustAtkLane, openPopover, select, setPausedBoth, skipIntro, submit]);
 
   // ---- HUD pieces ---------------------------------------------------------------
   const tick = s.tick;
@@ -578,6 +683,31 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           <AtkTray onPick={pickAtk} onTip={setTip} s={s} selection={selection} showKeys={hotseat} />
         ) : null}
         <div className={styles.tools}>
+          {localDef && s.cfg.oc && s.cfg.mode !== "raid" ? (
+            <button
+              aria-label={`Surge orbs: ${s.def.surges} of ${s.def.surgeMax}`}
+              className={`${styles.tool} ${styles.surgeTool} ${selection?.t === "surge" ? styles.cardSelected : ""} ${s.def.surges > 0 ? styles.surgeReady : ""}`}
+              onClick={chooseSurge}
+              title="Surge (G): drop an orb on a unit to unleash its Surge"
+              type="button"
+            >
+              <IconOr className={styles.toolIcon} fallback="✦" src={OC_HUD_ICON.surge} />
+              <b className={styles.surgeCount}>{s.def.surges}/{s.def.surgeMax}</b>
+            </button>
+          ) : null}
+          {localDef && s.cfg.oc?.ultimates?.length && s.cfg.mode !== "raid" ? (
+            <button
+              aria-label={`Valor crowns: ${s.def.crowns} of ${s.def.crownMax}`}
+              className={`${styles.tool} ${styles.surgeTool} ${styles.crownTool} ${selection?.t === "ascend" ? styles.cardSelected : ""} ${s.def.crowns > 0 ? styles.crownReady : ""}`}
+              onClick={chooseAscend}
+              title={`Ascend (U): spend a Valor crown to turn a unit into its Ascended form. Slain foes fill the next crown (${Math.floor(s.def.valor)} / ${VALOR_NEED}).`}
+              type="button"
+            >
+              <span aria-hidden className={styles.valorFill} style={{ height: `${s.def.crowns >= s.def.crownMax ? 100 : (s.def.valor / VALOR_NEED) * 100}%` }} />
+              <IconOr className={styles.toolIcon} fallback="♛" src={OC_HUD_ICON.valor} />
+              <b className={styles.surgeCount}>{s.def.crowns}/{s.def.crownMax}</b>
+            </button>
+          ) : null}
           {localDef && s.cfg.mode !== "raid" ? (
             <button
               aria-label="Dismiss a defender"
@@ -619,9 +749,35 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
             className={styles.popover}
             style={{ left: `${(tileX(popDef.col + 0.5) / BOARD.W) * 100}%`, top: `${(laneTop(popDef.lane) / BOARD.H) * 100}%` }}
           >
-            <strong>{DEFENDERS[popDef.kind]!.name}</strong>
+            <strong>{DEFENDERS[popDef.kind]!.name}{(DEFENDERS[popDef.kind]!.level ?? 1) > 1 ? ` · Lv ${DEFENDERS[popDef.kind]!.level}` : ""}</strong>
             <small>{Math.max(0, Math.round(popDef.hp))} / {popDef.maxHp} HP{popDef.shell > 0 ? ` · shell ${popDef.shell}` : ""}</small>
             <p>{DEFENDERS[popDef.kind]!.blurb}</p>
+            {DEFENDERS[popDef.kind]!.surge ? <p className={styles.surgeLine}>Surge: {surgeText(DEFENDERS[popDef.kind]!)}</p> : null}
+            {s.cfg.oc && DEFENDERS[popDef.kind]!.surge ? (
+              <button
+                className={styles.primary}
+                disabled={s.def.surges <= 0 || popDef.surgeLeft > 0}
+                onClick={() => { if (surgeOn(popDef.id)) openPopover(null); }}
+                type="button"
+              >
+                Surge ({s.def.surges} left)
+              </button>
+            ) : null}
+            {DEFENDERS[popDef.kind]!.ascendedFrom ? (
+              <p className={styles.ascendLine}>♛ Ascended — {Math.max(0, Math.ceil((popDef.ascendUntil - s.tick) / GW_TPS))} s left</p>
+            ) : s.cfg.oc?.ultimates?.includes(baseKind(popDef.kind)) && OC_ULTIMATES[baseKind(popDef.kind)] ? (
+              <>
+                <p className={styles.ascendLine}>♛ {OC_ULTIMATES[baseKind(popDef.kind)]!.name} (+30% health and power): {OC_ULTIMATES[baseKind(popDef.kind)]!.blurb}</p>
+                <button
+                  className={styles.primary}
+                  disabled={s.def.crowns <= 0}
+                  onClick={() => { if (ascendOn(popDef.id)) openPopover(null); }}
+                  type="button"
+                >
+                  Ascend ({s.def.crowns} crown{s.def.crowns === 1 ? "" : "s"})
+                </button>
+              </>
+            ) : null}
             {DEFENDERS[popDef.kind]!.upgrade ? (
               <button
                 className={styles.primary}
@@ -639,6 +795,12 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           </div>
         ) : null}
         </div>
+        {s.planning && localDef ? (
+          <div className={styles.planning}>
+            <span>Last Stand — place your troops (no recharge while you plan), then sound the horn.</span>
+            <button className={styles.primary} onClick={() => submit({ t: "begin", by: "def" })} type="button">Sound the horn (Enter)</button>
+          </div>
+        ) : null}
         {toast ? <div className={`${styles.toast} ${styles[`toast_${toast.tone}`]}`} key={toast.id}>{toast.text}</div> : null}
         {announce ? <div aria-live="polite" className={`${styles.announce} ${styles[`announce_${announce.tone}`]}`} key={announce.key}>{announce.text}</div> : null}
         {hint ? <div className={styles.hint}>{hint}</div> : null}
@@ -709,12 +871,16 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
                 <input checked={muted} onChange={(event) => { setMuted(event.target.checked); setSoundMuted(event.target.checked); }} type="checkbox" />
                 Mute sound effects
               </label>
+              <label className={styles.toggle}>
+                <input checked={musicMuted} onChange={(event) => setMusicMuted(event.target.checked)} type="checkbox" />
+                Mute music
+              </label>
               <button className={styles.ghostButton} onClick={onLeave} type="button">Quit to menu</button>
             </div>
             <p className={styles.keysHelp}>
               {hotseat
                 ? "Defender: 1–0 cards, mouse for the rest · Attacker: ↑/↓ lane · A–; muster · Z/X/C spells · Space pause · Esc cancel"
-                : `${localDef ? "1–0 cards · Q–T spells · S dismiss · " : ""}Space pause · F speed · Esc cancel`}
+                : `${localDef ? `1–0 cards · Q–${s.cfg.spells.length > 5 ? "Y" : "T"} spells · S dismiss · ${s.cfg.oc ? "G surge · " : ""}${s.cfg.oc?.ultimates?.length ? "U ascend · " : ""}` : ""}Space pause · F speed · Esc cancel`}
             </p>
           </section>
         </div>
@@ -771,6 +937,14 @@ function computeGhost(s: GarrisonState, sel: Selection, hover: { lane: number; c
   }
   if (sel.t === "shovel") {
     return { t: "tile", lane: hover.lane, col: hover.col, ok: defenderAt(s, hover.lane, hover.col) !== undefined };
+  }
+  if (sel.t === "surge") {
+    const d = defenderAt(s, hover.lane, hover.col);
+    return { t: "tile", lane: hover.lane, col: hover.col, ok: d !== undefined && checkSurge(s, d.id).ok };
+  }
+  if (sel.t === "ascend") {
+    const d = defenderAt(s, hover.lane, hover.col);
+    return { t: "tile", lane: hover.lane, col: hover.col, ok: d !== undefined && checkAscend(s, d.id).ok };
   }
   if (sel.kind === "tent") return { t: "tile", lane: hover.lane, col: hover.col, ok: checkMuster(s, "tent", hover.lane, hover.col).ok };
   return { t: "lane", lane: hover.lane, ok: checkMuster(s, sel.kind, hover.lane).ok && (s.cfg.mode !== "raid" || hover.x >= (s.cfg.atkMinX ?? 6)) };

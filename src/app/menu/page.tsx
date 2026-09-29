@@ -27,6 +27,7 @@ export const MENU_ART = {
   scenario: "/assets/ui/menu/buttons/scenario.webp",
   campaign: "/assets/ui/menu/buttons/campaign.webp",
   garrisonWars: "/assets/ui/menu/buttons/garrison-wars.webp",
+  orderChaos: "/assets/ui/menu/buttons/oc-order-chaos.webp",
   multiplayer: "/assets/ui/menu/buttons/multiplayer.webp",
   mapEditor: "/assets/ui/menu/buttons/map-editor.webp",
   miscellaneous: "/assets/ui/menu/buttons/miscellaneous.webp",
@@ -236,6 +237,13 @@ export default function MenuPage() {
                 href="/garrison"
               >
                 <MenuArt src={MENU_ART.garrisonWars} />
+              </Link>
+              <Link
+                aria-label="ORDER & CHAOS"
+                className="menuNavButton"
+                href="/order-chaos"
+              >
+                <MenuArt src={MENU_ART.orderChaos} />
               </Link>
               <button
                 aria-label="BACK"

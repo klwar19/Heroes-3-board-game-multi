@@ -96,7 +96,21 @@ const SPELL_SOUND: Record<SpellId, string> = {
   armageddon: "spells/armageddon",
   earthquake: "spells/earthquake",
   "war-cry": "spells/bloodlust",
-  resurrection: "spells/resurrection"
+  resurrection: "spells/resurrection",
+  "royal-charge": "spells/bless",
+  "rain-of-arrows": "spells/precision",
+  "chain-lightning": "spells/chain-lightning",
+  prayer: "spells/prayer",
+  "earthen-bulwark": "spells/stone-skin",
+  "supply-drop": "spells/fortune",
+  frenzy: "spells/frenzy",
+  inferno: "spells/inferno",
+  "lightning-bolt": "spells/lightning-bolt",
+  "ice-bolt": "spells/ice-bolt",
+  blind: "spells/blind",
+  implosion: "spells/implosion",
+  cure: "spells/cure",
+  "death-ripple": "spells/death-ripple"
 };
 
 export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent[]): void {
@@ -253,6 +267,128 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         break;
       case "overtime":
         play("ui/time-over", 0.6, 0);
+        break;
+      // Order & Chaos
+      case "surge":
+        play("spells/mirth", 0.55, 0);
+        break;
+      case "orb":
+        play("effects/good-luck", 0.3, 300);
+        break;
+      case "ascend":
+        play("spells/prayer", 0.75, 0);
+        play("effects/good-luck", 0.5, 0);
+        break;
+      case "crown":
+        play("effects/good-luck", 0.45, 500);
+        break;
+      case "whirl":
+        play("spells/death-ripple", 0.45, 200);
+        break;
+      case "roots":
+        play("spells/slow", 0.45, 300);
+        break;
+      case "blizzard":
+        play("spells/frost-ring", 0.55, 300);
+        break;
+      case "reveal":
+        play("effects/danger", 0.3, 800);
+        break;
+      case "zap":
+        play(ev.tint === "frost" ? "spells/ice-bolt-hit" : ev.tint === "fire" ? "spells/fireball-hit" : ev.tint === "bolt" ? "spells/magic-arrow" : "spells/lightning-bolt", 0.3, 180);
+        break;
+      case "snipe":
+        play("spells/precision", 0.35, 200);
+        break;
+      case "bomb":
+        play("spells/fireball-hit", 0.4, 150);
+        break;
+      case "beam":
+        play("spells/implosion", 0.5, 200);
+        break;
+      case "gust":
+        play("spells/air-shield", 0.45, 300);
+        break;
+      case "pounce": {
+        const d = s.defenders.find((unit) => unit.id === ev.id);
+        if (d) play(unitKey(DEFENDERS[d.kind]!.sprite, "attack"), 0.45, 150);
+        break;
+      }
+      case "shellGift":
+        play("spells/shield", 0.3, 400);
+        break;
+      case "sweep":
+        play("spells/death-ripple", 0.5, 200);
+        break;
+      case "snatchDrop":
+        play("effects/danger", 0.5, 300);
+        break;
+      case "snatched":
+        play("effects/bad-luck", 0.5, 200);
+        break;
+      case "horn":
+        play("effects/horn-2", 0.6, 0);
+        break;
+      case "phase":
+        play(ev.on ? "spells/teleport" : "spells/teleport-in", 0.3, 300);
+        break;
+      case "zig":
+      case "blink": {
+        const e = s.enemies.find((unit) => unit.id === ev.id);
+        if (e) play(ev.e === "blink" ? "spells/teleport-in" : unitKey(ENEMIES[e.kind]!.sprite, "move"), 0.28, 250);
+        break;
+      }
+      case "dance":
+        play("spells/mirth", 0.5, 400);
+        play("mgq/effects/applause1", 0.3, 800);
+        break;
+      case "raiseStart":
+        play("spells/animate-dead", 0.45, 300);
+        break;
+      case "raiseDone":
+        play("doom/dsflamst", 0.45, 200);
+        break;
+      case "raiseFail":
+        play("effects/spell-fizzle", 0.4, 300);
+        break;
+      case "crush":
+        play("effects/siege-wall-hit", 0.5, 150);
+        break;
+      case "pop":
+        play("little-busters/effects/bom", 0.55, 0);
+        break;
+      case "shove":
+        play("mgq/effects/hammer", 0.45, 200);
+        break;
+      case "gasp":
+        play("effects/bad-morale", 0.25, 600);
+        break;
+      case "daze":
+        play("spells/blind", 0.3, 400);
+        break;
+      case "flee":
+        play("mgq/effects/run", 0.4, 300);
+        break;
+      case "escape":
+        if (ev.loot > 0) play("effects/bad-luck", 0.45, 300);
+        break;
+      case "skyAttack":
+        play(ev.kind === "breath" ? "effects/fire-storm" : ev.kind === "spit" ? "spells/lightning-bolt" : "mgq/effects/mon-tume", 0.4, 200);
+        break;
+      case "divert":
+        play("spells/forgetfulness", 0.35, 300);
+        break;
+      case "magnet":
+        play("spells/disrupting-ray", 0.4, 250);
+        break;
+      case "devour":
+        play(ev.whole ? "mgq/effects/bite" : "mgq/effects/mon-tume", 0.5, 150);
+        break;
+      case "charm":
+        play("spells/hypnotize", 0.5, 200);
+        break;
+      case "kite":
+        play("mgq/effects/mon-step", 0.35, 300);
         break;
       default:
         break;

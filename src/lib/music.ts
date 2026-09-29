@@ -5,7 +5,12 @@ import type { GameState, HeroState } from "@/engine/state";
 import soundManifest from "../../public/sounds/manifest.json";
 import { assetUrl } from "@/lib/asset-url";
 
-export type MusicScene = "menu" | "map" | "combat";
+/**
+ * "oc-prep" / "oc-battle" are the Order & Chaos mode's own scenes: the
+ * preparation theme (loadout screen + Last Stand planning, looping) and the
+ * battle opener (plays once per battle, then hands over to the combat rotation).
+ */
+export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
 export type MapMusicContext = {
   /** Drives a fresh faction opener when the relevant map turn changes. */
@@ -19,7 +24,8 @@ export type MapMusicContext = {
 type MusicProfile =
   | "menu" | "combat" | "map-general" | "map-water" | "map-underground"
   | "town-necropolis" | "town-rampart" | "town-cove" | "town-castle"
-  | "town-stronghold" | "town-tower" | "town-fortress";
+  | "town-stronghold" | "town-tower" | "town-fortress"
+  | "oc-prep" | "oc-battle";
 
 /** Multi-track profiles advance randomly and never immediately repeat. */
 export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
@@ -35,13 +41,24 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   "town-stronghold": ["music/stronghold"],
   "town-tower": ["music/snow"],
   "town-fortress": ["music/swamp"],
+  "oc-prep": ["music/order-chaos/choose-your-seeds"],
+  "oc-battle": ["music/order-chaos/grasswalk"],
 };
+
+/**
+ * Profiles that start from the top on every fresh request, even when the same
+ * file is still loaded (a restarted battle opens with Grasswalk again instead
+ * of resuming it mid-song).
+ */
+const RESTART_ON_REQUEST: ReadonlySet<MusicProfile> = new Set<MusicProfile>(["oc-prep", "oc-battle"]);
 
 /** Representative track retained for scene/manifest audits. */
 export const SCENE_TRACK: Record<MusicScene, string> = {
   menu: MUSIC_TRACKS.menu[0]!,
   map: MUSIC_TRACKS["map-general"][0]!,
   combat: MUSIC_TRACKS.combat[0]!,
+  "oc-prep": MUSIC_TRACKS["oc-prep"][0]!,
+  "oc-battle": MUSIC_TRACKS["oc-battle"][0]!,
 };
 
 export const MUSIC_VOLUME = 0.18;
@@ -60,6 +77,8 @@ let currentContinuationProfile: MusicProfile | null = null;
 let currentRequestKey: string | null = null;
 let currentTrack: string | null = null;
 let unlockHooked = false;
+/** A game pause holds the background track where it is (see setMusicHeld). */
+let held = false;
 let playlistGameKey: string | null = null;
 const playlistQueues = new Map<MusicProfile, string[]>();
 const listeners = new Set<() => void>();
@@ -85,7 +104,7 @@ function hookUnlock(): void {
   if (unlockHooked || typeof window === "undefined") return;
   unlockHooked = true;
   const unlock = () => {
-    if (audio && currentScene && !muted && audio.paused) {
+    if (audio && currentScene && !muted && !held && !stingPlaying() && audio.paused) {
       audio.play().catch(() => undefined);
     }
   };
@@ -144,11 +163,38 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
     : pickTrack(profile, chooseAnother ? currentTrack : null);
   const src = trackSrc(nextTrack);
   if (!audio.src.endsWith(src)) audio.src = src;
+  else if (chooseAnother && RESTART_ON_REQUEST.has(profile)) audio.currentTime = 0;
   currentTrack = nextTrack;
   audio.loop = tracks.length === 1 && currentContinuationProfile === null;
   audio.volume = MUSIC_VOLUME;
   hookUnlock();
+  // Held by a game pause: the track is cued, releasing the hold starts it.
+  if (held) return;
   audio.play().catch(() => undefined);
+}
+
+/** True while a combat sting is audible over the (paused) background track. */
+function stingPlaying(): boolean {
+  return fanfare !== null && !fanfare.paused && !fanfare.ended;
+}
+
+/**
+ * Hold the background track while a game is paused and resume it from the same
+ * spot when the pause ends (no track change, no restart). Scene requests made
+ * during the hold are recorded and cued, then heard on release. Mute still
+ * wins, and a playing combat sting is left alone (its end resumes the bed).
+ */
+export function setMusicHeld(next: boolean): void {
+  if (next === held) return;
+  held = next;
+  if (typeof window === "undefined" || !audio) return;
+  if (held) {
+    audio.pause();
+    return;
+  }
+  if (!muted && currentScene && currentProfile && !stingPlaying()) {
+    audio.play().catch(() => undefined);
+  }
 }
 
 function stopAudio(): void {
@@ -225,6 +271,9 @@ function requestFor(scene: MusicScene, context?: MapMusicContext): { profile: Mu
 }
 
 function continuationProfileFor(scene: MusicScene, profile: MusicProfile): MusicProfile | null {
+  // Order & Chaos battles open with their own theme, then rotate through the
+  // game's combat tracks (random, never an immediate repeat) until the battle ends.
+  if (scene === "oc-battle") return "combat";
   if (scene !== "map" || !profile.startsWith("town-")) return null;
   return "map-general";
 }
@@ -327,6 +376,7 @@ export function __resetMusicForTests(): void {
   currentRequestKey = null;
   currentTrack = null;
   unlockHooked = false;
+  held = false;
   playlistGameKey = null;
   playlistQueues.clear();
   muted = false;

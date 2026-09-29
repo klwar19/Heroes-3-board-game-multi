@@ -292,7 +292,7 @@ function scorchImage(): HTMLCanvasElement | null {
 // ---------------------------------------------------------------------------
 // Particles and decals
 
-export type ParticleKind = "spark" | "dust" | "ember" | "glint" | "soul" | "piece" | "chip" | "smoke" | "coinbit";
+export type ParticleKind = "spark" | "dust" | "ember" | "glint" | "soul" | "piece" | "chip" | "smoke" | "coinbit" | "heart" | "note";
 
 export type Particle = {
   kind: ParticleKind;
@@ -439,6 +439,31 @@ export function drawParticles(ctx: CanvasRenderingContext2D, list: Particle[], n
         ctx.rotate(p.rot);
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66);
+        break;
+      }
+      case "heart": {
+        // A little heart that swells as it rises (charms, love).
+        const r = p.size * (0.8 + 0.4 * Math.sin(t * Math.PI));
+        ctx.translate(p.x + Math.sin(age / 180 + p.rot * 6) * 3, p.y);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.moveTo(0, r * 0.9);
+        ctx.bezierCurveTo(-r * 1.4, -r * 0.1, -r * 0.6, -r * 1.1, 0, -r * 0.35);
+        ctx.bezierCurveTo(r * 0.6, -r * 1.1, r * 1.4, -r * 0.1, 0, r * 0.9);
+        ctx.fill();
+        break;
+      }
+      case "note": {
+        // A music note bobbing up from a dance.
+        ctx.translate(p.x + Math.sin(age / 140 + p.rot * 6) * 5, p.y);
+        ctx.rotate(Math.sin(age / 200) * 0.3);
+        ctx.fillStyle = p.color;
+        ctx.strokeStyle = "rgba(20,10,30,0.6)";
+        ctx.lineWidth = 1;
+        ctx.font = `bold ${Math.round(p.size * 4)}px Georgia, serif`;
+        ctx.textAlign = "center";
+        ctx.strokeText(p.rot > 0.5 ? "♪" : "♫", 0, 0);
+        ctx.fillText(p.rot > 0.5 ? "♪" : "♫", 0, 0);
         break;
       }
     }
