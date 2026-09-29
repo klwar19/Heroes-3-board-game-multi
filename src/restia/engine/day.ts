@@ -5,7 +5,7 @@ import { ZONES } from "../data/zones";
 import { Ctx, DAY_START, fail, formatTime, isRainy, pick, rollWeather, seasonOf } from "./core";
 import { maxStamina } from "./state";
 import { healEveryone } from "./party";
-import { farmNight, waterAllTilled, witherOutOfSeason } from "./farm";
+import { farmNight, runSprinklers, waterAllTilled, witherOutOfSeason } from "./farm";
 import { dailyFaith, progressConstruction, sellValue } from "./town";
 import { refreshMissions, refreshRequests, track } from "./quests";
 import { spawnFieldMonsters, spawnForage } from "./world";
@@ -68,6 +68,7 @@ function endDay(state: RestiaState, ctx: Ctx, passedOut: boolean, reason: string
   const night = farmNight(state, isRainy(state.weather), ctx);
   summary.grown = night.grown;
   summary.petWork = night.petWork;
+  for (const name of night.giants) summary.notes.push(`A giant ${name} grew on your field overnight!`);
   summary.built = progressConstruction(state, ctx);
   summary.faithGain = dailyFaith(state);
   state.faith += summary.faithGain;
@@ -82,6 +83,8 @@ function endDay(state: RestiaState, ctx: Ctx, passedOut: boolean, reason: string
     summary.notes.push(`${seasonOf(state.day)[0]!.toUpperCase()}${seasonOf(state.day).slice(1)} has begun.${withered ? ` ${withered} out-of-season crops withered.` : ""}`);
   }
   if (isRainy(state.weather)) waterAllTilled(state);
+  const sprinkled = runSprinklers(state);
+  if (sprinkled) summary.notes.push(`Your sprinklers watered ${sprinkled} plot${sprinkled === 1 ? "" : "s"}.`);
   state.buffs = [];
   state.stats.today = {};
   const home = ZONES.farm.lots.farmhouse!.door;

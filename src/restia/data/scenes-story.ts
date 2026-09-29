@@ -380,7 +380,7 @@ export const STORY_SCENES: SceneDef[] = [
       { who: "system", show: ["system"], text: "[CJS] Location: POCKET HAVEN. A pocket dimension folded behind Garr's back door. Always growing weather. Condition: freshly generated, therefore full of weeds. And rocks. Don't ask me why a new dimension has rocks." },
       { who: "peri", show: ["peri"], text: "Housewarming gift! Frostbitten only thaws for a few weeks a year, and a Jester needs a stage. Grow things, ship things, make me proud. It follows the seasons, for realism." },
       { who: "bin", show: ["bin", "system"], text: "Right. Step one of every farming game: clear the junk, till the soil, plant the cheapest seeds." },
-      { who: "system", text: "[CJS] Tutorial: pick a tool on the hotbar (1-6), then click a field tile next to you. Sickle clears weeds, Hammer breaks stones, Axe chops branches and stumps, Hoe tills, Watering Can waters. Refill the can at the pond." },
+      { who: "system", text: "[CJS] Tutorial: pick a tool on the hotbar (1-5), then click a field tile next to you. Sickle clears weeds, Hammer breaks stones, Axe chops branches and stumps, Hoe tills, Watering Can waters. Refill the can at the pond." },
       { who: "system", text: "[CJS] Crops grow one stage each night they were watered. Put harvests in the shipping crate: they sell overnight. Sleep in the hut to end the day and save. Menu: Esc / ☰ (Quests, Bag, Party, Jester)." }
     ]
   },

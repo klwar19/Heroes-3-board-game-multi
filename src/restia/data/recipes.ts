@@ -83,6 +83,9 @@ const LIST: RecipeDef[] = [
   forge("guardianSeal", "", "guardianSeal", 1, [{ item: "earthCrystal", n: 2 }, { item: "lizardScale", n: 2 }, { item: "silverIngot", n: 1 }], 500, 2),
   forge("phoenixFeather", "", "phoenixFeather", 1, [{ item: "lightCrystal", n: 1 }, { item: "feather", n: 5 }, { item: "fireCrystal", n: 1 }], 800, 2),
   forge("jestersBell", "", "jestersBell", 1, [{ item: "mythrilOre", n: 2 }, { item: "lightCrystal", n: 1 }, { item: "darkCrystal", n: 1 }], 1500, 2, 20),
+  forge("sprinkler1", "", "sprinkler1", 1, [{ item: "ironIngot", n: 1 }, { item: "stone", n: 5 }], 50, 1, 8),
+  forge("sprinkler2", "", "sprinkler2", 1, [{ item: "silverIngot", n: 1 }, { item: "ironIngot", n: 1 }, { item: "iceCrystal", n: 1 }], 150, 1, 12),
+  forge("sprinkler3", "", "sprinkler3", 1, [{ item: "goldIngot", n: 1 }, { item: "mythrilOre", n: 2 }, { item: "iceCrystal", n: 2 }], 400, 2, 18),
   forge("eternalRing", "", "eternalRing", 1, [{ item: "goldIngot", n: 2 }, { item: "lightCrystal", n: 1 }, { item: "dawnLily", n: 1 }], 1000, 2, 20),
   ...(Object.keys(TOOL_NAMES) as ToolId[]).flatMap((tool) => [
     { id: `tool-${tool}-2`, station: "forge" as const, name: `Iron ${TOOL_NAMES[tool]}`, toolUpgrade: { tool, level: 2 }, inputs: [{ item: "ironIngot", n: 2 }], gold: 500, minutes: 60, xp: 8, requires: smithy(1) },

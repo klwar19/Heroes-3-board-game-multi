@@ -10,6 +10,8 @@ import { MISSIONS, PERKS, QUESTS } from "../data/progression";
 import { SCENES } from "./scenes";
 import { formatDate } from "./core";
 import { ZONES } from "../data/zones";
+import { CROPS } from "../data/crops";
+import { giantPlots } from "./farm";
 
 /**
  * Saves live only in this browser (localStorage) — Restia is single-player and
@@ -129,6 +131,16 @@ export function migrate(input: RestiaState): RestiaState {
   state.forage = (state.forage ?? []).filter((spot) => spot.item in ITEMS);
   state.fieldMonsters = (state.fieldMonsters ?? []).filter((monster) => monster.group.every((entry) => entry.species in MONSTERS));
   if (state.dungeon) state.dungeon.monsters = state.dungeon.monsters.filter((monster) => monster.group.every((entry) => entry.species in MONSTERS));
+  // Farm plots: sprinklers and giant crops are optional fields added later (missing = none).
+  // Unknown crops, bad sprinkler tiers and broken giant groups are dropped so the night can't crash.
+  state.plots = Array.from({ length: fresh.plots.length }, (_, index) => input.plots?.[index] ?? fresh.plots[index]!);
+  for (const plot of state.plots) {
+    if (plot.crop && !(plot.crop.id in CROPS)) plot.crop = null;
+    if (plot.sprinkler !== undefined && plot.sprinkler !== 1 && plot.sprinkler !== 2 && plot.sprinkler !== 3) delete plot.sprinkler;
+  }
+  for (const plot of state.plots) {
+    if (plot.crop?.giant !== undefined && (!CROPS[plot.crop.id]!.giant || giantPlots(state, plot)?.length !== 9)) delete plot.crop.giant;
+  }
   // Saves are never written mid-battle; a battle in an imported file is discarded.
   state.battle = null;
   state.version = SAVE_VERSION;

@@ -2,7 +2,7 @@ import type { DispatchResult, RestiaAction, RestiaState } from "./types";
 import { ActionError, Ctx, PASS_OUT, clamp, fail } from "./core";
 import { newGame } from "./state";
 import { equip } from "./party";
-import { applyTool, plant, fertilize, harvest, refill } from "./farm";
+import { applyTool, plant, fertilize, harvest, placeSprinkler, refill, takeSprinkler } from "./farm";
 import { enter, forage, leave, locationTriggers, step } from "./world";
 import { gift, talk } from "./social";
 import { abandonRequest, acceptRequest, checkQuests, rankExam, refreshMissions, refreshRequests, turnIn } from "./quests";
@@ -83,6 +83,10 @@ function route(state: RestiaState, action: RestiaAction, ctx: Ctx): void {
       return fertilize(state, action.item, action.x, action.y);
     case "harvest":
       return harvest(state, action.x, action.y, ctx);
+    case "placeSprinkler":
+      return placeSprinkler(state, action.item, action.x, action.y, ctx);
+    case "takeSprinkler":
+      return takeSprinkler(state, action.x, action.y, ctx);
     case "refill":
       return refill(state, ctx);
     case "ship":

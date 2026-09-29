@@ -2,16 +2,19 @@ import type {
   BattleAnim,
   BattleChallenge,
   BattleOrigin,
+  BattlePoint,
   BattleProp,
   BattleRewards,
   BattleState,
   BattleUnit,
+  BoardSize,
   CharId,
   DungeonMonster,
   Element,
   MonsterId,
   RestiaState,
   SkillDef,
+  SkillSprite,
   StatKey,
   StatusId
 } from "./types";
@@ -21,14 +24,33 @@ import { SKILLS, skillDef } from "../data/skills";
 import { ITEMS, itemDef } from "../data/items";
 import { EVENT_ENCOUNTERS, themeForFloor } from "../data/dungeon";
 import { ZONES } from "../data/zones";
-import { PROP_NAMES, battlefieldOf } from "../data/battlefields";
+import { POINT_NAMES, PROP_NAMES, battlefieldOf } from "../data/battlefields";
 import { unitSound } from "../data/unit-sounds";
-import { Ctx, chance, clamp, count, fail, perk, random, randInt, removeItem } from "./core";
-import { BOARD_COLS, cellOf, colRow, hexDistance, hexRay, neighbors, reachWeighted, stepAway } from "./hex";
+import { Ctx, chance, clamp, count, fail, perk, pick, random, randInt, removeItem } from "./core";
+import { BOARD_CELLS, BOARD_COLS, cellOf, colRow, hexDistance, hexLine, hexRay, inBoard, neighbors, reachWeighted, stepAway } from "./hex";
 import { activeLimit, gainExp, growStats, memberPassives, memberSkills, memberStats, petStats } from "./party";
 import { gainJobExp } from "./jobs";
 import { pv } from "./passives";
-import { buildField, hasLineOfSight, heightOf, propAt, randomOpenCell, standable, stepCost, weatherMult, weatherRange, blocksSight } from "./battle-field";
+import { cellsAt, cellsOf, distanceTo, nearestPair, occupies, tailAt, unitDistance } from "./footprint";
+import {
+  BOARD_SIZES,
+  MAX_HEIGHT,
+  blocksSight,
+  buildField,
+  cliffBetween,
+  hasHighGround,
+  hasLineOfSight,
+  heightOf,
+  isCrag,
+  openCells,
+  propAt,
+  randomOpenCell,
+  setHeight,
+  standable,
+  stepCost,
+  weatherMult,
+  weatherRange
+} from "./battle-field";
 import { barnCapacity } from "./state";
 import { gainSkill, skillLevel } from "./farm";
 import { hasBuff } from "./town";
@@ -50,18 +72,79 @@ export type BattleSpec = {
   winScene?: string;
   loseScene?: string;
   reinforce?: BattleState["reinforce"];
+  /** Board size for random fights (default small). Event, soft and fixed-layout battles are always small. */
+  size?: BoardSize;
 };
 
 /** AP every turn starts with (before passives and carried AP). */
 export const BASE_AP = 3;
-/** Sprint: 1 AP for this much extra movement (before moving). */
+/** Sprint: 1 AP for this much extra movement (before the turn's action). */
 export const SPRINT_MOVE = 2;
 export const ITEM_AP = 1;
 /** Defend carries 1 AP into the next turn; ending a turn without acting (Charge) carries 2. */
 export const DEFEND_CARRY = 1;
 export const CHARGE_CARRY = 2;
 
-const DEPLOY_ROWS = [3, 1, 5, 2, 4, 0, 6];
+/** Deployment rows, middle first: [3, 1, 5, 2, 4, 0, 6] on the 7-row board, the same spread on taller ones. */
+function deployRows(rows: number): number[] {
+  const middle = Math.floor(rows / 2);
+  return [0, -2, 2, -1, 1, -3, 3, -4, 4, -5, 5].map((offset) => middle + offset).filter((row) => row >= 0 && row < rows);
+}
+
+/** Random fights: the board grows with the enemy group, with a little luck either way. */
+export function pickBoardSize(state: RestiaState, enemies: number): BoardSize {
+  const roll = random(state);
+  if (enemies <= 1) return roll < 0.65 ? "small" : "medium";
+  if (enemies === 2) return roll < 0.4 ? "small" : "medium";
+  if (enemies <= 4) return roll < (enemies === 3 ? 0.7 : 0.45) ? "medium" : "large";
+  return roll < 0.15 ? "medium" : "large";
+}
+
+/** Where a unit's whole footprint can stand: free, standable and (two-hex units) level. */
+export function canStandAt(battle: BattleState, unit: BattleUnit, head: number): boolean {
+  const cells = cellsAt(unit, head);
+  if (unit.wide && cells.length < 2) return false;
+  for (const cell of cells) {
+    if (!standable(battle, cell)) return false;
+    const other = unitAt(battle, cell);
+    if (other && other !== unit) return false;
+  }
+  return !unit.wide || heightOf(battle, cells[0]!) === heightOf(battle, cells[1]!);
+}
+
+/**
+ * A deployment hex: allies in the two west columns, enemies in the two east
+ * columns (front column first, middle rows first), then anywhere on their half.
+ */
+function deployCell(battle: BattleState, unit: BattleUnit, preferred: number | null): number | null {
+  if (preferred !== null && canStandAt(battle, unit, preferred)) return preferred;
+  const ally = unit.side === "ally";
+  const columns = ally ? [1, 0] : [battle.cols - 2, battle.cols - 1];
+  const rows = deployRows(battle.rows);
+  for (const col of columns) for (const row of rows) if (canStandAt(battle, unit, cellOf(col, row))) return cellOf(col, row);
+  for (let offset = 2; offset < battle.cols; offset++) {
+    const col = ally ? offset : battle.cols - 1 - offset;
+    for (const row of rows) if (canStandAt(battle, unit, cellOf(col, row))) return cellOf(col, row);
+  }
+  return null;
+}
+
+/**
+ * Medium and large boards: an enemy's spot in the eastern ~40% of the field,
+ * near its group's first member when it has one (whole footprint on free,
+ * standable, level ground, off the objectives). Null: no room (deploy instead).
+ */
+function scatterCell(state: RestiaState, battle: BattleState, unit: BattleUnit, anchor: number | null): number | null {
+  const east = Math.floor(battle.cols * 0.6);
+  const onPoint = (head: number) => cellsAt(unit, head).some((cell) => !!battle.points?.some((point) => point.cell === cell));
+  const fits = (cell: number) => colRow(cell).col >= east && colRow(cell).col < battle.cols && canStandAt(battle, unit, cell) && !onPoint(cell);
+  if (anchor === null) return randomOpenCell(state, battle, fits);
+  const at = anchor;
+  const near = openCells(battle).filter((cell) => fits(cell) && hexDistance(cell, at) <= 3);
+  if (!near.length) return randomOpenCell(state, battle, fits);
+  const closest = Math.min(...near.map((cell) => hexDistance(cell, at)));
+  return pick(state, near.filter((cell) => hexDistance(cell, at) <= Math.max(2, closest)));
+}
 const NEGATIVE: StatusId[] = ["poison", "burn", "sleep", "stun", "slow", "freeze", "bleed", "silence", "blind", "root", "mark", "taunt"];
 const POSITIVE: StatusId[] = ["regen", "haste"];
 const STATUS_NAMES: Record<StatusId, string> = {
@@ -166,7 +249,8 @@ function monsterUnit(species: MonsterId, level: number, uid: string, side: "ally
     sprite: def.sprite,
     scale: def.scale ?? 1,
     magic: !!def.magic,
-    passives
+    passives,
+    ...(def.wide ? { wide: true } : {})
   };
 }
 
@@ -220,7 +304,8 @@ const CHALLENGES: { id: BattleChallenge["id"]; weight: number; make: (enemies: n
   { id: "crit", weight: 2, make: () => ({ text: "Finish a foe with a critical hit", target: 1, jp: 1 }) },
   { id: "untouched", weight: 2, make: () => ({ text: "Win without anyone falling", target: 1, jp: 1 }) },
   { id: "boom", weight: 2, make: () => ({ text: "Take out a foe with an explosion", target: 1, jp: 2 }) },
-  { id: "highGround", weight: 2, make: () => ({ text: "Land 3 hits from high ground", target: 3, jp: 1 }) }
+  { id: "highGround", weight: 2, make: () => ({ text: "Land 3 hits from high ground", target: 3, jp: 1 }) },
+  { id: "points", weight: 2, make: () => ({ text: "Hold every point at once", target: 1, jp: 2 }) }
 ];
 /** Audience challenges per day (Jester Points can't be farmed). */
 export const CHALLENGES_PER_DAY = 3;
@@ -229,8 +314,9 @@ function rollChallenge(state: RestiaState, battle: BattleState, spec: BattleSpec
   if (spec.soft || spec.origin.kind === "event") return null;
   if ((state.stats.today.challenges ?? 0) >= CHALLENGES_PER_DAY || !chance(state, 0.4)) return null;
   const hasBarrels = battle.props.some((prop) => prop.kind === "barrel");
-  const hasHigh = Object.values(battle.tiles).includes("high");
-  const options = CHALLENGES.filter((entry) => (entry.id !== "boom" || hasBarrels) && (entry.id !== "highGround" || hasHigh));
+  const hasHigh = hasHighGround(battle);
+  const holdable = (battle.points ?? []).filter((point) => point.kind !== "cache").length;
+  const options = CHALLENGES.filter((entry) => (entry.id !== "boom" || hasBarrels) && (entry.id !== "highGround" || hasHigh) && (entry.id !== "points" || holdable >= 2));
   let total = options.reduce((sum, entry) => sum + entry.weight, 0);
   let roll = random(state) * total;
   for (const entry of options) {
@@ -254,10 +340,17 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
     return;
   }
   const level = Math.max(1, Math.round(ids.reduce((sum, id) => sum + (id.startsWith("pet:") ? state.pets.find((pet) => `pet:${pet.uid}` === id)?.level ?? 1 : state.members[id as CharId]?.level ?? 1), 0) / ids.length));
-  const field = buildField(state, { backdrop: spec.backdrop, layout: spec.layout, boss: spec.boss, level });
+  // Story/event fights, spars and fixed arenas keep the small authored boards.
+  const randomFight = !spec.layout && !spec.soft && spec.origin.kind !== "event";
+  const size: BoardSize = randomFight ? spec.size ?? "small" : "small";
+  const { cols, rows } = BOARD_SIZES[size];
+  // A two-hex walker on either side (flyers pass over everything) needs a way across the board.
+  const walker = (species: MonsterId | undefined) => !!species && !!MONSTERS[species]?.wide && !MONSTERS[species]?.flying;
+  const wide = spec.enemies.some((enemy) => walker(enemy.species)) || ids.some((id) => walker(state.pets.find((pet) => `pet:${pet.uid}` === id)?.species));
+  const field = buildField(state, { backdrop: spec.backdrop, layout: spec.layout, boss: spec.boss, level, cols, rows, objectives: randomFight && !spec.boss, wide });
   const units: BattleUnit[] = [];
-  ids.forEach((id, index) => {
-    const cell = cellOf(index < DEPLOY_ROWS.length ? 1 : 0, DEPLOY_ROWS[index % DEPLOY_ROWS.length]!);
+  ids.forEach((id) => {
+    const cell = -1;
     if (id.startsWith("pet:")) {
       const pet = state.pets.find((entry) => `pet:${entry.uid}` === id)!;
       const unit = monsterUnit(pet.species, pet.level, `a-pet-${pet.uid}`, "ally", cell);
@@ -273,9 +366,9 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
     }
   });
   spec.enemies.forEach((enemy, index) => {
-    units.push(monsterUnit(enemy.species, enemy.level, `e${index}`, "enemy", cellOf(index < DEPLOY_ROWS.length ? 9 : 10, DEPLOY_ROWS[index % DEPLOY_ROWS.length]!)));
+    units.push(monsterUnit(enemy.species, enemy.level, `e${index}`, "enemy", -1));
   });
-  if (spec.rival) units.push(rivalUnit(Math.max(8, (state.members.bin?.level ?? 1) + 1), cellOf(9, 3)));
+  if (spec.rival) units.push(rivalUnit(Math.max(8, (state.members.bin?.level ?? 1) + 1), -1));
   for (const unit of units) {
     const shield = pv(unit).shieldStart;
     if (shield > 0) unit.shield = Math.round(unit.stats.maxHp * shield);
@@ -289,19 +382,20 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
   const hazardRoll = spec.origin.kind === "dungeon" ? 0.35 : spec.origin.kind === "field" && biome === "frost" ? 0.2 : 0;
   const hazard = !spec.boss && !spec.soft && hazardRoll > 0 && chance(state, hazardRoll) ? { kind: biome === "frost" || biome === "nave" ? ("icicles" as const) : ("rockfall" as const), from: 3 } : null;
   const battle: BattleState = {
-    cols: BOARD_COLS,
-    rows: 7,
+    size,
+    cols,
+    rows,
     backdrop: spec.backdrop,
     ...field,
     warnings: [],
     hazard,
     reinforce: spec.reinforce ?? null,
     challenge: null,
-    units,
+    units: [],
     round: 0,
     queue: [],
     active: null,
-    turn: { moved: false, acted: false, waited: false, sprinted: false, item: false },
+    turn: { moved: false, acted: false, waited: false, sprinted: false, item: false, movePts: 0 },
     waited: [],
     phase: "turn",
     origin: spec.origin,
@@ -314,6 +408,28 @@ export function startBattle(state: RestiaState, spec: BattleSpec, ctx: Ctx): voi
     ...(spec.loseScene ? { loseScene: spec.loseScene } : {}),
     ...(spec.soft ? { soft: true } : {})
   };
+  // Each unit takes the first deployment hex its whole footprint fits on (the rival fights up front).
+  // On medium and large boards enemies stand in small groups over the eastern part of the field instead.
+  let anchor: number | null = null;
+  let group = 0;
+  for (const unit of units) {
+    let cell: number | null = null;
+    if (size !== "small" && unit.side === "enemy" && unit.uid !== "e-dain") {
+      if (group <= 0) {
+        anchor = null;
+        group = randInt(state, 1, 3);
+      }
+      cell = scatterCell(state, battle, unit, anchor);
+      if (cell !== null) {
+        anchor ??= cell;
+        group -= 1;
+      }
+    }
+    cell ??= deployCell(battle, unit, unit.uid === "e-dain" ? cellOf(battle.cols - 2, Math.floor(battle.rows / 2)) : null);
+    if (cell === null) continue;
+    unit.cell = cell;
+    battle.units.push(unit);
+  }
   battle.challenge = rollChallenge(state, battle, spec);
   state.battle = battle;
   const anims: BattleAnim[] = [];
@@ -337,7 +453,8 @@ export function startFieldBattle(state: RestiaState, monster: DungeonMonster, in
       origin: { kind: "field", monsterUid: monster.uid },
       canFlee: true,
       boss: false,
-      initiative
+      initiative,
+      size: pickBoardSize(state, monster.group.length)
     },
     ctx
   );
@@ -355,7 +472,7 @@ export function startDungeonBattle(state: RestiaState, monster: DungeonMonster, 
     {
       enemies: monster.group,
       backdrop: theme.backdrop,
-      ...(bossFloor ? { layout: "arena" } : {}),
+      ...(bossFloor ? { layout: "arena" } : { size: pickBoardSize(state, monster.group.length) }),
       origin: { kind: "dungeon", monsterUid: monster.uid },
       canFlee: !boss,
       boss,
@@ -403,11 +520,13 @@ function auraPct(battle: BattleState, unit: BattleUnit, stat: StatKey): number {
   for (const other of battle.units) {
     if (other === unit || other.side !== unit.side || other.hp <= 0 || other.gone) continue;
     const aura = pv(other).aura[stat];
-    if (aura && hexDistance(other.cell, unit.cell) <= 2) pct += aura;
+    if (aura && unitDistance(other, unit) <= 2) pct += aura;
   }
   if (stat === "def" || stat === "res") {
-    for (const prop of battle.props) if (prop.kind === "totem" && prop.hp > 0 && prop.side === unit.side && hexDistance(prop.cell, unit.cell) <= 3) pct += 20;
+    for (const prop of battle.props) if (prop.kind === "totem" && prop.hp > 0 && prop.side === unit.side && distanceTo(unit, prop.cell) <= 3) pct += 20;
   }
+  // War banners: +10% ATK and MAG for the side holding each one.
+  if (stat === "atk" || stat === "mag") for (const point of battle.points ?? []) if (point.kind === "banner" && point.owner === unit.side) pct += 10;
   return pct;
 }
 
@@ -437,7 +556,7 @@ export function living(battle: BattleState): BattleUnit[] {
 }
 
 export function unitAt(battle: BattleState, cell: number): BattleUnit | undefined {
-  return battle.units.find((unit) => unit.cell === cell && unit.hp > 0 && !unit.gone);
+  return battle.units.find((unit) => occupies(unit, cell) && unit.hp > 0 && !unit.gone);
 }
 
 function findUnit(battle: BattleState, uid: string): BattleUnit {
@@ -458,21 +577,60 @@ export function skillMp(unit: BattleUnit, skill: SkillDef): number {
   return Math.max(0, Math.round(skill.mp * (1 - pv(unit).mpSave / 100)));
 }
 
-/** Cells the unit can move to this turn, each with its path (Sprint adds 2). */
-export function reachable(battle: BattleState, unit: BattleUnit, extra = 0): Map<number, number[]> {
-  const budget = moveRange(unit) === 0 ? 0 : moveRange(unit) + extra;
-  if (budget <= 0) return new Map();
+/**
+ * Hexes the unit's head can move to with `budget` movement points (default: a
+ * full turn's), each with its path. A two-hex unit drags its tail along: the
+ * tail hex must be enterable and level with the head at every step.
+ */
+export function reachable(battle: BattleState, unit: BattleUnit, budget = moveRange(unit)): Map<number, number[]> {
+  if (moveRange(unit) === 0 || budget <= 0) return new Map();
   const sure = pv(unit).sureFooted;
-  const cost = (cell: number) => {
-    const other = unitAt(battle, cell);
-    if (other && other.side !== unit.side && !unit.flying) return Infinity;
-    return stepCost(battle, unit, cell, sure);
-  };
-  const stoppable = (cell: number) => standable(battle, cell) && !unitAt(battle, cell);
-  return reachWeighted(unit.cell, budget, cost, stoppable);
+  return reachWeighted(unit.cell, budget, (cell, from) => footprintStep(battle, unit, from, cell, sure), (cell) => canStandAt(battle, unit, cell));
 }
 
-/** Basic-attack reach: ranged units gain from high ground and passives, lose to blizzards and storms. */
+/**
+ * Movement points for the unit's head to step from `from` onto `cell`
+ * (Infinity: it can't). Foes in any hex of the footprint block it unless it
+ * flies (with `blockAllies`, friends block too: a charge can't run through
+ * anyone); a two-hex body's tail must stay on the board and, for walkers, be
+ * enterable and level with the head. Shared by walking and dashes.
+ */
+function footprintStep(battle: BattleState, unit: BattleUnit, from: number, cell: number, sure: boolean, blockAllies = false): number {
+  for (const covered of cellsAt(unit, cell)) {
+    const other = unitAt(battle, covered);
+    if (other && other !== unit && !unit.flying && (blockAllies || other.side !== unit.side)) return Infinity;
+  }
+  if (unit.wide) {
+    const tail = tailAt(unit, cell);
+    if (tail === null) return Infinity;
+    if (!unit.flying) {
+      const tile = battle.tiles[tail];
+      if (tile === "void" || tile === "water" || propAt(battle, tail) || heightOf(battle, tail) !== heightOf(battle, cell)) return Infinity;
+    }
+  }
+  return stepCost(battle, unit, from, cell, sure);
+}
+
+/** Movement points a path costs from where the unit stands. */
+export function pathCost(battle: BattleState, unit: BattleUnit, path: number[]): number {
+  const sure = pv(unit).sureFooted;
+  let from = unit.cell;
+  let total = 0;
+  for (const cell of path) {
+    total += stepCost(battle, unit, from, cell, sure);
+    from = cell;
+  }
+  return total;
+}
+
+/** Melee can't reach across a cliff (two levels between the hexes); flyers and shooters can. */
+function cliffBlocksMelee(battle: BattleState, unit: BattleUnit, from: number, to: number): boolean {
+  return unit.range <= 1 && !unit.flying && hexDistance(from, to) === 1 && cliffBetween(battle, from, to);
+}
+
+const CLIFF = "Too high to reach: a cliff.";
+
+/** Basic-attack reach: ranged units gain from high ground (+1 per level) and passives, lose to blizzards and storms. */
 export function attackRange(battle: BattleState, unit: BattleUnit): number {
   if (unit.range <= 1) return 1;
   return Math.max(2, unit.range + pv(unit).range + heightOf(battle, unit.cell) + weatherRange(battle.weather));
@@ -487,14 +645,17 @@ export function tauntedBy(battle: BattleState, unit: BattleUnit): BattleUnit | n
 }
 
 /** Why `unit` can't basic-attack `target` from `from` (null = it can). */
-export function attackBlock(battle: BattleState, unit: BattleUnit, target: { cell: number }, from = unit.cell): string | null {
-  const distance = hexDistance(from, target.cell);
+export function attackBlock(battle: BattleState, unit: BattleUnit, target: { cell: number } | BattleUnit, from = unit.cell): string | null {
+  // Two-hex units reach from, and can be hit on, either of their hexes.
+  const [a, b] = nearestPair(cellsAt(unit, from), "side" in target ? cellsOf(target) : [target.cell]);
+  const distance = hexDistance(a, b);
   const saved = unit.cell;
   unit.cell = from;
   const range = attackRange(battle, unit);
   unit.cell = saved;
   if (distance > range) return "Out of range.";
-  if (distance > 1 && !hasLineOfSight(battle, from, target.cell)) return "No line of sight.";
+  if (distance > 1 && !hasLineOfSight(battle, a, b)) return "No line of sight.";
+  if (cliffBlocksMelee(battle, unit, a, b)) return CLIFF;
   return null;
 }
 
@@ -513,7 +674,7 @@ function hitChance(state: RestiaState, battle: BattleState, attacker: BattleUnit
   if (!physical) return 1;
   let p = 0.95 + (eff(state, attacker, "luk") - eff(state, target, "luk")) * 0.005;
   if (hasStatus(attacker, "blind")) p -= 0.35;
-  if (heightOf(battle, attacker.cell) < heightOf(battle, target.cell)) p -= 0.05;
+  p -= 0.05 * Math.max(0, heightOf(battle, target.cell) - heightOf(battle, attacker.cell));
   return clamp(p - pv(target).evasion, 0.3, 0.99);
 }
 
@@ -523,22 +684,36 @@ function rawDamage(state: RestiaState, attacker: BattleUnit, target: BattleUnit,
   return a <= 0 ? 1 : (power * a * a) / (a + d);
 }
 
-type StrikeOpts = { power: number; element: Element; physical: boolean; pointBlank?: boolean; ranged?: boolean; crit?: number };
+type StrikeOpts = {
+  power: number;
+  element: Element;
+  physical: boolean;
+  pointBlank?: boolean;
+  ranged?: boolean;
+  crit?: number;
+  /** Arcing: cover doesn't help the target. */
+  indirect?: boolean;
+  /** Extra power per level `fromHeight` (where the attacker began) is above the target. */
+  heightPower?: number;
+  fromHeight?: number;
+};
 
 /** Positional and passive multipliers shared by real hits and forecasts. */
 function situational(state: RestiaState, battle: BattleState, attacker: BattleUnit, target: BattleUnit, opts: StrikeOpts): number {
   const pa = pv(attacker);
   let mult = 1;
+  // Striking down: +15% one level, +25% two; striking up: -10% per level.
   const dh = heightOf(battle, attacker.cell) - heightOf(battle, target.cell);
-  if (dh > 0) mult *= 1.15 + pa.highGround / 100;
-  else if (dh < 0) mult *= 0.9;
-  if (opts.ranged && battle.tiles[target.cell] === "cover") mult *= 0.7;
+  if (dh > 0) mult *= 1.05 + 0.1 * dh + pa.highGround / 100;
+  else if (dh < 0) mult *= 1 + 0.1 * dh;
+  if (opts.heightPower) mult *= 1 + opts.heightPower * Math.max(0, (opts.fromHeight ?? heightOf(battle, attacker.cell)) - heightOf(battle, target.cell));
+  if (opts.ranged && !opts.indirect && cellsOf(target).some((cell) => battle.tiles[cell] === "cover")) mult *= 0.7;
   if (hasStatus(target, "mark")) mult *= 1.25;
   if (target.down) mult *= 1.25;
   if (opts.pointBlank) mult *= 0.5;
   if (fromBehind(attacker, target)) mult *= 1.1 + pa.backstab / 100;
   if (pa.pack > 0) {
-    const flankers = battle.units.filter((unit) => unit !== attacker && unit.side === attacker.side && unit.hp > 0 && !unit.gone && hexDistance(unit.cell, target.cell) === 1).length;
+    const flankers = battle.units.filter((unit) => unit !== attacker && unit.side === attacker.side && unit.hp > 0 && !unit.gone && unitDistance(unit, target) === 1).length;
     mult *= 1 + (pa.pack * flankers) / 100;
   }
   mult *= 1 + (pa.elementBoost[opts.element] ?? 0) / 100;
@@ -719,7 +894,7 @@ function explode(state: RestiaState, battle: BattleState, cell: number, power: n
   anims.push({ kind: "fx", cell, fx: element === "fire" ? "explosion" : element === "ice" ? "ice" : element === "dark" ? "dark" : "explosion", sound: "spells/fireball-hit" });
   const level = Math.max(1, ...battle.units.map((unit) => unit.level));
   for (const unit of living(battle)) {
-    if (hexDistance(unit.cell, cell) > radius) continue;
+    if (distanceTo(unit, cell) > radius) continue;
     const mult = elementMult(battle, unit, element);
     if (mult === 0) continue;
     const amount = Math.max(1, Math.round((18 + 3 * level) * power * mult * (0.9 + random(state) * 0.2)));
@@ -761,34 +936,228 @@ function walk(state: RestiaState, battle: BattleState, unit: BattleUnit, path: n
     from = segment[segment.length - 1]!;
     segment.length = 0;
   };
-  const ground = !unit.flying && !pv(unit).sureFooted;
   for (const cell of path) {
+    const before = cellsOf(unit);
     segment.push(cell);
     unit.cell = cell;
-    const tile = battle.tiles[cell];
-    if (tile === "crystal") {
-      flush();
-      delete battle.tiles[cell];
-      unit.mp = Math.min(unit.stats.maxMp, unit.mp + Math.round(unit.stats.maxMp * 0.3));
-      unit.apCarry += 1;
-      anims.push({ kind: "status", uid: unit.uid, text: "+MP, +1 AP next turn" });
+    for (const covered of cellsOf(unit)) {
+      if (before.includes(covered)) continue;
+      enterTile(state, battle, unit, covered, anims, ctx, flush);
+      if (unit.hp <= 0) return;
     }
-    if (!ground) continue;
-    if (tile === "thorns") {
-      flush();
-      dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.06)), anims, ctx);
-    } else if (tile === "fire") {
-      flush();
-      dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.05)), anims, ctx);
-      if (unit.hp > 0) addStatus(battle, unit, "burn", 2, anims);
-    }
-    if (unit.hp <= 0) return;
   }
   flush();
   if (kind === "move" && hasStatus(unit, "bleed") && unit.hp > 0) {
     anims.push({ kind: "status", uid: unit.uid, text: "Bleeding" });
     dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.06)), anims, ctx);
   }
+}
+
+/**
+ * Stepping onto a hex: crystals are picked up; thorns and fire hurt grounded units.
+ * `before` runs first whenever something happens (flushes the walk animation).
+ */
+function enterTile(state: RestiaState, battle: BattleState, unit: BattleUnit, cell: number, anims: BattleAnim[], ctx: Ctx, before: () => void): void {
+  const tile = battle.tiles[cell];
+  const cache = battle.points?.find((point) => point.kind === "cache" && !point.used && point.cell === cell);
+  if (cache) {
+    before();
+    openCache(battle, unit, cache, anims);
+  }
+  if (tile === "crystal") {
+    before();
+    delete battle.tiles[cell];
+    unit.mp = Math.min(unit.stats.maxMp, unit.mp + Math.round(unit.stats.maxMp * 0.3));
+    unit.apCarry += 1;
+    anims.push({ kind: "status", uid: unit.uid, text: "+MP, +1 AP next turn" });
+  }
+  if (unit.flying || pv(unit).sureFooted) return;
+  if (tile === "thorns") {
+    before();
+    dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.06)), anims, ctx);
+  } else if (tile === "fire") {
+    before();
+    dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.05)), anims, ctx);
+    if (unit.hp > 0) addStatus(battle, unit, "burn", 2, anims);
+  }
+}
+
+/** A supply cache: the first ally to enter claims its loot (paid with the victory rewards); an enemy smashes it. */
+function openCache(battle: BattleState, unit: BattleUnit, point: BattlePoint, anims: BattleAnim[]): void {
+  point.used = true;
+  point.owner = unit.side;
+  if (unit.side !== "ally") {
+    anims.push({ kind: "status", uid: unit.uid, text: `Smashed the ${POINT_NAMES.cache}!` });
+    battle.log.push(`${unit.name} smashed the ${POINT_NAMES.cache}. Its loot is lost.`);
+    return;
+  }
+  const reward = point.reward ?? { gold: 0 };
+  const loot = (battle.loot ??= { gold: 0, items: {} });
+  loot.gold += reward.gold;
+  if (reward.item) loot.items[reward.item] = (loot.items[reward.item] ?? 0) + 1;
+  const found = [reward.gold > 0 ? `${reward.gold} gold` : "", reward.item ? ITEMS[reward.item]?.name ?? reward.item : ""].filter(Boolean).join(" + ") || "nothing";
+  anims.push({ kind: "status", uid: unit.uid, text: `Found ${found}!` });
+  battle.log.push(`${unit.name} opened the ${POINT_NAMES.cache}: ${found} (yours if you win).`);
+}
+
+/** Ending a turn with any hex of the footprint on a shrine or banner captures it for the unit's side. */
+function capturePoints(battle: BattleState, unit: BattleUnit, anims: BattleAnim[]): void {
+  if (unit.hp <= 0 || unit.gone || !battle.points?.length) return;
+  const cells = cellsOf(unit);
+  for (const point of battle.points) {
+    if (point.kind === "cache" || point.owner === unit.side || !cells.includes(point.cell)) continue;
+    point.owner = unit.side;
+    anims.push({ kind: "status", uid: unit.uid, text: `Captured the ${POINT_NAMES[point.kind]}!` });
+    battle.log.push(`${unit.name} captured the ${POINT_NAMES[point.kind]}.`);
+  }
+  const held = battle.points.filter((point) => point.kind !== "cache");
+  if (battle.challenge?.id === "points" && held.length && held.every((point) => point.owner === "ally")) battle.challenge.progress = Math.max(battle.challenge.progress, 1);
+}
+
+/**
+ * A leap through the air (or a blink) onto `cell` (skills): lands whatever the
+ * height or what is in between, then steps onto every hex of the footprint it
+ * didn't already cover (pickups, thorns, fire).
+ */
+function land(state: RestiaState, battle: BattleState, unit: BattleUnit, cell: number, sprite: SkillSprite, anims: BattleAnim[], ctx: Ctx, blink = false): void {
+  anims.push(blink ? { kind: "blink", uid: unit.uid, from: unit.cell, to: cell } : { kind: "leap", uid: unit.uid, from: unit.cell, to: cell, sprite });
+  const before = cellsOf(unit);
+  face(unit, cell);
+  unit.cell = cell;
+  for (const covered of cellsOf(unit)) {
+    if (before.includes(covered)) continue;
+    enterTile(state, battle, unit, covered, anims, ctx, () => {});
+    if (unit.hp <= 0) return;
+  }
+}
+
+/** Dropping `levels` of ground (knocked, dragged or the ground sank) hurts 10% max HP per level; flyers glide. */
+function fall(state: RestiaState, battle: BattleState, unit: BattleUnit, levels: number, anims: BattleAnim[], ctx: Ctx): void {
+  if (levels <= 0 || unit.flying || unit.boss || unit.hp <= 0 || unit.gone) return;
+  anims.push({ kind: "status", uid: unit.uid, text: levels > 1 ? "Long fall!" : "Falls!" });
+  dealDamage(state, battle, unit, Math.max(1, Math.round(unit.stats.maxHp * 0.1 * levels)), anims, ctx);
+}
+
+/** Moves a unit along a forced path (knockback, pulls), then it takes the fall for every level it dropped. */
+function shove(state: RestiaState, battle: BattleState, unit: BattleUnit, path: number[], anims: BattleAnim[], ctx: Ctx): void {
+  if (!path.length) return;
+  let drop = 0;
+  let previous = unit.cell;
+  for (const cell of path) {
+    drop += Math.max(0, heightOf(battle, previous) - heightOf(battle, cell));
+    previous = cell;
+  }
+  walk(state, battle, unit, path, anims, ctx, "knock");
+  if (unit.cell === path[path.length - 1]) fall(state, battle, unit, drop, anims, ctx);
+}
+
+/**
+ * What stops a unit being pushed or dragged from `at` to `next` (null = nothing):
+ * a unit or prop in any hex of its footprint, water or the board's edge, or
+ * rising ground (a two-hex unit also needs both hexes level).
+ */
+function pushBlock(battle: BattleState, unit: BattleUnit, at: number, next: number): { blocker?: BattleUnit; prop?: BattleProp } | null {
+  const cells = cellsAt(unit, next);
+  if (unit.wide && cells.length < 2) return {};
+  for (const cell of cells) {
+    const blocker = unitAt(battle, cell);
+    if (blocker && blocker !== unit) return { blocker };
+    const prop = propAt(battle, cell);
+    if (prop) return { prop };
+    const tile = battle.tiles[cell];
+    if (tile === "void" || tile === "water" || isCrag(battle, cell)) return {};
+  }
+  if (!unit.flying) {
+    const ground = heightOf(battle, at);
+    if (cells.some((cell) => heightOf(battle, cell) > ground)) return {};
+  }
+  // A two-hex body only ever stands level, flyers included (canStandAt).
+  if (unit.wide && heightOf(battle, cells[0]!) !== heightOf(battle, cells[1]!)) return {};
+  return null;
+}
+
+/**
+ * Drags a unit toward `to` (hook lines). It stops next to `to`, at anything in
+ * the way, or at ground it can't be hauled onto (a cliff, or uneven for a two-hex body).
+ */
+function pullToward(state: RestiaState, battle: BattleState, to: number, target: BattleUnit, steps: number, anims: BattleAnim[], ctx: Ctx): void {
+  if (target.hp <= 0 || target.boss || target.gone) return;
+  const path: number[] = [];
+  let at = target.cell;
+  for (let i = 0; i < steps; i++) {
+    const next = hexLine(at, to)[1];
+    if (next === undefined || next === to || cellsAt(target, next).includes(to)) break;
+    if (cellsAt(target, next).some((cell) => { const other = unitAt(battle, cell); return (other && other !== target) || !!propAt(battle, cell) || battle.tiles[cell] === "void" || battle.tiles[cell] === "water" || isCrag(battle, cell); })) break;
+    if (target.wide && cellsAt(target, next).length < 2) break;
+    if (!target.flying && heightOf(battle, next) - heightOf(battle, at) >= 2) break;
+    // A two-hex body only ever stands level, flyers included (canStandAt).
+    if (target.wide && heightOf(battle, next) !== heightOf(battle, tailAt(target, next)!)) break;
+    path.push(next);
+    at = next;
+  }
+  if (path.length) anims.push({ kind: "status", uid: target.uid, text: "Hooked!" });
+  shove(state, battle, target, path, anims, ctx);
+}
+
+/** Raises or lowers the ground of these hexes; whoever stands there rides along (and falls when it sinks). */
+function shapeGround(state: RestiaState, battle: BattleState, cells: number[], delta: number, anims: BattleAnim[], ctx: Ctx): void {
+  const changes: { cell: number; from: number; to: number }[] = [];
+  // A two-hex creature stays level: its other hex moves with it.
+  const affected = new Set(cells);
+  for (const unit of living(battle)) if (unit.wide && cellsOf(unit).some((cell) => affected.has(cell))) for (const cell of cellsOf(unit)) affected.add(cell);
+  let plan = shapePlan(battle, [...affected], delta);
+  // ...and only if both of its hexes can move: otherwise neither does.
+  for (let guard = 0; guard <= battle.units.length; guard++) {
+    const split = living(battle).filter((unit) => unit.wide && cellsOf(unit).some((cell) => plan.has(cell)) && !cellsOf(unit).every((cell) => plan.has(cell)));
+    if (!split.length) break;
+    for (const unit of split) for (const cell of cellsOf(unit)) affected.delete(cell);
+    plan = shapePlan(battle, [...affected], delta);
+  }
+  for (const [cell, to] of plan) {
+    const from = setHeight(battle, cell, to);
+    changes.push({ cell, from, to });
+  }
+  if (!changes.length) return;
+  anims.push({ kind: "terrain", changes });
+  for (const unit of living(battle)) {
+    const change = changes.find((entry) => entry.cell === unit.cell);
+    if (change && change.to < change.from) fall(state, battle, unit, change.from - change.to, anims, ctx);
+  }
+}
+
+/** The ground of this hex can still move that way (water and chasms have none). */
+function canShape(battle: BattleState, cell: number, delta: number): boolean {
+  const tile = battle.tiles[cell];
+  if (tile === "void" || tile === "water" || delta === 0 || isCrag(battle, cell)) return false;
+  const height = heightOf(battle, cell);
+  return delta > 0 ? height < MAX_HEIGHT : height > 0;
+}
+
+/**
+ * New heights for shaping these hexes, keeping every reshaped hex walkable: it
+ * must keep a neighbour within one level (a ramp), so no one can raise an
+ * unreachable pillar or sink a pit nobody can climb out of. Hexes that would
+ * break that are left as they are (checked together, so a whole mound can rise).
+ */
+function shapePlan(battle: BattleState, cells: number[], delta: number): Map<number, number> {
+  const plan = new Map<number, number>();
+  for (const cell of cells) if (canShape(battle, cell, delta)) plan.set(cell, clamp(heightOf(battle, cell) + delta, 0, MAX_HEIGHT));
+  const heightAfter = (cell: number) => plan.get(cell) ?? heightOf(battle, cell);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [cell, to] of plan) {
+      const ramp = neighbors(cell).some((next) => {
+        const tile = battle.tiles[next];
+        // A crag is no ramp: nobody stands on it.
+        return tile !== "void" && tile !== "water" && !isCrag(battle, next) && !propAt(battle, next) && Math.abs(heightAfter(next) - to) <= 1;
+      });
+      if (ramp) continue;
+      plan.delete(cell);
+      changed = true;
+    }
+  }
+  return plan;
 }
 
 function doMove(state: RestiaState, battle: BattleState, unit: BattleUnit, path: number[], anims: BattleAnim[], ctx: Ctx): void {
@@ -800,7 +1169,10 @@ function doMove(state: RestiaState, battle: BattleState, unit: BattleUnit, path:
   if (to !== from) unit.facing = to > from ? "right" : "left";
 }
 
-/** Shoves a unit away from `from`; collisions hurt both sides (and break props). */
+/**
+ * Shoves a unit away from `from`; collisions hurt both sides (and break props).
+ * Rising ground stops it like a wall (flyers excepted); dropping off a ledge hurts.
+ */
 function knockBack(state: RestiaState, battle: BattleState, from: number, target: BattleUnit, steps: number, anims: BattleAnim[], ctx: Ctx): void {
   if (target.hp <= 0 || target.boss) return;
   const path: number[] = [];
@@ -808,12 +1180,12 @@ function knockBack(state: RestiaState, battle: BattleState, from: number, target
   let origin = from;
   for (let i = 0; i < steps; i++) {
     const next = stepAway(origin, at);
-    const blocker = next === null ? null : unitAt(battle, next);
-    const prop = next === null ? undefined : propAt(battle, next);
-    const tile = next === null ? "void" : battle.tiles[next];
-    if (next === null || blocker || prop || tile === "void" || tile === "water") {
+    const stop = next === null ? {} : pushBlock(battle, target, at, next);
+    const blocker = stop?.blocker;
+    const prop = stop?.prop;
+    if (stop || next === null) {
       anims.push({ kind: "status", uid: target.uid, text: "Slammed!" });
-      if (path.length) walk(state, battle, target, path, anims, ctx, "knock");
+      shove(state, battle, target, path, anims, ctx);
       dealDamage(state, battle, target, Math.max(1, Math.round(target.stats.maxHp * 0.08)), anims, ctx);
       if (blocker) dealDamage(state, battle, blocker, Math.max(1, Math.round(blocker.stats.maxHp * 0.05)), anims, ctx);
       if (prop) damageProp(state, battle, prop, Math.round(target.stats.maxHp * 0.1), "phys", anims, ctx);
@@ -823,7 +1195,7 @@ function knockBack(state: RestiaState, battle: BattleState, from: number, target
     origin = at;
     at = next;
   }
-  walk(state, battle, target, path, anims, ctx, "knock");
+  shove(state, battle, target, path, anims, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -855,7 +1227,7 @@ function newRound(state: RestiaState, battle: BattleState, anims: BattleAnim[], 
   }
   if (battle.hazard && battle.round >= battle.hazard.from - 1) {
     const targets: number[] = [];
-    const occupied = living(battle).map((unit) => unit.cell);
+    const occupied = living(battle).flatMap((unit) => cellsOf(unit));
     for (let i = 0; i < 3; i++) {
       // Aim near units, so the hazard is a real reason to move.
       const near = occupied.length ? occupied[randInt(state, 0, occupied.length - 1)]! : null;
@@ -868,9 +1240,10 @@ function newRound(state: RestiaState, battle: BattleState, anims: BattleAnim[], 
   if (battle.reinforce && battle.round === battle.reinforce.round) {
     let index = battle.units.length;
     for (const enemy of battle.reinforce.enemies) {
-      const cell = randomOpenCell(state, battle, (c) => colRow(c).col >= 8 && !unitAt(battle, c));
+      const unit = monsterUnit(enemy.species, enemy.level, `r${index++}`, "enemy", -1);
+      const cell = randomOpenCell(state, battle, (c) => colRow(c).col >= battle.cols - 3 && canStandAt(battle, unit, c));
       if (cell === null) continue;
-      const unit = monsterUnit(enemy.species, enemy.level, `r${index++}`, "enemy", cell);
+      unit.cell = cell;
       battle.units.push(unit);
       anims.push({ kind: "status", uid: unit.uid, text: "Joins the fight!" });
     }
@@ -908,7 +1281,9 @@ function upkeep(state: RestiaState, battle: BattleState, unit: BattleUnit, anims
   const tile = battle.tiles[unit.cell];
   const grounded = !unit.flying && !passives.sureFooted;
   if (tile === "fire" && grounded) addStatus(battle, unit, "burn", 2, anims);
-  const regen = passives.regen + (hasStatus(unit, "regen") ? 0.08 : 0) + (tile === "spring" && !unit.flying ? 0.1 : 0);
+  // Healing shrines: 5% max HP for each one the unit's side holds (once per round, like regeneration).
+  const shrines = (battle.points ?? []).filter((point) => point.kind === "shrine" && point.owner === unit.side).length;
+  const regen = passives.regen + (hasStatus(unit, "regen") ? 0.08 : 0) + (tile === "spring" && !unit.flying ? 0.1 : 0) + 0.05 * shrines;
   if (regen > 0 && unit.hp < unit.stats.maxHp) heal(unit, unit.stats.maxHp * regen, anims);
   if (passives.mpRegen > 0) unit.mp = Math.min(unit.stats.maxMp, unit.mp + Math.max(1, Math.round(unit.stats.maxMp * passives.mpRegen)));
 }
@@ -926,7 +1301,7 @@ function beginTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[],
     if (!unit || unit.hp <= 0 || unit.gone) continue;
     const returning = battle.waited.includes(unit.uid);
     battle.active = unit.uid;
-    battle.turn = { moved: false, acted: false, waited: returning, sprinted: false, item: false };
+    battle.turn = { moved: false, acted: false, waited: returning, sprinted: false, item: false, movePts: moveRange(unit) };
     unit.defending = false;
     if (!returning) {
       // Poison/burn/regen once per round: not again when a unit returns after Wait.
@@ -959,7 +1334,10 @@ function beginTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[],
 
 export function finishTurn(state: RestiaState, battle: BattleState, anims: BattleAnim[], ctx: Ctx): void {
   const unit = activeUnit(battle);
-  if (unit) tickEndOfTurn(unit);
+  if (unit) {
+    capturePoints(battle, unit, anims);
+    tickEndOfTurn(unit);
+  }
   battle.active = null;
   if (checkEnd(state, battle, ctx)) return;
   beginTurn(state, battle, anims, ctx);
@@ -1049,6 +1427,13 @@ function victory(state: RestiaState, battle: BattleState, ctx: Ctx): void {
   }
   const shareFor = (level: number) => Math.round(foes.reduce((sum, foe) => sum + foe.exp * levelGapMult(level, foe.level), 0));
   rewards.gold = Math.round(rewards.gold * goldMult);
+  // Supply caches opened during the fight.
+  const loot = battle.loot;
+  if (loot && (loot.gold > 0 || Object.keys(loot.items).length)) {
+    rewards.gold += loot.gold;
+    for (const [item, n] of Object.entries(loot.items)) rewards.items[item] = (rewards.items[item] ?? 0) + n;
+    rewards.found = { gold: loot.gold, items: { ...loot.items } };
+  }
   state.gold += rewards.gold;
   for (const [item, n] of Object.entries(rewards.items)) state.inventory[item] = (state.inventory[item] ?? 0) + n;
   const fought = new Set<string>();
@@ -1112,32 +1497,52 @@ function spend(unit: BattleUnit, ap: number): void {
 
 export function battleMove(state: RestiaState, cell: number, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
-  if (battle.turn.moved || battle.turn.acted) fail("This unit already moved.");
-  const path = reachable(battle, unit, battle.turn.sprinted ? SPRINT_MOVE : 0).get(cell);
+  if (moveRange(unit) === 0) fail("Rooted: can't move.");
+  if (battle.turn.movePts <= 0) fail("No movement left this turn.");
+  const path = reachable(battle, unit, battle.turn.movePts).get(cell);
   if (!path) fail("Can't move there.");
+  const cost = pathCost(battle, unit, path);
   const anims: BattleAnim[] = [];
   doMove(state, battle, unit, path, anims, ctx);
   battle.turn.moved = true;
-  if (unit.hp <= 0) finishTurn(state, battle, anims, ctx);
+  battle.turn.movePts = Math.max(0, battle.turn.movePts - cost);
+  // After the action, the turn ends once there is nowhere left to go.
+  if (unit.hp <= 0 || (battle.turn.acted && !canStillMove(battle, unit))) finishTurn(state, battle, anims, ctx);
   else checkEnd(state, battle, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
+/** Movement points left, not rooted or disabled, and somewhere to go. */
+export function canStillMove(battle: BattleState, unit: BattleUnit): boolean {
+  if (unit.hp <= 0 || unit.gone || unit.down || battle.turn.movePts <= 0 || moveRange(unit) === 0) return false;
+  if (unit.statuses.some((status) => status.id === "sleep" || status.id === "stun" || status.id === "freeze")) return false;
+  return reachable(battle, unit, battle.turn.movePts).size > 0;
+}
+
+/** After the turn's main action the unit may still spend leftover movement (hit and run); otherwise the turn ends. */
+function afterAction(state: RestiaState, battle: BattleState, unit: BattleUnit, anims: BattleAnim[], ctx: Ctx): void {
+  battle.turn.acted = true;
+  if (battle.phase === "turn" && !checkEnd(state, battle, ctx) && canStillMove(battle, unit)) return;
+  finishTurn(state, battle, anims, ctx);
+}
+
 export function battleSprint(state: RestiaState, ctx: Ctx): void {
   const { battle, unit } = activeAlly(state);
-  if (battle.turn.moved || battle.turn.acted) fail("Sprint before moving.");
+  if (battle.turn.acted) fail("Sprint before your action.");
   if (battle.turn.sprinted) fail("Already sprinting.");
   if (moveRange(unit) === 0) fail("Rooted: can't move.");
   spend(unit, 1);
   battle.turn.sprinted = true;
+  battle.turn.movePts += SPRINT_MOVE;
   ctx.events.push({ kind: "battle", anims: [{ kind: "status", uid: unit.uid, text: `Sprint (+${SPRINT_MOVE} move)` }] });
 }
 
 /** A basic attack (and the defender's counter). Shared with the enemy AI. */
 export function basicAttack(state: RestiaState, battle: BattleState, attacker: BattleUnit, target: BattleUnit, anims: BattleAnim[], ctx: Ctx): void {
-  const distance = hexDistance(attacker.cell, target.cell);
+  const [from, to] = nearestPair(cellsOf(attacker), cellsOf(target));
+  const distance = hexDistance(from, to);
   const ranged = attacker.range > 1 && distance > 1;
-  face(attacker, target.cell);
+  face(attacker, to);
   const sound = attackSound(attacker, ranged);
   const canCounter = () =>
     distance === 1 &&
@@ -1146,10 +1551,11 @@ export function basicAttack(state: RestiaState, battle: BattleState, attacker: B
     !target.retaliated &&
     !target.down &&
     !pv(attacker).noRetaliation &&
+    !cliffBlocksMelee(battle, target, to, from) &&
     !target.statuses.some((status) => status.id === "sleep" || status.id === "stun" || status.id === "freeze");
   const counter = () => {
     target.retaliated = true;
-    face(target, attacker.cell);
+    face(target, from);
     anims.push({ kind: "attack", uid: target.uid, target: attacker.uid, anim: "attack", ...(attackSound(target, false) ? { sound: attackSound(target, false) } : {}) });
     strike(state, battle, target, attacker, { power: pv(target).counter, element: target.element, physical: !target.magic }, anims, ctx);
   };
@@ -1160,8 +1566,8 @@ export function basicAttack(state: RestiaState, battle: BattleState, attacker: B
     if (attacker.hp <= 0) return;
   }
   anims.push({ kind: "attack", uid: attacker.uid, target: target.uid, anim: ranged ? "shoot" : attacker.magic ? "cast" : "attack", ...(sound ? { sound } : {}) });
-  if (ranged) anims.push({ kind: "projectile", from: attacker.cell, to: target.cell, sprite: attacker.magic ? magicBolt(attacker.element) : "arrow" });
-  if (attacker.magic && distance > 1) anims.push({ kind: "fx", cell: target.cell, fx: elementFx(attacker.element) });
+  if (ranged) anims.push({ kind: "projectile", from, to, sprite: attacker.magic ? magicBolt(attacker.element) : "arrow" });
+  if (attacker.magic && distance > 1) anims.push({ kind: "fx", cell: to, fx: elementFx(attacker.element) });
   strike(state, battle, attacker, target, { power: 1, element: attacker.element, physical: !attacker.magic, pointBlank: attacker.range > 1 && distance === 1, ranged }, anims, ctx);
   if (!first && canCounter()) counter();
 }
@@ -1215,12 +1621,51 @@ export function battleAttack(state: RestiaState, targetUid: string, ctx: Ctx): v
     basicAttack(state, battle, unit, target, anims, ctx);
     battle.log.push(`${unit.name} attacks ${target.name}.`);
   }
-  battle.turn.acted = true;
-  finishTurn(state, battle, anims, ctx);
+  afterAction(state, battle, unit, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
-export type SkillHits = { units: BattleUnit[]; props: BattleProp[]; cells: number[] };
+/** `path`: the hexes a dash charges through before striking. */
+export type SkillHits = { units: BattleUnit[]; props: BattleProp[]; cells: number[]; path?: number[] };
+
+/**
+ * The head's path for a dash at `target`, ending next to it (or why it can't).
+ * The run is the straight line from the charger's hex nearest the target; a
+ * two-hex body keeps its shape, its head shifting with that hex at every step,
+ * and each step is checked like walking (`footprintStep`: the whole footprint
+ * enterable, a walker's tail level with its head) except that anyone in the way
+ * stops a walker. Flyers swoop over units, water and crags; they only need a
+ * free spot next to the target where the run ends (that hex, or else the first
+ * free one beside both it and the target).
+ */
+function chargePath(battle: BattleState, caster: BattleUnit, target: BattleUnit): number[] | string {
+  if (moveRange(caster) === 0) return "Rooted: can't charge.";
+  const [lead, spot] = nearestPair(cellsOf(caster), cellsOf(target));
+  if (hexDistance(lead, spot) < 2) return "Too close to charge.";
+  // Head and tail share a row, so shifting both by the same step keeps them together.
+  const shift = colRow(caster.cell).col - colRow(lead).col;
+  const sure = pv(caster).sureFooted;
+  const path: number[] = [];
+  let previous = caster.cell;
+  let leadEnd = lead;
+  for (const step of hexLine(lead, spot).slice(1, -1)) {
+    const { col, row } = colRow(step);
+    const head = inBoard(col + shift, row) ? cellOf(col + shift, row) : null;
+    if (head === null || !Number.isFinite(footprintStep(battle, caster, previous, head, sure, true))) return "The charge is blocked.";
+    path.push(head);
+    previous = head;
+    leadEnd = step;
+  }
+  if (!caster.flying) {
+    if (!canStandAt(battle, caster, previous)) return "The charge is blocked.";
+    return cliffBetween(battle, leadEnd, spot) ? CLIFF : path;
+  }
+  if (canStandAt(battle, caster, previous)) return path;
+  const landing = neighbors(previous).find((cell) => canStandAt(battle, caster, cell) && unitDistance(caster, target, cell) === 1);
+  if (landing === undefined) return "No room to land next to it.";
+  path.push(landing);
+  return path;
+}
 
 function hostileSkill(skill: SkillDef): boolean {
   return skill.kind === "physical" || skill.kind === "magic" || skill.kind === "debuff" || skill.kind === "analyze";
@@ -1245,12 +1690,18 @@ export function skillTargets(state: RestiaState, battle: BattleState, caster: Ba
       return units.length ? { units, ...none, cells: units.map((unit) => unit.cell) } : "No targets.";
     }
     case "enemy": {
-      if (hexDistance(caster.cell, cell) > Math.max(1, reach)) return "Out of range.";
+      // Measured between the nearest hexes of the caster and of whatever is aimed at.
+      const aimed = all.find((unit) => occupies(unit, cell) && unit.hp > 0 && !friendly(unit));
+      const [origin, spot] = nearestPair(cellsOf(caster), aimed ? cellsOf(aimed) : [cell]);
+      const distance = hexDistance(origin, spot);
+      if (distance > Math.max(1, reach)) return "Out of range.";
       if (skill.line) {
         // Travels the whole line; stops at the first sight-blocking prop (which takes the hit).
         const cells: number[] = [];
         const props: BattleProp[] = [];
         for (const step of hexRay(caster.cell, cell, skill.range)) {
+          // A crag stops the line like a wall.
+          if (isCrag(battle, step)) break;
           const prop = propAt(battle, step);
           cells.push(step);
           if (prop) {
@@ -1258,34 +1709,87 @@ export function skillTargets(state: RestiaState, battle: BattleState, caster: Ba
             if (blocksSight(prop)) break;
           }
         }
-        const units = all.filter((unit) => unit.hp > 0 && !friendly(unit) && cells.includes(unit.cell));
+        const units = all.filter((unit) => unit.hp > 0 && !friendly(unit) && cellsOf(unit).some((covered) => cells.includes(covered)));
         return units.length || props.length ? { units, props, cells } : "Nothing on that line.";
       }
-      if (skill.projectile && hexDistance(caster.cell, cell) > 1 && !hasLineOfSight(battle, caster.cell, cell)) return "No line of sight.";
-      const target = all.find((unit) => unit.cell === cell && unit.hp > 0 && !friendly(unit));
+      // Shots and hook lines need a clear line; arcing volleys don't.
+      if ((skill.projectile || skill.pull) && !skill.indirect && distance > 1 && !hasLineOfSight(battle, origin, spot)) return "No line of sight.";
+      // A weapon strike from the next hex can't reach across a cliff.
+      const contactCliff = distance === 1 && skill.kind === "physical" && !skill.projectile && !caster.flying && cliffBetween(battle, origin, spot);
+      const target = aimed;
       if (target) {
         const taunt = tauntedBy(battle, caster);
         if (taunt && taunt !== target && skill.kind !== "analyze") return `Taunted: must target ${taunt.name}.`;
+        if (skill.move === "dash") {
+          const path = chargePath(battle, caster, target);
+          return typeof path === "string" ? path : { units: [target], ...none, cells: [cell], path };
+        }
+        if (contactCliff) return CLIFF;
         return { units: [target], ...none, cells: [cell] };
       }
       const prop = propAt(battle, cell);
-      if (prop && prop.kind !== "rock" && (skill.kind === "physical" || skill.kind === "magic")) return { units: [], props: [prop], cells: [cell] };
+      if (prop && prop.kind !== "rock" && (skill.kind === "physical" || skill.kind === "magic") && !skill.move) {
+        return contactCliff ? CLIFF : { units: [], props: [prop], cells: [cell] };
+      }
       return "Pick an enemy.";
     }
+    case "hex": {
+      if (cell < 0 || cell >= BOARD_CELLS || battle.tiles[cell] === "void") return "Off the board.";
+      const distance = distanceTo(caster, cell);
+      if (distance > skill.range) return "Out of range.";
+      // Leaps and blinks put the caster's head on the chosen hex: its whole body must fit there.
+      const mover = skill.move === "leap" || skill.move === "blink";
+      if (mover) {
+        if (moveRange(caster) === 0) return skill.move === "blink" ? "Rooted: can't blink." : "Rooted: can't leap.";
+        if (cell === caster.cell || !canStandAt(battle, caster, cell)) return caster.wide ? "Needs two free, level hexes to land on." : "Land on an empty hex.";
+      }
+      if (skill.projectile && !skill.indirect && distance > 1 && !hasLineOfSight(battle, caster.cell, cell)) return "No line of sight.";
+      const radius = skill.radius ?? 0;
+      // A landing reaches out from every hex the body comes down on.
+      const centers = mover ? cellsAt(caster, cell) : [cell];
+      const cells: number[] = [];
+      for (let c = 0; c < BOARD_CELLS; c++) if (battle.tiles[c] !== "void" && centers.some((center) => hexDistance(c, center) <= radius)) cells.push(c);
+      if (skill.shape && !shapePlan(battle, cells, skill.shape).size) return skill.shape > 0 ? "The ground there can't rise any higher (it would leave no way up)." : "The ground there can't sink any lower.";
+      const hostile = hostileSkill(skill);
+      let units = all.filter((unit) => unit.hp > 0 && (!mover || unit !== caster) && cellsOf(unit).some((covered) => cells.includes(covered)) && (hostile ? !friendly(unit) : friendly(unit)));
+      // Landing strikes are weapon blows: not across a cliff from the landing hexes.
+      if (mover && skill.kind === "physical" && !caster.flying) {
+        units = units.filter((unit) => {
+          const [own, their] = nearestPair(cellsAt(caster, cell), cellsOf(unit));
+          return !cliffBetween(battle, own, their);
+        });
+      }
+      const props = hostile && skill.kind !== "debuff" ? battle.props.filter((prop) => prop.hp > 0 && prop.kind !== "rock" && cells.includes(prop.cell)) : [];
+      if (!units.length && !props.length && !skill.move && !skill.shape) return "No targets there.";
+      const taunter = hostile ? tauntedBy(battle, caster) : null;
+      if (taunter && !units.includes(taunter)) return `Taunted: must target ${taunter.name}.`;
+      return { units, props, cells };
+    }
     case "ally": {
-      if (hexDistance(caster.cell, cell) > skill.range) return "Out of range.";
-      const target = all.find((unit) => unit.cell === cell && friendly(unit) && (skill.kind === "revive" ? unit.hp <= 0 : unit.hp > 0));
+      const target = all.find((unit) => occupies(unit, cell) && friendly(unit) && (skill.kind === "revive" ? unit.hp <= 0 : unit.hp > 0));
+      if ((target ? unitDistance(caster, target) : distanceTo(caster, cell)) > skill.range) return "Out of range.";
       return target ? { units: [target], ...none, cells: [cell] } : skill.kind === "revive" ? "Pick a fallen ally." : "Pick an ally.";
     }
     case "area": {
       const center = skill.range === 0 ? caster.cell : cell;
-      if (hexDistance(caster.cell, center) > skill.range) return "Out of range.";
+      if (distanceTo(caster, center) > skill.range) return "Out of range.";
       const radius = skill.radius ?? 0;
       const cells: number[] = [];
-      for (let c = 0; c < battle.cols * battle.rows; c++) if (hexDistance(c, center) <= radius && battle.tiles[c] !== "void") cells.push(c);
+      for (let c = 0; c < BOARD_CELLS; c++) if (hexDistance(c, center) <= radius && battle.tiles[c] !== "void") cells.push(c);
       const hostile = hostileSkill(skill);
-      const units = all.filter((unit) => unit.hp > 0 && cells.includes(unit.cell) && (hostile ? !friendly(unit) : friendly(unit)));
+      // Radius-0 self areas (ground slams) reach out from every hex of a two-hex caster.
+      if (skill.range === 0) for (const own of cellsOf(caster)) for (let c = 0; c < BOARD_CELLS; c++) if (hexDistance(c, own) <= radius && battle.tiles[c] !== "void" && !cells.includes(c)) cells.push(c);
+      let units = all.filter((unit) => unit.hp > 0 && cellsOf(unit).some((covered) => cells.includes(covered)) && (hostile ? !friendly(unit) : friendly(unit)));
+      // A weapon sweep around the caster is still a weapon blow: not across a cliff.
+      if (skill.range === 0 && skill.kind === "physical" && !skill.projectile && !caster.flying) {
+        units = units.filter((unit) => {
+          const [own, their] = nearestPair(cellsOf(caster), cellsOf(unit));
+          return hexDistance(own, their) > 1 || !cliffBetween(battle, own, their);
+        });
+      }
       const props = hostile && skill.kind !== "debuff" ? battle.props.filter((prop) => prop.hp > 0 && prop.kind !== "rock" && cells.includes(prop.cell)) : [];
+      const taunter = hostile && skill.kind !== "debuff" ? tauntedBy(battle, caster) : null;
+      if (taunter && (units.length || props.length) && !units.includes(taunter)) return `Taunted: must target ${taunter.name}.`;
       return units.length || props.length || skill.terrain ? { units, props, cells } : "No targets there.";
     }
   }
@@ -1293,7 +1797,7 @@ export function skillTargets(state: RestiaState, battle: BattleState, caster: Ba
 
 /** Where fallen allies stand up: own hex or the nearest free one (null = packed). */
 export function revivalCell(battle: BattleState, target: BattleUnit): number | null {
-  const free = (cell: number) => standable(battle, cell) && !battle.units.some((unit) => unit !== target && unit.cell === cell && unit.hp > 0 && !unit.gone);
+  const free = (cell: number) => canStandAt(battle, target, cell);
   if (free(target.cell)) return target.cell;
   const seen = new Set([target.cell]);
   const queue = [target.cell];
@@ -1313,15 +1817,43 @@ export function revivalCell(battle: BattleState, target: BattleUnit): number | n
 export function applySkill(state: RestiaState, battle: BattleState, caster: BattleUnit, skill: SkillDef, cell: number, hits: SkillHits, anims: BattleAnim[], ctx: Ctx): void {
   caster.mp -= skillMp(caster, skill);
   caster.ap -= skillAp(skill);
+  // Height bonuses count from where the caster began (a leap off a hill keeps its drop).
+  const fromHeight = heightOf(battle, caster.cell);
+  let travelled = 0;
+  if (skill.move === "leap") {
+    // A grapple line flies out first, then the caster follows it.
+    if (skill.projectile) anims.push({ kind: "projectile", from: caster.cell, to: cell, sprite: skill.projectile });
+    land(state, battle, caster, cell, skill.sprite ?? "jump", anims, ctx);
+    if (caster.hp <= 0) return;
+  } else if (skill.move === "blink") {
+    land(state, battle, caster, cell, skill.sprite ?? "jump", anims, ctx, true);
+    if (caster.hp <= 0) return;
+  } else if (skill.move === "dash" && hits.path?.length) {
+    travelled = hits.path.length;
+    doMove(state, battle, caster, hits.path, anims, ctx);
+    if (caster.hp <= 0) return;
+  }
   const first = hits.units[0] ?? null;
-  const aim = first?.cell ?? hits.props[0]?.cell ?? cell;
+  const aim = first ? nearestPair(cellsOf(caster), cellsOf(first))[1] : hits.props[0]?.cell ?? cell;
   if (aim !== caster.cell) face(caster, aim);
   const casting = skill.anim === "cast";
   if (casting) anims.push({ kind: "fx", cell: caster.cell, fx: "cast" });
-  anims.push({ kind: "attack", uid: caster.uid, target: first?.uid ?? caster.uid, anim: casting ? "cast" : caster.range > 1 && hexDistance(caster.cell, aim) > 1 ? "shoot" : "attack" });
+  // Leaps drawn with a full leap-and-strike row already showed the blow; a plain jump strikes on landing.
+  // A blink only strikes when there is something to hit around the arrival.
+  const strikes = hits.units.length > 0 || hits.props.length > 0;
+  const blow = skill.move === "leap" ? (skill.sprite ?? "jump") === "jump" && strikes : skill.move === "blink" ? strikes : true;
+  if (blow) {
+    anims.push({
+      kind: "attack",
+      uid: caster.uid,
+      target: first?.uid ?? caster.uid,
+      anim: casting ? "cast" : caster.range > 1 && distanceTo(caster, aim) > 1 ? "shoot" : "attack",
+      ...(skill.sprite && skill.move !== "leap" ? { sprite: skill.sprite } : {})
+    });
+  }
   const fx = skill.fx ?? (skill.kind === "heal" || skill.kind === "revive" ? "heal" : skill.kind === "buff" ? "buff" : skill.kind === "debuff" ? "debuff" : elementFx(skill.element ?? caster.element));
-  if (skill.projectile && aim !== caster.cell) anims.push({ kind: "projectile", from: caster.cell, to: aim, sprite: skill.projectile });
-  if (skill.target === "area") {
+  if (skill.projectile && skill.move !== "leap" && aim !== caster.cell) anims.push({ kind: "projectile", from: caster.cell, to: aim, sprite: skill.projectile });
+  if (skill.target === "area" || (skill.target === "hex" && (skill.radius ?? 0) > 0)) {
     anims.push({ kind: "fx", cell: skill.range === 0 ? caster.cell : cell, fx, ...(skill.sfx ? { sound: skill.sfx } : {}) });
   } else if (skill.line) {
     let played = false;
@@ -1335,19 +1867,41 @@ export function applySkill(state: RestiaState, battle: BattleState, caster: Batt
   }
   battle.log.push(`${caster.name} uses ${skill.name}.`);
   const physical = skill.kind === "physical";
-  const ranged = hexDistance(caster.cell, aim) > 1;
+  // Measured from the caster's nearest hex (a two-hex body strikes from its tail too).
+  const ranged = distanceTo(caster, aim) > 1;
   for (const target of hits.units) {
     switch (skill.kind) {
       case "physical":
       case "magic": {
         let dealt = 0;
         for (let i = 0; i < (skill.hits ?? 1) && target.hp > 0; i++) {
-          dealt += strike(state, battle, caster, target, { power: skill.power ?? 1, element: skill.element ?? caster.element, physical, ranged, crit: skill.crit }, anims, ctx);
+          dealt += strike(
+            state,
+            battle,
+            caster,
+            target,
+            {
+              // A dash hits harder the further it ran.
+              power: (skill.power ?? 1) * (1 + 0.15 * travelled),
+              element: skill.element ?? caster.element,
+              physical,
+              ranged,
+              crit: skill.crit,
+              indirect: skill.indirect,
+              heightPower: skill.heightPower,
+              fromHeight
+            },
+            anims,
+            ctx
+          );
         }
         if (dealt > 0 && target.hp > 0) {
           if (skill.status && chance(state, skill.status.chance)) addStatus(battle, target, skill.status.id, skill.status.turns, anims, caster);
           addMods(battle, target, skill.mods);
-          if (skill.knockback) knockBack(state, battle, caster.cell, target, skill.knockback, anims, ctx);
+          // Pushed away from / dragged toward the caster's nearest hex (a two-hex body has two).
+          const near = nearestPair(cellsOf(caster), cellsOf(target))[0];
+          if (skill.knockback) knockBack(state, battle, near, target, skill.knockback, anims, ctx);
+          if (skill.pull) pullToward(state, battle, near, target, skill.pull, anims, ctx);
         }
         if (dealt > 0 && skill.drain) heal(caster, dealt * skill.drain, anims);
         break;
@@ -1370,7 +1924,7 @@ export function applySkill(state: RestiaState, battle: BattleState, caster: Batt
       case "buff":
         addMods(battle, target, skill.mods);
         if (skill.status && POSITIVE.includes(skill.status.id) && chance(state, skill.status.chance)) addStatus(battle, target, skill.status.id, skill.status.turns, anims);
-        if (!skill.shield && !skill.taunt) anims.push({ kind: "status", uid: target.uid, text: skill.name });
+        if (!skill.shield && !skill.taunt && (skill.mods?.length || skill.status)) anims.push({ kind: "status", uid: target.uid, text: skill.name });
         break;
       case "debuff":
         addMods(battle, target, skill.mods);
@@ -1397,11 +1951,12 @@ export function applySkill(state: RestiaState, battle: BattleState, caster: Batt
     damageProp(state, battle, prop, (skill.power ?? 1) * eff(state, caster, physical ? "atk" : "mag"), skill.element ?? caster.element, anims, ctx);
   }
   if (skill.taunt) {
-    for (const foe of living(battle).filter((unit) => unit.side !== caster.side && hexDistance(unit.cell, caster.cell) <= 2)) addStatus(battle, foe, "taunt", skill.taunt, anims, caster);
+    for (const foe of living(battle).filter((unit) => unit.side !== caster.side && unitDistance(unit, caster) <= 2)) addStatus(battle, foe, "taunt", skill.taunt, anims, caster);
   }
+  if (skill.shape) shapeGround(state, battle, hits.cells, skill.shape, anims, ctx);
   if (skill.terrain) {
     for (const c of hits.cells) {
-      if (battle.tiles[c] === "void" || battle.tiles[c] === "water" || propAt(battle, c)) continue;
+      if (battle.tiles[c] === "void" || battle.tiles[c] === "water" || isCrag(battle, c) || propAt(battle, c)) continue;
       battle.tiles[c] = skill.terrain;
       battle.tileTimers[c] = 3;
     }
@@ -1433,8 +1988,7 @@ export function battleSkill(state: RestiaState, skillId: string, cell: number, c
   if (skill.kind === "revive" && hits.units.some((target) => revivalCell(battle, target) === null)) fail("There's no room around that fallen ally.");
   const anims: BattleAnim[] = [];
   applySkill(state, battle, unit, skill, cell, hits, anims, ctx);
-  battle.turn.acted = true;
-  finishTurn(state, battle, anims, ctx);
+  afterAction(state, battle, unit, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
@@ -1458,13 +2012,13 @@ export function battleItem(state: RestiaState, itemId: string, cell: number, ctx
     return;
   }
   if (use.bomb) {
-    if (hexDistance(unit.cell, cell) > 3) fail("Too far to throw (3 hexes).");
+    if (distanceTo(unit, cell) > 3) fail("Too far to throw (3 hexes).");
     spend(unit, ITEM_AP);
     removeItem(state, itemId, 1);
     anims.push({ kind: "attack", uid: unit.uid, target: unit.uid, anim: "attack" });
     anims.push({ kind: "projectile", from: unit.cell, to: cell, sprite: "rock" });
     anims.push({ kind: "fx", cell, fx: use.bomb.element === "ice" ? "ice" : "explosion", sound: use.bomb.element === "ice" ? "spells/frost-ring" : "spells/fireball-hit" });
-    for (const target of living(battle).filter((entry) => entry.side !== unit.side && hexDistance(entry.cell, cell) <= use.bomb!.radius)) {
+    for (const target of living(battle).filter((entry) => entry.side !== unit.side && distanceTo(entry, cell) <= use.bomb!.radius)) {
       const mult = elementMult(battle, target, use.bomb.element);
       if (mult === 0) {
         anims.push({ kind: "hit", uid: target.uid, amount: 0, crit: false, weak: false, resist: true, miss: false, heal: false });
@@ -1477,17 +2031,17 @@ export function battleItem(state: RestiaState, itemId: string, cell: number, ctx
     for (const prop of [...battle.props]) {
       if (prop.hp > 0 && prop.kind !== "rock" && hexDistance(prop.cell, cell) <= use.bomb.radius) damageProp(state, battle, prop, use.bomb.power * (25 + 4 * unit.level), use.bomb.element, anims, ctx);
     }
-    for (let c = 0; c < battle.cols * battle.rows; c++) if (hexDistance(c, cell) <= use.bomb.radius) groundReaction(battle, c, use.bomb.element);
+    for (let c = 0; c < BOARD_CELLS; c++) if (hexDistance(c, cell) <= use.bomb.radius) groundReaction(battle, c, use.bomb.element);
   } else {
-    if (hexDistance(unit.cell, cell) > 1) fail("Items reach yourself or an adjacent ally.");
-    const target = battle.units.find((entry) => entry.cell === cell && entry.side === unit.side && !entry.gone && (use.revivePct ? entry.hp <= 0 : entry.hp > 0));
+    if (distanceTo(unit, cell) > 1) fail("Items reach yourself or an adjacent ally.");
+    const target = battle.units.find((entry) => occupies(entry, cell) && entry.side === unit.side && !entry.gone && (use.revivePct ? entry.hp <= 0 : entry.hp > 0));
     if (!target) fail(use.revivePct ? "Pick a fallen ally next to you." : "Pick yourself or an adjacent ally.");
     if (!use.hp && !use.hpPct && !use.mp && !use.mpPct && !use.cure && !use.revivePct) fail(`${def.name} can't be used in battle.`);
     const revival = use.revivePct ? revivalCell(battle, target) : null;
     if (use.revivePct && revival === null) fail("There's no room around that fallen ally.");
     spend(unit, ITEM_AP);
     removeItem(state, itemId, 1);
-    anims.push({ kind: "attack", uid: unit.uid, target: target.uid, anim: "cast" });
+    anims.push({ kind: "pose", uid: unit.uid, pose: "item" });
     anims.push({ kind: "fx", cell: target.cell, fx: "heal", sound: "spells/cure" });
     if (use.revivePct) {
       target.cell = revival!;
@@ -1541,6 +2095,7 @@ export function battleWait(state: RestiaState, ctx: Ctx): void {
 export function chargeAction(battle: BattleState, unit: BattleUnit, anims: BattleAnim[]): void {
   if (battle.turn.acted) return;
   unit.apCarry += CHARGE_CARRY;
+  anims.push({ kind: "pose", uid: unit.uid, pose: "charge" });
   anims.push({ kind: "status", uid: unit.uid, text: `Charging (+${CHARGE_CARRY} AP)` });
 }
 
@@ -1568,7 +2123,7 @@ export function battleBefriend(state: RestiaState, targetUid: string, ctx: Ctx):
   const target = findUnit(battle, targetUid);
   if (target.side === unit.side || target.hp <= 0 || target.gone) fail("Pick a monster.");
   if (target.kind !== "monster" || target.tame <= 0 || target.boss) fail(`${target.name} can't be befriended.`);
-  if (hexDistance(unit.cell, target.cell) > 1) fail("Get next to it first.");
+  if (unitDistance(unit, target) > 1) fail("Get next to it first.");
   if (state.town.levels.barn < 1) fail("Build a Monster Barn first (Outpost Board).");
   if (state.pets.length >= barnCapacity(state)) fail("The barn is full.");
   spend(unit, 1);
@@ -1595,8 +2150,7 @@ export function battleBefriend(state: RestiaState, targetUid: string, ctx: Ctx):
     anims.push({ kind: "befriend", uid: target.uid, ok: false });
     battle.log.push(`${target.name} isn't convinced.`);
   }
-  battle.turn.acted = true;
-  finishTurn(state, battle, anims, ctx);
+  afterAction(state, battle, unit, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
@@ -1647,8 +2201,7 @@ export function battleRush(state: RestiaState, ctx: Ctx): void {
   }
   for (const enemy of living(battle).filter((entry) => entry.side === "enemy")) enemy.down = false;
   battle.log.push(`${unit.name} leads an all-out RUSH!`);
-  battle.turn.acted = true;
-  finishTurn(state, battle, anims, ctx);
+  afterAction(state, battle, unit, anims, ctx);
   ctx.events.push({ kind: "battle", anims });
 }
 
@@ -1697,4 +2250,4 @@ export function bestiaryAnalyzed(state: RestiaState, species: string): boolean {
 }
 
 // Engine internals the AI module plays through.
-export { NEGATIVE, POSITIVE, STATUS_NAMES, doMove, strike, knockBack };
+export { NEGATIVE, POSITIVE, STATUS_NAMES, doMove, strike, knockBack, shapePlan, footprintStep };

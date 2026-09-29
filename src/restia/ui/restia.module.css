@@ -774,11 +774,18 @@
   flex-direction: column;
   background: #0d0906;
 }
+/* The top strip and the bottom panel keep fixed heights: the board between them
+   is fitted to the space left, so it must not change size when the panel's
+   content does (hovering, opening the skill list, the enemy's turn). */
 .battleTop {
+  flex: none;
+  box-sizing: border-box;
+  height: 56px;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
+  white-space: nowrap;
   background: rgba(20, 13, 7, 0.9);
   color: #f7e5c0;
   overflow-x: auto;
@@ -803,28 +810,100 @@
 .turnChipActive {
   box-shadow: 0 0 0 3px #ffd36a;
 }
+/* The field is fitted, zoomed and panned with one transform (see usePanZoom); touch pans and pinches. */
 .battleArena {
   position: relative;
   flex: 1;
   min-height: 0;
-  display: grid;
-  place-items: center;
   overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .battleField {
-  position: relative;
-  transform-origin: 50% 50%;
-  background-size: 100% 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  background-repeat: no-repeat;
+  will-change: transform;
+}
+.fieldShake {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.zoomBar {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 600;
+}
+.zoomBtn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 211, 106, 0.8);
+  border-radius: 50%;
+  background: rgba(24, 14, 6, 0.78);
+  color: #ffe6a8;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.zoomBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.actionIcon {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.movePips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.movePipOn,
+.movePipOff {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid rgba(150, 210, 255, 0.9);
+}
+.movePipOn {
+  background: #5ab4ff;
+  box-shadow: 0 0 4px rgba(90, 180, 255, 0.8);
+}
+.movePipOff {
+  background: transparent;
+  opacity: 0.5;
 }
 .hexLayer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 }
 .hexCell {
   fill: rgba(255, 255, 255, 0.04);
   stroke: rgba(255, 255, 255, 0.22);
   stroke-width: 1;
   cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.45s ease-out;
 }
 .hexCell:hover {
   fill: rgba(255, 255, 255, 0.18);
@@ -845,6 +924,67 @@
   fill: rgba(255, 220, 90, 0.25);
   stroke: #ffd36a;
   stroke-width: 2;
+}
+/* Objective hexes: gold dashes, then the colour of whoever holds them. */
+.hexPoint,
+.hexPointAlly,
+.hexPointEnemy {
+  stroke-width: 2.2;
+  stroke-dasharray: 5 3;
+}
+.hexPoint {
+  stroke: #ffd36a;
+}
+.hexPointAlly {
+  stroke: #6fb8ff;
+}
+.hexPointEnemy {
+  stroke: #ff6a5a;
+}
+/* A standing figure's soft breathing (one clean frame, tweened from the feet up). */
+.breathe {
+  transform-origin: 50% 100%;
+  animation: breathe 2.1s ease-in-out infinite alternate;
+}
+@keyframes breathe {
+  from {
+    transform: scale(1, 1);
+  }
+  to {
+    transform: scale(0.994, 1.018);
+  }
+}
+/* Hotbar sprinkler button: a metal plate in the tier's colour with the sprinkler on it. */
+.sprinklerSlot {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, #5a6470, #2f363f 60%, #1f252c);
+  border-color: #aab4c0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 4px rgba(0, 0, 0, 0.45);
+}
+.sprinklerTier2 {
+  background: linear-gradient(160deg, #cfd6de, #8b96a3 55%, #56606c);
+  border-color: #f2f6fa;
+}
+.sprinklerTier3 {
+  background: linear-gradient(160deg, #7fd0ff, #2f79b8 55%, #1a3f66);
+  border-color: #bfe8ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 8px rgba(110, 200, 255, 0.55);
+}
+.sprinklerLabel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1px;
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+}
+.sprinklerEmpty {
+  font-size: 10px;
+  opacity: 0.8;
 }
 .hexBlocked {
   fill: rgba(0, 0, 0, 0.25);
@@ -941,8 +1081,12 @@
   }
 }
 .battleBottom {
+  flex: none;
+  box-sizing: border-box;
+  height: 196px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
   padding: 8px;
   background: linear-gradient(#3b2615, #24170c);
@@ -951,7 +1095,11 @@
 }
 @media (max-width: 720px) {
   .battleBottom {
+    height: 232px;
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 64px) minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px;
   }
 }
 .battleMenu {
@@ -959,11 +1107,16 @@
   flex-wrap: wrap;
   gap: 6px;
   align-content: flex-start;
+  min-height: 0;
+  overflow-y: auto;
 }
 .battleInfo {
   font-size: 13px;
   display: grid;
+  align-content: start;
   gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
 }
 .battleLog {
   max-height: 72px;
@@ -1206,14 +1359,57 @@
 .tileCover {
   fill: rgba(255, 255, 255, 0.1);
 }
-.tileHigh {
-  fill: rgba(222, 205, 168, 0.3);
-  stroke: rgba(255, 245, 220, 0.55);
+/* Raised ground: a textured hilltop over its cliff face (see HillColumn). */
+.hexHill:not(.hexMove):not(.hexTarget):not(.hexArea):not(.hexActive):not(.hexWarning) {
+  fill: rgba(255, 255, 255, 0);
+  stroke: rgba(255, 246, 222, 0.18);
 }
-.hexCliff {
-  fill: rgba(40, 28, 18, 0.62);
-  stroke: rgba(0, 0, 0, 0.35);
+/* Hilltop textures are busier than the painted ground: highlights need more colour there. */
+.hexHill.hexMove {
+  fill: rgba(80, 170, 255, 0.45);
+}
+.hexHill.hexTarget {
+  fill: rgba(255, 70, 60, 0.45);
+}
+.hexHill.hexArea {
+  fill: rgba(255, 190, 60, 0.5);
+}
+.hill {
+  position: absolute;
+  width: 44px;
   pointer-events: none;
+  /* The column casts a soft shadow onto the lower ground in front of it. */
+  filter: drop-shadow(5px 7px 4px rgba(0, 0, 0, 0.38));
+  transition: top 0.45s ease-out, height 0.45s ease-out, opacity 0.35s ease-out;
+}
+.hillTop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 52px;
+  clip-path: polygon(50% 0, 100% 19.23%, 100% 80.77%, 50% 100%, 0 80.77%, 0 19.23%);
+  background-size: 128px 128px;
+}
+.hillSide {
+  position: absolute;
+  /* Slightly flared at the foot, so a hill reads as a mound rather than a prism. */
+  left: -4px;
+  top: 42px;
+  width: calc(100% + 8px);
+  clip-path: polygon(4px 0, 50% 10px, calc(100% - 4px) 0, 100% calc(100% - 10px), 50% 100%, 0 calc(100% - 10px));
+  background-size: 100% 100%, 100% 100%, 96px 96px;
+  transition: height 0.45s ease-out;
+}
+/* The turf / snow / stone lip overhanging the top of a cliff face. */
+.hillLip {
+  position: absolute;
+  left: 0;
+  top: 40px;
+  width: 100%;
+  height: 9px;
+  clip-path: polygon(0 0, 50% 10px, 100% 0, 100% 3px, 92% 6px, 84% 4px, 75% 8px, 66% 7px, 58% 11px, 50% 13px, 42% 10px, 33% 8px, 25% 6px, 16% 7px, 8% 5px, 0 4px);
+  filter: brightness(0.92);
 }
 .hexWarning {
   stroke: #ff4b3a;

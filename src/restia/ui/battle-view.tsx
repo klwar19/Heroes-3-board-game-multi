@@ -1,15 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { BattleAnim, BattleProp, BattleState, BattleUnit, DispatchResult, FxId, ProjectileId, RestiaAction, RestiaState, SkillDef, TileKind } from "../engine/types";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { BattleAnim, BattleProp, BattleState, BattleUnit, DispatchResult, RestiaAction, RestiaState, SkillDef, TileKind } from "../engine/types";
 import { SKILLS } from "../data/skills";
 import { ITEMS, itemDef } from "../data/items";
 import { MONSTERS } from "../data/monsters";
 import { CHARACTERS } from "../data/characters";
 import { JOBS } from "../data/jobs";
 import { PASSIVES } from "../data/passives";
-import { PROP_NAMES, TILE_HELP, TILE_NAMES, WEATHER_TEXT, battlefieldOf } from "../data/battlefields";
-import { unitSound } from "../data/unit-sounds";
+import { BOARD_SIZE_NAMES, CRAG_HELP, CRAG_NAME, HEIGHT_HELP, POINT_HELP, POINT_NAMES, PROP_NAMES, TILE_HELP, TILE_NAMES, WEATHER_TEXT, battlefieldOf } from "../data/battlefields";
 import {
   CHARGE_CARRY,
   DEFEND_CARRY,
@@ -31,62 +30,16 @@ import {
   unitAt,
   STATUS_NAMES
 } from "../engine/battle";
-import { heightOf, propAt } from "../engine/battle-field";
-import { BOARD_COLS, BOARD_ROWS, colRow, hexDistance } from "../engine/hex";
+import { heightOf, isCrag, propAt } from "../engine/battle-field";
+import { BOARD_CELLS, cellOf, colRow, hexDistance } from "../engine/hex";
+import { cellsOf, distanceTo, occupies, unitDistance } from "../engine/footprint";
 import { count } from "../engine/core";
 import { SCENES } from "../engine/scenes";
-import { A, BATTLEFIELD, FX_SHEET, PROJECTILE_SHEET, PROPS_SHEET, TACHIE, tachieFor } from "./assets";
-import { playSound } from "./audio";
-import { G, SpriteClip, SpriteStill, atlasFor, type Atlas } from "./sprites";
+import { A, BATTLEFIELD, OBJECTIVES_SHEET, PROPS_SHEET, TACHIE, tachieFor } from "./assets";
+import { SpriteStill } from "./sprites";
+import { ActionIcon, FOOT, FxBurst, HillColumn, ICON, LIFT, Projectile, SheetFrame, UnitSprite, boardLayout, footprintPoint, hexCenter, hexPoints, rowZ, usePanZoom } from "./battle-board";
+import { terrainBefore, useAnimator } from "./battle-animator";
 import s from "./restia.module.css";
-
-const FIELD_W = 800;
-const FIELD_H = 556;
-const HEX_W = 44;
-const HEX_H = 52;
-const ROW_STEP = 42;
-const LEFT = (FIELD_W - (BOARD_COLS * HEX_W + HEX_W / 2)) / 2;
-const TOP = 186;
-const FOOT = 12;
-/** Pixels a high-ground hex (and whoever stands on it) is raised. */
-const LIFT = 10;
-
-function center(cell: number): { x: number; y: number } {
-  const { col, row } = colRow(cell);
-  return { x: LEFT + col * HEX_W + (row & 1 ? HEX_W / 2 : 0) + HEX_W / 2, y: TOP + row * ROW_STEP + HEX_H / 2 };
-}
-
-function hexPoints(cell: number, lift = 0): string {
-  const { x, y: base } = center(cell);
-  const y = base - lift;
-  const w = HEX_W / 2;
-  return [
-    [x, y - 26],
-    [x + w, y - 16],
-    [x + w, y + 16],
-    [x, y + 26],
-    [x - w, y + 16],
-    [x - w, y - 16]
-  ]
-    .map(([px, py]) => `${px},${py}`)
-    .join(" ");
-}
-
-/** The cliff face under a raised hex. */
-function sidePoints(cell: number): string {
-  const { x, y } = center(cell);
-  const w = HEX_W / 2;
-  return [
-    [x - w, y + 16 - LIFT],
-    [x, y + 26 - LIFT],
-    [x + w, y + 16 - LIFT],
-    [x + w, y + 16],
-    [x, y + 26],
-    [x - w, y + 16]
-  ]
-    .map(([px, py]) => `${px},${py}`)
-    .join(" ");
-}
 
 /** Frames in the props sheet (hv7-props, 4x4). */
 function propFrame(kind: BattleProp["kind"], backdrop: string): number {
@@ -138,240 +91,6 @@ const TILE_CLASS: Partial<Record<TileKind, string>> = {
   cover: s.tileCover
 };
 
-/** One frame of a 4x4 sheet. */
-function SheetFrame({ sheet, frame, size, style }: { sheet: string; frame: number; size: number; style?: CSSProperties }) {
-  return (
-    <span
-      aria-hidden
-      style={{
-        position: "absolute",
-        width: size,
-        height: size,
-        backgroundImage: `url(${sheet})`,
-        backgroundSize: `${size * 4}px ${size * 4}px`,
-        backgroundPosition: `${-(frame % 4) * size}px ${-Math.floor(frame / 4) * size}px`,
-        pointerEvents: "none",
-        ...style
-      }}
-    />
-  );
-}
-
-/** Plays a 16-frame additive effect once. */
-function FxBurst({ fx, x, y, size }: { fx: FxId; x: number; y: number; size: number }) {
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    let current = 0;
-    const timer = window.setInterval(() => {
-      current += 1;
-      if (current >= 16) window.clearInterval(timer);
-      else setFrame(current);
-    }, 34);
-    return () => window.clearInterval(timer);
-  }, []);
-  return <SheetFrame frame={frame} sheet={FX_SHEET(fx)} size={size} style={{ left: x - size / 2, top: y - size / 2, mixBlendMode: "screen", zIndex: 420 }} />;
-}
-
-/** A looping projectile flying from one hex to another. */
-function Projectile({ sprite, from, to, ms }: { sprite: ProjectileId; from: { x: number; y: number }; to: { x: number; y: number }; ms: number }) {
-  const [frame, setFrame] = useState(0);
-  const [arrived, setArrived] = useState(false);
-  useEffect(() => {
-    const raf = window.requestAnimationFrame(() => setArrived(true));
-    const timer = window.setInterval(() => setFrame((value) => (value + 1) % 16), 40);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.clearInterval(timer);
-    };
-  }, []);
-  const size = 72;
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const at = arrived ? to : from;
-  return (
-    <span style={{ position: "absolute", left: at.x, top: at.y - 26, width: 0, height: 0, transition: `left ${ms}ms linear, top ${ms}ms linear`, zIndex: 430, pointerEvents: "none", mixBlendMode: "screen" }}>
-      <SheetFrame frame={frame} sheet={PROJECTILE_SHEET(sprite)} size={size} style={{ left: -size / 2, top: -size / 2, transform: `rotate(${angle}rad)` }} />
-    </span>
-  );
-}
-
-type Clip = { group: number; key: number; loop: boolean };
-type Float = { id: number; uid: string; text: string; kind: "dmg" | "heal" | "crit" | "weak" | "miss" | "status" };
-type Burst = { id: number; fx: FxId; cell: number; size: number };
-type Shot = { id: number; sprite: ProjectileId; from: number; to: number; ms: number };
-
-/** Plays engine battle animations in order; the board shows the settled state once they finish. */
-function useAnimator(queue: BattleAnim[][], onDone: () => void, lookup: () => BattleState | null) {
-  const [cells, setCells] = useState<Record<string, number>>({});
-  const [clips, setClips] = useState<Record<string, Clip>>({});
-  const [floats, setFloats] = useState<Float[]>([]);
-  const [bursts, setBursts] = useState<Burst[]>([]);
-  const [shots, setShots] = useState<Shot[]>([]);
-  const [banner, setBanner] = useState<{ id: number; text: string } | null>(null);
-  const [pendingDeaths, setPendingDeaths] = useState<Set<string>>(new Set());
-  const [pendingProps, setPendingProps] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
-  const counter = useRef(0);
-  const running = useRef(false);
-  const timers = useRef<number[]>([]);
-  const doneRef = useRef(onDone);
-  const lookupRef = useRef(lookup);
-  useEffect(() => {
-    doneRef.current = onDone;
-    lookupRef.current = lookup;
-  });
-  // Timers belong to the animator, not to a render: only unmounting cancels them.
-  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
-
-  useEffect(() => {
-    if (!queue.length || running.current) return;
-    const anims = queue[0]!;
-    running.current = true;
-    setBusy(true);
-    const at = (ms: number, fn: () => void) => timers.current.push(window.setTimeout(fn, ms));
-    const clip = (uid: string, group: number, loop: boolean) => setClips((current) => ({ ...current, [uid]: { group, loop, key: ++counter.current } }));
-    const idle = (uid: string) =>
-      setClips((current) => {
-        const next = { ...current };
-        delete next[uid];
-        return next;
-      });
-    const float = (uid: string, text: string, kind: Float["kind"]) => {
-      const id = ++counter.current;
-      setFloats((current) => [...current, { id, uid, text, kind }]);
-      at(1100, () => setFloats((current) => current.filter((entry) => entry.id !== id)));
-    };
-    const sound = (key: string | undefined) => {
-      if (key) playSound(key);
-    };
-    const unitOf = (uid: string) => lookupRef.current()?.units.find((entry) => entry.uid === uid);
-    // Units that start a move are drawn at the move's first cell until it plays.
-    const starts: Record<string, number> = {};
-    const dying = new Set<string>();
-    const breaking = new Set<string>();
-    for (const anim of anims) {
-      if ((anim.kind === "move" || anim.kind === "knock") && starts[anim.uid] === undefined) starts[anim.uid] = anim.path[0]!;
-      if (anim.kind === "death") dying.add(anim.uid);
-      if (anim.kind === "prop" && anim.destroyed) breaking.add(anim.uid);
-    }
-    setCells(starts);
-    setPendingDeaths(dying);
-    setPendingProps(breaking);
-    let t = 0;
-    for (const anim of anims) {
-      switch (anim.kind) {
-        case "move":
-        case "knock": {
-          const steps = anim.path.slice(1);
-          const step = anim.kind === "knock" ? 90 : 170;
-          if (anim.kind === "move") at(t, () => clip(anim.uid, G.move, true));
-          steps.forEach((cell, index) => at(t + index * step, () => setCells((current) => ({ ...current, [anim.uid]: cell }))));
-          t += steps.length * step + 80;
-          if (anim.kind === "move") at(t, () => idle(anim.uid));
-          break;
-        }
-        case "attack": {
-          const group = anim.anim === "shoot" ? G.shoot : anim.anim === "cast" ? G.cast : G.attack;
-          at(t, () => {
-            clip(anim.uid, group, false);
-            sound(anim.sound);
-          });
-          at(t + 700, () => idle(anim.uid));
-          t += 380;
-          break;
-        }
-        case "projectile": {
-          const id = ++counter.current;
-          const ms = Math.min(460, Math.max(200, hexDistance(anim.from, anim.to) * 70));
-          at(t, () => {
-            setShots((current) => [...current, { id, sprite: anim.sprite, from: anim.from, to: anim.to, ms }]);
-            sound(anim.sound);
-          });
-          at(t + ms + 40, () => setShots((current) => current.filter((entry) => entry.id !== id)));
-          t += ms;
-          break;
-        }
-        case "fx": {
-          const id = ++counter.current;
-          const size = anim.fx === "explosion" || anim.fx === "cast" ? 150 : 124;
-          at(t, () => {
-            setBursts((current) => [...current, { id, fx: anim.fx, cell: anim.cell, size }]);
-            sound(anim.sound);
-          });
-          at(t + 620, () => setBursts((current) => current.filter((entry) => entry.id !== id)));
-          t += anim.fx === "cast" ? 260 : 170;
-          break;
-        }
-        case "sound":
-          at(t, () => sound(anim.id));
-          break;
-        case "banner": {
-          const id = ++counter.current;
-          at(t, () => setBanner({ id, text: anim.text }));
-          at(t + 1900, () => setBanner((current) => (current?.id === id ? null : current)));
-          t += 600;
-          break;
-        }
-        case "prop":
-          at(t, () =>
-            setPendingProps((current) => {
-              const next = new Set(current);
-              next.delete(anim.uid);
-              return next;
-            })
-          );
-          t += 120;
-          break;
-        case "hit": {
-          const text = anim.miss ? "Miss" : anim.heal ? `+${anim.amount}` : anim.resist && anim.amount === 0 ? "Immune" : `${anim.amount}${anim.shielded ? ` (${anim.shielded} shield)` : ""}`;
-          const kind: Float["kind"] = anim.miss ? "miss" : anim.heal ? "heal" : anim.crit ? "crit" : anim.weak ? "weak" : "dmg";
-          at(t, () => {
-            float(anim.uid, anim.weak && !anim.heal ? `${text} WEAK` : anim.crit ? `${text}!` : text, kind);
-            if (!anim.heal && !anim.miss && anim.amount > 0 && !anim.uid.startsWith("prop-")) {
-              clip(anim.uid, G.hit, false);
-              at(420, () => idle(anim.uid));
-              const unit = unitOf(anim.uid);
-              if (unit && (unit.kind === "monster" || unit.kind === "pet")) sound(unitSound(unit.sprite, "hurt"));
-            }
-          });
-          t += 110;
-          break;
-        }
-        case "death":
-          at(t, () => {
-            setPendingDeaths((current) => {
-              const next = new Set(current);
-              next.delete(anim.uid);
-              return next;
-            });
-            clip(anim.uid, G.death, false);
-            sound(anim.sound);
-          });
-          t += 260;
-          break;
-        case "status":
-          at(t, () => float(anim.uid, anim.text, "status"));
-          t += 200;
-          break;
-        case "befriend":
-          at(t, () => float(anim.uid, anim.ok ? "Befriended! ♥" : "Refused", anim.ok ? "heal" : "miss"));
-          t += 700;
-          break;
-      }
-    }
-    at(t + 450, () => {
-      timers.current = [];
-      setCells({});
-      setPendingDeaths(new Set());
-      setPendingProps(new Set());
-      running.current = false;
-      setBusy(false);
-      doneRef.current();
-    });
-  }, [queue]);
-
-  return { cells, clips, floats, bursts, shots, banner, pendingDeaths, pendingProps, busy };
-}
-
 type Mode = { kind: "idle" } | { kind: "skill"; skill: SkillDef } | { kind: "item"; item: string } | { kind: "befriend" };
 const IDLE: Mode = { kind: "idle" };
 
@@ -390,7 +109,9 @@ export function BattleView({
   // Event battles inside Earth-outfit story (the Eos trial) show Bin in his Earth clothes.
   const earth = !!battle.winScene && SCENES[battle.winScene]?.outfit === "earth";
   const arenaRef = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState(1);
+  const shakeRef = useRef<HTMLDivElement>(null);
+  const L = useMemo(() => boardLayout(battle.cols, battle.rows), [battle.cols, battle.rows]);
+  const pz = usePanZoom(arenaRef, L.width, L.height);
   const [hover, setHover] = useState<number | null>(null);
   // Targeting mode and sub-menu belong to the current turn: they reset by
   // themselves when a new turn starts (also for the same unit a round later).
@@ -412,14 +133,16 @@ export function BattleView({
   const unit = activeUnit(battle);
   const myTurn = !!unit && unit.side === "ally" && battle.phase === "turn" && !anim.busy && !queue.length;
 
-  useEffect(() => {
-    const element = arenaRef.current;
-    if (!element) return;
-    // ResizeObserver reports the initial size too.
-    const observer = new ResizeObserver(() => setFit(Math.min(element.clientWidth / FIELD_W, element.clientHeight / FIELD_H)));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  // Big blows shake the field a little.
+  useLayoutEffect(() => {
+    const element = shakeRef.current;
+    if (!anim.shake || !element) return;
+    const animation = element.animate(
+      [{ transform: "translate(0, 0)" }, { transform: "translate(-4px, 2px)" }, { transform: "translate(4px, -2px)" }, { transform: "translate(-2px, 1px)" }, { transform: "translate(0, 0)" }],
+      { duration: 240, easing: "ease-out" }
+    );
+    return () => animation.cancel();
+  }, [anim.shake]);
 
   // Enemy turns run automatically once the previous animation finished.
   // (Not while a boss intro scene is still being read over the board.)
@@ -438,8 +161,11 @@ export function BattleView({
     if (pending.uid === activeUid) act({ type: "bAttack", target: pending.target });
   }, [act, activeUid, myTurn]);
 
+  /** Every hex of this battle's board. */
+  const boardCells = useMemo(() => Array.from({ length: BOARD_CELLS }, (_, cell) => cell).filter((cell) => battle.tiles[cell] !== "void"), [battle.tiles]);
+
   const reach = useMemo(
-    () => (myTurn && unit && !battle.turn.moved && !battle.turn.acted ? reachable(battle, unit, battle.turn.sprinted ? SPRINT_MOVE : 0) : new Map<number, number[]>()),
+    () => (myTurn && unit && battle.turn.movePts > 0 ? reachable(battle, unit, battle.turn.movePts) : new Map<number, number[]>()),
     [battle, myTurn, unit]
   );
 
@@ -447,7 +173,7 @@ export function BattleView({
   const attackable = useMemo(() => {
     const map = new Map<number, string>();
     if (!myTurn || !unit || battle.turn.acted || unit.ap < 1) return map;
-    for (const enemy of living(battle).filter((entry) => entry.side === "enemy")) if (!attackBlock(battle, unit, enemy)) map.set(enemy.cell, enemy.uid);
+    for (const enemy of living(battle).filter((entry) => entry.side === "enemy")) if (!attackBlock(battle, unit, enemy)) for (const cell of cellsOf(enemy)) map.set(cell, enemy.uid);
     for (const prop of battle.props) if (prop.hp > 0 && prop.kind !== "rock" && !attackBlock(battle, unit, prop)) map.set(prop.cell, prop.uid);
     return map;
   }, [battle, myTurn, unit]);
@@ -459,38 +185,37 @@ export function BattleView({
       for (const cell of attackable.keys()) set.add(cell);
     } else if (mode.kind === "befriend") {
       for (const enemy of living(battle).filter((entry) => entry.side === "enemy" && entry.kind === "monster" && entry.tame > 0 && !entry.boss)) {
-        if (hexDistance(unit.cell, enemy.cell) <= 1) set.add(enemy.cell);
+        if (unitDistance(unit, enemy) <= 1) for (const cell of cellsOf(enemy)) set.add(cell);
       }
     } else if (mode.kind === "skill") {
-      for (let cell = 0; cell < BOARD_COLS * BOARD_ROWS; cell++) {
+      for (const cell of boardCells) {
         const result = skillTargets(state, battle, unit, mode.skill, cell);
         if (typeof result !== "string") set.add(cell);
       }
     } else if (mode.kind === "item") {
       const use = itemDef(mode.item).use;
-      for (let cell = 0; cell < BOARD_COLS * BOARD_ROWS; cell++) {
-        if (battle.tiles[cell] === "void") continue;
-        if (use?.bomb ? hexDistance(unit.cell, cell) <= 3 : hexDistance(unit.cell, cell) <= 1 && battle.units.some((entry) => entry.cell === cell && entry.side === "ally" && !entry.gone && (use?.revivePct ? entry.hp <= 0 : entry.hp > 0))) {
+      for (const cell of boardCells) {
+        if (use?.bomb ? distanceTo(unit, cell) <= 3 : distanceTo(unit, cell) <= 1 && battle.units.some((entry) => occupies(entry, cell) && entry.side === "ally" && !entry.gone && (use?.revivePct ? entry.hp <= 0 : entry.hp > 0))) {
           set.add(cell);
         }
       }
     }
     return set;
-  }, [attackable, battle, mode, myTurn, state, unit]);
+  }, [attackable, battle, boardCells, mode, myTurn, state, unit]);
 
   /** Hexes the hovered aim would affect (area, line and bomb previews). */
   const areaPreview = useMemo(() => {
     const set = new Set<number>();
     if (hover === null || !unit || !myTurn || !targetCells.has(hover)) return set;
-    if (mode.kind === "skill" && (mode.skill.target === "area" || mode.skill.line)) {
+    if (mode.kind === "skill" && (mode.skill.target === "area" || mode.skill.target === "hex" || mode.skill.line || mode.skill.move === "dash")) {
       const hits = skillTargets(state, battle, unit, mode.skill, hover);
-      if (typeof hits !== "string") for (const cell of hits.cells) set.add(cell);
+      if (typeof hits !== "string") for (const cell of [...hits.cells, ...(hits.path ?? [])]) set.add(cell);
     } else if (mode.kind === "item" && itemDef(mode.item).use?.bomb) {
       const radius = itemDef(mode.item).use!.bomb!.radius;
-      for (let cell = 0; cell < BOARD_COLS * BOARD_ROWS; cell++) if (hexDistance(cell, hover) <= radius) set.add(cell);
+      for (const cell of boardCells) if (hexDistance(cell, hover) <= radius) set.add(cell);
     }
     return set;
-  }, [battle, hover, mode, myTurn, state, targetCells, unit]);
+  }, [battle, boardCells, hover, mode, myTurn, state, targetCells, unit]);
 
   const clickCell = useCallback(
     (cell: number) => {
@@ -521,11 +246,10 @@ export function BattleView({
           act({ type: "bAttack", target: targetUid });
           return;
         }
-        if (battle.turn.moved) return;
         // Walk to a hex it can strike from, then strike (H3-style click-to-attack).
         let best: { cell: number; length: number } | null = null;
         for (const [option, path] of reach) {
-          if (!attackBlock(battle, unit, { cell }, option) && (!best || path.length < best.length)) best = { cell: option, length: path.length };
+          if (!attackBlock(battle, unit, foe ?? { cell }, option) && (!best || path.length < best.length)) best = { cell: option, length: path.length };
         }
         if (best) {
           pendingAttack.current = { uid: unit.uid, target: targetUid };
@@ -552,10 +276,24 @@ export function BattleView({
     return () => window.removeEventListener("keydown", onKey);
   }, [act, myTurn, setMode]);
 
-  const hoverUnit = hover !== null ? battle.units.find((entry) => entry.cell === hover && !entry.gone && (entry.hp > 0 || anim.pendingDeaths.has(entry.uid))) : undefined;
+  const hoverUnit = hover !== null ? battle.units.find((entry) => occupies(entry, hover) && !entry.gone && (entry.hp > 0 || anim.pendingDeaths.has(entry.uid))) : undefined;
   const hoverProp = hover !== null ? battle.props.find((prop) => prop.cell === hover && (prop.kind === "rock" || prop.hp > 0)) : undefined;
   const hoverTile = hover !== null ? battle.tiles[hover] ?? null : null;
-  const infoUnit = hoverUnit ?? (hoverProp || hoverTile ? null : unit) ?? null;
+  const hoverHeight = hover !== null ? heightOf(battle, hover) : 0;
+  const hoverPoint = hover !== null ? (battle.points ?? []).find((entry) => entry.cell === hover) : undefined;
+  const infoUnit = hoverUnit ?? (hoverProp || hoverTile || hoverHeight || hoverPoint ? null : unit) ?? null;
+  /** Ground height as drawn right now (a terrain change may still be about to play). */
+  const pendingTerrain = useMemo(() => terrainBefore(queue[0]), [queue]);
+  const shownHeight = (cell: number) => anim.heights[cell] ?? (!anim.busy ? pendingTerrain[cell] : undefined) ?? heightOf(battle, cell);
+  const lifted = (cell: number) => {
+    const c = hexCenter(L, cell);
+    return { x: c.x, y: c.y - shownHeight(cell) * LIFT };
+  };
+  /** Where a figure stands (two-hex bodies in the middle of their footprint), raised by the ground. */
+  const point = (entry: BattleUnit, head: number) => footprintPoint(L, entry, head, shownHeight);
+  const backdrop = BATTLEFIELD(battle.backdrop);
+  const biome = battlefieldOf(battle.backdrop).biome;
+  const celebrating = battle.phase === "victory" && !anim.busy && !queue.length;
   const battleItems = Object.keys(state.inventory).filter((id) => {
     const use = ITEMS[id]?.use;
     return !!use && (use.hp || use.hpPct || use.mp || use.mpPct || use.revivePct || use.cure || use.bomb || use.escape);
@@ -569,6 +307,7 @@ export function BattleView({
     <div className={s.battle}>
       <div className={s.battleTop}>
         <b>Round {battle.round}</b>
+        {battle.size && battle.size !== "small" ? <span className={s.battleChip}>{BOARD_SIZE_NAMES[battle.size]}</span> : null}
         {battle.weather !== "clear" ? <span className={s.battleChip} title={WEATHER_TEXT[battle.weather]}>{WEATHER_TEXT[battle.weather].split(":")[0]}</span> : null}
         {challenge ? (
           <span className={s.battleChip} style={{ borderColor: challenge.failed ? "#c0463b" : "#ffd36a" }} title="Jester System audience challenge">
@@ -586,111 +325,164 @@ export function BattleView({
           );
         })}
       </div>
-      <div className={s.battleArena} ref={arenaRef}>
-        <div className={s.battleField} style={{ width: FIELD_W, height: FIELD_H, transform: `scale(${fit})`, backgroundImage: `url(${BATTLEFIELD(battle.backdrop)})` }}>
-          <svg className={s.hexLayer} height={FIELD_H} viewBox={`0 0 ${FIELD_W} ${FIELD_H}`} width={FIELD_W}>
-            {Array.from({ length: BOARD_COLS * BOARD_ROWS }, (_, cell) => {
+      <div className={s.battleArena} ref={arenaRef} {...pz.handlers}>
+        <div
+          className={s.battleField}
+          style={{
+            width: L.width,
+            height: L.height,
+            transform: pz.transform,
+            backgroundImage: `url(${backdrop})`,
+            backgroundSize: `${L.art.w}px ${L.art.h}px`,
+            backgroundPosition: `${L.art.x}px ${L.art.y}px`
+          }}
+        >
+          <div className={s.fieldShake} ref={shakeRef} style={{ width: L.width, height: L.height }}>
+            {boardCells.map((cell) => {
               const tile = battle.tiles[cell];
-              if (tile === "void") return null;
-              const high = tile === "high";
-              const classes = [s.hexCell];
-              if (tile && TILE_CLASS[tile]) classes.push(TILE_CLASS[tile]!);
-              if (high) classes.push(s.tileHigh);
-              if (propAt(battle, cell)) classes.push(s.hexBlocked);
-              if (areaPreview.has(cell)) classes.push(s.hexArea);
-              else if (targetCells.has(cell)) classes.push(s.hexTarget);
-              else if (mode.kind === "idle" && reach.has(cell)) classes.push(s.hexMove);
-              if (battle.warnings.includes(cell)) classes.push(s.hexWarning);
-              if (unit && cell === unit.cell && battle.phase === "turn") classes.push(s.hexActive);
+              // Only raised ground (or ground about to rise or sink) gets a column.
+              if (tile === "water" || (!shownHeight(cell) && !heightOf(battle, cell) && anim.heights[cell] === undefined)) return null;
+              return <HillColumn L={L} backdrop={backdrop} biome={biome} cell={cell} height={shownHeight(cell)} key={`h${cell}`} />;
+            })}
+            {Array.from({ length: battle.rows }, (_, row) => (
+              // One layer per row, stacked with the units: a raised hex in front hides what is behind it.
+              <svg className={s.hexLayer} height={L.height} key={`row${row}`} style={{ zIndex: rowZ(row) + 2 }} viewBox={`0 0 ${L.width} ${L.height}`} width={L.width}>
+                {Array.from({ length: battle.cols }, (_, col) => {
+                  const cell = cellOf(col, row);
+                  const tile = battle.tiles[cell];
+                  if (tile === "void") return null;
+                  const height = shownHeight(cell);
+                  const classes = [s.hexCell];
+                  if (tile && TILE_CLASS[tile]) classes.push(TILE_CLASS[tile]!);
+                  if (height > 0) classes.push(s.hexHill);
+                  if (propAt(battle, cell)) classes.push(s.hexBlocked);
+                  if (areaPreview.has(cell)) classes.push(s.hexArea);
+                  else if (targetCells.has(cell)) classes.push(s.hexTarget);
+                  else if (mode.kind === "idle" && reach.has(cell)) classes.push(s.hexMove);
+                  if (battle.warnings.includes(cell)) classes.push(s.hexWarning);
+                  const objective = (battle.points ?? []).find((entry) => entry.cell === cell && !(entry.kind === "cache" && entry.used));
+                  if (objective) classes.push(objective.owner === "ally" ? s.hexPointAlly : objective.owner === "enemy" ? s.hexPointEnemy : s.hexPoint);
+                  if (unit && occupies(unit, cell) && battle.phase === "turn") classes.push(s.hexActive);
+                  return (
+                    <polygon
+                      className={classes.join(" ")}
+                      key={cell}
+                      onClick={() => clickCell(cell)}
+                      onMouseEnter={() => setHover(cell)}
+                      onMouseLeave={() => setHover((current) => (current === cell ? null : current))}
+                      points={hexPoints(L, cell)}
+                      style={{ transform: `translateY(${-height * LIFT}px)` }}
+                    />
+                  );
+                })}
+              </svg>
+            ))}
+            {Object.entries(battle.tiles).map(([key, tile]) => {
+              const cell = Number(key);
+              const frame = tileFrame(tile, battle.backdrop);
+              if (frame === null) return null;
+              const c = lifted(cell);
+              const size = tile === "cover" ? 58 : 50;
+              return <SheetFrame frame={frame} key={`t${cell}`} sheet={PROPS_SHEET} size={size} style={{ left: c.x - size / 2, top: c.y - size * 0.62, zIndex: rowZ(colRow(cell).row) + 4, opacity: 0.95, transition: "top 0.45s ease-out" }} />;
+            })}
+            {visibleProps.map((prop) => {
+              const c = lifted(prop.cell);
+              const size = prop.kind === "barrel" ? 54 : 66;
               return (
-                <g key={cell}>
-                  {high ? <polygon className={s.hexCliff} points={sidePoints(cell)} /> : null}
-                  <polygon
-                    className={classes.join(" ")}
-                    onClick={() => clickCell(cell)}
-                    onMouseEnter={() => setHover(cell)}
-                    onMouseLeave={() => setHover((current) => (current === cell ? null : current))}
-                    points={hexPoints(cell, high ? LIFT : 0)}
-                  />
-                </g>
+                <span className={anim.pendingProps.has(prop.uid) && prop.hp <= 0 ? s.propBreaking : undefined} key={prop.uid} style={{ position: "absolute", left: 0, top: 0 }}>
+                  <SheetFrame frame={propFrame(prop.kind, battle.backdrop)} sheet={PROPS_SHEET} size={size} style={{ left: c.x - size / 2, top: c.y - size * 0.8, zIndex: rowZ(colRow(prop.cell).row) + 6, transition: "top 0.45s ease-out" }} />
+                  {prop.kind !== "rock" && prop.hp > 0 && prop.hp < prop.maxHp ? (
+                    <span className={s.unitBars} style={{ left: c.x, top: c.y + FOOT - 2, zIndex: 300 }}>
+                      <span className={s.barTrack}>
+                        <span className={`${s.barFill} ${s.barHp}`} style={{ display: "block", width: `${(100 * prop.hp) / Math.max(1, prop.maxHp)}%` }} />
+                      </span>
+                    </span>
+                  ) : null}
+                </span>
               );
             })}
-          </svg>
-          {Object.entries(battle.tiles).map(([key, tile]) => {
-            const cell = Number(key);
-            const frame = tileFrame(tile, battle.backdrop);
-            if (frame === null) return null;
-            const c = center(cell);
-            const size = tile === "cover" ? 58 : 50;
-            return <SheetFrame frame={frame} key={`t${cell}`} sheet={PROPS_SHEET} size={size} style={{ left: c.x - size / 2, top: c.y - size * 0.62, zIndex: 4 + colRow(cell).row * 10, opacity: 0.95 }} />;
-          })}
-          {visibleProps.map((prop) => {
-            const c = center(prop.cell);
-            const size = prop.kind === "barrel" ? 54 : 66;
-            const lift = heightOf(battle, prop.cell) ? LIFT : 0;
-            return (
-              <span className={anim.pendingProps.has(prop.uid) && prop.hp <= 0 ? s.propBreaking : undefined} key={prop.uid} style={{ position: "absolute", left: 0, top: 0 }}>
-                <SheetFrame frame={propFrame(prop.kind, battle.backdrop)} sheet={PROPS_SHEET} size={size} style={{ left: c.x - size / 2, top: c.y - size * 0.8 - lift, zIndex: 6 + colRow(prop.cell).row * 10 }} />
-                {prop.kind !== "rock" && prop.hp > 0 && prop.hp < prop.maxHp ? (
-                  <span className={s.unitBars} style={{ left: c.x, top: c.y + FOOT - 2, zIndex: 300 }}>
-                    <span className={s.barTrack}>
-                      <span className={`${s.barFill} ${s.barHp}`} style={{ display: "block", width: `${(100 * prop.hp) / Math.max(1, prop.maxHp)}%` }} />
-                    </span>
-                  </span>
-                ) : null}
-              </span>
-            );
-          })}
-          {battle.warnings.map((cell) => {
-            const c = center(cell);
-            return (
-              <span className={s.warnMark} key={`w${cell}`} style={{ left: c.x, top: c.y - 18 }}>
-                !
-              </span>
-            );
-          })}
-          {[...battle.units]
-            .sort((a, b) => (anim.cells[a.uid] ?? a.cell) - (anim.cells[b.uid] ?? b.cell))
-            .map((entry) => {
-              const cell = anim.cells[entry.uid] ?? entry.cell;
+            {(battle.points ?? []).map((entry) => {
+              const c = lifted(entry.cell);
+              const size = entry.kind === "cache" ? 56 : 72;
+              const frame =
+                entry.kind === "cache" ? (entry.used ? 7 : 6) : (entry.kind === "banner" ? 0 : 3) + (entry.owner === "ally" ? 1 : entry.owner === "enemy" ? 2 : 0);
+              return (
+                <SheetFrame
+                  cols={4}
+                  frame={frame}
+                  key={entry.id}
+                  rows={2}
+                  sheet={OBJECTIVES_SHEET}
+                  size={size}
+                  style={{ left: c.x - size / 2, top: c.y - size * 0.82, zIndex: rowZ(colRow(entry.cell).row) + 5, transition: "top 0.45s ease-out" }}
+                />
+              );
+            })}
+            {battle.warnings.map((cell) => {
+              const c = lifted(cell);
+              return (
+                <span className={s.warnMark} key={`w${cell}`} style={{ left: c.x, top: c.y - 18, zIndex: 320 }}>
+                  !
+                </span>
+              );
+            })}
+            {battle.units.map((entry) => {
+              const head = anim.cells[entry.uid] ?? entry.cell;
               return (
                 <UnitSprite
                   active={entry.uid === battle.active && battle.phase === "turn"}
-                  cell={cell}
+                  badge={badgeOf(entry)}
+                  celebrate={celebrating && entry.side === "ally" && entry.hp > 0}
                   clip={anim.clips[entry.uid]}
                   dead={entry.hp <= 0 && !anim.pendingDeaths.has(entry.uid)}
+                  facing={anim.facings[entry.uid]}
+                  flash={anim.flashes[entry.uid]}
+                  head={head}
                   key={entry.uid}
-                  lift={heightOf(battle, cell) ? LIFT : 0}
+                  motion={anim.motions[entry.uid]}
+                  point={point}
                   unit={entry}
                 />
               );
             })}
-          {anim.shots.map((shot) => {
-            const from = center(shot.from);
-            const to = center(shot.to);
-            return <Projectile from={from} key={shot.id} ms={shot.ms} sprite={shot.sprite} to={to} />;
-          })}
-          {anim.bursts.map((burst) => {
-            const c = center(burst.cell);
-            return <FxBurst fx={burst.fx} key={burst.id} size={burst.size} x={c.x} y={c.y - (burst.fx === "cast" ? 0 : 22)} />;
-          })}
-          {anim.floats.map((entry) => {
-            const target = battle.units.find((candidate) => candidate.uid === entry.uid);
-            const prop = target ? undefined : battle.props.find((candidate) => candidate.uid === entry.uid);
-            if (!target && !prop) return null;
-            const c = center(target ? anim.cells[entry.uid] ?? target.cell : prop!.cell);
-            const cls = entry.kind === "heal" ? s.floatHeal : entry.kind === "crit" ? s.floatCrit : entry.kind === "weak" ? s.floatWeak : entry.kind === "miss" ? s.floatMiss : entry.kind === "status" ? s.floatStatus : "";
-            return (
-              <span className={`${s.floatNum} ${cls}`} key={entry.id} style={{ left: c.x, top: c.y - 70, zIndex: 500 }}>
-                {entry.text}
-              </span>
-            );
-          })}
-          {anim.banner ? (
-            <div className={s.battleBanner} key={anim.banner.id}>
-              {anim.banner.text}
-            </div>
-          ) : null}
+            {anim.shots.map((shot) => {
+              const from = lifted(shot.from);
+              const to = lifted(shot.to);
+              return <Projectile from={from} key={shot.id} ms={shot.ms} sprite={shot.sprite} to={to} />;
+            })}
+            {anim.bursts.map((burst) => {
+              const c = lifted(burst.cell);
+              return <FxBurst fx={burst.fx} key={burst.id} size={burst.size} x={c.x} y={c.y - (burst.fx === "cast" ? 0 : 22)} />;
+            })}
+            {anim.floats.map((entry) => {
+              const target = battle.units.find((candidate) => candidate.uid === entry.uid);
+              const prop = target ? undefined : battle.props.find((candidate) => candidate.uid === entry.uid);
+              if (!target && !prop) return null;
+              const c = target ? point(target, anim.cells[entry.uid] ?? target.cell) : lifted(prop!.cell);
+              const cls = entry.kind === "heal" ? s.floatHeal : entry.kind === "crit" ? s.floatCrit : entry.kind === "weak" ? s.floatWeak : entry.kind === "miss" ? s.floatMiss : entry.kind === "status" ? s.floatStatus : "";
+              return (
+                <span className={`${s.floatNum} ${cls}`} key={entry.id} style={{ left: c.x, top: c.y - 70, zIndex: 500 }}>
+                  {entry.text}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+        {anim.banner ? (
+          <div className={s.battleBanner} key={anim.banner.id}>
+            {anim.banner.text}
+          </div>
+        ) : null}
+        <div className={s.zoomBar} onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+          <button aria-label="Zoom in" className={s.zoomBtn} onClick={() => pz.zoomBy(1.3)} type="button">
+            +
+          </button>
+          <button aria-label="Zoom out" className={s.zoomBtn} onClick={() => pz.zoomBy(1 / 1.3)} type="button">
+            −
+          </button>
+          <button aria-label="Fit the whole battlefield" className={s.zoomBtn} disabled={pz.zoom <= 1} onClick={pz.reset} type="button">
+            ⤢
+          </button>
         </div>
         {battle.phase !== "turn" && !anim.busy && !queue.length ? <Results act={act} state={state} /> : null}
       </div>
@@ -714,10 +506,39 @@ export function BattleView({
                         : ""}
               </div>
             </div>
-          ) : hoverTile ? (
+          ) : hoverPoint ? (
             <div>
-              <b>{TILE_NAMES[hoverTile]}</b>
-              <div style={{ opacity: 0.85 }}>{TILE_HELP[hoverTile]}</div>
+              <b>{POINT_NAMES[hoverPoint.kind]}</b>
+              {hoverPoint.kind === "cache"
+                ? hoverPoint.used
+                  ? hoverPoint.owner === "ally"
+                    ? " · claimed"
+                    : " · smashed"
+                  : " · unopened"
+                : hoverPoint.owner
+                  ? ` · held by ${hoverPoint.owner === "ally" ? "your party" : "the enemy"}`
+                  : " · unclaimed"}
+              <div style={{ opacity: 0.85 }}>{POINT_HELP[hoverPoint.kind]}</div>
+            </div>
+          ) : hover !== null && isCrag(battle, hover) ? (
+            <div>
+              <b>{CRAG_NAME}</b>
+              <div style={{ opacity: 0.85 }}>{CRAG_HELP}</div>
+            </div>
+          ) : hoverTile || hoverHeight ? (
+            <div>
+              {hoverTile && hoverTile !== "high" ? (
+                <>
+                  <b>{TILE_NAMES[hoverTile]}</b>
+                  <div style={{ opacity: 0.85 }}>{TILE_HELP[hoverTile]}</div>
+                </>
+              ) : null}
+              {hoverHeight ? (
+                <>
+                  <b>{hoverHeight >= 2 ? "Hilltop" : "Hillside"} · height {hoverHeight}</b>
+                  <div style={{ opacity: 0.85 }}>{HEIGHT_HELP}</div>
+                </>
+              ) : null}
             </div>
           ) : null}
           <div className={s.battleLog}>
@@ -735,7 +556,7 @@ export function BattleView({
             <div className={s.skillList}>
               {mode.kind === "skill" && !targetCells.size ? (
                 <span style={{ gridColumn: "1 / -1", color: "#ffcf8a" }}>
-                  No valid target for {mode.skill.name}. {battle.turn.moved ? "Pick another action." : "Go Back and move first (range and line of sight matter)."}
+                  No valid target for {mode.skill.name}. {battle.turn.movePts > 0 ? "Go Back and move first (range and line of sight matter)." : "Pick another action."}
                 </span>
               ) : null}
               {unit!.skills.map((id) => {
@@ -755,7 +576,7 @@ export function BattleView({
                     title={block ? `${skill.desc} — ${block}` : skill.desc}
                     type="button"
                   >
-                    <b>{skill.name}</b>{" "}
+                    <ActionIcon icon={skill.move === "leap" || skill.move === "blink" ? ICON.leap : skill.move === "dash" ? ICON.dash : skill.pull ? ICON.hook : skill.shape ? ICON.terrain : skill.kind === "physical" ? ICON.attack : ICON.skills} size={18} /> <b>{skill.name}</b>{" "}
                     <span className={s.apTag}>{skillAp(skill)} AP</span> <span style={{ opacity: 0.8 }}>{skillMp(unit!, skill)} MP</span>
                     <br />
                     <span style={{ fontSize: 11, opacity: 0.8 }}>{skill.desc}</span>
@@ -791,27 +612,27 @@ export function BattleView({
           ) : (
             <>
               <span style={{ width: "100%", color: "#ffe6a8" }}>
-                <b>{unit!.name}</b> <ApPips ap={unit!.ap} />{" "}
-                {battle.turn.moved ? "moved" : moveRange(unit!) === 0 ? "rooted" : `move ${moveRange(unit!) + (battle.turn.sprinted ? SPRINT_MOVE : 0)} (blue)`}, {battle.turn.acted ? "acted" : "attack 1 AP (red)"}
+                <b>{unit!.name}</b> <ApPips ap={unit!.ap} /> <MovePips left={battle.turn.movePts} full={Math.max(battle.turn.movePts, moveRange(unit!) + (battle.turn.sprinted ? SPRINT_MOVE : 0))} />{" "}
+                {moveRange(unit!) === 0 ? "rooted" : battle.turn.movePts > 0 ? "move (blue)" : "no movement left"}, {battle.turn.acted ? "acted — move on or end the turn" : "attack 1 AP (red)"}
                 {mode.kind === "befriend" ? " · pick an adjacent monster to befriend" : ""}
               </span>
-              <button className={`${s.btn} ${s.btnSmall}`} disabled={battle.turn.acted || !unit!.skills.length} onClick={() => setMenu("skills")} type="button">
-                Skills
+              <button className={`${s.btn} ${s.btnSmall} ${s.actionBtn}`} disabled={battle.turn.acted || !unit!.skills.length} onClick={() => setMenu("skills")} type="button">
+                <ActionIcon icon={ICON.skills} /> Skills
               </button>
-              <button className={`${s.btnGhost} ${s.btnSmall}`} disabled={battle.turn.acted || battle.turn.item} onClick={() => setMenu("items")} type="button">
-                Items
+              <button className={`${s.btnGhost} ${s.btnSmall} ${s.actionBtn}`} disabled={battle.turn.acted || battle.turn.item} onClick={() => setMenu("items")} type="button">
+                <ActionIcon icon={ICON.items} /> Items
               </button>
               <button
-                className={`${s.btnGhost} ${s.btnSmall}`}
-                disabled={battle.turn.moved || battle.turn.acted || battle.turn.sprinted || unit!.ap < 1 || moveRange(unit!) === 0}
+                className={`${s.btnGhost} ${s.btnSmall} ${s.actionBtn}`}
+                disabled={battle.turn.acted || battle.turn.sprinted || unit!.ap < 1 || moveRange(unit!) === 0}
                 onClick={() => act({ type: "bSprint" })}
-                title={`Spend 1 AP: +${SPRINT_MOVE} move this turn`}
+                title={`Spend 1 AP: +${SPRINT_MOVE} movement this turn`}
                 type="button"
               >
-                Sprint
+                <ActionIcon icon={ICON.sprint} /> Sprint
               </button>
-              <button className={`${s.btnGhost} ${s.btnSmall}`} disabled={battle.turn.acted} onClick={() => act({ type: "bDefend" })} title={`D · DEF/RES x1.5, +10% MP, +${DEFEND_CARRY} AP next turn`} type="button">
-                Defend
+              <button className={`${s.btnGhost} ${s.btnSmall} ${s.actionBtn}`} disabled={battle.turn.acted} onClick={() => act({ type: "bDefend" })} title={`D · DEF/RES x1.5, +10% MP, +${DEFEND_CARRY} AP next turn (ends the turn)`} type="button">
+                <ActionIcon icon={ICON.defend} /> Defend
               </button>
               <button
                 className={`${s.btnGhost} ${s.btnSmall}`}
@@ -820,25 +641,25 @@ export function BattleView({
                 title="W · act later this round"
                 type="button"
               >
-                Wait
+                <ActionIcon icon={ICON.wait} /> Wait
               </button>
               {state.town.levels.barn >= 1 ? (
-                <button className={mode.kind === "befriend" ? `${s.btn} ${s.btnSmall}` : `${s.btnGhost} ${s.btnSmall}`} disabled={battle.turn.acted || unit!.ap < 1} onClick={() => setMode(mode.kind === "befriend" ? { kind: "idle" } : { kind: "befriend" })} type="button">
-                  Befriend
+                <button className={`${mode.kind === "befriend" ? s.btn : s.btnGhost} ${s.btnSmall} ${s.actionBtn}`} disabled={battle.turn.acted || unit!.ap < 1} onClick={() => setMode(mode.kind === "befriend" ? { kind: "idle" } : { kind: "befriend" })} type="button">
+                  <ActionIcon icon={ICON.befriend} /> Befriend
                 </button>
               ) : null}
               {rushReady(battle) ? (
-                <button className={`${s.btn} ${s.btnSmall}`} disabled={battle.turn.acted || unit!.ap < 1} onClick={() => act({ type: "bRush" })} type="button">
-                  ⚡ RUSH!
+                <button className={`${s.btn} ${s.btnSmall} ${s.actionBtn}`} disabled={battle.turn.acted || unit!.ap < 1} onClick={() => act({ type: "bRush" })} type="button">
+                  <ActionIcon icon={ICON.rush} /> RUSH!
                 </button>
               ) : null}
               {battle.canFlee ? (
-                <button className={`${s.btnGhost} ${s.btnSmall}`} disabled={battle.turn.acted} onClick={() => act({ type: "bFlee" })} title={`${Math.round(fleeChance(state, battle) * 100)}%`} type="button">
-                  Flee
+                <button className={`${s.btnGhost} ${s.btnSmall} ${s.actionBtn}`} disabled={battle.turn.acted} onClick={() => act({ type: "bFlee" })} title={`${Math.round(fleeChance(state, battle) * 100)}%`} type="button">
+                  <ActionIcon icon={ICON.flee} /> Flee
                 </button>
               ) : null}
-              <button className={`${s.btnGhost} ${s.btnSmall}`} onClick={() => act({ type: "bEndTurn" })} title={`Enter · ending without acting carries +${CHARGE_CARRY} AP`} type="button">
-                {battle.turn.acted ? "End turn" : `Charge (+${CHARGE_CARRY} AP)`}
+              <button className={`${battle.turn.acted ? s.btn : s.btnGhost} ${s.btnSmall} ${s.actionBtn}`} onClick={() => act({ type: "bEndTurn" })} title={`Enter · ending without acting carries +${CHARGE_CARRY} AP`} type="button">
+                <ActionIcon icon={battle.turn.acted ? ICON.endTurn : ICON.charge} /> {battle.turn.acted ? "End turn" : `Charge (+${CHARGE_CARRY} AP)`}
               </button>
               {mode.kind !== "idle" ? (
                 <button className={`${s.btnGhost} ${s.btnSmall}`} onClick={() => setMode({ kind: "idle" })} type="button">
@@ -851,6 +672,23 @@ export function BattleView({
       </div>
     </div>
   );
+}
+
+/** Movement points left this turn (spent per hex; climbing and rough ground cost more). */
+function MovePips({ left, full }: { left: number; full: number }) {
+  return (
+    <span className={s.movePips} title={`Movement ${left}/${full}`}>
+      <ActionIcon icon={ICON.move} size={16} />
+      {Array.from({ length: Math.min(full, 10) }, (_, index) => (
+        <span className={index < left ? s.movePipOn : s.movePipOff} key={index} />
+      ))}
+    </span>
+  );
+}
+
+/** The little word over a figure: down, guarding, or its first status. */
+function badgeOf(unit: BattleUnit): string | null {
+  return unit.down ? "DOWN" : unit.defending ? "Guard" : unit.statuses[0] ? STATUS_NAMES[unit.statuses[0].id] + (unit.statuses.length > 1 ? ` +${unit.statuses.length - 1}` : "") : null;
 }
 
 function ApPips({ ap }: { ap: number }) {
@@ -871,59 +709,6 @@ function Portrait({ unit, size, earth = false }: { unit: BattleUnit; size: numbe
   return <SpriteStill height={size} slug={unit.sprite} />;
 }
 
-function UnitSprite({ unit, cell, clip, dead, active, lift }: { unit: BattleUnit; cell: number; clip?: Clip; dead: boolean; active: boolean; lift: number }) {
-  if (unit.gone) return null;
-  const atlas: Atlas | null = atlasFor(unit.sprite);
-  const c = center(cell);
-  const y = c.y - lift;
-  const flip = unit.facing === "left";
-  const scale = unit.scale;
-  const group = dead ? G.death : clip ? clip.group : G.standing;
-  const loop = dead ? false : clip ? clip.loop : true;
-  const z = 10 + Math.floor(cell / BOARD_COLS) * 10 + (dead ? 0 : 5);
-  if (!atlas) {
-    return (
-      <span className={s.unit} style={{ left: c.x - 20, top: y - 40, zIndex: z }}>
-        <Portrait size={40} unit={unit} />
-      </span>
-    );
-  }
-  const left = c.x - (flip ? atlas.frameWidth - atlas.anchorX : atlas.anchorX) * scale;
-  const top = y + FOOT - atlas.anchorY * scale;
-  const maxHp = unit.stats.maxHp;
-  const badge = unit.down ? "DOWN" : unit.defending ? "Guard" : unit.statuses[0] ? STATUS_NAMES[unit.statuses[0].id] + (unit.statuses.length > 1 ? ` +${unit.statuses.length - 1}` : "") : null;
-  return (
-    <>
-      <span className={s.unitShadow} style={{ left: c.x - 20 * scale, top: y + FOOT - 6, width: 40 * scale, height: 12, zIndex: z - 1 }} />
-      <span className={s.unit} style={{ left, top, zIndex: z, transition: "left 0.17s linear, top 0.17s linear", filter: active ? "drop-shadow(0 0 4px #ffd36a)" : unit.shield > 0 && !dead ? "drop-shadow(0 0 3px #6fe3ff)" : undefined }}>
-        <SpriteClip atlas={atlas} clipKey={dead ? "dead" : clip?.key ?? "idle"} flip={flip} fps={dead ? 12 : 10} group={group} loop={loop} scale={scale} />
-      </span>
-      {!dead ? (
-        <span className={s.unitBars} style={{ left: c.x, top: y + FOOT + 2, zIndex: 300 }}>
-          <span className={s.barTrack}>
-            <span className={unit.side === "ally" ? s.barFill : `${s.barFill} ${s.barHp}`} style={{ display: "block", width: `${(100 * unit.hp) / Math.max(1, maxHp)}%` }} />
-          </span>
-          {unit.shield > 0 ? (
-            <span className={s.barTrack}>
-              <span className={`${s.barFill} ${s.barShield}`} style={{ display: "block", width: `${Math.min(100, (100 * unit.shield) / Math.max(1, maxHp))}%` }} />
-            </span>
-          ) : null}
-          {unit.side === "ally" && unit.stats.maxMp > 0 ? (
-            <span className={s.barTrack}>
-              <span className={`${s.barFill} ${s.barMp}`} style={{ display: "block", width: `${(100 * unit.mp) / Math.max(1, unit.stats.maxMp)}%` }} />
-            </span>
-          ) : null}
-        </span>
-      ) : null}
-      {!dead && badge ? (
-        <span className={`${s.unitBadge} ${unit.down ? s.badgeDown : s.badgeStatus}`} style={{ left: c.x, top: y - 64 * scale, zIndex: 310 }}>
-          {badge}
-        </span>
-      ) : null}
-    </>
-  );
-}
-
 function UnitInfo({ state, unit, attacker }: { state: RestiaState; unit: BattleUnit; attacker: BattleUnit | null }) {
   const battle = state.battle!;
   const analyzed = unit.side === "ally" || unit.kind !== "monster" || !!state.bestiary[unit.ref]?.analyzed;
@@ -931,7 +716,7 @@ function UnitInfo({ state, unit, attacker }: { state: RestiaState; unit: BattleU
   const resist = Object.entries(unit.resist).filter(([, mult]) => (mult ?? 1) < 1).map(([element]) => element);
   const member = unit.kind === "member" ? state.members[unit.ref as keyof typeof state.members] : undefined;
   const title = unit.kind === "member" ? `${CHARACTERS[unit.ref as keyof typeof CHARACTERS]?.title}${member ? ` · ${JOBS[member.job]?.name ?? ""} Lv ${member.jobs[member.job]?.level ?? 1}` : ""}` : unit.kind === "monster" ? MONSTERS[unit.ref]?.desc : "";
-  const distance = attacker ? hexDistance(attacker.cell, unit.cell) : 0;
+  const distance = attacker ? unitDistance(attacker, unit) : 0;
   const block = attacker && unit.hp > 0 ? attackBlock(battle, attacker, unit) : null;
   const preview =
     attacker && unit.hp > 0 ? Math.round(expectedDamage(state, attacker, unit, 1, attacker.element, !attacker.magic, attacker.range > 1 && distance === 1, attacker.range > 1 && distance > 1)) : null;
@@ -944,7 +729,8 @@ function UnitInfo({ state, unit, attacker }: { state: RestiaState; unit: BattleU
       {unit.boss ? " · BOSS" : ""}
       <div style={{ opacity: 0.85 }}>
         ATK {Math.round(eff(state, unit, "atk"))} DEF {Math.round(eff(state, unit, "def"))} MAG {Math.round(eff(state, unit, "mag"))} RES {Math.round(eff(state, unit, "res"))} SPD {Math.round(eff(state, unit, "spd"))} · Move {moveRange(unit)} · Range {unit.range}
-        {heightOf(battle, unit.cell) ? " · on high ground" : battle.tiles[unit.cell] === "cover" ? " · in cover" : ""}
+        {heightOf(battle, unit.cell) ? ` · on a hill (height ${heightOf(battle, unit.cell)})` : ""}
+        {battle.tiles[unit.cell] === "cover" ? " · in cover" : ""}
       </div>
       <div>
         {analyzed ? (
@@ -985,6 +771,11 @@ function Results({ state, act }: { state: RestiaState; act: (action: RestiaActio
             {rewards.challenge ? (
               <div className={rewards.challenge.ok ? s.good : undefined}>
                 🎭 {rewards.challenge.text}: {rewards.challenge.ok ? `the audience loved it (+${rewards.challenge.jp} JP)` : "missed"}
+              </div>
+            ) : null}
+            {rewards.found && (rewards.found.gold || Object.keys(rewards.found.items).length) ? (
+              <div>
+                Supply caches: {[rewards.found.gold ? `${rewards.found.gold} gold` : "", ...Object.entries(rewards.found.items).map(([id, n]) => `${itemDef(id).name} x${n}`)].filter(Boolean).join(", ")} (included below)
               </div>
             ) : null}
             {Object.keys(rewards.items).length ? <div>Loot: {Object.entries(rewards.items).map(([id, n]) => `${itemDef(id).name} x${n}`).join(", ")}</div> : null}

@@ -1,10 +1,10 @@
 import type { LifeSkill, Plot, RestiaState, ToolId } from "./types";
 import { CROPS, cropDef } from "../data/crops";
-import { itemDef } from "../data/items";
+import { ITEMS, itemDef } from "../data/items";
 import { MONSTERS } from "../data/monsters";
-import { FIELD_MAX, FIELD_RECTS, ZONES, inRect } from "../data/zones";
-import { Ctx, addItem, chance, fail, perk, randInt, removeItem, seasonOf } from "./core";
-import { activePlot, canCapacity, plotAt } from "./state";
+import { FIELD_MAX, FIELD_RECTS, FIELD_W, ZONES, inRect } from "../data/zones";
+import { Ctx, addItem, chance, fail, isRainy, perk, randInt, removeItem, seasonOf } from "./core";
+import { activePlot, canCapacity, plotAt, plotIndex } from "./state";
 import { track } from "./quests";
 
 export const TOOL_NAMES: Record<ToolId, string> = { hoe: "Hoe", can: "Watering Can", axe: "Axe", hammer: "Hammer", sickle: "Sickle" };
@@ -95,8 +95,11 @@ function nothingText(tool: ToolId): string {
 function toolOnPlot(state: RestiaState, plot: Plot, tool: ToolId, level: number): boolean | string {
   switch (tool) {
     case "hoe":
+      if (plot.sprinkler) return "A sprinkler stands there. Put the tool away (0) and click it to pick it up.";
       if (plot.debris || plot.tilled) return false;
       plot.tilled = true;
+      // The rain waters every tilled plot today, including soil tilled after it started.
+      plot.watered = isRainy(state.weather);
       return true;
     case "can":
       if (!plot.tilled || plot.watered) return false;
@@ -148,6 +151,7 @@ export function plant(state: RestiaState, seed: string, x: number, y: number, ct
   const plot = activePlot(state, x, y);
   if (!plot || !plot.tilled) fail("Till the soil first.");
   if (plot.crop) fail("Something is already growing there.");
+  if (plot.debris) fail("Clear the withered plant off that soil first (Sickle).");
   if (!crop.seasons.includes(seasonOf(state.day))) fail(`${crop.name} won't grow in ${seasonOf(state.day)}.`);
   if (!removeItem(state, seed, 1)) fail(`You have no ${def.name}.`);
   plot.crop = { id: crop.id, growth: 0, harvests: 0 };
@@ -165,28 +169,58 @@ export function harvest(state: RestiaState, x: number, y: number, ctx: Ctx): voi
   const plot = activePlot(state, x, y);
   if (!plot?.crop) fail("Nothing to harvest there.");
   if (!isRipe(plot)) fail("It isn't ripe yet.");
+  const giant = plot.crop.giant !== undefined;
   harvestPlot(state, plot, ctx, "inventory");
-  state.minute += 3;
+  state.minute += giant ? 10 : 3;
+}
+
+/** A giant crop yields what its nine plants would, plus this many extra. */
+const GIANT_BONUS: [number, number] = [6, 12];
+/** Nightly chance for each eligible 3x3 block of ripe plants to fuse. */
+const GIANT_CHANCE = 0.1;
+
+/** The nine plots of the giant crop `plot` belongs to, or null for a normal plant. */
+export function giantPlots(state: RestiaState, plot: Plot): Plot[] | null {
+  const anchor = plot.crop?.giant;
+  if (anchor === undefined) return null;
+  const ax = FIELD_MAX[0] + (anchor % FIELD_W);
+  const ay = FIELD_MAX[1] + Math.floor(anchor / FIELD_W);
+  const cells: Plot[] = [];
+  for (let dy = 0; dy < 3; dy++) {
+    for (let dx = 0; dx < 3; dx++) {
+      const other = plotAt(state, ax + dx, ay + dy);
+      if (other?.crop && other.crop.giant === anchor) cells.push(other);
+    }
+  }
+  return cells.includes(plot) ? cells : null;
 }
 
 /** Shared by the player and befriended monsters. Returns the item and amount. */
 export function harvestPlot(state: RestiaState, plot: Plot, ctx: Ctx, into: "inventory" | "storage"): { item: string; n: number } {
   const crop = cropDef(plot.crop!.id);
-  let n = randInt(state, crop.yield[0], crop.yield[1]);
-  if (chance(state, skillLevel(state.skills.farming) * 0.03)) n += 1;
+  const giant = giantPlots(state, plot);
+  const targets = giant ?? [plot];
+  let n = 0;
+  for (let i = 0; i < targets.length; i++) {
+    n += randInt(state, crop.yield[0], crop.yield[1]);
+    if (chance(state, skillLevel(state.skills.farming) * 0.03)) n += 1;
+  }
+  if (giant) n += randInt(state, GIANT_BONUS[0], GIANT_BONUS[1]);
   if (into === "inventory") addItem(state, crop.produce, n);
   else state.storage[crop.produce] = (state.storage[crop.produce] ?? 0) + n;
-  if (crop.regrow) {
-    plot.crop!.growth = crop.days - crop.regrow;
-    plot.crop!.harvests += 1;
-  } else {
-    plot.crop = null;
-    plot.fertilizer = 0;
+  for (const target of targets) {
+    if (crop.regrow) {
+      target.crop = { id: crop.id, growth: crop.days - crop.regrow, harvests: target.crop!.harvests + 1 };
+    } else {
+      target.crop = null;
+      target.fertilizer = 0;
+    }
   }
   if (into === "inventory") {
-    gainSkill(state, "farming", crop.xp, ctx);
-    track(state, ctx, "harvest", 1);
-    track(state, ctx, "harvested", 1);
+    gainSkill(state, "farming", crop.xp * targets.length, ctx);
+    track(state, ctx, "harvest", targets.length);
+    track(state, ctx, "harvested", targets.length);
+    if (giant) ctx.toast(`Giant ${crop.name} harvested: ${itemDef(crop.produce).name} x${n}!`, "good");
   }
   return { item: crop.produce, n };
 }
@@ -198,6 +232,7 @@ export function fertilize(state: RestiaState, item: string, x: number, y: number
   if (!strength) fail(`${def.name} is not a fertilizer.`);
   const plot = activePlot(state, x, y);
   if (!plot || !plot.tilled) fail("Fertilizer goes on tilled soil.");
+  if (plot.debris) fail("Clear the withered plant off that soil first (Sickle).");
   if (plot.fertilizer >= strength) fail("That soil is already fertilized.");
   if (!removeItem(state, item, 1)) fail(`You have no ${def.name}.`);
   plot.fertilizer = strength;
@@ -227,7 +262,7 @@ export function refill(state: RestiaState, ctx: Ctx): void {
  * Overnight: befriended monsters work, crops grow, the soil dries. `rained` =
  * the day that just ended was rainy (every tilled plot counts as watered).
  */
-export function farmNight(state: RestiaState, rained: boolean, ctx: Ctx): { grown: number; petWork: string[] } {
+export function farmNight(state: RestiaState, rained: boolean, ctx: Ctx): { grown: number; petWork: string[]; giants: string[] } {
   const petWork = petJobs(state, ctx);
   let grown = 0;
   const fieldRect = FIELD_RECTS[state.town.levels.field]!;
@@ -247,11 +282,117 @@ export function farmNight(state: RestiaState, rained: boolean, ctx: Ctx): { grow
         if (plot.crop.growth > before) grown += 1;
       }
       if (active && plot.tilled && !plot.crop && !wet && chance(state, 0.15)) plot.tilled = false;
-      if (active && !plot.tilled && !plot.crop && !plot.debris && chance(state, 0.02)) plot.debris = "weed";
+      if (active && !plot.tilled && !plot.crop && !plot.debris && !plot.sprinkler && chance(state, 0.02)) plot.debris = "weed";
       plot.watered = false;
     }
   }
-  return { grown, petWork };
+  return { grown, petWork, giants: formGiants(state) };
+}
+
+/**
+ * After the night's growth, every 3x3 block of the same giant-capable crop,
+ * all ripe and still normal plants, has a GIANT_CHANCE to fuse into one giant
+ * crop (never when tomorrow's season would wither it). Returns the crop names.
+ */
+function formGiants(state: RestiaState): string[] {
+  const rect = FIELD_RECTS[state.town.levels.field]!;
+  const tomorrow = seasonOf(state.day + 1);
+  const formed: string[] = [];
+  for (let y = rect[1]; y + 2 <= rect[3]; y++) {
+    for (let x = rect[0]; x + 2 <= rect[2]; x++) {
+      const first = plotAt(state, x, y)!.crop;
+      const def = first ? CROPS[first.id] : undefined;
+      if (!first || !def?.giant || !def.seasons.includes(tomorrow)) continue;
+      const block: Plot[] = [];
+      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) block.push(plotAt(state, x + dx, y + dy)!);
+      if (!block.every((plot) => plot.crop?.id === first.id && plot.crop.giant === undefined && isRipe(plot))) continue;
+      if (!chance(state, GIANT_CHANCE)) continue;
+      const anchor = plotIndex(x, y);
+      for (const plot of block) plot.crop!.giant = anchor;
+      formed.push(def.name);
+    }
+  }
+  return formed;
+}
+
+// ---------------------------------------------------------------------------
+// Sprinklers
+// ---------------------------------------------------------------------------
+
+/** What each sprinkler tier covers, for descriptions. */
+export const SPRINKLER_AREA: Record<1 | 2 | 3, string> = {
+  1: "the 4 plots next to it",
+  2: "the 8 plots around it",
+  3: "the 5x5 square around it"
+};
+
+/** Plots a sprinkler waters: 1 = the 4 orthogonal neighbours, 2 = the 8 around it, 3 = the 5x5 square minus its own cell. */
+export function sprinklerCells(tier: number, x: number, y: number): { x: number; y: number }[] {
+  const radius = tier >= 3 ? 2 : 1;
+  const cells: { x: number; y: number }[] = [];
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (!dx && !dy) continue;
+      if (tier <= 1 && dx && dy) continue;
+      cells.push({ x: x + dx, y: y + dy });
+    }
+  }
+  return cells;
+}
+
+/** The item a placed sprinkler of `tier` goes back to. */
+export function sprinklerItem(tier: number): string {
+  const def = Object.values(ITEMS).find((entry) => entry.sprinkler === tier);
+  if (!def) throw new Error(`No Restia sprinkler item for tier ${tier}`);
+  return def.id;
+}
+
+export function placeSprinkler(state: RestiaState, item: string, x: number, y: number, ctx: Ctx): void {
+  nearPlayer(state, x, y);
+  const def = ITEMS[item];
+  if (!def?.sprinkler) fail(`${def?.name ?? "That"} is not a sprinkler.`);
+  const plot = activePlot(state, x, y);
+  if (!plot) fail("Sprinklers go on your field plots.");
+  if (plot.sprinkler) fail("A sprinkler already stands there.");
+  if (plot.debris) fail("Clear that spot first.");
+  if (plot.tilled || plot.crop) fail("Sprinklers need untilled ground: pick a plot you haven't hoed.");
+  if (!removeItem(state, item, 1)) fail(`You have no ${def.name}.`);
+  plot.sprinkler = def.sprinkler;
+  state.minute += 5;
+  ctx.toast(`${def.name} placed. From tomorrow morning it waters ${SPRINKLER_AREA[def.sprinkler]}.`, "info");
+}
+
+export function takeSprinkler(state: RestiaState, x: number, y: number, ctx: Ctx): void {
+  nearPlayer(state, x, y);
+  const plot = activePlot(state, x, y);
+  if (!plot?.sprinkler) fail("There's no sprinkler there.");
+  const item = sprinklerItem(plot.sprinkler);
+  delete plot.sprinkler;
+  addItem(state, item, 1);
+  state.minute += 2;
+  ctx.toast(`Picked up the ${itemDef(item).name}.`, "info");
+}
+
+/**
+ * Morning: every sprinkler waters the tilled plots in its pattern, exactly as
+ * the watering can would (same `watered` flag). Returns how many it watered.
+ */
+export function runSprinklers(state: RestiaState): number {
+  let watered = 0;
+  for (let y = FIELD_MAX[1]; y <= FIELD_MAX[3]; y++) {
+    for (let x = FIELD_MAX[0]; x <= FIELD_MAX[2]; x++) {
+      const tier = plotAt(state, x, y)!.sprinkler;
+      if (!tier) continue;
+      for (const cell of sprinklerCells(tier, x, y)) {
+        const target = activePlot(state, cell.x, cell.y);
+        if (target && target.tilled && !target.watered) {
+          target.watered = true;
+          watered += 1;
+        }
+      }
+    }
+  }
+  return watered;
 }
 
 /** Season change: crops that can't grow in the new season wither. */
@@ -296,7 +437,7 @@ function petJobs(state: RestiaState, ctx: Ctx): string[] {
       case "harvest":
         for (const plot of plots) {
           if (done >= 4) break;
-          if (plot.crop && isRipe(plot)) {
+          if (plot.crop && isRipe(plot) && plot.crop.giant === undefined) {
             const got = harvestPlot(state, plot, ctx, "storage");
             done += got.n;
           }

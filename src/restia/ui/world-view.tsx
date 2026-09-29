@@ -11,13 +11,13 @@ import { NPCS, NPC_IDS } from "../data/npcs";
 import { DIRS, isOpen, occupiedLots, walkable } from "../engine/world";
 import { formatTime, weekday } from "../engine/core";
 import { npcWhere } from "../engine/social";
-import { plotAt } from "../engine/state";
-import { isRipe, toolCost } from "../engine/farm";
+import { plotAt, plotIndex } from "../engine/state";
+import { SPRINKLER_AREA, isRipe, sprinklerCells, sprinklerItem, toolCost } from "../engine/farm";
 import { A, BUILDING_ART, SHEETS, WALKER } from "./assets";
-import { FarmSprite, IconSprite, ItemIcon, SpriteStill, Walker } from "./sprites";
+import { FarmSprite, IconSprite, ItemIcon, SpriteStill, SprinklerSprite, Walker } from "./sprites";
 import s from "./restia.module.css";
 
-export type Hot = { kind: "tool"; tool: ToolId } | { kind: "hand" } | { kind: "seed"; item: string } | { kind: "fert"; item: string };
+export type Hot = { kind: "tool"; tool: ToolId } | { kind: "hand" } | { kind: "seed"; item: string } | { kind: "fert"; item: string } | { kind: "sprinkler"; item: string };
 
 type Cell = { x: number; y: number };
 type Opener = (panel: { kind: string; [key: string]: unknown }) => void;
@@ -27,6 +27,9 @@ const TOOL_ICON: Record<ToolId, number> = { hoe: 26, can: 27, axe: 28, hammer: 2
 const TOOL_LABEL: Record<ToolId, string> = { hoe: "Hoe", can: "Watering Can", axe: "Axe", hammer: "Hammer", sickle: "Sickle" };
 /** Height of an overworld figure (battle-atlas frame), in map cells. */
 const FIGURE_CELLS = 1.9;
+/** Size of a giant crop's sprite, in map cells (it covers its 3x3 block). */
+const GIANT_CELLS = 3.4;
+const TIER_MARK = ["", "I", "II", "III"];
 
 function dirBetween(a: Cell, b: Cell): Dir {
   if (b.x > a.x) return "right";
@@ -147,7 +150,7 @@ export function WorldView({
   const [hover, setHover] = useState<Cell | null>(null);
   const [hot, setHot] = useState<Hot>({ kind: "hand" });
   const [walking, setWalking] = useState(false);
-  const [menu, setMenu] = useState<{ kind: "npc"; npc: NpcId } | { kind: "closed"; building: BuildingId; opensAt: number } | null>(null);
+  const [menu, setMenu] = useState<{ kind: "npc"; npc: NpcId } | { kind: "closed"; building: BuildingId; opensAt: number } | { kind: "sprinkler"; cell: Cell } | null>(null);
   const walkToken = useRef(0);
 
   useEffect(() => {
@@ -185,11 +188,13 @@ export function WorldView({
 
   const seeds = useMemo(() => Object.keys(state.inventory).filter((id) => ITEMS[id]?.seedOf), [state.inventory]);
   const ferts = useMemo(() => Object.keys(state.inventory).filter((id) => ITEMS[id]?.use?.fertilizer), [state.inventory]);
-  // Keep the selected seed/fertilizer valid (falls back to the hand).
+  const sprinklers = useMemo(() => Object.keys(state.inventory).filter((id) => ITEMS[id]?.sprinkler).sort(), [state.inventory]);
+  // Keep the selected seed/fertilizer/sprinkler valid (falls back to the hand).
   const activeHot: Hot = useMemo(() => {
-    const valid = hot.kind === "seed" ? seeds.includes(hot.item) : hot.kind === "fert" ? ferts.includes(hot.item) : true;
+    const valid =
+      hot.kind === "seed" ? seeds.includes(hot.item) : hot.kind === "fert" ? ferts.includes(hot.item) : hot.kind === "sprinkler" ? sprinklers.includes(hot.item) : true;
     return valid ? hot : HAND;
-  }, [ferts, hot, seeds]);
+  }, [ferts, hot, seeds, sprinklers]);
 
   const walkTo = useCallback(
     (goals: Cell[], then?: () => void) => {
@@ -247,6 +252,10 @@ export function WorldView({
         act({ type: "harvest", x: c.x, y: c.y });
         return;
       }
+      if (plot?.sprinkler && activeHot.kind !== "tool") {
+        setMenu({ kind: "sprinkler", cell: c });
+        return;
+      }
       switch (activeHot.kind) {
         case "tool":
           act({ type: "tool", tool: activeHot.tool, x: c.x, y: c.y });
@@ -256,6 +265,9 @@ export function WorldView({
           return;
         case "fert":
           act({ type: "fertilize", item: activeHot.item, x: c.x, y: c.y });
+          return;
+        case "sprinkler":
+          act({ type: "placeSprinkler", item: activeHot.item, x: c.x, y: c.y });
           return;
         default:
           if (plot?.debris) toast(plot.debris === "weed" || plot.debris === "withered" ? "Use the Sickle on weeds." : plot.debris === "stone" || plot.debris === "boulder" ? "Use the Hammer on rocks." : "Use the Axe on wood.");
@@ -365,12 +377,16 @@ export function WorldView({
           setHot({ kind: "seed", item: seeds[index]! });
         }
         if (n === 7 && ferts.length) setHot({ kind: "fert", item: ferts[0]! });
+        if (n === 8 && sprinklers.length) {
+          const index = activeHot.kind === "sprinkler" ? (sprinklers.indexOf(activeHot.item) + 1) % sprinklers.length : 0;
+          setHot({ kind: "sprinkler", item: sprinklers[index]! });
+        }
         if (event.key === "0") setHot({ kind: "hand" });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [act, activeHot, ferts, interact, locked, seeds, actOnPlot]);
+  }, [act, activeHot, ferts, interact, locked, seeds, sprinklers, actOnPlot]);
 
   const cellFromEvent = (event: ReactMouseEvent) => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -405,7 +421,36 @@ export function WorldView({
           const big = plot.debris === "stump" || plot.debris === "boulder";
           layers.push(<FarmSprite className={s.plotTile} index={FARM_SPRITE.debris[plot.debris]} key={`${key}d`} size={cell * (big ? 1.25 : 0.95)} style={{ left: (x + (big ? -0.125 : 0.025)) * cell, top: (y + (big ? -0.3 : 0.02)) * cell, zIndex: z(y + 0.5) }} />);
         }
-        if (plot.crop) {
+        if (plot.sprinkler) {
+          // Sprinklers water at dawn: they spray through the first hour of the day.
+          const spraying = state.minute < 7 * 60;
+          const size = cell * (spraying ? 2.2 : 1.25);
+          layers.push(
+            <SprinklerSprite
+              className={s.plotTile}
+              key={`${key}k`}
+              size={size}
+              spraying={spraying}
+              style={{ position: "absolute", left: (x + 0.5) * cell - size / 2, top: (y + 0.95) * cell - size, zIndex: z(y + 0.55), pointerEvents: "none" }}
+              tier={plot.sprinkler}
+            />
+          );
+        }
+        if (plot.crop && plot.crop.giant !== undefined) {
+          // A giant crop is drawn once, from its top-left cell, across its 3x3 block.
+          if (plot.crop.giant === plotIndex(x, y)) {
+            const def = CROPS[plot.crop.id]!;
+            layers.push(
+              <FarmSprite
+                className={`${s.plotTile} ${s.glow}`}
+                index={def.sprite.ripe}
+                key={`${key}g`}
+                size={cell * GIANT_CELLS}
+                style={{ left: (x + 1.5 - GIANT_CELLS / 2) * cell, top: (y + 2.95 - GIANT_CELLS) * cell, zIndex: z(y + 2.6) }}
+              />
+            );
+          }
+        } else if (plot.crop) {
           const def = CROPS[plot.crop.id]!;
           const stage = cropStage(def, plot.crop.growth);
           const index = stage === 0 ? FARM_SPRITE.sprout : stage === 1 ? FARM_SPRITE.young : stage === 2 ? def.sprite.growing : def.sprite.ripe;
@@ -526,6 +571,10 @@ export function WorldView({
   }
 
   const hoverText = hover ? describe(state, targetIn(state, hover.x, hover.y), activeHot) : "";
+  // Sprinkler reach: shown while placing one, or when pointing at a placed one.
+  const hoverPlot = hover && zone.id === "farm" && inRect(FIELD_RECTS[state.town.levels.field]!, hover.x, hover.y) ? plotAt(state, hover.x, hover.y) : null;
+  const reachTier = hoverPlot?.sprinkler ?? (hoverPlot && activeHot.kind === "sprinkler" ? ITEMS[activeHot.item]?.sprinkler : undefined);
+  const reach = hover && reachTier ? sprinklerCells(reachTier, hover.x, hover.y).filter((c) => inRect(FIELD_RECTS[state.town.levels.field]!, c.x, c.y)) : [];
 
   return (
     <div className={s.world} ref={stageRef}>
@@ -551,6 +600,9 @@ export function WorldView({
         {hover ? (
           <>
             <span className={s.pathDot} style={{ ...box(hover.x + 0.1, hover.y + 0.1, 0.8, 0.8), zIndex: 601, background: "rgba(255,255,255,0.18)", borderRadius: 6 }} />
+            {reach.map((c) => (
+              <span className={s.pathDot} key={`r${c.x},${c.y}`} style={{ ...box(c.x + 0.08, c.y + 0.08, 0.84, 0.84), zIndex: 601, background: "rgba(90,170,255,0.3)", borderRadius: 6 }} />
+            ))}
             {hoverText ? (
               <span className={s.hoverLabel} style={{ left: (hover.x + 0.5) * cell, top: hover.y * cell, zIndex: 602 }}>
                 {hoverText}
@@ -580,6 +632,18 @@ export function WorldView({
             </button>
           </div>
         ) : null}
+        {menu?.kind === "sprinkler" ? (
+          <SprinklerMenu
+            cell={menu.cell}
+            onClose={() => setMenu(null)}
+            onTake={() => {
+              setMenu(null);
+              act({ type: "takeSprinkler", x: menu.cell.x, y: menu.cell.y });
+            }}
+            state={state}
+            style={{ left: (state.player.x + 1.2) * cell, top: Math.max(0, (state.player.y - 2) * cell), zIndex: 700 }}
+          />
+        ) : null}
         {menu?.kind === "npc" ? (
           <NpcMenu
             npc={menu.npc}
@@ -596,7 +660,7 @@ export function WorldView({
           />
         ) : null}
       </div>
-      {zone.id === "farm" ? <Hotbar hot={activeHot} onPick={setHot} ferts={ferts} seeds={seeds} state={state} /> : null}
+      {zone.id === "farm" ? <Hotbar hot={activeHot} onPick={setHot} ferts={ferts} seeds={seeds} sprinklers={sprinklers} state={state} /> : null}
     </div>
   );
 }
@@ -610,6 +674,23 @@ function NpcMenu({ npc, onTalk, onGift, onClose, style }: { npc: NpcId; onTalk: 
       </button>
       <button className={s.btnGhost} onClick={onGift} type="button">
         Give a gift…
+      </button>
+      <button className={`${s.btnGhost} ${s.btnSmall}`} onClick={onClose} type="button">
+        Close
+      </button>
+    </div>
+  );
+}
+
+function SprinklerMenu({ state, cell, onTake, onClose, style }: { state: RestiaState; cell: Cell; onTake: () => void; onClose: () => void; style: CSSProperties }) {
+  const tier = plotAt(state, cell.x, cell.y)?.sprinkler;
+  if (!tier) return null;
+  return (
+    <div className={s.contextMenu} style={style}>
+      <div className={s.contextTitle}>{itemDef(sprinklerItem(tier)).name}</div>
+      <div className={s.muted}>Waters {SPRINKLER_AREA[tier]} every morning.</div>
+      <button className={s.btn} onClick={onTake} type="button">
+        Pick up
       </button>
       <button className={`${s.btnGhost} ${s.btnSmall}`} onClick={onClose} type="button">
         Close
@@ -646,13 +727,20 @@ function describe(state: RestiaState, target: Target, hot: Hot): string {
     case "plot": {
       const plot = plotAt(state, target.cell.x, target.cell.y);
       if (!plot) return "";
+      if (plot.sprinkler) return `${itemDef(sprinklerItem(plot.sprinkler)).name} — waters ${SPRINKLER_AREA[plot.sprinkler]} each morning${hot.kind === "tool" ? "" : " · click to pick up"}`;
       if (plot.crop) {
         const def = CROPS[plot.crop.id]!;
+        if (plot.crop.giant !== undefined) return `Giant ${def.name} — click to harvest`;
         if (isRipe(plot)) return `${def.name} — ripe! Click to harvest`;
         return `${def.name}: ${def.days - plot.crop.growth} day(s) to go${plot.watered ? " · watered" : " · needs water"}`;
       }
       if (plot.debris) return plot.debris === "withered" ? "Withered crop" : plot.debris[0]!.toUpperCase() + plot.debris.slice(1);
-      const tool = hot.kind === "tool" ? ` · ${TOOL_LABEL[hot.tool]} (${toolCost(state, hot.tool)} stamina)` : "";
+      const tool =
+        hot.kind === "tool"
+          ? ` · ${TOOL_LABEL[hot.tool]} (${toolCost(state, hot.tool)} stamina)`
+          : hot.kind === "sprinkler" && !plot.tilled
+            ? ` · place ${itemDef(hot.item).name}`
+            : "";
       return `${plot.tilled ? (plot.watered ? "Watered soil" : "Tilled soil") : "Soil"}${tool}`;
     }
     case "exit":
@@ -662,7 +750,8 @@ function describe(state: RestiaState, target: Target, hot: Hot): string {
   }
 }
 
-function Hotbar({ state, hot, onPick, seeds, ferts }: { state: RestiaState; hot: Hot; onPick: (hot: Hot) => void; seeds: string[]; ferts: string[] }) {
+function Hotbar({ state, hot, onPick, seeds, ferts, sprinklers }: { state: RestiaState; hot: Hot; onPick: (hot: Hot) => void; seeds: string[]; ferts: string[]; sprinklers: string[] }) {
+  const shownSprinkler = hot.kind === "sprinkler" ? hot.item : sprinklers[0];
   const seedIndex = hot.kind === "seed" ? seeds.indexOf(hot.item) : -1;
   const nextSeed = seeds.length ? seeds[(seedIndex + 1) % seeds.length]! : null;
   return (
@@ -703,6 +792,25 @@ function Hotbar({ state, hot, onPick, seeds, ferts }: { state: RestiaState; hot:
       >
         <span className={s.hotKey}>7</span>
         {ferts[0] ? <ItemIcon id={hot.kind === "fert" ? hot.item : ferts[0]} size={40} /> : "🧪"}
+      </button>
+      <button
+        className={`${hot.kind === "sprinkler" ? s.hotSlotActive : s.hotSlot} ${s.sprinklerSlot} ${shownSprinkler ? s[`sprinklerTier${ITEMS[shownSprinkler]!.sprinkler}`] ?? "" : ""}`}
+        disabled={!sprinklers.length}
+        onClick={() => sprinklers[0] && onPick({ kind: "sprinkler", item: hot.kind === "sprinkler" ? sprinklers[(sprinklers.indexOf(hot.item) + 1) % sprinklers.length]! : sprinklers[0] })}
+        title={shownSprinkler ? `${itemDef(shownSprinkler).name} x${state.inventory[shownSprinkler] ?? 0}: click an untilled field plot (8 = next sprinkler)` : "Sprinklers (8): forge them at the Smithy"}
+        type="button"
+      >
+        <span className={s.hotKey}>8</span>
+        {shownSprinkler ? (
+          <>
+            <SprinklerSprite size={46} tier={ITEMS[shownSprinkler]!.sprinkler!} />
+            <span className={s.sprinklerLabel}>
+              <b>{TIER_MARK[ITEMS[shownSprinkler]!.sprinkler!]}</b> x{state.inventory[shownSprinkler] ?? 0}
+            </span>
+          </>
+        ) : (
+          <span className={s.sprinklerEmpty}>Sprinkler</span>
+        )}
       </button>
     </div>
   );

@@ -231,7 +231,7 @@ export const REQUESTS_PER_GUILD_LEVEL = [0, 3, 5, 7];
 export type MissionTemplate = { id: string; text: string; key: string; n: [number, number]; ap: number; when?: Condition };
 
 export const MISSIONS: MissionTemplate[] = [
-  { id: "water", text: "Water {n} crops", key: "water", n: [6, 12], ap: 1 },
+  { id: "water", text: "Water {n} plots", key: "water", n: [6, 12], ap: 1 },
   { id: "harvest", text: "Harvest {n} crops", key: "harvest", n: [3, 8], ap: 1 },
   { id: "till", text: "Till {n} plots", key: "till", n: [4, 10], ap: 1 },
   { id: "ship", text: "Ship {n} items (counted when the bin pays out at night)", key: "ship", n: [5, 15], ap: 1 },

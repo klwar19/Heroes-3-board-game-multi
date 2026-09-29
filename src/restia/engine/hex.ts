@@ -1,9 +1,12 @@
 /**
  * Offset hex grid ("odd-r": odd rows are shifted half a hex to the right), the
- * Heroes 3 battlefield layout. Cells are numbered row-major.
+ * Heroes 3 battlefield layout. Cells are numbered row-major on a fixed stride of
+ * the LARGEST board; a smaller battle uses the top-left `battle.cols` x
+ * `battle.rows` of it and every hex outside is `void` (off the board).
  */
-export const BOARD_COLS = 11;
-export const BOARD_ROWS = 7;
+export const BOARD_COLS = 19;
+export const BOARD_ROWS = 11;
+export const BOARD_CELLS = BOARD_COLS * BOARD_ROWS;
 
 export function cellOf(col: number, row: number): number {
   return row * BOARD_COLS + col;
@@ -113,7 +116,9 @@ function cellOfCube(x: number, z: number): number | null {
 
 /**
  * Hexes on the straight line from `a` to `b` (both included). A tiny nudge
- * keeps lines that run exactly along hex edges deterministic.
+ * keeps lines that run exactly along hex edges deterministic; where it would
+ * pick a hex off the board (a line down the jagged west or east edge), the
+ * other hex of the tie is taken, so the line never skips a step.
  */
 export function hexLine(a: number, b: number): number[] {
   const n = hexDistance(a, b);
@@ -123,8 +128,11 @@ export function hexLine(a: number, b: number): number[] {
   const out: number[] = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
-    const [x, , z] = cubeRound(ax + (bx - ax) * t + 1e-6, ay + (by - ay) * t + 2e-6, az + (bz - az) * t - 3e-6);
-    const cell = cellOfCube(x, z);
+    const at = (nudge: number) => {
+      const [x, , z] = cubeRound(ax + (bx - ax) * t + 1e-6 * nudge, ay + (by - ay) * t + 2e-6 * nudge, az + (bz - az) * t - 3e-6 * nudge);
+      return cellOfCube(x, z);
+    };
+    const cell = at(1) ?? at(-1);
     if (cell !== null && out[out.length - 1] !== cell) out.push(cell);
   }
   return out;
@@ -165,10 +173,10 @@ export function stepAway(from: number, target: number): number | null {
 }
 
 /**
- * Cheapest-path reach with per-hex entry costs (Infinity = can't enter).
+ * Cheapest-path reach with per-step costs (`cost(next, from)`, Infinity = can't step there).
  * `stoppable(cell)` says the unit may end there. Returns end cell -> path (excluding start).
  */
-export function reachWeighted(start: number, budget: number, cost: (cell: number) => number, stoppable: (cell: number) => boolean): Map<number, number[]> {
+export function reachWeighted(start: number, budget: number, cost: (cell: number, from: number) => number, stoppable: (cell: number) => boolean): Map<number, number[]> {
   const best = new Map<number, number>([[start, 0]]);
   const previous = new Map<number, number>();
   const open: number[] = [start];
@@ -179,7 +187,7 @@ export function reachWeighted(start: number, budget: number, cost: (cell: number
     const cell = open.splice(index, 1)[0]!;
     const spent = best.get(cell)!;
     for (const next of neighbors(cell)) {
-      const step = cost(next);
+      const step = cost(next, cell);
       if (!Number.isFinite(step)) continue;
       const total = spent + step;
       if (total > budget || total >= (best.get(next) ?? Infinity)) continue;

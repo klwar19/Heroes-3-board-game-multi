@@ -136,6 +136,7 @@ function BagTab({ state, act }: { state: RestiaState; act: Act }) {
               </div>
             ) : null}
             {use?.fertilizer ? <div className={s.muted}>Select it on the farm hotbar (7) and click tilled soil.</div> : null}
+            {def.sprinkler ? <div className={s.muted}>Select it on the farm hotbar (8) and click an untilled, cleared field plot. Click a placed sprinkler by hand to pick it up.</div> : null}
             {use?.bomb || use?.escape ? <div className={s.muted}>Use it from the battle Item menu.</div> : null}
           </>
         ) : (
@@ -600,7 +601,7 @@ function OptionsTab({ onSave }: { onSave: () => void }) {
       <div className={s.card}>
         <h3 className={s.cardTitle}>Controls</h3>
         <div className={s.muted}>
-          Click / tap to walk and interact. Arrow keys or WASD move; E, Space or Enter interacts with what you face. On the farm: 1-5 tools, 6 seeds, 7 fertilizer, 0 hand. Esc opens this menu.
+          Click / tap to walk and interact. Arrow keys or WASD move; E, Space or Enter interacts with what you face. On the farm: 1-5 tools, 6 seeds, 7 fertilizer, 8 sprinklers, 0 hand. Esc opens this menu.
         </div>
         <button className={s.btn} onClick={onSave} style={{ marginTop: 10 }} type="button">
           Save / Export / Quit…

@@ -1170,5 +1170,370 @@
   "key": "hv7-bf-rift",
   "refs": [],
   "prompt": "A cosmic rift beyond the ruins: a floor of floating obsidian tiles, a swirling violet-and-blue starfield with a torn sky and distant galaxies. Wide battle background for a side-view turn-based tactical RPG, the same composition as Heroes of Might and Magic III battlefields: a flat open ground plane seen from a high three-quarter angle fills the lower 70% of the image, the scenery and sky or ceiling fill the top 30%. The central ground area must stay open and uncluttered (units stand on a hex grid there): only low ground texture in the middle, scenery pieces only along the top edge and the far left/right edges. Painted anime JRPG style, rich colour, clear readable ground, no characters, no creatures, no text, no UI, no grid. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-tex-grass-top",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight from above: a lush meadow of short green grass with a few tiny white and yellow flowers, small clover patches and a few pebbles. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-earth-side",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight on: the vertical cut face of an earthen hillside - layered warm brown soil strata with embedded grey stones, small roots and packed clay, like the side of a raised mound of earth. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-snow-top",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight from above: fresh packed snow with soft drifts, a few bits of frosted grass poking through and faint blue shading. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-icerock-side",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight on: a vertical cliff face of cold grey-blue stone with frost, icicle streaks and snow caught in the cracks. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-flagstone-top",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight from above: an old dungeon floor of worn grey flagstones of irregular sizes with thin dark mortar lines, a little moss and dust. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-masonry-side",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight on: a vertical wall of rough-cut grey stone blocks laid in courses, weathered edges, dark mortar, like the side of a raised stone dais. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-ash-top",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight from above: dark volcanic basalt ground dusted with grey ash, with thin glowing orange ember cracks running through it. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-basalt-side",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight on: a vertical cliff face of black-brown basalt columns with faint glowing orange magma veins. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-rift-top",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight from above: strange dark violet stone ground with small glowing purple crystal shards and faint arcane rune scratches. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-tex-rift-side",
+  "refs": [],
+  "prompt": "SEAMLESS TILEABLE TEXTURE for a tactical fantasy RPG battle board (hand-painted anime-RPG style like the battlefields of Heroes of Might and Magic III, soft even daylight). Seen straight on: a vertical cliff face of dark violet-black crystalline rock with glowing magenta crystal veins. The texture must tile seamlessly in both directions: no vignette, no border, no frame, no single focal object, no cast shadows from outside objects, no perspective, evenly detailed across the whole image. No text, no letters, no logo, no watermark. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-skill-bin",
+  "refs": [
+   "raw/hv-battle-bin.png",
+   "refs/cjs-bin.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle. The FIRST reference image is this character's existing battle sprite sheet: draw the SAME character with the exact same look, proportions, colours, outfit, weapon, sprite size and drawing style, so the new frames mix seamlessly with the old ones (young man, spiky black hair, brown leather vest, green tunic, a sword). The SECOND reference shows the character design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: raising his sword high with a cocky grin as small glowing harlequin diamonds pop around him. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Raise the Stage - he stomps and throws both arms up in a showman's pose while small glowing harlequin-diamond sparks burst from the ground at his feet, 8 frames. Row 4: Encore - a full 360-degree spinning sword slash, a ring of glowing playing-card light trailing the blade, 8 frames. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-skill-mitia",
+  "refs": [
+   "raw/hv-battle-mitia.png",
+   "raw/hv5-tachie-mitia.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle. The FIRST reference image is this character's existing battle sprite sheet: draw the SAME character with the exact same look, proportions, colours, outfit, weapon, sprite size and drawing style, so the new frames mix seamlessly with the old ones (girl with very long pale-blue hair, white-and-ice-blue robe, a slim crystal staff). The SECOND reference shows the character design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: twirling her crystal staff and giving a small curtsy as tiny snowflakes sparkle around her. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Glacier Rise - she raises the crystal staff and slams its butt down into the ground, jagged ice crystals sprouting upward from the ground in front of her, 8 frames. Row 4: Avalanche - she sweeps the crystal staff overhead in a wide arc and a rolling wave of snow and ice shards blasts out to the right, 8 frames. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-skill-bowy",
+  "refs": [
+   "raw/hv-battle-bowy.png",
+   "raw/hv5-tachie-bowy.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle. The FIRST reference image is this character's existing battle sprite sheet: draw the SAME character with the exact same look, proportions, colours, outfit, weapon, sprite size and drawing style, so the new frames mix seamlessly with the old ones (boar-headed half-orc marksman with tusks, iron helmet, green tunic, a big crossbow). The SECOND reference shows the character design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: hefting the big crossbow onto his shoulder and pumping his other fist with a proud tusky grin. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Plunging Volley - he kneels, aims the big crossbow steeply up at the sky and fires with heavy recoil, bolts streaking upward, 8 frames. Row 4: Grapple Bolt - he fires a grappling bolt trailing a rope forward and upward, then is yanked forward along the rope, his feet leaving the ground, 8 frames. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-skill-garr",
+  "refs": [
+   "raw/hv-battle-garr.png",
+   "raw/hv5-tachie-garr.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle. The FIRST reference image is this character's existing battle sprite sheet: draw the SAME character with the exact same look, proportions, colours, outfit, weapon, sprite size and drawing style, so the new frames mix seamlessly with the old ones (grey-haired veteran hunter, green fur-collared cloak, hunting blade). The SECOND reference shows the character design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: sheathing his hunting blade and giving a curt satisfied nod with his arms crossed. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Hook Line - he whirls a weighted hook on a rope, throws it forward, then yanks the rope back hard with both hands, 8 frames. Row 4: Pitfall - he kneels and drives a wooden stake into the ground with his palm, the earth in front of him cracking and caving in, 8 frames. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-skill-hilda",
+  "refs": [
+   "raw/hv-battle-hilda.png",
+   "raw/hv5-tachie-hilda.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle. The FIRST reference image is this character's existing battle sprite sheet: draw the SAME character with the exact same look, proportions, colours, outfit, weapon, sprite size and drawing style, so the new frames mix seamlessly with the old ones (tall ash-blonde blacksmith woman, leather apron, iron prosthetic right hand, a heavy forge hammer). The SECOND reference shows the character design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: resting the forge hammer on her shoulder and flexing her iron hand as a few sparks fly. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Earthshaper - she swings the forge hammer down into the ground so rocks and earth burst upward in front of her, 8 frames. Row 4: Seismic Drop - she leaps high with the hammer raised overhead and crashes down hammer-first, dust and rock shards bursting on impact, 8 frames. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-skill-senna",
+  "refs": [
+   "raw/hv6-battle-senna.png",
+   "raw/hv6-tachie-senna.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle. The FIRST reference image is this character's existing battle sprite sheet: draw the SAME character with the exact same look, proportions, colours, outfit, weapon, sprite size and drawing style, so the new frames mix seamlessly with the old ones (lavender-haired spear princess, high ponytail, yellow-and-white kimono battle outfit with black shoulder guards, short white fur mantle, long straight spear). The SECOND reference shows the character design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: spinning her spear once and planting it upright beside her with a confident smile, violet sparkles. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Pinning Charge - she lowers the spear and dashes forward in a fast charge, spear tip leading, speed lines behind her, 8 frames. Row 4: Skyfall Lance - she leaps high and plunges the spear straight downward as she lands, a violet wind burst at the spear tip, 8 frames. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv8-action-icons",
+  "refs": [],
+  "prompt": "ICON SHEET for the battle action bar of a polished anime fantasy tactics RPG (Heroes of Might and Magic III meets Octopath Traveler UI). Layout: exactly 4 columns x 4 rows of equal square cells, ONE icon per cell, centered, filling about 80% of the cell, nothing crossing cell borders. Every icon is a round medallion with a thin ornate gold rim and a dark deep-blue enamel center, with the symbol painted inside in bright polished colours, crisp clean edges, readable at 32 pixels, soft inner glow, no text. Cells in order: 1 two crossed steel swords (Attack); 2 a leather boot with footprints (Move); 3 an open glowing spellbook with a star (Skills); 4 a red potion flask beside a small pouch (Items); 5 a winged boot with speed lines (Sprint); 6 a kite shield with a gold cross (Defend); 7 an hourglass with falling sand (Wait); 8 a white flag on a pole (Flee); 9 a clenched fist wreathed in golden energy (Charge power); 10 a pink heart with a small paw print (Befriend); 11 three swords striking together with a burst (All-out Rush); 12 a setting sun over a horizon line (End turn); 13 a small figure leaping in a dotted arc (Leap); 14 a rocky mound of earth rising with dust (Raise ground); 15 a spear tip with speed lines charging forward (Charge attack); 16 a grappling hook on a rope (Hook). Flat plain light-grey background (#cfcfcf) filling every cell outside the medallions, no grid lines, no shadows on the background, no text, no letters. Output a single 1024x1024 image."
+ },
+ {
+  "key": "hv8-objectives",
+  "refs": [],
+  "prompt": "OBJECTIVE MARKER SPRITE SHEET for a tactical fantasy RPG hex battle board, seen from a high three-quarter front view like Heroes of Might and Magic III battlefields, painted anime-RPG style with clean outlines. Layout: exactly 4 columns x 2 rows of equal square cells, ONE object per cell, centered horizontally, its base resting near the bottom of the cell, nothing crossing a cell border. Cells in order: 1 a tall war banner on a wooden pole planted in a small stone base, the cloth plain undyed grey (neutral); 2 the same banner with a royal blue cloth and a gold star emblem; 3 the same banner with a crimson red cloth and a black horned-skull emblem; 4 a small round stone shrine with a carved basin, dormant, grey stone, no glow; 5 the same shrine glowing with soft blue light and floating blue motes; 6 the same shrine glowing with red light and red motes; 7 a small closed wooden treasure cache chest with iron bands and a faint golden sparkle; 8 the same chest smashed open and empty, broken planks. Flat plain light-grey background (#cfcfcf) filling every cell, no shadows on the background, no text, no grid lines. Output a single 1536x768 image."
+ },
+ {
+  "key": "hv9-front-bin",
+  "refs": [
+   "raw/hv-battle-bin.png",
+   "refs/cjs-bin.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (young man, spiky black hair, brown leather vest, green tunic, a sword); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a quick two-handed sword slash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising his left hand as a glowing harlequin-diamond status window appears. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-mitia",
+  "refs": [
+   "raw/hv-battle-mitia.png",
+   "raw/hv5-tachie-mitia.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (girl with very long pale-blue hair, white-and-ice-blue robe, a slim crystal staff); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - thrusting the crystal staff forward with a burst of ice shards, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising the staff as frost sparkles swirl. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-bowy",
+  "refs": [
+   "raw/hv-battle-bowy.png",
+   "raw/hv5-tachie-bowy.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (boar-headed half-orc marksman with tusks, iron helmet, green tunic, a big crossbow); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - shouldering the big crossbow and firing a bolt with heavy recoil, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising the crossbow high and shouting. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-garr",
+  "refs": [
+   "raw/hv-battle-garr.png",
+   "raw/hv5-tachie-garr.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (grey-haired veteran hunter, green fur-collared cloak, hunting blade); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a fast low hunting-blade slash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of tossing a small pouch and pointing. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-hilda",
+  "refs": [
+   "raw/hv-battle-hilda.png",
+   "raw/hv5-tachie-hilda.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (tall ash-blonde blacksmith woman, leather apron, iron prosthetic right hand, a heavy forge hammer); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a heavy overhead hammer smash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of slamming her iron fist into her palm with sparks. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-senna",
+  "refs": [
+   "raw/hv6-battle-senna.png",
+   "raw/hv6-tachie-senna.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (lavender-haired spear princess, high ponytail, yellow-and-white kimono battle outfit with black shoulder guards, short white fur mantle, long straight spear); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a long reaching spear thrust, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of spinning the spear in a glittering violet arc. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-dain",
+  "refs": [
+   "raw/hv-battle-dain.png",
+   "raw/hv5-tachie-dain.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (copper-haired fighter with scarred cheek, steel breastplate, bastard sword); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a showy sword slash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising the sword as lightning crackles. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-lysa",
+  "refs": [
+   "raw/hv6-battle-lysa.png",
+   "raw/hv6-tachie-lysa.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (pink-haired guild receptionist with a side bun, white capelet dress, blue bow); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a quick slap with a rolled-up ledger, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of holding up a glowing guild seal. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-mara",
+  "refs": [
+   "raw/hv6-battle-mara.png",
+   "raw/hv5-tachie-mara.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (short purple hair with two pom-pom ornaments, white-and-purple wrap top, short fur cloak, pleated skirt, a fan of glowing cards); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - flicking a glowing card forward, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of fanning out glowing cards. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-frida",
+  "refs": [
+   "raw/hv6-battle-frida.png",
+   "raw/hv5-tachie-frida.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (shrine maiden with very long straight black hair and a red hairband, white robe with wide sleeves, deep-red hakama, fur shawl, silver bells); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a sharp swing of a purification wand, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of ringing silver bells as light gathers. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-tilde",
+  "refs": [
+   "raw/hv6-battle-tilde.png",
+   "raw/hv5-tachie-tilde.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (mint-green-haired shopkeeper with a white frilled headdress, black dress and white frilled apron, a teapot); the SECOND reference shows the design in detail. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - swinging the teapot, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of pouring glowing tea. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-frost-wolf",
+  "refs": [
+   "raw/hv-battle-frost-wolf.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME creature as the reference image (its existing side-view battle sprite sheet: match the exact look, proportions, colours, sprite size and drawing style) (a large pale-grey frost wolf with icy blue eyes and frosted fur). This sheet shows the creature seen from a FRONT three-quarter view: the creature faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the creature the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk/trot cycle in that direction, 8 frames. Row 3: a lunging bite, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames throwing its head back in a howl with frosty breath. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-front-frost-rat",
+  "refs": [
+   "raw/hv-battle-frost-rat.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME creature as the reference image (its existing side-view battle sprite sheet: match the exact look, proportions, colours, sprite size and drawing style) (a small plump frost rat with blue-white fur and icy whiskers). This sheet shows the creature seen from a FRONT three-quarter view: the creature faces DOWN-RIGHT toward the viewer (we see the face and chest, the body turned about 45 degrees to the right of the viewer), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the creature the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk/trot cycle in that direction, 8 frames. Row 3: a quick lunging bite, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames squeaking with puffed-up frosty fur. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-bin",
+  "refs": [
+   "raw/hv-battle-bin.png",
+   "refs/cjs-bin.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (young man, spiky black hair, brown leather vest, green tunic, a sword); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a quick two-handed sword slash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising his left hand as a glowing harlequin-diamond status window appears. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-mitia",
+  "refs": [
+   "raw/hv-battle-mitia.png",
+   "raw/hv5-tachie-mitia.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (girl with very long pale-blue hair, white-and-ice-blue robe, a slim crystal staff); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - thrusting the crystal staff forward with a burst of ice shards, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising the staff as frost sparkles swirl. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-bowy",
+  "refs": [
+   "raw/hv-battle-bowy.png",
+   "raw/hv5-tachie-bowy.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (boar-headed half-orc marksman with tusks, iron helmet, green tunic, a big crossbow); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - shouldering the big crossbow and firing a bolt with heavy recoil, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising the crossbow high and shouting. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-garr",
+  "refs": [
+   "raw/hv-battle-garr.png",
+   "raw/hv5-tachie-garr.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (grey-haired veteran hunter, green fur-collared cloak, hunting blade); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a fast low hunting-blade slash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of tossing a small pouch and pointing. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-hilda",
+  "refs": [
+   "raw/hv-battle-hilda.png",
+   "raw/hv5-tachie-hilda.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (tall ash-blonde blacksmith woman, leather apron, iron prosthetic right hand, a heavy forge hammer); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a heavy overhead hammer smash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of slamming her iron fist into her palm with sparks. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-senna",
+  "refs": [
+   "raw/hv6-battle-senna.png",
+   "raw/hv6-tachie-senna.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (lavender-haired spear princess, high ponytail, yellow-and-white kimono battle outfit with black shoulder guards, short white fur mantle, long straight spear); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a long reaching spear thrust, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of spinning the spear in a glittering violet arc. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-dain",
+  "refs": [
+   "raw/hv-battle-dain.png",
+   "raw/hv5-tachie-dain.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (copper-haired fighter with scarred cheek, steel breastplate, bastard sword); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a showy sword slash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of raising the sword as lightning crackles. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-lysa",
+  "refs": [
+   "raw/hv6-battle-lysa.png",
+   "raw/hv6-tachie-lysa.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (pink-haired guild receptionist with a side bun, white capelet dress, blue bow); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a quick slap with a rolled-up ledger, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of holding up a glowing guild seal. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-mara",
+  "refs": [
+   "raw/hv6-battle-mara.png",
+   "raw/hv5-tachie-mara.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (short purple hair with two pom-pom ornaments, white-and-purple wrap top, short fur cloak, pleated skirt, a fan of glowing cards); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - flicking a glowing card forward, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of fanning out glowing cards. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-frida",
+  "refs": [
+   "raw/hv6-battle-frida.png",
+   "raw/hv5-tachie-frida.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (shrine maiden with very long straight black hair and a red hairband, white robe with wide sleeves, deep-red hakama, fur shawl, silver bells); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - a sharp swing of a purification wand, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of ringing silver bells as light gathers. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-tilde",
+  "refs": [
+   "raw/hv6-battle-tilde.png",
+   "raw/hv5-tachie-tilde.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's existing side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (mint-green-haired shopkeeper with a white frilled headdress, black dress and white frilled apron, a teapot); the SECOND reference shows the design in detail. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames. Row 3: main attack - swinging the teapot, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of pouring glowing tea. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-frost-wolf",
+  "refs": [
+   "raw/hv-battle-frost-wolf.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME creature as the reference image (its existing side-view battle sprite sheet: match the exact look, proportions, colours, sprite size and drawing style) (a large pale-grey frost wolf with icy blue eyes and frosted fur). This sheet shows the creature seen from a BACK three-quarter view: the creature faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the creature the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk/trot cycle in that direction, 8 frames. Row 3: a lunging bite, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames throwing its head back in a howl with frosty breath. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-back-frost-rat",
+  "refs": [
+   "raw/hv-battle-frost-rat.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME creature as the reference image (its existing side-view battle sprite sheet: match the exact look, proportions, colours, sprite size and drawing style) (a small plump frost rat with blue-white fur and icy whiskers). This sheet shows the creature seen from a BACK three-quarter view: the creature faces UP-RIGHT away from the viewer (we see the back of the head, the back and the weapon from behind, the body turned about 45 degrees to the right), in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the creature the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk/trot cycle in that direction, 8 frames. Row 3: a quick lunging bite, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames squeaking with puffed-up frosty fur. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-extra-bin",
+  "refs": [
+   "raw/hv-battle-bin.png",
+   "refs/cjs-bin.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's existing battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (young man, spiky black hair, brown leather vest, green tunic, a sword); the SECOND reference shows the design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: twirling his sword once and resting it on his shoulder with a grin. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow), then 4 frames of getting up: the first frame lying flat on the ground, then pushing up to one knee, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up, then a powerful blow with a bright flash on the weapon. Row 4: 4 frames of gathering power (a low braced stance with a golden aura rising around the body), then 4 frames of drinking from a small red potion flask. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-extra-mitia",
+  "refs": [
+   "raw/hv-battle-mitia.png",
+   "raw/hv5-tachie-mitia.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's existing battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (girl with very long pale-blue hair, white-and-ice-blue robe, a slim crystal staff); the SECOND reference shows the design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: tucking her hair behind her ear and hugging her staff. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow), then 4 frames of getting up: the first frame lying flat on the ground, then pushing up to one knee, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up, then a powerful blow with a bright flash on the weapon. Row 4: 4 frames of gathering power (a low braced stance with a golden aura rising around the body), then 4 frames of drinking from a small red potion flask. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-extra-bowy",
+  "refs": [
+   "raw/hv-battle-bowy.png",
+   "raw/hv5-tachie-bowy.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's existing battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (boar-headed half-orc marksman with tusks, iron helmet, green tunic, a big crossbow); the SECOND reference shows the design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: checking and cranking his crossbow string. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow), then 4 frames of getting up: the first frame lying flat on the ground, then pushing up to one knee, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up, then a powerful blow with a bright flash on the weapon. Row 4: 4 frames of gathering power (a low braced stance with a golden aura rising around the body), then 4 frames of drinking from a small red potion flask. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-extra-garr",
+  "refs": [
+   "raw/hv-battle-garr.png",
+   "raw/hv5-tachie-garr.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's existing battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (grey-haired veteran hunter, green fur-collared cloak, hunting blade); the SECOND reference shows the design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: flipping his hunting knife and catching it. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow), then 4 frames of getting up: the first frame lying flat on the ground, then pushing up to one knee, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up, then a powerful blow with a bright flash on the weapon. Row 4: 4 frames of gathering power (a low braced stance with a golden aura rising around the body), then 4 frames of drinking from a small red potion flask. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-extra-hilda",
+  "refs": [
+   "raw/hv-battle-hilda.png",
+   "raw/hv5-tachie-hilda.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's existing battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (tall ash-blonde blacksmith woman, leather apron, iron prosthetic right hand, a heavy forge hammer); the SECOND reference shows the design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: rolling her shoulder and flexing her iron hand. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow), then 4 frames of getting up: the first frame lying flat on the ground, then pushing up to one knee, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up, then a powerful blow with a bright flash on the weapon. Row 4: 4 frames of gathering power (a low braced stance with a golden aura rising around the body), then 4 frames of drinking from a small red potion flask. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-extra-senna",
+  "refs": [
+   "raw/hv6-battle-senna.png",
+   "raw/hv6-tachie-senna.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's existing battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (lavender-haired spear princess, high ponytail, yellow-and-white kimono battle outfit with black shoulder guards, short white fur mantle, long straight spear); the SECOND reference shows the design in detail. Facing RIGHT in every frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: spinning her spear once behind her back. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow), then 4 frames of getting up: the first frame lying flat on the ground, then pushing up to one knee, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up, then a powerful blow with a bright flash on the weapon. Row 4: 4 frames of gathering power (a low braced stance with a golden aura rising around the body), then 4 frames of drinking from a small red potion flask. Flat plain light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv9-sprinklers",
+  "refs": [],
+  "prompt": "FARM OBJECT SPRITE SHEET for a cozy painted farming life-sim (in the spirit of Stardew Valley and Rune Factory, seen from a high three-quarter top-down view, soft painted shading, clean outlines). Layout: exactly 3 columns x 2 rows of equal cells, ONE object per cell, centered, its base near the bottom of the cell, nothing crossing cell borders. Row 1, standing idle on a small patch of dark tilled soil: 1 a simple IRON garden sprinkler - a short riveted iron post with a small four-way brass nozzle head; 2 a SILVER sprinkler - a polished silver post with a round gear-shaped head and eight small nozzles; 3 a MYTHRIL sprinkler - an elegant pale-blue metal post with a glowing blue crystal core in its head and many fine nozzles. Row 2: the same three sprinklers, each spraying fine arcs of sparkling water mist in a circle around it. Flat plain light-grey background (#cfcfcf) filling every cell, no text, no letters, no grid lines. Output a single 1536x1024 image."
  }
 ]

@@ -22,8 +22,11 @@ export const CHARACTERS: Record<CharId, CharacterDef> = {
     skills: [
       { level: 1, skill: "analyze" },
       { level: 1, skill: "powerSlash" },
+      { level: 3, skill: "raiseStage" },
       { level: 4, skill: "quickPatch" },
+      { level: 6, skill: "stageDive" },
       { level: 7, skill: "crossSlash" },
+      { level: 11, skill: "encore" },
       { level: 10, skill: "overclock" },
       { level: 14, skill: "adminStrike" },
       { level: 18, skill: "sudo" }
@@ -48,9 +51,11 @@ export const CHARACTERS: Record<CharId, CharacterDef> = {
       { level: 1, skill: "heal" },
       { level: 1, skill: "holyLight" },
       { level: 3, skill: "acidFlask" },
+      { level: 4, skill: "glacierRise" },
       { level: 5, skill: "blessing" },
       { level: 7, skill: "frostFlask" },
       { level: 9, skill: "healAll" },
+      { level: 11, skill: "avalanche" },
       { level: 13, skill: "radiance" },
       { level: 17, skill: "resurrection" }
     ],
@@ -77,7 +82,9 @@ export const CHARACTERS: Record<CharId, CharacterDef> = {
     resist: { wind: 0.5, earth: 1.5 },
     skills: [
       { level: 1, skill: "aimedShot" },
+      { level: 3, skill: "grappleBolt" },
       { level: 4, skill: "poisonArrow" },
+      { level: 6, skill: "plungingVolley" },
       { level: 8, skill: "galeArrow" },
       { level: 12, skill: "arrowRain" },
       { level: 16, skill: "foxfire" }
@@ -106,7 +113,9 @@ export const CHARACTERS: Record<CharId, CharacterDef> = {
     skills: [
       { level: 1, skill: "huntersStrike" },
       { level: 1, skill: "firstAid" },
+      { level: 3, skill: "hookLine" },
       { level: 4, skill: "sleepGas" },
+      { level: 6, skill: "pitfall" },
       { level: 8, skill: "rally" },
       { level: 13, skill: "deadfall" }
     ],
@@ -133,8 +142,10 @@ export const CHARACTERS: Record<CharId, CharacterDef> = {
     resist: { fire: 0.5, ice: 1.5 },
     skills: [
       { level: 1, skill: "hammerBlow" },
+      { level: 3, skill: "earthshaper" },
       { level: 4, skill: "armorBreak" },
       { level: 8, skill: "groundSlam" },
+      { level: 9, skill: "seismicDrop" },
       { level: 12, skill: "forgeFire" },
       { level: 16, skill: "titanSmash" }
     ],
@@ -162,7 +173,9 @@ export const CHARACTERS: Record<CharId, CharacterDef> = {
     skills: [
       { level: 1, skill: "lanceThrust" },
       { level: 3, skill: "guardUp" },
+      { level: 5, skill: "pinningCharge" },
       { level: 7, skill: "holyLance" },
+      { level: 10, skill: "skyfallLance" },
       { level: 11, skill: "shieldWall" },
       { level: 15, skill: "valiantCharge" }
     ],

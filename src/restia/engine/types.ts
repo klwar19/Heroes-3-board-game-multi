@@ -137,6 +137,8 @@ export type ItemDef = {
   use?: ItemUse;
   equip?: EquipDef;
   seedOf?: CropId;
+  /** Farm sprinkler tier: placed on an empty plot, waters its pattern every morning (engine/farm.ts). */
+  sprinkler?: 1 | 2 | 3;
 };
 
 export type CropDef = {
@@ -147,6 +149,8 @@ export type CropDef = {
   seasons: Season[];
   days: number;
   regrow?: number;
+  /** Nine ripe plants in a 3x3 block may fuse into one giant crop overnight. */
+  giant?: boolean;
   /** Items per harvest [min, max]. */
   yield: [number, number];
   xp: number;
@@ -208,7 +212,11 @@ export type ProjectileId = "arrow" | "fireball" | "ice" | "dark" | "light" | "wi
 export type PassiveId = string;
 export type JobId = string;
 
-export type SkillTarget = "enemy" | "ally" | "self" | "area" | "allEnemies" | "allAllies";
+/** `hex`: any board hex in range (leaps land on an empty one; terrain skills shape it). */
+export type SkillTarget = "enemy" | "ally" | "self" | "area" | "allEnemies" | "allAllies" | "hex";
+
+/** Extra animation rows the main characters have (skill sheets); others fall back to attack/cast. */
+export type SkillSprite = "victory" | "jump" | "skillA" | "skillB";
 
 export type SkillDef = {
   id: SkillId;
@@ -250,10 +258,29 @@ export type SkillDef = {
   crit?: number;
   /** Stat changes on the caster itself (drawbacks, self buffs on attacks). */
   selfMods?: { stat: StatKey; pct: number; turns: number }[];
+  /**
+   * Movement: `leap` jumps to the chosen empty hex (any height, over units and
+   * cliffs) and then hits foes within `radius` of the landing; `dash` charges in
+   * a straight line to the target foe (+15% power per hex travelled; flyers swoop
+   * over units); `blink` teleports to the chosen empty hex (ignores height and
+   * whatever is in between) and then hits foes within `radius` of the arrival.
+   * Two-hex bodies need their whole footprint free, standable and level.
+   */
+  move?: "leap" | "dash" | "blink";
+  /** Raises (+) or lowers (-) the ground of every affected hex, within heights 0-2. */
+  shape?: number;
+  /** Drags each target this many hexes toward the caster. */
+  pull?: number;
+  /** Extra power per level the caster stood above the target when the skill began. */
+  heightPower?: number;
+  /** Arcing shot: ignores line of sight and cover. */
+  indirect?: boolean;
   /** Presentation: impact effect, projectile and sound (sounds manifest key). */
   fx?: FxId;
   projectile?: ProjectileId;
   sfx?: string;
+  /** Presentation: a skill-sheet animation row (main characters). */
+  sprite?: SkillSprite;
 };
 
 /**
@@ -387,6 +414,8 @@ export type MonsterDef = {
   boss?: boolean;
   /** Sprite scale on the battle board (big bosses). */
   scale?: number;
+  /** Occupies two hexes (H3 double-wide creatures): needs two level hexes to stand. */
+  wide?: boolean;
   desc: string;
   passives?: PassiveId[];
   ai?: MonsterAi;
@@ -487,7 +516,8 @@ export type SceneDef = {
 
 export type Debris = "weed" | "stone" | "branch" | "stump" | "boulder" | "withered";
 
-export type CropState = { id: CropId; growth: number; harvests: number };
+/** `giant` = plot index of the top-left cell of the 3x3 giant crop this plant belongs to. */
+export type CropState = { id: CropId; growth: number; harvests: number; giant?: number };
 
 export type Plot = {
   tilled: boolean;
@@ -495,6 +525,8 @@ export type Plot = {
   fertilizer: 0 | 1 | 2;
   crop: CropState | null;
   debris: Debris | null;
+  /** Sprinkler standing on this (untilled, empty) plot. Missing in older saves = none. */
+  sprinkler?: 1 | 2 | 3;
 };
 
 export type Relationship = {
@@ -601,6 +633,8 @@ export type BattleUnit = {
   shield: number;
   /** Undying already used this battle. */
   spent?: boolean;
+  /** Two-hex creature (engine/footprint.ts): `cell` is the head, the tail is behind it. */
+  wide?: boolean;
 };
 
 /** Ground under a hex. `void` is not part of the board; `water` can't be entered. */
@@ -611,11 +645,31 @@ export type PropKind = "rock" | "pillar" | "crates" | "barrel" | "totem";
 
 export type BattleProp = { uid: string; kind: PropKind; cell: number; hp: number; maxHp: number; /** Totems: whose side they empower. */ side?: BattleSide };
 
+/** Board size of a battle: small 11x7, medium 15x9, large 19x11 (engine/battle-field.ts BOARD_SIZES). */
+export type BoardSize = "small" | "medium" | "large";
+
+/**
+ * A battlefield objective. Shrines and banners are captured by whoever ENDS a
+ * turn on them (any hex of its footprint); a cache is opened by the first ally
+ * to enter its hex (bonus loot) or smashed by the first enemy (loot lost).
+ */
+export type BattlePoint = {
+  id: string;
+  kind: "shrine" | "banner" | "cache";
+  cell: number;
+  /** Shrines/banners: the side holding it. Caches: who opened or smashed it. */
+  owner: BattleSide | null;
+  /** Caches: already opened or smashed. */
+  used?: boolean;
+  /** Caches: what an ally finds inside (rolled when the board is built). */
+  reward?: { gold: number; item?: ItemId };
+};
+
 export type BattleWeather = "clear" | "snow" | "blizzard" | "rain" | "storm" | "heat" | "gloom";
 
 /** The Jester System's audience challenge for this fight (Jester Points on success). */
 export type BattleChallenge = {
-  id: "fast" | "weakness" | "crit" | "untouched" | "boom" | "highGround";
+  id: "fast" | "weakness" | "crit" | "untouched" | "boom" | "highGround" | "points";
   text: string;
   target: number;
   progress: number;
@@ -639,14 +693,23 @@ export type BattleRewards = {
   /** Why EXP was reduced, if it was (anti-grind note). */
   expNote?: string;
   challenge?: { text: string; ok: boolean; jp: number };
+  /** Loot from supply caches opened during the fight (already included in `gold` and `items`). */
+  found?: { gold: number; items: Record<ItemId, number> };
 };
 
 export type BattleState = {
+  /** Board size (hexes outside cols x rows are `void`). Absent: small. */
+  size?: BoardSize;
   cols: number;
   rows: number;
   backdrop: string;
   /** Ground by hex (plain ground is absent). */
   tiles: Record<number, TileKind>;
+  /**
+   * Ground height by hex, 1-2 (level ground is absent). Battles saved before
+   * heights existed use the old one-level `high` tile instead.
+   */
+  heights?: Record<number, number>;
   /** Rounds left for temporary tiles made by skills (fire, ice...). */
   tileTimers: Record<number, number>;
   props: BattleProp[];
@@ -662,7 +725,8 @@ export type BattleState = {
   round: number;
   queue: string[];
   active: string | null;
-  turn: { moved: boolean; acted: boolean; waited: boolean; sprinted: boolean; item: boolean };
+  /** `movePts`: movement left this turn (spent per hex by terrain and climbing; can be split around the action). */
+  turn: { moved: boolean; acted: boolean; waited: boolean; sprinted: boolean; item: boolean; movePts: number };
   /** Units that already used Wait this round. */
   waited: string[];
   phase: "turn" | "victory" | "defeat" | "fled";
@@ -677,6 +741,10 @@ export type BattleState = {
   loseScene?: string;
   /** Losing an event battle (spar/exam) does not KO the day. */
   soft?: boolean;
+  /** Objectives on the board (shrines, banners, supply caches). */
+  points?: BattlePoint[];
+  /** Supply-cache loot claimed so far; paid out with the victory rewards (lost on defeat or flight). */
+  loot?: { gold: number; items: Record<ItemId, number> };
 };
 
 export type DungeonMonster = {
@@ -789,6 +857,8 @@ export type RestiaAction =
   | { type: "plant"; item: ItemId; x: number; y: number }
   | { type: "fertilize"; item: ItemId; x: number; y: number }
   | { type: "harvest"; x: number; y: number }
+  | { type: "placeSprinkler"; item: ItemId; x: number; y: number }
+  | { type: "takeSprinkler"; x: number; y: number }
   | { type: "refill" }
   | { type: "ship"; item: ItemId; n: number }
   | { type: "unship"; item: ItemId; n: number }
@@ -839,7 +909,15 @@ export type RestiaAction =
 
 export type BattleAnim =
   | { kind: "move"; uid: string; path: number[] }
-  | { kind: "attack"; uid: string; target: string; anim: "attack" | "cast" | "shoot"; sound?: string }
+  | { kind: "attack"; uid: string; target: string; anim: "attack" | "cast" | "shoot"; sprite?: SkillSprite; sound?: string }
+  /** Jump through the air from one hex to another (skill leaps). */
+  | { kind: "leap"; uid: string; from: number; to: number; sprite: SkillSprite }
+  /** Teleport (blink skills): vanish from `from`, appear on `to` (head hexes). */
+  | { kind: "blink"; uid: string; from: number; to: number }
+  /** A stance with no target: gathering power (Charge: AP carried over) or using an item. */
+  | { kind: "pose"; uid: string; pose: "charge" | "item" }
+  /** The ground of these hexes rises or sinks (heights before and after). */
+  | { kind: "terrain"; changes: { cell: number; from: number; to: number }[] }
   | { kind: "projectile"; from: number; to: number; sprite: ProjectileId; sound?: string }
   | { kind: "fx"; cell: number; fx: FxId; sound?: string }
   | { kind: "sound"; id: string }

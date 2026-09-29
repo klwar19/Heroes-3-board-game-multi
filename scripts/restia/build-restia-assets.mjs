@@ -6,7 +6,7 @@
  * scripts/restia/codex-gen-batch.mjs from the prompts in scripts/restia/codex-jobs.json). This script turns them into the runtime webps under
  * public/assets/restia/ (gitignored; published to R2 with `npm run media:publish`):
  *
- *   node scripts/restia/build-restia-assets.mjs [--only tachie,bin,backdrops,buildings,sheets,battle,battleArt]
+ *   node scripts/restia/build-restia-assets.mjs [--only tachie,bin,backdrops,buildings,sheets,battle,battleArt,feet]
  *
  * Backgrounds are keyed by flood-filling from each cell's border over pixels
  * close to the border's median colour (Codex paints flat backdrops, not alpha).
@@ -424,6 +424,153 @@ async function battleArt() {
   }
 }
 
+/**
+ * Hill textures (hv8-tex-*): tiling tops and cliff sides of raised battle ground,
+ * one set per biome group (see HILL_SET in ui/battle-view.tsx).
+ */
+/** hv8: battle action-bar icons (4x4 medallions) and objective markers (banners, shrines, caches; 4x2). */
+async function hud() {
+  const icons = raw("hv8-action-icons");
+  if (icons) await regrid(icons, 4, 4, 128, "ui/battle-icons.webp", { anchor: "center", keyOpts: { tol: 38, step: 20 } });
+  const objectives = raw("hv8-objectives");
+  if (objectives) await regrid(objectives, 4, 2, 128, "battle/objectives.webp", { anchor: "bottom", keyOpts: { tol: 38, step: 20 } });
+  // Farm sprinklers: 3 tiers idle (row 1) and spraying (row 2).
+  const sprinklers = raw("hv9-sprinklers");
+  if (sprinklers) await regrid(sprinklers, 3, 2, 192, "farm/sprinklers.webp", { anchor: "bottom", keyOpts: { tol: 38, step: 20 } });
+}
+
+async function terrain() {
+  const sets = {
+    grass: ["hv8-tex-grass-top", "hv8-tex-earth-side"],
+    snow: ["hv8-tex-snow-top", "hv8-tex-icerock-side"],
+    stone: ["hv8-tex-flagstone-top", "hv8-tex-masonry-side"],
+    ash: ["hv8-tex-ash-top", "hv8-tex-basalt-side"],
+    rift: ["hv8-tex-rift-top", "hv8-tex-rift-side"]
+  };
+  for (const [set, [top, side]] of Object.entries(sets)) {
+    for (const [face, name] of [["top", top], ["side", side]]) {
+      const file = raw(name);
+      if (!file) continue;
+      await sharp(file).resize(256, 256).webp({ quality: 82 }).toFile(out(`battle/terrain/${set}-${face}.webp`));
+      console.log(`terrain ${set}-${face}`);
+    }
+  }
+}
+
+/**
+ * The main characters' extra moves (hv8-skill-*, 8x4): row 1 = 4 idle frames
+ * (scale reference, same --ref as their main sheet) + 4 victory, row 2 a jump,
+ * rows 3-4 their two signature skills. Written as "<atlas>-sk" (groups 20-23).
+ */
+function skillSheets() {
+  for (const name of ["bin", "mitia", "bowy", "garr", "hilda", "senna"]) {
+    const file = raw(`hv8-skill-${name}`);
+    if (!file) continue;
+    execFileSync(
+      process.execPath,
+      [
+        path.join(ROOT, "scripts", "import-sprite-sheet.mjs"),
+        file,
+        `restia-${name}-sk`,
+        "--grid", "8x4",
+        "--rows", "2:4+20:4;21:8;22:8;23:8",
+        "--ref", "swordsman",
+        "--out-dir", path.join("public", "assets", "restia", "battle"),
+        "--meta", path.join("src", "restia", "data", "battle-atlases.json")
+      ],
+      { cwd: ROOT, stdio: "inherit" }
+    );
+  }
+}
+
+/**
+ * hv9: front and back three-quarter sheets ("<atlas>-front" / "-back", same H3
+ * groups as the side sheet) and the main characters' extra moves ("<atlas>-x":
+ * 30 fidget, 31 dodge, 32 get up, 33 critical strike, 34 power up, 35 potion).
+ */
+function facingSheets() {
+  const scratch = path.join(ROOT, "tmp", "gen", "restia", "facing-atlases.json");
+  fs.writeFileSync(scratch, "{}\n");
+  const scaleOf = (name) => (name === "frost-wolf" ? ["--ref", "boar"] : name === "frost-rat" ? ["--height", "42"] : ["--ref", "swordsman"]);
+  const run = (file, slug, rows, extra) =>
+    execFileSync(
+      process.execPath,
+      [
+        path.join(ROOT, "scripts", "import-sprite-sheet.mjs"),
+        file,
+        slug,
+        "--grid", "8x4",
+        "--rows", rows,
+        ...extra,
+        "--out-dir", path.join("public", "assets", "restia", "battle"),
+        // A scratch file per run, merged once below (rewriting the shared atlas file dozens of times hits file locks).
+        "--meta", scratch
+      ],
+      { cwd: ROOT, stdio: "inherit" }
+    );
+  const names = ["bin", "mitia", "bowy", "garr", "hilda", "senna", "dain", "lysa", "mara", "frida", "tilde", "frost-wolf", "frost-rat"];
+  for (const view of ["front", "back"]) {
+    for (const name of names) {
+      const file = raw(`hv9-${view}-${name}`);
+      if (file) run(file, `restia-${name}-${view}`, "2:8;0:8;12:8;3:4+18:4", ["--copy", "11=12,13=12,17=18,19=18", ...scaleOf(name)]);
+    }
+  }
+  for (const name of names.slice(0, 6)) {
+    const file = raw(`hv9-extra-${name}`);
+    if (file) run(file, `restia-${name}-x`, "30:8;31:4+32:4;33:8;34:4+35:4", ["--standing", "30", ...scaleOf(name)]);
+  }
+  const target = path.join(ROOT, "src", "restia", "data", "battle-atlases.json");
+  const merged = { ...JSON.parse(fs.readFileSync(target, "utf8")), ...JSON.parse(fs.readFileSync(scratch, "utf8")) };
+  fs.writeFileSync(target, JSON.stringify(merged, null, 2) + "\n");
+  console.log(`merged ${Object.keys(JSON.parse(fs.readFileSync(scratch, "utf8"))).length} atlases`);
+}
+
+/**
+ * The Codex sheets don't draw every row on the same ground line (a wolf's walk
+ * row sits higher in its frames than its standing row). Record each row's own
+ * ground line (the lowest opaque pixel row over its frames) as `foot`, so the
+ * game stands every row on the hex. Rows cut off by the frame edge are left alone.
+ */
+async function feet() {
+  const target = path.join(ROOT, "src", "restia", "data", "battle-atlases.json");
+  const atlases = JSON.parse(fs.readFileSync(target, "utf8"));
+  let changed = 0;
+  for (const [name, atlas] of Object.entries(atlases)) {
+    if (!name.startsWith("restia-")) continue;
+    const file = path.join(ROOT, "public", atlas.image.replace(/^\//, ""));
+    if (!fs.existsSync(file)) continue;
+    const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const bottomOf = (x0, y0) => {
+      for (let y = atlas.frameHeight - 1; y >= 0; y--) {
+        let solid = 0;
+        for (let x = 0; x < atlas.frameWidth; x++) {
+          const px = x0 + x;
+          const py = y0 + y;
+          if (px < info.width && py < info.height && data[(py * info.width + px) * 4 + 3] > 60) solid++;
+        }
+        // A couple of stray pixels aren't a foot.
+        if (solid >= 3) return y;
+      }
+      return -1;
+    };
+    for (const group of Object.values(atlas.groups)) {
+      let foot = -1;
+      for (let frame = 0; frame < group.frames; frame++) {
+        const cell = group.start === undefined ? null : group.start + frame;
+        const x0 = (cell === null ? frame : cell % atlas.columns) * atlas.frameWidth;
+        const y0 = (cell === null ? group.row : Math.floor(cell / atlas.columns)) * atlas.frameHeight;
+        foot = Math.max(foot, bottomOf(x0, y0));
+      }
+      const before = group.foot;
+      if (foot < 0 || foot >= atlas.frameHeight - 2 || Math.abs(foot - atlas.anchorY) < 2) delete group.foot;
+      else group.foot = foot;
+      if (before !== group.foot) changed++;
+    }
+  }
+  fs.writeFileSync(target, JSON.stringify(atlases, null, 2) + "\n");
+  console.log(`feet: ${changed} rows updated`);
+}
+
 function battle() {
   const rows = "2:8;0:8;12:8;3:4+4:4;5:8;7:4+18:4";
   // [name, scale option]: party and the rival match an H3 swordsman; the frost beasts are animals.
@@ -474,4 +621,10 @@ if (want("buildings")) await buildings();
 if (want("sheets")) await sheets();
 if (want("battle")) battle();
 if (want("battleArt")) await battleArt();
+if (want("terrain")) await terrain();
+if (want("hud")) await hud();
+if (want("skillSheets")) skillSheets();
+if (want("facingSheets")) facingSheets();
+// Any rebuilt sheet gets its ground lines measured again.
+if (want("feet") || want("battle") || want("skillSheets") || want("facingSheets")) await feet();
 console.log("done");

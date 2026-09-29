@@ -123,6 +123,13 @@ export const FX_SHEET = (id: FxId) => A(`${R}/fx/${id}.webp`);
 export const PROJECTILE_SHEET = (id: ProjectileId) => A(`${R}/fx/proj-${id}.webp`);
 /** Battle props and ground pieces: 4x4 sheet (see PROP_FRAME in battle-view). */
 export const PROPS_SHEET = A(`${R}/battle/props.webp`);
+/** Farm sprinklers: tiers I-III idle (row 1) and spraying (row 2), 3x2. */
+export const SPRINKLER_SHEET = A(`${R}/farm/sprinklers.webp`);
+/** Battle action-bar icons (4x4) and objective markers (banners, shrines, caches; 4x2). */
+export const BATTLE_ICONS = A(`${R}/ui/battle-icons.webp`);
+export const OBJECTIVES_SHEET = A(`${R}/battle/objectives.webp`);
+/** Tiling textures of raised battle ground (hilltops and their cliff sides). */
+export const HILL_TEXTURE = (set: string, face: "top" | "side") => A(`${R}/battle/terrain/${set}-${face}.webp`);
 
 export const MUSIC = (name: string) => A(`/sounds/music/${name}.mp3`);
 export const SFX = {

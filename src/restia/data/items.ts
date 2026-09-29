@@ -16,7 +16,7 @@ function c(index: number): IconRef {
   return { sheet: "c", index };
 }
 
-type Extra = Partial<Pick<ItemDef, "buy" | "tags" | "use" | "equip" | "seedOf">>;
+type Extra = Partial<Pick<ItemDef, "buy" | "tags" | "use" | "equip" | "seedOf" | "sprinkler">>;
 
 function item(
   id: string,
@@ -105,6 +105,16 @@ const FARM: ItemDef[] = [
   }),
   item("growthElixir", "Growth Elixir", "farm", 80, c(23), "Alchemical fertilizer: crops grow an extra day more often.", {
     use: { fertilizer: 2 }
+  }),
+  // Sprinklers (forged at the Smithy; data/recipes.ts). They reuse the watering-can icon.
+  item("sprinkler1", "Iron Sprinkler", "farm", 100, a(27), "Place it on a cleared, untilled field plot (farm hotbar 8). Every morning it waters the 4 plots next to it (up, down, left, right).", {
+    sprinkler: 1
+  }),
+  item("sprinkler2", "Silver Sprinkler", "farm", 350, a(27), "Place it on a cleared, untilled field plot (farm hotbar 8). Every morning it waters the 8 plots around it.", {
+    sprinkler: 2
+  }),
+  item("sprinkler3", "Mythril Sprinkler", "farm", 900, a(27), "Place it on a cleared, untilled field plot (farm hotbar 8). Every morning it waters every plot in the 5x5 square around it.", {
+    sprinkler: 3
   }),
   item("dawnCharm", "Star Charm", "special", 500, a(31), "A little star charm on a bracelet. Some things are worth trying twice. Give it to someone at 8 hearts to confess.", { buy: 1000 }),
   item("eternalRing", "Eternal Ring", "special", 2500, a(32), "A northern silver ring set with a star-stone. Give it to your sweetheart at 10 hearts to propose.", {}),

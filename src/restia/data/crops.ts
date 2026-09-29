@@ -1,5 +1,8 @@
 import type { CropDef, Debris, Season } from "../engine/types";
 
+/** One single-harvest crop per season can fuse into a giant crop (engine/farm.ts). */
+const GIANT_CROPS = new Set(["potato", "melon", "pumpkin", "snowRadish"]);
+
 /**
  * Crops. `sprite` indexes the 6x6 farm sheet (row-major): each crop has a
  * crop-specific "growing" and "ripe" cell; the first half of growth uses the
@@ -31,6 +34,7 @@ export const CROPS: Record<string, CropDef> = Object.fromEntries(
       seasons,
       days,
       ...(regrow ? { regrow } : {}),
+      ...(GIANT_CROPS.has(id) ? { giant: true } : {}),
       yield: yieldRange,
       xp,
       sprite: { growing: cell, ripe: cell + 1 }
