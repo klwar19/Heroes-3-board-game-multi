@@ -55,23 +55,28 @@ const RUNE_LEVEL_EFFECTS: { name: string; modifier: ActiveEffectModifier }[] = [
   { name: "Rune Ward", modifier: { type: "DEFENSE_BONUS", amount: RUNE_LEVEL_BONUS.defense } }
 ];
 
-/** Rune Ritual rider: +1 Speed (Initiative) for the Rune Keeper at Level 1. */
-const RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME = "Rune Keeper's Rune Swiftness";
-/** The former +1 Attack rider's name, still cleared if a save carries it. */
-const LEGACY_RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME = "Rune Keeper's Rune Power";
-/** Rune Ritual: the living Rune Keeper may heal 1 HP each time a Rune Level is reached. */
-export const RUNE_KEEPER_MEND_ABILITY_ID = "commander-rune-ritual-mend";
+/**
+ * Former Rune Ritual Level-1 riders of the Rune Keeper commander: +1 Speed
+ * (user ruling 2026-09-27) and, before that, +1 Attack. Rune Ritual is now ONLY
+ * "+1 Rune per move, +3 Runes per attack received" (user ruling 2026-09-30), so
+ * neither rider is created any more; the names stay here so a save carrying one
+ * still has it cleared (never kept forever). The Level-reached 1-HP heal
+ * ("commander-rune-ritual-mend") was removed by the same ruling.
+ */
+const LEGACY_RUNE_KEEPER_LEVEL_ONE_EFFECT_NAMES = [
+  "Rune Keeper's Rune Swiftness",
+  "Rune Keeper's Rune Power"
+] as const;
 
 /** The names of every Rune buff — the set this module owns and clears. */
-const RUNE_EFFECT_NAMES = new Set([
+const RUNE_EFFECT_NAMES = new Set<string>([
   ...RUNE_LEVEL_EFFECTS.map((spec) => spec.name),
-  RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME,
-  LEGACY_RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME
+  ...LEGACY_RUNE_KEEPER_LEVEL_ONE_EFFECT_NAMES
 ]);
 
 /**
  * Strips a player's Rune buffs out of `state.activeEffects` (the army-wide
- * level effects plus the Rune Keeper's unit-scoped Level-1 rider). Used to
+ * level effects plus the retired Rune Keeper Level-1 riders). Used to
  * make seeding idempotent: a Rune buff that leaked from a PRIOR combat (a
  * Retreat/Surrender/Give-up ends combat without expiring combat-scoped effects)
  * is cleared before the new battle re-seeds, so a second copy is never stacked
@@ -158,61 +163,8 @@ function syncRuneEffects(state: GameState, playerId: PlayerId, target: number): 
       playerId
     );
     state.activeEffects.push(effect);
-    const commander = Object.values(state.combat?.units ?? {}).find(
-      (unit) =>
-        unit.controllerId === playerId &&
-        unit.commanderSlug === "bulwark" &&
-        unit.damage < unit.maxHealth
-    );
-    // Rune Ritual (user 2026-09-27): EVERY Rune Level reached lets the living
-    // Rune Keeper heal a friendly unit 1 HP (an optional pick of a damaged ally,
-    // itself included). Queued like the other post-action heal picks; pushed
-    // directly because elemental-veterancy already imports this module.
-    if (commander && state.combat && !state.combat.outcome) {
-      (state.combat.elementalChoices ??= []).push({
-        kind: "heal",
-        unitId: commander.id,
-        abilityId: RUNE_KEEPER_MEND_ABILITY_ID,
-        amount: 1,
-        alliesOnly: true,
-        optional: true
-      });
-    }
-    // Rune Power grants the whole army +1 Attack. Rune Ritual gives the living
-    // Rune Keeper +1 Speed (Initiative) as soon as that Level-1 threshold is crossed.
-    if (nextLevel === 1) {
-      if (commander) {
-        const commanderEffect = makeActiveEffect(
-          state,
-          {
-            name: RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME,
-            scope: "unit",
-            modifiers: [{ type: "INITIATIVE_BONUS", amount: 1 }],
-            duration: { type: "combat" },
-            polarity: "positive",
-            removable: false
-          },
-          { type: "system" },
-          playerId,
-          { type: "unit", unitId: commander.id }
-        );
-        state.activeEffects.push(commanderEffect);
-        appendEvent(state, {
-          type: "ACTIVE_EFFECT_CREATED",
-          effectId: commanderEffect.id,
-          controllerId: playerId,
-          name: `${RUNE_KEEPER_LEVEL_ONE_EFFECT_NAME} (Rune Level 1)`,
-          duration: commanderEffect.duration
-        });
-        appendEvent(state, {
-          type: "UNIT_ABILITY_TRIGGERED",
-          unitId: commander.id,
-          abilityId: "commander-rune-ritual-swiftness",
-          targetUnitId: commander.id,
-          message: `${commander.cardName}'s Rune Ritual: +1 Speed at Rune Level 1.`
-        });
-      }
-    }
+    // Rune Ritual (the Rune Keeper commander) adds nothing on a Level climb any
+    // more (user ruling 2026-09-30): no Keeper-only Speed, no 1-HP heal pick.
     entry.appliedLevel = nextLevel;
     appendEvent(state, {
       type: "ACTIVE_EFFECT_CREATED",

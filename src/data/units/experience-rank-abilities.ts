@@ -830,7 +830,38 @@ export function rankScheduleFor(unitDefId: string, side: RankScheduleSide = "fac
   return schedule;
 }
 
+/**
+ * Vampires only (user ruling 2026-09-30): their R2 "Undying Resilience" also
+ * triggers on a "0" Attack die, so the shared Zombie id is swapped for the
+ * Vampire-only one IN PLACE (same slot, same fallback order). Rank abilities
+ * are re-derived from this schedule at every combat start, so an existing
+ * Vampire veteran picks the new rule up with no re-pick; unit-abilities'
+ * getDefenseBonusOnAttackDie also reads a legacy id already folded into an
+ * in-progress combat as the Vampire rule.
+ */
+export const VAMPIRE_UNIT_DEF_IDS: ReadonlySet<string> = new Set(["necropolis.vampires", "neutral.vampires"]);
+const VAMPIRE_RANK_ABILITY_SWAPS: Readonly<Record<string, string>> = {
+  "zombie-resilience-weak": "vampire-undying-resilience"
+};
+
+function swapVampireRankAbilities(unitDefId: string, schedule: RankSchedule): RankSchedule {
+  if (!VAMPIRE_UNIT_DEF_IDS.has(unitDefId)) return schedule;
+  const swapStep = (step: RankStep): RankStep =>
+    step.kind === "stats"
+      ? step
+      : {
+          ...step,
+          choices: step.choices.map((id) => VAMPIRE_RANK_ABILITY_SWAPS[id] ?? id),
+          ...(step.grants ? { grants: step.grants.map((id) => VAMPIRE_RANK_ABILITY_SWAPS[id] ?? id) } : {})
+        };
+  return { 1: swapStep(schedule[1]), 2: swapStep(schedule[2]), 3: swapStep(schedule[3]), 4: swapStep(schedule[4]) };
+}
+
 function computeRankSchedule(unitDefId: string): RankSchedule {
+  return swapVampireRankAbilities(unitDefId, computeBaseRankSchedule(unitDefId));
+}
+
+function computeBaseRankSchedule(unitDefId: string): RankSchedule {
   const flavour = inferFlavour(unitDefId);
   const customRankThree = customVeterancyStep(unitDefId, 3);
   const rankThree = customRankThree ?? explicitRankThree(unitDefId) ??
@@ -1175,6 +1206,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "kansen-full-barrage": "/assets/ui/rank-ability/full-barrage.webp",
   "kansen-fleet-formation": "/assets/ui/rank-ability/fleet-formation.webp",
   "zombie-resilience-weak": "/assets/ui/rank-ability/resilience.webp",
+  "vampire-undying-resilience": "/assets/ui/rank-ability/resilience.webp",
   "zombie-resilience": "/assets/ui/rank-ability/resilience.webp",
   "wraith-heal-1": "/assets/ui/rank-ability/soul-mend.webp",
   "wraith-heal-2": "/assets/ui/rank-ability/regeneration-2.webp",

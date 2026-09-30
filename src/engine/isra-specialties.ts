@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { combatGeometry, getBattlefieldPositions, isBattlefieldPosition } from "./battlefield";
+import { combatGeometry, getBattlefieldDistance, getBattlefieldPositions, isBattlefieldPosition } from "./battlefield";
 import { battlefieldTokenCells, footprintAt, unitCells, unitTailOffset } from "./hex-footprint";
 import { siegeGatePositions } from "./siege";
 import type { CardId, CombatUnitState, GameState, PlayerId } from "./state";
@@ -27,8 +27,36 @@ export function israRemovedUnits(state: GameState, playerId: PlayerId): CombatUn
         unit.variant !== "few" || unit.damage < unit.maxHealth) return false;
     const armyCard = player.army.find((card) => card.id === unit.armyUnitId);
     const tier = unit.unitDefId ? coreUnitDefinitions[unit.unitDefId]?.tier : undefined;
-    return armyCard?.side === "few" && (tier === "bronze" || tier === "silver");
+    // "Except Pack" reads the side the unit was removed on (`variant`, checked
+    // above). A Pack CARD that was flipped to its Few side and then destroyed
+    // was a Few unit when it left the board, so it returns (as that Few side).
+    // Requiring the army card itself to be Few (the old read) meant a Pack card
+    // (the usual Necropolis army after Necromancy) could never return.
+    // Neutral / Creature-Bank cards stay excluded.
+    return (armyCard?.side === "few" || armyCard?.side === "pack") && (tier === "bronze" || tier === "silver");
   });
+}
+
+/**
+ * Where a removed unit may return (user ruling 2026-09-30): its OLD space (the
+ * head position it held when removed) when that space is free; otherwise the
+ * nearest free spaces, i.e. every free anchor at the smallest board distance
+ * from the old space that has any (orthogonal steps on the 4x5 grid, hex
+ * distance on the hex board). A double-wide unit needs its whole footprint free.
+ */
+export function israReturnPositions(state: GameState, unit: CombatUnitState): number[] {
+  const free = israEmptyPositions(state, unit);
+  if (free.includes(unit.position)) return [unit.position];
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const position of free) {
+    nearest = Math.min(nearest, getBattlefieldDistance(unit.position, position));
+  }
+  return free.filter((position) => getBattlefieldDistance(unit.position, position) === nearest);
+}
+
+/** Removed units that have at least one space to return to. */
+export function israReturnableUnits(state: GameState, playerId: PlayerId): CombatUnitState[] {
+  return israRemovedUnits(state, playerId).filter((unit) => israReturnPositions(state, unit).length > 0);
 }
 
 export function israEmptyPositions(

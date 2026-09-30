@@ -210,7 +210,7 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     expect(state.players.p2.production.gold).toBe(baselineP2); // p2 back to baseline, not below
   });
 
-  it("a captor may add a bronze Stack for half cost, rounded up, and removes the old income", () => {
+  it("a captor adds a bronze Stack paying N gold for the Nth layer, and removes the old income", () => {
     const state = createAdventureGameState({
       seed: "settlement-stack-capture",
       rollFirstPlayer: false,
@@ -219,10 +219,12 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     const field = injectSettlement(state, "p1", true);
     field.settlementResource = "gold";
     state.players.p1.production.gold = 7;
-    // Escalating Stack price (USER RULING 2026-09-29): the card's 3rd layer
-    // costs 3 gold, so half rounded up = 2 (rounding down would charge 1).
+    // USER RULING 2026-09-30: the settlement covers the Stack − Group
+    // difference, so the card's 2nd layer (Group 3 + 2) pays only 2 gold.
+    // CONTROLs: the retired half-of-ladder charged ceil(2 / 2) = 1, and half of
+    // the new full price would be ceil(5 / 2) = 3.
     state.players.p2.army = [
-      { id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack", stacks: 2 }
+      { id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack", stacks: 1 }
     ];
     state.players.p2.resources.gold = 10;
 
@@ -233,17 +235,64 @@ describe("settlement re-visit and capture (real visit flow)", () => {
         legal.label.includes("Stack") &&
         legal.label.includes("Skeletons")
     );
-    expect(stack?.label).toContain("2 gold");
+    expect(stack?.label).toBe("Add a Stack to Skeletons (2 gold)");
     resolveVisitStep(
       state,
       stack!.action as Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>
     );
 
     expect(state.players.p2.resources.gold).toBe(8);
-    expect(state.players.p2.army[0].stacks).toBe(3);
+    expect(state.players.p2.army[0].stacks).toBe(2);
     expect(field.flagOwnerId).toBe("p2");
     expect(field.settlementResource).toBeNull();
     expect(state.players.p1.production.gold).toBe(2);
+  });
+
+  it("a settlement's FIRST flag Stack still pays N gold (1 for layer 1) — only the Few→Pack flip is free", () => {
+    const state = createAdventureGameState({
+      seed: "settlement-stack-first-flag",
+      rollFirstPlayer: false,
+      houseRules: { "polish-unit-stacks": true }
+    });
+    const field = injectSettlement(state, null, false);
+    state.players.p1.army = [
+      { id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack", stacks: 0 },
+      { id: "zombie-few", unitDefId: "necropolis.zombies", side: "few" }
+    ];
+    state.players.p1.resources.gold = 10;
+
+    visit(state, "p1", field);
+    const labels = getLegalActions(state, "p1").map((legal) => legal.label);
+    expect(labels).toContain("Add a Stack to Skeletons (1 gold)");
+    expect(labels, "CONTROL: the first-flag Stack is no longer free").not.toContain("Add a Stack to Skeletons for free");
+    expect(labels, "CONTROL: the first-flag Few→Pack flip stays free").toContain("Reinforce Zombies for free");
+
+    const stack = getLegalActions(state, "p1").find((legal) => legal.label === "Add a Stack to Skeletons (1 gold)")!;
+    resolveVisitStep(state, stack.action as Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>);
+    expect(state.players.p1.resources.gold).toBe(9);
+    expect(state.players.p1.army[0].stacks).toBe(1);
+    expect(field.flagOwnerId).toBe("p1");
+    expect(field.everFlagged).toBe(true);
+  });
+
+  it("CONTROL: with no gold the first-flag Stack is neither offered nor accepted", () => {
+    const state = createAdventureGameState({
+      seed: "settlement-stack-first-flag-broke",
+      rollFirstPlayer: false,
+      houseRules: { "polish-unit-stacks": true }
+    });
+    const field = injectSettlement(state, null, false);
+    state.players.p1.army = [{ id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack", stacks: 0 }];
+    state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+
+    visit(state, "p1", field);
+    expect(getLegalActions(state, "p1").some((legal) => legal.label.includes("Add a Stack to Skeletons"))).toBe(false);
+    // Option 3 = the first (only) Stack target: forged, it must throw, not flag for free.
+    expect(() =>
+      resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 3 })
+    ).toThrow(/1 gold/);
+    expect(state.players.p1.army[0].stacks ?? 0).toBe(0);
+    expect(field.flagOwnerId).toBeNull();
   });
 
   it("still offers the full choice on the very first flag", () => {

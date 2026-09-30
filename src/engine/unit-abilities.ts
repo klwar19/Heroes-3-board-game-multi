@@ -1,5 +1,6 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { VAMPIRE_UNIT_DEF_IDS } from "@/data/units/experience-rank-abilities";
 import { hasToken } from "./tokens";
 import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, GameState, SpellSchool, UnitId, UnitType } from "./state";
 import { isAdjacent } from "./battlefield";
@@ -652,7 +653,18 @@ export function getAttackBonusVsDefenderName(attacker: CombatUnitState, defender
  * whose resolved Attack die is within an ability's [minRoll, maxRoll] window.
  */
 export function getDefenseBonusOnAttackDie(defender: CombatUnitState, roll: number): number {
-  return getAbilitiesWithEffect(defender, "DEFENSE_BONUS_ON_ATTACK_DIE").reduce(
+  let abilities = getAbilitiesWithEffect(defender, "DEFENSE_BONUS_ON_ATTACK_DIE");
+  // Vampires (user ruling 2026-09-30): a veteran Vampire whose in-progress
+  // combat still carries the legacy Zombie id reads it as the Vampire-only
+  // "0 or +1" Undying Resilience; one copy only if both ids are present.
+  if (defender.unitDefId && VAMPIRE_UNIT_DEF_IDS.has(defender.unitDefId)) {
+    const vampire = unitAbilities["vampire-undying-resilience"];
+    const seen = new Set<string>();
+    abilities = abilities
+      .map((ability) => (ability.id === "zombie-resilience-weak" && vampire ? vampire : ability))
+      .filter((ability) => !seen.has(ability.id) && Boolean(seen.add(ability.id)));
+  }
+  return abilities.reduce(
     (total, ability) =>
       ability.effect?.type === "DEFENSE_BONUS_ON_ATTACK_DIE" &&
       roll >= ability.effect.minRoll &&

@@ -637,7 +637,7 @@ describe("Skeletons necro-reinforce", () => {
     expect(state.players.p1.resources.gold).toBe(goldBefore);
   });
 
-  it("with polish-unit-stacks ON, also offers a FREE Stack layer (user ruling 2026-08-20)", () => {
+  it("with polish-unit-stacks ON, also offers a Stack layer (2026-08-20) that pays only N gold (2026-09-30)", () => {
     const state = createAdventureGameState({
       seed: "skeleton-stack",
       difficulty: "normal",
@@ -660,10 +660,14 @@ describe("Skeletons necro-reinforce", () => {
     // The first Stack option sits right after the Few→Pack flips.
     const targetId = stackTargets[0]!;
     const before = state.players.p1.army.find((unit) => unit.id === targetId)!.stacks ?? 0;
-    resolveSkeletonReinforceChoice(state, "p1", choice.skeletonReinforce!.armyUnitIds.length);
+    // USER RULING 2026-09-30: the reward covers the Stack − Group difference;
+    // the player pays the ladder part, N gold for the card's Nth layer.
+    const optionIndex = choice.skeletonReinforce!.armyUnitIds.length;
+    expect(choice.options[optionIndex]?.label).toMatch(new RegExp(`\\(${before + 1} gold\\)$`));
+    resolveSkeletonReinforceChoice(state, "p1", optionIndex);
     const after = state.players.p1.army.find((unit) => unit.id === targetId)!.stacks ?? 0;
-    expect(after, "one free Stack layer is added").toBe(before + 1);
-    expect(state.players.p1.resources.gold, "the Stack layer costs nothing").toBe(goldBefore);
+    expect(after, "one Stack layer is added").toBe(before + 1);
+    expect(state.players.p1.resources.gold, "the Stack layer costs N gold, not free").toBe(goldBefore - (before + 1));
   });
 
   it("CONTROL: with polish-unit-stacks OFF, no Stack option is offered", () => {

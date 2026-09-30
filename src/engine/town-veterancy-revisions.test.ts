@@ -21,7 +21,7 @@ import {
 import { effectiveInitiative, getActiveAttackBonus, makeActiveEffect } from "./active-effects";
 import { canUnitMoveAndAttack, getLegalMoveDestinations } from "./legal-actions";
 import { footprintAt } from "./hex-footprint";
-import { gainRunes } from "./runes";
+import { gainRunes, seedRunesForCombat } from "./runes";
 import { noteUnitDamagedForTokens, placeCombatToken, PETRIFYING_CURSE_SOURCE, unitIsPetrified } from "./tokens";
 import { DEVIL_LUCK_CURSE_NAME } from "./town-veterancy";
 import type { CommanderSlug } from "@/data/commanders";
@@ -479,40 +479,57 @@ function keeperSandbox(slug: CommanderSlug, runes: { count: number; appliedLevel
   return { state, commanderId: commander.id };
 }
 
-describe("Rune Keeper — Rune Ritual", () => {
-  it("Level 1: +1 Speed (not +1 Attack) and a 1-HP heal pick on a damaged ally", () => {
+describe("Rune Keeper — Rune Ritual (user ruling 2026-09-30: ONLY +1 Rune per move, +3 per attack received)", () => {
+  it("Level 1 reached by the Keeper's move: no Keeper-only +1 Speed and no 1-HP heal pick", () => {
     const { state, commanderId } = keeperSandbox("bulwark", { count: 8, appliedLevel: 0 });
     const baseInitiative = effectiveInitiative(state.combat!.units[commanderId], state.activeEffects, state.combat);
-    // The commander's move banks the ninth Rune.
-    let next = applyOk(state, { type: "MOVE_UNIT", playerId: "p1", unitId: commanderId, destination: 10 });
+    // The commander's move banks the ninth Rune (the +1-per-move half still works).
+    const next = applyOk(state, { type: "MOVE_UNIT", playerId: "p1", unitId: commanderId, destination: 10 });
     expect(next.combat!.runes!.p1.appliedLevel).toBe(1);
     const commander = next.combat!.units[commanderId];
-    expect(effectiveInitiative(commander, next.activeEffects, next.combat) - baseInitiative).toBe(1);
-    // Only the army-wide Rune Power +1 Attack; the old Keeper-only +1 Attack is gone.
+    // Removed rider: the Keeper's Initiative is unchanged (was +1).
+    expect(effectiveInitiative(commander, next.activeEffects, next.combat) - baseInitiative).toBe(0);
+    expect(next.activeEffects.some((effect) => effect.name === "Rune Keeper's Rune Swiftness")).toBe(false);
+    // The army-wide Level 1 Rune Power (+1 Attack) is untouched.
     expect(getActiveAttackBonus(next, { attacker: commander, defender: next.combat!.units[DEFENDER], attackKind: "melee" })).toBe(1);
-
-    const request = elementalRequest(next);
-    expect(request?.request).toMatchObject({ kind: "heal", abilityId: "commander-rune-ritual-mend", amount: 1 });
-    expect(request?.picks).toEqual([{ targetId: ATTACKER }, { skip: true }]);
-    next = choose(next, 0);
-    expect(next.combat!.units[ATTACKER].damage).toBe(1);
-    expect(next.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "commander-rune-ritual-mend" && event.targetUnitId === ATTACKER)).toBe(true);
+    // Removed rider: no heal pick is queued (the damaged ally stays damaged).
+    expect(elementalRequest(next)).toBeUndefined();
+    expect(next.combat!.elementalChoices ?? []).toEqual([]);
+    expect(next.combat!.units[ATTACKER].damage).toBe(2);
   });
 
-  it("every Rune Level offers the heal again; another commander reaching the Level gets nothing", () => {
+  it("later Rune Levels queue nothing either", () => {
     const { state, commanderId } = keeperSandbox("bulwark", { count: 8, appliedLevel: 1 }, true);
     const next = applyOk(state, { type: "MOVE_UNIT", playerId: "p1", unitId: commanderId, destination: 10 });
     expect(next.combat!.runes!.p1.appliedLevel).toBe(2);
-    expect(elementalRequest(next)?.request).toMatchObject({ kind: "heal", abilityId: "commander-rune-ritual-mend" });
-
-    const paladin = keeperSandbox("paladin", { count: 8, appliedLevel: 0 });
-    gainRunes(paladin.state, "p1", 1);
-    expect(paladin.state.combat!.runes!.p1.appliedLevel).toBe(1);
-    expect(paladin.state.combat!.elementalChoices ?? []).toEqual([]);
+    expect(elementalRequest(next)).toBeUndefined();
     const keeper = keeperSandbox("bulwark", { count: 8, appliedLevel: 0 });
     gainRunes(keeper.state, "p1", 1);
-    expect(keeper.state.combat!.elementalChoices).toEqual([
-      expect.objectContaining({ kind: "heal", unitId: keeper.commanderId, abilityId: "commander-rune-ritual-mend" }),
-    ]);
+    expect(keeper.state.combat!.runes!.p1.appliedLevel).toBe(1);
+    expect(keeper.state.combat!.elementalChoices ?? []).toEqual([]);
+  });
+
+  it("an old save's leftover Rune Swiftness rider is cleared when the next combat seeds Runes", () => {
+    const { state, commanderId } = keeperSandbox("bulwark", { count: 0, appliedLevel: 0 });
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Rune Keeper's Rune Swiftness",
+          scope: "unit",
+          modifiers: [{ type: "INITIATIVE_BONUS", amount: 1 }],
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: false,
+        },
+        { type: "system" },
+        "p1",
+        { type: "unit", unitId: commanderId },
+      ),
+    );
+    state.combat!.attackerPlayerId = "p1";
+    state.combat!.defenderPlayerId = "p2";
+    seedRunesForCombat(state);
+    expect(state.activeEffects.some((effect) => effect.name === "Rune Keeper's Rune Swiftness")).toBe(false);
   });
 });

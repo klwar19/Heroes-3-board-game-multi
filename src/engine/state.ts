@@ -181,7 +181,7 @@ export type HouseRuleId =
   // stacked; each layer absorbs one full health bar.
   | "polish-unit-stacks"
   // Polish house rule (test mode, default OFF — USER RULING 2026-09-29): Stack
-  // layers have no tier cap (same escalating N-gold price). Each army unit may
+  // layers have no tier cap (same Group + N gold price). Each army unit may
   // receive only ONE Necromancy per combat and each player only ONE Pit Lords
   // Demon summoning per combat while it is on.
   | "polish-unlimited-stacks"
@@ -11224,6 +11224,13 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
+  /**
+   * Bulwark Rune Keeper — Rune Ritual (user ruling 2026-09-30): combat round in
+   * which the ritual last paid (+1 Rune for a move OR +2 for being attacked,
+   * whichever came first). One payout per combat round; a later round's number
+   * re-opens it. Absent on older saves = not yet paid this round.
+   */
+  runeRitualRound?: number;
   /** Total non-AP command casts made in this combat; used by ability-specific combat caps. */
   commanderCastCount?: number;
   /** Soul Eater's Animate Dead may target itself only once in this combat. */
@@ -12064,6 +12071,8 @@ export type CombatState = {
   commanderArtifactStartResolvedKeys?: string[];
   /** Idempotency ledger for per-round commander-artifact income/effect seeding. */
   commanderArtifactRoundStartsApplied?: string[];
+  /** Mason's Token: building materials each player has gained from it this combat (capped). */
+  commanderArtifactMasonMaterials?: Record<PlayerId, number>;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
@@ -13502,6 +13511,12 @@ export type VisitStep =
        * valuables are gained). Carried onto every reroll of this roll.
        */
       ignoreBuildingMaterials?: boolean;
+      /**
+       * Always stop on the "Resource die result" prompt, even when nothing can
+       * change the roll, so the player sees what was rolled (Mystic Pond /
+       * Resource Silo round-start die). Carried onto every reroll of this roll.
+       */
+      showResult?: boolean;
     }
   | {
       type: "RESUME_FIELD_VISIT";

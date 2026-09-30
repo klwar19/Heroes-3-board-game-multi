@@ -231,7 +231,7 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     expect(document.querySelector(".stackPurchaseConfirm")).toBeFalsy();
   });
 
-  it("shows a Stack's ladder price directly on the Add Stack button", () => {
+  it("shows a Stack's Group + N price (valuables included) directly on the Add Stack button", () => {
     const state = recruitReadyState();
     state.adventure!.houseRules!["polish-unit-stacks"] = true;
     state.players.p1.army = [{ id: "army_archangel", unitDefId: "castle.archangels", side: "pack", stacks: 0 }];
@@ -239,11 +239,11 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     town.buildings.push("castle.dwelling_gold");
     renderRecruit(state);
 
-    // USER RULING 2026-09-29: the Nth Stack layer on a unit card costs N gold —
-    // tier and printed valuables no longer matter (was 33 gold + 2 valuables).
-    const button = screen.getByRole("button", { name: /Buy Stack for Archangels for 1 gold$/i });
-    expect(button.textContent).toMatch(/Add Stack · 1g$/i);
-    expect(button.textContent).not.toMatch(/valuables|\dv/i);
+    // USER RULING 2026-09-30: the Nth Stack layer costs the card's Group (Pack
+    // 30 gold + 2 valuables) + N gold — 31 gold + 2 valuables for layer 1 (not
+    // the retired ladder's 1 gold, nor the 2026-08-12 33 gold + 2 valuables).
+    const button = screen.getByRole("button", { name: /Buy Stack for Archangels for 31 gold \+ 2 valuables$/i });
+    expect(button.textContent).toMatch(/Add Stack · 31g \+ 2v$/i);
   });
 
   it("clicking the thumbnail opens the enlarged unit view instead of buying", () => {

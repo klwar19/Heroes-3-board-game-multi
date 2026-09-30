@@ -127,6 +127,7 @@ import {
   describeFieldReward,
   designedGuardPreview,
   isBlockedFieldCarve,
+  fieldNeverWearsBorders,
   isComputerPlayer,
   getScenario,
   lobbyTeamAssignments,
@@ -3599,7 +3600,9 @@ export function HexMapBoard({
     }
     // Designer yellow borders on the object hex — same bold casing+core the
     // tile-carried per-edge borders use, so a sealed edge reads identically.
-    for (const direction of field.borderEdges ?? []) {
+    // A border-free hex (Creature Bank) ignores a field-level list in movement,
+    // so it is not drawn either — every drawn line stays a real wall.
+    for (const direction of fieldNeverWearsBorders(field) ? [] : field.borderEdges ?? []) {
       pushBorderLines(
         overlays,
         `standalone-${spaceId}-border-${direction}`,
@@ -12535,7 +12538,7 @@ const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "polish-bank-sizes":
     "Reveal up to two Banks; the chosen I–IV size fixes its Stack Tokens.",
   "polish-unit-stacks":
-    "Pack Groups and recruited Neutrals buy Stack layers: 1st 1 gold, 2nd 2 gold, …",
+    "Pack Groups and recruited Neutrals buy Stack layers: Nth layer = Group cost + N gold.",
   "polish-unlimited-stacks":
     "Test rule: no Stack cap; one Necromancy per unit and one Demon summon per combat.",
   "polish-reduced-starting-bonus":
@@ -12572,7 +12575,10 @@ const POLISH_RULE_INFO_IMAGES: Partial<Record<HouseRuleId, string[]>> = {
   "polish-spell-book": ["/assets/rules/polish/v13-spell-book.webp"],
   "polish-creature-banks": ["/assets/rules/polish/v13-banks.webp"],
   "polish-bank-sizes": ["/assets/rules/polish/v13-banks.webp"],
-  "polish-unit-stacks": ["/assets/rules/polish/v13-unit-stacks.webp"],
+  // The 2026-09-30 unit-stack variant sheet (Group + N gold); its "1 Demon /
+  // one Necromancy" line is the Unlimited Stacks rule, so both share it.
+  "polish-unit-stacks": ["/assets/rules/polish/v14-unit-stacks-variant.webp"],
+  "polish-unlimited-stacks": ["/assets/rules/polish/v14-unit-stacks-variant.webp"],
   "polish-reduced-starting-bonus": ["/assets/rules/polish/v13-starting-bonus.webp"],
   "polish-rule-111": ["/assets/rules/polish/v13-rule-111.webp"],
   "polish-reduced-surrender": ["/assets/rules/polish/v13-surrender.webp"],

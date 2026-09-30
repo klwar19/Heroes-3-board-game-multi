@@ -5,7 +5,7 @@ import { townBound } from "./town-veterancy";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
-import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
+import { israFetchCandidates, israReturnableUnits } from "./isra-specialties";
 import { isParallelWatchOnly, parallelContextOptions, parallelPvpKeeps, parallelPvpPinOwner, parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
@@ -403,6 +403,7 @@ import { availableLittleBustersCounters } from "./little-busters-counters";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
+  polishFreeStackTopUpGold,
   polishUnitStackCap,
   polishUnlimitedStacksEnabled,
 } from "./polish-unit-stacks";
@@ -5158,8 +5159,7 @@ function isOptionEffectPlayable(
     case "ISRA_FETCH_CARD":
       return israFetchCandidates(state, playerId, excludeCardId).length > 0;
     case "ISRA_RETURN_UNIT":
-      return context === "combat" && israRemovedUnits(state, playerId).length > 0 &&
-        israEmptyPositions(state).length > 0;
+      return context === "combat" && israReturnableUnits(state, playerId).length > 0;
     case "CANCEL_INSTANT":
       // This face needs the particular enemy Instant that is paused in the
       // Helm counter window. Ordinary combat/map card offers have no target.
@@ -15513,17 +15513,18 @@ function addVisitStepActions(
         );
       });
       stackTargets.forEach((unit, index) => {
-        const baseCost = polishArmyUnitStackCost(unit);
-        const cost: ResourceCost = free
-          ? {}
-          : { gold: Math.ceil((baseCost?.gold ?? 0) / 2) };
-        if (!free && !hasRecruitResources(state, playerId, cost)) {
+        // USER RULING 2026-09-30: the settlement covers the Stack − Group
+        // difference — the player pays N gold for the card's Nth layer, even on
+        // a first flag (mirrors resolveSettlementChoice's charge).
+        const topUp = polishFreeStackTopUpGold(unit);
+        const cost: ResourceCost = topUp > 0 ? { gold: topUp } : {};
+        if (topUp > 0 && !hasRecruitResources(state, playerId, cost)) {
           return;
         }
         actions.push({
-          label: free
-            ? `Add a Stack to ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`
-            : `Add a Stack to ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${cost.gold ?? 0} gold)`,
+          label: topUp > 0
+            ? `Add a Stack to ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${topUp} gold)`
+            : `Add a Stack to ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`,
           action: {
             type: "RESOLVE_VISIT_STEP",
             playerId,
@@ -16481,7 +16482,7 @@ function addTownActions(
 
     // Polish Unit Stacks are an optional Population purchase at the player's
     // own Citadel. Pack Groups and recruited Neutrals qualify; cost is the
-    // printed gold of that side plus its tier surcharge — minus a Legion
+    // card's Group (that side's printed cost) + N gold for its Nth layer — minus a Legion
     // voucher reserved for this card's Stack, payable with the Freelancer's
     // Guild substitution (both mirror the reducer's charge exactly).
     if (armyUnitStacksActive(state) && canReinforce) {

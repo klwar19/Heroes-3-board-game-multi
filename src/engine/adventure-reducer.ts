@@ -1001,7 +1001,8 @@ export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId
       armyUnitIds.push(unit.id);
     }
   }
-  // Polish Unit Stacks: the free reinforce may instead add a FREE Stack layer to
+  // Polish Unit Stacks: the free reinforce may instead add a Stack layer (Group
+  // covered, N gold paid — 2026-09-30) to
   // any eligible bronze/silver army unit (user ruling 2026-08-20 — "killing
   // skeletons should work with polish stacks"), exactly like the settlement
   // capture menu's stack option.
@@ -1009,8 +1010,8 @@ export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId
     ? player.army
         .filter((unit) => {
           const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
-          // USER RULING 2026-09-29: a free Stack covers the 1st layer's price;
-          // a higher layer pays the difference, so it needs that much gold.
+          // USER RULING 2026-09-30: the free Stack covers the Group part of the
+          // price; the player pays the ladder part (N gold for the Nth layer).
           const topUp = polishFreeStackTopUpGold(unit);
           return (
             (tier === "bronze" || tier === "silver") &&
@@ -1066,7 +1067,7 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
 
-  // Polish Unit Stacks: the picked option is a FREE Stack layer, not a Few→Pack
+  // Polish Unit Stacks: the picked option is a Stack layer (N gold), not a Few→Pack
   // flip. Add one layer to the army card (its persistent property) and dilute
   // the unit's Experience like any other Stack upgrade.
   if (!armyUnitId && stackTargetId) {
@@ -1076,7 +1077,7 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
       const topUp = polishFreeStackTopUpGold(stackTarget);
       const cost: ResourceCost = topUp > 0 ? { gold: topUp } : {};
       if (topUp > 0 && !hasRecruitResources(state, playerId, cost)) {
-        throw new Error(`Adding that Stack needs ${topUp} gold (the free part covers 1 gold).`);
+        throw new Error(`Adding that Stack needs ${topUp} gold (the free part covers the Group cost).`);
       }
       if (topUp > 0) {
         spendRecruitResources(state, playerId, cost, "Skeletons reward (Unit Stack)");
@@ -5593,11 +5594,16 @@ function resolveSettlementChoice(
     if (!stackTarget || !baseCost) {
       throw new Error("Choose a unit to upgrade or a resource income.");
     }
-    const cost: ResourceCost = free ? {} : { gold: Math.ceil((baseCost.gold ?? 0) / 2) };
-    if (!free && !hasRecruitResources(state, action.playerId, cost)) {
-      throw new Error("Not enough resources to add a Stack at half cost.");
+    // USER RULING 2026-09-30: the settlement covers the difference between the
+    // Stack and the Group — the player pays only the ladder part, N gold for
+    // the card's Nth layer, EVEN on the settlement's first flag (`free` only
+    // applies to the Few→Pack reinforcement below).
+    const topUp = polishFreeStackTopUpGold(stackTarget);
+    const cost: ResourceCost = topUp > 0 ? { gold: topUp } : {};
+    if (topUp > 0 && !hasRecruitResources(state, action.playerId, cost)) {
+      throw new Error(`Adding that Stack needs ${topUp} gold (the settlement covers the Group cost).`);
     }
-    if (!free) {
+    if (topUp > 0) {
       spendRecruitResources(state, action.playerId, cost, "settlement Stack upgrade");
     }
     const previousOwnerId = field.flagOwnerId;
@@ -18948,7 +18954,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       if (!target || target.unitDefId !== purchase.unitDefId || !polishArmyUnitCanBuyStack(target, state)) {
         throw new Error("Choose an eligible Pack or Neutral unit below its Stack cap.");
       }
-      // Cost follows the card's actual side (Pack gold or Neutral gold + tier).
+      // Cost follows the card's actual side: its Group (Pack or Neutral printed
+      // cost) + N gold for the Nth layer (polishUnitStackCost).
       const baseCost = polishArmyUnitStackCost(target) ?? polishUnitStackCost(purchase.unitDefId);
       if (!baseCost) {
         throw new Error("That unit cannot buy Stacks.");

@@ -163,14 +163,22 @@ describe("Forge City Hall — 3 gold OR the opponent discards two cards", () => 
 });
 
 describe("Forge Resource Silo — building materials are ignored", () => {
-  // No morale / reroll cards: the die resolves on the direct (no-choice) path.
+  // No morale / reroll cards: the round-start die still stops on its
+  // "Resource die result" prompt (so the roll is always shown); option 0 takes
+  // the rolled result.
   function materialsAfterRound(seed: string, buildings: string[]): number {
-    const state = forgeGame(seed);
+    let state = forgeGame(seed);
     state.towns.town_p1!.buildings = buildings;
     state.towns.town_p2!.buildings = [];
     state.players.p1.morale = 0;
     state.players.p1.hand = [];
     startResourceRound(state, 3);
+    for (let guard = 0; guard < 4; guard += 1) {
+      const visit = state.adventure?.pendingVisit;
+      const step = visit?.steps[0];
+      if (visit?.playerId !== "p1" || step?.type !== "CHOOSE_ONE" || step.prompt !== "Resource die result") break;
+      state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    }
     return state.players.p1.resources.buildingMaterials;
   }
 

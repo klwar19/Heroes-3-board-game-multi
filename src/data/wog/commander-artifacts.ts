@@ -497,7 +497,7 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Mason's Token",
     slot: "trinket",
     tier: "minor",
-    effectText: "gain 1 building material whenever the commander defeats an enemy side or Stack layer (including Pack to Few).",
+    effectText: "gain 1 building material whenever the commander defeats an enemy side or Stack layer (including Pack to Few); at most 2 building materials per combat.",
     materialsAfterDefeatingLayer: 1
   },
   "wog.artifact.mercenarys_hourglass": {

@@ -1128,7 +1128,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "rune-ritual",
       name: "Rune Ritual",
-      text: "Gain +1 Rune every time the commander MOVES, and +3 Runes every time it is attacked. At Rune Level 1, the commander gains +1 Speed. Every time a Rune Level is reached while the commander lives, it may heal a friendly unit 1 HP."
+      text: "Once per combat round: gain +1 Rune when the commander MOVES, OR +2 Runes when it is attacked (whichever happens first that round)."
     },
     cardImage: "/assets/units-commander-bulwark.webp"
   },

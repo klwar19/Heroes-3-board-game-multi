@@ -814,8 +814,8 @@ export function TownRecruitSection({
           <>
             {" "}
             With Unit Stacks: at the Citadel, <b>Packs</b> and recruited <b>Neutrals</b> may buy layers (bronze max 3 /
-            silver 2 / gold 1; no cap with Unlimited Stacks). Each layer costs 1 gold more than that card&apos;s
-            previous one: 1st layer 1 gold, 2nd 2 gold, 3rd 3 gold.
+            silver 2 / gold 1; no cap with Unlimited Stacks). The card&apos;s Nth layer costs its Group price (Pack cost,
+            valuables included; a Neutral&apos;s own cost) + N gold — e.g. Gargoyles 4 gold: 1st layer 5, 2nd 6, 3rd 7.
           </>
         ) : null}
       </small>

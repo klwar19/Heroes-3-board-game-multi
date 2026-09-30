@@ -9,7 +9,7 @@ import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, tow
 import { cardLibrary } from "@/data/cards/library";
 import { drawAfterSpellCast } from "./kastore-sorcery";
 import { consumeFirstAttackRollAdvantage, veyTokenAfterActivation } from "./vey-ogres";
-import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
+import { israFetchCandidates, israRemovedUnits, israReturnableUnits, israReturnPositions } from "./isra-specialties";
 import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
 import { dreadAuraParalyzeCandidates, veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranRandom, veteranTrigger } from "./faction-veterancy";
 import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, elementalActivation, elementalMovement, elementalAfterAttack, elementalFinishActivation, openElementalChoice, resolveElementalChoice, queueElementalChoice, noteElementalSpellCast } from "./elemental-veterancy";
@@ -9634,7 +9634,7 @@ function finishResolvedAttack(
       abilityName: azureCharge.abilityName,
     });
   }
-  // Rune Keeper commander: +3 Runes whenever it is attacked and survives.
+  // Rune Keeper commander: +2 Runes when attacked (once per round, shared with the move half).
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
   gainCommanderActionPoint(state, details.attacker, "attacking");
   gainCommanderActionPoint(state, details.defender, "being attacked");
@@ -12044,6 +12044,9 @@ const elementalHooks = {
   },
 };
 
+/** Mason's Token: most building materials it can pay one player in one combat. */
+const MASONS_TOKEN_MATERIALS_PER_COMBAT = 2;
+
 /** Apply the commander kill-layer rewards consistently to attacks and effects. */
 function applyCommanderDefeatedLayerArtifactRewards(
   state: GameState,
@@ -12064,13 +12067,24 @@ function applyCommanderDefeatedLayerArtifactRewards(
   }
   if (reward.materialsAfterDefeatingLayer <= 0) return;
   const player = state.players[commander.controllerId];
-  if (!player) return;
-  player.resources.buildingMaterials += reward.materialsAfterDefeatingLayer;
+  const combat = state.combat;
+  if (!player || !combat) return;
+  // Mason's Token pays at most MASONS_TOKEN_MATERIALS_PER_COMBAT building
+  // materials per player per combat, however many layers fall.
+  const masonLedger = (combat.commanderArtifactMasonMaterials ??= {});
+  const alreadyGained = masonLedger[commander.controllerId] ?? 0;
+  const materials = Math.min(
+    reward.materialsAfterDefeatingLayer,
+    MASONS_TOKEN_MATERIALS_PER_COMBAT - alreadyGained,
+  );
+  if (materials <= 0) return;
+  masonLedger[commander.controllerId] = alreadyGained + materials;
+  player.resources.buildingMaterials += materials;
   appendEvent(state, {
     type: "RESOURCES_GAINED",
     playerId: commander.controllerId,
     gold: 0,
-    buildingMaterials: reward.materialsAfterDefeatingLayer,
+    buildingMaterials: materials,
     valuables: 0,
     reason: "Mason's Token — commander defeated an enemy side or Stack layer",
   });
@@ -12079,7 +12093,7 @@ function applyCommanderDefeatedLayerArtifactRewards(
     unitId: commander.id,
     abilityId: "commander-artifact-masons-token",
     targetUnitId: defeatedUnit.id,
-    message: `Mason's Token grants ${reward.materialsAfterDefeatingLayer} building material.`,
+    message: `Mason's Token grants ${materials} building material (${alreadyGained + materials}/${MASONS_TOKEN_MATERIALS_PER_COMBAT} this combat).`,
   });
 }
 
@@ -33486,8 +33500,10 @@ function resolveIsraFetchChoice(state: GameState, action: Extract<GameAction, { 
 }
 
 function openIsraReturnChoice(state: GameState, playerId: PlayerId): void {
-  const units = israRemovedUnits(state, playerId);
-  if (!units.length || !israEmptyPositions(state).length) return;
+  // Only units with somewhere to return to (their old space or the nearest
+  // free spaces) are offered, so a pick can never dead-end on zero spaces.
+  const units = israReturnableUnits(state, playerId);
+  if (!units.length) return;
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId, type: "OPTION_CHOICE", playerId,
@@ -33514,11 +33530,22 @@ function resolveIsraReturnChoice(state: GameState, action: Extract<GameAction, {
     if (!unitId || !israRemovedUnits(state, action.playerId).some((unit) => unit.id === unitId)) {
       throw new Error("That unit cannot return.");
     }
-    const positions = israEmptyPositions(state, state.combat.units[unitId]);
+    // Ruling 2026-09-30: back to its OLD space when free; else the nearest free
+    // spaces. A single candidate (the usual free old space) is placed at once.
+    const positions = israReturnPositions(state, state.combat.units[unitId]);
+    if (!positions.length) {
+      throw new Error("That unit has no space to return to.");
+    }
+    if (positions.length === 1) {
+      appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
+        selectedIndex: action.optionIndex });
+      placeIsraReturnedUnit(state, action.playerId, state.combat.units[unitId], positions[0]);
+      return;
+    }
     const nextId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       ...choice, id: nextId,
-      prompt: `Choose an empty space for ${state.combat.units[unitId].cardName}.`,
+      prompt: `${state.combat.units[unitId].cardName}'s space is taken: choose the nearest empty space.`,
       options: positions.map((position) => ({ label: getBattlefieldLabel(position) })),
       israReturnUnit: { unitIds: data.unitIds, selectedUnitId: unitId, positions },
     };
@@ -33531,18 +33558,23 @@ function resolveIsraReturnChoice(state: GameState, action: Extract<GameAction, {
   const position = data.positions?.[action.optionIndex];
   const unit = state.combat.units[data.selectedUnitId];
   if (position === undefined || !unit || isSpaceBlockedForSummon(state.combat, position, unit) ||
-      !israRemovedUnits(state, action.playerId).some((candidate) => candidate.id === unit.id)) {
+      !israRemovedUnits(state, action.playerId).some((candidate) => candidate.id === unit.id) ||
+      !israReturnPositions(state, unit).includes(position)) {
     throw new Error("That placement is no longer available.");
   }
+  appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
+    selectedIndex: action.optionIndex });
+  placeIsraReturnedUnit(state, action.playerId, unit, position);
+}
+
+function placeIsraReturnedUnit(state: GameState, playerId: PlayerId, unit: CombatUnitState, position: number): void {
   unit.position = position;
   unit.damage = 0;
   unit.activatedThisRound = true;
   // A unit returning from removal comes back fresh: tokens it carried when it
   // fell (Paralysis, Morale, ...) do not survive the trip.
   unit.tokens = [];
-  appendEvent(state, { type: "PENDING_CHOICE_RESOLVED", choiceId: choice.id, playerId: action.playerId,
-    selectedIndex: action.optionIndex });
-  appendEvent(state, { type: "COMBAT_UNIT_PLACED", playerId: action.playerId, unitId: unit.id, position });
+  appendEvent(state, { type: "COMBAT_UNIT_PLACED", playerId, unitId: unit.id, position });
   // Presentation + log line only: the Animate Dead rise plays over the unit
   // Isra's Necromancy IV just returned (abilityFxPlans["specialty.isra.4"]).
   appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, abilityId: "specialty.isra.4",
@@ -33550,7 +33582,7 @@ function resolveIsraReturnChoice(state: GameState, action: Extract<GameAction, {
   state.pendingChoice = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
-  openIsraReturnChoice(state, action.playerId);
+  openIsraReturnChoice(state, playerId);
 }
 
 /**
@@ -37888,7 +37920,7 @@ function moveUnit(
   neutralTownMovement(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
 
-  // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
+  // Rune Keeper commander (Rune Ritual, move half): +1 Rune (once per round, shared with the attacked half).
   applyCommanderRuneOnMove(state, unit);
   gainCommanderActionPoint(state, unit, "moving");
 

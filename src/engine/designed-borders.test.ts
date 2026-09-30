@@ -632,6 +632,43 @@ sealingDescribe("per-edge designer borders — movement", () => {
     expect(canCrossEdge(state, from.spaceId, to.spaceId, PATHFINDING)).toBe(true);
   });
 
+  it("Fly cannot step ONTO a Blocked Field across a designer border; Pathfinding can; a Garrison edge stays open", () => {
+    const state = cleanState("db-edge-blocked");
+    const O: HexCoord = { row: 40, col: 30 };
+    const a = instantiateTile(adv(state), OPEN_TILE, O, 0, false);
+    const neighbor = tileLatticeNeighbors(O).find((candidate) => !centerTaken(state, candidate))!;
+    const b = instantiateTile(adv(state), OPEN_TILE, neighbor, 0, false);
+    const { from, to } = sharedEdge(adv(state), a, b);
+    const dir = hexDirectionBetween(parseHexSpaceId(from.spaceId)!, parseHexSpaceId(to.spaceId)!)!;
+    to.location = "blocked_field";
+
+    // CONTROL (no designer line): a walker is stopped by the blocked field, a flier passes over it.
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, NONE)).toBe(false);
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, FLY)).toBe(true);
+
+    // A designer per-edge line on that edge seals the flier out; Pathfinding still crosses.
+    a.borderEdges = [edgeCodeFor(from, a, dir)];
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, FLY)).toBe(false);
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, PATHFINDING)).toBe(true);
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, NONE)).toBe(false);
+
+    // A designer whole-arc border on the blocked slot seals it the same way.
+    a.borderEdges = [];
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, FLY)).toBe(true);
+    b.extraBorders = [slotDirection(to.slot, b.rotation)!];
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, FLY)).toBe(false);
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, PATHFINDING)).toBe(true);
+
+    // A designer Garrison keeps its edge open: the flier leaves the Garrison over the line.
+    b.extraBorders = [];
+    a.borderEdges = [edgeCodeFor(from, a, dir)];
+    from.location = "garrison";
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, FLY)).toBe(true);
+    // CONTROL: a Garrison that turns its border passage off is sealed again.
+    from.garrisonBorderPassage = false;
+    expect(canCrossEdge(state, from.spaceId, to.spaceId, FLY)).toBe(false);
+  });
+
   it("a same-tile INNER per-edge line blocks that internal step; another inner edge stays open", () => {
     const state = cleanState("db-edge-inner");
     const O: HexCoord = { row: 40, col: 30 };

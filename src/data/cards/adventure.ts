@@ -4944,12 +4944,12 @@ export const adventureCards: CardLibrary = {
   // instant AND a REACTION to an enemy attack (trigger UNIT_ATTACK_DECLARED /
   // "opponent"), so the Bulwark player can bank the Rune the instant the enemy
   // strikes — crossing a threshold then turns its army-wide buff on BEFORE that
-  // attack resolves (the "receive the buff earlier" play). After the nerf:
-  //   I  — gain 3 Runes AND draw 1 card (one bundled effect; react-or-play).
-  //   IV — gain 4 Runes AND draw 1 card (react-or-play) — OR — the map
-  //        "Rune-Empowered" head-start (GAIN_STARTING_RUNES +3, until the next
+  // attack resolves (the "receive the buff earlier" play). User ruling 2026-09-30:
+  //   I  — gain 3 Runes (react-or-play) — OR — draw 1 card.
+  //   IV — gain 3 Runes (react-or-play, no draw) — OR — the map
+  //        "Rune-Empowered" head-start (GAIN_STARTING_RUNES +2, until the next
   //        Resource round).
-  //   VI — gain 5 Runes (react-or-play) — OR — draw 2 cards.
+  //   VI — gain 4 Runes (react-or-play) — OR — draw 2 cards.
   // The GAIN_RUNES / GAIN_STARTING_RUNES options are offered only to a Bulwark
   // caster (gated to faction "bulwark" in legal-actions); the draws are universal.
   "specialty.kriv.1": {
@@ -4962,22 +4962,23 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 3 Runes AND draw 1 card — playable on your turn OR in reaction to an enemy attack.",
+      "Instant (Combat): gain 3 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 1 card.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Gain 3 Runes and draw 1 card",
+          label: "Gain 3 Runes",
           combatOnly: true,
-          effect: { type: "GAIN_RUNES", amount: 3, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 3 },
         },
         {
-          label: "React to an enemy attack: gain 3 Runes and draw 1 card",
+          label: "React to an enemy attack: gain 3 Runes",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 3, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 3 },
         },
+        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
       ],
     },
     assets: { cardImage: specialtyCardImage("kriv", 1), imageAlt: "Kriv Runes I specialty card" },
@@ -4993,27 +4994,27 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 4 Runes AND draw 1 card — on your turn OR in reaction to an enemy attack. — OR — (Map) become Rune-Empowered: +3 starting Runes each combat until your next Resource round.",
+      "Instant (Combat): gain 3 Runes — on your turn OR in reaction to an enemy attack. — OR — (Map) become Rune-Empowered: +2 starting Runes each combat until your next Resource round.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Gain 4 Runes and draw 1 card",
+          label: "Gain 3 Runes",
           combatOnly: true,
-          effect: { type: "GAIN_RUNES", amount: 4, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 3 },
         },
         {
-          label: "React to an enemy attack: gain 4 Runes and draw 1 card",
+          label: "React to an enemy attack: gain 3 Runes",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 4, drawCards: 1 },
+          effect: { type: "GAIN_RUNES", amount: 3 },
         },
         {
           label:
-            "Rune-Empowered: +3 starting Runes each combat (until next Resource round)",
+            "Rune-Empowered: +2 starting Runes each combat (until next Resource round)",
           mapOnly: true,
-          effect: { type: "GAIN_STARTING_RUNES", amount: 3 },
+          effect: { type: "GAIN_STARTING_RUNES", amount: 2 },
         },
       ],
     },
@@ -5031,21 +5032,21 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 5 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 2 cards.",
+      "Instant (Combat): gain 4 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 2 cards.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Gain 5 Runes",
+          label: "Gain 4 Runes",
           combatOnly: true,
-          effect: { type: "GAIN_RUNES", amount: 5 },
+          effect: { type: "GAIN_RUNES", amount: 4 },
         },
         {
-          label: "React to an enemy attack: gain 5 Runes",
+          label: "React to an enemy attack: gain 4 Runes",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 5 },
+          effect: { type: "GAIN_RUNES", amount: 4 },
         },
         { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
       ],

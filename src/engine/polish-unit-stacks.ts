@@ -8,8 +8,8 @@ export type PolishStackRulesView = Pick<GameState, "ruleset" | "adventure" | "an
 
 /**
  * Polish house rule "Unlimited Stacks" (USER RULING 2026-09-29): Stack layers
- * have NO tier cap. Only meaningful while army Unit Stacks are active; the
- * price ladder is the same escalating one (see polishStackLayerPrice).
+ * have NO tier cap. Only meaningful while army Unit Stacks are active; each
+ * layer is priced exactly as in the capped rule (see polishUnitStackCost).
  */
 export function polishUnlimitedStacksEnabled(state?: PolishStackRulesView | null): boolean {
   return Boolean(state && houseRuleEnabled(state, "polish-unlimited-stacks") && armyUnitStacksActive(state));
@@ -17,13 +17,10 @@ export function polishUnlimitedStacksEnabled(state?: PolishStackRulesView | null
 
 /**
  * Printed Polish house-rule cap for each faction tier. `goldSurcharge` is the
- * PRE-2026-09-29 tier fee, kept only for the Dracon IV refund text and old
- * readers — the Stack PRICE is now the escalating ladder (polishStackLayerPrice).
- * The surcharge IS the "nr of tier" of the user ruling (bronze 1 / silver 2 /
- * gold 3). AZURE has no row on purpose: it is priced (and capped) as gold, the
- * same azure→gold convention the cap uses — a literal tier number would be 4,
- * so changing it is a conscious decision, pinned in
- * `polish-stack-reinforcement-price.test.ts`.
+ * retired 2026-08-12 "nr of tier" fee (bronze 1 / silver 2 / gold 3), kept only
+ * as legacy data — the tier adds NOTHING to the Stack price since the
+ * 2026-09-30 ruling (Group cost + N gold, see polishUnitStackCost). AZURE has no
+ * row on purpose: it is capped as gold (the azure→gold convention).
  */
 export const POLISH_UNIT_STACK_RULES: Partial<Record<UnitGrade, { cap: number; goldSurcharge: number }>> = {
   bronze: { cap: 3, goldSurcharge: 1 },
@@ -57,30 +54,23 @@ export function polishUnitStackCap(
 }
 
 /**
- * Gold price of a unit card's NEXT Stack layer — USER RULING 2026-09-29: "each
- * stack costs +1 gold more than the previous": the card's 1st layer costs 1
- * gold, its 2nd 2 gold, its Nth N gold. Counted PER UNIT CARD; tier, side and
- * printed valuables no longer matter. `currentStacks` is the layer count the
- * card already carries.
+ * The escalating LADDER part of a unit card's NEXT Stack layer: N gold for its
+ * Nth layer (N = `currentStacks` + 1) — 1st layer 1, 2nd 2, 3rd 3. Counted PER
+ * UNIT CARD. The full price adds the card's Group cost (polishUnitStackCost).
  */
 export function polishStackLayerPrice(currentStacks: number): number {
   return Math.max(0, Math.trunc(currentStacks)) + 1;
 }
 
 /**
- * Cost of one Stack layer for a card of this unit that carries `currentStacks`
- * layers (default 0 = its first layer). Null when the unit cannot carry Stacks
- * (no tier / no such side). Gold only — the whole price is the ladder.
- * This is the BASE price only: the town Population purchase still folds a
- * reserved {kind:"stack"} Legion voucher via applyRecruitGoldDiscount and pays
- * through spendRecruitResources, where the Freelancer's Guild may substitute for
- * missing gold (see BUY_UNIT_STACK in adventure-reducer.ts).
+ * The card's GROUP REINFORCEMENT cost — the part of a Stack's price a
+ * Settlement / free-Stack source covers. For a Pack card it is the printed Pack
+ * side cost (= the undiscounted Few→Pack `reinforceCostFor`: gold AND printed
+ * valuables, any other printed resource too). A recruited Neutral card has no
+ * Few→Pack reinforcement, so its own printed Neutral cost stands in for the
+ * Group. Null when the unit has no such side or no Stack tier.
  */
-export function polishUnitStackCost(
-  unitDefId: string,
-  side: PolishStackSide = "pack",
-  currentStacks = 0
-): ResourceCost | null {
+export function polishStackGroupCost(unitDefId: string, side: PolishStackSide = "pack"): ResourceCost | null {
   const unit = coreUnitDefinitions[unitDefId];
   if (!unit) {
     return null;
@@ -93,17 +83,49 @@ export function polishUnitStackCost(
   if (!printed) {
     return null;
   }
-  return { gold: polishStackLayerPrice(currentStacks) };
+  const group: ResourceCost = { gold: printed.cost.gold ?? 0 };
+  for (const [resource, amount] of Object.entries(printed.cost) as [keyof ResourceCost, number | undefined][]) {
+    if (resource !== "gold" && (amount ?? 0) > 0) {
+      group[resource] = amount;
+    }
+  }
+  return group;
 }
 
 /**
- * A FREE-Stack source (Garden of Life, Necropolis City Hall, the Skeletons
- * reward) — USER RULING 2026-09-29: the free part covers the 1st layer's price
- * (1 gold); the player pays the difference for a higher layer (layer 1 free,
- * layer 2 pays 1, layer 3 pays 2 …). Gold owed for this card's next layer.
+ * Cost of one Stack layer for a card of this unit that carries `currentStacks`
+ * layers (default 0 = its first layer) — USER RULING 2026-09-30 (supersedes the
+ * 2026-09-29 "Nth layer = N gold" ladder): the Nth layer costs the card's GROUP
+ * reinforcement cost (polishStackGroupCost, valuables included) + N gold. E.g.
+ * Gargoyles Group 4 gold → 1st Stack 5, 2nd 6, 3rd 7; Magi 11 → 12, 13. The
+ * tier adds nothing. Null when the unit cannot carry Stacks.
+ * This is the BASE price only: the town Population purchase still folds a
+ * reserved {kind:"stack"} Legion voucher via applyRecruitGoldDiscount and pays
+ * through spendRecruitResources, where the Freelancer's Guild may substitute for
+ * missing gold (see BUY_UNIT_STACK in adventure-reducer.ts).
+ */
+export function polishUnitStackCost(
+  unitDefId: string,
+  side: PolishStackSide = "pack",
+  currentStacks = 0
+): ResourceCost | null {
+  const group = polishStackGroupCost(unitDefId, side);
+  if (!group) {
+    return null;
+  }
+  return { ...group, gold: (group.gold ?? 0) + polishStackLayerPrice(currentStacks) };
+}
+
+/**
+ * Gold a Settlement or a FREE-Stack source (Garden of Life, Necropolis City
+ * Hall, the Skeletons reward) charges for this card's next layer — USER RULING
+ * 2026-09-30: the source "covers the difference in cost between Stack and
+ * Group", so the player pays only the ladder part: N gold for the Nth layer
+ * (1st layer 1 gold, 2nd 2 gold …), never the Group's valuables — even on a
+ * Settlement's first flag.
  */
 export function polishFreeStackTopUpGold(unit: Pick<ArmyUnitState, "stacks">): number {
-  return Math.max(0, polishStackLayerPrice(unit.stacks ?? 0) - polishStackLayerPrice(0));
+  return polishStackLayerPrice(unit.stacks ?? 0);
 }
 
 /**

@@ -2316,27 +2316,33 @@ export function canCrossEdge(
     return false;
   }
 
-  if (locationDefinitions[toField.location]?.category === "blocked") {
-    // Blocked fields stop ground movement; Fly / Angel Wings let a hero pass
-    // over them (classifyHeroStep still forbids ending the move there).
-    return movement.moveThrough;
-  }
-
   // A designer Garrison may be a deliberate pass through a yellow border.
   // The exception is local to an edge touching that Garrison and does not cross
   // layers or turn a blocked destination into a legal stopping point.
-  if (
+  const garrisonPassage =
     (fromField.location === "garrison" && fromField.garrisonBorderPassage !== false) ||
-    (toField.location === "garrison" && toField.garrisonBorderPassage !== false)
-  ) {
-    return true;
-  }
-
+    (toField.location === "garrison" && toField.garrisonBorderPassage !== false);
   // A Subterranean Gate token replaces the field underneath it and makes that
   // field empty. Its local entrances therefore stay reachable even if the
   // replaced artwork carried an internal/designer border. The layer boundary
   // above still permits only the gate's mutually linked cross-layer half.
-  if (fromField.location === "subterranean_gate" || toField.location === "subterranean_gate") {
+  const gateEntrance = fromField.location === "subterranean_gate" || toField.location === "subterranean_gate";
+
+  if (locationDefinitions[toField.location]?.category === "blocked") {
+    // Blocked fields stop ground movement; Fly / Angel Wings let a hero pass
+    // over them (classifyHeroStep still forbids ending the move there). A
+    // DESIGNER yellow border on the edge into the blocked field still seals it
+    // — Fly never crosses designer lines, only Pathfinding does (same
+    // precedence as the ordinary step below; the Garrison / Gate exceptions
+    // above keep their local edges open).
+    if (!movement.moveThrough) {
+      return false;
+    }
+    return movement.crossSealedBorders || garrisonPassage || gateEntrance ||
+      !designerBorderSealsBlockedEntry(adventure, from, fromField, to, toField);
+  }
+
+  if (garrisonPassage || gateEntrance) {
     return true;
   }
 
@@ -2381,6 +2387,34 @@ export function canCrossEdge(
   const fromSealed = outerEdgeSealsCrossing(adventure, fromField, movement);
   const toSealed = outerEdgeSealsCrossing(adventure, toField, movement);
   return !fromSealed && !toSealed;
+}
+
+/**
+ * Whether a DESIGNER yellow border seals a flier's step ONTO a Blocked Field:
+ * a per-edge line on that edge, or — across a tile edge — a whole-arc
+ * `extraBorders` arc on either slot (the same arcs {@link outerEdgeSealsCrossing}
+ * already applies when the flier leaves the blocked field). The printed arc is
+ * the rocks themselves and stays passable for move-through.
+ */
+function designerBorderSealsBlockedEntry(
+  adventure: AdventureState,
+  from: MapSpaceId,
+  fromField: MapFieldState,
+  to: MapSpaceId,
+  toField: MapFieldState
+): boolean {
+  if (isDesignedEdgeSealedBetween(adventure, from, fromField, to, toField)) {
+    return true;
+  }
+  if (fromField.tileInstanceId === toField.tileInstanceId) {
+    return false;
+  }
+  const fromTile = adventure.tiles[fromField.tileInstanceId];
+  const toTile = adventure.tiles[toField.tileInstanceId];
+  return Boolean(
+    (fromTile && isTileSlotDesignedSealed(fromTile, fromField.slot)) ||
+    (toTile && isTileSlotDesignedSealed(toTile, toField.slot))
+  );
 }
 
 /**
@@ -10743,7 +10777,7 @@ export function processPendingVisit(state: GameState): void {
         if (offerProphecyMapPreRoll(state, visit, step)) {
           break;
         }
-        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount, step.prophecyThreePick, step.ignoreBuildingMaterials);
+        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount, step.prophecyThreePick, step.ignoreBuildingMaterials, step.showResult);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit, {
@@ -16852,7 +16886,8 @@ function rollResourceDice(
   origin?: "treasure",
   requestedResolveCount = 1,
   prophecyThreePick = false,
-  ignoreBuildingMaterials = false
+  ignoreBuildingMaterials = false,
+  showResult = false
 ): void {
   const random = adventureRandom(state, "resource-die");
   const faces = resourceDieFaces(state);
@@ -16902,7 +16937,8 @@ function rollResourceDice(
     !setEffect &&
     dieSetHandSources.length === 0 &&
     !gradeMastery &&
-    octaviaOptions.length === 0
+    octaviaOptions.length === 0 &&
+    !showResult
   ) {
     for (const roll of rolls) {
       // Forge Resource Silo: a rolled building-materials face is ignored.
@@ -16974,6 +17010,14 @@ function rollResourceDice(
   }
   // Octavia's Gold I: discard it to set one rolled Resource die to "6 gold".
   options.push(...octaviaOptions);
+  if (showResult) {
+    // A reroll of a shown roll is shown too.
+    for (const option of options) {
+      option.steps = option.steps.map((step) =>
+        step.type === "ROLL_RESOURCE_DICE" ? { ...step, showResult: true } : step
+      );
+    }
+  }
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
@@ -21443,12 +21487,15 @@ export function startAdventureRound(state: GameState, resumeResourceRoundAfterBa
       if (effect?.type === "RESOURCE_ROUND_RESOURCE_DIE") {
         // Mystic Pond: roll a Resource die through the shared dice pipeline.
         // Forge Resource Silo sets ignoreBuildingMaterials on the same step.
+        // showResult: the roll always stops on its "Resource die result"
+        // prompt so the player sees what was rolled, reroll options or not.
         state.adventure?.rewardQueue.push({
           playerId,
           kind: "visit-steps",
           steps: [{
             type: "ROLL_RESOURCE_DICE",
             count: 1,
+            showResult: true,
             ...(effect.ignoreBuildingMaterials ? { ignoreBuildingMaterials: true } : {})
           }]
         });
@@ -22021,8 +22068,8 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
     if (target.unit.unitDefId !== unitDefId) {
       continue;
     }
-    // USER RULING 2026-09-29: the free Garden Stack covers 1 gold; a higher
-    // layer pays the difference (layer 2 pays 1, layer 3 pays 2 …).
+    // USER RULING 2026-09-30: the free Garden Stack covers the Group part of
+    // the price; the player pays the ladder part (N gold for the Nth layer).
     const option = stackOfferOption(state, playerId, target, polishFreeStackTopUpGold(target.unit), coreBuildingDefinitions[buildingId]?.name ?? "Garden of Life");
     if (option) {
       options.push(option);
@@ -24236,7 +24283,7 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
 
   // Polish Unit Stacks: a Legion piece may also be reserved for one Stack
   // purchase — any eligible Pack/Neutral card below its cap (its Stack price
-  // always includes gold, the tier surcharge). Empty when the rule is off.
+  // always includes gold, at least the N-gold ladder part). Empty when the rule is off.
   for (const target of stackOfferTargets(state, playerId)) {
     const purchase: RecruitPurchaseRef = {
       kind: "stack",
@@ -24818,7 +24865,7 @@ export function queueFreeBronzeReinforce(
   }
   if (options2?.includeStacks) {
     for (const target of stackOfferTargets(state, playerId, ["bronze"])) {
-      // Free source: covers 1 gold, the player pays the difference (2026-09-29).
+      // Free source covers the Group cost; the player pays N gold (2026-09-30).
       const option = stackOfferOption(state, playerId, target, polishFreeStackTopUpGold(target.unit), "City Hall");
       if (option) {
         options.push(option);
@@ -24848,7 +24895,7 @@ export function queueFreeBronzeReinforce(
  * take a free Stack (even with no Few bronze left to flip).
  */
 export function hasFreeBronzeStackTarget(state: GameState, playerId: PlayerId): boolean {
-  // A higher layer's top-up (the free part covers 1 gold) must be payable.
+  // The ladder top-up (N gold; the free part covers the Group cost) must be payable.
   return stackOfferTargets(state, playerId, ["bronze"]).some((target) => {
     const topUp = polishFreeStackTopUpGold(target.unit);
     return topUp <= 0 || hasRecruitResources(state, playerId, { gold: topUp });

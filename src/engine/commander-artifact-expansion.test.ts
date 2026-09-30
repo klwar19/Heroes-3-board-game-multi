@@ -442,3 +442,58 @@ describe("expanded commander artifact behavior", () => {
     expect(after.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "commander-artifact-plague-censer")).toBe(true);
   });
 });
+
+describe("Mason's Token — at most 2 building materials per player per combat", () => {
+  /** The commander (Mason's Token) strikes `targetId` on `cell`, which dies to the hit. */
+  function strikeAndDefeat(state: GameState, targetId: string, cell: number): GameState {
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    commander.activatedThisRound = false;
+    commander.attackedThisActivation = false;
+    commander.movedThisActivation = false;
+    const target = state.combat!.units[targetId];
+    target.abilities = [];
+    target.position = cell;
+    target.defense = 0;
+    target.maxHealth = 1;
+    target.damage = 0;
+    target.variant = "few";
+    target.retaliatedThisRound = true;
+    state.combat!.activeUnitId = commander.id;
+    state.activePlayerId = "p1";
+    state.combat!.dice.scriptedRolls = [0, 0];
+    state.combat!.dice.rollCount = 0;
+    const next = settle(apply(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: commander.id, defenderId: targetId }));
+    expect(next.combat!.units[targetId].damage, `${targetId} defeated`).toBeGreaterThanOrEqual(1);
+    return next;
+  }
+
+  const masonEvents = (state: GameState) =>
+    state.eventLog.filter(
+      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "commander-artifact-masons-token"
+    ).length;
+
+  it("three enemy sides defeated by the commander in one combat pay exactly 2, not 3; a new combat pays again", () => {
+    let state = combatWithArtifact("wog.artifact.masons_token", "trinket");
+    // Keep the fight open after the kills: a tough enemy stays on the board.
+    state.combat!.units.unit_p2_dread_knights.maxHealth = 40;
+    const before = state.players.p1.resources.buildingMaterials;
+    state = strikeAndDefeat(state, "unit_p2_skeletons", 10);
+    expect(state.players.p1.resources.buildingMaterials).toBe(before + 1);
+    state = strikeAndDefeat(state, "unit_p2_vampires", 13);
+    expect(state.players.p1.resources.buildingMaterials).toBe(before + 2);
+    // Third defeated side: the per-combat cap holds at 2.
+    const knights = state.combat!.units.unit_p2_dread_knights;
+    knights.maxHealth = 1;
+    state = strikeAndDefeat(state, "unit_p2_dread_knights", 5);
+    expect(state.players.p1.resources.buildingMaterials).toBe(before + 2);
+    expect(masonEvents(state)).toBe(2);
+    expect(state.combat!.commanderArtifactMasonMaterials?.p1).toBe(2);
+
+    // CONTROL: a NEW combat (fresh combat state, same player) resets the cap.
+    const fresh = combatWithArtifact("wog.artifact.masons_token", "trinket");
+    fresh.players.p1 = state.players.p1;
+    fresh.combat!.units.unit_p2_dread_knights.maxHealth = 40;
+    const again = strikeAndDefeat(fresh, "unit_p2_skeletons", 10);
+    expect(again.players.p1.resources.buildingMaterials).toBe(before + 3);
+  });
+});

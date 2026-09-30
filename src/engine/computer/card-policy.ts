@@ -27,6 +27,7 @@ import { unitImmuneToSpellSchools } from "../unit-abilities";
 import { dealsElementalStrike, estimatedStrikeDamage } from "./strike-value";
 import { plannedAttackFaces } from "./battlefield-conditions";
 import { houseRuleEnabled } from "../house-rules";
+import { israReturnableUnits } from "../isra-specialties";
 import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { getUnitMoveRange, resolvedSpellPowerForStackItem, standingSpellPower, wallPlacementCells } from "../legal-actions";
@@ -1755,11 +1756,8 @@ function scoreEffect(
       return shielded && enemyMelee ? 560 + modeBonus(mode) : 150;
     }
     if (effect.type === "ISRA_RETURN_UNIT") {
-      const removed = Object.values(state.combat?.units ?? {}).filter((unit) =>
-        unit.controllerId === observation.playerId && unit.armyUnitId &&
-        unit.variant === "few" && unit.damage >= unit.maxHealth &&
-        state.players[observation.playerId]?.army.some((card) => card.id === unit.armyUnitId && card.side === "few") &&
-        ["bronze", "silver"].includes((unit.unitDefId ? coreUnitDefinitions[unit.unitDefId]?.tier : undefined) ?? ""));
+      // The engine's own read (flipped Pack cards count; each needs a space).
+      const removed = israReturnableUnits(state, observation.playerId);
       return removed.length ? 730 + Math.min(80, removed.length * 25) : 180;
     }
     if (effect.type === "HELLSTORM_SIX_UNITS") {

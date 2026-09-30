@@ -3172,6 +3172,18 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "DEFENSE_BONUS_ON_ATTACK_DIE", minRoll: 1, maxRoll: 1, amount: 1 },
     implementationStatus: "implemented"
   },
+  // Vampires' own R2 "Undying Resilience" (user ruling 2026-09-30): the
+  // Zombies' +1-only version, widened to "0" or "+1" for VAMPIRES ONLY. Swapped
+  // into the Vampires' rank schedule in place of zombie-resilience-weak
+  // (experience-rank-abilities.ts, VAMPIRE_RANK_ABILITY_SWAPS); Zombies and every
+  // other holder of zombie-resilience-weak keep the +1-only trigger.
+  "vampire-undying-resilience": {
+    id: "vampire-undying-resilience",
+    name: "Undying Resilience",
+    text: 'If the attacker resolves a "0" or "+1" on the Attack die, this unit gains +1 Defense against that attack.',
+    effect: { type: "DEFENSE_BONUS_ON_ATTACK_DIE", minRoll: 0, maxRoll: 1, amount: 1 },
+    implementationStatus: "implemented"
+  },
   "manticore-thick-hide": {
     id: "manticore-thick-hide",
     name: "Thick Hide",

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { hasMediaFile } from "@/lib/media-manifest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createInitialGameState, tokenDefenseDelta } from "./index";
+import { rankScheduleFor } from "@/data/units/experience-rank-abilities";
+import { unitRankAbilityIds } from "./unit-experience";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -76,6 +78,7 @@ function rangedDuel(options: {
   defenderName?: string;
   defenderMaxHealth?: number;
   defenderVariant?: "few" | "pack";
+  defenderUnitDefId?: string;
   rolls: number[];
 }): GameState {
   const state = createInitialGameState();
@@ -96,6 +99,9 @@ function rangedDuel(options: {
   }
   if (options.defenderVariant) {
     defender.variant = options.defenderVariant;
+  }
+  if (options.defenderUnitDefId) {
+    defender.unitDefId = options.defenderUnitDefId;
   }
 
   state.players.p1.hand = [];
@@ -262,6 +268,41 @@ describe("Defense bonus on the attacker's die (Zombies / Manticores)", () => {
     expect(defenderDamage(rangedDuel({ defenderAbilities: ["zombie-resilience-weak"], rolls: [1] }))).toBe(3);
     // 0: bonus does NOT apply → attack 3, defense 0 → 3 damage
     expect(defenderDamage(rangedDuel({ defenderAbilities: ["zombie-resilience-weak"], rolls: [0] }))).toBe(3);
+  });
+});
+
+describe("Vampires R2 Undying Resilience — also on a '0' (user ruling 2026-09-30, Vampires only)", () => {
+  it("the Vampire rank ability adds +1 Defense on a '0' and a '+1', never on '-1'", () => {
+    const vampire = (roll: number) =>
+      defenderDamage(rangedDuel({ defenderAbilities: ["vampire-undying-resilience"], defenderUnitDefId: "necropolis.vampires", rolls: [roll] }));
+    expect(vampire(0)).toBe(2); // attack 3, defense 1
+    expect(vampire(1)).toBe(3); // attack 4, defense 1
+    expect(vampire(-1)).toBe(2); // attack 2, defense 0
+  });
+
+  it("veteran Vampires (both decks) earn the Vampire id at R2; Zombies keep the +1-only id", () => {
+    for (const unitDefId of ["necropolis.vampires", "neutral.vampires"]) {
+      const step = rankScheduleFor(unitDefId)[2];
+      const choices = step.kind === "stats" ? [] : step.choices;
+      expect(choices, unitDefId).toContain("vampire-undying-resilience");
+      expect(choices, unitDefId).not.toContain("zombie-resilience-weak");
+    }
+    // The Necropolis Vampire's R2 grant (the first live choice) is the new rule.
+    expect(unitRankAbilityIds("necropolis.vampires", 2)).toContain("vampire-undying-resilience");
+    expect(unitRankAbilityIds("necropolis.vampires", 2)).not.toContain("zombie-resilience-weak");
+    // CONTROL: the shared undead pool still hands other undead the Zombie id.
+    expect(unitRankAbilityIds("necropolis.dread_knights", 2)).toContain("zombie-resilience-weak");
+    expect(unitRankAbilityIds("necropolis.dread_knights", 2)).not.toContain("vampire-undying-resilience");
+  });
+
+  it("legacy: a Vampire still carrying the Zombie id mid-combat reads it as the Vampire rule (CONTROL: Zombies do not)", () => {
+    const legacyVampire = rangedDuel({ defenderAbilities: ["zombie-resilience-weak"], defenderUnitDefId: "necropolis.vampires", rolls: [0] });
+    expect(defenderDamage(legacyVampire)).toBe(2);
+    const zombie = rangedDuel({ defenderAbilities: ["zombie-resilience-weak"], defenderUnitDefId: "necropolis.zombies", rolls: [0] });
+    expect(defenderDamage(zombie)).toBe(3);
+    // Both ids on one Vampire count once (+1, not +2).
+    const both = rangedDuel({ defenderAbilities: ["zombie-resilience-weak", "vampire-undying-resilience"], defenderUnitDefId: "necropolis.vampires", rolls: [1] });
+    expect(defenderDamage(both)).toBe(3);
   });
 });
 

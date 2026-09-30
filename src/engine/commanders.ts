@@ -1828,48 +1828,60 @@ export function applyCommanderCombatStart(state: GameState): void {
   }
 }
 
+/** Rune Ritual payouts (user ruling 2026-09-30): +1 for a move OR +2 when attacked. */
+export const RUNE_RITUAL_MOVE_RUNES = 1;
+export const RUNE_RITUAL_ATTACKED_RUNES = 2;
+
 /**
- * Rune Keeper commander — Rune Ritual (attack half): EVERY time the commander is
- * attacked in a combat, its owner gains 3 Runes. Called from the attack resolution
- * with the attack's DEFENDER; a no-op unless that defender is a living Rune Keeper
- * commander. `isRetaliation` is the incoming attack's flag — a retaliation's
- * "defender" is the original attacker (the commander striking back is not "being
- * attacked"), so those are skipped. There is NO once-per-combat cap: each incoming
- * attack banks 3 Runes (the move half is applyCommanderRuneOnMove).
+ * Rune Ritual pays ONCE per combat round (user ruling 2026-09-30): whichever of
+ * its triggers (move / attacked) happens first in the round pays, the other pays
+ * nothing for the rest of that round. Stamped on the commander unit
+ * (`runeRitualRound`), so the next round's number re-opens it.
+ */
+export function runeRitualAvailable(state: GameState, unit: CombatUnitState): boolean {
+  const round = state.combat?.round ?? 0;
+  return unit.runeRitualRound !== round;
+}
+
+function payRuneRitual(state: GameState, unit: CombatUnitState, runes: number, message: string): void {
+  if (!runeRitualAvailable(state, unit)) {
+    return;
+  }
+  unit.runeRitualRound = state.combat?.round ?? 0;
+  gainRunes(state, unit.controllerId, runes);
+  emitSpecialty(state, unit.controllerId, "bulwark", "rune-ritual", message);
+}
+
+/**
+ * Rune Keeper commander — Rune Ritual (attacked half): +2 Runes when the
+ * commander is attacked, if the ritual has not paid yet this combat round.
+ * Called from the attack resolution with the attack's DEFENDER; a no-op unless
+ * that defender is a living Rune Keeper commander. `isRetaliation` is the
+ * incoming attack's flag — a retaliation's "defender" is the original attacker
+ * (the commander striking back is not "being attacked"), so those are skipped.
  */
 export function applyCommanderRuneRitual(state: GameState, defender: CombatUnitState, isRetaliation: boolean): void {
   if (isRetaliation || defender.commanderSlug !== "bulwark" || defender.damage >= defender.maxHealth) {
     return;
   }
-  gainRunes(state, defender.controllerId, 3);
-  emitSpecialty(
+  payRuneRitual(
     state,
-    defender.controllerId,
-    "bulwark",
-    "rune-ritual",
-    `The Rune Keeper's ritual answers the attack — +3 Runes.`
+    defender,
+    RUNE_RITUAL_ATTACKED_RUNES,
+    `The Rune Keeper's ritual answers the attack — +${RUNE_RITUAL_ATTACKED_RUNES} Runes.`
   );
 }
 
 /**
- * Rune Keeper commander — Rune Ritual (move half): every time the commander
- * MOVES, its owner gains ONLY 1 Rune (USER RULING 2026-09-24, was 3). Called from
- * moveUnit after a Rune Keeper commander's move resolves; a no-op for any other
- * unit. A commander moves at most once per activation, so this is naturally
- * bounded to one grant per turn.
+ * Rune Keeper commander — Rune Ritual (move half): +1 Rune when the commander
+ * MOVES, if the ritual has not paid yet this combat round. Called from moveUnit
+ * after a Rune Keeper commander's move resolves; a no-op for any other unit.
  */
 export function applyCommanderRuneOnMove(state: GameState, unit: CombatUnitState): void {
   if (unit.commanderSlug !== "bulwark" || unit.damage >= unit.maxHealth) {
     return;
   }
-  gainRunes(state, unit.controllerId, 1);
-  emitSpecialty(
-    state,
-    unit.controllerId,
-    "bulwark",
-    "rune-ritual",
-    `The Rune Keeper carves a rune as it advances — +1 Rune.`
-  );
+  payRuneRitual(state, unit, RUNE_RITUAL_MOVE_RUNES, `The Rune Keeper carves a rune as it advances — +${RUNE_RITUAL_MOVE_RUNES} Rune.`);
 }
 
 // ---------------------------------------------------------------------------

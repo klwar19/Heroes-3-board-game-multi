@@ -503,7 +503,7 @@ describe("computer long-horizon development plan", () => {
     // A recruited Neutral card has no Pack side at all, so the old default-"pack"
     // price read returned null → +Infinity → the AI could never buy a Stack for
     // one however rich it was. The score must respond to the NEUTRAL price
-    // (neutral.griffins: printed 7 gold + bronze tier 1 = 8) exactly like a Pack.
+    // (neutral.griffins: printed 7 gold + 1 for the 1st layer = 8) exactly like a Pack.
     const state = game();
     establishPacks(state);
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
@@ -517,7 +517,7 @@ describe("computer long-horizon development plan", () => {
     state.players.p2.army.push(neutral);
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("improve-army");
     const cost = polishUnitStackCost(neutral.unitDefId, "neutral")?.gold ?? 0;
-    expect(cost, "neutral.griffins first Stack layer = 1 gold (ladder, 2026-09-29)").toBe(1);
+    expect(cost, "neutral.griffins first Stack layer = printed 7 + 1 (2026-09-30)").toBe(8);
     const target = developmentResourceTargets(state, "p2");
     const buyStack: GameAction = {
       type: "POPULATION_ACTION",

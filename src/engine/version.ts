@@ -1659,7 +1659,26 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Guarded Stance, Shamans R1 Spell Resistance / R2 +1 HP, Yetis R1 Snowbound Rest
 // (heal 1 on Defend). A v193 peer
 // resolves all of these differently.
-export const ENGINE_PROTOCOL_VERSION = 194;
+// v195: canCrossEdge — Fly (move-through) can no longer step ONTO a Blocked
+// Field across a designer yellow border (per-edge line or whole-arc
+// `extraBorders`); only Pathfinding still crosses it. The board no longer draws a
+// stale field-level `borderEdges` list on a border-free hex (Creature Bank)
+// that movement already ignores. A v194
+// peer lets the flier through. Also v195: Polish Unit Stacks price (USER RULING
+// 2026-09-30, supersedes the v192 ladder) — a card's Nth Stack layer costs its
+// Group reinforcement cost (printed Pack cost incl. valuables; a Neutral's own
+// printed cost) + N gold; Settlement and free-Stack sources (Garden of Life,
+// Necropolis City Hall, Skeletons reward) charge only the N gold, even on a
+// settlement's first flag. A v194 peer charges N gold / frees layer 1.
+// Also v195 (USER RULINGS 2026-09-30): Rune Keeper Rune Ritual pays ONCE per
+// combat round (+1 Rune on a move OR +2 when attacked, whichever comes first;
+// CombatUnitState.runeRitualRound) and loses its Level-1 +1 Speed and
+// Level-reached 1-HP heal; Kriv I = 3 Runes OR draw 1, IV = 3 Runes (no draw)
+// OR map +2 starting Runes, VI = 4 Runes OR draw 2; Vampires R2 Undying
+// Resilience (vampire-undying-resilience) also triggers on a "0" Attack die;
+// Isra IV returns flipped-then-destroyed Pack cards, to the old space (or the
+// nearest free spaces when it is taken). A v194 peer resolves all differently.
+export const ENGINE_PROTOCOL_VERSION = 195;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

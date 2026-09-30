@@ -363,7 +363,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-unit-stacks",
     label: "Purchasable Unit Stacks",
     description:
-      "Polish house rule: at a Citadel, Pack Groups and recruited Neutrals may buy Stack layers (bronze max 3 / silver 2 / gold 1). Each layer costs 1 gold more than the previous layer on that unit card: 1st layer 1 gold, 2nd 2 gold, 3rd 3 gold (tier and valuables do not matter). Free Stack sources (Garden of Life, Necropolis City Hall, the Skeletons reward) cover 1 gold — pay the difference for a higher layer. Settlement Few→Pack reinforcement costs the Pack's price minus the Few's price (free on a first flag). Stacked units gain +1 Attack; each layer absorbs one full health bar.",
+      "Polish house rule: at a Citadel, Pack Groups and recruited Neutrals may buy Stack layers (bronze max 3 / silver 2 / gold 1). A unit card's Nth layer costs that card's Group reinforcement cost (its printed Pack cost, valuables included; a recruited Neutral uses its own printed cost) + N gold — e.g. Gargoyles (Group 4 gold): 1st Stack 5, 2nd 6, 3rd 7. Tier adds nothing. Settlements and free Stack sources (Garden of Life, Necropolis City Hall, the Skeletons reward) cover the difference between Stack and Group: pay only N gold (1st layer 1 gold, 2nd 2 gold), even on a settlement's first flag. Settlement Few→Pack reinforcement costs the Pack's price minus the Few's price (free on a first flag). Stacked units gain +1 Attack; each layer absorbs one full health bar.",
     category: "polish",
     default: false,
     legacyDefault: false,
@@ -372,7 +372,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-unlimited-stacks",
     label: "Unlimited Stacks (test)",
     description:
-      "Polish test rule (needs Purchasable Unit Stacks): Stack layers have no tier cap; each layer still costs 1 gold more than the previous one on that unit card. To curb farming, each unit can receive only one Necromancy per combat (several Necromancy cards may still be used after one combat, on different units), and each player may use only one Pit Lords Demon summoning per combat.",
+      "Polish test rule (needs Purchasable Unit Stacks): Stack layers have no tier cap; the Nth layer still costs the card's Group cost + N gold. To curb farming, each unit can receive only one Necromancy per combat (several Necromancy cards may still be used after one combat, on different units), and each player may use only one Pit Lords Demon summoning per combat.",
     category: "polish",
     default: false,
     legacyDefault: false,

@@ -112,10 +112,9 @@ describe("Anime Unit Stacks — the second road into one machinery", () => {
       playerId: "p1",
       purchases: [{ kind: "stack", unitDefId: centaurs.unitDefId, armyUnitId: centaurs.id }]
     });
-    // Same pricing as the Polish road — the escalating ladder (2026-09-29):
-    // the card's 1st layer costs 1 gold.
+    // Same pricing as the Polish road (2026-09-30): Group (Centaur Pack 3) + 1.
     expect(state.players.p1.army[0].stacks).toBe(1);
-    expect(state.players.p1.resources.gold).toBe(beforeGold - 1);
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 4);
   });
 
   it("CONTROL: with both roads OFF the offer is absent and a forged purchase is rejected", () => {

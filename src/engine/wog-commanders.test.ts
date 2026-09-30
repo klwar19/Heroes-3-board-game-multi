@@ -1320,7 +1320,7 @@ describe("WOG commanders — specialties", () => {
     }
   });
 
-  it("Rune Ritual (Rune Keeper): +3 Runes EVERY time it is attacked AND +1 every time it moves", () => {
+  it("Rune Ritual (Rune Keeper): ONCE per combat round, +1 Rune for a move OR +2 when attacked (whichever comes first)", () => {
     function ritualState(slug: CommanderSlug): GameState {
       const state = sandboxWithCommander(slug, {}, 9);
       state.players.p1.factionId = "bulwark"; // gainRunes gates on the Bulwark faction
@@ -1352,23 +1352,35 @@ describe("WOG commanders — specialties", () => {
       });
     }
 
-    // Attacked half: EVERY incoming attack banks a Rune (no once-per-combat cap).
+    // Attacked FIRST this round: +2 Runes (was +3); a second attack and a move
+    // in the same round pay nothing more.
     const bulwark = ritualState("bulwark");
     expect(bulwark.combat!.runes?.p1?.count ?? 0).toBe(0); // no combat-start grant
     let s = attackCommander(bulwark, "unit_p2_skeletons", 10);
-    expect(s.combat!.runes?.p1?.count).toBe(3); // first attack banks +3 Runes
+    expect(s.combat!.runes?.p1?.count).toBe(2);
     s = attackCommander(s, "unit_p2_vampires", 13);
-    expect(s.combat!.runes?.p1?.count).toBe(6); // and so does the second
+    expect(s.combat!.runes?.p1?.count, "second attack in the same round pays nothing").toBe(2);
+    s.combat!.units.unit_p1_griffins.position = 0; // free cell 5 for the move
+    s = moveCommander(s, 5);
+    expect(s.combat!.units[commanderUnitId("p1")].position).toBe(5);
+    expect(s.combat!.runes?.p1?.count, "a move after being attacked that round pays nothing").toBe(2);
 
-    // Moved half: moving the commander banks +1 Rune (cell 9 → the free 10) —
-    // user ruling 2026-09-24 (was 3; being attacked still gives +3).
-    const moved = moveCommander(ritualState("bulwark"), 10);
+    // Moved FIRST this round: +1 Rune; being attacked later that round adds 0.
+    let moved = moveCommander(ritualState("bulwark"), 10);
     expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(10);
     expect(moved.combat!.runes?.p1?.count).toBe(1);
+    moved = attackCommander(moved, "unit_p2_vampires", 14);
+    expect(moved.combat!.runes?.p1?.count, "attacked after moving that round pays nothing").toBe(1);
 
-    // Level 1 gives the living Rune Keeper its own +1 Speed (user ruling
-    // 2026-09-27; it was +1 Attack) on top of the army-wide Rune Power
-    // (6 banked + 3 = 9 → Level 1).
+    // CONTROL: the next combat round re-opens the ritual — an attack pays +2 again.
+    s.combat!.round += 1;
+    s.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    s.combat!.units.unit_p2_skeletons.attackedThisActivation = false;
+    s = attackCommander(s, "unit_p2_skeletons", 9);
+    expect(s.combat!.runes?.p1?.count, "next round pays again").toBe(4);
+
+    // Level 1 no longer gives the Rune Keeper any rider of its own (user ruling
+    // 2026-09-30 removed the +1 Speed); only the army-wide Rune Power applies.
     const keeperRider = (state: GameState) =>
       state.activeEffects.filter(
         (effect) =>
@@ -1377,10 +1389,9 @@ describe("WOG commanders — specialties", () => {
           effect.target.unitId === commanderUnitId("p1")
       );
     expect(keeperRider(s)).toHaveLength(0);
-    gainRunes(s, "p1", 3);
+    gainRunes(s, "p1", 5);
     expect(s.combat!.runes?.p1).toMatchObject({ count: 0, appliedLevel: 1 });
-    expect(keeperRider(s)).toHaveLength(1);
-    expect(keeperRider(s)[0].modifiers).toEqual([{ type: "INITIATIVE_BONUS", amount: 1 }]);
+    expect(keeperRider(s)).toHaveLength(0);
 
     // CONTROL: a Paladin commander (even for a Bulwark player) has no Rune Ritual,
     // so neither being attacked nor moving banks anything.
