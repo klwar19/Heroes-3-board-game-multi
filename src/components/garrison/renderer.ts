@@ -15,6 +15,7 @@ import { ASCEND_TICKS, ascendedKind, baseKind } from "@/engine/garrison/order-ch
 import { CLIMB_TICKS, hidden, isFlat, isSheep, isStructure, type Defender, type Enemy, type GarrisonConfig, type GarrisonEvent, type GarrisonState } from "@/engine/garrison/sim";
 import { SHEEP_SRC, drawDome, drawLadder, drawScorch, drawSheep, drawWool } from "./oc-siege-art";
 import { createAmbience, drawAmbientAir, drawAmbientGround, type Ambience } from "./ambient";
+import { calmDown, createAntics, drawAngerMark, drawDizzy, motionPose, pruneAntics, restless, startMotion, type Antics } from "./antics";
 import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, type ShotSheet } from "./art";
 import {
   KEEPS, KEEP_SRC, PROP, WORLD_W, burst, createScenery, keepFor, drawCoin, drawDecals, drawGlow, drawKeepFlags, drawParticles, sceneryLayer, spawnParticles,
@@ -94,13 +95,15 @@ export type View = {
   banners: Map<string, HTMLCanvasElement>;
   /** Cloud shadows, mist and drifting air life (drawing only). */
   ambience: Ambience;
+  /** Foes' little antics: reeling, guarding, fuming, swinging at the air (drawing only). */
+  antics: Antics;
 };
 
 export function createView(town: string, defColor = "#3f7fe0"): View {
   return {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
-    shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience()
+    shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience(), antics: createAntics()
   };
 }
 
@@ -247,6 +250,130 @@ function flinch(view: View, key: string, sprite: string, now: number, gap: numbe
   view.flinch.set(key, now);
 }
 
+// ---------------------------------------------------------------------------
+// Foe antics (see ./antics.ts): what triggers them.
+
+/** Can this foe put on an antic? On its own feet, seen, not a structure, boss or flyer, not held fast. */
+function freeToAct(s: GarrisonState, e: Enemy): boolean {
+  const def = ENEMIES[e.kind];
+  if (!def || e.dead || def.boss || def.structure || def.grave || def.flying || def.siege || e.kind === "banner" || e.kind === "tent") return false;
+  return !hidden(e) && e.freezeUntil <= s.tick && e.stunUntil <= s.tick;
+}
+
+/** Plays one pass of an atlas group on a foe; returns how long it lasts (0 = the atlas lacks it). */
+function foeClip(view: View, e: Enemy, group: number, frameMs: number, now: number): number {
+  const atlas = atlasFor(enemySpriteOf(view, e));
+  const frames = atlas ? groupFrames(atlas, group) : 0;
+  if (frames === 0) return 0;
+  view.anim.set(`e${e.id}`, { group, start: now, frameMs, frames });
+  return frames * frameMs;
+}
+
+/**
+ * A walking foe takes a blow. Now and then it reacts: fire makes it hop off the
+ * ground; a foe behind a shield or helm tends to raise its guard (sometimes
+ * lowering and raising it again); others reel half a step back, and some wince a
+ * second time a beat later.
+ */
+function hurtAntic(view: View, s: GarrisonState, e: Enemy, burn: boolean, now: number): void {
+  if (e.state !== "walk" || !freeToAct(s, e) || !restless(view.antics, e.id, now) || view.anim.has(`e${e.id}`)) return;
+  const x = tileX(e.x);
+  const y = feetY(e.lane);
+  if (burn) {
+    if (Math.random() >= 0.5) return;
+    startMotion(view.antics, e.id, "hotfoot", now);
+    burst(view.particles, now, "smoke", x, y - 95, 3, { speed: 0.05, up: 0.08, life: 800, size: 7, colors: ["rgba(60,52,48,0.8)", "rgba(90,80,72,0.7)"] });
+    burst(view.particles, now, "ember", x, y - 6, 5, { speed: 0.16, up: 0.12, g: 0.0008, life: 500, size: 2.6, colors: ["#ffcf6a", "#ff8a3a"] });
+    calmDown(view.antics, e.id, now);
+    return;
+  }
+  if (Math.random() >= 0.4) return;
+  const atlas = atlasFor(enemySpriteOf(view, e));
+  if (!atlas) return;
+  const canGuard = groupFrames(atlas, G.defend) > 0;
+  const canReel = groupFrames(atlas, G.hit) > 0;
+  const guarded = e.shield > 0 || e.armor > 0;
+  if (canGuard && (guarded ? Math.random() < 0.75 : !canReel || Math.random() < 0.3)) {
+    const ms = foeClip(view, e, G.defend, 70, now);
+    if (Math.random() < 0.35) view.antics.queued.push({ id: e.id, at: now + ms + 160, clip: "defend" });
+  } else if (canReel) {
+    foeClip(view, e, G.hit, 55, now);
+    startMotion(view.antics, e.id, "reel", now);
+    // Hurt… fine… hurt again.
+    if (Math.random() < 0.3) view.antics.queued.push({ id: e.id, at: now + 480 + Math.random() * 260, clip: "hit" });
+  } else {
+    return;
+  }
+  calmDown(view.antics, e.id, now);
+}
+
+/** Its shield or helm knocked off, or flown into a rage: it shakes with fury and shakes a fist. */
+function fume(view: View, s: GarrisonState, id: number, now: number): void {
+  const e = s.enemies.find((unit) => unit.id === id);
+  if (!e || (e.state !== "walk" && e.state !== "eat") || !freeToAct(s, e)) return;
+  startMotion(view.antics, e.id, "fume", now);
+  if (!view.anim.has(`e${e.id}`)) foeClip(view, e, G.attack, 40, now);
+  burst(view.particles, now + 80, "smoke", tileX(e.x), feetY(e.lane) - 100, 4, { speed: 0.07, up: 0.09, life: 700, size: 6, colors: ["rgba(255,110,80,0.75)", "rgba(210,70,50,0.7)"] });
+  calmDown(view.antics, e.id, now, 1800, 1500);
+}
+
+/** The second wince and the guard raised again, when their moment comes. */
+function playQueuedAntics(view: View, s: GarrisonState, now: number): void {
+  if (view.antics.queued.length === 0) return;
+  const keep: typeof view.antics.queued = [];
+  for (const q of view.antics.queued) {
+    if (q.at > now) {
+      keep.push(q);
+      continue;
+    }
+    const e = s.enemies.find((unit) => unit.id === q.id);
+    if (!e || e.state !== "walk" || !freeToAct(s, e) || view.anim.has(`e${e.id}`)) continue;
+    if (q.clip === "hit" && foeClip(view, e, G.hit, 55, now) > 0) startMotion(view.antics, e.id, "reel", now);
+    else if (q.clip === "defend") foeClip(view, e, G.defend, 70, now);
+  }
+  view.antics.queued = keep;
+}
+
+/**
+ * Now and then, on the move: the Revel troupe moonwalks; an enraged foe fumes; a
+ * melee foe with a troop a tile or two ahead starts swinging at the air before it
+ * gets there; others take a nervous step back. Only while the sim is moving it.
+ */
+function walkAntic(view: View, s: GarrisonState, e: Enemy, now: number, dt: number): void {
+  if (e.state !== "walk" || e.x === e.px || !freeToAct(s, e) || !restless(view.antics, e.id, now) || view.antics.motion.has(e.id) || view.anim.has(`e${e.id}`)) return;
+  if (Math.random() >= dt / 7000) return;
+  const def = ENEMIES[e.kind]!;
+  if (def.troupe || e.leader > 0) {
+    startMotion(view.antics, e.id, "moonwalk", now);
+    calmDown(view.antics, e.id, now, 3500, 3000);
+    return;
+  }
+  if (e.enraged) {
+    fume(view, s, e.id, now);
+    return;
+  }
+  const ahead = def.bite > 0 && !def.ranged && s.defenders.some((d) => {
+    if (d.dead || d.lane !== e.lane || isFlat(d)) return false;
+    const gap = (d.col + 0.5 - e.x) * e.dir;
+    return gap > 1.1 && gap < 2.4;
+  });
+  if (ahead && foeClip(view, e, G.attack, 75, now) > 0) {
+    // Swinging at thin air: a puff where the blow lands on nothing.
+    burst(view.particles, now + 220, "dust", tileX(e.x) + e.dir * 40, feetY(e.lane) - 55, 3, { speed: 0.05, life: 450, size: 5, colors: ["rgba(235,225,200,0.55)"] });
+  } else if (Math.random() < 0.55) {
+    startMotion(view.antics, e.id, "shuffle", now);
+  }
+  calmDown(view.antics, e.id, now, 4000, 5000);
+}
+
+/** A backup dancer whose Revel Queen is dancing right now (her routine is theirs). */
+function troupeDancing(s: GarrisonState, e: Enemy): boolean {
+  if (ENEMIES[e.kind]!.troupe) return e.state === "idle" && !e.charmed;
+  if (e.leader <= 0) return false;
+  const lead = s.enemies.find((o) => o.id === e.leader);
+  return lead !== undefined && !lead.dead && !lead.charmed && lead.freezeUntil <= s.tick && lead.stunUntil <= s.tick && lead.state === "idle" && ENEMIES[lead.kind]!.troupe !== undefined;
+}
+
 const ZAP_RGB: Record<"lightning" | "frost" | "fire" | "bolt", string> = {
   lightning: "190,220,255", frost: "170,230,255", fire: "255,160,70", bolt: "210,170,255"
 };
@@ -350,6 +477,9 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
         const e = ev.amount >= 40 ? s.enemies.find((unit) => unit.id === ev.id) : undefined;
         if (e && (e.state === "eat" || e.state === "cast" || e.state === "raise") && e.freezeUntil <= s.tick && e.stunUntil <= s.tick) {
           flinch(view, `e${e.id}`, enemySpriteOf(view, e), now, 1200);
+        } else if (ev.amount > 0) {
+          const walker = s.enemies.find((unit) => unit.id === ev.id);
+          if (walker) hurtAntic(view, s, walker, ev.burn, now);
         }
         break;
       }
@@ -368,10 +498,12 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
       case "shieldBreak": {
         addSheet(view, "dispel", tileX(ev.x), feetY(ev.lane) - 50, 90, now);
         dropPiece(view, ev, now);
+        fume(view, s, ev.id, now);
         break;
       }
       case "armorBreak":
         dropPiece(view, ev, now);
+        fume(view, s, ev.id, now);
         break;
       case "enrage": {
         const p = enemyPos(s, ev.id);
@@ -379,6 +511,7 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
           burst(view.particles, now, "smoke", p.x, p.y - 80, 6, { speed: 0.06, up: 0.06, life: 900, size: 7, colors: ["rgba(255,90,60,0.9)", "rgba(200,40,30,0.9)"] });
           view.floats.push({ text: "RAGE!", x: p.x, y: p.y - 110, color: "#ff6a4a", start: now });
         }
+        fume(view, s, ev.id, now);
         break;
       }
       case "kegLit": {
@@ -1360,6 +1493,7 @@ function pruneView(view: View, s: GarrisonState, now: number): void {
   for (const id of view.swoop.keys()) if (!live.has(`d${id}`)) view.swoop.delete(id);
   for (const id of view.slide.keys()) if (!live.has(`d${id}`)) view.slide.delete(id);
   for (const id of view.dive.keys()) if (!live.has(`e${id}`)) view.dive.delete(id);
+  pruneAntics(view.antics, new Set(s.enemies.map((e) => e.id)));
 }
 
 export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, now: number, alpha: number, overlay: Overlay): void {
@@ -1452,6 +1586,8 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
   // Level intro: the foes wait on the staging ground beyond the road.
   if (view.lineup && view.camX > 0) drawLineup(ctx, view, s, now, dt);
 
+  playQueuedAntics(view, s, now);
+
   // Units, lane by lane (lower lanes overlap the ones above).
   for (let lane = 0; lane < GW_LANES; lane += 1) {
     for (const c of s.chargers) if (c.lane === lane) drawCharger(ctx, s, view, c.state, lerp(c.px, c.x), lane, dt, c.sprite);
@@ -1495,6 +1631,14 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
       // (slope is dy/dx on screen; leftward rockets are mirrored after the turn.)
       ctx.rotate(Math.atan(slope));
       drawShot(ctx, sheet, cell, 0, 0, sheet.width * CELL, p.lob.toX < p.lob.fromX);
+      ctx.restore();
+    } else if (p.lob && (p.kind === "boulder" || p.kind === "stone" || p.kind === "gift")) {
+      // A lobbed rock (or gift) tumbles end over end on its way down.
+      const t = Math.max(0, Math.min(1, (tick + alpha - p.lob.t0) / p.lob.dur));
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(t * Math.PI * 3 * (p.lob.toX < p.lob.fromX ? -1 : 1));
+      drawShot(ctx, sheet, cell, 0, 0, sheet.width * CELL, p.dir < 0);
       ctx.restore();
     } else {
       drawShot(ctx, sheet, cell, x, y, sheet.width * CELL, p.dir < 0);
@@ -1959,7 +2103,7 @@ function drawDefender(ctx: CanvasRenderingContext2D, s: GarrisonState, view: Vie
 function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, e: Enemy, now: number, dt: number, alpha: number): void {
   const def = ENEMIES[e.kind]!;
   const lerpX = e.px + (e.x - e.px) * alpha;
-  const x = tileX(lerpX);
+  let x = tileX(lerpX);
   let y = feetY(e.lane);
   if (e.state === "glide") {
     const t = Math.max(0, Math.min(1, (s.tick + alpha - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt)));
@@ -1995,6 +2139,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   if (!atlas) return;
   const key = `e${e.id}`;
   const frozen = e.freezeUntil > s.tick || e.stunUntil > s.tick;
+  if (!frozen) walkAntic(view, s, e, now, dt);
   const clip = frozen ? null : activeClip(view, key, now);
   let group = clip?.group ?? G.stand;
   let frame = clip?.frame ?? 0;
@@ -2009,6 +2154,8 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
       const frames = Math.max(1, groupFrames(atlas, group));
       const frameMs = e.state === "walk" ? Math.max(55, Math.min(260, stride / frames)) * (chilled ? 2 : 1) : 55;
       frame = frameOf(view, key, frames, frameMs, dt, frozen);
+      // Stepping back or moonwalking: the stride runs backwards.
+      if (e.state === "walk" && motionPose(view.antics, e.id, e.dir, true, now).backwards) frame = frames - 1 - frame;
     } else if (e.state === "raise") {
       // An Arch-vile's hands raised over the corpse.
       group = pickGroup(atlas, G.cast, G.attack, G.shoot);
@@ -2071,6 +2218,24 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
     group = G.stand;
     frame = 0;
   }
+  // Its antic of the moment (./antics.ts), a shiver when chilled, the Revel troupe's routine.
+  const pose = frozen ? null : motionPose(view.antics, e.id, e.dir, e.state === "walk", now);
+  let sx = pose?.sx ?? 1;
+  let sy = pose?.sy ?? 1;
+  if (pose) {
+    x += pose.dx;
+    lift += pose.dy;
+  }
+  if (e.chillUntil > s.tick && freeToAct(s, e)) x += Math.floor(now / 45 + e.id) % 2 === 0 ? 0.9 : -0.9;
+  if (!frozen && troupeDancing(s, e)) {
+    // Hop, spin, hop, sway — on a 400 ms beat every dancer shares.
+    const bt = (now % 400) / 400;
+    const move = Math.floor(now / 400) % 4;
+    if (move === 1) sx *= Math.cos(bt * Math.PI * 2);
+    else if (move === 3) x += 9 * Math.sin(bt * Math.PI * 2);
+    else lift += 12 * Math.sin(Math.PI * bt);
+    if (Math.random() < dt / 700) rising(view, "note", x, y - 90, 1, ["#ff9ae3", "#ffe07a", "#9ad8ff"], now);
+  }
   // A foe carrying a Surge orb glows (not while it is unseen).
   const unseen = hidden(e);
   if (e.carrier && !unseen) {
@@ -2109,6 +2274,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   const sway = e.leader || def.troupe ? Math.sin(now / 170 + e.id) * 4 : 0;
   const crawl = def.lastGasp !== undefined && e.reborn ? { x: 1.12, y: 0.7 } : undefined;
   const face = e.dir < 0 ? -1 : 1;
+  const flipped = (e.dir < 0) !== (pose?.turned === true);
   // Order & Chaos: a ladder slung over a Ladder Hobgoblin's back (behind the body).
   if (def.ladder && e.ladder && e.state !== "plant" && !unseen) {
     const bob = Math.sin(now / 140 + e.id) * 2;
@@ -2138,8 +2304,24 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
     if (Math.random() < dt / 45) burst(view.particles, now, "glint", x + (Math.random() - 0.5) * 60, y - 40 - Math.random() * 80, 1, { speed: 0.12, life: 380, size: 2.4, colors: ["#ffd8f6", "#c8f4ff", "#fff4b0"] });
   }
   const spin = spinning ? { x: Math.cos(now / 55 + e.id), y: 1 } : undefined;
-  drawAtlas(ctx, atlas, group, frame, x + sway, y - lift + rise - rumble, scale, e.dir < 0, crawl ?? spin);
+  const body = crawl ?? spin;
+  const stretch = body ? { x: body.x * sx, y: body.y * sy } : sx !== 1 || sy !== 1 ? { x: sx, y: sy } : undefined;
+  drawAtlas(ctx, atlas, group, frame, x + sway, y - lift + rise - rumble, scale, flipped, stretch);
   ctx.restore();
+  if (!unseen && rise === 0 && !phasing && !def.boss && !def.structure && !def.siege) {
+    const head = y - lift - 100 * scale;
+    // Stunned (a stone to the head, a lightning jolt): stars circle it.
+    if (e.stunUntil > s.tick && e.freezeUntil <= s.tick) drawDizzy(ctx, x, head - 8, now, e.id);
+    // Fuming, or in a rage: the throbbing vein (on and off while the rage lasts), and steam.
+    if (pose?.angry || (e.enraged && !frozen && Math.floor(now / 700 + e.id) % 3 === 0)) drawAngerMark(ctx, x - face * 16 * scale, head, now, e.id);
+    if (e.enraged && !frozen && Math.random() < dt / 450) {
+      burst(view.particles, now, "smoke", x - face * 10, head, 1, { speed: 0.03, up: 0.07, life: 600, size: 5, colors: ["rgba(255,120,90,0.6)", "rgba(230,230,230,0.5)"] });
+    }
+    // Chilled: its breath fogs.
+    if (!frozen && e.chillUntil > s.tick && Math.random() < dt / 1100) {
+      burst(view.particles, now, "smoke", x + face * 22 * scale, head + 14, 1, { speed: 0.02, up: 0.03, life: 700, size: 4, colors: ["rgba(225,240,255,0.6)"] });
+    }
+  }
   // Planting: the ladder swings up off its back and comes to lean on the wall.
   if (def.ladder && e.state === "plant" && !unseen) {
     const wall = s.defenders.find((d) => d.id === e.target);

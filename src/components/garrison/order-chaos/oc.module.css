@@ -378,6 +378,39 @@
   color: #ff9a8a;
 }
 
+/* The story so far: chapters of replayable scenes. */
+.journalChapter + .journalChapter {
+  margin-top: 16px;
+}
+
+.journalChapter h2 {
+  margin: 0 0 8px;
+  color: #ffe9a8;
+  font: bold 17px Georgia, serif;
+}
+
+.journalList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.journalEntry {
+  padding: 6px 14px;
+  border: 1px solid #8a6a2a;
+  border-radius: 999px;
+  background: rgba(40, 24, 10, 0.85);
+  color: #fbeed2;
+  font: 14px Georgia, serif;
+  cursor: pointer;
+}
+
+.journalEntry:hover,
+.journalEntry:focus-visible {
+  border-color: #ffd65a;
+  background: #5a3510;
+}
+
 /* Story: Crag Hack's replay buttons and the advice strip on the loadout screen. */
 .storyButton {
   display: inline-flex;

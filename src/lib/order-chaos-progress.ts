@@ -27,7 +27,7 @@ export type OcProgress = {
   spellbook: SpellId[];
   /** Testing only: everything unlocked (password-gated in the menu). */
   testAll: boolean;
-  /** Story scenes already shown ("prologue", "world:3", "level:w1-2", "after:w1-2", "epilogue"). */
+  /** Story scenes already shown ("prologue:v3", "world:3", "level:w1-2", "after:w1-2", "epilogue"). */
   seen: string[];
 };
 

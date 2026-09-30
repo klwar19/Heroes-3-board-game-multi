@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { OC_SPEAKERS, type OcLine, type OcMood, type OcSpeaker } from "@/engine/garrison/order-chaos/story";
+import { isNarration, OC_SPEAKERS, type OcLine, type OcMood, type OcSceneLine, type OcSpeaker } from "@/engine/garrison/order-chaos/story";
 import { assetUrl } from "@/lib/asset-url";
 import st from "./story.module.css";
 
@@ -41,10 +41,11 @@ function revealed(text: string, elapsed: number): number {
 
 /**
  * A story scene over whatever screen is open: Sandro's letter first (if any),
- * then the talk, one line at a time with the speaker's portrait. Click, Space
- * or Enter reveals the rest of a line, then moves on; Skip or Escape ends it.
+ * then the talk, one line at a time with the speaker's portrait (narration as a
+ * caption with no portrait). Click, Space or Enter reveals the rest of a line,
+ * then moves on; Skip or Escape ends it.
  */
-export function StoryScene({ lines, letter, onDone }: { lines: readonly OcLine[]; letter?: string; onDone(): void }) {
+export function StoryScene({ lines, letter, onDone }: { lines: readonly OcSceneLine[]; letter?: string; onDone(): void }) {
   const [reading, setReading] = useState(Boolean(letter));
   const [index, setIndex] = useState(0);
   // Typewriter: the current line started at `lineStart`; `now` ticks while it is still typing.
@@ -122,6 +123,25 @@ export function StoryScene({ lines, letter, onDone }: { lines: readonly OcLine[]
     );
   }
   if (!line) return null;
+  const typed = (
+    <>
+      {shown}
+      <span aria-hidden className={st.rest}>{line.text.slice(shown.length)}</span>
+    </>
+  );
+  const skip = <button className={st.skip} onClick={(event) => { event.stopPropagation(); finish(); }} type="button">Skip</button>;
+  if (isNarration(line)) {
+    return (
+      <div aria-label="Narration" aria-modal className={`${st.overlay} ${st.overlayNarration}`} onClick={advance} role="dialog">
+        <div className={st.narration} key={index}>
+          <p aria-live="polite" className={st.narrationText}>{typed}</p>
+          <span aria-hidden className={`${st.more} ${done ? st.moreOn : ""}`}>▼</span>
+          <small className={st.counter}>{index + 1} / {lines.length}</small>
+        </div>
+        {skip}
+      </div>
+    );
+  }
   const speaker = OC_SPEAKERS[line.who];
   // The Chaos side (Sandro, Vidomina) speaks from the right, in green.
   const right = speaker.side === "right";
@@ -136,15 +156,12 @@ export function StoryScene({ lines, letter, onDone }: { lines: readonly OcLine[]
             <strong>{speaker.name}</strong>
             <small>{speaker.title}</small>
           </div>
-          <p aria-live="polite" className={st.text}>
-            {shown}
-            <span aria-hidden className={st.rest}>{line.text.slice(shown.length)}</span>
-          </p>
+          <p aria-live="polite" className={st.text}>{typed}</p>
           <span aria-hidden className={`${st.more} ${done ? st.moreOn : ""}`}>▼</span>
           <small className={st.counter}>{index + 1} / {lines.length}</small>
         </div>
       </div>
-      <button className={st.skip} onClick={(event) => { event.stopPropagation(); finish(); }} type="button">Skip</button>
+      {skip}
     </div>
   );
 }

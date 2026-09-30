@@ -7,21 +7,21 @@ import { BLESSINGS, CARDS, DEFENDERS, ENEMIES, FUSIONS, GW_TPS, SPELLS, type Ble
 import {
   OC_ALL_CLEARED, OC_ALL_HIRED, OC_ENDLESS, OC_HEROES, OC_HERO_ORDER, OC_LEVELS, OC_LEVEL_COST, OC_LAWFUL_COLOR, OC_MAX_LEVEL, OC_MERCENARIES,
   OC_RAID_CHARGES, OC_RAIDS, OC_SPELLBOOK_SIZE, OC_SPELLS, OC_STAR_MILESTONES, OC_ULT_LEVEL, OC_WORLDS, OC_ARTIFACTS,
-  altarOpen, artifactSlots, buildOcConfig, crownSlots, endlessOpen, goalMet, goalText, isLevelOpen, levelPower, mercCampOpen, metEnemies, raidOpen, seedSlots,
+  altarOpen, artifactSlots, buildOcConfig, crownSlots, surgeSlots, endlessOpen, goalMet, goalText, isLevelOpen, levelPower, mercCampOpen, metEnemies, raidOpen, seedSlots,
   totalStars, unlockedArtifacts, unlockedHeroes, unlockedSpells, unlockedUltimates, unlockedUnits, worldCleared,
   type OcHeroId, type OcLevel
 } from "@/engine/garrison/order-chaos/campaign";
 import { ASCEND_TICKS, VALOR_NEED } from "@/engine/garrison/order-chaos/forms";
 import { OC_DEFENDERS, OC_ENEMIES, OC_ULTIMATES } from "@/engine/garrison/order-chaos/roster";
 import {
-  OC_BATTLE_QUIPS, OC_ENDLESS_LINES, OC_EPILOGUE, OC_LEVEL_STORY, OC_PROLOGUE, OC_SCREEN_LINES, OC_WORLD_OUTRO, OC_WORLD_STORY, unlockedLines,
-  type OcLine, type OcQuipEvent
+  OC_BATTLE_QUIPS, OC_ENDLESS_LINES, OC_EPILOGUE, OC_LEVEL_STORY, OC_PROLOGUE, OC_PROLOGUE_ID, OC_SCREEN_LINES, OC_WORLD_OUTRO, OC_WORLD_STORY, isNarration, unlockedLines,
+  type OcLine, type OcQuipEvent, type OcSceneLine
 } from "@/engine/garrison/order-chaos/story";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
 import type { Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import { setMusicScene, type MusicScene } from "@/lib/music";
-import { loadOcProgress, OC_PROGRESS_KEY, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
+import { emptyOcProgress, loadOcProgress, OC_PROGRESS_KEY, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
 import { createLocalDriver, type GarrisonDriver } from "../driver";
 import { GarrisonGame, type GameIntro, type GameResult } from "../garrison-game";
 import styles from "../garrison.module.css";
@@ -37,6 +37,7 @@ type Screen =
   | { s: "barracks" }
   | { s: "camp" }
   | { s: "almanac" }
+  | { s: "journal" }
   | { s: "play" };
 
 type Session = { key: number; driver: GarrisonDriver; level: OcLevel; restart: () => void };
@@ -106,6 +107,7 @@ type Unlocks = {
   artSlots: number;
   seedSlots: number;
   crowns: number;
+  surges: number;
   spells: SpellId[];
   ultimates: DefKind[];
   altar: boolean;
@@ -127,6 +129,7 @@ function unlocksOf(p: OcProgress): Unlocks {
     artSlots: artifactSlots(cleared, stars),
     seedSlots: seedSlots(cleared, stars),
     crowns: crownSlots(stars),
+    surges: surgeSlots(stars),
     spells: unlockedSpells(cleared, stars),
     ultimates: unlockedUltimates(cleared, units, p.levels, test),
     altar: test || altarOpen(cleared),
@@ -252,7 +255,7 @@ function recipeText(kind: DefKind): string {
 }
 
 /** A story scene to show: its id is remembered once seen; `then` runs when it ends. */
-type StoryShow = { id: string; lines: readonly OcLine[]; letter?: string; then?: () => void };
+type StoryShow = { id: string; lines: readonly OcSceneLine[]; letter?: string; then?: () => void };
 
 /** The last level of the last world: clearing it earns the epilogue. */
 const FINAL_LEVEL = OC_WORLDS[OC_WORLDS.length - 1]?.levels.at(-1)?.id ?? "";
@@ -282,7 +285,7 @@ function owedOutro(p: OcProgress): StoryShow | null {
 
 /** The scene a screen opens with the first time: the prologue, a world's closing scene or story, the epilogue, a level's talk. */
 function autoStory(screen: Screen, p: OcProgress): StoryShow | null {
-  if (screen.s === "home") return p.seen.includes("prologue") ? null : { id: "prologue", lines: OC_PROLOGUE };
+  if (screen.s === "home") return p.seen.includes(OC_PROLOGUE_ID) ? null : { id: OC_PROLOGUE_ID, lines: OC_PROLOGUE };
   if (screen.s === "campaign") {
     if (FINAL_LEVEL && p.cleared.includes(FINAL_LEVEL) && !p.seen.includes("epilogue")) return { id: "epilogue", lines: OC_EPILOGUE };
     const outro = owedOutro(p);
@@ -293,6 +296,46 @@ function autoStory(screen: Screen, p: OcProgress): StoryShow | null {
   }
   if (screen.s === "prep") return levelStory(screen.level, p.seen);
   return null;
+}
+
+/** One scene the player has already reached, in the order the story tells it. */
+type StoryLogEntry = StoryShow & { title: string };
+type StoryLogChapter = { title: string; entries: StoryLogEntry[] };
+
+/**
+ * The story so far: every scene the player has reached (seen it, or won past
+ * it), grouped by chapter in play order. Uses the player's real clears, not the
+ * testing unlock, so it only holds what actually happened.
+ */
+function storyLog(p: OcProgress): StoryLogChapter[] {
+  const seen = (id: string) => p.seen.includes(id);
+  const cleared = (id: string) => p.cleared.includes(id) || p.raids.includes(id);
+  const levelEntries = (level: OcLevel, title: string): StoryLogEntry[] => {
+    const story = OC_LEVEL_STORY[level.id];
+    if (!story) return [];
+    const out: StoryLogEntry[] = [];
+    const before = `level:${level.id}`;
+    if ((story.before?.length || story.letter) && (seen(before) || cleared(level.id))) out.push({ id: before, title, lines: story.before ?? [], letter: story.letter });
+    if (story.after?.length && cleared(level.id)) out.push({ id: `after:${level.id}`, title: `${title}: victory`, lines: story.after });
+    return out;
+  };
+  const chapters: StoryLogChapter[] = [{ title: "Prologue", entries: [{ id: OC_PROLOGUE_ID, title: "Brookhold", lines: OC_PROLOGUE }] }];
+  for (const world of OC_WORLDS) {
+    const entries: StoryLogEntry[] = [];
+    const intro = OC_WORLD_STORY[world.id];
+    if (intro?.length && (seen(`world:${world.id}`) || world.levels.some((level) => cleared(level.id)))) entries.push({ id: `world:${world.id}`, title: "Arrival", lines: intro });
+    for (const level of world.levels) entries.push(...levelEntries(level, `${levelCode(level)} ${level.name}`));
+    const outro = OC_WORLD_OUTRO[world.id];
+    if (outro?.length && worldCleared(world.id, p.cleared)) entries.push({ id: `outro:${world.id}`, title: "Chapter's end", lines: outro });
+    if (entries.length) chapters.push({ title: `World ${world.id}: ${world.name}`, entries });
+  }
+  const side: StoryLogEntry[] = [
+    ...OC_RAIDS.flatMap((raid) => levelEntries(raid, `Raid: ${raid.name}`)),
+    ...levelEntries(OC_ENDLESS, "The Endless Siege")
+  ];
+  if (side.length) chapters.push({ title: "Raids and the Endless Siege", entries: side });
+  if (FINAL_LEVEL && p.cleared.includes(FINAL_LEVEL)) chapters.push({ title: "Epilogue", entries: [{ id: "epilogue", title: "Quiet", lines: OC_EPILOGUE }] });
+  return chapters;
 }
 
 function pickLine(lines: readonly OcLine[] | undefined): OcLine | null {
@@ -385,7 +428,7 @@ export function OrderChaosApp() {
     const launch = () => {
       const config = buildOcConfig(level, {
         seed: seed(), cards, hero: u.heroes.includes(p.hero) ? p.hero : "catherine", artifacts: p.artifacts.filter((id) => u.artifacts.includes(id)).slice(0, u.artSlots),
-        levels: p.levels, cleared: u.cleared, spells: spellbookOf(p, u), ultimates: u.ultimates, crowns: u.crowns
+        levels: p.levels, cleared: u.cleared, spells: spellbookOf(p, u), ultimates: u.ultimates, crowns: u.crowns, surges: u.surges
       });
       const local: Side[] = level.kind === "raid" ? ["atk"] : ["def"];
       setNote(null);
@@ -519,7 +562,8 @@ export function OrderChaosApp() {
             <span>Your browser refused to save Order &amp; Chaos progress (storage blocked or full). Progress made now lasts only until you close this tab.</span>
           </div>
         ) : null}
-        {screen.s === "home" ? <Home onPick={setScreen} onStory={() => setStory({ id: "prologue", lines: OC_PROLOGUE })} progress={progress} unlocks={unlocks} update={update} /> : null}
+        {screen.s === "home" ? <Home onPick={setScreen} onStory={() => setStory({ id: OC_PROLOGUE_ID, lines: OC_PROLOGUE })} progress={progress} unlocks={unlocks} update={update} /> : null}
+        {screen.s === "journal" ? <Journal onBack={() => setScreen({ s: "home" })} onPlay={(entry) => setStory({ id: entry.id, lines: entry.lines, letter: entry.letter })} progress={progress} /> : null}
         {screen.s === "campaign" ? (
           <Campaign
             onBack={() => setScreen({ s: "home" })}
@@ -598,6 +642,7 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
   const [asking, setAsking] = useState(false);
   const [code, setCode] = useState("");
   const [wrong, setWrong] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const submitCode = () => {
     if (code === TEST_PASSWORD) {
       update((prev) => ({ ...prev, testAll: true }));
@@ -620,11 +665,15 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
           <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
           Crag&apos;s tale
         </button>
+        <button className={oc.storyButton} onClick={() => onPick({ s: "journal" })} title="Reread every scene you have reached so far" type="button">
+          <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-grin.webp")} />
+          Story so far
+        </button>
         <span className={oc.purse} title="Seals: spend them in the Barracks and the Mercenary Camp">
           <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {p.seals}
         </span>
       </div>
-      {p.seen.includes("prologue") ? <Greeting cleared={u.cleared} place="home" /> : null}
+      {p.seen.includes(OC_PROLOGUE_ID) ? <Greeting cleared={u.cleared} place="home" /> : null}
       {next ? (
         <button className={`${oc.nextCard} ${oc.continueCard}`} onClick={() => onPick({ s: "prep", level: next })} type="button">
           <span className={oc.nextArt}>
@@ -692,6 +741,17 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
           <ArtFace label="Back" src={ART.back} />
           <small>{" "}</small>
         </Link>
+      </div>
+      <div className={oc.testRow}>
+        {resetting ? (
+          <div aria-label="Start over" className={oc.testForm} role="alertdialog">
+            <span>Erase ALL Order &amp; Chaos progress (levels, stars, Seals, training, heroes, story) and start again from the prologue?</span>
+            <button className={styles.primary} onClick={() => { setResetting(false); update(() => emptyOcProgress()); }} type="button">Yes, start over</button>
+            <button className={styles.ghostButton} onClick={() => setResetting(false)} type="button">Cancel</button>
+          </div>
+        ) : (
+          <button className={oc.testLink} onClick={() => setResetting(true)} type="button">Start over (erase all progress)…</button>
+        )}
       </div>
       {!u.test ? (
         <div className={oc.testRow}>
@@ -954,6 +1014,8 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
   const art = (src: string) => `url("${assetUrl(src)}")`;
   const sceneVars = Object.fromEntries(CARD_SCENES.map((scene) => [`--oc-scene-${scene}`, art(cardSceneSrc(scene))]));
   const story = OC_LEVEL_STORY[level.id];
+  // The scene's last spoken line is the reminder on this screen (narration never shows in a bubble).
+  const reminder = [...(story?.before ?? [])].reverse().find((line): line is OcLine => !isNarration(line));
   return (
     <div className={oc.prep} style={{ ["--oc-packet" as string]: art(OC_UI.packet), ["--oc-tray" as string]: art(OC_UI.tray), ...sceneVars }}>
       <div className={oc.campHead}>
@@ -967,7 +1029,7 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
       <p className={oc.prepBrief}>{level.brief}</p>
       {story?.before?.length || story?.letter ? (
         <div className={oc.advice}>
-          {story.before?.length ? <AdvisorBubble compact line={story.before.at(-1)!} /> : <span />}
+          {reminder ? <AdvisorBubble compact line={reminder} /> : <span />}
           <button className={oc.storyButton} onClick={onTalk} type="button">
             <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
             {story.letter ? "Read Sandro's letter & hear Crag" : "Hear Crag out"}
@@ -1284,6 +1346,36 @@ function Camp({ progress, unlocks: u, update, onBack }: { progress: OcProgress; 
 type AlmanacTab = "lawful" | "hybrids" | "chaos" | "heroes" | "artifacts" | "spells";
 
 const TAB_LABEL: Record<AlmanacTab, string> = { lawful: "Lawful", hybrids: "Hybrids", chaos: "Chaos", heroes: "Heroes", artifacts: "Artifacts", spells: "Spells" };
+
+/** The story so far: every scene the player has reached, by chapter; click one to hear it again. */
+function Journal({ progress, onBack, onPlay }: { progress: OcProgress; onBack(): void; onPlay(entry: StoryLogEntry): void }) {
+  const chapters = storyLog(progress);
+  return (
+    <>
+      <div className={styles.menuHead}>
+        <button className={styles.ghostButton} onClick={onBack} type="button">Back</button>
+        <div>
+          <h1>The story so far</h1>
+          <p>Every scene you have reached, in order. Click one to read it again.</p>
+        </div>
+      </div>
+      <section className={styles.panel}>
+        {chapters.map((chapter) => (
+          <div className={oc.journalChapter} key={chapter.title}>
+            <h2>{chapter.title}</h2>
+            <div className={oc.journalList}>
+              {chapter.entries.map((entry) => (
+                <button className={oc.journalEntry} key={entry.id} onClick={() => onPlay(entry)} type="button">
+                  <span aria-hidden>{entry.letter ? "✉" : "▸"}</span> {entry.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
 
 function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
   const [tab, setTab] = useState<AlmanacTab>("lawful");

@@ -498,13 +498,15 @@ export function unlockedUnits(cleared: readonly string[], hired: readonly string
 // ---------------------------------------------------------------------------
 // Star milestones (like PvZ2's star gates): rewards for the stars earned so far.
 
-export type OcMilestone = { stars: number; label: string; artifact?: BlessingId; spell?: SpellId; seedSlot?: boolean; artifactSlot?: boolean; crown?: boolean };
+export type OcMilestone = { stars: number; label: string; artifact?: BlessingId; spell?: SpellId; seedSlot?: boolean; artifactSlot?: boolean; crown?: boolean; surgeSlot?: boolean };
 
 export const OC_STAR_MILESTONES: readonly OcMilestone[] = [
   { stars: 12, label: "Helm of Heavenly Enlightenment", artifact: "helm-of-enlightenment" },
   { stars: 24, label: "+1 seed packet slot", seedSlot: true },
+  { stars: 30, label: "+1 Surge orb slot", surgeSlot: true },
   { stars: 40, label: "Spell: Death Ripple", spell: "death-ripple" },
   { stars: 60, label: "Carry two Valor crowns", crown: true },
+  { stars: 70, label: "+1 Surge orb slot", surgeSlot: true },
   { stars: 80, label: "+1 artifact slot", artifactSlot: true },
   { stars: 100, label: "+1 seed packet slot", seedSlot: true }
 ];
@@ -603,6 +605,13 @@ export function artifactSlots(cleared: readonly string[], starCount = 0): number
   return 0;
 }
 
+/** Surge orbs the hero can carry: two at first, one more at each Surge milestone. */
+export const OC_SURGE_SLOTS = 2;
+
+export function surgeSlots(starCount: number): number {
+  return OC_SURGE_SLOTS + reachedMilestones(starCount).filter((m) => m.surgeSlot).length;
+}
+
 export function crownSlots(starCount: number): number {
   return 1 + reachedMilestones(starCount).filter((m) => m.crown).length;
 }
@@ -656,6 +665,8 @@ export type OcBuildOptions = {
   ultimates: readonly DefKind[];
   /** Valor crowns the hero can carry. */
   crowns: number;
+  /** Surge orbs the hero can carry (surgeSlots). */
+  surges: number;
 };
 
 export function buildOcConfig(level: OcLevel, options: OcBuildOptions): GarrisonConfig {
@@ -711,6 +722,7 @@ export function buildOcConfig(level: OcLevel, options: OcBuildOptions): Garrison
       bossDragon: level.boss ? "oc-cacodemon" : undefined,
       ultimates: raid ? [] : options.ultimates.map(baseKind).filter((kind) => OC_ULTIMATES[kind]),
       crownMax: Math.max(1, Math.floor(options.crowns)),
+      surgeMax: Number.isFinite(options.surges) ? Math.max(1, Math.floor(options.surges)) : undefined,
       atkCharges: raid ? { ...OC_RAID_CHARGES } : undefined
     }
   };

@@ -466,7 +466,7 @@ type OcBlessingId = "surge-chalice" | "crown-of-dragontooth" | "helm-of-enlighte
 export const OC_BLESSINGS: Record<OcBlessingId, BlessingDef> = {
   "surge-chalice": {
     id: "surge-chalice", name: "Pendant of Courage", icon: "/assets/artifacts_major-pendant_of_courage.webp",
-    blurb: "Start each battle with a Surge orb and carry up to four."
+    blurb: "Start each battle with a Surge orb and carry one more."
   },
   "crown-of-dragontooth": {
     id: "crown-of-dragontooth", name: "Crown of Dragontooth", icon: "/assets/artifacts_relic-crown_of_dragontooth.webp",

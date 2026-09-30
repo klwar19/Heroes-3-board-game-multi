@@ -89,6 +89,8 @@ export type OcRules = {
   atkCharges?: Partial<Record<SpellId, number>>;
   /** Valor crowns the hero can carry (default 1). */
   crownMax?: number;
+  /** Surge orbs the hero can carry (default 3; a level that hands out more at the start holds them all). */
+  surgeMax?: number;
 };
 
 export type Defender = {
@@ -555,7 +557,7 @@ export function createGarrison(cfg: GarrisonConfig): GarrisonState {
       fallen: [],
       manaFrac: 0,
       surges: cfg.oc ? cfg.oc.startSurges : 0,
-      surgeMax: 3,
+      surgeMax: cfg.oc ? Math.max(1, Number.isFinite(cfg.oc.surgeMax) ? cfg.oc.surgeMax! : 3, cfg.oc.startSurges) : 3,
       prayerUntil: 0,
       frenzyUntil: 0,
       valor: 0,
@@ -1700,7 +1702,7 @@ function grantBlessing(s: GarrisonState, id: BlessingId): void {
     for (const c of s.chargers) if (c.state === "gone" && c.dmg === undefined) Object.assign(c, { state: "ready", x: -0.45, px: -0.45 });
   }
   if (id === "surge-chalice" && first) {
-    s.def.surgeMax = 4;
+    s.def.surgeMax += 1;
     s.def.surges = Math.min(s.def.surgeMax, s.def.surges + 1);
   }
   s.events.push({ e: "blessing", id });
