@@ -2375,5 +2375,1081 @@
    "refs/hv12/system.png"
   ],
   "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a cosy oversized hoodie in her colours (black and white harlequin pattern with red diamond accents and a small jester-bell zipper pull), soft black shorts over opaque black tights, fluffy black socks; relaxed and off-duty. The floating UI panels and the hologram scanlines are switched off (no panels, no scanlines). Face: sleepy, relaxed and a bit grumpy, half-lidded red eyes. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. HAIR MUST STAY EXACTLY AS IN THE REFERENCE: her long white hair tied up in the same HIGH PONYTAIL with the same black-and-red jester-bell hair ribbon and its little gold bells; do NOT let the hair down, do NOT remove the ribbon. Only the clothes change and the floating panels/scanlines disappear. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-blush",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-blush.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-earth",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-earth.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-earth-angry",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-earth-angry.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-earth-blush",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-earth-blush.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-earth-happy",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-earth-happy.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-earth-sad",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-earth-sad.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-earth-surprised",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-earth-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-surprised",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bowy-angry",
+  "refs": [
+   "raw/hv12-tachie-bowy-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bowy-blush",
+  "refs": [
+   "raw/hv12-tachie-bowy-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bowy-happy",
+  "refs": [
+   "raw/hv12-tachie-bowy-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bowy-home",
+  "refs": [
+   "raw/hv12-tachie-bowy-home.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bowy-sad",
+  "refs": [
+   "raw/hv12-tachie-bowy-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bowy-surprised",
+  "refs": [
+   "raw/hv12-tachie-bowy-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-chad",
+  "refs": [
+   "raw/hv11-tachie-chad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-dain",
+  "refs": [
+   "raw/hv5-tachie-dain.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida",
+  "refs": [
+   "raw/hv5-tachie-frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida-angry",
+  "refs": [
+   "raw/hv12-tachie-frida-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida-blush",
+  "refs": [
+   "raw/hv12-tachie-frida-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida-casual",
+  "refs": [
+   "raw/hv12-tachie-frida-casual.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida-happy",
+  "refs": [
+   "raw/hv12-tachie-frida-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida-sad",
+  "refs": [
+   "raw/hv12-tachie-frida-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-frida-surprised",
+  "refs": [
+   "raw/hv12-tachie-frida-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr",
+  "refs": [
+   "raw/hv5-tachie-garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr-angry",
+  "refs": [
+   "raw/hv12-tachie-garr-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr-blush",
+  "refs": [
+   "raw/hv12-tachie-garr-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr-happy",
+  "refs": [
+   "raw/hv12-tachie-garr-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr-home",
+  "refs": [
+   "raw/hv12-tachie-garr-home.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr-sad",
+  "refs": [
+   "raw/hv12-tachie-garr-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-garr-surprised",
+  "refs": [
+   "raw/hv12-tachie-garr-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-gymbro",
+  "refs": [
+   "raw/hv11-tachie-gymbro.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda",
+  "refs": [
+   "raw/hv10-tachie-hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda-angry",
+  "refs": [
+   "raw/hv12-tachie-hilda-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda-blush",
+  "refs": [
+   "raw/hv12-tachie-hilda-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda-happy",
+  "refs": [
+   "raw/hv12-tachie-hilda-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda-offduty",
+  "refs": [
+   "raw/hv12-tachie-hilda-offduty.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda-sad",
+  "refs": [
+   "raw/hv12-tachie-hilda-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-hilda-surprised",
+  "refs": [
+   "raw/hv12-tachie-hilda-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-leo",
+  "refs": [
+   "raw/hv12-tachie-leo.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-leo-angry",
+  "refs": [
+   "raw/hv12-tachie-leo-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-leo-blush",
+  "refs": [
+   "raw/hv12-tachie-leo-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-leo-happy",
+  "refs": [
+   "raw/hv12-tachie-leo-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-leo-sad",
+  "refs": [
+   "raw/hv12-tachie-leo-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-leo-surprised",
+  "refs": [
+   "raw/hv12-tachie-leo-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily",
+  "refs": [
+   "raw/hv6-tachie-lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily-angry",
+  "refs": [
+   "raw/hv12-tachie-lily-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily-blush",
+  "refs": [
+   "raw/hv12-tachie-lily-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily-happy",
+  "refs": [
+   "raw/hv12-tachie-lily-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily-outing",
+  "refs": [
+   "raw/hv12-tachie-lily-outing.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily-sad",
+  "refs": [
+   "raw/hv12-tachie-lily-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lily-surprised",
+  "refs": [
+   "raw/hv12-tachie-lily-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling",
+  "refs": [
+   "raw/hv11-tachie-lingling-v2.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling-adult",
+  "refs": [
+   "raw/hv12-tachie-lingling-adult.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling-angry",
+  "refs": [
+   "raw/hv12-tachie-lingling-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling-blush",
+  "refs": [
+   "raw/hv12-tachie-lingling-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling-happy",
+  "refs": [
+   "raw/hv12-tachie-lingling-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling-sad",
+  "refs": [
+   "raw/hv12-tachie-lingling-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lingling-surprised",
+  "refs": [
+   "raw/hv12-tachie-lingling-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna",
+  "refs": [
+   "raw/hv12-tachie-luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna-angry",
+  "refs": [
+   "raw/hv12-tachie-luna-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna-blush",
+  "refs": [
+   "raw/hv12-tachie-luna-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna-happy",
+  "refs": [
+   "raw/hv12-tachie-luna-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna-sad",
+  "refs": [
+   "raw/hv12-tachie-luna-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna-surprised",
+  "refs": [
+   "raw/hv12-tachie-luna-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-luna-winter",
+  "refs": [
+   "raw/hv12-tachie-luna-winter.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa",
+  "refs": [
+   "raw/hv6-tachie-lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa-angry",
+  "refs": [
+   "raw/hv12-tachie-lysa-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa-blush",
+  "refs": [
+   "raw/hv12-tachie-lysa-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa-happy",
+  "refs": [
+   "raw/hv12-tachie-lysa-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa-offduty",
+  "refs": [
+   "raw/hv12-tachie-lysa-offduty.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa-sad",
+  "refs": [
+   "raw/hv12-tachie-lysa-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-lysa-surprised",
+  "refs": [
+   "raw/hv12-tachie-lysa-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mara-angry",
+  "refs": [
+   "raw/hv12-tachie-mara-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mara-blush",
+  "refs": [
+   "raw/hv12-tachie-mara-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mara-casual",
+  "refs": [
+   "raw/hv12-tachie-mara-casual.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mara-happy",
+  "refs": [
+   "raw/hv12-tachie-mara-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mara-sad",
+  "refs": [
+   "raw/hv12-tachie-mara-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mara-surprised",
+  "refs": [
+   "raw/hv12-tachie-mara-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-meilin",
+  "refs": [
+   "raw/hv12-tachie-meilin.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-meilin-angry",
+  "refs": [
+   "raw/hv12-tachie-meilin-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-meilin-blush",
+  "refs": [
+   "raw/hv12-tachie-meilin-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-meilin-happy",
+  "refs": [
+   "raw/hv12-tachie-meilin-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-meilin-sad",
+  "refs": [
+   "raw/hv12-tachie-meilin-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-meilin-surprised",
+  "refs": [
+   "raw/hv12-tachie-meilin-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia",
+  "refs": [
+   "raw/hv5-tachie-mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia-angry",
+  "refs": [
+   "raw/hv12-tachie-mitia-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia-apothecary",
+  "refs": [
+   "raw/hv12-tachie-mitia-apothecary.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia-blush",
+  "refs": [
+   "raw/hv12-tachie-mitia-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia-happy",
+  "refs": [
+   "raw/hv12-tachie-mitia-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia-sad",
+  "refs": [
+   "raw/hv12-tachie-mitia-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-mitia-surprised",
+  "refs": [
+   "raw/hv12-tachie-mitia-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-nurse",
+  "refs": [
+   "raw/hv11-tachie-nurse.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-oldzhou",
+  "refs": [
+   "raw/hv11-tachie-oldzhou.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-peri-angry",
+  "refs": [
+   "raw/hv12-tachie-peri-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-peri-blush",
+  "refs": [
+   "raw/hv12-tachie-peri-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-peri-casual",
+  "refs": [
+   "raw/hv12-tachie-peri-casual.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-peri-happy",
+  "refs": [
+   "raw/hv12-tachie-peri-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-peri-sad",
+  "refs": [
+   "raw/hv12-tachie-peri-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-peri-surprised",
+  "refs": [
+   "raw/hv12-tachie-peri-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna",
+  "refs": [
+   "raw/hv6-tachie-senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna-angry",
+  "refs": [
+   "raw/hv12-tachie-senna-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna-blush",
+  "refs": [
+   "raw/hv12-tachie-senna-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna-casual",
+  "refs": [
+   "raw/hv12-tachie-senna-casual.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna-happy",
+  "refs": [
+   "raw/hv12-tachie-senna-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna-sad",
+  "refs": [
+   "raw/hv12-tachie-senna-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-senna-surprised",
+  "refs": [
+   "raw/hv12-tachie-senna-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system",
+  "refs": [
+   "raw/hv6-tachie-system.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. KEEP HER TWO FLOATING HOLOGRAM UI PANELS exactly as in the reference: the two blank light-cyan rectangular screens with small corner brackets floating left and right of her head and shoulders. They are part of the character, NOT background: redraw them in the same places and sizes, fully opaque pale cyan, with the same cyan scanline edges on her outline. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system-angry",
+  "refs": [
+   "raw/hv12-tachie-system-angry.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. KEEP HER TWO FLOATING HOLOGRAM UI PANELS exactly as in the reference: the two blank light-cyan rectangular screens with small corner brackets floating left and right of her head and shoulders. They are part of the character, NOT background: redraw them in the same places and sizes, fully opaque pale cyan, with the same cyan scanline edges on her outline. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system-blush",
+  "refs": [
+   "raw/hv12-tachie-system-blush.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system-happy",
+  "refs": [
+   "raw/hv12-tachie-system-happy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. KEEP HER TWO FLOATING HOLOGRAM UI PANELS exactly as in the reference: the two blank light-cyan rectangular screens with small corner brackets floating left and right of her head and shoulders. They are part of the character, NOT background: redraw them in the same places and sizes, fully opaque pale cyan, with the same cyan scanline edges on her outline. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system-offline",
+  "refs": [
+   "raw/hv12-tachie-system-offline-v2.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system-sad",
+  "refs": [
+   "raw/hv12-tachie-system-sad.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. KEEP HER TWO FLOATING HOLOGRAM UI PANELS exactly as in the reference: the two blank light-cyan rectangular screens with small corner brackets floating left and right of her head and shoulders. They are part of the character, NOT background: redraw them in the same places and sizes, fully opaque pale cyan, with the same cyan scanline edges on her outline. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-system-surprised",
+  "refs": [
+   "raw/hv12-tachie-system-surprised.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. KEEP HER TWO FLOATING HOLOGRAM UI PANELS exactly as in the reference: the two blank light-cyan rectangular screens with small corner brackets floating left and right of her head and shoulders. They are part of the character, NOT background: redraw them in the same places and sizes, fully opaque pale cyan, with the same cyan scanline edges on her outline. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-tessa",
+  "refs": [
+   "raw/hv5-tachie-tessa.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-tilde",
+  "refs": [
+   "raw/hv5-tachie-tilde.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-villager",
+  "refs": [
+   "raw/hv11-tachie-villager.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat magenta: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character magenta: no magenta light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-zhaokang",
+  "refs": [
+   "raw/hv11-tachie-zhaokang-v2.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished visual-novel standing portrait on a flat white backdrop. Reproduce it EXACTLY: the same character, the same face and facial expression, the same hair, the same outfit, props and accessories, the same pose and hands, the same line work, colouring and shading, the same size and position in the canvas and the same crop at the bottom edge. Do not add, remove or redesign anything. Change ONLY the background: replace the white backdrop with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge. Every place where the backdrop shows through must become that same flat green: every small gap between hair strands and flyaway hairs, the spaces between fingers, between the arms and the body, between the legs, and inside loops of ribbons, hair or props. White clothes, white hair and pale skin stay exactly their own colours. Do not tint the character green: no green light, reflection, rim light or glow on the character. No gradient, no texture, no checkerboard, no outline, no sticker border, no shadow, no floor, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-battle-bin",
+  "refs": [
+   "raw/hv-battle-bin.png",
+   "raw/hv13-tachie-bin.png"
+  ],
+  "prompt": "EDIT the FIRST reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 6 rows of animation frames of the hero Bin. REDESIGN the character in every frame to match the SECOND reference image (his new official portrait), while keeping the sheet itself exactly: the same frames in the same grid cells, at the same positions and sizes, the same pose and motion in every frame, the same chibi sprite proportions and the same crisp game-sprite rendering, and the same effects (sword slashes, crystals, sparkles) where they are. Do not add, remove, move or merge any frame; keep every figure inside its own cell. Bin's design (image with the fur-trimmed coat): messy short black hair, dark brown eyes, lean 20-year-old East Asian young man; charcoal-navy hooded short coat with dark brown fur trim on the hood and cuffs, cream cable-knit sweater, long cream knitted scarf whose ends have a red-black-white harlequin-diamond band and fringe, a small gold jester bell on the scarf, a patched ORANGE armband on his left upper sleeve, worn brown leather gloves, brown belt with pouches and a thigh strap, dark charcoal trousers, brown boots, a plain longsword with a brass guard. Replace the background with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every gap between hair strands, fingers, arms, legs, sword and body. No white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. No green light on the figures, no ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no text, no watermark. Keep the same image size and aspect ratio (1448x1086)."
+ },
+ {
+  "key": "hv13-battle-bowy",
+  "refs": [
+   "raw/hv-battle-bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 6 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-battle-frost-wolf",
+  "refs": [
+   "raw/hv-battle-frost-wolf.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 6 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1448x1086)."
+ },
+ {
+  "key": "hv13-battle-senna",
+  "refs": [
+   "raw/hv6-battle-senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 6 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1448x1086)."
+ },
+ {
+  "key": "hv13-back-bowy",
+  "refs": [
+   "raw/hv9-back-bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-mara",
+  "refs": [
+   "raw/hv9-back-mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-bowy",
+  "refs": [
+   "raw/hv9-front-bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-frost-wolf",
+  "refs": [
+   "raw/hv9-front-frost-wolf.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-frost-wolf",
+  "refs": [
+   "raw/hv9-back-frost-wolf.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-dain",
+  "refs": [
+   "raw/hv9-back-dain.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-skill-bin",
+  "refs": [
+   "raw/hv8-skill-bin.png",
+   "raw/hv13-tachie-bin.png"
+  ],
+  "prompt": "EDIT the FIRST reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the hero Bin. REDESIGN the character in every frame to match the SECOND reference image (his new official portrait), while keeping the sheet itself exactly: the same frames in the same grid cells, at the same positions and sizes, the same pose and motion in every frame, the same chibi sprite proportions and the same crisp game-sprite rendering, and the same effects (sword slashes, crystals, sparkles) where they are. Do not add, remove, move or merge any frame; keep every figure inside its own cell. Bin's design (image with the fur-trimmed coat): messy short black hair, dark brown eyes, lean 20-year-old East Asian young man; charcoal-navy hooded short coat with dark brown fur trim on the hood and cuffs, cream cable-knit sweater, long cream knitted scarf whose ends have a red-black-white harlequin-diamond band and fringe, a small gold jester bell on the scarf, a patched ORANGE armband on his left upper sleeve, worn brown leather gloves, brown belt with pouches and a thigh strap, dark charcoal trousers, brown boots, a plain longsword with a brass guard. Replace the background with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every gap between hair strands, fingers, arms, legs, sword and body. No white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. No green light on the figures, no ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no text, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-garr",
+  "refs": [
+   "raw/hv9-back-garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-extra-bin",
+  "refs": [
+   "raw/hv9-extra-bin.png",
+   "raw/hv13-tachie-bin.png"
+  ],
+  "prompt": "EDIT the FIRST reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the hero Bin. REDESIGN the character in every frame to match the SECOND reference image (his new official portrait), while keeping the sheet itself exactly: the same frames in the same grid cells, at the same positions and sizes, the same pose and motion in every frame, the same chibi sprite proportions and the same crisp game-sprite rendering, and the same effects (sword slashes, crystals, sparkles) where they are. Do not add, remove, move or merge any frame; keep every figure inside its own cell. Bin's design (image with the fur-trimmed coat): messy short black hair, dark brown eyes, lean 20-year-old East Asian young man; charcoal-navy hooded short coat with dark brown fur trim on the hood and cuffs, cream cable-knit sweater, long cream knitted scarf whose ends have a red-black-white harlequin-diamond band and fringe, a small gold jester bell on the scarf, a patched ORANGE armband on his left upper sleeve, worn brown leather gloves, brown belt with pouches and a thigh strap, dark charcoal trousers, brown boots, a plain longsword with a brass guard. Replace the background with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every gap between hair strands, fingers, arms, legs, sword and body. No white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. No green light on the figures, no ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no text, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-mara",
+  "refs": [
+   "raw/hv9-front-mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-frida",
+  "refs": [
+   "raw/hv9-back-frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-senna",
+  "refs": [
+   "raw/hv9-front-senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1774x887)."
+ },
+ {
+  "key": "hv13-back-bin",
+  "refs": [
+   "raw/hv9-back-bin.png",
+   "raw/hv13-tachie-bin.png"
+  ],
+  "prompt": "EDIT the FIRST reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the hero Bin. REDESIGN the character in every frame to match the SECOND reference image (his new official portrait), while keeping the sheet itself exactly: the same frames in the same grid cells, at the same positions and sizes, the same pose and motion in every frame, the same chibi sprite proportions and the same crisp game-sprite rendering, and the same effects (sword slashes, crystals, sparkles) where they are. Do not add, remove, move or merge any frame; keep every figure inside its own cell. Bin's design (image with the fur-trimmed coat): messy short black hair, dark brown eyes, lean 20-year-old East Asian young man; charcoal-navy hooded short coat with dark brown fur trim on the hood and cuffs, cream cable-knit sweater, long cream knitted scarf whose ends have a red-black-white harlequin-diamond band and fringe, a small gold jester bell on the scarf, a patched ORANGE armband on his left upper sleeve, worn brown leather gloves, brown belt with pouches and a thigh strap, dark charcoal trousers, brown boots, a plain longsword with a brass guard. Replace the background with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every gap between hair strands, fingers, arms, legs, sword and body. No white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. No green light on the figures, no ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no text, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-extra-garr",
+  "refs": [
+   "raw/hv9-extra-garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-bin",
+  "refs": [
+   "raw/hv9-front-bin.png",
+   "raw/hv13-tachie-bin.png"
+  ],
+  "prompt": "EDIT the FIRST reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the hero Bin. REDESIGN the character in every frame to match the SECOND reference image (his new official portrait), while keeping the sheet itself exactly: the same frames in the same grid cells, at the same positions and sizes, the same pose and motion in every frame, the same chibi sprite proportions and the same crisp game-sprite rendering, and the same effects (sword slashes, crystals, sparkles) where they are. Do not add, remove, move or merge any frame; keep every figure inside its own cell. Bin's design (image with the fur-trimmed coat): messy short black hair, dark brown eyes, lean 20-year-old East Asian young man; charcoal-navy hooded short coat with dark brown fur trim on the hood and cuffs, cream cable-knit sweater, long cream knitted scarf whose ends have a red-black-white harlequin-diamond band and fringe, a small gold jester bell on the scarf, a patched ORANGE armband on his left upper sleeve, worn brown leather gloves, brown belt with pouches and a thigh strap, dark charcoal trousers, brown boots, a plain longsword with a brass guard. Replace the background with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every gap between hair strands, fingers, arms, legs, sword and body. No white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. No green light on the figures, no ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no text, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-garr",
+  "refs": [
+   "raw/hv9-front-garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-frida",
+  "refs": [
+   "raw/hv9-front-frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-senna",
+  "refs": [
+   "raw/hv9-back-senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-skill-senna",
+  "refs": [
+   "raw/hv8-skill-senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-tilde",
+  "refs": [
+   "raw/hv9-back-tilde.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-mitia",
+  "refs": [
+   "raw/hv9-back-mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-extra-senna",
+  "refs": [
+   "raw/hv9-extra-senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-frost-rat",
+  "refs": [
+   "raw/hv9-front-frost-rat.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-mitia",
+  "refs": [
+   "raw/hv9-front-mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-skill-mitia",
+  "refs": [
+   "raw/hv8-skill-mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-frost-rat",
+  "refs": [
+   "raw/hv9-back-frost-rat.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key MAGENTA (pure #FF00FF) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat magenta directly. Do not tint anything magenta: no magenta light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-back-lysa",
+  "refs": [
+   "raw/hv9-back-lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-front-lysa",
+  "refs": [
+   "raw/hv9-front-lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is a finished game SPRITE SHEET, a grid of 8 columns by 4 rows of animation frames of the same character. Reproduce it EXACTLY: the same frames in the same grid cells, at the same positions and sizes, the same pose in every frame, the same character design, colours, line work and shading, and the same effects (slashes, sparkles, ice, glows) where they are. Do not add, remove, move, merge or redesign any frame, and keep every figure inside its own cell. Change ONLY the background: replace it with a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole sheet edge to edge, including every small gap between hair strands, fingers, arms, legs, weapons and body. Remove any white or light outline, halo or sticker border around the figures: each figure's own dark outline meets the flat green directly. Do not tint anything green: no green light or reflection on the figures. No ground shadow, no floor patch, no grid lines, no cell borders, no gradient, no checkerboard, no text, no letters, no watermark. Keep the same image size and aspect ratio (1536x1024)."
+ },
+ {
+  "key": "hv13-tachie-bin",
+  "refs": [
+   "bin-v1/hv13-tachie-bin.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-happy",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-happy.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-angry",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-angry.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv13-tachie-bin-sad",
+  "refs": [
+   "bin-v1/hv13-tachie-bin-sad.png"
+  ],
+  "prompt": "EDIT the reference image: a finished visual-novel standing portrait of Bin Chen. Keep EVERYTHING exactly as it is - the same face, eyes, eyebrows, nose, mouth and facial expression, the same hair, outfit, props, pose, hands, art style, line work, colouring and shading, the same size and position in the canvas and the same crop. Change ONLY the shape of his chin and lower jaw: make the chin a little rounder and softer (less pointed, a gentler rounded jawline), a subtle change that keeps him recognisably the same person. Background: a perfectly flat, uniform, solid chroma-key GREEN (pure #00FF00) filling the whole canvas edge to edge, including every gap between hair strands, fingers and arms; no green light on the character; no shadow, no floor, no text, no watermark, no frame. Output a single 1024x1536 image."
  }
 ]

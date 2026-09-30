@@ -1,11 +1,11 @@
 {
   "restia-bin": {
     "image": "/assets/restia/battle/restia-bin.webp",
-    "frameWidth": 87,
-    "frameHeight": 87,
+    "frameWidth": 91,
+    "frameHeight": 91,
     "columns": 8,
-    "anchorX": 43,
-    "anchorY": 85,
+    "anchorX": 45,
+    "anchorY": 87,
     "groups": {
       "0": {
         "row": 0,
@@ -30,12 +30,12 @@
       "7": {
         "row": 5,
         "frames": 4,
-        "foot": 76
+        "foot": 79
       },
       "8": {
         "row": 6,
         "frames": 4,
-        "foot": 76
+        "foot": 79
       },
       "11": {
         "row": 7,
@@ -52,32 +52,32 @@
       "17": {
         "row": 8,
         "frames": 4,
-        "foot": 76
+        "foot": 79
       },
       "18": {
         "row": 8,
         "frames": 4,
-        "foot": 76
+        "foot": 79
       },
       "19": {
         "row": 8,
         "frames": 4,
-        "foot": 76
+        "foot": 79
       }
     }
   },
   "restia-bin-back": {
     "image": "/assets/restia/battle/restia-bin-back.webp",
     "frameWidth": 71,
-    "frameHeight": 93,
+    "frameHeight": 95,
     "columns": 8,
     "anchorX": 37,
-    "anchorY": 90,
+    "anchorY": 91,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 82
+        "foot": 83
       },
       "2": {
         "row": 1,
@@ -86,47 +86,47 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 80
+        "foot": 82
       },
       "11": {
         "row": 3,
         "frames": 8,
-        "foot": 79
+        "foot": 81
       },
       "12": {
         "row": 3,
         "frames": 8,
-        "foot": 79
+        "foot": 81
       },
       "13": {
         "row": 3,
         "frames": 8,
-        "foot": 79
+        "foot": 81
       },
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 83
+        "foot": 85
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 83
+        "foot": 85
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 83
+        "foot": 85
       }
     }
   },
   "restia-bin-front": {
     "image": "/assets/restia/battle/restia-bin-front.webp",
-    "frameWidth": 71,
-    "frameHeight": 95,
+    "frameWidth": 72,
+    "frameHeight": 97,
     "columns": 8,
-    "anchorX": 39,
-    "anchorY": 92,
+    "anchorX": 41,
+    "anchorY": 94,
     "groups": {
       "0": {
         "row": 0,
@@ -139,7 +139,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 80
+        "foot": 82
       },
       "11": {
         "row": 3,
@@ -156,27 +156,27 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 82
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 82
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 82
       }
     }
   },
   "restia-bin-sk": {
     "image": "/assets/restia/battle/restia-bin-sk.webp",
-    "frameWidth": 76,
-    "frameHeight": 102,
+    "frameWidth": 77,
+    "frameHeight": 103,
     "columns": 8,
     "anchorX": 38,
-    "anchorY": 101,
+    "anchorY": 102,
     "groups": {
       "2": {
         "row": 0,
@@ -193,7 +193,7 @@
       "22": {
         "row": 3,
         "frames": 8,
-        "foot": 99
+        "foot": 100
       },
       "23": {
         "row": 4,
@@ -204,11 +204,11 @@
   },
   "restia-bin-x": {
     "image": "/assets/restia/battle/restia-bin-x.webp",
-    "frameWidth": 83,
-    "frameHeight": 111,
+    "frameWidth": 81,
+    "frameHeight": 108,
     "columns": 8,
-    "anchorX": 42,
-    "anchorY": 111,
+    "anchorX": 41,
+    "anchorY": 107,
     "groups": {
       "30": {
         "row": 0,
@@ -217,36 +217,37 @@
       "31": {
         "row": 1,
         "frames": 4,
-        "foot": 107
+        "foot": 105
       },
       "32": {
         "row": 2,
         "frames": 4,
-        "foot": 108
+        "foot": 105
       },
       "33": {
         "row": 3,
-        "frames": 8
+        "frames": 8,
+        "foot": 98
       },
       "34": {
         "row": 4,
         "frames": 4,
-        "foot": 101
+        "foot": 97
       },
       "35": {
         "row": 5,
         "frames": 4,
-        "foot": 101
+        "foot": 97
       }
     }
   },
   "restia-bowy": {
     "image": "/assets/restia/battle/restia-bowy.webp",
-    "frameWidth": 104,
-    "frameHeight": 92,
+    "frameWidth": 107,
+    "frameHeight": 95,
     "columns": 8,
-    "anchorX": 46,
-    "anchorY": 89,
+    "anchorX": 47,
+    "anchorY": 90,
     "groups": {
       "0": {
         "row": 0,
@@ -259,12 +260,12 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "4": {
         "row": 3,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "5": {
         "row": 4,
@@ -273,57 +274,57 @@
       "7": {
         "row": 5,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "8": {
         "row": 6,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "11": {
         "row": 7,
         "frames": 8,
-        "foot": 86
+        "foot": 87
       },
       "12": {
         "row": 7,
         "frames": 8,
-        "foot": 86
+        "foot": 87
       },
       "13": {
         "row": 7,
         "frames": 8,
-        "foot": 86
+        "foot": 87
       },
       "17": {
         "row": 8,
         "frames": 4,
-        "foot": 82
+        "foot": 83
       },
       "18": {
         "row": 8,
         "frames": 4,
-        "foot": 82
+        "foot": 83
       },
       "19": {
         "row": 8,
         "frames": 4,
-        "foot": 82
+        "foot": 83
       }
     }
   },
   "restia-bowy-back": {
     "image": "/assets/restia/battle/restia-bowy-back.webp",
-    "frameWidth": 85,
-    "frameHeight": 114,
+    "frameWidth": 88,
+    "frameHeight": 117,
     "columns": 8,
-    "anchorX": 43,
-    "anchorY": 100,
+    "anchorX": 44,
+    "anchorY": 101,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 96
+        "foot": 98
       },
       "2": {
         "row": 1,
@@ -332,7 +333,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 88
+        "foot": 90
       },
       "11": {
         "row": 3,
@@ -349,32 +350,32 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 89
+        "foot": 91
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 89
+        "foot": 91
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 89
+        "foot": 91
       }
     }
   },
   "restia-bowy-front": {
     "image": "/assets/restia/battle/restia-bowy-front.webp",
-    "frameWidth": 83,
-    "frameHeight": 111,
+    "frameWidth": 85,
+    "frameHeight": 114,
     "columns": 8,
-    "anchorX": 38,
-    "anchorY": 103,
+    "anchorX": 39,
+    "anchorY": 104,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 97
+        "foot": 98
       },
       "2": {
         "row": 1,
@@ -383,7 +384,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 85
+        "foot": 87
       },
       "11": {
         "row": 3,
@@ -400,17 +401,17 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 87
+        "foot": 88
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 87
+        "foot": 88
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 87
+        "foot": 88
       }
     }
   },
@@ -552,11 +553,11 @@
   },
   "restia-dain-back": {
     "image": "/assets/restia/battle/restia-dain-back.webp",
-    "frameWidth": 77,
-    "frameHeight": 103,
+    "frameWidth": 80,
+    "frameHeight": 106,
     "columns": 8,
-    "anchorX": 41,
-    "anchorY": 99,
+    "anchorX": 42,
+    "anchorY": 101,
     "groups": {
       "0": {
         "row": 0,
@@ -569,7 +570,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 92
+        "foot": 93
       },
       "11": {
         "row": 3,
@@ -586,17 +587,17 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 91
+        "foot": 93
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 91
+        "foot": 93
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 91
+        "foot": 93
       }
     }
   },
@@ -721,16 +722,16 @@
   },
   "restia-frida-back": {
     "image": "/assets/restia/battle/restia-frida-back.webp",
-    "frameWidth": 80,
-    "frameHeight": 106,
+    "frameWidth": 82,
+    "frameHeight": 110,
     "columns": 8,
-    "anchorX": 42,
-    "anchorY": 91,
+    "anchorX": 43,
+    "anchorY": 92,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 86
+        "foot": 89
       },
       "2": {
         "row": 1,
@@ -739,7 +740,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "11": {
         "row": 3,
@@ -756,27 +757,27 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       }
     }
   },
   "restia-frida-front": {
     "image": "/assets/restia/battle/restia-frida-front.webp",
-    "frameWidth": 72,
-    "frameHeight": 96,
+    "frameWidth": 74,
+    "frameHeight": 99,
     "columns": 8,
-    "anchorX": 38,
-    "anchorY": 91,
+    "anchorX": 39,
+    "anchorY": 92,
     "groups": {
       "0": {
         "row": 0,
@@ -789,7 +790,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 75
+        "foot": 76
       },
       "11": {
         "row": 3,
@@ -806,17 +807,17 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 76
+        "foot": 77
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 76
+        "foot": 77
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 76
+        "foot": 77
       }
     }
   },
@@ -893,16 +894,67 @@
   },
   "restia-frost-rat-back": {
     "image": "/assets/restia/battle/restia-frost-rat-back.webp",
-    "frameWidth": 55,
-    "frameHeight": 73,
+    "frameWidth": 57,
+    "frameHeight": 76,
     "columns": 8,
-    "anchorX": 26,
-    "anchorY": 62,
+    "anchorX": 27,
+    "anchorY": 64,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 56
+        "foot": 58
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4,
+        "foot": 52
+      },
+      "11": {
+        "row": 3,
+        "frames": 8
+      },
+      "12": {
+        "row": 3,
+        "frames": 8
+      },
+      "13": {
+        "row": 3,
+        "frames": 8
+      },
+      "17": {
+        "row": 4,
+        "frames": 4,
+        "foot": 53
+      },
+      "18": {
+        "row": 4,
+        "frames": 4,
+        "foot": 53
+      },
+      "19": {
+        "row": 4,
+        "frames": 4,
+        "foot": 53
+      }
+    }
+  },
+  "restia-frost-rat-front": {
+    "image": "/assets/restia/battle/restia-frost-rat-front.webp",
+    "frameWidth": 68,
+    "frameHeight": 90,
+    "columns": 8,
+    "anchorX": 30,
+    "anchorY": 74,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8,
+        "foot": 63
       },
       "2": {
         "row": 1,
@@ -928,98 +980,46 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 51
+        "foot": 50
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 51
+        "foot": 50
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 51
-      }
-    }
-  },
-  "restia-frost-rat-front": {
-    "image": "/assets/restia/battle/restia-frost-rat-front.webp",
-    "frameWidth": 65,
-    "frameHeight": 87,
-    "columns": 8,
-    "anchorX": 29,
-    "anchorY": 73,
-    "groups": {
-      "0": {
-        "row": 0,
-        "frames": 8,
-        "foot": 62
-      },
-      "2": {
-        "row": 1,
-        "frames": 8
-      },
-      "3": {
-        "row": 2,
-        "frames": 4,
-        "foot": 49
-      },
-      "11": {
-        "row": 3,
-        "frames": 8
-      },
-      "12": {
-        "row": 3,
-        "frames": 8
-      },
-      "13": {
-        "row": 3,
-        "frames": 8
-      },
-      "17": {
-        "row": 4,
-        "frames": 4,
-        "foot": 49
-      },
-      "18": {
-        "row": 4,
-        "frames": 4,
-        "foot": 49
-      },
-      "19": {
-        "row": 4,
-        "frames": 4,
-        "foot": 49
+        "foot": 50
       }
     }
   },
   "restia-frost-wolf": {
     "image": "/assets/restia/battle/restia-frost-wolf.webp",
-    "frameWidth": 163,
-    "frameHeight": 163,
+    "frameWidth": 169,
+    "frameHeight": 169,
     "columns": 8,
-    "anchorX": 75,
-    "anchorY": 137,
+    "anchorX": 78,
+    "anchorY": 141,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 127
+        "foot": 130
       },
       "2": {
         "row": 1,
-        "frames": 8,
-        "foot": 139
+        "frames": 8
       },
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 120
+        "foot": 122
       },
       "4": {
         "row": 3,
         "frames": 4,
-        "foot": 120
+        "foot": 122
       },
       "5": {
         "row": 4,
@@ -1028,12 +1028,12 @@
       "7": {
         "row": 5,
         "frames": 4,
-        "foot": 132
+        "foot": 134
       },
       "8": {
         "row": 6,
         "frames": 4,
-        "foot": 132
+        "foot": 134
       },
       "11": {
         "row": 7,
@@ -1050,32 +1050,32 @@
       "17": {
         "row": 8,
         "frames": 4,
-        "foot": 130
+        "foot": 132
       },
       "18": {
         "row": 8,
         "frames": 4,
-        "foot": 130
+        "foot": 132
       },
       "19": {
         "row": 8,
         "frames": 4,
-        "foot": 130
+        "foot": 132
       }
     }
   },
   "restia-frost-wolf-back": {
     "image": "/assets/restia/battle/restia-frost-wolf-back.webp",
-    "frameWidth": 106,
-    "frameHeight": 142,
+    "frameWidth": 111,
+    "frameHeight": 147,
     "columns": 8,
-    "anchorX": 52,
-    "anchorY": 134,
+    "anchorX": 54,
+    "anchorY": 138,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 121
+        "foot": 123
       },
       "2": {
         "row": 1,
@@ -1084,7 +1084,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 112
+        "foot": 113
       },
       "11": {
         "row": 3,
@@ -1101,32 +1101,32 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 113
+        "foot": 116
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 113
+        "foot": 116
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 113
+        "foot": 116
       }
     }
   },
   "restia-frost-wolf-front": {
     "image": "/assets/restia/battle/restia-frost-wolf-front.webp",
-    "frameWidth": 109,
-    "frameHeight": 146,
+    "frameWidth": 113,
+    "frameHeight": 151,
     "columns": 8,
-    "anchorX": 50,
-    "anchorY": 136,
+    "anchorX": 52,
+    "anchorY": 139,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 128
+        "foot": 130
       },
       "2": {
         "row": 1,
@@ -1135,7 +1135,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 115
+        "foot": 117
       },
       "11": {
         "row": 3,
@@ -1152,17 +1152,17 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 118
+        "foot": 120
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 118
+        "foot": 120
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 118
+        "foot": 120
       }
     }
   },
@@ -1235,11 +1235,11 @@
   },
   "restia-garr-back": {
     "image": "/assets/restia/battle/restia-garr-back.webp",
-    "frameWidth": 69,
-    "frameHeight": 93,
+    "frameWidth": 72,
+    "frameHeight": 96,
     "columns": 8,
-    "anchorX": 33,
-    "anchorY": 90,
+    "anchorX": 35,
+    "anchorY": 92,
     "groups": {
       "0": {
         "row": 0,
@@ -1252,7 +1252,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "11": {
         "row": 3,
@@ -1269,32 +1269,32 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 83
       }
     }
   },
   "restia-garr-front": {
     "image": "/assets/restia/battle/restia-garr-front.webp",
-    "frameWidth": 72,
-    "frameHeight": 96,
+    "frameWidth": 74,
+    "frameHeight": 99,
     "columns": 8,
-    "anchorX": 33,
-    "anchorY": 94,
+    "anchorX": 34,
+    "anchorY": 96,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 90
+        "foot": 92
       },
       "2": {
         "row": 1,
@@ -1303,7 +1303,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 75
+        "foot": 77
       },
       "11": {
         "row": 3,
@@ -1320,17 +1320,17 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 76
+        "foot": 77
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 76
+        "foot": 77
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 76
+        "foot": 77
       }
     }
   },
@@ -1367,11 +1367,11 @@
   },
   "restia-garr-x": {
     "image": "/assets/restia/battle/restia-garr-x.webp",
-    "frameWidth": 77,
-    "frameHeight": 103,
+    "frameWidth": 80,
+    "frameHeight": 106,
     "columns": 8,
-    "anchorX": 33,
-    "anchorY": 100,
+    "anchorX": 34,
+    "anchorY": 102,
     "groups": {
       "30": {
         "row": 0,
@@ -1384,22 +1384,22 @@
       "32": {
         "row": 2,
         "frames": 4,
-        "foot": 93
+        "foot": 94
       },
       "33": {
         "row": 3,
         "frames": 8,
-        "foot": 92
+        "foot": 94
       },
       "34": {
         "row": 4,
         "frames": 4,
-        "foot": 91
+        "foot": 93
       },
       "35": {
         "row": 5,
         "frames": 4,
-        "foot": 92
+        "foot": 94
       }
     }
   },
@@ -1714,16 +1714,15 @@
   },
   "restia-lysa-back": {
     "image": "/assets/restia/battle/restia-lysa-back.webp",
-    "frameWidth": 67,
-    "frameHeight": 90,
+    "frameWidth": 70,
+    "frameHeight": 93,
     "columns": 8,
-    "anchorX": 34,
-    "anchorY": 89,
+    "anchorX": 35,
+    "anchorY": 90,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8,
-        "foot": 87
+        "frames": 8
       },
       "2": {
         "row": 1,
@@ -1732,52 +1731,52 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 84
+        "foot": 86
       },
       "11": {
         "row": 3,
         "frames": 8,
-        "foot": 86
+        "foot": 88
       },
       "12": {
         "row": 3,
         "frames": 8,
-        "foot": 86
+        "foot": 88
       },
       "13": {
         "row": 3,
         "frames": 8,
-        "foot": 86
+        "foot": 88
       },
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 84
+        "foot": 86
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 84
+        "foot": 86
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 84
+        "foot": 86
       }
     }
   },
   "restia-lysa-front": {
     "image": "/assets/restia/battle/restia-lysa-front.webp",
-    "frameWidth": 71,
-    "frameHeight": 95,
+    "frameWidth": 73,
+    "frameHeight": 97,
     "columns": 8,
-    "anchorX": 35,
-    "anchorY": 94,
+    "anchorX": 36,
+    "anchorY": 96,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 89
+        "foot": 90
       },
       "2": {
         "row": 1,
@@ -1786,7 +1785,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 83
+        "foot": 85
       },
       "11": {
         "row": 3,
@@ -1803,17 +1802,17 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       }
     }
   },
@@ -1886,11 +1885,11 @@
   },
   "restia-mara-back": {
     "image": "/assets/restia/battle/restia-mara-back.webp",
-    "frameWidth": 78,
-    "frameHeight": 105,
+    "frameWidth": 80,
+    "frameHeight": 106,
     "columns": 8,
-    "anchorX": 36,
-    "anchorY": 104,
+    "anchorX": 37,
+    "anchorY": 106,
     "groups": {
       "0": {
         "row": 0,
@@ -1921,26 +1920,26 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 88
+        "foot": 87
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 88
+        "foot": 87
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 88
+        "foot": 87
       }
     }
   },
   "restia-mara-front": {
     "image": "/assets/restia/battle/restia-mara-front.webp",
-    "frameWidth": 65,
-    "frameHeight": 86,
+    "frameWidth": 67,
+    "frameHeight": 87,
     "columns": 8,
-    "anchorX": 29,
+    "anchorX": 30,
     "anchorY": 86,
     "groups": {
       "0": {
@@ -1954,37 +1953,37 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 80
+        "foot": 81
       },
       "11": {
         "row": 3,
         "frames": 8,
-        "foot": 82
+        "foot": 83
       },
       "12": {
         "row": 3,
         "frames": 8,
-        "foot": 82
+        "foot": 83
       },
       "13": {
         "row": 3,
         "frames": 8,
-        "foot": 82
+        "foot": 83
       },
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 80
+        "foot": 81
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 80
+        "foot": 81
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 80
+        "foot": 81
       }
     }
   },
@@ -2059,67 +2058,16 @@
   },
   "restia-mitia-back": {
     "image": "/assets/restia/battle/restia-mitia-back.webp",
-    "frameWidth": 84,
-    "frameHeight": 113,
+    "frameWidth": 88,
+    "frameHeight": 117,
     "columns": 8,
     "anchorX": 41,
-    "anchorY": 108,
+    "anchorY": 109,
     "groups": {
       "0": {
         "row": 0,
         "frames": 8,
-        "foot": 102
-      },
-      "2": {
-        "row": 1,
-        "frames": 8
-      },
-      "3": {
-        "row": 2,
-        "frames": 4,
-        "foot": 90
-      },
-      "11": {
-        "row": 3,
-        "frames": 8
-      },
-      "12": {
-        "row": 3,
-        "frames": 8
-      },
-      "13": {
-        "row": 3,
-        "frames": 8
-      },
-      "17": {
-        "row": 4,
-        "frames": 4,
-        "foot": 90
-      },
-      "18": {
-        "row": 4,
-        "frames": 4,
-        "foot": 90
-      },
-      "19": {
-        "row": 4,
-        "frames": 4,
-        "foot": 90
-      }
-    }
-  },
-  "restia-mitia-front": {
-    "image": "/assets/restia/battle/restia-mitia-front.webp",
-    "frameWidth": 81,
-    "frameHeight": 109,
-    "columns": 8,
-    "anchorX": 37,
-    "anchorY": 104,
-    "groups": {
-      "0": {
-        "row": 0,
-        "frames": 8,
-        "foot": 99
+        "foot": 104
       },
       "2": {
         "row": 1,
@@ -2145,27 +2093,78 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 95
+        "foot": 92
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 95
+        "foot": 92
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 95
+        "foot": 92
+      }
+    }
+  },
+  "restia-mitia-front": {
+    "image": "/assets/restia/battle/restia-mitia-front.webp",
+    "frameWidth": 83,
+    "frameHeight": 111,
+    "columns": 8,
+    "anchorX": 38,
+    "anchorY": 105,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8,
+        "foot": 100
+      },
+      "2": {
+        "row": 1,
+        "frames": 8
+      },
+      "3": {
+        "row": 2,
+        "frames": 4,
+        "foot": 94
+      },
+      "11": {
+        "row": 3,
+        "frames": 8
+      },
+      "12": {
+        "row": 3,
+        "frames": 8
+      },
+      "13": {
+        "row": 3,
+        "frames": 8
+      },
+      "17": {
+        "row": 4,
+        "frames": 4,
+        "foot": 96
+      },
+      "18": {
+        "row": 4,
+        "frames": 4,
+        "foot": 96
+      },
+      "19": {
+        "row": 4,
+        "frames": 4,
+        "foot": 96
       }
     }
   },
   "restia-mitia-sk": {
     "image": "/assets/restia/battle/restia-mitia-sk.webp",
-    "frameWidth": 80,
-    "frameHeight": 107,
+    "frameWidth": 83,
+    "frameHeight": 106,
     "columns": 8,
-    "anchorX": 36,
-    "anchorY": 101,
+    "anchorX": 38,
+    "anchorY": 103,
     "groups": {
       "2": {
         "row": 0,
@@ -2228,11 +2227,11 @@
   },
   "restia-senna": {
     "image": "/assets/restia/battle/restia-senna.webp",
-    "frameWidth": 98,
-    "frameHeight": 98,
+    "frameWidth": 102,
+    "frameHeight": 102,
     "columns": 8,
-    "anchorX": 41,
-    "anchorY": 93,
+    "anchorX": 42,
+    "anchorY": 95,
     "groups": {
       "0": {
         "row": 0,
@@ -2248,7 +2247,8 @@
       },
       "4": {
         "row": 3,
-        "frames": 3
+        "frames": 3,
+        "foot": 98
       },
       "5": {
         "row": 4,
@@ -2257,12 +2257,12 @@
       "7": {
         "row": 5,
         "frames": 4,
-        "foot": 87
+        "foot": 89
       },
       "8": {
         "row": 6,
         "frames": 4,
-        "foot": 87
+        "foot": 89
       },
       "11": {
         "row": 7,
@@ -2279,32 +2279,31 @@
       "17": {
         "row": 8,
         "frames": 4,
-        "foot": 86
+        "foot": 89
       },
       "18": {
         "row": 8,
         "frames": 4,
-        "foot": 86
+        "foot": 89
       },
       "19": {
         "row": 8,
         "frames": 4,
-        "foot": 86
+        "foot": 89
       }
     }
   },
   "restia-senna-back": {
     "image": "/assets/restia/battle/restia-senna-back.webp",
-    "frameWidth": 78,
-    "frameHeight": 104,
+    "frameWidth": 82,
+    "frameHeight": 109,
     "columns": 8,
-    "anchorX": 40,
-    "anchorY": 96,
+    "anchorX": 41,
+    "anchorY": 98,
     "groups": {
       "0": {
         "row": 0,
-        "frames": 8,
-        "foot": 94
+        "frames": 8
       },
       "2": {
         "row": 1,
@@ -2313,7 +2312,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 84
+        "foot": 86
       },
       "11": {
         "row": 3,
@@ -2330,27 +2329,27 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 84
+        "foot": 87
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 84
+        "foot": 87
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 84
+        "foot": 87
       }
     }
   },
   "restia-senna-front": {
     "image": "/assets/restia/battle/restia-senna-front.webp",
-    "frameWidth": 95,
-    "frameHeight": 95,
+    "frameWidth": 98,
+    "frameHeight": 98,
     "columns": 8,
     "anchorX": 41,
-    "anchorY": 93,
+    "anchorY": 94,
     "groups": {
       "0": {
         "row": 0,
@@ -2363,7 +2362,7 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "11": {
         "row": 3,
@@ -2380,27 +2379,27 @@
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 85
+        "foot": 86
       }
     }
   },
   "restia-senna-sk": {
     "image": "/assets/restia/battle/restia-senna-sk.webp",
-    "frameWidth": 82,
-    "frameHeight": 109,
+    "frameWidth": 84,
+    "frameHeight": 112,
     "columns": 8,
     "anchorX": 34,
-    "anchorY": 103,
+    "anchorY": 105,
     "groups": {
       "2": {
         "row": 0,
@@ -2421,17 +2420,17 @@
       "23": {
         "row": 4,
         "frames": 8,
-        "foot": 98
+        "foot": 100
       }
     }
   },
   "restia-senna-x": {
     "image": "/assets/restia/battle/restia-senna-x.webp",
-    "frameWidth": 88,
-    "frameHeight": 118,
+    "frameWidth": 91,
+    "frameHeight": 121,
     "columns": 8,
     "anchorX": 37,
-    "anchorY": 112,
+    "anchorY": 113,
     "groups": {
       "30": {
         "row": 0,
@@ -2440,7 +2439,7 @@
       "31": {
         "row": 1,
         "frames": 4,
-        "foot": 107
+        "foot": 109
       },
       "32": {
         "row": 2,
@@ -2453,12 +2452,12 @@
       "34": {
         "row": 4,
         "frames": 4,
-        "foot": 100
+        "foot": 101
       },
       "35": {
         "row": 5,
         "frames": 4,
-        "foot": 98
+        "foot": 100
       }
     }
   },
@@ -2527,10 +2526,10 @@
   },
   "restia-tilde-back": {
     "image": "/assets/restia/battle/restia-tilde-back.webp",
-    "frameWidth": 72,
-    "frameHeight": 90,
+    "frameWidth": 74,
+    "frameHeight": 91,
     "columns": 8,
-    "anchorX": 40,
+    "anchorX": 42,
     "anchorY": 88,
     "groups": {
       "0": {
@@ -2544,37 +2543,37 @@
       "3": {
         "row": 2,
         "frames": 4,
-        "foot": 79
+        "foot": 80
       },
       "11": {
         "row": 3,
         "frames": 8,
-        "foot": 85
+        "foot": 86
       },
       "12": {
         "row": 3,
         "frames": 8,
-        "foot": 85
+        "foot": 86
       },
       "13": {
         "row": 3,
         "frames": 8,
-        "foot": 85
+        "foot": 86
       },
       "17": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 82
       },
       "18": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 82
       },
       "19": {
         "row": 4,
         "frames": 4,
-        "foot": 81
+        "foot": 82
       }
     }
   },

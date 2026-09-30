@@ -11,6 +11,8 @@
  *
  * Backgrounds are keyed by flood-filling from each cell's border over pixels
  * close to the border's median colour (Codex paints flat backdrops, not alpha).
+ * hv13 portraits are painted on a green or magenta chroma screen instead, which
+ * keyChroma removes everywhere, not only where it touches the border.
  * Battle sheets go through scripts/import-sprite-sheet.mjs (H3 atlas format)
  * into src/restia/data/battle-atlases.json.
  */
@@ -424,8 +426,167 @@ function defringeBackdrop(img, { maxFar = 2.5, radius = 2, minInk = 80 } = {}) {
   data.set(out);
 }
 
-async function writeTachie(img, name) {
-  defringeBackdrop(img);
+/**
+ * Keys a flat chroma screen (pure green or magenta, read from the border median) out of
+ * `img` in place. The screen colour never occurs in the art, so it is removed everywhere,
+ * including gaps enclosed by hair strands, fingers and arms that a border flood cannot
+ * reach. Pixels at least `core` of the screen's own key strength are backdrop; opaque
+ * pixels within `band` px of the backdrop get their matte solved against the screen
+ * (obs = a*ink + (1-a)*screen) and the screen spill removed. Deeper pixels at least
+ * `sheer` strong are the screen showing through sheer fabric (a mesh sleeve) or darkened
+ * behind overlapping hair: they become translucent. On green screens weaker green tints
+ * deeper inside lose their green too. Each character is screened in a colour they do not
+ * wear, so no drawn colour should be affected (checked against the white-backdrop
+ * masters; Tilde's potion is real magenta, so her art passes `sheer: Infinity`).
+ */
+function keyChroma(img, { core = 0.55, band = 3, lo = 16, speck = 40, radius = 3, sheer } = {}) {
+  const { data, width, height } = img;
+  const n = width * height;
+  const border = [];
+  for (let x = 0; x < width; x++) border.push(x, (height - 1) * width + x);
+  for (let y = 0; y < height; y++) border.push(y * width, y * width + width - 1);
+  const median = (c) => {
+    const values = border.map((p) => data[p * 4 + c]).sort((a, b) => a - b);
+    return values[values.length >> 1];
+  };
+  const screen = [median(0), median(1), median(2)];
+  const green = screen[1] > screen[0] && screen[1] > screen[2];
+  const strength = (r, g, b) => (green ? g - Math.max(r, b) : Math.min(r, b) - g);
+  const full = strength(...screen);
+  if (full < 120) throw new Error(`keyChroma: border median ${screen} is not a chroma screen`);
+  sheer ??= green ? 48 : 60;
+  const src = Uint8Array.from(data);
+  const keyOf = (p) => strength(src[p * 4], src[p * 4 + 1], src[p * 4 + 2]);
+  const back = new Uint8Array(n);
+  for (let p = 0; p < n; p++) if (keyOf(p) >= core * full) back[p] = 1;
+  // Opaque specks floating in the screen (generation noise) join the backdrop.
+  const seen = new Uint8Array(n);
+  for (let start = 0; start < n; start++) {
+    if (back[start] || seen[start]) continue;
+    const island = [start];
+    seen[start] = 1;
+    for (let i = 0; i < island.length; i++) {
+      const p = island[i];
+      const x = p % width;
+      for (const q of [x > 0 ? p - 1 : -1, x < width - 1 ? p + 1 : -1, p - width, p + width]) {
+        if (q >= 0 && q < n && !back[q] && !seen[q]) {
+          seen[q] = 1;
+          island.push(q);
+        }
+      }
+    }
+    if (island.length <= speck) for (const p of island) back[p] = 1;
+  }
+  const far = new Float32Array(n).fill(1e9);
+  for (let p = 0; p < n; p++) if (back[p]) far[p] = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const p = y * width + x;
+    if (x > 0) far[p] = Math.min(far[p], far[p - 1] + 1);
+    if (y > 0) far[p] = Math.min(far[p], far[p - width] + 1, x > 0 ? far[p - width - 1] + 1.4 : 1e9, x < width - 1 ? far[p - width + 1] + 1.4 : 1e9);
+  }
+  for (let y = height - 1; y >= 0; y--) for (let x = width - 1; x >= 0; x--) {
+    const p = y * width + x;
+    if (x < width - 1) far[p] = Math.min(far[p], far[p + 1] + 1);
+    if (y < height - 1) far[p] = Math.min(far[p], far[p + width] + 1, x < width - 1 ? far[p + width + 1] + 1.4 : 1e9, x > 0 ? far[p + width - 1] + 1.4 : 1e9);
+  }
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (back[p]) {
+      data[i] = data[i + 1] = data[i + 2] = data[i + 3] = 0;
+      continue;
+    }
+    const k = keyOf(p);
+    if (k <= lo) continue;
+    if (far[p] > band) {
+      if (k <= sheer) {
+        if (green) data[i + 1] = Math.max(src[i], src[i + 2]);
+        continue;
+      }
+      const a = Math.max(0, Math.min(1, 1 - (k - sheer) / (full - sheer)));
+      const ink = [0, 1, 2].map((c) => Math.max(0, Math.min(255, (src[i + c] - (1 - a) * screen[c]) / Math.max(a, 0.04))));
+      const spill = strength(...ink);
+      if (spill > 0) {
+        if (green) ink[1] -= spill;
+        else {
+          ink[0] -= spill;
+          ink[2] -= spill;
+        }
+      }
+      for (let c = 0; c < 3; c++) data[i + c] = Math.round(ink[c]);
+      data[i + 3] = Math.round(a * 255);
+      continue;
+    }
+    // Matte against the nearest clean pixel deeper inside the figure (obs = a*ink + (1-a)*screen);
+    // without one, assume ink with no key colour in it.
+    const x = p % width;
+    const y = (p - x) / width;
+    let ref = -1;
+    let refDist = 1e9;
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+      const qx = x + dx;
+      const qy = y + dy;
+      if (qx < 0 || qy < 0 || qx >= width || qy >= height) continue;
+      const q = qy * width + qx;
+      const dist = dx * dx + dy * dy;
+      if (back[q] || far[q] <= far[p] || keyOf(q) > lo || dist >= refDist) continue;
+      ref = q;
+      refDist = dist;
+    }
+    let a;
+    if (ref >= 0) {
+      let dot = 0;
+      let len = 0;
+      for (let c = 0; c < 3; c++) {
+        dot += (screen[c] - src[i + c]) * (screen[c] - src[ref * 4 + c]);
+        len += (screen[c] - src[ref * 4 + c]) ** 2;
+      }
+      a = len > 0 ? Math.max(0, Math.min(1, dot / len)) : 1;
+    } else a = Math.max(0, Math.min(1, 1 - (k - lo) / (full - lo)));
+    if (a < 0.04) {
+      data[i] = data[i + 1] = data[i + 2] = data[i + 3] = 0;
+      continue;
+    }
+    const ink = [0, 1, 2].map((c) => Math.max(0, Math.min(255, (src[i + c] - (1 - a) * screen[c]) / a)));
+    const spill = strength(...ink);
+    if (spill > 0) {
+      if (green) ink[1] -= spill;
+      else {
+        ink[0] -= spill;
+        ink[2] -= spill;
+      }
+    }
+    for (let c = 0; c < 3; c++) data[i + c] = Math.round(ink[c]);
+    data[i + 3] = Math.min(data[i + 3], Math.round(a * 255));
+  }
+}
+
+/**
+ * Codex sometimes returns a fresh (non-edit) image with real alpha instead of the asked-for
+ * screen. Such a master keeps its alpha (its opaque pixels come back at 251-253, so they are
+ * made solid); anything else is a chroma screen and goes through keyChroma.
+ */
+function keyChromaOrAlpha(img, options) {
+  let clear = 0;
+  for (let i = 3; i < img.data.length; i += 4) if (img.data[i] === 0) clear++;
+  if (clear < img.width * img.height * 0.1) return keyChroma(img, options);
+  for (let i = 3; i < img.data.length; i += 4) if (img.data[i] >= 248) img.data[i] = 255;
+}
+
+/** Tilde's potion is a drawn magenta: her art keeps it opaque. */
+const chromaOptions = (name) => (name.split("-")[0] === "tilde" ? { sheer: Infinity } : {});
+
+/** Runtime portraits written from hv13 masters in this run (the Bin step skips those). */
+const builtHv13 = new Set();
+
+/** An hv13 portrait master (chroma screen or real alpha) -> runtime tachie. */
+async function writeHv13Tachie(file, name) {
+  const img = await rgba(file);
+  keyChromaOrAlpha(img, chromaOptions(name));
+  await writeTachie(img, name, { defringe: false });
+}
+
+async function writeTachie(img, name, { defringe = true } = {}) {
+  if (defringe) defringeBackdrop(img);
   const box = bbox(img, 0, 0, img.width, img.height);
   const buffer = await extract(img, box);
   await sharp(buffer).resize({ height: 1280, withoutEnlargement: true }).webp({ quality: 84, alphaQuality: 90 }).toFile(out(`tachie/${name}.webp`));
@@ -464,10 +625,33 @@ async function keyedTachie(file, name) {
   await writeTachie(img, name);
 }
 
+/**
+ * hv13 portraits: tmp/gen/restia/raw/hv13-tachie-<name>[-vN].png, Codex redraws of the
+ * portrait each runtime file was built from, on a chroma screen instead of white (the
+ * white-backdrop keying left backdrop specks between hair strands and fingers). One
+ * replaces every earlier master for that runtime name, Bin's Earth faces included.
+ */
+function hv13Masters() {
+  const best = new Map();
+  for (const file of fs.readdirSync(RAW)) {
+    const match = file.match(/^hv13-tachie-(.+?)(?:-v(\d+))?\.png$/);
+    if (!match) continue;
+    const version = Number(match[2] ?? 1);
+    if (!best.has(match[1]) || best.get(match[1]).version < version) best.set(match[1], { version, file: path.join(RAW, file) });
+  }
+  return new Map([...best].map(([name, { file }]) => [name, file]));
+}
+
 async function tachie() {
+  const hv13 = hv13Masters();
+  for (const [name, file] of hv13) {
+    if (!(wantName(name) || wantName(name.split("-")[0]))) continue;
+    await writeHv13Tachie(file, name);
+    builtHv13.add(name);
+  }
   const hv12 = hv12Masters();
   for (const name of TACHIE_NAMES) {
-    if (!wantName(name)) continue;
+    if (!wantName(name) || hv13.has(name)) continue;
     if (hv12.has(name)) {
       await keyedTachie(hv12.get(name), name);
       continue;
@@ -490,7 +674,7 @@ async function tachie() {
     ...[...hv12].filter(([name]) => !TACHIE_NAMES.includes(name))
   ];
   for (const [name, file] of variants) {
-    if (!file || !(wantName(name) || wantName(name.split("-")[0]))) continue;
+    if (!file || hv13.has(name) || !(wantName(name) || wantName(name.split("-")[0]))) continue;
     await keyedTachie(file, name);
   }
 }
@@ -502,7 +686,14 @@ async function tachie() {
  * matching full-backdrop version (user-bin-<face>-vn.png, same size).
  */
 async function binFaces() {
+  const hv13 = hv13Masters();
   for (const face of ["normal", "happy", "angry", "sad"]) {
+    // The 2026-09-30 redesign (hv13 portraits) replaces the creator's cutouts.
+    const name = face === "normal" ? "bin" : `bin-${face}`;
+    if (hv13.has(name)) {
+      if (!builtHv13.has(name)) await writeHv13Tachie(hv13.get(name), name);
+      continue;
+    }
     const cut = raw(`user-bin-${face}`);
     const full = raw(`user-bin-${face}-vn`);
     if (!cut || !full) continue;
@@ -542,7 +733,13 @@ async function binFaces() {
 
 /** Bin in Earth clothes: Codex edits of the creator's four expressions (flat white backdrop). */
 async function binEarth() {
+  const hv13 = hv13Masters();
   for (const face of ["normal", "happy", "angry", "sad"]) {
+    const name = face === "normal" ? "bin-earth" : `bin-earth-${face}`;
+    if (hv13.has(name)) {
+      if (!builtHv13.has(name)) await writeHv13Tachie(hv13.get(name), name);
+      continue;
+    }
     const file = raw(`hv6-bin-earth-${face}`);
     if (!file) continue;
     const img = await rgba(file);
@@ -724,10 +921,62 @@ async function terrain() {
  * (scale reference, same --ref as their main sheet) + 4 victory, row 2 a jump,
  * rows 3-4 their two signature skills. Written as "<atlas>-sk" (groups 20-23).
  */
-function skillSheets() {
+/**
+ * A sprite sheet master: the hv13 chroma-screen redraw (hv13-<kind>-<name>) when there is one,
+ * keyed to real alpha in tmp/gen/restia/keyed/ (import-sprite-sheet keeps a sheet's own alpha),
+ * else the first existing older master.
+ */
+async function sheetMaster(kind, name, ...older) {
+  const chroma = path.join(RAW, `hv13-${kind}-${name}.png`);
+  if (!fs.existsSync(chroma)) return rawFirst(...older);
+  const img = await rgba(chroma);
+  // Small speck limit: sparkles and ice shards are separate little islands on a sheet.
+  keyChromaOrAlpha(img, { speck: 6, ...chromaOptions(name) });
+  const keyed = path.join(ROOT, "tmp", "gen", "restia", "keyed", `hv13-${kind}-${name}.png`);
+  fs.mkdirSync(path.dirname(keyed), { recursive: true });
+  await toSharp(img).png().toFile(keyed);
+  return keyed;
+}
+
+/**
+ * Each sheet step writes its atlas metadata to its own scratch file, merged into
+ * battle-atlases.json once at the end: rewriting the shared file for every sheet hits
+ * Windows file locks.
+ */
+function atlasScratch(step) {
+  const scratch = path.join(ROOT, "tmp", "gen", "restia", `${step}-atlases.json`);
+  fs.writeFileSync(scratch, "{}\n");
+  return scratch;
+}
+
+/** Runs a sheet step against its scratch file and merges what it wrote even if it fails partway, so written images never keep stale metadata. */
+async function withAtlasScratch(step, build) {
+  const scratch = atlasScratch(step);
+  try {
+    await build(scratch);
+  } finally {
+    mergeAtlases(scratch);
+  }
+}
+
+function mergeAtlases(scratch) {
+  const target = path.join(ROOT, "src", "restia", "data", "battle-atlases.json");
+  const added = JSON.parse(fs.readFileSync(scratch, "utf8"));
+  const merged = { ...JSON.parse(fs.readFileSync(target, "utf8")), ...added };
+  // Sorted, as import-sprite-sheet writes it.
+  const sorted = Object.fromEntries(Object.keys(merged).sort().map((key) => [key, merged[key]]));
+  fs.writeFileSync(target, JSON.stringify(sorted, null, 2) + "\n");
+  console.log(`merged ${Object.keys(added).length} atlases`);
+}
+
+async function skillSheets() {
+  await withAtlasScratch("skill", skillSheetsInto);
+}
+
+async function skillSheetsInto(scratch) {
   for (const name of ["bin", "mitia", "bowy", "garr", "hilda", "senna"]) {
     if (!wantName(name)) continue;
-    const file = rawFirst(`hv10-skill-${name}`, `hv8-skill-${name}`);
+    const file = await sheetMaster("skill", name, `hv10-skill-${name}`, `hv8-skill-${name}`);
     if (!file) continue;
     execFileSync(
       process.execPath,
@@ -739,7 +988,7 @@ function skillSheets() {
         "--rows", "2:4+20:4;21:8;22:8;23:8",
         "--ref", "swordsman",
         "--out-dir", path.join("public", "assets", "restia", "battle"),
-        "--meta", path.join("src", "restia", "data", "battle-atlases.json")
+        "--meta", scratch
       ],
       { cwd: ROOT, stdio: "inherit" }
     );
@@ -751,9 +1000,11 @@ function skillSheets() {
  * groups as the side sheet) and the main characters' extra moves ("<atlas>-x":
  * 30 fidget, 31 dodge, 32 get up, 33 critical strike, 34 power up, 35 potion).
  */
-function facingSheets() {
-  const scratch = path.join(ROOT, "tmp", "gen", "restia", "facing-atlases.json");
-  fs.writeFileSync(scratch, "{}\n");
+async function facingSheets() {
+  await withAtlasScratch("facing", facingSheetsInto);
+}
+
+async function facingSheetsInto(scratch) {
   const scaleOf = (name) => (name === "frost-wolf" ? ["--ref", "boar"] : name === "frost-rat" ? ["--height", "42"] : ["--ref", "swordsman"]);
   const run = (file, slug, rows, extra) =>
     execFileSync(
@@ -774,18 +1025,14 @@ function facingSheets() {
   const names = ["bin", "mitia", "bowy", "garr", "hilda", "senna", "dain", "lysa", "mara", "frida", "tilde", "frost-wolf", "frost-rat"];
   for (const view of ["front", "back"]) {
     for (const name of names.filter(wantName)) {
-      const file = rawFirst(`hv10-${view}-${name}`, `hv9-${view}-${name}`);
+      const file = await sheetMaster(view, name, `hv10-${view}-${name}`, `hv9-${view}-${name}`);
       if (file) run(file, `restia-${name}-${view}`, "2:8;0:8;12:8;3:4+18:4", ["--copy", "11=12,13=12,17=18,19=18", ...scaleOf(name)]);
     }
   }
   for (const name of names.slice(0, 6).filter(wantName)) {
-    const file = rawFirst(`hv10-extra-${name}`, `hv9-extra-${name}`);
+    const file = await sheetMaster("extra", name, `hv10-extra-${name}`, `hv9-extra-${name}`);
     if (file) run(file, `restia-${name}-x`, "30:8;31:4+32:4;33:8;34:4+35:4", ["--standing", "30", ...scaleOf(name)]);
   }
-  const target = path.join(ROOT, "src", "restia", "data", "battle-atlases.json");
-  const merged = { ...JSON.parse(fs.readFileSync(target, "utf8")), ...JSON.parse(fs.readFileSync(scratch, "utf8")) };
-  fs.writeFileSync(target, JSON.stringify(merged, null, 2) + "\n");
-  console.log(`merged ${Object.keys(JSON.parse(fs.readFileSync(scratch, "utf8"))).length} atlases`);
 }
 
 /**
@@ -834,8 +1081,12 @@ async function feet() {
   console.log(`feet: ${changed} rows updated`);
 }
 
-function battle() {
-  const rows = "2:8;0:8;12:8;3:4+4:4;5:8;7:4+18:4";
+async function battle() {
+  await withAtlasScratch("battle", battleInto);
+}
+
+async function battleInto(scratch) {
+  const rows ="2:8;0:8;12:8;3:4+4:4;5:8;7:4+18:4";
   // [name, scale option]: party and the rival match an H3 swordsman; the frost beasts are animals.
   const sheets = [
     ["bin", ["--ref", "swordsman"]],
@@ -856,7 +1107,7 @@ function battle() {
   ];
   for (const [name, scale, sheetRows = rows] of sheets) {
     if (!wantName(name)) continue;
-    const file = rawFirst(`hv10-battle-${name}`, `hv6-battle-${name}`, `hv-battle-${name}`);
+    const file = await sheetMaster("battle", name, `hv10-battle-${name}`, `hv6-battle-${name}`, `hv-battle-${name}`);
     if (!file) continue;
     execFileSync(
       process.execPath,
@@ -870,7 +1121,7 @@ function battle() {
         "--copy", "11=12,13=12,17=18,19=18",
         ...scale,
         "--out-dir", path.join("public", "assets", "restia", "battle"),
-        "--meta", path.join("src", "restia", "data", "battle-atlases.json")
+        "--meta", scratch
       ],
       { cwd: ROOT, stdio: "inherit" }
     );
@@ -883,12 +1134,12 @@ if (want("bin")) await binEarth();
 if (want("backdrops")) await backdrops();
 if (want("buildings")) await buildings();
 if (want("sheets")) await sheets();
-if (want("battle")) battle();
+if (want("battle")) await battle();
 if (want("battleArt")) await battleArt();
 if (want("terrain")) await terrain();
 if (want("hud")) await hud();
-if (want("skillSheets")) skillSheets();
-if (want("facingSheets")) facingSheets();
+if (want("skillSheets")) await skillSheets();
+if (want("facingSheets")) await facingSheets();
 // Any rebuilt sheet gets its ground lines measured again.
 if (want("feet") || want("battle") || want("skillSheets") || want("facingSheets")) await feet();
 console.log("done");
