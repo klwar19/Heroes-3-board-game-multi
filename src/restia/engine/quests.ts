@@ -1,4 +1,5 @@
 import type { GuildRank, NpcId, RequestState, RestiaState } from "./types";
+import { available, gainJp } from "./story";
 import {
   MAX_ACCEPTED_REQUESTS,
   MISSIONS,
@@ -35,7 +36,7 @@ export function track(state: RestiaState, ctx: Ctx, key: string, n: number, subj
     mission.progress = Math.min(mission.target, mission.progress + n);
     if (mission.progress >= mission.target) {
       mission.done = true;
-      state.admin.ap += mission.ap;
+      gainJp(state, mission.ap);
       ctx.toast(`[CJS] Jester Bit complete: ${template.text.replace("{n}", String(mission.target))} (+${mission.ap} JP)`, "system");
     }
   }
@@ -138,7 +139,8 @@ function newRequest(state: RestiaState): RequestState | null {
     progress: 0,
     gold: Math.round(gold * rankBonus),
     gp: template.gp,
-    client: pick(state, template.clients) as NpcId,
+    // Lost characters don't post requests any more.
+    client: (pick(state, template.clients.filter((npc) => available(state, npc))) ?? "lysa") as NpcId,
     expires: state.day + randInt(state, 3, 5),
     accepted: false,
     rank: template.rank
@@ -151,6 +153,8 @@ export function refreshRequests(state: RestiaState, ctx: Ctx): void {
   state.requestDay = state.day;
   const kept: RequestState[] = [];
   for (const request of state.requests) {
+    // A lost character's open (not yet accepted) postings come down with them.
+    if (!request.accepted && !available(state, request.client)) continue;
     if (request.expires >= state.day) kept.push(request);
     else if (request.accepted) ctx.toast(`Request expired: ${requestTitle(request)}`, "bad");
   }

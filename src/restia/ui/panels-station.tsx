@@ -5,7 +5,7 @@ import type { BuildingId, DispatchResult, NpcId, RestiaAction, RestiaState, Stat
 import { BUILDINGS, BUILDING_ORDER, maxLevel } from "../data/buildings";
 import { ITEMS, itemDef } from "../data/items";
 import { RECIPE_LIST, type RecipeDef } from "../data/recipes";
-import { BLESSINGS, MAX_ACCEPTED_REQUESTS, RANK_EXAM, RANK_GP } from "../data/progression";
+import { BLESSINGS, MAX_ACCEPTED_REQUESTS, RANK_EXAM, RANK_GP, RANK_LEVEL_CAP } from "../data/progression";
 import { MONSTERS } from "../data/monsters";
 import { NPCS } from "../data/npcs";
 import { CHARACTERS } from "../data/characters";
@@ -279,7 +279,7 @@ export function RequestsPanel({ state, act, onClose }: { state: RestiaState; act
     <Panel onClose={onClose} title="Request Board" wide>
       <div className={s.card} style={{ marginBottom: 10 }}>
         <div className={s.rowTitle}>
-          Rank {state.guild.rank} · {state.guild.gp} GP
+          Rank {state.guild.rank} · {state.guild.gp} GP · Level cap {RANK_LEVEL_CAP[state.guild.rank]}
         </div>
         {next ? (
           <div className={s.muted}>

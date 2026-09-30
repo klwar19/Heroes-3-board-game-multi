@@ -26,7 +26,8 @@ import {
 } from "./battle";
 import { aiTurn } from "./battle-ai";
 import { setJob } from "./jobs";
-import { sceneChoose, sceneNext, startQueuedScene } from "./scenes";
+import { resumeScene, sceneChoose, sceneNext, startQueuedScene } from "./scenes";
+import { rewindState } from "./story";
 
 const BATTLE_ACTIONS = new Set(["bMove", "bAttack", "bSkill", "bItem", "bDefend", "bWait", "bBefriend", "bFlee", "bRush", "bEndTurn", "bSprint", "bAiTurn", "bFinish"]);
 const DUNGEON_ACTIONS = new Set(["dStep", "dInteract", "leaveDungeon"]);
@@ -42,7 +43,20 @@ export function createGame(seed: number): DispatchResult {
 }
 
 export function dispatch(state: RestiaState, action: RestiaAction): DispatchResult {
-  const next = structuredClone(state);
+  if (action.type === "rewind") {
+    if (!state.gameOver || state.scene) return { state, events: [{ kind: "toast", text: "Nothing to rewind.", tone: "bad" }] };
+    const ctx = new Ctx();
+    const next = rewindState(state);
+    resumeScene(next, ctx);
+    startQueuedScene(next, ctx);
+    ctx.toast(`Rewound. Bad Ratings until day ${next.story.penaltyUntil}: party ATK/DEF/MAG/RES -10%, Jester Points halved.`, "bad");
+    return { state: next, events: ctx.events };
+  }
+  // The checkpoint is a frozen snapshot (only ever replaced, never edited), so the
+  // clone shares it instead of copying a second full state on every action.
+  const { checkpoint, ...rest } = state;
+  const next = structuredClone(rest) as RestiaState;
+  next.checkpoint = checkpoint;
   const ctx = new Ctx();
   try {
     route(next, action, ctx);
@@ -60,6 +74,8 @@ function route(state: RestiaState, action: RestiaAction, ctx: Ctx): void {
     return;
   }
   if (state.scene && action.type !== "sceneNext" && action.type !== "sceneChoose") fail("Finish the conversation first.");
+  if (state.ending && !state.scene) fail("This story has ended. Load a save to continue.");
+  if (state.gameOver && !state.scene) fail("Peri is waiting in the Green Room.");
   const battleAction = BATTLE_ACTIONS.has(action.type);
   if (state.battle && !battleAction && !state.scene) fail("You're in a battle!");
   if (!state.battle && battleAction) fail("No battle in progress.");

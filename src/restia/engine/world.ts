@@ -1,4 +1,5 @@
 import type { BuildingId, Dir, FieldMonster, RestiaState, ZoneId } from "./types";
+import { mourning } from "./story";
 import { BUILDINGS } from "../data/buildings";
 import { FOREST_ENCOUNTERS } from "../data/dungeon";
 import { itemDef } from "../data/items";
@@ -77,6 +78,7 @@ export function doorOf(building: BuildingId): { zone: ZoneId; x: number; y: numb
 
 export function isOpen(state: RestiaState, building: BuildingId): boolean {
   const def = BUILDINGS[building];
+  if (mourning(state, def.owner)) return false;
   if (def.closedDay !== undefined && weekday(state.day) === def.closedDay) return false;
   if (!def.hours) return true;
   return state.minute >= def.hours[0] && state.minute < def.hours[1];
@@ -89,6 +91,7 @@ export function enter(state: RestiaState, building: BuildingId): void {
   if (!door || door.zone !== state.player.zone) fail(`${def.name} isn't here.`);
   if (Math.abs(state.player.x - door.x) + Math.abs(state.player.y - door.y) > 1) fail("Walk up to the door first.");
   if (state.town.levels[building] < 1) fail(`${def.name} hasn't been built yet. Use the Outpost Board in the Frostbitten square.`);
+  if (mourning(state, def.owner)) fail(`${def.name} is closed. A note on the door: 'Closed for mourning.'`);
   if (!isOpen(state, building)) {
     const hours = def.hours;
     const when = hours ? `Open ${formatTime(hours[0])} - ${formatTime(hours[1])}` : "";

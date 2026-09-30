@@ -1,4 +1,5 @@
 import type { BuildingId, NpcId, Plot, Relationship, RestiaState } from "./types";
+import { newStory } from "./story";
 import { START_LEVELS } from "../data/buildings";
 import { NPC_IDS } from "../data/npcs";
 import { FIELD_H, FIELD_MAX, FIELD_RECTS, FIELD_W, PAINTED_DEBRIS, inRect } from "../data/zones";
@@ -10,7 +11,10 @@ export const BASE_STAMINA = 100;
 export const BARN_CAPACITY = [0, 4, 8];
 
 export const PROLOGUE = [
+  "p0Bookstore",
+  "p0Saturdays",
   "p0Bracelet",
+  "p1Daily",
   "p1Kfc",
   "p2Ward",
   "p3TrashCan",
@@ -80,12 +84,17 @@ export function newGame(seed: number): RestiaState {
     fieldMonsters: [],
     forage: [],
     dungeon: null,
+    floorsToday: {},
     battle: null,
     scene: null,
     sceneQueue: [],
     seenScenes: [],
     playSeconds: 0,
-    blessingDay: 0
+    blessingDay: 0,
+    story: newStory(),
+    ending: null,
+    gameOver: null,
+    checkpoint: null
   };
   state.members.bin = newMember("bin", 1);
   healMember(state, "bin");

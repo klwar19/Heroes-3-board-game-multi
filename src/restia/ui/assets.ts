@@ -1,5 +1,6 @@
 import { assetUrl } from "@/lib/asset-url";
 import type { Face, FxId, IconRef, NpcId, ProjectileId, SpeakerId } from "../engine/types";
+import TACHIE_INDEX from "../data/tachie-index.json";
 import { BATTLEFIELDS } from "../data/battlefields";
 
 /** Every Restia image/sound path goes through assetUrl (CDN + content-addressed keys). */
@@ -26,7 +27,14 @@ export const BACKDROPS: Record<string, string> = {
   earthKfc: `${R}/bg/earth-kfc.webp`,
   earthHospital: `${R}/bg/earth-hospital.webp`,
   earthBookstore: `${R}/bg/earth-bookstore.webp`,
+  earthCafeteria: `${R}/bg/earth-cafeteria.webp`,
+  earthGym: `${R}/bg/earth-gym.webp`,
+  earthLibrary: `${R}/bg/earth-library.webp`,
+  earthStreet: `${R}/bg/earth-street.webp`,
+  earthSchool: `${R}/bg/earth-school.webp`,
   eosMeadow: `${R}/bg/eos-meadow.webp`,
+  eosVillage: `${R}/bg/eos-village.webp`,
+  eosCave: `${R}/bg/eos-cave.webp`,
   havenRoad: `${R}/bg/haven-road.webp`,
   havenGate: `${R}/bg/haven-gate.webp`
 };
@@ -55,28 +63,36 @@ export const TACHIE: Partial<Record<SpeakerId, string>> = {
   luna: `${R}/tachie/luna.webp`,
   leo: `${R}/tachie/leo.webp`,
   meilin: `${R}/tachie/meilin.webp`,
-  jake: `${R}/tachie/jake.webp`
+  jake: `${R}/tachie/jake.webp`,
+  lingling: `${R}/tachie/lingling.webp`,
+  chad: `${R}/tachie/chad.webp`,
+  nurse: `${R}/tachie/nurse.webp`,
+  oldZhou: `${R}/tachie/oldzhou.webp`,
+  zhaoKang: `${R}/tachie/zhaokang.webp`,
+  gymBro: `${R}/tachie/gymbro.webp`,
+  repairman: `${R}/tachie/repairman.webp`,
+  villager: `${R}/tachie/villager.webp`
 };
 
-const BIN_FACES: Record<Face, string> = {
-  happy: `${R}/tachie/bin-happy.webp`,
-  angry: `${R}/tachie/bin-angry.webp`,
-  sad: `${R}/tachie/bin-sad.webp`
-};
+/** Which outfits and expressions exist per portrait file (scripts/restia/tachie-index.mjs). */
+const VARIANTS = TACHIE_INDEX as Record<string, Record<string, string[]>>;
 
-/** Bin in his Earth clothes (prologue and Eos scenes). */
-const BIN_EARTH: Record<Face | "normal", string> = {
-  normal: `${R}/tachie/bin-earth.webp`,
-  happy: `${R}/tachie/bin-earth-happy.webp`,
-  angry: `${R}/tachie/bin-earth-angry.webp`,
-  sad: `${R}/tachie/bin-earth-sad.webp`
-};
-
-/** Standing art for a speaker; Bin can wear an expression and his Earth outfit. */
-export function tachieFor(speaker: SpeakerId, face: Face | null, outfit?: "earth"): string | undefined {
-  if (speaker === "bin" && outfit === "earth") return BIN_EARTH[face ?? "normal"];
-  if (speaker === "bin" && face) return BIN_FACES[face];
-  return TACHIE[speaker];
+/**
+ * Standing art for a speaker in an outfit ("default" = everyday clothes) with an
+ * expression. Missing expressions fall back to the outfit's normal face, missing
+ * outfits to the default one, so scenes can ask for art that isn't drawn yet.
+ */
+export function tachieFor(speaker: SpeakerId, face: Face | null, outfit?: string): string | undefined {
+  const base = TACHIE[speaker];
+  if (!base) return undefined;
+  const file = base.slice(base.lastIndexOf("/") + 1).replace(/\.webp$/, "");
+  const dir = base.slice(0, base.lastIndexOf("/") + 1);
+  const outfits = VARIANTS[file];
+  const set = outfit && outfits?.[outfit] ? outfit : "default";
+  const faces = outfits?.[set] ?? ["normal"];
+  const want = face && faces.includes(face) ? face : "normal";
+  if (!faces.includes(want)) return base;
+  return `${dir}${file}${set === "default" ? "" : `-${set}`}${want === "normal" ? "" : `-${want}`}.webp`;
 }
 
 /** Overworld figures use each character's battle atlas (restia-<id>). */

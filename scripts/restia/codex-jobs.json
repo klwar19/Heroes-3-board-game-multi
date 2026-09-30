@@ -1535,5 +1535,845 @@
   "key": "hv9-sprinklers",
   "refs": [],
   "prompt": "FARM OBJECT SPRITE SHEET for a cozy painted farming life-sim (in the spirit of Stardew Valley and Rune Factory, seen from a high three-quarter top-down view, soft painted shading, clean outlines). Layout: exactly 3 columns x 2 rows of equal cells, ONE object per cell, centered, its base near the bottom of the cell, nothing crossing cell borders. Row 1, standing idle on a small patch of dark tilled soil: 1 a simple IRON garden sprinkler - a short riveted iron post with a small four-way brass nozzle head; 2 a SILVER sprinkler - a polished silver post with a round gear-shaped head and eight small nozzles; 3 a MYTHRIL sprinkler - an elegant pale-blue metal post with a glowing blue crystal core in its head and many fine nozzles. Row 2: the same three sprinklers, each spraying fine arcs of sparkling water mist in a circle around it. Flat plain light-grey background (#cfcfcf) filling every cell, no text, no letters, no grid lines. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv10-tachie-hilda",
+  "refs": [
+   "refs/hilda-ref-torako.png",
+   "refs/face-hilda-torako.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as an official Alicesoft (Sengoku Rance / Rance series) character illustration. ART STYLE AND CHARACTER: follow the FIRST reference (official Alicesoft art of Torako Uesugi): clean confident outlines, crisp cel shading with soft gradients, the same colouring and level of detail. FACE: the SECOND reference is a close-up of that art's face: draw her face exactly the way that artist does (eye shape, amber iris with the highlight shapes, lash lines, small nose, small mouth, face shape and line weight). Keep her hairstyle, hair ornaments, face and outfit faithful to the reference. Character: HILDA IRONHAND, master smith of a snowy frontier town, a young woman of about 24. Her design is modelled FAITHFULLY on the character in the FIRST reference image (Alicesoft's Torako Uesugi): very long straight dark brown-black hair falling past her waist with straight bangs, two small round dark hair-bun ornaments on top of her head, amber-orange eyes, a calm composed deadpan face; a white haori cape-coat over her shoulders; a purple-and-black kimono top with thin gold trim and a white collar; a purple pleated hakama skirt with a white hem; black knee-high boots; a black arm band with a purple tassel on her upper arm. BLACKSMITH TOUCHES added to that design: a scorched brown leather smith's apron tied over the hakama; the haori sleeves tied back and rolled up with a red tasuki cord crossed over her back; her RIGHT hand is a dark riveted iron gauntlet (her forged iron hand), her LEFT forearm is wrapped in leather straps; a little soot smudged on one cheek and on the apron. She wields a BIG two-handed forge hammer: a heavy blackened iron sledge head and a long leather-wrapped wooden haft (her weapon, always with her). Pose: standing, holding the big forge hammer with both hands, its head resting on her shoulder, looking at the viewer with a calm half-lidded gaze and the faintest confident smile. Three-quarter length framing (from the top of the head to about the knees, cropped at the bottom edge), character centered and filling the height, the whole hammer head visible inside the image. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv10-battle-hilda",
+  "refs": [
+   "raw/hv10-tachie-hilda.png",
+   "refs/hilda-ref-torako.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the character in the FIRST reference image (the SECOND reference is the design she is based on): long straight dark brown-black hair to the waist with straight bangs and two small round dark hair-bun ornaments on top of her head, amber eyes, calm face; white haori with its sleeves tied back by a red tasuki cord, purple-and-black kimono top, purple pleated hakama with a white hem under a scorched brown leather smith's apron, black knee boots, a dark riveted iron gauntlet on her right hand, leather-wrapped left forearm, a BIG two-handed forge hammer with a heavy iron head and long leather-wrapped wooden haft. Drawn as a small full-body battle sprite (anime look kept, clean readable silhouette, soft painterly shading), facing RIGHT in every frame, the big forge hammer in her hands in EVERY frame. Layout: exactly 8 columns x 6 rows of equal cells; one full-body pose per cell; the character the same size in every cell with feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, hair, outfit and hammer. Row 1: idle breathing loop, 8 frames, holding the hammer head-down in front of her with both hands. Row 2: walk cycle moving right, 8 frames, hammer carried on her shoulder. Row 3: main attack - a heavy two-handed overhead hammer smash forward, 8 frames (wind-up, hammer high overhead, slam down, impact with a few sparks, recover). Row 4: 4 frames flinching from a hit, then 4 frames bracing in a defensive guard with the hammer haft held across her body. Row 5: death - collapsing to the ground, 8 frames, the last lying down with the hammer beside her. Row 6: 4 frames turning to face the viewer, then 4 frames of the hammer head glowing orange-hot with sparks bursting from it. Flat plain uniform light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no vignette, no dark background, no glow, no text, no UI. Output a single 1536x1152 image."
+ },
+ {
+  "key": "hv10-skill-hilda",
+  "refs": [
+   "raw/hv10-battle-hilda.png",
+   "raw/hv10-tachie-hilda.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (long straight dark brown-black hair to the waist with straight bangs and two small round dark hair-bun ornaments on top of her head, amber eyes, calm face; white haori with its sleeves tied back by a red tasuki cord, purple-and-black kimono top, purple pleated hakama with a white hem under a scorched brown leather smith's apron, black knee boots, a dark riveted iron gauntlet on her right hand, leather-wrapped left forearm, a BIG two-handed forge hammer with a heavy iron head and long leather-wrapped wooden haft); the SECOND reference shows the design in detail. Draw the new frames so they mix seamlessly with the reference sheet. Facing RIGHT in every frame, the big forge hammer in her hands in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell (only airborne frames lift the feet above it); nothing crossing cell borders. Row 1: 4 frames of the idle standing pose exactly like the reference idle, then 4 frames of a victory celebration: swinging the forge hammer up onto her shoulder and raising her iron-gauntleted fist as a few sparks fly. Row 2: a jump, 8 frames: crouch, spring upward, rising, apex with knees tucked, descending, landing crouch, recovering, standing. Row 3: Earthshaper - she swings the forge hammer down into the ground so rocks and earth burst upward in front of her, 8 frames. Row 4: Seismic Drop - she leaps high with the hammer raised overhead and crashes down hammer-first, dust and rock shards bursting on impact, 8 frames. Flat plain uniform light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no vignette, no dark background, no glow, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv10-front-hilda",
+  "refs": [
+   "raw/hv10-battle-hilda.png",
+   "raw/hv10-tachie-hilda.png",
+   "raw/hv9-front-hilda.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (long straight dark brown-black hair to the waist with straight bangs and two small round dark hair-bun ornaments on top of her head, amber eyes, calm face; white haori with its sleeves tied back by a red tasuki cord, purple-and-black kimono top, purple pleated hakama with a white hem under a scorched brown leather smith's apron, black knee boots, a dark riveted iron gauntlet on her right hand, leather-wrapped left forearm, a BIG two-handed forge hammer with a heavy iron head and long leather-wrapped wooden haft); the SECOND reference shows the design in detail. The THIRD reference is ONLY a CAMERA-ANGLE and POSE reference (an older sheet of a DIFFERENT design): copy its viewing angle, its body turn and its row poses exactly, but do NOT copy anything of its character (no blonde hair, no braid, no trousers, no fur boots) - the character must look exactly like the first two references. This sheet shows the character seen from a FRONT three-quarter view: the character faces DOWN-RIGHT toward the viewer (we see her face with both eyes and the front of the apron, the body turned about 45 degrees to the right of the viewer - clearly NOT a side profile), in EVERY frame, exactly like the angle in the THIRD reference. The big forge hammer is in her hands in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames, hammer on her shoulder. Row 3: main attack - a heavy two-handed overhead hammer smash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of striking the hammer head against the ground and lifting it again as sparks fly. Flat plain uniform light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no vignette, no dark background, no glow, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv10-back-hilda",
+  "refs": [
+   "raw/hv10-battle-hilda.png",
+   "raw/hv10-tachie-hilda.png",
+   "raw/hv9-back-hilda.png"
+  ],
+  "prompt": "ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style tactical battle, of the SAME character as the FIRST reference image (this character's side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (long straight dark brown-black hair to the waist with straight bangs and two small round dark hair-bun ornaments on top of her head, amber eyes, calm face; white haori with its sleeves tied back by a red tasuki cord, purple-and-black kimono top, purple pleated hakama with a white hem under a scorched brown leather smith's apron, black knee boots, a dark riveted iron gauntlet on her right hand, leather-wrapped left forearm, a BIG two-handed forge hammer with a heavy iron head and long leather-wrapped wooden haft); the SECOND reference shows the design in detail. The THIRD reference is ONLY a CAMERA-ANGLE and POSE reference (an older sheet of a DIFFERENT design): copy its viewing angle, its body turn and its row poses exactly, but do NOT copy anything of its character (no blonde hair, no braid, no trousers, no fur boots) - the character must look exactly like the first two references. This sheet shows the character seen from a BACK three-quarter view: the character faces UP-RIGHT away from the viewer (we see the back of the head with the long dark hair and hair buns, the white haori and the red tasuki cord crossed on her back, and the hammer from behind, the body turned about 45 degrees to the right; her face is NOT visible), in EVERY frame, exactly like the angle in the THIRD reference. The big forge hammer is in her hands in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent: identical design, proportions and line weight from frame to frame. Row 1: idle breathing loop, 8 frames with only very small changes. Row 2: walk cycle in that direction, 8 frames, hammer on her shoulder. Row 3: main attack - a heavy two-handed overhead hammer smash, 8 frames. Row 4: 4 frames flinching from a hit, then 4 frames of striking the hammer head against the ground and lifting it again as sparks fly. Flat plain uniform light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no vignette, no dark background, no glow, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv10-extra-hilda",
+  "refs": [
+   "raw/hv10-battle-hilda.png",
+   "raw/hv10-tachie-hilda.png"
+  ],
+  "prompt": "EXTRA-MOVES ANIMATION SPRITE SHEET for a Heroes of Might and Magic III style side-view tactical battle, of the SAME character as the FIRST reference image (this character's side-view battle sprite sheet: match the exact look, proportions, colours, outfit, weapon, sprite size and drawing style) (long straight dark brown-black hair to the waist with straight bangs and two small round dark hair-bun ornaments on top of her head, amber eyes, calm face; white haori with its sleeves tied back by a red tasuki cord, purple-and-black kimono top, purple pleated hakama with a white hem under a scorched brown leather smith's apron, black knee boots, a dark riveted iron gauntlet on her right hand, leather-wrapped left forearm, a BIG two-handed forge hammer with a heavy iron head and long leather-wrapped wooden haft); the SECOND reference shows the design in detail. Facing RIGHT in every frame, the big forge hammer with her in EVERY frame. Layout: exactly 8 columns x 4 rows of equal cells; one full-body pose per cell; the character the same size in every cell as in the reference sheet, feet on the same baseline near the bottom of the cell; nothing crossing cell borders. Keep every frame consistent. Row 1: an idle fidget, 8 frames, starting and ending in the normal standing pose: rolling her shoulder and flexing her iron-gauntleted hand, then gripping the hammer again. Row 2: 4 frames of a quick dodge (a light hop backward, leaning away from a blow, hammer held close), then 4 frames of getting up: the first frame lying flat on the ground with the hammer beside her, then pushing up to one knee with the hammer, then standing. Row 3: a critical strike, 8 frames: a dramatic wind-up with the hammer, then a powerful blow with a bright flash on the hammer head. Row 4: 4 frames of gathering power (a low braced stance, hammer planted, a golden aura rising around the body), then 4 frames of drinking from a small red potion flask with her left hand while the right hand holds the hammer. Flat plain uniform light-grey background (#cfcfcf) filling every cell, no grid lines, no shadows, no vignette, no dark background, no glow, no text, no UI. Output a single 1536x1024 image."
+ },
+ {
+  "key": "hv11-bg-earth-cafeteria",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: a big modern Chinese university cafeteria (canteen) in the city of Zhonghai at lunchtime, busy-looking but with nobody in it: long rows of tables and plastic stools, stacked stainless-steel meal trays, a long line of canteen food stalls with glass sneeze guards and steaming stainless-steel counters full of Chinese dishes (rice, stir-fried greens, braised pork, dumplings, noodle soup), clouds of steam, big windows with bright daylight, a drinks fridge, picture-only menu boards with no readable writing. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-bg-earth-gym",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: a modern university fitness centre in a Chinese city in the evening: dumbbell racks, barbell squat racks and weight benches, rubber floor mats, a wall of big mirrors, treadmills along a window with city lights, and a small juice and protein-shake counter with a blender and fruit. Bright overhead lights. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-bg-earth-library",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: the courtyard of a modern Chinese university library on a calm afternoon: round stone tables with stone stools, one big old shade tree with a ring bench around its trunk, paved stone ground with fallen leaves, the tall glass facade of the library building behind, warm golden afternoon light and long soft shadows. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-bg-earth-street",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: a narrow old street/alley in a modern Chinese city early in the morning: parked electric scooters, a tiny open-air scooter repair stall with stacked tyres, inner tubes, a tool board with wrenches, a bucket of water for finding punctures and a low stool; next to it a small trinket stall with a folding table of cheap bracelets, keychains and little charms; tangled electric wires overhead, air-conditioner units and laundry on the old apartment walls, damp concrete, soft grey-blue morning light with a little warm sun at the end of the alley. Shop signs are blank or picture-only. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-bg-earth-school",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: a Chinese HIGH-SCHOOL corridor: a row of grey metal student lockers along one wall, big windows along the other letting in low afternoon sun, polished floor with window-light reflections, a notice board with blank papers, classroom doors, a potted plant; slightly warm, soft, nostalgic memory tint, like a flashback. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-bg-eos-village",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: the 'too perfect' tutorial village of a classic JRPG in a pocket dimension (the same world as a bright green-hill JRPG starting meadow): a neat village square with a round stone fountain, rows of IDENTICAL little cottages with identical red roofs and identical chimneys, each chimney puffing an identical curl of white smoke, identical flowerpots of red flowers under every window, a perfectly straight cobbled path, trimmed round bushes, cotton-candy clouds arranged perfectly symmetrically in a bright blue sky that looks slightly painted. Bright, cheerful and slightly uncanny in how perfect and repetitive everything is. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-bg-eos-cave",
+  "refs": [],
+  "prompt": "Visual-novel BACKGROUND painting, wide 16:9, detailed painterly anime fantasy style, seen at eye level with a clear empty middle area where characters will stand. Scene: the inside of a classic JRPG tutorial dungeon cave in a pocket dimension that is 'exactly cave-shaped': a neat, tidy, perfectly arched rocky tunnel, wall torches evenly spaced in iron brackets with warm flames, a smooth clean stone floor with a single straight path, a few perfectly placed stalactites and glowing blue crystals, an arched opening in the far wall leading deeper. Too clean, too tidy, like a video-game level, slightly uncanny. No people, no text, no letters, no logos, no UI, no watermark. Output a single 1536x864 image."
+ },
+ {
+  "key": "hv11-tachie-lingling",
+  "refs": [
+   "refs/style/ba-yuuka.png",
+   "refs/style/face-ba-yuuka.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Blue Archive character. ART STYLE: match the FIRST reference (Blue Archive's official character art: crisp thin line art, bright airy pastel-leaning colours, soft cel shading, clean white highlights) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, halo, weapons or props. NO halo. Character: ZHAO LINGWEI ('Ling Ling'), a 17-year-old Chinese high-school girl from a very rich family: very pretty and polished, long straight glossy black hair past her shoulders with neat straight bangs, dark eyes, fair skin; a neat modern Chinese high-school uniform (navy blazer with a school crest shape and no writing, white shirt, dark red ribbon tie, navy pleated skirt), a small expensive wristwatch, holding a thick old wuxia novel (a paperback with a painted swordsman cover, no readable writing) closed against her side with one finger keeping her page. Pose: upright, poised and composed, weight on one leg. Expression: a guarded, unreadable, perfectly composed face - a faint polite almost-smile that does not reach her eyes, like she is performing. Teenage schoolgirl, youthful face and proportions. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-nurse",
+  "refs": [
+   "refs/style/ba-mari.png",
+   "refs/style/face-ba-mari.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Blue Archive character. ART STYLE: match the FIRST reference (Blue Archive's official character art: crisp thin line art, bright airy pastel-leaning colours, soft cel shading, clean white highlights) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, halo, weapons or props. NO halo. Character: NURSE CHEN WEI, a kind young Chinese pediatric nurse in her mid-twenties: dark brown hair tied back in a neat low ponytail with a few loose strands, warm brown eyes; pale mint-green hospital scrubs (short-sleeved top and trousers) with a small cartoon-animal badge clip and a pen in the breast pocket, a stethoscope around her neck, a hospital ID card on a lanyard (blank, no writing), holding a clipboard against her hip. Expression: a warm, amused, slightly teasing smile, like she is trying not to laugh. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-chad",
+  "refs": [
+   "refs/style/sr-rance.png",
+   "refs/style/face-sr-rance.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the FIRST reference (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, armour, weapons or props. A distinctive MALE character with his own strong silhouette. Modern-day clothes, NO samurai armour. Character: CHAD ('ChadThunderLive'), an obnoxious livestreamer in his mid-twenties: a backwards flat-brim snapback cap over messy dyed-blond hair, a gaming headset with a boom mic around his neck, a loud oversized streetwear hoodie in neon orange and electric blue with big abstract graphic shapes (NO words, NO letters, NO brand logos), baggy cargo pants, chunky sneakers, a thick silver chain. He holds out a smartphone on a handheld selfie gimbal stick, filming himself, and points at the viewer with his other hand. Expression: huge obnoxious toothy grin, eyebrows raised, full hype-streamer energy. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-oldzhou",
+  "refs": [
+   "refs/style/sr-yoshikage.png",
+   "refs/style/sr-nobunaga.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the references (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces). The FIRST reference shows how that artist draws an OLD man's face (wrinkles, heavy brow, jowls); the SECOND shows the full-figure line and colour treatment. Both references are ONLY style: this is a different person - do not copy their face, costume or props. Modern-day clothes. Character: OLD ZHOU, an elderly Chinese owner of a small second-hand bookstore, about 70: thin grey hair combed back, bushy grey eyebrows, a lined grumpy-but-kind face, small round reading glasses perched low on his nose; a worn brown knitted cardigan over a collared shirt, grey trousers. He holds an old cloth-bound book open in one hand (no readable writing) and looks at the viewer over the top of his glasses. Expression: grumpy, dry and unimpressed, but with kindness in the eyes - the faintest hidden smile. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-zhaokang",
+  "refs": [
+   "refs/style/sr-kazemaru.png",
+   "refs/style/face-sr-kazemaru.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the FIRST reference (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, armour, weapons or props. A distinctive MALE character with his own strong silhouette. Modern-day clothes, NO samurai armour. Character: ZHAO KANG, a rich young Chinese man of about 20, the heroine's cousin and a secret cultivator: tall and lean, neat short black hair swept back with one strand over his forehead, sharp narrow dark eyes; an expensive tailored dark charcoal jacket with a high collar over a black turtleneck, dark slacks, a black leather glove on one hand, a jade ring. Hands relaxed at his sides, standing very straight. Expression: cold, arrogant, looking down at the viewer with contempt and faint menace. A very SUBTLE hint of his hidden power: a thin wisp of dark water and pale frost curling around the fingers of one hand, and a faint cold glint in his eyes (subtle, not a big effect). Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-gymbro",
+  "refs": [
+   "refs/style/sr-katsuie.png",
+   "refs/style/face-sr-katsuie.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the FIRST reference (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, armour, weapons or props. A distinctive MALE character with his own strong silhouette. Modern-day clothes, NO samurai armour. Character: GYM BRO, a huge Chinese university student who lives in the gym, about 22: enormous over-pumped muscles, massive shoulders and arms, a short buzz cut, a thick neck; a grey deep-cut sleeveless tank top (no writing), black gym shorts over leggings, lifting wrist wraps, a gym towel over one shoulder. One arm flexed in a cocky bicep pose, the other hand holding a big protein shaker bottle (no writing). Expression: loud, cocky, confident grin, chest puffed out, a little dim but good-natured. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-repairman",
+  "refs": [
+   "refs/style/sr-nobunaga.png",
+   "refs/style/face-sr-nobunaga.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the FIRST reference (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, armour, weapons or props. A distinctive MALE character with his own strong silhouette. Modern-day clothes, NO samurai armour. Character: OLD QIAN, a weathered Chinese scooter repairman of about 50 who runs a street-side repair stall: tanned lined face, grey stubble, short greying hair under a faded blue work cap, tired but friendly eyes; a faded work shirt with the sleeves rolled up, a grease-stained canvas work apron with tools in its pockets, a rag hanging from his pocket, oil-smudged hands and forearms. He holds a big adjustable wrench resting on his shoulder. Expression: tired, dry, friendly half-smile, like a man who has seen too many flat tyres. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-villager",
+  "refs": [
+   "refs/style/sr-rance.png",
+   "refs/style/face-sr-rance.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the FIRST reference (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, armour, weapons or props. A distinctive MALE character with his own strong silhouette. NO samurai armour. Character: a VILLAGER NPC from a classic fantasy JRPG tutorial village, a young man of about 25: short neat brown hair, very rosy round cheeks, a plain beige linen tunic with a rope belt, brown trousers, simple leather shoes. He hugs a big fresh green cabbage in both arms with pride. Expression: a frozen, too-perfect, wide friendly smile with eyes wide open and unblinking, like a video-game NPC stuck on one expression - cheerful and slightly uncanny. Standing stiffly straight, facing the viewer. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-lingling-v2",
+  "refs": [
+   "refs/style/ba-yuuka.png",
+   "refs/style/face-ba-yuuka.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Blue Archive character. ART STYLE: match the FIRST reference (Blue Archive's official character art: crisp thin line art, bright airy pastel-leaning colours, soft cel shading, clean white highlights) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, halo, weapons or props. NO halo. Character: ZHAO LINGWEI ('Ling Ling'), a 17-year-old Chinese high-school girl from a very rich family: very pretty and polished, long straight glossy black hair past her shoulders with neat straight bangs, dark eyes, fair skin; a neat modern Chinese high-school uniform (navy blazer with a school crest shape and no writing, white shirt, dark red ribbon tie, navy pleated skirt reaching below the knees, opaque dark navy tights), a small expensive wristwatch, holding a thick old wuxia novel (a paperback with a painted swordsman cover, no readable writing) closed against her side with one finger keeping her page. Pose: upright, poised and composed, weight on one leg. Expression: a guarded, unreadable, perfectly composed face - a faint polite almost-smile that does not reach her eyes, like she is performing. Teenage schoolgirl, youthful face and proportions, modest uniform. Camera at eye level. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv11-tachie-zhaokang-v2",
+  "refs": [
+   "refs/style/sr-kazemaru.png",
+   "refs/style/face-sr-kazemaru.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Sengoku Rance character. ART STYLE: match the FIRST reference (Alicesoft's official Sengoku Rance character art: bold clean outlines, flat crisp two-tone cel shading, saturated colours, very expressive characterful faces) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, armour, weapons or props. A distinctive MALE character with his own strong silhouette. Modern-day clothes, NO samurai armour. Character: ZHAO KANG, a rich young Chinese man of about 20, the heroine's cousin and a secret cultivator: tall and lean, neat short black hair swept back with one strand over his forehead, sharp narrow dark eyes; an expensive tailored dark charcoal jacket with a high collar over a black turtleneck, dark slacks, a black leather glove on one hand, a jade ring. Hands relaxed at his sides, standing very straight. Camera at eye level (NOT a low angle, NOT looking up at him), his head and face drawn at normal size near the top of the image like a regular visual-novel portrait. Expression: cold, arrogant, chin slightly raised, looking at the viewer with contempt and faint menace. A very SUBTLE hint of his hidden power: a thin wisp of dark water and pale frost curling around the fingers of one hand, and a faint cold glint in his eyes (subtle, not a big effect). Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna",
+  "refs": [
+   "refs/style/ba-hina.png",
+   "refs/style/face-ba-hina.png",
+   "refs/luna-ref-pin.jpg",
+   "raw/hv5-tachie-luna.png"
+  ],
+  "prompt": "Character standing art for a visual novel, drawn as if it were a new official Blue Archive character. ART STYLE: match the FIRST reference (Blue Archive's official character art: crisp thin line art, bright airy pastel-leaning colours, soft cel shading, clean white highlights) - line quality, shading, colour treatment, level of detail. FACE: the SECOND reference is a close-up of that official art's face. Draw this character's face the way that artist draws faces: the same eye construction (eye shape, iris colouring, pupil, highlight shape and placement, lash lines), the same nose, mouth and blush treatment and the same line weight. Do NOT fall back to generic glossy AI anime eyes. Both style references are ONLY style: this is a different person - do not copy that character's face, hairstyle, costume, halo, weapons or props. NO halo. The THIRD reference is a fan illustration of a different character: use it ONLY for this character's OUTFIT, HAIRSTYLE and POSE (half-up bun with a hairpin, long hair, choker, pearl earring, sheer mesh long-sleeve top over a white crop top, high-waisted black trousers with a ring belt, crossbody bag, sipping an iced drink through a straw). Do NOT copy that character's face, her green hair, the logo on her cup or any of its handwriting. The FOURTH reference is this character's previous portrait in this game: match its art style and her cool, elegant face shape, but NOT its black hair or its coat outfit. Character: LUNA PARK, a 20-year-old university sociology student nicknamed the 'Ice Queen', an adult woman. Long dark chestnut-brown hair (warm dark brown, clearly brown, not black, not green), the top section gathered into a small bun secured with a simple gold hairpin, the rest falling straight and long past her waist, straight bangs. Cool pale grey eyes. Fair skin. A small pearl drop earring, a black choker. Outfit: a sheer black-grey fine mesh long-sleeve top with black cuffs, worn over a plain white crop top; high-waisted black trousers with a black belt and a silver ring buckle; a small dark-brown leather crossbody bag on a thin strap across her body. Props: holding a plain white iced-drink cup with a lid and a straw, completely plain with NO logo, NO label, NO writing, sipping through the straw. Expression: much colder than the third reference: flat, distant and unimpressed, half-lidded eyes looking at the viewer as if mildly bored, no smile at all. Pose: like the third reference, standing slightly turned, one arm relaxed at her side. Camera at eye level. Three-quarter length framing (head to about the knees, cropped at the bottom edge), character centered and filling the height. Fully clothed, tasteful, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-peri-happy",
+  "refs": [
+   "refs/hv12/peri.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of PERI, the trickster goddess: black twin tails with electric-blue streaks floating in the air, galaxy eyes, black gothic lolita dress with star-chart prints, starlight phone and glowing popcorn. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to gleeful: a huge cackling grin showing a slightly sharp canine, eyes squeezed half shut with delight. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-peri-angry",
+  "refs": [
+   "refs/hv12/peri.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of PERI, the trickster goddess: black twin tails with electric-blue streaks floating in the air, galaxy eyes, black gothic lolita dress with star-chart prints, starlight phone and glowing popcorn. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bratty angry pout: cheeks puffed, brows furrowed, a pouting glare, tiny fang showing. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-peri-sad",
+  "refs": [
+   "refs/hv12/peri.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of PERI, the trickster goddess: black twin tails with electric-blue streaks floating in the air, galaxy eyes, black gothic lolita dress with star-chart prints, starlight phone and glowing popcorn. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a dramatic theatrical sulk: wobbly pout, big teary galaxy eyes, brows tilted up. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-peri-surprised",
+  "refs": [
+   "refs/hv12/peri.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of PERI, the trickster goddess: black twin tails with electric-blue streaks floating in the air, galaxy eyes, black gothic lolita dress with star-chart prints, starlight phone and glowing popcorn. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a shocked 'eh?!' face: galaxy eyes wide open, eyebrows high, mouth open. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-peri-blush",
+  "refs": [
+   "refs/hv12/peri.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of PERI, the trickster goddess: black twin tails with electric-blue streaks floating in the air, galaxy eyes, black gothic lolita dress with star-chart prints, starlight phone and glowing popcorn. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to caught off guard and flustered: bright red cheeks, eyes darting away, the smug grin collapsed into an embarrassed wobbly mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-peri-casual",
+  "refs": [
+   "refs/hv12/peri.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of PERI, the trickster goddess: black twin tails with electric-blue streaks floating in the air, galaxy eyes, black gothic lolita dress with star-chart prints, starlight phone and glowing popcorn. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: an oversized black hoodie printed with small stars and constellations (no text), worn over a frilly black-and-blue layered skirt reaching below the knee, opaque black tights and chunky black platform sneakers, big headphones around her neck; a cosy streamer look. She still holds the starlight smartphone and the glowing popcorn bucket. Face: keep the same facial expression as the reference. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna-happy",
+  "refs": [
+   "refs/hv12/luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LUNA PARK, a 20-year-old university student called the 'Ice Queen': long dark chestnut-brown hair half-up in a bun with a hairpin, cool grey eyes, black choker, pearl earring, sheer mesh top over a white crop top, high-waisted black trousers, crossbody bag, a plain iced drink with a straw. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a very restrained happy expression: just a FAINT, small smile at one corner of the mouth, eyes softened a little; she is still cool and composed. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna-angry",
+  "refs": [
+   "refs/hv12/luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LUNA PARK, a 20-year-old university student called the 'Ice Queen': long dark chestnut-brown hair half-up in a bun with a hairpin, cool grey eyes, black choker, pearl earring, sheer mesh top over a white crop top, high-waisted black trousers, crossbody bag, a plain iced drink with a straw. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an icy glare: eyes narrowed and cold, brows slightly lowered, mouth a flat hard line; quiet contempt, no shouting. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna-sad",
+  "refs": [
+   "refs/hv12/luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LUNA PARK, a 20-year-old university student called the 'Ice Queen': long dark chestnut-brown hair half-up in a bun with a hairpin, cool grey eyes, black choker, pearl earring, sheer mesh top over a white crop top, high-waisted black trousers, crossbody bag, a plain iced drink with a straw. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a restrained sad expression: eyes lowered and a little distant, the faintest downturn of the mouth; composed, no tears. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna-surprised",
+  "refs": [
+   "refs/hv12/luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LUNA PARK, a 20-year-old university student called the 'Ice Queen': long dark chestnut-brown hair half-up in a bun with a hairpin, cool grey eyes, black choker, pearl earring, sheer mesh top over a white crop top, high-waisted black trousers, crossbody bag, a plain iced drink with a straw. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a restrained surprised expression: eyes slightly widened, lips parted a little; still composed. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna-blush",
+  "refs": [
+   "refs/hv12/luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LUNA PARK, a 20-year-old university student called the 'Ice Queen': long dark chestnut-brown hair half-up in a bun with a hairpin, cool grey eyes, black choker, pearl earring, sheer mesh top over a white crop top, high-waisted black trousers, crossbody bag, a plain iced drink with a straw. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a slight pink flush on her cheeks that she is trying to hide: eyes turned away, mouth pressed into a straight line, pretending to be unbothered. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-luna-winter",
+  "refs": [
+   "refs/hv12/luna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LUNA PARK, a 20-year-old university student called the 'Ice Queen': long dark chestnut-brown hair half-up in a bun with a hairpin, cool grey eyes, black choker, pearl earring, sheer mesh top over a white crop top, high-waisted black trousers, crossbody bag, a plain iced drink with a straw. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a long dark charcoal wool coat worn open over a black turtleneck sweater, a soft muted grey-brown knit scarf, the same high-waisted black trousers, the crossbody bag; a quiet library-student winter look. Instead of the iced drink she holds a plain paper cup of hot coffee with a lid (no logo, no writing), or a hardcover library book (no readable title). Face: keep the same cold, distant, unimpressed expression as the reference. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lily-happy",
+  "refs": [
+   "refs/hv12/lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LILY CHEN, a cheerful little girl of about 10 who lives in a hospital: dark navy-black hair in two short twin tails with long yellow ribbons, big warm brown eyes, pale-blue hospital pyjamas under a cream knit cardigan, a tablet. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Both eyes open (unless the expression says otherwise). She is a little girl; keep her childlike and wholesome. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lily-angry",
+  "refs": [
+   "refs/hv12/lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LILY CHEN, a cheerful little girl of about 10 who lives in a hospital: dark navy-black hair in two short twin tails with long yellow ribbons, big warm brown eyes, pale-blue hospital pyjamas under a cream knit cardigan, a tablet. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a cute childish angry pout: cheeks puffed out, brows furrowed, arms staying where they are. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Both eyes open (unless the expression says otherwise). She is a little girl; keep her childlike and wholesome. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lily-sad",
+  "refs": [
+   "refs/hv12/lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LILY CHEN, a cheerful little girl of about 10 who lives in a hospital: dark navy-black hair in two short twin tails with long yellow ribbons, big warm brown eyes, pale-blue hospital pyjamas under a cream knit cardigan, a tablet. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a little girl's sad face: teary eyes, trembling lip. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Both eyes open (unless the expression says otherwise). She is a little girl; keep her childlike and wholesome. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lily-surprised",
+  "refs": [
+   "refs/hv12/lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LILY CHEN, a cheerful little girl of about 10 who lives in a hospital: dark navy-black hair in two short twin tails with long yellow ribbons, big warm brown eyes, pale-blue hospital pyjamas under a cream knit cardigan, a tablet. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Both eyes open (unless the expression says otherwise). She is a little girl; keep her childlike and wholesome. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lily-blush",
+  "refs": [
+   "refs/hv12/lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LILY CHEN, a cheerful little girl of about 10 who lives in a hospital: dark navy-black hair in two short twin tails with long yellow ribbons, big warm brown eyes, pale-blue hospital pyjamas under a cream knit cardigan, a tablet. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to shy and bashful: rosy pink cheeks, a small shy smile, eyes glancing down. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Both eyes open (unless the expression says otherwise). She is a little girl; keep her childlike and wholesome. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lily-outing",
+  "refs": [
+   "refs/hv12/lily.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LILY CHEN, a cheerful little girl of about 10 who lives in a hospital: dark navy-black hair in two short twin tails with long yellow ribbons, big warm brown eyes, pale-blue hospital pyjamas under a cream knit cardigan, a tablet. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a warm puffy winter coat in soft pastel yellow, a knitted beanie with a pom-pom, a cosy red scarf and mittens, worn OVER her pale-blue hospital pyjamas (the pyjama trousers still visible below the coat). She may hold a little mitten up instead of the tablet. Face: a happy excited smile, both eyes open; she is a little girl, childlike and wholesome. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-leo",
+  "refs": [
+   "refs/hv12/leo-school.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LEO ZHANG in his high-school uniform. Draw the SAME boy two years later, now aged 20 and a university student: same art style, same face (just a little older and a touch more mature, still round and friendly), same short black hair, same stocky build, same pose and gestures, same framing and scale. Change the clothes to casual university clothes: an open grey zip-up hoodie over a plain dark-green T-shirt (no text), blue jeans, a black canvas backpack strap on one shoulder instead of the messenger bag. Props: the same jianbing snack in one hand and his phone in the other, like the reference. Expression: the same huge goofy open-mouthed grin. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-leo-happy",
+  "refs": [
+   "refs/hv12/leo.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LEO ZHANG, a stocky 20-year-old university student with golden-retriever energy: short black hair, round friendly face. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-leo-angry",
+  "refs": [
+   "refs/hv12/leo.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LEO ZHANG, a stocky 20-year-old university student with golden-retriever energy: short black hair, round friendly face. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry expression: furrowed brows, a sharp glare, mouth set in an angry frown or gritted teeth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-leo-sad",
+  "refs": [
+   "refs/hv12/leo.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LEO ZHANG, a stocky 20-year-old university student with golden-retriever energy: short black hair, round friendly face. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-leo-surprised",
+  "refs": [
+   "refs/hv12/leo.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LEO ZHANG, a stocky 20-year-old university student with golden-retriever energy: short black hair, round friendly face. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-leo-blush",
+  "refs": [
+   "refs/hv12/leo.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LEO ZHANG, a stocky 20-year-old university student with golden-retriever energy: short black hair, round friendly face. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-meilin",
+  "refs": [
+   "refs/hv12/meilin-school.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MEILIN WU in her high-school sailor uniform. Draw the SAME girl two years later, now aged 20 and a university student: same art style, same face (just a little more mature), same golden-blonde hair in a braided crown with small flower clips, same green eyes, same pose and gestures, same framing and scale. Change the clothes to sensible, neat, practical casual university clothes: a soft oatmeal knit cardigan over a plain white blouse, a mid-calf pleated olive-green skirt, a canvas tote bag on her shoulder (no text), the spare key on a ribbon around her neck. Props: the same green book held to her chest. Expression: the same knowing half-smile, head tilted. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-meilin-happy",
+  "refs": [
+   "refs/hv12/meilin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MEILIN WU, a 20-year-old university student: golden-blonde hair in a braided crown with small flower clips, green eyes. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-meilin-angry",
+  "refs": [
+   "refs/hv12/meilin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MEILIN WU, a 20-year-old university student: golden-blonde hair in a braided crown with small flower clips, green eyes. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry expression: furrowed brows, a sharp glare, mouth set in an angry frown or gritted teeth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-meilin-sad",
+  "refs": [
+   "refs/hv12/meilin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MEILIN WU, a 20-year-old university student: golden-blonde hair in a braided crown with small flower clips, green eyes. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-meilin-surprised",
+  "refs": [
+   "refs/hv12/meilin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MEILIN WU, a 20-year-old university student: golden-blonde hair in a braided crown with small flower clips, green eyes. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-meilin-blush",
+  "refs": [
+   "refs/hv12/meilin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MEILIN WU, a 20-year-old university student: golden-blonde hair in a braided crown with small flower clips, green eyes. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lingling-happy",
+  "refs": [
+   "refs/hv12/lingling.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of ZHAO LINGWEI ('Ling Ling'), a 17-year-old high-school girl from a rich family: long straight glossy black hair with neat bangs, dark eyes, navy school blazer, white shirt, red ribbon tie, navy pleated skirt below the knees, dark tights, an old wuxia novel. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a small genuine smile that finally reaches her eyes, still poised and elegant. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. She is a teenage schoolgirl: modest uniform, youthful face. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lingling-angry",
+  "refs": [
+   "refs/hv12/lingling.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of ZHAO LINGWEI ('Ling Ling'), a 17-year-old high-school girl from a rich family: long straight glossy black hair with neat bangs, dark eyes, navy school blazer, white shirt, red ribbon tie, navy pleated skirt below the knees, dark tights, an old wuxia novel. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a cold, sharp glare: eyes narrowed, mouth a tight line; controlled anger. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. She is a teenage schoolgirl: modest uniform, youthful face. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lingling-sad",
+  "refs": [
+   "refs/hv12/lingling.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of ZHAO LINGWEI ('Ling Ling'), a 17-year-old high-school girl from a rich family: long straight glossy black hair with neat bangs, dark eyes, navy school blazer, white shirt, red ribbon tie, navy pleated skirt below the knees, dark tights, an old wuxia novel. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. She is a teenage schoolgirl: modest uniform, youthful face. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lingling-surprised",
+  "refs": [
+   "refs/hv12/lingling.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of ZHAO LINGWEI ('Ling Ling'), a 17-year-old high-school girl from a rich family: long straight glossy black hair with neat bangs, dark eyes, navy school blazer, white shirt, red ribbon tie, navy pleated skirt below the knees, dark tights, an old wuxia novel. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes widened, lips parted, her composure slipping. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. She is a teenage schoolgirl: modest uniform, youthful face. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lingling-blush",
+  "refs": [
+   "refs/hv12/lingling.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of ZHAO LINGWEI ('Ling Ling'), a 17-year-old high-school girl from a rich family: long straight glossy black hair with neat bangs, dark eyes, navy school blazer, white shirt, red ribbon tie, navy pleated skirt below the knees, dark tights, an old wuxia novel. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. She is a teenage schoolgirl: modest uniform, youthful face. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lingling-adult",
+  "refs": [
+   "refs/hv12/lingling.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of ZHAO LINGWEI ('Ling Ling'), a 17-year-old high-school girl from a rich family: long straight glossy black hair with neat bangs, dark eyes, navy school blazer, white shirt, red ribbon tie, navy pleated skirt below the knees, dark tights, an old wuxia novel. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: the SAME girl three years later, aged 20, polished and cold like a young heiress: an expensive long black wool coat worn over a black turtleneck, a tailored dark skirt below the knee, sheer black tights, black leather ankle boots, small gold earrings and a thin gold watch, a small structured black leather handbag with no logo. The wuxia novel is gone; she holds the handbag instead. Her face looks a little older and more refined (light elegant makeup), same long straight black hair with bangs. Face: cold, poised and unreadable, looking down at the viewer with faint disdain. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-happy",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a rare pleased expression: a small proud smug smile, eyes bright. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Keep the cyan hologram scanline edges and the two blank floating UI panels exactly as they are. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-angry",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to openly angry: brows sharply furrowed, glaring straight at the viewer, mouth open in an irritated retort. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Keep the cyan hologram scanline edges and the two blank floating UI panels exactly as they are. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-sad",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Keep the cyan hologram scanline edges and the two blank floating UI panels exactly as they are. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-surprised",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Keep the cyan hologram scanline edges and the two blank floating UI panels exactly as they are. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-blush",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to strongly flustered tsundere blush: bright red cheeks, eyes squeezed and looking away, embarrassed pout. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Keep the cyan hologram scanline edges and the two blank floating UI panels exactly as they are. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-offline",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a cosy oversized hoodie in her colours (black and white harlequin pattern with red diamond accents and a small jester-bell zipper pull), soft black shorts over opaque black tights, fluffy black socks; relaxed and off-duty. The floating UI panels and the hologram scanlines are switched off (no panels, no scanlines). Face: sleepy, relaxed and a bit grumpy, half-lidded red eyes. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bin-surprised",
+  "refs": [
+   "refs/hv12/bin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BIN CHEN, a young man with messy spiky black hair, drawn by the creator in his own art style. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. This is the creator's own drawing: be conservative, keep his look, hair, outline and colours EXACTLY; only the eyes, eyebrows, mouth and cheeks change. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single image with the same proportions as the reference (portrait, about 2:3)."
+ },
+ {
+  "key": "hv12-tachie-bin-blush",
+  "refs": [
+   "refs/hv12/bin.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BIN CHEN, a young man with messy spiky black hair, drawn by the creator in his own art style. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: a light blush across his cheeks, eyes glancing to the side, an awkward sheepish half-smile. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. This is the creator's own drawing: be conservative, keep his look, hair, outline and colours EXACTLY; only the eyes, eyebrows, mouth and cheeks change. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single image with the same proportions as the reference (portrait, about 2:3)."
+ },
+ {
+  "key": "hv12-tachie-bin-earth-surprised",
+  "refs": [
+   "refs/hv12/bin-earth.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BIN CHEN, a young man with messy spiky black hair in modern Earth clothes (charcoal hoodie under an orange-and-black delivery-rider windbreaker), drawn by the creator in his own art style. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. This is the creator's own drawing: be conservative, keep his look, hair, outline and colours EXACTLY; only the eyes, eyebrows, mouth and cheeks change. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single image with the same proportions as the reference (portrait, about 2:3)."
+ },
+ {
+  "key": "hv12-tachie-bin-earth-blush",
+  "refs": [
+   "refs/hv12/bin-earth.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BIN CHEN, a young man with messy spiky black hair in modern Earth clothes (charcoal hoodie under an orange-and-black delivery-rider windbreaker), drawn by the creator in his own art style. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: a light blush across his cheeks, eyes glancing to the side, an awkward sheepish half-smile. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. This is the creator's own drawing: be conservative, keep his look, hair, outline and colours EXACTLY; only the eyes, eyebrows, mouth and cheeks change. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single image with the same proportions as the reference (portrait, about 2:3)."
+ },
+ {
+  "key": "hv12-tachie-garr-happy",
+  "refs": [
+   "refs/hv12/garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of GARR, a weathered veteran hunter in his late 50s: short swept-back iron-grey hair, grey stubble, heavy brow, his LEFT eye milky white and blind with an old claw scar through the eyebrow (the blind eye must stay milky white and scarred in every expression), green hooded cloak with a wolf-fur collar, red-and-green padded tunic. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a rare warm grin: the stern face breaking into a crooked, fatherly smile, crow's feet at the good eye. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-garr-angry",
+  "refs": [
+   "refs/hv12/garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of GARR, a weathered veteran hunter in his late 50s: short swept-back iron-grey hair, grey stubble, heavy brow, his LEFT eye milky white and blind with an old claw scar through the eyebrow (the blind eye must stay milky white and scarred in every expression), green hooded cloak with a wolf-fur collar, red-and-green padded tunic. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a furious scowl: heavy brow deeply furrowed, the good eye glaring, teeth bared. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-garr-sad",
+  "refs": [
+   "refs/hv12/garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of GARR, a weathered veteran hunter in his late 50s: short swept-back iron-grey hair, grey stubble, heavy brow, his LEFT eye milky white and blind with an old claw scar through the eyebrow (the blind eye must stay milky white and scarred in every expression), green hooded cloak with a wolf-fur collar, red-and-green padded tunic. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to weary grief: heavy brow lowered, the good eye downcast and tired, mouth pressed thin. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-garr-surprised",
+  "refs": [
+   "refs/hv12/garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of GARR, a weathered veteran hunter in his late 50s: short swept-back iron-grey hair, grey stubble, heavy brow, his LEFT eye milky white and blind with an old claw scar through the eyebrow (the blind eye must stay milky white and scarred in every expression), green hooded cloak with a wolf-fur collar, red-and-green padded tunic. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to taken aback: the good eye wide, the heavy brow raised high, mouth slightly open. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-garr-blush",
+  "refs": [
+   "refs/hv12/garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of GARR, a weathered veteran hunter in his late 50s: short swept-back iron-grey hair, grey stubble, heavy brow, his LEFT eye milky white and blind with an old claw scar through the eyebrow (the blind eye must stay milky white and scarred in every expression), green hooded cloak with a wolf-fur collar, red-and-green padded tunic. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to gruffly embarrassed: faint red on his weathered cheeks and ears, the good eye looking away, a grumpy flustered mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-garr-home",
+  "refs": [
+   "refs/hv12/garr.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of GARR, a weathered veteran hunter in his late 50s: short swept-back iron-grey hair, grey stubble, heavy brow, his LEFT eye milky white and blind with an old claw scar through the eyebrow (the blind eye must stay milky white and scarred in every expression), green hooded cloak with a wolf-fur collar, red-and-green padded tunic. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a plain rolled-sleeve linen shirt under a simple stained cooking apron, dark work trousers, a dish towel over his shoulder; no cloak, no weapons. He holds a wooden ladle in one hand. Face: a gruff, content expression. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bowy-happy",
+  "refs": [
+   "refs/hv12/bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BOWY, a big half-orc half-boar marksman: boar head with curved ivory tusks, coarse brown fur, small warm eyes, dented iron helmet, green padded tunic with leather straps, his huge crossbow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a big happy tusky grin, small eyes crinkled with warmth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bowy-angry",
+  "refs": [
+   "refs/hv12/bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BOWY, a big half-orc half-boar marksman: boar head with curved ivory tusks, coarse brown fur, small warm eyes, dented iron helmet, green padded tunic with leather straps, his huge crossbow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry snarl: tusks bared, brows furrowed, small eyes glaring. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bowy-sad",
+  "refs": [
+   "refs/hv12/bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BOWY, a big half-orc half-boar marksman: boar head with curved ivory tusks, coarse brown fur, small warm eyes, dented iron helmet, green padded tunic with leather straps, his huge crossbow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad droop: eyes downcast and glistening, ears drooping, mouth sagging. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bowy-surprised",
+  "refs": [
+   "refs/hv12/bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BOWY, a big half-orc half-boar marksman: boar head with curved ivory tusks, coarse brown fur, small warm eyes, dented iron helmet, green padded tunic with leather straps, his huge crossbow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to startled: small eyes wide, brows up, snout mouth open. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bowy-blush",
+  "refs": [
+   "refs/hv12/bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BOWY, a big half-orc half-boar marksman: boar head with curved ivory tusks, coarse brown fur, small warm eyes, dented iron helmet, green padded tunic with leather straps, his huge crossbow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to bashful: pink flush on his furry cheeks and snout, eyes glancing away, an awkward tusky smile. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-bowy-home",
+  "refs": [
+   "refs/hv12/bowy.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of BOWY, a big half-orc half-boar marksman: boar head with curved ivory tusks, coarse brown fur, small warm eyes, dented iron helmet, green padded tunic with leather straps, his huge crossbow. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a plain loose cream linen shirt with the sleeves pushed up and simple brown trousers; no armour, no helmet (his coarse brown fur and pointed boar ears are visible), no crossbow. His hands are relaxed, one hooked in his belt. Face: a relaxed, easy-going expression. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mitia-happy",
+  "refs": [
+   "refs/hv12/mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MITIA, a shy gentle 17-year-old apothecary girl: very long wavy pale-blue hair with a snowflake ornament, soft violet eyes, white-and-ice-blue robe, a glass jar with a frost sprite. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mitia-angry",
+  "refs": [
+   "refs/hv12/mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MITIA, a shy gentle 17-year-old apothecary girl: very long wavy pale-blue hair with a snowflake ornament, soft violet eyes, white-and-ice-blue robe, a glass jar with a frost sprite. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry expression: furrowed brows, a sharp glare, mouth set in an angry frown or gritted teeth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mitia-sad",
+  "refs": [
+   "refs/hv12/mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MITIA, a shy gentle 17-year-old apothecary girl: very long wavy pale-blue hair with a snowflake ornament, soft violet eyes, white-and-ice-blue robe, a glass jar with a frost sprite. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mitia-surprised",
+  "refs": [
+   "refs/hv12/mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MITIA, a shy gentle 17-year-old apothecary girl: very long wavy pale-blue hair with a snowflake ornament, soft violet eyes, white-and-ice-blue robe, a glass jar with a frost sprite. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mitia-blush",
+  "refs": [
+   "refs/hv12/mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MITIA, a shy gentle 17-year-old apothecary girl: very long wavy pale-blue hair with a snowflake ornament, soft violet eyes, white-and-ice-blue robe, a glass jar with a frost sprite. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mitia-apothecary",
+  "refs": [
+   "refs/hv12/mitia.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MITIA, a shy gentle 17-year-old apothecary girl: very long wavy pale-blue hair with a snowflake ornament, soft violet eyes, white-and-ice-blue robe, a glass jar with a frost sprite. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: her work clothes: a simple pale-blue blouse with the sleeves rolled up to the elbows, a long sturdy canvas work apron with pockets, a leather herb pouch at her hip with sprigs of herbs sticking out. She still holds the little glass jar with the frost sprite. Face: keep the same shy, gentle expression. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-hilda-happy",
+  "refs": [
+   "refs/hv12/hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of HILDA IRONHAND, master smith, a young woman of about 24: very long dark brown-black hair with bangs and two small hair buns, amber eyes, white haori, purple kimono and hakama, smith's apron, her RIGHT hand is a riveted iron gauntlet, big forge hammer. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a calm, warm, confident smile, amber eyes softened. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-hilda-angry",
+  "refs": [
+   "refs/hv12/hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of HILDA IRONHAND, master smith, a young woman of about 24: very long dark brown-black hair with bangs and two small hair buns, amber eyes, white haori, purple kimono and hakama, smith's apron, her RIGHT hand is a riveted iron gauntlet, big forge hammer. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a stern angry glare: brows lowered, amber eyes hard, mouth set. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-hilda-sad",
+  "refs": [
+   "refs/hv12/hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of HILDA IRONHAND, master smith, a young woman of about 24: very long dark brown-black hair with bangs and two small hair buns, amber eyes, white haori, purple kimono and hakama, smith's apron, her RIGHT hand is a riveted iron gauntlet, big forge hammer. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-hilda-surprised",
+  "refs": [
+   "refs/hv12/hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of HILDA IRONHAND, master smith, a young woman of about 24: very long dark brown-black hair with bangs and two small hair buns, amber eyes, white haori, purple kimono and hakama, smith's apron, her RIGHT hand is a riveted iron gauntlet, big forge hammer. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-hilda-blush",
+  "refs": [
+   "refs/hv12/hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of HILDA IRONHAND, master smith, a young woman of about 24: very long dark brown-black hair with bangs and two small hair buns, amber eyes, white haori, purple kimono and hakama, smith's apron, her RIGHT hand is a riveted iron gauntlet, big forge hammer. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to deadpan embarrassment: a faint pink blush, eyes looking away, lips pressed together. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-hilda-offduty",
+  "refs": [
+   "refs/hv12/hilda.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of HILDA IRONHAND, master smith, a young woman of about 24: very long dark brown-black hair with bangs and two small hair buns, amber eyes, white haori, purple kimono and hakama, smith's apron, her RIGHT hand is a riveted iron gauntlet, big forge hammer. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a casual off-duty outfit: a relaxed dark indigo kimono with a simple obi and a loose white haori over it, no smith's apron, no tasuki cord, no hammer. She still has her dark riveted iron gauntlet on her RIGHT hand; her hands rest calmly, the iron hand holding a small cup of tea. Face: keep the same calm, composed face. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-senna-happy",
+  "refs": [
+   "refs/hv12/senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of SENNA, a calm spear-wielding samurai woman: very long lavender hair in a high ponytail with a gold ornament, sleepy half-lidded violet eyes, yellow-and-white kimono battle outfit with black lacquered shoulder guards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a serene gentle smile, sleepy eyes softly curved. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-senna-angry",
+  "refs": [
+   "refs/hv12/senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of SENNA, a calm spear-wielding samurai woman: very long lavender hair in a high ponytail with a gold ornament, sleepy half-lidded violet eyes, yellow-and-white kimono battle outfit with black lacquered shoulder guards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a cold, dangerous stare: half-lidded eyes turned sharp, mouth a flat line. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-senna-sad",
+  "refs": [
+   "refs/hv12/senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of SENNA, a calm spear-wielding samurai woman: very long lavender hair in a high ponytail with a gold ornament, sleepy half-lidded violet eyes, yellow-and-white kimono battle outfit with black lacquered shoulder guards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-senna-surprised",
+  "refs": [
+   "refs/hv12/senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of SENNA, a calm spear-wielding samurai woman: very long lavender hair in a high ponytail with a gold ornament, sleepy half-lidded violet eyes, yellow-and-white kimono battle outfit with black lacquered shoulder guards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a mildly surprised look: sleepy eyes opened wider than usual, lips slightly parted. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-senna-blush",
+  "refs": [
+   "refs/hv12/senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of SENNA, a calm spear-wielding samurai woman: very long lavender hair in a high ponytail with a gold ornament, sleepy half-lidded violet eyes, yellow-and-white kimono battle outfit with black lacquered shoulder guards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-senna-casual",
+  "refs": [
+   "refs/hv12/senna.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of SENNA, a calm spear-wielding samurai woman: very long lavender hair in a high ponytail with a gold ornament, sleepy half-lidded violet eyes, yellow-and-white kimono battle outfit with black lacquered shoulder guards. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: simple, plain inn clothes: a modest soft-coloured cotton kimono with a plain obi and a short apron, no armour, no shoulder guards, NO spear. Her hands are folded in front of her. Face: keep the same calm, sleepy expression. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lysa-happy",
+  "refs": [
+   "refs/hv12/lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LYSA, the cheerful guild receptionist in her early 20s: long soft pink hair with a side bun and flower ornament, aqua-blue eyes, white dress with a short capelet, blue bow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lysa-angry",
+  "refs": [
+   "refs/hv12/lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LYSA, the cheerful guild receptionist in her early 20s: long soft pink hair with a side bun and flower ornament, aqua-blue eyes, white dress with a short capelet, blue bow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry expression: furrowed brows, a sharp glare, mouth set in an angry frown or gritted teeth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lysa-sad",
+  "refs": [
+   "refs/hv12/lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LYSA, the cheerful guild receptionist in her early 20s: long soft pink hair with a side bun and flower ornament, aqua-blue eyes, white dress with a short capelet, blue bow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lysa-surprised",
+  "refs": [
+   "refs/hv12/lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LYSA, the cheerful guild receptionist in her early 20s: long soft pink hair with a side bun and flower ornament, aqua-blue eyes, white dress with a short capelet, blue bow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lysa-blush",
+  "refs": [
+   "refs/hv12/lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LYSA, the cheerful guild receptionist in her early 20s: long soft pink hair with a side bun and flower ornament, aqua-blue eyes, white dress with a short capelet, blue bow. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-lysa-offduty",
+  "refs": [
+   "refs/hv12/lysa.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of LYSA, the cheerful guild receptionist in her early 20s: long soft pink hair with a side bun and flower ornament, aqua-blue eyes, white dress with a short capelet, blue bow. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: casual off-duty winter clothes: a cream knit sweater, a short fluffy winter coat, a warm plaid skirt below the knee, opaque tights, winter boots, a knitted scarf. No stamp or quill; her hands are free or waving. Face: a cheerful smile. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mara-happy",
+  "refs": [
+   "refs/hv12/mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MARA, a young diviner-mage of about 20: short dark-purple hair with two fluffy pom-pom ornaments, purple eyes, white-and-purple kimono wrap top, short fur-trimmed dark cloak, glowing divination cards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mara-angry",
+  "refs": [
+   "refs/hv12/mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MARA, a young diviner-mage of about 20: short dark-purple hair with two fluffy pom-pom ornaments, purple eyes, white-and-purple kimono wrap top, short fur-trimmed dark cloak, glowing divination cards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry expression: furrowed brows, a sharp glare, mouth set in an angry frown or gritted teeth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mara-sad",
+  "refs": [
+   "refs/hv12/mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MARA, a young diviner-mage of about 20: short dark-purple hair with two fluffy pom-pom ornaments, purple eyes, white-and-purple kimono wrap top, short fur-trimmed dark cloak, glowing divination cards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mara-surprised",
+  "refs": [
+   "refs/hv12/mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MARA, a young diviner-mage of about 20: short dark-purple hair with two fluffy pom-pom ornaments, purple eyes, white-and-purple kimono wrap top, short fur-trimmed dark cloak, glowing divination cards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mara-blush",
+  "refs": [
+   "refs/hv12/mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MARA, a young diviner-mage of about 20: short dark-purple hair with two fluffy pom-pom ornaments, purple eyes, white-and-purple kimono wrap top, short fur-trimmed dark cloak, glowing divination cards. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-mara-casual",
+  "refs": [
+   "refs/hv12/mara.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of MARA, a young diviner-mage of about 20: short dark-purple hair with two fluffy pom-pom ornaments, purple eyes, white-and-purple kimono wrap top, short fur-trimmed dark cloak, glowing divination cards. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a casual off-duty outfit: a cosy oversized purple knit sweater, a dark skirt below the knee, dark tights, ankle boots. No divination cards; she holds a steaming mug instead. Face: keep the same slightly grumpy, pouty expression. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-frida-happy",
+  "refs": [
+   "refs/hv12/frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of FRIDA, the gentle shrine keeper of about 19: very long straight black hair with a red hair band, soft purple eyes, white shrine-maiden robes over a deep-red hakama, fur shawl, silver bells, a paper lantern. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a bright, genuinely happy expression: warm open smile, cheerful eyes. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-frida-angry",
+  "refs": [
+   "refs/hv12/frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of FRIDA, the gentle shrine keeper of about 19: very long straight black hair with a red hair band, soft purple eyes, white shrine-maiden robes over a deep-red hakama, fur shawl, silver bells, a paper lantern. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an angry expression: furrowed brows, a sharp glare, mouth set in an angry frown or gritted teeth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-frida-sad",
+  "refs": [
+   "refs/hv12/frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of FRIDA, the gentle shrine keeper of about 19: very long straight black hair with a red hair band, soft purple eyes, white shrine-maiden robes over a deep-red hakama, fur shawl, silver bells, a paper lantern. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a sad expression: brows tilted up in the middle, downcast glistening eyes, a small trembling frown. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-frida-surprised",
+  "refs": [
+   "refs/hv12/frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of FRIDA, the gentle shrine keeper of about 19: very long straight black hair with a red hair band, soft purple eyes, white shrine-maiden robes over a deep-red hakama, fur shawl, silver bells, a paper lantern. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to a surprised expression: eyes wide open, eyebrows raised high, mouth open in a small 'oh!'. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-frida-blush",
+  "refs": [
+   "refs/hv12/frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of FRIDA, the gentle shrine keeper of about 19: very long straight black hair with a red hair band, soft purple eyes, white shrine-maiden robes over a deep-red hakama, fur shawl, silver bells, a paper lantern. Same character, same art style, same outfit, same pose, same framing and scale; change ONLY the facial expression to an embarrassed, flustered expression: pink blush across the cheeks and nose, eyes glancing away, an awkward embarrassed mouth. Keep everything else EXACTLY as in the reference: the same line work, colouring and shading, the same face shape, hair, eye colour, the same clothes and accessories, the same hands and props in the same place, the same body position, size and position in the canvas, the same crop at the bottom edge. Do not add or remove anything. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-frida-casual",
+  "refs": [
+   "refs/hv12/frida.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of FRIDA, the gentle shrine keeper of about 19: very long straight black hair with a red hair band, soft purple eyes, white shrine-maiden robes over a deep-red hakama, fur shawl, silver bells, a paper lantern. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: an off-duty warm long winter coat in deep red with a fur-trimmed hood worn over her white-and-red shrine clothes (the red hakama visible below the coat), a knitted scarf and mittens. No lantern; her mittened hands are held together in front of her. Face: keep the same gentle, serene smile. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
+ },
+ {
+  "key": "hv12-tachie-system-offline-v2",
+  "refs": [
+   "refs/hv12/system.png"
+  ],
+  "prompt": "EDIT the reference image: it is the finished visual-novel standing portrait of JESS, the holographic avatar of the Cosmic Jester System: long white hair in a high ponytail with a black-and-red jester-bell ribbon, sharp red eyes, black-and-white harlequin hooded jacket with red diamonds, cyan hologram scanline edges, two floating blank UI panels. Same character, same face, same hair, same art style, same framing and scale, the same pose as far as possible; change ONLY the clothes to: a cosy oversized hoodie in her colours (black and white harlequin pattern with red diamond accents and a small jester-bell zipper pull), soft black shorts over opaque black tights, fluffy black socks; relaxed and off-duty. The floating UI panels and the hologram scanlines are switched off (no panels, no scanlines). Face: sleepy, relaxed and a bit grumpy, half-lidded red eyes. Keep the same line work, colouring and shading, the same body size and position in the canvas, the same three-quarter length crop at the bottom edge. Correct anatomy, five fingers per hand. Fully clothed, modest, wholesome. HAIR MUST STAY EXACTLY AS IN THE REFERENCE: her long white hair tied up in the same HIGH PONYTAIL with the same black-and-red jester-bell hair ribbon and its little gold bells; do NOT let the hair down, do NOT remove the ribbon. Only the clothes change and the floating panels/scanlines disappear. Opaque solid pure white background filling the whole image, no fade, no smoke, no gradient, no floor, no shadow, no text, no letters, no logo, no watermark, no frame. Output a single 1024x1536 image."
  }
 ]

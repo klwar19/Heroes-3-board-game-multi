@@ -1,4 +1,5 @@
 import type { DaySummary, RestiaState } from "./types";
+import { SCAR_REMINDER_DAYS, nameOf, takeCheckpoint } from "./story";
 import { itemDef } from "../data/items";
 import { NPCS } from "../data/npcs";
 import { ZONES } from "../data/zones";
@@ -51,6 +52,8 @@ function endDay(state: RestiaState, ctx: Ctx, passedOut: boolean, reason: string
   };
   state.battle = null;
   state.dungeon = null;
+  // The ruins restock overnight: every floor is rebuilt fresh tomorrow.
+  state.floorsToday = {};
   state.scene = null;
   for (const [item, n] of Object.entries(state.shipping)) {
     summary.shippedGold += sellValue(state, item) * n;
@@ -97,6 +100,15 @@ function endDay(state: RestiaState, ctx: Ctx, passedOut: boolean, reason: string
     state.inventory[dish] = (state.inventory[dish] ?? 0) + 1;
     summary.notes.push(`${NPCS[partner].name} packed you ${itemDef(dish).name} for the day.`);
   }
+  if (state.story.penaltyUntil && state.day === state.story.penaltyUntil + 1) summary.notes.push("The Bad Ratings have worn off. Peri says the audience has forgiven you. Mostly.");
+  for (const scar of state.story.scars) {
+    const days = state.day - scar.day;
+    if (days > 0 && days % SCAR_REMINDER_DAYS === 0) {
+      const what = scar.fate === "dead" ? "since you lost" : scar.fate === "left" ? "since" : "since anyone last saw";
+      summary.notes.push(`${days} days ${what} ${nameOf(scar.who)}${scar.fate === "left" ? " left" : ""}. Frostbitten still feels the gap.`);
+    }
+  }
   morning(state, ctx);
+  takeCheckpoint(state);
   ctx.events.push({ kind: "dayEnd", summary });
 }

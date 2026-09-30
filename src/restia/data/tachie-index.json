@@ -1,0 +1,270 @@
+{
+ "bin": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "earth": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ]
+ },
+ "bowy": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "home": [
+   "normal"
+  ]
+ },
+ "chad": {
+  "default": [
+   "normal"
+  ]
+ },
+ "dain": {
+  "default": [
+   "normal"
+  ]
+ },
+ "frida": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "casual": [
+   "normal"
+  ]
+ },
+ "garr": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "home": [
+   "normal"
+  ]
+ },
+ "gymbro": {
+  "default": [
+   "normal"
+  ]
+ },
+ "hilda": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "offduty": [
+   "normal"
+  ]
+ },
+ "jake": {
+  "default": [
+   "normal"
+  ]
+ },
+ "leo": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "school": [
+   "normal"
+  ]
+ },
+ "lily": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "outing": [
+   "normal"
+  ]
+ },
+ "lingling": {
+  "adult": [
+   "normal"
+  ],
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ]
+ },
+ "luna": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "winter": [
+   "normal"
+  ]
+ },
+ "lysa": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "offduty": [
+   "normal"
+  ]
+ },
+ "mara": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "casual": [
+   "normal"
+  ]
+ },
+ "meilin": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "school": [
+   "normal"
+  ]
+ },
+ "mitia": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "apothecary": [
+   "normal"
+  ]
+ },
+ "nurse": {
+  "default": [
+   "normal"
+  ]
+ },
+ "oldzhou": {
+  "default": [
+   "normal"
+  ]
+ },
+ "peri": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "casual": [
+   "normal"
+  ]
+ },
+ "repairman": {
+  "default": [
+   "normal"
+  ]
+ },
+ "senna": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "casual": [
+   "normal"
+  ]
+ },
+ "system": {
+  "default": [
+   "angry",
+   "blush",
+   "happy",
+   "sad",
+   "surprised",
+   "normal"
+  ],
+  "offline": [
+   "normal"
+  ]
+ },
+ "tessa": {
+  "default": [
+   "normal"
+  ]
+ },
+ "tilde": {
+  "default": [
+   "normal"
+  ]
+ },
+ "villager": {
+  "default": [
+   "normal"
+  ]
+ },
+ "zhaokang": {
+  "default": [
+   "normal"
+  ]
+ }
+}

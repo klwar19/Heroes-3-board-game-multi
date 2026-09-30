@@ -6,6 +6,8 @@ import { POINTS_PER_HEART } from "../data/progression";
 import { Ctx, addItem, fail, perk, removeItem } from "./core";
 import { defaultJobs, jobPassives, jobSkills, jobStats } from "./jobs";
 import { sumPassives } from "./passives";
+import { available, penaltyActive } from "./story";
+import { PENALTY_STAT_MULT } from "../data/endings";
 
 export const STAT_KEYS: StatKey[] = ["maxHp", "maxMp", "atk", "def", "mag", "res", "spd", "luk"];
 
@@ -35,6 +37,7 @@ export function memberStats(state: RestiaState, id: CharId): Stats {
   for (const buff of state.buffs) {
     for (const [key, value] of Object.entries(buff.stats ?? {})) stats[key as StatKey] += value ?? 0;
   }
+  if (penaltyActive(state)) for (const key of ["atk", "def", "mag", "res"] as const) stats[key] = Math.floor(stats[key] * PENALTY_STAT_MULT);
   // Passive max HP/MP bonuses (e.g. Veteran) apply outside battle too, so HP bars stay consistent.
   const passives = sumPassives(memberPassives(state, id));
   stats.maxHp = Math.round(stats.maxHp * (1 + (passives.stats.maxHp ?? 0) / 100));
@@ -108,7 +111,7 @@ export function activeLimit(state: RestiaState): number {
 }
 
 export function recruit(state: RestiaState, id: CharId, ctx: Ctx): void {
-  if (state.members[id]) return;
+  if (state.members[id] || !available(state, id)) return;
   const binLevel = state.members.bin?.level ?? 1;
   const member = newMember(id, Math.max(1, binLevel - 1));
   state.members[id] = member;

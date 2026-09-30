@@ -50,6 +50,8 @@ function metaOf(state: RestiaState, slot: SlotId): SaveMeta {
 
 export function saveGame(state: RestiaState, slot: SlotId): SaveMeta {
   if (state.battle) throw new Error("You can't save during a battle.");
+  if (state.ending) throw new Error("This story has ended. Load an earlier save instead.");
+  if (state.gameOver) throw new Error("Not now. Peri is still reviewing the footage.");
   const meta = metaOf(state, slot);
   const file: SaveFile = { format: "restia-save", version: SAVE_VERSION, meta, state };
   const store = storage();
@@ -91,6 +93,11 @@ export function migrate(input: RestiaState): RestiaState {
   state.guild = { ...fresh.guild, ...input.guild };
   state.admin = { ...fresh.admin, ...input.admin };
   state.player = { ...fresh.player, ...input.player };
+  // Story state arrived later; older saves start with an empty history.
+  state.story = { ...fresh.story, ...input.story };
+  state.ending = input.ending ?? null;
+  state.gameOver = input.gameOver ?? null;
+  state.checkpoint = input.checkpoint ? migrate(input.checkpoint) : null;
   for (const id of Object.keys(state.members)) {
     if (!(id in CHARACTERS)) delete state.members[id as keyof typeof state.members];
   }
@@ -131,6 +138,7 @@ export function migrate(input: RestiaState): RestiaState {
   state.forage = (state.forage ?? []).filter((spot) => spot.item in ITEMS);
   state.fieldMonsters = (state.fieldMonsters ?? []).filter((monster) => monster.group.every((entry) => entry.species in MONSTERS));
   if (state.dungeon) state.dungeon.monsters = state.dungeon.monsters.filter((monster) => monster.group.every((entry) => entry.species in MONSTERS));
+  for (const floor of Object.values(state.floorsToday ?? {})) floor.monsters = floor.monsters.filter((monster) => monster.group.every((entry) => entry.species in MONSTERS));
   // Farm plots: sprinklers and giant crops are optional fields added later (missing = none).
   // Unknown crops, bad sprinkler tiers and broken giant groups are dropped so the night can't crash.
   state.plots = Array.from({ length: fresh.plots.length }, (_, index) => input.plots?.[index] ?? fresh.plots[index]!);

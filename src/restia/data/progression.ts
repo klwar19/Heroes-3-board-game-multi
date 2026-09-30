@@ -169,6 +169,14 @@ export const RANK_EXAM: Record<GuildRank, { text: string; cond?: Condition; scen
   S: { text: "Defeat the Herald of the Ethereal Judge", cond: { kind: "flag", key: "boss20" } }
 };
 
+/**
+ * Soft level cap per Guild rank: at or above it, fighters earn only OVER_CAP_EXP of
+ * their battle (and job) EXP until the next exam. Each cap is roughly the level of
+ * the next story guardian that rank is expected to face (floor 10 = 14, 15 = 19, 20 = 24).
+ */
+export const RANK_LEVEL_CAP: Record<GuildRank, number> = { F: 8, E: 14, D: 19, C: 24, B: 29, A: 35, S: 50 };
+export const OVER_CAP_EXP = 0.05;
+
 export function rankIndex(rank: GuildRank): number {
   return RANKS.indexOf(rank);
 }

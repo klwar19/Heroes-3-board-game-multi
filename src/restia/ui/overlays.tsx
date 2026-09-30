@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CastId, DaySummary, Face, NpcId, RestiaState, SceneLine, SpeakerId } from "../engine/types";
 import { SCENES } from "../engine/scenes";
+import { check } from "../engine/conditions";
+import { ENDINGS, ENDING_COUNT, GREEN_ROOM_QUIPS, PENALTY_DAYS } from "../data/endings";
+import { nameOf } from "../engine/story";
 import { CAST_NAMES, NPCS } from "../data/npcs";
 import { CHARACTERS } from "../data/characters";
 import { itemDef } from "../data/items";
@@ -54,6 +57,14 @@ export function ScenePlayer({
   const def = SCENES[scene.id]!;
   const line = def.lines[scene.index] as SceneLine | undefined;
   const isChoice = !!line && "choice" in line;
+  // Options hidden by `when` disappear; ones failing `requires` show locked with their hint.
+  const options = useMemo(
+    () =>
+      line && "choice" in line
+        ? line.choice.map((option, index) => ({ option, index, open: check(state, option.requires) })).filter(({ option }) => check(state, option.when))
+        : [],
+    [line, state]
+  );
   const who: SpeakerId = line && "who" in line && line.who ? line.who : "narrator";
   const text = line && "text" in line && line.text ? line.text : "";
   const cast = useMemo(() => {
@@ -63,14 +74,18 @@ export function ScenePlayer({
     }
     return [] as SpeakerId[];
   }, [def, scene.index]);
-  // Bin keeps an expression until his next line without one.
-  const binFace = useMemo(() => {
-    for (let i = scene.index; i >= 0; i--) {
+  // Each speaker keeps an expression until their next line without one, and an outfit
+  // (scene default, then the latest line that changed it) for the rest of the scene.
+  const looks = useMemo(() => {
+    const face = new Map<SpeakerId, Face | null>();
+    const outfit = new Map<SpeakerId, string>();
+    for (let i = 0; i <= scene.index; i++) {
       const entry = def.lines[i];
-      if (entry && "face" in entry && entry.face) return entry.face as Face;
-      if (entry && "who" in entry && entry.who === "bin") return null;
+      if (!entry || "choice" in entry || !("who" in entry) || !entry.who) continue;
+      face.set(entry.who, entry.face ?? null);
+      if (entry.outfit) outfit.set(entry.who, entry.outfit);
     }
-    return null;
+    return { face, outfit };
   }, [def, scene.index]);
   const bgKey = useMemo(() => {
     for (let i = scene.index; i >= 0; i--) {
@@ -84,8 +99,8 @@ export function ScenePlayer({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (isChoice && line && "choice" in line) {
-        const n = Number(event.key);
-        if (n >= 1 && n <= line.choice.length) onChoose(n - 1);
+        const picked = options[Number(event.key) - 1];
+        if (picked && picked.open) onChoose(picked.index);
         return;
       }
       if (event.key === "Enter" || event.key === " " || event.key === "e" || event.key === "E") {
@@ -96,7 +111,7 @@ export function ScenePlayer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [done, finish, isChoice, line, onChoose, onNext]);
+  }, [done, finish, isChoice, line, onChoose, onNext, options]);
 
   if (!line) return null;
   const name = speakerName(who);
@@ -123,7 +138,7 @@ export function ScenePlayer({
       </button>
       <div className={s.sceneCast}>
         {cast.map((speaker) => {
-          const src = tachieFor(speaker, speaker === "bin" ? binFace : null, def.outfit);
+          const src = tachieFor(speaker, looks.face.get(speaker) ?? null, looks.outfit.get(speaker) ?? (speaker === "bin" ? def.outfit : def.outfits?.[speaker]));
           return src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -141,17 +156,21 @@ export function ScenePlayer({
         {text ? <div>{isChoice ? text : typed}</div> : null}
         {isChoice && "choice" in line ? (
           <div className={s.choices}>
-            {line.choice.map((option, index) => (
+            {options.map(({ option, index, open }, shown) => (
               <button
                 className={s.choice}
+                disabled={!open}
                 key={option.text}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onChoose(index);
+                  if (open) onChoose(index);
                 }}
+                style={open ? undefined : { opacity: 0.45, cursor: "not-allowed" }}
+                title={open ? undefined : option.hint}
                 type="button"
               >
-                {index + 1}. {option.text}
+                {shown + 1}. {option.text}
+                {open ? null : <span className={s.muted}> {option.hint ? `(${option.hint})` : "(locked)"}</span>}
               </button>
             ))}
           </div>
@@ -304,6 +323,75 @@ function MiniMember({ name, hp, max }: { name: string; hp: number; max: number }
       <span>{name}</span>
       <div className={s.barTrack}>
         <div className={`${s.barFill} ${s.barHp}`} style={{ width: `${(100 * hp) / Math.max(1, max)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Shown when the story has ended (bad ends, true ends). The save is finished; load another. */
+export function EndingCard({ state, onTitle }: { state: RestiaState; onTitle: () => void }) {
+  const ending = state.ending ? ENDINGS[state.ending] : undefined;
+  if (!ending) return null;
+  const bad = ending.kind === "bad";
+  return (
+    <div className={s.panelBackdrop} style={{ background: bad ? "rgba(20, 0, 0, 0.88)" : "rgba(0, 0, 0, 0.8)" }}>
+      <div className={s.summary} style={{ textAlign: "center" }}>
+        <h2 className={`${s.panelTitle} ${s.serif}`} style={{ color: bad ? "#b3261e" : "var(--ink)" }}>
+          {ending.title}
+        </h2>
+        <div>{ending.text}</div>
+        <div className={s.muted}>
+          Endings found in this story: {state.story.endings.length} / {ENDING_COUNT}
+        </div>
+        <button className={s.btn} onClick={onTitle} type="button">
+          Return to title
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Game over: Peri's Green Room. She reviews the flop, gives a hint, and rewinds to the
+ * last checkpoint with Bad Ratings (engine/story.ts). Quitting keeps the last save.
+ */
+export function GreenRoom({ state, onRewind, onTitle }: { state: RestiaState; onRewind: () => void; onTitle: () => void }) {
+  const ending = state.gameOver ? ENDINGS[state.gameOver] : undefined;
+  if (!ending) return null;
+  const who = state.story.lostWho ? nameOf(state.story.lostWho) : "Someone";
+  const quip = GREEN_ROOM_QUIPS[state.story.rewinds % GREEN_ROOM_QUIPS.length]!;
+  const peri = TACHIE.peri;
+  return (
+    <div className={s.panelBackdrop} style={{ background: "radial-gradient(circle at 30% 40%, rgba(60, 20, 90, 0.92), rgba(5, 0, 12, 0.96))" }}>
+      {peri ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt="Peri" src={A(peri)} style={{ position: "absolute", left: "2%", bottom: 0, height: "88%", pointerEvents: "none", filter: "drop-shadow(0 0 24px rgba(140, 90, 255, 0.5))" }} />
+      ) : null}
+      <div className={s.summary} style={{ marginLeft: "auto", marginRight: "6%", maxWidth: 560, position: "relative" }}>
+        <div className={s.muted} style={{ letterSpacing: 2 }}>PERI&apos;S GREEN ROOM</div>
+        <h2 className={`${s.panelTitle} ${s.serif}`} style={{ color: "#b3261e" }}>
+          {ending.title}
+        </h2>
+        <div style={{ fontStyle: "italic" }}>{ending.text.replaceAll("{who}", who)}</div>
+        <div className={s.card}>
+          <div className={s.rowTitle}>Peri</div>
+          <div>{quip}</div>
+          {ending.hint ? <div style={{ marginTop: 6 }}>{ending.hint}</div> : null}
+        </div>
+        <div className={s.muted}>
+          Rewind to the last checkpoint. The price: Bad Ratings for {PENALTY_DAYS} days (party ATK/DEF/MAG/RES -10%, Jester Points halved).
+        </div>
+        <div className={s.muted}>
+          Bad ends collected: {state.story.endings.filter((id) => ENDINGS[id]?.kind === "bad").length} / {Object.values(ENDINGS).filter((entry) => entry.kind === "bad").length} · Rewinds so far: {state.story.rewinds}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className={s.btn} onClick={onRewind} type="button">
+            Rewind
+          </button>
+          <button className={s.btnGhost} onClick={onTitle} type="button">
+            Quit to title
+          </button>
+        </div>
       </div>
     </div>
   );

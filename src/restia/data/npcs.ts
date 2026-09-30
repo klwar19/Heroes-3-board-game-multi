@@ -338,5 +338,13 @@ export const CAST_NAMES: Record<CastId, string> = {
   tuli: "Tuli",
   rolf: "Hermit Rolf",
   stranger: "Stranger",
-  frostSprite: "Frost Sprite"
+  frostSprite: "Frost Sprite",
+  oldZhou: "Old Zhou",
+  zhaoKang: "Zhao Kang",
+  gymBro: "Gym Bro",
+  student: "Student",
+  kid: "Boy from the Ward",
+  repairman: "Old Repairman",
+  villager: "Villager",
+  gymGirl: "Girl at the Squat Rack"
 };

@@ -6,6 +6,7 @@ import { addPoints } from "./social";
 import { addGp, rankUp, startQuest } from "./quests";
 import { startEventBattle } from "./battle";
 import { itemDef } from "../data/items";
+import { addKarma, addTrait, gainJp, reachEnding, recordChoice, setFate } from "./story";
 
 export function applyEffects(state: RestiaState, effects: Effect[], ctx: Ctx): void {
   for (const effect of effects) applyEffect(state, effect, ctx);
@@ -66,14 +67,28 @@ export function applyEffect(state: RestiaState, effect: Effect, ctx: Ctx): void 
       state.stamina = clamp(state.stamina + effect.n, 0, maxStamina(state));
       return;
     case "ap":
-      state.admin.ap += effect.n;
-      ctx.toast(`Jester Points +${effect.n}`, "system");
+      ctx.toast(`Jester Points +${gainJp(state, effect.n)}`, "system");
       return;
     case "flagDay":
       state.flags[effect.key] = state.day;
       return;
     case "count":
       state.stats.counters[effect.key] = (state.stats.counters[effect.key] ?? 0) + effect.n;
+      return;
+    case "karma":
+      addKarma(state, effect.n);
+      return;
+    case "trait":
+      addTrait(state, effect.key, effect.n);
+      return;
+    case "record":
+      recordChoice(state, effect.key, effect.option);
+      return;
+    case "fate":
+      setFate(state, effect.who, effect.fate, ctx);
+      return;
+    case "ending":
+      reachEnding(state, effect.id);
       return;
   }
 }

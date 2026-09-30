@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import type { CharId, DispatchResult, NpcId, RestiaAction, RestiaState } from "../engine/types";
 import { CHARACTERS, expToNext } from "../data/characters";
 import { ITEMS, itemDef } from "../data/items";
-import { MISSIONS, PERKS, QUESTS, RANK_GP, POINTS_PER_HEART } from "../data/progression";
+import { MISSIONS, PERKS, QUESTS, RANK_GP, RANK_LEVEL_CAP, POINTS_PER_HEART } from "../data/progression";
 import { NPCS, NPC_IDS } from "../data/npcs";
 import { MONSTERS } from "../data/monsters";
 import { SKILLS } from "../data/skills";
@@ -14,6 +14,7 @@ import { jobLock } from "../engine/jobs";
 import { JOBS, JOB_EXP, JOB_IDS, JOB_MAX } from "../data/jobs";
 import { PASSIVES } from "../data/passives";
 import { check } from "../engine/conditions";
+import { nameOf } from "../engine/story";
 import { requestTitle, nextRank } from "../engine/quests";
 import { npcWhere } from "../engine/social";
 import { skillLevel } from "../engine/farm";
@@ -404,9 +405,22 @@ function QuestsTab({ state }: { state: RestiaState }) {
             </div>
           );
         })}
+        {state.day <= state.story.penaltyUntil ? (
+          <div className={s.bad}>Bad Ratings until day {state.story.penaltyUntil}: party ATK/DEF/MAG/RES -10%, Jester Points halved.</div>
+        ) : null}
+        {state.story.scars.length ? (
+          <>
+            <h3 className={s.cardTitle}>Scars</h3>
+            {state.story.scars.map((scar) => (
+              <div className={s.muted} key={scar.who}>
+                {nameOf(scar.who)}: {scar.fate === "dead" ? "lost" : scar.fate === "left" ? "left Frostbitten" : "missing"} since day {scar.day}.
+              </div>
+            ))}
+          </>
+        ) : null}
         <h3 className={s.cardTitle}>Guild</h3>
         <div className={s.muted}>
-          Rank {state.guild.rank} · {state.guild.gp} GP{next ? ` · next rank at ${RANK_GP[next]} GP` : ""}
+          Rank {state.guild.rank} · {state.guild.gp} GP · Level cap {RANK_LEVEL_CAP[state.guild.rank]}{next ? ` · next rank at ${RANK_GP[next]} GP` : ""}
         </div>
         {state.requests
           .filter((request) => request.accepted)

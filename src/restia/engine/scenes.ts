@@ -1,11 +1,13 @@
 import type { RestiaState, SceneDef, SceneLine } from "./types";
 import { STORY_SCENES } from "../data/scenes-story";
 import { HEART_SCENES } from "../data/scenes-hearts";
+import { PROLOGUE_SCENES } from "../data/scenes-prologue";
 import { Ctx, fail } from "./core";
 import { check } from "./conditions";
 import { applyEffects } from "./effects";
+import { isDoomScene, recordChoice, takeCheckpoint } from "./story";
 
-export const SCENES: Record<string, SceneDef> = Object.fromEntries([...STORY_SCENES, ...HEART_SCENES].map((scene) => [scene.id, scene]));
+export const SCENES: Record<string, SceneDef> = Object.fromEntries([...PROLOGUE_SCENES, ...STORY_SCENES, ...HEART_SCENES].map((scene) => [scene.id, scene]));
 
 export function sceneDef(id: string): SceneDef {
   const def = SCENES[id];
@@ -69,11 +71,20 @@ export function playScene(state: RestiaState, id: string, ctx: Ctx): boolean {
     return true;
   }
   state.scene = { id, index: 0 };
+  // Rewind point: the scene replays from its first line (scenes that end the game don't count).
+  if (!isDoomScene(def)) takeCheckpoint(state);
   settle(state, ctx);
   return true;
 }
 
+/** Runs a restored scene's leading non-display lines (after a rewind). */
+export function resumeScene(state: RestiaState, ctx: Ctx): void {
+  settle(state, ctx);
+}
+
 export function startQueuedScene(state: RestiaState, ctx: Ctx): void {
+  // A game over or a finished story waits for Peri / the ending card first.
+  if (state.gameOver || state.ending) return;
   while (!state.scene && state.sceneQueue.length) {
     const next = state.sceneQueue.shift()!;
     // A battle started by the previous scene runs first; keep the rest queued.
@@ -101,6 +112,9 @@ export function sceneChoose(state: RestiaState, index: number, ctx: Ctx): void {
   if (!line || !("choice" in line)) fail("Nothing to choose.");
   const option = line.choice[index];
   if (!option) fail("Invalid choice.");
+  if (!check(state, option.when)) fail("Invalid choice.");
+  if (!check(state, option.requires)) fail(option.hint ?? "You can't choose that.");
+  recordChoice(state, `${def.id}.${line.key ?? `c${state.scene.index}`}`, option.id ?? String(index));
   state.scene.index = option.goto ? labelIndex(def, option.goto) : state.scene.index + 1;
   if (option.effects) applyEffects(state, option.effects, ctx);
   settle(state, ctx);

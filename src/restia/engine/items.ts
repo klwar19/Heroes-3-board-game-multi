@@ -101,6 +101,8 @@ export function setActive(state: RestiaState, active: string[]): void {
       if (!state.pets.some((pet) => `pet:${pet.uid}` === id)) fail("Unknown monster.");
     } else if (!state.members[id as CharId]) {
       fail("That character hasn't joined yet.");
+    } else if (state.story.fates[id]) {
+      fail("They can't fight with you any more.");
     }
   }
   state.active = [...active];

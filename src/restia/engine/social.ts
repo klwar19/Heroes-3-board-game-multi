@@ -25,6 +25,7 @@ function resolveSpot(spot: NpcSpot): NpcWhere {
 /** Where an NPC is right now (null = away / not in Frostbitten yet). */
 export function npcWhere(state: RestiaState, npc: NpcId): NpcWhere {
   const def = NPCS[npc];
+  if (state.story.fates[npc]) return null;
   if (def.available && !check(state, def.available)) return null;
   const minute = state.minute;
   if (state.social[npc].status === "married" && (minute < 9 * H || minute >= 19 * H)) return { building: "farmhouse" };
@@ -200,5 +201,6 @@ function propose(state: RestiaState, npc: NpcId, ctx: Ctx): void {
 }
 
 export function spouse(state: RestiaState): NpcId | null {
-  return NPC_IDS.find((id) => state.social[id].status === "married") ?? null;
+  // A spouse whose story fate is recorded (dead / left / missing) no longer counts.
+  return NPC_IDS.find((id) => state.social[id].status === "married" && !state.story.fates[id]) ?? null;
 }

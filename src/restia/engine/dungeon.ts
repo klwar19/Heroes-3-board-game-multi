@@ -228,16 +228,40 @@ export function enterDungeon(state: RestiaState, floor: number, ctx: Ctx): void 
     fail("The Old Temple Ruins open through the stone doorway at the far end of the Frostwood.");
   }
   if (!availableStarts(state).includes(floor)) fail("You haven't reached that floor yet.");
-  state.dungeon = generateFloor(state, floor);
+  state.dungeon = openFloor(state, floor, ctx);
   state.stats.deepest = Math.max(state.stats.deepest, floor);
   state.minute += 10;
   playScene(state, "catacombsFirst", ctx);
+}
+
+/**
+ * A floor already visited today comes back exactly as it was left (beaten monsters
+ * stay beaten, opened chests and used nodes stay empty), so leaving and re-entering
+ * can't restock it. Bin arrives on its stairs up. Floors restock overnight.
+ */
+function openFloor(state: RestiaState, floor: number, ctx: Ctx): DungeonState {
+  const kept = state.floorsToday[floor];
+  if (!kept) return generateFloor(state, floor);
+  delete state.floorsToday[floor];
+  const up = kept.tiles.indexOf("<");
+  kept.x = up % kept.w;
+  kept.y = Math.floor(up / kept.w);
+  kept.facing = "down";
+  reveal(kept);
+  ctx.toast(`Floor ${floor} is as you left it. The ruins restock overnight.`, "info");
+  return kept;
+}
+
+/** Remembers the floor Bin is leaving for the rest of the day. */
+function stashFloor(state: RestiaState): void {
+  if (state.dungeon) state.floorsToday[state.dungeon.floor] = state.dungeon;
 }
 
 export function leaveDungeon(state: RestiaState, ctx: Ctx, viaScroll = false): void {
   const dungeon = state.dungeon;
   if (!dungeon) fail("You're not in the dungeon.");
   if (!viaScroll && tileAt(dungeon, dungeon.x, dungeon.y) !== "<") fail("Stand on the stairs up to leave (or use a Return Scroll).");
+  stashFloor(state);
   state.dungeon = null;
   const cave = ZONES.forest.spots.caveMouth!;
   state.player = { zone: "forest", x: cave.x, y: cave.y, facing: "down", inside: null };
@@ -346,7 +370,8 @@ function descend(state: RestiaState, ctx: Ctx): void {
   const dungeon = state.dungeon!;
   if (dungeon.bossFloor && dungeon.monsters.some((monster) => monster.boss)) fail("The guardian blocks the way down.");
   const next = dungeon.floor + 1;
-  state.dungeon = generateFloor(state, next);
+  stashFloor(state);
+  state.dungeon = openFloor(state, next, ctx);
   if (next > state.stats.deepest) state.stats.deepest = next;
   state.minute += 20;
   track(state, ctx, "floor", 1);

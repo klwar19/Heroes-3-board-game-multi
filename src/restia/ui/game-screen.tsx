@@ -13,7 +13,7 @@ import { MONSTERS } from "../data/monsters";
 import { playMusic, playSfx } from "./audio";
 import { A } from "./assets";
 import { atlasFor } from "./sprites";
-import { DaySummaryModal, Hud, SayBox, ScenePlayer, Toasts, type Toast } from "./overlays";
+import { DaySummaryModal, Hud, SayBox, ScenePlayer, Toasts, type Toast, EndingCard, GreenRoom } from "./overlays";
 import { WorldView } from "./world-view";
 import { InteriorView } from "./interior-view";
 import { BattleView } from "./battle-view";
@@ -187,7 +187,7 @@ export function GameScreen({ initial, onQuit }: { initial: RestiaState; onQuit: 
   const close = useCallback(() => setPanel(null), []);
 
   const quit = useCallback(() => {
-    if (!stateRef.current.battle) {
+    if (!stateRef.current.battle && !stateRef.current.ending && !stateRef.current.gameOver) {
       try {
         saveGame(stateRef.current, "auto");
       } catch {
@@ -213,6 +213,8 @@ export function GameScreen({ initial, onQuit }: { initial: RestiaState; onQuit: 
       <Hud onClock={() => setPanel(state.battle || state.dungeon ? null : { kind: "wait" })} onMenu={() => setPanel(state.battle ? null : { kind: "menu" })} onSave={() => setPanel(state.battle ? null : { kind: "save" })} state={state} />
       <div className={s.stage}>
         {view}
+        {state.ending && !state.scene ? <EndingCard onTitle={onQuit} state={state} /> : null}
+        {state.gameOver && !state.scene ? <GreenRoom onRewind={() => act({ type: "rewind" })} onTitle={onQuit} state={state} /> : null}
         {state.scene ? <ScenePlayer onChoose={(index) => act({ type: "sceneChoose", index })} onNext={() => act({ type: "sceneNext" })} onSkip={skipScene} state={state} /> : null}
         {say && !state.scene ? <SayBox npc={say.npc} onClose={() => setSay(null)} text={say.text} /> : null}
         {summary && !state.scene ? <DaySummaryModal onClose={() => setSummary(null)} summary={summary} /> : null}

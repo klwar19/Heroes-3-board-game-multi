@@ -2,6 +2,11 @@ import type { Condition, RestiaState } from "./types";
 import { rankIndex } from "../data/progression";
 import { count, seasonOf } from "./core";
 import { hearts } from "./party";
+import { trait } from "./story";
+
+function inRange(value: number, min: number | undefined, max: number | undefined): boolean {
+  return (min === undefined || value >= min) && (max === undefined || value <= max);
+}
 
 export function check(state: RestiaState, cond: Condition | undefined): boolean {
   if (!cond) return true;
@@ -52,5 +57,23 @@ export function check(state: RestiaState, cond: Condition | undefined): boolean 
       return cond.of.some((inner) => check(state, inner));
     case "all":
       return cond.of.every((inner) => check(state, inner));
+    case "not":
+      return !check(state, cond.of);
+    case "karma":
+      return inRange(state.story.karma, cond.min, cond.max);
+    case "trait":
+      return inRange(trait(state, cond.key), cond.min, cond.max);
+    case "chose":
+      return state.story.choices[cond.key] === cond.option;
+    case "battle": {
+      const entry = state.story.battles[cond.encounter];
+      if (!entry) return false;
+      if (cond.result && entry.last !== cond.result) return false;
+      return cond.wins === undefined || entry.won >= cond.wins;
+    }
+    case "fate":
+      return cond.fate === "alive" ? !state.story.fates[cond.who] : state.story.fates[cond.who] === cond.fate;
+    case "ending":
+      return state.story.endings.includes(cond.id);
   }
 }

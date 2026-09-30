@@ -41,10 +41,19 @@ export type CastId =
   | "tuli"
   | "rolf"
   | "stranger"
-  | "frostSprite";
+  | "frostSprite"
+  | "oldZhou"
+  | "zhaoKang"
+  | "gymBro"
+  | "student"
+  | "kid"
+  | "repairman"
+  | "villager"
+  | "gymGirl";
 export type SpeakerId = NpcId | CastId | "bin" | "system" | "narrator";
 /** Alternate standing-art expressions (Bin has the full set). */
-export type Face = "happy" | "angry" | "sad";
+/** Portrait expressions (any speaker; missing art falls back to the normal face). */
+export type Face = "happy" | "angry" | "sad" | "surprised" | "blush";
 
 export type Element = "phys" | "fire" | "ice" | "wind" | "earth" | "light" | "dark";
 export type StatKey = "maxHp" | "maxMp" | "atk" | "def" | "mag" | "res" | "spd" | "luk";
@@ -466,7 +475,20 @@ export type Condition =
   | { kind: "tamed"; n: number }
   | { kind: "counter"; key: string; n: number }
   | { kind: "any"; of: Condition[] }
-  | { kind: "all"; of: Condition[] };
+  | { kind: "all"; of: Condition[] }
+  | { kind: "not"; of: Condition }
+  /** Hidden karma, -100 (cruel) .. 100 (kind). */
+  | { kind: "karma"; min?: number; max?: number }
+  /** A named story stat (courage, sanity, suspicion, trust:peri...). Missing = 0. */
+  | { kind: "trait"; key: string; min?: number; max?: number }
+  /** What was picked at a recorded choice ("<sceneId>.<choice key>" -> option id). */
+  | { kind: "chose"; key: string; option: string }
+  /** An event battle's history: last result, or at least `wins` wins. */
+  | { kind: "battle"; encounter: string; result?: BattleResult; wins?: number }
+  /** A character's fate (see StoryState.fates). "alive" = no fate recorded. */
+  | { kind: "fate"; who: string; fate: Fate | "alive" }
+  /** An ending already reached in this save. */
+  | { kind: "ending"; id: string };
 
 export type Effect =
   | { kind: "points"; npc: NpcId; n: number }
@@ -488,11 +510,58 @@ export type Effect =
   /** Adds to a lifetime counter (story tallies such as coins found). */
   | { kind: "count"; key: string; n: number }
   /** Stores today's day number in a flag ("not again today" gates). */
-  | { kind: "flagDay"; key: string };
+  | { kind: "flagDay"; key: string }
+  /** Shifts hidden karma (clamped to -100..100). */
+  | { kind: "karma"; n: number }
+  /** Adds to a named story stat. */
+  | { kind: "trait"; key: string; n: number }
+  /** Records a story decision made outside a choice line. */
+  | { kind: "record"; key: string; option: string }
+  /** Seals a character's fate: dead / left / missing members leave the party for good. */
+  | { kind: "fate"; who: string; fate: Fate }
+  /** Ends the game on this ending once the current scene closes (bad ends, true ends). */
+  | { kind: "ending"; id: string };
+
+export type Fate = "dead" | "left" | "missing";
+export type BattleResult = "won" | "lost" | "fled";
+
+/** Everything the story remembers: choices, karma, stats, fates, battles, endings. */
+export type StoryState = {
+  karma: number;
+  traits: Record<string, number>;
+  /** "<sceneId>.<choice key>" -> option id (or its index). */
+  choices: Record<string, string>;
+  fates: Record<string, Fate>;
+  battles: Record<string, { won: number; lost: number; fled: number; last: BattleResult }>;
+  /** Endings reached in this save, in order (bad ends stay recorded after a rewind). */
+  endings: string[];
+  /** Side characters lost for good; they stay as reminders (see engine/story.ts). */
+  scars: { who: string; fate: Fate; day: number }[];
+  /** Times Peri rewound a game over. */
+  rewinds: number;
+  /** "Bad Ratings" after a rewind: active while day <= this (0 = none). */
+  penaltyUntil: number;
+  /** The main party member whose loss caused the current game over. */
+  lostWho?: string;
+};
+
+export type ChoiceOption = {
+  text: string;
+  effects?: Effect[];
+  goto?: string;
+  /** Recorded as this id (default: the option's index). */
+  id?: string;
+  /** Hidden unless this holds. */
+  when?: Condition;
+  /** Shown but locked (greyed out, with `hint`) unless this holds. */
+  requires?: Condition;
+  hint?: string;
+};
 
 export type SceneLine =
-  | { who: SpeakerId; text: string; show?: SpeakerId[]; bg?: string; face?: Face }
-  | { choice: { text: string; effects?: Effect[]; goto?: string }[]; who?: SpeakerId; text?: string; show?: SpeakerId[] }
+  /** `face` is the speaker's expression until their next line without one; `outfit` changes the speaker's clothes for the rest of the scene. */
+  | { who: SpeakerId; text: string; show?: SpeakerId[]; bg?: string; face?: Face; outfit?: string }
+  | { choice: ChoiceOption[]; who?: SpeakerId; text?: string; show?: SpeakerId[]; /** Record key (default "c<line index>"). */ key?: string }
   | { label: string }
   | { effects: Effect[] }
   | { goto: string }
@@ -508,6 +577,8 @@ export type SceneDef = {
   music?: string;
   /** Bin's clothes in this scene; default is his Haven gear. */
   outfit?: "earth";
+  /** Other speakers' outfits in this scene (portrait files <name>-<outfit>[-<face>].webp). */
+  outfits?: Partial<Record<SpeakerId, string>>;
 };
 
 // ---------------------------------------------------------------------------
@@ -836,6 +907,8 @@ export type RestiaState = {
   fieldMonsters: FieldMonster[];
   forage: { zone: ZoneId; x: number; y: number; item: ItemId }[];
   dungeon: DungeonState | null;
+  /** Floors left earlier today, kept as they were (beaten monsters, opened chests); cleared every night. */
+  floorsToday: Record<number, DungeonState>;
   battle: BattleState | null;
   scene: SceneState | null;
   /** Scenes queued after the current one (story chains, heart events). */
@@ -843,6 +916,14 @@ export type RestiaState = {
   seenScenes: string[];
   playSeconds: number;
   blessingDay: number;
+  /** Choices, karma, story stats, fates, battle history, endings. */
+  story: StoryState;
+  /** Set when the game has ended on a good / normal / true ending; the save is finished. */
+  ending: string | null;
+  /** A bad end waiting in Peri's Green Room (rewind or quit). */
+  gameOver: string | null;
+  /** Snapshot to rewind to after a game over (mornings, story scenes, story battles). */
+  checkpoint: RestiaState | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -892,6 +973,7 @@ export type RestiaAction =
   | { type: "dStep"; dir: Dir }
   | { type: "dInteract" }
   | { type: "leaveDungeon" }
+  | { type: "rewind" }
   | { type: "bMove"; cell: number }
   | { type: "bAttack"; target: string }
   | { type: "bSkill"; skill: SkillId; cell: number }

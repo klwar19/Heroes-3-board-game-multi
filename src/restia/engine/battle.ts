@@ -18,11 +18,13 @@ import type {
   StatKey,
   StatusId
 } from "./types";
+import { gainJp, recordBattle, takeCheckpoint } from "./story";
 import { CHARACTERS, DAIN_BATTLE } from "../data/characters";
 import { MONSTERS, monsterDef } from "../data/monsters";
 import { SKILLS, skillDef } from "../data/skills";
 import { ITEMS, itemDef } from "../data/items";
 import { EVENT_ENCOUNTERS, themeForFloor } from "../data/dungeon";
+import { OVER_CAP_EXP, RANK_LEVEL_CAP } from "../data/progression";
 import { ZONES } from "../data/zones";
 import { POINT_NAMES, PROP_NAMES, battlefieldOf } from "../data/battlefields";
 import { unitSound } from "../data/unit-sounds";
@@ -487,6 +489,7 @@ export function startDungeonBattle(state: RestiaState, monster: DungeonMonster, 
 export function startEventBattle(state: RestiaState, id: string, ctx: Ctx): void {
   const encounter = EVENT_ENCOUNTERS[id];
   if (!encounter) throw new Error(`Unknown Restia encounter ${id}`);
+  if (!state.scene) takeCheckpoint(state);
   startBattle(
     state,
     {
@@ -1434,7 +1437,14 @@ function victory(state: RestiaState, battle: BattleState, ctx: Ctx): void {
       track(state, ctx, "defeat", 1, unit.ref);
     }
   }
-  const shareFor = (level: number) => Math.round(foes.reduce((sum, foe) => sum + foe.exp * levelGapMult(level, foe.level), 0));
+  // At or above the Guild rank's level cap, only a trickle of EXP until the next exam.
+  const cap = RANK_LEVEL_CAP[state.guild.rank];
+  let capped = false;
+  const shareFor = (level: number) => {
+    const base = foes.reduce((sum, foe) => sum + foe.exp * levelGapMult(level, foe.level), 0);
+    if (level >= cap) capped = true;
+    return Math.round(base * (level >= cap ? OVER_CAP_EXP : 1));
+  };
   rewards.gold = Math.round(rewards.gold * goldMult);
   // Supply caches opened during the fight.
   const loot = battle.loot;
@@ -1467,13 +1477,14 @@ function victory(state: RestiaState, battle: BattleState, ctx: Ctx): void {
     const up = gainExp(state, id, Math.round(shareFor(state.members[id]!.level) * 0.3), ctx);
     if (up) rewards.levelUps.push({ who: CHARACTERS[id].name, level: up.level });
   }
-  if (repeated || lowGap) rewards.expNote = repeated ? "Less EXP: you've fought a lot of these today." : "Less EXP: these foes are far below your level.";
+  if (capped) rewards.expNote = `Rank ${state.guild.rank} level cap (Lv ${cap}): fighters at the cap earn almost no EXP. Pass the next Guild exam to raise it.`;
+  else if (repeated || lowGap) rewards.expNote = repeated ? "Less EXP: you've fought a lot of these today." : "Less EXP: these foes are far below your level.";
   const challenge = battle.challenge;
   if (challenge) {
     const ok = challenge.id === "fast" ? battle.round <= challenge.target : challenge.id === "untouched" ? !challenge.failed : challenge.progress >= challenge.target;
     rewards.challenge = { text: challenge.text, ok, jp: ok ? challenge.jp : 0 };
     if (ok) {
-      state.admin.ap += challenge.jp;
+      gainJp(state, challenge.jp);
       ctx.toast(`[CJS] The audience loved it! "${challenge.text}" (+${challenge.jp} JP)`, "system");
     }
   }
@@ -2228,6 +2239,7 @@ export function finishBattle(state: RestiaState, ctx: Ctx): void {
   if (!battle || battle.phase === "turn") fail("The battle isn't over.");
   state.battle = null;
   const origin = battle.origin;
+  if (origin.kind === "event") recordBattle(state, origin.encounter, battle.phase === "victory" ? "won" : battle.phase === "fled" ? "fled" : "lost");
   if (battle.phase === "victory") {
     if (origin.kind === "field") state.fieldMonsters = state.fieldMonsters.filter((monster) => monster.uid !== origin.monsterUid);
     if (origin.kind === "dungeon" && state.dungeon) {
@@ -2249,7 +2261,7 @@ export function finishBattle(state: RestiaState, ctx: Ctx): void {
     return;
   }
   // Defeat.
-  if (battle.soft) {
+  if (battle.soft || battle.loseScene) {
     for (const member of Object.values(state.members)) if (member && member.hp <= 0) member.hp = 1;
     for (const pet of state.pets) if (pet.hp <= 0) pet.hp = 1;
     if (battle.loseScene) playScene(state, battle.loseScene, ctx);

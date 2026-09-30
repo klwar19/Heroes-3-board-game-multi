@@ -7,6 +7,7 @@
  * public/assets/restia/ (gitignored; published to R2 with `npm run media:publish`):
  *
  *   node scripts/restia/build-restia-assets.mjs [--only tachie,bin,backdrops,buildings,sheets,battle,battleArt,feet]
+ *     [--names hilda,bin]   (only those characters' tachie and battle sheets)
  *
  * Backgrounds are keyed by flood-filling from each cell's border over pixels
  * close to the border's median colour (Codex paints flat backdrops, not alpha).
@@ -30,6 +31,10 @@ const OUT = path.join(ROOT, "public", "assets", "restia");
 const onlyArg = process.argv.indexOf("--only");
 const ONLY = onlyArg >= 0 ? new Set(process.argv[onlyArg + 1].split(",")) : null;
 const want = (step) => !ONLY || ONLY.has(step);
+// --names hilda,bin: rebuild only those characters' tachie and battle sheets.
+const namesArg = process.argv.indexOf("--names");
+const NAMES = namesArg >= 0 ? new Set(process.argv[namesArg + 1].split(",")) : null;
+const wantName = (name) => !NAMES || NAMES.has(name);
 
 /** First master that exists (later passes first: hv5- portraits replace hv- drafts). */
 function rawFirst(...names) {
@@ -170,6 +175,142 @@ function keyEnclosedWhite(img, { threshold = 248, minSize = 350 } = {}) {
   }
 }
 
+/**
+ * Clears backdrop pockets trapped between hair strands (the border flood cannot reach
+ * them, and a plain enclosed-white pass also eats white clothes). A pocket = connected
+ * near-backdrop pixels still opaque after keyRect; it is cleared only when the ring
+ * 3-6 px around it (opaque pixels only) is mostly this character's hair colour (`anchors`), so white
+ * robes, aprons and hems (ringed by fabric) stay. Opt-in per character: see HAIR_POCKETS.
+ */
+function keyHairPockets(img, anchors, { tol = 60, minFrac = 0.4, minSize = 150, bgTol = 12, reach = 16, ignoreLight, sliver = true } = {}) {
+  const { data, width, height } = img;
+  const n = width * height;
+  const border = [];
+  for (let x = 0; x < width; x++) border.push(x, (height - 1) * width + x);
+  for (let y = 0; y < height; y++) border.push(y * width, y * width + width - 1);
+  const median = (c) => {
+    const values = border.map((p) => data[p * 4 + c]).sort((a, b) => a - b);
+    return values[values.length >> 1];
+  };
+  const bg = [median(0), median(1), median(2)];
+  const dist = (p, ref) => Math.hypot(data[p * 4] - ref[0], data[p * 4 + 1] - ref[1], data[p * 4 + 2] - ref[2]);
+  const around = (p) => {
+    const x = p % width;
+    const y = (p - x) / width;
+    return [x > 0 ? p - 1 : -1, x < width - 1 ? p + 1 : -1, y > 0 ? p - width : -1, y < height - 1 ? p + width : -1];
+  };
+  const candidate = (p) => data[p * 4 + 3] > 0 && dist(p, bg) <= bgTol;
+  // Chamfer distance (px) to the keyed backdrop: a real hair pocket sits within `reach` of it,
+  // eye whites and white collars lie deep inside the figure and are never touched.
+  const far = new Float32Array(n).fill(1e9);
+  for (let p = 0; p < n; p++) if (data[p * 4 + 3] === 0) far[p] = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const p = y * width + x;
+    if (x > 0) far[p] = Math.min(far[p], far[p - 1] + 1);
+    if (y > 0) far[p] = Math.min(far[p], far[p - width] + 1, x > 0 ? far[p - width - 1] + 1.4 : 1e9, x < width - 1 ? far[p - width + 1] + 1.4 : 1e9);
+  }
+  for (let y = height - 1; y >= 0; y--) for (let x = width - 1; x >= 0; x--) {
+    const p = y * width + x;
+    if (x < width - 1) far[p] = Math.min(far[p], far[p + 1] + 1);
+    if (y < height - 1) far[p] = Math.min(far[p], far[p + width] + 1, x < width - 1 ? far[p + width + 1] + 1.4 : 1e9, x > 0 ? far[p + width - 1] + 1.4 : 1e9);
+  }
+  const seen = new Uint8Array(n);
+  const cleared = new Uint8Array(n);
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || !candidate(start)) continue;
+    const region = [start];
+    seen[start] = 1;
+    for (let k = 0; k < region.length; k++) {
+      for (const q of around(region[k])) {
+        if (q >= 0 && !seen[q] && candidate(q)) {
+          seen[q] = 1;
+          region.push(q);
+        }
+      }
+    }
+    // Below minSize only thin slivers (backdrop showing through a gap between two strands:
+    // long and at most ~3 px thick) qualify; round specks such as eye whites never do.
+    if (region.length < minSize) {
+      if (!sliver || region.length < 12) continue;
+      let x0 = width, x1 = 0, y0 = height, y1 = 0;
+      for (const p of region) {
+        const x = p % width;
+        const y = (p - x) / width;
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+      const length = Math.hypot(x1 - x0 + 1, y1 - y0 + 1);
+      if (length < 10 || region.length / length > 3) continue;
+    }
+    // Big pockets (between twin tails) may sit behind a thick strand; small ones (eye whites) may not.
+    const limit = region.length >= 2500 ? reach * 8 : reach;
+    if (!region.some((p) => far[p] <= limit)) continue;
+    const depth = new Map(region.map((p) => [p, 0]));
+    let frontier = region;
+    let hair = 0;
+    let total = 0;
+    for (let d = 1; d <= 6; d++) {
+      const next = [];
+      for (const p of frontier) {
+        for (const q of around(p)) {
+          if (q < 0 || depth.has(q)) continue;
+          depth.set(q, d);
+          next.push(q);
+          // Transparent pixels (already-keyed backdrop past a thin outer strand) don't vote.
+          // `ignoreLight`: near-white anti-aliased fringe (every channel >= it) doesn't vote either.
+          if (d >= 3 && data[q * 4 + 3] > 0 &&
+              !(ignoreLight !== undefined && Math.min(data[q * 4], data[q * 4 + 1], data[q * 4 + 2]) >= ignoreLight)) {
+            total++;
+            if (anchors.some((a) => dist(q, a) <= tol)) hair++;
+          }
+        }
+      }
+      frontier = next;
+    }
+    if (hair / Math.max(1, total) < minFrac) continue;
+    for (const p of region) {
+      data[p * 4 + 3] = 0;
+      cleared[p] = 1;
+    }
+  }
+  // Soften the fringe around cleared pockets like keyRect does (tol 20 -> 44).
+  for (let p = 0; p < n; p++) {
+    if (cleared[p] || data[p * 4 + 3] === 0) continue;
+    if (around(p).some((q) => q >= 0 && cleared[q])) {
+      data[p * 4 + 3] = Math.min(data[p * 4 + 3], Math.round(Math.min(1, dist(p, bg) / 44) * 255));
+    }
+  }
+}
+
+/**
+ * Characters whose white-backdrop portraits trap backdrop between hair strands, with
+ * their hair colours (RGB). Jess (white hair), Mitia and Lysa (pale hair against white
+ * robes/dress) are left out: the ring test cannot tell their hair from their clothes.
+ * Senna needs the stricter 0.6 ring (white kimono highlights next to lavender hair).
+ */
+const HAIR_POCKETS = {
+  // Peri: her twin-tail loops enclose pockets deep inside the hair (180+ px from the backdrop); no eye-white risk (galaxy eyes).
+  peri: { anchors: [[40, 38, 60], [30, 30, 45], [50, 70, 190], [70, 110, 230], [60, 60, 110]], reach: 1e6 },
+  // Luna: lighter strand highlights too; minSize 100 still spares the pearl earring.
+  // hv12 redesign (ashy brown hair): the cool grey-brown strands and pockets up to ~130 px
+  // inside the long hair need the extra anchors, a wider reach, and a ring vote that
+  // skips the near-white strand fringe (her white top and cup keep a mostly non-hair ring).
+  luna: { anchors: [[110, 85, 80], [80, 60, 55], [150, 120, 110], [60, 45, 45], [175, 150, 140], [195, 175, 165], [120, 110, 105], [95, 85, 82], [140, 128, 122], [75, 68, 66]], minSize: 100, reach: 150, ignoreLight: 215, minFrac: 0.5 },
+  lily: { anchors: [[45, 45, 70], [70, 70, 110], [30, 30, 50]] },
+  lingling: { anchors: [[30, 30, 45], [65, 68, 95], [15, 15, 25]] },
+  frida: { anchors: [[25, 25, 35], [60, 60, 80], [10, 10, 20]] },
+  senna: { anchors: [[170, 160, 220], [140, 130, 200], [200, 195, 235]], minFrac: 0.6 },
+  meilin: { anchors: [[240, 200, 120], [220, 170, 90], [250, 225, 160]] },
+  hilda: { anchors: [[60, 55, 45], [40, 38, 35], [85, 75, 60]] },
+  // Zhao Kang (black hair) and Tessa (auburn): backdrop trapped in the hair crowns.
+  zhaokang: { anchors: [[25, 25, 30], [50, 50, 60], [10, 10, 15], [75, 75, 85]], reach: 40 },
+  tessa: { anchors: [[170, 70, 50], [200, 95, 70], [130, 50, 40], [220, 130, 100], [100, 40, 35]], reach: 40 }
+};
+
+function keyHairPocketsFor(img, name) {
+  const config = HAIR_POCKETS[name.split("-")[0]];
+  if (config) keyHairPockets(img, config.anchors, config);
+}
+
 function toSharp(img) {
   return sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } });
 }
@@ -219,24 +360,138 @@ async function extract(img, box) {
 // ---------------------------------------------------------------------------
 
 /** Haven cast standing art (Codex masters on a flat backdrop). Bin is handled by binFaces(). */
-const TACHIE_NAMES = ["peri", "system", "garr", "bowy", "mitia", "lysa", "hilda", "senna", "mara", "frida", "tilde", "dain", "tessa", "lily", "luna", "leo", "meilin", "jake"];
+const TACHIE_NAMES = ["peri", "system", "garr", "bowy", "mitia", "lysa", "hilda", "senna", "mara", "frida", "tilde", "dain", "tessa", "lily", "luna", "leo", "meilin", "jake",
+  // hv11: Earth-prologue side cast and the Eos tutorial villager.
+  "lingling", "chad", "nurse", "oldzhou", "zhaokang", "gymbro", "repairman", "villager"];
+
+/**
+ * Removes the pale halo the keyed backdrop leaves on hair strands and other dark edges:
+ * an edge pixel (within `maxFar` px of the keyed backdrop) that is a blend of the
+ * backdrop and a darker pixel just inside it (the most backdrop-distant opaque pixel
+ * `radius` px around, deeper than it) gets the matte solved from that pair
+ * (obs = a*ink + (1-a)*backdrop) and its colour un-blended. Pale ink (white clothes,
+ * white hair, holograms: under `minInk` from the backdrop) is left as it was, and a
+ * white fill behind line art never qualifies because its deeper neighbours are pale too.
+ */
+function defringeBackdrop(img, { maxFar = 2.5, radius = 2, minInk = 80 } = {}) {
+  const { data, width, height } = img;
+  const n = width * height;
+  const border = [];
+  for (let x = 0; x < width; x++) border.push(x, (height - 1) * width + x);
+  for (let y = 0; y < height; y++) border.push(y * width, y * width + width - 1);
+  const median = (c) => {
+    const values = border.map((p) => data[p * 4 + c]).sort((a, b) => a - b);
+    return values[values.length >> 1];
+  };
+  const bg = [median(0), median(1), median(2)];
+  const ink = (p) => Math.hypot(data[p * 4] - bg[0], data[p * 4 + 1] - bg[1], data[p * 4 + 2] - bg[2]);
+  const far = new Float32Array(n).fill(1e9);
+  for (let p = 0; p < n; p++) if (data[p * 4 + 3] === 0) far[p] = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const p = y * width + x;
+    if (x > 0) far[p] = Math.min(far[p], far[p - 1] + 1);
+    if (y > 0) far[p] = Math.min(far[p], far[p - width] + 1, x > 0 ? far[p - width - 1] + 1.4 : 1e9, x < width - 1 ? far[p - width + 1] + 1.4 : 1e9);
+  }
+  for (let y = height - 1; y >= 0; y--) for (let x = width - 1; x >= 0; x--) {
+    const p = y * width + x;
+    if (x < width - 1) far[p] = Math.min(far[p], far[p + 1] + 1);
+    if (y < height - 1) far[p] = Math.min(far[p], far[p + width] + 1, x < width - 1 ? far[p + width + 1] + 1.4 : 1e9, x > 0 ? far[p + width - 1] + 1.4 : 1e9);
+  }
+  const out = new Uint8ClampedArray(data);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const p = y * width + x;
+    if (data[p * 4 + 3] === 0 || far[p] > maxFar) continue;
+    let best = -1;
+    let bestInk = 0;
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+      const qx = x + dx;
+      const qy = y + dy;
+      if (qx < 0 || qy < 0 || qx >= width || qy >= height) continue;
+      const q = qy * width + qx;
+      if (data[q * 4 + 3] < 255 || far[q] <= far[p]) continue;
+      const k = ink(q);
+      if (k > bestInk) { bestInk = k; best = q; }
+    }
+    if (best < 0 || bestInk < minInk || ink(p) >= bestInk * 0.92) continue;
+    let dot = 0;
+    for (let c = 0; c < 3; c++) dot += (bg[c] - data[p * 4 + c]) * (bg[c] - data[best * 4 + c]);
+    const a = Math.max(0, Math.min(1, dot / (bestInk * bestInk)));
+    for (let c = 0; c < 3; c++) {
+      out[p * 4 + c] = a >= 0.08 ? (data[p * 4 + c] - (1 - a) * bg[c]) / a : data[best * 4 + c];
+    }
+    out[p * 4 + 3] = Math.min(data[p * 4 + 3], Math.round(a * 255));
+  }
+  data.set(out);
+}
 
 async function writeTachie(img, name) {
+  defringeBackdrop(img);
   const box = bbox(img, 0, 0, img.width, img.height);
   const buffer = await extract(img, box);
   await sharp(buffer).resize({ height: 1280, withoutEnlargement: true }).webp({ quality: 84, alphaQuality: 90 }).toFile(out(`tachie/${name}.webp`));
   console.log(`tachie ${name}`);
 }
 
+/**
+ * hv12 portraits: tmp/gen/restia/raw/hv12-tachie-<name>[-vN].png, where <name> is the
+ * runtime file name (<base>[-<outfit>][-<face>], e.g. luna-blush, peri-casual, bin-earth-blush);
+ * the highest -vN wins. They replace a base portrait (peri, luna, leo, meilin redesigns)
+ * or add a face/outfit variant (see scripts/restia/tachie-index.mjs).
+ */
+function hv12Masters() {
+  const best = new Map();
+  for (const file of fs.readdirSync(RAW)) {
+    const match = file.match(/^hv12-tachie-(.+?)(?:-v(\d+))?\.png$/);
+    if (!match) continue;
+    const version = Number(match[2] ?? 1);
+    if (!best.has(match[1]) || best.get(match[1]).version < version) best.set(match[1], { version, file: path.join(RAW, file) });
+  }
+  return new Map([...best].map(([name, { file }]) => [name, file]));
+}
+
+/** Outfit variants that reuse an older master (the school uniforms became outfits when Leo and Meilin got university defaults). */
+const TACHIE_ALIASES = { "leo-school": "hv5-tachie-leo", "meilin-school": "hv5-tachie-meilin" };
+
+/**
+ * Like the base portraits, but flattened onto white first: Codex masters that come back
+ * with alpha carry black RGB under the transparent pixels, which the border median then
+ * took for the backdrop (Leo's dark trousers were keyed away).
+ */
+async function keyedTachie(file, name) {
+  const img = await rgba(await sharp(file).flatten({ background: "#ffffff" }).png().toBuffer());
+  keyRect(img, 0, 0, img.width, img.height, { tol: 20, step: 10, seedTol: 8 });
+  keyHairPocketsFor(img, name);
+  await writeTachie(img, name);
+}
+
 async function tachie() {
+  const hv12 = hv12Masters();
   for (const name of TACHIE_NAMES) {
-    const file = rawFirst(`hv6-tachie-${name}`, `hv5-tachie-${name}`, `hv-tachie-${name}`);
+    if (!wantName(name)) continue;
+    if (hv12.has(name)) {
+      await keyedTachie(hv12.get(name), name);
+      continue;
+    }
+    // hv10 = a character redesign (Hilda 2026-09-30); it replaces every earlier pass.
+    // hv11-...-v2 = a regenerated hv11 portrait (Ling Ling: skin at the cropped edge got keyed; Zhao Kang: low angle).
+    const file = rawFirst(`hv11-tachie-${name}-v2`, `hv11-tachie-${name}`, `hv10-tachie-${name}`, `hv6-tachie-${name}`, `hv5-tachie-${name}`, `hv-tachie-${name}`);
     if (!file) continue;
     const img = await rgba(file);
     // Seed only from near-backdrop pixels so pale clothing on the cropped bottom edge survives.
     keyRect(img, 0, 0, img.width, img.height, { tol: 20, step: 10, seedTol: 8 });
-    // No enclosed-white pass here: it ate white hair, aprons and robes.
+    // No enclosed-white pass here: it ate white hair, aprons and robes. Only hair-ringed pockets go,
+    // and only on flat-backdrop masters (an alpha master such as hv5 Peri is already clean).
+    if (!(await sharp(file).metadata()).hasAlpha) keyHairPocketsFor(img, name);
     await writeTachie(img, name);
+  }
+  // Face and outfit variants (hv12), plus the aliased outfits.
+  const variants = [
+    ...Object.entries(TACHIE_ALIASES).map(([name, key]) => [name, raw(key)]),
+    ...[...hv12].filter(([name]) => !TACHIE_NAMES.includes(name))
+  ];
+  for (const [name, file] of variants) {
+    if (!file || !(wantName(name) || wantName(name.split("-")[0]))) continue;
+    await keyedTachie(file, name);
   }
 }
 
@@ -317,6 +572,13 @@ async function backdrops() {
     ["hv-bg-earth-hospital", "bg/earth-hospital"],
     ["hv-bg-earth-bookstore", "bg/earth-bookstore"],
     ["hv-bg-eos-meadow", "bg/eos-meadow"],
+    ["hv11-bg-earth-cafeteria", "bg/earth-cafeteria"],
+    ["hv11-bg-earth-gym", "bg/earth-gym"],
+    ["hv11-bg-earth-library", "bg/earth-library"],
+    ["hv11-bg-earth-street", "bg/earth-street"],
+    ["hv11-bg-earth-school", "bg/earth-school"],
+    ["hv11-bg-eos-village", "bg/eos-village"],
+    ["hv11-bg-eos-cave", "bg/eos-cave"],
     ["hv-bg-haven-road", "bg/haven-road"],
     ["hv-bg-haven-gate", "bg/haven-gate"]
   ];
@@ -464,7 +726,8 @@ async function terrain() {
  */
 function skillSheets() {
   for (const name of ["bin", "mitia", "bowy", "garr", "hilda", "senna"]) {
-    const file = raw(`hv8-skill-${name}`);
+    if (!wantName(name)) continue;
+    const file = rawFirst(`hv10-skill-${name}`, `hv8-skill-${name}`);
     if (!file) continue;
     execFileSync(
       process.execPath,
@@ -510,13 +773,13 @@ function facingSheets() {
     );
   const names = ["bin", "mitia", "bowy", "garr", "hilda", "senna", "dain", "lysa", "mara", "frida", "tilde", "frost-wolf", "frost-rat"];
   for (const view of ["front", "back"]) {
-    for (const name of names) {
-      const file = raw(`hv9-${view}-${name}`);
+    for (const name of names.filter(wantName)) {
+      const file = rawFirst(`hv10-${view}-${name}`, `hv9-${view}-${name}`);
       if (file) run(file, `restia-${name}-${view}`, "2:8;0:8;12:8;3:4+18:4", ["--copy", "11=12,13=12,17=18,19=18", ...scaleOf(name)]);
     }
   }
-  for (const name of names.slice(0, 6)) {
-    const file = raw(`hv9-extra-${name}`);
+  for (const name of names.slice(0, 6).filter(wantName)) {
+    const file = rawFirst(`hv10-extra-${name}`, `hv9-extra-${name}`);
     if (file) run(file, `restia-${name}-x`, "30:8;31:4+32:4;33:8;34:4+35:4", ["--standing", "30", ...scaleOf(name)]);
   }
   const target = path.join(ROOT, "src", "restia", "data", "battle-atlases.json");
@@ -592,7 +855,8 @@ function battle() {
     ["frost-rat", ["--height", "42"]]
   ];
   for (const [name, scale, sheetRows = rows] of sheets) {
-    const file = rawFirst(`hv6-battle-${name}`, `hv-battle-${name}`);
+    if (!wantName(name)) continue;
+    const file = rawFirst(`hv10-battle-${name}`, `hv6-battle-${name}`, `hv-battle-${name}`);
     if (!file) continue;
     execFileSync(
       process.execPath,
