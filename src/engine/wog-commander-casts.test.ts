@@ -744,7 +744,7 @@ describe("commander casts — Brute's Bloodlust", () => {
 });
 
 describe("commander casts — Succubus' Fire Shield", () => {
-  it("burns an attacker for 1 (Pow 0) or 2 (Pow 1/2); Pow 0 lasts 2 rounds, Pow 1/2 two caster activations; Pow 2 adds a one-attack +1 Defense", () => {
+  it("burns an attacker for 1 (Pow 0) or 2 (Pow 1/2); Pow 0 lasts one caster activation, Pow 1/2 two; Pow 2 adds a one-attack +1 Defense", () => {
     function burn(state: GameState): number {
       // The defender's retaliation is spent, so any damage on the attacker
       // can only come from the Fire Shield itself.
@@ -762,14 +762,23 @@ describe("commander casts — Succubus' Fire Shield", () => {
     // Pow 2: 2 damage back.
     expect(burn(castOn(castState("succubus", { magic: 3 }), "succubus", "unit_p1_marksmen"))).toBe(2);
 
-    // Durations (e4b8f4be, v171): Pow 0 lasts two combat rounds; Pow 1/2 last
-    // until the commander's second following activation — 2 damage until its
-    // next activation, then 1 until the following one.
+    // Durations: Pow 0 lasts 1 round counted from the commander's turn (user
+    // ruling 2026-09-30) — it ends at the Succubus' next activation. Pow 1/2
+    // (e4b8f4be, v171) deal 2 damage until her next activation, then 1 until the
+    // following one.
     const shieldOf = (state: GameState) =>
       state.activeEffects.find((effect) => effect.modifiers.some((m) => m.type === "FIRE_SHIELD"));
     const low = castOn(castState("succubus"), "succubus", "unit_p1_marksmen");
     const lowEffect = shieldOf(low);
-    expect(lowEffect?.expiresAtCombatRoundEnd).toBe(low.combat!.round + 1);
+    expect(lowEffect?.duration).toEqual({ type: "combat" });
+    expect(lowEffect?.casterActivationsUntilExpiry).toBe(1);
+    expect(lowEffect?.expiresAtCombatRoundEnd).toBeUndefined();
+    // A plain round timer would end it at the cast round's end; round ends pass
+    // while the Succubus lives, and her next activation ends it.
+    expireEffectsForCombatRoundEnd(low, low.combat!.round);
+    expect(shieldOf(low), "Pow 0 survives the cast round's end").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(low, commanderUnitId("p1"));
+    expect(shieldOf(low), "Pow 0 ends at her next activation").toBeUndefined();
 
     const mid = castOn(castState("succubus", { magic: 2 }), "succubus", "unit_p1_marksmen");
     const midEffect = shieldOf(mid);
@@ -875,11 +884,20 @@ describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
     expect(effectiveInitiative(high.combat!.units.unit_p1_crusaders, high.activeEffects)).toBe(
       high.combat!.units.unit_p1_crusaders.initiative + 9
     );
-    // Every tier now lasts 2 combat rounds (no per-Power "whole combat" tier).
-    expect(high.activeEffects.find((effect) => effect.name.startsWith("Haste"))?.duration).toEqual({
-      type: "combat-rounds",
-      rounds: 2
-    });
+    // Every tier lasts 2 rounds (no per-Power "whole combat" tier), counted from
+    // the Shaman's turn (v194): it ends at the Shaman's second following
+    // activation, not after two combat-round ends.
+    const hasteOf = (state: GameState) => state.activeEffects.find((effect) => effect.name.startsWith("Haste"));
+    expect(hasteOf(high)?.duration).toEqual({ type: "combat" });
+    expect(hasteOf(high)?.casterActivationsUntilExpiry).toBe(2);
+    const timed = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
+    expireEffectsForCombatRoundEnd(timed, timed.combat!.round);
+    expireEffectsForCombatRoundEnd(timed, timed.combat!.round + 1);
+    expect(hasteOf(timed), "survives two round ends while the Shaman lives").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(timed, commanderUnitId("p1"));
+    expect(hasteOf(timed), "after the Shaman's next activation").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(timed, commanderUnitId("p1"));
+    expect(hasteOf(timed), "ends at its second following activation").toBeUndefined();
 
     function strike(state: GameState, defenderInitiative: number): number {
       const attacker = state.combat!.units.unit_p1_crusaders;
@@ -1016,13 +1034,31 @@ describe("commander casts — Sea Marshal's Slow (2026-09-27 spec)", () => {
         effect.name.startsWith("Slow (") && effect.target?.type === "unit" && effect.target.unitId === unitId
     );
 
-  it("an in-turn Slow lasts 2 combat rounds at every Power", () => {
+  it("an in-turn Slow lasts 2 rounds counted from the Marshal's turn at every Power", () => {
     for (const magic of [0, 1, 3]) {
       const state = castOn(castState("corsair", { magic }), "corsair", "unit_p2_skeletons");
       const slow = slowOn(state, "unit_p2_skeletons");
-      expect(slow?.duration, `magic ${magic}`).toEqual({ type: "combat-rounds", rounds: 2 });
-      expect(slow?.expiresAtCombatRoundEnd, `magic ${magic}`).toBe(state.combat!.round + 1);
+      // v194: no combat-round timer — it ends at the Marshal's second following activation.
+      expect(slow?.duration, `magic ${magic}`).toEqual({ type: "combat" });
+      expect(slow?.casterActivationsUntilExpiry, `magic ${magic}`).toBe(2);
+      expect(slow?.expiresAtCombatRoundEnd, `magic ${magic}`).toBeUndefined();
+      // The old 2-round timer ended it at the next round end; now it outlives both.
+      expireEffectsForCombatRoundEnd(state, state.combat!.round);
+      expireEffectsForCombatRoundEnd(state, state.combat!.round + 1);
+      expect(slowOn(state, "unit_p2_skeletons"), `magic ${magic}: survives two round ends`).toBeTruthy();
+      advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+      expect(slowOn(state, "unit_p2_skeletons"), `magic ${magic}: after the next activation`).toBeTruthy();
+      advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+      expect(slowOn(state, "unit_p2_skeletons"), `magic ${magic}: ends at the second`).toBeUndefined();
     }
+  });
+
+  it("an in-turn Slow ends at the next round end once the Marshal is dead", () => {
+    const state = castOn(castState("corsair"), "corsair", "unit_p2_skeletons");
+    const marshal = state.combat!.units[commanderUnitId("p1")];
+    marshal.damage = marshal.maxHealth;
+    expireEffectsForCombatRoundEnd(state, state.combat!.round);
+    expect(slowOn(state, "unit_p2_skeletons")).toBeUndefined();
   });
 
   it("Power 2 also takes 1 Movement space; Power 0/1 do not", () => {
@@ -1074,8 +1110,11 @@ describe("commander casts — Sea Marshal's Slow (2026-09-27 spec)", () => {
     let state = castOn(castState("corsair"), "corsair", "unit_p2_skeletons");
     const printed = state.combat!.units.unit_p2_skeletons.initiative;
     // The first Slow (2 rounds) is still on the skeletons in round 2, when the
-    // once-per-round cast is available again.
+    // once-per-round cast is available again: the Marshal's next activation has
+    // used up one of its two activations.
     state.combat!.round = 2;
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(slowOn(state, "unit_p2_skeletons")?.casterActivationsUntilExpiry).toBe(1);
     state.combat!.activeUnitId = commanderUnitId("p1");
     state.combat!.units[commanderUnitId("p1")].activatedThisRound = false;
     state = castOn(state, "corsair", "unit_p2_skeletons");
@@ -1086,8 +1125,8 @@ describe("commander casts — Sea Marshal's Slow (2026-09-27 spec)", () => {
         effect.target.unitId === "unit_p2_skeletons"
     );
     expect(slows).toHaveLength(1);
-    // The timer restarts from round 2 (ends with round 3) …
-    expect(slows[0].expiresAtCombatRoundEnd).toBe(3);
+    // The timer restarts from this turn (two more Marshal activations) …
+    expect(slows[0].casterActivationsUntilExpiry).toBe(2);
     // … and the shift is still a single -2, not -4.
     expect(effectiveInitiative(state.combat!.units.unit_p2_skeletons, state.activeEffects)).toBe(printed - 2);
   });
@@ -1139,6 +1178,47 @@ describe("commander casts — Astral Spirit's Counterstrike", () => {
     const ids = castCandidateIds(gate, "astral_spirit");
     expect(ids).toContain("unit_p1_marksmen");
     expect(ids).not.toContain("unit_p1_griffins");
+  });
+
+  it("lasts 2 rounds counted from the Astral Spirit's turn: until its second following activation", () => {
+    const state = castOn(castState("astral_spirit"), "astral_spirit", "unit_p1_marksmen");
+    const counterstrikeOf = (current: GameState) => current.activeEffects.find(
+      (effect) =>
+        effect.target?.type === "unit" &&
+        effect.target.unitId === "unit_p1_marksmen" &&
+        effect.modifiers.some((modifier) => modifier.type === "UNSTOPPABLE_RETALIATION")
+    );
+    expect(counterstrikeOf(state)?.duration).toEqual({ type: "combat" });
+    expect(counterstrikeOf(state)?.casterActivationsUntilExpiry).toBe(2);
+    // The old 2-combat-round timer ended it at the next round end.
+    expireEffectsForCombatRoundEnd(state, state.combat!.round);
+    expireEffectsForCombatRoundEnd(state, state.combat!.round + 1);
+    expect(counterstrikeOf(state), "survives two round ends").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(counterstrikeOf(state), "after the next activation").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(counterstrikeOf(state), "ends at the second following activation").toBeUndefined();
+  });
+});
+
+describe("commander casts — Astral Regent's Command Seal (two-rounds Bloodlust)", () => {
+  it("lasts 2 rounds counted from the Regent's turn: until its second following activation", () => {
+    const state = castOn(castState("ruler", { magic: 2 }), "ruler", "unit_p1_griffins");
+    const sealOf = (current: GameState) => current.activeEffects.find(
+      (effect) =>
+        effect.name.startsWith("Command Seal") &&
+        effect.target?.type === "unit" &&
+        effect.target.unitId === "unit_p1_griffins"
+    );
+    expect(sealOf(state)?.duration).toEqual({ type: "combat" });
+    expect(sealOf(state)?.casterActivationsUntilExpiry).toBe(2);
+    expireEffectsForCombatRoundEnd(state, state.combat!.round);
+    expireEffectsForCombatRoundEnd(state, state.combat!.round + 1);
+    expect(sealOf(state), "survives two round ends").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(sealOf(state), "after the Regent's next activation").toBeTruthy();
+    advanceCasterEffectsAtActivationStart(state, commanderUnitId("p1"));
+    expect(sealOf(state), "ends at its second following activation").toBeUndefined();
   });
 });
 

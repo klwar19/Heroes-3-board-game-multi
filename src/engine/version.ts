@@ -1638,7 +1638,28 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Grunts Pack 3 gold.
 // v193: Forge commander (Mech Princess) Storm Conductor — while alive in combat, a
 // "-1" on her side's Lightning Generator still deals 1 damage to the chosen unit.
-export const ENGINE_PROTOCOL_VERSION = 193;
+// v194: Succubus Fire Shield Power 0 lasts 1 round counted from the commander's
+// turn (ends at its next activation); commander casts that last "2 rounds"
+// (Bloodlust reuses, Shaman Haste, Sea Marshal Slow, Astral Counterstrike, Sword
+// Saint Sword Intent) now end
+// at the commander's second following activation (casterActivationsUntilExpiry).
+// Bulwark: Jotunns Pack 10 Health / 10 Initiative, Snow Elves Pack 7 gold,
+// Yetis Pack 7 Initiative;
+// Rune reserve = 3 on reaching the max unlocked level, then +2 odd / +1 even
+// round (combat.runes[p].maxLevelRound); veterancy: Devil's Luck no curse,
+// Jotunns R2 Avalanche Charge / R3 1-Rune Bolt / R4 Sundering Strike, Mammoth
+// Rune Mend without free heal, Mountain Rams R4 Trample only, Snow Elves R2
+// 1+1 Runes (max 2/round) / R3 Frostbite Bleed, Shaman Runecharged Step +1 on
+// the next own attack only. Lanternroot Crook's spirit is summoned on its
+// owner's side only. New Stronghold hero Vey (Ogres I/IV/VI: first Attack roll each
+// round with advantage, extra Bloodlust token after an Ogres activation: the Ogres'
+// current Few/Pack token, never stacking with a better one). Bulwark
+// veterancy: Kobolds R1 +1 Initiative + Battle Mend (heal 1 after own attack),
+// Mountain Rams +1 HP moved R2 -> R3, Snow Elves R1 No Combat Penalties / R4
+// Guarded Stance, Shamans R1 Spell Resistance / R2 +1 HP, Yetis R1 Snowbound Rest
+// (heal 1 on Defend). A v193 peer
+// resolves all of these differently.
+export const ENGINE_PROTOCOL_VERSION = 194;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

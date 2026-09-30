@@ -189,9 +189,10 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
     // Defense yet; the third nine-Rune cycle sits at 6/9). The defender's committed
     // retaliation banks its +2 at declaration (8/9, still Level 2); the reaction's +3
     // then completes the cycle BEFORE the strike resolves, crossing into Level 3
-    // (+1 Defense) with 2 Runes carried onto the reset track.
+    // (+1 Defense) with 2 Runes carried onto the reset track. Only that max
+    // level (cap 3) credits the 3 reserve Runes; Levels 1-2 credit none.
     gainRunes(state, "p1", 24);
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 6, reserve: 10, level: 2 });
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 6, reserve: 0, level: 2 });
 
     state.activePlayerId = "p2";
     state.combat!.activeUnitId = "unit_p2_skeletons";
@@ -208,7 +209,7 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
       expect(play, "Kriv I should be offered as a reaction to the enemy attack").toBeTruthy();
       current = applyOk(current, play!.action);
       // The buff is live the instant the reaction resolves — before the strike does.
-      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 2, reserve: 15, level: 3 });
+      expect(getRuneSummary(current, "p1")).toMatchObject({ count: 2, reserve: 3, level: 3 });
     }
     current = settleReactions(current);
     return current.combat!.units.unit_p1_crusaders.damage;

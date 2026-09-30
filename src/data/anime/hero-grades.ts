@@ -379,7 +379,7 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
     tier: 1,
     kind: "passive",
     name: { en: "Spirit Companion", vi: "Linh Thú Đồng Hành" },
-    summary: "Passive: during combat preparation, summon a sortable 2 Attack / 1 Defense / 2 Health / 8 Initiative Starwind Familiar for combat round 1."
+    summary: "Passive: during combat preparation, summon a sortable 2 Attack / 1 Defense / 2 Health / 8 Initiative Starwind Familiar on your side (your deployment rows) for combat round 1."
   },
   [HERO_GRADE_NODE_IDS.overflowingInsight]: {
     id: HERO_GRADE_NODE_IDS.overflowingInsight,

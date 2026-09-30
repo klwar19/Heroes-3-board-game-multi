@@ -52,6 +52,12 @@ const strongholdJabarkasPreviewSource = {
   url: "https://gamefound.com/en/projects/archon-studio/heroes-of-might-and-magic-iii-the-board-game",
 };
 
+const strongholdVeyPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board and Ogres specialty cards from the supplied preview; hidden wording supplied by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/0fa3cb8c-a0da-4992-9407-75fb5cdcdd98.png",
+};
+
 const necropolisHeroPreviewSource = {
   product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
   credit: "Specialty rules supplied by the player; card emblems generated for this adaptation.",
@@ -6637,6 +6643,75 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: strongholdJabarkasPreviewSource,
+  }),
+
+  // Vey (Stronghold, Battle Mage, A2 D1 P1 K1, Leadership): the "Ogres"
+  // specialist (Gamefound preview; hidden wording supplied by the player).
+  //  I  — Instant: +1 Attack OR +1 Defense for the selected unit, doubled for
+  //       Ogres (the shared might-specialty I).
+  //  IV — Ongoing: for this Combat, the selected friendly unit's FIRST Attack
+  //       roll of each Combat round is made with advantage (ATTACK_ROLL_ADVANTAGE
+  //       firstAttackRollOnly; a second attack that round rolls normally).
+  //  VI — Ongoing: for this Combat, after your Ogres finish an activation, they
+  //       may perform their Bloodlust token action once more (vey-ogres.ts).
+  "specialty.vey.1": withSpecialtyArt({
+    ...mightSpecialtyOne("vey", "Ogres", "Ogres"),
+    source: strongholdVeyPreviewSource,
+  }),
+  "specialty.vey.4": withSpecialtyArt({
+    id: "specialty.vey.4",
+    name: "Ogres IV",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "vey",
+      "Ongoing: For this Combat, your selected unit's first Attack roll each Combat round is always made with advantage.",
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Ogres IV",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE", firstAttackRollOnly: true }],
+      },
+    },
+    implementationStatus: "implemented",
+    source: strongholdVeyPreviewSource,
+  }),
+  "specialty.vey.6": withSpecialtyArt({
+    id: "specialty.vey.6",
+    name: "Ogres VI",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "vey",
+      "Ongoing: For this Combat, after your Ogres activation, you can perform the Ogres token action (Bloodlust) once more.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Ogres VI",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        appliesOnlyToUnitNames: ["Ogres"],
+        modifiers: [{ type: "TOKEN_ACTION_AFTER_ACTIVATION" }],
+      },
+    },
+    implementationStatus: "implemented",
+    source: strongholdVeyPreviewSource,
   }),
 
   // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —

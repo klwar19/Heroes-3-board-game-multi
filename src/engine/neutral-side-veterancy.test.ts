@@ -53,7 +53,7 @@ function playerCard(unitDefId: string, side: "few" | "pack" | "neutral", rank: n
 }
 
 describe("Neutral-side veteran tracks — combat fold", () => {
-  it("a Neutral Yeti guard's R1 is +1 Attack; CONTROL: a player's Pack Yeti R1 is still +1 HP", () => {
+  it("a Neutral Yeti guard's R1 is +1 Attack; CONTROL: a player's Pack Yeti R1 is Snowbound Rest (no stat step)", () => {
     const base = guard("bulwark.yetis", 0);
     const ranked = guard("bulwark.yetis", 1);
     expect(ranked.controllerId).toBe(NEUTRAL_PLAYER_ID);
@@ -68,7 +68,8 @@ describe("Neutral-side veteran tracks — combat fold", () => {
     const packBase = playerCard("bulwark.yetis", "pack", 0);
     const packRanked = playerCard("bulwark.yetis", "pack", 1);
     expect(packRanked.attack).toBe(packBase.attack);
-    expect(packRanked.maxHealth).toBe(packBase.maxHealth + 1);
+    expect(packRanked.maxHealth).toBe(packBase.maxHealth);
+    expect(packRanked.abilities).toContain("town-yeti-defend-mend");
   });
 
   it("an Elite Neutral Jotunn swaps the inert Rune ranks for Skyward Guard / Ageing Breath / Ice Bolt; CONTROL: player Pack keeps Rune Bolt", () => {
@@ -96,7 +97,7 @@ describe("Neutral-side veteran tracks — combat fold", () => {
     expect(packRanked.maxHealth).toBe(packBase.maxHealth);
   });
 
-  it("Neutral Rank-Up field guards fold the Neutral-side track (Kobolds by round 5: +1 HP and Bone Wall, not +2 HP / Guarded Stance)", () => {
+  it("Neutral Rank-Up field guards fold the Neutral-side track (Kobolds by round 5: +1 HP and Bone Wall, not +1 Initiative / Battle Mend / Guarded Stance)", () => {
     const def = coreUnitDefinitions["bulwark.kobolds"]!;
     const base = makeCombatUnitFromNeutral({ unitDefId: def.id, tier: def.tier }, "g", 0, "legacy")!;
     const ranked = makeCombatUnitFromNeutral({ unitDefId: def.id, tier: def.tier }, "g", 0, "legacy")!;
@@ -105,8 +106,10 @@ describe("Neutral-side veteran tracks — combat fold", () => {
     expect(ranked.maxHealth).toBe(base.maxHealth + 1);
     expect(ranked.abilities).toContain("ntv-bone-wall");
     expect(ranked.abilities).not.toContain("veteran-guarded-stance");
-    // CONTROL: the faction track pays +2 HP at R1 and Guarded Stance at R2.
-    expect(unitRankStatGainsAt(def.id, def.tier, 1).health).toBe(2);
+    // CONTROL: the faction track pays +1 Initiative and Battle Mend at R1 and
+    // Guarded Stance at R2 (user 2026-09-30).
+    expect(unitRankStatGainsAt(def.id, def.tier, 1)).toMatchObject({ health: 0, initiative: 1 });
+    expect(unitRankAbilityGainsAt(def.id, 1)).toEqual(["town-kobold-battle-mend"]);
     expect(unitRankAbilityGainsAt(def.id, 2)).toEqual(["veteran-guarded-stance"]);
   });
 

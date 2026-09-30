@@ -424,6 +424,9 @@ export function commanderUnlockedCombos(grades: CommanderGrades): CommanderCombo
 // Command abilities (the once-per-combat-round cast).
 // ---------------------------------------------------------------------------
 
+/** Succubus Fire Shield span per Power. */
+export type FireShieldSpan = "round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations" | "caster-one-activation";
+
 export type CommanderTargetTier = "bronze" | "silver" | "gold" | "azure";
 
 export interface CommanderCastTargeting {
@@ -500,7 +503,12 @@ export type CommanderCastEffect =
   | {
       kind: "attack-buff";
       amountByPower: readonly [number, number, number];
-      /** How long this commander's buff lasts; kept per cast because other commanders reuse this effect kind. */
+      /**
+       * How long this commander's buff lasts; kept per cast because other
+       * commanders reuse this effect kind. "two-rounds" and
+       * "caster-two-activations" both count from the caster's turn: the buff ends
+       * at the caster's second following activation.
+       */
       duration: "round" | "two-rounds" | "caster-two-activations";
       /** Dungeon Brute Power 2: Black Dragons receive at most this Attack bonus. */
       blackDragonPower2Cap?: number;
@@ -512,7 +520,8 @@ export type CommanderCastEffect =
   | {
       kind: "fire-shield";
       damageByPower: readonly [number, number, number];
-      durationByPower: readonly ["round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations", "round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations", "round" | "combat" | "two-rounds" | "three-rounds" | "caster-two-activations"];
+      /** "caster-one-activation": ends at the caster's next activation (1 round, counted from its turn). */
+      durationByPower: readonly [FireShieldSpan, FireShieldSpan, FireShieldSpan];
       /** Add +1 Defense against only the first attack after this shield is applied at Power 2. */
       firstAttackDefenseFromPower?: number;
     }
@@ -535,8 +544,10 @@ export type CommanderCastEffect =
        *  - `bonusVsSlowerByPower`: ADDITIONAL Attack vs strictly-slower targets
        *    per tier, laid ON TOP of the unconditional `attackAmount`
        *    (ATTACK_BONUS_VS_INITIATIVE "slower").
-       *  - `durationRounds`: buff lasts this many combat rounds at EVERY tier
-       *    (overrides `durationByPower`).
+       *  - `durationRounds`: buff lasts this many rounds at EVERY tier, counted
+       *    from the caster's turn — it ends at the caster's Nth following
+       *    activation (casterActivationsUntilExpiry; overrides `durationByPower`).
+       *    Opening (start-of-combat) casts keep plain combat-round counting.
        *  - `refresh`: recasting on the same target REPLACES this cast's own
        *    effect instead of stacking a second copy.
        */
@@ -861,11 +872,13 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       effect: {
         kind: "fire-shield",
         damageByPower: [1, 2, 2],
-        durationByPower: ["two-rounds", "caster-two-activations", "caster-two-activations"],
+        // User ruling 2026-09-30: Power 0 lasts 1 round only, counted from the
+        // commander's turn (ends at its next activation).
+        durationByPower: ["caster-one-activation", "caster-two-activations", "caster-two-activations"],
         firstAttackDefenseFromPower: 2
       },
       tierText: [
-        "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 1 damage. Lasts 2 combat rounds.",
+        "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 1 damage. Lasts until the commander's next activation (1 round, counted from its turn).",
         "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage until the commander's next activation, then 1 damage until its following activation, when the shield ends.",
         "At most twice per combat. A friendly unit gains a Fire Shield: an enemy that attacks or retaliates against it takes 2 damage until the commander's next activation, then 1 damage until its following activation, when the shield ends. It also gets +1 Defense against only the first attack after receiving the shield."
       ]
@@ -971,7 +984,8 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Haste",
       icon: "/assets/spell-icons/haste.png",
       targeting: { side: "friendly", canTargetSelf: false },
-      // Redesigned (user spec). The buff lasts 2 combat rounds at every Power and
+      // Redesigned (user spec). The buff lasts 2 rounds counted from the Shaman's
+      // turn (until its second following activation) at every Power and
       // does NOT stack (a recast on the same unit refreshes it). Pow 0 = +3
       // Initiative & +1 Attack; Pow 1 = +6 Initiative, +1 Attack & +1 Movement;
       // Pow 2 = +9 Initiative, +1 Attack (+1 MORE vs strictly-slower targets) & +1
@@ -988,9 +1002,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
         refresh: true
       },
       tierText: [
-        "A friendly unit gains +3 Initiative and +1 Attack for 2 combat rounds.",
-        "A friendly unit gains +6 Initiative, +1 Attack and +1 Movement for 2 combat rounds. If cast at the start of combat, the commander also gains +3 Initiative for 2 combat rounds.",
-        "A friendly unit gains +9 Initiative, +1 Attack (+1 more vs slower units) and +1 Movement for 2 combat rounds. If cast at the start of combat, the commander also gains +5 Initiative for 2 combat rounds."
+        "A friendly unit gains +3 Initiative and +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
+        "A friendly unit gains +6 Initiative, +1 Attack and +1 Movement until the commander's second following activation (2 rounds, counted from its turn). If cast at the start of combat, the commander also gains +3 Initiative for 2 combat rounds.",
+        "A friendly unit gains +9 Initiative, +1 Attack (+1 more vs slower units) and +1 Movement until the commander's second following activation (2 rounds, counted from its turn). If cast at the start of combat, the commander also gains +5 Initiative for 2 combat rounds."
       ]
     },
     specialty: {
@@ -1013,9 +1027,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       },
       effect: { kind: "unlimited-retaliation" },
       tierText: [
-        "For 2 combat rounds, a friendly bronze unit has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation.",
-        "For 2 combat rounds, a friendly bronze or silver unit has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation.",
-        "For 2 combat rounds, a friendly unit of any tier — even gold — has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation."
+        "Until the commander's second following activation (2 rounds, counted from its turn), a friendly bronze unit has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation.",
+        "Until the commander's second following activation (2 rounds, counted from its turn), a friendly bronze or silver unit has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation.",
+        "Until the commander's second following activation (2 rounds, counted from its turn), a friendly unit of any tier — even gold — has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation."
       ]
     },
     specialty: {
@@ -1032,7 +1046,8 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Slow",
       icon: "/assets/spell-icons/slow.png",
       targeting: { side: "enemy", canTargetSelf: false },
-      // User spec 2026-09-27: every Power lasts 2 combat rounds (a recast on the
+      // User spec 2026-09-27: every Power lasts 2 rounds, counted from the
+      // commander's turn (until its second following activation; a recast on the
       // same unit refreshes instead of stacking); Power 2 also takes 1 Movement
       // space; from Power 1 it may instead be cast at the start of the battle,
       // lasting round 1 only.
@@ -1048,15 +1063,15 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
         openingCastRounds: 1
       },
       tierText: [
-        "An enemy unit suffers -2 Initiative and -1 Attack against faster units for 2 combat rounds.",
-        "An enemy unit suffers -3 Initiative and -1 Attack against faster units for 2 combat rounds. May instead be cast at the start of combat, lasting round 1 only (the commander then skips its round-1 turn).",
-        "An enemy unit suffers -4 Initiative, -1 Movement and -1 Attack against faster units for 2 combat rounds. May instead be cast at the start of combat, lasting round 1 only (the commander then skips its round-1 turn)."
+        "An enemy unit suffers -2 Initiative and -1 Attack against faster units until the commander's second following activation (2 rounds, counted from its turn).",
+        "An enemy unit suffers -3 Initiative and -1 Attack against faster units until the commander's second following activation (2 rounds, counted from its turn). May instead be cast at the start of combat, lasting round 1 only (the commander then skips its round-1 turn).",
+        "An enemy unit suffers -4 Initiative, -1 Movement and -1 Attack against faster units until the commander's second following activation (2 rounds, counted from its turn). May instead be cast at the start of combat, lasting round 1 only (the commander then skips its round-1 turn)."
       ]
     },
     specialty: {
       id: "vanguard-marshal",
       name: "Vanguard Marshal",
-      text: "At combat setup you may sort the commander together with allied units in your deployment zone. During combat round 1, once it reaches your FRONT LINE (the row nearest the enemy), it has +1 Attack for the rest of that round, even after moving away."
+      text: "At combat setup you may sort the commander together with allied units in your deployment zone. If it starts the battle on your FRONT LINE (the row nearest the enemy), it has +2 Speed for the whole combat. During combat round 1, once it reaches your front line, it has +1 Attack for the rest of that round, even after moving away."
     },
     cardImage: "/assets/units-commander-corsair.webp"
   },
@@ -1126,15 +1141,15 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
       effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
       tierText: [
-        "A nearby allied melee Servant gains +1 Attack for 2 combat rounds.",
-        "An allied melee Servant anywhere gains +1 Attack for 2 combat rounds.",
-        "An allied melee Servant anywhere gains +2 Attack for 2 combat rounds."
+        "A nearby allied melee Servant gains +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
+        "An allied melee Servant anywhere gains +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
+        "An allied melee Servant anywhere gains +2 Attack until the commander's second following activation (2 rounds, counted from its turn)."
       ]
     },
     specialty: {
       id: "vanguard-marshal",
       name: "Unbroken Contract",
-      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. During combat round 1, once the Regent reaches your front line, it has +1 Attack for the rest of that round, even after moving away."
+      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. If the Regent starts the battle on your front line, it has +2 Speed for the whole combat. During combat round 1, once the Regent reaches your front line, it has +1 Attack for the rest of that round, even after moving away."
     },
     cardImage: "/assets/units-commander-ruler.webp"
   },
@@ -1147,9 +1162,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
       effect: { kind: "precision", amountByPower: [1, 1, 2] },
       tierText: [
-        "A nearby allied ranged disciple gains +1 Attack and ignores ranged penalties this round.",
-        "An allied ranged disciple anywhere gains +1 Attack and ignores ranged penalties this round.",
-        "An allied ranged disciple anywhere gains +2 Attack and ignores ranged penalties this round."
+        "A nearby allied ranged disciple gains +1 Attack and ignores ranged penalties until the commander's second following activation (2 rounds, counted from its turn).",
+        "An allied ranged disciple anywhere gains +1 Attack and ignores ranged penalties until the commander's second following activation (2 rounds, counted from its turn).",
+        "An allied ranged disciple anywhere gains +2 Attack and ignores ranged penalties until the commander's second following activation (2 rounds, counted from its turn)."
       ]
     },
     specialty: {
@@ -1231,9 +1246,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
       effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
       tierText: [
-        "A nearby allied melee demon-cultivator gains +1 Attack for 2 combat rounds.",
-        "An allied melee demon-cultivator anywhere gains +1 Attack for 2 combat rounds.",
-        "An allied melee demon-cultivator anywhere gains +2 Attack for 2 combat rounds."
+        "A nearby allied melee demon-cultivator gains +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
+        "An allied melee demon-cultivator anywhere gains +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
+        "An allied melee demon-cultivator anywhere gains +2 Attack until the commander's second following activation (2 rounds, counted from its turn)."
       ]
     },
     // Specialty: REUSE `undead` (Paralysis-token immunity) — the id the
@@ -1273,7 +1288,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Team Captain",
-      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. During combat round 1, once he reaches your front line, he has +1 Attack for the rest of that round, even after moving away."
+      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. If he starts the battle on your front line, he has +2 Speed for the whole combat. During combat round 1, once he reaches your front line, he has +1 Attack for the rest of that round, even after moving away."
     },
     cardImage: "/assets/units-commander-kyousuke_natsume.webp"
   },

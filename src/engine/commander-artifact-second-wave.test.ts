@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { abilityFxPlans, spellPresentationMs } from "@/data/fx";
 import { applyAction, commanderUnitId, createInitialGameState, makeCommanderCombatUnit } from "./index";
-import { maybeOpenCommanderCombatStartDecision } from "./adventure-reducer";
+import { maybeOpenCommanderCombatStartDecision, placementCellsFor } from "./adventure-reducer";
 import { maybeOpenPlayerActivationChoice } from "./reducer";
 import type { CommanderArtifactSlot, GameAction, GameState } from "./state";
 
@@ -71,12 +71,24 @@ function attack(
 }
 
 describe("commander artifact second wave", () => {
-  it("Lanternroot Crook lets the owner place a real one-round Starwind Familiar anywhere empty", () => {
+  it("Lanternroot Crook lets the owner place a real one-round Starwind Familiar on an empty space on its own side", () => {
     const state = startArtifactChoice(sandbox("wog.artifact.lanternroot_crook"));
     const choice = state.pendingChoice;
     expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("commander-artifact-spirit");
     if (choice?.type !== "OPTION_CHOICE") throw new Error("expected spirit placement");
-    const position = choice.commanderArtifactStart!.positions!.at(-1)!;
+    // Only the owner's own deployment rows are offered (2026-09-29; it was any
+    // empty space). CONTROL: empty cells on the enemy's side exist but are not offered.
+    const offered = choice.commanderArtifactStart!.positions!;
+    const ownField = placementCellsFor(state, "p1");
+    expect(offered.length).toBeGreaterThan(0);
+    for (const cell of offered) expect(ownField, `offered cell ${cell}`).toContain(cell);
+    const occupied = new Set(
+      Object.values(state.combat!.units).filter((unit) => unit.damage < unit.maxHealth).map((unit) => unit.position)
+    );
+    const emptyEnemyCells = placementCellsFor(state, "p2").filter((cell) => !occupied.has(cell));
+    expect(emptyEnemyCells.length, "the enemy side has empty cells the old rule offered").toBeGreaterThan(0);
+    for (const cell of emptyEnemyCells) expect(offered, `enemy-side cell ${cell}`).not.toContain(cell);
+    const position = offered.at(-1)!;
     const after = chooseCurrentOption(state, choice.options.length - 1);
     const familiar = Object.values(after.combat!.units).find((unit) => unit.position === position && unit.cardName === "Starwind Familiar");
     expect(familiar).toMatchObject({ attack: 2, defense: 1, maxHealth: 2, initiative: 8, summoned: true, temporary: true, heroGradeExpiresAfterRound: 1 });

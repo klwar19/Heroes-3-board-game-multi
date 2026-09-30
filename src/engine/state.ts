@@ -1066,6 +1066,12 @@ export type ActiveEffectModifier =
    */
   | { type: "IGNORE_ADJACENT_RANGED_PENALTY" }
   | { type: "ADJACENT_TARGET_ATTACK_BONUS"; amount: number }
+  /**
+   * Vey's Ogres VI: after a matching unit (appliesOnlyToUnitNames) finishes a
+   * real activation, its controller may perform that unit's token "other
+   * action" (the Ogres' Bloodlust token) once more (vey-ogres.ts).
+   */
+  | { type: "TOKEN_ACTION_AFTER_ACTIVATION" }
   | {
       type: "RANGED_ATTACK_BONUS";
       amount: number;
@@ -1758,6 +1764,13 @@ export type ActiveEffectModifier =
        * Father 2).
        */
       type: "ATTACK_ROLL_ADVANTAGE";
+      /**
+       * Vey's Ogres IV: advantage on the unit's FIRST Attack roll of each
+       * Combat round only (attack or Retaliation Attack). The effect lasts the
+       * whole Combat; the unit records the round it was spent in
+       * (veyFirstRollSpentRound, set by consumeFirstAttackRollAdvantage).
+       */
+      firstAttackRollOnly?: boolean;
     }
   | {
       /**
@@ -10806,6 +10819,13 @@ export type CombatUnitState = {
    */
   activationAbilityDone?: boolean;
   /**
+   * Vey's Ogres VI: armed when this unit's activation really opens (after the
+   * Paralysis / Morale / Temptation skips), spent when its activation ends.
+   */
+  veyTokenOfferArmed?: boolean;
+  /** Vey's Ogres IV: the combat round whose first-roll advantage this unit already used. */
+  veyFirstRollSpentRound?: number;
+  /**
    * Conflux Pack Elementals: set once this unit's ACTIVATION-scoped spell-power
    * boost ("Add +1 power to the first <School> Magic spell you cast during this
    * Activation") has actually been spent on a cast. Reset every time the unit
@@ -10942,8 +10962,16 @@ export type CombatUnitState = {
     positiveEffectsBlocked?: boolean;
     allowedPositiveEffectIds?: string[];
     attackAfterMoveUsed?: boolean;
-    /** Bulwark Shaman R4 (Runecharged Step): +1 Attack per teleport this combat, capped at +2. */
+    /** Legacy Bulwark Shaman R4 counter (the old +1 Attack per teleport, max +2), kept for saved combats. */
     teleportCharges?: number;
+    /** Bulwark Shaman R4 (Runecharged Step): a teleport readied +1 Attack for the next own attack. */
+    runechargedStrikeReady?: boolean;
+    /** Snow Elves R2 (Rune-Tipped Strike): combat round of the last Rune and Runes granted in it (max 2). */
+    snowElfRuneRound?: number;
+    snowElfRuneUses?: number;
+    /** Snow Elves R3 (Frostbite Bleed) on THIS unit: the combat round at whose start it loses 1 HP, and the bleeding source. */
+    bleedRound?: number;
+    bleedSourceId?: UnitId;
     /** Elves' rank-4 Spell Sunder: round of the last tax and total taxes this combat. */
     elfSpellSunderRound?: number;
     elfSpellSunderUses?: number;
@@ -11552,7 +11580,7 @@ export type CombatState = {
   /** Defense tokens specifically granted by Darkstorn IV, expiring at round end. */
   darkstornRoundDefenseTokenIds?: UnitId[];
   elementalChoices?: Array<{
-    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "forge-grunt-tempo" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning" | "dread-paralyze";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "engineer-buff" | "damage" | "forge-death-burst" | "forge-jump-round" | "forge-grunt-tempo" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "nest-return" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning" | "dread-paralyze" | "vey-extra-token";
     unitId: string;
     abilityId: string;
     amount?: number;
@@ -12102,8 +12130,10 @@ export type CombatState = {
   } | null;
   /** Bulwark combat Runes: `count` is the current 0–9 progress track,
    * `reserve` is spent first on Rune costs, and `appliedLevel` records lasting
-   * bonuses already earned in this combat. `reserve` is optional for old saves. */
-  runes?: Record<PlayerId, { count: number; reserve?: number; appliedLevel: number }>;
+   * bonuses already earned in this combat. `reserve` is optional for old saves.
+   * `maxLevelRound` is the combat round in which the max unlocked level was
+   * earned; later rounds add reserve income (runes.ts grantRuneReserveRoundIncome). */
+  runes?: Record<PlayerId, { count: number; reserve?: number; appliedLevel: number; maxLevelRound?: number }>;
   dice: CombatDice;
   units: Record<UnitId, CombatUnitState>;
   /**

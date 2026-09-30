@@ -4,6 +4,7 @@ import { effectiveInitiative, expireEffectsForCombatRoundEnd, makeActiveEffect }
 import { getSelfAttackerTypeDefenseBonus } from "./unit-abilities";
 import { hasToken, placeCombatToken } from "./tokens";
 import { gainResources, getArmyMapAbilities } from "./adventure";
+import { unitRankAbilityGainsAt, unitRankStatGainsAt } from "./unit-experience";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import type { GameAction, GameState } from "./state";
@@ -446,6 +447,42 @@ describe("Bulwark units — roster & ability wiring", () => {
     expect(coreUnitDefinitions["bulwark.jotunns"].neutral?.abilities).toEqual(["bulwark-jotunn-flyer-slow-2"]);
   });
 
+  it("faction veterancy ranks follow the 2026-09-29 rulings (Jotunns R2/R3/R4, Snow Elves R2/R3, Rams R4)", () => {
+    // Jotunns: R2 Avalanche Charge (was Charge), R3 Rune Bolt, R4 Sundering Strike
+    // (was the generator's Armor-Piercing Drill).
+    expect(unitRankAbilityGainsAt("bulwark.jotunns", 2)).toEqual(["town-jotunn-avalanche-charge"]);
+    expect(unitRankAbilityGainsAt("bulwark.jotunns", 3)).toEqual(["town-jotunn-rune-bolt"]);
+    expect(unitRankAbilityGainsAt("bulwark.jotunns", 4)).toEqual(["town-jotunn-sundering-strike"]);
+    expect(unitAbilities["town-jotunn-avalanche-charge"].effect).toEqual({ type: "ATTACK_ROLL_ADVANTAGE", ownAttackOnly: true, afterMoveOnly: true });
+    expect(unitAbilities["town-jotunn-sundering-strike"].effect).toEqual({ type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 });
+    // Snow Elves: R2 Rune-Tipped Strike, R3 Frostbite Bleed.
+    expect(unitRankAbilityGainsAt("bulwark.snow_elves", 2)).toEqual(["town-snow-elf-rune-strike"]);
+    expect(unitRankAbilityGainsAt("bulwark.snow_elves", 3)).toEqual(["town-snow-elf-bleed"]);
+    // Mountain Rams R4: Trample only (no rotated second ability any more).
+    expect(unitRankAbilityGainsAt("bulwark.mountain_rams", 4)).toEqual(["town-ram-trample"]);
+  });
+
+  it("faction veterancy ranks follow the 2026-09-30 rulings (Kobolds R1, Rams R2/R3, Snow Elves R1/R4, Shamans R1/R2, Yetis R1)", () => {
+    expect(unitRankAbilityGainsAt("bulwark.kobolds", 1)).toEqual(["town-kobold-battle-mend"]);
+    expect(unitRankStatGainsAt("bulwark.kobolds", "bronze", 1)).toMatchObject({ health: 0, initiative: 1 });
+    expect(unitAbilities["town-kobold-battle-mend"].effect).toEqual({ type: "ON_ATTACK_HEAL_SELF", amount: 1 });
+    // Rams: the +1 Health moved from R2 to R3; the rank abilities stay.
+    expect(unitRankStatGainsAt("bulwark.mountain_rams", "bronze", 2).health).toBe(0);
+    expect(unitRankAbilityGainsAt("bulwark.mountain_rams", 2)).toEqual(["commander-charge"]);
+    expect(unitRankStatGainsAt("bulwark.mountain_rams", "bronze", 3).health).toBe(1);
+    expect(unitRankAbilityGainsAt("bulwark.mountain_rams", 3)).toEqual(["commander-max-damage"]);
+    // Snow Elves: R1 and R4 swapped.
+    expect(unitRankAbilityGainsAt("bulwark.snow_elves", 1)).toEqual(["ignore-all-combat-penalties"]);
+    expect(unitRankAbilityGainsAt("bulwark.snow_elves", 4)).toEqual(["veteran-guarded-stance"]);
+    // Shamans: R1 Spell Resistance, R2 +1 Health.
+    expect(unitRankAbilityGainsAt("bulwark.shamans", 1)).toEqual(["reduce-spell-damage-1"]);
+    expect(unitRankAbilityGainsAt("bulwark.shamans", 2)).toEqual([]);
+    expect(unitRankStatGainsAt("bulwark.shamans", "silver", 2).health).toBe(1);
+    // Yetis R1: heal 1 HP on the Defend action.
+    expect(unitRankAbilityGainsAt("bulwark.yetis", 1)).toEqual(["town-yeti-defend-mend"]);
+    expect(unitAbilities["town-yeti-defend-mend"].effect).toEqual({ type: "FACTION_VETERANCY", mechanic: "defend-heal" });
+  });
+
   it("carries the revised printed stats across every affected unit", () => {
     const rams = coreUnitDefinitions["bulwark.mountain_rams"];
     expect(rams.few?.defense).toBe(1);
@@ -457,10 +494,11 @@ describe("Bulwark units — roster & ability wiring", () => {
     expect(elves.pack?.attack).toBe(3); // Steel Elf attack lowered to 3
     const yetis = coreUnitDefinitions["bulwark.yetis"];
     expect({ attack: yetis.few?.attack, health: yetis.few?.health }).toEqual({ attack: 3, health: 4 });
-    expect({ attack: yetis.pack?.attack, defense: yetis.pack?.defense, health: yetis.pack?.health }).toEqual({
+    expect({ attack: yetis.pack?.attack, defense: yetis.pack?.defense, health: yetis.pack?.health, initiative: yetis.pack?.initiative }).toEqual({
       attack: 3, // Yeti Runemaster attack lowered to 3
       defense: 2,
-      health: 5
+      health: 5,
+      initiative: 7 // 2026-09-29: was 8
     });
     expect(yetis.pack?.cost).toEqual({ gold: 9 }); // Yeti Runemaster (Pack) costs 9 gold
     expect(yetis.few?.cost).toEqual({ gold: 6 });
@@ -476,9 +514,10 @@ describe("Bulwark units — roster & ability wiring", () => {
     expect({ attack: mammoths.pack?.attack, health: mammoths.pack?.health }).toEqual({ attack: 5, health: 8 });
     const jotunns = coreUnitDefinitions["bulwark.jotunns"];
     // 2026-09-24 ruling: Jotunn (Few) 6/2/9/8 for 22 gold + 1 valuable; Jotunn
-    // Warlord (Pack) 7/2/10/11 for 30 gold + 2 valuables. Mammoth Pack 20 + 1.
+    // Warlord (Pack) 7/2/9/10 (2026-09-29; was 7/2/10/11) for 30 gold + 2
+    // valuables. Mammoth Pack 20 + 1.
     expect(jotunns.few).toMatchObject({ attack: 6, defense: 2, health: 9, initiative: 8, cost: { gold: 22, valuables: 1 } });
-    expect(jotunns.pack).toMatchObject({ attack: 7, defense: 2, health: 10, initiative: 11, cost: { gold: 30, valuables: 2 } });
+    expect(jotunns.pack).toMatchObject({ attack: 7, defense: 2, health: 10, initiative: 10, cost: { gold: 30, valuables: 2 } });
     expect(mammoths.pack?.cost).toEqual({ gold: 20, valuables: 1 });
     // Printed Jotunns Neutral card (Bulwark product sheet).
     expect(jotunns.neutral).toMatchObject({ attack: 5, defense: 2, health: 6, initiative: 8, cost: { gold: 21 } });

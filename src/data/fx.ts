@@ -1180,6 +1180,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
     sound: "effects/rune"
   },
   "town-mammoth-rune-mend": { affect: [{ key: "cure" }], sound: "effects/rune" },
+  "town-snow-elf-bleed": { affect: [{ key: "frost-ring" }], sound: "spells/frost-ring" },
   "town-dwarf-backlash": { affect: [{ key: "town-dwarf-backlash" }], sound: "spells/magic-arrow" },
   "town-titan-bolt": { projectile: "titan-shot-phases", sound: "units/titan-shoot" },
   // Forge Scrap Feast (Cyberbrutes' kill-heal): the Regeneration orb over the

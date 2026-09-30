@@ -90,6 +90,12 @@ const strongholdJabarkasPreviewSource = {
   url: "https://gamefound.com/en/projects/archon-studio/heroes-of-might-and-magic-iii-the-board-game",
 };
 
+const strongholdVeyPreviewSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
+  credit: "Hero board and specialty cards from the supplied preview; portrait repainted from that visual reference. Hidden specialty wording supplied by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/0fa3cb8c-a0da-4992-9407-75fb5cdcdd98.png",
+};
+
 const fortressHeroPreviewSource = {
   product: "Heroes of Might and Magic III: The Board Game (Gamefound preview)",
   credit: "Hero identities and stats from the WIP preview; specialty rules supplied by the player. Portraits generated for this adaptation.",
@@ -2638,6 +2644,25 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     boardScan: "/assets/heroes-stronghold-might-jabarkas.webp",
     source: strongholdJabarkasPreviewSource
   },
+  // Vey (Gamefound preview): Battle Mage 2/1/1/1 with Leadership, the Ogres
+  // specialist (specialty.vey.* in adventure.ts, engine in vey-ogres.ts).
+  vey: {
+    id: "vey",
+    name: "Vey",
+    faction: "stronghold",
+    class: "Battle Mage",
+    type: "magic",
+    startingStats: { attack: 2, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: {
+      1: "specialty.vey.1",
+      4: "specialty.vey.4",
+      6: "specialty.vey.6"
+    },
+    portrait: "/assets/hero_boardart-vey.webp",
+    boardScan: "/assets/heroes-stronghold-magic-vey.webp",
+    source: strongholdVeyPreviewSource
+  },
   melodia: {
     id: "melodia",
     name: "Melodia",
@@ -3114,7 +3139,7 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Stronghold",
     color: "#b06a2d",
     startingTileId: "S7",
-    heroes: ["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog", "jabarkas"],
+    heroes: ["crag_hack", "dessa", "gundula", "shiva", "tarnum_stronghold", "yog", "jabarkas", "vey"],
     buildings: buildingsOfFaction("stronghold"),
     units: unitsOfFaction("stronghold"),
     townImage: "/assets/towns-stronghold-empty.webp",

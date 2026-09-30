@@ -1,7 +1,7 @@
 /**
  * Unit Experience revisions (user rulings 2026-09-27) that had no behaviour
  * coverage: Black Dragons R3 Wheeling Retreat, Hydras R3 Venomous Heads / R4
- * Venom Ward, Wyverns R3 Venom Hunter, Arch Devils R1 Devil's Luck curse and R3
+ * Venom Ward, Wyverns R3 Venom Hunter, Arch Devils R1 Devil's Luck and R3
  * Petrifying Curse, Manticores R1 (no heal on the Retaliation it takes) and
  * the Rune Keeper's Rune Ritual (+1 Speed at Level 1, a 1-HP heal pick at every
  * Rune Level). Every rule is asserted against a CONTROL where the old and new
@@ -326,7 +326,7 @@ describe("Wyverns R3 — Venom Hunter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Arch Devils R1 — Devil's Luck curse, R3 — Petrifying Curse
+// Arch Devils R1 — Devil's Luck (no curse since 2026-09-29), R3 — Petrifying Curse
 // ---------------------------------------------------------------------------
 
 const DEVIL = "unit_p2_vampires";
@@ -353,42 +353,56 @@ function strike(state: GameState, face: number): { state: GameState; dealt: numb
 const curses = (state: GameState) => state.activeEffects.filter((effect) => effect.name === DEVIL_LUCK_CURSE_NAME);
 
 describe("Arch Devils R1 — Devil's Luck", () => {
-  it("the first +1 is cursed for 2 rounds; later +1 results get -1 without spending the devil's uses", () => {
+  // User ruling 2026-09-29: twice per combat round a +1 gets -1 Attack for THAT
+  // attack only — no lingering 2-round curse (the 2026-09-27 rule).
+  it("twice per round a +1 gets -1 for that attack only; no curse is laid", () => {
     const control = strike(luckState("dl-ctrl", 0), 1).dealt;
     let { state, dealt } = strike(luckState("dl-first", 1), 1);
     expect(dealt).toBe(control - 1);
-    expect(curses(state)).toHaveLength(1);
-    expect(curses(state)[0]).toMatchObject({
-      target: { type: "unit", unitId: ATTACKER },
-      modifiers: [],
-      expiresAtCombatRoundEnd: state.combat!.round + 1,
-    });
+    expect(curses(state)).toHaveLength(0);
     expect(state.combat!.units[DEVIL].townVeterancy?.devilLuckUses).toBe(1);
 
-    ({ state, dealt } = strike(state, 1));
-    expect(dealt).toBe(control - 1);
-    expect(state.combat!.units[DEVIL].townVeterancy?.devilLuckUses).toBe(1);
-    expect(curses(state)).toHaveLength(1);
-
-    // No flat Attack penalty: a cursed "0" hits normally.
+    // No flat Attack penalty: a "0" hits normally and spends nothing.
     const zeroControl = strike(luckState("dl-zero-ctrl", 0), 0).dealt;
     ({ state, dealt } = strike(state, 0));
     expect(dealt).toBe(zeroControl);
+    expect(state.combat!.units[DEVIL].townVeterancy?.devilLuckUses).toBe(1);
 
-    // The curse outlives the devil (the old rule needed a living devil with uses left).
-    state.combat!.units[DEVIL].damage = state.combat!.units[DEVIL].maxHealth;
+    // The second +1 spends the second use.
     ({ state, dealt } = strike(state, 1));
     expect(dealt).toBe(control - 1);
+    expect(state.combat!.units[DEVIL].townVeterancy?.devilLuckUses).toBe(2);
+
+    // A third +1 in the same round gets no -1 (the old curse would still apply it).
+    ({ state, dealt } = strike(state, 1));
+    expect(dealt).toBe(control);
+    expect(state.combat!.units[DEVIL].townVeterancy?.devilLuckUses).toBe(2);
+    expect(curses(state)).toHaveLength(0);
+
+    // Next round the +1 again SPENDS a fresh use (a curse would apply it for free).
+    state.combat!.round += 1;
+    ({ state, dealt } = strike(state, 1));
+    expect(dealt).toBe(control - 1);
+    expect(state.combat!.units[DEVIL].townVeterancy).toMatchObject({ devilLuckRound: state.combat!.round, devilLuckUses: 1 });
+
+    // Nothing outlives the devil: once it is dead a +1 hits normally.
+    state.combat!.units[DEVIL].damage = state.combat!.units[DEVIL].maxHealth;
+    ({ state, dealt } = strike(state, 1));
+    expect(dealt).toBe(control);
   });
 
-  it("never stacks: two watching devils still give a single -1", () => {
+  it("never stacks: two watching devils still give a single -1, the second devil taking over once the first is spent", () => {
     const control = strike(luckState("dl2-ctrl", 0), 1).dealt;
     let { state, dealt } = strike(luckState("dl2", 2), 1);
     expect(dealt).toBe(control - 1);
     ({ state, dealt } = strike(state, 1));
     expect(dealt).toBe(control - 1);
-    expect(curses(state)).toHaveLength(1);
+    expect(curses(state)).toHaveLength(0);
+    expect(state.combat!.units[DEVIL].townVeterancy?.devilLuckUses).toBe(2);
     expect(state.combat!.units[DEVIL_TWO].townVeterancy?.devilLuckUses).toBeUndefined();
+    ({ state, dealt } = strike(state, 1));
+    expect(dealt).toBe(control - 1);
+    expect(state.combat!.units[DEVIL_TWO].townVeterancy?.devilLuckUses).toBe(1);
   });
 });
 

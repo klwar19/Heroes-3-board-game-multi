@@ -39,6 +39,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   kastore: "/assets/specialty-card/icon-kastore-sorcery.webp", // Sorcery (ability card picture)
   isra: "/assets/specialty-card/icon-isra-necromancy.webp", // Necromancy (Vidomina's printed symbol)
   jabarkas: "/assets/specialty-card/icon-jabarkas-orcs.webp", // Orcs (cut from the real unit card)
+  vey: "/assets/specialty-card/icon-vey-ogres.webp", // Ogres (cut from the real unit card)
   emperor_of_mankind: "/assets/warhammer/icons/specialty-emperor-protects.webp",
   roboute_guilliman: "/assets/warhammer/icons/specialty-codex-astartes.webp",
   rogal_dorn: "/assets/warhammer/icons/specialty-praetorian-bulwark.webp",

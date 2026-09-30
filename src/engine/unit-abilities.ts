@@ -130,6 +130,10 @@ export function unitHasAttackRollAdvantage(
     if (ability.effect.ownAttackOnly && isRetaliation) {
       return false;
     }
+    // Avalanche Charge: only on an own attack after moving this activation.
+    if (ability.effect.afterMoveOnly && (isRetaliation || !unit.movedThisActivation)) {
+      return false;
+    }
     if (ability.effect.retaliationOnly && !isRetaliation) {
       return false;
     }

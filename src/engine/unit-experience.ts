@@ -232,8 +232,9 @@ const NO_OP_DEDUPE_EFFECT_TYPES = new Set<string>([
 ]);
 
 /** Which attacks an ATTACK_ROLL_ADVANTAGE copy actually covers. */
-function attackRollAdvantageCoverage(effect: AbilityEffect): "own" | "retaliation" | "any" {
+function attackRollAdvantageCoverage(effect: AbilityEffect): "own-after-move" | "own" | "retaliation" | "any" {
   if (effect.type !== "ATTACK_ROLL_ADVANTAGE") return "any";
+  if (effect.afterMoveOnly) return "own-after-move";
   if (effect.ownAttackOnly) return "own";
   if (effect.retaliationOnly) return "retaliation";
   return "any";
@@ -267,6 +268,8 @@ function grantWouldBeStrictNoOp(abilityId: string, existing: Iterable<string>): 
         const grantedCoverage = attackRollAdvantageCoverage(granted);
         // A retaliation-only printed copy does NOT cover an unconditional grant.
         if (heldCoverage === "any" || heldCoverage === grantedCoverage) return true;
+        // Every own attack already rolls with advantage: an after-move-only copy adds nothing.
+        if (heldCoverage === "own" && grantedCoverage === "own-after-move") return true;
         break;
       }
       default:

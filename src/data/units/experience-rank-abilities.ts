@@ -401,8 +401,13 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "bulwark.mountain_rams") return A("town-ram-spell-draw");
   if (unitDefId === "bulwark.jotunns") return A("town-jotunn-rune-hide");
   if (unitDefId === "bulwark.mammoths") return A("town-mammoth-rune-mend");
-  // Kobolds keep their generated R1 Health step and gain +1 more Health (net +2 HP).
-  if (unitDefId === "bulwark.kobolds") return S({ ...Z, health: 2 });
+  // User 2026-09-30: Kobolds R1 = +1 Initiative and Battle Mend (heal 1 HP after
+  // its own attack); Snow Elves R1 = No Combat Penalties (was their R4); Shamans
+  // R1 = Spell Resistance (was their R2); Yetis R1 = heal 1 HP on Defend.
+  if (unitDefId === "bulwark.kobolds") return H({ ...Z, initiative: 1 }, "town-kobold-battle-mend");
+  if (unitDefId === "bulwark.snow_elves") return A("ignore-all-combat-penalties");
+  if (unitDefId === "bulwark.shamans") return A("reduce-spell-damage-1");
+  if (unitDefId === "bulwark.yetis") return A("town-yeti-defend-mend");
   if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
   // Move the former generated R3 reward forward: veteran Sharpshooters begin
   // with the same low-roll extra shot that their old schedule granted at R3.
@@ -465,9 +470,12 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   // unchanged, then fold it into a hybrid that always adds the Health step.
   if (unitDefId === "cove.sea_dogs") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
   if (unitDefId === "bulwark.snow_elves") return A("town-snow-elf-rune-strike");
-  // Mountain Rams keep their generated R2 ability CHOICE and ALSO gain +1 Health
-  // (same hybrid pattern as cove.sea_dogs above).
-  if (unitDefId === "bulwark.mountain_rams") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
+  // User 2026-09-29: Jotunns R2 is Avalanche Charge (advantage after moving).
+  if (unitDefId === "bulwark.jotunns") return A("town-jotunn-avalanche-charge");
+  // User 2026-09-30: Mountain Rams R2 keeps only its generated ability CHOICE
+  // (the +1 Health moved to R3); Shamans R2 = +1 Health (Spell Resistance moved to R1).
+  if (unitDefId === "bulwark.mountain_rams") return A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
+  if (unitDefId === "bulwark.shamans") return S({ ...Z, health: 1 });
   // Fortress Dragon Flies (user 2026-09-26): keep the generated R2 ability
   // CHOICE and ALSO gain +1 Health (same hybrid pattern as cove.sea_dogs).
   if (unitDefId === "fortress.dragon_flies") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
@@ -554,6 +562,11 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "cove.haspids") return A("reduce-spell-and-specialty-damage-1");
   if (unitDefId === "bulwark.yetis") return A("bulwark-thick-hide");
   if (unitDefId === "bulwark.jotunns") return A("town-jotunn-rune-bolt");
+  // User 2026-09-29: Snow Elves R3 is Frostbite Bleed.
+  if (unitDefId === "bulwark.snow_elves") return A("town-snow-elf-bleed");
+  // User 2026-09-30: Mountain Rams R3 keeps its generated ability CHOICE and
+  // adds +1 Health (moved here from R2).
+  if (unitDefId === "bulwark.mountain_rams") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 3, RANK_THREE_ABILITIES[inferFlavour(unitDefId)]));
   if (unitDefId === "bulwark.mammoths") return A("town-mammoth-hunter");
   // User 2026-09-27: the former +1 Attack step became Petrifying Curse.
   if (unitDefId === "inferno.arch_devils") return A("town-devil-petrify");
@@ -674,10 +687,12 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "cove.nix") return A("town-nix-intercept");
   // Requested additions: keep the old R4 reward and grant the new rule too.
   if (unitDefId === "bulwark.kobolds") return G(["town-kobold-rune-step"], "town-kobold-armored-prey");
-  if (unitDefId === "bulwark.mountain_rams") return G(
-    rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[inferFlavour(unitDefId)]),
-    "town-ram-trample"
-  );
+  // User 2026-09-29: Mountain Rams R4 is Trample only (Armor-Piercing Drill removed).
+  if (unitDefId === "bulwark.mountain_rams") return A("town-ram-trample");
+  // User 2026-09-29: Jotunns R4 ignores 1 Defense on its own attacks only.
+  if (unitDefId === "bulwark.jotunns") return A("town-jotunn-sundering-strike");
+  // User 2026-09-30: Snow Elves R4 = Guarded Stance (was their R1).
+  if (unitDefId === "bulwark.snow_elves") return A("veteran-guarded-stance");
   if (unitDefId === "bulwark.mammoths") return A("town-mammoth-last-stand");
   if (unitDefId === "castle.griffins") return A("town-griffin-counter");
   if (unitDefId === "castle.marksmen") return A("town-marksman-survival");
@@ -1087,6 +1102,12 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-mammoth-last-stand": "/game-tokens/rank-ability/veterancy/town-mammoth-last-stand.webp",
   "town-ram-spell-draw": "/game-tokens/rank-ability/veterancy/town-ram-spell-draw.webp",
   "town-snow-elf-rune-strike": "/game-tokens/rank-ability/veterancy/town-snow-elf-rune-strike.webp",
+  "town-snow-elf-bleed": "/game-tokens/rank-ability/town-revisions/snow-elf-frost-bleed.webp",
+  "town-jotunn-avalanche-charge": "/game-tokens/rank-ability/town-revisions/jotunn-avalanche-charge.webp",
+  "town-jotunn-sundering-strike": "/game-tokens/rank-ability/town-revisions/jotunn-sundering-strike.webp",
+  "town-kobold-battle-mend": "/game-tokens/rank-ability/town-revisions/kobold-battle-mend.webp",
+  "town-yeti-defend-mend": "/game-tokens/rank-ability/town-revisions/yeti-defend-mend.webp",
+  "town-titan-storm-cache": "/game-tokens/rank-ability/town-revisions/titan-storm-cache.webp",
   "town-wyvern-reroll": "/game-tokens/rank-ability/veterancy/town-wyvern-reroll.webp",
   "town-yeti-spell-specialty-aura": "/game-tokens/rank-ability/veterancy/town-yeti-spell-specialty-aura.webp",
   "veteran-adjacent-enfeeble": "/game-tokens/rank-ability/veterancy/veteran-adjacent-enfeeble.webp",

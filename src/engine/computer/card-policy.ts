@@ -2131,6 +2131,25 @@ function scoreEffect(
         enemy.controllerId !== observation.playerId && unitsAdjacent(state.combat, orc, enemy)));
       return (engaged ? 735 : 660) + Math.min(40, orcs.length * 20);
     }
+    // Vey's Ogres IV: advantage on the chosen unit's first Attack roll each
+    // round — put it on the strongest friendly body that does not hold it yet.
+    if (card.id === "specialty.vey.4") {
+      const unit = combatUnitFromTarget(observation, target);
+      const alreadyHeld = unit && state.activeEffects.some((active) =>
+        active.target?.type === "unit" && active.target.unitId === unit.id &&
+        active.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_ADVANTAGE" && modifier.firstAttackRollOnly));
+      return unit && unit.controllerId === observation.playerId && !alreadyHeld
+        ? 660 + Math.min(80, unitThreatValue(unit) / 2)
+        : 180;
+    }
+    // Vey's Ogres VI: an extra Bloodlust token after every Ogres activation —
+    // only worth it while living friendly Ogres are on the board.
+    if (card.id === "specialty.vey.6") {
+      const ogres = Object.values(state.combat?.units ?? {}).filter((unit) =>
+        unitRemainingHealth(unit) > 0 && unit.controllerId === observation.playerId &&
+        unitMatchesSpecialtyName(unit.name, "Ogres"));
+      return ogres.length ? 700 + Math.min(40, ogres.length * 20) : 180;
+    }
     if (card.id === "specialty.henrietta.6") {
       return observation.state.combat ? 735 : 180;
     }

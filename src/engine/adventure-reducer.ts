@@ -14420,7 +14420,10 @@ function unresolvedCommanderArtifactStart(
     return result;
   };
   if (bonuses.summonWeakSpiritAtCombatStart && !resolved.includes(commanderArtifactStartKey(playerId, "spirit"))) {
-    return { commander, kind: "spirit", positions: emptyPositions(), amount: 0 };
+    // The Starwind spirit may only be summoned on its owner's own field (their
+    // deployment rows), never on the enemy's side of the battlefield.
+    const ownField = new Set(placementCellsFor(state, playerId));
+    return { commander, kind: "spirit", positions: emptyPositions().filter((position) => ownField.has(position)), amount: 0 };
   }
   if (bonuses.optionalFirePulseAtCombatStart > 0 && !resolved.includes(commanderArtifactStartKey(playerId, "cataclysm"))) {
     return { commander, kind: "cataclysm", positions: [], amount: bonuses.optionalFirePulseAtCombatStart };
@@ -14677,7 +14680,7 @@ function resolveCommanderArtifactStartChoice(
   if (choice.context === "commander-artifact-spirit") {
     const position = data.positions?.[optionIndex];
     if (position === undefined || !injectCommanderArtifactSpirit(state, playerId, position)) {
-      throw new Error("Choose an empty space for the Starwind Familiar.");
+      throw new Error("Choose an empty space on your side for the Starwind Familiar.");
     }
     markCommanderArtifactStartResolved(state, playerId, "spirit");
   } else if (choice.context === "commander-artifact-cataclysm") {
@@ -14826,7 +14829,7 @@ function openCommanderCombatStartChoice(
       type: "OPTION_CHOICE",
       playerId,
       prompt: start.kind === "spirit"
-        ? "Lanternroot Crook: choose any empty space for the one-round Starwind Familiar."
+        ? "Lanternroot Crook: choose an empty space on your side for the one-round Starwind Familiar."
         : start.kind === "cataclysm"
           ? "Counterfeit Cataclysm: erupt at combat start? Fire resistance and immunity apply to every unit."
           : "Ring of the Sealed Horizon: choose any empty space for a Force Field lasting through round 2.",

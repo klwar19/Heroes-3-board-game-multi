@@ -217,7 +217,7 @@ function RuneTrackBody({ state, playerId, showName }: { state: GameState; player
       </div>
       <div
         className={`runeReserveTray${track.reserve > 0 ? " stocked" : ""}`}
-        title={`Reserve: ${track.reserve} spendable Rune${track.reserve === 1 ? "" : "s"} (5 banked each time a Level is earned) — Rune costs spend the reserve before the main track`}
+        title={`Reserve: ${track.reserve} spendable Rune${track.reserve === 1 ? "" : "s"} (3 banked when your highest unlocked Level is earned, then +2 each odd round and +1 each even round) — Rune costs spend the reserve before the main track`}
       >
         <span className="runeReserveLabel">Reserve</span>
         <span className="runeReserveCubes" aria-hidden="true">

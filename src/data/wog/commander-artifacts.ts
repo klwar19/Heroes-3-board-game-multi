@@ -432,7 +432,7 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Lanternroot Crook",
     slot: "weapon",
     tier: "minor",
-    effectText: "at combat start, summon a weak Starwind spirit on any empty space; it vanishes after combat round 1.",
+    effectText: "at combat start, summon a weak Starwind spirit on an empty space on your side (your deployment rows); it vanishes after combat round 1.",
     summonWeakSpiritAtCombatStart: true
   },
   "wog.artifact.widows_courtesy": {

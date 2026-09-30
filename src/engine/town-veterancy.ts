@@ -31,9 +31,10 @@ export function townVeterancy(
 const alive = (u: CombatUnitState) => u.damage < u.maxHealth;
 
 /**
- * The 2-round debuff Devil's Luck leaves on the cursed enemy unit. It has no
- * stat modifier: while it lasts, every "+1" that unit resolves on its Attack
- * die gets -1 Attack for that attack (user ruling 2026-09-27).
+ * LEGACY: the 2-round curse the old Devil's Luck left on the enemy unit (user
+ * ruling 2026-09-27). Since 2026-09-29 Devil's Luck no longer curses; the name
+ * is still read so a curse carried by a saved in-progress combat keeps working
+ * until it expires.
  */
 export const DEVIL_LUCK_CURSE_NAME = "Devil's Luck Curse";
 
@@ -85,20 +86,24 @@ export function spendDevilLuck(
   const vet = (devil.townVeterancy ??= {});
   vet.devilLuckUses = vet.devilLuckRound === round ? (vet.devilLuckUses ?? 0) + 1 : 1;
   vet.devilLuckRound = round;
-  // The -1 on THIS attack is already folded into its resolved value. The curse
-  // (no stat modifier) keeps that rule on the unit through the end of the next
-  // combat round: each of its "+1" results gets -1 (devilLuckCursed), once per
-  // attack — while it lives devilLuckSource yields nothing, so never -2.
-  const curse = makeActiveEffect(
-    state,
-    { name: DEVIL_LUCK_CURSE_NAME, scope: "unit", duration: { type: "combat-rounds", rounds: 2 }, polarity: "negative", removable: true, modifiers: [] },
-    { type: "unit", unitId: devil.id, controllerId: devil.controllerId },
-    devil.controllerId,
-    { type: "unit", unitId: attacker.id },
-  );
-  const cursed = effectAppliesToUnit(curse, attacker, true);
-  if (cursed) state.activeEffects.push(curse);
-  veteranTrigger(state, devil, "town-devil-luck", attacker, `${devil.cardName} curses ${attacker.cardName}'s +1 — Devil's Luck gives -1 Attack${cursed ? "; its +1 results get -1 until the end of next combat round" : ""} (${vet.devilLuckUses}/2 this round).`);
+  // The -1 on THIS attack is already folded into its resolved value. User
+  // ruling 2026-09-29: that is all Devil's Luck does — no lingering curse.
+  veteranTrigger(state, devil, "town-devil-luck", attacker, `${devil.cardName}'s Devil's Luck gives ${attacker.cardName}'s +1 -1 Attack (${vet.devilLuckUses}/2 this round).`);
+}
+
+/**
+ * Snow Elves R2 Rune-Tipped Strike: +1 Rune after the elf's own attack and +1
+ * when an enemy attacks it, sharing a budget of 2 Runes per combat round.
+ */
+function snowElfRuneStrike(state: GameState, unit: CombatUnitState): void {
+  const round = state.combat?.round ?? 0;
+  const memory = (unit.townVeterancy ??= {});
+  const used = memory.snowElfRuneRound === round ? (memory.snowElfRuneUses ?? 0) : 0;
+  if (used >= 2) return;
+  memory.snowElfRuneRound = round;
+  memory.snowElfRuneUses = used + 1;
+  gainRunes(state, unit.controllerId, 1);
+  veteranTrigger(state, unit, "town-snow-elf-rune-strike", unit, `${unit.cardName}'s Rune-Tipped Strike: +1 Rune (${used + 1}/2 this round).`);
 }
 function sharedDrawCount(
   state: GameState,
@@ -157,6 +162,9 @@ export function townAttackBonus(
     (retaliation && townVeterancy(defender, "efreet-mend") ? 1 : 0) -
     (retaliation && attacker.controllerId !== defender.controllerId && townVeterancy(defender, "angel-safe") ? 3 : 0) +
     (!retaliation && townVeterancy(attacker, "haspid-aggressive-drill") ? 1 : 0) +
+    // Bulwark Shamans R4 Runecharged Step: a teleport readies +1 Attack for the
+    // next OWN attack only (consumed in townAfterAttack; never on retaliation).
+    (!retaliation && attacker.townVeterancy?.runechargedStrikeReady ? 1 : 0) +
     (townVeterancy(attacker, "pit-demon-bond") &&
     Object.values(state.combat?.units ?? {}).some(
       (unit) =>
@@ -354,9 +362,24 @@ export function townAfterAttack(
   if (!retaliation && townVeterancy(attacker, "haspid-aggressive-drill") && (defender.poisonCubes ?? 0) > 0) {
     veteranHeal(state, attacker, 1, "town-haspid-aggressive-drill");
   }
+  if (!retaliation && attacker.townVeterancy?.runechargedStrikeReady) {
+    attacker.townVeterancy.runechargedStrikeReady = false;
+  }
   if (!retaliation && townVeterancy(attacker, "snow-elf-rune-strike")) {
-    gainRunes(state, attacker.controllerId, 2);
-    veteranTrigger(state, attacker, "town-snow-elf-rune-strike");
+    snowElfRuneStrike(state, attacker);
+  }
+  if (!retaliation && enemyTarget && townVeterancy(defender, "snow-elf-rune-strike")) {
+    snowElfRuneStrike(state, defender);
+  }
+  // Snow Elves R3 Frostbite Bleed: a 0 or -1 on any of the elf's attacks makes
+  // the surviving enemy lose 1 HP at the start of the next combat round. A unit
+  // already bleeding is not bled again (no stacking).
+  if (!dieCancelled && (roll === 0 || roll === -1) && enemyTarget && alive(defender) &&
+      townVeterancy(attacker, "snow-elf-bleed") && defender.townVeterancy?.bleedRound === undefined) {
+    const memory = (defender.townVeterancy ??= {});
+    memory.bleedRound = (state.combat?.round ?? 0) + 1;
+    memory.bleedSourceId = attacker.id;
+    veteranTrigger(state, attacker, "town-snow-elf-bleed", defender, `${attacker.cardName}'s Frostbite Bleed: ${defender.cardName} will lose 1 HP at the start of the next combat round.`);
   }
   if (!retaliation && townVeterancy(attacker, "ayssid-slow") && alive(defender)) {
     const effect = makeActiveEffect(state, { name: "Raking Assault", scope: "unit", duration: { type: "combat" }, polarity: "negative", removable: true, modifiers: [{ type: "INITIATIVE_BONUS", amount: -1 }] },
@@ -512,7 +535,17 @@ export function townCombatStart(state: GameState): void {
 }
 
 export function townCombatRoundStart(state: GameState): void {
+  const round = state.combat?.round ?? 0;
   for (const unit of Object.values(state.combat?.units ?? {})) {
+    // Snow Elves R3 Frostbite Bleed resolves first: the bled unit loses 1 HP.
+    const bleedRound = unit.townVeterancy?.bleedRound;
+    if (bleedRound !== undefined && round >= bleedRound) {
+      const sourceId = unit.townVeterancy!.bleedSourceId;
+      delete unit.townVeterancy!.bleedRound;
+      delete unit.townVeterancy!.bleedSourceId;
+      const source = (sourceId && state.combat?.units[sourceId]) || unit;
+      if (alive(unit)) veteranDamage(state, source, unit, 1, "town-snow-elf-bleed", true);
+    }
     if (alive(unit) && townVeterancy(unit, "hydra-round-mend")) {
       veteranHeal(state, unit, 2, "town-hydra-round-mend");
     }
@@ -540,13 +573,13 @@ export function townMovement(
     queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-ram-trample", amount: 1, adjacent: true });
   }
   // Runecharged Step replaces this unit's regular movement with teleportation,
-  // including short teleports. Each movement therefore banks the bonus once.
+  // including short teleports. A teleport readies +1 Attack for the next own
+  // attack; it does not stack and is spent by that attack (townAfterAttack).
   if (from !== to && getUnitAbilityDefinitions(unit).some((a) => a.id === "town-shaman-teleport-charge")) {
     const mem = (unit.townVeterancy ??= {});
-    if ((mem.teleportCharges ?? 0) < 2) {
-      mem.teleportCharges = (mem.teleportCharges ?? 0) + 1;
-      mem.attack = (mem.attack ?? 0) + 1;
-      veteranTrigger(state, unit, "town-shaman-teleport-charge");
+    if (!mem.runechargedStrikeReady) {
+      mem.runechargedStrikeReady = true;
+      veteranTrigger(state, unit, "town-shaman-teleport-charge", unit, `${unit.cardName}'s Runecharged Step: +1 Attack on its next attack.`);
     }
   }
 }
@@ -556,16 +589,13 @@ export function townActivation(state: GameState, unit: CombatUnitState): void {
   if (townVeterancy(unit, "engineer-attack-support")) {
     queueElementalChoice(state, { kind: "engineer-buff", unitId: unit.id, abilityId: "factory-engineer-attack-support" });
   }
-  // Mammoth Rune Mend heals 1 HP FREE on activation, then (below, if Runes remain)
-  // offers 1 more HP for 1 Rune.
-  if (townVeterancy(unit, "mammoth-rune-mend") && unit.damage > 0) {
-    veteranHeal(state, unit, 1, "town-mammoth-rune-mend");
-  }
+  // Mammoth Rune Mend (user 2026-09-29): no free heal — at activation the
+  // player may spend 1 Rune to heal 1 HP (queued below).
   const runes = availableRunes(state, unit.controllerId);
   if (runes <= 0) return;
   if (townVeterancy(unit, "jotunn-rune-bolt")) {
-    // Rune Bolt R3: spend 1 Rune for 1 damage, or 2 Runes for 2 damage (per-target tiers).
-    queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-jotunn-rune-bolt", amount: 1, runeCost: 1, optional: true, runeScaling: true });
+    // Rune Bolt R3 (user 2026-09-29): spend 1 Rune for 1 damage to a chosen unit.
+    queueElementalChoice(state, { kind: "damage", unitId: unit.id, abilityId: "town-jotunn-rune-bolt", amount: 1, runeCost: 1, optional: true });
   }
   if (townVeterancy(unit, "mammoth-rune-mend") && unit.damage > 0) {
     queueElementalChoice(state, { kind: "heal-self", unitId: unit.id, abilityId: "town-mammoth-rune-mend", amount: 1, runeCost: 1, optional: true });

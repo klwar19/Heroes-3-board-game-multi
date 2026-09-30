@@ -86,7 +86,7 @@ units.push(
     pack: { stats: [2, 1, 5, 10], text: ["{unit_passive}", "Reduce any", "{damage}", "from", "{spell}", "by 1."] },
     neutral: { stats: [2, 0, 5, 9], cost: [5], text: ["{unit_passive}", "Reduce any", "{damage}", "from", "{spell}", "by 1."] } }),
   bw({ slug: "snow_elves", name: "Snow Elves", tier: "bronze", type: "ranged", artTop: 0.3,
-    few: { stats: [3, 0, 3, 4], cost: [4], upgrade: [6], text: ["{unit_passive}", "No penalty for attacking an adjacent unit."] },
+    few: { stats: [3, 0, 3, 4], cost: [4], upgrade: [7], text: ["{unit_passive}", "No penalty for attacking an adjacent unit."] },
     pack: { stats: [3, 1, 4, 5], text: ["{unit_passive}", "No penalty for attacking an adjacent unit.", "\n", "{unit_attack}", "Its attacks provoke no Retaliation Attack."] },
     neutral: { stats: [3, 0, 4, 4], cost: [7], text: ["{unit_passive}", "No penalty for attacking an adjacent unit.", "\n", "{unit_attack}", "Its attacks provoke no Retaliation Attack."] } }),
   bw({ slug: "yetis", name: "Yetis", tier: "silver", type: "ground", artTop: 0.05,
@@ -103,7 +103,7 @@ units.push(
     neutral: { stats: [4, 2, 6, 5], cost: [18], text: ["{unit_passive}", "+1", "{defense}", "while this unit is defending."] } }),
   bw({ slug: "jotunns", name: "Jotunns", tier: "golden", type: "ground", artTop: 0.25,
     few: { stats: [6, 2, 9, 8], cost: [22, 1], upgrade: [30, 2], text: ["{unit_passive}", "Enemy", "{unit_flying}", "units have -1", "{initiative}", "."] },
-    pack: { stats: [7, 2, 10, 11], text: ["At the start of its activation, you may teleport one of your other units to an empty space, then act as normal.", "\n", "{unit_passive}", "Enemy", "{unit_flying}", "units have -2", "{initiative}", "."] },
+    pack: { stats: [7, 2, 10, 10], text: ["At the start of its activation, you may teleport one of your other units to an empty space, then act as normal.", "\n", "{unit_passive}", "Enemy", "{unit_flying}", "units have -2", "{initiative}", "."] },
     neutral: { stats: [5, 2, 6, 8], cost: [21], text: ["{unit_passive}", "Enemy", "{unit_flying}", "units have -2", "{initiative}", "."] } })
 );
 

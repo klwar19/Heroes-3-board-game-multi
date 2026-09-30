@@ -21,12 +21,13 @@
 //    printed corner scrollwork stays on top;
 //  * the footer's collector number is erased (only Jabarkas's 079-081/227
 //    are known from the preview, so only those are printed).
-// Codex paints only Jabarkas's portrait (generated-session-art/stronghold-jabarkas).
+// Codex paints only Jabarkas's and Vey's portraits (generated-session-art/
+// stronghold-jabarkas, stronghold-vey).
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import sharp from "sharp";
 import {
   A, COL, read, raw, textAt, layoutText, patchOp, frameMask, paintThroughMask, debugMask,
-  weaknessSymbol, fitInto, CARD_TXT, relaidLeather,
+  weaknessSymbol, fitInto, CARD_TXT, relaidLeather, stats, feather,
 } from "./lib/printed-card-compositor.mjs";
 
 const OUT_DEBUG = process.env.ART_DEBUG_DIR || "";
@@ -51,6 +52,7 @@ const WINDOW_ART = {
   korbac: ICON("icon-korbac-dragon_flies.webp"),
   verdish: ICON("icon-verdish-first_aid_tent.webp"),
   jabarkas: ICON("icon-jabarkas-orcs.webp"),
+  vey: ICON("icon-vey-ogres.webp"),
 };
 const OFFICIAL_SYMBOLS = "generated-session-art/specialty-symbols";
 const OFFICIAL_SYMBOL = {
@@ -89,6 +91,7 @@ const PORTRAIT = {
   korbac: { file: `${A}/hero_boardart-korbac.webp`, crop: { left: 150, top: 60, width: 960, height: 960 } },
   verdish: { file: `${A}/hero_boardart-verdish.webp`, crop: { left: 150, top: 60, width: 960, height: 960 } },
   jabarkas: { file: "generated-session-art/stronghold-jabarkas/jabarkas-portrait.png", crop: { left: 90, top: 20, width: 850, height: 850 } },
+  vey: { file: "generated-session-art/stronghold-vey/vey-portrait.png", crop: { left: 150, top: 30, width: 1000, height: 1000 } },
 };
 
 // ─── the cards ───────────────────────────────────────────────────────────────
@@ -155,6 +158,13 @@ const HEROES = {
     1: [["{ongoing}", "For this Combat, your Orcs units ignore combat penalty and +1", "{attack}", "if the target of attack is adjacent."]],
     4: [["{ongoing}", "For this Combat, your selected unit's", "{health_points}", "is increased by 1."], ...DOUBLES("Orcs")],
     6: [["{ongoing}", "For this Combat, your Orcs units ignore enemy", "{defense}", "if the target of attack is adjacent."]],
+  },
+  // Collector numbers are unreadable on the preview, so none is printed.
+  vey: {
+    faction: "stronghold", title: "Ogres", pic: "window",
+    1: [["{instant}", "Your selected unit gains +1", "{attack}", "."], "OR", ["{instant}", "Your selected unit gains +1", "{defense}", "."], ...DOUBLES("Ogres")],
+    4: [["{ongoing}", "For this Combat, your selected unit's first Attack roll each Combat round is always made with advantage."]],
+    6: [["{ongoing}", "For this Combat, after your Ogres activation, you can perform Ogres", "{unit_other}", "."]],
   },
 };
 
@@ -313,6 +323,60 @@ async function buildJabarkasBoard() {
   writeFileSync(out, await sharp(img).webp({ quality: 92 }).toBuffer());
   console.log("wrote", out);
 }
+// ─── Vey: hero board over Gundula's (Battle Mage 2/1/1/1; Wisdom → Leadership)
+// Gundula's scan keeps its class line, stats, frame and level track. The
+// Leadership label + picture are the real print from Catherine's board, colour-
+// matched to Gundula's leather and feathered in (Catherine's scan sits 8 px lower).
+async function buildVeyBoard() {
+  const template = `${A}/heroes-stronghold-magic-gundula.webp`;
+  const others = ["might-crag_hack", "magic-dessa", "might-shiva", "might-tarnum_stronghold", "might-yog"].map((n) => `${A}/heroes-stronghold-${n}.webp`);
+  const tpl = read(template);
+  const specInner = { left: 1210, top: 405, width: 176, height: 170 };
+  // 1) erase the name, the specialty picture and its label
+  const erase = [
+    await patchOp(tpl, { left: 1275, top: 84, width: 60, height: 50 }, { left: 925, top: 80, width: 350, height: 58 }, 4),
+    await patchOp(tpl, { left: 1400, top: 598, width: 50, height: 48 }, { left: 1205, top: 596, width: 180, height: 50 }, 6),
+  ];
+  let img = await sharp(tpl).composite(erase).png().toBuffer();
+  const draw = [];
+  // 2) Leadership (label + picture) from Catherine's board over Wisdom
+  const cath = `${A}/heroes-castle-might-catherine.webp`;
+  const src = { left: 728, top: 330, width: 314, height: 324 };
+  const dst = { left: 728, top: 322 };
+  const clean = (dy) => [{ left: 1045, top: 340 + dy, width: 110, height: 280 }];
+  const [sC, sG] = [await stats(read(cath), clean(8)), await stats(tpl, clean(0))];
+  const { data, info } = await sharp(read(cath)).extract(src).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let p = 0; p < info.width * info.height; p++) for (let c = 0; c < 3; c++) {
+    const v = (data[p * 3 + c] - sC[c][0]) / sC[c][1] * sG[c][1] + sG[c][0];
+    data[p * 3 + c] = Math.max(0, Math.min(255, Math.round(v)));
+  }
+  const graft = await sharp(data, { raw: { width: info.width, height: info.height, channels: 3 } })
+    .ensureAlpha().composite([{ input: feather(src.width, src.height, 12), blend: "dest-in" }]).png().toBuffer();
+  draw.push({ input: graft, left: dst.left, top: dst.top });
+  // 3) portrait through the frame mask (keeps the scrollwork corner on top)
+  const fm = await frameMask(template, others, { left: 34, top: 36, width: 676, height: 674 });
+  await debugMask("board-vey", fm, template);
+  draw.push(await paintThroughMask(fm, await artForWindow(fm, PORTRAIT.vey.file, { left: 0, top: 0, width: 1254, height: 1254 })));
+  // 4) name
+  draw.push(await textAt("Vey", BOARD_TXT.name, 1101, 127));
+  // 5) specialty: the Ogres picture in the printed recessed slot + label
+  const art = await sharp(read(WINDOW_ART.vey)).resize(specInner.width, specInner.height, { fit: "cover" }).png().toBuffer();
+  const shade = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${specInner.width}" height="${specInner.height}"><defs><filter id="b"><feGaussianBlur stdDeviation="3"/></filter></defs><rect x="0" y="0" width="100%" height="100%" fill="none" stroke="#000" stroke-width="7" stroke-opacity=".55" filter="url(#b)"/></svg>`);
+  draw.push({ input: await sharp(art).composite([{ input: shade }]).png().toBuffer(), left: specInner.left, top: specInner.top });
+  draw.push(await textAt("Ogres", BOARD_TXT.spec, 1297, 634));
+  img = await sharp(img).composite(draw).png().toBuffer();
+  const out = `${A}/heroes-stronghold-magic-vey.webp`;
+  writeFileSync(out, await sharp(img).webp({ quality: 92 }).toBuffer());
+  console.log("wrote", out);
+}
+async function buildVeyPortraits() {
+  const master = PORTRAIT.vey.file;
+  const boardart = `${A}/hero_boardart-vey.webp`;
+  writeFileSync(boardart, await sharp(read(master)).resize(572, 582, { fit: "cover", position: "centre" }).removeAlpha().webp({ quality: 90 }).toBuffer());
+  const portrait = `${A}/hero_portraits-vey.webp`;
+  writeFileSync(portrait, await sharp(read(master)).extract({ left: 137, top: 24, width: 980, height: 1081 }).resize(464, 512, { fit: "cover" }).removeAlpha().webp({ quality: 90 }).toBuffer());
+  console.log("wrote", boardart, portrait);
+}
 async function buildJabarkasPortraits() {
   const master = PORTRAIT.jabarkas.file;
   const boardart = `${A}/hero_boardart-jabarkas.webp`;
@@ -346,8 +410,14 @@ async function buildIcons(list) {
 const only = process.argv[2] || "all";
 const heroes = process.argv[3] ? process.argv[3].split(",") : Object.keys(HEROES);
 for (const h of heroes) if (!HEROES[h]) throw new Error(`unknown hero ${h}`);
-if (!existsSync(PORTRAIT.jabarkas.file)) throw new Error(`missing Codex master ${PORTRAIT.jabarkas.file}`);
-if (only === "all" || only === "portraits") await buildJabarkasPortraits();
-if (only === "all" || only === "board") await buildJabarkasBoard();
+for (const h of ["jabarkas", "vey"]) if (heroes.includes(h) && !existsSync(PORTRAIT[h].file)) throw new Error(`missing Codex master ${PORTRAIT[h].file}`);
+if (only === "all" || only === "portraits") {
+  if (heroes.includes("jabarkas")) await buildJabarkasPortraits();
+  if (heroes.includes("vey")) await buildVeyPortraits();
+}
+if (only === "all" || only === "board") {
+  if (heroes.includes("jabarkas")) await buildJabarkasBoard();
+  if (heroes.includes("vey")) await buildVeyBoard();
+}
 if (only === "all" || only === "cards") for (const h of heroes) for (const lv of [1, 4, 6]) await buildCard(h, lv);
 if (only === "all" || only === "icons") await buildIcons(heroes);

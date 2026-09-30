@@ -1327,10 +1327,14 @@ export function unitAttackRollFixedMinusOne(state: GameState, unit: CombatUnitSt
  * result" tiers.
  */
 export function unitAttackRollAdvantaged(state: GameState, unit: CombatUnitState): boolean {
+  // Vey's Ogres IV covers only the first Attack roll of each combat round.
+  const firstRollSpent = state.combat !== null && state.combat !== undefined &&
+    unit.veyFirstRollSpentRound === state.combat.round;
   return state.activeEffects.some(
     (effect) =>
       effectAppliesToUnit(effect, unit) &&
-      effect.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_ADVANTAGE")
+      effect.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_ADVANTAGE" &&
+        !(modifier.firstAttackRollOnly && firstRollSpent))
   );
 }
 
@@ -1468,9 +1472,9 @@ export function expireEffectsForCombatRoundEnd(state: GameState, round: number):
       (modifier.amountAfterFirstCasterActivation !== undefined || modifier.amountAfterFirstRound !== undefined))) {
       return true;
     }
-    // Durations counted in the CASTER's activations (Brute Bloodlust, Succubus
-    // Fire Shield) can never tick down once the caster is gone: they end at
-    // the first round end after the caster is removed.
+    // Durations counted in the CASTER's activations (every commander "2 rounds"
+    // cast, Succubus Fire Shield) can never tick down once the caster is gone:
+    // they end at the first round end after the caster is removed.
     if (effect.source.type === "unit" && (effect.casterActivationsUntilExpiry !== undefined ||
         effect.modifiers.some((modifier) => modifier.type === "FIRE_SHIELD" &&
           (modifier.amountAfterFirstCasterActivation !== undefined || modifier.amountAfterFirstRound !== undefined)))) {

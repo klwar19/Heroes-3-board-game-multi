@@ -6,7 +6,8 @@ import { commanderCastTierIndex, commanderValuesMagicGrade } from "@/data/comman
 import { commanderCastOf, commanderCastPower, commanderEnemyDamageAmount } from "../commanders";
 import { farTileChoiceValue } from "./far-tile-policy";
 import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
-import { getEnchanterActivationAbility } from "../unit-abilities";
+import { getEnchanterActivationAbility, getUnitAbilityDefinitions } from "../unit-abilities";
+import { getUnitTokens } from "../tokens";
 import type { CombatUnitState, GameAction, GameState, PendingChoice } from "../state";
 import { unitsAdjacent } from "../hex-footprint";
 import { neutralLandingShooterBinds, neutralStrikeCost } from "./neutral-tie-choices";
@@ -1492,6 +1493,23 @@ function scorePositionOption(
     const target = pick?.targetId ? observation.state.combat?.units[pick.targetId] : undefined;
     if (!source || !target) return CHOICE_BASE;
     return CHOICE_BASE + (target.controllerId === source.controllerId ? 35 + unitThreatValue(target) / 10 : 2);
+  }
+
+  // Vey's Ogres VI extra Bloodlust token: the strongest friendly unit that
+  // still has to act this round gets the most out of it; Skip scores low.
+  if (context === "elemental-veterancy" && choice?.type === "OPTION_CHOICE" &&
+      choice.elementalChoice?.request.kind === "vey-extra-token") {
+    const pick = choice.elementalChoice.picks[optionIndex];
+    const target = pick?.targetId ? observation.state.combat?.units[pick.targetId] : undefined;
+    if (!target) return CHOICE_BASE + 2;
+    // A unit keeps only its best Attack token: an equal or better one already
+    // on it makes this token worthless, so rank it below Skip.
+    const source = observation.state.combat?.units[choice.elementalChoice.request.unitId];
+    const placing = source ? getUnitAbilityDefinitions(source).find((ability) => ability.effect?.type === "PLACE_TOKEN_ACTION") : undefined;
+    const amount = placing?.effect?.type === "PLACE_TOKEN_ACTION" ? placing.effect.amount : 0;
+    const held = getUnitTokens(target).filter((token) => token.kind === "attack").reduce((best, token) => Math.max(best, token.amount), 0);
+    if (held >= amount) return CHOICE_BASE;
+    return CHOICE_BASE + 30 + (target.activatedThisRound ? 0 : 15) + Math.min(40, unitThreatValue(target) / 10);
   }
 
   if (context === "brute-combat-draw") {

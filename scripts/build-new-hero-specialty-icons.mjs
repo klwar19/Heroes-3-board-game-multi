@@ -8,9 +8,14 @@ const ICONS = [
   { out: "icon-verdish-first_aid_tent", card: "war_machines-first_aid_tent", left: 110, top: 180, size: 500 },
   { out: "icon-piquedram-gargoyles", card: "units-tower-bronze-gargoyles-few", left: 232, top: 210, size: 450 },
   { out: "icon-urftin-dwarves", card: "units-rampart-bronze-dwarves-few", left: 244, top: 205, size: 440 },
+  // Vey (Stronghold) Ogres: below the printed type glyph, the whole figure.
+  { out: "icon-vey-ogres", card: "units-stronghold-silver-ogres-few", left: 174, top: 222, size: 502 },
 ];
 
+// Optional filter: node scripts/build-new-hero-specialty-icons.mjs icon-vey-ogres
+const only = process.argv[2];
 for (const icon of ICONS) {
+  if (only && icon.out !== only) continue;
   await sharp(`public/assets/${icon.card}.webp`)
     .extract({ left: icon.left, top: icon.top, width: icon.size, height: icon.size })
     .flatten({ background: "#000000" })

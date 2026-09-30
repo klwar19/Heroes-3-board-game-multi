@@ -1214,7 +1214,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // Pack (Steel Elf) additionally provokes NO enemy Retaliation on its attacks
     // (ignores-retaliation).
     few: { attack: 3, defense: 0, health: 3, initiative: 4, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit.", cardImage: "/assets/units-bulwark-bronze-snow_elves-few.webp" },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 7 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack (Steel Elf).", cardImage: "/assets/units-bulwark-bronze-snow_elves-pack.webp" },
     neutral: { attack: 3, defense: 0, health: 4, initiative: 4, cost: { gold: 7 }, abilities: ["ignore-combat-penalties", "ignores-retaliation"], abilityText: "[unit_passive] No combat penalty for attacking an adjacent unit. [unit_attack] This unit's attacks provoke no Retaliation Attack.", cardImage: "/assets/units-neutral-bronze-snow_elves.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Snow_Elf_and_Steel_Elf",
     source: {
@@ -1231,7 +1231,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     type: "ground",
     // engine: Few (Yeti) has no wired ability; Pack (Yeti Runemaster) keeps Recovery.
     few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 6 }, abilities: [], cardImage: "/assets/units-bulwark-silver-yetis-few.webp" },
-    pack: { attack: 3, defense: 2, health: 5, initiative: 8, cost: { gold: 9 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
+    pack: { attack: 3, defense: 2, health: 5, initiative: 7, cost: { gold: 9 }, abilities: ["bulwark-yeti-recover"], abilityText: "[unit_passive] At the start of its activation, this unit recovers from all negative effects.", cardImage: "/assets/units-bulwark-silver-yetis-pack.webp" },
     neutral: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["bulwark-yeti-shrug-off"], abilityText: "[unit_passive] Enemy [ongoing] effects on this unit last for only one round.", cardImage: "/assets/units-neutral-silver-yetis.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Yeti_and_Yeti_Runemaster",
     source: {
@@ -1289,7 +1289,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     // -1/-2 [initiative]" is wired on every side (bulwark-jotunn-flyer-slow-1 on the
     // Few, -2 on the Pack and Neutral → ENEMY_UNIT_TYPE_INITIATIVE_AURA).
     few: { attack: 6, defense: 2, health: 9, initiative: 8, cost: { gold: 22, valuables: 1 }, abilities: ["bulwark-jotunn-flyer-slow-1"], abilityText: "[unit_passive] Enemy [unit_flying] units have -1 [initiative].", cardImage: "/assets/units-bulwark-golden-jotunns-few.webp" },
-    pack: { attack: 7, defense: 2, health: 10, initiative: 11, cost: { gold: 30, valuables: 2 }, abilities: ["bulwark-jotunn-teleport", "bulwark-jotunn-flyer-slow-2"], abilityText: "[activation] At the start of its activation, this unit may teleport one of your other units to an empty space, then act as normal (Teleport). [unit_passive] Enemy [unit_flying] units have -2 [initiative].", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
+    pack: { attack: 7, defense: 2, health: 10, initiative: 10, cost: { gold: 30, valuables: 2 }, abilities: ["bulwark-jotunn-teleport", "bulwark-jotunn-flyer-slow-2"], abilityText: "[activation] At the start of its activation, this unit may teleport one of your other units to an empty space, then act as normal (Teleport). [unit_passive] Enemy [unit_flying] units have -2 [initiative].", cardImage: "/assets/units-bulwark-golden-jotunns-pack.webp" },
     neutral: { attack: 5, defense: 2, health: 6, initiative: 8, cost: { gold: 21 }, abilities: ["bulwark-jotunn-flyer-slow-2"], abilityText: "[unit_passive] Enemy [unit_flying] units have -2 [initiative].", cardImage: "/assets/units-neutral-golden-jotunns.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Jotunn_and_Jotunn_Warlord",
     source: {

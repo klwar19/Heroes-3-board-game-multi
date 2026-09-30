@@ -8,6 +8,7 @@ import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./
 import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation, devilLuckCursed, devilLuckSource, spendDevilLuck } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { drawAfterSpellCast } from "./kastore-sorcery";
+import { consumeFirstAttackRollAdvantage, veyTokenAfterActivation } from "./vey-ogres";
 import { israEmptyPositions, israFetchCandidates, israRemovedUnits } from "./isra-specialties";
 import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
 import { dreadAuraParalyzeCandidates, veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranRandom, veteranTrigger } from "./faction-veterancy";
@@ -598,6 +599,7 @@ import {
   gainRunes,
   gainRunesForAttack,
   gainRunesForDefend,
+  grantRuneReserveRoundIncome,
   grantStartingRunes,
   spendRunes,
 } from "./runes";
@@ -8393,7 +8395,9 @@ function applyOnAttackSelfHeal(
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: heal.abilityId,
-    message: `${attacker.cardName} drains life and heals ${healed} damage.`,
+    message: heal.abilityId === "town-kobold-battle-mend"
+      ? `${attacker.cardName} catches its breath after the blow and heals ${healed} damage.`
+      : `${attacker.cardName} drains life and heals ${healed} damage.`,
   });
   appendEvent(state, {
     type: "DAMAGE_HEALED",
@@ -11528,6 +11532,9 @@ function startKorbacDragonFliesTurn(
   }
   delete attacker.bombardment;
   markActivatedThisRound(attacker);
+  // This hand-off skips advanceActiveUnit, so queue Vey's Ogres VI offer for
+  // the attacker here (it opens before the Dragon Flies act).
+  veyTokenAfterActivation(state, attacker);
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
   appendEvent(state, { type: "UNIT_ACTIVATION_ENDED", playerId: attacker.controllerId, unitId: attacker.id });
   dragonFlies.activatedThisRound = false;
@@ -15049,6 +15056,9 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   }
 
   const activeUnit = state.combat.units[unitId];
+  // Vey's Ogres VI: only an activation that really opens (below, after every
+  // skip check) arms the after-activation token offer.
+  activeUnit.veyTokenOfferArmed = false;
   // Sticky initiative band for cross-side alternation (see selectActivationStep):
   // capture NOW, before a mid-activation Pack→Few flip or effect expiry can
   // change effectiveInitiative and drop this unit out of its speed tier.
@@ -15081,7 +15091,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   const waitedReactivation = Boolean(
     state.combat.waitPhase && activeUnit?.waitPending,
   );
-  if (!waitedReactivation && (activeUnit.commanderSlug === "succubus" || activeUnit.commanderSlug === "brute")) {
+  // Commander casts whose duration counts from the commander's own turn (every
+  // "2 rounds" cast: Brute/Regent/Demon Ancestor Bloodlust, Succubus Fire Shield,
+  // Shaman Haste, Sea Marshal Slow, Astral Counterstrike, Sword Saint Sword
+  // Intent) tick here.
+  if (!waitedReactivation && activeUnit.commanderSlug) {
     appendExpiredEffectEvents(
       state,
       advanceCasterEffectsAtActivationStart(state, activeUnit.id),
@@ -15266,6 +15280,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     }
   }
 
+  activeUnit.veyTokenOfferArmed = true;
   appendEvent(state, {
     type: "UNIT_ACTIVATION_STARTED",
     unitId: activeUnit.id,
@@ -15807,6 +15822,8 @@ function advanceActiveUnit(state: GameState): void {
   if (finished?.activatedThisRound) {
     elementalFinishActivation(state, finished);
     neutralTownFinishActivation(state, finished);
+    // Vey's Ogres VI: queue the optional extra token action.
+    veyTokenAfterActivation(state, finished);
   }
   if (combat.elementalChoices?.length && (state.stack.length || state.pendingChoice || state.reactionWindow)) {
     combat.elementalAwaitingAdvance = true;
@@ -16059,6 +16076,8 @@ function skipUnitActivation(state: GameState, unit: CombatUnitState): void {
     return;
   }
 
+  // A skipped activation is not an Ogres activation for Vey's Ogres VI.
+  unit.veyTokenOfferArmed = false;
   markActivatedThisRound(unit);
   appendExpiredEffectEvents(
     state,
@@ -18326,6 +18345,9 @@ function resolveAttackStackItem(
   if (!combat || !details) {
     return;
   }
+  // Vey's Ogres IV: this attack's roll mode is already fixed, so this round's
+  // first-roll advantage is spent now and cannot reach a later roll this round.
+  consumeFirstAttackRollAdvantage(state, details.attacker);
 
   // Mutsuki Trick Mine fires before the first enemy melee attack reaches her.
   // Spending is recorded before damage so a lethal/flip path cannot retrigger it.
@@ -35278,12 +35300,15 @@ function resolveCommanderCast(
       break;
     }
     case "precision":
+      // Sword Intent's 2 rounds count from the commander's turn: it ends at the
+      // Sword Saint's second following activation.
       createActiveEffect(
         state,
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
-          duration: { type: "combat-rounds", rounds: 2 },
+          duration: { type: "combat" },
+          casterActivationsUntilExpiry: 2,
           polarity: "positive",
           removable: true,
           modifiers: [
@@ -35339,18 +35364,19 @@ function resolveCommanderCast(
           });
         }
       }
+      // "two-rounds" counts from the commander's turn exactly like the Brute's
+      // caster-two-activations: it ends at the caster's second following activation.
       createActiveEffect(
         state,
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
           duration:
-            effect.duration === "caster-two-activations"
+            effect.duration === "caster-two-activations" || effect.duration === "two-rounds"
               ? { type: "combat" }
-              : effect.duration === "two-rounds"
-              ? { type: "combat-rounds", rounds: 2 }
               : { type: "current-combat-round" },
-          ...(effect.duration === "caster-two-activations" ? { casterActivationsUntilExpiry: 2 } : {}),
+          ...(effect.duration === "caster-two-activations" || effect.duration === "two-rounds"
+            ? { casterActivationsUntilExpiry: 2 } : {}),
           polarity: "positive",
           removable: true,
           modifiers: [
@@ -35393,15 +35419,17 @@ function resolveCommanderCast(
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
           duration:
-            span === "caster-two-activations"
+            span === "caster-two-activations" || span === "two-rounds" || span === "caster-one-activation"
               ? { type: "combat" }
               : span === "combat"
               ? { type: "combat" }
               : span === "three-rounds"
                 ? { type: "combat-rounds", rounds: 3 }
-                : span === "two-rounds"
-                  ? { type: "combat-rounds", rounds: 2 }
-                  : { type: "current-combat-round" },
+                : { type: "current-combat-round" },
+          // "two-rounds" / "caster-one-activation" count from the commander's
+          // turn: they end at the caster's second / next following activation.
+          ...(span === "two-rounds" ? { casterActivationsUntilExpiry: 2 }
+            : span === "caster-one-activation" ? { casterActivationsUntilExpiry: 1 } : {}),
           polarity: "positive",
           removable: true,
           modifiers,
@@ -35457,9 +35485,12 @@ function resolveCommanderCast(
           amount: vsSlower,
         });
       }
+      // A `durationRounds` cast counts from the commander's turn: it ends at
+      // the caster's Nth following activation (opening casts, resolved in
+      // commanders.ts, keep plain combat-round counting).
       const duration =
         effect.durationRounds !== undefined
-          ? { type: "combat-rounds" as const, rounds: effect.durationRounds }
+          ? { type: "combat" as const }
           : effect.durationByPower?.[tier] === "combat"
             ? { type: "combat" as const }
             : { type: "current-combat-round" as const };
@@ -35469,6 +35500,8 @@ function resolveCommanderCast(
           name: effectName,
           scope: "unit",
           duration,
+          ...(effect.durationRounds !== undefined
+            ? { casterActivationsUntilExpiry: effect.durationRounds } : {}),
           polarity: amount >= 0 ? "positive" : "negative",
           removable: true,
           modifiers,
@@ -35497,12 +35530,13 @@ function resolveCommanderCast(
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
+          // Counterstrike's 2 rounds count from the commander's turn: it ends
+          // at the Astral Spirit's second following activation.
           duration:
-            astralCounterstrike
-              ? { type: "combat-rounds", rounds: 2 }
-              : effect.duration === "combat"
+            astralCounterstrike || effect.duration === "combat"
               ? { type: "combat" }
               : { type: "current-combat-round" },
+          ...(astralCounterstrike ? { casterActivationsUntilExpiry: 2 } : {}),
           polarity: "positive",
           removable: true,
           modifiers: [
@@ -37929,7 +37963,12 @@ function defendUnit(
 
   unit.defenseToken = true;
   markActivatedThisRound(unit, true);
-  if (factionVeterancy(unit, "defend-heal")) veteranHeal(state, unit, 1, "veteran-zombie-rest");
+  // Grave Rest (Zombies) / Snowbound Rest (Bulwark Yetis): credit the heal to
+  // whichever defend-heal ability the unit actually holds.
+  const defendRest = getUnitAbilityDefinitions(unit).find((ability) =>
+    ability.implementationStatus === "implemented" &&
+    ability.effect?.type === "FACTION_VETERANCY" && ability.effect.mechanic === "defend-heal");
+  if (defendRest) veteranHeal(state, unit, 1, defendRest.id);
   const defendHeal = getUnitAbilityDefinitions(unit).reduce(
     (amount, ability) => amount + (ability.effect?.type === "DEFEND_HEAL" ? ability.effect.amount : 0),
     0,
@@ -38160,6 +38199,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   applyLionRoundStartBarrage(state);
   applyAnimeCombatRoundPenalties(state);
   townCombatRoundStart(state);
+  grantRuneReserveRoundIncome(state);
   forgeCombatRoundStart(state);
   // Forge Jump Troopers: resolve round-start dice before the first activation.
   applyForgeRoundStartInitiativeRolls(state);

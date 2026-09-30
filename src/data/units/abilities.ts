@@ -34,7 +34,7 @@ export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd
   | "black-dragon-return" | "hydra-venom-bite" | "hydra-venom-ward" | "wyvern-venom-hunter" | "devil-petrify"
   | "seaman-survival-gold" | "ayssid-slow" | "sorceress-ranged-mend" | "sorceress-artifact-tax"
   | "haspid-toxic-hide" | "haspid-unstoppable-counter" | "kobold-rune-step" | "kobold-armored-prey" | "ram-spell-draw" | "ram-trample"
-  | "snow-elf-rune-strike" | "jotunn-rune-hide" | "jotunn-rune-bolt" | "mammoth-rune-mend"
+  | "snow-elf-rune-strike" | "snow-elf-bleed" | "jotunn-rune-hide" | "jotunn-rune-bolt" | "mammoth-rune-mend"
   | "mammoth-hunter" | "mammoth-last-stand" | "centaur-retaliation" | "behemoth-odd-defense" | "minotaur-last-stand" | "skeleton-last-stand"
   | "basilisk-lower-roll" | "nix-guarded" | "pit-demon-bond" | "haspid-aggressive-drill"
   | "engineer-attack-support" | "armadillo-momentum" | "sandworm-burrow" | "grenadier-guard-heal" | "automaton-round-blast" | "automaton-detonation-repair";
@@ -759,6 +759,11 @@ export type UnitAbilityEffectDefinition =
        */
       type: "ATTACK_ROLL_ADVANTAGE";
       ownAttackOnly?: boolean;
+      /**
+       * Jotunns R2 Avalanche Charge: only on the unit's OWN attack made after it
+       * moved this activation (never on a Retaliation Attack).
+       */
+      afterMoveOnly?: boolean;
       /** Optional retaliation-only variant (Doom Mancubus). */
       retaliationOnly?: boolean;
     }
@@ -1969,7 +1974,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-boar-regeneration": { id: "veteran-boar-regeneration", name: "Boar Vitality", text: "At the start of this unit's activation, remove 1 damage from it.", effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 1 }, implementationStatus: "implemented" },
   "veteran-boar-armor-break": { id: "veteran-boar-armor-break", name: "Tusks Through Armor", text: "+1 Attack against a unit with 1 or more Defense.", effect: { type: "ATTACK_BONUS_VS_DEFENSE_AT_LEAST", minimum: 1, amount: 1 }, implementationStatus: "implemented" },
   "veteran-boar-brace": { id: "veteran-boar-brace", name: "Brace", text: "+1 Defense, plus 1 additional Defense when attacked by a unit with 5 or more Attack.", effect: { type: "DEFENSE_BONUS_WHEN_ATTACKED_BY_ATTACK", minimumAttack: 5, amount: 1 }, implementationStatus: "implemented" },
-  "veteran-boar-pierce": { id: "veteran-boar-pierce", name: "Deep Tusks", text: "Ignore 2 of the target's Defense on this unit's attacks and Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 }, implementationStatus: "implemented" },
+  "veteran-boar-pierce": { id: "veteran-boar-pierce", name: "Deep Tusks", text: "[unit_attack] Ignore 2 of the target's Defense on this unit's own attacks, not on Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 }, implementationStatus: "implemented" },
   "veteran-dracolich-death-heal": { id: "veteran-dracolich-death-heal", name: "Death Feast", text: "+1 Health. Whenever a unit on the battlefield dies, remove 1 damage from this unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "dracolich-death-heal" }, implementationStatus: "implemented" },
   "veteran-nomad-hardcap": { id: "veteran-nomad-hardcap", name: "Hardy Nomad", text: "This unit cannot take more than 2 damage from a Spell, Specialty, or attack.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 2, includeSpells: true }, implementationStatus: "implemented" },
   "veteran-nomad-aura": { id: "veteran-nomad-aura", name: "Disruptive Presence", text: "Adjacent enemies have -1 Attack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "nomad-aura" }, implementationStatus: "implemented" },
@@ -4343,7 +4348,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-familiar-backlash": { id: "town-familiar-backlash", name: "Impish Backlash", text: "Whenever an enemy casts a Spell, deal 1 damage to a random enemy unit.", effect: { type: "TOWN_VETERANCY", mechanic: "familiar-backlash" }, implementationStatus: "implemented" },
   "town-demon-paralyze": { id: "town-demon-paralyze", name: "Petrifying Hide", text: "After an adjacent attacker resolves +1 on its Attack die, paralyze it.", effect: { type: "TOWN_VETERANCY", mechanic: "demon-paralyze" }, implementationStatus: "implemented" },
   "town-pit-mend": { id: "town-pit-mend", name: "Feed on the Fallen", text: "Whenever another ally dies, loses a Stack, or changes from Pack to Few, heal 1 HP.", effect: { type: "TOWN_VETERANCY", mechanic: "pit-mend" }, implementationStatus: "implemented" },
-  "town-devil-luck": { id: "town-devil-luck", name: "Devil's Luck", text: "Twice per combat round, when an enemy unit resolves +1 on its Attack die, that attack gets -1 Attack and the unit is cursed until the end of the next combat round (2 rounds): each +1 it resolves on its Attack die gets -1 Attack. The curse does not stack (always a single -1) and a cursed unit is not cursed again.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-luck" }, implementationStatus: "implemented" },
+  "town-devil-luck": { id: "town-devil-luck", name: "Devil's Luck", text: "Twice per combat round, when an enemy unit resolves +1 on its Attack die, that attack gets -1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-luck" }, implementationStatus: "implemented" },
   "town-devil-petrify": { id: "town-devil-petrify", name: "Petrifying Curse", text: "On this unit's own attack: on a -1 Attack die result, Paralyze the enemy it attacked (it turns to stone); on a 0 result, that attack gets +1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-petrify" }, implementationStatus: "implemented" },
   "town-devil-slow": { id: "town-devil-slow", name: "Crippling Strike", text: "Attacked enemies can move at most 2 spaces during their next activation.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-slow" }, implementationStatus: "implemented" },
   "town-devil-draw": { id: "town-devil-draw", name: "Spoils of Death", text: "After defeating an enemy, including Pack to Few or a lost Stack, draw 1 card, at most 3 per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-draw" }, implementationStatus: "implemented" },
@@ -4378,14 +4383,21 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-kobold-armored-prey": { id: "town-kobold-armored-prey", name: "Armored Prey", text: "+2 Attack against units with 2 or more Defense.", effect: { type: "TOWN_VETERANCY", mechanic: "kobold-armored-prey" }, implementationStatus: "implemented" },
   "town-ram-spell-draw": { id: "town-ram-spell-draw", name: "Runic Inspiration", text: "Whenever you cast a Spell from any source, draw 1 card, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "ram-spell-draw" }, implementationStatus: "implemented" },
   "town-ram-trample": { id: "town-ram-trample", name: "Trample", text: "After this unit moves, deal 1 damage to an adjacent enemy unit.", effect: { type: "TOWN_VETERANCY", mechanic: "ram-trample" }, implementationStatus: "implemented" },
-  "town-shaman-teleport-charge": { id: "town-shaman-teleport-charge", name: "Runecharged Step", text: "As a regular movement, this unit can move to any empty space. Each time it teleports, gain +1 Attack this combat (maximum +2).", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
-  "town-snow-elf-rune-strike": { id: "town-snow-elf-rune-strike", name: "Rune-Tipped Strike", text: "After this unit's own attack, gain 2 additional Runes.", effect: { type: "TOWN_VETERANCY", mechanic: "snow-elf-rune-strike" }, implementationStatus: "implemented" },
+  "town-shaman-teleport-charge": { id: "town-shaman-teleport-charge", name: "Runecharged Step", text: "As a regular movement, this unit can move to any empty space. After it teleports, its next own attack gains +1 Attack (not on Retaliation Attacks; does not stack).", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
+  "town-snow-elf-rune-strike": { id: "town-snow-elf-rune-strike", name: "Rune-Tipped Strike", text: "Gain 1 additional Rune after this unit's own attack, and 1 when an enemy attacks it (not a Retaliation Attack). At most 2 Runes per combat round from this ability.", effect: { type: "TOWN_VETERANCY", mechanic: "snow-elf-rune-strike" }, implementationStatus: "implemented" },
+  "town-snow-elf-bleed": { id: "town-snow-elf-bleed", name: "Frostbite Bleed", text: "When this unit's Attack die resolves 0 or -1 on any attack (Retaliation Attacks included), the enemy it attacked bleeds: it loses 1 HP at the start of the next combat round. A bleed does not stack.", effect: { type: "TOWN_VETERANCY", mechanic: "snow-elf-bleed" }, implementationStatus: "implemented" },
   "town-yeti-specialty-aura": { id: "town-yeti-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Spell and Specialty cards.", effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
   "town-yeti-spell-specialty-aura": { id: "town-yeti-spell-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Spell and Specialty cards.", effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
   "veteran-magma-overflow": { id: "veteran-magma-overflow", name: "Molten Body", text: "This unit takes at most 4 damage from each attack or Spell hit. Half the damage prevented by this cap is returned to the attacker; for a Spell, return it to a random enemy unit.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4, reflectOverflow: true, includeSpells: true }, implementationStatus: "implemented" },
   "town-jotunn-rune-hide": { id: "town-jotunn-rune-hide", name: "Runes from Pain", text: "Whenever this unit is attacked, gain 2 Runes.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-hide" }, implementationStatus: "implemented" },
-  "town-jotunn-rune-bolt": { id: "town-jotunn-rune-bolt", name: "Rune Bolt", text: "At activation, you may spend 1 Rune to deal 1 damage, or 2 Runes to deal 2 damage, to a chosen unit.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-bolt" }, implementationStatus: "implemented" },
-  "town-mammoth-rune-mend": { id: "town-mammoth-rune-mend", name: "Rune Mend", text: "At activation, heal 1 HP from this unit for free. Then you may spend 1 Rune to heal 1 additional HP.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-rune-mend" }, implementationStatus: "implemented" },
+  "town-jotunn-rune-bolt": { id: "town-jotunn-rune-bolt", name: "Rune Bolt", text: "At activation, you may spend 1 Rune to deal 1 damage to a chosen unit.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-bolt" }, implementationStatus: "implemented" },
+  // Bulwark Kobolds R1 (user 2026-09-30): the Vampires' own-attack self-heal path.
+  "town-kobold-battle-mend": { id: "town-kobold-battle-mend", name: "Battle Mend", text: "[unit_attack] After this unit's own attack (not a Retaliation Attack), remove 1 damage from it if it survives.", effect: { type: "ON_ATTACK_HEAL_SELF", amount: 1 }, implementationStatus: "implemented" },
+  // Bulwark Yetis R1 (user 2026-09-30): the Defend-action heal (Grave Rest's path).
+  "town-yeti-defend-mend": { id: "town-yeti-defend-mend", name: "Snowbound Rest", text: "When this unit takes the Defend action, heal 1 HP.", effect: { type: "FACTION_VETERANCY", mechanic: "defend-heal" }, implementationStatus: "implemented" },
+  "town-mammoth-rune-mend": { id: "town-mammoth-rune-mend", name: "Rune Mend", text: "At activation, you may spend 1 Rune to heal 1 HP from this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-rune-mend" }, implementationStatus: "implemented" },
+  "town-jotunn-avalanche-charge": { id: "town-jotunn-avalanche-charge", name: "Avalanche Charge", text: "[unit_attack] When this unit attacks after moving this activation, roll 2 Attack dice and resolve the higher outcome (not on Retaliation Attacks).", effect: { type: "ATTACK_ROLL_ADVANTAGE", ownAttackOnly: true, afterMoveOnly: true }, implementationStatus: "implemented" },
+  "town-jotunn-sundering-strike": { id: "town-jotunn-sundering-strike", name: "Sundering Strike", text: "[unit_attack] Ignore 1 of the target's Defense on this unit's own attacks, not on Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 }, implementationStatus: "implemented" },
   "town-mammoth-hunter": { id: "town-mammoth-hunter", name: "Trampling Hunter", text: "+1 Attack against ground and ranged units.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-hunter" }, implementationStatus: "implemented" },
   "town-mammoth-last-stand": { id: "town-mammoth-last-stand", name: "Lasting Colossus", text: "Once per combat, when an attack would defeat this unit, it survives at 1 Health and gains a Defense token.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-last-stand" }, implementationStatus: "implemented" },
   "town-familiar-pierce": { id: "town-familiar-pierce", name: "Rending Claws", text: "Attacks and retaliation ignore 2 of the target’s Defense (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2, allAttacks: true }, implementationStatus: "implemented" },
@@ -4521,7 +4533,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-defense-pierce": {
     id: "veteran-defense-pierce",
     name: "Armor-Piercing Drill",
-    text: "[unit_passive] Ignore 1 of the target's Defense on this unit's attacks and Retaliation Attacks (minimum 0).",
+    text: "[unit_attack] Ignore 1 of the target's Defense on this unit's own attacks, not on Retaliation Attacks (minimum 0).",
     effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 },
     implementationStatus: "implemented"
   },
@@ -4532,7 +4544,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ATTACK_HEAL_SELF", amount: 1 },
     implementationStatus: "implemented"
   },
-  "veteran-defense-pierce-2": { id: "veteran-defense-pierce-2", name: "Crushing Talons", text: "Ignore 2 of the target's Defense on this unit's attacks and Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 }, implementationStatus: "implemented" },
+  "veteran-defense-pierce-2": { id: "veteran-defense-pierce-2", name: "Crushing Talons", text: "[unit_attack] Ignore 2 of the target's Defense on this unit's own attacks, not on Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 }, implementationStatus: "implemented" },
   "veteran-centaur-retaliation": { id: "veteran-centaur-retaliation", name: "Retaliatory Charge", text: "After retaliating, this unit gains +1 Attack (maximum +3).", effect: { type: "TOWN_VETERANCY", mechanic: "centaur-retaliation" }, implementationStatus: "implemented" },
   "veteran-behemoth-odd-defense": { id: "veteran-behemoth-odd-defense", name: "Odd-Hour Hide", text: "On odd-numbered combat rounds, this unit gains +1 Defense when attacked, but not against Retaliation Attacks.", effect: { type: "TOWN_VETERANCY", mechanic: "behemoth-odd-defense" }, implementationStatus: "implemented" },
   "veteran-minotaur-last-stand": { id: "veteran-minotaur-last-stand", name: "Labyrinthine Survival", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "minotaur-last-stand" }, implementationStatus: "implemented" },

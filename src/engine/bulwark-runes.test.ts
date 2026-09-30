@@ -12,14 +12,15 @@ import {
   RUNE_GAIN_DEFEND,
   RUNE_GAIN_RETALIATION,
   RUNE_LEVEL_THRESHOLDS,
+  RUNE_RESERVE_AT_MAX_LEVEL,
   RUNE_STARTING_BASE,
-  RUNE_SURPLUS_MAX,
   RUNE_THRESHOLD,
   availableRunes,
   effectiveRuneLevel,
   gainRunes,
   getRuneSummary,
   getRuneTrack,
+  grantRuneReserveRoundIncome,
   runeLevelForCount,
   runeTrackHasRoom,
   seedRunesForCombat,
@@ -116,8 +117,9 @@ describe("Bulwark Runes — level thresholds and army-wide buffs", () => {
     expect(getActiveAttackBonus(state, ctx)).toBe(0);
     gainRunes(state, "p1", RUNE_LEVEL_THRESHOLDS[0]); // 9 → Level 1
 
-    // Reaching nine applies Level 1, resets the main track and banks the reserve.
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 0, reserve: RUNE_SURPLUS_MAX, level: 1 });
+    // Reaching nine applies Level 1, resets the main track and — Level 1 being
+    // this player's max (no rune building) — banks the 3-Rune reserve.
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 0, reserve: RUNE_RESERVE_AT_MAX_LEVEL, level: 1 });
     expect(getActiveAttackBonus(state, ctx)).toBe(1);
     // Level 2/3 buffs must NOT be active yet (and the cap is 1 with no building).
     expect(getActiveDefenseBonus(state, attacker)).toBe(0);
@@ -268,8 +270,9 @@ describe("Bulwark Runes — gained by combat actions (house-rule rates)", () => 
 
     const after = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: unit.id });
     expect(RUNE_GAIN_DEFEND).toBe(3);
-    // 6 + 3 = 9 Runes = Level 1: the track resets and the reserve is credited…
-    expect(getRuneSummary(after, "p1")).toMatchObject({ count: 0, reserve: RUNE_SURPLUS_MAX, level: 1 });
+    // 6 + 3 = 9 Runes = Level 1 (the max without a rune building): the track
+    // resets and the max-level reserve is credited…
+    expect(getRuneSummary(after, "p1")).toMatchObject({ count: 0, reserve: RUNE_RESERVE_AT_MAX_LEVEL, level: 1 });
     // …and the army-wide +1 Attack is live.
     expect(getActiveAttackBonus(after, {
       attacker: after.combat!.units.unit_p1_marksmen,
@@ -298,13 +301,15 @@ describe("Bulwark Runes — gained by combat actions (house-rule rates)", () => 
     expect(initiativeBonus(state)).toBe(0);
     // Seventeen Runes earned so far: Level 1 (9) done, the second cycle is one
     // short of nine, so the Initiative buff is not on yet.
+    // Level 1 is below the Sieidi cap (2), so it credits no reserve.
     gainRunes(state, "p1", 17);
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 8, reserve: RUNE_SURPLUS_MAX, level: 1 });
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 8, reserve: 0, level: 1 });
     expect(initiativeBonus(state)).toBe(0);
 
-    // …then a REAL attack action banks the ninth Rune of the cycle and crosses into Level 2.
+    // …then a REAL attack action banks the ninth Rune of the cycle and crosses
+    // into Level 2 — the max — which alone credits the reserve.
     const after = settle(applyOk(state, RANGED_ATTACK));
-    expect(getRuneSummary(after, "p1")).toMatchObject({ count: 0, reserve: RUNE_SURPLUS_MAX * 2, level: 2 });
+    expect(getRuneSummary(after, "p1")).toMatchObject({ count: 0, reserve: RUNE_RESERVE_AT_MAX_LEVEL, level: 2 });
     expect(effectiveRuneLevel(after, "p1")).toBe(2);
     expect(initiativeBonus(after)).toBe(2); // observable: the climb turned Initiative on
   });
@@ -576,13 +581,13 @@ describe("Bulwark Runes — PvP / multiplayer", () => {
     state.combat!.attackerPlayerId = "p1";
     state.combat!.defenderPlayerId = "p2";
     seedRunesForCombat(state);
-    gainRunes(state, "p1", RUNE_THRESHOLD * 3 + 2); // 29 = Level 3 with the Altar, 2 on the track, 15 reserve
+    gainRunes(state, "p1", RUNE_THRESHOLD * 3 + 2); // 29 = Level 3 with the Altar, 2 on the track, 3 reserve
 
     // p2 (the opponent) sees p1's Rune count AND p1's town buildings in their
     // redacted view — the two inputs getRuneTrack needs — so the HUD draws p1's
     // track on p2's client. (Runes/buildings are public; only hands etc. redact.)
     const p2View = getPlayerView(state, "p2");
-    expect(p2View.combat?.runes?.p1).toMatchObject({ count: 2, reserve: RUNE_SURPLUS_MAX * 3, appliedLevel: 3 });
+    expect(p2View.combat?.runes?.p1).toMatchObject({ count: 2, reserve: RUNE_RESERVE_AT_MAX_LEVEL, appliedLevel: 3 });
     expect(p2View.towns.town_p1.buildings).toEqual(
       expect.arrayContaining(["bulwark.sieidi", "bulwark.altar"])
     );
@@ -597,9 +602,9 @@ describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
     const baseTrack = getRuneTrack(base, "p1");
     expect(baseTrack).toMatchObject({
       count: 0,
-      reserve: RUNE_SURPLUS_MAX,
-      available: RUNE_SURPLUS_MAX,
-      surplus: RUNE_SURPLUS_MAX,
+      reserve: RUNE_RESERVE_AT_MAX_LEVEL,
+      available: RUNE_RESERVE_AT_MAX_LEVEL,
+      surplus: RUNE_RESERVE_AT_MAX_LEVEL,
       level: 1,
       levelCap: 1,
       max: RUNE_THRESHOLD,
@@ -614,7 +619,7 @@ describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
     sieidi.towns.town_p1.buildings.push("bulwark.sieidi");
     gainRunes(sieidi, "p1", RUNE_LEVEL_THRESHOLDS[0]); // 9
     const sieidiTrack = getRuneTrack(sieidi, "p1");
-    expect(sieidiTrack).toMatchObject({ level: 1, levelCap: 2, nextThreshold: RUNE_THRESHOLD });
+    expect(sieidiTrack).toMatchObject({ level: 1, levelCap: 2, nextThreshold: RUNE_THRESHOLD, reserve: 0 });
     expect(sieidiTrack.levels.map((l) => l.status)).toEqual(["active", "pending", "locked"]);
 
     // Altar built and 27 Runes earned: all three levels active.
@@ -622,7 +627,7 @@ describe("Bulwark Runes — getRuneTrack (combat UI readout)", () => {
     altar.towns.town_p1.buildings.push("bulwark.sieidi", "bulwark.altar");
     gainRunes(altar, "p1", RUNE_THRESHOLD * 3); // 27
     const altarTrack = getRuneTrack(altar, "p1");
-    expect(altarTrack).toMatchObject({ count: 0, reserve: RUNE_SURPLUS_MAX * 3, level: 3, levelCap: 3, nextThreshold: null });
+    expect(altarTrack).toMatchObject({ count: 0, reserve: RUNE_RESERVE_AT_MAX_LEVEL, level: 3, levelCap: 3, nextThreshold: null });
     expect(altarTrack.levels.map((l) => l.status)).toEqual(["active", "active", "active"]);
   });
 });
@@ -632,23 +637,66 @@ describe("Bulwark Runes — nine-Rune track, reserve and building grants", () =>
     return { kind: "neutral", heroId: "hero_p1", fieldId: "0,0", difficulty: 1, hasAzure: false };
   }
 
-  it("reaching 9 applies Level 1, resets the track to 0 and credits a 5-Rune reserve", () => {
+  it("reaching 9 applies Level 1 and resets the track to 0; below the cap it credits no reserve", () => {
     const state = bulwarkState();
     state.towns.town_p1.buildings.push("bulwark.sieidi"); // cap 2, so the next cycle also has room
     gainRunes(state, "p1", 8);
     expect(getRuneSummary(state, "p1")).toMatchObject({ count: 8, reserve: 0, level: 0 });
     gainRunes(state, "p1", 3); // 8 + 3: nine completes Level 1, the two extra carry over
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 2, reserve: RUNE_SURPLUS_MAX, available: 7, level: 1 });
+    // Level 1 is not the Sieidi player's max level (2): no reserve (the old rule credited 5).
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 2, reserve: 0, available: 2, level: 1 });
     expect(state.activeEffects.filter((effect) => effect.name === "Rune Power")).toHaveLength(1);
   });
 
-  it("spendRunes takes from the reserve first, then the main track, and never revokes a level", () => {
-    const state = bulwarkState();
-    state.towns.town_p1.buildings.push("bulwark.sieidi");
-    gainRunes(state, "p1", RUNE_THRESHOLD + 3); // Level 1, track 3, reserve 5
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 3, reserve: 5, level: 1 });
+  it("only the highest unlocked level credits the 3-Rune reserve (cap 1 / 2 / 3)", () => {
+    expect(RUNE_RESERVE_AT_MAX_LEVEL).toBe(3);
+    const reservesPerLevel = (buildings: string[]): number[] => {
+      const state = bulwarkState();
+      state.towns.town_p1.buildings.push(...buildings);
+      const reserves: number[] = [];
+      for (let level = 1; level <= buildings.length + 1; level += 1) {
+        gainRunes(state, "p1", RUNE_THRESHOLD);
+        expect(effectiveRuneLevel(state, "p1")).toBe(level);
+        reserves.push(getRuneSummary(state, "p1").reserve);
+      }
+      return reserves;
+    };
+    expect(reservesPerLevel([])).toEqual([3]);
+    expect(reservesPerLevel(["bulwark.sieidi"])).toEqual([0, 3]);
+    expect(reservesPerLevel(["bulwark.sieidi", "bulwark.altar"])).toEqual([0, 0, 3]);
+  });
 
-    expect(spendRunes(state, "p1", 4)).toBe(true); // all from the reserve
+  it("after the max-level round, each later round start adds +2 reserve on odd rounds and +1 on even rounds", () => {
+    const state = bulwarkState(); // cap 1
+    state.combat!.round = 1;
+    gainRunes(state, "p1", RUNE_THRESHOLD); // max level reached in round 1 → reserve 3
+    expect(state.combat!.runes!.p1).toMatchObject({ reserve: RUNE_RESERVE_AT_MAX_LEVEL, maxLevelRound: 1 });
+    // The round in which the max level was reached pays no income.
+    grantRuneReserveRoundIncome(state);
+    expect(getRuneSummary(state, "p1").reserve).toBe(3);
+    state.combat!.round = 2; // even → +1
+    grantRuneReserveRoundIncome(state);
+    expect(getRuneSummary(state, "p1").reserve).toBe(4);
+    state.combat!.round = 3; // odd → +2
+    grantRuneReserveRoundIncome(state);
+    expect(getRuneSummary(state, "p1").reserve).toBe(6);
+
+    // CONTROL: below the max level (Sieidi, Level 1 of 2) there is no income.
+    const below = bulwarkState();
+    below.towns.town_p1.buildings.push("bulwark.sieidi");
+    below.combat!.round = 1;
+    gainRunes(below, "p1", RUNE_THRESHOLD);
+    below.combat!.round = 3;
+    grantRuneReserveRoundIncome(below);
+    expect(getRuneSummary(below, "p1")).toMatchObject({ reserve: 0, level: 1 });
+  });
+
+  it("spendRunes takes from the reserve first, then the main track, and never revokes a level", () => {
+    const state = bulwarkState(); // cap 1: Level 1 is the max, so it credits the reserve
+    gainRunes(state, "p1", RUNE_THRESHOLD + 3); // Level 1, track 3, reserve 3
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 3, reserve: 3, level: 1 });
+
+    expect(spendRunes(state, "p1", 2)).toBe(true); // all from the reserve
     expect(getRuneSummary(state, "p1")).toMatchObject({ count: 3, reserve: 1 });
     expect(spendRunes(state, "p1", 3)).toBe(true); // 1 reserve + 2 track
     expect(getRuneSummary(state, "p1")).toMatchObject({ count: 1, reserve: 0, level: 1 });
@@ -662,10 +710,10 @@ describe("Bulwark Runes — nine-Rune track, reserve and building grants", () =>
 
   it("with levelCap 1 (no rune building) the track stops at 9 after Level 1 and has no room", () => {
     const capped = bulwarkState();
-    gainRunes(capped, "p1", RUNE_THRESHOLD); // Level 1 → track 0, reserve 5
+    gainRunes(capped, "p1", RUNE_THRESHOLD); // Level 1 → track 0, reserve 3
     expect(runeTrackHasRoom(capped, "p1")).toBe(true);
     gainRunes(capped, "p1", RUNE_THRESHOLD + 4); // fills the track to 9, the rest is lost
-    expect(getRuneSummary(capped, "p1")).toMatchObject({ count: RUNE_THRESHOLD, reserve: RUNE_SURPLUS_MAX, level: 1 });
+    expect(getRuneSummary(capped, "p1")).toMatchObject({ count: RUNE_THRESHOLD, reserve: RUNE_RESERVE_AT_MAX_LEVEL, level: 1 });
     expect(runeTrackHasRoom(capped, "p1")).toBe(false);
     expect(capped.activeEffects.filter((effect) => effect.name === "Rune Power")).toHaveLength(1);
     expect(capped.activeEffects.some((effect) => effect.name === "Rune Swiftness")).toBe(false);
@@ -675,7 +723,8 @@ describe("Bulwark Runes — nine-Rune track, reserve and building grants", () =>
     sieidi.towns.town_p1.buildings.push("bulwark.sieidi");
     gainRunes(sieidi, "p1", RUNE_THRESHOLD);
     gainRunes(sieidi, "p1", RUNE_THRESHOLD + 4);
-    expect(getRuneSummary(sieidi, "p1")).toMatchObject({ count: 4, reserve: RUNE_SURPLUS_MAX * 2, level: 2 });
+    // Only Level 2 (the Sieidi max) credits the reserve.
+    expect(getRuneSummary(sieidi, "p1")).toMatchObject({ count: 4, reserve: RUNE_RESERVE_AT_MAX_LEVEL, level: 2 });
     expect(runeTrackHasRoom(sieidi, "p1")).toBe(true);
   });
 
@@ -705,7 +754,8 @@ describe("Bulwark Runes — nine-Rune track, reserve and building grants", () =>
     state.combat!.context = neutralContext();
     state.players.p1.cityHallRunesNextCombats = 3;
     seedRunesForCombat(state); // 6 + 3 = 9 → Level 1 at the opening
-    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 0, reserve: RUNE_SURPLUS_MAX, level: 1 });
+    // Level 1 is below the Altar cap (3): no reserve yet.
+    expect(getRuneSummary(state, "p1")).toMatchObject({ count: 0, reserve: 0, level: 1 });
   });
 });
 

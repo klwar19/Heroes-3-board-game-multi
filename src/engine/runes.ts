@@ -8,8 +8,24 @@ import type { ActiveEffectModifier, CombatUnitState, GameState, PlayerId } from 
 /** Each unlocked level needs a fresh nine Runes on the main track. */
 export const RUNE_LEVEL_THRESHOLDS = [9, 9, 9] as const;
 export const RUNE_THRESHOLD = 9;
-/** Reserve credited whenever one of the three Rune levels is earned. */
-export const RUNE_SURPLUS_MAX = 5;
+/**
+ * Reserve credited ONCE, when the player earns their highest unlocked Rune Level
+ * (the level cap: 1 with no rune building, 2 with the Sieidi, 3 with the Altar).
+ * Lower levels credit no reserve (user rule 2026-09-29).
+ */
+export const RUNE_RESERVE_AT_MAX_LEVEL = 3;
+/** @deprecated Old per-level reserve credit; kept as an alias of the max-level credit. */
+export const RUNE_SURPLUS_MAX = RUNE_RESERVE_AT_MAX_LEVEL;
+
+/**
+ * Reserve income at the start of every combat round AFTER the round in which
+ * the max level was reached: +1 on even rounds, +2 on odd rounds. This and
+ * RUNE_RESERVE_AT_MAX_LEVEL are the only sources of reserve Runes; every other
+ * Rune gain goes to the main track.
+ */
+export function runeReserveRoundIncome(round: number): number {
+  return round % 2 === 0 ? 1 : 2;
+}
 /** Three thresholds and one final spendable main track bound starting grants. */
 export const RUNE_MAX = RUNE_THRESHOLD * (RUNE_LEVEL_THRESHOLDS.length + 1);
 
@@ -253,7 +269,9 @@ export function seedRunesForCombat(state: GameState): void {
 /**
  * Credits a Bulwark player with `amount` Runes for one of their units' actions
  * and applies each newly reached level. Every completed cycle resets the main
- * track and credits five spendable reserve Runes.
+ * track; only the cycle that earns the highest unlocked level also credits
+ * RUNE_RESERVE_AT_MAX_LEVEL reserve Runes and starts the per-round reserve
+ * income (grantRuneReserveRoundIncome). Gains never go to the reserve directly.
  */
 export function gainRunes(state: GameState, playerId: PlayerId | undefined, amount: number): void {
   if (!state.combat || amount <= 0 || !isBulwarkPlayer(state, playerId)) {
@@ -274,13 +292,34 @@ export function gainRunes(state: GameState, playerId: PlayerId | undefined, amou
     if (entry.count === RUNE_THRESHOLD && entry.appliedLevel < levelCap) {
       syncRuneEffects(state, owner, entry.appliedLevel + 1);
       entry.count = 0;
-      entry.reserve = (entry.reserve ?? 0) + RUNE_SURPLUS_MAX;
+      if (entry.appliedLevel >= levelCap) {
+        entry.reserve = (entry.reserve ?? 0) + RUNE_RESERVE_AT_MAX_LEVEL;
+        entry.maxLevelRound = state.combat.round;
+      }
     }
   }
 }
 
+/**
+ * Combat-round start: every Bulwark player who reached their max Rune Level in
+ * an EARLIER round of this combat adds runeReserveRoundIncome(round) Runes to
+ * the reserve (+1 on even rounds, +2 on odd rounds).
+ */
+export function grantRuneReserveRoundIncome(state: GameState): void {
+  const combat = state.combat;
+  if (!combat?.runes) return;
+  for (const [playerId, entry] of Object.entries(combat.runes)) {
+    if (!entry || entry.maxLevelRound === undefined || combat.round <= entry.maxLevelRound ||
+        !isBulwarkPlayer(state, playerId as PlayerId)) {
+      continue;
+    }
+    normalizeRuneEntry(entry);
+    entry.reserve = (entry.reserve ?? 0) + runeReserveRoundIncome(combat.round);
+  }
+}
+
 /** Convert an in-progress old save without discarding earned combat bonuses. */
-function runeEntryBalances(entry: { count: number; reserve?: number; appliedLevel: number }): { count: number; reserve: number } {
+function runeEntryBalances(entry: { count: number; reserve?: number; appliedLevel: number; maxLevelRound?: number }): { count: number; reserve: number } {
   if (entry.reserve !== undefined) return { count: entry.count, reserve: entry.reserve };
   const oldThresholds = [0, 4, 7, 12];
   return {
@@ -289,7 +328,7 @@ function runeEntryBalances(entry: { count: number; reserve?: number; appliedLeve
   };
 }
 
-function normalizeRuneEntry(entry: { count: number; reserve?: number; appliedLevel: number }): void {
+function normalizeRuneEntry(entry: { count: number; reserve?: number; appliedLevel: number; maxLevelRound?: number }): void {
   const balance = runeEntryBalances(entry);
   entry.count = balance.count;
   entry.reserve = balance.reserve;

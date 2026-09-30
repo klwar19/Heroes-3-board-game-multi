@@ -31,6 +31,7 @@ import { appendEvent, nextEventNumber } from "./events";
 import { applyNeutralDebuff } from "./neutral-veterancy";
 import { availableRunes, spendRunes } from "./runes";
 import { hasToken, noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
+import { resolveVeyExtraToken, veyTokenPicks } from "./vey-ogres";
 import {
   battlefieldTokenCovers,
   footprintAt,
@@ -481,7 +482,12 @@ function openQueuedElementalChoice(
     // footprint); a one-hex unit / the 4×5 grid keeps the empty spaces.
     const landingHeads = (mover: CombatUnitState): number[] =>
       unitTailOffset(combat, mover) !== 0 ? getBattlefieldPositions("hex") : empty;
-    if (request.kind === "forge-grunt-tempo") {
+    if (request.kind === "vey-extra-token") {
+      for (const option of veyTokenPicks(state, unit)) {
+        picks.push({ targetId: option.targetId });
+        labels.push(option.label);
+      }
+    } else if (request.kind === "forge-grunt-tempo") {
       if (request.round !== combat.round) continue;
       for (const target of Object.values(combat.units).sort((a, b) =>
         Number(b.controllerId === unit.controllerId) - Number(a.controllerId === unit.controllerId) || a.id.localeCompare(b.id))) {
@@ -729,7 +735,7 @@ function openQueuedElementalChoice(
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId: chooser,
-      prompt: `${unit.cardName}: ${request.abilityId === "dace-minotaurs-pack-break" ? "Minotaurs IV" : request.abilityId === "commander-rune-ritual-mend" ? "Rune Ritual — Rune Level reached: heal a friendly unit 1 HP" : unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
+      prompt: `${unit.cardName}: ${request.kind === "vey-extra-token" ? `Ogres VI — perform ${unitAbilities[request.abilityId]?.name ?? "the token action"} again` : request.abilityId === "dace-minotaurs-pack-break" ? "Minotaurs IV" : request.abilityId === "commander-rune-ritual-mend" ? "Rune Ritual — Rune Level reached: heal a friendly unit 1 HP" : unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" && !request.runeScaling ? ` — choose a target for ${request.amount} damage` : ""}${request.kind === "damage" && request.runeScaling ? " — choose a target and Rune amount" : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost && !request.runeScaling ? ` (spend ${request.runeCost} Rune)` : ""}`,
       options: labels.map((label) => ({ label })),
       context: "elemental-veterancy",
       elementalChoice: { request, picks },
@@ -833,6 +839,10 @@ function executeElementalPick(
     return;
   }
   if (pick.skip) return;
+  if (request.kind === "vey-extra-token") {
+    resolveVeyExtraToken(state, unit, pick.targetId);
+    return;
+  }
   if (request.kind === "break-cover" || request.kind === "blood-price") {
     const target = combat.units[request.targetId!];
     if (!target || !alive(target) || isUnitDamageImmune(target) || target.controllerId === unit.controllerId || unit.customVeterancyRounds?.[request.kind] !== undefined || !getUnitAbilityDefinitions(unit).some(a => a.id === request.abilityId)) throw new Error("That combat ability is no longer available.");
