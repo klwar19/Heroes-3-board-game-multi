@@ -8,6 +8,7 @@ import {
 } from "@/engine/garrison/content";
 import { VALOR_NEED, baseKind } from "@/engine/garrison/order-chaos/forms";
 import { OC_ULTIMATES } from "@/engine/garrison/order-chaos/roster";
+import type { OcLine, OcQuipEvent } from "@/engine/garrison/order-chaos/story";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
 import {
   checkAscend, checkCast, checkMuster, checkPlace, checkSurge, defenderAt,
@@ -17,11 +18,13 @@ import { assetUrl } from "@/lib/asset-url";
 import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, isMusicMuted, playCombatSting, setMusicHeld, setMusicMuted, subscribeMusic, useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { isSoundMuted, setSoundMuted } from "@/lib/sound";
 import { playEventSounds } from "./audio";
+import { AdvisorBubble } from "./order-chaos/story-ui";
 import type { GarrisonDriver } from "./driver";
 import styles from "./garrison.module.css";
 import { BOARD, boardCell, coinSize, createView, drawBoard, ingestEvents, laneTop, preloadForConfig, tileX, type Ghost, type Overlay } from "./renderer";
-import { PROP, WORLD_W, drawCoinFlights, type CoinFlight } from "./scene";
+import { PROP, SURROUNDS, WORLD_W, drawCoinFlights, type CoinFlight } from "./scene";
 import { ATK_KEYS, ATK_SPELL_KEYS, AtkTray, DEF_KEYS, DEF_SPELL_KEYS, DefTray, IconOr, Progress, SpellBar, formatTime, type Selection, type Tip } from "./hud";
+import { CARD_SCENES, cardSceneSrc } from "./thumbs";
 
 export type GameResult = { winner: Side; reason: string; state: GarrisonState };
 
@@ -72,9 +75,19 @@ type Props = {
    * Default: the classic combat rotation.
    */
   music?: "order-chaos";
+  /** Order & Chaos: what Crag Hack says at a moment of the battle (null: nothing). */
+  advisor?: (event: OcQuipEvent) => OcLine | null;
 };
 
 const HOVER_COLLECT_KEY = "garrison:hover-collect";
+/** The painted battle HUD: oak seed-bank tray, card packets, tool buttons (CSS falls back to gradients). */
+/** The unit-card backdrops (--gw-scene-day … --gw-scene-grove), picked per card by data-scene. */
+const SCENE_VARS = Object.fromEntries(CARD_SCENES.map((scene) => [`--gw-scene-${scene}`, `url("${assetUrl(cardSceneSrc(scene))}")`]));
+const HUD_ART = {
+  tray: "/assets/order-chaos/ui/tray.webp",
+  packet: "/assets/order-chaos/ui/packet-frame.webp",
+  button: "/assets/order-chaos/ui/button.webp"
+} as const;
 /** Order & Chaos battle-HUD icons (IconOr routes them through assetUrl). */
 const OC_HUD_ICON = {
   surge: "/assets/order-chaos/icons/surge.webp",
@@ -89,7 +102,15 @@ function readHoverCollect(): boolean {
   }
 }
 
-export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, next, unlockNote, defColor, intro: introProp = null, music }: Props) {
+/**
+ * A "charger" event from the lane's own gate Champion riding out (the last line).
+ * A hero's Royal Charge raises the same event but leaves the Champion waiting.
+ */
+function laneChampionRode(s: GarrisonState, lane: number): boolean {
+  return s.chargers.some((c) => c.lane === lane && c.dmg === undefined && c.state !== "ready");
+}
+
+export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, next, unlockNote, defColor, intro: introProp = null, music, advisor }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewRef = useRef(createView(town, defColor));
   /** HUD overlay: coins flying to the counter (in page space, above the bars). */
@@ -182,6 +203,26 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   const openPopover = useCallback((id: number | null) => {
     popoverRef.current = id;
     setPopover(id);
+  }, []);
+
+  // Crag Hack pipes up: each moment once per battle (the great assaults every time).
+  const [quip, setQuip] = useState<{ line: OcLine; id: number } | null>(null);
+  const quipsSaidRef = useRef(new Set<OcQuipEvent>());
+  const advisorRef = useRef(advisor);
+  useEffect(() => {
+    advisorRef.current = advisor;
+  }, [advisor]);
+  const quipTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(quipTimerRef.current), []);
+  const sayQuip = useCallback((event: OcQuipEvent) => {
+    if (event !== "huge-wave" && quipsSaidRef.current.has(event)) return;
+    quipsSaidRef.current.add(event);
+    const line = advisorRef.current?.(event);
+    if (!line) return;
+    const id = performance.now();
+    setQuip({ line, id });
+    window.clearTimeout(quipTimerRef.current);
+    quipTimerRef.current = window.setTimeout(() => setQuip((current) => (current?.id === id ? null : current)), 5200);
   }, []);
 
   const showToast = useCallback((text: string, tone: "warn" | "info" | "boss" = "info") => {
@@ -406,6 +447,12 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         ingestEvents(view, state, events, now);
         playEventSounds(state, events);
         for (const ev of events) {
+          // Crag Hack's quips ride alongside the usual announcements and toasts.
+          if (ev.e === "hugeWave") sayQuip(ev.final ? "final-wave" : "huge-wave");
+          else if (ev.e === "wave" && ev.wave === 1) sayQuip("start");
+          else if ((ev.e === "orb" || ev.e === "crown") && driver.local.includes("def")) sayQuip(ev.e);
+          else if (ev.e === "charger" && laneChampionRode(driver.state(), ev.lane)) sayQuip("charger");
+          else if (ev.e === "bossAction") sayQuip("boss");
           if (ev.e === "hugeWave") {
             announceNow("A huge wave is approaching!", "huge", 2600);
             if (ev.final) window.setTimeout(() => announceNow("Final wave!", "final", 2200), 2700);
@@ -420,7 +467,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           else if (ev.e === "raided") showToast("A lane is broken!", "boss");
           else if (ev.e === "crown" && driver.local.includes("def")) showToast("A Valor crown is ready! Press U and pick a unit to Ascend it.", "info");
           else if (ev.e === "ascend") announceNow(`${DEFENDERS[ev.kind]?.name ?? "Ascension"}!`, "go", 1500);
-          else if (ev.e === "charger") showToast("Last line! The gate charger rides out.", "warn");
+          else if (ev.e === "charger" && laneChampionRode(driver.state(), ev.lane)) showToast("Last line! The gate charger rides out.", "warn");
           else if (ev.e === "bossAction") {
             showToast(ev.action === "summon" ? "The Dracolich raises the dead!" : ev.action === "breath" ? "The Dracolich breathes death down its lane!"
               : ev.action === "dragon" ? `A ${ENEMIES[state.cfg.oc?.bossDragon ?? "bone-dragon"]?.name ?? "dragon"} falls from the sky!` : "The Dracolich shifts lanes.", "boss");
@@ -476,7 +523,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [announceNow, askCollect, drawOverlay, driver, hotseat, intro, launchCoin, showToast]);
+  }, [announceNow, askCollect, drawOverlay, driver, hotseat, intro, launchCoin, sayQuip, showToast]);
 
   // ---- Pointer --------------------------------------------------------------
   const logical = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -664,7 +711,18 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   const shownGold = Math.max(0, s.def.gold - pendingGold);
 
   return (
-    <div className={styles.game} ref={gameRef}>
+    <div
+      className={styles.game}
+      data-hudart=""
+      ref={gameRef}
+      style={{
+        ["--gw-surround" as string]: `url("${assetUrl(SURROUNDS[s.cfg.terrain] ?? SURROUNDS.grass)}")`,
+        ["--gw-tray-img" as string]: `url("${assetUrl(HUD_ART.tray)}")`,
+        ["--gw-packet-img" as string]: `url("${assetUrl(HUD_ART.packet)}")`,
+        ["--gw-button-img" as string]: `url("${assetUrl(HUD_ART.button)}")`,
+        ...SCENE_VARS
+      }}
+    >
       <header className={styles.topBar}>
         {localDef ? (
           <div className={`${styles.resource} ${styles.goldPlaque}`} title="Gold">
@@ -802,6 +860,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           </div>
         ) : null}
         {toast ? <div className={`${styles.toast} ${styles[`toast_${toast.tone}`]}`} key={toast.id}>{toast.text}</div> : null}
+        {quip ? <div aria-live="polite" className={styles.quip} key={quip.id}><AdvisorBubble compact line={quip.line} /></div> : null}
         {announce ? <div aria-live="polite" className={`${styles.announce} ${styles[`announce_${announce.tone}`]}`} key={announce.key}>{announce.text}</div> : null}
         {hint ? <div className={styles.hint}>{hint}</div> : null}
         {status ? <div className={styles.netStatus}>{status}</div> : null}

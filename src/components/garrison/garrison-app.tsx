@@ -160,6 +160,12 @@ function CardPicker({ pool, locked, hand, slots, onChange }: {
   );
 }
 
+/** The Order & Chaos gauntlet pointer (garrison.module.css reads it from these variables). */
+const SHELL_CURSOR = {
+  ["--gw-cursor" as string]: `url("${assetUrl("/assets/order-chaos/ui/cursor.png")}")`,
+  ["--gw-cursor-hot" as string]: `url("${assetUrl("/assets/order-chaos/ui/cursor-hot.png")}")`
+};
+
 export function GarrisonApp() {
   const [screen, setScreen] = useState<Screen>({ s: "home" });
   const [session, setSession] = useState<Session | null>(null);
@@ -292,7 +298,7 @@ export function GarrisonApp() {
   // ---- Screens -------------------------------------------------------------------
   if (screen.s === "play" && session) {
     return (
-      <div className={styles.shell}>
+      <div className={styles.shell} style={SHELL_CURSOR}>
         <GarrisonGame
           driver={session.driver}
           hotseat={session.hotseat}
@@ -314,7 +320,7 @@ export function GarrisonApp() {
   }
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} style={SHELL_CURSOR}>
       <div className={styles.menu} style={{ backgroundImage: `url("${assetUrl("/assets/tide/menu-backdrop.webp")}")` }}>
         {screen.s === "home" ? <Home onPick={setScreen} /> : null}
         {screen.s === "versus" ? (

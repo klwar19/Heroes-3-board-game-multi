@@ -13,16 +13,21 @@ import {
 } from "@/engine/garrison/order-chaos/campaign";
 import { ASCEND_TICKS, VALOR_NEED } from "@/engine/garrison/order-chaos/forms";
 import { OC_DEFENDERS, OC_ENEMIES, OC_ULTIMATES } from "@/engine/garrison/order-chaos/roster";
+import {
+  OC_BATTLE_QUIPS, OC_ENDLESS_LINES, OC_EPILOGUE, OC_LEVEL_STORY, OC_PROLOGUE, OC_SCREEN_LINES, OC_WORLD_OUTRO, OC_WORLD_STORY, unlockedLines,
+  type OcLine, type OcQuipEvent
+} from "@/engine/garrison/order-chaos/story";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
 import type { Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import { setMusicScene, type MusicScene } from "@/lib/music";
-import { loadOcProgress, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
+import { loadOcProgress, OC_PROGRESS_KEY, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
 import { createLocalDriver, type GarrisonDriver } from "../driver";
 import { GarrisonGame, type GameIntro, type GameResult } from "../garrison-game";
 import styles from "../garrison.module.css";
-import { AttackerArt, CardArt, DefenderArt } from "../thumbs";
+import { AttackerArt, CARD_SCENES, CardArt, DefenderArt, cardScene, cardSceneSrc } from "../thumbs";
 import oc from "./oc.module.css";
+import { AdvisorBubble, StoryScene } from "./story-ui";
 
 type Screen =
   | { s: "home" }
@@ -67,6 +72,22 @@ const ART = {
   valor: "/assets/order-chaos/icons/valor.webp",
   mercenary: "/assets/order-chaos/icons/mercenary.webp",
   grave: "/assets/order-chaos/props/grave.webp"
+} as const;
+
+/** Order & Chaos menu art (Codex-painted; the CSS falls back to plain frames while any is missing). */
+const OC_UI = {
+  banner: "/assets/order-chaos/ui/banner.webp",
+  mapFrame: "/assets/order-chaos/ui/map-frame.webp",
+  medal: "/assets/order-chaos/ui/medal.webp",
+  medalBoss: "/assets/order-chaos/ui/medal-boss.webp",
+  medalLocked: "/assets/order-chaos/ui/medal-locked.webp",
+  card: "/assets/order-chaos/ui/card.webp",
+  packet: "/assets/order-chaos/ui/packet-frame.webp",
+  tray: "/assets/order-chaos/ui/tray.webp",
+  cursor: "/assets/order-chaos/ui/cursor.png",
+  cursorHot: "/assets/order-chaos/ui/cursor-hot.png",
+  home: "/assets/order-chaos/ui/bg-home.webp",
+  table: "/assets/order-chaos/ui/bg-table.webp"
 } as const;
 
 /**
@@ -136,6 +157,61 @@ function starsOf(progress: OcProgress, level: OcLevel): number {
   return (progress.cleared.includes(level.id) ? 1 : 0) + (progress.stars[level.id]?.length ?? 0);
 }
 
+/**
+ * "New recruit!" — the troops a first victory hands over, each on its own card
+ * with light turning behind it (the moment Plants vs. Zombies hands you a seed packet).
+ */
+function RecruitReveal({ kinds }: { kinds: readonly DefKind[] }) {
+  return (
+    <div className={oc.reveal}>
+      <h3 className={oc.revealHead}>New recruit{kinds.length > 1 ? "s" : ""}!</h3>
+      <div className={oc.revealCards}>
+        {kinds.map((kind, i) => {
+          const def = DEFENDERS[kind];
+          if (!def) return null;
+          return (
+            <div className={oc.revealItem} key={kind} style={{ animationDelay: `${0.25 + i * 0.35}s` }}>
+              <div className={oc.revealCard} style={{ ["--oc-card" as string]: `url("${assetUrl(OC_UI.card)}")` }}>
+                <span aria-hidden className={oc.revealRays} />
+                <span className={oc.revealArt} style={{ backgroundImage: `url("${assetUrl(cardSceneSrc(cardScene(kind)))}")` }}><DefenderArt kind={kind} size={112} /></span>
+                <strong>{def.name}</strong>
+                {def.card ? <em>{def.card.cost} gold</em> : null}
+              </div>
+              <small className={oc.revealBlurb}>{def.blurb}</small>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Where level `i` of `n` sits on a world map (percent of its width / height): a winding road left to right. */
+function mapSpot(i: number, n: number): { x: number; y: number } {
+  const x = n <= 1 ? 50 : 8 + (84 * i) / (n - 1);
+  const y = [58, 27, 54, 24, 52, 27, 56][i % 7]!;
+  return { x, y };
+}
+
+/** The road through a world's levels: a smooth curve (Catmull-Rom as cubic Béziers) in 0..100 map units. */
+function mapRoad(n: number): string {
+  const pts = Array.from({ length: n }, (_, i) => mapSpot(i, n));
+  if (!pts.length) return "";
+  const lead = { x: 0, y: pts[0]!.y + 12 };
+  const all = [lead, ...pts];
+  let d = `M ${lead.x} ${lead.y}`;
+  for (let i = 0; i < all.length - 1; i += 1) {
+    const p0 = all[i - 1] ?? all[i]!;
+    const p1 = all[i]!;
+    const p2 = all[i + 1]!;
+    const p3 = all[i + 2] ?? p2;
+    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    d += ` C ${c1.x.toFixed(2)} ${c1.y.toFixed(2)}, ${c2.x.toFixed(2)} ${c2.y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
 function Stars({ count, max = 3 }: { count: number; max?: number }) {
   return (
     <span aria-label={`${count} of ${max} stars`} className={oc.stars}>
@@ -175,6 +251,63 @@ function recipeText(kind: DefKind): string {
   return `${recipe.a.map(name).join(" / ")} + ${recipe.b.map(name).join(" / ")}`;
 }
 
+/** A story scene to show: its id is remembered once seen; `then` runs when it ends. */
+type StoryShow = { id: string; lines: readonly OcLine[]; letter?: string; then?: () => void };
+
+/** The last level of the last world: clearing it earns the epilogue. */
+const FINAL_LEVEL = OC_WORLDS[OC_WORLDS.length - 1]?.levels.at(-1)?.id ?? "";
+
+/** A level's letter and talk (null when it has none, or when `seen` already holds it). */
+function levelStory(level: OcLevel, seen?: readonly string[]): StoryShow | null {
+  const story = OC_LEVEL_STORY[level.id];
+  if (!story || (!story.before?.length && !story.letter)) return null;
+  const id = `level:${level.id}`;
+  if (seen?.includes(id)) return null;
+  return { id, lines: story.before ?? [], letter: story.letter };
+}
+
+/**
+ * The first world whose closing scene is owed: the world is cleared, its outro
+ * unseen, and the next world's intro unseen too (so progress made before the
+ * outros existed doesn't replay a backlog of them).
+ */
+function owedOutro(p: OcProgress): StoryShow | null {
+  for (const world of OC_WORLDS) {
+    const lines = OC_WORLD_OUTRO[world.id];
+    const id = `outro:${world.id}`;
+    if (lines?.length && worldCleared(world.id, p.cleared) && !p.seen.includes(id) && !p.seen.includes(`world:${world.id + 1}`)) return { id, lines };
+  }
+  return null;
+}
+
+/** The scene a screen opens with the first time: the prologue, a world's closing scene or story, the epilogue, a level's talk. */
+function autoStory(screen: Screen, p: OcProgress): StoryShow | null {
+  if (screen.s === "home") return p.seen.includes("prologue") ? null : { id: "prologue", lines: OC_PROLOGUE };
+  if (screen.s === "campaign") {
+    if (FINAL_LEVEL && p.cleared.includes(FINAL_LEVEL) && !p.seen.includes("epilogue")) return { id: "epilogue", lines: OC_EPILOGUE };
+    const outro = owedOutro(p);
+    if (outro) return outro;
+    const id = `world:${screen.world}`;
+    const lines = OC_WORLD_STORY[screen.world];
+    return lines?.length && !p.seen.includes(id) ? { id, lines } : null;
+  }
+  if (screen.s === "prep") return levelStory(screen.level, p.seen);
+  return null;
+}
+
+function pickLine(lines: readonly OcLine[] | undefined): OcLine | null {
+  return lines?.length ? lines[Math.floor(Math.random() * lines.length)] ?? null : null;
+}
+
+/** One of the lines the player has unlocked from `pool` (null when none). */
+const pickUnlocked = (pool: readonly OcLine[] | undefined, cleared: readonly string[]): OcLine | null => pickLine(unlockedLines(pool, cleared));
+
+/** A menu screen's greeting: one unlocked line, picked once when the screen opens. */
+function Greeting({ place, cleared }: { place: keyof typeof OC_SCREEN_LINES; cleared: readonly string[] }) {
+  const [line] = useState(() => pickUnlocked(OC_SCREEN_LINES[place], cleared));
+  return line ? <div className={oc.greeting}><AdvisorBubble compact line={line} /></div> : null;
+}
+
 function ultimateLine(kind: DefKind): string | null {
   const ult = OC_ULTIMATES[kind];
   return ult ? `${ult.name} (+30% health and power): ${ult.blurb}` : null;
@@ -188,6 +321,10 @@ export function OrderChaosApp() {
   const [note, setNote] = useState<ReactNode>(null);
   const [nextLevel, setNextLevel] = useState<OcLevel | null>(null);
   const unlocks = useMemo(() => unlocksOf(progress), [progress]);
+  // In-battle quips (the defending side only), from the lines the player has unlocked.
+  const battleQuip = useCallback((event: OcQuipEvent): OcLine | null => pickUnlocked(OC_BATTLE_QUIPS[event], unlocks.cleared), [unlocks.cleared]);
+  // Story: a replayed (or chained) scene, else the one this screen opens with the first time.
+  const [story, setStory] = useState<StoryShow | null>(null);
   // Music: the preparation theme loops on the loadout screen, the menu theme on
   // the other menus. While a battle is on screen GarrisonGame owns the music
   // (preparation theme during Last Stand planning, then the battle score), so
@@ -209,13 +346,38 @@ export function OrderChaosApp() {
     sessionRef.current = null;
   }, []);
 
+  // Every change is written once it commits; a refused write (storage blocked
+  // or full) is shown instead of silently losing the player's progress.
+  const [saveFailed, setSaveFailed] = useState(false);
+  const dirtyRef = useRef(false);
   const update = useCallback((change: (p: OcProgress) => OcProgress) => {
-    setProgress((current) => {
-      const next = change(current);
-      saveOcProgress(next);
-      return next;
-    });
+    dirtyRef.current = true;
+    setProgress(change);
   }, []);
+  useEffect(() => {
+    if (!dirtyRef.current) return;
+    dirtyRef.current = false;
+    setSaveFailed(!saveOcProgress(progress));
+  }, [progress]);
+  // Another tab saved: adopt its progress so this tab never writes back a stale copy.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === OC_PROGRESS_KEY && event.newValue) setProgress(loadOcProgress());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const shownStory = story ?? (screen.s === "play" ? null : autoStory(screen, progress));
+  const cursorVars = useMemo(() => ({
+    ["--gw-cursor" as string]: `url("${assetUrl(OC_UI.cursor)}")`,
+    ["--gw-cursor-hot" as string]: `url("${assetUrl(OC_UI.cursorHot)}")`
+  }), []);
+  const endStory = useCallback((shown: StoryShow) => {
+    update((p) => (p.seen.includes(shown.id) ? p : { ...p, seen: [...p.seen, shown.id] }));
+    setStory(null);
+    shown.then?.();
+  }, [update]);
 
   const start = useCallback((level: OcLevel, cards: DefKind[]) => {
     const p = progress;
@@ -246,20 +408,25 @@ export function OrderChaosApp() {
       if (result.winner !== "atk") return;
       const first = !progress.raids.includes(level.id);
       update((p) => ({ ...p, raids: p.raids.includes(level.id) ? p.raids : [...p.raids, level.id], seals: p.seals + (first ? 4 : 1) }));
-      setNote(<p className={oc.reward}>+{first ? 4 : 1} Seals</p>);
+      // The first win of a raid has its own words; later ones a cheer.
+      const cheer = first ? OC_LEVEL_STORY[level.id]?.after ?? [] : [pickUnlocked(OC_BATTLE_QUIPS.victory, unlocksOf(progress).cleared)].filter((line): line is OcLine => line !== null);
+      setNote(<>{cheer.map((line, i) => <AdvisorBubble compact key={i} line={line} />)}<p className={oc.reward}>+{first ? 4 : 1} Seals</p></>);
       return;
     }
     if (level.kind === "endless") {
       const waves = result.state.director.wave;
       const gained = Math.max(0, Math.floor(waves / 5) - Math.floor(progress.bestEndless / 5));
       update((p) => ({ ...p, bestEndless: Math.max(p.bestEndless, waves), seals: p.seals + gained }));
-      setNote(<p className={oc.reward}>{waves > progress.bestEndless ? `New best: wave ${waves}!` : `Best: wave ${progress.bestEndless}`}{gained ? ` · +${gained} Seals` : ""}</p>);
+      const words = pickUnlocked(waves > progress.bestEndless ? OC_ENDLESS_LINES.best : OC_ENDLESS_LINES.short, unlocksOf(progress).cleared);
+      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}<p className={oc.reward}>{waves > progress.bestEndless ? `New best: wave ${waves}!` : `Best: wave ${progress.bestEndless}`}{gained ? ` · +${gained} Seals` : ""}</p></>);
       return;
     }
     const goals = level.goals.map((goal, i) => ({ goal, i, met: result.winner === "def" && goalMet(goal, stats) }));
     if (result.winner !== "def") {
+      const comfort = pickUnlocked(OC_BATTLE_QUIPS.defeat, unlocksOf(progress).cleared);
       setNote(
         <div className={oc.resultGoals}>
+          {comfort ? <AdvisorBubble compact line={comfort} /> : null}
           {goals.map(({ goal, i }) => <span key={i}>☆ {goalText(goal)}</span>)}
           <small>Tip: glowing foes drop Surge orbs — click the orb button (or press G), then a unit, to unleash its Surge. Slain foes fill the Valor crown: press U and pick a unit to Ascend it.</small>
         </div>
@@ -282,8 +449,10 @@ export function OrderChaosApp() {
     const reward = first ? level.reward : {};
     const index = OC_LEVELS.findIndex((entry) => entry.id === level.id);
     setNextLevel(OC_LEVELS[index + 1] ?? null);
+    const words = first ? OC_LEVEL_STORY[level.id]?.after ?? [] : [pickUnlocked(OC_BATTLE_QUIPS.victory, unlocksOf(progress).cleared)].filter((line): line is OcLine => line !== null);
     setNote(
       <div className={oc.resultGoals}>
+        {words.map((line, i) => <AdvisorBubble compact key={i} line={line} />)}
         <span className={oc.starOn}>★ Victory{first ? " (first clear)" : ""}</span>
         {goals.map(({ goal, i, met }) => (
           <span className={met ? oc.starOn : oc.starOff} key={i}>{met ? "★" : "☆"} {goalText(goal)}{fresh.includes(i) ? " — new!" : ""}</span>
@@ -292,13 +461,11 @@ export function OrderChaosApp() {
           <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> +{seals} Seals
         </p>
         {milestones.map((m) => <p className={oc.reward} key={m.stars}>★ {m.stars} stars: {m.label}!</p>)}
-        {reward.units?.length || reward.hero || reward.artifact || reward.spell || reward.altar ? (
+        {reward.units?.length ? <RecruitReveal kinds={reward.units} /> : null}
+        {reward.hero || reward.artifact || reward.spell || reward.altar ? (
           <div className={styles.panel}>
             <h2>Unlocked</h2>
             <div className={styles.foes}>
-              {(reward.units ?? []).map((kind) => (
-                <div className={styles.foe} key={kind} title={DEFENDERS[kind]!.blurb}><DefenderArt kind={kind} size={56} />{DEFENDERS[kind]!.name}</div>
-              ))}
               {reward.hero ? <div className={styles.foe}><img alt="" className={oc.portrait} src={assetUrl(OC_HEROES[reward.hero].portrait)} />Hero: {OC_HEROES[reward.hero].name}</div> : null}
               {reward.artifact ? <div className={styles.foe}><img alt="" className={oc.portrait} src={assetUrl(BLESSINGS[reward.artifact].icon)} />{BLESSINGS[reward.artifact].name}</div> : null}
               {reward.spell ? <div className={styles.foe}><img alt="" className={oc.portrait} src={assetUrl(SPELLS[reward.spell].icon)} />{SPELLS[reward.spell].name}</div> : null}
@@ -316,8 +483,9 @@ export function OrderChaosApp() {
     const level = session.level;
     const back: Screen = level.kind === "raid" ? { s: "raids" } : level.kind === "endless" ? { s: "home" } : { s: "campaign", world: level.world };
     return (
-      <div className={styles.shell}>
+      <div className={styles.shell} style={cursorVars}>
         <GarrisonGame
+          advisor={level.kind === "raid" ? undefined : battleQuip}
           defColor={OC_LAWFUL_COLOR}
           music="order-chaos"
           driver={session.driver}
@@ -335,18 +503,33 @@ export function OrderChaosApp() {
     );
   }
 
+  // The title key art on the home screen, the war table everywhere else (the old backdrop underneath while they load).
+  const backdrop = screen.s === "home" ? OC_UI.home : OC_UI.table;
   return (
-    <div className={styles.shell}>
-      <div className={`${styles.menu} ${oc.menu}`} style={{ backgroundImage: `url("${assetUrl("/assets/tide/menu-backdrop.webp")}")` }}>
+    <div className={styles.shell} style={cursorVars}>
+      <div className={`${styles.menu} ${oc.menu}`} style={{ backgroundImage: `url("${assetUrl(backdrop)}"), url("${assetUrl("/assets/tide/menu-backdrop.webp")}")` }}>
         {unlocks.test ? (
           <div className={oc.testBanner} role="status">
             <span>TESTING — everything is unlocked (your Seals, levels and records are unchanged).</span>
             <button className={styles.ghostButton} onClick={() => update((p) => ({ ...p, testAll: false }))} type="button">Turn off</button>
           </div>
         ) : null}
-        {screen.s === "home" ? <Home onPick={setScreen} progress={progress} unlocks={unlocks} update={update} /> : null}
+        {saveFailed ? (
+          <div className={oc.testBanner} role="alert">
+            <span>Your browser refused to save Order &amp; Chaos progress (storage blocked or full). Progress made now lasts only until you close this tab.</span>
+          </div>
+        ) : null}
+        {screen.s === "home" ? <Home onPick={setScreen} onStory={() => setStory({ id: "prologue", lines: OC_PROLOGUE })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "campaign" ? (
-          <Campaign onBack={() => setScreen({ s: "home" })} onPick={(level) => setScreen({ s: "prep", level })} onWorld={(world) => setScreen({ s: "campaign", world })} progress={progress} unlocks={unlocks} world={screen.world} />
+          <Campaign
+            onBack={() => setScreen({ s: "home" })}
+            onPick={(level) => setScreen({ s: "prep", level })}
+            onStory={(world) => { const lines = OC_WORLD_STORY[world]; if (lines?.length) setStory({ id: `world:${world}`, lines }); }}
+            onWorld={(world) => setScreen({ s: "campaign", world })}
+            progress={progress}
+            unlocks={unlocks}
+            world={screen.world}
+          />
         ) : null}
         {screen.s === "prep" ? (
           <Prep
@@ -357,22 +540,52 @@ export function OrderChaosApp() {
               update((p) => ({ ...p, loadouts: { ...p.loadouts, [screen.level.id]: cards } }));
               start(screen.level, cards);
             }}
+            onTalk={() => setStory(levelStory(screen.level))}
             progress={progress}
             unlocks={unlocks}
             update={update}
           />
         ) : null}
-        {screen.s === "raids" ? <Raids onBack={() => setScreen({ s: "home" })} onPick={(level) => start(level, [])} progress={progress} unlocks={unlocks} /> : null}
+        {screen.s === "raids" ? (
+          <Raids
+            onBack={() => setScreen({ s: "home" })}
+            onPick={(level) => {
+              // A raid's briefing plays once, then the raid begins.
+              const talk = levelStory(level, progress.seen);
+              if (talk) setStory({ ...talk, then: () => start(level, []) });
+              else start(level, []);
+            }}
+            progress={progress}
+            unlocks={unlocks}
+          />
+        ) : null}
         {screen.s === "barracks" ? <Barracks onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "camp" ? <Camp onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "almanac" ? <Almanac onBack={() => setScreen({ s: "home" })} unlocks={unlocks} /> : null}
       </div>
+      {shownStory ? <StoryScene key={shownStory.id} letter={shownStory.letter} lines={shownStory.lines} onDone={() => endStory(shownStory)} /> : null}
     </div>
   );
 }
 
-function Home({ onPick, progress: p, unlocks: u, update }: {
+/** Life in the title painting: embers off the campfire, its flicker, and the lich tower's pulse (decoration only). */
+const EMBERS = Array.from({ length: 16 }, (_, i) => ({ left: 3 + ((i * 37) % 22), delay: (i * 0.73) % 6, dur: 5 + ((i * 1.9) % 4), drift: ((i * 29) % 40) - 20 }));
+
+function HomeAmbience() {
+  return (
+    <div aria-hidden className={oc.ambience}>
+      <span className={oc.fireGlow} />
+      <span className={oc.lichGlow} />
+      {EMBERS.map((e, i) => (
+        <span className={oc.ember} key={i} style={{ left: `${e.left}%`, animationDelay: `${e.delay}s`, animationDuration: `${e.dur}s`, ["--drift" as string]: `${e.drift}px` }} />
+      ))}
+    </div>
+  );
+}
+
+function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
   onPick(next: Screen): void;
+  onStory(): void;
   progress: OcProgress;
   unlocks: Unlocks;
   update(change: (p: OcProgress) => OcProgress): void;
@@ -381,6 +594,7 @@ function Home({ onPick, progress: p, unlocks: u, update }: {
   const lastWorld = OC_WORLDS.find((world) => !worldCleared(world.id, u.cleared))?.id ?? OC_WORLDS.length;
   const endless = endlessOpen(u.cleared);
   const raids = OC_RAIDS.some((raid) => raidOpen(raid, u.cleared));
+  const next = nextLevelOf(u.cleared);
   const [asking, setAsking] = useState(false);
   const [code, setCode] = useState("");
   const [wrong, setWrong] = useState(false);
@@ -396,15 +610,34 @@ function Home({ onPick, progress: p, unlocks: u, update }: {
   };
   return (
     <>
+      <HomeAmbience />
       <div className={styles.menuHead}>
         <div>
           <h1>Order &amp; Chaos</h1>
-          <p>The Lawful hold the realm; the Chaos horde comes to break it. Raise troops, gather Surge orbs, earn Valor to Ascend your champions, recruit heroes, mercenaries and artifacts, and hold the line across ten worlds.</p>
+          <p className={oc.homeBlurb}>The Lawful hold the realm; the Chaos horde comes to break it. Raise troops, gather Surge orbs, earn Valor to Ascend your champions, recruit heroes, mercenaries and artifacts, and hold the line across ten worlds.</p>
         </div>
+        <button className={oc.storyButton} onClick={onStory} title="Hear Crag Hack's tale again" type="button">
+          <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
+          Crag&apos;s tale
+        </button>
         <span className={oc.purse} title="Seals: spend them in the Barracks and the Mercenary Camp">
           <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {p.seals}
         </span>
       </div>
+      {p.seen.includes("prologue") ? <Greeting cleared={u.cleared} place="home" /> : null}
+      {next ? (
+        <button className={`${oc.nextCard} ${oc.continueCard}`} onClick={() => onPick({ s: "prep", level: next })} type="button">
+          <span className={oc.nextArt}>
+            {next.featured || next.boss ? <AttackerArt kind={next.boss ? "dracolich" : next.featured!} size={64} /> : <DefenderArt kind="oc-longbow" size={64} />}
+          </span>
+          <span className={oc.nextText}>
+            <small>{p.cleared.length ? "Continue the campaign" : "Begin the campaign"}</small>
+            <strong>{levelCode(next)} · {next.name}</strong>
+            {rewardText(next) ? <span className={oc.nextPrize}><RewardBadge level={next} size={26} /> Wins you: {rewardText(next)}</span> : null}
+          </span>
+          <span className={oc.playPill}>Play ▸</span>
+        </button>
+      ) : null}
       <div className={styles.artModes}>
         <button aria-label="Campaign" className={styles.artMode} onClick={() => onPick({ s: "campaign", world: lastWorld })} title="Ten worlds of the Chaos invasion. Every victory recruits new troops, heroes, artifacts or spells." type="button">
           <ArtFace label="Campaign" src={ART.campaign} />
@@ -479,8 +712,69 @@ function Home({ onPick, progress: p, unlocks: u, update }: {
   );
 }
 
-function Campaign({ world, progress, unlocks: u, onPick, onWorld, onBack }: {
+/** What a level hands out on its first clear, in words ("" when nothing). */
+function rewardText(level: OcLevel): string {
+  const r = level.reward;
+  return [
+    ...(r.units ?? []).map((kind) => DEFENDERS[kind]?.name ?? kind),
+    r.hero ? `Hero ${OC_HEROES[r.hero].name}` : "",
+    r.artifact ? BLESSINGS[r.artifact].name : "",
+    r.spell ? `Spell: ${SPELLS[r.spell].name}` : "",
+    r.altar ? "The Ascension Altar" : ""
+  ].filter(Boolean).join(" · ");
+}
+
+/** The first-clear prize as a small picture: the carrot hanging over each level on the map. */
+function RewardBadge({ level, size = 30 }: { level: OcLevel; size?: number }) {
+  const r = level.reward;
+  const text = rewardText(level);
+  if (!text) return null;
+  const unit = r.units?.[0];
+  const src = r.hero ? OC_HEROES[r.hero].portrait : r.artifact ? BLESSINGS[r.artifact].icon : r.spell ? SPELLS[r.spell].icon : null;
+  return (
+    <span className={oc.rewardBadge} title={`First clear: ${text}`}>
+      {unit ? <DefenderArt kind={unit} size={size} /> : src ? <img alt="" src={assetUrl(src)} /> : <Icon className={oc.inlineIcon} fallback="♛" src={ART.valor} />}
+    </span>
+  );
+}
+
+/** The next campaign level waiting to be won (null once all are cleared). */
+function nextLevelOf(cleared: readonly string[]): OcLevel | null {
+  return OC_LEVELS.find((level) => !cleared.includes(level.id) && isLevelOpen(level.id, cleared)) ?? null;
+}
+
+/** "3-2" for a campaign level. */
+function levelCode(level: OcLevel): string {
+  const world = OC_WORLDS.find((entry) => entry.id === level.world);
+  const i = world ? world.levels.findIndex((entry) => entry.id === level.id) : -1;
+  return i >= 0 ? `${level.world}-${i + 1}` : level.name;
+}
+
+/** Star rewards as a road: filled up to the stars earned, a pip per reward, and how far the next one is. */
+function StarTrack({ stars }: { stars: number }) {
+  const max = OC_STAR_MILESTONES[OC_STAR_MILESTONES.length - 1]?.stars ?? 1;
+  const next = OC_STAR_MILESTONES.find((m) => m.stars > stars);
+  return (
+    <div className={oc.track}>
+      <div className={oc.trackHead}>
+        <strong>Star rewards</strong>
+        <span>{next ? <>{next.stars - stars} more <span className={oc.starOn}>★</span> → {next.label}</> : "Every star reward earned!"}</span>
+      </div>
+      <div className={oc.trackBar}>
+        <span className={oc.trackFill} style={{ width: `${Math.min(100, (stars / max) * 100)}%` }} />
+        {OC_STAR_MILESTONES.map((m) => (
+          <span className={`${oc.pip} ${stars >= m.stars ? oc.pipOn : ""}`} key={m.stars} style={{ left: `${(m.stars / max) * 100}%` }} title={`${m.stars} stars: ${m.label}`}>
+            <b>{m.stars}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Campaign({ world, progress, unlocks: u, onPick, onWorld, onBack, onStory }: {
   world: number;
+  onStory(world: number): void;
   progress: OcProgress;
   unlocks: Unlocks;
   onPick(level: OcLevel): void;
@@ -489,88 +783,141 @@ function Campaign({ world, progress, unlocks: u, onPick, onWorld, onBack }: {
 }) {
   const current = OC_WORLDS.find((entry) => entry.id === world) ?? OC_WORLDS[0]!;
   const starCount = totalStars(progress.cleared, progress.stars);
+  const next = nextLevelOf(u.cleared);
+  const clearedHere = current.levels.filter((level) => progress.cleared.includes(level.id)).length;
+  const art = (src: string) => `url("${assetUrl(src)}")`;
   return (
     <>
-      <div className={styles.menuHead}>
-        <button className={styles.ghostButton} onClick={onBack} type="button">Back</button>
-        <div>
-          <h1>Campaign</h1>
-          <p>Clear a world to open the next. Each level has two goals — meet them for stars and extra Seals. Stars earn rewards of their own.</p>
+      <div className={oc.campHead}>
+        <button className={oc.backButton} onClick={onBack} type="button">‹ Back</button>
+        <h1 className={oc.titleBanner} style={{ ["--oc-banner" as string]: art(OC_UI.banner) }}><span>Campaign</span></h1>
+        <div className={oc.tally}>
+          <span title="Stars earned"><span className={oc.starOn}>★</span> {starCount}</span>
+          <span title="Seals"><Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {progress.seals}</span>
         </div>
       </div>
-      <div className={oc.worlds} role="tablist" aria-label="Worlds">
+
+      <div aria-label="Worlds" className={oc.worldStrip} role="tablist">
         {OC_WORLDS.map((entry) => {
           const open = entry.id === 1 || worldCleared(entry.id - 1, u.cleared);
           const stars = entry.levels.reduce((sum, level) => sum + starsOf(progress, level), 0);
+          const done = entry.levels.every((level) => progress.cleared.includes(level.id));
           return (
             <button
               aria-selected={entry.id === current.id}
-              className={`${oc.world} ${entry.id === current.id ? oc.worldOn : ""}`}
+              className={`${oc.worldCard} ${entry.id === current.id ? oc.worldCardOn : ""} ${done ? oc.worldCardDone : ""}`}
               disabled={!open}
               key={entry.id}
               onClick={() => onWorld(entry.id)}
               role="tab"
-              style={{ backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.75)), url("${assetUrl(entry.art)}")` }}
               title={open ? entry.blurb : `Clear ${OC_WORLDS[entry.id - 2]?.name ?? "the previous world"} first.`}
               type="button"
             >
-              <strong>{entry.id}. {entry.name}</strong>
-              <small>{open ? `★ ${stars} / ${entry.levels.length * 3}` : "Locked"}</small>
+              <span className={oc.worldThumb} style={{ backgroundImage: art(entry.art) }} />
+              <b className={oc.worldNum}>{entry.id}</b>
+              <span className={oc.worldName}>{entry.name}</span>
+              <span className={oc.worldStars}>
+                {open ? (
+                  <>
+                    <span className={oc.worldBar}><span style={{ width: `${(stars / (entry.levels.length * 3)) * 100}%` }} /></span>
+                    <small>★ {stars}/{entry.levels.length * 3}</small>
+                  </>
+                ) : <small>Locked</small>}
+              </span>
             </button>
           );
         })}
       </div>
-      <section className={styles.panel}>
-        <h2>{current.name}</h2>
-        <p className={styles.note}>{current.blurb}</p>
-        <div className={styles.levels}>
-          {current.levels.map((level, i) => {
-            const open = isLevelOpen(level.id, u.cleared);
-            const cleared = progress.cleared.includes(level.id);
-            return (
-              <button
-                className={`${styles.level} ${cleared ? styles.levelCleared : ""}`}
-                disabled={!open}
-                key={level.id}
-                onClick={() => onPick(level)}
-                title={open ? level.brief : "Clear the level before it first."}
-                type="button"
-              >
-                {level.featured || level.boss ? <AttackerArt kind={level.boss ? "dracolich" : level.featured!} size={44} /> : <DefenderArt kind="oc-longbow" size={44} />}
-                <span>
-                  <strong>{current.id}-{i + 1}. {level.name}</strong>
-                  <small>
-                    {KIND_LABEL[level.kind] ? <em className={oc.badge}>{KIND_LABEL[level.kind]}</em> : null}
-                    {level.boss ? "Boss battle" : `${level.waves} waves`}
-                  </small>
-                  <Stars count={starsOf(progress, level)} />
-                </span>
-              </button>
-            );
-          })}
+
+      <section className={oc.mapStage}>
+        <header className={oc.mapHead}>
+          <div>
+            <h2>{current.name}</h2>
+            <p>{current.blurb}</p>
+          </div>
+          <span className={oc.mapCount}>{clearedHere} / {current.levels.length} won</span>
+          {OC_WORLD_STORY[current.id]?.length ? (
+            <button className={oc.storyButton} onClick={() => onStory(current.id)} title="Hear this world's story again" type="button">
+              <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
+              World story
+            </button>
+          ) : null}
+        </header>
+        {/* The world map: its painting in a carved frame, a road, and a medallion per level along it. */}
+        <div className={oc.mapFrame} style={{ ["--oc-frame" as string]: art(OC_UI.mapFrame) }}>
+          <div
+            className={oc.map}
+            style={{
+              backgroundImage: art(current.art),
+              ["--oc-medal" as string]: art(OC_UI.medal),
+              ["--oc-medal-boss" as string]: art(OC_UI.medalBoss),
+              ["--oc-medal-locked" as string]: art(OC_UI.medalLocked)
+            }}
+          >
+            <svg aria-hidden className={oc.mapRoad} preserveAspectRatio="none" viewBox="0 0 100 100">
+              <path d={mapRoad(current.levels.length)} />
+            </svg>
+            {current.levels.map((level, i) => {
+              const open = isLevelOpen(level.id, u.cleared);
+              const cleared = progress.cleared.includes(level.id);
+              const spot = mapSpot(i, current.levels.length);
+              const boss = level.kind === "boss" || level.boss !== undefined;
+              return (
+                <button
+                  aria-label={`${current.id}-${i + 1}. ${level.name}${open ? "" : " (locked)"}`}
+                  className={`${oc.node} ${cleared ? oc.nodeCleared : ""} ${open && !cleared ? oc.nodeNext : ""} ${boss ? oc.nodeBoss : ""} ${open ? "" : oc.nodeLocked}`}
+                  disabled={!open}
+                  key={level.id}
+                  onClick={() => onPick(level)}
+                  style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
+                  title={open ? level.brief : "Clear the level before it first."}
+                  type="button"
+                >
+                  <span className={oc.medal}>
+                    {level.featured || level.boss ? <AttackerArt kind={level.boss ? "dracolich" : level.featured!} size={54} /> : <DefenderArt kind="oc-longbow" size={54} />}
+                    <b className={oc.nodeNum}>{current.id}-{i + 1}</b>
+                    {!cleared ? <RewardBadge level={level} /> : null}
+                  </span>
+                  <span className={oc.nodeLabel}>
+                    <strong>{level.name}</strong>
+                    <small>
+                      {KIND_LABEL[level.kind] ? <em className={oc.badge}>{KIND_LABEL[level.kind]}</em> : null}
+                      {open ? (level.boss ? "Boss battle" : `${level.waves} waves`) : "Locked"}
+                    </small>
+                    <Stars count={starsOf(progress, level)} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
-      <section className={styles.panel}>
-        <h2>Star rewards (★ {starCount})</h2>
-        <div className={oc.milestones}>
-          {OC_STAR_MILESTONES.map((m) => {
-            const reached = u.stars >= m.stars;
-            return (
-              <div className={`${oc.milestone} ${reached ? oc.milestoneOn : ""}`} key={m.stars}>
-                <strong>★ {m.stars}</strong>
-                <span>{m.label}</span>
-                <small>{reached ? "Earned" : `${Math.max(0, m.stars - starCount)} more`}</small>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+
+      <div className={oc.campFoot}>
+        {next ? (
+          <button className={oc.nextCard} onClick={() => onPick(next)} type="button">
+            <span className={oc.nextArt}>
+              {next.featured || next.boss ? <AttackerArt kind={next.boss ? "dracolich" : next.featured!} size={64} /> : <DefenderArt kind="oc-longbow" size={64} />}
+            </span>
+            <span className={oc.nextText}>
+              <small>Next battle</small>
+              <strong>{levelCode(next)} · {next.name}</strong>
+              {rewardText(next) ? <span className={oc.nextPrize}><RewardBadge level={next} size={26} /> Wins you: {rewardText(next)}</span> : null}
+            </span>
+            <span className={oc.playPill}>Play ▸</span>
+          </button>
+        ) : (
+          <div className={oc.nextCard}><span className={oc.nextText}><small>Campaign</small><strong>Every battle won. Try the Endless Siege!</strong></span></div>
+        )}
+        <StarTrack stars={starCount} />
+      </div>
     </>
   );
 }
 
-function Prep({ level, progress, unlocks: u, update, onStart, onBack }: {
+function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: {
   level: OcLevel;
+  onTalk(): void;
   progress: OcProgress;
   unlocks: Unlocks;
   update(change: (p: OcProgress) => OcProgress): void;
@@ -604,174 +951,196 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack }: {
     if (on.length >= OC_SPELLBOOK_SIZE) return p;
     return { ...p, spellbook: [...on, id] };
   });
-  const reward = level.reward;
+  const art = (src: string) => `url("${assetUrl(src)}")`;
+  const sceneVars = Object.fromEntries(CARD_SCENES.map((scene) => [`--oc-scene-${scene}`, art(cardSceneSrc(scene))]));
+  const story = OC_LEVEL_STORY[level.id];
   return (
-    <>
-      <div className={styles.menuHead}>
-        <button className={styles.ghostButton} onClick={onBack} type="button">Back</button>
-        <div>
-          <h1>{level.name}{KIND_LABEL[level.kind] ? <em className={oc.badge}>{KIND_LABEL[level.kind]}</em> : null}</h1>
-          <p>{level.brief}</p>
+    <div className={oc.prep} style={{ ["--oc-packet" as string]: art(OC_UI.packet), ["--oc-tray" as string]: art(OC_UI.tray), ...sceneVars }}>
+      <div className={oc.campHead}>
+        <button className={oc.backButton} onClick={onBack} type="button">‹ Back</button>
+        <h1 className={oc.titleBanner} style={{ ["--oc-banner" as string]: art(OC_UI.banner) }}><span>{level.name}</span></h1>
+        <div className={oc.tally}>
+          {level.world > 0 ? <span>{levelCode(level)}</span> : null}
+          {KIND_LABEL[level.kind] ? <span className={oc.kindTag}>{KIND_LABEL[level.kind]}</span> : null}
         </div>
       </div>
-      {level.boss ? (
-        <section className={styles.panel}>
-          <h2>Scouts report</h2>
-          <div className={styles.foes}>
-            <div className={`${styles.foe} ${styles.foeNew}`}><AttackerArt kind="dracolich" size={56} />Dracolich</div>
-          </div>
-        </section>
-      ) : foes.length ? (
-        <section className={styles.panel}>
-          <h2>Scouts report</h2>
-          <div className={styles.foes}>
-            {foes.slice(0, 30).map((kind) => (
-              <div className={`${styles.foe} ${kind === level.featured ? styles.foeNew : ""}`} key={kind} title={ENEMIES[kind]!.blurb}>
-                {kind === level.featured ? <span className={styles.newTag}>New</span> : null}
-                <AttackerArt kind={kind} size={56} />
-                {ENEMIES[kind]!.name}
-              </div>
-            ))}
-          </div>
-          {level.featured ? <p className={styles.note}>{ENEMIES[level.featured]!.name}: {ENEMIES[level.featured]!.blurb}</p> : null}
-        </section>
-      ) : null}
-      {level.goals.length ? (
-        <section className={styles.panel}>
-          <h2>Goals</h2>
-          <div className={oc.resultGoals}>
-            <span className={cleared ? oc.starOn : oc.starOff}>{cleared ? "★" : "☆"} Win the battle</span>
-            {level.goals.map((goal, i) => <span className={met.includes(i) ? oc.starOn : oc.starOff} key={i}>{met.includes(i) ? "★" : "☆"} {goalText(goal)}</span>)}
-          </div>
-          {!cleared && (reward.units?.length || reward.hero || reward.artifact || reward.spell || reward.altar) ? (
-            <p className={styles.note}>
-              Victory recruits: {[
-                ...(reward.units ?? []).map((kind) => DEFENDERS[kind]!.name),
-                reward.hero ? `the hero ${OC_HEROES[reward.hero].name}` : "",
-                reward.artifact ? `the ${BLESSINGS[reward.artifact].name}` : "",
-                reward.spell ? `the spell ${SPELLS[reward.spell].name}` : "",
-                reward.altar ? "the Ascension Altar" : ""
-              ].filter(Boolean).join(", ")}.
-            </p>
-          ) : null}
-        </section>
-      ) : null}
-      <section className={styles.panel}>
-        <h2>Hero</h2>
-        <div className={oc.heroes} role="radiogroup" aria-label="Hero">
-          {OC_HERO_ORDER.map((id: OcHeroId) => {
-            const open = u.heroes.includes(id);
-            const h = OC_HEROES[id];
-            return (
-              <button
-                aria-checked={hero.id === id}
-                className={`${oc.hero} ${hero.id === id ? oc.heroOn : ""}`}
-                disabled={!open}
-                key={id}
-                onClick={() => update((p) => ({ ...p, hero: id }))}
-                role="radio"
-                title={open ? h.blurb : "Recruited later in the campaign."}
-                type="button"
-              >
-                <img alt="" className={oc.portrait} src={assetUrl(h.portrait)} />
-                <span>
-                  <strong>{open ? h.name : "???"}</strong>
-                  <small>{open ? h.title : "Locked"}</small>
-                </span>
-              </button>
-            );
-          })}
+      <p className={oc.prepBrief}>{level.brief}</p>
+      {story?.before?.length || story?.letter ? (
+        <div className={oc.advice}>
+          {story.before?.length ? <AdvisorBubble compact line={story.before.at(-1)!} /> : <span />}
+          <button className={oc.storyButton} onClick={onTalk} type="button">
+            <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
+            {story.letter ? "Read Sandro's letter & hear Crag" : "Hear Crag out"}
+          </button>
         </div>
-        <p className={styles.note}>{hero.blurb} Signature spell: {SPELLS[hero.spell].name}.</p>
-        <h2>Spellbook ({book.length} / {OC_SPELLBOOK_SIZE})</h2>
-        {u.spells.length ? (
-          <div className={oc.artifacts}>
-            {u.spells.map((id) => (
-              <button
-                aria-pressed={book.includes(id)}
-                className={`${oc.artifact} ${book.includes(id) ? oc.artifactOn : ""}`}
-                key={id}
-                onClick={() => toggleSpell(id)}
-                title={`${SPELLS[id].blurb} (${SPELLS[id].mana} mana)`}
-                type="button"
-              >
-                <img alt="" src={assetUrl(SPELLS[id].icon)} />
-                <span>{SPELLS[id].name}</span>
-              </button>
-            ))}
-          </div>
-        ) : <p className={styles.note}>No spells found yet — the campaign hands them out.</p>}
-        {artSlots > 0 ? (
-          <>
-            <h2>Artifacts ({equipped.length} / {artSlots})</h2>
-            <div className={oc.artifacts}>
-              {artifacts.filter((id) => id !== hero.passive).map((id) => (
-                <button
-                  aria-pressed={equipped.includes(id)}
-                  className={`${oc.artifact} ${equipped.includes(id) ? oc.artifactOn : ""}`}
-                  key={id}
-                  onClick={() => toggleArtifact(id)}
-                  title={BLESSINGS[id].blurb}
-                  type="button"
-                >
-                  <img alt="" src={assetUrl(BLESSINGS[id].icon)} />
-                  <span>{BLESSINGS[id].name}</span>
-                </button>
-              ))}
-              {artifacts.length === 0 ? <p className={styles.note}>No artifacts found yet.</p> : null}
-            </div>
-          </>
-        ) : null}
-        {u.altar && level.kind !== "raid" ? (
-          <p className={styles.note}>
-            <Icon className={oc.inlineIcon} fallback="♛" src={ART.valor} /> Ascension: slain foes build Valor ({VALOR_NEED} per crown, {u.crowns} crown{u.crowns > 1 ? "s" : ""} at most).
-            Spend a crown (U) to turn a unit into its Ascended form (fully healed, +30% health and power, and its ultimate) for {Math.round(ASCEND_TICKS / GW_TPS)} s. Ready: {u.ultimates.length ? u.ultimates.map((kind) => DEFENDERS[kind]!.name).join(", ") : `none yet — train units to Lv ${OC_ULT_LEVEL} in the Barracks`}.
-          </p>
-        ) : null}
-      </section>
-      <section className={styles.panel}>
-        {conveyor ? (
-          <p className={styles.note}>Conveyor level: your troops arrive on the belt — no seed packets to choose.</p>
-        ) : level.kind !== "raid" ? (
-          <>
-            <h2>Seed packets ({hand.length} / {slots})</h2>
-            <div className={styles.slots} aria-label="Your seed packets">
-              {hand.map((kind) => (
-                <button className={styles.pick} key={kind} onClick={() => toggle(kind)} title={`Remove ${DEFENDERS[kind]!.name}`} type="button">
-                  <CardArt card={kind} size={48} />
-                  <span>{DEFENDERS[kind]!.name}</span>
-                </button>
-              ))}
-              {Array.from({ length: Math.max(0, slots - hand.length) }, (_, i) => <span className={styles.slotEmpty} key={i} />)}
-            </div>
-            <div className={styles.pickGrid}>
-              {units.map((kind) => {
-                const def = DEFENDERS[kind]!;
-                const lv = progress.levels[kind] ?? 1;
-                const ult = u.ultimates.includes(kind);
+      ) : null}
+
+      <div className={oc.prepGrid}>
+        <div className={oc.prepMain}>
+          <section className={oc.troops}>
+            {conveyor ? (
+              <p className={styles.note}>Conveyor level: your troops arrive on the belt — no cards to choose.</p>
+            ) : level.kind !== "raid" ? (
+              <>
+                <h2>Choose your troops <small>({hand.length} / {slots})</small></h2>
+                {/* The seed bank you take into battle, in the order you'll see it. */}
+                <div aria-label="Your troops for this battle" className={oc.bank}>
+                  {hand.map((kind) => (
+                    <button className={oc.pk} data-scene={cardScene(kind)} key={kind} onClick={() => toggle(kind)} title={`Remove ${DEFENDERS[kind]!.name}`} type="button">
+                      <span className={oc.pkArt}><CardArt card={kind} size={52} /></span>
+                      <b className={oc.pkCost}>{CARDS[kind]!.cost}</b>
+                    </button>
+                  ))}
+                  {Array.from({ length: Math.max(0, slots - hand.length) }, (_, i) => <span className={oc.pkEmpty} key={i} />)}
+                </div>
+                <div className={oc.roster}>
+                  {units.map((kind) => {
+                    const def = DEFENDERS[kind]!;
+                    const lv = progress.levels[kind] ?? 1;
+                    const ult = u.ultimates.includes(kind);
+                    const on = hand.includes(kind);
+                    return (
+                      <div className={oc.pkCell} key={kind}>
+                        <button
+                          aria-pressed={on}
+                          className={`${oc.pk} ${on ? oc.pkOn : ""}`}
+                          data-scene={cardScene(kind)}
+                          onClick={() => toggle(kind)}
+                          title={`${def.name}: ${def.blurb}${def.surge ? ` Surge: ${surgeText(def)}` : ""}${ult ? ` Ascension — ${ultimateLine(kind)}` : ""}`}
+                          type="button"
+                        >
+                          <span className={oc.pkArt}><CardArt card={kind} size={56} /></span>
+                          <b className={oc.pkCost}>{CARDS[kind]!.cost}</b>
+                          {lv > 1 ? <i className={oc.pkLv}>Lv {lv}</i> : null}
+                          {ult ? <i className={oc.pkUlt}>♛</i> : null}
+                        </button>
+                        <small>{def.name}</small>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className={styles.note}>Hybrids: drop one card on another unit on the field to fuse them — {HYBRIDS.map((kind) => `${recipeText(kind)} = ${DEFENDERS[kind]!.name}`).join("; ")}.</p>
+              </>
+            ) : null}
+          </section>
+        </div>
+
+        <aside className={oc.prepSide}>
+          {level.boss ? (
+            <section className={styles.panel}>
+              <h2>Scouts report</h2>
+              <div className={styles.foes}>
+                <div className={`${styles.foe} ${styles.foeNew}`}><AttackerArt kind="dracolich" size={56} />Dracolich</div>
+              </div>
+            </section>
+          ) : foes.length ? (
+            <section className={styles.panel}>
+              <h2>Scouts report</h2>
+              <div className={styles.foes}>
+                {foes.slice(0, 30).map((kind) => (
+                  <div className={`${styles.foe} ${kind === level.featured ? styles.foeNew : ""}`} key={kind} title={ENEMIES[kind]!.blurb}>
+                    {kind === level.featured ? <span className={styles.newTag}>New</span> : null}
+                    <AttackerArt kind={kind} size={56} />
+                    {ENEMIES[kind]!.name}
+                  </div>
+                ))}
+              </div>
+              {level.featured ? <p className={styles.note}>{ENEMIES[level.featured]!.name}: {ENEMIES[level.featured]!.blurb}</p> : null}
+            </section>
+          ) : null}
+          {level.goals.length ? (
+            <section className={styles.panel}>
+              <h2>Goals</h2>
+              <div className={oc.resultGoals}>
+                <span className={cleared ? oc.starOn : oc.starOff}>{cleared ? "★" : "☆"} Win the battle</span>
+                {level.goals.map((goal, i) => <span className={met.includes(i) ? oc.starOn : oc.starOff} key={i}>{met.includes(i) ? "★" : "☆"} {goalText(goal)}</span>)}
+              </div>
+              {!cleared && rewardText(level) ? (
+                <p className={oc.nextPrize}><RewardBadge level={level} size={26} /> Victory recruits: {rewardText(level)}</p>
+              ) : null}
+            </section>
+          ) : null}
+          <section className={styles.panel}>
+            <h2>Hero</h2>
+            <div className={oc.heroes} role="radiogroup" aria-label="Hero">
+              {OC_HERO_ORDER.map((id: OcHeroId) => {
+                const open = u.heroes.includes(id);
+                const h = OC_HEROES[id];
                 return (
                   <button
-                    className={`${styles.pick} ${hand.includes(kind) ? styles.pickOn : ""}`}
-                    key={kind}
-                    onClick={() => toggle(kind)}
-                    title={`${def.name}: ${def.blurb}${def.surge ? ` Surge: ${surgeText(def)}` : ""}${ult ? ` Ascension — ${ultimateLine(kind)}` : ""}`}
+                    aria-checked={hero.id === id}
+                    className={`${oc.hero} ${hero.id === id ? oc.heroOn : ""}`}
+                    disabled={!open}
+                    key={id}
+                    onClick={() => update((p) => ({ ...p, hero: id }))}
+                    role="radio"
+                    title={open ? h.blurb : "Recruited later in the campaign."}
                     type="button"
                   >
-                    <CardArt card={kind} size={56} />
-                    <span>{def.name}</span>
-                    <small>{CARDS[kind]!.cost} gold{lv > 1 ? ` · Lv ${lv}` : ""}{ult ? " · ♛" : ""}</small>
+                    <img alt="" className={oc.portrait} src={assetUrl(h.portrait)} />
+                    <span>
+                      <strong>{open ? h.name : "???"}</strong>
+                      <small>{open ? h.title : "Locked"}</small>
+                    </span>
                   </button>
                 );
               })}
             </div>
-            <p className={styles.note}>Hybrids: drop one seed packet on another unit to fuse them — {HYBRIDS.map((kind) => `${recipeText(kind)} = ${DEFENDERS[kind]!.name}`).join("; ")}.</p>
-          </>
-        ) : null}
-        <div className={styles.menuButtons}>
-          <button className={styles.primary} disabled={!conveyor && hand.length === 0} onClick={() => onStart(hand)} type="button">To battle!</button>
-        </div>
-      </section>
-    </>
+            <p className={styles.note}>{hero.blurb} Signature spell: {SPELLS[hero.spell].name}.</p>
+            <h2>Spellbook ({book.length} / {OC_SPELLBOOK_SIZE})</h2>
+            {u.spells.length ? (
+              <div className={oc.artifacts}>
+                {u.spells.map((id) => (
+                  <button
+                    aria-pressed={book.includes(id)}
+                    className={`${oc.artifact} ${book.includes(id) ? oc.artifactOn : ""}`}
+                    key={id}
+                    onClick={() => toggleSpell(id)}
+                    title={`${SPELLS[id].blurb} (${SPELLS[id].mana} mana)`}
+                    type="button"
+                  >
+                    <img alt="" src={assetUrl(SPELLS[id].icon)} />
+                    <span>{SPELLS[id].name}</span>
+                  </button>
+                ))}
+              </div>
+            ) : <p className={styles.note}>No spells found yet — the campaign hands them out.</p>}
+            {artSlots > 0 ? (
+              <>
+                <h2>Artifacts ({equipped.length} / {artSlots})</h2>
+                <div className={oc.artifacts}>
+                  {artifacts.filter((id) => id !== hero.passive).map((id) => (
+                    <button
+                      aria-pressed={equipped.includes(id)}
+                      className={`${oc.artifact} ${equipped.includes(id) ? oc.artifactOn : ""}`}
+                      key={id}
+                      onClick={() => toggleArtifact(id)}
+                      title={BLESSINGS[id].blurb}
+                      type="button"
+                    >
+                      <img alt="" src={assetUrl(BLESSINGS[id].icon)} />
+                      <span>{BLESSINGS[id].name}</span>
+                    </button>
+                  ))}
+                  {artifacts.length === 0 ? <p className={styles.note}>No artifacts found yet.</p> : null}
+                </div>
+              </>
+            ) : null}
+            {u.altar && level.kind !== "raid" ? (
+              <p className={styles.note}>
+                <Icon className={oc.inlineIcon} fallback="♛" src={ART.valor} /> Ascension: slain foes build Valor ({VALOR_NEED} per crown, {u.crowns} crown{u.crowns > 1 ? "s" : ""} at most).
+                Spend a crown (U) to turn a unit into its Ascended form (fully healed, +30% health and power, and its ultimate) for {Math.round(ASCEND_TICKS / GW_TPS)} s. Ready: {u.ultimates.length ? u.ultimates.map((kind) => DEFENDERS[kind]!.name).join(", ") : `none yet — train units to Lv ${OC_ULT_LEVEL} in the Barracks`}.
+              </p>
+            ) : null}
+          </section>
+        </aside>
+      </div>
+
+      {/* Always in reach while you browse the troops. */}
+      <div className={oc.fightBar}>
+        <button className={oc.fightButton} disabled={!conveyor && hand.length === 0} onClick={() => onStart(hand)} type="button">Let&apos;s fight! ▸</button>
+      </div>
+    </div>
   );
 }
 
@@ -825,6 +1194,7 @@ function Barracks({ progress, unlocks: u, update, onBack }: { progress: OcProgre
         </div>
         <span className={oc.purse}><Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {progress.seals}</span>
       </div>
+      <Greeting cleared={u.cleared} place="barracks" />
       <section className={styles.panel}>
         <div className={oc.barracks}>
           {LAWFUL_CARDS.map((kind) => {
@@ -880,6 +1250,7 @@ function Camp({ progress, unlocks: u, update, onBack }: { progress: OcProgress; 
         </div>
         <span className={oc.purse}><Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {progress.seals}</span>
       </div>
+      <Greeting cleared={u.cleared} place="camp" />
       <section className={styles.panel}>
         <div className={oc.barracks}>
           {OC_MERCENARIES.map(({ kind, seals }) => {
@@ -927,6 +1298,7 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
           <p>Every Lawful troop, its Surge and its Ascension, the hybrids, the Chaos creatures you have met, heroes, artifacts and spells.</p>
         </div>
       </div>
+      <Greeting cleared={u.cleared} place="almanac" />
       <div className={styles.factions} role="tablist" aria-label="Almanac">
         {(["lawful", "hybrids", "chaos", "heroes", "artifacts", "spells"] as const).map((id) => (
           <button aria-selected={tab === id} className={`${styles.faction} ${tab === id ? styles.factionOn : ""}`} key={id} onClick={() => setTab(id)} role="tab" type="button">

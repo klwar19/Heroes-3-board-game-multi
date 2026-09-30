@@ -1,6 +1,7 @@
 "use client";
 
 import { ENGINE_SIGNATURE, type GameState } from "@/engine";
+import { markLiveRoomCache, ROOM_CACHE_PREFIX, setItemMakingRoom } from "./storage-space";
 
 /**
  * Local recovery cache: the latest in-progress game is mirrored to localStorage
@@ -19,7 +20,7 @@ import { ENGINE_SIGNATURE, type GameState } from "@/engine";
  * playable fresh lobby instead of an inescapable error screen.
  */
 
-export const ROOM_CACHE_PREFIX = "homm3bg-room:";
+export { ROOM_CACHE_PREFIX };
 
 export type CachedRoom = { version: number; state: GameState };
 
@@ -29,9 +30,11 @@ export function saveCachedRoom(roomId: string, version: number, state: GameState
   if (typeof window === "undefined") {
     return;
   }
+  markLiveRoomCache(roomId);
   try {
     const payload: StoredRoom = { signature: ENGINE_SIGNATURE, version, state };
-    window.localStorage.setItem(ROOM_CACHE_PREFIX + roomId, JSON.stringify(payload));
+    // When the quota is full, older rooms' copies make way for the live game.
+    setItemMakingRoom(ROOM_CACHE_PREFIX + roomId, JSON.stringify(payload), roomId);
   } catch {
     // Storage full / disabled (private mode): recovery is best-effort.
   }

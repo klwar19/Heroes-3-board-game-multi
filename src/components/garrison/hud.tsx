@@ -9,7 +9,7 @@ import { cardCost, spellCooldown, spellsLeft, type GarrisonState, type Side } fr
 import { assetUrl } from "@/lib/asset-url";
 import styles from "./garrison.module.css";
 import { PROP } from "./scene";
-import { AttackerArt, CardArt } from "./thumbs";
+import { AttackerArt, CardArt, cardScene } from "./thumbs";
 
 /** An art icon that falls back to a glyph when the image is missing (unpublished media). */
 export function IconOr({ src, fallback, className }: { src: string; fallback: string; className?: string }) {
@@ -113,6 +113,7 @@ export function DefTray({ s, gold = s.def.gold, selection, onSelect, onTip }: {
             aria-label={`${def.name}, ${cost} gold`}
             className={`${styles.card} ${styles.packet} ${active ? styles.cardSelected : ""} ${poor || wait > 0 ? styles.cardDim : ""} ${!poor && wait === 0 ? styles.cardReady : ""}`}
             data-faction={faction}
+            data-scene={CARDS[slot.id]!.places ? cardScene(CARDS[slot.id]!.places!) : "arcane"}
             key={slot.id}
             onClick={() => onSelect(active ? null : { t: "card", card: slot.id })}
             onMouseEnter={() => onTip(cardTip(slot.id))}

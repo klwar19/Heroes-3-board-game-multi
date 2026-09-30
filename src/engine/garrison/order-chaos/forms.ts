@@ -56,6 +56,7 @@ function scaleDef(base: DefDef, p: number): DefDef {
     chainLightning: base.chainLightning ? { ...base.chainLightning, dmg: n(base.chainLightning.dmg) } : undefined,
     luckyKills: base.luckyKills ? { ...base.luckyKills, value: n(base.luckyKills.value) } : undefined,
     devour: base.devour ? { ...base.devour, bite: n(base.devour.bite) } : undefined,
+    lastCharge: base.lastCharge ? { ...base.lastCharge, dmg: n(base.lastCharge.dmg) } : undefined,
     thorns: base.thorns !== undefined ? n(base.thorns) : undefined
   };
 }

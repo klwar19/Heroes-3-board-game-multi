@@ -339,13 +339,13 @@
   align-items: center;
   justify-content: center;
   container-type: size;
-  background: #0d0905;
 }
 
 .boardFrame {
   position: relative;
   width: min(100cqw, calc(100cqh * 1400 / 660));
   aspect-ratio: 1400 / 660;
+  box-shadow: 0 0 34px 6px rgba(0, 0, 0, 0.65);
 }
 
 .board {
@@ -1497,4 +1497,263 @@
 
 @media (prefers-reduced-motion: reduce) {
   .crownReady { animation: none; }
+}
+
+/* ------------------------------------------------------------ battle screen look
+   PvZ-style: the world's landscape fills the whole screen behind the lawn, and
+   the HUD floats over it as chunky wooden panels instead of dark full-width bars. */
+
+.game {
+  isolation: isolate;
+}
+
+.game::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--gw-surround, none) center / cover no-repeat #0d0905;
+  filter: blur(6px) brightness(0.56) saturate(1.12);
+  transform: scale(1.03);
+  pointer-events: none;
+}
+
+.topBar,
+.bottomBar {
+  border: 0;
+  border-image: none;
+  background: linear-gradient(180deg, rgba(8, 5, 2, 0.62) 0%, rgba(8, 5, 2, 0.12) 100%);
+  box-shadow: none;
+}
+
+.bottomBar {
+  background: linear-gradient(0deg, rgba(8, 5, 2, 0.66) 0%, rgba(8, 5, 2, 0.12) 100%);
+}
+
+/* The seed bank: a carved wooden tray only as wide as the packets it holds. */
+.topBar .tray,
+.topBar .goldPlaque,
+.bottomBar .spellBar,
+.bottomBar .progress {
+  border: 3px solid #3a2208;
+  border-radius: 12px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 236, 200, 0.045) 0 3px, rgba(40, 20, 4, 0.06) 3px 8px),
+    linear-gradient(180deg, #a2692f 0%, #7c4b1e 48%, #5b3411 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 214, 150, 0.4),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.3),
+    0 5px 14px rgba(0, 0, 0, 0.55);
+}
+
+.topBar .tray {
+  flex: 0 1 auto;
+  gap: 5px;
+  padding: 6px 8px;
+}
+
+.topBar .goldPlaque {
+  gap: 8px;
+  min-width: 132px;
+  padding: 4px 10px 4px 6px;
+}
+
+.topBar .goldPlaque b {
+  min-width: 58px;
+  padding: 1px 10px;
+  border: 2px solid #5a3510;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #fbefcc 0%, #e2c98e 100%);
+  color: #3a2208;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 3px rgba(90, 55, 15, 0.35);
+}
+
+.bottomBar .spellBar {
+  padding: 4px 8px;
+}
+
+.bottomBar .progress {
+  padding: 5px 12px;
+  color: #f3e6c8;
+}
+
+.bottomBar .levelName {
+  color: #fff0c0;
+  text-shadow: 0 2px 0 #3a2208, 0 0 6px rgba(0, 0, 0, 0.6);
+}
+
+.topBar .tool {
+  border: 3px solid #3a2208;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #a2692f 0%, #7c4b1e 55%, #5b3411 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 214, 150, 0.4), inset 0 -3px 0 rgba(0, 0, 0, 0.3), 0 4px 10px rgba(0, 0, 0, 0.55);
+  color: #fff3d4;
+  text-shadow: 0 2px 0 #3a2208;
+}
+
+.topBar .tool:hover:not(:disabled),
+.topBar .tool:focus-visible {
+  border-color: #e3b54a;
+  filter: brightness(1.12);
+}
+
+/* Packets sit a touch proud of the tray and hop when ready. */
+.topBar .packet.cardReady {
+  animation: packetReady 360ms ease-out;
+}
+
+@keyframes packetReady {
+  0% { transform: translateY(0) scale(1); }
+  45% { transform: translateY(-4px) scale(1.04); }
+  100% { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topBar .packet.cardReady { animation: none; }
+}
+
+/* Order & Chaos: Crag Hack's word in the corner of the battlefield. */
+.quip {
+  position: absolute;
+  left: 10px;
+  bottom: 6px;
+  z-index: 6;
+  max-width: min(460px, 70%);
+  pointer-events: none;
+  animation: quipIn 320ms cubic-bezier(0.2, 0.9, 0.3, 1.2), quipOut 400ms ease-in 4.8s forwards;
+}
+
+@keyframes quipIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes quipOut {
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quip { animation: none; }
+}
+
+/* The Order & Chaos gauntlet pointer: its art and the hover variant arrive as
+   --gw-cursor / --gw-cursor-hot; without them the browser's own cursor shows. */
+.shell {
+  cursor: var(--gw-cursor) 1 1, auto;
+}
+
+.shell :is(button, a, label, select, summary, [role="tab"], [role="button"]):not(:disabled) {
+  cursor: var(--gw-cursor-hot) 1 1, pointer;
+}
+
+.shell :is(input[type="text"], input[type="password"], input:not([type]), textarea) {
+  cursor: text;
+}
+
+.shell .board {
+  cursor: var(--gw-cursor) 1 1, crosshair;
+}
+
+/* ------------------------------------------------------------ painted HUD chrome
+   The oak seed-bank tray (sliced frame), bright card packets with a sky window,
+   and carved wooden tool buttons. The art arrives as --gw-*-img variables on
+   .game[data-hudart]; each rule keeps a painted-gradient fallback underneath. */
+
+.game[data-hudart] .topBar .tray,
+.game[data-hudart] .topBar .goldPlaque,
+.game[data-hudart] .bottomBar .spellBar,
+.game[data-hudart] .bottomBar .progress {
+  border-style: solid;
+  border-width: 10px 15px;
+  border-color: #5a3510;
+  border-image: var(--gw-tray-img, none) 30 48 fill / 10px 15px stretch;
+  border-radius: 0;
+  background-clip: padding-box;
+  box-shadow: none;
+  filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.55));
+}
+
+.game[data-hudart] .topBar .tray {
+  padding: 0 2px;
+}
+
+.game[data-hudart] .topBar .goldPlaque {
+  padding: 0 4px 0 0;
+}
+
+.game[data-hudart] .packet {
+  width: 72px;
+  height: 100px;
+  padding: 6px 0 0;
+  border: 0;
+  border-radius: 8px;
+  /* The card frame, the unit's backdrop scene inside its window, and a plain painted fallback. */
+  background:
+    var(--gw-packet-img, none) center / 100% 100% no-repeat,
+    var(--pk-scene, none) 48% 29% / 87.1% 60.8% no-repeat,
+    linear-gradient(180deg, #bfe0f5 0%, #d8efc7 55%, #ecdcae 70%, #cfb67e 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55);
+}
+
+.game[data-hudart] .packet { --pk-scene: var(--gw-scene-day); }
+.game[data-hudart] .packet[data-scene="gold"] { --pk-scene: var(--gw-scene-gold); }
+.game[data-hudart] .packet[data-scene="stone"] { --pk-scene: var(--gw-scene-stone); }
+.game[data-hudart] .packet[data-scene="arcane"] { --pk-scene: var(--gw-scene-arcane); }
+.game[data-hudart] .packet[data-scene="ember"] { --pk-scene: var(--gw-scene-ember); }
+.game[data-hudart] .packet[data-scene="frost"] { --pk-scene: var(--gw-scene-frost); }
+.game[data-hudart] .packet[data-scene="grove"] { --pk-scene: var(--gw-scene-grove); }
+
+.game[data-hudart] .packet::before {
+  display: none;
+}
+
+/* The unit stands in the sky window, a touch larger than the old thumbnail slot. */
+.game[data-hudart] .packet > .thumb,
+.game[data-hudart] .packet > img {
+  margin-top: 1px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45));
+}
+
+/* The price sits on the card's own wooden plaque. */
+.game[data-hudart] .packet .cost {
+  bottom: 6px;
+  left: 16%;
+  right: 16%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #ffe08a;
+  font-size: 14px;
+  line-height: 16px;
+  text-shadow: 0 1px 0 #2a1604, 0 0 3px #000;
+}
+
+.game[data-hudart] .packet .costPoor {
+  color: #ff9a7a;
+}
+
+.game[data-hudart] .packet .key {
+  top: 5px;
+  left: 6px;
+  color: #fff3d4;
+  background: rgba(40, 24, 8, 0.7);
+}
+
+.game[data-hudart] .packet.cardReady:hover {
+  box-shadow: 0 0 12px rgba(255, 214, 90, 0.75), 0 3px 6px rgba(0, 0, 0, 0.55);
+}
+
+.game[data-hudart] .packet .recharge {
+  border-radius: 8px 8px 0 0;
+}
+
+.game[data-hudart] .topBar .tool {
+  border: 0;
+  border-radius: 12px;
+  background:
+    var(--gw-button-img, none) center / 100% 100% no-repeat,
+    linear-gradient(180deg, #a2692f 0%, #7c4b1e 55%, #5b3411 100%);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
 }

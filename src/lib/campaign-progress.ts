@@ -18,6 +18,7 @@
 
 import type { Campaign } from "@/data/story/campaigns";
 import type { GameSetupOptions } from "@/engine";
+import { setItemMakingRoom } from "./storage-space";
 
 const COMPLETION_PREFIX = "binh-campaign:";
 const ROOM_PREFIX = "binh-campaign-room:";
@@ -80,11 +81,9 @@ function writeJson(key: string, value: unknown): void {
   if (typeof window === "undefined") {
     return;
   }
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Private mode / quota — the store degrades to in-session only.
-  }
+  // Private mode / quota (after freeing idle room caches) — the store degrades
+  // to in-session only.
+  setItemMakingRoom(key, JSON.stringify(value));
 }
 
 // -----------------------------------------------------------------------------

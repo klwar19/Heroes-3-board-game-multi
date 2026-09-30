@@ -12,7 +12,9 @@ import {
   type CardId, type DefKind
 } from "@/engine/garrison/content";
 import { ASCEND_TICKS, ascendedKind, baseKind } from "@/engine/garrison/order-chaos/forms";
-import { hidden, isFlat, isStructure, type Defender, type Enemy, type GarrisonConfig, type GarrisonEvent, type GarrisonState } from "@/engine/garrison/sim";
+import { CLIMB_TICKS, hidden, isFlat, isSheep, isStructure, type Defender, type Enemy, type GarrisonConfig, type GarrisonEvent, type GarrisonState } from "@/engine/garrison/sim";
+import { SHEEP_SRC, drawDome, drawLadder, drawScorch, drawSheep, drawWool } from "./oc-siege-art";
+import { createAmbience, drawAmbientAir, drawAmbientGround, type Ambience } from "./ambient";
 import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, type ShotSheet } from "./art";
 import {
   KEEPS, KEEP_SRC, PROP, WORLD_W, burst, createScenery, keepFor, drawCoin, drawDecals, drawGlow, drawKeepFlags, drawParticles, sceneryLayer, spawnParticles,
@@ -90,13 +92,15 @@ export type View = {
   castle: HTMLCanvasElement | null;
   castleReady: number;
   banners: Map<string, HTMLCanvasElement>;
+  /** Cloud shadows, mist and drifting air life (drawing only). */
+  ambience: Ambience;
 };
 
 export function createView(town: string, defColor = "#3f7fe0"): View {
   return {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
-    shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map()
+    shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience()
   };
 }
 
@@ -352,7 +356,8 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
       case "defHurt": {
         view.flash.set(`d${ev.id}`, now);
         const d = s.defenders.find((unit) => unit.id === ev.id);
-        if (d && !isFlat(d) && d.stunnedUntil <= s.tick) flinch(view, `d${d.id}`, defSprite(d.kind), now, 1500);
+        // (A Bellwether curls into its ball instead: drawDefender holds the pose while it is bitten.)
+        if (d && !isFlat(d) && d.stunnedUntil <= s.tick && !DEFENDERS[d.kind]!.lure) flinch(view, `d${d.id}`, defSprite(d.kind), now, 1500);
         break;
       }
       case "defStun": {
@@ -980,8 +985,115 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
         break;
       }
       default:
+        siegeEventFx(view, s, ev, now);
         break;
     }
+  }
+}
+
+/** A Prism Elemental's colours (a fixed few, so the cached glow sprites stay few). */
+const PRISM_GLOWS = ["rgba(255,140,220,0.75)", "rgba(150,210,255,0.75)", "rgba(255,236,140,0.75)", "rgba(170,255,190,0.75)", "rgba(210,160,255,0.75)"] as const;
+
+/** A puff of smoke and wool: a troop turned into a sheep, or back. */
+function sheepPoof(view: View, x: number, y: number, now: number): void {
+  burst(view.particles, now, "smoke", x, y - 45, 12, { speed: 0.12, up: 0.05, life: 750, size: 12, colors: ["rgba(220,190,255,0.75)", "rgba(245,240,250,0.85)"] });
+  burst(view.particles, now, "glint", x, y - 55, 10, { speed: 0.2, life: 500, size: 2.6, colors: ["#f2d8ff", "#ffffff"] });
+  view.fx.push({ t: "ring", x, y: y - 8, color: "#d9b4ff", start: now, radius: 60 });
+}
+
+/** Order & Chaos siegecraft events: hexes, prisms, ladders, the Aegis dome, lures and a Lizard Warrior's charge. */
+function siegeEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: number): void {
+  switch (ev.e) {
+    case "hex": {
+      const e = s.enemies.find((unit) => unit.id === ev.id);
+      if (e) playOnce(view, `e${e.id}`, enemySpriteOf(view, e), [G.cast, G.shoot, G.attack], now, 60);
+      const p = defenderPos(s, ev.target);
+      if (!p) break;
+      if (e) view.fx.push({ t: "tracer", x0: tileX(e.x), y0: feetY(e.lane) - 70, x1: p.x, y1: p.y - 50, start: now, rgb: "220,150,255" });
+      sheepPoof(view, p.x, p.y, now + 120);
+      view.anim.delete(`d${ev.target}`);
+      view.floats.push({ text: "Baa!", x: p.x, y: p.y - 110, color: "#f0e0ff", start: now + 150 });
+      break;
+    }
+    case "unhex": {
+      const p = defenderPos(s, ev.id);
+      if (p) sheepPoof(view, p.x, p.y, now);
+      view.pop.set(ev.id, now);
+      break;
+    }
+    case "spin": {
+      const p = enemyPos(s, ev.id);
+      if (p) {
+        view.fx.push({ t: "ring", x: p.x, y: p.y - 60, color: "#d8b8ff", start: now, radius: 55 });
+        burst(view.particles, now, "glint", p.x, p.y - 70, 10, { speed: 0.22, life: 500, size: 2.4, colors: ["#ffd0f0", "#c8f0ff", "#fff6b0"] });
+      }
+      break;
+    }
+    case "reflect": {
+      const x = tileX(ev.x);
+      const y = feetY(ev.lane) - 48;
+      view.flash.set(`e${ev.id}`, now);
+      view.fx.push({ t: "ring", x: x - 20, y, color: "#fff4ff", start: now, radius: 38 });
+      burst(view.particles, now, "glint", x - 20, y, 12, { speed: 0.3, life: 420, size: 2.6, colors: ["#ffffff", "#ffc8f4", "#bff4ff", "#fff1a0"] });
+      view.floats.push({ text: "Reflected!", x, y: y - 70, color: "#f4d0ff", start: now });
+      break;
+    }
+    case "ladderPlant": {
+      const e = s.enemies.find((unit) => unit.id === ev.id);
+      if (e) view.floats.push({ text: "Ladder!", x: tileX(e.x), y: feetY(e.lane) - 120, color: "#ffcf8a", start: now });
+      break;
+    }
+    case "ladder": {
+      const p = defenderPos(s, ev.target);
+      if (!p) break;
+      burst(view.particles, now, "chip", p.x + 40, p.y - 6, 8, { speed: 0.2, up: 0.25, g: 0.0014, life: 600, size: 3.5, colors: ["#8a5a2a", "#b07a44"], ground: p.y });
+      burst(view.particles, now, "dust", p.x + 40, p.y - 4, 5, { speed: 0.06, life: 700, size: 8, colors: ["rgba(140,115,80,0.8)"] });
+      break;
+    }
+    case "climb": {
+      const e = s.enemies.find((unit) => unit.id === ev.id);
+      if (e) playOnce(view, `e${e.id}`, enemySpriteOf(view, e), [G.move, G.attack], now, 55);
+      break;
+    }
+    case "aegis": {
+      const x = tileX(ev.x);
+      const y = feetY(ev.lane);
+      view.flash.set(`dome${ev.id}`, now);
+      view.fx.push({ t: "ring", x, y: y - 70, color: "#bfe4ff", start: now, radius: 48 });
+      // The blow glances off the shell and tumbles away.
+      const bits = ev.kind === "boulder" ? ["#8a8070", "#6a6256", "#b0a690"] : ev.kind === "fireball" || ev.kind === "hellfire" ? ["#ffc060", "#ff8030"] : ["#d8f0ff", "#ffffff"];
+      burst(view.particles, now, "chip", x, y - 95, ev.kind === "boulder" ? 10 : 6, { speed: 0.35, up: 0.35, g: 0.0015, life: 800, size: ev.kind === "boulder" ? 5 : 3, colors: bits, ground: y });
+      burst(view.particles, now, "spark", x, y - 95, 10, { speed: 0.3, life: 320, size: 2.4, colors: ["#e8f6ff", "#bfe4ff"] });
+      view.floats.push({ text: ev.kind === "snatch" ? "Warded!" : "Blocked!", x, y: y - 130, color: "#bfe4ff", start: now });
+      break;
+    }
+    case "lure": {
+      const d = s.defenders.find((unit) => unit.id === ev.id);
+      if (d) {
+        playOnce(view, `d${d.id}`, defSprite(d.kind), [G.cast, G.attack, G.shoot], now, 60);
+        view.fx.push({ t: "ring", x: tileX(d.col + 0.5), y: feetY(d.lane) - 60, color: "#ffe6a0", start: now, radius: 70 });
+      }
+      const p = enemyPos(s, ev.target);
+      if (p) {
+        view.floats.push({ text: "Lured!", x: p.x, y: p.y - 115, color: "#ffe6a0", start: now });
+        rising(view, "note", p.x, p.y - 70, 3, ["#ffe6a0", "#fff6d0"], now);
+      }
+      break;
+    }
+    case "lizardCharge": {
+      const x = tileX(ev.col + 0.5);
+      const y = feetY(ev.lane);
+      view.anim.delete(`d${ev.id}`);
+      view.phase.delete(`d${ev.id}`);
+      view.flash.delete(`d${ev.id}`);
+      view.pop.delete(ev.id);
+      burst(view.particles, now, "dust", x, y - 6, 12, { speed: 0.2, up: 0.05, life: 800, size: 10, colors: ["rgba(150,130,100,0.8)"] });
+      view.floats.push({ text: "CHARGE!", x, y: y - 120, color: "#9af07a", start: now });
+      view.shakeUntil = Math.max(view.shakeUntil, now + 200);
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -1237,7 +1349,11 @@ function pruneView(view: View, s: GarrisonState, now: number): void {
   for (const d of s.defenders) live.add(`d${d.id}`);
   for (const p of s.projectiles) live.add(`soul${p.id}`);
   for (const map of [view.phase, view.anim, view.flash, view.flinch]) {
-    for (const key of map.keys()) if (/^(e|d|soul)\d+$/.test(key) && !live.has(key)) map.delete(key);
+    for (const key of map.keys()) {
+      if (/^(e|d|soul)\d+$/.test(key) && !live.has(key)) map.delete(key);
+      // An Aegis dome's block flash, keyed by its bearer.
+      else if (/^dome\d+$/.test(key) && !live.has(`d${key.slice(4)}`)) map.delete(key);
+    }
   }
   for (const id of view.stripped) if (!live.has(`e${id}`)) view.stripped.delete(id);
   for (const id of view.pop.keys()) if (!live.has(`d${id}`)) view.pop.delete(id);
@@ -1266,12 +1382,18 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
     ctx.fillRect(-10, -10, WORLD_W + 20, BOARD.H + 20);
   }
   drawKeepFlags(ctx, BOARD, now, view.defColor, keepArt);
+  drawAmbientGround(ctx, view.ambience, s.cfg.terrain, BOARD.W, BOARD.H, now);
   if (s.cfg.mode === "versus") {
     const [, maxCol] = overlay.defCols;
     ctx.fillStyle = "rgba(120,20,20,0.18)";
     for (const lane of s.cfg.lanes) ctx.fillRect(tileX(maxCol + 1), laneTop(lane), tileX(GW_COLS) - tileX(maxCol + 1), BOARD.LANE_H);
   }
   view.decals = drawDecals(ctx, view.decals, now);
+  // Order & Chaos: ground a Juggernaut left burning (nothing can be placed there until it cools).
+  for (const t of s.scorched ?? []) {
+    const heat = Math.max(0, Math.min(1, (t.until - tick) / (15 * GW_TPS)));
+    drawScorch(ctx, tileX(t.col), laneTop(t.lane), BOARD.TILE, BOARD.LANE_H, heat, now, t.lane * 9 + t.col);
+  }
   if (s.cfg.mode === "versus") {
     const edge = tileX(overlay.defCols[1] + 1);
     ctx.strokeStyle = "rgba(235,70,45,0.85)";
@@ -1332,13 +1454,14 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
 
   // Units, lane by lane (lower lanes overlap the ones above).
   for (let lane = 0; lane < GW_LANES; lane += 1) {
-    for (const c of s.chargers) if (c.lane === lane) drawCharger(ctx, s, view, c.state, lerp(c.px, c.x), lane, dt);
+    for (const c of s.chargers) if (c.lane === lane) drawCharger(ctx, s, view, c.state, lerp(c.px, c.x), lane, dt, c.sprite);
     const defenders = s.defenders.filter((d) => d.lane === lane).sort((a, b) => a.col - b.col);
     for (const d of defenders) drawDefender(ctx, s, view, d, now, dt, overlay.selected === d.id);
     drawCorpses(ctx, view, now, lane);
     const enemies = s.enemies.filter((e) => Math.round(e.state === "glide" ? e.to : e.lane) === lane).sort((a, b) => b.x - a.x);
     for (const e of enemies) drawEnemy(ctx, s, view, e, now, dt, alpha);
   }
+  if (s.cfg.oc) drawAegisDomes(ctx, s, view, now);
   // Upgrades the purse can pay for now: a bobbing golden chevron.
   if (overlay.upgradeGold !== null) {
     for (const d of s.defenders) {
@@ -1379,10 +1502,23 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
     if (p.kind === "rocket" && Math.random() < dt / 45) {
       burst(view.particles, now, "smoke", x - 26 * p.dir, y, 1, { speed: 0.02, life: 650, size: 5, colors: ["rgba(90,85,80,0.9)"] });
     }
-    if (p.burn && !p.lob) drawGlow(ctx, "rgba(255,190,80,0.85)", x, y, 22);
+    if (p.burn && !p.lob) {
+      drawGlow(ctx, "rgba(255,190,80,0.85)", x, y, 22);
+      // Set alight by a Salamander (or an Efreet): it trails embers.
+      if (Math.random() < dt / 35) burst(view.particles, now, "ember", x - 14 * p.dir, y, 1, { speed: 0.04, up: 0.05, life: 420, size: 3, colors: ["#ffcf6a", "#ff8a3a"] });
+    }
+    // Turned back by a Prism Elemental: it glints in prism colours on its way home.
+    if (p.reflected) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      drawGlow(ctx, PRISM_GLOWS[Math.floor(now / 90) % PRISM_GLOWS.length]!, x, y, 20);
+      ctx.restore();
+      if (Math.random() < dt / 40) burst(view.particles, now, "glint", x + 12, y, 1, { speed: 0.05, life: 320, size: 2.2, colors: ["#ffd8f6", "#c8f4ff", "#fff4b0"] });
+    }
   }
   drawFxLayer(ctx, view, now);
   view.particles = drawParticles(ctx, view.particles, now);
+  drawAmbientAir(ctx, view.ambience, s.cfg.terrain, BOARD.W, BOARD.H, now, dt);
   drawPickups(ctx, s, view, now, alpha);
   drawFloats(ctx, view, now);
   drawBossBar(ctx, s);
@@ -1507,15 +1643,49 @@ function drawGhost(ctx: CanvasRenderingContext2D, overlay: Overlay, now: number)
   ctx.restore();
 }
 
-function drawCharger(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, state: string, x: number, lane: number, dt: number): void {
+function drawCharger(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, state: string, x: number, lane: number, dt: number, sprite?: string): void {
   if (state === "gone") return;
-  const atlas = atlasFor(s.cfg.chargerSprite);
+  // A Lizard Warrior's last charge (or its war party) rides its own sprite.
+  const atlas = atlasFor(sprite ?? s.cfg.chargerSprite);
   if (!atlas) return;
   const charging = state === "charging";
   const group = charging ? pickGroup(atlas, G.move) : G.stand;
   const frames = Math.max(1, groupFrames(atlas, group));
-  const frame = frameOf(view, `c${lane}${charging ? "m" : "s"}`, frames, charging ? 55 : 150, dt, false);
+  const frame = frameOf(view, `c${lane}${sprite ?? ""}${charging ? "m" : "s"}`, frames, charging ? 55 : 150, dt, false);
+  if (sprite && charging && Math.random() < dt / 50) {
+    burst(view.particles, view.lastNow, "dust", tileX(x) - 30, feetY(lane) - 4, 1, { speed: 0.06, life: 600, size: 9, colors: ["rgba(140,120,90,0.75)"] });
+  }
+  // Grounded on the gate apron (and on the lawn once it rides out), like every other unit.
+  drawContactShadow(ctx, tileX(x), feetY(lane) + 4, 40);
   drawAtlas(ctx, atlas, group, frame, tileX(x), feetY(lane) + 4, SPRITE_SCALE * 0.9, false);
+}
+
+/** Order & Chaos: every Aegis Bearer's dome over the tiles it guards (brightening when a blow glances off it). */
+function drawAegisDomes(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, now: number): void {
+  for (const d of s.defenders) {
+    const aegis = DEFENDERS[d.kind]!.aegis;
+    if (!aegis || d.dead) continue;
+    const key = `dome${d.id}`;
+    const hitAt = view.flash.get(key);
+    if (hitAt !== undefined && now - hitAt > 450) view.flash.delete(key);
+    // A hexed bearer drops its shield.
+    if (isSheep(s, d)) continue;
+    const widened = d.domeUntil > s.tick;
+    const reach = aegis.reach + (widened ? 1 : 0);
+    const flash = hitAt !== undefined ? Math.max(0, 1 - (now - hitAt) / 450) : 0;
+    // A bubble over the 3x3 (5x5 widened) it guards.
+    drawDome(ctx, tileX(d.col + 0.5), laneMid(d.lane) + 8, (reach + 0.5) * BOARD.TILE, (reach + 0.5) * BOARD.LANE_H, now, flash, widened);
+  }
+}
+
+/** A soft oval shadow under a unit's feet: it stands on the lawn instead of floating over it. */
+function drawContactShadow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.save();
+  ctx.globalAlpha = 0.34;
+  ctx.translate(x, y + 2);
+  ctx.scale(1, 0.26);
+  drawGlow(ctx, "rgba(0,0,0,1)", 0, 0, r);
+  ctx.restore();
 }
 
 function drawDefender(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, d: Defender, now: number, dt: number, selected: boolean): void {
@@ -1618,6 +1788,13 @@ function drawDefender(ctx: CanvasRenderingContext2D, s: GarrisonState, view: Vie
     const frames = Math.max(1, groupFrames(atlas, group));
     frame = resting ? Math.min(frames - 1, 2) : frameOf(view, key, frames, 130, dt, stunned);
   }
+  // Order & Chaos Bellwether: curled up in its ball while something is biting it.
+  const balled = def.lure !== undefined && !clip && s.enemies.some((e) => !e.dead && e.state === "eat" && e.target === d.id);
+  if (balled) {
+    group = pickGroup(atlas, G.defend, G.stand);
+    frame = Math.floor(Math.max(1, groupFrames(atlas, group)) / 2);
+  }
+  const sheep = isSheep(s, d);
   let dx = 0;
   const swoop = view.swoop.get(d.id);
   if (swoop) {
@@ -1646,11 +1823,17 @@ function drawDefender(ctx: CanvasRenderingContext2D, s: GarrisonState, view: Vie
       drop = t < 110 ? -22 * (1 - t / 110) * (1 - t / 110) : 0;
     }
   }
+  // Idle troops breathe (PvZ plants never stand perfectly still).
+  if (!stretch && !clip && !resting && !stunned && !def.instant) {
+    const b = Math.sin(now / 520 + d.id * 1.3);
+    stretch = { x: 1 - 0.012 * b, y: 1 + 0.02 * b };
+  }
   if (digesting && !stretch) {
     const chew = Math.sin(now / 110 + d.id);
     stretch = { x: 1 + 0.05 * chew, y: 1 - 0.05 * chew };
     if (Math.random() < dt / 260) burst(view.particles, now, "glint", x + 10, y - 70, 1, { speed: 0.05, up: 0.08, life: 700, size: 2, colors: ["#bfe8ff"] });
   }
+  drawContactShadow(ctx, x + dx, y, 36 * (def.scale ?? 1));
   const flashAt = view.flash.get(key) ?? 0;
   ctx.filter = statusFilter(s.tick, { stunUntil: d.stunnedUntil, poisonUntil: d.poisonUntil }, now - flashAt < 90);
   if (resting) ctx.filter = ctx.filter === "none" ? "brightness(0.7) saturate(0.6)" : `${ctx.filter} brightness(0.7)`;
@@ -1664,10 +1847,23 @@ function drawDefender(ctx: CanvasRenderingContext2D, s: GarrisonState, view: Vie
   // Summoned troops fade as their time runs out.
   if (d.expireAt > 0 && d.expireAt - s.tick < 3 * GW_TPS) ctx.globalAlpha = Math.floor(now / 160) % 2 === 0 ? 0.45 : 0.8;
   if (ascended) ctx.filter = ctx.filter === "none" ? "saturate(1.25) brightness(1.08)" : `${ctx.filter} saturate(1.25) brightness(1.08)`;
-  drawAtlas(ctx, atlas, group, frame, x + dx, y + drop, SPRITE_SCALE * (def.scale ?? 1) * (ascended ? 1.14 : 1), false, stretch);
+  if (!sheep) drawAtlas(ctx, atlas, group, frame, x + dx, y + drop, SPRITE_SCALE * (def.scale ?? 1) * (ascended ? 1.14 : 1), false, stretch);
+  else if (!drawSheep(ctx, x + dx, y + drop, now, d.id)) {
+    // Hexed: a sheep (the troop greyed under a woolly fleece until the sheep art is in).
+    ctx.filter = "grayscale(1) brightness(1.25) contrast(0.8)";
+    drawAtlas(ctx, atlas, G.stand, 0, x + dx, y + drop + 6, SPRITE_SCALE * (def.scale ?? 1) * 0.8, false, { x: 1.15, y: 0.72 });
+    ctx.filter = "none";
+    drawWool(ctx, x + dx, y + drop, now, d.id);
+  }
   ctx.globalAlpha = 1;
   if (selected) ctx.restore();
   ctx.filter = "none";
+  if (sheep && Math.random() < dt / 2600) view.floats.push({ text: "Baa!", x: x + dx - 20, y: y - 95, color: "#f0e0ff", start: now });
+  // Order & Chaos: a Ladder Hobgoblin's ladder leans on this troop (the horde climbs over it).
+  if (d.laddered) {
+    const top = def.tall ? 150 : 118;
+    drawLadder(ctx, x + dx + 58, y + 2, x + dx + 14, y - top * (def.scale ?? 1), 17);
+  }
   if (ascended && d.ascendUntil > s.tick) {
     // The crown and how much of the Ascension is left.
     const full = ASCEND_TICKS * (s.def.blessings.includes("helm-of-enlightenment") ? 1.5 : 1);
@@ -1817,6 +2013,10 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
       // An Arch-vile's hands raised over the corpse.
       group = pickGroup(atlas, G.cast, G.attack, G.shoot);
       frame = frameOf(view, key, Math.max(1, groupFrames(atlas, group)), 90, dt, frozen);
+    } else if (e.state === "plant") {
+      // A Ladder Hobgoblin hammering its ladder into the ground.
+      group = pickGroup(atlas, G.attack, G.cast, G.stand);
+      frame = frameOf(view, key, Math.max(1, groupFrames(atlas, group)), 70, dt, frozen);
     } else if (e.state === "teleport" || e.state === "appear") {
       const vanish = e.state === "teleport";
       group = pickGroup(atlas, vanish ? G.vanish : G.appear, G.stand);
@@ -1832,8 +2032,11 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   if (e.state === "vault" || e.state === "flung") {
     const t = Math.max(0, Math.min(1, (s.tick + alpha - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt)));
     lift = 4 * t * (1 - t) * (e.state === "flung" ? 120 : 75);
+    // Order & Chaos: climbing a ladder over a troop — up the rungs, over the top, down the far side.
+    const climbing = e.state === "vault" && e.stateUntil - e.stateAt === CLIMB_TICKS && s.defenders.some((d) => d.laddered && d.lane === e.lane && d.col + 0.5 < e.from && d.col + 0.5 > e.to);
+    if (climbing) lift = Math.sin(Math.PI * Math.min(1, t * 1.15)) * 135;
     // An Imp's blink: gone in a flash, back a moment later past the defender.
-    if (e.state === "vault" && def.blink) {
+    else if (e.state === "vault" && def.blink) {
       lift = 0;
       fade = t < 0.5 ? 1 - t * 2 : (t - 0.5) * 2;
     }
@@ -1876,6 +2079,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
     drawGlow(ctx, "rgba(255,226,120,0.5)", x, y - lift - 50 * scale, 62 + 8 * Math.sin(now / 150 + e.id));
     ctx.restore();
   }
+  if (lift === 0 && rise === 0 && !unseen) drawContactShadow(ctx, x, y, 32 * (scale / SPRITE_SCALE));
   ctx.save();
   const phasing = e.state === "phase";
   ctx.globalAlpha = fade * (def.evade ? 0.5 + 0.08 * Math.sin(now / 150 + e.id) : 1) * (unseen ? 0.22 + 0.06 * Math.sin(now / 120 + e.id) : 1)
@@ -1904,8 +2108,62 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   // Backup dancers (and their queen) sway to the beat; a Shambler on its last gasp crawls low.
   const sway = e.leader || def.troupe ? Math.sin(now / 170 + e.id) * 4 : 0;
   const crawl = def.lastGasp !== undefined && e.reborn ? { x: 1.12, y: 0.7 } : undefined;
-  drawAtlas(ctx, atlas, group, frame, x + sway, y - lift + rise, scale, e.dir < 0, crawl);
+  const face = e.dir < 0 ? -1 : 1;
+  // Order & Chaos: a ladder slung over a Ladder Hobgoblin's back (behind the body).
+  if (def.ladder && e.ladder && e.state !== "plant" && !unseen) {
+    const bob = Math.sin(now / 140 + e.id) * 2;
+    drawLadder(ctx, x - face * 44 * scale, y - lift - 28 * scale + bob, x + face * 26 * scale, y - lift - 112 * scale + bob, 14);
+  }
+  // A siege catapult's goblin crew shoves it along (and works the winch when it throws).
+  let rumble = 0;
+  if (def.siege) {
+    const crew = atlasFor("goblin");
+    const moving = e.state === "walk" && !frozen;
+    rumble = moving ? Math.abs(Math.sin(now / 85 + e.id)) * 2.5 : 0;
+    if (crew) {
+      const cg = clip ? pickGroup(crew, G.attack, G.stand) : moving ? pickGroup(crew, G.move, G.stand) : G.stand;
+      const cf = Math.max(1, groupFrames(crew, cg));
+      const cFrame = clip ? Math.min(cf - 1, clip.frame) : frozen ? 0 : Math.floor(now / (moving ? 80 : 150) + e.id) % cf;
+      drawAtlas(ctx, crew, cg, cFrame, x - face * 64 * scale, y - lift, scale * 0.78, e.dir < 0);
+    }
+    if (moving && Math.random() < dt / 90) burst(view.particles, now, "dust", x - face * 30, y - 4, 1, { speed: 0.04, life: 600, size: 8, colors: ["rgba(140,120,90,0.7)"] });
+  }
+  // A Prism Elemental spinning: it whirls (mirroring as it turns) in a prismatic halo.
+  const spinning = def.prism !== undefined && e.spinUntil > s.tick && !frozen;
+  if (spinning) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    drawGlow(ctx, PRISM_GLOWS[Math.floor(now / 110) % PRISM_GLOWS.length]!, x, y - lift - 60 * scale, 70 + 8 * Math.sin(now / 70));
+    ctx.restore();
+    if (Math.random() < dt / 45) burst(view.particles, now, "glint", x + (Math.random() - 0.5) * 60, y - 40 - Math.random() * 80, 1, { speed: 0.12, life: 380, size: 2.4, colors: ["#ffd8f6", "#c8f4ff", "#fff4b0"] });
+  }
+  const spin = spinning ? { x: Math.cos(now / 55 + e.id), y: 1 } : undefined;
+  drawAtlas(ctx, atlas, group, frame, x + sway, y - lift + rise - rumble, scale, e.dir < 0, crawl ?? spin);
   ctx.restore();
+  // Planting: the ladder swings up off its back and comes to lean on the wall.
+  if (def.ladder && e.state === "plant" && !unseen) {
+    const wall = s.defenders.find((d) => d.id === e.target);
+    if (wall) {
+      const t = Math.max(0, Math.min(1, (s.tick + alpha - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt)));
+      const ease = t * t * (3 - 2 * t);
+      const wx = tileX(wall.col + 0.5);
+      const top = (DEFENDERS[wall.kind]!.tall ? 150 : 118) * (DEFENDERS[wall.kind]!.scale ?? 1);
+      const fx0 = x - face * 44 * scale;
+      const fy0 = y - 28 * scale;
+      const tx0 = x + face * 26 * scale;
+      const ty0 = y - 112 * scale;
+      drawLadder(ctx, fx0 + (wx + 58 - fx0) * ease, fy0 + (y + 2 - fy0) * ease, tx0 + (wx + 14 - tx0) * ease, ty0 + (y - top - ty0) * ease, 15 + 2 * ease);
+    }
+  }
+  // Order & Chaos Jotunn: the Imp it will hurl rides on its shoulder until then.
+  if (def.fling && def.faction === "chaos" && !e.flung && !unseen) {
+    const rider = atlasFor(ENEMIES[def.flingKind ?? "skeleton"]?.sprite ?? "");
+    if (rider) {
+      const rf = Math.max(1, groupFrames(rider, G.stand));
+      const hop = Math.abs(Math.sin(now / 240 + e.id)) * 3;
+      drawAtlas(ctx, rider, G.stand, Math.floor(now / 150 + e.id) % rf, x - face * 20 * scale, y - lift - 84 * scale - hop, scale * 0.42, e.dir < 0);
+    }
+  }
   if (e.state === "raise") drawRaiseBeam(ctx, s, e, x, y, now, alpha);
   if (phasing && Math.random() < dt / 60) {
     spawnParticles(view.particles, now, 1, () => ({
@@ -2305,6 +2563,9 @@ export function preloadForConfig(cfg: GarrisonConfig): void {
       if (def.stripped) slugs.add(def.stripped);
       if (def.summon && ENEMIES[def.summon.kind]) slugs.add(ENEMIES[def.summon.kind]!.sprite);
       if (def.troupe && ENEMIES[def.troupe.kind]) slugs.add(ENEMIES[def.troupe.kind]!.sprite);
+      // Order & Chaos: a catapult's goblin crew; the sheep a Sorceress hexes troops into.
+      if (def.siege) slugs.add("goblin");
+      if (def.hex) image(SHEEP_SRC);
     }
   }
   preloadSprites(slugs);

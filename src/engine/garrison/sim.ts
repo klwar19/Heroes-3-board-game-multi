@@ -129,12 +129,20 @@ export type Defender = {
   ascendUntil: number;
   /** The defender that laid this one (Azusa's mines), 0 = none. */
   owner: number;
+  /** Order & Chaos: turned into a sheep by a Sorceress until this tick (0 = itself). */
+  sheepUntil: number;
+  /** Order & Chaos: a Ladder Hobgoblin's ladder leans on it (Chaos walkers climb over). */
+  laddered: boolean;
+  /** Order & Chaos Aegis Surge: the dome is widened (and stops straight shots) until this tick. */
+  domeUntil: number;
   dead: boolean;
 };
 
 export type EnemyState = "walk" | "eat" | "vault" | "cast" | "teleport" | "appear" | "flung" | "idle" | "glide" | "burrow" | "snatch"
   // Order & Chaos: a Phantom drifting through defenders; an Arch-vile channelling over a corpse.
-  | "phase" | "raise";
+  | "phase" | "raise"
+  // Order & Chaos: a Ladder Hobgoblin planting its ladder.
+  | "plant";
 
 export type Enemy = {
   id: number;
@@ -198,6 +206,12 @@ export type Enemy = {
   rolled: number[];
   /** Order & Chaos: running off the field (a thief with its sack, a deserter). */
   fleeing: boolean;
+  /** Order & Chaos Ladder Hobgoblin: still carrying its ladder. */
+  ladder: boolean;
+  /** Order & Chaos siege engine: boulders left. */
+  ammo: number;
+  /** Order & Chaos Prism Elemental: spinning (reflecting) until this tick. */
+  spinUntil: number;
   bites: number;
   wave: number;
   side: "wave" | "atk";
@@ -240,6 +254,8 @@ export type Projectile = {
   passed: number[];
   /** Lobbed: flight from `fromX` to the live target over `dur` ticks. */
   lob: { fromX: number; toX: number; t0: number; dur: number; targetId: number; splash: number; col: number; area: boolean } | null;
+  /** Order & Chaos: a defender's shot a Prism Elemental turned back on the defenders. */
+  reflected?: boolean;
   dead: boolean;
 };
 
@@ -270,7 +286,7 @@ export type Blast = {
 };
 
 /** `dmg`: a hero's Royal Charge (hurts instead of slaying, then leaves). */
-export type Charger = { lane: number; state: "ready" | "charging" | "gone"; x: number; px: number; dmg?: number; hits?: number[] };
+export type Charger = { lane: number; state: "ready" | "charging" | "gone"; x: number; px: number; dmg?: number; hits?: number[]; sprite?: string };
 export type CardSlot = { id: CardId; readyAt: number };
 export type AtkSlot = { id: EnemyKind; readyAt: number };
 
@@ -364,6 +380,16 @@ export type GarrisonEvent =
   | { e: "devour"; id: number; target: number; kind: EnemyKind; lane: number; x: number; whole: boolean }
   | { e: "charm"; id: number; by: number }
   | { e: "kite"; id: number; from: number; to: number }
+  | { e: "hex"; id: number; target: number }
+  | { e: "unhex"; id: number }
+  | { e: "spin"; id: number }
+  | { e: "reflect"; id: number; kind: ProjectileKind; lane: number; x: number }
+  | { e: "ladderPlant"; id: number; target: number }
+  | { e: "ladder"; id: number; target: number }
+  | { e: "climb"; id: number; target: number }
+  | { e: "aegis"; id: number; lane: number; x: number; kind: ProjectileKind | "sky" | "snatch" }
+  | { e: "lure"; id: number; target: number }
+  | { e: "lizardCharge"; id: number; kind: DefKind; lane: number; col: number }
   | { e: "horn" }
   | { e: "income"; side: Side; value: number }
   | { e: "wave"; wave: number; flag: boolean }
@@ -440,6 +466,8 @@ export type GarrisonState = {
   pickups: Pickup[];
   blasts: Blast[];
   chargers: Charger[];
+  /** Order & Chaos: tiles a Juggernaut scorched (nothing can be placed until `until`); absent in old snapshots. */
+  scorched?: { lane: number; col: number; until: number }[];
   director: {
     wave: number;
     nextAt: number;
@@ -608,7 +636,8 @@ function addDefender(s: GarrisonState, kind: DefKind, lane: number, col: number)
     armedAt: kind === "mine" ? s.tick + LAND_MINE_ARM : trap ? s.tick + trap.arm : 0,
     cursedUntil: 0, stunnedUntil: 0, poisonUntil: 0, poisonDps: 0, shotAt: -1, shotsLeft: 0, shots: 0, strikes: 0,
     raiseAt: 0, mana: 0, reborn: false, placedAt: s.tick,
-    surgeLeft: 0, surgeAt: 0, stacks: 0, expireAt: 0, invulnUntil: 0, ascendUntil: 0, owner: 0, dead: false,
+    surgeLeft: 0, surgeAt: 0, stacks: 0, expireAt: 0, invulnUntil: 0, ascendUntil: 0, owner: 0,
+    sheepUntil: 0, laddered: false, domeUntil: 0, dead: false,
   };
   resetDefenderTimers(s, d);
   s.defenders.push(d);
@@ -654,8 +683,12 @@ function spawnEnemy(s: GarrisonState, kind: EnemyKind, lane: number, x: number, 
     cd2: def.heal ? def.heal.every : def.summon ? def.summon.every : def.revive ? def.revive.every : def.graves ? def.graves.every : 0,
     shotAt: -1, shotsLeft: 0, chillUntil: 0, slowUntil: 0, freezeUntil: 0, stunUntil: 0, poisonUntil: 0, poisonDps: 0,
     vaulted: false, flung: false, reborn: false, carrier: false, stopped: false, revealed: false, swerved: false,
-    stride: 0, zig: 1, leader: 0, slot: -1, charmed: 0, rolled: [], fleeing: false, bites: 0, wave, side, dead: false,
+    stride: 0, zig: 1, leader: 0, slot: -1, charmed: 0, rolled: [], fleeing: false,
+    ladder: def.ladder !== undefined, ammo: def.siege?.ammo ?? 0, spinUntil: 0, bites: 0, wave, side, dead: false,
   };
+  // Order & Chaos: a Prism Elemental's first spin comes a moment after it reaches the lawn; a Sorceress hexes soon after.
+  if (def.prism) e.cd2 = sec(2);
+  if (def.hex) e.cd2 = sec(2);
   // Order & Chaos second timers: flyers' strikes from the sky, a Phantom's phasing, an Arch-vile's raising.
   if (def.skyAttack) e.cd2 = def.skyAttack.every;
   if (def.teleport) setState(s, e, "teleport", sec(0.9));
@@ -708,7 +741,41 @@ export function isWall(def: DefDef): boolean {
     && !def.heal && !def.produce && !def.ignite && !def.aura && !def.flame && !def.resurrect
     && !def.trap && !def.spikes && !def.instant && !def.snipe && !def.airstrike && !def.beam && !def.pounce && !def.laneHeal
     && !def.caster && !def.burnAura && !def.gust && !def.shellGift && !def.ammo && !def.chainLightning && !def.luckyKills
-    && !def.magnet && !def.devour && !def.charm;
+    && !def.magnet && !def.devour && !def.charm && !def.aegis;
+}
+
+/** Order & Chaos: turned into a sheep (cannot act, but still blocks the lane). */
+export function isSheep(s: GarrisonState, d: Defender): boolean {
+  return (d.sheepUntil ?? 0) > s.tick;
+}
+
+/** Cures (the spell, a Field Hospital) lift a Sorceress' hex. */
+function clearHex(s: GarrisonState, d: Defender): void {
+  if (!isSheep(s, d)) return;
+  d.sheepUntil = 0;
+  s.events.push({ e: "unhex", id: d.id });
+}
+
+/** Order & Chaos: a tile a Juggernaut left burning (nothing can be placed on it yet). */
+export function scorchedAt(s: GarrisonState, lane: number, col: number): boolean {
+  return s.scorched?.some((t) => t.lane === lane && t.col === col && t.until > s.tick) === true;
+}
+
+/**
+ * Order & Chaos Aegis: the dome over this tile, if any (its bearer; none while it is a sheep).
+ * `straight`: only a Surge-widened dome turns straight shots aside.
+ */
+export function aegisOver(s: GarrisonState, lane: number, col: number, straight = false): Defender | undefined {
+  if (!s.cfg.oc) return undefined;
+  for (const a of s.defenders) {
+    const aegis = a.dead ? undefined : DEFENDERS[a.kind]!.aegis;
+    if (!aegis || isSheep(s, a)) continue;
+    const widened = (a.domeUntil ?? 0) > s.tick;
+    if (straight && !widened) continue;
+    const reach = aegis.reach + (widened ? 1 : 0);
+    if (Math.abs(a.lane - lane) <= reach && Math.abs(a.col - col) <= reach) return a;
+  }
+  return undefined;
 }
 
 /** Lies flat on its tile (Land Mine, buried charges, spikes): never shot at, cleaved, blasted or healed. */
@@ -791,6 +858,7 @@ export function checkPlace(s: GarrisonState, cardId: CardId, lane: number, col: 
   if (col < minCol || col > maxCol) return { ok: false, reason: "Your troops can't hold that ground." };
   if (tentAt(s, lane, col)) return { ok: false, reason: "An enemy tent stands there." };
   if (graveAt(s, lane, col)) return { ok: false, reason: "A grave stands there — destroy it first." };
+  if (scorchedAt(s, lane, col)) return { ok: false, reason: "Scorched ground — wait for it to cool." };
   return { ok: true, action: "place", cost };
 }
 
@@ -802,6 +870,7 @@ export function checkSurge(s: GarrisonState, id: number): { ok: true; target: De
   if (!d) return { ok: false, reason: "Drop the Surge on one of your troops." };
   if (!DEFENDERS[d.kind]!.surge) return { ok: false, reason: "This unit has no Surge." };
   if (d.surgeLeft > 0) return { ok: false, reason: "Already surging." };
+  if (isSheep(s, d)) return { ok: false, reason: "A sheep cannot Surge — wait for the hex to wear off." };
   return { ok: true, target: d };
 }
 
@@ -819,6 +888,7 @@ export function checkAscend(s: GarrisonState, id: number): { ok: true; target: D
   const d = s.defenders.find((unit) => unit.id === id && !unit.dead);
   if (!d) return { ok: false, reason: "Choose one of your troops to Ascend." };
   if (DEFENDERS[d.kind]!.ascendedFrom) return { ok: false, reason: "Already ascended." };
+  if (isSheep(s, d)) return { ok: false, reason: "A sheep cannot Ascend — wait for the hex to wear off." };
   if (!oc.ultimates.includes(baseKind(d.kind))) return { ok: false, reason: "This unit's Ascension is not unlocked (train it in the Barracks)." };
   const form = ascendedKind(d.kind);
   if (!form) return { ok: false, reason: "This unit has no Ascended form." };
@@ -1287,7 +1357,7 @@ function raiseFromFallen(s: GarrisonState, e: Enemy): void {
     if (Math.abs(e.lane - d.lane) > 1 || Math.abs(e.x - (d.col + 0.5)) > 1.5) continue;
     const col = Math.max(0, Math.min(GW_COLS - 1, Math.floor(e.x)));
     const [minCol, maxCol] = s.cfg.defCols;
-    if (col < minCol || col > maxCol || defenderAt(s, e.lane, col) || tentAt(s, e.lane, col)) continue;
+    if (col < minCol || col > maxCol || defenderAt(s, e.lane, col) || tentAt(s, e.lane, col) || scorchedAt(s, e.lane, col)) continue;
     const raised = addDefender(s, raise.kind, e.lane, col);
     d.raiseAt = s.tick + raise.every;
     s.events.push({ e: "defRise", id: raised.id, kind: raised.kind, how: "raise" });
@@ -1694,7 +1764,7 @@ function has(s: GarrisonState, id: BlessingId): boolean {
 }
 
 function actRate(s: GarrisonState, d: Defender, auras: readonly Defender[]): number {
-  if (d.stunnedUntil > s.tick) return 0;
+  if (d.stunnedUntil > s.tick || isSheep(s, d)) return 0;
   let rate = 1;
   if (s.def.hasteUntil > s.tick) rate *= 1.5;
   if (s.def.prayerUntil > s.tick) rate *= 1.3;
@@ -1702,7 +1772,7 @@ function actRate(s: GarrisonState, d: Defender, auras: readonly Defender[]): num
   if (has(s, "necklace-of-swiftness")) rate *= 1.2;
   let aura = 0;
   for (const a of auras) {
-    if (a !== d && Math.abs(a.lane - d.lane) <= 1 && Math.abs(a.col - d.col) <= 1) aura = Math.max(aura, DEFENDERS[a.kind]!.aura ?? 0);
+    if (a !== d && Math.abs(a.lane - d.lane) <= 1 && Math.abs(a.col - d.col) <= 1 && !isSheep(s, a)) aura = Math.max(aura, DEFENDERS[a.kind]!.aura ?? 0);
   }
   return rate * (1 + aura);
 }
@@ -1742,6 +1812,11 @@ function defendersAct(s: GarrisonState): void {
   for (const d of s.defenders) {
     if (d.dead) continue;
     if (d.ascendUntil > 0 && s.tick >= d.ascendUntil) descend(s, d);
+    // Order & Chaos: a Sorceress' hex wears off.
+    if (d.sheepUntil > 0 && s.tick >= d.sheepUntil) {
+      d.sheepUntil = 0;
+      s.events.push({ e: "unhex", id: d.id });
+    }
     const def = DEFENDERS[d.kind]!;
     const centre = d.col + 0.5;
     // Summoned for a while (Surge copies, earthen walls): gone when the time is up.
@@ -1925,7 +2000,7 @@ function defendersAct(s: GarrisonState): void {
         let index = -1;
         for (let i = fallen.length - 1; i >= 0; i -= 1) {
           const f = fallen[i]!;
-          if (Math.abs(f.lane - d.lane) <= 1 && Math.abs(f.col - d.col) <= 1 && !defenderAt(s, f.lane, f.col) && isActiveLane(s, f.lane)) {
+          if (Math.abs(f.lane - d.lane) <= 1 && Math.abs(f.col - d.col) <= 1 && !defenderAt(s, f.lane, f.col) && isActiveLane(s, f.lane) && !scorchedAt(s, f.lane, f.col)) {
             index = i;
             break;
           }
@@ -2030,7 +2105,7 @@ function chainHit(
 function ammoAt(s: GarrisonState, d: Defender): number {
   let best = 0;
   for (const o of s.defenders) {
-    if (o === d || o.dead || Math.abs(o.lane - d.lane) > 1 || Math.abs(o.col - d.col) > 1) continue;
+    if (o === d || o.dead || Math.abs(o.lane - d.lane) > 1 || Math.abs(o.col - d.col) > 1 || isSheep(s, o)) continue;
     best = Math.max(best, DEFENDERS[o.kind]!.ammo ?? 0);
   }
   return best;
@@ -2040,7 +2115,7 @@ function ammoAt(s: GarrisonState, d: Defender): number {
 function wardAt(s: GarrisonState, d: Defender): number {
   let best = 0;
   for (const o of s.defenders) {
-    if (o.dead || Math.abs(o.lane - d.lane) > 1 || Math.abs(o.col - d.col) > 1) continue;
+    if (o.dead || Math.abs(o.lane - d.lane) > 1 || Math.abs(o.col - d.col) > 1 || isSheep(s, o)) continue;
     best = Math.max(best, DEFENDERS[o.kind]!.ward ?? 0);
   }
   return Math.min(0.9, best);
@@ -2050,7 +2125,7 @@ function wardAt(s: GarrisonState, d: Defender): number {
 function luckyDrop(s: GarrisonState, e: Enemy): void {
   for (const d of s.defenders) {
     const luck = DEFENDERS[d.kind]!.luckyKills;
-    if (!luck || d.dead || Math.abs(d.lane - e.lane) > 1) continue;
+    if (!luck || d.dead || Math.abs(d.lane - e.lane) > 1 || isSheep(s, d)) continue;
     if (rand(s) < luck.chance) {
       dropCoin(s, Math.min(8.6, Math.max(0.4, e.x)), e.lane + 0.2, e.lane + 0.7, luck.value);
       return;
@@ -2061,7 +2136,8 @@ function luckyDrop(s: GarrisonState, e: Enemy): void {
 /** A tile a summoned defender may take. */
 function canSummonAt(s: GarrisonState, lane: number, col: number): boolean {
   const [minCol, maxCol] = s.cfg.defCols;
-  return isActiveLane(s, lane) && col >= minCol && col <= maxCol && !defenderAt(s, lane, col) && !tentAt(s, lane, col) && !graveAt(s, lane, col);
+  return isActiveLane(s, lane) && col >= minCol && col <= maxCol && !defenderAt(s, lane, col) && !tentAt(s, lane, col) && !graveAt(s, lane, col)
+    && !scorchedAt(s, lane, col);
 }
 
 function fireBeam(s: GarrisonState, d: Defender, lanes: readonly number[], dmg: number): void {
@@ -2090,7 +2166,7 @@ function gustFoe(s: GarrisonState, e: Enemy, push: number): void {
   if (def.anchored) return;
   e.x = Math.min(SPAWN_X - 0.1, e.x + push);
   e.px = e.x;
-  if (e.state === "eat" || e.state === "cast") setState(s, e, "walk");
+  if (e.state === "eat" || e.state === "cast" || e.state === "plant") setState(s, e, "walk");
 }
 
 /** A lobbed shot from a defender onto a chosen foe (Surges). */
@@ -2411,6 +2487,44 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
       }
     }
   }
+
+  // Bellwether: walkers in the lanes beside it that come near swerve into its lane to attack it.
+  if (def.lure && (s.tick + d.id) % 5 === 0 && !s.atk.raided.includes(d.lane)) {
+    for (const e of s.enemies) {
+      if (Math.abs(e.lane - d.lane) !== 1 || !lurable(s, e)) continue;
+      const dx = e.x - centre;
+      if (dx < -0.3 || dx > def.lure.reach) continue;
+      // Already heading for a bellwether of its own lane: it keeps to it (no tug of war).
+      if (s.defenders.some((o) => !o.dead && o.lane === e.lane && DEFENDERS[o.kind]!.lure && !isSheep(s, o)
+        && e.x - (o.col + 0.5) >= -0.3 && e.x - (o.col + 0.5) <= DEFENDERS[o.kind]!.lure!.reach)) continue;
+      lureFoe(s, e, d);
+    }
+  }
+
+  // Lizard Warrior: badly wounded, it charges down its lane and leaves the lawn.
+  if (def.lastCharge && d.hp < d.maxHp * def.lastCharge.below) {
+    d.dead = true;
+    s.events.push({ e: "lizardCharge", id: d.id, kind: d.kind, lane: d.lane, col: d.col });
+    s.chargers.push({ lane: d.lane, state: "charging", x: centre, px: centre, dmg: def.lastCharge.dmg, hits: [], sprite: def.sprite });
+  }
+}
+
+/** A Chaos walker a Bellwether can draw across (on foot, marching, on the lawn, not a shooter or an engine). */
+function lurable(s: GarrisonState, e: Enemy, busy = false): boolean {
+  if (e.dead || (e.state !== "walk" && !(busy && e.state === "eat")) || e.dir >= 0 || e.charmed || e.fleeing || e.leader || hidden(e) || e.x > SIGHT_X) return false;
+  const ed = ENEMIES[e.kind]!;
+  return !ed.boss && !ed.structure && !ed.flying && !ed.ranged && !ed.roller && !ed.siege && !ed.snatch && !ed.dig && !ed.burrow && ed.bite > 0;
+}
+
+/** A walker swerves from its lane into a Bellwether's (unless it would come down inside a troop). */
+function lureFoe(s: GarrisonState, e: Enemy, d: Defender): boolean {
+  if (s.defenders.some((o) => !o.dead && o.lane === d.lane && !isFlat(o) && Math.abs(o.col + 0.5 - e.x) < 0.6)) return false;
+  e.from = e.lane;
+  e.to = d.lane;
+  e.lane = d.lane;
+  setState(s, e, "glide", sec(0.6));
+  s.events.push({ e: "lure", id: d.id, target: e.id });
+  return true;
 }
 
 /** A foe whose helm, armour or shield a lodestone can reach. */
@@ -2634,6 +2748,7 @@ function applySurge(s: GarrisonState, d: Defender): void {
         o.poisonUntil = 0;
         o.cursedUntil = 0;
         o.stunnedUntil = 0;
+        clearHex(s, o);
         if (amount > 0) s.events.push({ e: "heal", id: d.id, target: o.id, amount });
       }
       return;
@@ -2730,6 +2845,23 @@ function applySurge(s: GarrisonState, d: Defender): void {
       for (const e of foes) charmFoe(s, e, d.id, def.charm?.mult ?? 1);
       return;
     }
+    case "dome":
+      d.domeUntil = s.tick + surge.dur;
+      return;
+    case "herd":
+      // Every walker on the lawn in the lanes beside it is drawn into its lane.
+      for (const e of s.enemies) {
+        if (Math.abs(e.lane - d.lane) !== 1 || !lurable(s, e, true) || e.x < centre - 0.3) continue;
+        lureFoe(s, e, d);
+      }
+      d.shell = Math.max(d.shell, Math.round(surge.shell * p));
+      return;
+    case "war-party":
+      for (const lane of [d.lane - 1, d.lane, d.lane + 1]) {
+        if (!isActiveLane(s, lane)) continue;
+        s.chargers.push({ lane, state: "charging", x: centre, px: centre, dmg: Math.round(surge.dmg * p), hits: [], sprite: def.sprite });
+      }
+      return;
     case "air-raid":
       for (const lane of s.cfg.lanes) {
         const front = foesOnField(s, (e) => e.lane === lane && e.x <= SIGHT_X).sort((a, b) => a.x - b.x)[0];
@@ -2928,7 +3060,7 @@ function projectilesAct(s: GarrisonState): void {
     const lo = Math.min(x0, p.x);
     const hi = Math.max(x0, p.x);
     for (const d of s.defenders) {
-      if (d.dead || d.lane !== p.lane || !DEFENDERS[d.kind]!.ignite || p.passed.includes(d.id)) continue;
+      if (d.dead || d.lane !== p.lane || !DEFENDERS[d.kind]!.ignite || p.passed.includes(d.id) || isSheep(s, d)) continue;
       const c = d.col + 0.5;
       if (p.dir > 0 ? c > x0 && c <= p.x : c < x0 && c >= p.x) {
         p.passed.push(d.id);
@@ -2945,7 +3077,14 @@ function projectilesAct(s: GarrisonState): void {
         return e.x + r >= lo && e.x - r <= hi;
       })
       .sort((a, b) => (a.x - b.x) * p.dir);
+    let reflected = false;
     for (const e of candidates) {
+      // Order & Chaos: a spinning Prism Elemental turns the shot back on the defenders.
+      if (p.dir > 0 && prismSpinning(s, e)) {
+        reflectShot(s, p, e);
+        reflected = true;
+        break;
+      }
       const evade = ENEMIES[e.kind]!.evade;
       if (evade) {
         e.evades += 1;
@@ -2965,13 +3104,29 @@ function projectilesAct(s: GarrisonState): void {
         break;
       }
     }
-    if (p.dead) continue;
+    if (p.dead || reflected) continue;
     if (p.dir > 0 && p.x > p.maxX) {
       if (!turnBoomerang(p)) p.dead = true;
     } else if (p.dir < 0 && (p.boomerang ? p.x <= p.boomerang.home : p.x < -0.8)) {
       p.dead = true;
     }
   }
+}
+
+/** Order & Chaos Prism Elemental: spinning (and not held by frost or a stun). */
+function prismSpinning(s: GarrisonState, e: Enemy): boolean {
+  return ENEMIES[e.kind]!.prism !== undefined && (e.spinUntil ?? 0) > s.tick && e.freezeUntil <= s.tick && e.stunUntil <= s.tick && !e.charmed;
+}
+
+/** A straight shot glances off a spinning prism and flies back down the lane at the defenders (weaker, stripped of its tricks). */
+function reflectShot(s: GarrisonState, p: Projectile, e: Enemy): void {
+  const share = ENEMIES[e.kind]!.prism!.share;
+  Object.assign(p, {
+    side: "atk", dir: -1, x: e.x - 0.35, px: e.x - 0.35, dmg: Math.round(p.dmg * share), speed: Math.max(0.26, p.speed),
+    pierce: 1, hit: [], chill: false, freeze: false, burn: false, burnSplash: 0, shatter: false, cloud: false, blast: 0, skipWalls: false,
+    stun: null, manaOnHit: 0, air: false, chain: null, curse: 0, holy: false, underShield: false, boomerang: null, passed: [], reflected: true
+  } satisfies Partial<Projectile>);
+  s.events.push({ e: "reflect", id: e.id, kind: p.kind, lane: p.lane, x: e.x });
 }
 
 function projectileHit(s: GarrisonState, p: Projectile, e: Enemy): void {
@@ -3043,11 +3198,19 @@ function lobAct(s: GarrisonState, p: Projectile): void {
   if (t < 1) return;
   p.dead = true;
   if (p.side === "atk") {
+    // Order & Chaos: a lob falling on an Aegis dome bounces off it.
+    const dome = aegisOver(s, p.lane, lob.col);
+    if (dome) {
+      s.events.push({ e: "aegis", id: dome.id, lane: p.lane, x: lob.col + 0.5, kind: p.kind });
+      return;
+    }
     s.events.push({ e: "cloudHit", kind: p.kind, lane: p.lane, x: lob.col + 0.5 });
     for (const d of s.defenders) {
       if (d.dead || isFlat(d)) continue;
       const inArea = lob.area ? Math.abs(d.lane - p.lane) <= 1 && Math.abs(d.col - lob.col) <= 1 : d.lane === p.lane && d.col === lob.col;
       if (!inArea) continue;
+      // ...and the troops under a dome beside the blast are spared.
+      if (lob.area && aegisOver(s, d.lane, d.col)) continue;
       hurtDefender(s, d, p.dmg, { atk: true, cloud: p.cloud, magic: p.cloud });
       // Order & Chaos hexes and webs.
       if (d.dead) continue;
@@ -3108,6 +3271,12 @@ function attackerShotAct(s: GarrisonState, p: Projectile): void {
   }
   if (hit) {
     p.dead = true;
+    // Order & Chaos: a Surge-widened Aegis dome turns straight shots aside too.
+    const dome = aegisOver(s, hit.lane, hit.col, true);
+    if (dome) {
+      s.events.push({ e: "aegis", id: dome.id, lane: p.lane, x: hit.col + 0.5, kind: p.kind });
+      return;
+    }
     s.events.push({ e: "projectileHit", kind: p.kind, lane: p.lane, x: hit.col + 0.5, burn: false });
     if (p.blast > 0) {
       for (const d of s.defenders) {
@@ -3253,6 +3422,9 @@ function enemiesAct(s: GarrisonState): void {
       case "raise":
         raiseAct(s, e, rate);
         continue;
+      case "plant":
+        plantAct(s, e, rate);
+        continue;
       default:
         break;
     }
@@ -3274,6 +3446,20 @@ function enemiesAct(s: GarrisonState): void {
     if (e.fleeing) {
       fleeAct(s, e, rate);
       continue;
+    }
+
+    // Order & Chaos: a Prism Elemental gathers itself to spin; a Sorceress hexes the troop ahead.
+    if (def.prism && rate > 0 && e.x <= SIGHT_X && (e.spinUntil ?? 0) <= s.tick) {
+      e.cd2 -= rate;
+      if (e.cd2 <= 0) {
+        e.spinUntil = s.tick + def.prism.spin;
+        e.cd2 = def.prism.every;
+        s.events.push({ e: "spin", id: e.id });
+      }
+    }
+    if (def.hex && rate > 0 && e.x <= SIGHT_X - 0.2 && (e.state === "walk" || e.state === "eat")) {
+      e.cd2 -= rate;
+      if (e.cd2 <= 0) e.cd2 = hexAct(s, e) ? def.hex.every : sec(0.5);
     }
 
     if (def.heal && rate > 0) {
@@ -3402,16 +3588,35 @@ function enemiesAct(s: GarrisonState): void {
       continue;
     }
 
+    // Order & Chaos siege engine: rolls in, halts and lobs boulders until its ammunition is spent (then it rolls on).
+    if (def.siege && e.ammo > 0 && e.dir < 0) {
+      siegeAct(s, e, rate);
+      continue;
+    }
+
     // Order & Chaos Juggernaut: rolls on over the defenders until a tall one stops it.
     if (def.roller && !e.stopped && e.dir < 0 && rollerAct(s, e, rate)) continue;
 
     // Order & Chaos: a ranged foe with a poison bite (Spider Princess) bites what it is pressed against.
-    if (def.ranged && !(def.poison && def.bite > 0 && blocker(s, e))) {
+    if (def.ranged && !def.siege && !(def.poison && def.bite > 0 && blocker(s, e))) {
       rangedAct(s, e, rate);
       continue;
     }
 
     const block = blocker(s, e);
+    // Order & Chaos ladders: every walker climbs over a laddered troop; a Ladder Hobgoblin plants its ladder on the first wall it meets.
+    if (block && s.cfg.oc && e.dir < 0 && rate > 0 && !def.roller) {
+      if (block.laddered) {
+        climbOver(s, e, block);
+        continue;
+      }
+      if (def.ladder && e.ladder && canLadder(block, def.ladder.wallHp)) {
+        e.target = block.id;
+        setState(s, e, "plant", def.ladder.plant);
+        s.events.push({ e: "ladderPlant", id: e.id, target: block.id });
+        continue;
+      }
+    }
     if (block && def.swerve && !e.swerved && e.dir < 0 && rate > 0 && swerve(s, e)) continue;
     // Order & Chaos Phantom: drifts through the defender in its way (when it has gathered itself).
     if (block && def.phase && e.cd2 <= 0 && e.dir < 0 && rate > 0) {
@@ -3629,6 +3834,9 @@ function rollerAct(s: GarrisonState, e: Enemy, rate: number): boolean {
   }
   if (e.state !== "walk") setState(s, e, "walk");
   e.x += def.speed * rate * e.dir;
+  // Order & Chaos Juggernaut: the ground it rolls over burns (nothing can be placed there for a while).
+  const scorch = def.roller!.scorch;
+  if (scorch && s.cfg.oc && e.x <= SIGHT_X && e.x >= 0) markScorch(s, e.lane, Math.min(GW_COLS - 1, Math.floor(e.x)), s.tick + scorch);
   for (const d of [...s.defenders]) {
     if (d.dead || d.lane !== e.lane || e.rolled.includes(d.id) || Math.abs(d.col + 0.5 - e.x) > 0.45) continue;
     const dd = DEFENDERS[d.kind]!;
@@ -3644,6 +3852,118 @@ function rollerAct(s: GarrisonState, e: Enemy, rate: number): boolean {
     hurtDefender(s, d, def.roller!.dmg, { atk: true });
   }
   reachGate(s, e);
+  return true;
+}
+
+/** A tile burns until `until` (a second pass keeps it burning). */
+function markScorch(s: GarrisonState, lane: number, col: number, until: number): void {
+  const list = (s.scorched ??= []);
+  const tile = list.find((t) => t.lane === lane && t.col === col);
+  if (tile) tile.until = Math.max(tile.until, until);
+  else list.push({ lane, col, until });
+}
+
+/** A wall a ladder can be planted on: a tall troop, or a sturdy one (not a flat charge or spikes). */
+function canLadder(d: Defender, wallHp: number): boolean {
+  const def = DEFENDERS[d.kind]!;
+  return !isFlat(d) && (def.tall === true || d.maxHp >= wallHp);
+}
+
+/** A walker climbs the ladder over a troop and comes down on the far side. */
+/** How long a ladder climb takes (longer than any leap, so the renderer can tell the two apart). */
+export const CLIMB_TICKS = sec(1);
+
+function climbOver(s: GarrisonState, e: Enemy, block: Defender): void {
+  e.from = e.x;
+  e.to = block.col - 0.05;
+  setState(s, e, "vault", CLIMB_TICKS);
+  s.events.push({ e: "climb", id: e.id, target: block.id });
+}
+
+/** Ladder Hobgoblin: planting (held while frozen or stunned); then the ladder stands and it climbs. */
+function plantAct(s: GarrisonState, e: Enemy, rate: number): void {
+  const block = s.defenders.find((d) => d.id === e.target && !d.dead);
+  // The wall fell, or was knocked out of reach: it walks on, ladder still on its back.
+  if (!block || blocker(s, e) !== block) {
+    setState(s, e, "walk");
+    return;
+  }
+  if (block.laddered) {
+    climbOver(s, e, block);
+    return;
+  }
+  if (rate <= 0) {
+    e.stateUntil += 1;
+    return;
+  }
+  if (s.tick < e.stateUntil) return;
+  block.laddered = true;
+  e.ladder = false;
+  s.events.push({ e: "ladder", id: e.id, target: block.id });
+  climbOver(s, e, block);
+}
+
+/** Siege engine: rolls to its firing line (or until something blocks it), then lobs at the rearmost troop in its lane. */
+function siegeAct(s: GarrisonState, e: Enemy, rate: number): void {
+  const def = ENEMIES[e.kind]!;
+  const siege = def.siege!;
+  const r = def.ranged!;
+  if (!blocker(s, e) && e.x > siege.stopX) {
+    if (e.state !== "walk") setState(s, e, "walk");
+    e.x += def.speed * rate * e.dir;
+    return;
+  }
+  if (e.state !== "cast") {
+    setState(s, e, "cast");
+    e.cd = Math.min(e.cd, sec(1.5));
+  }
+  if (rate <= 0) return;
+  e.cd -= rate;
+  if (e.cd > 0) return;
+  // The rearmost troop in its lane: where the gold-makers hide.
+  let target: Defender | undefined;
+  for (const d of s.defenders) {
+    if (d.dead || d.lane !== e.lane || isFlat(d) || DEFENDERS[d.kind]!.veiled || d.col + 0.5 > e.x) continue;
+    if (!target || d.col < target.col) target = d;
+  }
+  if (!target) {
+    // Nothing left to lob at (its lane cleared, or only flat or veiled troops): it gives up the siege and rolls on.
+    e.ammo = 0;
+    setState(s, e, "walk");
+    return;
+  }
+  e.cd = r.every;
+  e.ammo -= 1;
+  reveal(s, e);
+  s.events.push({ e: "enemyCast", id: e.id });
+  const fromX = e.x - 0.2;
+  const dist = Math.abs(fromX - (target.col + 0.5));
+  s.projectiles.push(newProjectile(s, {
+    kind: r.projectile, side: "atk", lane: e.lane, x: fromX, dir: -1, dmg: r.dmg,
+    lob: { fromX, toX: target.col + 0.5, t0: s.tick, dur: 18 + Math.round(dist * 2.5), targetId: target.id, splash: 0, col: target.col, area: false },
+  }));
+}
+
+/** Sorceress: turns the nearest troop ahead in her lane into a sheep. Returns false when there is none to hex. */
+function hexAct(s: GarrisonState, e: Enemy): boolean {
+  const hex = ENEMIES[e.kind]!.hex!;
+  let target: Defender | undefined;
+  let best = Number.MAX_VALUE;
+  for (const d of s.defenders) {
+    if (d.dead || d.lane !== e.lane || isFlat(d) || isSheep(s, d) || d.invulnUntil > s.tick) continue;
+    const dd = DEFENDERS[d.kind]!;
+    if (dd.steadfast || dd.instant || dd.veiled) continue;
+    const gap = (e.x - (d.col + 0.5)) * -e.dir;
+    if (gap < -0.3 || gap > hex.range || gap >= best) continue;
+    target = d;
+    best = gap;
+  }
+  if (!target) return false;
+  target.sheepUntil = s.tick + hex.dur;
+  target.shotAt = -1;
+  target.shotsLeft = 0;
+  reveal(s, e);
+  s.events.push({ e: "hex", id: e.id, target: target.id });
   return true;
 }
 
@@ -3686,6 +4006,12 @@ function skyStrike(s: GarrisonState, e: Enemy): void {
   }
   e.cd2 = sky.every;
   reveal(s, e);
+  // Order & Chaos: nothing strikes a troop under an Aegis dome from the sky.
+  const dome = aegisOver(s, target.lane, target.col);
+  if (dome) {
+    s.events.push({ e: "aegis", id: dome.id, lane: target.lane, x: target.col + 0.5, kind: "sky" });
+    return;
+  }
   s.events.push({ e: "skyAttack", id: e.id, kind: sky.kind, target: target.id, lane: target.lane, col: target.col });
   hurtDefender(s, target, sky.dmg, { atk: true, magic: sky.kind !== "dive" });
   if (!target.dead && sky.poison) {
@@ -3694,7 +4020,7 @@ function skyStrike(s: GarrisonState, e: Enemy): void {
   }
   if (sky.kind === "breath") {
     const ahead = defenderAt(s, e.lane, col + (e.dir < 0 ? -1 : 1));
-    if (ahead && !isFlat(ahead)) hurtDefender(s, ahead, sky.dmg, { atk: true, magic: true });
+    if (ahead && !isFlat(ahead) && !aegisOver(s, ahead.lane, ahead.col)) hurtDefender(s, ahead, sky.dmg, { atk: true, magic: true });
   }
 }
 
@@ -3829,7 +4155,10 @@ function snatchAct(s: GarrisonState, e: Enemy): boolean {
     if (s.tick < e.stateUntil) return true;
     const victim = s.defenders.find((d) => d.id === e.target && !d.dead);
     // A victim knocked or fallen back out from under her talons is not carried off.
-    const taken = victim !== undefined && victim.invulnUntil <= s.tick && victim.lane === e.lane && Math.abs(victim.col + 0.5 - e.x) < 0.05;
+    // Order & Chaos: a dome raised over the prey in time turns her talons aside.
+    const dome = victim && victim.lane === e.lane ? aegisOver(s, victim.lane, victim.col) : undefined;
+    if (dome) s.events.push({ e: "aegis", id: dome.id, lane: victim!.lane, x: victim!.col + 0.5, kind: "snatch" });
+    const taken = victim !== undefined && !dome && victim.invulnUntil <= s.tick && victim.lane === e.lane && Math.abs(victim.col + 0.5 - e.x) < 0.05;
     if (taken) {
       victim.dead = true;
       if (countsAsTroop(victim)) s.stats.lost += 1;
@@ -3859,6 +4188,8 @@ function snatchTarget(s: GarrisonState): Defender | undefined {
   let bestCost = -1;
   for (const d of s.defenders) {
     if (d.dead || isFlat(d) || d.invulnUntil > s.tick || claimed.has(d.id) || s.protectIds.includes(d.id) || !isActiveLane(s, d.lane)) continue;
+    // Order & Chaos: a troop under an Aegis dome cannot be snatched.
+    if (aegisOver(s, d.lane, d.col)) continue;
     const cost = s.cfg.oc ? ocTroopValue(d.kind) : CARDS[d.kind]?.cost ?? 0;
     if (cost > bestCost) {
       best = d;
@@ -3905,7 +4236,9 @@ function biteAct(s: GarrisonState, e: Enemy, block: Defender): void {
   }
   // Order & Chaos Cupi: the biter falls in love and turns on the horde; she is spent.
   const charm = DEFENDERS[block.kind]!.charm;
-  if (charm && s.cfg.oc && !def.boss && !e.charmed && block.invulnUntil <= s.tick) {
+  // (A sheep does nothing but stand there.)
+  const sheep = isSheep(s, block);
+  if (charm && s.cfg.oc && !def.boss && !e.charmed && block.invulnUntil <= s.tick && !sheep) {
     block.dead = true;
     s.events.push({ e: "dismiss", id: block.id });
     charmFoe(s, e, block.id, charm.mult);
@@ -3953,11 +4286,11 @@ function biteAct(s: GarrisonState, e: Enemy, block: Defender): void {
       s.events.push({ e: "stolen", id: e.id, value: taken });
     }
   }
-  if (blockDef.chillBiters && canSlow(e)) e.slowUntil = Math.max(e.slowUntil, s.tick + blockDef.chillBiters);
-  if (blockDef.thorns && !e.dead) hurtEnemy(s, e, blockDef.thorns * (has(s, "ogres-club") ? 1.5 : 1), { melee: true, fire: DEFENDERS[block.kind]!.ignite !== undefined });
+  if (blockDef.chillBiters && canSlow(e) && !sheep) e.slowUntil = Math.max(e.slowUntil, s.tick + blockDef.chillBiters);
+  if (blockDef.thorns && !e.dead && !sheep) hurtEnemy(s, e, blockDef.thorns * (has(s, "ogres-club") ? 1.5 : 1), { melee: true, fire: DEFENDERS[block.kind]!.ignite !== undefined });
   // Order & Chaos: rams and trolls knock the defender back; a Nymph bewilders her biter into the next lane.
   if (def.shove && !block.dead && !e.dead && (def.shove.every === 0 ? e.bites === 1 : e.bites % def.shove.every === 0)) shoveDefender(s, e, block);
-  if (blockDef.divert && s.cfg.oc && !e.dead && !e.charmed && !def.boss && !isFlying(e) && e.state === "eat") divertFoe(s, e, blockDef.divert.slow, block.id);
+  if (blockDef.divert && s.cfg.oc && !sheep && !e.dead && !e.charmed && !def.boss && !isFlying(e) && e.state === "eat") divertFoe(s, e, blockDef.divert.slow, block.id);
 }
 
 /**
@@ -4092,6 +4425,13 @@ function fireAttackerShot(s: GarrisonState, e: Enemy, target: Defender): void {
   const r = ENEMIES[e.kind]!.ranged!;
   reveal(s, e);
   if (r.hitscan) {
+    // Order & Chaos: a Surge-widened Aegis dome turns gunfire aside.
+    const dome = r.hitscan === "bullet" ? aegisOver(s, target.lane, target.col, true) : undefined;
+    if (dome) {
+      s.events.push({ e: "hitscan", id: e.id, target: target.id, lane: target.lane, col: target.col, kind: r.hitscan });
+      s.events.push({ e: "aegis", id: dome.id, lane: target.lane, x: target.col + 0.5, kind: "bullet" });
+      return;
+    }
     s.events.push({ e: "hitscan", id: e.id, target: target.id, lane: target.lane, col: target.col, kind: r.hitscan });
     hurtDefender(s, target, r.dmg, { atk: true, magic: r.hitscan === "flame" });
     return;
@@ -4255,6 +4595,7 @@ function castSpell(s: GarrisonState, side: Side, spell: SpellId, lane: number, x
         d.poisonUntil = 0;
         d.cursedUntil = 0;
         d.stunnedUntil = 0;
+        clearHex(s, d);
         const amount = Math.min(150, d.maxHp - d.hp);
         if (amount > 0) {
           d.hp += amount;
@@ -4339,6 +4680,7 @@ function cleanup(s: GarrisonState): void {
   if (s.projectiles.some((p) => p.dead)) s.projectiles = s.projectiles.filter((p) => !p.dead);
   if (s.pickups.some((p) => p.dead)) s.pickups = s.pickups.filter((p) => !p.dead);
   if (s.chargers.some((c) => c.dmg !== undefined && c.state === "gone")) s.chargers = s.chargers.filter((c) => c.dmg === undefined || c.state !== "gone");
+  if (s.scorched?.some((t) => t.until <= s.tick)) s.scorched = s.scorched.filter((t) => t.until > s.tick);
 }
 
 function finish(s: GarrisonState, winner: Side, reason: string): void {

@@ -160,7 +160,10 @@ export type SurgeDef =
   | { kind: "scatter"; dur: number }
   | { kind: "magnetize" }
   | { kind: "feast"; count: number; reach: number }
-  | { kind: "charm"; count: number };
+  | { kind: "charm"; count: number }
+  | { kind: "dome"; dur: number }
+  | { kind: "herd"; shell: number }
+  | { kind: "war-party"; dmg: number };
 
 export type MeleeDef = {
   dmg: number;
@@ -288,6 +291,12 @@ export type DefDef = {
   charm?: { mult: number };
   /** Order & Chaos: when a foe comes within `near` tiles in front, it falls back a tile (if free); `every` ticks between retreats. */
   kite?: { near: number; every: number };
+  /** Order & Chaos umbrella: it and every troop within `reach` tiles (1 = its 3x3) are shielded from lobbed shots and from attacks out of the sky (dives, spits, breaths, snatches). */
+  aegis?: { reach: number };
+  /** Order & Chaos lure: Chaos walkers in the two neighbouring lanes that come within `reach` tiles (x) of it swerve into its lane to attack it. */
+  lure?: { reach: number };
+  /** Order & Chaos: once below `below` of its health it charges down its lane (`dmg` to every foe it tramples) and leaves the lawn. */
+  lastCharge?: { below: number; dmg: number };
   /** Order & Chaos ascended form: the unit it reverts to when the Ascension ends. */
   ascendedFrom?: DefKind;
   /** Order & Chaos unit level (Barracks). `power` scales its Surge. */
@@ -915,8 +924,16 @@ export type EnemyDef = {
   troupe?: { kind: EnemyKind; every: number; dance: number };
   /** Order & Chaos: channels over an ally that fell within `range` tiles (its lane and both beside it) in the last `fresh` ticks and raises it where it fell after `channel` ticks, unless stunned, frozen, blown back or slain first; `every` ticks between raisings. */
   raiseDead?: { range: number; channel: number; every: number; fresh: number };
-  /** Order & Chaos: rolls over the defenders in its lane (`dmg` to each); a tall one stops it, spikes pop it. */
-  roller?: { dmg: number };
+  /** Order & Chaos: rolls over the defenders in its lane (`dmg` to each); a tall one stops it, spikes pop it. `scorch`: the tiles it rolls over burn for that many ticks (nothing can be placed there). */
+  roller?: { dmg: number; scorch?: number };
+  /** Order & Chaos: carries a ladder; at the first wall it meets (tall, or at least `wallHp` health) it spends `plant` ticks planting it, and from then on every Chaos walker in the lane climbs over that defender. */
+  ladder?: { plant: number; wallHp: number };
+  /** Order & Chaos siege engine: halts at `stopX` (or where it is blocked) and lobs its `ranged` shot at the rearmost troop in its lane, `ammo` times; then it rolls on as a roller. */
+  siege?: { stopX: number; ammo: number };
+  /** Order & Chaos: every `every` ticks turns the nearest troop within `range` tiles ahead in its lane into a sheep for `dur` ticks (it cannot act; walls still block). */
+  hex?: { every: number; range: number; dur: number };
+  /** Order & Chaos: every `every` ticks spins for `spin` ticks, reflecting straight shots back down the lane at `share` of their damage. */
+  prism?: { every: number; spin: number; share: number };
   /** Order & Chaos: knocks the defender it strikes a tile back (if the tile is free) and stuns it `dur` ticks, `dmg` extra; `every` 0 = its first strike only, else every Nth strike. */
   shove?: { every: number; dur: number; dmg: number };
   /** Order & Chaos: once, a killing blow (not fire, not a blast) leaves it going on at this share of its health. */

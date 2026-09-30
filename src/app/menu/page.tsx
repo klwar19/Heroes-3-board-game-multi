@@ -26,7 +26,7 @@ export const MENU_ART = {
   singlePlayer: "/assets/ui/menu/buttons/single-player.webp",
   scenario: "/assets/ui/menu/buttons/scenario.webp",
   campaign: "/assets/ui/menu/buttons/campaign.webp",
-  orderChaos: "/assets/ui/menu/buttons/oc-order-chaos.webp",
+  orderChaos: "/assets/ui/menu/buttons/order-chaos.webp",
   multiplayer: "/assets/ui/menu/buttons/multiplayer.webp",
   mapEditor: "/assets/ui/menu/buttons/map-editor.webp",
   miscellaneous: "/assets/ui/menu/buttons/miscellaneous.webp",

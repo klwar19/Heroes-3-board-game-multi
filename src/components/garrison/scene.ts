@@ -40,6 +40,23 @@ export function keepFor(town: string): KeepArt {
   return town === "doom" && ready(image(KEEPS.doom.src)) ? KEEPS.doom : KEEPS.stone;
 }
 
+/**
+ * The landscape seen around the battlefield where the screen is wider (or
+ * taller) than the board: the Order & Chaos world paintings, blurred behind it.
+ */
+export const SURROUNDS: Record<Terrain, string> = {
+  grass: "/assets/order-chaos/worlds/meadows.webp",
+  snow: "/assets/order-chaos/worlds/snow.webp",
+  swamp: "/assets/order-chaos/worlds/swamp.webp",
+  magic: "/assets/order-chaos/worlds/magic.webp",
+  night: "/assets/order-chaos/worlds/depths.webp",
+  graveyard: "/assets/order-chaos/worlds/barrows.webp",
+  cursed: "/assets/order-chaos/worlds/rift.webp",
+  rough: "/assets/order-chaos/worlds/badlands.webp",
+  hell: "/assets/order-chaos/worlds/hellgate.webp",
+  lava: "/assets/order-chaos/worlds/hellgate.webp"
+};
+
 export type Geometry = { W: number; H: number; LAWN_X: number; TILE: number; TOP: number; LANE_H: number };
 
 // ---------------------------------------------------------------------------
@@ -147,11 +164,20 @@ function drawLawn(ctx: CanvasRenderingContext2D, geo: Geometry, lanes: readonly 
   }
 }
 
-/** Where the keep stands: its gate faces the lawn, its right edge just short of column 0. */
+/**
+ * The paved gate apron between the keep and column 0, in world px. Every field
+ * painting has a flagstone forecourt there; the lane Champions wait on it (the sim
+ * parks them at x -0.45, i.e. 50 px short of the lawn, their horses reaching back
+ * about 30 px more), so the keep's right edge stands this far back from the lawn
+ * and the riders read as standing in front of its wall, not on top of it.
+ */
+export const GATE_APRON = 92;
+
+/** Where the keep stands: its gate side faces the lawn across the gate apron. */
 export function keepRect(geo: Geometry, keep: HTMLImageElement): { x: number; y: number; w: number; h: number } {
   const h = geo.H + 20;
   const w = (keep.naturalWidth / keep.naturalHeight) * h;
-  return { x: geo.LAWN_X - 14 - w, y: -8, w, h };
+  return { x: geo.LAWN_X - GATE_APRON - w, y: -8, w, h };
 }
 
 /** The defender's colours flying from the keep's flagpoles, rippling in the wind. */
@@ -200,11 +226,16 @@ export function drawKeepFlags(ctx: CanvasRenderingContext2D, geo: Geometry, now:
 function drawKeep(ctx: CanvasRenderingContext2D, geo: Geometry, keep: HTMLImageElement): void {
   const r = keepRect(geo, keep);
   // Its shadow falls across the forecourt toward the lawn (light from the upper left).
-  const shade = ctx.createLinearGradient(r.x + r.w - 10, 0, r.x + r.w + 70, 0);
-  shade.addColorStop(0, "rgba(0,0,0,0.32)");
+  // It starts well under the painting (whose buttresses step in and out) so no
+  // hard seam shows, and spans the gate apron the Champions wait on.
+  const x0 = r.x + r.w - 60;
+  const x1 = r.x + r.w + 80;
+  const shade = ctx.createLinearGradient(x0, 0, x1, 0);
+  shade.addColorStop(0, "rgba(0,0,0,0.3)");
+  shade.addColorStop(60 / (x1 - x0), "rgba(0,0,0,0.26)");
   shade.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = shade;
-  ctx.fillRect(r.x + r.w - 10, geo.TOP, 80, geo.H - geo.TOP);
+  ctx.fillRect(x0, 0, x1 - x0, geo.H);
   ctx.drawImage(keep, r.x, r.y, r.w, r.h);
 }
 

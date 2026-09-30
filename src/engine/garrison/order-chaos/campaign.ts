@@ -159,7 +159,7 @@ export const OC_WORLDS: readonly OcWorld[] = [
       lvl({ id: "w2-4", world: 2, name: "Revellers", waves: 12, terrain: "snow", difficulty: 1,
         brief: "Satyrs bound over every defender in their way. Only something tall — an Iron Golem — stops them for good.",
         enemies: ["oc-shambler", "oc-shieldbearer", "oc-kobold", "oc-satyr", "oc-dragonfly"], featured: "oc-satyr", goals: [lost(2), spent(3200)],
-        reward: { units: ["oc-pikeman"], artifact: "golden-bow" } }),
+        reward: { units: ["oc-pikeman", "oc-lizard"], artifact: "golden-bow" } }),
       lvl({ id: "w2-5", world: 2, kind: "boss", name: "Death Riders", waves: 15, terrain: "snow", difficulty: 1.05,
         brief: "Armoured Death Riders gallop in. Pikes deal double to cavalry.",
         enemies: ["oc-shambler", "oc-trog-helm", "oc-shieldbearer", "oc-kobold", "oc-satyr", "oc-death-rider"], featured: "oc-death-rider", herald: "oc-death-rider",
@@ -172,8 +172,8 @@ export const OC_WORLDS: readonly OcWorld[] = [
         brief: "Goblin Sappers light a keg at your line: 2.5 s later the 3×3 goes up. Frost and stuns hold the fuse.",
         enemies: ["oc-shambler", "oc-trog-helm", "oc-imp", "oc-goblin", "oc-dragonfly"], featured: "oc-goblin", goals: [lost(2), spent(3000)], reward: { units: ["oc-sharpshooter"] } }),
       lvl({ id: "w3-2", world: 3, kind: "protect", name: "The Enchanted Grove", waves: 12, terrain: "swamp", difficulty: 1,
-        brief: "PROTECT: the two Enchanters in the grove must survive. Wall them in.",
-        enemies: ["oc-shambler", "oc-trog-helm", "oc-shieldbearer", "oc-goblin", "oc-kobold"],
+        brief: "PROTECT: the two Enchanters in the grove must survive. Wall them in — but Ladder Hobgoblins plant ladders on the first big wall they meet, and then the whole lane climbs over it. Slay them before they plant.",
+        enemies: ["oc-shambler", "oc-trog-helm", "oc-shieldbearer", "oc-goblin", "oc-kobold", "oc-hobgoblin"], featured: "oc-hobgoblin",
         preset: [{ kind: "oc-enchanter", lane: 1, col: 4, protect: true }, { kind: "oc-enchanter", lane: 3, col: 4, protect: true }],
         goals: [lost(2), noCharge], reward: { units: ["oc-gnome"], artifact: "armor-of-wonder" } }),
       lvl({ id: "w3-3", world: 3, name: "Blood Rage", waves: 14, terrain: "swamp", difficulty: 1.05,
@@ -187,7 +187,7 @@ export const OC_WORLDS: readonly OcWorld[] = [
         goals: [lost(3), noCharge], reward: { units: ["oc-halfling"], artifact: "yawning-dead" } }),
       lvl({ id: "w3-5", world: 3, kind: "boss", name: "The Necromancer's Mire", waves: 16, terrain: "swamp", difficulty: 1.05,
         brief: "Necromancers raise graves as they walk. Sharpshooters and Halflings clear them.",
-        enemies: ["oc-shambler", "oc-trog-helm", "oc-shieldbearer", "oc-berserker", "oc-goblin", "oc-necromancer"], featured: "oc-necromancer", herald: "oc-necromancer",
+        enemies: ["oc-shambler", "oc-trog-helm", "oc-shieldbearer", "oc-berserker", "oc-goblin", "oc-hobgoblin", "oc-necromancer"], featured: "oc-necromancer", herald: "oc-necromancer",
         goals: [lost(3), spent(4200)], reward: { units: ["oc-ice"], hero: "adelaide" } })
     ] },
   { id: 4, name: "Bracada Heights", terrain: "magic", art: "/assets/order-chaos/worlds/magic.webp",
@@ -199,19 +199,19 @@ export const OC_WORLDS: readonly OcWorld[] = [
         reward: { units: ["oc-enchanter"] } }),
       lvl({ id: "w4-2", world: 4, name: "Harpies!", waves: 14, terrain: "magic", difficulty: 1,
         brief: "Harpy Snatchers drop onto your costliest troop and carry it off after 4 s — slay them first, or blow them away with a Sylph.",
-        enemies: ["oc-shambler", "oc-trog-helm", "oc-goblin", "oc-satyr", "oc-harpy"], featured: "oc-harpy", goals: [lost(3), spent(3800)],
-        reward: { units: ["oc-arch-mage"], artifact: "cards-of-prophecy" } }),
+        enemies: ["oc-shambler", "oc-trog-helm", "oc-goblin", "oc-satyr", "oc-hobgoblin", "oc-harpy"], featured: "oc-harpy", goals: [lost(3), spent(3800)],
+        reward: { units: ["oc-arch-mage", "oc-aegis"], artifact: "cards-of-prophecy" } }),
       lvl({ id: "w4-3", world: 4, kind: "last-stand", name: "The Tower Holds", waves: 12, terrain: "magic", difficulty: 1.05, startGold: 3000,
-        brief: "LAST STAND: 3000 gold and no more. Plan the whole defence, then sound the horn.",
-        enemies: ["oc-shieldbearer", "oc-trog-helm", "oc-berserker", "oc-satyr", "oc-medusa", "oc-death-rider"], surgeChance: 0.18, startSurges: 1,
+        brief: "LAST STAND: 3000 gold and no more. Goblin Siege Catapults roll onto the lawn and lob boulders at your REARMOST troops — Aegis Bearers' domes turn them aside. Plan the whole defence, then sound the horn.",
+        enemies: ["oc-shieldbearer", "oc-trog-helm", "oc-berserker", "oc-satyr", "oc-medusa", "oc-death-rider", "oc-catapult"], featured: "oc-catapult", surgeChance: 0.18, startSurges: 1,
         goals: [lost(4), noCharge], reward: { units: ["oc-genie"], spell: "meteor-shower" } }),
       lvl({ id: "w4-4", world: 4, name: "Evil Eyes", waves: 15, terrain: "magic", difficulty: 1.05,
-        brief: "Evil Eyes stare past walls to burn what stands behind them. Sea Witches hex your troops to half speed.",
-        enemies: ["oc-shambler", "oc-shieldbearer", "oc-goblin", "oc-evil-eye", "oc-sea-witch", "oc-harpy"], featured: "oc-evil-eye", goals: [lost(3), spent(4200)],
+        brief: "Evil Eyes stare past walls to burn what stands behind them. Sea Witches hex your troops to half speed, and Hexing Sorceresses turn them into sheep for 8 s.",
+        enemies: ["oc-shambler", "oc-shieldbearer", "oc-goblin", "oc-evil-eye", "oc-sea-witch", "oc-sorceress", "oc-harpy"], featured: "oc-evil-eye", goals: [lost(3), spent(4200)],
         reward: { units: ["oc-cleric"], artifact: "shackles-of-war" } }),
       lvl({ id: "w4-5", world: 4, kind: "boss", name: "Bloodlust Drums", waves: 16, terrain: "magic", difficulty: 1.05,
         brief: "Ogre Shamans drum the horde into a frenzy around them. Kill the drummers first.",
-        enemies: ["oc-trog-helm", "oc-shieldbearer", "oc-berserker", "oc-medusa", "oc-sea-witch", "oc-ogre-shaman", "oc-dragonfly"], featured: "oc-ogre-shaman", herald: "oc-ogre-shaman",
+        enemies: ["oc-trog-helm", "oc-shieldbearer", "oc-berserker", "oc-medusa", "oc-sea-witch", "oc-ogre-shaman", "oc-catapult", "oc-dragonfly"], featured: "oc-ogre-shaman", herald: "oc-ogre-shaman",
         goals: [lost(4), noCharge], reward: { units: ["oc-faerie"], hero: "tazar" } })
     ] },
   { id: 5, name: "Nighon Depths", terrain: "night", art: "/assets/order-chaos/worlds/depths.webp",
@@ -252,8 +252,8 @@ export const OC_WORLDS: readonly OcWorld[] = [
         graves: [{ lane: 0, col: 5 }, { lane: 0, col: 7 }, { lane: 1, col: 6 }, { lane: 2, col: 5 }, { lane: 2, col: 8 }, { lane: 3, col: 6 }, { lane: 4, col: 5 }, { lane: 4, col: 7 }],
         goals: [lost(3), noCharge], reward: { units: ["oc-salamander"] } }),
       lvl({ id: "w6-3", world: 6, kind: "protect", name: "The Last Chapel", waves: 16, terrain: "graveyard", difficulty: 1.05, startGold: 250,
-        brief: "PROTECT: three Zealot Clerics hold the chapel. None may fall.",
-        enemies: ["oc-trog-helm", "oc-shieldbearer", "oc-carmilla", "oc-medusa", "oc-evil-eye", "oc-harpy", "oc-death-rider"],
+        brief: "PROTECT: three Zealot Clerics hold the chapel. None may fall. Hexing Sorceresses turn your guards into sheep — a hexed troop still blocks, but cannot fight.",
+        enemies: ["oc-trog-helm", "oc-shieldbearer", "oc-carmilla", "oc-medusa", "oc-evil-eye", "oc-harpy", "oc-death-rider", "oc-sorceress"], featured: "oc-sorceress",
         preset: [{ kind: "oc-cleric", lane: 0, col: 3, protect: true }, { kind: "oc-cleric", lane: 2, col: 3, protect: true }, { kind: "oc-cleric", lane: 4, col: 3, protect: true }],
         goals: [lost(3), spent(4800)], reward: { units: ["oc-phoenix"], artifact: "orb-of-fire" } }),
       lvl({ id: "w6-4", world: 6, name: "Dread Cavalry", waves: 18, terrain: "graveyard", difficulty: 1.05, startGold: 200,
@@ -333,8 +333,8 @@ export const OC_WORLDS: readonly OcWorld[] = [
         enemies: ["oc-imp", "oc-shieldbearer", "oc-pain", "oc-lich", "oc-scorpicore", "oc-wraith", "oc-harpy"], featured: "oc-pain", surgeChance: 0.2, startSurges: 2,
         goals: [lost(4), noCharge], reward: { units: ["oc-pegasus"], hero: "luna" } }),
       lvl({ id: "w9-4", world: 9, name: "Calamity", waves: 20, terrain: "cursed", difficulty: 1.05, startGold: 200,
-        brief: "Wakamo stalks unseen and snipes from afar; Mancubi scorch whatever stands close.",
-        enemies: ["oc-sellsword", "oc-rogue", "oc-wakamo", "oc-mancubus", "oc-scorpicore", "oc-magog", "oc-cacodemon"], featured: "oc-wakamo", goals: [lost(4), spent(6500)],
+        brief: "Wakamo stalks unseen and snipes from afar; Mancubi scorch whatever stands close. Prism Elementals spin now and then — straight shots that strike a spinning prism fly back at your line.",
+        enemies: ["oc-sellsword", "oc-rogue", "oc-wakamo", "oc-mancubus", "oc-scorpicore", "oc-magog", "oc-prism", "oc-cacodemon"], featured: "oc-wakamo", goals: [lost(4), spent(6500)],
         reward: { units: ["oc-laffey"], spell: "implosion" } }),
       lvl({ id: "w9-5", world: 9, kind: "boss", name: "Wings of the Rift", waves: 22, terrain: "cursed", difficulty: 1.05, startGold: 200,
         brief: "The Black Dragon leads the great assaults: flying, immune to spells and too heavy for any gale. Only attacks that reach flyers bring it down.",
@@ -362,7 +362,7 @@ export const OC_WORLDS: readonly OcWorld[] = [
         goals: [lost(4), noCharge], reward: { units: ["oc-axe-dwarf"] } }),
       lvl({ id: "w10-5", world: 10, kind: "boss", name: "The Vile Carnival", waves: 22, terrain: "graveyard", difficulty: 1.1, startGold: 200,
         brief: "Arch-viles lead the great assaults and raise the fallen where they lie. Stun, freeze or blow them back to break the spell — or slay them first.",
-        enemies: ["oc-phantom", "oc-werewolf", "oc-revel-queen", "oc-ram", "oc-juggernaut", "oc-carmilla", "oc-mummy", "oc-arch-vile"], featured: "oc-arch-vile", herald: "oc-arch-vile",
+        enemies: ["oc-phantom", "oc-werewolf", "oc-revel-queen", "oc-ram", "oc-juggernaut", "oc-carmilla", "oc-mummy", "oc-prism", "oc-arch-vile"], featured: "oc-arch-vile", herald: "oc-arch-vile",
         goals: [lost(5), noCharge], reward: { units: ["oc-serpent", "oc-cupi"] } })
     ] }
 ];
@@ -393,7 +393,7 @@ export const OC_RAIDS: readonly (OcLevel & { unlockWorld: number })[] = [
     ] },
   { id: "r3", world: 0, unlockWorld: 3, kind: "raid", name: "Mire Watch", terrain: "swamp", lanes: ALL, waves: 0, enemies: [], difficulty: 1, startGold: 0, surgeChance: 0,
     brief: "Spikes, water shells and a Sharpshooter. Necromancers' graves soak their shots.",
-    startMight: 450, atkCards: ["oc-shieldbearer", "oc-goblin", "oc-berserker", "oc-necromancer", "oc-harpy", "oc-dragonfly"], goals: [], reward: {},
+    startMight: 450, atkCards: ["oc-shieldbearer", "oc-goblin", "oc-berserker", "oc-hobgoblin", "oc-necromancer", "oc-harpy", "oc-dragonfly"], goals: [], reward: {},
     preset: [
       ...ALL.map((lane) => ({ kind: "oc-yuuka", lane, col: 0 })),
       { kind: "oc-sharpshooter", lane: 0, col: 1 }, { kind: "oc-gnome", lane: 0, col: 5 },
@@ -404,7 +404,7 @@ export const OC_RAIDS: readonly (OcLevel & { unlockWorld: number })[] = [
     ] },
   { id: "r4", world: 0, unlockWorld: 4, kind: "raid", name: "Arcane Walls", terrain: "magic", lanes: ALL, waves: 0, enemies: [], difficulty: 1, startGold: 0, surgeChance: 0,
     brief: "Genies slow you, Arch Mages chain their bolts, Clerics heal the line.",
-    startMight: 500, atkCards: ["oc-trog-helm", "oc-medusa", "oc-evil-eye", "oc-sea-witch", "oc-ogre-shaman", "oc-harpy", "oc-wyvern"], goals: [], reward: {},
+    startMight: 500, atkCards: ["oc-trog-helm", "oc-medusa", "oc-evil-eye", "oc-sea-witch", "oc-sorceress", "oc-catapult", "oc-ogre-shaman", "oc-harpy", "oc-wyvern"], goals: [], reward: {},
     preset: [
       ...ALL.map((lane) => ({ kind: "oc-enchanter", lane, col: 0 })),
       { kind: "oc-genie", lane: 0, col: 1 }, { kind: "oc-iron-golem", lane: 0, col: 4 },
@@ -448,7 +448,7 @@ export const OC_RAIDS: readonly (OcLevel & { unlockWorld: number })[] = [
     ] },
   { id: "r8", world: 0, unlockWorld: 9, kind: "raid", name: "Through the Rift", terrain: "cursed", lanes: ALL, waves: 0, enemies: [], difficulty: 1, startGold: 0, surgeChance: 0,
     brief: "Azure Dragons, Gold Golems and mined lanes. Your Arch Devils teleport behind them; the Black Dragon laughs at gales.",
-    startMight: 850, atkCards: ["oc-wraith", "oc-mummy", "oc-arch-devil", "oc-magog", "oc-lich", "oc-pain", "oc-mancubus", "oc-black-dragon"], goals: [], reward: {},
+    startMight: 850, atkCards: ["oc-wraith", "oc-mummy", "oc-arch-devil", "oc-magog", "oc-lich", "oc-pain", "oc-mancubus", "oc-prism", "oc-black-dragon"], goals: [], reward: {},
     preset: [
       ...ALL.map((lane) => ({ kind: "oc-belfast", lane, col: 0 })),
       { kind: "oc-azure", lane: 0, col: 3 }, { kind: "oc-laffey", lane: 0, col: 1 },
@@ -480,7 +480,8 @@ export const OC_MERCENARIES: readonly { kind: DefKind; seals: number }[] = [
   { kind: "oc-beholder", seals: 8 },
   { kind: "oc-naga", seals: 12 },
   { kind: "oc-gold-golem", seals: 12 },
-  { kind: "oc-azure", seals: 25 }
+  { kind: "oc-azure", seals: 25 },
+  { kind: "oc-bellwether", seals: 10 }
 ];
 
 export function mercCampOpen(cleared: readonly string[]): boolean {

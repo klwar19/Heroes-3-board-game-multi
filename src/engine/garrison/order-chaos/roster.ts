@@ -253,6 +253,18 @@ export const OC_DEFENDERS: DefDef[] = [
     surge: { kind: "charm", count: 2 },
     blurb: "The first foe to bite her falls in love: it turns round and fights the horde for Order, and she is spent. Bosses and smashers are immune." }),
 
+  // --- Siege answers: umbrellas, lures and a last charge ---------------------
+  lawful({ kind: "oc-aegis", name: "Aegis Bearer", sprite: "commander-bulwark", hp: 1500, card: card(150, 15), aegis: { reach: 1 },
+    surge: { kind: "dome", dur: sec(10) },
+    blurb: "Raises a dome over itself and its 3×3: lobbed shots (catapult boulders, fireballs, hexes, webs, death clouds) bounce off, and nothing strikes them from the sky — no dives, spits, breaths or snatches." }),
+  lawful({ kind: "oc-bellwether", name: "Bellwether", sprite: "bellwether-armadillo", hp: 4000, card: card(125, 30), lure: { reach: 2.5 },
+    surge: { kind: "herd", shell: 2000 },
+    blurb: "A sturdy 4000 HP lure: foes walking in the two lanes beside it that come within 2.5 tiles swerve into its lane to attack it. It curls into a ball when bitten." }),
+  lawful({ kind: "oc-lizard", name: "Lizard Warrior", sprite: "lizard-warrior", hp: 1200, card: card(150, 15),
+    melee: { dmg: 50, every: sec(1.2), reach: 1.1, front: true }, lastCharge: { below: 0.3, dmg: 1500 },
+    surge: { kind: "war-party", dmg: 900 },
+    blurb: "Spear (50) for the foes in front. Below 30% health it charges down its lane — 1500 to every foe it tramples — and leaves the lawn (not a lost troop)." }),
+
   // --- Hybrids: only made by dropping one seed packet on another unit -------
   lawful({ kind: "oc-frost-archer", name: "Arctic Sharpshooter", sprite: "wog-arctic-sharpshooter", hp: 400, fusion: true,
     shot: shot("frost", 30, 1.3, { chill: true, pierce: 2, crit: { every: 4, mult: 3 } }),
@@ -431,10 +443,21 @@ export const OC_ENEMIES: EnemyDef[] = [
   chaos({ kind: "oc-arch-vile", name: "Arch-vile", sprite: "doom-arch-vile", hp: 750, speed: WALK, bite: 45, cost: 7,
     raiseDead: { range: 2.5, channel: sec(2.5), every: sec(6), fresh: sec(10) },
     blurb: "Stops over an ally slain within 2.5 tiles and 2.5 s later raises it where it fell, whole. Stun it, freeze it, blow it back or slay it to break the spell." }),
-  chaos({ kind: "oc-juggernaut", name: "Juggernaut", sprite: "juggernaut", hp: 1500, speed: pace(3.6), bite: 90, cost: 8, roller: { dmg: 800 },
-    blurb: "Rolls over every defender in its lane (800 to each). A tall defender stops it cold; spikes pop it and mines blow it apart." }),
+  chaos({ kind: "oc-juggernaut", name: "Juggernaut", sprite: "juggernaut", hp: 1500, speed: pace(3.6), bite: 90, cost: 8, roller: { dmg: 800, scorch: sec(15) },
+    blurb: "Rolls over every defender in its lane (800 to each), leaving a trail of burning ground: nothing can be placed on a scorched tile for 15 s. A tall defender stops it cold; spikes pop it and mines blow it apart." }),
   chaos({ kind: "oc-ram", name: "Battering Ram", sprite: "mountain-ram", hp: 800, speed: FAST, bite: 50, cost: 5, shove: { every: 0, dur: sec(2), dmg: 150 },
-    blurb: "Its first charge butts the defender it meets a tile back (if the tile is free) and stuns it for 2 s (150)." })
+    blurb: "Its first charge butts the defender it meets a tile back (if the tile is free) and stuns it for 2 s (150)." }),
+
+  // --- Siegecraft -------------------------------------------------------------
+  chaos({ kind: "oc-hobgoblin", name: "Ladder Hobgoblin", sprite: "hobgoblin", hp: 450, speed: WALK, bite: 40, cost: 4, ladder: { plant: sec(1.5), wallHp: 2000 },
+    blurb: "Carries a ladder. At the first wall it meets (a tall troop, or one of 2000 HP or more) it plants the ladder in 1.5 s and climbs over — and from then on every Chaos walker in the lane climbs over that troop instead of biting it, until it falls. Slay it before it plants." }),
+  chaos({ kind: "oc-catapult", name: "Goblin Siege Catapult", sprite: "war-catapult", hp: 1400, speed: SLOW, bite: 60, biteEvery: 14, cost: 7,
+    ranged: { dmg: 120, every: sec(3), range: 9.6, projectile: "boulder", lob: true }, siege: { stopX: 6.2, ammo: 10 }, roller: { dmg: 500 },
+    blurb: "Goblins roll it three tiles onto the lawn, then every 3 s it lobs a boulder (120) at the REARMOST troop in its lane — your gold-makers. After 10 boulders it rolls on, crushing what blocks it (500) until a tall troop stops it. Aegis domes turn its boulders aside." }),
+  chaos({ kind: "oc-sorceress", name: "Hexing Sorceress", sprite: "sorceress", hp: 700, speed: WALK, bite: 40, cost: 6, hex: { every: sec(9), range: 3, dur: sec(8) },
+    blurb: "Every 9 s turns the nearest troop up to 3 tiles ahead in her lane into a SHEEP for 8 s: it keeps its health but cannot shoot, strike, pay or use abilities (a sheep still blocks the lane). Steadfast troops are immune." }),
+  chaos({ kind: "oc-prism", name: "Prism Elemental", sprite: "psychic-elemental", hp: 900, speed: WALK, bite: 60, cost: 6, prism: { every: sec(6), spin: sec(2), share: 0.6 },
+    blurb: "Every 6 s it spins for 2 s: straight shots that strike it then are REFLECTED back down the lane at your first troop (60% of their damage). Lobs, beams, lightning and spells are not reflected." })
 ];
 
 type OcBlessingId = "surge-chalice" | "crown-of-dragontooth" | "helm-of-enlightenment" | "ambassadors-sash" | "charm-of-mana" | "endless-purse" | "spirit-of-oppression";
@@ -603,5 +626,11 @@ export const OC_ULTIMATES: Readonly<Record<DefKind, OcUltimate>> = {
   "oc-serpent": { name: "Leviathan", sprite: "haspid", blurb: "Swallows foes up to 4000 toughness from 2 tiles away and digests in 5 s; bites for 800.",
     patch: (b) => ({ devour: b.devour && { reach: 2, cap: 4000, digest: sec(5), bite: 800 } }) },
   "oc-cupi": { name: "Heartbreaker", blurb: "The foe she charms is healed in full and strikes twice as hard for Order.",
-    patch: () => ({ charm: { mult: 2 } }) }
+    patch: () => ({ charm: { mult: 2 } }) },
+  "oc-aegis": { name: "Aegis Paragon", blurb: "Its dome spreads over the 5×5 around it.",
+    patch: () => ({ aegis: { reach: 2 } }) },
+  "oc-bellwether": { name: "Bell of the Herd", blurb: "Its bell lures foes from 4 tiles away, and its spiked shell cuts every biter.",
+    patch: () => ({ lure: { reach: 4 }, thorns: 40 }) },
+  "oc-lizard": { name: "Lizard Chieftain", blurb: "A heavier spear, and it charges as soon as it drops below half health — for 2500.",
+    patch: (b) => ({ melee: b.melee && { ...b.melee, dmg: 80 }, lastCharge: { below: 0.5, dmg: 2500 } }) }
 };

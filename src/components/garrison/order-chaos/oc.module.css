@@ -377,3 +377,1159 @@
 .testWrong {
   color: #ff9a8a;
 }
+
+/* Story: Crag Hack's replay buttons and the advice strip on the loadout screen. */
+.storyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 4px 4px;
+  border: 2px solid #c9a24a;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #6a4418 0%, #3f260b 100%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 220, 150, 0.35);
+  color: #fff0c8;
+  font: bold 14px Georgia, serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.storyButton:hover,
+.storyButton:focus-visible {
+  border-color: #ffd65a;
+  filter: brightness(1.12);
+}
+
+.storyFace {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 50% 20%;
+  background: #2a1a0a;
+  box-shadow: 0 0 0 2px #2a1a0a;
+}
+
+.worldHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.advice {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
+.advice > button {
+  margin-bottom: 12px;
+}
+
+/* Campaign world map: the world painting, a road, a medallion per level. */
+.map {
+  position: relative;
+  height: clamp(300px, 44vh, 430px);
+  margin-top: 6px;
+  overflow: hidden;
+  border: 3px solid #6e4e1e;
+  border-radius: 16px;
+  background-color: #1a120a;
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55), 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+
+.map::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.1) 55%, rgba(0, 0, 0, 0.5) 100%);
+  pointer-events: none;
+}
+
+.mapRoad {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.mapRoad path {
+  fill: none;
+  stroke: rgba(246, 222, 160, 0.85);
+  stroke-width: 5px;
+  stroke-dasharray: 2 12;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.8));
+}
+
+.node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 150px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fbeed2;
+  transform: translate(-50%, -38px);
+  cursor: pointer;
+}
+
+.node:disabled {
+  cursor: not-allowed;
+}
+
+.medal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border: 4px solid #c9a24a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #5a4424 0%, #1c1209 80%);
+  box-shadow: 0 0 0 3px #2a1a0a, 0 8px 16px rgba(0, 0, 0, 0.65), inset 0 0 12px rgba(0, 0, 0, 0.7);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.medal > * {
+  max-width: 62px;
+  max-height: 62px;
+}
+
+.node:hover:not(:disabled) .medal,
+.node:focus-visible .medal {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px #2a1a0a, 0 0 18px rgba(255, 214, 90, 0.75), 0 8px 16px rgba(0, 0, 0, 0.65);
+}
+
+.nodeNum {
+  position: absolute;
+  bottom: -10px;
+  padding: 1px 8px;
+  border: 2px solid #2a1a0a;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f3d27a, #b8862e);
+  color: #2a1604;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.nodeLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-top: 8px;
+  padding: 4px 10px 5px;
+  border-radius: 10px;
+  background: rgba(16, 10, 4, 0.78);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.nodeLabel strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.nodeLabel small {
+  color: #d9c28c;
+  font-size: 11px;
+}
+
+.nodeCleared .medal {
+  border-color: #ffd65a;
+  background: radial-gradient(circle at 50% 38%, #7a5a24 0%, #2a1a09 80%);
+}
+
+.nodeNext .medal {
+  animation: nodePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes nodePulse {
+  0%, 100% { box-shadow: 0 0 0 3px #2a1a0a, 0 0 0 0 rgba(255, 214, 90, 0.7), 0 8px 16px rgba(0, 0, 0, 0.65); }
+  50% { box-shadow: 0 0 0 3px #2a1a0a, 0 0 0 10px rgba(255, 214, 90, 0), 0 8px 16px rgba(0, 0, 0, 0.65); }
+}
+
+.nodeBoss .medal {
+  width: 88px;
+  height: 88px;
+  border-color: #d65a3a;
+  background: radial-gradient(circle at 50% 38%, #6a2a1a 0%, #1c0906 80%);
+}
+
+.node:disabled .medal,
+.node:disabled .nodeLabel {
+  filter: grayscale(0.85) brightness(0.6);
+}
+
+@media (max-width: 760px) {
+  .map {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: auto;
+    padding: 12px;
+  }
+
+  .mapRoad {
+    display: none;
+  }
+
+  .node {
+    position: static;
+    flex-direction: row;
+    width: auto;
+    transform: none;
+    text-align: left;
+  }
+
+  .nodeLabel {
+    align-items: flex-start;
+    margin-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nodeNext .medal { animation: none; }
+}
+
+/* ------------------------------------------------------------ campaign screen */
+
+.campHead {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  margin: 0 auto 10px;
+  max-width: 1280px;
+}
+
+.backButton {
+  padding: 8px 16px;
+  border: 2px solid #c9a24a;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #5a3a16, #2f1d09);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 220, 150, 0.35);
+  color: #fff0c8;
+  font: bold 15px Georgia, serif;
+}
+
+.backButton:hover,
+.backButton:focus-visible {
+  border-color: #ffd65a;
+  filter: brightness(1.12);
+}
+
+/* The painted ribbon (just the lettering while the art loads). */
+.titleBanner {
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: min(560px, 100%);
+  aspect-ratio: 4.8 / 1;
+  margin: 0;
+  background: var(--oc-banner, none) center / contain no-repeat;
+}
+
+.titleBanner span {
+  padding: 0 12px 6px;
+  color: #fff2cf;
+  font: bold clamp(24px, 3.4vw, 38px) Georgia, serif;
+  letter-spacing: 0.06em;
+  text-shadow: 0 3px 0 #4a1208, 0 0 10px rgba(0, 0, 0, 0.6);
+}
+
+.tally {
+  display: flex;
+  gap: 8px;
+}
+
+.tally > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 2px solid #8a6a2a;
+  border-radius: 999px;
+  background: rgba(22, 13, 5, 0.85);
+  color: #ffe9a8;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.worldStrip {
+  display: flex;
+  gap: 10px;
+  max-width: 1280px;
+  margin: 0 auto 12px;
+  padding: 6px 4px 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+
+.worldCard {
+  position: relative;
+  flex: 0 0 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 9px;
+  border: 2px solid #5e4418;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(44, 29, 12, 0.92), rgba(20, 12, 5, 0.94));
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  color: #f3e6c8;
+  scroll-snap-align: start;
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.worldCard:hover:not(:disabled) {
+  transform: translateY(-3px);
+  border-color: #c9a24a;
+}
+
+.worldCardOn {
+  border-color: #ffd65a;
+  box-shadow: 0 0 0 2px rgba(255, 214, 90, 0.35), 0 6px 16px rgba(0, 0, 0, 0.6);
+}
+
+.worldCard:disabled {
+  filter: grayscale(0.9) brightness(0.55);
+}
+
+.worldThumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba(255, 230, 170, 0.25), inset 0 -18px 18px rgba(0, 0, 0, 0.45);
+}
+
+.worldNum {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #2a1a0a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe28a, #b8862e);
+  color: #2a1604;
+  font-size: 13px;
+}
+
+.worldCardDone .worldNum {
+  background: radial-gradient(circle at 35% 30%, #fff3b0, #e0a93a);
+  box-shadow: 0 0 10px rgba(255, 214, 90, 0.8);
+}
+
+.worldName {
+  font-size: 12.5px;
+  font-weight: bold;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.worldStars {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  font-size: 11px;
+  color: #d9c28c;
+}
+
+.worldBar {
+  width: 86%;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.worldBar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #d49a2a, #ffe07a);
+}
+
+.mapStage {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.mapHead {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 6px 8px;
+}
+
+.mapHead > div {
+  flex: 1 1 300px;
+}
+
+.mapHead h2 {
+  margin: 0;
+  color: #ffe08a;
+  font-size: clamp(22px, 2.6vw, 30px);
+  text-shadow: 0 2px 0 #2a1604, 0 0 12px rgba(0, 0, 0, 0.8);
+}
+
+.mapHead p {
+  margin: 2px 0 0;
+  color: #eadbb8;
+  text-shadow: 0 1px 3px #000;
+}
+
+.mapCount {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(20, 12, 5, 0.8);
+  color: #ffe9a8;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+/* The carved frame (painted art, sliced at its borders; a plain wooden border while it loads). */
+.mapFrame {
+  position: relative;
+  border: clamp(14px, 1.9vw, 24px) solid #4a2e12;
+  border-image: var(--oc-frame, none) 82 / clamp(16px, 2vw, 26px) stretch;
+  border-radius: 6px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+
+.mapFrame .map {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background-size: 108% auto;
+  animation: mapDrift 60s ease-in-out infinite alternate;
+}
+
+@keyframes mapDrift {
+  from { background-position: 30% 40%; }
+  to { background-position: 70% 60%; }
+}
+
+/* The painted medallion rings over each level portrait. */
+.medal::after {
+  content: "";
+  position: absolute;
+  inset: -17%;
+  background: var(--oc-medal, none) center / contain no-repeat;
+  pointer-events: none;
+}
+
+.nodeBoss .medal::after {
+  background-image: var(--oc-medal-boss, none);
+}
+
+.nodeLocked .medal::after {
+  background-image: var(--oc-medal-locked, none);
+}
+
+/* The prize hanging off a level medallion. */
+.rewardBadge {
+  position: absolute;
+  top: -10px;
+  right: -16px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: 2px solid #ffd65a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #fff6d8, #d8b56a);
+  box-shadow: 0 0 10px rgba(255, 214, 90, 0.65), 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.rewardBadge img,
+.rewardBadge canvas {
+  max-width: 34px;
+  max-height: 34px;
+  object-fit: cover;
+}
+
+.nodeNext .rewardBadge {
+  animation: prizeBob 1.4s ease-in-out infinite;
+}
+
+@keyframes prizeBob {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-4px) rotate(4deg); }
+}
+
+.campFoot {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 14px;
+  max-width: 1280px;
+  margin: 14px auto 0;
+}
+
+@media (max-width: 900px) {
+  .campFoot {
+    grid-template-columns: 1fr;
+  }
+
+  .campHead {
+    grid-template-columns: auto 1fr;
+  }
+
+  .tally {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+}
+
+/* "Next battle" / "Continue": the big friendly button back into the fight. */
+.nextCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 3px solid #c9a24a;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(255, 236, 190, 0.18), transparent 60%),
+    linear-gradient(180deg, #4a3016 0%, #2a1a09 100%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 230, 170, 0.3);
+  color: #fbeed2;
+  text-align: left;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+button.nextCard:hover,
+button.nextCard:focus-visible {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.continueCard {
+  max-width: 760px;
+  margin: 0 auto 14px;
+}
+
+.nextArt {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 76px;
+  height: 76px;
+  overflow: hidden;
+  border: 3px solid #c9a24a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #6a5028 0%, #1c1209 80%);
+}
+
+.nextText {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nextText small {
+  color: #d9c28c;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nextText strong {
+  color: #fff2cf;
+  font-size: 19px;
+}
+
+.nextPrize {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffe08a;
+  font-size: 13.5px;
+}
+
+.nextPrize .rewardBadge {
+  position: static;
+  width: 30px;
+  height: 30px;
+}
+
+.playPill {
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  border: 2px solid #2a1604;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7fd45a 0%, #3f9a2a 100%);
+  box-shadow: 0 4px 0 #245f16, 0 6px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  color: #fff;
+  font: bold 18px Georgia, serif;
+  text-shadow: 0 2px 0 #245f16;
+}
+
+/* Star rewards: a road of pips. */
+.track {
+  padding: 12px 16px 18px;
+  border: 2px solid #6e4e1e;
+  border-radius: 16px;
+  background: rgba(22, 13, 5, 0.86);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.trackHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  color: #eadbb8;
+  font-size: 14px;
+}
+
+.trackHead strong {
+  color: #ffe08a;
+}
+
+.trackBar {
+  position: relative;
+  height: 12px;
+  margin: 0 14px 10px;
+  border: 2px solid #3a2208;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.trackFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #d49a2a, #ffe07a);
+  box-shadow: 0 0 10px rgba(255, 214, 90, 0.5);
+}
+
+.pip {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #3a2208;
+  border-radius: 50%;
+  background: #4a3a22;
+  color: #d9c28c;
+  font-size: 10px;
+  transform: translate(-50%, -50%);
+}
+
+.pipOn {
+  background: radial-gradient(circle at 35% 30%, #fff3b0, #e0a93a);
+  color: #2a1604;
+  box-shadow: 0 0 10px rgba(255, 214, 90, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapFrame .map,
+  .nodeNext .rewardBadge {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------- "New recruit!" */
+
+.reveal {
+  margin: 6px 0 12px;
+  text-align: center;
+}
+
+.revealHead {
+  margin: 0 0 8px;
+  color: #ffe08a;
+  font: bold 26px Georgia, serif;
+  letter-spacing: 0.04em;
+  text-shadow: 0 3px 0 #3a2208, 0 0 14px rgba(255, 200, 80, 0.6);
+  animation: revealHead 520ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+@keyframes revealHead {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+
+.revealCards {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.revealItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 210px;
+  animation: revealCard 650ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+
+@keyframes revealCard {
+  0% { opacity: 0; transform: translateY(40px) rotateY(80deg) scale(0.7); }
+  60% { opacity: 1; transform: translateY(-6px) rotateY(-8deg) scale(1.04); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* The painted card frame over a parchment card; the unit stands in its arched window. */
+.revealCard {
+  position: relative;
+  isolation: isolate;
+  width: 210px;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  filter: drop-shadow(0 14px 18px rgba(0, 0, 0, 0.6));
+  color: #3a2208;
+}
+
+.revealCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--oc-card, none) center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Soft light turning behind the card. */
+.revealRays {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  z-index: -1;
+  width: 440px;
+  height: 440px;
+  margin: -220px 0 0 -220px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 224, 140, 0.34) 0deg 9deg, rgba(255, 224, 140, 0) 9deg 22deg);
+  -webkit-mask-image: radial-gradient(circle, #000 18%, transparent 68%);
+  mask-image: radial-gradient(circle, #000 18%, transparent 68%);
+  animation: raysTurn 14s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes raysTurn {
+  to { transform: rotate(360deg); }
+}
+
+.revealArt {
+  position: absolute;
+  top: 18%;
+  left: 11%;
+  right: 11%;
+  height: 55%;
+  z-index: 1;
+  display: grid;
+  place-items: end center;
+  padding-bottom: 6%;
+  overflow: hidden;
+  border-radius: 50% 50% 0 0 / 34% 34% 0 0;
+  background: radial-gradient(circle at 50% 40%, #fff7da 0%, #cfe6f2 55%, #9fc5d8 100%);
+}
+
+.revealCard strong {
+  position: absolute;
+  top: 78%;
+  left: 12%;
+  right: 12%;
+  z-index: 3;
+  font-size: 16px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.revealCard em {
+  position: absolute;
+  top: 85%;
+  left: 12%;
+  right: 12%;
+  z-index: 3;
+  color: #7a4a10;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: bold;
+  text-align: center;
+}
+
+.revealBlurb {
+  color: #eadbb8;
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* Stars earned pop in one after another. */
+.resultGoals > .starOn {
+  display: inline-block;
+  animation: starPop 480ms cubic-bezier(0.2, 0.9, 0.3, 1.6) both;
+}
+
+.resultGoals > .starOn:nth-of-type(2) { animation-delay: 0.25s; }
+.resultGoals > .starOn:nth-of-type(3) { animation-delay: 0.5s; }
+.resultGoals > .starOn:nth-of-type(4) { animation-delay: 0.75s; }
+
+@keyframes starPop {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .revealHead,
+  .revealItem,
+  .revealRays,
+  .resultGoals > .starOn {
+    animation: none;
+  }
+}
+
+/* Lighter veil over the painted backdrops: the art should breathe. */
+.menu:is(div)::before {
+  background: linear-gradient(180deg, rgba(8, 5, 2, 0.12) 0%, rgba(8, 5, 2, 0.38) 45%, rgba(8, 5, 2, 0.78) 100%);
+}
+
+/* ------------------------------------------------------------ loadout ("choose your troops") */
+
+.prep {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.kindTag {
+  color: #ffb4a0 !important;
+  border-color: #a0402a !important;
+}
+
+.prepBrief {
+  max-width: 900px;
+  margin: 0 auto 10px;
+  color: #f1e3c2;
+  font-size: 15px;
+  text-align: center;
+  text-shadow: 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, 0.7);
+}
+
+.prepGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .prepGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.prepSide > section {
+  margin-top: 0;
+}
+
+.prepSide > section + section {
+  margin-top: 12px;
+}
+
+.troops {
+  padding: 14px 16px 12px;
+  border: 2px solid #6e4e1e;
+  border-radius: 16px;
+  background: rgba(22, 13, 5, 0.86);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+}
+
+.troops h2 {
+  margin: 0 0 10px;
+  color: #ffe08a;
+  font-size: 22px;
+}
+
+.troops h2 small {
+  color: #d9c28c;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+/* The seed bank you take into battle: the painted oak tray. */
+.bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 112px;
+  margin-bottom: 14px;
+  padding: 4px 6px;
+  border-style: solid;
+  border-width: 12px 18px;
+  border-color: #5a3510;
+  border-image: var(--oc-tray, none) 30 48 fill / 12px 18px stretch;
+  background: linear-gradient(180deg, #7c4b1e, #5b3411);
+  background-clip: padding-box;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
+}
+
+.pkEmpty {
+  width: 72px;
+  height: 100px;
+  border: 2px dashed rgba(255, 224, 150, 0.35);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px 6px;
+}
+
+.pkCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.pkCell small {
+  color: #eadbb8;
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+/* A troop card: the painted packet with its sky window and price plaque. */
+.pk {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  width: 72px;
+  height: 100px;
+  padding: 7px 0 0;
+  border: 0;
+  border-radius: 8px;
+  background:
+    var(--oc-packet, none) center / 100% 100% no-repeat,
+    var(--pk-scene, none) 48% 29% / 87.1% 60.8% no-repeat,
+    linear-gradient(180deg, #bfe0f5 0%, #d8efc7 55%, #ecdcae 70%, #cfb67e 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55);
+  transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
+}
+
+.pk:hover,
+.pk:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 0 12px rgba(255, 214, 90, 0.7), 0 5px 8px rgba(0, 0, 0, 0.55);
+}
+
+/* Already in the bank: greyed in the roster, like a packet you've picked. */
+.pkOn {
+  filter: grayscale(0.85) brightness(0.62);
+}
+
+.pkArt {
+  display: grid;
+  place-items: end center;
+  height: 60px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45));
+}
+
+.pkCost {
+  position: absolute;
+  bottom: 6px;
+  left: 16%;
+  right: 16%;
+  color: #ffe08a;
+  font-size: 14px;
+  line-height: 16px;
+  text-align: center;
+  text-shadow: 0 1px 0 #2a1604, 0 0 3px #000;
+}
+
+.pkLv,
+.pkUlt {
+  position: absolute;
+  top: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: rgba(40, 24, 8, 0.78);
+  color: #ffe08a;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: bold;
+}
+
+.pkLv {
+  left: 5px;
+}
+
+.pkUlt {
+  right: 5px;
+}
+
+.fightBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding: 12px 0 4px;
+  pointer-events: none;
+}
+
+.fightButton {
+  padding: 14px 34px;
+  border: 3px solid #2a1604;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #86dc5e 0%, #3f9a2a 100%);
+  box-shadow: 0 5px 0 #245f16, 0 10px 18px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font: bold 24px Georgia, serif;
+  text-shadow: 0 2px 0 #245f16;
+  pointer-events: auto;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.fightButton:hover:not(:disabled),
+.fightButton:focus-visible {
+  transform: translateY(-2px) scale(1.03);
+  filter: brightness(1.08);
+}
+
+.fightButton:disabled {
+  filter: grayscale(0.8) brightness(0.7);
+}
+
+/* ---------------------------------------------------------- home: life in the painting */
+
+.homeBlurb {
+  max-width: 820px;
+  color: #f6ead0 !important;
+  text-shadow: 0 1px 2px #000, 0 0 10px rgba(0, 0, 0, 0.85);
+}
+
+.ambience.ambience {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.fireGlow {
+  position: absolute;
+  left: 3%;
+  top: 60%;
+  width: 22vw;
+  height: 22vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 170, 70, 0.32) 0%, rgba(255, 120, 40, 0.12) 40%, transparent 70%);
+  mix-blend-mode: screen;
+  animation: flicker 2.6s ease-in-out infinite;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  30% { opacity: 1; transform: scale(1.05); }
+  55% { opacity: 0.65; transform: scale(0.97); }
+  80% { opacity: 0.95; transform: scale(1.03); }
+}
+
+.lichGlow {
+  position: absolute;
+  left: 82%;
+  top: -4%;
+  width: 16vw;
+  height: 16vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(110, 255, 150, 0.3) 0%, rgba(60, 200, 110, 0.1) 45%, transparent 70%);
+  mix-blend-mode: screen;
+  animation: lichPulse 4.5s ease-in-out infinite;
+}
+
+@keyframes lichPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.ember {
+  position: absolute;
+  top: 76%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #ffcf6a;
+  box-shadow: 0 0 6px 2px rgba(255, 150, 60, 0.75);
+  opacity: 0;
+  animation-name: emberRise;
+  animation-timing-function: ease-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes emberRise {
+  0% { opacity: 0; transform: translate(0, 0) scale(1); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--drift, 0px), -38vh) scale(0.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fireGlow,
+  .lichGlow,
+  .ember {
+    animation: none;
+  }
+
+  .ember {
+    display: none;
+  }
+}
+
+/* Each troop card shows the backdrop of what it does (wheat for gold-makers, ramparts for walls…). */
+.pk { --pk-scene: var(--oc-scene-day); }
+.pk[data-scene="gold"] { --pk-scene: var(--oc-scene-gold); }
+.pk[data-scene="stone"] { --pk-scene: var(--oc-scene-stone); }
+.pk[data-scene="arcane"] { --pk-scene: var(--oc-scene-arcane); }
+.pk[data-scene="ember"] { --pk-scene: var(--oc-scene-ember); }
+.pk[data-scene="frost"] { --pk-scene: var(--oc-scene-frost); }
+.pk[data-scene="grove"] { --pk-scene: var(--oc-scene-grove); }
+
+.revealArt {
+  background-position: center;
+  background-size: cover;
+}
+
+/* A menu screen's greeting: one advisor line under the heading. */
+.greeting {
+  max-width: 760px;
+  margin: -4px 0 10px;
+}

@@ -6,7 +6,8 @@
  */
 
 import type { BlessingId, SpellId } from "@/engine/garrison/content";
-import { OC_ARTIFACTS, OC_HERO_ORDER, OC_MAX_LEVEL, OC_MERCENARIES, OC_SPELLS, type OcHeroId } from "@/engine/garrison/order-chaos/campaign";
+import { OC_ARTIFACTS, OC_HERO_ORDER, OC_MAX_LEVEL, OC_MERCENARIES, OC_SPELLS, OC_WORLDS, type OcHeroId } from "@/engine/garrison/order-chaos/campaign";
+import { setItemMakingRoom } from "./storage-space";
 
 export type OcProgress = {
   cleared: string[];
@@ -26,15 +27,28 @@ export type OcProgress = {
   spellbook: SpellId[];
   /** Testing only: everything unlocked (password-gated in the menu). */
   testAll: boolean;
+  /** Story scenes already shown ("prologue", "world:3", "level:w1-2", "after:w1-2", "epilogue"). */
+  seen: string[];
 };
 
-const KEY = "order-chaos:progress:v1";
+export const OC_PROGRESS_KEY = "order-chaos:progress:v1";
+const KEY = OC_PROGRESS_KEY;
 
 export function emptyOcProgress(): OcProgress {
-  return { cleared: [], stars: {}, seals: 0, levels: {}, hero: "catherine", artifacts: [], loadouts: {}, bestEndless: 0, raids: [], hired: [], spellbook: [], testAll: false };
+  return { cleared: [], stars: {}, seals: 0, levels: {}, hero: "catherine", artifacts: [], loadouts: {}, bestEndless: 0, raids: [], hired: [], spellbook: [], testAll: false, seen: [] };
 }
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+
+/**
+ * A save from before the story existed: mark the closing scenes of the worlds
+ * the player has already moved past (a level of the next world cleared) as
+ * seen, so they don't replay as a backlog. The current world's stays owed.
+ */
+function legacySeen(cleared: readonly string[]): string[] {
+  return OC_WORLDS.filter((world) => OC_WORLDS.find((next) => next.id === world.id + 1)?.levels.some((level) => cleared.includes(level.id)))
+    .map((world) => `outro:${world.id}`);
+}
 
 export function loadOcProgress(): OcProgress {
   try {
@@ -49,10 +63,11 @@ export function loadOcProgress(): OcProgress {
     for (const [kind, level] of Object.entries(p.levels ?? {})) {
       if (Number.isInteger(level)) levels[kind] = Math.max(1, Math.min(OC_MAX_LEVEL, level as number));
     }
+    const cleared = strings(p.cleared);
     const loadouts: Record<string, string[]> = {};
     for (const [id, list] of Object.entries(p.loadouts ?? {})) loadouts[id] = strings(list);
     return {
-      cleared: strings(p.cleared),
+      cleared,
       stars,
       seals: typeof p.seals === "number" && p.seals >= 0 ? Math.floor(p.seals) : 0,
       levels,
@@ -63,17 +78,19 @@ export function loadOcProgress(): OcProgress {
       raids: strings(p.raids),
       hired: strings(p.hired).filter((kind) => OC_MERCENARIES.some((merc) => merc.kind === kind)),
       spellbook: strings(p.spellbook).filter((id): id is SpellId => OC_SPELLS.includes(id as SpellId)),
-      testAll: p.testAll === true
+      testAll: p.testAll === true,
+      seen: Array.isArray(p.seen) ? strings(p.seen) : legacySeen(cleared)
     };
   } catch {
     return emptyOcProgress();
   }
 }
 
-export function saveOcProgress(progress: OcProgress): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(progress));
-  } catch {
-    // Storage blocked (private mode, quota): progress lasts for this visit only.
-  }
+/**
+ * Persist the progress; false when the browser refused (storage blocked, or
+ * still full after the idle multiplayer room caches were freed) — the caller
+ * warns the player, since progress then lasts for this visit only.
+ */
+export function saveOcProgress(progress: OcProgress): boolean {
+  return setItemMakingRoom(KEY, JSON.stringify(progress));
 }
