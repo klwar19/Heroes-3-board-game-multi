@@ -31932,20 +31932,25 @@ function playCard(
     }
   }
 
-  // Gem's First Aid VI: double the in-play First Aid Tent's per-round heal for
-  // the rest of this Combat. The Tent's combat effect is rebuilt fresh (amount
-  // 1) at the start of the player's next combat, so the doubling never carries.
+  // Gem's First Aid VI: "For this Combat, double your First Aid Tent's effect."
+  // An ongoing card: it lays a combat-long effect sourced from the card, so the
+  // shared Ongoing-tray tail holds the card in play (not the discard) until the
+  // combat ends. The Tent heal reads this live effect (firstAidTentHealMultiplier),
+  // so the doubling ends exactly when the card leaves play.
   if (effect.type === "DOUBLE_FIRST_AID_TENT") {
-    for (const active of state.activeEffects) {
-      if (active.controllerId !== action.playerId) {
-        continue;
-      }
-      for (const modifier of active.modifiers) {
-        if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
-          modifier.amount *= 2;
-        }
-      }
-    }
+    createActiveEffect(
+      state,
+      {
+        name: FIRST_AID_TENT_DOUBLED_EFFECT_NAME,
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [],
+      },
+      { type: "card", cardId: action.cardId, controllerId: action.playerId },
+      action.playerId,
+    );
   }
 
   // Gelu's Sharpshooters IV / Dracon's Enchanters IV: discard a Pack of the
@@ -32605,6 +32610,24 @@ function performSpellDig(
   state.priorityPlayerId = playerId;
 }
 
+/** Name of the combat-long effect Gem's First Aid VI lays (see playCard). */
+const FIRST_AID_TENT_DOUBLED_EFFECT_NAME = "First Aid VI: First Aid Tent heal doubled";
+
+/**
+ * Multiplier on the player's once-per-round Tent heals: x2 per live First Aid VI
+ * effect (the same x2 per play the card always applied, now tied to the card
+ * staying in play).
+ */
+function firstAidTentHealMultiplier(state: GameState, playerId: PlayerId): number {
+  const plays = state.activeEffects.filter(
+    (active) =>
+      active.controllerId === playerId &&
+      active.source.type === "card" &&
+      active.name === FIRST_AID_TENT_DOUBLED_EFFECT_NAME,
+  ).length;
+  return 2 ** plays;
+}
+
 function applyActiveEffectAction(
   state: GameState,
   action: Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>,
@@ -32697,7 +32720,8 @@ function applyActiveEffectAction(
     effect.source.type === "card" && effect.source.cardId === "war_machine.first_aid_tent"
       ? mithrilTentHealBonus(state, effect.controllerId)
       : 0;
-  healUnitDamage(state, effect.source, action.target, healModifier.amount + mithrilTentBonus);
+  const healAmount = healModifier.amount * firstAidTentHealMultiplier(state, effect.controllerId);
+  healUnitDamage(state, effect.source, action.target, healAmount + mithrilTentBonus);
 
   if (effect.name === "Chalice of Renewal" && healModifier.excludeSourceUnitId) {
     appendEvent(state, {
@@ -32705,7 +32729,7 @@ function applyActiveEffectAction(
       unitId: healModifier.excludeSourceUnitId,
       targetUnitId: target.id,
       abilityId: "commander-artifact-chalice-renewal",
-      message: `Chalice of Renewal heals ${Math.min(healModifier.amount, damageBeforeHeal)} damage from ${target.cardName}.`,
+      message: `Chalice of Renewal heals ${Math.min(healAmount, damageBeforeHeal)} damage from ${target.cardName}.`,
     });
   }
 

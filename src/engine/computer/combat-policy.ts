@@ -50,6 +50,7 @@ import { estimatedStrikeDamage, dealsElementalStrike } from "./strike-value";
 import { houseRuleEnabled } from "../house-rules";
 import { pvpEngagementForecast, unitSideStrength } from "./army-strength";
 import { vpSurrenderSavesPoints } from "./vp-plan";
+import { armyTopTier } from "./combat-movement";
 import { canUnitAttack, canUnitMoveAndAttack, getAttackKind, getLegalMoveDestinations, getUnitMoveRange } from "../legal-actions";
 import { getPermanentCardIds } from "../permanents";
 import { effectiveInitiative } from "../active-effects";
@@ -78,6 +79,9 @@ function pvpEscapeIsBest(observation: ComputerObservation, combat: CombatState):
   const me = observation.playerId;
   const enemy = combat.attackerPlayerId === me ? combat.defenderPlayerId : combat.attackerPlayerId;
   if (!enemy || enemy === me) return false;
+  // USER RULING 2026-10-01: a hero holding a Gold Pack (e.g. Archangels Pack)
+  // fights — never Retreats / Surrenders before the battle, whatever the forecast.
+  if (armyTopTier(state, me) === "goldPack") return false;
   const defendingGarrison = combat.defenderPlayerId === enemy && !combat.context.defenderHeroId &&
     !combat.context.garrisonCardsAllowed;
   const forecast = pvpEngagementForecast(state, me, enemy, defendingGarrison);
@@ -2464,6 +2468,15 @@ export function scoreCombatAction(
       if (combat.context.kind === "player" &&
           adventurePvpTroopLoss(observation.state as unknown as GameState) === "none") {
         return { score: -900, policy: "combat.keep-troops-never-retreat" };
+      }
+      // USER RULING 2026-10-01: with a Gold Pack in the army the AI FIGHTS a
+      // player battle — no escape until it has actually lost a unit in it.
+      if (combat.context.kind === "player" &&
+          armyTopTier(observation.state as unknown as GameState, observation.playerId) === "goldPack" &&
+          !Object.values(combat.units).some(
+            (unit) => unit.controllerId === observation.playerId && unitRemainingHealth(unit) <= 0,
+          )) {
+        return { score: -900, policy: "combat.gold-pack-fights" };
       }
       // A hopeless PvP fight caught in an escape window (pre-battle prep, the
       // deployment, or deployed-but-untouched): leave with the army intact

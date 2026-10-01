@@ -11653,7 +11653,11 @@ export function processPendingVisit(state: GameState): void {
           sourceFieldId: visit.fieldId,
           // A per-Search Artifact-tier cap (the Ⅳ–Ⅴ Creature Bank Dragon
           // Utopia) rides the deferred reward, so the cap survives the queue.
-          ...(step.maxArtifactTier ? { maxArtifactTier: step.maxArtifactTier } : {})
+          ...(step.maxArtifactTier ? { maxArtifactTier: step.maxArtifactTier } : {}),
+          // A field reward naming the Minor/Major deck itself prints its tier.
+          ...(step.deckId === "artifacts-minor" || step.deckId === "artifacts-major"
+            ? { printedArtifactTier: true as const }
+            : {})
         };
         queueVisitFollowUpReward(state, adventure, reward);
         break;

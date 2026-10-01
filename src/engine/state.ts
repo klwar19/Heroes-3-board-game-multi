@@ -11402,6 +11402,14 @@ export type CombatContext =
        * label/board anchor (the attacker's own hex), never a contested field.
        */
       arenaDuel?: { duel: number };
+      /**
+       * Teleport ARRIVAL battle: the attacker came through a teleport network
+       * (Monolith / Gate / Whirlpool) onto an enemy hero on the exit. Like the
+       * neutral `teleportArrival` guard fight, a WIN does not run the winner's
+       * field visit, so the exit's own travel is NOT re-opened for free (arrival
+       * never re-triggers); the hero may Revisit (1 MP) to travel again.
+       */
+      teleportArrival?: boolean;
     };
 
 export type CombatBoardArtId =
@@ -12963,6 +12971,13 @@ export type AdventureReward =
        * Major-capped however long it waits behind a Necromancy window.
        */
       maxArtifactTier?: "major";
+      /**
+       * The reward PRINTS its Artifact tier (Black Tower's "Minor/Major Search"):
+       * `deckId` is that split deck, and Polish Random Artifacts may not reject
+       * it (see resolveSearchDeckCandidates). Pendant / Morale repeats, which
+       * also carry an exact split deck id, never set this and re-roll as before.
+       */
+      printedArtifactTier?: true;
       allowRemove?: boolean;
       /**
        * Polish Random Artifacts: which band table to use for the die roll.
@@ -15514,6 +15529,22 @@ export type AdventureState = {
   rewardQueue: AdventureReward[];
   /** Last field each hero visited, where a retreating hero returns. */
   lastVisitedField: Record<HeroId, MapSpaceId>;
+  /**
+   * Heroes that ESCAPED a player battle (Retreat, Surrender, Give up) — the
+   * loser is relocated home with no walk, so the battle hex keeps a public map
+   * marker naming who fled, how, and where to. Recorded in finalizeAdventureCombat;
+   * shown for the round it happened and the next (older entries are pruned).
+   */
+  heroEscapes?: {
+    fieldId: MapSpaceId;
+    heroId: HeroId;
+    playerId: PlayerId;
+    winnerPlayerId: PlayerId;
+    reason: "retreat" | "surrender" | "surrender-secondary" | "give-up";
+    /** Where the hero fell back to; null when removed (Secondary) or still choosing. */
+    toSpaceId: MapSpaceId | null;
+    round: number;
+  }[];
   /** Victory: flagging an enemy town wins the scenario (default skirmish). */
   winnerPlayerId: PlayerId | null;
   /**

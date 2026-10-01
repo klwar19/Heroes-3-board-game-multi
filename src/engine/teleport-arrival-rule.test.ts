@@ -328,3 +328,55 @@ describe("PvP arrival and the AI never stalls on the new choice", () => {
     expect(adv(next).pendingVisit).toBeNull();
   });
 });
+
+// --- v196: a PvP ARRIVAL win does not re-open the exit's travel -------------
+
+describe("PvP teleport ARRIVAL win (v196)", () => {
+  /** Travel through a Monolith onto an enemy hero squatting the exit. */
+  function arriveOnEnemy(seed: string): { state: GameState; exit: MapSpaceId } {
+    let state = makeGame(seed);
+    const [afterA, tileA] = placeEmptyTile(state, "F1", { row: 24, col: 12 });
+    const [afterB, tileB] = placeEmptyTile(afterA, "F3", { row: 30, col: 18 });
+    state = afterB;
+    const entry = carveToken(state, tileA, 1, "monolith");
+    const exit = carveToken(state, tileB, 4, "monolith");
+    state.heroes.hero_p2.spaceId = exit;
+    putHero(state, getTileFootprintSpaceIds(tileA)[0]);
+    state = moveHero(state, entry);
+    state = commitTravel(state);
+    return { state, exit };
+  }
+
+  /** The arriving attacker (p1) wins the battle outright. */
+  function attackerWins(state: GameState): GameState {
+    state.combat!.outcome = { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason: "all-enemy-units-defeated" };
+    finalizeAdventureCombat(state);
+    return state;
+  }
+
+  const travelOfferOpen = (state: GameState) => {
+    const step = adv(state).pendingVisit?.steps[0];
+    return step?.type === "CHOOSE_ONE" && step.options.some((option) => option.label.includes("Stay"));
+  };
+
+  it("the battle is stamped teleportArrival and the win leaves the hero on the exit with NO free travel offer", () => {
+    const { state: opened, exit } = arriveOnEnemy("arrival-pvp-win");
+    expect(opened.combat?.context.kind).toBe("player");
+    expect(opened.combat?.context.kind === "player" && opened.combat.context.teleportArrival).toBe(true);
+
+    const state = attackerWins(opened);
+    expect(state.combat).toBeNull();
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    expect(travelOfferOpen(state), "arrival must not re-open the exit's travel").toBe(false);
+    expect(adv(state).rewardQueue.some((reward) => reward.kind === "field-visit")).toBe(false);
+  });
+
+  it("CONTROL: the same win without the stamp runs the winner's field visit — the exit re-offers travel", () => {
+    const { state: opened, exit } = arriveOnEnemy("arrival-pvp-win");
+    if (opened.combat?.context.kind === "player") delete opened.combat.context.teleportArrival;
+
+    const state = attackerWins(opened);
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    expect(travelOfferOpen(state)).toBe(true);
+  });
+});

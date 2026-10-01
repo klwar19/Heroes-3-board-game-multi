@@ -576,6 +576,7 @@ import {
   abilityExpertIsCrownFree,
   ARTIFACT_DECK_RELIC,
   ARTIFACT_DECK_MAJOR,
+  ARTIFACT_DECK_MINOR,
   eligibleArtifactDecks,
   eligibleSpellDecks,
   expertUsesAvailable,
@@ -5068,7 +5069,7 @@ setTeleportArrivalHook((state, hero, field, originSpaceId, bypassGuard) => {
   const playerId = hero.controllerId;
   const enemyHero = heroAtSpace(state, field.spaceId, hero.id);
   if (enemyHero && !playersAreAllied(state, enemyHero.controllerId, playerId)) {
-    startPlayerCombat(state, hero, enemyHero, field.spaceId);
+    startPlayerCombat(state, hero, enemyHero, field.spaceId, undefined, { teleportArrival: true });
     return;
   }
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId && !breakClearedByTeam(state, playerId, field)) {
@@ -12082,7 +12083,7 @@ export function startPlayerCombat(
    * field board even when the attacker happens to stand on their own Town), and
    * stamps `context.arenaDuel` for the finalize.
    */
-  options?: { arenaDuel?: { duel: number } }
+  options?: { arenaDuel?: { duel: number }; teleportArrival?: boolean }
 ): void {
   const defenderPlayerId = defender?.controllerId ?? garrisonDefenderId;
   if (!defenderPlayerId) {
@@ -12209,7 +12210,8 @@ export function startPlayerCombat(
     ...(holdingDefense ? { holdingDefense } : {}),
     ...(siege ? { siege: true } : {}),
     ...(mineCardDefense ? { garrisonCardsAllowed: true } : {}),
-    ...(arenaDuel ? { arenaDuel } : {})
+    ...(arenaDuel ? { arenaDuel } : {}),
+    ...(options?.teleportArrival ? { teleportArrival: true } : {})
   };
   assignCombatBoardArt(state, combat);
   placeCombatHexObstacles(state, combat);
@@ -17652,9 +17654,12 @@ export function finalizeAdventureCombat(state: GameState): void {
   // site) still visits/flags normally, exactly as when a Main Hero falls — a
   // 10-gold Secondary must never be a capture-denial shield.
   const skipWinnerFieldVisit =
-    secondaryHeroLoss &&
-    locationDefinitions[state.adventure?.fields[context.fieldId]?.location ?? "none"]?.category ===
-      "visitable";
+    // A teleport-arrival battle: the exit's travel never re-opens on arrival
+    // (see context.teleportArrival) — Revisit (1 MP) to travel again.
+    context.teleportArrival === true ||
+    (secondaryHeroLoss &&
+      locationDefinitions[state.adventure?.fields[context.fieldId]?.location ?? "none"]?.category ===
+        "visitable");
 
   if (loserHero) {
     if (surrendered) {
@@ -17738,6 +17743,28 @@ export function finalizeAdventureCombat(state: GameState): void {
       // up stacked on the same Town hex after the main retreats home.
       forceOtherHeroesHomeFromField(state, loserId, context.fieldId, loserHero.id);
     }
+  }
+
+  // Map marker for a hero that ESCAPED this battle (no fight, or cut short):
+  // the relocation home is silent, so the battle hex names who fled and how.
+  if (
+    loserHero &&
+    (outcome.reason === "retreat" ||
+      outcome.reason === "surrender" ||
+      outcome.reason === "surrender-secondary" ||
+      outcome.reason === "give-up")
+  ) {
+    const kept = (adventure.heroEscapes ?? []).filter((entry) => entry.round >= state.round - 1);
+    kept.push({
+      fieldId: context.fieldId,
+      heroId: loserHero.id,
+      playerId: loserId,
+      winnerPlayerId: winnerId,
+      reason: outcome.reason,
+      toSpaceId: loserHero.spaceId && loserHero.spaceId !== context.fieldId ? loserHero.spaceId : null,
+      round: state.round
+    });
+    adventure.heroEscapes = kept;
   }
 
   for (const playerId of [winnerId, loserId]) {
@@ -22435,6 +22462,7 @@ export function beginSharedDeckSearchNow(
     sourceHeroId?: HeroId;
     sourceFieldId?: MapSpaceId;
     maxArtifactTier?: "major";
+    printedArtifactTier?: boolean;
   }
 ): boolean {
   const candidates = resolveSearchDeckCandidates(state, playerId, deckId, {
@@ -22442,7 +22470,8 @@ export function beginSharedDeckSearchNow(
     artifactBand: options?.artifactBand,
     sourceHeroId: options?.sourceHeroId,
     sourceFieldId: options?.sourceFieldId,
-    maxArtifactTier: options?.maxArtifactTier
+    maxArtifactTier: options?.maxArtifactTier,
+    printedArtifactTier: options?.printedArtifactTier
   }).filter((candidateId) => {
     const deck = state.decks[candidateId];
     return deck && deck.drawPile.length + deck.discardPile.length > 0;
@@ -22551,6 +22580,8 @@ export function resolveSearchDeckCandidates(
     sourceFieldId?: MapSpaceId;
     /** Per-Search Artifact-tier cap; see {@link capArtifactDecksToMajor}. */
     maxArtifactTier?: "major";
+    /** deckId is a split Artifact deck the reward itself prints (Black Tower). */
+    printedArtifactTier?: boolean;
   }
 ): string[] {
   const liveHero = options?.sourceHeroId
@@ -22578,6 +22609,30 @@ export function resolveSearchDeckCandidates(
       eligibleArtifactDecks(state, playerId, hero, artifactSource),
       options?.maxArtifactTier
     );
+  }
+
+  // A reward that PRINTS its Artifact tier (Black Tower: "Minor/Major Search")
+  // searches exactly that split deck. Polish Random Artifacts only ever widens
+  // access, so it must not reject the printed tier — nor re-roll it later in
+  // openSharedDeckSearch off the MAIN hero's tile (a Secondary Hero's Black
+  // Tower III win while the Main Hero stood on a starting tile got no Artifact).
+  // Latch the printed tier, like the Relic Destiny reward; the normal Search
+  // cleanup clears it. An already-live latch is left alone.
+  if (options?.printedArtifactTier && (deckId === ARTIFACT_DECK_MINOR || deckId === ARTIFACT_DECK_MAJOR)) {
+    if (!state.decks[deckId]) {
+      // Split decks off: the printed tier lives in the one mixed Artifact deck.
+      return state.decks.artifacts ? ["artifacts"] : [deckId];
+    }
+    const adventure = state.adventure;
+    if (adventure && !adventure.polishArtifactAccess && houseRuleEnabled(state, "polish-random-artifacts")) {
+      adventure.polishArtifactAccess = {
+        minor: deckId === ARTIFACT_DECK_MINOR,
+        major: deckId === ARTIFACT_DECK_MAJOR,
+        relic: false
+      };
+      adventure.polishRandomArtifactDie = null;
+    }
+    return [deckId];
   }
 
   return [deckId];
@@ -24621,7 +24676,8 @@ export function pumpAdventureQueues(state: GameState): void {
           artifactBand: reward.polishArtifactBand,
           sourceHeroId: reward.sourceHeroId,
           sourceFieldId: reward.sourceFieldId,
-          maxArtifactTier: reward.maxArtifactTier
+          maxArtifactTier: reward.maxArtifactTier,
+          printedArtifactTier: reward.printedArtifactTier
         })
       ) {
         return;

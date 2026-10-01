@@ -13,7 +13,7 @@ import {
   redactStateForSeat
 } from "./index";
 import { createAdventureGameState } from "./adventure-setup";
-import { openSharedDeckSearch, startNeutralEncounter } from "./adventure-reducer";
+import { openSharedDeckSearch, pumpAdventureQueues, startNeutralEncounter } from "./adventure-reducer";
 import {
   beginFieldVisit,
   currentSurrenderGoldCost,
@@ -998,6 +998,66 @@ describe("polish-random-artifacts access latch", () => {
 
     eliminatePlayer(state, "p1", "test", true);
     expect(state.adventure!.polishArtifactAccess ?? null).toBeNull();
+  });
+});
+
+describe("polish-random-artifacts printed tier (Black Tower Major Search)", () => {
+  /**
+   * The Main Hero stands on its Tile I start, so the Polish roll there is a flat
+   * Minor. A field step that PRINTS "Major Search" (Black Tower III/IV) must
+   * still search the Major deck, latch that tier for the one acquisition, and
+   * clear it when the Search resolves.
+   */
+  function visitMajorSearch(seed: string, printed: boolean): GameState {
+    const state = createAdventureGameState({
+      seed,
+      rollFirstPlayer: false,
+      houseRules: { "polish-random-artifacts": true, "split-decks": true }
+    });
+    state.players.p1.hand = state.players.p1.hand.filter(
+      (id) => !id.includes("scouting") && !id.includes("Scout")
+    );
+    // Empty the discard so the Search reveals straight away (no mode menu).
+    const deck = state.decks["artifacts-major"]!;
+    deck.drawPile = [...deck.discardPile, ...deck.drawPile];
+    deck.discardPile = [];
+    const hero = getMainHero(state, "p1")!;
+    state.adventure!.pendingVisit = {
+      playerId: "p1",
+      heroId: hero.id,
+      fieldId: hero.spaceId!,
+      steps: [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts-major", count: 2 }]
+    };
+    processPendingVisit(state);
+    const queued = state.adventure!.rewardQueue.find((reward) => reward.kind === "shared-deck-search");
+    expect(queued, "the field step queues its Search").toBeTruthy();
+    if (!printed && queued?.kind === "shared-deck-search") delete queued.printedArtifactTier;
+    pumpAdventureQueues(state);
+    return state;
+  }
+
+  it("opens the printed Major Search on a Tile I hero and clears the latch when it resolves", () => {
+    let state = visitMajorSearch("polish-ra-printed-major", true);
+    const search = state.pendingChoice;
+    expect(search?.type).toBe("DECK_SEARCH");
+    if (search?.type !== "DECK_SEARCH") return;
+    expect(search.deckId).toBe("artifacts-major");
+    expect(state.adventure!.polishArtifactAccess).toEqual({ minor: false, major: true, relic: false });
+
+    state = applyOk(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: search.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+    expect(state.adventure!.polishArtifactAccess ?? null, "the latch never outlives its Search").toBeNull();
+  });
+
+  it("CONTROL: without the printed-tier mark the Tile I roll (flat Minor) refuses the Major deck", () => {
+    const state = visitMajorSearch("polish-ra-printed-major", false);
+    expect(state.pendingChoice?.type === "DECK_SEARCH" ? state.pendingChoice.deckId : null).not.toBe(
+      "artifacts-major"
+    );
   });
 });
 

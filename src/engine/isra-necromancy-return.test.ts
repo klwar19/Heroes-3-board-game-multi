@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions, getMainHero } from "./index";
+import { finalizeAdventureCombat } from "./adventure-reducer";
 import { getBattlefieldDistance, getOrthogonalNeighbors } from "./battlefield";
-import type { GameAction, GameState } from "./state";
+import type { CombatState, GameAction, GameState } from "./state";
 
 /**
  * Isra's Necromancy IV (specialty.isra.4) — "When: On your turn, return your
@@ -170,5 +171,62 @@ describe("Isra's Necromancy IV — returning removed units", () => {
     expect(positions.length).toBeGreaterThan(0);
     expect(positions.every((cell) => getBattlefieldDistance(oldSpace, cell) === 1)).toBe(true);
     expect(positions).not.toContain(oldSpace);
+  });
+});
+
+/**
+ * Ruling 2026-10-01: a Pack unit that dies returns through Isra IV as its FEW
+ * side. After the battle, a PvP fight in the lobby's no-casualty mode ("Keep
+ * troops") keeps the army card as Pack; every other fight keeps only the Few.
+ */
+describe("Isra's Necromancy IV — the returned Pack card after the battle", () => {
+  /** Ends the battle as a won PvP fight (p1 beats p2) with the given combat board. */
+  function settlePvp(combat: CombatState, pvpTroopLoss: "normal" | "none"): GameState {
+    const game = createAdventureGameState({
+      seed: "isra-return-settle",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      pvpTroopLoss,
+      players: [
+        { id: "p1", name: "Isra", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      ],
+    });
+    const attacker = getMainHero(game, "p1")!;
+    const defender = getMainHero(game, "p2")!;
+    defender.spaceId = attacker.spaceId;
+    game.players.p1.army = [{ id: "army_unit_p1_griffins", unitDefId: "castle.griffins", side: "pack" }];
+    game.players.p2.army = [];
+    const units = Object.fromEntries(
+      Object.entries(combat.units).filter(([, unit]) => unit.id === "unit_p1_griffins"),
+    );
+    game.combat = {
+      ...combat,
+      units,
+      context: { kind: "player", attackerHeroId: attacker.id, defenderHeroId: defender.id, fieldId: attacker.spaceId },
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason: "all-enemy-units-defeated" },
+    } as CombatState;
+    finalizeAdventureCombat(game);
+    return game;
+  }
+
+  const griffinsCard = (game: GameState) =>
+    game.players.p1.army.find((card) => card.id === "army_unit_p1_griffins");
+
+  it("losing-troop PvP: the Pack died and returned as Few → the army card is Few", () => {
+    const returned = playAndPickGriffins(griffinsKilled("pack").state);
+    expect(returned.combat!.units.unit_p1_griffins.variant).toBe("few");
+    expect(griffinsCard(settlePvp(returned.combat!, "normal"))?.side).toBe("few");
+  });
+
+  it("no-casualty PvP mode: the same returned Pack is kept as Pack", () => {
+    const returned = playAndPickGriffins(griffinsKilled("pack").state);
+    expect(griffinsCard(settlePvp(returned.combat!, "none"))?.side).toBe("pack");
+  });
+
+  it("CONTROL: not returned, the dead Pack leaves the army in losing-troop mode", () => {
+    const { state } = griffinsKilled("pack");
+    expect(griffinsCard(settlePvp(state.combat!, "normal"))).toBeUndefined();
   });
 });

@@ -1678,7 +1678,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Resilience (vampire-undying-resilience) also triggers on a "0" Attack die;
 // Isra IV returns flipped-then-destroyed Pack cards, to the old space (or the
 // nearest free spaces when it is taken). A v194 peer resolves all differently.
-export const ENGINE_PROTOCOL_VERSION = 195;
+// v196: a PvP battle opened by a teleport ARRIVAL (Monolith / Gate / Whirlpool
+// exit held by an enemy hero) is stamped context.teleportArrival — the attacker's
+// win no longer runs the post-win field visit, so the exit's travel is not
+// re-offered for free (Revisit, 1 MP). Gem First Aid VI now lays a combat-long
+// card effect (held in the Ongoing tray) that doubles Tent heals while it lives,
+// instead of mutating the Tent modifier. A printed-tier Artifact Search (Black
+// Tower Minor/Major) latches its own tier under Polish Random Artifacts instead
+// of re-rolling off the Main Hero's tile. A PvP escape (Retreat / Surrender /
+// Give up) is recorded in adventure.heroEscapes for a map marker on the battle
+// hex. A v195 peer resolves all differently.
+export const ENGINE_PROTOCOL_VERSION = 196;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

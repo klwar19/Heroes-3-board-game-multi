@@ -409,29 +409,48 @@ describe("Gem's First Aid IV/VI", () => {
     expect(next.combat!.units.unit_p1_crusaders.damage).toBe(1);
   });
 
-  it("VI doubles the in-play First Aid Tent's per-round heal for the combat", () => {
-    let state = createInitialGameState("gem-vi");
-    state.players.p1.hand = ["war_machine.first_aid_tent"];
-    state.players.p2.hand = [];
-    // Put the Tent into play (its combat heal effect appears).
-    state = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "war_machine.first_aid_tent",
-      target: { type: "none" }
-    });
-    const healAmount = () =>
-      state.activeEffects
-        .flatMap((effect) => effect.modifiers)
-        .filter((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND")
-        .map((modifier) => (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND" ? modifier.amount : 0));
-    expect(healAmount()).toEqual([1]);
+  it("VI doubles the in-play First Aid Tent's per-round heal and stays in play (Ongoing) for the combat", () => {
+    const tentState = () => {
+      let state = createInitialGameState("gem-vi");
+      state.players.p1.hand = ["war_machine.first_aid_tent"];
+      state.players.p2.hand = [];
+      // Put the Tent into play (its combat heal effect appears).
+      state = applyOk(state, {
+        type: "PLAY_CARD",
+        playerId: "p1",
+        cardId: "war_machine.first_aid_tent",
+        target: { type: "none" }
+      });
+      state.combat!.units.unit_p1_crusaders.damage = 3; // Crusaders have 4 health: 3 wounds leave it alive
+      return state;
+    };
+    const tentHeal = (state: GameState) => {
+      const tent = state.activeEffects.find((effect) => effect.name === "First Aid Tent");
+      expect(tent, "the Tent's heal effect should be in play").toBeTruthy();
+      return applyOk(state, {
+        type: "USE_ACTIVE_EFFECT",
+        playerId: "p1",
+        effectId: tent!.id,
+        target: { type: "unit", unitId: "unit_p1_crusaders" }
+      });
+    };
+    // CONTROL: without First Aid VI the Tent heals 1.
+    expect(tentHeal(tentState()).combat!.units.unit_p1_crusaders.damage).toBe(2);
 
+    let state = tentState();
     state.players.p1.hand = ["specialty.gem.6"];
     const play = findPlay(state, "specialty.gem.6", 0);
     expect(play, "Gem VI should be offered with a Tent in play").toBeTruthy();
     state = applyOk(state, play!.action);
-    expect(healAmount()).toEqual([2]);
+    // Ongoing, not discarded: the card is held in play for this Combat.
+    expect(state.players.p1.ongoingCards?.map((held) => held.cardId)).toContain("specialty.gem.6");
+    expect(state.players.p1.discard).not.toContain("specialty.gem.6");
+    expect(tentHeal(state).combat!.units.unit_p1_crusaders.damage).toBe(1);
+
+    // Discarding it from play ends the doubling with it.
+    state = applyOk(state, { type: "DISCARD_ONGOING_CARD", playerId: "p1", cardId: "specialty.gem.6" });
+    expect(state.players.p1.discard).toContain("specialty.gem.6");
+    expect(tentHeal(state).combat!.units.unit_p1_crusaders.damage).toBe(2);
   });
 
   it("VI is not offered without a First Aid Tent in play", () => {
