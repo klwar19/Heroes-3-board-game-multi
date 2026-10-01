@@ -1111,6 +1111,7 @@ export function HandFan({
                     <strong className="confirmLabel">{armed.label}</strong>
                     <button
                       className="confirmPlay"
+                      data-action-key={actionKey(armed.action)}
                       onClick={() => {
                         onAction(armed.action);
                         setArmed(null);
@@ -1217,6 +1218,7 @@ export function HandFan({
                     ) : null}
                     {entry.boardSelections.map((action) => (
                       <button
+                        data-card-selection-key={cardSelectionKey(action)}
                         key={cardSelectionKey(action)}
                         onClick={() => {
                           onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action);
@@ -1283,6 +1285,7 @@ export function HandFan({
                                 : "Use";
                       return (
                         <button
+                          data-action-key={actionKey(action)}
                           key={actionKey(action)}
                           onClick={() => {
                             // Balance Pack Intelligence: play the chosen side

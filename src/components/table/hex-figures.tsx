@@ -20,6 +20,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronDown, ChevronUp, User, Users } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { prefersReducedMotion } from "@/lib/display-preferences";
 import { CASTER_BADGE_ICON, unitHasCastSkill } from "./hex-unit-skills";
 import {
   HEX_BATTLEFIELD_COLUMNS,
@@ -167,10 +168,8 @@ export function onClock(tick: Tick): () => void {
   };
 }
 
-/** Reduced motion: idle creatures hold their standing frame instead of looping it. */
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-}
+// Reduced motion (OS or Options → Graphics → Motion): idle creatures hold
+// their standing frame instead of looping it — prefersReducedMotion() below.
 
 // ---------------------------------------------------------------------------
 // Geometry helpers

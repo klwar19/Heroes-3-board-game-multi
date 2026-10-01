@@ -2,6 +2,7 @@
 
 import soundManifest from "../../public/sounds/manifest.json";
 import { assetUrl } from "@/lib/asset-url";
+import { effectsGain, silencedInBackground, voiceGain } from "@/lib/audio-mix";
 import { unitSoundKey, unitSoundLayerKey, type UnitSoundAction, type UnitSoundVariant } from "@/data/unit-sounds";
 
 /**
@@ -53,8 +54,16 @@ if (typeof window !== "undefined") {
   muted = window.localStorage?.getItem(MUTE_STORAGE_KEY) === "1";
 }
 
+const muteListeners = new Set<() => void>();
+
 export function isSoundMuted(): boolean {
   return muted;
+}
+
+/** Live mute state for React (the Options panel / any toggle stays in sync). */
+export function subscribeSoundMuted(listener: () => void): () => void {
+  muteListeners.add(listener);
+  return () => muteListeners.delete(listener);
 }
 
 export function setSoundMuted(next: boolean): void {
@@ -64,6 +73,33 @@ export function setSoundMuted(next: boolean): void {
   } catch {
     // private mode etc. - mute state just won't persist
   }
+  for (const listener of muteListeners) listener();
+}
+
+/** Muted, or the tab is hidden and Options says not to play in the background. */
+function quiet(): boolean {
+  return muted || silencedInBackground();
+}
+
+/** A clip's requested volume scaled by the Options mix (voices vs effects). */
+function mixedVolume(key: string, volume: number): number {
+  const gain = isVoiceClip(key) ? voiceGain() : effectsGain();
+  return Math.min(1, Math.max(0, volume * gain));
+}
+
+let effectsBus: GainNode | null = null;
+
+/**
+ * Where synthesized foley connects: one gain stage per context carrying the
+ * Options effects level (instead of the raw ctx.destination).
+ */
+function effectsOutput(ctx: AudioContext): AudioNode {
+  if (!effectsBus || effectsBus.context !== ctx) {
+    effectsBus = ctx.createGain();
+    effectsBus.connect(ctx.destination);
+  }
+  effectsBus.gain.value = effectsGain();
+  return effectsBus;
 }
 
 function getContext(): AudioContext | null {
@@ -102,8 +138,14 @@ function playAudioElement(audio: HTMLAudioElement): void {
  */
 function playClip(key: string, volume: number, onDone?: () => void): void {
   const entry = soundLibrary[key];
+  const level = mixedVolume(key, volume);
+  if (level <= 0) {
+    // Faded all the way down in Options: skip the download, keep any chain moving.
+    if (onDone) window.setTimeout(onDone, 0);
+    return;
+  }
   const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
-  audio.volume = volume;
+  audio.volume = level;
   let remainingPlays = Math.max(1, entry?.repeat ?? 1);
   let doneFired = false;
   const fireDone = () => {
@@ -151,7 +193,7 @@ function playSequence(
 
 /** Play a converted H3 sound by manifest key ("spells/fireball"). */
 export function playLibrarySound(key: string, volume = 0.55): void {
-  if (muted || typeof window === "undefined") {
+  if (quiet() || typeof window === "undefined") {
     return;
   }
   const entry = soundLibrary[key];
@@ -174,7 +216,7 @@ export function playLibrarySound(key: string, volume = 0.55): void {
  * silent anyway).
  */
 export function playLibrarySoundThen(key: string, volume: number, onDone: () => void): void {
-  if (muted || typeof window === "undefined") {
+  if (quiet() || typeof window === "undefined") {
     return;
   }
   const entry = soundLibrary[key];
@@ -210,7 +252,7 @@ export function isTableUiClickTarget(target: EventTarget | null): boolean {
 }
 
 export function playTableUiClickSound(event: { target: EventTarget | null }): void {
-  if (muted || typeof window === "undefined") {
+  if (quiet() || typeof window === "undefined") {
     return;
   }
   if (isTableUiClickTarget(event.target)) {
@@ -268,8 +310,10 @@ function playLibrarySoundFor(key: string, volume: number, durationMs: number): v
     playSequence(entry.sequence, volume, 0, undefined, entry.sequenceDelayMs);
     return;
   }
+  const level = mixedVolume(key, volume);
+  if (level <= 0) return;
   const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
-  audio.volume = volume;
+  audio.volume = level;
   audio.loop = true;
   playAudioElement(audio);
   const fadeMs = Math.min(160, durationMs / 3);
@@ -283,7 +327,7 @@ function playLibrarySoundFor(key: string, volume: number, durationMs: number): v
         audio.pause();
         return;
       }
-      audio.volume = volume * left;
+      audio.volume = level * left;
     }, 30);
   }, Math.max(0, durationMs - fadeMs));
 }
@@ -319,7 +363,7 @@ export function playUnitSoundFor(
     return;
   }
   const play = () => {
-    if (muted) return;
+    if (quiet()) return;
     if (key && isVoiceClip(key)) {
       playLibrarySound(key, 0.55);
       // A layer that is already a footstep loop walks for it.
@@ -351,7 +395,7 @@ type NoiseShape = {
 
 /** Filtered-noise burst: the basis of every synthesized card sound. */
 function playNoise(shape: NoiseShape, delayMs = 0): void {
-  if (muted) {
+  if (quiet()) {
     return;
   }
   const ctx = getContext();
@@ -383,7 +427,7 @@ function playNoise(shape: NoiseShape, delayMs = 0): void {
   gain.gain.exponentialRampToValueAtTime(shape.gain, start + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
-  source.connect(filter).connect(gain).connect(ctx.destination);
+  source.connect(filter).connect(gain).connect(effectsOutput(ctx));
   source.start(start);
   source.stop(start + duration);
 }
@@ -427,7 +471,7 @@ export function playSpellBookPageTurn(): void {
  * muted, exactly like the card foley.
  */
 export function playTableReaction(): void {
-  if (muted) {
+  if (quiet()) {
     return;
   }
   const ctx = getContext();
@@ -449,7 +493,7 @@ export function playTableReaction(): void {
     gain.gain.setValueAtTime(0.0001, at);
     gain.gain.exponentialRampToValueAtTime(0.12, at + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(effectsOutput(ctx));
     osc.start(at);
     osc.stop(at + 0.24);
   }
@@ -461,7 +505,7 @@ export function playTableReaction(): void {
  * without competing with emotes. Same mute / pre-gesture silence rules.
  */
 export function playTableChatMessage(): void {
-  if (muted) {
+  if (quiet()) {
     return;
   }
   const ctx = getContext();
@@ -476,7 +520,7 @@ export function playTableChatMessage(): void {
   gain.gain.setValueAtTime(0.0001, start);
   gain.gain.exponentialRampToValueAtTime(0.08, start + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.28);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(effectsOutput(ctx));
   osc.start(start);
   osc.stop(start + 0.3);
 }
@@ -512,7 +556,7 @@ export function playShuffle(delayMs = 0): void {
  * layer below only adds the exact landing thud.
  */
 export function playDiceRoll(dieCount = 1, settleMs = 1300): void {
-  if (muted || typeof window === "undefined") {
+  if (quiet() || typeof window === "undefined") {
     return;
   }
   const sampleDelay = Math.max(0, settleMs - 1392);
@@ -554,4 +598,47 @@ export function playWhoosh(delayMs = 0): void {
 export function playProjectileImpact(delayMs = 0): void {
   playNoise({ durationMs: 70, from: 880, to: 300, q: 1.0, gain: 0.11, attackMs: 2 }, delayMs);
   playNoise({ durationMs: 38, from: 2200, to: 1200, q: 1.4, gain: 0.05, attackMs: 1 }, delayMs + 3);
+}
+
+/**
+ * One ambience clip looping quietly (the Order & Chaos weather: rain, wind,
+ * night insects) until `stop` — a single element, faded in and out, silent
+ * while muted or hidden and following the Options effects level. A random
+ * entry loops one of its members.
+ */
+export function startLibraryLoop(key: string, volume: number): { stop(): void; refresh(): void } {
+  const idle = { stop: () => undefined, refresh: () => undefined };
+  if (typeof window === "undefined") return idle;
+  const entry = soundLibrary[key];
+  const clip = entry?.random?.length ? entry.random[Math.floor(Math.random() * entry.random.length)]! : key;
+  const audio = new Audio(assetUrl(soundLibrary[clip]?.src ?? `/sounds/${clip}.mp3`));
+  audio.loop = true;
+  audio.volume = 0;
+  let target = 0;
+  let stopped = false;
+  const refresh = () => {
+    target = quiet() ? 0 : mixedVolume(clip, volume);
+    if (target > 0 && audio.paused && !stopped) playAudioElement(audio);
+  };
+  refresh();
+  const fade = window.setInterval(() => {
+    // (Re-read every step: the Options mix and a hidden tab change without a mute toggle.)
+    if (!stopped) refresh();
+    const next = stopped ? Math.max(0, audio.volume - 0.02) : audio.volume + Math.sign(target - audio.volume) * Math.min(0.02, Math.abs(target - audio.volume));
+    audio.volume = Math.max(0, Math.min(1, next));
+    if (stopped && audio.volume <= 0) {
+      window.clearInterval(fade);
+      audio.pause();
+    } else if (!stopped && target <= 0 && audio.volume <= 0 && !audio.paused) {
+      audio.pause();
+    }
+  }, 60);
+  const unsubscribe = subscribeSoundMuted(refresh);
+  return {
+    refresh,
+    stop: () => {
+      stopped = true;
+      unsubscribe();
+    }
+  };
 }

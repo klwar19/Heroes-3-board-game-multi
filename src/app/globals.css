@@ -11374,7 +11374,8 @@ button.hbSlot:disabled {
 }
 .storyHistoryList li {
   color: #d7e0f0;
-  font-size: 13px;
+  /* --story-text-scale: Options → Text & help → Story text size. */
+  font-size: calc(13px * var(--story-text-scale, 1));
   line-height: 1.5;
 }
 .storyHistoryList strong {
@@ -11425,7 +11426,7 @@ button.hbSlot:disabled {
   border: 1px solid var(--line-strong);
   background: #1a2233;
   color: #efd58f;
-  font-size: 13px;
+  font-size: calc(13px * var(--story-text-scale, 1));
   font-weight: 700;
   letter-spacing: 0.03em;
 }
@@ -11449,7 +11450,7 @@ button.hbSlot:disabled {
   margin: 4px 0 0;
   min-height: 48px;
   color: #eef3ff;
-  font-size: 16px;
+  font-size: calc(16px * var(--story-text-scale, 1));
   line-height: 1.6;
 }
 .storyAdvanceHint {
@@ -11472,7 +11473,7 @@ button.hbSlot:disabled {
   border-radius: 10px;
   background: rgba(24, 32, 48, 0.9);
   color: #eef3ff;
-  font-size: 14px;
+  font-size: calc(14px * var(--story-text-scale, 1));
   text-align: left;
   cursor: pointer;
   transition:
@@ -12923,6 +12924,23 @@ button.hbSlot:disabled {
 
 .heroGrailToken text {
   font-size: 8px;
+}
+
+/* A hero escaped a player battle on this hex (adventure.heroEscapes). */
+.mapHeroEscapeToken {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+}
+
+.mapHeroEscapeToken rect {
+  fill: rgba(24, 16, 8, 0.9);
+  stroke-width: 1.6;
+}
+
+.mapHeroEscapeToken text {
+  fill: #fff0cf;
+  font-size: 8px;
+  font-weight: 700;
 }
 
 .heroSprite {
@@ -34421,6 +34439,210 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   filter: brightness(1.06);
 }
 
+/* ---------- main-menu tutorial prompt (Sandro) ---------- */
+
+.tutorialPromptBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: radial-gradient(circle at 50% 30%, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.82));
+  animation: welcomeFade 0.2s ease;
+}
+
+.tutorialPromptCard {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: min(640px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border-radius: 16px;
+  color: #ecd9b0;
+  background: linear-gradient(160deg, #2c2013 0%, #1c140b 60%, #120d07 100%);
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 226, 160, 0.1),
+    0 24px 60px rgba(0, 0, 0, 0.6);
+  animation: welcomeRise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.tutorialPromptArt {
+  position: relative;
+  aspect-ratio: 3 / 1.45;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(220, 175, 95, 0.3);
+}
+
+.tutorialPromptArt img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 60% 40%;
+}
+
+.tutorialPromptArt::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, #1c140b 0%, transparent 38%);
+}
+
+.tutorialPromptBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 22px 20px;
+}
+
+.tutorialPromptNote {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.tutorialPromptButtons {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tutorialPromptLater {
+  padding: 8px 14px;
+  font-family: var(--font-heroic);
+  font-size: 14px;
+  color: #ecd9b0;
+  border: 1px solid rgba(220, 175, 95, 0.5);
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tutorialPromptLater:hover {
+  border-color: rgba(240, 206, 120, 0.95);
+}
+
+.tutorialPromptBody .welcomeActions {
+  flex-wrap: wrap;
+}
+
+.tutorialPromptBackdrop[lang="vi"],
+.tutorialEntryCard[lang="vi"] {
+  /* The display serif lacks Vietnamese glyphs. */
+  --font-heroic: "Times New Roman", "Noto Serif", serif;
+  font-family: "Times New Roman", "Noto Serif", "Segoe UI", serif;
+}
+
+.tutorialEntryTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tutorialLangSwitch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid rgba(220, 175, 95, 0.35);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.tutorialLangSwitch button {
+  min-width: 28px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #cdb88a;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tutorialLangSwitch button[aria-pressed="true"] {
+  background: linear-gradient(#f0cf7c, #c4913a);
+  color: #25170a;
+  font-weight: 700;
+}
+
+.welcomeEnter svg,
+.tutorialEntryPlay svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+/* ---------- login-screen tutorial card ---------- */
+
+.tutorialEntryCard {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  width: 100%;
+  margin: 0 0 14px;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(220, 175, 95, 0.55);
+  color: #ecd9b0;
+  background: linear-gradient(160deg, #2c2013 0%, #1c140b 60%, #120d07 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 226, 160, 0.1),
+    0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.tutorialEntryArt {
+  position: relative;
+  min-height: 150px;
+}
+
+.tutorialEntryArt img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 72% 30%;
+}
+
+.tutorialEntryBody {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px 14px;
+}
+
+.tutorialEntryTitle {
+  margin: 0;
+  font-family: var(--font-heroic);
+  font-size: 19px;
+  color: #ffe3a0;
+}
+
+.tutorialEntryText {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.tutorialEntryPlay {
+  justify-self: start;
+}
+
+.tutorialEntryNote {
+  font-size: 11.5px;
+  opacity: 0.75;
+}
+
+@media (max-width: 560px) {
+  .tutorialEntryCard {
+    grid-template-columns: 1fr;
+  }
+
+  .tutorialEntryArt {
+    min-height: 110px;
+  }
+}
+
 @media (max-width: 560px) {
   .welcomeCard {
     grid-template-columns: 1fr;
@@ -37885,6 +38107,11 @@ body {
   border-color: rgba(255, 215, 106, 0.85);
   color: #fff0c0;
   background: rgba(40, 28, 12, 0.7);
+}
+
+/* The tutorial's Sandro coach replaces the helper-tips chip (see TutorialCoach). */
+.tutorialActive .helperCoachChip {
+  display: none;
 }
 
 .helperCoachChip {

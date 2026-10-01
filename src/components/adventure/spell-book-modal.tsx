@@ -302,7 +302,7 @@ export function SpellBookModal({
                   aria-label={legal.label}
                   className="commandButton"
                   key={actionKey(legal.action)}
-                  onClick={() => onShortcut(legal)}
+                  data-action-key={actionKey(legal.action)} onClick={() => onShortcut(legal)}
                   type="button"
                 >
                   {renderSpellBookLabel(legal.label)}
@@ -412,7 +412,7 @@ export function SpellBookModal({
                         aria-label={legal.label}
                         className="commandButton spellBookRollButton"
                         key={actionKey(legal.action)}
-                        onClick={() => onShortcut(legal)}
+                        data-action-key={actionKey(legal.action)} onClick={() => onShortcut(legal)}
                         type="button"
                       >
                         {renderSpellBookLabel(legal.label)}

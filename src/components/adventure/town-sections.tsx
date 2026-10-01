@@ -340,7 +340,13 @@ export function BuildingDetailPanel({
         </div>
       ) : (
         actions.map((legal) => (
-          <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">
+          <button
+            className="commandButton"
+            data-action-key={actionKey(legal.action)}
+            key={actionKey(legal.action)}
+            onClick={() => onAction(legal.action)}
+            type="button"
+          >
             {legal.label}
           </button>
         ))
@@ -937,7 +943,7 @@ export function TownRecruitSection({
           const canStack =
             polishStacksEnabled && (owned.side === "pack" || owned.side === "neutral") && polishArmyUnitStackCap(owned, state) > 0;
           return (
-            <div className={`recruitRow unitRosterRow done owned-${owned.side} ${canStack ? "unitStackRow" : ""}`} key={rowKey} data-army-unit-id={owned.id}>
+            <div className={`recruitRow unitRosterRow done owned-${owned.side} ${canStack ? "unitStackRow" : ""}`} key={rowKey} data-army-unit-id={owned.id} data-unit-def-id={unitDefId}>
               {unitCards}
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">
@@ -975,6 +981,7 @@ export function TownRecruitSection({
               className={`recruitRow unitRosterRow reinforce owned-few ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
               key={rowKey}
               data-army-unit-id={owned.id}
+              data-unit-def-id={unitDefId}
               title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
             >
               {unitCards}
@@ -996,6 +1003,7 @@ export function TownRecruitSection({
                       stays visible either way. */}
                   <button
                     className="recruitQuick"
+                    data-purchase-kind="reinforce"
                     disabled={!purchaseIsLegal("reinforce", unitDefId, owned.id) || !reinforceAffordable}
                     aria-label={allowCopies ? `Reinforce ${unit.name}${copyLabel}` : undefined}
                     onClick={(event) => {
@@ -1042,7 +1050,7 @@ export function TownRecruitSection({
         const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
         const recruitAffordable = affordableRecruitCost(recruitCost);
         return (
-          <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} key={rowKey}>
+          <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} data-unit-def-id={unitDefId} key={rowKey}>
             {unitCards}
             <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
             <span className="recruitName">
@@ -1059,6 +1067,7 @@ export function TownRecruitSection({
                     affordability — the "limit/info" stays visible. */}
                 <button
                   className="recruitQuick"
+                  data-purchase-kind="recruit"
                   disabled={!purchaseIsLegal("recruit", unitDefId) || !recruitAffordable}
                   aria-label={allowCopies ? `${hasCopies ? "Buy same unit" : "Recruit"}: ${unit.name}` : undefined}
                   onClick={(event) => {
@@ -1271,6 +1280,7 @@ export function HireHeroesSection({
             <button
               aria-pressed={heroDefId === activeHeroDefId}
               className={`commandButton hireHeroChoice${heroDefId === activeHeroDefId ? " selected" : ""}`}
+              data-hero-def-id={heroDefId}
               key={heroDefId}
               onClick={() => setSelectedHeroDefId(heroDefId)}
               title={`Use ${heroDef?.name ?? heroDefId}'s portrait`}
@@ -1302,6 +1312,7 @@ export function HireHeroesSection({
             <button
               aria-label={`Hire ${heroName} at ${placeName}${action.fieldId ? ` ${action.fieldId}` : ""}`}
               className="hireLocationCard"
+              data-action-key={actionKey(action)}
               key={actionKey(action)}
               onClick={() => onAction(action)}
               type="button"

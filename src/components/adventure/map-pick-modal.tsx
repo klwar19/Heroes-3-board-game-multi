@@ -104,6 +104,7 @@ export function DifficultyChessBar({
           <button
             aria-pressed={selected}
             className={`difficultyChessBtn ${selected ? "selected" : ""} ${mapSet ? "mapSet" : ""}`}
+            data-difficulty={choice.id}
             key={choice.id}
             onClick={() => send({ difficulty: choice.id })}
             title={mapSet ? `${choice.hint} — this map sets it` : choice.hint}

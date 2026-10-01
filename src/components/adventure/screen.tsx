@@ -1929,6 +1929,13 @@ export function HexMapBoard({
                 grailClue ? "grailClueTarget" : ""
               } ${cavernNeedsGate ? "needsGate" : ""}`}
               data-tile-id={tile.id}
+              data-action-key={
+                grailClue
+                  ? actionKey(grailClue)
+                  : discover && !readOnly
+                    ? actionKey(discover)
+                    : undefined
+              }
               data-underground={undergroundTile ? "true" : undefined}
               onClick={
                 grailClue
@@ -2486,6 +2493,21 @@ export function HexMapBoard({
             artShown ? "withArt" : "",
           ].join(" ")}
           data-space-id={spaceId}
+          data-action-key={
+            disruptionPick
+              ? actionKey(disruptionPick)
+              : teleportTarget
+                ? actionKey(teleportTarget.action)
+                : isGateCandidate
+                  ? undefined
+                  : mapChoice
+                    ? actionKey(mapChoice)
+                    : endTurnMove
+                      ? actionKey(endTurnMove)
+                      : revisitAction
+                        ? actionKey(revisitAction)
+                        : undefined
+          }
           data-altered-guard={alteredGuardPreview ? "true" : undefined}
           data-underground={undergroundTile ? "true" : undefined}
           data-disruption-tile={disruptionPick ? tile.id : undefined}
@@ -3170,6 +3192,48 @@ export function HexMapBoard({
           </g>,
         );
       }
+      // A hero that ESCAPED a player battle here (Retreat / Surrender / Give up)
+      // is moved home with no walk — the engine keeps the record
+      // (adventure.heroEscapes) for this round and the next; name it on the hex.
+      const escape = [...(adventure.heroEscapes ?? [])]
+        .reverse()
+        .find((entry) => entry.fieldId === spaceId && entry.round >= state.round - 1);
+      if (escape) {
+        const verb =
+          escape.reason === "retreat"
+            ? "Retreated"
+            : escape.reason === "give-up"
+              ? "Gave up"
+              : "Surrendered";
+        const fledName = state.players[escape.playerId]?.name ?? escape.playerId;
+        const winnerName = state.players[escape.winnerPlayerId]?.name ?? escape.winnerPlayerId;
+        const toField = escape.toSpaceId ? adventure.fields[escape.toSpaceId] : undefined;
+        const fellBack =
+          escape.reason === "surrender-secondary"
+            ? "the Secondary Hero was given up"
+            : !state.heroes[escape.heroId]
+              ? "the Secondary Hero was lost"
+              : toField
+                ? `fell back to the ${titleCaseLocation(toField.location)}`
+                : "fell back home";
+        const detail = `${fledName} ${verb.toLowerCase()} from the battle with ${winnerName} here (round ${escape.round}) — ${fellBack}.`;
+        overlays.push(
+          <g
+            aria-label={detail}
+            className="mapHeroEscapeToken"
+            data-hero-escape={escape.reason}
+            key={`${spaceId}-hero-escape`}
+            role="img"
+            transform={`translate(${x} ${y - HEX_SIZE * 0.62})`}
+          >
+            <rect height={13} rx={6.5} width={58} x={-29} y={-7.5} stroke={playerColor(state, escape.playerId)} />
+            <text textAnchor="middle" y={3}>
+              {`🏳 ${verb}`}
+            </text>
+            <title>{detail}</title>
+          </g>,
+        );
+      }
       if (field.blackCube) {
         overlays.push(
           <rect
@@ -3408,6 +3472,17 @@ export function HexMapBoard({
           isSelected ? "selectedTarget" : "",
         ].join(" ")}
         data-space-id={spaceId}
+        data-action-key={
+          teleportTarget
+            ? actionKey(teleportTarget.action)
+            : mapChoice
+              ? actionKey(mapChoice)
+              : endTurnMove
+                ? actionKey(endTurnMove)
+                : revisitAction
+                  ? actionKey(revisitAction)
+                  : undefined
+        }
         fill={TERRAIN_COLORS.dirt}
         key={`standalone-${spaceId}`}
         onClick={
@@ -3748,6 +3823,9 @@ export function HexMapBoard({
       cells.push(
         <g
           className="placementGhostFlower"
+          data-center-col={center.col}
+          data-center-row={center.row}
+          data-hero-id={center.heroId}
           key={`ghost-${center.row}-${center.col}`}
           onClick={() => {
             // Dispatch as the hero that can actually reach THIS slot (tagged on
@@ -4240,6 +4318,9 @@ export function HexMapBoard({
             <div className="mapFloatButtons">
               <button
                 className="commandButton primary"
+                data-hero-id={myHero.id}
+                data-space-id={selectedTarget.spaceId}
+                data-tutorial-action="MOVE_HERO"
                 onClick={() => {
                   onAction({
                     type: "MOVE_HERO_PATH",
@@ -4430,6 +4511,8 @@ export function HexMapBoard({
           <div
             aria-label="Rotate the new tile"
             className="mapFloatCard rotateFloat"
+            data-preview-rotation={previewRotation}
+            data-tile-id={rotatingTile.id}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >
@@ -4442,6 +4525,7 @@ export function HexMapBoard({
             <div className="rotateFloatRow">
               <button
                 className="commandButton"
+                data-rotate="ccw"
                 onClick={() => setPreviewRotation((value) => (value + 5) % 6)}
                 title="Rotate counter-clockwise"
                 type="button"
@@ -4451,6 +4535,7 @@ export function HexMapBoard({
               <span className="rotateDegrees">{previewRotation * 60}°</span>
               <button
                 className="commandButton"
+                data-rotate="cw"
                 onClick={() => setPreviewRotation((value) => (value + 1) % 6)}
                 title="Rotate clockwise"
                 type="button"
@@ -4459,6 +4544,8 @@ export function HexMapBoard({
               </button>
               <button
                 className="commandButton primary"
+                data-rotation={previewRotation}
+                data-tutorial-action="SET_TILE_ROTATION"
                 onClick={() =>
                   onAction({
                     type: "SET_TILE_ROTATION",
@@ -5027,6 +5114,7 @@ export function AdventureHud({
             aria-pressed={!secondarySelected}
             className={`statChip heroMoveSelect${secondarySelected ? "" : " selected"}`}
             aria-label={`Main Hero movement points: ${hero.movementPoints}`}
+            data-hero-id={hero.id}
             disabled={!onSelectHero}
             onClick={() => onSelectHero?.(hero.id)}
             title={`Select Main Hero — ${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
@@ -5045,6 +5133,7 @@ export function AdventureHud({
               className={`statChip heroMoveSelect secondaryHeroMoveChip${selectedHeroId === secondaryHero.id ? " selected" : ""}`}
               disabled={!onSelectHero}
               onClick={() => onSelectHero?.(secondaryHero.id)}
+              data-hero-id={secondaryHero.id}
               title={`Select Secondary Hero — ${secondaryHero.movementPoints} movement point${secondaryHero.movementPoints === 1 ? "" : "s"} left this turn`}
               type="button"
             >
@@ -5170,6 +5259,8 @@ export function AdventureHud({
         {endTurn ? (
           <button
             className="commandButton"
+            data-action-key={actionKey(endTurn.action)}
+            data-tutorial-action="END_TURN"
             onClick={() => onAction(endTurn.action)}
             type="button"
           >
@@ -7150,6 +7241,7 @@ export function TownPanel({
           return (
             <div
               className={`townBuilding ${built ? "built" : ""}`}
+              data-building-id={buildingId}
               key={buildingId}
               onBlur={() => clearBuildingTip(buildingId)}
               onFocus={(event) =>
@@ -7192,6 +7284,7 @@ export function TownPanel({
               ) : null}
               {action ? (
                 <button
+                  data-action-key={actionKey(action.action)}
                   className="commandButton"
                   onClick={() => onAction(action.action)}
                   type="button"
@@ -7881,6 +7974,7 @@ export function PromptTray({
           </button>
           {confirm ? (
             <button
+              data-action-key={actionKey(confirm.action)}
               className="commandButton primary"
               onClick={() => onAction(confirm.action)}
               type="button"
@@ -8000,6 +8094,7 @@ export function PromptTray({
         <div className="promptOptions">
           {skip ? (
             <button
+              data-action-key={actionKey(skip.action)}
               className="commandButton"
               onClick={() => onAction(skip.action)}
               type="button"
@@ -8034,6 +8129,7 @@ export function PromptTray({
         <div className="promptOptions">
           {cancel ? (
             <button
+              data-action-key={actionKey(cancel.action)}
               className="commandButton"
               onClick={() => onAction(cancel.action)}
               type="button"
@@ -8076,6 +8172,7 @@ export function PromptTray({
         <div className="promptOptions">
           {activate ? (
             <button
+              data-action-key={actionKey(activate.action)}
               className="commandButton"
               onClick={() => onAction(activate.action)}
               type="button"
@@ -8085,6 +8182,7 @@ export function PromptTray({
           ) : null}
           {skip ? (
             <button
+              data-action-key={actionKey(skip.action)}
               className="commandButton"
               onClick={() => onAction(skip.action)}
               type="button"
@@ -8115,6 +8213,7 @@ export function PromptTray({
         <div className="promptOptions">
           {stop ? (
             <button
+              data-action-key={actionKey(stop.action)}
               className="commandButton"
               onClick={() => onAction(stop.action)}
               type="button"
@@ -8212,6 +8311,7 @@ export function PromptTray({
         {cancel ? (
           <div className="promptOptions">
             <button
+              data-action-key={actionKey(cancel.action)}
               className="commandButton"
               onClick={() => onAction(cancel.action)}
               type="button"
@@ -8263,6 +8363,7 @@ export function PromptTray({
         {decline ? (
           <div className="promptOptions">
             <button
+              data-action-key={actionKey(decline.action)}
               className="commandButton"
               onClick={() => onAction(decline.action)}
               type="button"
@@ -8300,7 +8401,7 @@ export function PromptTray({
         </small>
         {skip ? (
           <div className="promptOptions">
-            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+            <button data-action-key={actionKey(skip.action)} className="commandButton" onClick={() => onAction(skip.action)} type="button">
               Skip rotation
             </button>
           </div>
@@ -9394,6 +9495,7 @@ export function PromptTray({
                 <div className="pandoraCardActions">
                   {tile.actions.map((entry) => (
                     <button
+                      data-action-key={actionKey(entry.legal.action)}
                       // The engine's own label is the accessible name, so a click
                       // here is provably the same offer the text button carried.
                       aria-label={entry.legal.label}
@@ -9428,6 +9530,7 @@ export function PromptTray({
         <div className="promptOptions teleportCards">
           {teleportOptions.map(({ legal, art }) => (
             <button
+              data-action-key={actionKey(legal.action)}
               aria-label={legal.label}
               className="teleportOptionCard"
               key={actionKey(legal.action)}
@@ -9513,6 +9616,7 @@ export function PromptTray({
             const sizeRoman = size ? (ROMAN[size] ?? String(size)) : "";
             return (
               <button
+                data-action-key={actionKey(legal.action)}
                 aria-label={legal.label}
                 className={`polishBankOptionCard${isLeaveBlocked ? " leaveBlocked" : ""}`}
                 data-testid={isLeaveBlocked ? "leave-bank-blocked" : undefined}
@@ -9616,6 +9720,7 @@ export function PromptTray({
         </div>
         {continueEntry ? (
           <button
+            data-action-key={actionKey(continueEntry.action)}
             className="commandButton primary"
             onClick={() => onAction(continueEntry.action)}
             type="button"
@@ -9651,6 +9756,7 @@ export function PromptTray({
         <div className="judgeDreadActions">
           {body.map((legal, index) => (
             <button
+              data-action-key={actionKey(legal.action)}
               className={`commandButton${index === 0 ? " primary" : ""}`}
               key={actionKey(legal.action)}
               onClick={() => onAction(legal.action)}
@@ -9698,7 +9804,7 @@ export function PromptTray({
           ))}
         </div>
         {continueEntry ? (
-          <button className="commandButton primary" onClick={() => onAction(continueEntry.action)} type="button">
+          <button data-action-key={actionKey(continueEntry.action)} className="commandButton primary" onClick={() => onAction(continueEntry.action)} type="button">
             {continueEntry.label}
           </button>
         ) : null}
@@ -9731,6 +9837,7 @@ export function PromptTray({
             <small className="rule111ColHead">Roll the dice</small>
             {replaceEntries.map(({ legal }) => (
               <button
+                data-action-key={actionKey(legal.action)}
                 className="commandButton rule111ReplaceButton"
                 key={actionKey(legal.action)}
                 onClick={() => onAction(legal.action)}
@@ -9776,6 +9883,7 @@ export function PromptTray({
             </div>
             {acceptEntry ? (
               <button
+                data-action-key={actionKey(acceptEntry.legal.action)}
                 className="commandButton rule111AcceptButton"
                 onClick={() => onAction(acceptEntry.legal.action)}
                 type="button"
@@ -9811,6 +9919,7 @@ export function PromptTray({
             const artImage = art ? rewardArtImage(balanceArt, art) : undefined;
             return (
               <button
+                data-action-key={legal ? actionKey(legal.action) : undefined}
                 aria-label={option.label}
                 className={art ? "promptRewardCard" : "commandButton"}
                 disabled={!legal}
@@ -9911,6 +10020,7 @@ export function PromptTray({
             <button
               aria-label={legal.label}
               aria-pressed={isCommanderPurchase ? isSelected : undefined}
+              data-action-key={key}
               className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}${art.secondaryCardId ? " scrollPair" : ""}${isSelected ? " selected" : ""}`}
               key={key}
               onClick={() =>
@@ -9971,6 +10081,7 @@ export function PromptTray({
             </button>
           ) : (
             <button
+              data-action-key={actionKey(legal.action)}
               className="commandButton"
               key={key}
               onClick={() => onAction(legal.action)}
@@ -10200,6 +10311,7 @@ export function LearningOfferModal({
               const isExpert = mode === "expert";
               return (
                 <button
+                  data-action-key={actionKey(legal.action)}
                   className={`commandButton ${mode ? "primary" : ""} ${isExpert ? "learningExpert" : ""}`.trim()}
                   key={actionKey(legal.action)}
                   onClick={() => onAction(legal.action)}
@@ -10708,6 +10820,7 @@ export function FarTileTray({
           <button
             aria-disabled={!usable}
             className={`farTileBack ${selected ? "selected" : ""} ${usable ? "usable" : "idle"}`}
+            data-supply-index={index}
             key={index}
             onClick={() =>
               onTogglePlacement(selected ? null : { supplyIndex: index })
@@ -11482,6 +11595,7 @@ export function PreBattlePanel({
                     ) : null}
                     {townActions.map((legal) => (
                       <button
+                        data-action-key={actionKey(legal.action)}
                         className="commandButton"
                         key={actionKey(legal.action)}
                         onClick={() => onAction(legal.action)}
@@ -11496,6 +11610,7 @@ export function PreBattlePanel({
               <div className="prepButtons">
                 {accept ? (
                   <button
+                    data-action-key={actionKey(accept.action)}
                     className="commandButton primary combatReadyButton"
                     onClick={() => onAction(accept.action)}
                     type="button"
@@ -11520,6 +11635,7 @@ export function PreBattlePanel({
                       : legal.label;
                   return (
                     <button
+                      data-action-key={actionKey(legal.action)}
                       className="commandButton"
                       key={actionKey(legal.action)}
                       onClick={() => onAction(legal.action)}
@@ -11670,6 +11786,7 @@ export function PlacementPanel({
           return (
             <button
               className={`placementUnit ${canDrag ? "unitDraggable" : ""} ${selectedUnitId === unit.id ? "selected" : ""} ${isPlaced ? "placed" : ""}`}
+              data-army-unit-id={unit.id}
               disabled={!canPlace && !isPlaced}
               key={unit.id}
               onClick={() => {
@@ -11747,6 +11864,7 @@ export function PlacementPanel({
         <div className="placementCells">
           {cellsForSelected.map((legal) => (
             <button
+              data-action-key={actionKey(legal.action)}
               className="commandButton"
               key={actionKey(legal.action)}
               onClick={() => {
@@ -11773,6 +11891,7 @@ export function PlacementPanel({
       )}
       {finish ? (
         <button
+          data-action-key={actionKey(finish.action)}
           className="commandButton primary combatReadyButton"
           onClick={() => onAction(finish.action)}
           type="button"
@@ -11788,6 +11907,7 @@ export function PlacementPanel({
       ) : null}
       {retreatDuringSetup ? (
         <button
+          data-action-key={actionKey(retreatDuringSetup.action)}
           className="commandButton"
           onClick={() => onAction(retreatDuringSetup.action)}
           type="button"
@@ -16551,6 +16671,7 @@ function GameOptionsPanel({
                 <button
                   aria-pressed={options.difficulty === choice.id}
                   className={options.difficulty === choice.id ? "selected" : ""}
+                  data-difficulty={choice.id}
                   key={choice.id}
                   onClick={() => send({ difficulty: choice.id })}
                   title={choice.hint}
@@ -17220,6 +17341,7 @@ function LobbyHeroEntry({
     <div className="lobbyHeroRow">
       <button
         className={`lobbyHero ${selected ? "selected" : ""}${banned ? " banned" : ""}`}
+        data-hero-def-id={heroDefId}
         disabled={disabled}
         onClick={onPick}
         title={pickTitle}
@@ -17302,6 +17424,7 @@ function FactionPickGrid({
         return (
           <div
             className={`factionCard ${taken ? "taken" : ""}`}
+            data-faction-id={factionId}
             key={factionId}
             style={
               {
@@ -18252,6 +18375,7 @@ function ComputerOpponentPickers({
           return (
             <div
               className="computerSeatPicker locked"
+              data-seat-player-id={seat.playerId}
               key={seat.playerId}
               aria-label={`${seat.name} — town set by map`}
             >
@@ -18273,6 +18397,7 @@ function ComputerOpponentPickers({
         return (
           <div
             className="computerSeatPicker"
+            data-seat-player-id={seat.playerId}
             key={seat.playerId}
             aria-label={`Set up ${seat.name}`}
           >

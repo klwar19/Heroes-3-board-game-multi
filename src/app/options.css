@@ -1,0 +1,790 @@
+/* ==================================================================== */
+/* OPTIONS DIALOG (components/settings/settings-dialog.tsx)             */
+/* One gilded panel for every per-browser preference. Portalled to     */
+/* <body> above every table layer (the phone tab bar sits at 10020).   */
+/* Loaded after globals.css (app/layout.tsx), so it reuses its tokens. */
+/* ==================================================================== */
+
+.optionsOpenButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--cmp-gold-deep);
+  border-radius: 6px;
+  color: var(--cmp-gold-bright);
+  background: linear-gradient(180deg, rgb(52 38 18 / 96%), rgb(24 17 9 / 98%));
+  box-shadow: inset 0 0 0 1px rgb(217 178 90 / 26%);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.optionsOpenButton svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.optionsOpenButton:hover,
+.optionsOpenButton:focus-visible {
+  border-color: var(--cmp-gold);
+  filter: brightness(1.15);
+}
+
+/* .statusRow span recolors every span; keep the label gold. */
+.optionsOpenButton span {
+  color: inherit;
+}
+
+/* A fourth control in the table status row: wrap instead of overflowing. */
+.statusRow:has(> .optionsOpenButton) {
+  flex-wrap: wrap;
+}
+
+/* Match the compact in-game status row (MusicToggle / UiModeToggle sizes). */
+@media (min-width: 1101px) {
+  .tableRoot:not(.phoneMode) .tableMenuInline > .statusRow > .optionsOpenButton {
+    min-height: 26px;
+    padding: 2px 8px;
+    font-size: 9.5px;
+  }
+}
+
+.optionsOpenButton.compact {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* Main menu: a labelled pill in the corner row, left of Modding + Music. */
+.mainMenuShell .menuOptionsButton {
+  position: fixed;
+  top: 54px;
+  right: 98px;
+  z-index: 30;
+  min-height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border-color: rgb(214 178 94 / 70%);
+  background: rgb(10 13 23 / 72%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 45%);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+.mainMenuShell .menuOptionsButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* In-game desktop HUD: the collapsed table menu shows only its "Menu" toggle,
+   so a gear sits beside it there. Everywhere else (open menu, phone Menu tab,
+   narrow screens, setup lobby) the status row's Options button is visible and
+   this quick one stays hidden. */
+.tableOptionsQuick {
+  display: none !important;
+}
+
+@media (min-width: 1101px) {
+  .tableRoot:not(.phoneMode)
+    > .tableTopRow
+    > .tableMenu.tableMenuInline:not(.controlsOpen)
+    > .tableOptionsQuick {
+    display: inline-flex !important;
+    vertical-align: top;
+    width: 46px;
+    min-height: var(--desktop-hud-height, 62px);
+    margin-left: 6px;
+    padding: 0;
+    border-radius: 9px;
+    background:
+      linear-gradient(180deg, rgb(34 25 14 / 96%), rgb(18 13 8 / 98%)),
+      var(--cmp-leather) center / 180px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 30%),
+      inset 0 1px 0 rgb(246 226 168 / 12%),
+      0 6px 18px rgb(0 0 0 / 46%);
+  }
+
+  .tableRoot:not(.phoneMode)
+    > .tableTopRow
+    > .tableMenu.tableMenuInline:not(.controlsOpen)
+    > .tableOptionsQuick svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.optionsBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(4 6 12 / 68%);
+  backdrop-filter: blur(3px);
+  animation: optionsFade 140ms ease-out;
+}
+
+.optionsDialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(760px, 100%);
+  /* A fixed height, so switching tabs never makes the panel jump. */
+  height: min(600px, calc(100dvh - 32px));
+  overflow: hidden;
+  border-radius: 14px;
+  color: #eef1f8;
+  background: var(--cmp-marble-fill, #14161d);
+  box-shadow: var(--cmp-frame);
+  font-family: inherit;
+  text-align: left;
+  animation: optionsRise 180ms ease-out;
+}
+
+.optionsHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgb(217 178 90 / 28%);
+  background: linear-gradient(180deg, rgb(33 64 111 / 55%), rgb(33 64 111 / 0%));
+}
+
+.optionsHeader h2 {
+  margin: 0;
+  color: var(--cmp-gold-bright);
+  font-family: var(--font-heroic, inherit);
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 6px rgb(0 0 0 / 70%);
+}
+
+.optionsHeader small {
+  color: #a9b3c7;
+  font-size: 11px;
+}
+
+.optionsCrest {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--cmp-gold-bright);
+  background: radial-gradient(circle at 35% 30%, #3a5c97, var(--cmp-blue-deep) 70%);
+  box-shadow: inset 0 0 0 2px var(--cmp-gold), 0 3px 10px rgb(0 0 0 / 55%);
+}
+
+.optionsCrest svg {
+  width: 22px;
+  height: 22px;
+}
+
+.optionsClose {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid rgb(217 178 90 / 40%);
+  border-radius: 50%;
+  color: var(--cmp-gold-bright);
+  background: rgb(0 0 0 / 30%);
+  cursor: pointer;
+}
+
+.optionsClose:hover,
+.optionsClose:focus-visible {
+  border-color: var(--cmp-gold);
+  background: rgb(217 178 90 / 16%);
+}
+
+.optionsBody {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.optionsTabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 10px;
+  border-right: 1px solid rgb(217 178 90 / 20%);
+  background: rgb(0 0 0 / 22%);
+}
+
+.optionsTab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #c9d1e2;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.optionsTab svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--cmp-gold);
+}
+
+.optionsTab span {
+  display: grid;
+  gap: 1px;
+}
+
+.optionsTab small {
+  color: #8f9ab0;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.optionsTab:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+.optionsTab[aria-selected="true"] {
+  border-color: rgb(217 178 90 / 60%);
+  color: var(--cmp-gold-bright);
+  background: linear-gradient(90deg, rgb(63 107 181 / 38%), rgb(63 107 181 / 8%));
+  box-shadow: inset 3px 0 0 var(--cmp-gold);
+}
+
+.optionsTab:focus-visible,
+.optionsSegmented button:focus-visible,
+.optionsSwitch:focus-visible,
+.optionsMuteButton:focus-visible,
+.optionsInlineButton:focus-visible,
+.optionsFooter button:focus-visible,
+.optionsDialog input[type="range"]:focus-visible {
+  outline: 2px solid var(--cmp-gold-bright);
+  outline-offset: 2px;
+}
+
+.optionsPanel {
+  min-height: 0;
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.optionsPanelTitle {
+  margin: 0 0 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgb(217 178 90 / 18%);
+  color: var(--cmp-gold);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.optionsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 6%);
+}
+
+.optionsRowText {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.optionsRowTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #eef1f8;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.optionsRowTitle svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--cmp-gold);
+}
+
+.optionsRowText small {
+  color: #97a2b8;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.optionsRowControl {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.optionsVolume {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Master / voices have no mute button: keep the slider in the same column. */
+.optionsVolume > input[type="range"]:first-child {
+  grid-column: 2;
+}
+
+.optionsVolume output,
+.optionsSpeedRow output {
+  color: var(--cmp-gold-bright);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: right;
+}
+
+.optionsVolume.isMuted input[type="range"] {
+  opacity: 0.45;
+}
+
+.optionsVolume.isMuted output {
+  color: #e08f7d;
+}
+
+.optionsMuteButton {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgb(217 178 90 / 45%);
+  border-radius: 8px;
+  color: var(--cmp-gold-bright);
+  background: rgb(0 0 0 / 28%);
+  cursor: pointer;
+}
+
+.optionsMuteButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.optionsMuteButton[aria-pressed="true"] {
+  border-color: rgb(210 122 106 / 70%);
+  color: #f0a594;
+  background: rgb(120 30 20 / 35%);
+}
+
+.optionsDialog input[type="range"] {
+  --fill: 50%;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.optionsDialog input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cmp-gold) 0 var(--fill), rgb(255 255 255 / 14%) var(--fill) 100%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 60%);
+}
+
+.optionsDialog input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cmp-gold) 0 var(--fill), rgb(255 255 255 / 14%) var(--fill) 100%);
+}
+
+.optionsDialog input[type="range"]::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 2px solid var(--cmp-gold-bright);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a70b0, var(--cmp-blue-deep));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 60%);
+  -webkit-appearance: none;
+}
+
+.optionsDialog input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cmp-gold-bright);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a70b0, var(--cmp-blue-deep));
+}
+
+.optionsSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px;
+  border: 0;
+  color: #c9d1e2;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.optionsSwitch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.optionsSwitchTrack {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: 1px solid rgb(217 178 90 / 45%);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 40%);
+  transition: background 150ms ease;
+}
+
+.optionsSwitchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #8f9ab0;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 60%);
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.optionsSwitch[aria-checked="true"] {
+  color: var(--cmp-gold-bright);
+}
+
+.optionsSwitch[aria-checked="true"] .optionsSwitchTrack {
+  background: linear-gradient(180deg, #3f6bb5, var(--cmp-blue-deep));
+}
+
+.optionsSwitch[aria-checked="true"] .optionsSwitchThumb {
+  background: var(--cmp-gold-bright);
+  transform: translateX(20px);
+}
+
+.optionsSwitchState {
+  min-width: 22px;
+}
+
+.optionsSegmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgb(217 178 90 / 30%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 30%);
+}
+
+.optionsSegmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 11px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #c9d1e2;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.optionsSegmented button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.optionsSegmented button:hover {
+  background: rgb(255 255 255 / 6%);
+}
+
+.optionsSegmented button[aria-checked="true"] {
+  border-color: rgb(217 178 90 / 70%);
+  color: #1b1408;
+  background: linear-gradient(180deg, var(--cmp-gold-bright), var(--cmp-gold));
+}
+
+.optionsGroup {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 6%);
+}
+
+.optionsGroupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.optionsSpeedRow {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 118px;
+  align-items: center;
+  gap: 10px;
+  color: #c9d1e2;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.optionsInlineButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border: 1px solid rgb(217 178 90 / 45%);
+  border-radius: 999px;
+  color: var(--cmp-gold-bright);
+  background: rgb(0 0 0 / 25%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+.optionsInlineButton svg {
+  width: 10px;
+  height: 10px;
+}
+
+.optionsInlineButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.optionsTextPreview {
+  margin: 0 0 4px;
+  padding: 10px 14px;
+  border: 1px solid rgb(217 178 90 / 30%);
+  border-radius: 10px;
+  color: #eef3ff;
+  background: rgb(10 14 24 / 75%);
+  line-height: 1.6;
+}
+
+.optionsNote {
+  margin: 12px 0 0;
+  color: #8f9ab0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.optionsFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgb(217 178 90 / 24%);
+  background: rgb(0 0 0 / 22%);
+}
+
+.optionsFooter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.optionsFooter svg {
+  width: 15px;
+  height: 15px;
+}
+
+.optionsSecondary {
+  border: 1px solid rgb(217 178 90 / 40%);
+  color: #c9d1e2;
+  background: rgb(0 0 0 / 30%);
+}
+
+.optionsSecondary:hover {
+  color: var(--cmp-gold-bright);
+}
+
+.optionsPrimary {
+  min-width: 110px;
+  justify-content: center;
+  border: 1px solid var(--cmp-gold-bright);
+  color: #1b1408;
+  background: linear-gradient(180deg, var(--cmp-gold-bright), var(--cmp-gold) 55%, #a8812f);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 45%);
+}
+
+.optionsPrimary:hover {
+  filter: brightness(1.08);
+}
+
+@keyframes optionsFade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes optionsRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+/* Narrow screens: tabs become a scrolling strip above one column of rows. */
+@media (max-width: 640px) {
+  .optionsBackdrop {
+    padding: 8px;
+  }
+
+  .optionsDialog {
+    height: calc(100dvh - 16px);
+  }
+
+  .optionsHeader {
+    padding: 12px 14px 10px;
+  }
+
+  .optionsBody {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* Four equal tabs, icon over label — a phone tab bar, no side-scrolling. */
+  .optionsTabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px;
+    border-right: 0;
+    border-bottom: 1px solid rgb(217 178 90 / 20%);
+  }
+
+  .optionsTab {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 2px;
+    font-size: 11.5px;
+    text-align: center;
+  }
+
+  .optionsTab span {
+    justify-items: center;
+  }
+
+  .optionsTab small {
+    display: none;
+  }
+
+  .optionsTab[aria-selected="true"] {
+    box-shadow: inset 0 -3px 0 var(--cmp-gold);
+  }
+
+  .optionsPanel {
+    padding: 10px 14px 14px;
+  }
+
+  .optionsRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .optionsRowControl,
+  .optionsSegmented {
+    justify-content: flex-start;
+  }
+
+  .optionsSpeedRow {
+    grid-template-columns: 76px minmax(0, 1fr) 96px;
+  }
+
+  .optionsFooter {
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The main-menu corner pill shrinks to its gear on phones. */
+  .mainMenuShell .menuOptionsButton {
+    width: 34px;
+    padding: 0;
+  }
+
+  .mainMenuShell .menuOptionsButton span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optionsBackdrop,
+  .optionsDialog {
+    animation: none;
+  }
+
+  .optionsSwitchTrack,
+  .optionsSwitchThumb {
+    transition: none;
+  }
+}
+
+/* Hex battle bar: the Battle speed popover links to the full Options. */
+.hexSpeedMore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid #8a6d35;
+  border-radius: 2px;
+  color: #f1dfae;
+  background: #2a2117;
+  cursor: pointer;
+  font: inherit;
+}
+
+.hexSpeedMore:hover,
+.hexSpeedMore:focus-visible {
+  border-color: #c9a55a;
+  background: #3a2d1c;
+}
+
+.hexSpeedMore svg {
+  width: 14px;
+  height: 14px;
+}

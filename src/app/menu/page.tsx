@@ -6,8 +6,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { WelcomeNotice } from "@/components/menu/welcome-notice";
+import { MenuHelpIcons } from "@/components/menu/menu-help-icons";
+import { TutorialPrompt } from "@/components/menu/tutorial-prompt";
+import { useUiModePreference } from "@/lib/ui-mode-preference";
+import { TUTORIAL_ROOM_ID } from "@/lib/tutorial/tutorial-room-id";
 import { ModdingGate } from "@/components/menu/modding-gate";
 import { MusicToggle } from "@/components/music-toggle";
+import { SettingsButton } from "@/components/settings/settings-dialog";
 import { UiModePrompt } from "@/components/table/ui-mode-prompt";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, logout, type SelfProfile } from "@/lib/auth-client";
@@ -61,6 +66,11 @@ export default function MenuPage() {
   const [scenarioCreating, setScenarioCreating] = useState(false);
   const [scenarioError, setScenarioError] = useState<string | null>(null);
   const started = useRef(false);
+  const [welcomeSettled, setWelcomeSettled] = useState(false);
+  const uiModePreference = useUiModePreference();
+  // The guided tutorial is a local table (src/lib/tutorial/tutorial-room.ts);
+  // it resumes wherever this browser left it.
+  const startTutorial = () => router.push(`/?room=${encodeURIComponent(TUTORIAL_ROOM_ID)}`);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -102,7 +112,12 @@ export default function MenuPage() {
   return (
     <>
       <UiModePrompt />
-      <WelcomeNotice />
+      <WelcomeNotice onSettled={() => setWelcomeSettled(true)} />
+      {/* Asked only after the layout question and the welcome notice are done. */}
+      <TutorialPrompt
+        onStart={startTutorial}
+        ready={welcomeSettled && uiModePreference.ready && uiModePreference.preference !== null}
+      />
       <MenuShell
         className="mainMenuShell"
         footer={
@@ -139,9 +154,13 @@ export default function MenuPage() {
             icon-only, pinned top-right (`.menuMusicToggle`), persists like the
             in-game table toggle (same localStorage-backed music store). */}
         <MusicToggle className="menuMusicToggle" compact />
+        {/* Options: sound levels, layout, graphics/motion, story text. */}
+        <SettingsButton className="menuOptionsButton" />
         {/* Corner "Modding" icon: password-gated entry to experimental single-player
             mods (Restia life-sim at /restia). */}
         <ModdingGate />
+        {/* New-player help: Rule Book reader + Sandro's guided tutorial game. */}
+        <MenuHelpIcons onStartTutorial={startTutorial} />
         <nav
           aria-label={view === "main" ? "Main menu" : `${view} menu`}
           className={`menuNav menuNav-${view}`}

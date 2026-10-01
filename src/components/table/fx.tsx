@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { assetUrl } from "@/lib/asset-url";
+import { prefersReducedMotion } from "@/lib/display-preferences";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import {
@@ -2418,7 +2419,7 @@ async function runBurst(stage: HTMLElement, cue: Extract<FxCue, { kind: "burst" 
     return;
   }
   // Respect reduced motion — skip the burst rather than flash the screen.
-  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+  if (prefersReducedMotion()) {
     return;
   }
   const center = centerOf(rect);
@@ -2581,7 +2582,7 @@ async function runRuneLevel(stage: HTMLElement, cue: Extract<FxCue, { kind: "run
   if (!rect) {
     return;
   }
-  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+  const reduced = prefersReducedMotion();
   const word = runeWordForLevel(cue.level);
   const center = centerOf(rect);
   // Sized to the board, clamped to the phone viewport (16px gutters).

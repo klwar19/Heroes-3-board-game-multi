@@ -10,6 +10,7 @@ import {
   type BattlefieldAtmosphereTheme
 } from "@/lib/battlefield-atmosphere";
 import { playBattlefieldEntrance } from "@/lib/battlefield-audio";
+import { prefersReducedMotion, subscribeReducedMotion } from "@/lib/display-preferences";
 import styles from "./battlefield-environment.module.css";
 
 /*
@@ -171,7 +172,8 @@ export function BattlefieldEnvironment({ state, boardArtId, plane = "sky" }: {
     if (!canvas || !layers.length) return;
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    // Options → Graphics → Motion (or the OS setting while on "system").
+    let reducedMotion = prefersReducedMotion();
     const noise = getNoiseTexture();
     const random = seededRandom(`${combatKey}#${plane}`);
     let width = 1;
@@ -682,7 +684,7 @@ export function BattlefieldEnvironment({ state, boardArtId, plane = "sky" }: {
       ctx.globalCompositeOperation = "source-over";
     };
 
-    const active = () => !disposed && !document.hidden && inView && !reduced.matches && !finished;
+    const active = () => !disposed && !document.hidden && inView && !reducedMotion && !finished;
     const tick = (now: number) => {
       frame = 0;
       if (!active()) { previousTime = 0; return; }
@@ -727,7 +729,10 @@ export function BattlefieldEnvironment({ state, boardArtId, plane = "sky" }: {
       resume();
     });
     intersection?.observe(canvas);
-    reduced.addEventListener("change", resume);
+    const stopMotionWatch = subscribeReducedMotion(() => {
+      reducedMotion = prefersReducedMotion();
+      resume();
+    });
     document.addEventListener("visibilitychange", resume);
     resize();
     resume();
@@ -736,7 +741,7 @@ export function BattlefieldEnvironment({ state, boardArtId, plane = "sky" }: {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
       intersection?.disconnect();
-      reduced.removeEventListener("change", resume);
+      stopMotionWatch();
       document.removeEventListener("visibilitychange", resume);
       for (const image of images) image.onload = null;
       ctx.clearRect(0, 0, width, height);

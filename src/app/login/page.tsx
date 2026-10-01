@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { AccountAuth } from "@/components/menu/account-auth";
 import { MenuShell } from "@/components/menu/menu-shell";
+import { TutorialEntryCard } from "@/components/menu/tutorial-entry-card";
 import { authEnabled, GUEST_LOGIN_DISABLED } from "@/lib/auth-mode";
 import { clearAccountIdentity, getDisplayName, setDisplayName, setGuestMode } from "@/lib/identity";
 
@@ -24,6 +25,8 @@ export default function LoginPage() {
   if (authEnabled()) {
     return (
       <MenuShell backdrop="login-backdrop" title="Welcome to Erathia">
+        {/* First-time visitors can play the guided tutorial at once — no account. */}
+        <TutorialEntryCard />
         <AccountAuth />
         {GUEST_LOGIN_DISABLED ? <GuestDisabledNotice /> : <GuestChoice />}
       </MenuShell>
@@ -45,7 +48,8 @@ function GuestDisabledNotice() {
         <span>or</span>
       </div>
       <p className="guestChoiceHint">
-        Guest login is temporarily disabled. Please register or sign in above to play.
+        Guest login is temporarily disabled. Please register or sign in above to play — or try the
+        tutorial above, which needs no account.
       </p>
     </div>
   );
@@ -81,6 +85,7 @@ function GuestLogin() {
 
   return (
     <MenuShell backdrop="login-backdrop" title="Welcome, traveller">
+      <TutorialEntryCard />
       <form className="menuNav" onSubmit={continueAsGuest}>
         <label className="loadingStatus" htmlFor="guestName">
           Choose the name other players will see

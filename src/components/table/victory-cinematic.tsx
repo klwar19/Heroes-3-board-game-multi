@@ -37,6 +37,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { GameState, PlayerId } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
 import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, playCombatSting, type CombatStingTrack } from "@/lib/music";
+import { prefersReducedMotion, subscribeReducedMotion } from "@/lib/display-preferences";
 
 export type CombatOutcomeCinematicKind = "victory" | "defeat";
 
@@ -79,29 +80,16 @@ export function __resetVictoryCinematicForTests(): void {
   stingPlayedFor.clear();
 }
 
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-
-function reducedMotionQuery(): MediaQueryList | null {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(REDUCED_MOTION_QUERY)
-    : null;
-}
-
-function subscribeReducedMotion(onChange: () => void): () => void {
-  const query = reducedMotionQuery();
-  query?.addEventListener?.("change", onChange);
-  return () => query?.removeEventListener?.("change", onChange);
-}
-
 /**
- * Whether the clip may mount: false under `prefers-reduced-motion` and on the
+ * Whether the clip may mount: false under reduced motion (the OS
+ * `prefers-reduced-motion`, or the Options → Graphics → Motion override) and on the
  * server snapshot (a `useSyncExternalStore` read, the main-menu
  * `useVideoBackdropAllowed` precedent — never a setState-in-effect).
  */
 function useCinematicVideoAllowed(): boolean {
   return useSyncExternalStore(
     subscribeReducedMotion,
-    () => !(reducedMotionQuery()?.matches ?? false),
+    () => !prefersReducedMotion(),
     () => false
   );
 }

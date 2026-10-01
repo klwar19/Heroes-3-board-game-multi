@@ -7,7 +7,8 @@
  * A per-browser presentation preference: it never touches the game state.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { Gauge } from "lucide-react";
+import { Gauge, Settings } from "lucide-react";
+import { openSettings } from "@/lib/settings-dialog";
 import {
   HEX_SPEED_PRESETS,
   hexSpeedSteps,
@@ -131,6 +132,16 @@ export function HexBattleOptions() {
             Speed 1 / 2 / 3 = the PC&apos;s slow / normal / fast combat speed (attacks go up to 3). Saved in this browser
             only; applies from the next action.
           </span>
+          <button
+            className="hexSpeedMore"
+            onClick={() => {
+              setOpen(false);
+              openSettings("graphics");
+            }}
+            type="button"
+          >
+            <Settings aria-hidden="true" /> All options (sound, display, motion…)
+          </button>
         </span>
       ) : null}
     </span>

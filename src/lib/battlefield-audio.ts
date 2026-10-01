@@ -1,6 +1,7 @@
 "use client";
 
 import { isSoundMuted } from "@/lib/sound";
+import { effectsGain } from "@/lib/audio-mix";
 import type { BattlefieldAtmosphereTheme } from "@/lib/battlefield-atmosphere";
 
 let context: AudioContext | null = null;
@@ -20,7 +21,7 @@ export function playBattlefieldEntrance(
     if (window.sessionStorage.getItem(`battlefield-sound:${combatKey}`)) return () => undefined;
     window.sessionStorage.setItem(`battlefield-sound:${combatKey}`, "1");
   } catch { /* In-memory guard still works in private sessions. */ }
-  if (isSoundMuted() || document.hidden || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) {
+  if (isSoundMuted() || effectsGain() <= 0 || document.hidden || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) {
     return () => undefined;
   }
   try { context ??= new AudioContext(); } catch { return () => undefined; }
@@ -45,7 +46,7 @@ export function playBattlefieldEntrance(
   const begin = () => {
     if (stopped || isSoundMuted() || document.hidden || ctx.state !== "running") { stop(); return; }
     const bus = ctx.createGain();
-    bus.gain.value = .33;
+    bus.gain.value = .33 * effectsGain();
     bus.connect(ctx.destination);
     nodes.push(bus);
     const start = ctx.currentTime + .02;

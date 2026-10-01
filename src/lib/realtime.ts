@@ -14,6 +14,7 @@ import { VERIFIED_SEAT_REJECTION_MESSAGE } from "@/engine";
 import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
 import { frameBytes, metricNow, metricsSampled, recordPerformanceMetric } from "@/lib/performance-metrics";
 import { peekPendingSinglePlayer, savePendingSinglePlayer } from "@/lib/pending-room-name";
+import { isTutorialRoomId } from "@/lib/tutorial/tutorial-room-id";
 import { LOBBY_SINGLETON_ID, type RoomDirectoryEntry } from "@/server/lobby-registry";
 
 export type { RoomDirectoryEntry };
@@ -262,10 +263,44 @@ export function connectRoom(
   /** See SocketTokenProvider — binds a verified account to the edge socket. */
   getSocketToken?: SocketTokenProvider
 ): RoomConnection {
+  // The guided tutorial runs its scripted game in the browser: same table UI,
+  // local "server" (src/lib/tutorial/tutorial-room.ts), no network room.
+  if (isTutorialRoomId(roomId)) {
+    return connectTutorialRoomLazy(roomId, handlers, actorClientId);
+  }
   const host = getPartyKitHost();
   return host
     ? connectPartyRoom(host, roomId, handlers, actorClientId, getSocketToken)
     : connectApiRoom(roomId, handlers, actorClientId);
+}
+
+/**
+ * Loads the tutorial room module (engine AI + recorded script) only when a
+ * tutorial table is opened, and proxies the connection to it.
+ */
+function connectTutorialRoomLazy(
+  roomId: string,
+  handlers: RoomConnectionHandlers,
+  actorClientId?: string
+): RoomConnection {
+  let closed = false;
+  const connection = import("@/lib/tutorial/tutorial-room").then((module) => {
+    const opened = module.connectTutorialRoom(roomId, handlers, actorClientId);
+    if (closed) opened.close();
+    return opened;
+  });
+  return {
+    close: () => {
+      closed = true;
+      void connection.then((opened) => opened.close());
+    },
+    submitAction: async (action) => (await connection).submitAction(action),
+    resetRoom: async (options) => (await connection).resetRoom(options),
+    fetchSnapshot: async () => (await connection).fetchSnapshot(),
+    restoreRoom: async (state) => (await connection).restoreRoom(state),
+    fetchSinglePlayerSave: async () => (await connection).fetchSinglePlayerSave(),
+    loadSinglePlayerSave: async (state) => (await connection).loadSinglePlayerSave(state)
+  };
 }
 
 // ---------------------------------------------------------------------------

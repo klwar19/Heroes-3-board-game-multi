@@ -45,6 +45,7 @@ export function PhoneTabBar({
           <button
             aria-selected={selected}
             className={`phoneTab ${selected ? "active" : ""} ${tab.attention ? "attention" : ""} ${tab.action ? "action" : ""}`}
+            data-phone-tab-id={tab.id}
             key={tab.id}
             onClick={() => onSelect(tab.id)}
             role="tab"

@@ -3,7 +3,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AssetPreconnect } from "@/components/asset-preconnect";
 import { PartyPreconnect } from "@/components/party-preconnect";
+import { SettingsHost } from "@/components/settings/settings-dialog";
 import "./globals.css";
+import "./options.css";
 
 export const metadata: Metadata = {
   title: "Heroes 3 Board Game Multi",
@@ -44,6 +46,9 @@ export default function RootLayout({
             Non-profit fan tool. Unit/card references load from credited wiki URLs; board terrain is original project art.
           </footer>
         </div>
+        {/* Options dialog (sound / display / graphics / text) + the page-wide
+            preferences it applies; opened from the menu and every table. */}
+        <SettingsHost />
       </body>
     </html>
   );

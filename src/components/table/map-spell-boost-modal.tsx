@@ -27,7 +27,7 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
-import { cardName } from "./utils";
+import { actionKey, cardName } from "./utils";
 import { CardFrame } from "./seats";
 import { useCardZoom, ZoomButton } from "./zoom";
 
@@ -183,6 +183,7 @@ export function MapSpellBoostModal({
             ))}
           </div>
           <button
+            data-action-key={actionKey(legal.action)}
             aria-label={label}
             className="trayInstant mapSpellAddPower"
             onClick={() => onAction(legal.action)}
@@ -244,6 +245,7 @@ export function MapSpellBoostModal({
         </div>
         {resolveAction ? (
           <button
+            data-action-key={actionKey(resolveAction.action)}
             className="trayPass mapSpellResolve"
             onClick={() => onAction(resolveAction.action)}
             type="button"
@@ -260,6 +262,7 @@ export function MapSpellBoostModal({
             {reducedResolves.map(({ rung, legal, label }) =>
               legal ? (
                 <button
+                  data-action-key={actionKey(legal.action)}
                   aria-label={label}
                   className="trayPass mapSpellResolveLower"
                   key={rung}

@@ -2740,6 +2740,7 @@ export function BattlefieldBoard({
               <button
                 aria-label={label}
                 className={className}
+                data-action-key={approachMove ? undefined : actionKey(interactiveAction)}
                 data-fx-cell={index}
                 data-fx-unit={unit?.id}
                 key={index}
@@ -3827,6 +3828,7 @@ export function PochiPackDigMenu({
                 <div style={{ display: "grid", gap: 8 }}>
                   {actions.map((legal) => (
                     <button
+                      data-action-key={actionKey(legal.action)}
                       className="commandButton"
                       key={actionKey(legal.action)}
                       onClick={() => {
@@ -4034,6 +4036,7 @@ export function CommandDock({
       ) : null}
       {commands.map((legal) => (
         <button
+          data-action-key={actionKey(legal.action)}
           className={`commandButton ${legal.action.type === "DEFEND_UNIT" ? "defendButton" : ""}`.trimEnd()}
           key={actionKey(legal.action)}
           onClick={() => onAction(legal.action)}
@@ -4056,6 +4059,7 @@ export function CommandDock({
       <PochiPackDigMenu actions={packDigActions} onAction={onAction} />
       {healCommands.map((legal) => (
         <button
+          data-action-key={actionKey(legal.action)}
           className="commandButton healCommandButton"
           key={actionKey(legal.action)}
           onClick={() => onAction(legal.action)}

@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ScrollText, Sparkles, X } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 
@@ -26,17 +26,29 @@ const HIGHLIGHTS: { label: string; detail: string }[] = [
   { label: "Optional modes", detail: "Spell Book, Creature Banks, Event deck, parallel turns and the WOG module." }
 ];
 
-export function WelcomeNotice() {
+/**
+ * `onSettled` fires once the notice is out of the way — it decided not to show
+ * this session, or the player closed it — so the menu can sequence the next
+ * first-visit dialog (the tutorial prompt) after it instead of stacking them.
+ */
+export function WelcomeNotice({ onSettled }: { onSettled?: () => void } = {}) {
   const [open, setOpen] = useState(false);
+  const settledRef = useRef(onSettled);
+  // Declared before the show/skip effect below so it runs first on mount.
+  useEffect(() => {
+    settledRef.current = onSettled;
+  });
   const [dontShow, setDontShow] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
       if (localStorage.getItem(DISMISS_KEY) === "1") {
+        settledRef.current?.();
         return;
       }
       if (sessionStorage.getItem(SESSION_KEY) === "1") {
+        settledRef.current?.();
         return;
       }
       sessionStorage.setItem(SESSION_KEY, "1");
@@ -61,6 +73,7 @@ export function WelcomeNotice() {
       }
     }
     setOpen(false);
+    onSettled?.();
   };
 
   return (

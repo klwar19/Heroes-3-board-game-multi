@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { GameState, HeroState } from "@/engine/state";
 import soundManifest from "../../public/sounds/manifest.json";
 import { assetUrl } from "@/lib/asset-url";
+import { musicGain, silencedInBackground, getAudioMix, subscribeAudioMix } from "@/lib/audio-mix";
 
 /**
  * "oc-prep" / "oc-battle" are the Order & Chaos mode's own scenes: the
@@ -104,11 +105,45 @@ function hookUnlock(): void {
   if (unlockHooked || typeof window === "undefined") return;
   unlockHooked = true;
   const unlock = () => {
-    if (audio && currentScene && !muted && !held && !stingPlaying() && audio.paused) {
+    if (audio && currentScene && !muted && !held && !silencedInBackground() && !stingPlaying() && audio.paused) {
       audio.play().catch(() => undefined);
     }
   };
   window.addEventListener("pointerdown", unlock);
+}
+
+/**
+ * Options → Audio: a fader move re-levels the elements already playing, and
+ * the "play in background" switch pauses the bed while the tab is hidden and
+ * resumes it (same track, same spot) once it is shown again.
+ */
+let lastBackgroundSetting = getAudioMix().background;
+
+function resumeBedIfDue(): void {
+  if (audio && currentScene && currentProfile && !muted && !held && !silencedInBackground() && !stingPlaying() && audio.paused) {
+    const playing = audio.play() as Promise<void> | undefined;
+    playing?.catch?.(() => undefined);
+  }
+}
+
+function syncBackgroundSilence(): void {
+  if (silencedInBackground()) stopAudio();
+  else resumeBedIfDue();
+}
+
+if (typeof window !== "undefined") {
+  subscribeAudioMix(() => {
+    if (audio) audio.volume = MUSIC_VOLUME * musicGain();
+    if (fanfare) fanfare.volume = VICTORY_FANFARE_VOLUME * musicGain();
+    const background = getAudioMix().background;
+    if (background !== lastBackgroundSetting) {
+      lastBackgroundSetting = background;
+      syncBackgroundSilence();
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!getAudioMix().background) syncBackgroundSilence();
+  });
 }
 
 function shuffledTracks(profile: MusicProfile, avoid: string | null): string[] {
@@ -166,10 +201,11 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
   else if (chooseAnother && RESTART_ON_REQUEST.has(profile)) audio.currentTime = 0;
   currentTrack = nextTrack;
   audio.loop = tracks.length === 1 && currentContinuationProfile === null;
-  audio.volume = MUSIC_VOLUME;
+  audio.volume = MUSIC_VOLUME * musicGain();
   hookUnlock();
-  // Held by a game pause: the track is cued, releasing the hold starts it.
-  if (held) return;
+  // Held by a game pause (or a hidden tab the player silenced in Options): the
+  // track is cued, releasing the hold starts it.
+  if (held || silencedInBackground()) return;
   audio.play().catch(() => undefined);
 }
 
@@ -192,7 +228,7 @@ export function setMusicHeld(next: boolean): void {
     audio.pause();
     return;
   }
-  if (!muted && currentScene && currentProfile && !stingPlaying()) {
+  if (!muted && currentScene && currentProfile && !silencedInBackground() && !stingPlaying()) {
     audio.play().catch(() => undefined);
   }
 }
@@ -222,7 +258,7 @@ let fanfareEnded: (() => void) | null = null;
  * stack listeners.
  */
 export function playCombatSting(track: CombatStingTrack): void {
-  if (typeof window === "undefined" || muted) return;
+  if (typeof window === "undefined" || muted || silencedInBackground()) return;
   audio?.pause();
   if (!fanfare) {
     fanfare = new Audio();
@@ -233,7 +269,7 @@ export function playCombatSting(track: CombatStingTrack): void {
   };
   fanfare.src = trackSrc(track);
   fanfare.loop = false;
-  fanfare.volume = VICTORY_FANFARE_VOLUME;
+  fanfare.volume = VICTORY_FANFARE_VOLUME * musicGain();
   hookUnlock();
   // jsdom's play() returns undefined (not a Promise) — guard so a test render never throws.
   const playing = fanfare.play() as Promise<void> | undefined;

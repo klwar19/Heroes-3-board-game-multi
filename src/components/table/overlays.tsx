@@ -58,6 +58,7 @@ import {
 import {
   cardIsEmpoweredFor,
   cardName,
+  actionKey,
   costCardEligible,
   formatDieFace,
   formatEvent,
@@ -1674,8 +1675,8 @@ export function ReactionTray({
         </div>
         {isPriority ? (
           <footer>
-            {counter ? <button className="trayInstant" onClick={() => onAction(counter.action)} type="button">Cancel this Instant</button> : null}
-            <button className="trayPass" onClick={() => onAction({ type: "PASS_REACTION", playerId: viewerPlayerId })} type="button">Let it resolve</button>
+            {counter ? <button data-action-key={actionKey(counter.action)} className="trayInstant" onClick={() => onAction(counter.action)} type="button">Cancel this Instant</button> : null}
+            <button className="trayPass" data-tutorial-action="PASS_REACTION" onClick={() => onAction({ type: "PASS_REACTION", playerId: viewerPlayerId })} type="button">Let it resolve</button>
           </footer>
         ) : <p>Waiting for {state.players[window.priorityPlayerId]?.name ?? "the opponent"} to choose.</p>}
       </div>
@@ -1754,7 +1755,7 @@ export function ReactionTray({
               <strong>
                 <Sunrise aria-hidden="true" size={15} /> Cards of Prophecy
               </strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1766,7 +1767,7 @@ export function ReactionTray({
               <strong>
                 <Sunrise aria-hidden="true" size={15} /> Commander cast
               </strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1824,7 +1825,7 @@ export function ReactionTray({
               {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
               <div className="trayTileBody">
                 <strong>Instant</strong>
-                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {targetName ? `${legal.label} → ${targetName}` : legal.label}
                 </button>
               </div>
@@ -1845,7 +1846,7 @@ export function ReactionTray({
                 <strong>
                   <Plus aria-hidden="true" size={15} /> School expert
                 </strong>
-                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {legal.label}
                 </button>
               </div>
@@ -1869,7 +1870,7 @@ export function ReactionTray({
                   ) : null}{" "}
                   Set power
                 </strong>
-                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {legal.label}
                 </button>
               </div>
@@ -1882,7 +1883,7 @@ export function ReactionTray({
               <strong>
                 <Plus aria-hidden="true" size={15} /> Hero Grade skill
               </strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1892,7 +1893,7 @@ export function ReactionTray({
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">
               <strong>Positive Morale</strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1904,7 +1905,7 @@ export function ReactionTray({
               <strong>
                 <Plus aria-hidden="true" size={15} /> First Aid
               </strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1916,7 +1917,7 @@ export function ReactionTray({
               <strong>
                 <Sunrise aria-hidden="true" size={15} /> Free save
               </strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1929,7 +1930,7 @@ export function ReactionTray({
               {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
               <div className="trayTileBody">
                 <strong>Parry</strong>
-                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {legal.label}
                 </button>
               </div>
@@ -1940,7 +1941,7 @@ export function ReactionTray({
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">
               <strong>Magic Mirror</strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1950,7 +1951,7 @@ export function ReactionTray({
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">
               <strong>🏛 Town building</strong>
-              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+              <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
             </div>
@@ -1964,7 +1965,7 @@ export function ReactionTray({
               {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
               <div className="trayTileBody">
                 <strong>Offense VI</strong>
-                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                <button data-action-key={actionKey(legal.action)} className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {legal.label}
                 </button>
               </div>
@@ -1976,7 +1977,7 @@ export function ReactionTray({
             <CardFrame cardId={action.cardId} className="trayCardImage" />
             <div className="trayTileBody">
               <strong>📜 {cardName(action.cardId)} (Scroll)</strong>
-              <button className="trayInstant" onClick={() => onAction(action)} type="button">
+              <button data-action-key={actionKey(action)} className="trayInstant" onClick={() => onAction(action)} type="button">
                 Play at power 0
               </button>
             </div>
@@ -1989,7 +1990,7 @@ export function ReactionTray({
               <strong>
                 ✨ {cardName(action.cardId)} ({cardName(action.fromSpellDeck ?? "")})
               </strong>
-              <button className="trayInstant" onClick={() => onAction(action)} type="button">
+              <button data-action-key={actionKey(action)} className="trayInstant" onClick={() => onAction(action)} type="button">
                 Cast from the Spell discard
               </button>
             </div>
@@ -2017,7 +2018,7 @@ export function ReactionTray({
               <CardFrame cardId={action.cardId} className="trayCardImage" />
               <div className="trayTileBody">
                 <strong>📖 {cardName(action.cardId)} (Spell Book)</strong>
-                <button className="trayInstant" onClick={() => onAction(action)} type="button">
+                <button data-action-key={actionKey(action)} className="trayInstant" onClick={() => onAction(action)} type="button">
                   {action.asPowerBoost ? "Discard for +1 Power" : "Play from Spell Book"}
                 </button>
               </div>
@@ -2032,7 +2033,11 @@ export function ReactionTray({
             view.players[viewerPlayerId]?.empoweredAbilities
           );
           return (
-            <div className={`trayTile ${selection ? "selected" : ""}`} key={`${tile.cardId}-${tile.handIndex}`}>
+            <div
+              className={`trayTile ${selection ? "selected" : ""}`}
+              data-card-id={tile.cardId}
+              key={`${tile.cardId}-${tile.handIndex}`}
+            >
               <CardFrame cardId={tile.cardId} className="trayCardImage" empowered={empowered} />
               {selectedOrder ? (
                 <span className="trayOrderBadge" aria-label={`Play order ${selectedOrder}`}>
@@ -2066,6 +2071,8 @@ export function ReactionTray({
                     return group.modes.map((mode) => (
                       <button
                         className="trayInstant"
+                        data-mode={mode}
+                        data-option-index={group.optionIndex}
                         key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.dieIndex ?? "die-x"}-${group.protectedUnitId ?? ""}-${group.target?.type === "unit" ? group.target.unitId : ""}-${Boolean(group.drawOnly)}-${mode}`}
                         onClick={() =>
                           onAction({
@@ -2112,6 +2119,8 @@ export function ReactionTray({
                       <button
                         aria-pressed={groupSelected}
                         className={`trayPick ${groupSelected ? "picked" : ""}`}
+                        data-option-index={group.optionIndex}
+                        data-power-boost={group.asPowerBoost ? "true" : undefined}
                         onClick={() => toggleSelection(tile.handIndex, tile.cardId, group)}
                         type="button"
                       >
@@ -2347,6 +2356,12 @@ export function ReactionTray({
         </div>
         <button
           className="trayConfirm"
+          data-selected-cards={selections
+            .map(
+              (selection) =>
+                `${selection.cardId}:${selection.mode}${selection.optionIndex !== undefined ? `:o${selection.optionIndex}` : ""}${selection.asPowerBoost ? ":boost" : ""}`
+            )
+            .join(" ")}
           disabled={selections.length === 0 || crownsOver || paymentInvalid || powerNeedsSpell}
           onClick={confirmSelection}
           type="button"
@@ -2358,6 +2373,7 @@ export function ReactionTray({
         </button>
         <button
           className={`trayPass${passBlockedUnderMin ? " blocked" : ""}${overMaxPower ? " caution" : ""}`}
+          data-tutorial-action="PASS_REACTION"
           onClick={tryPassReaction}
           title={
             passBlockedUnderMin
@@ -2401,7 +2417,12 @@ export function ReactionTray({
                   <button className="commandButton ghost" onClick={() => setPowerPassDialog(null)} type="button">
                     Go back — adjust Power
                   </button>
-                  <button className="commandButton primary" onClick={confirmPassAnyway} type="button">
+                  <button
+                    className="commandButton primary"
+                    data-tutorial-action="PASS_REACTION"
+                    onClick={confirmPassAnyway}
+                    type="button"
+                  >
                     Resolve anyway
                   </button>
                 </div>
@@ -2895,6 +2916,9 @@ export function SearchModal({
               <div className="searchCardWrap" key={`${cardId}-${index}`}>
                 <button
                   className="searchCard"
+                  data-action-key={keepOffer ? actionKey(keepOffer.action) : undefined}
+                  data-card-id={cardId}
+                  data-search-index={index}
                   onClick={() =>
                     onAction(
                       keepOffer?.action ?? {
@@ -2913,6 +2937,8 @@ export function SearchModal({
                 {searchChoice.allowRemove ? (
                   <button
                     className="searchRemoveCard"
+                    data-action-key={removeOffer ? actionKey(removeOffer.action) : undefined}
+                    data-search-index={index}
                     disabled={!removeOffer && Boolean(legalActions)}
                     onClick={() =>
                       onAction(
@@ -2937,6 +2963,7 @@ export function SearchModal({
         {repeatSearchOffer ? (
           <footer className="searchRepeatRow">
             <button
+              data-action-key={actionKey(repeatSearchOffer.action)}
               className="searchRepeatButton"
               onClick={() => onAction(repeatSearchOffer.action)}
               type="button"
@@ -3052,6 +3079,7 @@ export function DeckSearchModeModal({
     return (
       <div className="searchCardWrap" key={optionIndex}>
         <button
+          data-action-key={actionKey(legal.action)}
           className={`searchCard${isDiscard ? " discardPick" : ""}`}
           onClick={() => onAction(legal.action)}
           type="button"
@@ -4330,7 +4358,7 @@ export function CombatResultModal({
         ) : null}
         <div className="combatResultButtons">
           {acknowledge ? (
-            <button className="commandButton primary" onClick={() => onAction(acknowledge.action)} type="button">
+            <button data-action-key={actionKey(acknowledge.action)} className="commandButton primary" onClick={() => onAction(acknowledge.action)} type="button">
               {acknowledge.label}
             </button>
           ) : null}
@@ -4456,6 +4484,7 @@ export function NeutralStepOverlay({
           {continueAction ? (
             <button
               className="commandButton primary"
+              data-tutorial-action="CONTINUE_NEUTRAL_STEP"
               onClick={() => onAction({ type: "CONTINUE_NEUTRAL_STEP", playerId: viewerPlayerId })}
               type="button"
             >

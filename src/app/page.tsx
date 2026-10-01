@@ -122,6 +122,8 @@ import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { CommanderIntroOverlay } from "@/components/table/commander-intro-overlay";
 import { AnimeFactionMechanicsOverlay } from "@/components/table/anime-faction-mechanics-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
+import { isTutorialRoomId } from "@/lib/tutorial/tutorial-room-id";
+import dynamic from "next/dynamic";
 import {
   clearPendingSinglePlayerLoad,
   peekPendingSinglePlayerLoad
@@ -336,6 +338,7 @@ import {
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
 import { mapMusicContext, useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
+import { SettingsButton } from "@/components/settings/settings-dialog";
 import {
   connectRoom,
   createRoomOnServer,
@@ -916,6 +919,12 @@ function pushLightningBeamCues(
 
 /** How the hand rail is currently being used. */
 type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw" | "cover-of-darkness";
+
+// Sandro's tutorial coach loads only on the tutorial table.
+const TutorialCoach = dynamic(
+  () => import("@/components/tutorial/tutorial-coach").then((module) => module.TutorialCoach),
+  { ssr: false }
+);
 
 export default function Home() {
   const [rawState, setState] = useState<GameState | null>(null);
@@ -5847,7 +5856,8 @@ export default function Home() {
 
       // Mirror in-progress games for recovery; never cache a bare lobby (that
       // would let a later recycle overwrite a real game).
-      if (!isFreshLobbyState(snapshot.state)) {
+      // (The tutorial keeps its own checkpoint; it has no server to recover.)
+      if (!isFreshLobbyState(snapshot.state) && !isTutorialRoomId(roomId)) {
         scheduleCachedRoomSave(roomId, snapshot.version, snapshot.state);
       }
       const presentationStart = metricNow();
@@ -6675,7 +6685,8 @@ export default function Home() {
     presenceNameRef.current = displayName;
   });
   useEffect(() => {
-    if (!roomId) {
+    // The tutorial table is local to this browser: never advertise it.
+    if (!roomId || isTutorialRoomId(roomId)) {
       return;
     }
     const beat = () => {
@@ -7382,6 +7393,9 @@ export default function Home() {
           <span>Menu</span>
         </button>
       ) : null}
+      {/* Desktop HUD gear beside the collapsed "Menu" toggle (options.css shows
+          it only there; the status row below carries Options everywhere else). */}
+      {inGameTable ? <SettingsButton className="tableOptionsQuick" compact /> : null}
       {roomPasswordPrompt}
       {roomHosted ? (
         // Hosted/closed room: the host controls seats, but a player may still
@@ -7503,6 +7517,8 @@ export default function Home() {
         <AnimationToggle />
         {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
         <UiModeToggle />
+        {/* Every other preference: volume mix, display, graphics, story text. */}
+        <SettingsButton />
       </div>
       {/* Game-lifecycle controls, grouped: restart the table, and (single-player)
           the Save / Load slots right beside it. The combat sandbox and the map
@@ -7668,6 +7684,7 @@ export default function Home() {
           {errorBanner}
           {/* Before the game begins: pick Computer vs Phone layout (per browser). */}
           <UiModePrompt />
+          {isTutorialRoomId(roomId) ? <TutorialCoach state={state} /> : null}
           <SetupLobbyScreen
             onAction={submitAction}
             state={state}
@@ -7760,8 +7777,13 @@ export default function Home() {
     // auto-drawn. Until it is taken, the engine blocks moving, exploring and
     // using cards (legal-actions withholds those offers), so the player can never
     // forget it.
+    // …but only once the engine actually offers the draw: on round 1 the free
+    // home-tile rotation (and any opening visit prompt) comes first, and the
+    // mandatory draw banner used to cover the rotate panel it was waiting on.
+    const drawOffered =
+      legalActions.length === 0 || legalActions.some((legal) => legal.action.type === "REFRESH_HAND");
     const canDraw =
-      Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard;
+      Boolean(viewer?.canMulligan) && hasOpenAdventureTurn(state, viewerPlayerId) && !forcedDiscard && drawOffered;
     // Round-1 fill-to-limit: may only ditch UNDER-limit cards (difficulty bonus
     // artifact). A full hand on R1 uses "Draw new" only; the full 0–N redraw is
     // the separate opening-mulligan step when the lobby option is ON.
@@ -8110,6 +8132,7 @@ export default function Home() {
 
           {/* Mid-game join: still ask the layout question once per browser. */}
           <UiModePrompt />
+          {isTutorialRoomId(roomId) ? <TutorialCoach state={state} /> : null}
           {/* Mid-game join / skipped lobby: still ask once if no preference yet. */}
           <HelperCoachLobbyPrompt />
 
@@ -8133,7 +8156,12 @@ export default function Home() {
             <div className="combatContextBanner">
               <Swords aria-hidden="true" size={14} />
               <span>A combat is being fought on this map.</span>
-              <button className="commandButton" onClick={() => setCombatTab("battle")} type="button">
+              <button
+                className="commandButton"
+                data-tutorial-action="RETURN_TO_BATTLE"
+                onClick={() => setCombatTab("battle")}
+                type="button"
+              >
                 <Swords aria-hidden="true" size={12} /> Return to the battle
               </button>
             </div>
@@ -8656,6 +8684,8 @@ export default function Home() {
                         <span className="handHint">Start of turn:</span>
                         <button
                           className="commandButton primary"
+                          data-tutorial-action="REFRESH_HAND"
+                          data-tutorial-step="draw"
                           onClick={() =>
                             submitAction({ type: "REFRESH_HAND", playerId: viewerPlayerId, discardCardIds: [] })
                           }
@@ -8664,7 +8694,13 @@ export default function Home() {
                           Draw new (up to {handLimit})
                         </button>
                         {!explorersActive && handCards.length > 0 && (state.round !== 1 || r1UnderLimitFill) ? (
-                          <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
+                          <button
+                            className="commandButton"
+                            data-tutorial-action="REFRESH_HAND"
+                            data-tutorial-step="choose-discards"
+                            onClick={() => setHandMode("mulligan")}
+                            type="button"
+                          >
                             {state.round === 1
                               ? "Discard bonus card(s) & draw up"
                               : "Discard and draw new"}
@@ -8677,6 +8713,8 @@ export default function Home() {
                         <span className="handHint">Opening Mulligan:</span>
                         <button
                           className="commandButton primary"
+                          data-tutorial-action="OPENING_HAND_MULLIGAN"
+                          data-tutorial-step="keep"
                           onClick={() =>
                             submitAction({
                               type: "OPENING_HAND_MULLIGAN",
@@ -8691,6 +8729,8 @@ export default function Home() {
                         {handCards.length > 0 ? (
                           <button
                             className="commandButton"
+                            data-tutorial-action="OPENING_HAND_MULLIGAN"
+                            data-tutorial-step="choose-discards"
                             onClick={() => setHandMode("opening-mulligan")}
                             type="button"
                           >
@@ -8738,6 +8778,19 @@ export default function Home() {
                             ? overLimit > 0
                             : false
                       }
+                      data-discard-count={handDiscards.length}
+                      data-tutorial-action={
+                        handMode === "morale-redraw"
+                          ? "SPEND_MORALE"
+                          : handMode === "cover-of-darkness"
+                            ? "USE_TOWN_BUILDING"
+                            : handMode === "opening-mulligan"
+                              ? "OPENING_HAND_MULLIGAN"
+                              : explorersDiscardPending
+                                ? "RESOLVE_EXPLORERS_DISCARD"
+                                : "REFRESH_HAND"
+                      }
+                      data-tutorial-step="confirm-discards"
                       onClick={confirmHandAction}
                       type="button"
                     >
@@ -8930,6 +8983,7 @@ export default function Home() {
                   </span>
                   <button
                     className="commandButton primary"
+                    data-action-key={actionKey(armedHandPlay.action)}
                     onClick={() => {
                       const { action } = armedHandPlay;
                       setArmedHandPlay(null);
@@ -9003,6 +9057,9 @@ export default function Home() {
                       key={`${cardId}-${index}`}
                     >
                       <button
+                        data-hand-card-id={cardId}
+                        data-hand-index={index}
+                        data-hand-select={selecting ? "discard" : isPayingSource ? "cost" : "menu"}
                         className={`adventureHandCard ${handDiscards.includes(index) ? "discarding" : ""} ${
                           pickedForCost ? "discarding" : ""
                         } ${!selecting && !isPayingSource && actionable ? "playable" : ""} ${
@@ -9117,7 +9174,12 @@ export default function Home() {
                             </small>
                           ) : null}
                           {plays.map((legal) => (
-                            <button key={actionKey(legal.action)} onClick={() => startPlay(legal)} type="button">
+                            <button
+                              data-action-key={actionKey(legal.action)}
+                              key={actionKey(legal.action)}
+                              onClick={() => startPlay(legal)}
+                              type="button"
+                            >
                               {legal.label}
                             </button>
                           ))}
@@ -9191,6 +9253,8 @@ export default function Home() {
                           {canDraw ? (
                             <button
                               className="discardThenDraw"
+                              data-tutorial-action="REFRESH_HAND"
+                              data-tutorial-step="mark-discard"
                               onClick={() => {
                                 setHandMode("mulligan");
                                 setHandDiscards((current) => (current.includes(index) ? current : [...current, index]));
@@ -9205,6 +9269,7 @@ export default function Home() {
                           {stashAction ? (
                             <button
                               className="spellBookStash"
+                              data-action-key={actionKey(stashAction)}
                               onClick={() => {
                                 submitAction(stashAction);
                                 setOpenHandIndex(null);
@@ -9332,6 +9397,7 @@ export default function Home() {
                 <div className="confirmModalButtons">
                   <button
                     className="commandButton primary"
+                    data-tutorial-action="CONFIRM_MOVE_INTO_BATTLE"
                     onClick={() => {
                       const action = pendingBattleTroopWarn;
                       setPendingBattleTroopWarn(null);
@@ -9614,6 +9680,7 @@ export default function Home() {
 
       {/* Mid-game join: still ask the layout question once per browser. */}
       <UiModePrompt />
+      {isTutorialRoomId(roomId) ? <TutorialCoach state={state} /> : null}
       {/* Mid-game join / Battle Test: ask once if no preference yet. */}
       <HelperCoachLobbyPrompt />
 

@@ -1,0 +1,71 @@
+[
+  {
+    "key": "sandro-teach",
+    "refs": [
+      "refs/sandro-board.png",
+      "refs/sandro-painted.png"
+    ],
+    "prompt": "Painterly dark-fantasy character portrait in the style of the second reference (rich oil-painting look, deep blue shadows, gold filigree), of SANDRO the lich necromancer exactly as designed in the first reference: a grinning cracked white skull inside a dark hooded cloak, a thin gold circlet across the brow, faint blue glow in one eye socket. He is a wry, patient mentor explaining a lesson: half-turned toward the viewer's left, one bony gloved hand raised with the index finger pointing to the left as if pointing at something on a game table, the other hand holding a black staff topped with a dark orb. Friendly-sinister, a little amused. Waist-up framing, portrait orientation 3:4, character fills the frame, plain very dark blue-black background with a soft vignette. No text, no border, no watermark."
+  },
+  {
+    "key": "sandro-cheer",
+    "refs": [
+      "refs/sandro-board.png",
+      "refs/sandro-painted.png"
+    ],
+    "prompt": "Painterly dark-fantasy character portrait in the style of the second reference (rich oil-painting look, deep blue shadows, gold filigree), of SANDRO the lich necromancer exactly as designed in the first reference: cracked white skull in a dark hooded cloak, thin gold circlet, blue glow in one eye socket. He is DELIGHTED and proud of his student: staff raised high in triumph, the orb flaring with pale blue light, skull jaw open in a hearty cackle, free hand in a fist. Waist-up framing, portrait orientation 3:4, character fills the frame, plain very dark blue-black background with a soft vignette. No text, no border, no watermark."
+  },
+  {
+    "key": "sandro-warn",
+    "refs": [
+      "refs/sandro-board.png",
+      "refs/sandro-painted.png"
+    ],
+    "prompt": "Painterly dark-fantasy character portrait in the style of the second reference (rich oil-painting look, deep blue shadows, gold filigree), of SANDRO the lich necromancer exactly as designed in the first reference: cracked white skull in a dark hooded cloak, thin gold circlet, blue glow in one eye socket. He is giving a stern WARNING: leaning slightly toward the viewer, one bony gloved hand raised with a single finger wagging 'careful!', the eye glow narrowed and brighter, staff held close. Stern but not hostile, like a strict teacher. Waist-up framing, portrait orientation 3:4, character fills the frame, plain very dark blue-black background with a soft vignette. No text, no border, no watermark."
+  },
+  {
+    "key": "sandro-think",
+    "refs": [
+      "refs/sandro-board.png",
+      "refs/sandro-painted.png"
+    ],
+    "prompt": "Painterly dark-fantasy character portrait in the style of the second reference (rich oil-painting look, deep blue shadows, gold filigree), of SANDRO the lich necromancer exactly as designed in the first reference: cracked white skull in a dark hooded cloak, thin gold circlet, blue glow in one eye socket. He is PONDERING strategy: bony fingers stroking his skeletal chin, head tilted, looking down-left as if studying a map, staff leaning on his shoulder. Calm, scholarly. Waist-up framing, portrait orientation 3:4, character fills the frame, plain very dark blue-black background with a soft vignette. No text, no border, no watermark."
+  },
+  {
+    "key": "sandro-welcome",
+    "refs": [
+      "refs/sandro-board.png",
+      "refs/sandro-painted.png"
+    ],
+    "prompt": "Wide painterly dark-fantasy illustration (landscape 3:2) in the style of the second reference (oil painting, deep blue shadows, candlelight, gold filigree). SANDRO the lich necromancer, exactly as designed in the first reference (cracked white skull in a dark hooded cloak, thin gold circlet, blue glow in one eye socket), stands on the right behind a candle-lit wooden war table and welcomes the viewer with an open bony hand, a sly grin. On the table: hexagonal map tiles with tiny castles and mines, a fan of playing cards, a few six-sided dice, gold coins, a small skeleton miniature and a small knight miniature facing each other. Left third of the image darker and calmer (room for a title). Cozy, inviting, a little spooky. No text, no watermark, no border."
+  },
+  {
+    "key": "icon-rulebook",
+    "refs": [],
+    "prompt": "Game UI icon, square 1:1: an ornate closed leather rule book / tome seen at a slight three-quarter angle, deep crimson leather cover with gold corner fittings, a gold embossed crest of a shield and crossed swords on the cover, a red silk ribbon bookmark hanging out, a faint warm glow. Heroes of Might and Magic III style fantasy icon, painterly, crisp edges, centered, fills about 80% of the frame, on a plain solid dark navy background. No text, no letters, no watermark."
+  },
+  {
+    "key": "icon-tutorial",
+    "refs": [
+      "refs/sandro-board.png"
+    ],
+    "prompt": "Game UI icon, square 1:1: a small grinning cracked white skull with a thin gold circlet (the lich from the reference) wearing a tiny black scholar's mortarboard cap with a gold tassel, resting on top of an open parchment scroll with a quill pen, a faint blue magical glow. Charming and a little funny but clean and readable at small sizes. Heroes of Might and Magic III style fantasy icon, painterly, crisp edges, centered, fills about 80% of the frame, on a plain solid dark navy background. No text, no letters, no watermark."
+  },
+  {
+    "key": "chapter-medals",
+    "refs": [],
+    "prompt": "Game UI icon sheet: EXACTLY 8 round medallion badges arranged in a strict grid of 4 columns and 2 rows, landscape 2:1 image, every medallion the same size, perfectly centered in its own equal cell, generous even spacing, plain solid very dark navy background (#0b0d18) with nothing else. Each medallion: an ornate antique gold rim with small rivets, a deep midnight-blue enamel centre, and one bold painted emblem in gold and ivory, Heroes of Might and Magic III fantasy style, crisp and readable at small size. Emblems in order, left to right, top row then bottom row: 1) a quill pen crossing a rolled map scroll, 2) a pair of leather boots stepping on a hexagon tile, 3) two crossed swords over a small round shield, 4) a brass compass rose with a spyglass, 5) a stone castle tower with a builder's hammer, 6) an open spell book with a glowing star above it, 7) a war banner over a siege tower, 8) a golden laurel wreath around a small crown. No text, no numbers, no letters, no watermark."
+  },
+  {
+    "key": "coach-filigree",
+    "refs": [],
+    "prompt": "Ornate antique gold filigree CORNER ornament for a fantasy game UI frame, in the style of Heroes of Might and Magic III interface borders: elegant scrolling acanthus leaves and curls forming an L-shaped corner that extends along the top edge and down the left edge, with a small skull-and-bone motif at the very corner and tiny blue gem accents. Polished gold with warm highlights. The ornament sits in the TOP-LEFT corner of a square 1:1 image and fades out toward the middle of the top and left edges. The rest of the image is PURE BLACK (#000000) background, completely empty. No text, no watermark."
+  },
+  {
+    "key": "victory-certificate",
+    "refs": [
+      "refs/sandro-board.png"
+    ],
+    "prompt": "Landscape 3:2 fantasy award certificate illustration: an aged parchment scroll unrolled flat and filling most of the image, with ornate gold and dark-blue illuminated borders, small hexagon map-tile and crossed-sword motifs in the corners, a large red wax seal at the bottom centre stamped with a grinning skull wearing a thin gold circlet (the lich Sandro from the reference), and a black silk ribbon under the seal. The central area of the parchment is completely BLANK and clean (empty space for text). Painterly Heroes of Might and Magic III style, warm candlelight, dark wooden table visible at the edges. No text, no letters, no watermark."
+  }
+]

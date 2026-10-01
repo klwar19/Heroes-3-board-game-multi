@@ -31,7 +31,7 @@ import {
 import { RUNE_LEVEL_BONUS } from "@/engine/runes";
 import { assetUrl } from "@/lib/asset-url";
 import { playLibrarySound, playSpellBookOpen } from "@/lib/sound";
-import { formatCost } from "@/components/table/utils";
+import { actionKey, formatCost } from "@/components/table/utils";
 import {
   fuyukiCommandSealsOf,
   hiddenLeafMissionRankOf,
@@ -694,7 +694,7 @@ export function TownBoardView({
     ).filter(([, amount]) => amount > 0);
     const cannotAfford = costEntries.some(([resource, amount]) => (player.resources[resource] ?? 0) < amount);
     return (
-      <div className={`tbBuildRow ${isBuilt ? "built" : ""}`} key={buildingId}>
+      <div className={`tbBuildRow ${isBuilt ? "built" : ""}`} data-building-id={buildingId} key={buildingId}>
         <div className="tbBuildInfo">
           <span className="tbBuildName">
             {isBuilt ? <Check aria-hidden="true" size={12} /> : <Hammer aria-hidden="true" size={12} />}
@@ -735,7 +735,12 @@ export function TownBoardView({
           ) : null}
         </div>
         {!isBuilt && legal ? (
-          <button className="commandButton primary tbBuildGo" onClick={() => buildStructure(legal.action)} type="button">
+          <button
+            className="commandButton primary tbBuildGo"
+            data-action-key={actionKey(legal.action)}
+            onClick={() => buildStructure(legal.action)}
+            type="button"
+          >
             <Hammer aria-hidden="true" size={12} /> Build
           </button>
         ) : null}

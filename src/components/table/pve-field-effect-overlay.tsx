@@ -46,6 +46,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { GameState } from "@/engine";
 import { combatScriptsActiveForCombat } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
+import { prefersReducedMotion } from "@/lib/display-preferences";
 import { getUiModePreference, useUiModePreference } from "@/lib/ui-mode-preference";
 
 /** How long a fresh `COMBAT_SCRIPT_TRIGGERED` intensifies its own layer. */
@@ -242,12 +243,7 @@ function useFieldFxVideoAllowed(): boolean {
   const { ready, uiMode } = useUiModePreference();
   const [storedPhoneOnMount] = useState(() => getUiModePreference() === "phone");
   const phoneMode = ready ? uiMode === "phone" : storedPhoneOnMount;
-  const [reducedMotion] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  const [reducedMotion] = useState(() => prefersReducedMotion());
   return !phoneMode && !reducedMotion;
 }
 
