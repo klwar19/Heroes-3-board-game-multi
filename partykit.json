@@ -6,7 +6,8 @@
     "lobby": "party/lobby.ts",
     "lobbychat": "party/lobby-chat.ts",
     "maps": "party/maps.ts",
-    "garrison": "party/garrison.ts"
+    "garrison": "party/garrison.ts",
+    "ocscores": "party/oc-scores.ts"
   },
   "vars": {
     "HOMM3BG_APP_URL": "https://hamthefirt.xyz"

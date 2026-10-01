@@ -388,5 +388,685 @@
         "frames": 9
       }
     }
+  },
+  "oc-trog-helm": {
+    "image": "/assets/garrison/creatures/oc-trog-helm.webp",
+    "frameWidth": 161,
+    "frameHeight": 99,
+    "columns": 9,
+    "anchorX": 49,
+    "anchorY": 92,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 7
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 6
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "11": {
+        "row": 6,
+        "frames": 9
+      },
+      "12": {
+        "row": 7,
+        "frames": 9
+      },
+      "13": {
+        "row": 8,
+        "frames": 9
+      }
+    }
+  },
+  "oc-shieldbearer": {
+    "image": "/assets/garrison/creatures/oc-shieldbearer.webp",
+    "frameWidth": 174,
+    "frameHeight": 132,
+    "columns": 8,
+    "anchorX": 69,
+    "anchorY": 124,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 2
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-skeleton-bare": {
+    "image": "/assets/garrison/creatures/oc-skeleton-bare.webp",
+    "frameWidth": 181,
+    "frameHeight": 128,
+    "columns": 8,
+    "anchorX": 79,
+    "anchorY": 121,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 4
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-death-rider-bare": {
+    "image": "/assets/garrison/creatures/oc-death-rider-bare.webp",
+    "frameWidth": 147,
+    "frameHeight": 119,
+    "columns": 8,
+    "anchorX": 69,
+    "anchorY": 114,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 4
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-dread-knight-bare": {
+    "image": "/assets/garrison/creatures/oc-dread-knight-bare.webp",
+    "frameWidth": 148,
+    "frameHeight": 120,
+    "columns": 8,
+    "anchorX": 69,
+    "anchorY": 115,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 4
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-sellsword-bare": {
+    "image": "/assets/garrison/creatures/oc-sellsword-bare.webp",
+    "frameWidth": 167,
+    "frameHeight": 113,
+    "columns": 8,
+    "anchorX": 79,
+    "anchorY": 107,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 4
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "11": {
+        "row": 6,
+        "frames": 7
+      },
+      "12": {
+        "row": 7,
+        "frames": 7
+      },
+      "13": {
+        "row": 8,
+        "frames": 7
+      }
+    }
+  },
+  "oc-goblin-keg": {
+    "image": "/assets/garrison/creatures/oc-goblin-keg.webp",
+    "frameWidth": 146,
+    "frameHeight": 115,
+    "columns": 9,
+    "anchorX": 72,
+    "anchorY": 111,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 9
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-troll-club": {
+    "image": "/assets/garrison/creatures/oc-troll-club.webp",
+    "frameWidth": 124,
+    "frameHeight": 106,
+    "columns": 9,
+    "anchorX": 57,
+    "anchorY": 102,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 6
+      },
+      "2": {
+        "row": 2,
+        "frames": 6
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "11": {
+        "row": 6,
+        "frames": 9
+      },
+      "12": {
+        "row": 7,
+        "frames": 9
+      },
+      "13": {
+        "row": 8,
+        "frames": 9
+      }
+    }
+  },
+  "oc-ogre-drum": {
+    "image": "/assets/garrison/creatures/oc-ogre-drum.webp",
+    "frameWidth": 188,
+    "frameHeight": 142,
+    "columns": 9,
+    "anchorX": 97,
+    "anchorY": 138,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 9
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "11": {
+        "row": 6,
+        "frames": 7
+      },
+      "12": {
+        "row": 7,
+        "frames": 7
+      },
+      "13": {
+        "row": 8,
+        "frames": 7
+      },
+      "17": {
+        "row": 9,
+        "frames": 7
+      },
+      "18": {
+        "row": 10,
+        "frames": 7
+      },
+      "19": {
+        "row": 11,
+        "frames": 7
+      }
+    }
+  },
+  "oc-satyr-pipes": {
+    "image": "/assets/garrison/creatures/oc-satyr-pipes.webp",
+    "frameWidth": 121,
+    "frameHeight": 107,
+    "columns": 10,
+    "anchorX": 41,
+    "anchorY": 99,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 4
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "11": {
+        "row": 6,
+        "frames": 7
+      },
+      "12": {
+        "row": 7,
+        "frames": 7
+      },
+      "13": {
+        "row": 8,
+        "frames": 7
+      },
+      "17": {
+        "row": 9,
+        "frames": 7
+      },
+      "18": {
+        "row": 10,
+        "frames": 7
+      },
+      "19": {
+        "row": 11,
+        "frames": 7
+      }
+    }
+  },
+  "oc-shieldwall": {
+    "image": "/assets/garrison/creatures/oc-shieldwall.webp",
+    "frameWidth": 111,
+    "frameHeight": 91,
+    "columns": 8,
+    "anchorX": 48,
+    "anchorY": 79,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 3
+      },
+      "5": {
+        "row": 5,
+        "frames": 6
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-aegis": {
+    "image": "/assets/garrison/creatures/oc-aegis.webp",
+    "frameWidth": 162,
+    "frameHeight": 114,
+    "columns": 10,
+    "anchorX": 74,
+    "anchorY": 104,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 7
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 7
+      },
+      "11": {
+        "row": 6,
+        "frames": 8
+      },
+      "12": {
+        "row": 7,
+        "frames": 8
+      },
+      "13": {
+        "row": 8,
+        "frames": 8
+      }
+    }
+  },
+  "oc-bellwether": {
+    "image": "/assets/garrison/creatures/oc-bellwether.webp",
+    "frameWidth": 114,
+    "frameHeight": 81,
+    "columns": 10,
+    "anchorX": 54,
+    "anchorY": 77,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 10
+      },
+      "2": {
+        "row": 2,
+        "frames": 10
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "11": {
+        "row": 6,
+        "frames": 9
+      },
+      "12": {
+        "row": 7,
+        "frames": 9
+      },
+      "13": {
+        "row": 8,
+        "frames": 9
+      }
+    }
+  },
+  "oc-mechanic-lodestone": {
+    "image": "/assets/garrison/creatures/oc-mechanic-lodestone.webp",
+    "frameWidth": 218,
+    "frameHeight": 138,
+    "columns": 9,
+    "anchorX": 86,
+    "anchorY": 112,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 7
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 9
+      },
+      "11": {
+        "row": 6,
+        "frames": 9
+      },
+      "12": {
+        "row": 7,
+        "frames": 9
+      },
+      "13": {
+        "row": 8,
+        "frames": 9
+      },
+      "17": {
+        "row": 9,
+        "frames": 9
+      },
+      "18": {
+        "row": 10,
+        "frames": 9
+      },
+      "19": {
+        "row": 11,
+        "frames": 9
+      }
+    }
   }
 }

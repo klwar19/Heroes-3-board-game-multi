@@ -10,7 +10,8 @@
  */
 
 import { GW_TPS, GW_TICK_MS, pace, sec } from "./clock";
-import { OC_BLESSINGS, OC_DEFENDERS, OC_ENEMIES, OC_FUSIONS } from "./order-chaos/roster";
+import { OC_ALLIES, OC_BLESSINGS, OC_DEFENDERS, OC_ENEMIES, OC_FUSIONS } from "./order-chaos/roster";
+import { OC_FIELD_CARDS, OC_FIELD_DEFENDERS, OC_FIELD_ENEMIES } from "./order-chaos/field-units";
 
 export { GW_TPS, GW_TICK_MS, pace, sec };
 export const GW_COLS = 9;
@@ -58,7 +59,12 @@ export type ProjectileKind =
   | "fireball" | "cloud" | "boulder"
   // DOOM: Imp / Mancubus hellfire, Cacodemon plasma balls, Hell Knight / Baron green balls,
   // Arachnotron plasma, rockets, hitscan bullets, and the Lost Souls a Pain Elemental spits.
-  | "hellfire" | "cacoball" | "baronball" | "plasma" | "rocket" | "bullet" | "soul";
+  | "hellfire" | "cacoball" | "baronball" | "plasma" | "rocket" | "bullet" | "soul"
+  // Order & Chaos: a spinning rune-hammer, a spirit crescent (a thrown chakram), a bouncing softball, kunai.
+  | "hammer" | "crescent" | "ball" | "kunai";
+
+/** Thrown weapons that tumble end over end in flight (drawn spinning). */
+export const SPINNING: ReadonlySet<ProjectileKind> = new Set(["hammer", "crescent"]);
 
 /** Projectiles made of fire (burn deaths, the Orb of Tempestuous Fire). */
 export const FIRE_SHOTS: ReadonlySet<ProjectileKind> = new Set(["fireball", "hellfire", "rocket"]);
@@ -110,6 +116,14 @@ export type ShotDef = {
   holy?: boolean;
   /** Straight shots that run beneath shields (a shield soaks none of it). */
   underShield?: boolean;
+  /** Order & Chaos: straight shots knock the foe they strike this many tiles back (not bosses or the anchored). */
+  push?: number;
+  /** Order & Chaos: shots that leave already burning (`ignited`) also scorch the foes beside the target for this share. */
+  burnSplash?: number;
+  /** Order & Chaos: straight shots stun each foe they strike this many ticks (not the stun-immune or bosses). */
+  stun?: number;
+  /** Order & Chaos: a shot that bounces from foe to foe along the lane (drawn hopping; `pierce` sets how many it strikes). */
+  hop?: boolean;
 };
 
 /**
@@ -163,7 +177,17 @@ export type SurgeDef =
   | { kind: "charm"; count: number }
   | { kind: "dome"; dur: number }
   | { kind: "herd"; shell: number }
-  | { kind: "war-party"; dmg: number };
+  | { kind: "war-party"; dmg: number }
+  // Order & Chaos content pass.
+  | { kind: "shockwave"; push: number; dur: number; reach: number }
+  | { kind: "fan"; shots: number; dmg: number }
+  | { kind: "hail"; count: number; dmg: number; freeze: number }
+  | { kind: "radiance"; dmg: number; heal: number }
+  | { kind: "miasma"; dps: number; dur: number; reach: number }
+  | { kind: "embrace"; count: number; reach: number }
+  | { kind: "overclock"; dmg: number }
+  | { kind: "stampede"; count: number }
+  | { kind: "iai"; dmg: number; reach: number };
 
 export type MeleeDef = {
   dmg: number;
@@ -189,6 +213,8 @@ export type MeleeDef = {
   antiCavalry?: boolean;
   /** Order & Chaos: also strikes flyers passing over its tile. */
   air?: boolean;
+  /** How the strike reads on screen (the reach, lanes and `front` set what it hits): a sweeping arc over the tile ahead and its diagonals, a whirlwind over all eight tiles around, or a long thrust down the lane. */
+  pattern?: "arc" | "whirl" | "line";
 };
 
 export type DefDef = {
@@ -201,8 +227,8 @@ export type DefDef = {
   /** Base units are cards; upgrades and fusions are not. */
   card?: { cost: number; recharge: number; stage: number };
   shot?: ShotDef;
-  /** `value` 0 = mana only (no coin). `grow`: each payout is `step` larger than the last, up to `max`. */
-  produce?: { value: number; every: number; first: [number, number]; luck?: number; mana?: number; grow?: { step: number; max: number } };
+  /** `value` 0 = mana only (no coin). `grow`: each payout is `step` larger than the last, up to `max`. `orb`: each payout drops an Order & Chaos Surge orb. */
+  produce?: { value: number; every: number; first: [number, number]; luck?: number; mana?: number; grow?: { step: number; max: number }; orb?: boolean };
   upgrade?: { to: DefKind; cost: number };
   tall?: boolean;
   gaze?: { front: number; back: number; recover: number; bossDmg: number };
@@ -241,12 +267,12 @@ export type DefDef = {
   // --- Order & Chaos ----------------------------------------------------------
   /** What a Surge orb dropped on it does. */
   surge?: SurgeDef;
-  /** A buried charge: arms after `arm` ticks, then the first foe on it sets off `dmg` within `radius` (lies flat like a Land Mine). */
-  trap?: { arm: number; dmg: number; radius: number };
+  /** A buried charge: arms after `arm` ticks, then the first foe on it sets off `dmg` within `radius` (lies flat like a Land Mine). `wide`: the blast reaches the lanes beside it too; `freeze`: every foe it catches is frozen solid that many ticks. */
+  trap?: { arm: number; dmg: number; radius: number; wide?: boolean; freeze?: number };
   /** Ground spikes: never blocks and is never shot at; every `every` ticks hurts each foe walking over its tile (and wears down by the same). */
   spikes?: { dmg: number; every: number };
   /** Acts once `delay` ticks after it is placed, then is gone. */
-  instant?: { kind: "immolate" | "storm" | "frost"; delay: number; dmg: number; freeze?: number };
+  instant?: { kind: "immolate" | "storm" | "frost" | "doom"; delay: number; dmg: number; freeze?: number };
   /** Shoots the bulkiest foe in its lane, anywhere on the lawn (through armour, at flyers too). */
   snipe?: { dmg: number; every: number };
   /** Planes bomb a random foe anywhere on the lawn (flyers too); `splash` = share dealt to foes within a tile. */
@@ -287,8 +313,8 @@ export type DefDef = {
   magnet?: { every: number; range: number };
   /** Order & Chaos: swallows the nearest foe within `reach` ahead whole (bulk up to `cap`), then digests for `digest` ticks; bigger foes and bosses take `bite`. */
   devour?: { reach: number; cap: number; digest: number; bite: number };
-  /** Order & Chaos: the first foe to bite it is charmed and fights for Order (`mult`: its strikes, and it is healed in full when above 1). */
-  charm?: { mult: number };
+  /** Order & Chaos: the first foe to bite it is charmed and fights for Order (`mult`: its strikes, and it is healed in full when above 1). `uses`: how many biters it charms before it is spent (default 1). */
+  charm?: { mult: number; uses?: number };
   /** Order & Chaos: when a foe comes within `near` tiles in front, it falls back a tile (if free); `every` ticks between retreats. */
   kite?: { near: number; every: number };
   /** Order & Chaos umbrella: it and every troop within `reach` tiles (1 = its 3x3) are shielded from lobbed shots and from attacks out of the sky (dives, spits, breaths, snatches). */
@@ -297,6 +323,45 @@ export type DefDef = {
   lure?: { reach: number };
   /** Order & Chaos: once below `below` of its health it charges down its lane (`dmg` to every foe it tramples) and leaves the lawn. */
   lastCharge?: { below: number; dmg: number };
+  /** Order & Chaos battlefield (order-chaos/field.ts): a landmark the level places (never dismissed, snatched, hexed or counted as a lost troop). */
+  landmark?: string;
+  /** Order & Chaos battlefield: planted on a grave or crypt, it eats it in this many ticks, then leaves (Rooting Boar). */
+  eatTomb?: { grave: number; crypt: number };
+  /** Order & Chaos battlefield: lights its lane and both beside it through fog. */
+  light?: boolean;
+  /** Order & Chaos battlefield: stands in open water without a raft (see also field.ts AQUATIC). */
+  aquatic?: boolean;
+  /** Order & Chaos: a night creature — awake in night battles; by day it sleeps (does nothing) until given a Wake-Up Brew. */
+  nocturnal?: boolean;
+  // --- Order & Chaos content pass ---------------------------------------------
+  /** Stone Gargoyle (PvZ's Squash): waits on its tile until a foe comes within `reach` tiles ahead (or half a tile behind), drops on it — `dmg` to every foe within `radius` of where it lands (`radius` >= 1: the lanes beside too; `fire`: a fire blast) — and is gone. */
+  leap?: { reach: number; dmg: number; radius: number; fire?: boolean };
+  /** Nix Warrior (Chard Guard): shield-bashes the first `charges` foes that bite it `push` tiles back down the lane, stunned `stun` ticks; a spent bash comes back every `regrow` ticks. */
+  repel?: { push: number; stun: number; charges: number; regrow: number };
+  /** Gunslinger: every `every` ticks fans `shots` quick shots (`dmg` each) at the nearest foe in its lane or the two beside it — flyers too. */
+  quickdraw?: { dmg: number; every: number; shots: number };
+  /** Rafflesia (Gloom-shroom): every `every` ticks her stench hurts every foe within `reach` tiles of her, in her lane and both beside it, front and back. */
+  gas?: { dmg: number; every: number; reach: number };
+  /** Iron Maiden: the foe that bites her is shut inside (toughness up to `cap`: gone for good; bigger ones and bosses take `bite`); she opens again after `reset` ticks. */
+  maw?: { cap: number; bite: number; reset: number };
+  /** Rin: every `every` ticks while a foe is in her lane, lets loose `count` of `kind` (a Lawful ally that brawls the horde) down her lane. */
+  allies?: { kind: EnemyKind; every: number; count: number };
+  /** A band (Wood Elf Band): the same packet dropped on it adds a member, up to `max`; every member adds the unit's health and one more shot to each volley. Regrouping costs `step` gold more per member already there. */
+  band?: { max: number; step: number };
+  /** Yeti Warden: every foe that bites it is frozen solid this many ticks. */
+  freezeBiters?: number;
+  /** Keeps the troops in its 3x3 warm: a Jotunn Frostcaller's ice can't hold them (burning auras and fire-lit troops do too). */
+  warm?: boolean;
+  /** Royal Griffin (unlimited retaliation): every foe that bites it or a troop in its 3x3 is clawed for this much. */
+  retaliate?: number;
+  /** Rolling Armadillo (wall-nut bowling): rolls from its tile down the lane, `dmg` to each foe it hits; with `bounces` left it glances into a neighbouring lane after each hit. */
+  bowl?: { dmg: number; bounces: number };
+  /** A conveyor-only special: it only ever arrives on a caravan belt (never recruited). */
+  conveyor?: boolean;
+  /** Iai dash: every `every` ticks, when a foe is within `reach` tiles ahead in its lane, it dashes down the lane slashing every foe it passes (`dmg`), then dashes back to its tile. */
+  dash?: { dmg: number; every: number; reach: number };
+  /** Ground slam: every `every` ticks, when a foe is near, a shockwave hits every foe within `reach` tiles of it (its lane and both beside it, front and back) for `dmg` and stuns them `stun` ticks. */
+  slam?: { dmg: number; every: number; reach: number; stun: number };
   /** Order & Chaos ascended form: the unit it reverts to when the Ascension ends. */
   ascendedFrom?: DefKind;
   /** Order & Chaos unit level (Barracks). `power` scales its Surge. */
@@ -663,7 +728,7 @@ const DEFENDER_LIST: DefDef[] = [
     blurb: "Monk + Imp: every 8 s the healthiest foe within 7 tiles erupts in flame (350, through shields and armour); every 40 s raises the last fallen defender nearby." }
 ];
 
-export const DEFENDERS: Record<DefKind, DefDef> = Object.fromEntries([...DEFENDER_LIST, ...OC_DEFENDERS].map((def) => [def.kind, def]));
+export const DEFENDERS: Record<DefKind, DefDef> = Object.fromEntries([...DEFENDER_LIST, ...OC_DEFENDERS, ...OC_FIELD_DEFENDERS].map((def) => [def.kind, def]));
 
 /** Base (card) unit of an upgraded unit. */
 const FAMILY: Record<DefKind, DefKind> = {};
@@ -700,7 +765,8 @@ export type CardDef = {
   /** Adventure stage (levels cleared) that unlocks it. */
   stage: number;
   places?: DefKind;
-  spell?: "fireball" | "fire-wall" | "stone-skin";
+  /** `raft`: Order & Chaos field packet — turns a tile of open water into a raft troops can stand on. */
+  spell?: "fireball" | "fire-wall" | "stone-skin" | "raft" | "crate" | "wake";
   icon?: string;
   blurb: string;
 };
@@ -717,11 +783,13 @@ const SPELL_CARDS: CardDef[] = [
 ];
 
 export const CARDS: Record<CardId, CardDef> = Object.fromEntries([
-  ...[...DEFENDER_LIST, ...OC_DEFENDERS].filter((def) => def.card).map((def): [CardId, CardDef] => [def.kind, {
+  ...[...DEFENDER_LIST, ...OC_DEFENDERS, ...OC_FIELD_DEFENDERS].filter((def) => def.card).map((def): [CardId, CardDef] => [def.kind, {
     id: def.kind, name: def.name, faction: def.faction, cost: def.card!.cost, recharge: def.card!.recharge,
     stage: def.card!.stage, places: def.kind, blurb: def.blurb
   }]),
-  ...SPELL_CARDS.map((c): [CardId, CardDef] => [c.id, c])
+  ...SPELL_CARDS.map((c): [CardId, CardDef] => [c.id, c]),
+  // Order & Chaos field packets that place no unit (the Raft).
+  ...OC_FIELD_CARDS.map((c): [CardId, CardDef] => [c.id, c])
 ]);
 
 export const SPELL_CARD_IDS: readonly CardId[] = SPELL_CARDS.map((c) => c.id);
@@ -869,7 +937,7 @@ export type EnemyDef = {
   /** Sprite once the shield or armour is gone (the bare creature underneath). */
   stripped?: string;
   /** The piece of gear that tumbles off when the shield or armour breaks (presentation). */
-  piece?: "pot" | "helm" | "coffin" | "tome";
+  piece?: "pot" | "helm" | "coffin" | "tome" | "trog-helm" | "tower-shield" | "rider-helm" | "dread-helm" | "merc-helm";
   /** Enraged: marches and strikes this much faster once its shield/armour breaks ("break") or it drops below half health ("half"). */
   enrage?: { mult: number; at: "break" | "half" };
   /** Digs in at the edge of the lawn, tunnels untouchable to your gate and climbs out behind your lines, facing them. */
@@ -925,7 +993,7 @@ export type EnemyDef = {
   /** Order & Chaos: channels over an ally that fell within `range` tiles (its lane and both beside it) in the last `fresh` ticks and raises it where it fell after `channel` ticks, unless stunned, frozen, blown back or slain first; `every` ticks between raisings. */
   raiseDead?: { range: number; channel: number; every: number; fresh: number };
   /** Order & Chaos: rolls over the defenders in its lane (`dmg` to each); a tall one stops it, spikes pop it. `scorch`: the tiles it rolls over burn for that many ticks (nothing can be placed there). */
-  roller?: { dmg: number; scorch?: number };
+  roller?: { dmg: number; scorch?: number; ice?: number };
   /** Order & Chaos: carries a ladder; at the first wall it meets (tall, or at least `wallHp` health) it spends `plant` ticks planting it, and from then on every Chaos walker in the lane climbs over that defender. */
   ladder?: { plant: number; wallHp: number };
   /** Order & Chaos siege engine: halts at `stopX` (or where it is blocked) and lobs its `ranged` shot at the rearmost troop in its lane, `ammo` times; then it rolls on as a roller. */
@@ -942,12 +1010,93 @@ export type EnemyDef = {
   blink?: boolean;
   /** Order & Chaos: dazed this many ticks when its helm or armour is knocked off. */
   daze?: number;
-  /** Order & Chaos: turns and runs off the field once it carries `loot` stolen gold, or when below `below` of its health (escaping with its pay). */
-  flee?: { loot?: number; below?: number };
+  /** Order & Chaos: turns and runs off the field once it carries `loot` stolen gold, when below `below` of its health (escaping with its pay), or once it has come as far as x `at`. */
+  flee?: { loot?: number; below?: number; at?: number };
   /** Order & Chaos flyers: every `every` ticks strike the defender beneath them (`dmg`; a breath also scorches the tile ahead; a dive may poison). */
   skyAttack?: { kind: "dive" | "spit" | "breath"; dmg: number; every: number; poison?: { dps: number; dur: number } };
   /** Order & Chaos: its ranged attack picks the costliest defender in range, not the nearest. */
   costliest?: boolean;
+  /** Order & Chaos battlefield (order-chaos/field.ts): dives through open water (unaimable while it swims, not slowed). See also field.ts SWIMMERS. */
+  swim?: boolean;
+  /** Order & Chaos crypt: every `every` ticks one of the dead (wave-pool foes up to `maxCost`) climbs out, `flag` more at each great assault. */
+  crypt?: { every: number; maxCost: number; flag: number };
+  /** Order & Chaos treasure chest: drops `gold` when broken open (a thief walking past pockets it). */
+  chest?: { gold: number };
+  /** Order & Chaos creature bank: when broken, `troop` joins the player on its tile and `gold` spills out. */
+  bank?: { troop: DefKind; gold: number };
+  /** Order & Chaos battlefield: races across ice at this pace (Sledge Wolves). */
+  slide?: { speed: number };
+  /** Order & Chaos: every `every` ticks puts the nearest troop up to `range` tiles ahead in its lane to sleep (until a Wake-Up Brew, a Cure or a Field Hospital wakes it). */
+  lull?: { every: number; range: number };
+  // --- Order & Chaos content pass ---------------------------------------------
+  /** Tentacle Eater: every `every` ticks grabs the nearest troop 1.2 to `range` tiles ahead in its lane and drags it a tile toward itself (when that tile is free), stunned `stun` ticks. */
+  grab?: { every: number; range: number; stun: number };
+  /** Fire Messenger: every troop it bites burns to ashes at once (a tall troop takes `tallDmg`) — until frost, rain or water puts its fire out. */
+  torch?: { tallDmg: number };
+  /** Warlord: every `every` ticks knights the nearest unarmoured Chaos walker within `range` tiles (its lane and both beside it): `armor` of plate. */
+  knight?: { every: number; range: number; armor: number };
+  /** Psychic Watcher: lobbed shots aimed at it or at any foe within `reach` tiles of it (its lane and both beside it) bounce off its dome. */
+  parasol?: { reach: number };
+  /** Stormbird Carrier: flies in carrying a `kind` and drops it once past x `dropX`, then flies off; slain or blown away first, its passenger falls where it is. */
+  carry?: { kind: EnemyKind; dropX: number };
+  /** Jotunn Frostcaller: every `every` ticks encases the nearest troop up to `range` tiles ahead in its lane in ice for `dur` ticks (a troop beside a fire troop stays warm). */
+  frostbite?: { every: number; range: number; dur: number };
+  /** Treasure Kobold: `loot` gold on its back from the start (dropped when slain, gone if it escapes); drafted into waves this much less often. */
+  treasure?: { loot: number; rare: number };
+  /** A Lawful ally walker (Rin's cats): fights the horde and is never counted as a foe. */
+  ally?: boolean;
+  /** Mantis Reaper: every `every`th strike is a whirlwind that hits every troop in the 3x3 around it. */
+  whirl?: { every: number };
+  /** Kitsune Assassin: every `every` ticks blinks to the rearmost troop up to `reach` tiles ahead in its lane (past the one in front), strikes it for `dmg` and blinks back. */
+  assassin?: { every: number; reach: number; dmg: number };
+  /** A smasher's blow sends out a shockwave: the troops around the one it crushes take `dmg` and are stunned `stun` ticks. */
+  slam?: { dmg: number; stun: number };
+  /** Order & Chaos world boss (with `boss: true`): leads a level's last assault, walks and bites like any foe, and between bites makes telegraphed moves. */
+  warboss?: WarbossDef;
+};
+
+/**
+ * An Order & Chaos world boss's move. Each is telegraphed: the tiles it will strike are
+ * marked `warn` ticks before it lands (the boss stands and winds up meanwhile). `from`:
+ * the phase it is first used in (0: from the start).
+ */
+export type WarbossMove = {
+  /** What the player is shown as it winds the move up ("Frost Breath"), and the FX sheet its blow lands with. */
+  name?: string;
+  fx?: string;
+} & (
+  /** Smashes the 3x3 around the nearest troop up to `reach` tiles ahead in its lane: `dmg` to each troop there, stunned `stun` ticks. */
+  | { kind: "slam"; dmg: number; stun: number; reach: number; from?: number }
+  /** Breathes down the `len` tiles ahead of it (its lane; `wide`: and both beside): `dmg` to each troop there; `freeze` seals them in ice that long, `fire` burns, `drain` heals it by that share of the harm. */
+  | { kind: "breath"; dmg: number; len: number; wide?: boolean; freeze?: number; fire?: boolean; drain?: number; from?: number }
+  /** Hurls `count` bolts or boulders at the costliest troops on the lawn: `dmg` each (and stunned `stun` ticks). */
+  | { kind: "volley"; dmg: number; count: number; stun?: number; from?: number }
+  /** Calls `count` foes of a kind out of the far edge of the marked lanes. */
+  | { kind: "summon"; foe: EnemyKind; count: number; from?: number }
+  /** Raises `count` graves on marked open tiles. */
+  | { kind: "graves"; count: number; from?: number }
+  /** Beats the war drums: the whole horde acts half as fast again for `dur` ticks. */
+  | { kind: "drums"; dur: number; from?: number }
+  /** Strides into another lane (the tile it lands on is marked). */
+  | { kind: "stride"; from?: number }
+  /** Pounces on the nearest troop up to `reach` tiles ahead: `dmg` to it, and lands in front of it. */
+  | { kind: "pounce"; dmg: number; reach: number; from?: number }
+  /** Roars: every troop within `reach` tiles of it (its lane and both beside) is stunned `stun` ticks. */
+  | { kind: "roar"; stun: number; reach: number; from?: number }
+);
+
+export type WarbossDef = {
+  /** Health shares (falling) at which it enters its next phase: [0.6, 0.3] gives three phases. */
+  phases: number[];
+  /** Ticks between moves, per phase (the last entry holds for later phases). */
+  every: number[];
+  /** Pace per phase (it walks, bites and winds up this much faster). */
+  pace: number[];
+  /** Ticks between the telegraph and the blow. */
+  warn: number;
+  moves: WarbossMove[];
+  /** It marches no nearer the gate than this (x): there it stands and fights, biting only what is in front of it. */
+  hold?: number;
 };
 
 type EnemyInput = Omit<EnemyDef, "might" | "recharge" | "biteEvery" | "sprite"> & { biteEvery?: number; sprite?: string; might?: number; recharge?: number };
@@ -1229,7 +1378,7 @@ const ENEMY_LIST: EnemyDef[] = [
     blurb: "Versus: the defender wins by toppling three." })
 ];
 
-export const ENEMIES: Record<EnemyKind, EnemyDef> = Object.fromEntries([...ENEMY_LIST, ...OC_ENEMIES].map((def) => [def.kind, def]));
+export const ENEMIES: Record<EnemyKind, EnemyDef> = Object.fromEntries([...ENEMY_LIST, ...OC_ENEMIES, ...OC_FIELD_ENEMIES, ...OC_ALLIES].map((def) => [def.kind, def]));
 
 /** A faction's warband, cheapest first. */
 export function factionWarband(faction: Faction): EnemyKind[] {
@@ -1251,7 +1400,9 @@ export type SpellId =
   | "royal-charge" | "rain-of-arrows" | "chain-lightning" | "prayer" | "earthen-bulwark" | "supply-drop"
   | "frenzy" | "inferno"
   // Order & Chaos general spells (found in the campaign).
-  | "lightning-bolt" | "ice-bolt" | "blind" | "implosion" | "cure" | "death-ripple";
+  | "lightning-bolt" | "ice-bolt" | "blind" | "implosion" | "cure" | "death-ripple"
+  // Order & Chaos content pass (after the Polish Balance Pack reprints).
+  | "dispel" | "forgetfulness" | "slayer" | "counterstrike";
 
 export type SpellDef = {
   id: SpellId;
@@ -1310,7 +1461,15 @@ export const SPELLS: Record<SpellId, SpellDef> = {
   cure: { id: "cure", name: "Cure", side: "def", mana: 8, cooldown: sec(12), target: "none", stage: 99,
     icon: "/assets/spells-cure.webp", blurb: "Every troop is cured of poison, curses, webs and stuns, and heals 150." },
   "death-ripple": { id: "death-ripple", name: "Death Ripple", side: "def", mana: 14, cooldown: sec(12), target: "none", stage: 99,
-    icon: "/assets/spells-death_ripple.webp", blurb: "A ripple of death: 200 to every living foe on the field (the undead are untouched)." }
+    icon: "/assets/spells-death_ripple.webp", blurb: "A ripple of death: 200 to every living foe on the field (the undead are untouched)." },
+  dispel: { id: "dispel", name: "Dispel", side: "def", mana: 12, cooldown: sec(10), target: "area", stage: 99,
+    icon: "/assets/spells-dispel.webp", blurb: "Tears the shields, helms and armour off every foe in a 3×3 area, reveals the unseen there and calms the enraged." },
+  forgetfulness: { id: "forgetfulness", name: "Forgetfulness", side: "def", mana: 12, cooldown: sec(25), target: "none", stage: 99,
+    icon: "/assets/spells-forgetfulness.webp", blurb: "For 10 s every ranged foe on the field forgets how to shoot: it walks in and bites instead (siege engines excepted)." },
+  slayer: { id: "slayer", name: "Slayer", side: "def", mana: 14, cooldown: sec(12), target: "enemy", stage: 99,
+    icon: "/assets/spells-slayer.webp", blurb: "600 to one foe — 2500 if it's a giant (a boss, a smasher, or anything of 2400 HP or more)." },
+  counterstrike: { id: "counterstrike", name: "Counterstrike", side: "def", mana: 10, cooldown: sec(20), target: "none", stage: 99,
+    icon: "/assets/spells-counterstrike.webp", blurb: "For 12 s every troop strikes back at each foe that bites it (60)." }
 };
 
 export const DEF_SPELL_ORDER: readonly SpellId[] = ["magic-arrow", "frost-ring", "haste", "meteor-shower", "armageddon"];
@@ -1327,7 +1486,8 @@ export type BlessingId =
   | "lions-shield" | "shackles-of-war" | "yawning-dead" | "ogres-club" | "dragon-scale-shield"
   // Order & Chaos only.
   | "surge-chalice" | "crown-of-dragontooth" | "helm-of-enlightenment" | "ambassadors-sash" | "charm-of-mana" | "endless-purse"
-  | "spirit-of-oppression";
+  | "spirit-of-oppression"
+  | "pendant-second-sight" | "ring-of-sulfur" | "thunder-helmet" | "blackshard" | "dragon-wing-tabard" | "sandals-of-the-saint" | "dwarven-shield";
 
 export type BlessingDef = { id: BlessingId; name: string; icon: string; blurb: string; repeatable?: boolean };
 

@@ -5,7 +5,7 @@
  */
 
 import manifest from "../../../public/sounds/manifest.json";
-import { DEFENDERS, ENEMIES, type SpellId } from "@/engine/garrison/content";
+import { DEFENDERS, ENEMIES, type ProjectileKind, type SpellId } from "@/engine/garrison/content";
 import type { GarrisonEvent, GarrisonState } from "@/engine/garrison/sim";
 import { playCardPlace, playLibrarySound } from "@/lib/sound";
 
@@ -37,8 +37,74 @@ const SOUND_ALIAS: Record<string, string> = {
   "gw-abomination": "ogre",
   "gw-necromancer": "lich",
   "wog-ghost": "wraith",
-  "wog-werewolf": "nomad"
+  "wog-werewolf": "nomad",
+  // Order & Chaos gear repaints speak with their donors.
+  "oc-trog-helm": "infernal-troglodyte",
+  "oc-shieldbearer": "skeleton-warrior",
+  "oc-skeleton-bare": "skeleton-warrior",
+  "oc-death-rider-bare": "black-knight",
+  "oc-dread-knight-bare": "dread-knight",
+  "oc-sellsword-bare": "swordsman",
+  "oc-goblin-keg": "goblin",
+  "oc-troll-club": "troll",
+  "oc-ogre-drum": "ogre-mage",
+  "oc-satyr-pipes": "satyr",
+  "oc-shieldwall": "battle-dwarf",
+  "oc-aegis": "battle-dwarf",
+  "commander-bulwark": "battle-dwarf",
+  "oc-bellwether": "armadillo",
+  "bellwether-armadillo": "armadillo",
+  "oc-mechanic-lodestone": "mechanic"
 };
+
+/** Voice-pack folders whose name differs from the sprite's (mgq-<x> -> mgq/voices/<folder>). */
+const MGQ_VOICE: Record<string, string> = {
+  sylph: "spirit_sylph", gnome: "spirit_gnome", undine: "spirit_undine", salamander: "spirit_salamander",
+  kamuro: "kamuro_kitsu", kitsu: "kamuro_kitsu", frederica: "chrome_frederica"
+};
+
+type VoiceAction = "attack" | "shoot" | "death" | "hurt" | "move" | "ability";
+/** Clip names tried in order for each action (packs differ: Blue Archive has "ability", MGQ "shoot"...). */
+const VOICE_TRY: Record<VoiceAction, readonly string[]> = {
+  attack: ["attack"], shoot: ["shoot", "attack"], death: ["death"], hurt: ["hurt"], move: ["move", "ability"], ability: ["ability", "attack", "shoot"]
+};
+
+/** A character voice line for an anime creature (Blue Archive, Azur Lane, MGQ, Little Busters sprites), or null. */
+function voiceKey(sprite: string, action: VoiceAction): string | null {
+  const cut = sprite.indexOf("-");
+  if (cut < 0) return null;
+  const prefix = sprite.slice(0, cut);
+  const name = sprite.slice(cut + 1);
+  const base = prefix === "ba" ? `blue-archive/voices/${name}`
+    : prefix === "al" ? `azur-lane/voices/${name.replace(/-/g, "_")}`
+    : prefix === "mgq" ? `mgq/voices/${MGQ_VOICE[name] ?? name.replace(/-/g, "_")}`
+    : prefix === "lb" ? `little-busters/voices/${name.replace(/-/g, "_")}`
+    : null;
+  if (!base) return null;
+  for (const clip of VOICE_TRY[action]) if (LIBRARY[`${base}/${clip}`]) return `${base}/${clip}`;
+  return null;
+}
+
+/** What a shot sounds like when its shooter has no clip of its own (the anime girls, the war machines...). */
+const SHOT_SOUND: Partial<Record<ProjectileKind, string>> = {
+  arrow: "units/archer-shoot", stone: "units/halfling-shoot", boulder: "units/cyclops-shoot", bolt: "spells/magic-arrow",
+  frost: "spells/ice-bolt", holy: "mgq/effects/saint3", dark: "mgq/effects/darkness3", axe: "mgq/effects/slash6",
+  spear: "mgq/effects/bow2", gift: "adventure/pickup-02", lightning: "spells/lightning-bolt", fireball: "spells/fireball",
+  cloud: "spells/death-cloud", bullet: "mgq/effects/gun2", rocket: "doom/dsrlaunc", plasma: "doom/dsplasma",
+  hellfire: "doom/dsfirsht", hammer: "mgq/effects/hammer", crescent: "mgq/effects/mon-wind3", ball: "mgq/effects/blow8",
+  kunai: "mgq/effects/sword3"
+};
+
+/** A shooter's clip, else its weapon's. */
+function shotKey(sprite: string, projectile: ProjectileKind | undefined): string | null {
+  return unitKey(sprite, "shoot") ?? (projectile ? SHOT_SOUND[projectile] ?? null : null);
+}
+
+/** Voices speak up now and then, not on every blow (one line per creature every few seconds). */
+function voice(sprite: string, action: VoiceAction, volume = 0.5, gap = 4500): void {
+  const key = voiceKey(sprite, action);
+  if (key) play(key, volume, gap);
+}
 
 /** The DOOM monsters speak with their original sound lumps (the same set src/data/unit-sounds.ts uses). */
 const DOOM_SOUNDS: Record<string, Partial<Record<"attack" | "shoot" | "death" | "hurt" | "move", string>>> = {
@@ -110,7 +176,11 @@ const SPELL_SOUND: Record<SpellId, string> = {
   blind: "spells/blind",
   implosion: "spells/implosion",
   cure: "spells/cure",
-  "death-ripple": "spells/death-ripple"
+  "death-ripple": "spells/death-ripple",
+  dispel: "spells/dispel",
+  forgetfulness: "spells/forgetfulness",
+  slayer: "spells/slayer",
+  counterstrike: "spells/counterstrike"
 };
 
 export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent[]): void {
@@ -119,6 +189,9 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
       case "place": {
         if (ev.kind === "mine") play("spells/land-mine", 0.45);
         else playCardPlace();
+        // A character troop greets the field.
+        const placed = DEFENDERS[ev.kind]?.sprite;
+        if (placed) voice(placed, "move", 0.55, 2500);
         break;
       }
       case "upgrade":
@@ -132,17 +205,29 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         break;
       case "defShoot": {
         const d = s.defenders.find((unit) => unit.id === ev.id);
-        if (d) play(unitKey(DEFENDERS[d.kind]!.sprite, "shoot"), 0.32, 140);
+        if (d) {
+          const def = DEFENDERS[d.kind]!;
+          play(shotKey(def.sprite, def.shot?.projectile), 0.32, 140);
+          voice(def.sprite, "shoot", 0.4, 8000);
+        }
         break;
       }
       case "defStrike": {
         const d = s.defenders.find((unit) => unit.id === ev.id);
-        if (d) play(unitKey(DEFENDERS[d.kind]!.sprite, "attack"), 0.35, 160);
+        if (d) {
+          const sprite = DEFENDERS[d.kind]!.sprite;
+          play(unitKey(sprite, "attack") ?? "mgq/effects/slash9", 0.35, 160);
+          voice(sprite, "attack", 0.4, 8000);
+        }
         break;
       }
       case "enemyBite": {
         const e = s.enemies.find((unit) => unit.id === ev.id);
-        if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "attack"), 0.3, 220);
+        if (e) {
+          const sprite = ENEMIES[e.kind]!.sprite;
+          play(unitKey(sprite, "attack") ?? "mgq/effects/mon-tume", 0.3, 220);
+          voice(sprite, "attack", 0.4, 7000);
+        }
         break;
       }
       case "enemyCast": {
@@ -152,13 +237,19 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
       }
       case "enemyDie": {
         const def = ENEMIES[ev.kind];
-        if (def?.sprite) play(unitKey(def.sprite, "death"), 0.4, 150);
+        if (def?.sprite) play(unitKey(def.sprite, "death") ?? voiceKey(def.sprite, "death"), 0.4, 150);
         if (ev.kind === "banner") play("adventure/hero-defeated", 0.55);
         break;
       }
       case "defDie": {
         const def = DEFENDERS[ev.kind];
-        if (def?.sprite) play(unitKey(def.sprite, "death"), 0.42, 150);
+        if (def?.sprite) play(unitKey(def.sprite, "death") ?? voiceKey(def.sprite, "death"), 0.42, 150);
+        break;
+      }
+      case "defHurt": {
+        // Only the voiced troops cry out (a creature's own hurt clip on every bite would drown the lawn).
+        const d = s.defenders.find((unit) => unit.id === ev.id);
+        if (d) voice(DEFENDERS[d.kind]!.sprite, "hurt", 0.4, 6000);
         break;
       }
       case "gaze":
@@ -269,16 +360,22 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("ui/time-over", 0.6, 0);
         break;
       // Order & Chaos
-      case "surge":
+      case "surge": {
         play("spells/mirth", 0.55, 0);
+        const d = s.defenders.find((unit) => unit.id === ev.id);
+        if (d) voice(DEFENDERS[d.kind]!.sprite, "ability", 0.65, 1500);
         break;
+      }
       case "orb":
         play("effects/good-luck", 0.3, 300);
         break;
-      case "ascend":
+      case "ascend": {
         play("spells/prayer", 0.75, 0);
         play("effects/good-luck", 0.5, 0);
+        const sprite = DEFENDERS[ev.kind]?.sprite;
+        if (sprite) voice(sprite, "ability", 0.7, 1500);
         break;
+      }
       case "crown":
         play("effects/good-luck", 0.45, 500);
         break;
@@ -389,6 +486,173 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         break;
       case "kite":
         play("mgq/effects/mon-step", 0.35, 300);
+        break;
+      // Order & Chaos siegecraft and twists that had no sound yet.
+      case "aegis":
+        play("spells/protect-air", 0.4, 250);
+        break;
+      case "reflect":
+        play("spells/magic-mirror", 0.4, 200);
+        break;
+      case "spin":
+        play("mgq/effects/resonance", 0.35, 400);
+        break;
+      case "hex":
+        play("spells/curse", 0.45, 250);
+        break;
+      case "unhex":
+        play("spells/dispel", 0.3, 300);
+        break;
+      case "ladderPlant":
+        play("mgq/effects/hammer", 0.45, 250);
+        break;
+      case "ladder":
+      case "climb":
+        play("mgq/effects/mon-step", 0.3, 300);
+        break;
+      case "lure":
+        play("effects/good-morale", 0.35, 500);
+        break;
+      case "lizardCharge":
+        play(unitKey("lizard-warrior", "attack"), 0.5, 0);
+        play("effects/horn-3", 0.45, 400);
+        break;
+      case "blownAway":
+        play("mgq/effects/mon-wind4", 0.4, 250);
+        break;
+      case "evade":
+        play("effects/siege-wall-miss", 0.3, 250);
+        break;
+      case "swerve": {
+        const e = s.enemies.find((unit) => unit.id === ev.id);
+        if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "move"), 0.3, 400);
+        break;
+      }
+      case "fling": {
+        const e = s.enemies.find((unit) => unit.id === ev.id);
+        if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "attack"), 0.5, 200);
+        play("mgq/effects/blow8", 0.4, 200);
+        break;
+      }
+      case "mineLaid":
+        play("spells/land-mine", 0.4, 300);
+        break;
+      case "descend":
+        play("spells/sorrow", 0.35, 300);
+        break;
+      case "dismiss":
+        play("spells/remove-obstacle", 0.4, 200);
+        break;
+      case "blessing":
+        play("spells/bless", 0.5, 0);
+        break;
+      // Order & Chaos content pass.
+      case "band":
+        play("effects/good-morale", 0.45, 200);
+        break;
+      case "leap":
+        play("effects/siege-wall-hit", 0.55, 0);
+        if (ev.fire) play("spells/fireball-hit", 0.5, 0);
+        break;
+      case "bash":
+        play("mgq/effects/hammer", 0.45, 150);
+        play("spells/shield", 0.3, 400);
+        break;
+      case "quickdraw":
+        // A burst is several shots, a fraction of a second apart (the throttle keeps it crisp).
+        play("mgq/effects/gun2", 0.3, 90);
+        break;
+      case "gas":
+        play(ev.big ? "spells/poison" : "spells/disease", ev.big ? 0.5 : 0.18, ev.big ? 0 : 2500);
+        break;
+      case "maw":
+        play(ev.whole ? "effects/death-blow" : "mgq/effects/hammer", 0.5, 150);
+        break;
+      case "allies":
+        play("mgq/effects/cat", 0.45, 400);
+        break;
+      case "bowl":
+        play("mgq/effects/blow8", 0.45, 120);
+        break;
+      case "dash":
+        play("mgq/effects/slash9", 0.5, 0);
+        play("mgq/effects/sword4", 0.35, 0);
+        break;
+      case "slam":
+        play("effects/siege-wall-hit", 0.5, 200);
+        play("spells/quicksand", 0.3, 800);
+        break;
+      case "shockwave":
+        play("spells/force-field", 0.5, 0);
+        break;
+      case "radiance":
+        play("spells/prayer", 0.6, 0);
+        play("mgq/effects/heal5", 0.4, 0);
+        break;
+      case "grab":
+        play("mgq/effects/bite", 0.45, 250);
+        break;
+      case "incinerate":
+        play("mgq/effects/mon-fire1", 0.55, 150);
+        play("spells/fire-shield", 0.35, 300);
+        break;
+      case "douse":
+        play("effects/spell-fizzle", 0.4, 300);
+        break;
+      case "knight":
+        play("spells/stone-skin", 0.4, 400);
+        break;
+      case "parasol":
+        play("spells/magic-mirror", 0.4, 250);
+        break;
+      case "drop":
+        play("effects/fear", 0.35, 500);
+        break;
+      case "encase":
+        play("spells/ice-bolt", 0.45, 250);
+        play("spells/frost-ring", 0.3, 600);
+        break;
+      case "thaw":
+        play("effects/regeneration", 0.35, 400);
+        break;
+      case "foeWhirl":
+        play("mgq/effects/slash6", 0.5, 150);
+        break;
+      case "foeSlam":
+        play("effects/siege-wall-hit", 0.6, 0);
+        break;
+      case "bossEnter":
+        play("effects/horn-4", 0.5, 2000);
+        play("spells/earthquake", 0.35, 2000);
+        break;
+      case "bossCue":
+        play(ev.move === "drums" ? "effects/horn-3" : "effects/fear", 0.35, 300);
+        break;
+      case "bossMove":
+        if (ev.move === "slam" || ev.move === "pounce" || ev.move === "roar") play("spells/earthquake", 0.45, 300);
+        else if (ev.move === "breath") play("effects/acid-breath", 0.45, 300);
+        else if (ev.move === "volley") play("units/catapult-shoot", 0.45, 300);
+        else if (ev.move === "summon") play("spells/teleport-in", 0.4, 300);
+        else if (ev.move === "graves") play("spells/animate-dead", 0.4, 300);
+        else if (ev.move === "drums") play("spells/bloodlust", 0.45, 300);
+        else play("spells/teleport", 0.35, 300);
+        break;
+      case "bossPhase":
+        play("spells/berserk", 0.5, 500);
+        break;
+      case "bossRepel":
+        play("spells/earthquake", 0.4, 400);
+        break;
+      case "bossFall":
+        play("effects/horn-5", 0.55, 2000);
+        break;
+      case "unnerved":
+        play("spells/bloodlust", 0.4, 400);
+        play("effects/horn-2", 0.3, 1500);
+        break;
+      case "assassinate":
+        play("spells/teleport-in", 0.35, 200);
+        play("mgq/effects/sword3", 0.5, 150);
         break;
       default:
         break;

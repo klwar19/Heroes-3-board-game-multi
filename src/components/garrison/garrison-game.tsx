@@ -18,7 +18,10 @@ import { assetUrl } from "@/lib/asset-url";
 import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, isMusicMuted, playCombatSting, setMusicHeld, setMusicMuted, subscribeMusic, useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { isSoundMuted, setSoundMuted } from "@/lib/sound";
 import { playEventSounds } from "./audio";
+import { playFieldEventSounds, updateFieldAmbience } from "./field-audio";
 import { AdvisorBubble } from "./order-chaos/story-ui";
+import { FieldBadge, fieldQuip, fieldTipAt, fieldToast } from "./order-chaos/field-ui";
+import { rosterQuip } from "./order-chaos/roster-ui";
 import type { GarrisonDriver } from "./driver";
 import styles from "./garrison.module.css";
 import { BOARD, boardCell, coinSize, createView, drawBoard, ingestEvents, laneTop, preloadForConfig, tileX, type Ghost, type Overlay } from "./renderer";
@@ -214,16 +217,22 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   }, [advisor]);
   const quipTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(quipTimerRef.current), []);
-  const sayQuip = useCallback((event: OcQuipEvent) => {
-    if (event !== "huge-wave" && quipsSaidRef.current.has(event)) return;
-    quipsSaidRef.current.add(event);
-    const line = advisorRef.current?.(event);
-    if (!line) return;
+  const showQuip = useCallback((line: OcLine) => {
     const id = performance.now();
     setQuip({ line, id });
     window.clearTimeout(quipTimerRef.current);
     quipTimerRef.current = window.setTimeout(() => setQuip((current) => (current?.id === id ? null : current)), 5200);
   }, []);
+  const sayQuip = useCallback((event: OcQuipEvent) => {
+    if (event !== "huge-wave" && quipsSaidRef.current.has(event)) return;
+    quipsSaidRef.current.add(event);
+    const line = advisorRef.current?.(event);
+    if (line) showQuip(line);
+  }, [showQuip]);
+  /** Order & Chaos battlefield moments Crag has explained this battle (weather, the ways in, ice, sleep, banks). */
+  const fieldSaidRef = useRef(new Set<string>());
+  /** The hovered lawn tile's battlefield tip is showing (the tray's own tips aren't touched). */
+  const fieldTipRef = useRef(false);
 
   const showToast = useCallback((text: string, tone: "warn" | "info" | "boss" = "info") => {
     const id = Date.now() + Math.random();
@@ -446,7 +455,15 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
       if (events.length) {
         ingestEvents(view, state, events, now);
         playEventSounds(state, events);
+        if (state.cfg.oc) playFieldEventSounds(events);
         for (const ev of events) {
+          // Order & Chaos battlefield: a first-time word from Crag, and a toast.
+          if (state.cfg.oc && advisorRef.current && driver.local.includes("def")) {
+            const line = fieldQuip(ev, state, fieldSaidRef.current) ?? rosterQuip(ev, fieldSaidRef.current);
+            if (line) showQuip(line);
+            const note = fieldToast(ev, state);
+            if (note) showToast(note.text, note.tone);
+          }
           // Crag Hack's quips ride alongside the usual announcements and toasts.
           if (ev.e === "hugeWave") sayQuip(ev.final ? "final-wave" : "huge-wave");
           else if (ev.e === "wave" && ev.wave === 1) sayQuip("start");
@@ -519,11 +536,16 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         hudAt = now;
         force();
       }
+      // Order & Chaos: one quiet loop for the weather or the night (stopped while paused and once it's over).
+      updateFieldAmbience(state.cfg.oc && !state.outcome && !pausedRef.current ? state : null);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [announceNow, askCollect, drawOverlay, driver, hotseat, intro, launchCoin, sayQuip, showToast]);
+    return () => {
+      cancelAnimationFrame(raf);
+      updateFieldAmbience(null);
+    };
+  }, [announceNow, askCollect, drawOverlay, driver, hotseat, intro, launchCoin, sayQuip, showQuip, showToast]);
 
   // ---- Pointer --------------------------------------------------------------
   const logical = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -535,6 +557,19 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     const { px, py } = logical(event);
     const cell = boardCell(px, py);
     hoverRef.current = cell ? { ...cell, px, py } : null;
+    // Order & Chaos: what that tile of the battlefield does (while nothing is in hand).
+    const state = driver.state();
+    if (state.cfg.oc && !selectionRef.current) {
+      const tip = cell && cell.x >= 0 && cell.x < 9 ? fieldTipAt(state, cell.lane, cell.col) : null;
+      if (tip) {
+        fieldTipRef.current = true;
+        // (The same text keeps the same tip object: no re-render of the whole battle screen on every pointer move.)
+        setTip((current) => (current && current.title === tip.title && current.lines.join("\n") === tip.lines.join("\n") ? current : tip));
+      } else if (fieldTipRef.current) {
+        fieldTipRef.current = false;
+        setTip(null);
+      }
+    }
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -798,7 +833,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           className={styles.board}
           onContextMenu={(event) => event.preventDefault()}
           onPointerDown={onPointerDown}
-          onPointerLeave={() => { hoverRef.current = null; }}
+          onPointerLeave={() => { hoverRef.current = null; if (fieldTipRef.current) { fieldTipRef.current = false; setTip(null); } }}
           onPointerMove={onPointerMove}
           ref={canvasRef}
         />
@@ -810,6 +845,12 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
             <strong>{DEFENDERS[popDef.kind]!.name}{(DEFENDERS[popDef.kind]!.level ?? 1) > 1 ? ` · Lv ${DEFENDERS[popDef.kind]!.level}` : ""}</strong>
             <small>{Math.max(0, Math.round(popDef.hp))} / {popDef.maxHp} HP{popDef.shell > 0 ? ` · shell ${popDef.shell}` : ""}</small>
             <p>{DEFENDERS[popDef.kind]!.blurb}</p>
+            {popDef.asleep ? <p className={styles.surgeLine}>Zzz — asleep{popDef.asleep === 2 ? " (a Nightmare's lull)" : " (a night creature by day)"}: pour a Wake-Up Brew on it to wake it.</p> : null}
+            {/* Order & Chaos content pass: a band's size, a Nix's bashes, an Iron Maiden shut, a troop in ice. */}
+            {DEFENDERS[popDef.kind]!.band ? <p className={styles.surgeLine}>{(popDef.members ?? 1) >= 3 ? "A Horde" : (popDef.members ?? 1) === 2 ? "A Pack" : "A lone elf"} of {popDef.members ?? 1}{(popDef.members ?? 1) < DEFENDERS[popDef.kind]!.band!.max ? " — drop the same packet on it to grow it." : "."}</p> : null}
+            {DEFENDERS[popDef.kind]!.repel ? <p className={styles.surgeLine}>Shield-bashes ready: {DEFENDERS[popDef.kind]!.repel!.charges - popDef.stacks} of {DEFENDERS[popDef.kind]!.repel!.charges}.</p> : null}
+            {DEFENDERS[popDef.kind]!.maw && popDef.busyUntil > s.tick ? <p className={styles.surgeLine}>Shut tight — opens again in {Math.ceil((popDef.busyUntil - s.tick) / GW_TPS)} s.</p> : null}
+            {(popDef.iceUntil ?? 0) > s.tick ? <p className={styles.surgeLine}>Sealed in ice for {Math.ceil(((popDef.iceUntil ?? 0) - s.tick) / GW_TPS)} s — a fire troop beside it, Cure or a Surge thaws it.</p> : null}
             {DEFENDERS[popDef.kind]!.surge ? <p className={styles.surgeLine}>Surge: {surgeText(DEFENDERS[popDef.kind]!)}</p> : null}
             {s.cfg.oc && DEFENDERS[popDef.kind]!.surge ? (
               <button
@@ -847,9 +888,11 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
                 Upgrade → {DEFENDERS[DEFENDERS[popDef.kind]!.upgrade!.to]!.name} ({DEFENDERS[popDef.kind]!.upgrade!.cost} gold)
               </button>
             ) : null}
-            <button className={styles.ghostButton} onClick={() => { submit({ t: "dismiss", id: popDef.id, by: "def" }); openPopover(null); }} type="button">
-              Dismiss (no refund)
-            </button>
+            {DEFENDERS[popDef.kind]!.landmark ? null : (
+              <button className={styles.ghostButton} onClick={() => { submit({ t: "dismiss", id: popDef.id, by: "def" }); openPopover(null); }} type="button">
+                Dismiss (no refund)
+              </button>
+            )}
           </div>
         ) : null}
         </div>
@@ -879,6 +922,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           <SpellBar keys={[]} onChoose={chooseOrClear} onTip={setTip} s={s} selection={selection} side="atk" />
         ) : null}
         <Progress s={s} />
+        {s.cfg.oc ? <FieldBadge onTip={setTip} s={s} /> : null}
         {hotseat && localAtk ? (
           <div className={styles.hotseat}>
             <div className={styles.resource} title="Might">
@@ -984,6 +1028,11 @@ function computeGhost(s: GarrisonState, sel: Selection, hover: { lane: number; c
     if (card.spell === "stone-skin") return { t: "tile", lane: hover.lane, col: hover.col, ok: check.ok };
     if (check.ok && check.action === "fuse" && check.result) {
       return { t: "unit", lane: hover.lane, col: hover.col, sprite: DEFENDERS[check.result]!.sprite, ok: true, label: `Fuse → ${DEFENDERS[check.result]!.name}` };
+    }
+    // Order & Chaos band: regrouping grows it (a dearer packet).
+    if (check.ok && check.action === "band" && check.target) {
+      const next = (check.target.members ?? 1) + 1;
+      return { t: "unit", lane: hover.lane, col: hover.col, sprite: DEFENDERS[check.target.kind]!.sprite, ok: true, label: `${next >= 3 ? "Horde" : "Pack"} (${next}) · ${check.cost} gold` };
     }
     const sprite = card.places && card.places !== "mine" ? DEFENDERS[card.places]!.sprite : "";
     return sprite ? { t: "unit", lane: hover.lane, col: hover.col, sprite, ok: check.ok } : { t: "tile", lane: hover.lane, col: hover.col, ok: check.ok };

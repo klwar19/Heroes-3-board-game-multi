@@ -61,5 +61,14 @@ export function surgeText(def: DefDef): string {
     case "dome": return `For ${secs(s.dur)} s its dome spreads a tile further each way and turns aside straight shots too.`;
     case "herd": return `Rings its bell: every foe on the lawn in the lanes beside it is drawn into its lane, and it curls up in a ${n(s.shell)} HP shell.`;
     case "war-party": return `Calls a war party: lizard warriors charge down its lane and both beside it, ${n(s.dmg)} to every foe they trample.`;
+    case "shockwave": return `A shield-charge: every foe within ${s.reach} tiles ahead, in its lane and both beside it, is hurled ${s.push} tiles back and stunned for ${secs(s.dur)} s.`;
+    case "fan": return `Trick shots: ${s.shots} shots of ${n(s.dmg)} at random foes anywhere on the field — flyers too.`;
+    case "hail": return `Hail: ${s.count} frost bombs on the toughest foes (${n(s.dmg)}, half to those around), each target frozen solid for ${secs(s.freeze)} s and everyone caught chilled.`;
+    case "radiance": return `A rainbow burst: ${n(s.dmg)} to every foe on the field, and every troop heals ${n(s.heal)}.`;
+    case "miasma": return `A cloud of rot: every foe within ${s.reach} tiles of her (five lanes) is poisoned — ${n(s.dps)} a second for ${secs(s.dur)} s.`;
+    case "embrace": return `Snaps shut on up to ${s.count} foes within ${s.reach} tiles (her lane and both beside it; up to ${def.maw?.cap ?? 0} toughness each) — and she's open again at once.`;
+    case "overclock": return `Vents its boiler: ${n(s.dmg)} to every foe in the 3×3, and its plating is repaired in full.`;
+    case "stampede": return `A stampede: ${s.count} ${s.count === 1 ? "ally" : "allies"} charge out across its lane and both beside it.`;
+    case "iai": return `A triple draw: every foe within ${s.reach} tiles ahead in her lane and both beside it takes ${n(s.dmg)}.`;
   }
 }

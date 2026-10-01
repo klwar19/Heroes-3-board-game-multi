@@ -11,6 +11,15 @@ import { image, ready } from "./art";
 /** The sheep a Sorceress turns a troop into (painted prop; drawn in code until it loads). */
 export const SHEEP_SRC = "/assets/order-chaos/props/sheep.webp";
 
+/** Gear props (Codex, keyed): the pieces armoured foes lose and a thief's coin sack. */
+export const OC_PROP = {
+  towerShield: "/assets/order-chaos/props/tower-shield.webp",
+  riderHelm: "/assets/order-chaos/props/rider-helm.webp",
+  dreadHelm: "/assets/order-chaos/props/dread-helm.webp",
+  mercHelm: "/assets/order-chaos/props/merc-helm.webp",
+  sack: "/assets/order-chaos/props/sack.webp"
+} as const;
+
 /**
  * A ladder from its foot (x0, y0) to its top (x1, y1): two wooden rails and rungs.
  * `alpha` fades it (a ladder lost with its carrier).
@@ -56,9 +65,10 @@ export function drawLadder(ctx: CanvasRenderingContext2D, x0: number, y0: number
  * The Aegis dome over the tiles it guards: a faint shell with a bright rim and a slow
  * shimmer; `flash` (0..1) lights it up when a shot bounces off.
  */
-export function drawDome(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, now: number, flash: number, widened: boolean): void {
+export function drawDome(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, now: number, flash: number, widened: boolean, tint?: string): void {
   const pulse = 0.5 + 0.5 * Math.sin(now / 420 + x * 0.01);
-  const rgb = widened ? "255,226,140" : "150,210,255";
+  // (`tint`: an Order & Chaos Psychic Watcher's violet dome over the horde.)
+  const rgb = tint ?? (widened ? "255,226,140" : "150,210,255");
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const g = ctx.createRadialGradient(x, y, ry * 0.2, x, y, Math.max(rx, ry));

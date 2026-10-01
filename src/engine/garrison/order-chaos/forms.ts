@@ -57,7 +57,17 @@ function scaleDef(base: DefDef, p: number): DefDef {
     luckyKills: base.luckyKills ? { ...base.luckyKills, value: n(base.luckyKills.value) } : undefined,
     devour: base.devour ? { ...base.devour, bite: n(base.devour.bite) } : undefined,
     lastCharge: base.lastCharge ? { ...base.lastCharge, dmg: n(base.lastCharge.dmg) } : undefined,
-    thorns: base.thorns !== undefined ? n(base.thorns) : undefined
+    thorns: base.thorns !== undefined ? n(base.thorns) : undefined,
+    // Order & Chaos content pass.
+    leap: base.leap ? { ...base.leap, dmg: n(base.leap.dmg) } : undefined,
+    quickdraw: base.quickdraw ? { ...base.quickdraw, dmg: n(base.quickdraw.dmg) } : undefined,
+    gas: base.gas ? { ...base.gas, dmg: n(base.gas.dmg) } : undefined,
+    maw: base.maw ? { ...base.maw, bite: n(base.maw.bite) } : undefined,
+    bowl: base.bowl ? { ...base.bowl, dmg: n(base.bowl.dmg) } : undefined,
+    dash: base.dash ? { ...base.dash, dmg: n(base.dash.dmg) } : undefined,
+    slam: base.slam ? { ...base.slam, dmg: n(base.slam.dmg) } : undefined,
+    deathBlast: base.deathBlast !== undefined ? n(base.deathBlast) : undefined,
+    retaliate: base.retaliate !== undefined ? n(base.retaliate) : undefined
   };
 }
 

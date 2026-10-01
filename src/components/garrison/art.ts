@@ -167,7 +167,13 @@ export const SHOT_SHEETS: Record<ProjectileKind, ShotSheet> = {
   // Bullets are drawn as tracers; the sheet gives the muzzle flash and the puff where they land.
   bullet: phased("shotgun", 0.55, 0.55),
   // A Lost Soul is drawn from its creature atlas; the sheet is its burst on impact.
-  soul: phased("fireball", 0.6, 1)
+  soul: phased("fireball", 0.6, 1),
+  // Order & Chaos: a Runemaster Yeti's rune-hammer and a Temple Guardian's spirit crescent (both drawn spinning),
+  // a Softball Ace's softball (drawn hopping), a Shadow Fox's kunai.
+  hammer: phased("commander-holy-hammer", 0.62, 0.9),
+  crescent: phased("commander-spirit-blade", 0.8, 1),
+  ball: phased("baseball", 0.36, 0.7),
+  kunai: phased("kunai", 0.5, 0.6)
 };
 
 const PHASE_CELL = 313.5;

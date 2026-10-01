@@ -11,14 +11,16 @@ import {
   totalStars, unlockedArtifacts, unlockedHeroes, unlockedSpells, unlockedUltimates, unlockedUnits, worldCleared,
   type OcHeroId, type OcLevel
 } from "@/engine/garrison/order-chaos/campaign";
+import { OC_DAILY_ID, OC_DAILY_LEVEL, buildDailyConfig, type OcDaily } from "@/engine/garrison/order-chaos/daily";
 import { ASCEND_TICKS, VALOR_NEED } from "@/engine/garrison/order-chaos/forms";
+import { ocDayKey, ocRunSummary, type OcBoardMode, type OcRunSummary } from "@/engine/garrison/order-chaos/scores";
 import { OC_DEFENDERS, OC_ENEMIES, OC_ULTIMATES } from "@/engine/garrison/order-chaos/roster";
 import {
-  OC_BATTLE_QUIPS, OC_ENDLESS_LINES, OC_EPILOGUE, OC_LEVEL_STORY, OC_PROLOGUE, OC_PROLOGUE_ID, OC_SCREEN_LINES, OC_WORLD_OUTRO, OC_WORLD_STORY, isNarration, unlockedLines,
+  OC_BATTLE_QUIPS, OC_ENDLESS_LINES, OC_EPILOGUE, OC_LEVEL_STORY, OC_PROLOGUE, OC_PROLOGUE_ID, OC_SCORE_LINES, OC_SCREEN_LINES, OC_WORLD_OUTRO, OC_WORLD_STORY, isNarration, unlockedLines,
   type OcLine, type OcQuipEvent, type OcSceneLine
 } from "@/engine/garrison/order-chaos/story";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
-import type { Side } from "@/engine/garrison/sim";
+import { STANDOFF_NERVE, type Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import { setMusicScene, type MusicScene } from "@/lib/music";
 import { emptyOcProgress, loadOcProgress, OC_PROGRESS_KEY, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
@@ -27,7 +29,9 @@ import { GarrisonGame, type GameIntro, type GameResult } from "../garrison-game"
 import styles from "../garrison.module.css";
 import { AttackerArt, CARD_SCENES, CardArt, DefenderArt, cardScene, cardSceneSrc } from "../thumbs";
 import oc from "./oc.module.css";
+import { OcDailyScreen, OcRunScore, OcTallyBoard, isOcNewBest, markOcBestSent, ocBestKey, recordOcBest } from "./oc-scores-ui";
 import { AdvisorBubble, StoryScene } from "./story-ui";
+import { FieldAlmanac, FieldPanel, newFieldLines } from "./field-ui";
 
 type Screen =
   | { s: "home" }
@@ -38,9 +42,12 @@ type Screen =
   | { s: "camp" }
   | { s: "almanac" }
   | { s: "journal" }
+  | { s: "daily" }
+  | { s: "tally"; mode?: OcBoardMode }
   | { s: "play" };
 
-type Session = { key: number; driver: GarrisonDriver; level: OcLevel; restart: () => void };
+/** `daily`: the Daily Siege orders being played (their day and fingerprint go on the tally board). */
+type Session = { key: number; driver: GarrisonDriver; level: OcLevel; restart: () => void; daily?: OcDaily };
 
 const seed = () => Math.floor(Math.random() * 2147483647);
 
@@ -48,6 +55,17 @@ const seed = () => Math.floor(Math.random() * 2147483647);
 const LAWFUL_CARDS: DefKind[] = OC_DEFENDERS.filter((def) => def.card).map((def) => def.kind);
 /** Hybrids: made on the field by dropping one seed packet on another unit. */
 const HYBRIDS: DefKind[] = OC_DEFENDERS.filter((def) => def.fusion).map((def) => def.kind);
+
+/** Conveyor-only specials: the caravan levels whose belts carry this one. */
+function conveyorLevels(kind: DefKind): OcLevel[] {
+  return OC_LEVELS.filter((level) => level.conveyorPool?.includes(kind));
+}
+
+/** Can the player make this hybrid (both halves recruited)? */
+function hybridKnown(kind: DefKind, units: readonly DefKind[]): boolean {
+  const recipe = FUSIONS.find((entry) => entry.result === kind);
+  return recipe !== undefined && recipe.a.some((id) => units.includes(id)) && recipe.b.some((id) => units.includes(id));
+}
 /** Every Chaos creature that marches (graves included for the almanac). */
 const CHAOS_KINDS: EnemyKind[] = OC_ENEMIES.map((def) => def.kind);
 
@@ -62,6 +80,8 @@ const ART = {
   campaign: "/assets/ui/menu/buttons/oc-campaign.webp",
   endless: "/assets/ui/menu/buttons/oc-endless.webp",
   raids: "/assets/ui/menu/buttons/oc-chaos-raids.webp",
+  daily: "/assets/ui/menu/buttons/oc-daily-siege.webp",
+  tally: "/assets/ui/menu/buttons/oc-tally-board.webp",
   barracks: "/assets/ui/menu/buttons/oc-barracks.webp",
   camp: "/assets/ui/menu/buttons/oc-mercenaries.webp",
   almanac: "/assets/ui/menu/buttons/oc-almanac.webp",
@@ -224,8 +244,11 @@ function Stars({ count, max = 3 }: { count: number; max?: number }) {
 }
 
 function introFor(level: OcLevel, cleared: readonly string[]): GameIntro {
-  const pool = level.kind === "endless" ? metEnemies(cleared) : level.enemies;
-  const kinds = [...new Set([...(level.featured ? [level.featured] : []), ...pool])].filter((kind) => ENEMIES[kind] && !ENEMIES[kind]!.structure);
+  // Endless marches every foe met; the Daily Siege brings the day's horde.
+  const pool = level.kind === "endless" && level.id !== OC_DAILY_ID ? metEnemies(cleared) : level.enemies;
+  // (A world boss leads the line-up; none ever marches in Endless.)
+  const kinds = [...new Set([...(level.warboss ? [level.warboss] : []), ...(level.featured ? [level.featured] : []), ...pool])]
+    .filter((kind) => ENEMIES[kind] && !ENEMIES[kind]!.structure && (kind === level.warboss || !ENEMIES[kind]!.boss));
   return { title: level.name, lineup: level.kind === "raid" ? [] : kinds.slice(0, 10), cue: level.kind === "raid" ? "Attack!" : "Defend!" };
 }
 
@@ -241,6 +264,10 @@ function defaultHand(units: DefKind[], slots: number): DefKind[] {
 function unlockSource(kind: DefKind): string {
   const merc = OC_MERCENARIES.find((entry) => entry.kind === kind);
   if (merc) return `Mercenary Camp: ${merc.seals} Seals`;
+  if (DEFENDERS[kind]?.conveyor) {
+    const belts = conveyorLevels(kind).map((level) => `${level.world}-${level.id.split("-")[1]} ${level.name}`);
+    return `Conveyor special — only rides the caravan belts${belts.length ? ` (${belts.join(", ")})` : ""}.`;
+  }
   const level = OC_LEVELS.find((entry) => entry.reward.units?.includes(kind));
   if (!level) return "From the start";
   return `Clear ${level.world}-${level.id.split("-")[1]}: ${level.name}`;
@@ -266,7 +293,8 @@ function levelStory(level: OcLevel, seen?: readonly string[]): StoryShow | null 
   if (!story || (!story.before?.length && !story.letter)) return null;
   const id = `level:${level.id}`;
   if (seen?.includes(id)) return null;
-  return { id, lines: story.before ?? [], letter: story.letter };
+  // Crag explains the battlefield systems this level brings in for the first time (order-chaos/field.ts).
+  return { id, lines: [...(story.before ?? []), ...newFieldLines(level)], letter: story.letter };
 }
 
 /**
@@ -295,6 +323,7 @@ function autoStory(screen: Screen, p: OcProgress): StoryShow | null {
     return lines?.length && !p.seen.includes(id) ? { id, lines } : null;
   }
   if (screen.s === "prep") return levelStory(screen.level, p.seen);
+  if (screen.s === "daily") return levelStory(OC_DAILY_LEVEL, p.seen);
   return null;
 }
 
@@ -331,9 +360,10 @@ function storyLog(p: OcProgress): StoryLogChapter[] {
   }
   const side: StoryLogEntry[] = [
     ...OC_RAIDS.flatMap((raid) => levelEntries(raid, `Raid: ${raid.name}`)),
-    ...levelEntries(OC_ENDLESS, "The Endless Siege")
+    ...levelEntries(OC_ENDLESS, "The Endless Siege"),
+    ...levelEntries(OC_DAILY_LEVEL, "The Daily Siege")
   ];
-  if (side.length) chapters.push({ title: "Raids and the Endless Siege", entries: side });
+  if (side.length) chapters.push({ title: "Raids and the Sieges", entries: side });
   if (FINAL_LEVEL && p.cleared.includes(FINAL_LEVEL)) chapters.push({ title: "Epilogue", entries: [{ id: "epilogue", title: "Quiet", lines: OC_EPILOGUE }] });
   return chapters;
 }
@@ -439,9 +469,35 @@ export function OrderChaosApp() {
     launch();
   }, [progress, replaceSession]);
 
+  // The Daily Siege: today's orders, never the player's own unlocks.
+  const startDaily = useCallback((daily: OcDaily) => {
+    const launch = () => {
+      setNote(null);
+      setNextLevel(null);
+      replaceSession({ key: Date.now(), driver: createLocalDriver(buildDailyConfig(daily), ["def"], {}), level: daily.level, restart: launch, daily });
+      setScreen({ s: "play" });
+    };
+    launch();
+  }, [replaceSession]);
+
+  /** A finished run's score panel: keeps the device's best for its board and posts to the tally board (`blocked`: why it can't). */
+  const scorePanel = useCallback((run: OcRunSummary, blocked: string | null) => {
+    const newBest = !blocked && isOcNewBest(progress, run);
+    if (!blocked) update((p) => recordOcBest(p, run));
+    const key = ocBestKey(run);
+    return <OcRunScore blocked={blocked} cleared={unlocksOf(progress).cleared} newBest={newBest} onSent={(held) => update((p) => markOcBestSent(p, key, held))} run={run} />;
+  }, [progress, update]);
+
   const onFinish = useCallback((result: GameResult) => {
     const level = sessionRef.current?.level;
     if (!level) return;
+    const daily = sessionRef.current?.daily;
+    if (daily) {
+      const run = ocRunSummary(result.state, "daily", { day: daily.day, setup: daily.setup, hero: daily.hero });
+      const words = pickUnlocked(isOcNewBest(progress, run) ? OC_SCORE_LINES.best : OC_SCORE_LINES.short, unlocksOf(progress).cleared);
+      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}{scorePanel(run, null)}</>);
+      return;
+    }
     const stats = {
       lost: result.state.stats.lost,
       goldSpent: result.state.stats.goldSpent,
@@ -453,7 +509,9 @@ export function OrderChaosApp() {
       update((p) => ({ ...p, raids: p.raids.includes(level.id) ? p.raids : [...p.raids, level.id], seals: p.seals + (first ? 4 : 1) }));
       // The first win of a raid has its own words; later ones a cheer.
       const cheer = first ? OC_LEVEL_STORY[level.id]?.after ?? [] : [pickUnlocked(OC_BATTLE_QUIPS.victory, unlocksOf(progress).cleared)].filter((line): line is OcLine => line !== null);
-      setNote(<>{cheer.map((line, i) => <AdvisorBubble compact key={i} line={line} />)}<p className={oc.reward}>+{first ? 4 : 1} Seals</p></>);
+      // Raids are fixed puzzles (no unlocks, Barracks levels or heroes involved), so every broken raid may go on its board.
+      const run = ocRunSummary(result.state, "raid", { raid: level.id });
+      setNote(<>{cheer.map((line, i) => <AdvisorBubble compact key={i} line={line} />)}<p className={oc.reward}>+{first ? 4 : 1} Seals</p>{scorePanel(run, null)}</>);
       return;
     }
     if (level.kind === "endless") {
@@ -461,7 +519,11 @@ export function OrderChaosApp() {
       const gained = Math.max(0, Math.floor(waves / 5) - Math.floor(progress.bestEndless / 5));
       update((p) => ({ ...p, bestEndless: Math.max(p.bestEndless, waves), seals: p.seals + gained }));
       const words = pickUnlocked(waves > progress.bestEndless ? OC_ENDLESS_LINES.best : OC_ENDLESS_LINES.short, unlocksOf(progress).cleared);
-      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}<p className={oc.reward}>{waves > progress.bestEndless ? `New best: wave ${waves}!` : `Best: wave ${progress.bestEndless}`}{gained ? ` · +${gained} Seals` : ""}</p></>);
+      const heroes = unlocksOf(progress).heroes;
+      const run = ocRunSummary(result.state, "endless", { hero: heroes.includes(progress.hero) ? progress.hero : "catherine" });
+      // Endless runs use the player's own unlocks: a run with the testing unlock on stays off the boards.
+      const blocked = progress.testAll ? "The testing unlock is on, so this run stays off the tally board (turn it off on the home screen)." : null;
+      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}<p className={oc.reward}>{waves > progress.bestEndless ? `New best: wave ${waves}!` : `Best: wave ${progress.bestEndless}`}{gained ? ` · +${gained} Seals` : ""}</p>{scorePanel(run, blocked)}</>);
       return;
     }
     const goals = level.goals.map((goal, i) => ({ goal, i, met: result.winner === "def" && goalMet(goal, stats) }));
@@ -520,11 +582,11 @@ export function OrderChaosApp() {
         ) : null}
       </div>
     );
-  }, [progress, update]);
+  }, [progress, update, scorePanel]);
 
   if (screen.s === "play" && session) {
     const level = session.level;
-    const back: Screen = level.kind === "raid" ? { s: "raids" } : level.kind === "endless" ? { s: "home" } : { s: "campaign", world: level.world };
+    const back: Screen = level.kind === "raid" ? { s: "raids" } : session.daily ? { s: "daily" } : level.kind === "endless" ? { s: "home" } : { s: "campaign", world: level.world };
     return (
       <div className={styles.shell} style={cursorVars}>
         <GarrisonGame
@@ -606,6 +668,19 @@ export function OrderChaosApp() {
         {screen.s === "barracks" ? <Barracks onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "camp" ? <Camp onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "almanac" ? <Almanac onBack={() => setScreen({ s: "home" })} unlocks={unlocks} /> : null}
+        {screen.s === "daily" ? (
+          <OcDailyScreen
+            cleared={unlocks.cleared}
+            onBack={() => setScreen({ s: "home" })}
+            onBoard={() => setScreen({ s: "tally", mode: "daily" })}
+            onStart={startDaily}
+            onTalk={() => setStory(levelStory(OC_DAILY_LEVEL))}
+            progress={progress}
+          />
+        ) : null}
+        {screen.s === "tally" ? (
+          <OcTallyBoard cleared={unlocks.cleared} initialMode={screen.mode} key={screen.mode ?? "endless"} onBack={() => setScreen({ s: "home" })} progress={progress} update={update} />
+        ) : null}
       </div>
       {shownStory ? <StoryScene key={shownStory.id} letter={shownStory.letter} lines={shownStory.lines} onDone={() => endStory(shownStory)} /> : null}
     </div>
@@ -637,6 +712,7 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
   const totalStarCount = totalStars(p.cleared, p.stars);
   const lastWorld = OC_WORLDS.find((world) => !worldCleared(world.id, u.cleared))?.id ?? OC_WORLDS.length;
   const endless = endlessOpen(u.cleared);
+  const dailyBest = p.bests[`daily:${ocDayKey()}`];
   const raids = OC_RAIDS.some((raid) => raidOpen(raid, u.cleared));
   const next = nextLevelOf(u.cleared);
   const [asking, setAsking] = useState(false);
@@ -702,6 +778,21 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
         >
           <ArtFace label="Endless Siege" src={ART.endless} />
           <small>{endless ? (p.bestEndless ? `Best: wave ${p.bestEndless}` : " ") : "Locked"}</small>
+        </button>
+        <button
+          aria-label="Daily Siege"
+          className={styles.artMode}
+          disabled={!endless}
+          onClick={() => onPick({ s: "daily" })}
+          title={endless ? "Today's orders, the same for every player: loaned troops, one road, one horde. Compare your score on the tally board." : "Opens after the first world."}
+          type="button"
+        >
+          <ArtFace label="Daily Siege" src={ART.daily} />
+          <small>{endless ? (dailyBest ? `Today: wave ${dailyBest.wave}` : "New orders every day") : "Locked"}</small>
+        </button>
+        <button aria-label="Tally Board" className={styles.artMode} onClick={() => onPick({ s: "tally" })} title="The tally boards: Endless Siege, Daily Siege and Chaos Raids, today and all-time." type="button">
+          <ArtFace label="Tally Board" src={ART.tally} />
+          <small>Tally board</small>
         </button>
         <button
           aria-label="Chaos Raids"
@@ -993,7 +1084,13 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
   const saved = (progress.loadouts[level.id] ?? []).filter((kind) => units.includes(kind));
   const [hand, setHand] = useState<DefKind[]>(() => (saved.length ? saved.slice(0, slots) : defaultHand(units, slots)));
   const conveyor = level.kind === "conveyor";
-  const foes = level.kind === "endless" ? metEnemies(u.cleared).filter((kind) => !ENEMIES[kind]?.structure) : [...new Set(level.enemies)];
+  // (A world boss leads the list; it never comes to Endless.)
+  const foes = level.kind === "endless" ? metEnemies(u.cleared).filter((kind) => !ENEMIES[kind]?.structure && !ENEMIES[kind]?.boss) : [...new Set([...(level.warboss ? [level.warboss] : []), ...level.enemies])];
+  // Foes the player has not met in a cleared level yet (besides the featured one): flagged new, with their rule.
+  const metBefore = new Set(metEnemies(u.cleared.filter((id) => id !== level.id)));
+  const freshFoes = level.kind === "endless" ? [] : foes.filter((kind) => kind !== level.featured && !metBefore.has(kind));
+  // Foes that stop short to shoot: the scouts advise a counter (and say what happens if nothing answers them).
+  const standoffs = level.kind === "raid" ? [] : foes.filter((kind) => ENEMIES[kind]?.ranged && !ENEMIES[kind]!.siege);
   const book = spellbookOf(progress, u);
   const cleared = progress.cleared.includes(level.id);
   const met = progress.stars[level.id] ?? [];
@@ -1081,13 +1178,19 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
                     );
                   })}
                 </div>
-                <p className={styles.note}>Hybrids: drop one card on another unit on the field to fuse them — {HYBRIDS.map((kind) => `${recipeText(kind)} = ${DEFENDERS[kind]!.name}`).join("; ")}.</p>
+                <p className={styles.note}>
+                  Hybrids: drop one card on another unit on the field to fuse them — {HYBRIDS.filter((kind) => hybridKnown(kind, units)).map((kind) => `${recipeText(kind)} = ${DEFENDERS[kind]!.name}`).join("; ") || "recruit both halves of a pairing to learn one"}
+                  {HYBRIDS.some((kind) => !hybridKnown(kind, units)) ? ` (${HYBRIDS.filter((kind) => !hybridKnown(kind, units)).length} more to discover as you recruit)` : ""}.
+                  {" "}The same packet dropped on a Wood Elf Band grows the band instead.
+                </p>
               </>
             ) : null}
           </section>
         </div>
 
         <aside className={oc.prepSide}>
+          {/* (Endless marches every foe met: the panel lists the packets its horde brings, a Wake-Up Brew for met Nightmares.) */}
+          <FieldPanel hand={hand} level={level.kind === "endless" ? { ...level, enemies: foes } : level} />
           {level.boss ? (
             <section className={styles.panel}>
               <h2>Scouts report</h2>
@@ -1100,14 +1203,22 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
               <h2>Scouts report</h2>
               <div className={styles.foes}>
                 {foes.slice(0, 30).map((kind) => (
-                  <div className={`${styles.foe} ${kind === level.featured ? styles.foeNew : ""}`} key={kind} title={ENEMIES[kind]!.blurb}>
-                    {kind === level.featured ? <span className={styles.newTag}>New</span> : null}
+                  <div className={`${styles.foe} ${kind === level.featured || freshFoes.includes(kind) ? styles.foeNew : ""}`} key={kind} title={ENEMIES[kind]!.blurb}>
+                    {kind === level.featured || freshFoes.includes(kind) ? <span className={styles.newTag}>New</span> : null}
                     <AttackerArt kind={kind} size={56} />
                     {ENEMIES[kind]!.name}
                   </div>
                 ))}
               </div>
               {level.featured ? <p className={styles.note}>{ENEMIES[level.featured]!.name}: {ENEMIES[level.featured]!.blurb}</p> : null}
+              {freshFoes.slice(0, 3).map((kind) => <p className={styles.note} key={kind}>Also new — {ENEMIES[kind]!.name}: {ENEMIES[kind]!.blurb}</p>)}
+              {standoffs.length ? (
+                <p className={styles.note}>
+                  Counter advised — {standoffs.slice(0, 4).map((kind) => ENEMIES[kind]!.name).join(", ")}{standoffs.length > 4 ? " and more" : ""} {standoffs.length > 1 ? "stop" : "stops"} short to shoot: bring a shooter or a damage spell.
+                  {" "}Left unanswered once the last wave is out, {standoffs.length > 1 ? "they run" : "it runs"} out of ammunition within {Math.round(STANDOFF_NERVE / GW_TPS)} s and {standoffs.length > 1 ? "charge" : "charges"} in.
+                  {!conveyor && !hand.some((kind) => DEFENDERS[kind]?.shot) ? " Nothing in your hand shoots." : ""}
+                </p>
+              ) : null}
             </section>
           ) : null}
           {level.goals.length ? (
@@ -1259,7 +1370,7 @@ function Barracks({ progress, unlocks: u, update, onBack }: { progress: OcProgre
       <Greeting cleared={u.cleared} place="barracks" />
       <section className={styles.panel}>
         <div className={oc.barracks}>
-          {LAWFUL_CARDS.map((kind) => {
+          {LAWFUL_CARDS.filter((kind) => !DEFENDERS[kind]!.conveyor).map((kind) => {
             const def = DEFENDERS[kind]!;
             const open = u.units.includes(kind);
             const lv = progress.levels[kind] ?? 1;
@@ -1343,9 +1454,9 @@ function Camp({ progress, unlocks: u, update, onBack }: { progress: OcProgress; 
   );
 }
 
-type AlmanacTab = "lawful" | "hybrids" | "chaos" | "heroes" | "artifacts" | "spells";
+type AlmanacTab = "lawful" | "hybrids" | "chaos" | "field" | "heroes" | "artifacts" | "spells";
 
-const TAB_LABEL: Record<AlmanacTab, string> = { lawful: "Lawful", hybrids: "Hybrids", chaos: "Chaos", heroes: "Heroes", artifacts: "Artifacts", spells: "Spells" };
+const TAB_LABEL: Record<AlmanacTab, string> = { lawful: "Lawful", hybrids: "Hybrids", chaos: "Chaos", field: "Battlefield", heroes: "Heroes", artifacts: "Artifacts", spells: "Spells" };
 
 /** The story so far: every scene the player has reached, by chapter; click one to hear it again. */
 function Journal({ progress, onBack, onPlay }: { progress: OcProgress; onBack(): void; onPlay(entry: StoryLogEntry): void }) {
@@ -1392,7 +1503,7 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
       </div>
       <Greeting cleared={u.cleared} place="almanac" />
       <div className={styles.factions} role="tablist" aria-label="Almanac">
-        {(["lawful", "hybrids", "chaos", "heroes", "artifacts", "spells"] as const).map((id) => (
+        {(["lawful", "hybrids", "chaos", "field", "heroes", "artifacts", "spells"] as const).map((id) => (
           <button aria-selected={tab === id} className={`${styles.faction} ${tab === id ? styles.factionOn : ""}`} key={id} onClick={() => setTab(id)} role="tab" type="button">
             {id === "lawful" || id === "chaos" ? <img alt="" src={assetUrl(`/assets/order-chaos/icons/${id}.webp`)} /> : null}
             {TAB_LABEL[id]}
@@ -1403,7 +1514,8 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
         <div className={oc.barracks}>
           {tab === "lawful" ? LAWFUL_CARDS.map((kind) => {
             const def = DEFENDERS[kind]!;
-            const open = u.units.includes(kind);
+            // (A conveyor special is known once a caravan level carrying it is cleared.)
+            const open = u.units.includes(kind) || (def.conveyor === true && conveyorLevels(kind).some((level) => u.cleared.includes(level.id)));
             return (
               <div className={`${oc.unit} ${open ? "" : oc.unitLocked}`} key={kind}>
                 <DefenderArt kind={kind} size={64} />
@@ -1423,8 +1535,7 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
           }) : null}
           {tab === "hybrids" ? HYBRIDS.map((kind) => {
             const def = DEFENDERS[kind]!;
-            const recipe = FUSIONS.find((entry) => entry.result === kind);
-            const open = recipe !== undefined && recipe.a.some((id) => u.units.includes(id)) && recipe.b.some((id) => u.units.includes(id));
+            const open = hybridKnown(kind, u.units);
             return (
               <div className={`${oc.unit} ${open ? "" : oc.unitLocked}`} key={kind}>
                 <DefenderArt kind={kind} size={64} />
@@ -1504,6 +1615,7 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
             );
           }) : null}
         </div>
+        {tab === "field" ? <FieldAlmanac cleared={u.cleared} /> : null}
       </section>
     </>
   );

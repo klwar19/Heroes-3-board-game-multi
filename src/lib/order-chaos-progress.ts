@@ -1,7 +1,7 @@
 /**
  * Order & Chaos progress: cleared levels, stars (goals met), Seals and unit
- * levels, the chosen hero and artifacts, last seed packets, best Endless run
- * and broken raids. Browser storage only (the mode runs on the client); every
+ * levels, the chosen hero and artifacts, last seed packets, best Endless run,
+ * broken raids and tally-board bests. Browser storage only (the mode runs on the client); every
  * read and write tolerates blocked storage. Unlocks are derived from `cleared`.
  */
 
@@ -29,13 +29,53 @@ export type OcProgress = {
   testAll: boolean;
   /** Story scenes already shown ("prologue:v3", "world:3", "level:w1-2", "after:w1-2", "epilogue"). */
   seen: string[];
+  /** Tally-board bests kept on this device: "endless", "daily:YYYY-MM-DD", "raid:r3" (boards: ../engine/garrison/order-chaos/scores). */
+  bests: Record<string, OcLocalBest>;
 };
+
+/** A personal best on one tally board; `sent` once the online board has it. */
+export type OcLocalBest = { score: number; wave: number; kills: number; ticks: number; day: string; at: number; sent: boolean; hero?: string; setup?: string };
+
+/** Daily Siege bests are kept this many days. */
+const DAILY_BESTS_KEPT = 14;
 
 export const OC_PROGRESS_KEY = "order-chaos:progress:v1";
 const KEY = OC_PROGRESS_KEY;
 
 export function emptyOcProgress(): OcProgress {
-  return { cleared: [], stars: {}, seals: 0, levels: {}, hero: "catherine", artifacts: [], loadouts: {}, bestEndless: 0, raids: [], hired: [], spellbook: [], testAll: false, seen: [] };
+  return { cleared: [], stars: {}, seals: 0, levels: {}, hero: "catherine", artifacts: [], loadouts: {}, bestEndless: 0, raids: [], hired: [], spellbook: [], testAll: false, seen: [], bests: {} };
+}
+
+/** Parse stored bests, keeping only well-formed ones and the last DAILY_BESTS_KEPT days of Daily Siege. */
+function parseBests(value: unknown): Record<string, OcLocalBest> {
+  const out: Record<string, OcLocalBest> = {};
+  if (!value || typeof value !== "object") return out;
+  const num = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null);
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object" || !/^(endless|daily:\d{4}-\d{2}-\d{2}|raid:r\d{1,2})$/.test(key)) continue;
+    const b = raw as Partial<OcLocalBest>;
+    const score = num(b.score);
+    const wave = num(b.wave);
+    const kills = num(b.kills);
+    const ticks = num(b.ticks);
+    const at = num(b.at);
+    if (score === null || wave === null || kills === null || ticks === null || at === null || typeof b.day !== "string") continue;
+    out[key] = {
+      score, wave, kills, ticks, at, day: b.day, sent: b.sent === true,
+      ...(typeof b.hero === "string" ? { hero: b.hero } : {}),
+      ...(typeof b.setup === "string" ? { setup: b.setup } : {})
+    };
+  }
+  return pruneDailyBests(out);
+}
+
+/** Keep only the most recent DAILY_BESTS_KEPT Daily Siege days. */
+export function pruneDailyBests(bests: Record<string, OcLocalBest>): Record<string, OcLocalBest> {
+  const days = Object.keys(bests).filter((key) => key.startsWith("daily:")).sort().reverse();
+  if (days.length <= DAILY_BESTS_KEPT) return bests;
+  const out = { ...bests };
+  for (const key of days.slice(DAILY_BESTS_KEPT)) delete out[key];
+  return out;
 }
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
@@ -79,7 +119,8 @@ export function loadOcProgress(): OcProgress {
       hired: strings(p.hired).filter((kind) => OC_MERCENARIES.some((merc) => merc.kind === kind)),
       spellbook: strings(p.spellbook).filter((id): id is SpellId => OC_SPELLS.includes(id as SpellId)),
       testAll: p.testAll === true,
-      seen: Array.isArray(p.seen) ? strings(p.seen) : legacySeen(cleared)
+      seen: Array.isArray(p.seen) ? strings(p.seen) : legacySeen(cleared),
+      bests: parseBests(p.bests)
     };
   } catch {
     return emptyOcProgress();
