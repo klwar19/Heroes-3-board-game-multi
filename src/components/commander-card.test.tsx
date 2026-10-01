@@ -141,7 +141,7 @@ describe("CommanderCardFace — themed commander layouts", () => {
     expect(container.querySelector(".themedCommanderStats")).toBeNull();
     expect(container.querySelector(".themedCommanderAbility")).toBeNull();
     expect(getByText("Demon Ancestor")).toBeTruthy();
-    expect(getByText(/Blood Frenzy/)).toBeTruthy();
+    expect(getByText(/Blood Offering/)).toBeTruthy();
   });
 
   it("renders Ibuki's real commander card art and complete AP command panel", () => {

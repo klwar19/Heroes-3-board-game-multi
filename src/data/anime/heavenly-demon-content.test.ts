@@ -41,28 +41,44 @@ const FACTION = "heavenly_demon";
 
 /** The COMPLETE, literal per-side wired ability list for every unit (CLAUDE.md §2). */
 const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
-  "heavenly_demon.blood_disciples": { few: [], pack: ["heavenly-demon-blood-siphon"] },
-  "heavenly_demon.gu_witches": {
-    few: ["ignore-combat-penalties"],
-    pack: ["ignore-combat-penalties", "basilisk-paralysis"]
+  "heavenly_demon.blood_disciples": {
+    few: ["demon-blood-oath"],
+    pack: ["heavenly-demon-blood-siphon", "demon-blood-oath"]
   },
-  "heavenly_demon.shadow_wraiths": { few: [], pack: ["ignores-retaliation"] },
+  "heavenly_demon.gu_witches": {
+    few: ["ignore-combat-penalties", "ntv-potent-venom"],
+    pack: ["ignore-combat-penalties", "basilisk-paralysis", "ntv-potent-venom"]
+  },
+  "heavenly_demon.shadow_wraiths": {
+    few: ["demon-bloodscent"],
+    pack: ["ignores-retaliation", "demon-bloodscent"]
+  },
   "heavenly_demon.corpse_puppets": {
-    few: ["commander-defense-token"],
-    pack: ["commander-defense-token", "automaton-detonate-1"]
+    few: ["commander-defense-token", "demon-corpse-stitch"],
+    pack: ["commander-defense-token", "automaton-detonate-1", "demon-corpse-stitch"]
   },
   "heavenly_demon.bone_reavers": {
-    few: ["commander-charge"],
-    pack: ["commander-charge", "ignores-retaliation"]
+    few: ["commander-charge", "demon-reaper-toll"],
+    pack: ["commander-charge", "ignores-retaliation", "demon-reaper-toll"]
   },
   "heavenly_demon.ghost_king": {
-    few: ["ignore-combat-penalties"],
-    pack: ["ignore-all-combat-penalties", "wraith-heal-1"]
+    few: ["ignore-combat-penalties", "demon-soulfire-volley"],
+    pack: ["ignore-all-combat-penalties", "wraith-heal-1", "demon-soulfire-volley"]
   },
   "heavenly_demon.demon_avatar": {
-    few: ["heavenly-demon-reap"],
-    pack: ["heavenly-demon-reap", "titan-ignore-ongoing"]
+    few: ["heavenly-demon-reap", "demon-body"],
+    pack: ["heavenly-demon-reap", "demon-body", "titan-ignore-ongoing"]
   }
+};
+
+/** The 2026-09-23 Blood Essence unit arts (behaviour: src/engine/wuxia-rework.test.ts). */
+const WUXIA_ART_ABILITIES: Record<string, string> = {
+  "demon-blood-oath": "blood-oath",
+  "demon-bloodscent": "bloodscent",
+  "demon-corpse-stitch": "corpse-stitch",
+  "demon-reaper-toll": "reaper-toll",
+  "demon-soulfire-volley": "soulfire-volley",
+  "demon-body": "demon-body"
 };
 
 /** The two dedicated NEW engine arms this faction ships (behaviour: heavenly-demon-abilities.test.ts). */
@@ -106,20 +122,25 @@ describe("Heavenly Demon Palace — registration & roster shape", () => {
     expect(COMMANDER_SLUG_BY_FACTION[FACTION]).toBe("demon_ancestor");
   });
 
-  it("maps heavenly_demon → demon_ancestor with an implemented cast + Undead specialty + a resolving voice", () => {
+  it("maps heavenly_demon → demon_ancestor with an implemented Blood Offering cast + Ancestral Blood specialty + a resolving voice", () => {
     const commander = commanderDefinitions.demon_ancestor;
     expect(commander).toBeDefined();
     expect(commander.faction).toBe("Heavenly Demon Palace");
     expect(commander.original).toBe(true);
-    // Cast: REUSE the Dungeon Brute's Bloodlust arm (the Fuyuki Regent precedent).
-    expect(commander.cast.name).toBe("Blood Frenzy");
-    expect(commander.cast.abilityId).toBe("commander-cast-brute");
+    // Cast: the bespoke Blood Offering (2026-09-23 rework), no longer the
+    // Dungeon Brute's Bloodlust reuse. Behaviour: src/engine/wuxia-rework.test.ts.
+    expect(commander.cast.name).toBe("Blood Offering");
+    expect(commander.cast.abilityId).toBe("commander-cast-demon_ancestor");
+    expect(commander.cast.abilityId).not.toBe("commander-cast-brute");
     expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
+    expect(commander.cast.effect).toEqual({ kind: "blood-offering", essenceByPower: [2, 2, 3], attackByPower: [1, 1, 2] });
+    expect(commander.cast.targeting).toMatchObject({ side: "friendly", minRemainingHealth: 2, canTargetSelf: false });
     expect(commander.cast.tierText).toHaveLength(3);
-    // Specialty: REUSE the Soul Eater's `undead` id (specialty-keyed paralysis
-    // immunity, the Belfast first-aid precedent).
-    expect(commander.specialty.id).toBe("undead");
-    expect(commander.specialty.name).toBe("Undying Demon Body");
+    // Specialty: the bespoke Ancestral Blood Furnace (no longer the Soul
+    // Eater's `undead` paralysis immunity).
+    expect(commander.specialty.id).toBe("ancestral-blood");
+    expect(commander.specialty.id).not.toBe("undead");
+    expect(commander.specialty.name).toBe("Ancestral Blood Furnace");
     expect(fileExists(commander.cardImage)).toBe(true);
     // Every action resolves to a real clip (Dungeon Minotaur voice).
     for (const action of ["attack", "move", "defend", "hurt", "death"] as const) {
@@ -174,13 +195,27 @@ describe("Heavenly Demon Palace — EXACT per-side ability ids (Few/Pack diverge
     }
   });
 
-  it("demon_avatar Pack adds ongoing-immunity ON TOP of the reap the Few already has", () => {
+  it("demon_avatar Pack adds ongoing-immunity ON TOP of the reap + Demon Body the Few already has", () => {
     const few = coreUnitDefinitions["heavenly_demon.demon_avatar"].few!.abilities;
     const pack = coreUnitDefinitions["heavenly_demon.demon_avatar"].pack!.abilities;
-    expect(few).toEqual(["heavenly-demon-reap"]);
+    expect(few).toEqual(["heavenly-demon-reap", "demon-body"]);
     expect(pack).toContain("heavenly-demon-reap");
+    expect(pack).toContain("demon-body");
     expect(pack).toContain("titan-ignore-ongoing");
     expect(few).not.toContain("titan-ignore-ongoing");
+  });
+
+  it("every Blood Essence unit art is an implemented WUXIA_ART arm carried on both sides of its unit", () => {
+    for (const [id, art] of Object.entries(WUXIA_ART_ABILITIES)) {
+      const ability = unitAbilities[id];
+      expect(ability?.implementationStatus, id).toBe("implemented");
+      expect(ability?.effect, id).toEqual({ type: "WUXIA_ART", art });
+      const carriers = coreFactionDefinitions[FACTION].units.filter(
+        (unitId) =>
+          coreUnitDefinitions[unitId].few!.abilities.includes(id) && coreUnitDefinitions[unitId].pack!.abilities.includes(id)
+      );
+      expect(carriers, `${id} carried Few+Pack by exactly one unit`).toHaveLength(1);
+    }
   });
 });
 
@@ -247,38 +282,61 @@ describe("Heavenly Demon Palace — heroes & specialties", () => {
     }
   });
 
-  it("might heroes (Xuedao/Guiyan/Xuanming) carry the redesigned distinct specialty sets", () => {
-    // 2026-08-25 specialty redesign: the three might heroes dropped the generic
-    // unit-buff trio for distinct rethemedSpecialty clones (mechanics pinned
-    // clone↔source in anime-specialty-redesign.test.ts).
+  it("might heroes (Xuedao/Guiyan/Xuanming) carry the bespoke Blood Essence specialty sets", () => {
+    // 2026-09-23 wuxia rework: the three might heroes moved off their
+    // rethemedSpecialty clones onto bespoke Blood Essence cards
+    // (src/data/anime/wuxia-specialties.ts; identity pinned in
+    // anime-specialty-redesign.test.ts).
     for (const [heroId, newName] of [
-      ["xuedao", "Blood Ripple"],
-      ["guiyan", "Ghostfire Coil"],
+      ["xuedao", "Blood Path Sabre"],
+      ["guiyan", "Ghostfire"],
       ["xuanming", "Legion of Bones"]
     ] as const) {
       for (const level of [1, 4, 6] as const) {
         const card = cardLibrary[`specialty.${heroId}.${level}`];
-        expect(card?.name, `${heroId} ${level}`).toMatch(new RegExp(`^${newName} `));
+        expect(card?.name, `${heroId} ${level}`).toBe(`${newName} ${({ 1: "I", 4: "IV", 6: "VI" } as const)[level]}`);
         expect(card?.implementationStatus, `${heroId} ${level}`).toBe("implemented");
         expect(JSON.stringify(card?.effect), `${heroId} ${level} is not a unit-doubling buff`).not.toContain(
           "doubleForUnitName"
         );
+        // Every set feeds or spends the town's Blood Essence meter.
+        expect(JSON.stringify(card?.effect), `${heroId} ${level} uses Blood Essence`).toContain("bloodEssence");
+      }
+    }
+    // Xuedao / Guiyan: a plain option plus an Essence-paid stronger option (1/1/2 Essence).
+    for (const heroId of ["xuedao", "guiyan"] as const) {
+      for (const [level, paidCost] of [[1, 1], [4, 1], [6, 2]] as const) {
+        const options = (cardLibrary[`specialty.${heroId}.${level}`].effect as { options?: Array<{ cost?: unknown }> }).options ?? [];
+        expect(options).toHaveLength(2);
+        expect(options[0]?.cost).toBeUndefined();
+        expect(options[1]?.cost).toEqual({ cultivation: { bloodEssence: paidCost } });
       }
     }
   });
 
-  it("Yaoji (Blood Renewal) & Molian (Corpse Suture) are faction-agnostic medic clones, no unit doubling", () => {
-    for (const [heroId, name] of [
-      ["yaoji", "Blood Renewal"],
-      ["molian", "Corpse Suture"]
-    ] as const) {
-      for (const level of [1, 4, 6] as const) {
+  it("Yaoji (Blood Alchemy) & Molian (Corpse Weaving) are bespoke Blood Essence medics, not Gem/Rion clones", () => {
+    const expected = {
+      yaoji: { name: "Blood Alchemy", type: "HEAL_DAMAGE", plain: [1, 2, 2], paid: [3, 3, 5] },
+      molian: { name: "Corpse Weaving", type: "ADD_UNIT_MAX_HEALTH", plain: [1, 2, 2], paid: [2, 3, 4] }
+    } as const;
+    for (const [heroId, spec] of Object.entries(expected)) {
+      for (const [index, level] of ([1, 4, 6] as const).entries()) {
         const card = cardLibrary[`specialty.${heroId}.${level}`];
-        expect(card?.name).toMatch(new RegExp(`^${name} `));
+        expect(card?.name).toBe(`${spec.name} ${({ 1: "I", 4: "IV", 6: "VI" } as const)[level]}`);
         expect(card?.implementationStatus).toBe("implemented");
-        // A medic clone carries NO unit-doubling clause (the dead-clause trap) —
-        // its whole serialized card never names a `doubleForUnitName`.
+        expect(card?.target).toEqual({ type: "friendly-unit" });
+        const options =
+          (card.effect as { options?: Array<{ cost?: unknown; effect?: { type?: string; amount?: number } }> }).options ?? [];
+        expect(options).toHaveLength(2);
+        expect(options[0]?.effect).toMatchObject({ type: spec.type, amount: spec.plain[index] });
+        expect(options[0]?.cost).toBeUndefined();
+        expect(options[1]?.effect).toMatchObject({ type: spec.type, amount: spec.paid[index] });
+        expect(options[1]?.cost).toEqual({ cultivation: { bloodEssence: level === 6 ? 2 : 1 } });
+        // No unit-doubling clause, and NOT a mechanical copy of the retired medic sources.
         expect(JSON.stringify(card), `${heroId} L${level}`).not.toContain("doubleForUnitName");
+        for (const retired of ["gem", "rion"]) {
+          expect(card.effect).not.toEqual(cardLibrary[`specialty.${retired}.${level}`]?.effect);
+        }
       }
     }
   });
@@ -446,22 +504,22 @@ type RankPin = "stats" | readonly string[];
  */
 const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, RankPin]> = {
   "heavenly_demon.blood_disciples": [["ntv-bone-wall"], ["ntv-potent-venom"], ["ctv-blood-price"], ["town-zealot-loss"]],
-  "heavenly_demon.gu_witches": ["stats", ["veteran-storm-link"], ["town-sorceress-artifact-tax"], ["ntv-bewitching-bolt"]],
-  "heavenly_demon.shadow_wraiths": [["town-seaman-survival-gold"], ["veteran-ranged-fire-shield"], ["ntv-stolen-spark"], ["ntv-searing-passage"]],
-  "heavenly_demon.corpse_puppets": [["veteran-magma-hunter"], ["ntv-putrid-grasp"], ["ntv-deep-roots"], "stats"],
-  "heavenly_demon.bone_reavers": [["ntv-marsh-scavenger"], ["wog-nightmare-fear"], ["veteran-magic-dispel"], ["ntv-infernal-command"]],
-  "heavenly_demon.ghost_king": [["town-sorceress-artifact-tax"], ["ntv-return-fire"], ["ntv-death-cloud"], ["ctv-rule-unravel"]],
+  "heavenly_demon.gu_witches": ["stats", ["ntv-putrid-grasp"], ["demon-bloodscent"], ["ntv-bewitching-bolt"]],
+  "heavenly_demon.shadow_wraiths": [["town-seaman-survival-gold"], ["demon-reaper-toll"], ["ntv-stolen-spark"], ["ntv-searing-passage"]],
+  "heavenly_demon.corpse_puppets": [["demon-blood-oath"], ["ntv-putrid-grasp"], ["ntv-deep-roots"], "stats"],
+  "heavenly_demon.bone_reavers": [["ntv-marsh-scavenger"], ["wog-nightmare-fear"], ["demon-bloodscent"], ["ntv-infernal-command"]],
+  "heavenly_demon.ghost_king": [["demon-corpse-stitch"], ["ntv-return-fire"], ["ntv-death-cloud"], ["ctv-rule-unravel"]],
   "heavenly_demon.demon_avatar": [["veteran-fear-aura"], ["ntv-infernal-command"], ["town-devil-draw"], "stats"]
 };
 
 /** The ability each ability-rank actually GRANTS at max rank. */
 const EXPECTED_GRANTS: Record<string, readonly string[]> = {
   "heavenly_demon.blood_disciples": ["ntv-bone-wall", "ntv-potent-venom", "ctv-blood-price", "town-zealot-loss"],
-  "heavenly_demon.gu_witches": ["veteran-storm-link", "town-sorceress-artifact-tax", "ntv-bewitching-bolt"],
-  "heavenly_demon.shadow_wraiths": ["town-seaman-survival-gold", "veteran-ranged-fire-shield", "ntv-stolen-spark", "ntv-searing-passage"],
-  "heavenly_demon.corpse_puppets": ["veteran-magma-hunter", "ntv-putrid-grasp", "ntv-deep-roots"],
-  "heavenly_demon.bone_reavers": ["ntv-marsh-scavenger", "wog-nightmare-fear", "veteran-magic-dispel", "ntv-infernal-command"],
-  "heavenly_demon.ghost_king": ["town-sorceress-artifact-tax", "ntv-return-fire", "ntv-death-cloud", "ctv-rule-unravel"],
+  "heavenly_demon.gu_witches": ["ntv-putrid-grasp", "demon-bloodscent", "ntv-bewitching-bolt"],
+  "heavenly_demon.shadow_wraiths": ["town-seaman-survival-gold", "demon-reaper-toll", "ntv-stolen-spark", "ntv-searing-passage"],
+  "heavenly_demon.corpse_puppets": ["demon-blood-oath", "ntv-putrid-grasp", "ntv-deep-roots"],
+  "heavenly_demon.bone_reavers": ["ntv-marsh-scavenger", "wog-nightmare-fear", "demon-bloodscent", "ntv-infernal-command"],
+  "heavenly_demon.ghost_king": ["demon-corpse-stitch", "ntv-return-fire", "ntv-death-cloud", "ctv-rule-unravel"],
   "heavenly_demon.demon_avatar": ["veteran-fear-aura", "ntv-infernal-command", "town-devil-draw"]
 };
 
@@ -544,7 +602,7 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
   // BEHAVIOURAL (effect-level): the schedules actually FOLD in combat — ability
   // ranks grant the resolved ids and a stats rank moves real stats. Fails if
   // withRankAbilities / the schedule wiring is removed, OR if a schedule moves.
-  it("Ghost King folds in combat: R1/R2 grant abilities and move no stat; Gu Witches' R1 stats rank adds +2 HP/+1 Initiative — below-threshold CONTROLs grant neither", () => {
+  it("Ghost King folds in combat: R1 grants Corpse Stitching (+1 Initiative) and R2 an ability, Attack unmoved; Gu Witches' R1 stats rank adds +2 HP/+1 Initiative — below-threshold CONTROLs grant neither", () => {
     const build = (unitDefId: string, experience?: number): CombatUnitState =>
       makeCombatUnitFromArmy(
         { id: "hd_army", unitDefId, side: "few", ...(experience ? { experience } : {}) },
@@ -562,9 +620,11 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
     expect(r1.unitRank).toBe(1);
     expect(r2.unitRank).toBe(2);
 
-    // R1 and R2 are ABILITY ranks: the ids land and no stat moves.
+    // R1 is a hybrid rank (Corpse Stitching + 1 Initiative), R2 an ABILITY rank:
+    // the ids land and Attack never moves.
     expect(plain.attack).toBe(coreUnitDefinitions["heavenly_demon.ghost_king"].few!.attack);
-    expect(r1.abilities).toContain("town-sorceress-artifact-tax");
+    expect(r1.abilities).toContain("demon-corpse-stitch");
+    expect(r1.initiative).toBe(plain.initiative + 1);
     expect(r1.attack).toBe(plain.attack);
     expect(r2.abilities).toContain("ntv-return-fire");
     expect(r2.attack).toBe(plain.attack);
@@ -572,7 +632,7 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
     // CONTROLs: below each threshold there is NO grant, and the plain card
     // (no XP) carries neither ability.
     expect(r1.abilities).not.toContain("ntv-return-fire");
-    expect(plain.abilities).not.toContain("town-sorceress-artifact-tax");
+    expect(plain.abilities).not.toContain("demon-corpse-stitch");
     expect(plain.abilities).not.toContain("ntv-return-fire");
     expect(plain.unitRank ?? 0).toBe(0);
 
@@ -584,7 +644,7 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
     expect(witchR1.unitRank).toBe(1);
     expect(witchR1.maxHealth).toBe(witch.maxHealth + 2);
     expect(witchR1.initiative).toBe(witch.initiative + 1);
-    expect(witchR1.abilities).not.toContain("veteran-storm-link"); // R2's grant
+    expect(witchR1.abilities).not.toContain("ntv-putrid-grasp"); // R2's grant
     expect(witchBelow.maxHealth).toBe(witch.maxHealth);
     expect(witchBelow.initiative).toBe(witch.initiative);
   });

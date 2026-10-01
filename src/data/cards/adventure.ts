@@ -1,5 +1,6 @@
 import type { CardLibrary, EffectDurationDefinition, UnitType } from "@/engine/state";
 import { imperiumSpecialtyCards } from "@/data/warhammer/imperium-specialties";
+import { wuxiaSpecialtyCards } from "@/data/anime/wuxia-specialties";
 
 const wikiCredit =
   "Card text from the fan wiki ability/hero pages; verify against official owned components before full content import.";
@@ -7822,32 +7823,6 @@ adventureCards["specialty.sakura_matou.6"] = rethemedSpecialty(
   6,
   "Gentle Resolve",
 );
-// Lingxi (Azure Breeze, magic): Gem's generic First Aid set (Tent + heals).
-// Art-less on purpose — the native SpecialtyCard draws her portrait + the
-// dedicated specialty-card medallion (`icon-first_aid.webp`), not Gem's baked
-// First Aid scan. Engine wiring is identical to Gem (tests on gem cover the
-// effect; lingxi is pinned for art/identity in specialty-card.test.tsx).
-adventureCards["specialty.lingxi.1"] = rethemedSpecialty(
-  adventureCards["specialty.gem.1"],
-  "gem",
-  "lingxi",
-  1,
-  "Healing Arts",
-);
-adventureCards["specialty.lingxi.4"] = rethemedSpecialty(
-  adventureCards["specialty.gem.4"],
-  "gem",
-  "lingxi",
-  4,
-  "Healing Arts",
-);
-adventureCards["specialty.lingxi.6"] = rethemedSpecialty(
-  adventureCards["specialty.gem.6"],
-  "gem",
-  "lingxi",
-  6,
-  "Healing Arts",
-);
 // Tsunade (Hidden Leaf, magic): Gem's generic First Aid set (Tent + heals), the
 // faction-agnostic medic — no unit doubling that could go dead. Distinct id +
 // name ("Hundred Healings") from Lingxi's gem clone, so no collision. Art-less:
@@ -7876,78 +7851,6 @@ adventureCards["specialty.tsunade.6"] = rethemedSpecialty(
 // (Akashi and Sirius were Gem / Rion medic CLONES until 2026-09-05. They now own
 // the BESPOKE "Repair Dock" and "Royal Maid's Cover" sets defined with the other
 // Azur Lane specialties above, so nothing is assigned for them here.)
-// Yaoji (Heavenly Demon, magic): Gem's generic First Aid set (Tent + heals), the
-// faction-agnostic medic — no unit doubling that could go dead. Distinct id +
-// name ("Blood Renewal") from every other gem clone, so no collision. Art-less:
-// the native SpecialtyCard draws her portrait + the First-Aid medallion.
-adventureCards["specialty.yaoji.1"] = rethemedSpecialty(
-  adventureCards["specialty.gem.1"],
-  "gem",
-  "yaoji",
-  1,
-  "Blood Renewal",
-);
-adventureCards["specialty.yaoji.4"] = rethemedSpecialty(
-  adventureCards["specialty.gem.4"],
-  "gem",
-  "yaoji",
-  4,
-  "Blood Renewal",
-);
-adventureCards["specialty.yaoji.6"] = rethemedSpecialty(
-  adventureCards["specialty.gem.6"],
-  "gem",
-  "yaoji",
-  6,
-  "Blood Renewal",
-);
-// Molian (Heavenly Demon, magic): Rion's generic heal/cleanse-draw set (the aoko /
-// sirius precedent — a faction-agnostic medic with no unit doubling that could go
-// dead). Distinct id + name ("Corpse Suture") from every other rion clone, so no
-// collision. Art-less: the native SpecialtyCard draws her portrait + medallion.
-adventureCards["specialty.molian.1"] = rethemedSpecialty(
-  adventureCards["specialty.rion.1"],
-  "rion",
-  "molian",
-  1,
-  "Corpse Suture",
-);
-adventureCards["specialty.molian.4"] = rethemedSpecialty(
-  adventureCards["specialty.rion.4"],
-  "rion",
-  "molian",
-  4,
-  "Corpse Suture",
-);
-adventureCards["specialty.molian.6"] = rethemedSpecialty(
-  adventureCards["specialty.rion.6"],
-  "rion",
-  "molian",
-  6,
-  "Corpse Suture",
-);
-for (const level of [1, 4, 6] as const) {
-  adventureCards[`specialty.luohun.${level}`] = withInnateHeroRule(
-    rethemedSpecialty(
-      adventureCards[`specialty.gem.${level}`],
-      "gem",
-      "luohun",
-      level,
-      "Soul Shepherd",
-    ),
-    "Innate — the Ten Thousand Souls Banner's Bound Soul has 1 Defense, 3 Health, and remains through combat round 2.",
-  );
-  adventureCards[`specialty.shiyan.${level}`] = withInnateHeroRule(
-    rethemedSpecialty(
-      adventureCards[`specialty.rion.${level}`],
-      "rion",
-      "shiyan",
-      level,
-      "Corpse-Furnace Sutra",
-    ),
-    "Innate — the first real Heavenly Demon casualty each combat round yields exactly 1 Blood Essence; Shiyan cannot increase that yield.",
-  );
-}
 
 // ---------------------------------------------------------------------------
 // ANIME SPECIALTY REDESIGN (2026-08-25, USER REQUEST): the Fuyuki / Hidden Leaf
@@ -8037,115 +7940,15 @@ for (const level of [1, 4, 6] as const) {
     level,
     "Toad Oil Flame Bomb",
   );
-  // Qingyun (Azure Breeze, might) — Sword Qi Tempest: discard-fueled sword-wave
-  // bursts (Xyron's Inferno set) beside his innate Sword Intent meter.
-  adventureCards[`specialty.qingyun.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.xyron.${level}`],
-    "xyron",
-    "qingyun",
-    level,
-    "Sword Qi Tempest",
-  );
-  // Jianxu (Azure Breeze, might) — Seven-Star Trap Array: an enemy-wide snare
-  // aura, a warding heal, an array eruption (Miku's Voice-of-Angel wiring),
-  // plus his kept Innate array rule.
-  const jianxuCard = rethemedSpecialty(
-    adventureCards[`specialty.miku.${level}`],
-    "miku",
-    "jianxu",
-    level,
-    "Seven-Star Trap Array",
-  );
-  jianxuCard.tags = jianxuCard.tags?.map((tag) =>
-    tag === "voice-of-angel" ? "seven-star-trap-array" : tag,
-  );
-  const jianxuEffect = jianxuCard.effect as { name?: string } | undefined;
-  if (jianxuEffect && typeof jianxuEffect.name === "string") {
-    jianxuEffect.name = "Seven-Star Trap Array";
-  }
-  adventureCards[`specialty.jianxu.${level}`] = withInnateHeroRule(
-    jianxuCard,
-    "Innate — Seven-Star Array spends 1 Sect Qi for +1 Attack only; it never stacks with Sword Array or another Qi bonus.",
-  );
-  // Yulian (Azure Breeze, might) — Jade Body Arts: tempered-jade defense tokens
-  // for the whole line (Merist's Stone Skin set), plus his kept Innate Shared
-  // Ward rule.
-  adventureCards[`specialty.yulian.${level}`] = withInnateHeroRule(
-    rethemedSpecialty(
-      adventureCards[`specialty.merist.${level}`],
-      "merist",
-      "yulian",
-      level,
-      "Jade Body Arts",
-    ),
-    "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage.",
-  );
-  // Xuedao (Heavenly Demon, might) — Blood Ripple: tier-sweeping life-drain
-  // waves (Septienna's Death Ripple set).
-  adventureCards[`specialty.xuedao.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.septienna.${level}`],
-    "septienna",
-    "xuedao",
-    level,
-    "Blood Ripple",
-  );
-  // Guiyan (Heavenly Demon, might) — Ghostfire Coil: soulfire bursting around a
-  // chosen space (Glacius's Frost Ring set; its three combatAnytime faces join
-  // COMBAT_ANYTIME_FACES).
-  adventureCards[`specialty.guiyan.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.glacius.${level}`],
-    "glacius",
-    "guiyan",
-    level,
-    "Ghostfire Coil",
-  );
-  // Xuanming (Heavenly Demon, might) — Legion of Bones: retain the original
-  // recruit/draw I card while Oidana I alone gains the Neutral-deck scry.
-  // IV and VI continue to share Oidana's later Diplomacy mechanics.
-  const xuanmingCard = rethemedSpecialty(
-    adventureCards[`specialty.oidana.${level}`],
-    "oidana",
-    "xuanming",
-    level,
-    "Legion of Bones",
-  );
-  if (level === 1) {
-    xuanmingCard.tags = [
-      "hero-specialty", "instant", "xuanming", "diplomacy",
-      "Instant: draw 1 card. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost).",
-    ];
-    xuanmingCard.effect = {
-      type: "CHOOSE_ONE",
-      options: [
-        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
-        {
-          label: "Raise the fallen: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)",
-          mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT" },
-        },
-      ],
-    };
-    xuanmingCard.source = {
-      product: "Anime Mod — Ninefold Realms × Otherworld Gate",
-      credit: "Original hero specialty; retains its existing Diplomacy recruit and draw rules.",
-    };
-  }
-  const xuanmingEffect = xuanmingCard.effect as
-    | { options?: Array<{ label?: string; effect?: { name?: string } }> }
-    | undefined;
-  for (const option of xuanmingEffect?.options ?? []) {
-    if (option.label?.startsWith("Diplomacy:")) {
-      option.label = option.label.replace("Diplomacy:", "Raise the fallen:");
-    }
-    if (option.effect?.name === "Diplomatic Rally") {
-      option.effect.name = "Legion of Bones";
-    }
-  }
-  adventureCards[`specialty.xuanming.${level}`] = xuanmingCard;
 }
 
 // Twelve original, engine-backed Imperium specialties (three per Hero).
 Object.assign(adventureCards, imperiumSpecialtyCards);
+
+// Wuxia towns (Azure Breeze / Heavenly Demon): eleven bespoke, meter-driven
+// specialty sets (2026-09-23 rework) replace the retired rethemed clones.
+// Engine: src/engine/wuxia-factions.ts; cards: src/data/anime/wuxia-specialties.ts.
+Object.assign(adventureCards, wuxiaSpecialtyCards);
 
 // ===========================================================================
 // LITTLE BUSTERS SPECIALTY SETS (2026-09-06 rebalance)

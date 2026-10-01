@@ -11,12 +11,17 @@ import {
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import { SPECIALTY_ICON_BY_HERO } from "@/components/specialty-card-data";
+import { WUXIA_SPECIALTY_HEROES, wuxiaSpecialtyCards } from "@/data/anime/wuxia-specialties";
 
 // ---------------------------------------------------------------------------
 // ANIME SPECIALTY REDESIGN (2026-08-25) — the Fuyuki / Hidden Leaf / Azure
 // Breeze / Heavenly Demon MIGHT heroes dropped the generic unit-buff trio for
 // distinct sets, each a rethemedSpecialty clone of a shipped, behaviour-tested
 // source. This file pins:
+// The Azure Breeze / Heavenly Demon heroes were later (2026-09-23) moved OFF
+// the clones onto bespoke Sect Qi / Blood Essence cards
+// (src/data/anime/wuxia-specialties.ts); their pins below are identity pins
+// for those bespoke cards instead of clone ↔ source identity.
 //   (1) clone ↔ source MECHANICAL identity (effects normalized over the
 //       display-only `label`/`name` strings, plus timing/trigger/target) — the
 //       behaviour tests on each source therefore cover the clone, and a later
@@ -41,30 +46,32 @@ const REDESIGNS: Record<string, [string, string]> = {
   sasuke: ["solmyr", "Chidori Stream"],
   kakashi_hatake: ["adelaide", "Raikiri · Sharingan"],
   shikamaru_nara: ["zilare", "Shadow Possession"],
-  jiraiya: ["luna", "Toad Oil Flame Bomb"],
-  qingyun: ["xyron", "Sword Qi Tempest"],
-  jianxu: ["miku", "Seven-Star Trap Array"],
-  yulian: ["merist", "Jade Body Arts"],
-  xuedao: ["septienna", "Blood Ripple"],
-  guiyan: ["glacius", "Ghostfire Coil"],
-  xuanming: ["oidana", "Legion of Bones"]
+  jiraiya: ["luna", "Toad Oil Flame Bomb"]
 };
 
-/**
- * DELIBERATE level divergences from the source card (the card data documents
- * each one). 2026-09-23 Bulwark redesign: Oidana I became the Neutral-deck
- * scry (OIDANA_NEUTRAL_SCRY) while Xuanming I "retain[s] the original
- * recruit/draw I card" — the pre-redesign Diplomacy I mechanics, pinned here
- * verbatim so the clone still cannot drift silently. IV and VI stay clones.
- */
-const RETAINED_LEVEL_EFFECTS: Record<string, unknown> = {
-  "xuanming.1": {
-    type: "CHOOSE_ONE",
-    options: [
-      { effect: { type: "DRAW_CARDS", amount: 1 } },
-      { mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
-    ]
-  }
+/** Wuxia hero slug → bespoke specialty name (wuxia-specialties.ts). */
+const WUXIA_BESPOKE: Record<string, string> = {
+  qingyun: "Flying Sword Arts",
+  lingxi: "Formation Mending",
+  jianxu: "Seven-Star Sword Array",
+  yulian: "Jade Body Arts",
+  xuedao: "Blood Path Sabre",
+  guiyan: "Ghostfire",
+  xuanming: "Legion of Bones",
+  yaoji: "Blood Alchemy",
+  molian: "Corpse Weaving",
+  luohun: "Soul Shepherd",
+  shiyan: "Corpse-Furnace Sutra"
+};
+
+/** The retired clone sources — a bespoke card must NOT match these any more. */
+const RETIRED_CLONE_SOURCE: Record<string, string> = {
+  qingyun: "xyron",
+  jianxu: "miku",
+  yulian: "merist",
+  xuedao: "septienna",
+  guiyan: "glacius",
+  xuanming: "oidana"
 };
 
 /** Strip the display-only strings so mechanics compare exactly. */
@@ -98,10 +105,8 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
       // Art-less on purpose: the native renderer draws the hero's own portrait.
       expect(clone.assets?.cardImage, `${heroSlug} ${level} must stay art-less`).toBeUndefined();
       // The MECHANICS are byte-identical to the source (display strings aside),
-      // so every behaviour test on the source card covers this clone — except a
-      // documented retained level, pinned to its own exact mechanics instead.
-      const retained = RETAINED_LEVEL_EFFECTS[`${heroSlug}.${level}`];
-      expect(normalize(clone.effect)).toEqual(retained ?? normalize(source.effect));
+      // so every behaviour test on the source card covers this clone.
+      expect(normalize(clone.effect)).toEqual(normalize(source.effect));
       expect(clone.timing).toBe(source.timing);
       expect(clone.phaseLimit ?? null).toEqual(source.phaseLimit ?? null);
       expect(clone.trigger ?? null).toEqual(source.trigger ?? null);
@@ -114,8 +119,37 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
     }
   });
 
-  it("Jianxu / Yulian keep their engine-backed Innate line on every level", () => {
-    for (const heroSlug of ["jianxu", "yulian"] as const) {
+  it("every wuxia hero carries its bespoke, library-wired specialty (no clone of the retired source)", () => {
+    expect([...WUXIA_SPECIALTY_HEROES].sort()).toEqual(Object.keys(WUXIA_BESPOKE).sort());
+    for (const [heroSlug, name] of Object.entries(WUXIA_BESPOKE)) {
+      for (const level of LEVELS) {
+        const id = `specialty.${heroSlug}.${level}`;
+        const card = cardLibrary[id];
+        expect(card, id).toBeDefined();
+        // The library serves the bespoke card verbatim.
+        expect(card).toEqual(wuxiaSpecialtyCards[id]);
+        expect(card.kind).toBe("hero-specialty");
+        expect(card.implementationStatus).toBe("implemented");
+        expect(card.name).toBe(`${name} ${ROMAN[level]}`);
+        expect(card.effect.type).toBe("CHOOSE_ONE");
+        expect(card.assets?.cardImage, `${heroSlug} ${level} must stay art-less`).toBeUndefined();
+        expect(card.tags).toContain(heroSlug);
+        expect(JSON.stringify(card.effect)).not.toContain("doubleForUnitName");
+        const retired = RETIRED_CLONE_SOURCE[heroSlug];
+        if (retired) {
+          // CONTROL: the retired clone source still exists, and the bespoke
+          // card is no longer its mechanical copy.
+          const source = cardLibrary[`specialty.${retired}.${level}`];
+          expect(source, retired).toBeDefined();
+          expect(normalize(card.effect)).not.toEqual(normalize(source.effect));
+          expect(card.tags).not.toContain(retired);
+        }
+      }
+    }
+  });
+
+  it("Jianxu / Yulian / Luohun / Shiyan keep their engine-backed Innate line on every level", () => {
+    for (const heroSlug of ["jianxu", "yulian", "luohun", "shiyan"] as const) {
       for (const level of LEVELS) {
         const prose = (cardLibrary[`specialty.${heroSlug}.${level}`]?.tags ?? []).filter((tag) => /\s/u.test(tag));
         expect(prose.some((tag) => tag.includes("Innate")), `${heroSlug} ${level}`).toBe(true);
@@ -123,65 +157,71 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
     }
   });
 
-  it("pins the nerfed Jianxu and Shiyan Innate descriptions on every level", () => {
+  it("pins the reworked Jianxu and Shiyan Innate descriptions on every level", () => {
     for (const level of LEVELS) {
       const jianxu = (cardLibrary[`specialty.jianxu.${level}`]?.tags ?? []).join(" ");
-      expect(jianxu).toContain("+1 Attack only");
-      expect(jianxu).toContain("never stacks");
-      expect(jianxu).not.toContain("+2 instead");
+      expect(jianxu).toContain("Seven-Star Array");
+      expect(jianxu).toContain("beside 2 or more allies, it gains +1 more Attack");
+      expect(jianxu).not.toContain("+1 Attack only");
+      expect(jianxu).not.toContain("never stacks");
 
       const shiyan = (cardLibrary[`specialty.shiyan.${level}`]?.tags ?? []).join(" ");
-      expect(shiyan).toContain("exactly 1 Blood Essence");
-      expect(shiyan).not.toContain("yields 2");
+      expect(shiyan).toContain("without the once-per-round limit");
+      expect(shiyan).toContain("each unit still feeds it once per combat");
+      expect(shiyan).not.toContain("exactly 1 Blood Essence");
     }
   });
 
-  it("Xuanming's labels are re-flavoured while the effects stay Diplomacy's, verbatim", () => {
+  it("Xuanming's Legion of Bones is a Blood Harvest art, no longer Diplomacy's clone", () => {
+    const expected = {
+      1: { gain: 1, harvestsPerRound: 2, harvestHeal: undefined },
+      4: { gain: 1, harvestsPerRound: 2, harvestHeal: 1 },
+      6: { gain: 2, harvestsPerRound: 99, harvestHeal: 1 }
+    } as const;
     for (const level of LEVELS) {
-      const clone = cardLibrary[`specialty.xuanming.${level}`];
-      const source = cardLibrary[`specialty.oidana.${level}`];
-      if (RETAINED_LEVEL_EFFECTS[`xuanming.${level}`]) {
-        // Xuanming I keeps the pre-redesign Diplomacy I card (Oidana I is now
-        // the scry): its Diplomacy side still wears the re-flavoured label.
-        const labels = ((clone.effect as { options?: Array<{ label?: string }> }).options ?? []).map(
-          (option) => option.label
-        );
-        expect(labels).toEqual([
-          "Draw 1 card",
-          "Raise the fallen: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)"
-        ]);
-        continue;
-      }
-      const cloneOptions = (clone.effect as { options?: Array<{ label?: string; effect?: unknown }> }).options ?? [];
-      const sourceOptions = (source.effect as { options?: Array<{ label?: string; effect?: unknown }> }).options ?? [];
-      expect(cloneOptions.length).toBe(sourceOptions.length);
-      for (const [index, option] of cloneOptions.entries()) {
-        const sourceLabel = sourceOptions[index]?.label ?? "";
-        if (sourceLabel.startsWith("Diplomacy:")) {
-          expect(option.label).toBe(sourceLabel.replace("Diplomacy:", "Raise the fallen:"));
-        } else {
-          expect(option.label).toBe(sourceLabel);
-        }
-        expect(normalize(option.effect)).toEqual(normalize(sourceOptions[index]?.effect));
-      }
+      const card = cardLibrary[`specialty.xuanming.${level}`];
+      expect(card.timing).toBe("combat");
+      const options =
+        (card.effect as {
+          options?: Array<{ combatOnly?: boolean; cultivationGain?: { bloodEssence?: number }; effect?: Record<string, unknown> }>;
+        }).options ?? [];
+      expect(options).toHaveLength(1);
+      expect(options[0]?.combatOnly).toBe(true);
+      expect(options[0]?.cultivationGain).toEqual({ bloodEssence: expected[level].gain });
+      expect(options[0]?.effect).toMatchObject({
+        type: "WUXIA_ART_CARD",
+        art: "legion-harvest",
+        harvestsPerRound: expected[level].harvestsPerRound
+      });
+      expect(options[0]?.effect?.harvestHeal).toBe(expected[level].harvestHeal);
+      // The retired Diplomacy / neutral-attack-buff mechanics are gone.
+      expect(JSON.stringify(card.effect)).not.toContain("CREATE_VARIANT_ATTACK_BUFF");
+      expect(JSON.stringify(card.effect)).not.toContain("Diplomacy");
     }
-    // The VI ongoing +1 Attack to all own NEUTRAL units keeps its real variant.
-    const six = cardLibrary["specialty.xuanming.6"].effect as {
-      options?: Array<{ effect?: { type?: string; variant?: string; amount?: number; name?: string } }>;
-    };
-    const buff = six.options?.find((option) => option.effect?.type === "CREATE_VARIANT_ATTACK_BUFF")?.effect;
-    expect(buff).toMatchObject({ type: "CREATE_VARIANT_ATTACK_BUFF", variant: "neutral", amount: 1, name: "Legion of Bones" });
   });
 
-  it("Jianxu's aura effects wear the array name; the miku slug tag is re-themed too", () => {
-    const slow = cardLibrary["specialty.jianxu.1"].effect as { type?: string; name?: string };
-    expect(slow).toMatchObject({ type: "SLOW_ALL_ENEMIES", name: "Seven-Star Trap Array" });
-    const heal = cardLibrary["specialty.jianxu.4"].effect as { type?: string; name?: string };
-    expect(heal).toMatchObject({ type: "CREATE_HEAL_ON_ATTACKED", name: "Seven-Star Trap Array" });
+  it("Jianxu's array strike scales with adjacent allies on his own attacks; the retired trap auras are gone", () => {
+    const expected = {
+      1: { max: 2, gain: undefined, ignoresRetaliation: undefined },
+      4: { max: 3, gain: { sectQi: 1 }, ignoresRetaliation: undefined },
+      6: { max: 3, gain: undefined, ignoresRetaliation: true }
+    } as const;
     for (const level of LEVELS) {
-      const tags = cardLibrary[`specialty.jianxu.${level}`].tags ?? [];
+      const card = cardLibrary[`specialty.jianxu.${level}`];
+      const options =
+        (card.effect as {
+          options?: Array<{ trigger?: unknown; cultivationGain?: unknown; effect?: Record<string, unknown> }>;
+        }).options ?? [];
+      expect(options).toHaveLength(1);
+      expect(options[0]?.trigger).toEqual({ event: "UNIT_ATTACK_DECLARED", controller: "self" });
+      expect(options[0]?.cultivationGain).toEqual(expected[level].gain);
+      expect(options[0]?.effect).toMatchObject({ type: "WUXIA_ART_CARD", art: "array-strike", max: expected[level].max });
+      expect(options[0]?.effect?.ignoresRetaliation).toBe(expected[level].ignoresRetaliation);
+      const tags = card.tags ?? [];
       expect(tags).not.toContain("voice-of-angel");
-      expect(tags).toContain("seven-star-trap-array");
+      expect(tags).not.toContain("seven-star-trap-array");
+      expect(JSON.stringify(card.effect)).not.toContain("SLOW_ALL_ENEMIES");
+      expect(JSON.stringify(card.effect)).not.toContain("CREATE_HEAL_ON_ATTACKED");
     }
   });
 
@@ -203,7 +243,7 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
   });
 
   it("every redesigned hero renders natively with a published specialty icon", () => {
-    for (const heroSlug of Object.keys(REDESIGNS)) {
+    for (const heroSlug of [...Object.keys(REDESIGNS), ...Object.keys(WUXIA_BESPOKE)]) {
       expect(coreHeroDefinitions[heroSlug], heroSlug).toBeDefined();
       const icon = SPECIALTY_ICON_BY_HERO[heroSlug];
       expect(icon, `${heroSlug} needs a specialty icon`).toBeTruthy();

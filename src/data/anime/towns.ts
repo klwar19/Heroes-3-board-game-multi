@@ -151,50 +151,50 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // --- BRONZE (3) — LV 1–3 -------------------------------------------------
   "azure_breeze.outer_disciples": {
     id: "azure_breeze.outer_disciples", name: "Outer Sect Disciples", faction: "azure_breeze", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: azureCard("bronze", "outer-sect-disciples", "few") },
-    pack: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["azure-sword-array"], abilityText: "Sword Array — friendly units gain +1 Attack on their own attacks while adjacent to this unit.", cardImage: azureCard("bronze", "outer-sect-disciples", "pack") },
+    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: ["azure-outer-breathing"], abilityText: "Qi Breathing — once per Combat, this unit's new formation link gains 1 Sect Qi even after this round's link Qi was taken.", cardImage: azureCard("bronze", "outer-sect-disciples", "few") },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["azure-sword-array", "azure-outer-breathing"], abilityText: "Sword Array — adjacent allies gain +1 Attack on their own attacks; Qi Breathing — once per Combat, an extra formation-link Sect Qi.", cardImage: azureCard("bronze", "outer-sect-disciples", "pack") },
     source
   },
   "azure_breeze.inner_swordsmen": {
     id: "azure_breeze.inner_swordsmen", name: "Inner Sect Swordsmen", faction: "azure_breeze", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "Flowing Step — ignores the adjacent Combat penalty.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "few") },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 8, cost: { gold: 5 }, abilities: ["ignore-all-combat-penalties"], abilityText: "Flowing Step — ignores all Combat penalties.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "pack") },
+    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: ["azure-qi-edge"], abilityText: "Qi Edge — when Sword Formation spends Sect Qi on its attack, that attack ignores 1 Defense.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "few") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 8, cost: { gold: 5 }, abilities: ["azure-qi-edge", "azure-sword-wave"], abilityText: "Qi Edge — a Qi-fuelled attack ignores 1 Defense; Sword Wave — after it deals damage, deal 1 damage to another enemy adjacent to this unit.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "pack") },
     source
   },
   // LV 3 bronze flyer.
   "azure_breeze.spirit_crane": {
     id: "azure_breeze.spirit_crane", name: "Spirit Crane", faction: "azure_breeze", tier: "bronze", type: "flying",
-    few: { attack: 2, defense: 1, health: 2, initiative: 9, cost: { gold: 4 }, abilities: [], cardImage: azureCard("bronze", "spirit-crane", "few") },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation"], abilityText: "Wingbeat — attacks do not provoke Retaliation.", cardImage: azureCard("bronze", "spirit-crane", "pack") },
+    few: { attack: 2, defense: 1, health: 2, initiative: 9, cost: { gold: 4 }, abilities: ["azure-crane-relay"], abilityText: "Cloud Relay — once per round, this unit's new formation link gains 1 Sect Qi even after this round's link Qi was taken.", cardImage: azureCard("bronze", "spirit-crane", "few") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation", "azure-crane-relay"], abilityText: "Wingbeat — attacks do not provoke Retaliation; Cloud Relay — once per round, an extra formation-link Sect Qi.", cardImage: azureCard("bronze", "spirit-crane", "pack") },
     source
   },
   // --- SILVER (2) — LV 4–5 -------------------------------------------------
   "azure_breeze.sect_protectors": {
     id: "azure_breeze.sect_protectors", name: "Sect Formation Wardens", faction: "azure_breeze", tier: "silver", type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Iron Ward — always rolls the Defend die when attacked.", cardImage: azureCard("silver", "sect-protectors", "few") },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 13 }, abilities: ["unlimited-retaliation"], abilityText: "Unbroken Guard — may Retaliate any number of times each round.", cardImage: azureCard("silver", "sect-protectors", "pack") },
+    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token", "azure-warden-anchor"], abilityText: "Iron Ward — always rolls the Defend die; Formation Anchor — once per round, an adjacent ally's Shared Ward +1 Defense costs no Sect Qi.", cardImage: azureCard("silver", "sect-protectors", "few") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 13 }, abilities: ["unlimited-retaliation", "azure-warden-anchor"], abilityText: "Unbroken Guard — unlimited Retaliation; Formation Anchor — once per round, an adjacent ally's Shared Ward +1 Defense costs no Sect Qi.", cardImage: azureCard("silver", "sect-protectors", "pack") },
     source
   },
   // LV 5 silver sword heirs — fast martial line before the Golden Core elders.
   "azure_breeze.true_inheritors": {
     id: "azure_breeze.true_inheritors", name: "True Inheritors", faction: "azure_breeze", tier: "silver", type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("silver", "true-inheritors", "few") },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Peerless Form — Charge; ignores Retaliation.", cardImage: azureCard("silver", "true-inheritors", "pack") },
+    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, abilities: ["commander-charge", "azure-heir-burst"], abilityText: "Charge — +1 Attack after moving; Inheritance Burst — with 2+ Sect Qi, Sword Formation spends 2 Qi for +2 Attack.", cardImage: azureCard("silver", "true-inheritors", "few") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, abilities: ["commander-charge", "ignores-retaliation", "azure-heir-burst"], abilityText: "Peerless Form — Charge; ignores Retaliation; Inheritance Burst — with 2+ Sect Qi, Sword Formation spends 2 Qi for +2 Attack.", cardImage: azureCard("silver", "true-inheritors", "pack") },
     source
   },
   // --- GOLD (2) — LV 6–7 ---------------------------------------------------
   // LV 6 gold ranged elders. The Pack deliberately costs only 1 valuable.
   "azure_breeze.core_master": {
     id: "azure_breeze.core_master", name: "Golden Core Elders", faction: "azure_breeze", tier: "gold", type: "ranged",
-    few: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
-    pack: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
+    few: { attack: 4, defense: 1, health: 7, initiative: 7, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "azure-golden-core"], abilityText: "Talisman Arts — ignores all Combat penalties; Golden Core — once per round, activating beside an ally gains 1 Sect Qi.", cardImage: azureCard("golden", "core-formation-master", "few") },
+    pack: { attack: 5, defense: 1, health: 8, initiative: 7, cost: { gold: 22, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "azure-golden-core", "unicorn-spell-ward-aura"], abilityText: "Talisman Arts; Golden Core — once per round, activating beside an ally gains 1 Sect Qi; Talisman Aura — Spell damage to it and adjacent allies -1.", cardImage: azureCard("golden", "core-formation-master", "pack") },
     source
   },
   // LV 7 gold mountain tank.
   "azure_breeze.mountain_guardian": {
     id: "azure_breeze.mountain_guardian", name: "Mountain Guardian", faction: "azure_breeze", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 3, health: 8, initiative: 3, cost: { gold: 15, valuables: 1 }, abilities: ["wraith-heal-1"], abilityText: "Verdant Pulse — on activation, heal 1 damage.", cardImage: azureCard("golden", "mountain-guardian", "few") },
-    pack: { attack: 6, defense: 3, health: 9, initiative: 3, cost: { gold: 23, valuables: 2 }, abilities: ["wraith-heal-1", "unlimited-retaliation"], abilityText: "Returning Earth — heal 1 on activation; unlimited Retaliation.", cardImage: azureCard("golden", "mountain-guardian", "pack") },
+    few: { attack: 5, defense: 3, health: 9, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["wraith-heal-1", "azure-mountain-qi-well"], abilityText: "Verdant Pulse — heal 1 on activation; Qi Well — once per round, after it Retaliates, gain 1 Sect Qi.", cardImage: azureCard("golden", "mountain-guardian", "few") },
+    pack: { attack: 6, defense: 3, health: 10, initiative: 6, cost: { gold: 23, valuables: 2 }, abilities: ["wraith-heal-1", "unlimited-retaliation", "azure-mountain-qi-well"], abilityText: "Returning Earth — heal 1 on activation; unlimited Retaliation; Qi Well — once per round, after it Retaliates, gain 1 Sect Qi.", cardImage: azureCard("golden", "mountain-guardian", "pack") },
     source
   },
 
@@ -376,46 +376,46 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // --- BRONZE (3) ----------------------------------------------------------
   "heavenly_demon.blood_disciples": {
     id: "heavenly_demon.blood_disciples", name: "Blood Disciples", faction: "heavenly_demon", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: demonCard("bronze", "blood-disciples", "few") },
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, abilities: ["demon-blood-oath"], abilityText: "Blood Oath — each flip or removal of this unit gains 1 Blood Essence.", cardImage: demonCard("bronze", "blood-disciples", "few") },
     // NEW #1 — Blood Siphon: heal 1 after an OWN attack that DEALS damage.
-    pack: { attack: 3, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, abilities: ["heavenly-demon-blood-siphon"], abilityText: "Blood Siphon — after this unit's attack deals damage, remove 1 damage from it. Never on Retaliation.", cardImage: demonCard("bronze", "blood-disciples", "pack") },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, abilities: ["heavenly-demon-blood-siphon", "demon-blood-oath"], abilityText: "Blood Siphon — heal 1 after its attack deals damage (not Retaliation); Blood Oath — each flip or removal gains 1 Essence.", cardImage: demonCard("bronze", "blood-disciples", "pack") },
     source
   },
   // LV2 bronze RANGED gu sorceress.
   "heavenly_demon.gu_witches": {
     id: "heavenly_demon.gu_witches", name: "Gu Witches", faction: "heavenly_demon", tier: "bronze", type: "ranged",
-    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Hex Darts — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: demonCard("bronze", "gu-witches", "few") },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "basilisk-paralysis"], abilityText: "Hex Darts — ignores the adjacent-unit Combat penalty; Gu Curse — after attacking, roll a die; on 0 the target is Paralyzed.", cardImage: demonCard("bronze", "gu-witches", "pack") },
+    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 4 }, abilities: ["ignore-combat-penalties", "ntv-potent-venom"], abilityText: "Hex Darts — no adjacent penalty; Gu Venom — an enemy it damages takes 1 damage when it next activates (1/round).", cardImage: demonCard("bronze", "gu-witches", "few") },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "basilisk-paralysis", "ntv-potent-venom"], abilityText: "Hex Darts; Gu Venom; Gu Curse — after attacking, roll a die: on 0 the target is Paralyzed.", cardImage: demonCard("bronze", "gu-witches", "pack") },
     source
   },
   // LV3 bronze ground shadow assassin.
   "heavenly_demon.shadow_wraiths": {
     id: "heavenly_demon.shadow_wraiths", name: "Shadow Sabre Disciples", faction: "heavenly_demon", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 0, health: 2, initiative: 9, cost: { gold: 4 }, abilities: [], cardImage: demonCard("bronze", "shadow-wraiths", "few") },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation"], abilityText: "Umbral Step — attacks do not provoke a Retaliation Attack.", cardImage: demonCard("bronze", "shadow-wraiths", "pack") },
+    few: { attack: 2, defense: 0, health: 2, initiative: 9, cost: { gold: 4 }, abilities: ["demon-bloodscent"], abilityText: "Bloodscent — +1 Attack on its attacks against an enemy that already has damage.", cardImage: demonCard("bronze", "shadow-wraiths", "few") },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation", "demon-bloodscent"], abilityText: "Umbral Step — no Retaliation; Bloodscent — +1 Attack against an enemy that already has damage.", cardImage: demonCard("bronze", "shadow-wraiths", "pack") },
     source
   },
   // --- SILVER (2) ----------------------------------------------------------
   // LV4 silver ground undead tank.
   "heavenly_demon.corpse_puppets": {
     id: "heavenly_demon.corpse_puppets", name: "Corpse Puppets", faction: "heavenly_demon", tier: "silver", type: "ground",
-    few: { attack: 2, defense: 2, health: 5, initiative: 2, cost: { gold: 9 }, abilities: ["commander-defense-token"], abilityText: "Grave Ward — always rolls the Defend die when attacked.", cardImage: demonCard("silver", "corpse-puppets", "few") },
-    pack: { attack: 3, defense: 2, health: 6, initiative: 3, cost: { gold: 13 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Grave Ward — always rolls the Defend die; Corpse Burst — on defeat, deal 1 damage to every adjacent unit.", cardImage: demonCard("silver", "corpse-puppets", "pack") },
+    few: { attack: 2, defense: 2, health: 5, initiative: 3, cost: { gold: 9 }, abilities: ["commander-defense-token", "demon-corpse-stitch"], abilityText: "Grave Ward — always rolls the Defend die; Corpse Stitching — on activation, 1 Essence heals 2 (1/round).", cardImage: demonCard("silver", "corpse-puppets", "few") },
+    pack: { attack: 3, defense: 2, health: 6, initiative: 4, cost: { gold: 12 }, abilities: ["commander-defense-token", "automaton-detonate-1", "demon-corpse-stitch"], abilityText: "Grave Ward; Corpse Stitching (1 Essence: heal 2); Corpse Burst — on defeat, 1 damage to each adjacent unit.", cardImage: demonCard("silver", "corpse-puppets", "pack") },
     source
   },
   // LV5 silver ground bone raider (fast striker).
   "heavenly_demon.bone_reavers": {
     id: "heavenly_demon.bone_reavers", name: "Bone Reavers", faction: "heavenly_demon", tier: "silver", type: "ground",
-    few: { attack: 4, defense: 1, health: 4, initiative: 7, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Reaping Charge — +1 Attack on its attack after this unit moves.", cardImage: demonCard("silver", "bone-reavers", "few") },
-    pack: { attack: 5, defense: 1, health: 5, initiative: 8, cost: { gold: 14 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Reaping Charge — +1 Attack after moving; Ghost Blades — ignores Retaliation.", cardImage: demonCard("silver", "bone-reavers", "pack") },
+    few: { attack: 4, defense: 1, health: 4, initiative: 7, cost: { gold: 9 }, abilities: ["commander-charge", "demon-reaper-toll"], abilityText: "Reaping Charge — +1 Attack after moving; Reaper's Toll — its defeating blow gains 1 Essence.", cardImage: demonCard("silver", "bone-reavers", "few") },
+    pack: { attack: 5, defense: 1, health: 5, initiative: 8, cost: { gold: 14 }, abilities: ["commander-charge", "ignores-retaliation", "demon-reaper-toll"], abilityText: "Reaping Charge; Ghost Blades — no Retaliation; Reaper's Toll — its defeating blow gains 1 Essence.", cardImage: demonCard("silver", "bone-reavers", "pack") },
     source
   },
   // --- GOLD (2) ------------------------------------------------------------
   // LV6 gold ranged spectral regenerator.
   "heavenly_demon.ghost_king": {
     id: "heavenly_demon.ghost_king", name: "Ghost King", faction: "heavenly_demon", tier: "gold", type: "ranged",
-    few: { attack: 4, defense: 2, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-combat-penalties"], abilityText: "Soulfire — ignores the adjacent ranged penalty.", cardImage: demonCard("golden", "ghost-king", "few") },
-    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "wraith-heal-1"], abilityText: "Royal Soulfire — ignores all Combat penalties; heal 1 on activation.", cardImage: demonCard("golden", "ghost-king", "pack") },
+    few: { attack: 4, defense: 2, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-combat-penalties", "demon-soulfire-volley"], abilityText: "Soulfire — no adjacent penalty; Soulfire Volley — with 2+ Essence, spend 1: 1 damage beside the target (1/round).", cardImage: demonCard("golden", "ghost-king", "few") },
+    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "wraith-heal-1", "demon-soulfire-volley"], abilityText: "Royal Soulfire — no penalties; heal 1 on activation; Soulfire Volley — with 2+ Essence, spend 1: 1 damage beside the target (1/round).", cardImage: demonCard("golden", "ghost-king", "pack") },
     source
   },
   // LV7 gold ground avatar — carries the faction's second NEW arm on BOTH sides;
@@ -424,8 +424,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "heavenly_demon.demon_avatar": {
     id: "heavenly_demon.demon_avatar", name: "Heavenly Demon Avatar", faction: "heavenly_demon", tier: "gold", type: "ground",
     // NEW #2 — Reap the Fallen: +1 Attack for the combat whenever an adjacent unit is removed.
-    few: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 16, valuables: 1 }, abilities: ["heavenly-demon-reap"], abilityText: "Reap the Fallen — gain +1 Attack when an adjacent unit is removed, maximum +2 this Combat.", cardImage: demonCard("golden", "demon-avatar", "few") },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, abilities: ["heavenly-demon-reap", "titan-ignore-ongoing"], abilityText: "Reap the Fallen — gain up to +2 Attack from adjacent deaths; Immortal Will — ignore ongoing effects.", cardImage: demonCard("golden", "demon-avatar", "pack") },
+    few: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 16, valuables: 1 }, abilities: ["heavenly-demon-reap", "demon-body"], abilityText: "Reap the Fallen — +1 Attack per adjacent removal (max +2); Demon Body — 1 Essence: +1 Defense vs first attack each round.", cardImage: demonCard("golden", "demon-avatar", "few") },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, abilities: ["heavenly-demon-reap", "demon-body", "titan-ignore-ongoing"], abilityText: "Reap the Fallen; Demon Body — 1 Essence: +1 Defense vs first attack each round; Immortal Will — ignore ongoing effects.", cardImage: demonCard("golden", "demon-avatar", "pack") },
     source
   },
 

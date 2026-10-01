@@ -116,55 +116,56 @@ const AZURE_BREEZE_CARDS = [
     level: 1, tier: "bronze", traits: ["GROUND", "MELEE"], stats: { attack: 2, defense: 1, health: 2, initiative: 5 },
     packStats: { health: 3, initiative: 6 },
     art: "units-azure-breeze-bronze-outer-sect-disciples-master.png",
-    few: ["No printed ability."],
-    pack: ["Sword Array — adjacent friendly units gain +1 Attack on their own attacks."]
+    few: ["Qi Breathing — once per Combat, this unit's new formation link gains 1 Sect Qi even after this round's link Qi was taken."],
+    pack: ["Sword Array — adjacent allies gain +1 Attack on their own attacks; Qi Breathing — once per Combat, an extra formation-link Sect Qi."]
   },
   {
     slug: "inner-sect-swordsmen", name: "Inner Sect Swordsmen", vi: "Nội môn kiếm sĩ",
     level: 2, tier: "bronze", traits: ["GROUND", "MELEE"], stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
     packStats: { attack: 3, health: 3, initiative: 8 },
     art: "units-azure-breeze-bronze-inner-sect-swordsmen-master.png",
-    few: ["Flowing Step — Ignore Combat penalties."],
-    pack: ["Flowing Step — Ignore Combat penalties."]
+    few: ["Qi Edge — when Sword Formation spends Sect Qi on its attack, that attack ignores 1 Defense."],
+    pack: ["Qi Edge — a Qi-fuelled attack ignores 1 Defense; Sword Wave — after it deals damage, deal 1 damage to another enemy adjacent to this unit."]
   },
   {
     slug: "spirit-crane", name: "Spirit Crane", vi: "Linh Cầm",
     level: 3, tier: "bronze", traits: ["FLYING", "MELEE"], stats: { attack: 2, defense: 1, health: 2, initiative: 9 },
     packStats: { attack: 3, health: 3, initiative: 10 },
     art: "units-azure-breeze-bronze-spirit-crane-master.png",
-    few: ["Flying — May move over units and obstacles."],
-    pack: ["Wingbeat — Flying; attacks do not provoke Retaliation."]
+    few: ["Cloud Relay — once per round, this unit's new formation link gains 1 Sect Qi even after this round's link Qi was taken."],
+    pack: ["Wingbeat — attacks do not provoke Retaliation; Cloud Relay — once per round, an extra formation-link Sect Qi."]
   },
   {
     slug: "sect-protectors", name: "Sect Formation Wardens", vi: "Hộ tông hộ pháp",
     level: 4, tier: "silver", traits: ["GROUND", "MELEE"], stats: { attack: 3, defense: 2, health: 4, initiative: 4 },
+    packStats: { attack: 4, health: 5 },
     art: "units-azure-breeze-silver-sect-protectors-master.png",
-    few: ["Iron Ward — When attacked, roll the Defend die and gain its Defense token."],
-    pack: ["Unbroken Guard — This unit can make unlimited Retaliation Attacks."]
+    few: ["Iron Ward — always rolls the Defend die; Formation Anchor — once per round, an adjacent ally's Shared Ward +1 Defense costs no Sect Qi."],
+    pack: ["Unbroken Guard — unlimited Retaliation; Formation Anchor — once per round, an adjacent ally's Shared Ward +1 Defense costs no Sect Qi."]
   },
   {
     slug: "true-inheritors", name: "True Inheritors", vi: "Chân truyền đệ tử",
     level: 5, tier: "silver", traits: ["GROUND", "MELEE"], stats: { attack: 3, defense: 2, health: 4, initiative: 6 },
     packStats: { attack: 4, health: 5, initiative: 7 },
     art: "units-azure-breeze-silver-true-inheritors-master.png",
-    few: ["Charge — +1 Attack when attacking after moving."],
-    pack: ["Charge — +1 Attack when attacking after moving.", "Peerless Form — Ignores retaliation."]
+    few: ["Charge — +1 Attack after moving; Inheritance Burst — with 2+ Sect Qi, Sword Formation spends 2 Qi for +2 Attack."],
+    pack: ["Peerless Form — Charge; ignores Retaliation; Inheritance Burst — with 2+ Sect Qi, Sword Formation spends 2 Qi for +2 Attack."]
   },
   {
     slug: "core-formation-master", name: "Golden Core Elders", vi: "Kim Đan Trưởng Lão",
-    level: 6, tier: "golden", traits: ["RANGED", "MAGIC"], stats: { attack: 4, defense: 1, health: 6, initiative: 6 },
-    packStats: { attack: 5, defense: 1, health: 7 },
+    level: 6, tier: "golden", traits: ["RANGED", "MAGIC"], stats: { attack: 4, defense: 1, health: 7, initiative: 7 },
+    packStats: { attack: 5, health: 8 },
     art: "units-azure-breeze-golden-core-formation-master.png",
-    few: ["Talisman Arts — ignores penalties; first Spell +1 Power."],
-    pack: ["Talisman Arts — ignores penalties; first Spell +1 Power.", "Talisman Aura — adjacent allies reduce Spell damage by 1."]
+    few: ["Talisman Arts — ignores all Combat penalties; Golden Core — once per round, activating beside an ally gains 1 Sect Qi."],
+    pack: ["Talisman Arts; Golden Core — once per round, activating beside an ally gains 1 Sect Qi; Talisman Aura — Spell damage to it and adjacent allies -1."]
   },
   {
     slug: "mountain-guardian", name: "Mountain Guardian", vi: "Thủ sơn linh thú",
-    level: 7, tier: "golden", traits: ["GROUND", "MELEE"], stats: { attack: 5, defense: 3, health: 8, initiative: 3 },
-    packStats: { attack: 6, health: 9 },
+    level: 7, tier: "golden", traits: ["GROUND", "MELEE"], stats: { attack: 5, defense: 3, health: 9, initiative: 4 },
+    packStats: { attack: 6, health: 10, initiative: 6 },
     art: "units-azure-breeze-golden-mountain-guardian-master.png",
-    few: ["Verdant Pulse — on activation, heal this unit 1 damage."],
-    pack: ["Returning Earth — heal 1 on activation; unlimited Retaliation."]
+    few: ["Verdant Pulse — heal 1 on activation; Qi Well — once per round, after it Retaliates, gain 1 Sect Qi."],
+    pack: ["Returning Earth — heal 1 on activation; unlimited Retaliation; Qi Well — once per round, after it Retaliates, gain 1 Sect Qi."]
   }
 ];
 

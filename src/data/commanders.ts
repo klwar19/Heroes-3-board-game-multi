@@ -448,6 +448,8 @@ export interface CommanderCastTargeting {
   adjacentBelowPower?: number;
   /** Target must be no farther than this many battlefield spaces. */
   maxDistance?: number;
+  /** Target must have at least this much remaining Health (Demon Ancestor's Blood Offering cannot kill). */
+  minRemainingHealth?: number;
   /** Runes spent from the owner's combat pool per Power tier (Rune Keeper). */
   runeCostByPower?: readonly [number, number, number];
   /** Whether the caster can select itself when the other targeting gates allow it. */
@@ -566,6 +568,25 @@ export type CommanderCastEffect =
       openingCastRounds?: number;
     }
   | { kind: "unlimited-retaliation"; duration?: "round" | "combat" }
+  | {
+      /**
+       * Sword Saint "Sword Qi Transmission" (Azure Breeze): the target gains
+       * +Attack for the current combat round and the owner gains Sect Qi.
+       */
+      kind: "sect-qi-transmission";
+      attackByPower: readonly [number, number, number];
+      sectQiByPower: readonly [number, number, number];
+    }
+  | {
+      /**
+       * Demon Ancestor "Blood Offering" (Heavenly Demon): 1 effect damage to a
+       * friendly unit that can survive it, then the owner gains Blood Essence and
+       * the bled unit gains +Attack for the current combat round.
+       */
+      kind: "blood-offering";
+      essenceByPower: readonly [number, number, number];
+      attackByPower: readonly [number, number, number];
+    }
   | { kind: "reactivate" }
   | {
       /**
@@ -625,7 +646,9 @@ export interface CommanderSpecialtyDefinition {
     | "mission-briefing"
     | "unbreakable-bond"
     | "lion-round-barrage"
-    | "storm-salvage";
+    | "storm-salvage"
+    | "sect-grandmaster"
+    | "ancestral-blood";
   name: string;
   text: string;
 }
@@ -1155,22 +1178,24 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   },
   sword_saint: {
     slug: "sword_saint", name: "Sword Saint", faction: "Azure Breeze Sect", original: true,
+    // 2026-09-23 wuxia rework: the old ranged-only Precision reuse was nearly dead
+    // in an army with one ranged line. The bespoke cast feeds the Sect Qi meter.
     cast: {
-      abilityId: "commander-cast-temple_guardian",
-      name: "Sword Intent",
-      icon: "/assets/spell-icons/precision.png",
-      targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "precision", amountByPower: [1, 1, 2] },
+      abilityId: "commander-cast-sword_saint",
+      name: "Sword Qi Transmission",
+      icon: "/assets/anime/icons/cultivation/commander-sword-qi-transmission.webp",
+      targeting: { side: "friendly", adjacentBelowPower: 1, canTargetSelf: false },
+      effect: { kind: "sect-qi-transmission", attackByPower: [1, 1, 2], sectQiByPower: [1, 1, 2] },
       tierText: [
-        "A nearby allied ranged disciple gains +1 Attack and ignores ranged penalties until the commander's second following activation (2 rounds, counted from its turn).",
-        "An allied ranged disciple anywhere gains +1 Attack and ignores ranged penalties until the commander's second following activation (2 rounds, counted from its turn).",
-        "An allied ranged disciple anywhere gains +2 Attack and ignores ranged penalties until the commander's second following activation (2 rounds, counted from its turn)."
+        "A friendly unit adjacent to the Sword Saint gains +1 Attack this round; gain 1 Sect Qi.",
+        "A friendly unit anywhere gains +1 Attack this round; gain 1 Sect Qi.",
+        "A friendly unit anywhere gains +2 Attack this round; gain 2 Sect Qi."
       ]
     },
     specialty: {
-      id: "superior-combat",
-      name: "One With the Blade",
-      text: "Choose +1 Attack or +1 Defense before combat; the stance lasts through rounds 1–2."
+      id: "sect-grandmaster",
+      name: "Sect Grandmaster",
+      text: "Begin each combat with +1 Sect Qi. While the Sword Saint stands, your Sect Qi capacity is +1."
     },
     cardImage: "/assets/units-commander-sword_saint.webp"
   },
@@ -1239,16 +1264,18 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     // Cast: REUSE the Dungeon Brute's Bloodlust arm verbatim (commander-cast-brute,
     // attack-buff melee) — the SAME abilityId the Fuyuki Regent (ruler) already
     // reuses, so reusing a cast abilityId across commanders is established.
+    // 2026-09-23 wuxia rework: a bespoke sacrifice that fuels the Blood Essence
+    // furnace (was a verbatim Dungeon Brute Bloodlust reuse).
     cast: {
-      abilityId: "commander-cast-brute",
-      name: "Blood Frenzy",
-      icon: "/assets/spell-icons/bloodlust.png",
-      targeting: { side: "friendly", unitType: "melee", adjacentBelowPower: 1, canTargetSelf: false },
-      effect: { kind: "attack-buff", amountByPower: [1, 1, 2], duration: "two-rounds" },
+      abilityId: "commander-cast-demon_ancestor",
+      name: "Blood Offering",
+      icon: "/assets/anime/icons/cultivation/commander-blood-offering.webp",
+      targeting: { side: "friendly", adjacentBelowPower: 1, minRemainingHealth: 2, canTargetSelf: false },
+      effect: { kind: "blood-offering", essenceByPower: [2, 2, 3], attackByPower: [1, 1, 2] },
       tierText: [
-        "A nearby allied melee demon-cultivator gains +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
-        "An allied melee demon-cultivator anywhere gains +1 Attack until the commander's second following activation (2 rounds, counted from its turn).",
-        "An allied melee demon-cultivator anywhere gains +2 Attack until the commander's second following activation (2 rounds, counted from its turn)."
+        "Deal 1 damage to an adjacent friendly unit with 2+ Health left: gain 2 Blood Essence and it gains +1 Attack this round.",
+        "Deal 1 damage to a friendly unit anywhere with 2+ Health left: gain 2 Blood Essence and it gains +1 Attack this round.",
+        "Deal 1 damage to a friendly unit anywhere with 2+ Health left: gain 3 Blood Essence and it gains +2 Attack this round."
       ]
     },
     // Specialty: REUSE `undead` (Paralysis-token immunity) — the id the
@@ -1257,9 +1284,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     // paralysis immunity applies to the Demon Ancestor too. Thematically the
     // demon-blood body cannot be petrified.
     specialty: {
-      id: "undead",
-      name: "Undying Demon Body",
-      text: "The commander's demon-forged corpse is beyond fear: it can never gain a Paralysis token."
+      id: "ancestral-blood",
+      name: "Ancestral Blood Furnace",
+      text: "The first time each combat round an attack damages the Demon Ancestor, gain 1 Blood Essence."
     },
     cardImage: "/assets/units-commander-demon_ancestor.webp"
   },

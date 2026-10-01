@@ -283,12 +283,12 @@ export const XIANXIA_CULTIVATION_NODES = [
   {
     id: "xianxia-body-refinement", tier: 2, kind: "passive",
     name: { en: "Body Refinement", vi: "Luyện Thể" },
-    summary: "Passive: Sect Qi capacity remains fixed at 2; this realm grants no extra Qi capacity."
+    summary: "Passive: your Sect Qi capacity increases from 3 to 4."
   },
   {
     id: "xianxia-sword-domain", tier: 3, kind: "passive",
     name: { en: "Sword Domain", vi: "Kiếm Vực" },
-    summary: "Passive: a Sword Intent hero releases Sword Intent after 2 damaging attacks instead of 3."
+    summary: "Passive: formation links may gain Sect Qi twice each combat round, and a Sword Intent hero releases Sword Intent after 2 damaging attacks instead of 3."
   }
 ] as const satisfies readonly HeroGradeNode[];
 

@@ -271,44 +271,44 @@ const CARDS = [
   {
     slug: "blood-disciples", tier: "bronze", name: "Blood Disciples", kind: "GROUND", level: 1,
     fewMaster: "units/blood-disciples-master.png", packMaster: "units/blood-disciples-pack-master.png", packFlip: false,
-    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, rule: "No printed ability." },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, rule: "Blood Siphon — after its own attack deals damage, heal 1. Never on Retaliation." }
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, rule: "Blood Oath — each flip or removal of this unit gains 1 Blood Essence." },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, rule: "Blood Siphon — heal 1 after its attack deals damage (not Retaliation); Blood Oath — each flip or removal gains 1 Essence." }
   },
   {
     slug: "gu-witches", tier: "bronze", name: "Gu Witches", kind: "RANGED", level: 2,
     fewMaster: "units/gu-witches-master.png", packMaster: "units/gu-witches-pack-master.png", packFlip: false,
-    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 4 }, rule: "Hex Darts — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies)." },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, rule: "Hex Darts — ignores the adjacent-unit penalty; Gu Curse — after attacking, roll a die; on 0 the target is Paralyzed." }
+    few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 4 }, rule: "Hex Darts — no adjacent penalty; Gu Venom — an enemy it damages takes 1 damage when it next activates (1/round)." },
+    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, rule: "Hex Darts; Gu Venom; Gu Curse — after attacking, roll a die: on 0 the target is Paralyzed." }
   },
   {
     slug: "shadow-wraiths", tier: "bronze", name: "Shadow Sabre Disciples", kind: "GROUND", level: 3,
     fewMaster: "units/shadow-wraiths-master.png", packMaster: "units/shadow-wraiths-pack-master.png", packFlip: false,
-    few: { attack: 2, defense: 0, health: 2, initiative: 9, cost: { gold: 4 }, rule: "No printed ability." },
-    pack: { attack: 3, defense: 0, health: 3, initiative: 10, cost: { gold: 6 }, rule: "Umbral Step — attacks do not provoke a Retaliation Attack." }
+    few: { attack: 2, defense: 0, health: 2, initiative: 9, cost: { gold: 4 }, rule: "Bloodscent — +1 Attack on its attacks against an enemy that already has damage." },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 10, cost: { gold: 6 }, rule: "Umbral Step — no Retaliation; Bloodscent — +1 Attack against an enemy that already has damage." }
   },
   {
     slug: "corpse-puppets", tier: "silver", name: "Corpse Puppets", kind: "GROUND", level: 4,
     fewMaster: "units/corpse-puppets-master.png", packMaster: "units/corpse-puppets-pack-master.png", packFlip: false,
-    few: { attack: 2, defense: 2, health: 5, initiative: 2, cost: { gold: 9 }, rule: "Grave Ward — always rolls the Defend die when attacked." },
-    pack: { attack: 3, defense: 2, health: 6, initiative: 3, cost: { gold: 13 }, rule: "Grave Ward — always rolls the Defend die; Corpse Burst — on defeat, deal 1 damage to every adjacent unit." }
+    few: { attack: 2, defense: 2, health: 5, initiative: 3, cost: { gold: 9 }, rule: "Grave Ward — always rolls the Defend die; Corpse Stitching — on activation, 1 Essence heals 2 (1/round)." },
+    pack: { attack: 3, defense: 2, health: 6, initiative: 4, cost: { gold: 12 }, rule: "Grave Ward; Corpse Stitching (1 Essence: heal 2); Corpse Burst — on defeat, 1 damage to each adjacent unit." }
   },
   {
     slug: "bone-reavers", tier: "silver", name: "Bone Reavers", kind: "GROUND", level: 5,
     fewMaster: "units/bone-reavers-master.png", packMaster: "units/bone-reavers-pack-master.png", packFlip: false,
-    few: { attack: 4, defense: 1, health: 4, initiative: 7, cost: { gold: 9 }, rule: "Reaping Charge — +1 Attack on its attack after this unit moves." },
-    pack: { attack: 5, defense: 1, health: 5, initiative: 8, cost: { gold: 14 }, rule: "Reaping Charge — +1 Attack after moving; Ghost Blades — ignores Retaliation." }
+    few: { attack: 4, defense: 1, health: 4, initiative: 7, cost: { gold: 9 }, rule: "Reaping Charge — +1 Attack after moving; Reaper's Toll — its defeating blow gains 1 Essence." },
+    pack: { attack: 5, defense: 1, health: 5, initiative: 8, cost: { gold: 14 }, rule: "Reaping Charge; Ghost Blades — no Retaliation; Reaper's Toll — its defeating blow gains 1 Essence." }
   },
   {
     slug: "ghost-king", tier: "golden", name: "Ghost King", kind: "RANGED", level: 6,
     fewMaster: "units/ghost-king-few-master.png", packMaster: "units/ghost-king-pack-master.png", packFlip: false,
-    few: { attack: 4, defense: 2, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, rule: "Soulfire — ignores the adjacent ranged penalty; no healing." },
-    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, rule: "Royal Soulfire — ignores all Combat penalties; heal 1 on activation." }
+    few: { attack: 4, defense: 2, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, rule: "Soulfire — no adjacent penalty; Soulfire Volley — with 2+ Essence, spend 1: 1 damage beside the target (1/round)." },
+    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, rule: "Royal Soulfire — no penalties; heal 1 on activation; Soulfire Volley — with 2+ Essence, spend 1: 1 damage beside the target (1/round)." }
   },
   {
     slug: "demon-avatar", tier: "golden", name: "Heavenly Demon Avatar", kind: "GROUND", level: 7,
     fewMaster: "units/demon-avatar-few-master.png", packMaster: "units/demon-avatar-pack-master.png", packFlip: false,
-    few: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 16, valuables: 1 }, rule: "Reap the Fallen — adjacent removals grant +1 Attack, maximum +2 this Combat." },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, rule: "Reap the Fallen — gain up to +2 Attack from adjacent removals; ignore ongoing effects." }
+    few: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 16, valuables: 1 }, rule: "Reap the Fallen — +1 Attack per adjacent removal (max +2); Demon Body — 1 Essence: +1 Defense vs first attack each round." },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, rule: "Reap the Fallen; Demon Body — 1 Essence: +1 Defense vs first attack each round; Immortal Will — ignore ongoing effects." }
   }
 ];
 

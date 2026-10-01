@@ -267,11 +267,15 @@ describe("playable Anime Realms towns", () => {
     expect(qingyun!.bytes).toBeGreaterThan(100_000);
   });
 
-  it("Lingxi specialties are art-less native cards with the dedicated First-Aid medallion (not Gem's scan)", () => {
+  it("Lingxi specialties are art-less native Formation Mending cards with the dedicated medallion (not Gem's scan)", () => {
     for (const level of [1, 4, 6] as const) {
       const id = `specialty.lingxi.${level}`;
       const card = cardLibrary[id];
-      expect(card?.name).toMatch(/^Healing Arts /);
+      // 2026-09-23 wuxia rework: bespoke Sect Qi healer set, no longer a Gem clone.
+      expect(card?.name).toBe(`Formation Mending ${({ 1: "I", 4: "IV", 6: "VI" } as const)[level]}`);
+      expect(card?.implementationStatus, id).toBe("implemented");
+      expect(JSON.stringify(card?.effect), id).toContain("sectQi");
+      expect(card?.effect, id).not.toEqual(cardLibrary[`specialty.gem.${level}`]?.effect);
       expect(card?.assets?.cardImage, id).toBeUndefined();
       expect(canRenderSpecialtyCard(id), id).toBe(true);
       const icon = specialtyIconSrc(id);

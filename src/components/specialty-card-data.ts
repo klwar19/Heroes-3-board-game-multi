@@ -148,7 +148,8 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   yaoji: "/assets/anime/icons/cultivation/specialty-yaoji-blood-renewal.webp",
   molian: "/assets/anime/icons/cultivation/specialty-molian-corpse-suture.webp",
   luohun: "/assets/anime/equipment/ten_thousand_souls_banner.webp",
-  shiyan: "/assets/anime/icons/cultivation/blood-essence.webp",
+  // Corpse-Furnace Sutra (2026-09-23 wuxia rework): bronze ding cauldron of bones.
+  shiyan: "/assets/anime/icons/cultivation/specialty-shiyan-corpse-furnace.webp",
   // Little Busters — dedicated clean square SYMBOL specialty icons (codex
   // image-gen), one per hero, each suiting the character's theme. These are
   // distinct files from the unit-rank emblems (rank-softball-club / rank-rins-cats
@@ -192,7 +193,8 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   miku: "/assets/specialty-card/icon-voice_of_angel.webp",
   // Lingxi's Healing Arts — bespoke themed wuxia heal icon (jade medicine gourd +
   // herbs + formation rune), replacing the borrowed generic First Aid icon.
-  lingxi: "/assets/anime/icons/cultivation/specialty-lingxi-healing-arts.webp",
+  // Formation Mending (2026-09-23 wuxia rework): jade formation discs + healing lotus.
+  lingxi: "/assets/anime/icons/cultivation/specialty-lingxi-formation-mending.webp",
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------

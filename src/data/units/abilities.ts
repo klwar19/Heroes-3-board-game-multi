@@ -42,8 +42,31 @@ export type ForgeVeterancyMechanic = "cyberbrute-mend" | "open-wound" | "tank-re
 
 export type CustomTownVeterancyMechanic = "muscle-reversal" | "returning-edge" | "covering-extraction" | "meridian-exchange" | "rule-unravel" | "field-repair" | "break-cover" | "clear-mind" | "rescue-step" | "blood-price";
 
+/**
+ * Wuxia faction arts (Azure Breeze Sect Qi / Heavenly Demon Blood Essence).
+ * Every id is resolved in src/engine/wuxia-factions.ts through the faction's own
+ * seams (declaration, after-attack, defeated side/layer, activation, move,
+ * casualty), so none of them touches shared legality.
+ */
+export type WuxiaArtId =
+  | "outer-breathing"
+  | "qi-edge"
+  | "sword-wave"
+  | "crane-relay"
+  | "warden-anchor"
+  | "heir-burst"
+  | "golden-core"
+  | "mountain-qi-well"
+  | "blood-oath"
+  | "bloodscent"
+  | "corpse-stitch"
+  | "reaper-toll"
+  | "soulfire-volley"
+  | "demon-body";
+
 export type UnitAbilityEffectDefinition =
   | { type: "FORGE_VETERANCY"; mechanic: ForgeVeterancyMechanic }
+  | { type: "WUXIA_ART"; art: WuxiaArtId }
   | { type: "CUSTOM_TOWN_VETERANCY"; mechanic: CustomTownVeterancyMechanic }
   | { type: "NEUTRAL_VETERANCY"; mechanic: NeutralVeterancyMechanic }
   | { type: "NEUTRAL_TOWN_VETERANCY"; mechanic: NeutralTownVeterancyMechanic }
@@ -2680,6 +2703,107 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ATTACK_BUFF_ON_ADJACENT_REMOVAL", amount: 1 },
     implementationStatus: "implemented"
   },
+  // Wuxia faction arts (2026-09-23 rework). Engine: src/engine/wuxia-factions.ts.
+  // Sect Qi arts do nothing for a side without the Azure meter, Blood Essence
+  // arts nothing without the Heavenly Demon meter (Bloodscent is unit-intrinsic).
+  "azure-outer-breathing": {
+    id: "azure-outer-breathing",
+    name: "Qi Breathing",
+    text: "[unit_passive] Once per Combat, when this unit forms a new formation link after your formation-link Sect Qi for this round is already used, gain 1 Sect Qi anyway.",
+    effect: { type: "WUXIA_ART", art: "outer-breathing" },
+    implementationStatus: "implemented"
+  },
+  "azure-qi-edge": {
+    id: "azure-qi-edge",
+    name: "Qi Edge",
+    text: "[unit_attack] When Sword Formation spends Sect Qi on this unit's own attack, that attack also ignores 1 Defense.",
+    effect: { type: "WUXIA_ART", art: "qi-edge" },
+    implementationStatus: "implemented"
+  },
+  "azure-sword-wave": {
+    id: "azure-sword-wave",
+    name: "Sword Wave",
+    text: "[unit_attack] After this unit's own attack that spent Sect Qi deals damage, deal 1 damage to another enemy adjacent to this unit (you choose).",
+    effect: { type: "WUXIA_ART", art: "sword-wave" },
+    implementationStatus: "implemented"
+  },
+  "azure-crane-relay": {
+    id: "azure-crane-relay",
+    name: "Cloud Relay",
+    text: "[unit_passive] Once per combat round, when this unit forms a new formation link after your formation-link Sect Qi for this round is already used, gain 1 Sect Qi anyway.",
+    effect: { type: "WUXIA_ART", art: "crane-relay" },
+    implementationStatus: "implemented"
+  },
+  "azure-warden-anchor": {
+    id: "azure-warden-anchor",
+    name: "Formation Anchor",
+    text: "[unit_passive] Once per combat round, when an ally adjacent to this unit is attacked, Shared Ward gives that ally +1 Defense without spending Sect Qi.",
+    effect: { type: "WUXIA_ART", art: "warden-anchor" },
+    implementationStatus: "implemented"
+  },
+  "azure-heir-burst": {
+    id: "azure-heir-burst",
+    name: "Inheritance Burst",
+    text: "[unit_attack] While you hold 2 or more Sect Qi, Sword Formation on this unit's attack spends 2 Qi for +2 Attack instead of 1 Qi for +1.",
+    effect: { type: "WUXIA_ART", art: "heir-burst" },
+    implementationStatus: "implemented"
+  },
+  "azure-golden-core": {
+    id: "azure-golden-core",
+    name: "Golden Core",
+    text: "[unit_passive] Once per combat round, when this unit activates adjacent to an ally, gain 1 Sect Qi (separate from formation links).",
+    effect: { type: "WUXIA_ART", art: "golden-core" },
+    implementationStatus: "implemented"
+  },
+  "azure-mountain-qi-well": {
+    id: "azure-mountain-qi-well",
+    name: "Qi Well",
+    text: "[unit_retaliation] Once per combat round, after this unit Retaliates, gain 1 Sect Qi.",
+    effect: { type: "WUXIA_ART", art: "mountain-qi-well" },
+    implementationStatus: "implemented"
+  },
+  "demon-blood-oath": {
+    id: "demon-blood-oath",
+    name: "Blood Oath",
+    text: "[unit_passive] Every time this unit flips to Few or is removed, gain 1 Blood Essence, ignoring the once-per-round and once-per-unit limits.",
+    effect: { type: "WUXIA_ART", art: "blood-oath" },
+    implementationStatus: "implemented"
+  },
+  "demon-bloodscent": {
+    id: "demon-bloodscent",
+    name: "Bloodscent",
+    text: "[unit_attack] +1 Attack on this unit's own attacks against an enemy that already has damage.",
+    effect: { type: "WUXIA_ART", art: "bloodscent" },
+    implementationStatus: "implemented"
+  },
+  "demon-corpse-stitch": {
+    id: "demon-corpse-stitch",
+    name: "Corpse Stitching",
+    text: "[unit_passive] Once per combat round, when this unit activates with damage, spend 1 Blood Essence to remove up to 2 damage from it.",
+    effect: { type: "WUXIA_ART", art: "corpse-stitch" },
+    implementationStatus: "implemented"
+  },
+  "demon-reaper-toll": {
+    id: "demon-reaper-toll",
+    name: "Reaper's Toll",
+    text: "[unit_attack] When this unit's own attack reduces an enemy side or Stack layer to 0 HP, gain 1 Blood Essence (in addition to Blood Harvest).",
+    effect: { type: "WUXIA_ART", art: "reaper-toll" },
+    implementationStatus: "implemented"
+  },
+  "demon-soulfire-volley": {
+    id: "demon-soulfire-volley",
+    name: "Soulfire Volley",
+    text: "[unit_attack] Once per combat round, after this unit's own attack deals damage while you hold 2 or more Blood Essence, spend 1 to deal 1 damage to another enemy adjacent to the target (you choose).",
+    effect: { type: "WUXIA_ART", art: "soulfire-volley" },
+    implementationStatus: "implemented"
+  },
+  "demon-body": {
+    id: "demon-body",
+    name: "Heavenly Demon Body",
+    text: "[unit_passive] The first time each combat round this unit is attacked (not by a Retaliation), spend 1 Blood Essence for +1 Defense against that attack.",
+    effect: { type: "WUXIA_ART", art: "demon-body" },
+    implementationStatus: "implemented"
+  },
   "lich-death-cloud": {
     id: "lich-death-cloud",
     name: "Death Cloud",
@@ -4865,6 +4989,20 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "commander-cast-astral_spirit",
     name: "Counterstrike",
     text: "[activation] Once per combat round: for 2 combat rounds, a friendly bronze unit (Power 1: or silver; Power 2: any tier) gains +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-sword_saint": {
+    id: "commander-cast-sword_saint",
+    name: "Sword Qi Transmission",
+    text: "[activation] Once per combat round: a friendly unit (adjacent to the commander at Power 0, anywhere from Power 1) gains +1 Attack (Power 2: +2) this combat round, and you gain 1 Sect Qi (Power 2: 2). Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-demon_ancestor": {
+    id: "commander-cast-demon_ancestor",
+    name: "Blood Offering",
+    text: "[activation] Once per combat round: deal 1 damage to a friendly unit with at least 2 Health left (adjacent at Power 0, anywhere from Power 1); gain 2 Blood Essence (Power 2: 3) and that unit gains +1 Attack (Power 2: +2) this combat round. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

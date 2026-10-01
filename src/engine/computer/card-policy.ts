@@ -26,6 +26,7 @@ import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { unitImmuneToSpellSchools } from "../unit-abilities";
 import { dealsElementalStrike, estimatedStrikeDamage } from "./strike-value";
 import { plannedAttackFaces } from "./battlefield-conditions";
+import { bloodEssenceCapacity, currentBloodEssence, currentSectQi, sectQiCapacity } from "../wuxia-factions";
 import { houseRuleEnabled } from "../house-rules";
 import { israReturnableUnits } from "../isra-specialties";
 import { isCastASpellCard, polishSpellBookEnabled } from "../polish-spell-book";
@@ -2005,6 +2006,10 @@ function scoreEffect(
     return scoreBuffTarget(observation, target, 650 + modeBonus(mode));
   }
 
+  if (effect.type === "WUXIA_ART_CARD") {
+    return scoreWuxiaArtCard(observation, card, mode, effect, target, isReaction);
+  }
+
   if (effect.type === "ENTER_PLAY" || card.permanent) {
     return permanentPlayScore(observation, card);
   }
@@ -2460,6 +2465,95 @@ function asPowerBoostScore(
   return 1_095 - Math.min(30, Math.floor(keep / 2));
 }
 
+/**
+ * Wuxia hero specialty arts. The two attack-window arts reuse the stat-reaction
+ * valuation (as the +Attack / +Defense they grant right now); the combat plays
+ * are valued by what they actually do in the current fight, and fall below
+ * END_ACTIVATION when they would do nothing (meter already full, nobody hurt).
+ */
+function scoreWuxiaArtCard(
+  observation: ComputerObservation,
+  card: CardDefinition,
+  mode: CardPlayMode | undefined,
+  effect: Extract<EffectDefinition, { type: "WUXIA_ART_CARD" }>,
+  target: TargetRef | undefined,
+  isReaction: boolean,
+): number {
+  const state = observation.state as unknown as GameState;
+  const combat = state.combat;
+  if (!combat) return 180;
+  const playerId = observation.playerId;
+  const pending = observation.state.stack?.at(-1)?.action;
+  const adjacentAllies = (unitId: string): number => {
+    const unit = combat.units[unitId];
+    if (!unit) return 0;
+    return Object.values(combat.units).filter(
+      (other) =>
+        other.id !== unit.id &&
+        other.controllerId === unit.controllerId &&
+        unitRemainingHealth(other) > 0 &&
+        unitsAdjacent(combat, other, unit),
+    ).length;
+  };
+  if (effect.art === "array-strike" || effect.art === "jade-guard") {
+    if (!isReaction || !pending || !("attackerId" in pending)) return 180;
+    const amount =
+      effect.art === "array-strike"
+        ? Math.min(effect.max ?? 2, adjacentAllies(pending.attackerId))
+        : effect.max ?? 1;
+    if (amount <= 0) return 180;
+    const synthetic: EffectDefinition = {
+      type: "ADD_COMBAT_STAT",
+      stat: effect.art === "array-strike" ? "attack" : "defense",
+      amount,
+    };
+    return (
+      scoreStatReaction(observation, card, mode, synthetic) +
+      (effect.ignoresRetaliation ? 20 : 0) +
+      Math.min(20, (effect.recover ?? 0) * 8)
+    );
+  }
+  const qiRoom = Math.max(0, sectQiCapacity(state, playerId) - currentSectQi(state, playerId));
+  const essenceRoom = Math.max(0, bloodEssenceCapacity(state, playerId) - currentBloodEssence(state, playerId));
+  const enemiesAlive = Object.values(combat.units).filter(
+    (unit) => unit.controllerId !== playerId && unitRemainingHealth(unit) > 0,
+  ).length;
+  if (effect.art === "channel") {
+    const gained =
+      Math.min(qiRoom, effect.gain?.sectQi ?? 0) + Math.min(essenceRoom, effect.gain?.bloodEssence ?? 0);
+    const draws = effect.drawCards ?? 0;
+    if (gained <= 0) return draws > 0 ? 320 : 180;
+    return 600 + gained * 25 + draws * 20;
+  }
+  if (effect.art === "formation-mending") {
+    const healed = Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.controllerId === playerId &&
+          unitRemainingHealth(unit) > 0 &&
+          adjacentAllies(unit.id) > 0,
+      )
+      .reduce((sum, unit) => sum + Math.min(effect.amount ?? 1, unit.damage), 0);
+    return healed <= 0 ? 380 : 640 + Math.min(80, healed * 15);
+  }
+  if (effect.art === "legion-harvest") {
+    return enemiesAlive >= 2 ? 640 : 420;
+  }
+  if (effect.art === "bound-soul") {
+    const anchor = combatUnitFromTarget(observation, target);
+    if (!anchor || enemiesAlive === 0) return 180;
+    return 650 + (effect.empowered ? 25 : 0) + ((effect.count ?? 1) - 1) * 40;
+  }
+  return 250;
+}
+
+/** Spending Blood Essence / Sect Qi on a card option is a real price. */
+function cultivationCostPenalty(card: CardDefinition, optionIndex: number | undefined): number {
+  if (card.effect.type !== "CHOOSE_ONE" || optionIndex === undefined) return 0;
+  const cost = card.effect.options[optionIndex]?.cost?.cultivation;
+  return ((cost?.bloodEssence ?? 0) + (cost?.sectQi ?? 0)) * 12;
+}
+
 function discardCostPenalty(
   observation: ComputerObservation,
   cardIds: readonly string[] | undefined,
@@ -2746,6 +2840,10 @@ export function scoreCardAction(
       score -= discardCostPenalty(
         observation,
         "costCardIds" in action ? action.costCardIds : undefined,
+      );
+      score -= cultivationCostPenalty(
+        card,
+        "optionIndex" in action ? action.optionIndex : undefined,
       );
 
       const policy =

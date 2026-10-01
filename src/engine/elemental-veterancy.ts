@@ -41,6 +41,7 @@ import {
   unitTailOffset,
 } from "./hex-footprint";
 import { isHexSeaCell, movableObstacleCells } from "./hex-battlefield";
+import { spendCultivationMeter } from "./wuxia-factions";
 import {
   destroyFortification,
   defenderOnFortification,
@@ -1029,6 +1030,15 @@ function executeElementalPick(
     const target = combat.units[pick.targetId!];
     if (target && alive(target) && target.controllerId !== unit.controllerId)
       hooks.chainLightning?.(state, unit, target);
+    return;
+  }
+  // Soulfire Volley pays its Blood Essence only as the splash lands; with the
+  // Essence already gone (spent by an earlier window), the splash fizzles.
+  if (
+    request.kind === "damage" &&
+    request.bloodEssenceCost &&
+    !spendCultivationMeter(state, unit.controllerId, "bloodEssence", request.bloodEssenceCost)
+  ) {
     return;
   }
   if (request.kind === "heal-self") {

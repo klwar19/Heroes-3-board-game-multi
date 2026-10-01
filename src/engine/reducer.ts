@@ -391,6 +391,14 @@ import {
   applyCultivationAttackDeclaration,
   gainSectQiAfterMove,
   recordSwordIntentAfterAttack,
+  wuxiaActivation,
+  wuxiaAfterAttack,
+  wuxiaDefeatedSideOrLayer,
+  gainSectQi,
+  gainBloodEssence,
+  payCultivationCost,
+  applyCultivationGainRider,
+  resolveWuxiaArtCard,
 } from "./wuxia-factions";
 import {
   applyEquipmentStageCostumeDefenseToken,
@@ -5549,6 +5557,12 @@ function applyAttackDamageFromCandidate(
     }
   }
 
+  // Heavenly Demon Blood Harvest / Reaper's Toll: an attack (own or Retaliation)
+  // that drives an enemy side or Stack layer to 0 HP feeds Blood Essence.
+  if (defeatedSideOrLayer) {
+    wuxiaDefeatedSideOrLayer(state, attacker, defender, isRetaliation);
+  }
+
   if (defeatedSideOrLayer && isUnitAlive(attacker)) {
     const draw = getDefeatedSideOrLayerDraw(attacker);
     if (draw) {
@@ -6162,6 +6176,9 @@ function getAttackStackDetails(
   ).defensePierce;
   const requestedDefenseReduction =
     (defenseReductionSource?.amount ?? 0) +
+    // Azure Inner Sect "Qi Edge": latched at declaration on a Qi-fuelled own
+    // attack (a Retaliation gets its own fresh stack item, so it never leaks).
+    (stackItem.modifiers.cultivationDefensePierce ?? 0) +
     (sagittaMortisSource?.amount ?? 0) +
     (ignoreCardDefenseSource ? defender.defense : 0) +
     artifactDefensePierce;
@@ -9619,6 +9636,18 @@ function finishResolvedAttack(
     details.isRetaliation,
     attackResult.damage,
   );
+  // Wuxia arts after the blow: Qi Well (Retaliation), Sword Wave and Soulfire
+  // Volley (player-chosen 1 damage through the veteran choice queue).
+  for (const pick of wuxiaAfterAttack(
+    state,
+    stackItem,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+    attackResult.damage,
+  )) {
+    queueElementalChoice(state, pick);
+  }
   applyCommanderArtifactAfterAttack(
     state,
     details.attacker,
@@ -15575,6 +15604,8 @@ function applyActivationStartAbilities(
   veteranActivation(state, unit);
   resolveDreadAuraActivation(state, combat, unit);
   townActivation(state, unit);
+  // Wuxia activation arts: Golden Core (Sect Qi), Corpse Stitching (Essence heal).
+  wuxiaActivation(state, unit);
 
   const artifactPulse = commanderArtifactBonusesForUnit(
     state,
@@ -22040,6 +22071,9 @@ function payOptionCardCost(
     (_, index) => costCardModes?.[index] ?? "basic",
   );
 
+  // Wuxia meter price (Blood Essence / Sect Qi), spent up front like resources.
+  payCultivationCost(state, playerId, cost?.cultivation, cardName);
+
   // Resource price (Ballistics' expert bombardment): spend it up front. Charged
   // before any early return so a resource-only cost still resolves.
   if (cost?.resources) {
@@ -23396,6 +23430,8 @@ function applyReactionPlayCore(
         play.costCardModes,
         paidCards,
       );
+  // Wuxia specialties: the option's Sect Qi / Blood Essence / Sword Intent gain.
+  applyCultivationGainRider(state, playerId, option?.cultivationGain, card.name);
 
   let effectAmount = getEffectAmount(effect, mode);
   // An Empowered ability's Expert side spends no crown.
@@ -25398,6 +25434,18 @@ function applyReactionPlayCore(
   // any newly-crossed Rune Level's army-wide buff IMMEDIATELY, so a +Defense (or
   // +Attack for the coming retaliation) is live before this very attack resolves —
   // the "receive the buff earlier" play. No-op for a non-Bulwark reactor.
+  // Wuxia attack-window arts (Jianxu's array strike on your own attack, Yulian's
+  // jade guard on an enemy attack): latched onto this paused attack.
+  if (effect.type === "WUXIA_ART_CARD" && stackItem) {
+    const { drawCards } = resolveWuxiaArtCard(state, playerId, effect, card.name, { stackItem });
+    if (drawCards > 0) {
+      drawCardsForPlayer(state, playerId, drawCards, {
+        inFlightCardIds: reactionInFlightCardIds,
+      });
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, playerId, effect.amount);
     if (effect.drawCards) {
@@ -29486,6 +29534,8 @@ function playCard(
     action.costCardModes,
     mapPaidCards,
   );
+  // Wuxia specialties: the option's Sect Qi / Blood Essence / Sword Intent gain.
+  applyCultivationGainRider(state, action.playerId, option?.cultivationGain, card.name);
 
   // An Empowered ability's Expert side spends no crown.
   if (
@@ -31668,6 +31718,24 @@ function playCard(
   // Kriv (Bulwark)'s rune-synergy specialty: bank Runes immediately, and (levels
   // I/IV) draw the bundled card(s). gainRunes is a no-op for a non-Bulwark caster,
   // so the option is harmless if mis-played; the draw still happens for anyone.
+  // Wuxia hero specialty arts played as a combat action (channel, formation
+  // mending, Legion of Bones, Bound Souls). Bound Souls rally beside the chosen
+  // friendly unit (a Dwarf-negated target drops to undefined and the reducer
+  // rejects it with a clear message).
+  if (effect.type === "WUXIA_ART_CARD") {
+    const { drawCards } = resolveWuxiaArtCard(state, action.playerId, effect, card.name, {
+      targetUnitId: target?.unitId,
+    });
+    if (drawCards > 0) {
+      drawCardsForPlayer(
+        state,
+        action.playerId,
+        drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId),
+        { inFlightCardIds: playInFlightCardIds },
+      );
+    }
+  }
+
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
     if (effect.drawCards) {
@@ -35310,6 +35378,52 @@ function resolveCommanderCast(
       applyFlatAbilityDamage(state, caster, target.id, cast.abilityId, cast.name,
         commanderEnemyDamageAmount(caster, target, effect.damageByPower, tier, combat.round));
       break;
+    // Sword Saint "Sword Qi Transmission" (Azure Breeze): a one-round +Attack on
+    // the chosen ally plus Sect Qi for the formation.
+    case "sect-qi-transmission":
+      createActiveEffect(
+        state,
+        {
+          name: `${cast.name} (${caster.cardName})`,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "ATTACK_BONUS", amount: effect.attackByPower[tier] }],
+        },
+        source,
+        caster.controllerId,
+        targetRef,
+      );
+      gainSectQi(state, caster.controllerId, effect.sectQiByPower[tier], "sword-saint-transmission", cast.name);
+      break;
+    // Demon Ancestor "Blood Offering" (Heavenly Demon): bleed an ally that can
+    // survive it (targeting guarantees 2+ Health left), feed the furnace, and
+    // blood-drunk the ally for the round.
+    case "blood-offering": {
+      if (target.maxHealth - target.damage < 2) {
+        throw new Error("Blood Offering needs a friendly unit with at least 2 Health left.");
+      }
+      applyFlatAbilityDamage(state, caster, target.id, cast.abilityId, cast.name, 1);
+      gainBloodEssence(state, caster.controllerId, effect.essenceByPower[tier], "demon-ancestor-blood-offering", cast.name);
+      if (isUnitAlive(target)) {
+        createActiveEffect(
+          state,
+          {
+            name: `${cast.name} (${caster.cardName})`,
+            scope: "unit",
+            duration: { type: "current-combat-round" },
+            polarity: "positive",
+            removable: true,
+            modifiers: [{ type: "ATTACK_BONUS", amount: effect.attackByPower[tier] }],
+          },
+          source,
+          caster.controllerId,
+          targetRef,
+        );
+      }
+      break;
+    }
     case "heal-cleanse": {
       healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
       if (power >= effect.cleanseFromPower) {

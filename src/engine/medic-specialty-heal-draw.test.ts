@@ -861,7 +861,9 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
   });
 
   it("Rion VI and its clones carry the post-draw discard rider, not a cost", () => {
-    for (const cardId of ["specialty.rion.6", "specialty.aoko.6", "specialty.shiyan.6", "specialty.molian.6"]) {
+    // Shiyan / Molian left the Rion clone family in the 2026-09-23 wuxia rework
+    // (bespoke Corpse-Furnace Sutra / Corpse Weaving sets, no discard rider).
+    for (const cardId of ["specialty.rion.6", "specialty.aoko.6"]) {
       const effect = cardLibrary[cardId as CardId].effect;
       expect(effect.type, `${cardId} is a CHOOSE_ONE`).toBe("CHOOSE_ONE");
       const options = effect.type === "CHOOSE_ONE" ? effect.options : [];
@@ -879,7 +881,7 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
 // ===========================================================================
 
 describe("healDrawOnlyRider — the map draw-only gate", () => {
-  it("opens exactly the medic specialty cards (Rion/Astra + every rethemed clone)", () => {
+  it("opens exactly the medic specialty cards (Rion/Astra + every rethemed clone + Yaoji's heal-draw)", () => {
     const qualifying: string[] = [];
     for (const card of Object.values(cardLibrary)) {
       if (card.implementationStatus !== "implemented") {
@@ -903,9 +905,6 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       // healDrawOnlyRider (HEAL_DAMAGE faces only) returns 0 for both.
       "specialty.ilias.1",
       "specialty.ilias.6",
-      "specialty.molian.1",
-      "specialty.molian.4",
-      "specialty.molian.6",
       // Piquedram IV (e4b8f4be, v171): "Draw 2 cards and remove a Paralysis
       // token" — a HEAL_DAMAGE face (paralysis removal) with a draw rider, the
       // medic shape; its draw is explicitly playable on its own in combat too.
@@ -918,31 +917,34 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       "specialty.sakura_matou.1",
       "specialty.sakura_matou.4",
       "specialty.sakura_matou.6",
-      // Shiyan (Heavenly Demon) is a Rion retheme too — same map draw-only gate.
-      "specialty.shiyan.1",
-      "specialty.shiyan.4",
-      "specialty.shiyan.6"
+      // Yaoji's bespoke Blood Alchemy (2026-09-23 wuxia rework) is not a clone,
+      // but its plain side is a HEAL_DAMAGE + draw 1 face — the same generic
+      // gate opens it. Shiyan / Molian / Lingxi / Luohun left the Rion/Gem
+      // clone family in that rework and no longer qualify.
+      "specialty.yaoji.1",
+      "specialty.yaoji.4",
+      "specialty.yaoji.6"
     ]);
   });
 
-  it("a rethemed CLONE (Shiyan, Heavenly Demon) inherits BOTH fixes", () => {
+  it("a bespoke heal-draw face (Yaoji's Blood Alchemy I, Heavenly Demon) gets BOTH fixes", () => {
     // Map draw-only.
-    let state = mapHand(["specialty.shiyan.1"]);
+    let state = mapHand(["specialty.yaoji.1"]);
     state.players.p1.deck = ["spell.haste" as CardId];
-    const plays = mapPlays(state, "specialty.shiyan.1");
-    expect(plays.length, "the clone is map-playable for its draw").toBe(1);
+    const plays = mapPlays(state, "specialty.yaoji.1");
+    expect(plays.length, "the heal-draw face is map-playable for its draw").toBe(1);
     state = applyOk(state, plays[0]);
     expect(state.players.p1.hand).toEqual(["spell.haste"]);
 
     // Reaction window before the counter-attack.
-    const declared = applyOk(lethalRetaliationState(["specialty.shiyan.1"]), {
+    const declared = applyOk(lethalRetaliationState(["specialty.yaoji.1"]), {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_crusaders",
       defenderId: "unit_p2_skeletons"
     });
-    const offer = healOffer(declared, "p1", "specialty.shiyan.1");
-    expect(offer, "the clone is offered in the retaliation window").toBeTruthy();
+    const offer = healOffer(declared, "p1", "specialty.yaoji.1");
+    expect(offer, "the heal-draw face is offered in the retaliation window").toBeTruthy();
     const healed = applyOk(declared, offer!.action);
     expect(packIntact(healed, "unit_p1_crusaders" as UnitId), "and it saves the Pack").toBe(true);
   });

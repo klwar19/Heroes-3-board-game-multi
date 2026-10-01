@@ -1,4 +1,9 @@
 import { unitMatchesSpecialtyName as matchesUnitName } from "./specialty-unit-name";
+import {
+  canPayCultivationCost,
+  wuxiaArtCardPlayable,
+  wuxiaArtCardReactionLegal,
+} from "./wuxia-factions";
 import { denseFogThisRound } from "./battlefield-condition-fog";
 import { forgeVeterancy } from "./forge";
 import { townBound } from "./town-veterancy";
@@ -887,6 +892,11 @@ function canAffordCardCost(
 
   // Resource price (Ballistics' expert bombardment): the player must hold it.
   if (cost?.resources && !hasResources(player.resources, cost.resources)) {
+    return false;
+  }
+
+  // Wuxia meter price (Blood Essence / Sect Qi): only in combat, only when held.
+  if (cost?.cultivation && !canPayCultivationCost(state, playerId, cost.cultivation)) {
     return false;
   }
 
@@ -5511,6 +5521,15 @@ function isOptionEffectPlayable(
     // Ladybird of Luck's ongoing side: lay the card on an empty space as a Wall.
     case "PLACE_ARTIFACT_WALL":
       return context === "combat" && Boolean(state.combat);
+    case "WUXIA_ART_CARD":
+      // Wuxia hero specialties: the two attack-window arts are reactions only
+      // (isEffectLegalForTrigger); the rest are combat plays gated per art.
+      return (
+        context === "combat" &&
+        effect.art !== "array-strike" &&
+        effect.art !== "jade-guard" &&
+        wuxiaArtCardPlayable(state, playerId, effect)
+      );
     case "GAIN_RUNES":
       // Kriv (Bulwark): bank Runes mid-combat — only a Bulwark caster benefits.
       return (
@@ -5803,6 +5822,8 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
     effect.type === "CREATE_ULAND_CURE" ||
+    // Bai Luohun's Soul Shepherd rallies Bound Souls beside a chosen friendly unit.
+    (effect.type === "WUXIA_ART_CARD" && effect.art === "bound-soul") ||
     effect.type === "MOVE_UNIT_ADJACENT" ||
     effect.type === "HEAL_DAMAGE" ||
     // Shaman's Puppet (option B): a Cure-style cleanse placed on a chosen unit.
@@ -15101,6 +15122,19 @@ export function isEffectLegalForTrigger(
     // Rune-Level threshold's army-wide buff turns on BEFORE the attack resolves.
     // Only a Bulwark reactor benefits (gainRunes is a no-op otherwise); the card's
     // "opponent" trigger already keeps this off the attacker's own tray.
+    // Jianxu's Seven-Star Sword Array (own attack, attacker beside an ally) and
+    // Yulian's Jade Body Arts (an enemy attack on your unit).
+    if (effect.type === "WUXIA_ART_CARD") {
+      return wuxiaArtCardReactionLegal(
+        state,
+        playerId,
+        effect,
+        attacker.id,
+        defender.id,
+        Boolean(triggerEvent.isRetaliation),
+      );
+    }
+
     if (effect.type === "GAIN_RUNES") {
       return state.players[playerId]?.factionId === "bulwark" &&
         (runeTrackHasRoom(state, playerId) || Boolean(effect.drawCards));

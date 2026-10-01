@@ -1242,7 +1242,15 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-double-attack": "/assets/ui/rank-ability/double-strike.webp",
   "veteran-sharpshooter-mastery": "/assets/ui/rank-ability/precision.webp",
   "reduce-spell-and-specialty-damage-2": "/assets/ui/rank-ability/arcane-aegis.webp",
-  "pegasi-magic-damper": "/assets/ui/rank-ability/spell-dampening.webp"
+  "pegasi-magic-damper": "/assets/ui/rank-ability/spell-dampening.webp",
+  // 2026-09-23 wuxia rework: unit arts that are also rank rewards show the rank
+  // art of the unit that prints them (256px code-shipped copies).
+  "azure-qi-edge": "/game-tokens/rank-ability/wuxia/azure-qi-edge.webp",
+  "azure-mountain-qi-well": "/game-tokens/rank-ability/wuxia/azure-mountain-qi-well.webp",
+  "demon-blood-oath": "/game-tokens/rank-ability/wuxia/demon-blood-oath.webp",
+  "demon-bloodscent": "/game-tokens/rank-ability/wuxia/demon-bloodscent.webp",
+  "demon-corpse-stitch": "/game-tokens/rank-ability/wuxia/demon-corpse-stitch.webp",
+  "demon-reaper-toll": "/game-tokens/rank-ability/wuxia/demon-reaper-toll.webp"
 };
 
 /**

@@ -629,14 +629,29 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.glacius.4", optionIndex: 0 },
   { cardId: "specialty.glacius.6", optionIndex: 0 },
   // Anime specialty redesign (2026-08-25): Kakashi's Raikiri · Sharingan is an
-  // Adelaide (Frost Ring) clone and Guiyan's Ghostfire Coil a Glacius clone —
-  // each inherits the source's three combatAnytime faces verbatim.
+  // Adelaide (Frost Ring) clone — it inherits the source's three combatAnytime
+  // faces verbatim.
   { cardId: "specialty.kakashi_hatake.1", optionIndex: 0 },
   { cardId: "specialty.kakashi_hatake.4", optionIndex: 0 },
   { cardId: "specialty.kakashi_hatake.6", optionIndex: 0 },
+  // Wuxia rework (2026-09-23, src/data/anime/wuxia-specialties.ts): bespoke
+  // "Instant during Combat" faces. Qingyun I/IV sword-qi strikes; Lingxi I and
+  // VI's second option (Sect Qi channel + draw); Guiyan's Ghostfire plain AND
+  // Essence-paid damage on every level (the paid side is skipped by the sweep
+  // below when the Essence cost is unmet); Shiyan's Essence channel + draw.
+  { cardId: "specialty.qingyun.1", optionIndex: 0 },
+  { cardId: "specialty.qingyun.4", optionIndex: 0 },
+  { cardId: "specialty.lingxi.1", optionIndex: 0 },
+  { cardId: "specialty.lingxi.6", optionIndex: 1 },
   { cardId: "specialty.guiyan.1", optionIndex: 0 },
+  { cardId: "specialty.guiyan.1", optionIndex: 1 },
   { cardId: "specialty.guiyan.4", optionIndex: 0 },
+  { cardId: "specialty.guiyan.4", optionIndex: 1 },
   { cardId: "specialty.guiyan.6", optionIndex: 0 },
+  { cardId: "specialty.guiyan.6", optionIndex: 1 },
+  { cardId: "specialty.shiyan.1", optionIndex: 0 },
+  { cardId: "specialty.shiyan.4", optionIndex: 0 },
+  { cardId: "specialty.shiyan.6", optionIndex: 0 },
   { cardId: "specialty.gerwulf.1", optionIndex: 1 },
   { cardId: "specialty.gerwulf.4", optionIndex: 1 },
   { cardId: "specialty.gerwulf.6", optionIndex: 1 },

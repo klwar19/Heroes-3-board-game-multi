@@ -38,9 +38,10 @@ import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import { availableRunes, gainRunes } from "./runes";
+import { gainSectQi } from "./wuxia-factions";
 import { createSeededRandom } from "./random";
 import { hasToken, noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
-import { hasUnitAbilityEffect, isMechanicalUnit } from "./unit-abilities";
+import { hasUnitAbilityEffect, isMechanicalUnit, isUnitDamageImmune } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
   ActiveEffectModifier,
@@ -1082,6 +1083,16 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState,
     if (targeting.damagedOnly && target.damage <= 0) {
       return false;
     }
+    if (
+      targeting.minRemainingHealth !== undefined &&
+      target.maxHealth - target.damage < targeting.minRemainingHealth
+    ) {
+      return false;
+    }
+    // Blood Offering must really bleed its ally: a damage-immune unit is no offering.
+    if (cast.effect.kind === "blood-offering" && isUnitDamageImmune(target)) {
+      return false;
+    }
     if (targeting.activatedOnly && !target.activatedThisRound) {
       return false;
     }
@@ -1798,6 +1809,13 @@ export function applyCommanderCombatStart(state: GameState): void {
         break;
       case "astral_spirit":
         applyElementalScourge(state, playerId, unit);
+        break;
+      // Sword Saint "Sect Grandmaster": the sect opens every fight with 1 Qi
+      // (the +1 capacity is read live by sectQiCapacity while it stands).
+      case "sword_saint":
+        if (gainSectQi(state, playerId, 1, "sword-saint-sect-grandmaster", "Sect Grandmaster") > 0) {
+          emitSpecialty(state, playerId, "sword_saint", "sect-grandmaster", "The Sword Saint's presence steadies the sect: +1 Sect Qi.");
+        }
         break;
       case "ibuki": {
         const playerDiscard = state.players[playerId]?.discard;

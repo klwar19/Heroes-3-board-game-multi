@@ -1,0 +1,412 @@
+/* Wuxia meter panel (wuxia-meter-panel.tsx): Azure Breeze Sect Qi (jade / azure)
+   and Heavenly Demon Blood Essence (crimson / black). Same dock / float /
+   minimize shell as the Bulwark Rune tracker; the town's notice painting sits
+   faintly behind the live HTML meter (darkened by a gradient layer set inline
+   with the art, so it stays under the content when a floating body scrolls). */
+
+.panel {
+  --accent: 110 231 208;
+  --accent-strong: #8ff3dc;
+  --ink: #dcfff6;
+  --muted: #9fd8cb;
+  --head-top: rgb(20 64 66 / 94%);
+  --head-bottom: rgb(12 40 44 / 94%);
+  --shell-top: rgb(10 34 38 / 97%);
+  --shell-bottom: rgb(6 20 24 / 98%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  border: 1px solid rgb(var(--accent) / 38%);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--shell-top), var(--shell-bottom));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  color: var(--ink);
+  overflow: hidden;
+  user-select: none;
+}
+
+.panel.demon,
+.seat.demon {
+  --accent: 255 92 92;
+  --accent-strong: #ff8f7a;
+  --ink: #ffe6e1;
+  --muted: #e4a79c;
+  --head-top: rgb(70 16 20 / 94%);
+  --head-bottom: rgb(40 8 12 / 94%);
+  --shell-top: rgb(34 8 12 / 97%);
+  --shell-bottom: rgb(16 4 8 / 98%);
+}
+
+.seat.azure {
+  --accent: 110 231 208;
+  --accent-strong: #8ff3dc;
+  --ink: #dcfff6;
+  --muted: #9fd8cb;
+}
+
+.panel.mixed {
+  --accent: 214 190 128;
+  --accent-strong: #f0d48a;
+  --ink: #fff4dc;
+  --muted: #d8c69c;
+  --head-top: rgb(46 38 26 / 94%);
+  --head-bottom: rgb(26 20 14 / 94%);
+  --shell-top: rgb(24 20 16 / 97%);
+  --shell-bottom: rgb(12 10 8 / 98%);
+}
+
+.floating {
+  position: fixed;
+  z-index: 880;
+  width: min(400px, calc(100vw - 20px));
+  touch-action: none;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 50%),
+    0 18px 44px rgb(0 0 0 / 65%),
+    0 0 22px rgb(var(--accent) / 25%);
+}
+
+.floating.phone {
+  width: min(360px, calc(100vw - 20px));
+}
+
+.floating.minimized {
+  width: auto;
+  max-width: calc(100vw - 20px);
+}
+
+.dragging {
+  opacity: 0.92;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgb(var(--accent) / 28%);
+  background: linear-gradient(180deg, var(--head-top), var(--head-bottom));
+}
+
+.minimized .head {
+  border-bottom: 0;
+}
+
+.handle,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgb(var(--accent) / 40%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 40%);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragging .handle {
+  cursor: grabbing;
+}
+
+.handle:hover,
+.button:hover {
+  background: rgb(var(--accent) / 22%);
+}
+
+.headIcon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px rgb(var(--accent) / 60%));
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.body {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px;
+  background-size: cover;
+  background-position: center;
+}
+
+/* A floating window never outgrows the viewport: the meter scrolls inside it
+   (pan-y re-enables touch scrolling under the panel-wide touch-action: none). */
+.floating .body {
+  max-height: calc(100dvh - 190px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.seat {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.seat + .seat {
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+}
+
+.seatHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.seatName {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meterTitle {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-strong);
+  letter-spacing: 0.04em;
+}
+
+.realmChip {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid rgb(var(--accent) / 45%);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  background: rgb(0 0 0 / 35%);
+  white-space: nowrap;
+}
+
+.meterRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.slot {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgb(var(--accent) / 30%);
+  background: radial-gradient(circle at 50% 45%, rgb(0 0 0 / 20%), rgb(0 0 0 / 60%));
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 70%);
+}
+
+.slot.bonus {
+  border-style: dashed;
+  border-color: rgb(240 212 138 / 55%);
+}
+
+.slot.filled {
+  border-color: rgb(var(--accent) / 70%);
+  box-shadow:
+    inset 0 2px 6px rgb(0 0 0 / 50%),
+    0 0 10px rgb(var(--accent) / 45%);
+}
+
+.token {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  object-fit: contain;
+  filter: drop-shadow(0 0 5px rgb(var(--accent) / 70%));
+  animation: tokenIn 260ms ease-out;
+}
+
+@keyframes tokenIn {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.count {
+  flex: 0 0 auto;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--accent-strong);
+  text-shadow: 0 0 10px rgb(var(--accent) / 55%);
+}
+
+.count small {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 45%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.chip.ready {
+  border-color: rgb(var(--accent) / 65%);
+  color: var(--ink);
+  box-shadow: 0 0 8px rgb(var(--accent) / 30%);
+}
+
+.chip.intent img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.realms {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.realm {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 3px 6px 3px 4px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 7px;
+  background: rgb(0 0 0 / 45%);
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+
+.realm.reached {
+  opacity: 1;
+  filter: none;
+  border-color: rgb(var(--accent) / 60%);
+  box-shadow: inset 0 0 10px rgb(var(--accent) / 18%);
+}
+
+.realm img {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.realmText {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+
+.realmText b {
+  font-size: 10.5px;
+  color: var(--ink);
+}
+
+.realmMark {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--accent-strong);
+}
+
+.rules {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+.rules dt {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-strong);
+}
+
+.rules dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token {
+    animation: none;
+  }
+}

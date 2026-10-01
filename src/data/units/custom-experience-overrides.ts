@@ -34,10 +34,12 @@ export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
   "fuyuki.berserkers": ranks("ntv-blind-instinct", "ntv-marsh-scavenger", "veteran-energy-delay", "town-devil-draw"),
 
   // Azure Breeze: terrain, card economy and exchanges, not another stack of wards.
-  "azure_breeze.outer_disciples": ranks(H({ health: 1 }, "ntv-bone-wall"), "ctv-meridian-exchange", S({ attack: 1, initiative: 1 }), "ntv-winged-riposte"),
-  "azure_breeze.inner_swordsmen": ranks("ntv-set-the-spear", "ntv-flowing-assault", "veteran-magic-dispel", H({ initiative: 2 }, "ntv-measured-blades")),
-  "azure_breeze.spirit_crane": ranks("town-elf-guard", "veteran-sprite-obstacle", "ntv-disorienting-landing", H({ attack: 1 }, "ntv-mana-turbulence")),
-  "azure_breeze.sect_protectors": ranks("ctv-returning-edge", S({ health: 2 }), "town-ram-spell-draw", H({ health: 1 }, "ntv-blind-instinct")),
+  // 2026-09-23 wuxia rework: misfit ranks (a -2 Attack dispel on a Qi striker, a
+  // spell-draw on a shield wall) became Sect Qi arts that feed the formation.
+  "azure_breeze.outer_disciples": ranks(H({ health: 1 }, "ntv-bone-wall"), "ctv-meridian-exchange", S({ attack: 1, initiative: 1 }), "azure-qi-edge"),
+  "azure_breeze.inner_swordsmen": ranks("ntv-set-the-spear", "ntv-flowing-assault", S({ attack: 1, health: 1 }), H({ initiative: 2 }, "ntv-measured-blades")),
+  "azure_breeze.spirit_crane": ranks("town-elf-guard", H({ health: 1 }, "veteran-sprite-obstacle"), "ntv-disorienting-landing", H({ attack: 1 }, "ntv-mana-turbulence")),
+  "azure_breeze.sect_protectors": ranks("ctv-returning-edge", S({ health: 2 }), "azure-mountain-qi-well", H({ health: 1 }, "ntv-blind-instinct")),
   "azure_breeze.true_inheritors": ranks("ntv-pack-rush", "veteran-layer-draw", H({ health: 1 }, "ntv-flowing-assault"), "commander-max-damage"),
   "azure_breeze.core_master": ranks("town-gremlin-recover", "ctv-clear-mind", "ntv-core-suppression", "veteran-magic-copy"),
   "azure_breeze.mountain_guardian": ranks("ntv-deep-roots", "ntv-armoured-prey", "ntv-mountain-stillness", "ctv-mountain-break"),
@@ -65,11 +67,13 @@ export const CUSTOM_VETERANCY_OVERRIDES: Record<string, RankSchedule> = {
 
   // Demon sect: sacrifices, terrain denial and retaliation have distinct owners.
   "heavenly_demon.blood_disciples": ranks("ntv-bone-wall", "ntv-potent-venom", "ctv-blood-price", "town-zealot-loss"),
-  "heavenly_demon.gu_witches": ranks(S({ health: 2, initiative: 1 }), "veteran-storm-link", "town-sorceress-artifact-tax", "ntv-bewitching-bolt"),
-  "heavenly_demon.shadow_wraiths": ranks("town-seaman-survival-gold", "veteran-ranged-fire-shield", "ntv-stolen-spark", H({ attack: 1 }, "ntv-searing-passage")),
-  "heavenly_demon.corpse_puppets": ranks("veteran-magma-hunter", "ntv-putrid-grasp", "ntv-deep-roots", S({ health: 3 })),
-  "heavenly_demon.bone_reavers": ranks("ntv-marsh-scavenger", "wog-nightmare-fear", "veteran-magic-dispel", "ntv-infernal-command"),
-  "heavenly_demon.ghost_king": ranks("town-sorceress-artifact-tax", "ntv-return-fire", "ntv-death-cloud", "ctv-rule-unravel"),
+  // 2026-09-23 wuxia rework: artifact-tax / fire-shield / dispel misfits became
+  // Blood Essence arts (feed on kills, oath-bound corpses, stitched kings).
+  "heavenly_demon.gu_witches": ranks(S({ health: 2, initiative: 1 }), "ntv-putrid-grasp", "demon-bloodscent", "ntv-bewitching-bolt"),
+  "heavenly_demon.shadow_wraiths": ranks("town-seaman-survival-gold", "demon-reaper-toll", "ntv-stolen-spark", H({ attack: 1 }, "ntv-searing-passage")),
+  "heavenly_demon.corpse_puppets": ranks("demon-blood-oath", "ntv-putrid-grasp", "ntv-deep-roots", S({ health: 3 })),
+  "heavenly_demon.bone_reavers": ranks("ntv-marsh-scavenger", "wog-nightmare-fear", H({ health: 1 }, "demon-bloodscent"), "ntv-infernal-command"),
+  "heavenly_demon.ghost_king": ranks(H({ initiative: 1 }, "demon-corpse-stitch"), "ntv-return-fire", "ntv-death-cloud", "ctv-rule-unravel"),
   "heavenly_demon.demon_avatar": ranks("veteran-fear-aura", "ntv-infernal-command", "town-devil-draw", S({ initiative: 2 })),
 
   // Little Busters: low-roll kits retain their low rolls; Masato needs no chase.

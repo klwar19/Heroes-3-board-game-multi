@@ -58,14 +58,14 @@ describe("CardFrame — art-less specialties render the native card in the tray"
     expect(container.querySelector(".scWrap")).toBeNull();
   });
 
-  it("draws Lingxi's Healing Arts natively in the tray (not Gem's baked First Aid scan)", () => {
+  it("draws Lingxi's Formation Mending natively in the tray (not Gem's baked First Aid scan)", () => {
     expect(cardLibrary["specialty.lingxi.1"]?.assets?.cardImage).toBeUndefined();
     const { container } = render(<CardFrame cardId="specialty.lingxi.1" className="fanCardImage" />);
     expect(container.querySelector(".scWrap")).toBeTruthy();
     expect(container.querySelector(".cardFaceFallback")).toBeNull();
-    expect(container.textContent ?? "").toContain("Healing Arts I");
+    expect(container.textContent ?? "").toContain("Formation Mending I");
     const iconSrc = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src") ?? "";
-    expect(iconSrc).toContain("specialty-lingxi-healing-arts.webp");
+    expect(iconSrc).toContain("specialty-lingxi-formation-mending.webp");
     expect(iconSrc).not.toContain("abilities-first_aid");
     expect(iconSrc).not.toContain("hero_specialties-gem");
   });

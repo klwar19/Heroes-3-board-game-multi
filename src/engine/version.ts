@@ -1688,7 +1688,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // of re-rolling off the Main Hero's tile. A PvP escape (Retreat / Surrender /
 // Give up) is recorded in adventure.heroEscapes for a map marker on the battle
 // hex. A v195 peer resolves all differently.
-export const ENGINE_PROTOCOL_VERSION = 196;
+// v197: wuxia towns rework — Sect Qi / Blood Essence unit arts (WUXIA_ART),
+// bespoke meter-driven hero specialties (WUXIA_ART_CARD, option meter cost /
+// gain riders), Sword Saint Sect Qi Transmission / Demon Ancestor Blood
+// Offering casts + Sect Grandmaster / Ancestral Blood specialties, rank tracks,
+// and new serialized cultivation bookkeeping (link gains, harvests, art rounds).
+// A v196 peer resolves the wuxia towns differently.
+export const ENGINE_PROTOCOL_VERSION = 197;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

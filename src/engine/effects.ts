@@ -92,6 +92,7 @@ export const implementedCardEffectTypes = [
   "AREA_DAMAGE_PICK_ADJACENT",
   "RESHUFFLE_DISCARD_THEN_DRAW",
   "GAIN_RUNES",
+  "WUXIA_ART_CARD",
   "GAIN_STARTING_RUNES",
   "GAIN_WAR_MACHINE",
   "CHAIN_LIGHTNING",
@@ -257,7 +258,11 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
     return true;
   }
   if (card.effect.type === "CHOOSE_ONE") {
-    return card.effect.options.some((option) => option.effect.type === "ADD_SPELL_POWER");
+    // A side priced in a wuxia meter (Shiyan's "spend Blood Essence: +Power")
+    // is only real when that meter is paid; it is never a free discard Power.
+    return card.effect.options.some(
+      (option) => option.effect.type === "ADD_SPELL_POWER" && !option.cost?.cultivation
+    );
   }
   return false;
 }
@@ -430,7 +435,11 @@ function findAddSpellPowerEffect(
   }
   if (card.effect.type === "CHOOSE_ONE") {
     const powerOptions = card.effect.options.filter(
-      (option) => option.effect.type === "ADD_SPELL_POWER" && !option.cost?.removeSelf
+      (option) =>
+        option.effect.type === "ADD_SPELL_POWER" &&
+        !option.cost?.removeSelf &&
+        // Meter-priced sides (Shiyan) are never discard Power.
+        !option.cost?.cultivation
     );
     const costFree = powerOptions.filter((option) => !option.cost);
     let chosen: CardOptionDefinition | undefined;
@@ -596,7 +605,7 @@ export function spellPowerSidesOfCard(
       return;
     }
     const cost = option?.cost;
-    if (cost && (cost.resources || cost.powerCost !== undefined)) {
+    if (cost && (cost.resources || cost.powerCost !== undefined || cost.cultivation)) {
       return;
     }
     const upTo = cost?.discardCardsUpTo ?? cost?.discardCards ?? 0;

@@ -53,7 +53,7 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     timing: "combat-start",
     mechanicTitle: "Sect Qi (Sword Formation)",
     mechanicDetail:
-      "Begin combat with 0 Sect Qi (Foundation cultivation may raise this to 1). Capacity 2; gain Qi at most once per round. Adjacent attacks or defenses spend 1 Qi for +1, with no Sword Array/Qi stacking. Jianxu's Seven-Star Array is +1 Attack and Mountain Guardian heals 1.",
+      "Begin combat with 0 Sect Qi (1 at Foundation). Capacity 3 (4 at Core Formation, +1 while the Sword Saint stands). Forming a new allied adjacency gains 1 Qi once per round; Qi Breathing, Cloud Relay, Golden Core and Qi Well add more. An attack or defense beside an ally spends 1 Qi for +1 Attack (Sword Formation) or +1 Defense (Shared Ward); Wardens anchor the Ward for free, Inheritors burst 2 Qi for +2, and Inner Sect blades pierce with it.",
     artImage: "/assets/anime/notices/azure-breeze-spirit-tithe.webp"
   },
   {
@@ -65,7 +65,7 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     timing: "combat-start",
     mechanicTitle: "Blood Essence & Blood Frenzy",
     mechanicDetail:
-      "Gain Blood Essence at most once per round; Shiyan generates exactly 1. Blood Frenzy spends Essence only in rounds 1–3, at most once per round and three times per combat (+1 Attack, or +2 at Demon Soul). Ghost King Few does not heal; Pack heals 1 on activation.",
+      "Capacity 4 (5 at Demon Core). Blood Price: your army unit's first flip or removal gains 1 Essence once per round. Blood Harvest: your attack that defeats an enemy side or Stack layer gains 1 once per round. Blood Frenzy spends 1 on your first attack each round for +1 Attack (+2 at Demon Soul). Units spend the rest: Corpse Stitching heals, Soulfire Volley splashes, Heavenly Demon Body hardens.",
     artImage: "/assets/anime/notices/heavenly-demon-blood-tribute.webp"
   },
   {

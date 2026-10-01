@@ -60,6 +60,7 @@ import {
 } from "@/engine";
 import { heroBattlefieldInfoZoomContent, useCardZoom } from "@/components/table/zoom";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
+import { bloodEssenceCapacity, sectQiCapacity } from "@/engine/wuxia-factions";
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
 const HERO_GRADE_EMBLEM_ATLAS = "/assets/anime/hero-grades/grade-emblems-atlas.webp";
@@ -687,13 +688,13 @@ export function HeroBoard({
             </span>
           ) : null}
           {combatCultivation?.sectQi !== undefined ? (
-            <span className="hbCultivationMeter" title="Sect Qi (capacity 2): starts at 0, or 1 with Foundation; gained at most once per round by forming a new allied adjacency; spent for a non-stacking +1 by Sword Formation or Shared Ward.">
-              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/sect-qi.webp")} /> Sect Qi {combatCultivation.sectQi}
+            <span className="hbCultivationMeter" title="Sect Qi: gained by forming a new allied adjacency (once per round), unit arts (Qi Breathing, Cloud Relay, Golden Core, Qi Well), hero cards and the Sword Saint; spent automatically for +1 Attack (Sword Formation; Inheritance Burst spends 2 for +2) or +1 Defense (Shared Ward) beside an ally, or by card costs.">
+              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/sect-qi.webp")} /> Sect Qi {combatCultivation.sectQi}/{sectQiCapacity(state, playerId)}
             </span>
           ) : null}
           {combatCultivation?.bloodEssence !== undefined ? (
-            <span className="hbCultivationMeter blood" title="Blood Essence: gained at most once per round when a real Heavenly Demon army unit first flips or is removed; Shiyan gains exactly 1. Blood Frenzy spends at most 1 in rounds 1–3.">
-              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/blood-essence.webp")} /> Essence {combatCultivation.bloodEssence}
+            <span className="hbCultivationMeter blood" title="Blood Essence: Blood Price (your army unit's first flip or removal, once per round), Blood Harvest (your attack defeats an enemy side or layer, once per round), unit arts, hero cards and the Demon Ancestor. Blood Frenzy spends 1 on your first attack each round for +1 Attack; arts and card costs spend the rest.">
+              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/blood-essence.webp")} /> Essence {combatCultivation.bloodEssence}/{bloodEssenceCapacity(state, playerId)}
             </span>
           ) : null}
           {hasSwordIntent && combatCultivation?.swordIntent !== undefined ? (

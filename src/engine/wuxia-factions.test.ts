@@ -15,6 +15,8 @@ import {
   gainSectQiAfterMove,
   initializeCultivationFactionCombat,
   injectSoulBannerShade,
+  SECT_QI_MAX,
+  sectQiCapacity,
   SOUL_BANNER_SHADE_CARD_IMAGE
 } from "./wuxia-factions";
 
@@ -115,20 +117,33 @@ function attack(state: GameState, attackerId: string, defenderId: string): GameS
 }
 
 describe("Azure Breeze cultivation combat", () => {
-  it("Jianxu's Seven-Star Array gives a tight three-unit formation +1 Attack", () => {
-    let state = combatState("azure_breeze", "jianxu");
-    const attacker = configure(state, "unit_p1_marksmen", 9, "p1", 3);
-    configure(state, "unit_p1_griffins", 8, "p1");
-    configure(state, "unit_p1_crusaders", 5, "p1");
-    configure(state, "unit_p2_skeletons", 10, "p2", 0, 1);
-    configure(state, "unit_p2_vampires", 16, "p2");
-    configure(state, "unit_p2_dread_knights", 19, "p2");
-    state.combat!.cultivationFactions!.p1!.sectQi = 1;
-    state.combat!.units.unit_p1_griffins.abilities = ["azure-sword-array"];
+  it("Jianxu's Seven-Star Array turns 1 Qi into +2 Attack in a tight three-unit formation (CONTROL: two-unit link is +1)", () => {
+    function strike(tight: boolean): { attackValue: number; sevenStar: boolean; qi: number | undefined } {
+      let state = combatState("azure_breeze", "jianxu");
+      const attacker = configure(state, "unit_p1_marksmen", 9, "p1", 3);
+      configure(state, "unit_p1_griffins", 8, "p1");
+      // Tight: the Crusaders make a second adjacent ally; CONTROL: parked away.
+      configure(state, "unit_p1_crusaders", tight ? 5 : 0, "p1");
+      configure(state, "unit_p2_skeletons", 10, "p2", 0, 1);
+      configure(state, "unit_p2_vampires", 16, "p2");
+      configure(state, "unit_p2_dread_knights", 19, "p2");
+      state.combat!.cultivationFactions!.p1!.sectQi = 1;
+      state.combat!.units.unit_p1_griffins.abilities = ["azure-sword-array"];
 
-    state = attack(state, attacker.id, "unit_p2_skeletons");
-    expect(latestOwnAttack(state, attacker.id).attackValue).toBe(4);
-    expect(state.eventLog.some((event) => event.type === "HERO_SKILL_USED" && event.nodeId === "jianxu-seven-star-array")).toBe(true);
+      state = attack(state, attacker.id, "unit_p2_skeletons");
+      return {
+        attackValue: latestOwnAttack(state, attacker.id).attackValue,
+        sevenStar: state.eventLog.some(
+          (event) => event.type === "HERO_SKILL_USED" && event.nodeId === "jianxu-seven-star-array"
+        ),
+        qi: state.combat!.cultivationFactions?.p1?.sectQi
+      };
+    }
+
+    // Base 3 + 1 (Sword Formation spends 1 Qi) + 1 more (Seven-Star Array) = 5.
+    expect(strike(true)).toEqual({ attackValue: 5, sevenStar: true, qi: 0 });
+    // CONTROL: one adjacent ally is an ordinary Sword Formation: +1 only.
+    expect(strike(false)).toEqual({ attackValue: 4, sevenStar: false, qi: 0 });
   });
 
   it("Yulian's Jade Body heals only the first damaged Shared Ward defender each round", () => {
@@ -197,7 +212,7 @@ describe("Azure Breeze cultivation combat", () => {
     expect(state.combat!.cultivationFactions?.p1?.swordIntent).toBe(1);
   });
 
-  it("cultivation starts with at most one Qi, caps at two, and shortens Sword Domain tempering", () => {
+  it("cultivation starts with at most one Qi, caps at three (+1 Body Refinement), and shortens Sword Domain tempering", () => {
     let state = combatState("azure_breeze", "qingyun");
     // Realm 3 (Nascent Soul) folds in all three former grade nodes: Meridian
     // Circulation (r1), Body Refinement (r2) and Sword Domain (r3).
@@ -215,6 +230,21 @@ describe("Azure Breeze cultivation combat", () => {
     gainSectQiAfterMove(state, attacker, 9, 5);
     expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(2);
 
+    // Cap: base 3, +1 from Body Refinement (folded into realm 3) = 4. A new
+    // link in a fresh round never lifts Qi past it (CONTROL: one below cap gains).
+    expect(SECT_QI_MAX).toBe(3);
+    const capacity = sectQiCapacity(state, "p1");
+    expect(capacity).toBe(SECT_QI_MAX + 1);
+    state.combat!.round = 2;
+    state.combat!.cultivationFactions!.p1 = { sectQi: capacity, swordIntent: 0 };
+    gainSectQiAfterMove(state, attacker, 9, 5);
+    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(capacity);
+    state.combat!.round = 3;
+    state.combat!.cultivationFactions!.p1 = { sectQi: capacity - 1, swordIntent: 0 };
+    gainSectQiAfterMove(state, attacker, 9, 5);
+    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(capacity);
+
+    state.combat!.round = 1;
     attacker.position = 9;
     state.combat!.units.unit_p1_crusaders.position = 0;
     state.combat!.cultivationFactions!.p1 = { sectQi: 0, swordIntent: 2 };
@@ -267,22 +297,37 @@ describe("cultivation art contract", () => {
 });
 
 describe("Heavenly Demon cultivation combat", () => {
-  it("Shiyan generates only one Essence from the first real casualty each round", () => {
-    const state = combatState("heavenly_demon", "shiyan");
-    const first = state.combat!.units.unit_p1_marksmen;
-    const second = state.combat!.units.unit_p1_griffins;
-    const third = state.combat!.units.unit_p1_crusaders;
-    state.combat!.cultivationFactions!.p1!.bloodEssence = 0;
-    for (const casualty of [first, second]) {
-      casualty.variant = "pack";
-      casualty.damage = casualty.maxHealth;
-      markUnitRemovedIfNeeded(state, casualty);
+  it("Shiyan's Corpse-Furnace Sutra lifts the once-per-round Blood Price limit: two casualties in one round = 2 Essence (CONTROL: Xuedao gets 1)", () => {
+    function twoCasualtiesInRoundOne(hero: "shiyan" | "xuedao"): { state: GameState; essence: number | undefined } {
+      const state = combatState("heavenly_demon", hero);
+      state.combat!.cultivationFactions!.p1!.bloodEssence = 0;
+      for (const casualty of [state.combat!.units.unit_p1_marksmen, state.combat!.units.unit_p1_griffins]) {
+        casualty.variant = "pack";
+        casualty.damage = casualty.maxHealth;
+        markUnitRemovedIfNeeded(state, casualty);
+      }
+      return { state, essence: state.combat!.cultivationFactions?.p1?.bloodEssence };
     }
-    expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(1);
-    expect(state.combat!.cultivationFactions?.p1?.corpseFurnaceSurgeRound).toBe(1);
 
+    const { state, essence } = twoCasualtiesInRoundOne("shiyan");
+    expect(essence).toBe(2);
+    expect(state.combat!.cultivationFactions?.p1?.corpseFurnaceSurgeRound).toBeUndefined();
+    expect(
+      state.eventLog.filter((event) => event.type === "HERO_SKILL_USED" && event.nodeId === "shiyan-corpse-furnace-sutra")
+    ).toHaveLength(2);
+    // CONTROL: without Shiyan the once-per-round limit holds.
+    expect(twoCasualtiesInRoundOne("xuedao").essence).toBe(1);
+
+    // Each unit still feeds the furnace only once per combat.
+    const first = state.combat!.units.unit_p1_marksmen;
     state.combat!.round = 2;
     state.combat!.cultivationFactions!.p1!.bloodEssence = 0;
+    first.damage = first.maxHealth;
+    markUnitRemovedIfNeeded(state, first);
+    expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(0);
+
+    // A fresh casualty in a later round still feeds it.
+    const third = state.combat!.units.unit_p1_crusaders;
     third.variant = "pack";
     third.damage = third.maxHealth;
     markUnitRemovedIfNeeded(state, third);

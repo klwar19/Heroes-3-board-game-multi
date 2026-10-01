@@ -21,7 +21,7 @@ import {
   getOrthogonalNeighbors,
   isHexPosition,
 } from "../battlefield";
-import { unitAtCell, unitDistance, unitDistanceAt, unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
+import { unitAdjacentToCell, unitAtCell, unitDistance, unitDistanceAt, unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
 import {
   hexAreaAimedTargets,
   hexAreaAttackOf,
@@ -30,6 +30,7 @@ import {
 } from "../hex-area-attacks";
 import type { CombatState, CombatUnitState, GameAction, GameState } from "../state";
 import type { ComputerActionScore } from "./map-policy";
+import { bloodEssenceCapacity, currentBloodEssence, currentSectQi, sectQiCapacity } from "../wuxia-factions";
 import {
   distanceToNearestEnemy,
   expectedAttackDamage,
@@ -1590,6 +1591,27 @@ function tacticsSortMoveScore(
  * Multi-unit movement: close on enemies, screen friendly ranged, keep ranged
  * out of melee when they already have a shot, and cluster toward focus targets.
  */
+/**
+ * Azure Breeze formation value of ending on `destination`: a NEW link can
+ * circulate Sect Qi, and standing beside an ally lets Sword Formation (own
+ * attack) and Shared Ward (enemy attack) spend it. Small by design — it breaks
+ * ties toward formation play and never outweighs a kill, a threat or a retreat.
+ */
+function azureFormationBonus(state: GameState, unit: CombatUnitState, destination: number): number {
+  const combat = state.combat;
+  if (!combat || state.players[unit.controllerId]?.factionId !== "azure_breeze") return 0;
+  const allies = Object.values(combat.units).filter(
+    (ally) => ally.id !== unit.id && ally.controllerId === unit.controllerId && unitRemainingHealth(ally) > 0,
+  );
+  // Same footprint rule as the engine's Sect Qi link (gainSectQiAfterMove).
+  const adjacent = allies.filter((ally) => unitAdjacentToCell(combat, ally, destination));
+  if (adjacent.length === 0) return 0;
+  const newLink = adjacent.some((ally) => !unitAdjacentToCell(combat, ally, unit.position));
+  const qi = currentSectQi(state, unit.controllerId);
+  const room = sectQiCapacity(state, unit.controllerId) - qi;
+  return (qi > 0 ? 10 : 0) + (newLink && room > 0 ? 8 : 0) + (adjacent.length >= 2 ? 4 : 0);
+}
+
 function moveUnitScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "MOVE_UNIT" }>,
@@ -1848,6 +1870,10 @@ function moveUnitScore(
     }
   }
 
+  // Azure Breeze Sect Qi lives on formation links: stepping beside an ally
+  // circulates Qi (a NEW link) and lets Shared Ward / Sword Formation spend it.
+  score += azureFormationBonus(state, mover, action.destination);
+
   // Movement accounts for enemy move-and-attacks, not only bodies already
   // adjacent. A screen or a safe retreat can preserve the next shot.
   if (escapesLethalReply) return { score: Math.max(570, score), policy: "combat.escape-focus" };
@@ -1962,6 +1988,26 @@ function commanderCastScore(
       const bestThreat = targets.reduce((best, target) => Math.max(best, unitThreatValue(target)), 0);
       base = lethal ? 700 : 590 + Math.min(40, Math.round(bestThreat / 3));
       swing = lethal;
+      break;
+    }
+    case "sect-qi-transmission": {
+      // Sword Saint: the +Attack pays off like any buff; the Qi is banked for
+      // the next Sword Formation / Shared Ward. A full meter wastes the Qi half.
+      const state = observation.state as unknown as GameState;
+      const qiRoom = sectQiCapacity(state, playerId) - currentSectQi(state, playerId);
+      base = (hasAdjacentEnemy ? 620 : 580) + (qiRoom > 0 ? 30 : 0);
+      swing = hasAdjacentEnemy;
+      break;
+    }
+    case "blood-offering": {
+      // Demon Ancestor: 1 self-inflicted damage for 2-3 Essence. Worth it only
+      // while the furnace has room and there is still an enemy to spend it on.
+      const state = observation.state as unknown as GameState;
+      const essenceRoom = bloodEssenceCapacity(state, playerId) - currentBloodEssence(state, playerId);
+      if (essenceRoom < 2 || enemies.length === 0) {
+        return -1_000;
+      }
+      base = 600;
       break;
     }
     default:
@@ -2146,7 +2192,10 @@ export function scoreCombatAction(
           : Math.min(ATTACK_CEIL, baseScore + ring);
       return {
         score: ringedScore + (action.type === "MOVE_AND_ATTACK_UNIT"
-          ? Math.min(0, friendlyLaneChange(combat, attacker, attackFrom, observation.state as unknown as GameState)) : 0),
+          ? Math.min(0, friendlyLaneChange(combat, attacker, attackFrom, observation.state as unknown as GameState)) : 0) +
+          // Azure Breeze: strike from inside the formation (Sword Formation's
+          // Qi spend needs an adjacent ally; a new link also circulates Qi).
+          azureFormationBonus(observation.state as unknown as GameState, attacker, attackFrom),
         // Preserve special priority/safety decisions even if the lane penalty
         // moves their final number back into the ordinary attack band.
         policy: rulePriority

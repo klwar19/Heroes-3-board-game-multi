@@ -3028,6 +3028,39 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Wuxia hero specialty arts (Azure Breeze Sect Qi / Heavenly Demon Blood
+       * Essence). Legality, resolution and AI valuation all dispatch on `art` in
+       * src/engine/wuxia-factions.ts:
+       *  - "channel": gain meter points (`gain`) and draw `drawCards`.
+       *  - "formation-mending": every friendly unit beside another friendly unit
+       *    removes `amount` damage.
+       *  - "array-strike": attack-window reaction on your own attack: +1 Attack per
+       *    living ally adjacent to the attacker, capped at `max`;
+       *    `ignoresRetaliation` also cancels the target's Retaliation.
+       *  - "jade-guard": attack-window reaction on an enemy attack against your
+       *    unit: +`max` Defense; `recover` removes that much damage from the
+       *    defender after the attack if it survives.
+       *  - "legion-harvest": for the rest of this combat Blood Harvest may fire
+       *    `harvestsPerRound` times each round, healing the harvesting unit
+       *    `harvestHeal`.
+       *  - "bound-soul": summon `count` temporary Bound Souls beside the targeted
+       *    friendly unit (`empowered`: +1 Attack, +1 Health).
+       */
+      type: "WUXIA_ART_CARD";
+      art: "channel" | "formation-mending" | "array-strike" | "jade-guard" | "legion-harvest" | "bound-soul";
+      gain?: { sectQi?: number; bloodEssence?: number };
+      drawCards?: number;
+      amount?: number;
+      max?: number;
+      ignoresRetaliation?: boolean;
+      recover?: number;
+      harvestsPerRound?: number;
+      harvestHeal?: number;
+      count?: number;
+      empowered?: boolean;
+    }
+  | {
+      /**
        * Kriv (Bulwark)'s rune-empowerment specialty: a MAP play that makes the
        * caster Rune-Empowered — their Hero then starts EVERY combat with `amount`
        * extra Runes (a head-start toward the Rune-Level thresholds), until the
@@ -4322,6 +4355,11 @@ export type CardPlayCost = {
   costCardFilter?: "spell" | "power-source";
   /** Cost cards are removed from the game rather than discarded. */
   removeCostCards?: boolean;
+  /**
+   * Wuxia meter price of this option (Heavenly Demon Blood Essence / Azure Sect
+   * Qi), checked in canAffordCardCost and spent in payOptionCardCost.
+   */
+  cultivation?: { sectQi?: number; bloodEssence?: number };
 };
 
 export type TriggerDefinition = {
@@ -4485,6 +4523,12 @@ export type CardOptionDefinition = {
    * playable only on the owner's own turn.
    */
   combatAnytime?: boolean;
+  /**
+   * Wuxia hero specialties: meter points (Sect Qi / Blood Essence / Sword
+   * Intent) gained when this option is played, applied right after its cost is
+   * paid. A side without that meter gains nothing.
+   */
+  cultivationGain?: { sectQi?: number; bloodEssence?: number; swordIntent?: number };
   /** This option is the card's expert side: playing it spends a crown. */
   expertOnly?: boolean;
   /**
@@ -8886,6 +8930,12 @@ export type ResolutionStackItem = {
     cultivationAttackBonus?: number;
     /** Azure Shared Ward, latched at declaration so previews and resolution agree. */
     cultivationDefenseBonus?: number;
+    /** Azure "Qi Edge": Defense this Qi-fuelled attack ignores (floored with the other pierces). */
+    cultivationDefensePierce?: number;
+    /** Sword Formation spent Sect Qi on this attack (Inner Sect "Sword Wave" reads it after the hit). */
+    wuxiaQiAttack?: boolean;
+    /** Yulian "Jade Body Arts" VI: the defender removes this much damage after the attack if it survives. */
+    wuxiaJadeRecover?: number;
     /**
      * Polish Balance Pack Shield (Power 2): "takes up to 3 damage" — a per-attack
      * damage CAP on the blow this stack item is resolving. Clamped at the shared
@@ -11616,6 +11666,8 @@ export type CombatState = {
     maxDistance?: number;
     valuablesCost?: number;
     runeCost?: number;
+    /** Heavenly Demon Soulfire Volley: Blood Essence paid when the damage pick resolves. */
+    bloodEssenceCost?: number;
     optional?: boolean;
     /** Jotunn Rune Bolt R3: offer a per-target tier — 1 Rune → 1 damage, or 2 Runes → 2 damage. */
     runeScaling?: boolean;
@@ -11680,6 +11732,19 @@ export type CombatState = {
     jadeBodyTemperingRound?: number;
     /** Shiyan's once-per-round extra Corpse Furnace yield. */
     corpseFurnaceSurgeRound?: number;
+    /** Formation-link Qi gains already taken in `sectQiGainedRound` (Nascent Soul allows 2). */
+    sectQiLinkGains?: number;
+    /** Blood Harvest (an enemy side/layer defeated by your attack): once per combat round. */
+    bloodHarvestRound?: number;
+    /** Harvests already taken in `bloodHarvestRound` (Xuanming's Legion of Bones allows more). */
+    bloodHarvestCount?: number;
+    /** Xuanming "Legion of Bones": Blood Harvest limit per round and heal per harvest this combat. */
+    harvestsPerRound?: number;
+    harvestHeal?: number;
+    /** Per-unit once-per-round wuxia arts, keyed `${art}:${unitId}` → combat round used. */
+    artRounds?: Record<string, number>;
+    /** Per-unit once-per-combat wuxia arts, keyed `${art}:${unitId}`. */
+    artUsedCombat?: string[];
       }
     >
   >;
