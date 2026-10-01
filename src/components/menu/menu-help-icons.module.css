@@ -1,9 +1,10 @@
-/* Sits left of the corner Modding (right 56px) and Music (right 14px) icons,
+/* Sits left of the corner Options pill (right 98px, ~100px wide; a 34px gear on
+   phones), Modding (right 56px) and Music (right 14px) icons,
    vertically centred on them; the game logo owns the top-left corner. */
 .cluster {
   position: fixed;
   top: 48px;
-  right: 100px;
+  right: 216px;
   z-index: 30;
   display: flex;
   gap: 10px;
@@ -93,7 +94,7 @@
   .cluster {
     gap: 6px;
     top: 51px;
-    right: 96px;
+    right: 140px;
   }
 
   .item {

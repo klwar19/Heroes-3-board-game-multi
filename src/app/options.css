@@ -758,7 +758,8 @@
     padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* The main-menu corner pill shrinks to its gear on phones. */
+  /* The main-menu corner pill shrinks to its gear on phones (the help cluster
+     in menu-help-icons.module.css sits just left of it). */
   .mainMenuShell .menuOptionsButton {
     width: 34px;
     padding: 0;
