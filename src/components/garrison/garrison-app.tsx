@@ -20,6 +20,7 @@ import {
   type Link as NetLink, type NetFrame, type Role
 } from "@/lib/garrison-net";
 import { useBackgroundMusic } from "@/lib/music";
+import { SettingsButton } from "@/components/settings/settings-dialog";
 import { createLocalDriver, type GarrisonDriver } from "./driver";
 import { GarrisonGame, type GameIntro } from "./garrison-game";
 import styles from "./garrison.module.css";
@@ -335,6 +336,7 @@ export function GarrisonApp() {
         ) : null}
         {screen.s === "almanac" ? <Almanac onBack={() => setScreen({ s: "home" })} /> : null}
       </div>
+      <SettingsButton className="optionsCornerButton" compact />
     </div>
   );
 }

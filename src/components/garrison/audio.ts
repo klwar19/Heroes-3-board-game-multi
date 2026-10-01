@@ -1,13 +1,18 @@
 /**
  * Garrison Wars sounds: each simulation event maps onto the converted
  * Heroes III library (units/<creature>-<action>, spells/…, adventure/…).
- * Throttled so a big wave does not turn into noise.
+ * Throttled so a big wave does not turn into noise: a per-clip gap, a
+ * per-second budget for ordinary clips with a tighter one for the combat
+ * chatter (blows, shots, bites), and one character line at a time. Cues (the
+ * player's own actions, spells, Surge, bosses, wave horns, a defender's death)
+ * skip the budgets and outrank the chatter for a voice slot.
  */
 
 import manifest from "../../../public/sounds/manifest.json";
 import { DEFENDERS, ENEMIES, type ProjectileKind, type SpellId } from "@/engine/garrison/content";
 import type { GarrisonEvent, GarrisonState } from "@/engine/garrison/sim";
 import { playCardPlace, playLibrarySound } from "@/lib/sound";
+import { SOUND_PRIORITY } from "@/lib/sound-voices";
 
 const LIBRARY = manifest as Record<string, unknown>;
 
@@ -100,10 +105,17 @@ function shotKey(sprite: string, projectile: ProjectileKind | undefined): string
   return unitKey(sprite, "shoot") ?? (projectile ? SHOT_SOUND[projectile] ?? null : null);
 }
 
+/** Character lines never talk over each other: one at a time, this far apart (cue lines excepted). */
+const VOICE_GAP_MS = 1200;
+let lastVoiceAt = -1e9;
+
 /** Voices speak up now and then, not on every blow (one line per creature every few seconds). */
-function voice(sprite: string, action: VoiceAction, volume = 0.5, gap = 4500): void {
+function voice(sprite: string, action: VoiceAction, volume = 0.5, gap = 4500, cue = false): void {
   const key = voiceKey(sprite, action);
-  if (key) play(key, volume, gap);
+  if (!key) return;
+  const now = clock();
+  if (!cue && now - lastVoiceAt >= 0 && now - lastVoiceAt < VOICE_GAP_MS) return;
+  if (play(key, volume, gap, cue ? "cue" : "routine")) lastVoiceAt = now;
 }
 
 /** The DOOM monsters speak with their original sound lumps (the same set src/data/unit-sounds.ts uses). */
@@ -136,23 +148,55 @@ function unitKey(sprite: string, action: "attack" | "shoot" | "death" | "hurt" |
   return null;
 }
 
-const lastPlayed = new Map<string, number>();
-let windowStart = 0;
-let windowCount = 0;
+/**
+ * How a clip is budgeted: "chatter" = the endless combat noise of a big wave,
+ * "routine" = every other battle sound, "cue" = must be heard (never budgeted).
+ */
+export type GarrisonSoundKind = "chatter" | "routine" | "cue";
 
-function play(key: string | null, volume = 0.5, gap = 110): void {
-  if (!key || !LIBRARY[key]) return;
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-  if (now - (lastPlayed.get(key) ?? -1e9) < gap) return;
-  if (now - windowStart > 1000) {
-    windowStart = now;
-    windowCount = 0;
-  }
-  if (windowCount >= 14) return;
-  windowCount += 1;
-  lastPlayed.set(key, now);
-  playLibrarySound(key, volume);
+/** Ordinary clips started in any rolling second, and how many of those may be chatter. */
+const ROUTINE_PER_SECOND = 10;
+const CHATTER_PER_SECOND = 6;
+
+const lastPlayed = new Map<string, number>();
+const routineStarts: number[] = [];
+const chatterStarts: number[] = [];
+
+function clock(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
+
+/** Starts within the last second (older ones dropped). */
+function startsInLastSecond(starts: number[], now: number): number {
+  while (starts.length && (now - starts[0]! >= 1000 || now < starts[0]!)) starts.shift();
+  return starts.length;
+}
+
+/**
+ * Play a lawn clip through the throttle: `gap` = least time between two plays
+ * of this clip. Shared with field-audio.ts so the battlefield's clips draw on
+ * the same budget. True when the clip was started.
+ */
+function play(key: string | null, volume = 0.5, gap = 110, kind: GarrisonSoundKind = "routine"): boolean {
+  if (!key || !LIBRARY[key]) return false;
+  const now = clock();
+  if (now - (lastPlayed.get(key) ?? -1e9) < gap) return false;
+  if (kind !== "cue") {
+    // A rolling window: a fixed one let a burst straddling its edge play twice the budget.
+    if (startsInLastSecond(routineStarts, now) >= ROUTINE_PER_SECOND) return false;
+    if (kind === "chatter") {
+      if (startsInLastSecond(chatterStarts, now) >= CHATTER_PER_SECOND) return false;
+      chatterStarts.push(now);
+    }
+    routineStarts.push(now);
+  }
+  lastPlayed.set(key, now);
+  if (kind === "cue") playLibrarySound(key, volume, SOUND_PRIORITY.cue);
+  else playLibrarySound(key, volume);
+  return true;
+}
+
+export const playGarrisonSound = play;
 
 const SPELL_SOUND: Record<SpellId, string> = {
   "magic-arrow": "spells/magic-arrow",
@@ -187,27 +231,27 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
   for (const ev of events) {
     switch (ev.e) {
       case "place": {
-        if (ev.kind === "mine") play("spells/land-mine", 0.45);
+        if (ev.kind === "mine") play("spells/land-mine", 0.45, 110, "cue");
         else playCardPlace();
         // A character troop greets the field.
         const placed = DEFENDERS[ev.kind]?.sprite;
-        if (placed) voice(placed, "move", 0.55, 2500);
+        if (placed) voice(placed, "move", 0.55, 2500, true);
         break;
       }
       case "upgrade":
-        play("adventure/experience", 0.45);
+        play("adventure/experience", 0.45, 110, "cue");
         break;
       case "fuse":
-        play("spells/clone", 0.5);
+        play("spells/clone", 0.5, 110, "cue");
         break;
       case "shell":
-        play("spells/stone-skin", 0.45);
+        play("spells/stone-skin", 0.45, 110, "cue");
         break;
       case "defShoot": {
         const d = s.defenders.find((unit) => unit.id === ev.id);
         if (d) {
           const def = DEFENDERS[d.kind]!;
-          play(shotKey(def.sprite, def.shot?.projectile), 0.32, 140);
+          play(shotKey(def.sprite, def.shot?.projectile), 0.32, 140, "chatter");
           voice(def.sprite, "shoot", 0.4, 8000);
         }
         break;
@@ -216,7 +260,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         const d = s.defenders.find((unit) => unit.id === ev.id);
         if (d) {
           const sprite = DEFENDERS[d.kind]!.sprite;
-          play(unitKey(sprite, "attack") ?? "mgq/effects/slash9", 0.35, 160);
+          play(unitKey(sprite, "attack") ?? "mgq/effects/slash9", 0.35, 160, "chatter");
           voice(sprite, "attack", 0.4, 8000);
         }
         break;
@@ -225,25 +269,25 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         const e = s.enemies.find((unit) => unit.id === ev.id);
         if (e) {
           const sprite = ENEMIES[e.kind]!.sprite;
-          play(unitKey(sprite, "attack") ?? "mgq/effects/mon-tume", 0.3, 220);
+          play(unitKey(sprite, "attack") ?? "mgq/effects/mon-tume", 0.3, 220, "chatter");
           voice(sprite, "attack", 0.4, 7000);
         }
         break;
       }
       case "enemyCast": {
         const e = s.enemies.find((unit) => unit.id === ev.id);
-        if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "shoot"), 0.32, 200);
+        if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "shoot"), 0.32, 200, "chatter");
         break;
       }
       case "enemyDie": {
         const def = ENEMIES[ev.kind];
         if (def?.sprite) play(unitKey(def.sprite, "death") ?? voiceKey(def.sprite, "death"), 0.4, 150);
-        if (ev.kind === "banner") play("adventure/hero-defeated", 0.55);
+        if (ev.kind === "banner") play("adventure/hero-defeated", 0.55, 110, "cue");
         break;
       }
       case "defDie": {
         const def = DEFENDERS[ev.kind];
-        if (def?.sprite) play(unitKey(def.sprite, "death") ?? voiceKey(def.sprite, "death"), 0.42, 150);
+        if (def?.sprite) play(unitKey(def.sprite, "death") ?? voiceKey(def.sprite, "death"), 0.42, 150, "cue");
         break;
       }
       case "defHurt": {
@@ -295,12 +339,12 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         break;
       case "hitscan": {
         const e = s.enemies.find((unit) => unit.id === ev.id);
-        if (ev.kind === "flame") play("doom/dsflamst", 0.5, 200);
-        else if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "shoot"), 0.3, 120);
+        if (ev.kind === "flame") play("doom/dsflamst", 0.5, 200, "chatter");
+        else if (e) play(unitKey(ENEMIES[e.kind]!.sprite, "shoot"), 0.3, 120, "chatter");
         break;
       }
       case "flame":
-        play("doom/dsflamst", 0.5, 200);
+        play("doom/dsflamst", 0.5, 200, "chatter");
         break;
       case "defRise":
       case "enemyRise":
@@ -324,60 +368,60 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play(ev.kind === "fire-wall" ? "spells/fire-wall" : ev.kind === "death-breath" ? "spells/death-cloud" : "spells/fireball-hit", 0.6);
         break;
       case "cloudHit":
-        play(ev.kind === "cloud" ? "spells/death-cloud" : ev.kind === "fireball" ? "spells/fireball-hit" : ev.kind === "rocket" ? "doom/dsbarexp" : null, 0.35, 250);
+        play(ev.kind === "cloud" ? "spells/death-cloud" : ev.kind === "fireball" ? "spells/fireball-hit" : ev.kind === "rocket" ? "doom/dsbarexp" : null, 0.35, 250, "chatter");
         break;
       case "projectileHit":
-        if (ev.kind === "rocket") play("doom/dsbarexp", 0.4, 160);
-        else if (ev.kind === "hellfire" || ev.kind === "cacoball" || ev.kind === "baronball" || ev.kind === "soul") play("doom/dsfirxpl", 0.28, 180);
+        if (ev.kind === "rocket") play("doom/dsbarexp", 0.4, 160, "chatter");
+        else if (ev.kind === "hellfire" || ev.kind === "cacoball" || ev.kind === "baronball" || ev.kind === "soul") play("doom/dsfirxpl", 0.28, 180, "chatter");
         break;
       case "charger":
-        play(unitKey(s.cfg.chargerSprite, "attack"), 0.55, 0);
-        play(unitKey(s.cfg.chargerSprite, "move"), 0.5, 0);
+        play(unitKey(s.cfg.chargerSprite, "attack"), 0.55, 0, "cue");
+        play(unitKey(s.cfg.chargerSprite, "move"), 0.5, 0, "cue");
         break;
       case "collect":
-        play(`adventure/pickup-0${1 + (ev.id % 7)}`, 0.35, 60);
+        play(`adventure/pickup-0${1 + (ev.id % 7)}`, 0.35, 60, "cue");
         break;
       case "spell":
-        play(SPELL_SOUND[ev.spell], 0.55, 0);
+        play(SPELL_SOUND[ev.spell], 0.55, 0, "cue");
         break;
       case "hugeWave":
-        play("effects/horn-2", 0.6, 0);
-        play("ui/time-over", 0.45, 0);
+        play("effects/horn-2", 0.6, 0, "cue");
+        play("ui/time-over", 0.45, 0, "cue");
         break;
       case "wave":
-        if (ev.wave === 1) play("adventure/new-week", 0.5, 0);
+        if (ev.wave === 1) play("adventure/new-week", 0.5, 0, "cue");
         break;
       case "blessingOffer":
-        play("adventure/treasure", 0.55, 0);
+        play("adventure/treasure", 0.55, 0, "cue");
         break;
       case "bossAction":
-        play(ev.action === "breath" ? "spells/death-cloud" : ev.action === "summon" ? "spells/animate-dead" : unitKey("ghost-dragon", "shoot"), 0.55, 0);
+        play(ev.action === "breath" ? "spells/death-cloud" : ev.action === "summon" ? "spells/animate-dead" : unitKey("ghost-dragon", "shoot"), 0.55, 0, "cue");
         break;
       case "raided":
-        play("adventure/flag-mine", 0.55, 0);
+        play("adventure/flag-mine", 0.55, 0, "cue");
         break;
       case "overtime":
-        play("ui/time-over", 0.6, 0);
+        play("ui/time-over", 0.6, 0, "cue");
         break;
       // Order & Chaos
       case "surge": {
-        play("spells/mirth", 0.55, 0);
+        play("spells/mirth", 0.55, 0, "cue");
         const d = s.defenders.find((unit) => unit.id === ev.id);
-        if (d) voice(DEFENDERS[d.kind]!.sprite, "ability", 0.65, 1500);
+        if (d) voice(DEFENDERS[d.kind]!.sprite, "ability", 0.65, 1500, true);
         break;
       }
       case "orb":
         play("effects/good-luck", 0.3, 300);
         break;
       case "ascend": {
-        play("spells/prayer", 0.75, 0);
-        play("effects/good-luck", 0.5, 0);
+        play("spells/prayer", 0.75, 0, "cue");
+        play("effects/good-luck", 0.5, 0, "cue");
         const sprite = DEFENDERS[ev.kind]?.sprite;
-        if (sprite) voice(sprite, "ability", 0.7, 1500);
+        if (sprite) voice(sprite, "ability", 0.7, 1500, true);
         break;
       }
       case "crown":
-        play("effects/good-luck", 0.45, 500);
+        play("effects/good-luck", 0.45, 500, "cue");
         break;
       case "whirl":
         play("spells/death-ripple", 0.45, 200);
@@ -392,7 +436,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("effects/danger", 0.3, 800);
         break;
       case "zap":
-        play(ev.tint === "frost" ? "spells/ice-bolt-hit" : ev.tint === "fire" ? "spells/fireball-hit" : ev.tint === "bolt" ? "spells/magic-arrow" : "spells/lightning-bolt", 0.3, 180);
+        play(ev.tint === "frost" ? "spells/ice-bolt-hit" : ev.tint === "fire" ? "spells/fireball-hit" : ev.tint === "bolt" ? "spells/magic-arrow" : "spells/lightning-bolt", 0.3, 180, "chatter");
         break;
       case "snipe":
         play("spells/precision", 0.35, 200);
@@ -408,7 +452,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         break;
       case "pounce": {
         const d = s.defenders.find((unit) => unit.id === ev.id);
-        if (d) play(unitKey(DEFENDERS[d.kind]!.sprite, "attack"), 0.45, 150);
+        if (d) play(unitKey(DEFENDERS[d.kind]!.sprite, "attack"), 0.45, 150, "chatter");
         break;
       }
       case "shellGift":
@@ -418,13 +462,13 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("spells/death-ripple", 0.5, 200);
         break;
       case "snatchDrop":
-        play("effects/danger", 0.5, 300);
+        play("effects/danger", 0.5, 300, "cue");
         break;
       case "snatched":
-        play("effects/bad-luck", 0.5, 200);
+        play("effects/bad-luck", 0.5, 200, "cue");
         break;
       case "horn":
-        play("effects/horn-2", 0.6, 0);
+        play("effects/horn-2", 0.6, 0, "cue");
         break;
       case "phase":
         play(ev.on ? "spells/teleport" : "spells/teleport-in", 0.3, 300);
@@ -544,7 +588,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("spells/remove-obstacle", 0.4, 200);
         break;
       case "blessing":
-        play("spells/bless", 0.5, 0);
+        play("spells/bless", 0.5, 0, "cue");
         break;
       // Order & Chaos content pass.
       case "band":
@@ -560,7 +604,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         break;
       case "quickdraw":
         // A burst is several shots, a fraction of a second apart (the throttle keeps it crisp).
-        play("mgq/effects/gun2", 0.3, 90);
+        play("mgq/effects/gun2", 0.3, 90, "chatter");
         break;
       case "gas":
         play(ev.big ? "spells/poison" : "spells/disease", ev.big ? 0.5 : 0.18, ev.big ? 0 : 2500);
@@ -572,7 +616,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("mgq/effects/cat", 0.45, 400);
         break;
       case "bowl":
-        play("mgq/effects/blow8", 0.45, 120);
+        play("mgq/effects/blow8", 0.45, 120, "chatter");
         break;
       case "dash":
         play("mgq/effects/slash9", 0.5, 0);
@@ -622,29 +666,29 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("effects/siege-wall-hit", 0.6, 0);
         break;
       case "bossEnter":
-        play("effects/horn-4", 0.5, 2000);
-        play("spells/earthquake", 0.35, 2000);
+        play("effects/horn-4", 0.5, 2000, "cue");
+        play("spells/earthquake", 0.35, 2000, "cue");
         break;
       case "bossCue":
-        play(ev.move === "drums" ? "effects/horn-3" : "effects/fear", 0.35, 300);
+        play(ev.move === "drums" ? "effects/horn-3" : "effects/fear", 0.35, 300, "cue");
         break;
       case "bossMove":
-        if (ev.move === "slam" || ev.move === "pounce" || ev.move === "roar") play("spells/earthquake", 0.45, 300);
-        else if (ev.move === "breath") play("effects/acid-breath", 0.45, 300);
-        else if (ev.move === "volley") play("units/catapult-shoot", 0.45, 300);
-        else if (ev.move === "summon") play("spells/teleport-in", 0.4, 300);
-        else if (ev.move === "graves") play("spells/animate-dead", 0.4, 300);
-        else if (ev.move === "drums") play("spells/bloodlust", 0.45, 300);
-        else play("spells/teleport", 0.35, 300);
+        if (ev.move === "slam" || ev.move === "pounce" || ev.move === "roar") play("spells/earthquake", 0.45, 300, "cue");
+        else if (ev.move === "breath") play("effects/acid-breath", 0.45, 300, "cue");
+        else if (ev.move === "volley") play("units/catapult-shoot", 0.45, 300, "cue");
+        else if (ev.move === "summon") play("spells/teleport-in", 0.4, 300, "cue");
+        else if (ev.move === "graves") play("spells/animate-dead", 0.4, 300, "cue");
+        else if (ev.move === "drums") play("spells/bloodlust", 0.45, 300, "cue");
+        else play("spells/teleport", 0.35, 300, "cue");
         break;
       case "bossPhase":
-        play("spells/berserk", 0.5, 500);
+        play("spells/berserk", 0.5, 500, "cue");
         break;
       case "bossRepel":
-        play("spells/earthquake", 0.4, 400);
+        play("spells/earthquake", 0.4, 400, "cue");
         break;
       case "bossFall":
-        play("effects/horn-5", 0.55, 2000);
+        play("effects/horn-5", 0.55, 2000, "cue");
         break;
       case "unnerved":
         play("spells/bloodlust", 0.4, 400);

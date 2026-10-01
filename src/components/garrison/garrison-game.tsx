@@ -16,7 +16,8 @@ import {
 } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, isMusicMuted, playCombatSting, setMusicHeld, setMusicMuted, subscribeMusic, useBackgroundMusic, type MusicScene } from "@/lib/music";
-import { isSoundMuted, setSoundMuted } from "@/lib/sound";
+import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from "@/lib/sound";
+import { openSettings } from "@/lib/settings-dialog";
 import { playEventSounds } from "./audio";
 import { playFieldEventSounds, updateFieldAmbience } from "./field-audio";
 import { AdvisorBubble } from "./order-chaos/story-ui";
@@ -115,7 +116,9 @@ function laneChampionRode(s: GarrisonState, lane: number): boolean {
 
 export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, next, unlockNote, defColor, intro: introProp = null, music, advisor }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const viewRef = useRef(createView(town, defColor));
+  // (Created once: a plain useRef(createView(...)) would build and drop a fresh view on every HUD render.)
+  const [initialView] = useState(() => createView(town, defColor));
+  const viewRef = useRef(initialView);
   /** HUD overlay: coins flying to the counter (in page space, above the bars). */
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const gameRef = useRef<HTMLDivElement | null>(null);
@@ -193,6 +196,8 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   useEffect(() => () => setMusicHeld(false), []);
   const [musicMuted, setMusicMutedState] = useState(isMusicMuted);
   useEffect(() => subscribeMusic(() => setMusicMutedState(isMusicMuted())), []);
+  // Options (or another tab) can flip the effects mute too: keep this checkbox in step.
+  useEffect(() => subscribeSoundMuted(() => setMuted(isSoundMuted())), []);
 
   const select = useCallback((next: Selection) => {
     selectionRef.current = next;
@@ -397,6 +402,9 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     const overlay = overlayRef.current;
     const ctx = overlay?.getContext("2d");
     if (!overlay || !ctx) return;
+    // Nothing flying and nothing left on it: no work, and no layout read every frame
+    // (it is re-measured when the next coin flies; a blank canvas needs no resizing).
+    if (flightsRef.current.length === 0 && overlay.dataset.dirty !== "1") return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const rect = overlay.getBoundingClientRect();
     const w = Math.round(rect.width * dpr);
@@ -532,7 +540,8 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         onFinishRef.current?.({ winner: state.outcome.winner, reason: state.outcome.reason, state });
         urgent = true;
       }
-      if (urgent || now - hudAt > 110) {
+      // (Paused or held by the intro, the match cannot change: the HUD re-renders only for its own UI state.)
+      if (urgent || (!halt && now - hudAt > 110)) {
         hudAt = now;
         force();
       }
@@ -978,6 +987,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
                 <input checked={musicMuted} onChange={(event) => setMusicMuted(event.target.checked)} type="checkbox" />
                 Mute music
               </label>
+              <button className={styles.ghostButton} onClick={() => openSettings("audio")} type="button">Options (volume, display…)</button>
               <button className={styles.ghostButton} onClick={onLeave} type="button">Quit to menu</button>
             </div>
             <p className={styles.keysHelp}>

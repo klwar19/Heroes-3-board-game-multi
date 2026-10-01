@@ -80,6 +80,9 @@ let currentTrack: string | null = null;
 let unlockHooked = false;
 /** A game pause holds the background track where it is (see setMusicHeld). */
 let held = false;
+/** Back-to-back load failures of the background track (cleared once one plays). */
+let bedFailures = 0;
+let bedRetry: number | undefined;
 let playlistGameKey: string | null = null;
 const playlistQueues = new Map<MusicProfile, string[]>();
 const listeners = new Set<() => void>();
@@ -110,6 +113,7 @@ function hookUnlock(): void {
     }
   };
   window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
 }
 
 /**
@@ -190,6 +194,28 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
       currentProfile = currentContinuationProfile ?? currentProfile;
       playProfile(currentProfile, true);
     });
+    audio.addEventListener("playing", () => {
+      bedFailures = 0;
+    });
+    // A track that fails to load (a dropped request, or a media pipeline the
+    // browser refused while a battle was busy) never fires "ended", so the
+    // scene would stay silent until the next scene change. Try again after a
+    // beat — another track of the pool when there is one — a few times.
+    audio.addEventListener("error", () => {
+      if (!audio || !currentProfile || !currentScene || muted || bedFailures >= 4) return;
+      bedFailures += 1;
+      const failedSrc = audio.src;
+      window.clearTimeout(bedRetry);
+      bedRetry = window.setTimeout(() => {
+        if (!audio || !currentProfile || !currentScene || muted || audio.src !== failedSrc) return;
+        if (MUSIC_TRACKS[currentProfile].length > 1) {
+          playProfile(currentProfile, true);
+          return;
+        }
+        audio.load();
+        if (!held && !silencedInBackground() && !stingPlaying()) audio.play().catch(() => undefined);
+      }, 1500 * bedFailures);
+    });
   }
   const tracks = MUSIC_TRACKS[profile];
   const canKeep = !chooseAnother && currentTrack !== null && tracks.includes(currentTrack);
@@ -249,6 +275,13 @@ export const VICTORY_FANFARE_VOLUME = 0.36;
 let fanfare: HTMLAudioElement | null = null;
 let fanfareEnded: (() => void) | null = null;
 
+/** The sting is over (ended, failed or refused): the background comes back, once. */
+function stingDone(): void {
+  const done = fanfareEnded;
+  fanfareEnded = null;
+  done?.();
+}
+
 /**
  * Play a combat-outcome sting once over the current scene: the background
  * track pauses, the sting plays at its own volume, and when it ends the
@@ -262,7 +295,9 @@ export function playCombatSting(track: CombatStingTrack): void {
   audio?.pause();
   if (!fanfare) {
     fanfare = new Audio();
-    fanfare.addEventListener("ended", () => fanfareEnded?.());
+    fanfare.addEventListener("ended", stingDone);
+    // A sting that cannot load must not leave the background paused for good.
+    fanfare.addEventListener("error", stingDone);
   }
   fanfareEnded = () => {
     if (!muted && currentProfile && currentScene) playProfile(currentProfile, false);
@@ -273,7 +308,10 @@ export function playCombatSting(track: CombatStingTrack): void {
   hookUnlock();
   // jsdom's play() returns undefined (not a Promise) — guard so a test render never throws.
   const playing = fanfare.play() as Promise<void> | undefined;
-  playing?.catch?.(() => undefined);
+  playing?.catch?.((error: unknown) => {
+    // Refused or unplayable (an abort only means the next sting replaced it).
+    if ((error as { name?: string } | null)?.name !== "AbortError") stingDone();
+  });
 }
 
 /** The victory fanfare — `playCombatSting(VICTORY_FANFARE_TRACK)`. */
@@ -413,6 +451,8 @@ export function __resetMusicForTests(): void {
   currentTrack = null;
   unlockHooked = false;
   held = false;
+  bedFailures = 0;
+  if (typeof window !== "undefined") window.clearTimeout(bedRetry);
   playlistGameKey = null;
   playlistQueues.clear();
   muted = false;

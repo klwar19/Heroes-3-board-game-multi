@@ -6,6 +6,7 @@ import { uiArtSlot, type UiArtSlotId } from "@/data/ui-art";
 import { assetUrl } from "@/lib/asset-url";
 import { useBackgroundMusic } from "@/lib/music";
 import { playLibrarySound } from "@/lib/sound";
+import { SettingsButton } from "@/components/settings/settings-dialog";
 
 /**
  * The converted Heroes III button click, played on any menu nav button across
@@ -169,7 +170,8 @@ export function MenuShell({
   videoFallback,
   className,
   as: Root = "main",
-  footer
+  footer,
+  optionsButton = true
 }: {
   backdrop?: UiArtSlotId;
   /** Heading rendered inside the panel (omit to compose your own). */
@@ -198,6 +200,8 @@ export function MenuShell({
   as?: "main" | "div";
   /** Small line pinned under the panel (e.g. "Playing as …"). */
   footer?: ReactNode;
+  /** false → no corner Options gear (the main menu places its own). */
+  optionsButton?: boolean;
 }) {
   useBackgroundMusic("menu");
   const art = uiArtSlot(backdrop);
@@ -242,6 +246,8 @@ export function MenuShell({
         )}
         {footer ? <div className="menuShellFooter">{footer}</div> : null}
       </div>
+      {/* Menu music plays on every shell screen, so its volume is reachable here too. */}
+      {optionsButton ? <SettingsButton className="optionsCornerButton" compact /> : null}
     </Root>
   );
 }

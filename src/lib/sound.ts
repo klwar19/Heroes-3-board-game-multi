@@ -3,12 +3,25 @@
 import soundManifest from "../../public/sounds/manifest.json";
 import { assetUrl } from "@/lib/asset-url";
 import { effectsGain, silencedInBackground, voiceGain } from "@/lib/audio-mix";
+import {
+  SOUND_PRIORITY,
+  admitVoice,
+  clipBuffer,
+  mixBus,
+  registerVoice,
+  releaseVoice,
+  soundNow,
+  type SoundVoice
+} from "@/lib/sound-voices";
 import { unitSoundKey, unitSoundLayerKey, type UnitSoundAction, type UnitSoundVariant } from "@/data/unit-sounds";
 
 /**
  * Table audio. Two sources:
  *  - the converted Heroes III library under /public/sounds (manifest keys
- *    like "spells/fireball"), played through <audio> elements
+ *    like "spells/fireball"), played through the shared AudioContext once a
+ *    clip is decoded (else through <audio> elements), always within the voice
+ *    budget of sound-voices.ts so a busy battle cannot exhaust the browser's
+ *    media players
  *  - synthesized card-handling foley (draw swish, card landing, shuffle)
  *    generated with WebAudio, since the original game has no card sounds
  *
@@ -87,19 +100,13 @@ function mixedVolume(key: string, volume: number): number {
   return Math.min(1, Math.max(0, volume * gain));
 }
 
-let effectsBus: GainNode | null = null;
-
 /**
  * Where synthesized foley connects: one gain stage per context carrying the
- * Options effects level (instead of the raw ctx.destination).
+ * Options effects level (instead of the raw ctx.destination). Decoded library
+ * clips share it (voice lines use its voices twin).
  */
 function effectsOutput(ctx: AudioContext): AudioNode {
-  if (!effectsBus || effectsBus.context !== ctx) {
-    effectsBus = ctx.createGain();
-    effectsBus.connect(ctx.destination);
-  }
-  effectsBus.gain.value = effectsGain();
-  return effectsBus;
+  return mixBus(ctx, false);
 }
 
 function getContext(): AudioContext | null {
@@ -119,6 +126,7 @@ function getContext(): AudioContext | null {
       audioContext?.resume().catch(() => undefined);
     };
     window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
   }
   if (audioContext.state === "suspended") {
     audioContext.resume().catch(() => undefined);
@@ -126,47 +134,195 @@ function getContext(): AudioContext | null {
   return audioContext;
 }
 
-function playAudioElement(audio: HTMLAudioElement): void {
+/**
+ * Start an element. A refused play (no gesture yet) or an unplayable clip
+ * calls `onFail` so its voice slot frees and any chain moves on; an abort is
+ * our own pause.
+ */
+function playAudioElement(audio: HTMLAudioElement, onFail?: () => void): void {
   const result = audio.play() as Promise<void> | undefined;
-  result?.catch(() => undefined);
+  result?.catch((error: unknown) => {
+    if ((error as { name?: string } | null)?.name !== "AbortError") onFail?.();
+  });
+}
+
+function clipUrl(key: string): string {
+  return assetUrl(soundLibrary[key]?.src ?? `/sounds/${key}.mp3`);
+}
+
+/** Voice lines outrank ordinary effects for a voice slot; a caller may raise a clip to a cue. */
+function clipPriority(key: string, priority?: number): number {
+  return Math.max(priority ?? SOUND_PRIORITY.normal, isVoiceClip(key) ? SOUND_PRIORITY.voice : SOUND_PRIORITY.normal);
+}
+
+/**
+ * The shared context and `url`'s decoded clip, when both are ready. The first
+ * play of a clip starts its decode and is heard through an <audio> element.
+ */
+function decodedClip(url: string): { ctx: AudioContext; buffer: AudioBuffer } | null {
+  // Before any gesture a context could not start: do not create one yet (the
+  // element path stays silent then, exactly as before).
+  if (!audioContext && typeof navigator !== "undefined" && navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+    return null;
+  }
+  const ctx = getContext();
+  if (!ctx) return null;
+  const buffer = clipBuffer(ctx, url);
+  return buffer && ctx.state === "running" ? { ctx, buffer } : null;
+}
+
+/**
+ * A decoded clip on the shared context: `plays` times back to back (the
+ * manifest `repeat`), or looped for `holdMs` and faded out (playLibrarySoundFor).
+ * Its own gain is the requested volume; the mix bus carries the Options level,
+ * so a fader move re-levels it while it plays.
+ */
+function playBuffer(
+  ctx: AudioContext,
+  buffer: AudioBuffer,
+  key: string,
+  volume: number,
+  priority: number,
+  plays: number,
+  holdMs: number | null,
+  onDone?: () => void
+): void {
+  const level = Math.min(1, Math.max(0, volume));
+  const start = ctx.currentTime;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(level, start);
+  gain.connect(mixBus(ctx, isVoiceClip(key)));
+  let source: AudioBufferSourceNode | null = null;
+  let remainingPlays = plays;
+  let doneFired = false;
+  const finish = (later = false) => {
+    releaseVoice(voice);
+    if (doneFired) return;
+    doneFired = true;
+    if (source) source.onended = null;
+    window.setTimeout(() => gain.disconnect(), later ? 80 : 0);
+    if (onDone) {
+      if (later) window.setTimeout(onDone, 0);
+      else onDone();
+    }
+  };
+  const voice: SoundVoice = {
+    key,
+    priority,
+    level: volume,
+    startedAt: soundNow(),
+    element: false,
+    // Its slot went to a more important clip: a quick fade (no click), and any chain goes on.
+    stop: () => {
+      const now = ctx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.04);
+      try {
+        source?.stop(now + 0.05);
+      } catch {
+        // Already stopped.
+      }
+      finish(true);
+    }
+  };
+  const begin = () => {
+    const node = ctx.createBufferSource();
+    node.buffer = buffer;
+    node.connect(gain);
+    node.onended = () => {
+      remainingPlays -= 1;
+      if (remainingPlays > 0 && !doneFired) begin();
+      else finish();
+    };
+    source = node;
+    if (holdMs === null) {
+      node.start();
+      return;
+    }
+    node.loop = true;
+    const end = start + holdMs / 1000;
+    const fadeMs = Math.min(160, holdMs / 3);
+    gain.gain.setValueAtTime(level, Math.max(start, end - fadeMs / 1000));
+    gain.gain.linearRampToValueAtTime(0, end);
+    node.start(start);
+    node.stop(end + 0.01);
+  };
+  registerVoice(voice);
+  begin();
 }
 
 /**
  * Play one concrete manifest clip (a real `src`, honouring its `repeat`),
- * invoking `onDone` once every play has finished. The building block under
- * playLibrarySound's virtual entries.
+ * invoking `onDone` once every play has finished — or at once when the clip
+ * is skipped (faded out in Options, over the voice budget) or fails. The
+ * building block under playLibrarySound's virtual entries.
  */
-function playClip(key: string, volume: number, onDone?: () => void): void {
+function playClip(key: string, volume: number, onDone?: () => void, priority?: number): void {
   const entry = soundLibrary[key];
   const level = mixedVolume(key, volume);
+  const skip = () => {
+    if (onDone) window.setTimeout(onDone, 0);
+  };
   if (level <= 0) {
     // Faded all the way down in Options: skip the download, keep any chain moving.
-    if (onDone) window.setTimeout(onDone, 0);
+    skip();
     return;
   }
-  const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
+  const url = clipUrl(key);
+  const plays = Math.max(1, entry?.repeat ?? 1);
+  const rank = clipPriority(key, priority);
+  const decoded = decodedClip(url);
+  if (!admitVoice(key, rank, !decoded)) {
+    // Over the voice budget and the least important clip: left out, chain moves on.
+    skip();
+    return;
+  }
+  if (decoded) {
+    playBuffer(decoded.ctx, decoded.buffer, key, volume, rank, plays, null, onDone);
+    return;
+  }
+  const audio = new Audio(url);
   audio.volume = level;
-  let remainingPlays = Math.max(1, entry?.repeat ?? 1);
+  let remainingPlays = plays;
   let doneFired = false;
-  const fireDone = () => {
-    if (!doneFired) {
-      doneFired = true;
-      onDone?.();
+  const fireDone = (later = false) => {
+    releaseVoice(voice);
+    if (doneFired) return;
+    doneFired = true;
+    if (onDone) {
+      if (later) window.setTimeout(onDone, 0);
+      else onDone();
+    }
+  };
+  const voice: SoundVoice = {
+    key,
+    priority: rank,
+    level: volume,
+    startedAt: soundNow(),
+    element: true,
+    stop: () => {
+      audio.pause();
+      fireDone(true);
+    },
+    relevel: () => {
+      audio.volume = mixedVolume(key, volume);
     }
   };
   audio.addEventListener("ended", () => {
     remainingPlays -= 1;
-    if (remainingPlays > 0) {
+    if (remainingPlays > 0 && !doneFired) {
       audio.currentTime = 0;
-      playAudioElement(audio);
+      playAudioElement(audio, fireDone);
     } else {
       fireDone();
     }
   });
   // A clip that fails to load (404 / codec) never fires "ended" — still hand
   // control to any chained follow-up instead of silently swallowing it.
-  audio.addEventListener("error", fireDone);
-  playAudioElement(audio);
+  audio.addEventListener("error", () => fireDone());
+  registerVoice(voice);
+  playAudioElement(audio, fireDone);
 }
 
 /** Play the members of a `sequence` entry one after another, in order. */
@@ -175,37 +331,42 @@ function playSequence(
   volume: number,
   index = 0,
   onDone?: () => void,
-  sequenceDelayMs = 0
+  sequenceDelayMs = 0,
+  priority?: number
 ): void {
   if (index >= keys.length) {
     onDone?.();
     return;
   }
   playClip(keys[index], volume, () => {
-    const next = () => playSequence(keys, volume, index + 1, onDone, sequenceDelayMs);
+    const next = () => playSequence(keys, volume, index + 1, onDone, sequenceDelayMs, priority);
     if (sequenceDelayMs > 0) {
       window.setTimeout(next, sequenceDelayMs);
     } else {
       next();
     }
-  });
+  }, priority);
 }
 
-/** Play a converted H3 sound by manifest key ("spells/fireball"). */
-export function playLibrarySound(key: string, volume = 0.55): void {
+/**
+ * Play a converted H3 sound by manifest key ("spells/fireball"). `priority`
+ * (SOUND_PRIORITY.cue) keeps a key game cue from losing its voice slot to
+ * ordinary battle noise.
+ */
+export function playLibrarySound(key: string, volume = 0.55, priority?: number): void {
   if (quiet() || typeof window === "undefined") {
     return;
   }
   const entry = soundLibrary[key];
   if (entry?.random?.length) {
-    playLibrarySound(entry.random[Math.floor(Math.random() * entry.random.length)], volume);
+    playLibrarySound(entry.random[Math.floor(Math.random() * entry.random.length)], volume, priority);
     return;
   }
   if (entry?.sequence?.length) {
-    playSequence(entry.sequence, volume, 0, undefined, entry.sequenceDelayMs);
+    playSequence(entry.sequence, volume, 0, undefined, entry.sequenceDelayMs, priority);
     return;
   }
-  playClip(key, volume);
+  playClip(key, volume, undefined, priority);
 }
 
 /**
@@ -312,22 +473,53 @@ function playLibrarySoundFor(key: string, volume: number, durationMs: number): v
   }
   const level = mixedVolume(key, volume);
   if (level <= 0) return;
-  const audio = new Audio(assetUrl(entry?.src ?? `/sounds/${key}.mp3`));
+  const url = clipUrl(key);
+  const rank = clipPriority(key);
+  const decoded = decodedClip(url);
+  if (!admitVoice(key, rank, !decoded)) return;
+  if (decoded) {
+    playBuffer(decoded.ctx, decoded.buffer, key, volume, rank, 1, durationMs);
+    return;
+  }
+  const audio = new Audio(url);
   audio.volume = level;
   audio.loop = true;
-  playAudioElement(audio);
+  let fadeLeft = 1;
+  let fade = 0;
+  const voice: SoundVoice = {
+    key,
+    priority: rank,
+    level: volume,
+    startedAt: soundNow(),
+    element: true,
+    stop: () => {
+      window.clearTimeout(hold);
+      window.clearInterval(fade);
+      audio.loop = false;
+      audio.pause();
+    },
+    relevel: () => {
+      audio.volume = mixedVolume(key, volume) * fadeLeft;
+    }
+  };
+  const release = () => releaseVoice(voice);
+  audio.addEventListener("error", release);
+  registerVoice(voice);
+  playAudioElement(audio, release);
   const fadeMs = Math.min(160, durationMs / 3);
-  window.setTimeout(() => {
+  const hold = window.setTimeout(() => {
     const started = performance.now();
-    const fade = window.setInterval(() => {
+    fade = window.setInterval(() => {
       const left = 1 - (performance.now() - started) / fadeMs;
       if (left <= 0) {
         window.clearInterval(fade);
         audio.loop = false;
         audio.pause();
+        release();
         return;
       }
-      audio.volume = level * left;
+      fadeLeft = left;
+      audio.volume = mixedVolume(key, volume) * left;
     }, 30);
   }, Math.max(0, durationMs - fadeMs));
 }

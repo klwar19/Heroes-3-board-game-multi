@@ -90,6 +90,24 @@
   display: none !important;
 }
 
+/* Corner gear on screens without a status row (menu sub-screens, Garrison Wars
+   and Order & Chaos hubs): bottom-right, clear of their headers. */
+.optionsCornerButton.compact {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 40;
+  border-color: rgb(214 178 94 / 70%);
+  color: var(--cmp-gold-bright); /* beats Garrison's .shell button { color: inherit } */
+  background: rgb(10 13 23 / 78%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 45%);
+}
+
+.optionsCornerButton.compact svg {
+  width: 17px;
+  height: 17px;
+}
+
 @media (min-width: 1101px) {
   .tableRoot:not(.phoneMode)
     > .tableTopRow

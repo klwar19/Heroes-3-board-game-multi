@@ -351,9 +351,17 @@ export type Particle = {
 export type Decal = { x: number; y: number; rx: number; ry: number; born: number; life: number; color: string };
 
 const MAX_PARTICLES = 520;
+/** The budget while frames run slow (renderer.ts paceFrame): fewer purely cosmetic particles. */
+const LITE_PARTICLES = 200;
+let particleCap = MAX_PARTICLES;
+
+/** Full or reduced particle budget; particles already flying finish their life either way. */
+export function setParticleBudget(mode: "full" | "lite"): void {
+  particleCap = mode === "lite" ? LITE_PARTICLES : MAX_PARTICLES;
+}
 
 export function spawnParticles(list: Particle[], now: number, count: number, make: (i: number) => Partial<Particle> & Pick<Particle, "kind" | "x" | "y">): void {
-  for (let i = 0; i < count && list.length < MAX_PARTICLES; i += 1) {
+  for (let i = 0; i < count && list.length < particleCap; i += 1) {
     const p = make(i);
     list.push({ vx: 0, vy: 0, g: 0, life: 600, size: 3, color: "#fff", rot: 0, vr: 0, bounces: 0, born: now, last: now, ...p });
   }
@@ -380,6 +388,9 @@ export function burst(list: Particle[], now: number, kind: ParticleKind, x: numb
 /** Steps and draws the particles; returns the ones still alive. */
 export function drawParticles(ctx: CanvasRenderingContext2D, list: Particle[], now: number): Particle[] {
   const keep: Particle[] = [];
+  // One save for the whole pass: each particle sets its own alpha, blend and colours, and
+  // only the kinds that move the origin (translate / rotate) save and restore around it.
+  ctx.save();
   for (const p of list) {
     const age = now - p.born;
     if (age >= p.life) continue;
@@ -411,8 +422,10 @@ export function drawParticles(ctx: CanvasRenderingContext2D, list: Particle[], n
     }
     const t = age / p.life;
     const fade = p.kind === "piece" ? (t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1) : 1 - t;
-    ctx.save();
+    const moves = TRANSFORMED.has(p.kind);
+    if (moves) ctx.save();
     ctx.globalAlpha = Math.max(0, fade);
+    ctx.globalCompositeOperation = "source-over";
     switch (p.kind) {
       case "piece": {
         const img = p.img ? image(p.img) : null;
@@ -498,11 +511,15 @@ export function drawParticles(ctx: CanvasRenderingContext2D, list: Particle[], n
         break;
       }
     }
-    ctx.restore();
+    if (moves) ctx.restore();
     keep.push(p);
   }
+  ctx.restore();
   return keep;
 }
+
+/** Particle kinds drawn through translate / rotate / scale (the rest draw at absolute positions). */
+const TRANSFORMED: ReadonlySet<ParticleKind> = new Set<ParticleKind>(["piece", "glint", "chip", "heart", "note"]);
 
 export function drawDecals(ctx: CanvasRenderingContext2D, list: Decal[], now: number): Decal[] {
   const keep: Decal[] = [];

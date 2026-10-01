@@ -21,7 +21,7 @@ import {
 import { calmDown, createAntics, drawAngerMark, drawDizzy, motionPose, pruneAntics, restless, startMotion, type Antics } from "./antics";
 import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, type ShotSheet } from "./art";
 import {
-  KEEPS, KEEP_SRC, PROP, WORLD_W, burst, createScenery, keepFor, drawCoin, drawDecals, drawGlow, drawKeepFlags, drawParticles, sceneryLayer, spawnParticles,
+  KEEPS, KEEP_SRC, PROP, WORLD_W, burst, createScenery, keepFor, drawCoin, drawDecals, drawGlow, drawKeepFlags, drawParticles, sceneryLayer, setParticleBudget, spawnParticles,
   type Decal, type Particle, type Scenery
 } from "./scene";
 
@@ -104,14 +104,44 @@ export type View = {
   ambience: Ambience;
   /** Foes' little antics: reeling, guarding, fuming, swinging at the air (drawing only). */
   antics: Antics;
+  /** Scratch lists: this frame's defenders and foes by lane (reused, emptied after drawing). */
+  defLanes: Defender[][];
+  foeLanes: Enemy[][];
+  /** Smoothed frame time (ms); a sustained slow frame rate trims the cosmetic particles. */
+  frameMs: number;
+  lite: boolean;
 };
 
 export function createView(town: string, defColor = "#3f7fe0"): View {
   return {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
-    shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience(), antics: createAntics()
+    shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience(), antics: createAntics(),
+    defLanes: [], foeLanes: [], frameMs: 16, lite: false
   };
+}
+
+/** The per-lane scratch lists, one per lane and empty. */
+function laneBuckets<T>(lists: T[][]): T[][] {
+  while (lists.length < GW_LANES) lists.push([]);
+  for (const list of lists) list.length = 0;
+  return lists;
+}
+
+/** Frame time (ms, smoothed) above which cosmetic particles are trimmed, and below which they come back. */
+const LITE_ON_MS = 25;
+const LITE_OFF_MS = 19;
+
+/**
+ * Graceful degradation under load: when frames stay slow, the purely cosmetic
+ * particles (sparks, dust, embers, motes from bursts) get a smaller budget; no
+ * unit, projectile, pickup, telegraph or effect sheet is ever dropped.
+ */
+function paceFrame(view: View, dt: number): void {
+  view.frameMs += (dt - view.frameMs) * 0.06;
+  view.lite = view.lite ? view.frameMs > LITE_OFF_MS : view.frameMs > LITE_ON_MS;
+  // (Set every frame: the budget is shared, and a new battle starts at full.)
+  setParticleBudget(view.lite ? "lite" : "full");
 }
 
 // ---------------------------------------------------------------------------
@@ -1543,6 +1573,7 @@ function pruneView(view: View, s: GarrisonState, now: number): void {
 export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, now: number, alpha: number, overlay: Overlay): void {
   const dt = view.lastNow ? Math.min(100, now - view.lastNow) : 16;
   view.lastNow = now;
+  paceFrame(view, dt);
   pruneView(view, s, now);
   const tick = s.tick;
   const lerp = (a: number, b: number) => a + (b - a) * alpha;
@@ -1635,7 +1666,11 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
 
   playQueuedAntics(view, s, now);
 
-  // Units, lane by lane (lower lanes overlap the ones above).
+  // Units, lane by lane (lower lanes overlap the ones above), bucketed in one pass each.
+  const defLanes = laneBuckets(view.defLanes);
+  for (const d of s.defenders) defLanes[d.lane]?.push(d);
+  const foeLanes = laneBuckets(view.foeLanes);
+  for (const e of s.enemies) foeLanes[Math.round(e.state === "glide" ? e.to : e.lane)]?.push(e);
   for (let lane = 0; lane < GW_LANES; lane += 1) {
     for (const c of s.chargers) {
       if (c.lane !== lane) continue;
@@ -1643,18 +1678,21 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
       if (c.bowl) drawBowl(ctx, s, c, lerp(c.px, c.x), now, alpha);
       else drawCharger(ctx, s, view, c.state, lerp(c.px, c.x), lane, dt, c.sprite);
     }
-    const defenders = s.defenders.filter((d) => d.lane === lane).sort((a, b) => a.col - b.col);
+    const defenders = defLanes[lane]!.sort((a, b) => a.col - b.col);
     for (const d of defenders) drawDefender(ctx, s, view, d, now, dt, overlay.selected === d.id);
     drawCorpses(ctx, view, now, lane);
-    const enemies = s.enemies.filter((e) => Math.round(e.state === "glide" ? e.to : e.lane) === lane).sort((a, b) => b.x - a.x);
+    const enemies = foeLanes[lane]!.sort((a, b) => b.x - a.x);
     for (const e of enemies) drawEnemy(ctx, s, view, e, now, dt, alpha);
   }
+  // (No unit stays referenced from the scratch buckets between frames.)
+  for (const list of defLanes) list.length = 0;
+  for (const list of foeLanes) list.length = 0;
   if (s.cfg.oc) drawAegisDomes(ctx, s, view, now);
   // Upgrades the purse can pay for now: a bobbing golden chevron.
   if (overlay.upgradeGold !== null) {
     for (const d of s.defenders) {
       const up = DEFENDERS[d.kind]!.upgrade;
-      if (up && up.cost <= overlay.upgradeGold && overlay.selected !== d.id) drawUpgradeHint(ctx, tileX(d.col + 0.5), feetY(d.lane), now + d.id * 97);
+      if (up && up.cost <= overlay.upgradeGold && overlay.selected !== d.id) drawUpgradeHint(ctx, tileX(d.col + 0.5), feetY(d.lane), now + d.id * 97, overlay.dpr);
     }
   }
   for (const p of s.projectiles) {
@@ -1740,19 +1778,45 @@ function drawBullet(ctx: CanvasRenderingContext2D, view: View, p: GarrisonState[
     if (view.muzzled.size > 400) view.muzzled.clear();
     view.fx.push({ t: "impact", sheet: SHOT_SHEETS.bullet, x: tileX(p.px) + 6 * p.dir, y, width: 56, start: now, flip: p.dir < 0, cell0: 0 });
   }
-  const tail = 70;
-  ctx.save();
+  // The tracer is painted once per direction (no gradient built per bullet per frame).
+  const sprite = tracerSprite(p.dir < 0 ? -1 : 1);
+  if (!sprite) return;
+  const prev = ctx.globalCompositeOperation;
   ctx.globalCompositeOperation = "lighter";
-  const g = ctx.createLinearGradient(x - tail * p.dir, y, x, y);
+  ctx.drawImage(sprite, p.dir < 0 ? x : x - TRACER_TAIL, y - TRACER_PAD, TRACER_TAIL, TRACER_PAD * 2);
+  ctx.globalCompositeOperation = prev;
+}
+
+const TRACER_TAIL = 70;
+/** Half the tracer sprite's height (board px): the 2.2 px line with room for its antialiasing. */
+const TRACER_PAD = 3;
+/** Sprite resolution (texels per board px), enough for a 2x board. */
+const TRACER_RES = 2;
+const tracers = new Map<1 | -1, HTMLCanvasElement>();
+
+/** A bullet's 70 px tracer, fading in from the tail to the bright head on the `dir` side. */
+function tracerSprite(dir: 1 | -1): HTMLCanvasElement | null {
+  const cached = tracers.get(dir);
+  if (cached) return cached;
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = TRACER_TAIL * TRACER_RES;
+  canvas.height = TRACER_PAD * 2 * TRACER_RES;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.scale(TRACER_RES, TRACER_RES);
+  const head = dir > 0 ? TRACER_TAIL : 0;
+  const g = ctx.createLinearGradient(TRACER_TAIL - head, 0, head, 0);
   g.addColorStop(0, "rgba(255,210,120,0)");
   g.addColorStop(1, "rgba(255,246,200,0.95)");
   ctx.strokeStyle = g;
   ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(x - tail * p.dir, y);
-  ctx.lineTo(x, y);
+  ctx.moveTo(0, TRACER_PAD);
+  ctx.lineTo(TRACER_TAIL, TRACER_PAD);
   ctx.stroke();
-  ctx.restore();
+  tracers.set(dir, canvas);
+  return canvas;
 }
 
 /** A Lost Soul spat by a Pain Elemental: the burning skull itself, charging. */
@@ -1766,17 +1830,41 @@ function drawSoul(ctx: CanvasRenderingContext2D, view: View, p: GarrisonState["p
 }
 
 /** A bobbing golden chevron over a defender whose upgrade the purse can pay for. */
-function drawUpgradeHint(ctx: CanvasRenderingContext2D, x: number, y: number, now: number): void {
+function drawUpgradeHint(ctx: CanvasRenderingContext2D, x: number, y: number, now: number, dpr: number): void {
   const bob = Math.sin(now / 260) * 4;
   const cx = x + 30;
   const cy = y - 100 + bob;
+  // The glowing chevrons are painted once (a shadow blur per chevron per frame
+  // adds up when many troops can be upgraded) and blitted with the pulse.
+  const sprite = upgradeHintSprite(dpr);
+  if (!sprite) return;
   ctx.save();
   ctx.globalAlpha = 0.75 + 0.25 * Math.sin(now / 200);
+  ctx.drawImage(sprite, cx - HINT_HALF, cy - HINT_HALF, HINT_HALF * 2, HINT_HALF * 2);
+  ctx.restore();
+}
+
+/** Half the side of the upgrade chevrons' sprite (board px): the chevrons plus their glow. */
+const HINT_HALF = 30;
+let hintSprite: { dpr: number; canvas: HTMLCanvasElement } | null = null;
+
+function upgradeHintSprite(dpr: number): HTMLCanvasElement | null {
+  if (hintSprite?.dpr === dpr) return hintSprite.canvas;
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(HINT_HALF * 2 * dpr);
+  canvas.height = canvas.width;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  // Same scale as the board, so the blur (in canvas pixels) matches what it was drawn live.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.shadowColor = "rgba(255,200,60,0.9)";
   ctx.shadowBlur = 10;
   ctx.fillStyle = "#ffd65a";
   ctx.strokeStyle = "#6a4a10";
   ctx.lineWidth = 1.5;
+  const cx = HINT_HALF;
+  const cy = HINT_HALF;
   for (const dy of [0, 7]) {
     ctx.beginPath();
     ctx.moveTo(cx, cy + dy - 7);
@@ -1789,7 +1877,8 @@ function drawUpgradeHint(ctx: CanvasRenderingContext2D, x: number, y: number, no
     ctx.fill();
     ctx.stroke();
   }
-  ctx.restore();
+  hintSprite = { dpr, canvas };
+  return canvas;
 }
 
 /** The level's foes standing on the staging ground (shown while the intro camera is out there). */
@@ -2347,13 +2436,14 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   if (kegLeft >= 0 && kegLeft < 0.45 && Math.floor(now / (60 + kegLeft * 300)) % 2 === 0) {
     filter = `${filter === "none" ? "" : `${filter} `}brightness(1.5) sepia(0.6) hue-rotate(-30deg) saturate(3)`;
   }
-  ctx.filter = filter;
+  // (The ground shadow goes down before the tint: a colour filter leaves black black, so it only cost time.)
   if (lift > 0) {
     ctx.fillStyle = "rgba(0,0,0,0.25)";
     ctx.beginPath();
     ctx.ellipse(x, y, 26, 7, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.filter = filter;
   if (rise > 0) {
     ctx.beginPath();
     ctx.rect(x - 120, y - 260, 240, 262);

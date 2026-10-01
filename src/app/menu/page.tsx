@@ -120,6 +120,7 @@ export default function MenuPage() {
       />
       <MenuShell
         className="mainMenuShell"
+        optionsButton={false}
         footer={
           accounts ? (
             account ? (

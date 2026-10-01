@@ -1,16 +1,18 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { spriteFrameOffset } from "@/data/battle-hex/creature-sprites";
 import { CARDS, DEFENDERS, ENEMIES, type CardId, type DefKind, type EnemyKind } from "@/engine/garrison/content";
 import { assetUrl } from "@/lib/asset-url";
 import THUMB_BOUNDS from "@/data/garrison/thumb-bounds.json";
-import { atlasFor, G } from "./art";
+import { atlasFor, G, peekImage, ready } from "./art";
 import styles from "./garrison.module.css";
 
 /**
  * A creature portrait cut from its Heroes III battle atlas (standing frame),
- * framed on the foot anchor. Pure CSS background, so CDN images need no CORS.
+ * framed on the foot anchor. Drawn on a small canvas that is only displayed
+ * (never read back), so CDN images need no CORS.
  */
 export function SpriteThumb({ slug, size = 64, flip = false, className, ghost = false }: { slug: string; size?: number; flip?: boolean; className?: string; ghost?: boolean }) {
   const atlas = atlasFor(slug);
@@ -34,7 +36,6 @@ export function SpriteThumb({ slug, size = 64, flip = false, className, ghost = 
     left = x + atlas.anchorX - crop / 2;
     top = y + atlas.anchorY - crop * 0.96;
   }
-  const scale = size / crop;
   return (
     <span
       aria-hidden="true"
@@ -42,15 +43,128 @@ export function SpriteThumb({ slug, size = 64, flip = false, className, ghost = 
       style={{
         width: size,
         height: size,
-        backgroundImage: `url("${assetUrl(atlas.image)}")`,
-        backgroundSize: `${atlas.columns * atlas.frameWidth * scale}px auto`,
-        backgroundPosition: `${-left * scale}px ${-top * scale}px`,
         transform: flip ? "scaleX(-1)" : undefined,
         // A Spectre is half there.
         opacity: ghost ? 0.5 : undefined
       }}
-    />
+    >
+      <ThumbCanvas crop={crop} left={left} size={size} src={atlas.image} top={top} />
+    </span>
   );
+}
+
+/**
+ * The portrait itself: the crop is cut out of the atlas once (decoded and cropped
+ * off the main thread) and kept as a small bitmap, so a screen of thumbnails never
+ * paints, scales or holds whole multi-megapixel atlases (opening the prep screen
+ * or the Almanac used to stall on exactly that).
+ */
+function ThumbCanvas({ src, left, top, crop, size }: { src: string; left: number; top: number; crop: number; size: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useIsoLayoutEffect(() => {
+    let live = true;
+    const key = `${src}|${left}|${top}|${crop}`;
+    const paint = (cut: ThumbCut | null) => {
+      const canvas = ref.current;
+      if (!live || !cut || !canvas) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const px = Math.max(1, Math.round(size * dpr));
+      canvas.width = px;
+      canvas.height = px;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      const k = px / crop;
+      ctx.drawImage(cut.image, cut.dx * k, cut.dy * k, cut.w * k, cut.h * k);
+    };
+    const done = thumbCuts.get(key);
+    if (done !== undefined) paint(done);
+    else void cutThumb(key, src, left, top, crop).then(paint);
+    return () => {
+      live = false;
+    };
+  }, [src, left, top, crop, size]);
+  return <canvas aria-hidden="true" ref={ref} style={{ display: "block", width: "100%", height: "100%" }} />;
+}
+
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** A cut-out crop: the bitmap and where it sits inside the crop square (atlas px). */
+type ThumbCut = { image: CanvasImageSource; dx: number; dy: number; w: number; h: number };
+
+/** Finished crops by atlas + rectangle (a failed load is not kept: the next mount retries). */
+const thumbCuts = new Map<string, ThumbCut>();
+const thumbJobs = new Map<string, Promise<ThumbCut | null>>();
+/** Atlases decoded at once while cutting (each is several megabytes decoded). */
+const CUT_PARALLEL = 4;
+let cutting = 0;
+const cutQueue: (() => void)[] = [];
+
+function cutThumb(key: string, src: string, left: number, top: number, crop: number): Promise<ThumbCut | null> {
+  let job = thumbJobs.get(key);
+  if (!job) {
+    job = new Promise<ThumbCut | null>((resolve) => {
+      const run = () => {
+        cutting += 1;
+        cutFrom(src, left, top, crop)
+          .catch(() => null)
+          .then((cut) => {
+            if (cut) thumbCuts.set(key, cut);
+            thumbJobs.delete(key);
+            resolve(cut);
+          })
+          .finally(() => {
+            cutting -= 1;
+            cutQueue.shift()?.();
+          });
+      };
+      if (cutting < CUT_PARALLEL) run();
+      else cutQueue.push(run);
+    });
+    thumbJobs.set(key, job);
+  }
+  return job;
+}
+
+async function cutFrom(src: string, left: number, top: number, crop: number): Promise<ThumbCut | null> {
+  // The battle's own decoded atlas when it has one; otherwise a throwaway image
+  // (the browser's HTTP cache still serves the bytes to the battle later).
+  const shared = peekImage(src);
+  let img: HTMLImageElement;
+  if (shared && ready(shared)) {
+    img = shared;
+  } else {
+    img = new Image();
+    img.decoding = "async";
+    img.src = assetUrl(src);
+    try {
+      await img.decode();
+    } catch {
+      if (!img.complete) await new Promise((done) => { img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); });
+    }
+    if (!img.naturalWidth) return null;
+  }
+  // Whole atlas pixels around the (fractional) crop square, so it keeps its exact framing.
+  const x0 = Math.floor(left);
+  const y0 = Math.floor(top);
+  const w = Math.max(1, Math.ceil(left + crop) - x0);
+  const h = Math.max(1, Math.ceil(top + crop) - y0);
+  const at = { dx: x0 - left, dy: y0 - top, w, h };
+  if (typeof createImageBitmap === "function") {
+    try {
+      return { image: await createImageBitmap(img, x0, y0, w, h), ...at };
+    } catch {
+      // Fall back to a canvas copy below.
+    }
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(img, -x0, -y0);
+  return { image: canvas, ...at };
 }
 
 export function CardArt({ card, size = 64 }: { card: CardId; size?: number }) {

@@ -24,6 +24,7 @@ import { STANDOFF_NERVE, type Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import { setMusicScene, type MusicScene } from "@/lib/music";
 import { emptyOcProgress, loadOcProgress, OC_PROGRESS_KEY, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
+import { preloadSprites } from "../art";
 import { createLocalDriver, type GarrisonDriver } from "../driver";
 import { GarrisonGame, type GameIntro, type GameResult } from "../garrison-game";
 import styles from "../garrison.module.css";
@@ -32,6 +33,7 @@ import oc from "./oc.module.css";
 import { OcDailyScreen, OcRunScore, OcTallyBoard, isOcNewBest, markOcBestSent, ocBestKey, recordOcBest } from "./oc-scores-ui";
 import { AdvisorBubble, StoryScene } from "./story-ui";
 import { FieldAlmanac, FieldPanel, newFieldLines } from "./field-ui";
+import { SettingsButton } from "@/components/settings/settings-dialog";
 
 type Screen =
   | { s: "home" }
@@ -682,6 +684,7 @@ export function OrderChaosApp() {
           <OcTallyBoard cleared={unlocks.cleared} initialMode={screen.mode} key={screen.mode ?? "endless"} onBack={() => setScreen({ s: "home" })} progress={progress} update={update} />
         ) : null}
       </div>
+      {shownStory ? null : <SettingsButton className="optionsCornerButton" compact />}
       {shownStory ? <StoryScene key={shownStory.id} letter={shownStory.letter} lines={shownStory.lines} onDone={() => endStory(shownStory)} /> : null}
     </div>
   );
@@ -1092,6 +1095,16 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
   // Foes that stop short to shoot: the scouts advise a counter (and say what happens if nothing answers them).
   const standoffs = level.kind === "raid" ? [] : foes.filter((kind) => ENEMIES[kind]?.ranged && !ENEMIES[kind]!.siege);
   const book = spellbookOf(progress, u);
+  // While the player chooses, warm the battle's creature atlases (decoded off the main
+  // thread): the scouted foes stand in the intro line-up and the hand is on the lawn
+  // moments after "Let's fight!". Endless (every foe met) is left to load on sight, as in battle.
+  const warmKey = [...(level.kind === "endless" ? [] : foes.slice(0, 30)).map((kind) => ENEMIES[kind]?.sprite), ...hand.map((kind) => DEFENDERS[kind]?.sprite)].filter(Boolean).join(",");
+  useEffect(() => {
+    if (!warmKey) return;
+    // (After the screen's own portraits have had their turn.)
+    const timer = window.setTimeout(() => preloadSprites(warmKey.split(",")), 900);
+    return () => window.clearTimeout(timer);
+  }, [warmKey]);
   const cleared = progress.cleared.includes(level.id);
   const met = progress.stars[level.id] ?? [];
   const toggle = (kind: DefKind) => setHand((current) => (current.includes(kind) ? current.filter((k) => k !== kind) : current.length < slots ? [...current, kind] : current));

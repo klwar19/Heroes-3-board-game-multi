@@ -1,24 +1,18 @@
 /**
  * Order & Chaos battlefield sounds (the systems are in
  * engine/garrison/order-chaos/field.ts): a clip from the converted Heroes III
- * and MGQ libraries for every battlefield event, throttled like the rest of the
- * lawn's audio, and ONE quiet ambience loop at a time for the weather or the
- * night (rain, wind, eerie fog, crickets), faded in and out as it changes.
+ * and MGQ libraries for every battlefield event, through the lawn's own
+ * throttle and budget (audio.ts), and ONE quiet ambience loop at a time for
+ * the weather or the night (rain, wind, eerie fog, crickets), faded in and out
+ * as it changes.
  */
 
-import manifest from "../../../public/sounds/manifest.json";
 import type { GarrisonEvent, GarrisonState } from "@/engine/garrison/sim";
-import { playLibrarySound, startLibraryLoop } from "@/lib/sound";
+import { startLibraryLoop } from "@/lib/sound";
+import { playGarrisonSound, type GarrisonSoundKind } from "./audio";
 
-const LIBRARY = manifest as Record<string, unknown>;
-const lastPlayed = new Map<string, number>();
-
-function play(key: string, volume = 0.45, gap = 160): void {
-  if (!LIBRARY[key]) return;
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-  if (now - (lastPlayed.get(key) ?? -1e9) < gap) return;
-  lastPlayed.set(key, now);
-  playLibrarySound(key, volume);
+function play(key: string, volume = 0.45, gap = 160, kind: GarrisonSoundKind = "routine"): void {
+  playGarrisonSound(key, volume, gap, kind);
 }
 
 const WEATHER_CUE: Record<string, string> = {
@@ -66,7 +60,7 @@ export function playFieldEventSounds(events: readonly GarrisonEvent[]): void {
         play("spells/lightning-bolt", 0.55, 120);
         break;
       case "weather":
-        play(WEATHER_CUE[ev.kind] ?? "spells/visions", 0.5, 1000);
+        play(WEATHER_CUE[ev.kind] ?? "spells/visions", 0.5, 1000, "cue");
         break;
       case "emerge":
         play(EMERGE_CUE[ev.origin] ?? "adventure/dig", 0.4, 350);
@@ -81,10 +75,10 @@ export function playFieldEventSounds(events: readonly GarrisonEvent[]): void {
         play("adventure/rogue", 0.45, 500);
         break;
       case "chestOpen":
-        play("adventure/treasure", 0.5, 300);
+        play("adventure/treasure", 0.5, 300, "cue");
         break;
       case "bankFreed":
-        play("effects/drawbridge", 0.5, 300);
+        play("effects/drawbridge", 0.5, 300, "cue");
         break;
       case "wake":
         play("effects/terror-2", 0.32, 900);

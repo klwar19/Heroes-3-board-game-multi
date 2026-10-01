@@ -46,6 +46,11 @@ export function ready(img: HTMLImageElement | null | undefined): img is HTMLImag
   return Boolean(img && decoded.has(img) && img.naturalWidth > 0);
 }
 
+/** The cached image for a path when something already asked for it (starts no request). */
+export function peekImage(path: string): HTMLImageElement | undefined {
+  return images.get(path);
+}
+
 /** Starts loading and decoding the atlases for these creature slugs. */
 export function preloadSprites(slugs: Iterable<string>): void {
   for (const slug of slugs) {
@@ -105,12 +110,62 @@ export function drawAtlas(
   const info = atlas.groups[String(group)] ?? atlas.groups[String(G.stand)];
   if (!ready(img) || !info) return false;
   const { x: sx, y: sy } = spriteFrameOffset(atlas, info, frame);
+  // A status tint (chill, poison, a hit flash...) comes from a small cache of
+  // pre-filtered frames: a canvas filter on every draw is the costliest thing a
+  // crowded lawn does (a filtered layer per sprite per frame).
+  const filter = ctx.filter;
+  const tinted = filter && filter !== "none" && !SPATIAL_FILTER.test(filter) ? tintedFrame(img, atlas, sx, sy, filter) : null;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale((flip ? -scale : scale) * (stretch?.x ?? 1), scale * (stretch?.y ?? 1));
-  ctx.drawImage(img, sx, sy, atlas.frameWidth, atlas.frameHeight, -atlas.anchorX, -atlas.anchorY, atlas.frameWidth, atlas.frameHeight);
+  if (tinted) {
+    ctx.filter = "none";
+    ctx.drawImage(tinted, -atlas.anchorX, -atlas.anchorY, atlas.frameWidth, atlas.frameHeight);
+  } else {
+    ctx.drawImage(img, sx, sy, atlas.frameWidth, atlas.frameHeight, -atlas.anchorX, -atlas.anchorY, atlas.frameWidth, atlas.frameHeight);
+  }
   ctx.restore();
   return true;
+}
+
+/** Filters that spread pixels (they must see the scaled draw, so they stay live). */
+const SPATIAL_FILTER = /blur|drop-shadow|url\(/;
+
+/** Pre-filtered atlas frames, least recently used first (bounded; a typical frame is about 90 KB). */
+const tintedFrames = new Map<string, HTMLCanvasElement>();
+const TINTED_MAX = 256;
+
+/**
+ * One atlas frame with a canvas filter baked in. The filters the lawn uses are
+ * per-pixel colour operations (sepia, hue-rotate, saturate, brightness,
+ * grayscale, contrast), so filtering the frame once and scaling it afterwards
+ * looks the same as filtering every scaled draw.
+ */
+function tintedFrame(img: HTMLImageElement, atlas: CreatureSpriteAtlas, sx: number, sy: number, filter: string): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const key = `${atlas.image}|${sx}|${sy}|${filter}`;
+  const hit = tintedFrames.get(key);
+  if (hit) {
+    tintedFrames.delete(key);
+    tintedFrames.set(key, hit);
+    return hit;
+  }
+  let canvas: HTMLCanvasElement | undefined;
+  if (tintedFrames.size >= TINTED_MAX) {
+    const oldest = tintedFrames.keys().next().value as string;
+    canvas = tintedFrames.get(oldest);
+    tintedFrames.delete(oldest);
+  }
+  canvas ??= document.createElement("canvas");
+  // (Setting the size also clears the canvas and resets its context.)
+  canvas.width = atlas.frameWidth;
+  canvas.height = atlas.frameHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.filter = filter;
+  ctx.drawImage(img, sx, sy, atlas.frameWidth, atlas.frameHeight, 0, 0, atlas.frameWidth, atlas.frameHeight);
+  tintedFrames.set(key, canvas);
+  return canvas;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,11 +239,33 @@ export function drawShot(ctx: CanvasRenderingContext2D, sheet: ShotSheet, cell: 
   if (!ready(img)) return;
   const index = Math.max(0, Math.min(15, Math.floor(cell)));
   const cellSize = img.naturalWidth > 0 ? img.naturalWidth / 4 : PHASE_CELL;
+  // A recoloured sheet (the gift) draws its cells pre-filtered, like the creature tints.
+  const tinted = sheet.filter ? tintedCell(img, sheet.src, index, cellSize, sheet.filter) : null;
   ctx.save();
   ctx.globalAlpha = alpha;
-  if (sheet.filter) ctx.filter = sheet.filter;
+  if (sheet.filter && !tinted) ctx.filter = sheet.filter;
   ctx.translate(x, y);
   if (flip) ctx.scale(-1, 1);
-  ctx.drawImage(img, (index % 4) * cellSize, Math.floor(index / 4) * cellSize, cellSize, cellSize, -width / 2, -width / 2, width, width);
+  if (tinted) ctx.drawImage(tinted, -width / 2, -width / 2, width, width);
+  else ctx.drawImage(img, (index % 4) * cellSize, Math.floor(index / 4) * cellSize, cellSize, cellSize, -width / 2, -width / 2, width, width);
   ctx.restore();
+}
+
+/** Pre-filtered projectile cells (only filtered sheets: at most 16 cells each). */
+const tintedCells = new Map<string, HTMLCanvasElement>();
+
+function tintedCell(img: HTMLImageElement, src: string, index: number, cellSize: number, filter: string): HTMLCanvasElement | null {
+  const key = `${src}|${index}|${filter}`;
+  const hit = tintedCells.get(key);
+  if (hit) return hit;
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(cellSize);
+  canvas.height = Math.round(cellSize);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.filter = filter;
+  ctx.drawImage(img, (index % 4) * cellSize, Math.floor(index / 4) * cellSize, cellSize, cellSize, 0, 0, canvas.width, canvas.height);
+  tintedCells.set(key, canvas);
+  return canvas;
 }
