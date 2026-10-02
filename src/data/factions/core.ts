@@ -3241,10 +3241,10 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
     name: "Conflux",
     color: "#d24dae",
     startingTileId: "S8",
-    // The three unit-specialist Planeswalkers + Luna (Fire Wall) + Ciele (Magic
-    // Arrow) are wired; Tarnum (Conflux) follows once the multi-Spell
-    // cast-over-the-limit-and-return subsystem his VI needs is built.
-    heroes: ["erdamon", "monere", "pasis", "luna", "ciele", "tarnum_conflux"],
+    // The unit-specialist Planeswalkers (Erdamon, Monere, Pasis, Thunar), Luna
+    // (Fire Wall), Ciele (Magic Arrow), Tarnum (Conflux) and Gelare (Gold) are
+    // all engine-wired and offered at hero selection.
+    heroes: ["erdamon", "monere", "pasis", "thunar", "luna", "ciele", "tarnum_conflux", "gelare"],
     buildings: buildingsOfFaction("conflux"),
     units: unitsOfFaction("conflux"),
     townImage: "/assets/towns-conflux-empty.webp",
