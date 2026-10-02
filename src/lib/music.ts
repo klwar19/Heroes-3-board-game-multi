@@ -20,7 +20,7 @@ import { musicGain, silencedInBackground, getAudioMix, subscribeAudioMix } from 
  * theme swells in so its first full accent lands as the boss arrives; a boss
  * that comes unannounced gets the warning sting once, then the theme.
  * "oc-menu" is the Order & Chaos menus' own theme (the main game's menus keep "menu");
- * "oc-home" is the mode-select screen's own (and the campaign map's), The Orcish Hordes.
+ * "oc-home" is the mode-select screen's own (and the campaign map's), Remnants of the Horde.
  */
 export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle" | "oc-battle-horde" | "oc-battle-remnants" | "oc-boss" | "oc-menu" | "oc-home";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
@@ -64,7 +64,7 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   "oc-boss": ["music/order-chaos/boss-warning"],
   "oc-boss-loop": ["music/order-chaos/flesh-and-metal"],
   "oc-menu": ["music/order-chaos/menu-casino"],
-  "oc-home": ["music/order-chaos/orcish-hordes"],
+  "oc-home": ["music/order-chaos/remnants-of-the-horde"],
 };
 
 /**
@@ -313,13 +313,9 @@ function stopAudio(): void {
 
 /** Where the boss theme's first full accent falls: the world boss steps onto the lawn on it. */
 export const BOSS_ARRIVAL_BEAT_S = 12.95;
-/** The boss theme comes in as the warning ends, this far into the warning (the file is 16.5 s). */
-const BOSS_WARNING_HANDOFF_S = 16;
-/** The warning's own playback position (not the battle clock) where it starts to fade out. */
-const BOSS_WARNING_FADE_FROM_S = 14;
-/** ...and the length of that fade, reaching silence at its natural end. */
-const BOSS_WARNING_FADE_S = 2.4;
-/** The warning starts this long before the boss arrives. */
+/** The warning's length (the whole 20.4 s clip): the boss theme comes in as it ends (never over it). */
+const BOSS_WARNING_HANDOFF_S = 20.4;
+/** The warning starts this long before the boss arrives (the sim's BOSS_LEAD leaves room for the hush before it). */
 export const BOSS_WARNING_LEAD_S = BOSS_ARRIVAL_BEAT_S + BOSS_WARNING_HANDOFF_S;
 /** Before the warning, the battle music (and the battle's sounds) fade away over this long. */
 export const BOSS_HUSH_S = 1.5;
@@ -368,22 +364,16 @@ function applyBedVolume(): void {
   if (audio) audio.volume = profileVolume(currentProfile) * musicGain() * approachBedFactor();
 }
 
-/**
- * The warning plays out on its own clock: at full level until near its end,
- * even after the theme came in (at double speed the battle reaches the theme
- * before the warning is over, and the warning is never cut short).
- */
+/** The warning plays at full level to its own end (its tail is its fade). */
 function warningVolume(): number {
-  const at = warning && warningStarted ? warning.currentTime : 0;
-  const fade = 1 - clamp01((at - BOSS_WARNING_FADE_FROM_S) / BOSS_WARNING_FADE_S);
-  return BOSS_WARNING_VOLUME * musicGain() * fade;
+  return BOSS_WARNING_VOLUME * musicGain();
 }
 
 /** Keeps the warning element playing exactly while the approach wants it heard. */
 function syncWarning(): void {
   if (!warning) return;
   warning.volume = warningVolume();
-  const audible = approach !== null && warningStarted && (approach.stage === "warning" || (approach.stage === "swell" && warning.volume > 0))
+  const audible = approach !== null && warningStarted && (approach.stage === "warning" || approach.stage === "swell")
     && !muted && !held && !silencedInBackground() && !stingPlaying() && !warning.ended;
   if (!audible) {
     if (!warning.paused) warning.pause();

@@ -204,7 +204,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   // boss brings it in early (the warning first, see the frame loop's setBossApproach) so it lands on the beat.
   const bossAlive = !s.outcome && (s.warbossId !== undefined || s.boss !== null)
     && s.enemies.some((e) => !e.dead && (e.id === s.warbossId || e.id === s.boss?.id));
-  const bossLeft = bossApproachLeft(s, speed);
+  const bossLeft = bossApproachLeft(s);
   const bossTheme = bossAlive || (bossLeft !== null && bossLeft <= BOSS_ARRIVAL_BEAT_S);
   const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : bossTheme ? "oc-boss" : music === "order-chaos-horde" ? "oc-battle-horde" : music === "order-chaos-remnants" ? "oc-battle-remnants" : "oc-battle") : "combat";
   useBackgroundMusic(musicScene);
@@ -493,11 +493,14 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         }
       }
       const halt = pausedRef.current || introHalt;
-      const { events, alpha } = driver.pump(dt, halt, speedRef.current);
+      // Order & Chaos: while a world boss approaches the battle runs at normal speed, so the
+      // warning plays out alone and the boss theme meets the boss on its beat.
+      const approaching = ocMusicRef.current && bossApproachLeft(driver.state()) !== null;
+      const { events, alpha } = driver.pump(dt, halt, approaching ? 1 : speedRef.current);
       // Order & Chaos: a world boss is due — the music hushes, the warning plays, the boss theme
-      // swells in on its beat, and the lawn's own sounds step aside and come back with it.
+      // comes in as it ends, and the lawn's own sounds step aside and come back with it.
       if (ocMusicRef.current) {
-        const left = bossApproachLeft(driver.state(), speedRef.current);
+        const left = bossApproachLeft(driver.state());
         setBossApproach(left);
         setBattleDuck(bossEffectsDuck(left));
       }

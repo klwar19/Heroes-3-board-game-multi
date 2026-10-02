@@ -2177,15 +2177,19 @@ function spawnWave(s: GarrisonState, wave: number): void {
   delete d.bossDue;
   const nextBoss = bossLeadingWave(s, wave + 1);
   if (nextBoss) {
-    d.nextAt = s.tick + BOSS_LULL;
-    d.bossDue = { at: d.nextAt + (isFlagWave(s, wave + 1) ? HUGE_WAVE_DELAY : 0), kind: nextBoss };
+    d.bossDue = { at: s.tick + BOSS_LEAD, kind: nextBoss };
+    d.nextAt = d.bossDue.at - (isFlagWave(s, wave + 1) ? HUGE_WAVE_DELAY : 0);
   }
   s.events.push({ e: "wave", wave, flag });
   if (s.cfg.endless && flag) d.blessPending = true;
 }
 
-/** The quiet before a world boss: from the wave before it to its call (the warning plays meanwhile). */
-const BOSS_LULL = sec(40);
+/**
+ * From the wave before a world boss to its arrival: the music hushes (1.5 s), the
+ * warning plays alone (its whole 20.4 s), then the boss theme's first 13 s
+ * (src/lib/music.ts BOSS_HUSH_S + BOSS_WARNING_LEAD_S).
+ */
+const BOSS_LEAD = sec(35);
 /** A great assault's call comes this long before it does. */
 const HUGE_WAVE_DELAY = sec(6);
 

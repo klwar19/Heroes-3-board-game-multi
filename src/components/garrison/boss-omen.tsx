@@ -18,11 +18,14 @@ import { prefersReducedMotion, subscribeReducedMotion } from "@/lib/display-pref
 import { BOSS_ARRIVAL_BEAT_S, BOSS_HUSH_S, BOSS_WARNING_LEAD_S } from "@/lib/music";
 import styles from "./garrison.module.css";
 
-/** Real seconds (at the battle's speed) before the announced world boss steps onto the lawn; null when none is due. */
-export function bossApproachLeft(s: GarrisonState, speed: number): number | null {
+/**
+ * Seconds before the announced world boss steps onto the lawn; null when none is due.
+ * (The battle runs at normal speed meanwhile — see GarrisonGame's frame loop — so they are real seconds.)
+ */
+export function bossApproachLeft(s: GarrisonState): number | null {
   const due = s.director.bossDue;
   if (!due || s.outcome || s.planning || s.cfg.mode === "versus") return null;
-  return Math.max(0, due.at - s.tick) / GW_TPS / Math.max(0.25, speed);
+  return Math.max(0, due.at - s.tick) / GW_TPS;
 }
 
 /** The boss that just arrived (shown for a moment), keyed so a second arrival replays. */
