@@ -1489,6 +1489,29 @@
         "mermaid",
         "mermaid.move"
       ]
+    },
+    "oc-frost-wyrm": {
+      "donor": "ghost-dragon",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 114,
+      "sheets": [
+        "oc-frost-wyrm",
+        "oc-frost-wyrm.move"
+      ]
+    },
+    "oc-ghost": {
+      "donor": "wog-ghost",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "grid": "auto --max-scale 3"
+      },
+      "height": 86,
+      "sheets": [
+        "oc-ghost"
+      ]
     }
   }
 }

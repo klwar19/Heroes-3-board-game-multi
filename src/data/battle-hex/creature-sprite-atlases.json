@@ -23108,5 +23108,129 @@
         "frames": 3
       }
     }
+  },
+  "oc-frost-wyrm": {
+    "image": "/assets/battle-hex/creatures/oc-frost-wyrm.webp",
+    "frameWidth": 224,
+    "frameHeight": 198,
+    "columns": 8,
+    "anchorX": 111,
+    "anchorY": 186,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 6
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 4
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "7": {
+        "row": 6,
+        "frames": 3
+      },
+      "8": {
+        "row": 7,
+        "frames": 3
+      },
+      "11": {
+        "row": 8,
+        "frames": 7
+      },
+      "12": {
+        "row": 9,
+        "frames": 7
+      },
+      "13": {
+        "row": 10,
+        "frames": 7
+      },
+      "20": {
+        "row": 11,
+        "frames": 3
+      },
+      "21": {
+        "row": 12,
+        "frames": 4
+      }
+    }
+  },
+  "oc-ghost": {
+    "image": "/assets/battle-hex/creatures/oc-ghost.webp",
+    "frameWidth": 108,
+    "frameHeight": 107,
+    "columns": 8,
+    "anchorX": 52,
+    "anchorY": 104,
+    "groups": {
+      "0": {
+        "row": 0,
+        "frames": 8
+      },
+      "1": {
+        "row": 1,
+        "frames": 8
+      },
+      "2": {
+        "row": 2,
+        "frames": 8
+      },
+      "3": {
+        "row": 3,
+        "frames": 6
+      },
+      "4": {
+        "row": 4,
+        "frames": 6
+      },
+      "5": {
+        "row": 5,
+        "frames": 8
+      },
+      "7": {
+        "row": 6,
+        "frames": 2
+      },
+      "8": {
+        "row": 7,
+        "frames": 2
+      },
+      "11": {
+        "row": 8,
+        "frames": 7
+      },
+      "12": {
+        "row": 9,
+        "frames": 7
+      },
+      "13": {
+        "row": 10,
+        "frames": 7
+      },
+      "20": {
+        "row": 11,
+        "frames": 1
+      },
+      "21": {
+        "row": 12,
+        "frames": 1
+      }
+    }
   }
 }

@@ -43,6 +43,9 @@ const SOUND_ALIAS: Record<string, string> = {
   "gw-necromancer": "lich",
   "wog-ghost": "wraith",
   "wog-werewolf": "nomad",
+  // Order & Chaos Frost Wyrm horror pass: the repainted Wyrm and its Ghosts speak with their donors.
+  "oc-frost-wyrm": "ghost-dragon",
+  "oc-ghost": "wraith",
   // Order & Chaos gear repaints speak with their donors.
   "oc-trog-helm": "infernal-troglodyte",
   "oc-shieldbearer": "skeleton-warrior",
@@ -744,6 +747,8 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         evilLaugh(1100);
         break;
       case "bossCue": {
+        // A wail winds up in a rising wind before the scream.
+        if (ev.move === "wail") play("mgq/effects/mon-wind4", 0.5, 300, "cue");
         play(ev.move === "drums" ? "effects/horn-3" : "effects/fear", 0.35, 300, "cue");
         // A phase's set piece (it can't be harmed while it winds up) always laughs; other moves now and then.
         const boss = s.enemies.find((e) => e.id === ev.id);
@@ -757,6 +762,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         else if (ev.move === "summon") play("spells/teleport-in", 0.4, 300, "cue");
         else if (ev.move === "graves") play("spells/animate-dead", 0.4, 300, "cue");
         else if (ev.move === "drums") play("spells/bloodlust", 0.45, 300, "cue");
+        else if (ev.move === "wail") play("effects/banshee-scream", 0.75, 300, "cue");
         else play("spells/teleport", 0.35, 300, "cue");
         // Bones rattle under its blows; the dead it calls wail.
         if (ev.move === "slam" || ev.move === "pounce") play("units/bone-dragon-defend", 0.38, 700, "cue");
@@ -767,6 +773,21 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
       case "bossPhase":
         play("spells/berserk", 0.5, 500, "cue");
         evilLaugh(350);
+        break;
+      case "wail":
+        // Every troop it caught freezes solid at once, then the ice creaks.
+        if (ev.frozen.length) {
+          play("spells/freeze", 0.55, 300, "cue");
+          play("spells/frost-ring", 0.4, 300, "cue");
+          play("units/ice-elemental-special", 0.4, 300, "cue");
+        }
+        break;
+      case "spiritFly":
+        play("units/wraith-move", 0.4, 400, "cue");
+        play("mgq/effects/mon-wind2", 0.3, 400, "cue");
+        break;
+      case "soulHarvest":
+        play("spells/sacrifice-2", 0.45, 400, "cue");
         break;
       case "bossRepel":
         play("spells/earthquake", 0.4, 400, "cue");

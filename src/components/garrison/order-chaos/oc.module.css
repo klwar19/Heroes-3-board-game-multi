@@ -967,6 +967,13 @@ button.nextCard:focus-visible {
   margin: 0 auto 14px;
 }
 
+/* A saved run's mode art, filling its round frame (SavedRunCards). */
+.savedArt {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .nextArt {
   display: grid;
   place-items: center;

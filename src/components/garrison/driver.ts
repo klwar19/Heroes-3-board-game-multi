@@ -25,8 +25,9 @@ export type GarrisonDriver = {
 
 const MAX_STEPS = 10;
 
-export function createLocalDriver(config: GarrisonConfig, local: readonly Side[], ai: { def?: GarrisonAi; atk?: GarrisonAi }): GarrisonDriver {
-  const state = createGarrison(config);
+/** `from`: carry on a saved battle (Order & Chaos suspended runs) instead of starting `config` afresh. */
+export function createLocalDriver(config: GarrisonConfig, local: readonly Side[], ai: { def?: GarrisonAi; atk?: GarrisonAi }, from?: GarrisonState): GarrisonDriver {
+  const state = from ?? createGarrison(config);
   let queue: SidedCommand[] = [];
   let acc = 0;
   return {

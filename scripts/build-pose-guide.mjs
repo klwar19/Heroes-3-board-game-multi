@@ -139,9 +139,15 @@ for (const pick of picks) {
       x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
     }
   }
-  if (x1 < 0) throw new Error(`donor frame ${pick.group}:${pick.frame} is empty`);
+  // A frame that has faded out entirely (a ghost's last death frame) carries nothing to repaint: leave it out.
+  if (x1 < 0) {
+    console.warn(`donor frame ${pick.group}:${pick.frame} is empty - skipped`);
+    pick.empty = true;
+    continue;
+  }
   Object.assign(pick, { data, body: { x0, y0, x1, y1 } });
 }
+for (let i = picks.length - 1; i >= 0; i -= 1) if (picks[i].empty) picks.splice(i, 1);
 
 const scale = Number(option(args, "scale", String(Math.min(
   Number(option(args, "max-scale", String(MAX_SCALE))),

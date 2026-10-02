@@ -1067,6 +1067,8 @@ export type EnemyDef = {
   slam?: { dmg: number; stun: number };
   /** Order & Chaos world boss (with `boss: true`): leads a level's last assault, walks and bites like any foe, and between bites makes telegraphed moves. */
   warboss?: WarbossDef;
+  /** WoG Ghost's Soul Harvest: a troop (not undead) it slays heals it fully and, up to `max` times, adds `grow` of its base health for good. */
+  soulHarvest?: { grow: number; max: number };
 };
 
 /**
@@ -1102,6 +1104,11 @@ export type WarbossMove = {
   | { kind: "pounce"; dmg: number; reach: number; from?: number }
   /** Roars: every troop within `reach` tiles of it (its lane and both beside) is stunned `stun` ticks. */
   | { kind: "roar"; stun: number; reach: number; from?: number }
+  /**
+   * A banshee's wail: every troop on the lawn is sealed in ice for `freeze` ticks (a troop kept warm by
+   * fire only steams; steadfast troops and landmarks are spared). Never again within `rest` ticks.
+   */
+  | { kind: "wail"; freeze: number; rest: number; from?: number }
 );
 
 export type WarbossDef = {
@@ -1118,6 +1125,12 @@ export type WarbossDef = {
   hold?: number;
   /** Ticks a phase's set piece (WarbossMove.interlude) is wound up for (default 4 s). */
   pause?: number;
+  /**
+   * Spirits circle it from the moment it is on the lawn. Every `every` ticks (not while it winds up a set
+   * piece) one breaks away and flies into a lane as a `foe`, while fewer than `max` it sent are still about;
+   * it is always circled by `count` minus those.
+   */
+  spirits?: { count: number; every: number; foe: EnemyKind; max: number };
 };
 
 type EnemyInput = Omit<EnemyDef, "might" | "recharge" | "biteEvery" | "sprite"> & { biteEvery?: number; sprite?: string; might?: number; recharge?: number };

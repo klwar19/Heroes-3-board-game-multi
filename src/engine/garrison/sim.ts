@@ -295,6 +295,15 @@ export type Enemy = {
   /** ...and the share of it the shards deal to the foes within a tile. */
   crystalSplash?: number;
   bites: number;
+  /** Order & Chaos world boss: its wail (WarbossMove "wail") rests until this tick; the tick its next spirit breaks away. */
+  wailAt?: number;
+  spiritAt?: number;
+  /** Order & Chaos: the world boss whose circling spirit this foe was (it flew into its lane from there). */
+  spiritOf?: number;
+  /** ...and its flight there: x from `x0` to `x1` over its glide into the lane. */
+  fly?: { x0: number; x1: number };
+  /** Order & Chaos Ghost: troops whose souls it has harvested (EnemyDef.soulHarvest). */
+  harvested?: number;
   /** Order & Chaos boss: the troop it is biting and how many blows it has landed on it (5 throws it aside). */
   bossBiteTarget?: number;
   bossBiteCount?: number;
@@ -532,6 +541,12 @@ export type GarrisonEvent =
   | { e: "bossCue"; id: number; move: WarbossMove["kind"]; index: number; marks: BossMark[] }
   | { e: "bossMove"; id: number; move: WarbossMove["kind"]; index: number; marks: BossMark[]; lane: number; x: number }
   | { e: "bossPhase"; id: number; phase: number }
+  /** A world boss's wail: the troops it sealed in ice (troops kept warm get a "thaw" instead). */
+  | { e: "wail"; id: number; frozen: number[] }
+  /** One of a world boss's circling spirits broke away and is flying into a lane as `ghost`. */
+  | { e: "spiritFly"; id: number; ghost: number }
+  /** A Ghost harvested a slain troop's soul (healed fully; `grew`: its health grew too). */
+  | { e: "soulHarvest"; id: number; grew: boolean }
   | { e: "bossRepel"; id: number; lane: number }
   | { e: "bossFall"; id: number; kind: EnemyKind }
   // Order & Chaos battlefield
@@ -4531,6 +4546,12 @@ function enemiesAct(s: GarrisonState): void {
           e.x += def.speed * rate * e.dir;
           reachGate(s, e);
         }
+        // A world boss's spirit flying from it into its lane.
+        if (e.fly) {
+          const t = Math.min(1, (s.tick - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt));
+          e.x = e.fly.x0 + (e.fly.x1 - e.fly.x0) * t;
+          if (t >= 1) e.fly = undefined;
+        }
         if (s.tick >= e.stateUntil) setState(s, e, "walk");
         continue;
       case "phase":
@@ -4900,6 +4921,7 @@ function standingTroopAt(s: GarrisonState, m: BossMark): Defender | undefined {
 /** Runs the boss's phases and moves. True while it is busy winding up or landing a move (it neither walks nor bites then). */
 function warbossAct(s: GarrisonState, e: Enemy, rate: number): boolean {
   const wb = ENEMIES[e.kind]!.warboss!;
+  if (wb.spirits) releaseSpirit(s, e, wb.spirits, rate);
   const share = e.hp / e.maxHp;
   let phase = 0;
   for (const at of wb.phases) if (share <= at) phase += 1;
@@ -4971,6 +4993,52 @@ function warbossAct(s: GarrisonState, e: Enemy, rate: number): boolean {
   setState(s, e, "cast");
   s.events.push({ e: "bossCue", id: e.id, move: wb.moves[cue.move]!.kind, index: cue.move, marks: cue.marks.map((m) => ({ ...m })) });
   return true;
+}
+
+/** Seconds a released spirit takes to fly from its boss into its lane. */
+const SPIRIT_FLIGHT = sec(1.1);
+
+/**
+ * A world boss's circling spirits (WarbossDef.spirits): once it is on the lawn, every `every` ticks one
+ * breaks away and flies into a lane (not one already broken) as a foe, landing a little behind the boss's
+ * line. While `max` it sent are still about (or it winds up a set piece) the next one waits.
+ */
+function releaseSpirit(s: GarrisonState, e: Enemy, spirits: NonNullable<WarbossDef["spirits"]>, rate: number): void {
+  if (rate <= 0 || e.x > SIGHT_X || !ENEMIES[spirits.foe]) return;
+  if (e.spiritAt === undefined) {
+    e.spiritAt = s.tick + Math.round(spirits.every / 2);
+    return;
+  }
+  if (s.tick < e.spiritAt || e.interlude) return;
+  const out = s.enemies.filter((o) => !o.dead && o.spiritOf === e.id).length;
+  const lanes = s.cfg.lanes.filter((lane) => !s.atk.raided.includes(lane));
+  if (out >= Math.min(spirits.max, spirits.count) || lanes.length === 0) {
+    e.spiritAt = s.tick + sec(2);
+    return;
+  }
+  e.spiritAt = s.tick + spirits.every;
+  // Rather a lane other than its own (it already holds that one).
+  const others = lanes.filter((lane) => lane !== e.lane);
+  const pool = others.length ? others : lanes;
+  const lane = pool[randInt(s, 0, pool.length - 1)]!;
+  const x0 = e.x;
+  const x1 = Math.min(SPAWN_X - 0.1, Math.max(x0, 1) + 1.5 + rand(s));
+  const ghost = spawnEnemy(s, spirits.foe, lane, x0, "wave", e.wave);
+  ghost.spiritOf = e.id;
+  ghost.fly = { x0, x1 };
+  ghost.from = e.lane;
+  ghost.to = lane;
+  setState(s, ghost, "glide", SPIRIT_FLIGHT);
+  s.events.push({ e: "spiritFly", id: e.id, ghost: ghost.id });
+}
+
+/** Troops a wail can seal in ice: every standing troop but the steadfast, landmarks and one-shot spells. */
+function wailTargets(s: GarrisonState): Defender[] {
+  return s.defenders.filter((d) => {
+    if (d.dead || isFlat(d) || d.invulnUntil > s.tick) return false;
+    const dd = DEFENDERS[d.kind]!;
+    return !dd.steadfast && !dd.landmark && !dd.instant;
+  });
 }
 
 /** The move as it would go now (marked tiles and target), or null when it has nothing to strike. */
@@ -5052,6 +5120,11 @@ function planBossMove(s: GarrisonState, e: Enemy, move: WarbossMove, index: numb
         if (d.dead || isFlat(d) || Math.abs(d.lane - e.lane) > 1 || Math.abs(d.col + 0.5 - e.x) > move.reach) continue;
         markTile(s, marks, d.lane, d.col);
       }
+      return marks.length ? cue : null;
+    }
+    case "wail": {
+      if ((e.wailAt ?? 0) > s.tick) return null;
+      for (const d of wailTargets(s)) markTile(s, marks, d.lane, d.col);
       return marks.length ? cue : null;
     }
   }
@@ -5153,6 +5226,23 @@ function landBossMove(s: GarrisonState, e: Enemy, move: WarbossMove, cue: BossCu
         if (d) stunTroop(s, d, move.stun);
       }
       return;
+    case "wail": {
+      // The scream reaches every troop on the lawn as it lands (the marks only warned of it).
+      e.wailAt = s.tick + move.rest;
+      const frozen: number[] = [];
+      for (const d of wailTargets(s)) {
+        if (warmAt(s, d)) {
+          s.events.push({ e: "thaw", id: d.id });
+          continue;
+        }
+        d.iceUntil = Math.max(d.iceUntil ?? 0, s.tick + stunFor(s, move.freeze));
+        d.shotAt = -1;
+        d.shotsLeft = 0;
+        frozen.push(d.id);
+      }
+      s.events.push({ e: "wail", id: e.id, frozen });
+      return;
+    }
   }
 }
 
@@ -5968,6 +6058,16 @@ function biteAct(s: GarrisonState, e: Enemy, block: Defender): void {
     const dealt = Math.max(0, before - Math.max(0, v.hp) - v.shell);
     if (v !== block) continue;
     if (def.drain && dealt > 0) e.hp = Math.min(e.maxHp, e.hp + Math.round(dealt * def.drain));
+    // Order & Chaos Ghost: the soul of a slain troop (a real one, not undead) heals it fully and makes it stronger.
+    if (v.dead && def.soulHarvest && countsAsTroop(v) && !DEFENDERS[v.kind]!.undead) {
+      const grew = (e.harvested ?? 0) < def.soulHarvest.max;
+      if (grew) {
+        e.harvested = (e.harvested ?? 0) + 1;
+        e.maxHp += Math.round(def.hp * def.soulHarvest.grow);
+      }
+      e.hp = e.maxHp;
+      s.events.push({ e: "soulHarvest", id: e.id, grew });
+    }
     if (v.dead) continue;
     const steadfast = DEFENDERS[v.kind]!.steadfast === true;
     if (def.curse && !steadfast) v.cursedUntil = s.tick + def.curse;

@@ -104,6 +104,16 @@
     "width": 684,
     "height": 923
   },
+  "/assets/battle-hex/creatures/oc-frost-wyrm.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/oc-frost-wyrm.webp",
+    "width": 1792,
+    "height": 2574
+  },
+  "/assets/battle-hex/creatures/oc-ghost.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/oc-ghost.webp",
+    "width": 864,
+    "height": 1391
+  },
   "/assets/battle-hex/creatures/peasant.webp": {
     "hd": "/assets/battle-hex/creatures-hd/peasant.webp",
     "width": 1728,

@@ -24,6 +24,7 @@ import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from "@/lib/sound";
 import { openSettings } from "@/lib/settings-dialog";
 import { cancelPendingBattleSounds, playEventSounds, setBattleDuck } from "./audio";
 import { BossOmen, bossApproachLeft, type BossArrival } from "./boss-omen";
+import { WAIL_CHILL_MS, WAIL_SCARE_MS, WailOverlay, bossWails, preloadWailArt, type WailCue } from "./wyrm-wail";
 import { playFieldEventSounds, updateFieldAmbience } from "./field-audio";
 import { AdvisorBubble } from "./order-chaos/story-ui";
 import { FieldBadge, fieldQuip, fieldTipAt, fieldToast } from "./order-chaos/field-ui";
@@ -207,6 +208,11 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   const bossAlive = !s.outcome && (s.warbossId !== undefined || s.boss !== null)
     && s.enemies.some((e) => !e.dead && (e.id === s.warbossId || e.id === s.boss?.id));
   const bossLeft = bossApproachLeft(s);
+  // A wailing world boss on its way: its pictures load now, ahead of the first wail.
+  const bossDueKind = s.cfg.oc ? s.director.bossDue?.kind : undefined;
+  useEffect(() => {
+    if (bossWails(bossDueKind)) preloadWailArt();
+  }, [bossDueKind]);
   const bossTheme = bossAlive || (bossLeft !== null && bossLeft <= BOSS_ARRIVAL_BEAT_S);
   const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : bossTheme ? "oc-boss" : music === "order-chaos-horde" ? "oc-battle-horde" : music === "order-chaos-remnants" ? "oc-battle-remnants" : "oc-battle") : "combat";
   useBackgroundMusic(musicScene);
@@ -224,6 +230,10 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   const [bossArrival, setBossArrival] = useState<BossArrival | null>(null);
   const arrivalTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(arrivalTimerRef.current), []);
+  // Order & Chaos: a world boss's wail on screen (frost, then the ghost's face).
+  const [wail, setWail] = useState<WailCue | null>(null);
+  const wailTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(wailTimerRef.current), []);
   // Order & Chaos: a pause holds the track and resuming continues it where it stopped.
   // Declared after useBackgroundMusic so on unmount the scene stops before the hold lifts.
   const holdMusic = ocMusic && paused && !s.outcome;
@@ -537,6 +547,15 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           else if ((ev.e === "orb" || ev.e === "crown") && driver.local.includes("def")) sayQuip(ev.e);
           else if (ev.e === "charger" && laneChampionRode(driver.state(), ev.lane)) sayQuip("charger");
           else if (ev.e === "bossAction") sayQuip("boss");
+          // A wailing boss: frost creeps in while it winds the wail up, and its face flashes as it lands.
+          if (state.cfg.oc && ((ev.e === "bossCue" && ev.move === "wail") || ev.e === "wail")) {
+            const key = now;
+            const stage = ev.e === "wail" ? "scare" : "chill";
+            setWail({ stage, key });
+            window.clearTimeout(wailTimerRef.current);
+            wailTimerRef.current = window.setTimeout(() => setWail((current) => (current?.key === key ? null : current)), stage === "scare" ? WAIL_SCARE_MS : WAIL_CHILL_MS);
+          }
+          if (ev.e === "bossEnter" && state.cfg.oc && bossWails(ev.kind)) preloadWailArt();
           if (ev.e === "bossEnter" && state.cfg.oc) {
             const key = now;
             setBossArrival({ kind: ev.kind, key });
@@ -989,6 +1008,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         {toast ? <div className={`${styles.toast} ${styles[`toast_${toast.tone}`]}`} key={toast.id}>{toast.text}</div> : null}
         {quip ? <div aria-live="polite" className={styles.quip} key={quip.id}><AdvisorBubble compact line={quip.line} /></div> : null}
         {s.cfg.oc ? <BossOmen arrival={bossArrival} kind={s.director.bossDue?.kind} left={bossLeft} /> : null}
+        {s.cfg.oc ? <WailOverlay cue={wail} /> : null}
         {announce ? <div aria-live="polite" className={`${styles.announce} ${styles[`announce_${announce.tone}`]}`} key={announce.key}>{announce.text}</div> : null}
         {hint ? <div className={styles.hint}>{hint}</div> : null}
         {status ? <div className={styles.netStatus}>{status}</div> : null}

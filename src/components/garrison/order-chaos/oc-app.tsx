@@ -7,15 +7,15 @@ import { BLESSINGS, CARDS, DEFENDERS, ENEMIES, FUSIONS, GW_TPS, SPELLS, type Ble
 import {
   OC_ALL_CLEARED, OC_ALL_HIRED, OC_ENDLESS, OC_HEROES, OC_HERO_ORDER, OC_LEVELS, OC_LEVEL_COST, OC_LAWFUL_COLOR, OC_MAX_LEVEL, OC_MERCENARIES,
   OC_RAID_CHARGES, OC_RAIDS, OC_SPELLBOOK_SIZE, OC_SPELLS, OC_STAR_MILESTONES, OC_ULT_LEVEL, OC_WORLDS, OC_ARTIFACTS,
-  altarOpen, artifactSlots, buildOcConfig, crownSlots, surgeSlots, endlessOpen, goalMet, goalText, isLevelOpen, levelPower, mercCampOpen, metEnemies, raidOpen, seedSlots,
+  altarOpen, artifactSlots, buildOcConfig, crownSlots, findOcLevel, surgeSlots, endlessOpen, goalMet, goalText, isLevelOpen, levelPower, mercCampOpen, metEnemies, raidOpen, seedSlots,
   totalStars, unlockedArtifacts, unlockedHeroes, unlockedSpells, unlockedUltimates, unlockedUnits, worldCleared,
   OC_HERO_MAX_RANK, OC_GACHA_HEROES, heroRankCap, heroRankOf, heroRankText,
   type OcHeroId, type OcLevel
 } from "@/engine/garrison/order-chaos/campaign";
 import { gardenOpen, gardenPlots, isRipe } from "@/engine/garrison/order-chaos/garden";
-import { OC_DAILY_ID, OC_DAILY_LEVEL, buildDailyConfig, type OcDaily } from "@/engine/garrison/order-chaos/daily";
+import { OC_DAILY_ID, OC_DAILY_LEVEL, buildDailyConfig, ocDaily, type OcDaily } from "@/engine/garrison/order-chaos/daily";
 import { ASCEND_TICKS, VALOR_NEED } from "@/engine/garrison/order-chaos/forms";
-import { ocDayKey, ocRunSummary, type OcBoardMode, type OcRunSummary } from "@/engine/garrison/order-chaos/scores";
+import { ocDayKey, ocRunSummary, ocRunTime, type OcBoardMode, type OcRunSummary } from "@/engine/garrison/order-chaos/scores";
 import { OC_DEFENDERS, OC_ENEMIES, OC_ULTIMATES } from "@/engine/garrison/order-chaos/roster";
 import {
   OC_BATTLE_QUIPS, OC_ENDLESS_LINES, OC_EPILOGUE, OC_LEVEL_STORY, OC_PROLOGUE, OC_PROLOGUE_ID, OC_SCORE_LINES, OC_SCREEN_LINES, OC_WORLD_OUTRO, OC_WORLD_STORY, isNarration, unlockedLines,
@@ -37,9 +37,10 @@ import { AdvisorBubble, StoryScene } from "./story-ui";
 import { FieldAlmanac, FieldPanel, newFieldLines } from "./field-ui";
 import { ForgeScreen, GardenScreen, Materials, OreIcon } from "./forge-garden";
 import { AttendanceDialog, CrystalIcon, CrystalPurse, PackItems, PortalScreen, SatchelScreen, attendanceOpen, satchelCount } from "./treasury-ui";
-import { OC_CRYSTALS, OC_ITEMS, battleDrop } from "@/engine/garrison/order-chaos/treasury";
+import { OC_CRYSTALS, OC_ITEMS, battleDrop, isOcItem } from "@/engine/garrison/order-chaos/treasury";
 import { OC_GACHA_ARTIFACTS, OC_GACHA_CHAOS, OC_GACHA_UNITS } from "@/engine/garrison/order-chaos/gacha-content";
-import { addItems, packedSatchel, spendItem } from "@/lib/order-chaos-treasury";
+import { addItems, itemCount, packedSatchel, spendItem } from "@/lib/order-chaos-treasury";
+import { canResumeOcRun, clearOcRun, loadOcRuns, saveOcRun, savedAgo, type OcRunSlot, type OcSavedRun } from "@/lib/order-chaos-runs";
 import { SettingsButton } from "@/components/settings/settings-dialog";
 
 type Screen =
@@ -61,7 +62,51 @@ type Screen =
   | { s: "play" };
 
 /** `daily`: the Daily Siege orders being played (their day and fingerprint go on the tally board). */
-type Session = { key: number; driver: GarrisonDriver; level: OcLevel; restart: () => void; daily?: OcDaily };
+/**
+ * `slot`: where a scored run (Endless, Daily Siege, a raid) is kept while it is played (lib/order-chaos-runs.ts),
+ * with the hand and hero it began with; `resumed`: it carries on a saved run.
+ */
+type Session = {
+  key: number; driver: GarrisonDriver; level: OcLevel; restart: () => void; daily?: OcDaily;
+  slot?: OcRunSlot; cards?: DefKind[]; hero?: string; resumed?: boolean;
+};
+
+/** Where a level's run in progress is kept (campaign battles are not: they give no board score mid-way). */
+function runSlotOf(level: OcLevel, daily?: OcDaily): OcRunSlot | null {
+  if (daily) return "daily";
+  if (level.kind === "endless") return "endless";
+  if (level.kind === "raid") return `raid:${level.id}`;
+  return null;
+}
+
+/** The Endless Siege's pay for reaching `waves`: only what passes the best so far (Seals and Ore every 5th wave, Crystals every 10th). */
+function payEndless(p: OcProgress, waves: number): OcProgress {
+  const gained = Math.max(0, Math.floor(waves / 5) - Math.floor(p.bestEndless / 5));
+  const tens = Math.max(0, Math.floor(waves / 10) - Math.floor(p.bestEndless / 10));
+  return { ...p, bestEndless: Math.max(p.bestEndless, waves), seals: p.seals + gained, ore: p.ore + gained, crystals: p.crystals + tens * OC_CRYSTALS.endlessTen };
+}
+
+type RunSoFar = Pick<OcSavedRun, "slot" | "day" | "setup" | "hero" | "state">;
+
+/** A siege run's standing so far as its board summary (Endless / Daily Siege); null for a raid (only a broken raid scores). */
+function siegeSummary(run: RunSoFar): OcRunSummary | null {
+  if (run.slot === "endless") return ocRunSummary(run.state, "endless", run.hero ? { hero: run.hero } : {});
+  if (run.slot === "daily") return ocRunSummary(run.state, "daily", { day: run.day, setup: run.setup, hero: run.hero });
+  return null;
+}
+
+/**
+ * Keeps what a siege run has reached so far, as a finished run would: its tally-board best (posted by
+ * useOcScoreSync) and, in the Endless Siege, its wave pay. Only what beats the bests kept is added, so
+ * keeping the same run again (on leaving, on reopening) changes nothing.
+ */
+function keepSiegeProgress(p: OcProgress, run: RunSoFar): OcProgress {
+  const summary = siegeSummary(run);
+  if (!summary || summary.wave < 1 || run.state.outcome) return p;
+  const paid = summary.mode === "endless" ? payEndless(p, summary.wave) : p;
+  // (An Endless run with the testing unlock on stays off the boards, as a finished one does.)
+  return summary.mode === "endless" && p.testAll ? paid : recordOcBest(paid, summary);
+}
 
 const seed = () => Math.floor(Math.random() * 2147483647);
 
@@ -442,7 +487,8 @@ function ultimateLine(kind: DefKind): string | null {
 
 export function OrderChaosApp() {
   const [screen, setScreen] = useState<Screen>({ s: "home" });
-  const [progress, setProgress] = useState<OcProgress>(loadOcProgress);
+  // (Runs left in progress — left mid-way, or a tab closed on them — keep what they reached: keepSiegeProgress.)
+  const [progress, setProgress] = useState<OcProgress>(() => loadOcRuns().reduce(keepSiegeProgress, loadOcProgress()));
   // The latest progress, for a battle's restart (its Satchel holds only what is still owned).
   const progressRef = useRef(progress);
   useEffect(() => {
@@ -474,10 +520,42 @@ export function OrderChaosApp() {
     sessionRef.current = next;
     setSession(next);
   }, []);
+  // A scored run in progress is kept on this device as it is played, so leaving (or losing the tab) never loses it.
+  const saveRun = useCallback(() => {
+    const current = sessionRef.current;
+    if (!current?.slot) return;
+    const state = current.driver.state();
+    if (state.outcome) {
+      clearOcRun(current.slot);
+      return;
+    }
+    if (state.tick <= 0) return;
+    saveOcRun({
+      slot: current.slot, levelId: current.level.id, cards: current.cards ?? [],
+      ...(current.daily ? { day: current.daily.day, setup: current.daily.setup } : {}),
+      ...(current.hero ? { hero: current.hero } : {}),
+      state
+    });
+  }, []);
   useEffect(() => () => {
+    saveRun();
     sessionRef.current?.driver.dispose();
     sessionRef.current = null;
-  }, []);
+  }, [saveRun]);
+  useEffect(() => {
+    if (!session?.slot) return;
+    const timer = window.setInterval(saveRun, 15000);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") saveRun();
+    };
+    window.addEventListener("pagehide", saveRun);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("pagehide", saveRun);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [session, saveRun]);
 
   // Every change is written once it commits; a refused write (storage blocked
   // or full) is shown instead of silently losing the player's progress.
@@ -494,6 +572,12 @@ export function OrderChaosApp() {
   }, [progress]);
   // Every best and the campaign tally go up to the tally boards by themselves.
   useOcScoreSync(progress, update);
+  // Runs left in progress wait to be played on.
+  const [savedRuns, setSavedRuns] = useState<OcSavedRun[]>(loadOcRuns);
+  const abandonRun = useCallback((run: OcSavedRun) => {
+    clearOcRun(run.slot);
+    setSavedRuns(loadOcRuns());
+  }, []);
   // Another tab saved: adopt its progress so this tab never writes back a stale copy.
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -535,9 +619,15 @@ export function OrderChaosApp() {
         levels: p.levels, cleared: u.cleared, spells: spellbookOf(p, u), ultimates: u.ultimates, crowns: u.crowns, surges: u.surges
       });
       const local: Side[] = level.kind === "raid" ? ["atk"] : ["def"];
+      // A new run of a scored mode takes the place of the one saved for it.
+      const slot = runSlotOf(level) ?? undefined;
+      if (slot) clearOcRun(slot);
       setNote(null);
       setNextLevel(null);
-      replaceSession({ key: Date.now(), driver: createLocalDriver(config, local, {}), level, restart: launch });
+      replaceSession({
+        key: Date.now(), driver: createLocalDriver(config, local, {}), level, restart: launch,
+        slot, cards, hero: level.kind === "raid" ? undefined : u.heroes.includes(p.hero) ? p.hero : "catherine"
+      });
       setScreen({ s: "play" });
     };
     launch();
@@ -551,13 +641,50 @@ export function OrderChaosApp() {
   // The Daily Siege: today's orders, never the player's own unlocks.
   const startDaily = useCallback((daily: OcDaily) => {
     const launch = () => {
+      clearOcRun("daily");
       setNote(null);
       setNextLevel(null);
-      replaceSession({ key: Date.now(), driver: createLocalDriver(buildDailyConfig(daily), ["def"], {}), level: daily.level, restart: launch, daily });
+      replaceSession({ key: Date.now(), driver: createLocalDriver(buildDailyConfig(daily), ["def"], {}), level: daily.level, restart: launch, daily, slot: "daily", hero: daily.hero });
       setScreen({ s: "play" });
     };
     launch();
   }, [replaceSession]);
+
+  // Carry on a saved run where it was left (a new run of the same mode is what "Restart" then begins).
+  const resumeRun = useCallback((saved: OcSavedRun) => {
+    if (!canResumeOcRun(saved)) return;
+    const daily = saved.slot === "daily" && saved.day ? ocDaily(saved.day) : undefined;
+    // (The day's orders are rebuilt from the day: a save of other orders cannot be played on.)
+    if (saved.slot === "daily" && daily?.setup !== saved.setup) return;
+    const level = daily ? daily.level : findOcLevel(saved.levelId);
+    if (!level) return;
+    const state = saved.state;
+    // Satchel items spent in other battles since the save are no longer there to use.
+    const satchel = state.cfg.oc?.satchel;
+    if (state.cfg.oc && satchel) {
+      state.cfg.oc.satchel = satchel.map((entry) => ({
+        ...entry, uses: Math.min(entry.uses, (state.def.satchelUsed?.[entry.id] ?? 0) + (isOcItem(entry.id) ? itemCount(progressRef.current, entry.id) : 0))
+      }));
+    }
+    const local: Side[] = level.kind === "raid" ? ["atk"] : ["def"];
+    const fresh = daily ? () => startDaily(daily) : () => start(level, saved.cards);
+    setNote(null);
+    setNextLevel(null);
+    replaceSession({
+      key: Date.now(), driver: createLocalDriver(state.cfg, local, {}, state), level, restart: fresh, daily,
+      slot: saved.slot, cards: saved.cards, hero: saved.hero, resumed: true
+    });
+    setScreen({ s: "play" });
+  }, [replaceSession, start, startDaily]);
+
+  // Leaving a run before its end: it stays saved, and a siege keeps the wave it reached (its board best, Endless pay).
+  const suspendRun = useCallback(() => {
+    const current = sessionRef.current;
+    if (!current?.slot) return;
+    saveRun();
+    const run: RunSoFar = { slot: current.slot, day: current.daily?.day, setup: current.daily?.setup, hero: current.hero, state: current.driver.state() };
+    if (!run.state.outcome && siegeSummary(run)) update((p) => keepSiegeProgress(p, run));
+  }, [saveRun, update]);
 
   /** A finished run's score panel: keeps the device's best for its board and posts to the tally board (`blocked`: why it can't). */
   const scorePanel = useCallback((run: OcRunSummary, blocked: string | null) => {
@@ -570,6 +697,12 @@ export function OrderChaosApp() {
   const onFinish = useCallback((result: GameResult) => {
     const level = sessionRef.current?.level;
     if (!level) return;
+    // The run is over: nothing is left to play on.
+    const slot = sessionRef.current?.slot;
+    if (slot) {
+      clearOcRun(slot);
+      setSavedRuns(loadOcRuns());
+    }
     const daily = sessionRef.current?.daily;
     if (daily) {
       const run = ocRunSummary(result.state, "daily", { day: daily.day, setup: daily.setup, hero: daily.hero });
@@ -611,7 +744,7 @@ export function OrderChaosApp() {
       const gained = Math.max(0, Math.floor(waves / 5) - Math.floor(progress.bestEndless / 5));
       // Crystals for every new best tenth wave.
       const tens = Math.max(0, Math.floor(waves / 10) - Math.floor(progress.bestEndless / 10));
-      update((p) => ({ ...p, bestEndless: Math.max(p.bestEndless, waves), seals: p.seals + gained, ore: p.ore + gained, crystals: p.crystals + Math.max(0, Math.floor(waves / 10) - Math.floor(p.bestEndless / 10)) * OC_CRYSTALS.endlessTen }));
+      update((p) => payEndless(p, waves));
       const words = pickUnlocked(waves > progress.bestEndless ? OC_ENDLESS_LINES.best : OC_ENDLESS_LINES.short, unlocksOf(progress).cleared);
       const heroes = unlocksOf(progress).heroes;
       const run = ocRunSummary(result.state, "endless", { hero: heroes.includes(progress.hero) ? progress.hero : "catherine" });
@@ -702,12 +835,12 @@ export function OrderChaosApp() {
           music={battleMusicFor(level, !!session.daily)}
           driver={session.driver}
           hotseat={false}
-          intro={introFor(level, unlocks.cleared)}
+          intro={session.resumed ? null : introFor(level, unlocks.cleared)}
           key={session.key}
           next={nextLevel ? { label: `Next: ${nextLevel.name}`, onNext: () => { replaceSession(null); setScreen({ s: "prep", level: nextLevel }); } } : null}
           onEvents={onBattleEvents}
           onFinish={onFinish}
-          onLeave={() => { replaceSession(null); setNote(null); setNextLevel(null); setScreen(back); }}
+          onLeave={() => { suspendRun(); replaceSession(null); setNote(null); setNextLevel(null); setSavedRuns(loadOcRuns()); setScreen(back); }}
           onRestart={session.restart}
           town="castle"
           unlockNote={note}
@@ -732,7 +865,12 @@ export function OrderChaosApp() {
             <span>Your browser refused to save Order &amp; Chaos progress (storage blocked or full). Progress made now lasts only until you close this tab.</span>
           </div>
         ) : null}
-        {screen.s === "home" ? <Home onCalendar={() => setCalendar(true)} onPick={setScreen} onStory={() => setStory({ id: OC_PROLOGUE_ID, lines: OC_PROLOGUE })} progress={progress} unlocks={unlocks} update={update} /> : null}
+        {screen.s === "home" ? (
+          <Home
+            onAbandon={abandonRun} onCalendar={() => setCalendar(true)} onPick={setScreen} onResume={resumeRun}
+            onStory={() => setStory({ id: OC_PROLOGUE_ID, lines: OC_PROLOGUE })} progress={progress} saved={savedRuns} unlocks={unlocks} update={update}
+          />
+        ) : null}
         {screen.s === "journal" ? <Journal onBack={() => setScreen({ s: "home" })} onPlay={(entry) => setStory({ id: entry.id, lines: entry.lines, letter: entry.letter })} progress={progress} /> : null}
         {screen.s === "campaign" ? (
           <Campaign
@@ -744,6 +882,9 @@ export function OrderChaosApp() {
             unlocks={unlocks}
             world={screen.world}
           />
+        ) : null}
+        {screen.s === "prep" && screen.level.kind === "endless" ? (
+          <SavedRunCards note="Starting a new run ends this one." onAbandon={abandonRun} onResume={resumeRun} runs={savedRuns.filter((run) => run.slot === "endless")} />
         ) : null}
         {screen.s === "prep" ? (
           <Prep
@@ -764,6 +905,12 @@ export function OrderChaosApp() {
           <Raids
             onBack={() => setScreen({ s: "home" })}
             onPick={(level) => {
+              // A raid left mid-way carries on where it was.
+              const saved = savedRuns.find((run) => run.slot === `raid:${level.id}` && canResumeOcRun(run));
+              if (saved) {
+                resumeRun(saved);
+                return;
+              }
               // A raid's briefing plays once, then the raid begins.
               const talk = levelStory(level, progress.seen);
               if (talk) setStory({ ...talk, then: () => start(level, []) });
@@ -782,6 +929,9 @@ export function OrderChaosApp() {
         {screen.s === "camp" ? <Camp onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "almanac" ? <Almanac onBack={() => setScreen({ s: "home" })} unlocks={unlocks} /> : null}
         {screen.s === "lab" ? <HybridLab onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} /> : null}
+        {screen.s === "daily" ? (
+          <SavedRunCards note="Starting a new run ends this one." onAbandon={abandonRun} onResume={resumeRun} runs={savedRuns.filter((run) => run.slot === "daily")} />
+        ) : null}
         {screen.s === "daily" ? (
           <OcDailyScreen
             cleared={unlocks.cleared}
@@ -805,6 +955,61 @@ export function OrderChaosApp() {
 /** Life in the title painting: embers off the campfire, its flicker, and the lich tower's pulse (decoration only). */
 const EMBERS = Array.from({ length: 16 }, (_, i) => ({ left: 3 + ((i * 37) % 22), delay: (i * 0.73) % 6, dur: 5 + ((i * 1.9) % 4), drift: ((i * 29) % 40) - 20 }));
 
+/** Can a saved run be played on here (this simulation wrote it; a Daily Siege's orders are still the same)? */
+function playableRun(run: OcSavedRun): boolean {
+  if (!canResumeOcRun(run)) return false;
+  if (run.slot === "daily") return !!run.day && ocDaily(run.day).setup === run.setup;
+  return !!findOcLevel(run.levelId);
+}
+
+/**
+ * Runs left mid-way (lib/order-chaos-runs.ts): where each stands, Continue to play on from there, or
+ * Abandon it. What a siege reached is already on its tally board either way.
+ */
+function SavedRunCards({ runs, onResume, onAbandon, note }: {
+  runs: readonly OcSavedRun[];
+  onResume(run: OcSavedRun): void;
+  onAbandon(run: OcSavedRun): void;
+  /** A word under each (e.g. that a new run replaces it). */
+  note?: string;
+}) {
+  if (runs.length === 0) return null;
+  return (
+    <>
+      {runs.map((run) => {
+        const raid = run.slot.startsWith("raid:");
+        const playable = playableRun(run);
+        const title = run.slot === "endless" ? "Endless Siege" : run.slot === "daily" ? `Daily Siege · ${run.day ?? ""}` : `Chaos Raid · ${findOcLevel(run.levelId)?.name ?? run.levelId}`;
+        const where = raid ? `${ocRunTime(run.ticks)} into the raid` : `Wave ${run.wave} · ${run.kills} foe${run.kills === 1 ? "" : "s"} slain`;
+        return (
+          <div aria-label={`Saved run: ${title}`} className={`${oc.nextCard} ${oc.continueCard}`} key={run.slot} role="group">
+            <span className={oc.nextArt}>
+              <img alt="" className={oc.savedArt} src={assetUrl(run.slot === "endless" ? ART.endless : run.slot === "daily" ? ART.daily : ART.raids)} />
+            </span>
+            <span className={oc.nextText}>
+              <small>Saved run · {savedAgo(run.savedAt)}</small>
+              <strong>{title}</strong>
+              <span className={oc.nextPrize}>
+                {where}
+                {!playable ? " — saved by an older version of the game: it can't be played on." : note ? ` — ${note}` : ""}
+              </span>
+            </span>
+            {playable ? <button className={oc.playPill} onClick={() => onResume(run)} type="button">Continue ▸</button> : null}
+            <button
+              className={styles.ghostButton}
+              onClick={() => onAbandon(run)}
+              title={raid ? "Give up this raid (only a broken raid goes on the tally board)." : "Give up this run (the wave it reached stays on your tally board)."}
+              type="button"
+            >
+              {playable ? "Abandon" : "Dismiss"}
+            </button>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function HomeAmbience() {
   return (
     <div aria-hidden className={oc.ambience}>
@@ -817,8 +1022,11 @@ function HomeAmbience() {
   );
 }
 
-function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: {
+function Home({ onPick, onStory, onCalendar, onResume, onAbandon, saved, progress: p, unlocks: u, update }: {
   onPick(next: Screen): void;
+  onResume(run: OcSavedRun): void;
+  onAbandon(run: OcSavedRun): void;
+  saved: readonly OcSavedRun[];
   onCalendar(): void;
   onStory(): void;
   progress: OcProgress;
@@ -883,6 +1091,7 @@ function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: 
         </div>
       </header>
       {p.seen.includes(OC_PROLOGUE_ID) ? <Greeting cleared={u.cleared} place="home" /> : null}
+      <SavedRunCards onAbandon={onAbandon} onResume={onResume} runs={saved} />
       {next ? (
         <button className={`${oc.nextCard} ${oc.continueCard}`} onClick={() => onPick({ s: "prep", level: next })} type="button">
           <span className={oc.nextArt}>

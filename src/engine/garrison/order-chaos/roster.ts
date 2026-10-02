@@ -619,6 +619,9 @@ export const OC_ENEMIES: EnemyDef[] = [
   // --- The Carnival of Masks ------------------------------------------------
   chaos({ kind: "oc-phantom", name: "Phantom", sprite: "wog-ghost", hp: 420, speed: WALK, bite: 45, cost: 4, undead: true, phase: { every: sec(8), speed: FAST },
     blurb: "Drifts straight through the defenders in its way — untouchable while it phases (only blasts and hero spells reach it) — then needs 8 s before it can phase again." }),
+  chaos({ kind: "oc-ghost", name: "Ghost", sprite: "oc-ghost", hp: 520, speed: pace(4.2), bite: 60, cost: 0, undead: true, frostImmune: true, evade: 3,
+    soulHarvest: { grow: 0.25, max: 2 },
+    blurb: "A spirit of the Frost Wyrm's train: it comes only with the Wyrm, flying from it into a lane. Half there: every third straight shot passes through it. SOUL HARVEST: a troop it slays (not undead) heals it fully and, twice at most, makes it a quarter tougher for good." }),
   chaos({ kind: "oc-werewolf", name: "Werewolf Stalker", sprite: "wog-werewolf", hp: 700, speed: FAST, bite: 55, cost: 4, zigzag: { every: 1.8 },
     blurb: "Every 1.8 tiles it bounds diagonally into a neighbouring lane — never in one lane for long." }),
   chaos({ kind: "oc-revel-queen", name: "Revel Queen", sprite: "commander-succubus", hp: 950, speed: WALK, bite: 50, cost: 7,
@@ -722,18 +725,19 @@ export const OC_ENEMIES: EnemyDef[] = [
       { kind: "volley", name: "Rain of Bones", fx: "land-mine-hit", dmg: 150, count: 5, stun: sec(1), interlude: 2 }
     ] },
     blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Stitched from a dozen dead and kept on a chain: it SLAMS the 3x3 around the troop in front of it (300) and whistles up a Hell Hound. From 60% it hurries and ROARS, stunning every troop near it; from 30% it unleashes the whole kennel (two Hell Hounds at a time). The marked tiles show where each blow will land. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first the Kennel breaks loose (three Hell Hounds); then bones rain on your five costliest troops (150, stunned 1 s)." }),
-  chaos({ kind: "oc-boss-wyrm", name: "The Frost Wyrm", sprite: "ghost-dragon", hp: 8500, speed: pace(9), bite: 150, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
+  chaos({ kind: "oc-boss-wyrm", name: "The Frost Wyrm", sprite: "oc-frost-wyrm", hp: 8500, speed: pace(9), bite: 150, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, undead: true, frostImmune: true, scale: 1.3,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(9), sec(7), sec(5.5)], pace: [1, 1.1, 1.25], warn: sec(1.8), moves: [
       { kind: "breath", name: "Frost Breath", fx: "frost-ring", dmg: 120, len: 4, freeze: sec(4) },
       { kind: "summon", name: "Calls the Sledge Wolves", fx: "frost-ring", foe: "oc-sledders", count: 3 },
       { kind: "breath", name: "Frost Storm", fx: "frost-ring", dmg: 120, len: 3, wide: true, freeze: sec(4), from: 1 },
       { kind: "stride", name: "Glides", fx: "frost-ring", from: 2 },
+      { kind: "wail", name: "The Banshee's Wail", fx: "frost-ring", freeze: sec(2), rest: sec(24) },
       // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
       { kind: "breath", name: "Glacier Breath", fx: "frost-ring", dmg: 100, len: 5, wide: true, freeze: sec(4), interlude: 1 },
       { kind: "volley", name: "Hail of Ice", fx: "ice-bolt-hit", dmg: 220, count: 6, stun: sec(1.5), interlude: 2 }
-    ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. A dead dragon of the glaciers: its FROST BREATH seals the four tiles ahead of it in ice (fire troops beside them stay warm), and it calls Sledge Wolves. From 60% its breath sweeps three lanes; from 30% it strides from lane to lane. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first a glacier breath freezes the five tiles ahead in three lanes (100, 4 s); then hail strikes your six costliest troops (220, stunned 1.5 s)." }),
+    ], spirits: { count: 3, every: sec(14), foe: "oc-ghost", max: 2 } },
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. A dead dragon of the glaciers, wrapped in the ghosts of the frozen: its FROST BREATH seals the four tiles ahead of it in ice (fire troops beside them stay warm), and it calls Sledge Wolves. From the start, now and then, a BANSHEE'S WAIL rings out: every troop on the lawn is sealed in ice for 2 s (a fire troop keeps the troops beside it warm; never twice within 24 s). Three spirits circle it: every 14 s one breaks away and flies into a lane as a Ghost (at most two of its Ghosts at a time). From 60% its breath sweeps three lanes; from 30% it strides from lane to lane. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first a glacier breath freezes the five tiles ahead in three lanes (100, 4 s); then hail strikes your six costliest troops (220, stunned 1.5 s)." }),
   chaos({ kind: "oc-boss-lich", name: "The Mire Lich", sprite: "lich", hp: 9500, speed: pace(9), bite: 120, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, undead: true, scale: 1.5,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(8), sec(6.5), sec(5)], pace: [1, 1.1, 1.2], warn: sec(1.8), moves: [

@@ -301,6 +301,62 @@ function defenderPos(s: GarrisonState, id: number): { x: number; y: number } | n
 
 /** Order & Chaos art. */
 const SURGE_SRC = "/assets/order-chaos/icons/surge.webp";
+/** Order & Chaos Frost Wyrm: one spirit (a glowing wisp, its head to the right), blended additively. */
+const SPIRIT_WISP = "/assets/order-chaos/boss/spirit-wisp.webp";
+
+/** The spirits still circling a world boss: WarbossDef.spirits.count less those it sent that are still about. */
+function bossSpiritsLeft(s: GarrisonState, e: Enemy): number {
+  const spirits = ENEMIES[e.kind]?.warboss?.spirits;
+  if (!spirits) return 0;
+  const out = s.enemies.filter((o) => !o.dead && o.spiritOf === e.id).length;
+  return Math.max(0, spirits.count - out);
+}
+
+/** A spirit wisp at (x, y) flying along `angle` (its glowing head on the spot, the tail behind). */
+function drawWisp(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, size: number, alpha: number): void {
+  const img = image(SPIRIT_WISP);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = alpha;
+  if (ready(img)) {
+    const h = size * (img.naturalHeight / Math.max(1, img.naturalWidth));
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.drawImage(img, -size * 0.85, -h / 2, size, h);
+  } else {
+    drawGlow(ctx, "rgba(170,230,255,0.6)", x, y, size * 0.25);
+  }
+  ctx.restore();
+}
+
+/**
+ * The spirits circling a world boss (the Frost Wyrm): an ellipse round its body, the far half drawn behind
+ * it (`front` false) and the near half over it, with a cold glow behind the body. Presentation of
+ * WarbossDef.spirits — the sim lets one break away (event spiritFly) and the circle shows one fewer.
+ */
+function drawBossSpirits(ctx: CanvasRenderingContext2D, s: GarrisonState, e: Enemy, x: number, y: number, k: number, now: number, front: boolean): void {
+  const total = ENEMIES[e.kind]?.warboss?.spirits?.count ?? 0;
+  const left = bossSpiritsLeft(s, e);
+  const cy = y - 58 * k;
+  if (!front) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    drawGlow(ctx, "rgba(120,200,255,0.22)", x, cy, (70 + 6 * Math.sin(now / 420 + e.id)) * k);
+    ctx.restore();
+  }
+  for (let i = 0; i < left; i += 1) {
+    const a = now / 1150 + (i * Math.PI * 2) / Math.max(1, total) + e.id;
+    const near = Math.sin(a) > 0;
+    if (near !== front) continue;
+    const rx = 66 * k;
+    const ry = 20 * k;
+    const px = x + Math.cos(a) * rx;
+    const py = cy + Math.sin(a) * ry + 8 * k * Math.sin(now / 260 + i * 2);
+    // Along the orbit (its derivative), so the tail streams behind.
+    const angle = Math.atan2(Math.cos(a) * ry, -Math.sin(a) * rx);
+    drawWisp(ctx, px, py, angle, 34 * k, near ? 0.9 : 0.5);
+  }
+}
 const GRAVE_SRC = "/assets/order-chaos/props/grave.webp";
 const VALOR_SRC = "/assets/order-chaos/icons/valor.webp";
 /** The Ascension burst (a Codex-drawn 4x4 sheet, luminous on transparent); the Prayer sheet stands in until it loads. */
@@ -2458,6 +2514,12 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
     const t = Math.max(0, Math.min(1, (s.tick + alpha - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt)));
     lift = 4 * t * (1 - t) * 60;
   }
+  // Order & Chaos: a world boss's spirit flying from it into its lane, on a high arc.
+  const spiritFlight = e.state === "glide" && e.fly !== undefined;
+  if (spiritFlight) {
+    const t = Math.max(0, Math.min(1, (s.tick + alpha - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt)));
+    lift = 4 * t * (1 - t) * 110;
+  }
   // Order & Chaos: flyers ride high (diving at a defender for a moment); a Snatcher swoops down and hovers over her prey.
   if (def.flying) {
     lift = 70 + 6 * Math.sin(now / 300 + e.id);
@@ -2517,10 +2579,14 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
     ctx.restore();
   }
   if (lift === 0 && rise === 0 && !unseen) drawContactShadow(ctx, x, y, 32 * (scale / SPRITE_SCALE));
+  const spiritK = (scale / SPRITE_SCALE) * 0.62;
+  if (def.warboss?.spirits && !unseen) drawBossSpirits(ctx, s, e, x, y - lift, spiritK, now, false);
   ctx.save();
   const phasing = e.state === "phase";
   ctx.globalAlpha = fade * (def.evade ? 0.5 + 0.08 * Math.sin(now / 150 + e.id) : 1) * (unseen ? 0.22 + 0.06 * Math.sin(now / 120 + e.id) : 1)
-    * (phasing ? 0.36 + 0.08 * Math.sin(now / 90 + e.id) : 1);
+    * (phasing ? 0.36 + 0.08 * Math.sin(now / 90 + e.id) : 1)
+    // A spirit-wrapped world boss (the Frost Wyrm) is half ghost: it wavers, faintly see-through.
+    * (def.warboss?.spirits ? 0.84 + 0.08 * Math.sin(now / 380 + e.id) : 1);
   let filter = statusFilter(s.tick, e, now - flashAt < 80);
   if (e.enraged) filter = `${filter === "none" ? "" : `${filter} `}sepia(0.35) saturate(2.3) hue-rotate(-25deg)`;
   // Order & Chaos: a charmed foe blushes pink; a phasing Phantom turns to pale mist.
@@ -2581,6 +2647,14 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   const stretch = body ? { x: body.x * sx, y: body.y * sy } : sx !== 1 || sy !== 1 ? { x: sx, y: sy } : undefined;
   drawAtlas(ctx, atlas, group, frame, x + sway, y - lift + rise - rumble, scale, flipped, stretch);
   ctx.restore();
+  if (def.warboss?.spirits && !unseen) drawBossSpirits(ctx, s, e, x, y - lift, spiritK, now, true);
+  // A spirit in flight trails its wisp (it becomes the Ghost as it lands).
+  if (spiritFlight && e.fly && !unseen) {
+    const t = Math.max(0, Math.min(1, (s.tick + alpha - e.stateAt) / Math.max(1, e.stateUntil - e.stateAt)));
+    const dy = feetY(e.to) - feetY(e.from) - 4 * (1 - 2 * t) * 110;
+    const dx = tileX(e.fly.x1) - tileX(e.fly.x0);
+    drawWisp(ctx, x, y - lift - 50, Math.atan2(dy, dx), 120, 0.9 * (1 - t * 0.6));
+  }
   if (water === "wade" && rise === 0 && lift === 0) drawWading(ctx, x, y, now, e.id);
   // Order & Chaos: a creature bank's guard, asleep.
   if (e.guard && !unseen) drawSleep(ctx, x, y - lift - 96 * scale, now, e.id);
@@ -3655,6 +3729,42 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
       if (e) view.fx.push({ t: "tracer", x0: tileX(e.x), y0: feetY(e.lane) - 80, x1: p.x, y1: p.y - 55, start: now, rgb: "190,230,255" });
       addSheet(view, "ice-bolt-hit", p.x, p.y - 40, 110, now + 80);
       burst(view.particles, now + 80, "glint", p.x, p.y - 55, 10, { speed: 0.25, life: 500, size: 2.6, colors: ["#e8f6ff", "#bfe4ff"] });
+      break;
+    }
+    case "wail": {
+      // The scream: frost bursts over every troop it froze, the lawn shudders and the picture breaks up.
+      const e = s.enemies.find((unit) => unit.id === ev.id);
+      if (e) playOnce(view, `e${e.id}`, enemySpriteOf(view, e), [G.cast, G.attack], now, 60);
+      view.shakeUntil = Math.max(view.shakeUntil, now + 700);
+      horrorGlitch(view.horror, now, true);
+      for (const id of ev.frozen) {
+        const p = defenderPos(s, id);
+        if (!p) continue;
+        burst(view.particles, now + 40, "glint", p.x, p.y - 55, 12, { speed: 0.3, life: 650, size: 2.8, colors: ["#ffffff", "#d8f0ff", "#9fd4ff"] });
+        burst(view.particles, now + 40, "smoke", p.x, p.y - 30, 3, { speed: 0.05, up: 0.04, life: 900, size: 9, colors: ["rgba(220,240,255,0.55)"] });
+      }
+      if (ev.frozen.length) view.floats.push({ text: "Frozen by the wail!", x: BOARD.W / 2, y: BOARD.TOP + 70, color: "#bfe8ff", start: now + 300 });
+      break;
+    }
+    case "spiritFly": {
+      // A spirit tears away from its boss and streaks to its lane.
+      const e = s.enemies.find((unit) => unit.id === ev.id);
+      const ghost = s.enemies.find((unit) => unit.id === ev.ghost);
+      if (!e || !ghost?.fly) break;
+      view.fx.push({ t: "tracer", x0: tileX(e.x), y0: feetY(e.lane) - 110, x1: tileX(ghost.fly.x1), y1: feetY(ghost.to) - 60, start: now, rgb: "170,230,255" });
+      spawnWisps(view.horror, now, tileX(e.x), feetY(e.lane) - 90, 1, 40);
+      break;
+    }
+    case "soulHarvest": {
+      // A Ghost feeds on the soul of the troop it slew.
+      const e = s.enemies.find((unit) => unit.id === ev.id);
+      if (!e) break;
+      const x = tileX(e.x);
+      const y = feetY(e.lane);
+      spawnParticles(view.particles, now, 8, () => ({
+        kind: "soul", x: x + (Math.random() - 0.5) * 50, y: y - 20 - Math.random() * 40, vx: (Math.random() - 0.5) * 0.04, vy: -0.06, life: 900, size: 8, color: "rgba(190,225,255,0.6)"
+      }));
+      view.floats.push({ text: ev.grew ? "Soul Harvest! Stronger!" : "Soul Harvest!", x, y: y - 120, color: "#cfe9ff", start: now });
       break;
     }
     case "thaw": {

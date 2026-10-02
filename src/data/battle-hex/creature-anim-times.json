@@ -3296,6 +3296,16 @@
     "attack": 1,
     "idle": 188
   },
+  "oc-frost-wyrm": {
+    "walk": 0.75,
+    "attack": 1,
+    "idle": 188
+  },
+  "oc-ghost": {
+    "walk": 1,
+    "attack": 1,
+    "idle": 188
+  },
   "wog-gorynych": {
     "walk": 1,
     "attack": 1,

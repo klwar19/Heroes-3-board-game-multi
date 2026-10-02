@@ -974,6 +974,10 @@
   "effects/bad-morale": {
     "src": "/sounds/effects/bad-morale.mp3"
   },
+  "effects/banshee-scream": {
+    "src": "/sounds/effects/banshee-scream.mp3",
+    "note": "Banshee scream (freesound community #35937, user-supplied): the Order & Chaos Frost Wyrm's wail"
+  },
   "effects/bind": {
     "src": "/sounds/effects/bind.mp3"
   },

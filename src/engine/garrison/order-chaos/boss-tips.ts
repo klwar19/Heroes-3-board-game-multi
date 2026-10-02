@@ -11,7 +11,7 @@ const crag = (mood: OcLine["mood"], text: string): OcLine => ({ who: "crag", moo
 
 export const OC_BOSS_TIPS: Readonly<Record<EnemyKind, OcLine>> = {
   "oc-boss-abomination": crag("shout", "There's the big ugly one! Watch the ground: red tiles show where its next blow lands. Move your troops off them, or make sure they're tough. Bring it down, and the whole pack runs."),
-  "oc-boss-wyrm": crag("shout", "The Frost Wyrm! Its breath freezes everything on the marked tiles. A fire troop right next to them keeps them warm. And don't let those Sledge Wolves through."),
+  "oc-boss-wyrm": crag("shout", "The Frost Wyrm! Its breath freezes everything on the marked tiles, and when that ghost-woman screams, EVERY troop freezes for a moment. A fire troop right next to them keeps them warm. Those spirits circling it fly off as Ghosts: shoot them down before they feed on your troops. And don't let those Sledge Wolves through."),
   "oc-boss-lich": crag("talk", "The Mire Lich throws death bolts at your three most expensive troops, the marked ones. Spread your gold around. And clear the graves he raises: the dead climb out at every great assault."),
   "oc-boss-warchief": crag("shout", "Grogg! When his drums start, the whole horde speeds up for four seconds. His boulders go for your most expensive troops, so an Aegis dome is worth a lot here."),
   "oc-boss-arachne": crag("talk", "Arachne webs your four most expensive troops for four seconds. Don't put all your gold in one lane, and kill her daughters fast."),
