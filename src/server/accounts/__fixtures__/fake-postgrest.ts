@@ -12,8 +12,8 @@
 type Row = Record<string, unknown>;
 
 export type FakeTableSpec = {
-  /** Primary-key column (always unique). */
-  pk: string;
+  /** Primary-key column (always unique), or the columns of a composite key. */
+  pk: string | string[];
   /** Additional single-column unique keys. */
   unique?: string[];
 };
@@ -22,7 +22,8 @@ const DEFAULT_TABLES: Record<string, FakeTableSpec> = {
   homm3bg_accounts: { pk: "id", unique: ["nickname_key", "email"] },
   homm3bg_sessions: { pk: "digest" },
   homm3bg_email_tokens: { pk: "digest" },
-  homm3bg_matches: { pk: "match_id" }
+  homm3bg_matches: { pk: "match_id" },
+  homm3bg_oc_scores: { pk: ["account_id", "board_key"] }
 };
 
 type Filter = (row: Row) => boolean;
@@ -40,14 +41,30 @@ function parseFilters(params: URLSearchParams): { filters: Filter[]; order?: str
       limit = Number(rawValue);
       continue;
     }
+    if (key === "select") {
+      // Column projection: the emulator returns whole rows.
+      continue;
+    }
     if (rawValue.startsWith("eq.")) {
       const value = rawValue.slice(3);
       filters.push((row) => String(row[key]) === value && row[key] !== null && row[key] !== undefined);
     } else if (rawValue === "is.null") {
       filters.push((row) => row[key] === null || row[key] === undefined);
     } else if (rawValue.startsWith("lt.")) {
-      const bound = Number(rawValue.slice(3));
-      filters.push((row) => typeof row[key] === "number" && (row[key] as number) < bound);
+      const raw = rawValue.slice(3);
+      const bound = Number(raw);
+      if (Number.isNaN(bound)) {
+        filters.push((row) => typeof row[key] === "string" && (row[key] as string) < raw);
+      } else {
+        filters.push((row) => typeof row[key] === "number" && (row[key] as number) < bound);
+      }
+    } else if (rawValue.startsWith("in.(") && rawValue.endsWith(")")) {
+      const values = new Set(rawValue.slice(4, -1).split(","));
+      filters.push((row) => row[key] !== null && row[key] !== undefined && values.has(String(row[key])));
+    } else if (rawValue.startsWith("like.")) {
+      const escaped = rawValue.slice(5).replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
+      filters.push((row) => typeof row[key] === "string" && pattern.test(row[key] as string));
     } else {
       throw new Error(`fake-postgrest: unsupported filter ${key}=${rawValue}`);
     }
@@ -180,7 +197,13 @@ export class FakePostgrest {
   private findConflict(table: string, row: Row): string | null {
     const spec = this.specs[table];
     const stored = this.tables.get(table)!;
-    const uniqueColumns = [spec.pk, ...(spec.unique ?? [])];
+    if (Array.isArray(spec.pk)) {
+      const columns = spec.pk;
+      if (stored.some((existing) => columns.every((column) => existing[column] === row[column]))) {
+        return columns.join("_");
+      }
+    }
+    const uniqueColumns = [...(Array.isArray(spec.pk) ? [] : [spec.pk]), ...(spec.unique ?? [])];
     for (const column of uniqueColumns) {
       const value = row[column];
       if (value == null) {

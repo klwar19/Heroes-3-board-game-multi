@@ -1566,3 +1566,441 @@ button.nextCard:focus-visible {
   max-width: 760px;
   margin: -4px 0 10px;
 }
+
+/* ---------------------------------------------------------- home: framed groups */
+
+.homeTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 22px;
+  max-width: 1180px;
+  margin: 0 auto 10px;
+}
+
+.homeTop > :first-child {
+  margin-bottom: 0;
+}
+
+.homeSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* The purse: every currency on one painted plank. */
+.wallet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 4px;
+  padding: 2px 4px;
+  border-style: solid;
+  border-width: 12px 18px;
+  border-color: #5a3510;
+  border-image: var(--oc-tray, none) 30 48 fill / 12px 18px stretch;
+  background: linear-gradient(180deg, #7c4b1e, #5b3411);
+  background-clip: padding-box;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
+}
+
+.wallet .purse {
+  margin: 0;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  text-shadow: 0 1px 2px #000;
+}
+
+.wallet .purse + .purse {
+  border-left: 1px solid rgba(255, 224, 150, 0.28);
+}
+
+.walletDaily {
+  margin-left: 4px;
+  padding: 5px 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* A reward is waiting: the button glows until it is claimed. */
+.walletDailyReady {
+  border-color: #ffd65a;
+  background: linear-gradient(180deg, #b07a1e, #5a3a10);
+  animation: ocDailyReady 1.6s ease-in-out infinite;
+}
+
+@keyframes ocDailyReady {
+  50% { box-shadow: 0 0 16px rgba(255, 214, 90, 0.95), inset 0 1px 0 rgba(255, 220, 150, 0.5); filter: brightness(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walletDailyReady {
+    animation: none;
+    box-shadow: 0 0 12px rgba(255, 214, 90, 0.8);
+  }
+}
+
+.walletPing {
+  color: #ffd65a;
+  text-shadow: 0 0 6px rgba(255, 214, 90, 0.8);
+}
+
+.storyCluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.clusterLabel {
+  color: #f6ead0;
+  font: bold 13px Georgia, serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px #000;
+}
+
+/* Battle across the top; the army and the workshops side by side below it. */
+.homeGroups {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+  gap: 30px 18px;
+  max-width: 1120px;
+  margin: 28px auto 0;
+}
+
+.homeGroup {
+  position: relative;
+  min-width: 0;
+  padding: 22px 10px 6px;
+  border-style: solid;
+  border-width: 12px 18px;
+  border-color: #5a3510;
+  border-image: var(--oc-tray, none) 30 48 / 12px 18px stretch;
+  border-radius: 6px;
+  background: rgba(24, 14, 6, 0.66);
+  background-clip: padding-box;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.groupBattle {
+  grid-column: 1 / -1;
+}
+
+/* The group's name on a small painted ribbon riding the top rail. */
+.groupHead {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: min(260px, 80%);
+  aspect-ratio: 4.8 / 1;
+  margin: 0;
+  transform: translateX(-50%);
+  background: var(--oc-banner, none) center / contain no-repeat;
+  pointer-events: none;
+}
+
+.groupHead span {
+  padding-bottom: 4px;
+  color: #fff2cf;
+  font: bold 18px Georgia, serif;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 0 #4a1208, 0 0 8px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+}
+
+.groupTiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  gap: 0 8px;
+  justify-items: center;
+  align-items: center;
+}
+
+.groupBattle .groupTiles {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.groupWorkshops .groupTiles {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.groupTiles > :is(a, button) {
+  max-width: 250px;
+}
+
+/* Campaign: the big tile of the Battle group. */
+.groupTiles > .tilePrimary {
+  grid-column: span 2;
+  grid-row: span 2;
+  max-width: 440px;
+}
+
+.tilePrimary small {
+  font-size: 15px;
+}
+
+/* Leaving: Garrison Wars and Back, small, under the groups. */
+.homeFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 18px;
+  max-width: 1120px;
+  margin: 18px auto 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 224, 150, 0.22);
+}
+
+.homeFoot > :is(a, button) {
+  max-width: 170px;
+}
+
+@media (max-width: 900px) {
+  .homeTop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .homeSide,
+  .wallet,
+  .storyCluster {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .homeGroups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .groupWorkshops .groupTiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .groupTiles,
+  .groupBattle .groupTiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .groupTiles > .tilePrimary {
+    grid-row: auto;
+  }
+
+  .homeGroup {
+    padding: 20px 4px 4px;
+    border-width: 10px 12px;
+  }
+
+  .walletDaily {
+    margin-left: 0;
+  }
+}
+
+/* ---------------------------------------------------------- loadout: hybrids you can make */
+
+.hybridBox {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(201, 162, 74, 0.45);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.hybridBox h3 {
+  margin: 0 0 6px;
+  color: #ffe08a;
+  font: bold 15px Georgia, serif;
+}
+
+.hybridBox h3 small {
+  color: #d9c28c;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.hybridBox p {
+  margin: 4px 0 0;
+}
+
+.hybridList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 3px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hybridList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  color: #eadbb8;
+  font-size: 13px;
+}
+
+.hybridList b {
+  color: #ffe9a8;
+}
+
+.hybridList em {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(63, 154, 42, 0.55);
+  color: #eaffd8;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.hybridInHand b {
+  color: #b9f59a;
+}
+
+.hybridSigil {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  color: #ffd65a;
+  font-weight: bold;
+}
+
+/* ---------------------------------------------------------- the Hybrid Lab */
+
+.labGroup + .labGroup {
+  margin-top: 14px;
+}
+
+.labGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 10px;
+}
+
+.labCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 2px solid #6e4e1e;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(74, 48, 22, 0.75), rgba(36, 22, 9, 0.85));
+}
+
+.labReady {
+  border-color: #c9a24a;
+  box-shadow: 0 0 10px rgba(255, 214, 90, 0.18);
+}
+
+.labFormula {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.labHalf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 78px;
+}
+
+.labHalf small {
+  color: #eadbb8;
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.labMissing .pk {
+  filter: grayscale(1) brightness(0.55);
+}
+
+.labMissing small {
+  opacity: 0.6;
+}
+
+.labSigil {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 16px;
+  object-fit: contain;
+  color: #ffd65a;
+  font: bold 24px Georgia, serif;
+  text-align: center;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+}
+
+.labArrow {
+  margin-bottom: 16px;
+  color: #ffd65a;
+  font-size: 20px;
+  text-shadow: 0 1px 3px #000;
+}
+
+.labResult {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  border: 3px solid #c9a24a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #6a5028 0%, #1c1209 80%);
+}
+
+.labSilhouette {
+  border-color: #6e4e1e;
+}
+
+.labSilhouette > * {
+  filter: brightness(0) drop-shadow(0 0 2px rgba(255, 224, 150, 0.4));
+  opacity: 0.75;
+}
+
+.labText strong {
+  display: block;
+  color: #ffe9a8;
+  font: bold 16px Georgia, serif;
+}
+
+.labText small {
+  display: block;
+  color: #d9c28c;
+  font-size: 12px;
+}
+
+.labText p {
+  margin: 4px 0 0;
+  color: #f1e3c2;
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .labGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .labHalf {
+    width: 70px;
+  }
+
+  .labResult {
+    width: 76px;
+    height: 76px;
+  }
+}

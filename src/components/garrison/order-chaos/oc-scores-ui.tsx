@@ -6,23 +6,27 @@
  * on a finished run. The score rules live in the engine
  * (engine/garrison/order-chaos/scores.ts); this file only shows them, keeps
  * the player's local bests and talks to the board (lib/oc-leaderboard.ts).
- * A board that can't be reached never blocks play: local bests stay, and an
- * unposted best can be posted later from the Tally Board.
+ * Nothing is posted by hand: every new best (and the campaign tally) goes up
+ * by itself (useOcScoreSync), and an open board refreshes itself. A board that
+ * can't be reached never blocks play: local bests stay and go up once it's back.
+ * The boards belong to Heroes 3 accounts (the row shows the account nickname):
+ * a guest's bests stay on the device and go up once they sign in.
  */
 
 /* eslint-disable @next/next/no-img-element */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BLESSINGS, CARDS, DEFENDERS, ENEMIES, SPELLS, TERRAINS } from "@/engine/garrison/content";
 import { OC_HEROES, OC_LEVELS, OC_RAIDS, totalStars } from "@/engine/garrison/order-chaos/campaign";
 import { OC_DAILY_TWISTS, ocDaily, type OcDaily } from "@/engine/garrison/order-chaos/daily";
 import {
-  OC_BOARD_SIZE, OC_NAME_MAX, OC_SCORE_RULES, cleanOcName, ocCampaignSummary, ocDayKey, ocPrevDay, ocRunTime, ocScore, ocScoreText,
+  OC_BOARD_SIZE, OC_SCORE_RULES, ocCampaignSummary, ocDayKey, ocPrevDay, ocRunTime, ocScore, ocScoreText,
   type OcBoardMode, type OcBoardView, type OcRunSummary
 } from "@/engine/garrison/order-chaos/scores";
 import { OC_SCORE_LINES, OC_SCREEN_LINES, unlockedLines, type OcGatedLine, type OcLine } from "@/engine/garrison/order-chaos/story";
 import { assetUrl } from "@/lib/asset-url";
-import { getDisplayName, setDisplayName } from "@/lib/identity";
-import { fetchOcBoard, getOcPublicId, ocBoardsConfigured, postOcRun, type OcBoardRow, type OcPostResult } from "@/lib/oc-leaderboard";
+import { authEnabled } from "@/lib/auth-mode";
+import { fetchOcBoard, ocBoardsConfigured, postOcRun, subscribeOcPosts, useOcAccount, type OcAccount, type OcBoardRow, type OcPostResult } from "@/lib/oc-leaderboard";
 import { pruneDailyBests, type OcLocalBest, type OcProgress } from "@/lib/order-chaos-progress";
 import styles from "../garrison.module.css";
 import { AttackerArt, CARD_SCENES, CardArt, cardScene, cardSceneSrc } from "../thumbs";
@@ -37,6 +41,8 @@ const UI = {
 } as const;
 
 const MODE_LABEL: Record<OcBoardMode, string> = { endless: "Endless Siege", daily: "Daily Siege", raid: "Chaos Raids", campaign: "Campaign" };
+/** An open Tally Board fetches itself afresh this often (the board's own cache is 15 s). */
+const BOARD_REFRESH_MS = 20_000;
 
 // ---------------------------------------------------------------------------
 // Local bests
@@ -91,6 +97,124 @@ function runFromBest(key: string, best: OcLocalBest): OcRunSummary | null {
 }
 
 // ---------------------------------------------------------------------------
+// Posting by itself
+
+/** Local bests a finished run's panel is posting right now (the sync leaves them alone). */
+const claimed = new Set<string>();
+/** Posts settled this visit (accepted, or refused for good): never sent again. */
+const settled = new Set<string>();
+let syncing = false;
+/** How long the sync waits before trying an unreachable board again. */
+const SYNC_RETRY_MS = 60_000;
+
+/** The account this device's bests were last posted under (another account gets them all again). */
+const BOARD_ACCOUNT_KEY = "order-chaos:board-account:v1";
+let markedFor: string | null = null;
+
+function postedForAccount(accountId: string): boolean {
+  if (markedFor === accountId) return true;
+  try {
+    if (window.localStorage.getItem(BOARD_ACCOUNT_KEY) === accountId) {
+      markedFor = accountId;
+      return true;
+    }
+  } catch {
+    // Storage blocked: the in-memory mark stands for this visit.
+  }
+  return false;
+}
+
+function markPostedFor(accountId: string): void {
+  markedFor = accountId;
+  try {
+    window.localStorage.setItem(BOARD_ACCOUNT_KEY, accountId);
+  } catch {
+    // Best-effort (re-posting a best the account already holds changes nothing).
+  }
+}
+
+/**
+ * Every best on this device counts as not on the board yet: bests marked sent
+ * went to the old anonymous board or under another account, so the account
+ * signed in now gets them all.
+ */
+export function unsendOcBests(p: OcProgress): OcProgress {
+  const bests: Record<string, OcLocalBest> = {};
+  for (const [key, best] of Object.entries(p.bests)) bests[key] = best ? { ...best, sent: false } : best;
+  return { ...p, bests, campaignPosted: 0 };
+}
+
+type SyncJob = { id: string; run: OcRunSummary; mark(p: OcProgress, held: number): OcProgress };
+
+/** The next thing this device holds that the boards don't: an unposted best, else a campaign tally that grew. */
+function nextSyncJob(p: OcProgress, skipClaimed: boolean): SyncJob | null {
+  for (const [key, best] of Object.entries(p.bests)) {
+    if (!best || best.sent || (skipClaimed && claimed.has(key))) continue;
+    const run = runFromBest(key, best);
+    const id = `${key}:${best.score}`;
+    if (!run || settled.has(id)) continue;
+    return { id, run, mark: (q, held) => markOcBestSent(q, key, held) };
+  }
+  const levels = OC_LEVELS.filter((level) => p.cleared.includes(level.id)).length;
+  if (levels > 0 && !p.testAll) {
+    const run = ocCampaignSummary(levels, totalStars(p.cleared, p.stars), p.hero);
+    const score = ocScore(run);
+    const id = `campaign:${score}`;
+    if (score > p.campaignPosted && !settled.has(id)) {
+      return { id, run, mark: (q, held) => ({ ...q, campaignPosted: Math.max(q.campaignPosted, held) }) };
+    }
+  }
+  return null;
+}
+
+/**
+ * Keeps the tally boards up to date by themselves while Order & Chaos is open
+ * and a Heroes 3 account is signed in: one post at a time, each unposted best
+ * and a grown campaign tally, marked as sent once the board holds it. A guest
+ * posts nothing (the bests wait on the device); the first time an account is
+ * seen here, every best on the device goes up under it. An unreachable board
+ * is tried again a minute later; a refused post is not retried this visit.
+ */
+export function useOcScoreSync(progress: OcProgress, update: (change: (p: OcProgress) => OcProgress) => void): void {
+  const account = useOcAccount();
+  const [retry, setRetry] = useState(0);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (syncing || !account || !ocBoardsConfigured()) return;
+    if (!postedForAccount(account.id)) {
+      markPostedFor(account.id);
+      settled.clear();
+      update(unsendOcBests);
+      return;
+    }
+    const job = nextSyncJob(progress, true);
+    if (!job) {
+      // A run's own panel may still be posting (or have failed): look again later.
+      if (nextSyncJob(progress, false)) {
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setRetry((n) => n + 1), SYNC_RETRY_MS);
+      }
+      return;
+    }
+    syncing = true;
+    void postOcRun(job.run).then((result) => {
+      syncing = false;
+      // Signed out meanwhile: the account turns null, and the next sign-in picks this up.
+      if (!result.ok && result.signedOut) return;
+      if (result.ok || (!result.offline && !result.busy)) {
+        settled.add(job.id);
+        if (result.ok) update((p) => job.mark(p, heldScore(result)));
+        setRetry((n) => n + 1);
+        return;
+      }
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setRetry((n) => n + 1), result.busy ? 6_000 : SYNC_RETRY_MS);
+    });
+  }, [account, progress, retry, update]);
+}
+
+// ---------------------------------------------------------------------------
 // Small pieces
 
 function pickLine(pool: readonly OcGatedLine[] | undefined, cleared: readonly string[]): OcLine | null {
@@ -103,36 +227,25 @@ function Greeting({ place, cleared }: { place: keyof typeof OC_SCREEN_LINES; cle
   return line ? <div className={oc.greeting}><AdvisorBubble compact line={line} /></div> : null;
 }
 
-/** The player's name on the boards: the app's display name (shared with multiplayer), edited in place. */
-function useBoardName(): [string, (name: string) => void] {
-  const [name, setName] = useState(() => cleanOcName(getDisplayName()) ?? "");
-  const save = useCallback((next: string) => {
-    const clean = cleanOcName(next) ?? "";
-    if (clean) setDisplayName(clean);
-    setName(clean);
-  }, []);
-  return [name, save];
+/** What a guest is told: the boards are for Heroes 3 accounts, and their bests wait on the device. */
+function SignInNote() {
+  if (!authEnabled()) {
+    return <small className={sc.warn}>The tally board is for Heroes 3 accounts, and this game server has none switched on. Your bests are kept on this device.</small>;
+  }
+  return (
+    <small className={sc.warn}>
+      Sign in to your Heroes 3 account to go on the tally board (your bests are kept and go up when you sign in).{" "}
+      <Link className={oc.testLink} href="/login">Sign in</Link>
+    </small>
+  );
 }
 
-function NameField({ name, onSave, startOpen = false }: { name: string; onSave(name: string): void; startOpen?: boolean }) {
-  const [editing, setEditing] = useState(startOpen || !name);
-  const [draft, setDraft] = useState(name);
-  if (!editing) {
-    return (
-      <div className={sc.nameRow}>
-        <span>Your name on the board: <b>{name}</b></span>
-        <button className={oc.testLink} onClick={() => { setDraft(name); setEditing(true); }} type="button">Change</button>
-      </div>
-    );
-  }
-  const clean = cleanOcName(draft);
+/** Whose name the boards show for this player: the signed-in account's nickname. */
+function BoardIdentity({ account }: { account: OcAccount | null | undefined }) {
   return (
-    <form className={oc.testForm} onSubmit={(event) => { event.preventDefault(); if (clean) { onSave(clean); setEditing(false); } }}>
-      <label htmlFor="oc-board-name">Your name on the board</label>
-      <input autoComplete="nickname" className={sc.nameInput} id="oc-board-name" maxLength={OC_NAME_MAX} onChange={(event) => setDraft(event.target.value)} value={draft} />
-      <button className={styles.primary} disabled={!clean} type="submit">Save</button>
-      {name ? <button className={styles.ghostButton} onClick={() => setEditing(false)} type="button">Cancel</button> : null}
-    </form>
+    <div className={sc.nameRow}>
+      {account === undefined ? <span>Checking your account…</span> : account ? <span>On the board as <b>{account.nickname}</b></span> : <SignInNote />}
+    </div>
   );
 }
 
@@ -145,8 +258,8 @@ function rankText(rank: number | null): string {
 
 /**
  * A finished Endless / Daily Siege run, or a won raid: its score, the rule
- * behind it, and its place on the online boards. Posts by itself once when the
- * player has a name (and the run may go on a board); otherwise asks for one.
+ * behind it, and its place on the online boards. Posts by itself (when the run
+ * may go on a board); an unreachable board gets it later from the sync.
  */
 export function OcRunScore({ run, blocked, newBest, cleared, onSent }: {
   run: OcRunSummary;
@@ -156,41 +269,52 @@ export function OcRunScore({ run, blocked, newBest, cleared, onSent }: {
   cleared: readonly string[];
   onSent(heldScore: number): void;
 }) {
-  const [name, saveName] = useBoardName();
-  const [status, setStatus] = useState<{ t: "idle" } | { t: "posting" } | { t: "done"; result: OcPostResult }>({ t: "idle" });
+  const account = useOcAccount();
+  const [status, setStatus] = useState<{ t: "idle" } | { t: "done"; result: OcPostResult }>({ t: "idle" });
   const [reaction, setReaction] = useState<OcLine | null>(null);
   const busy = useRef(false);
   const score = ocScore(run);
+  // While this panel posts its run, the background sync leaves that best alone (no double post).
+  const bestKey = ocBestKey(run);
+  useState(() => {
+    if (!blocked) claimed.add(bestKey);
+    return null;
+  });
+  useEffect(() => () => {
+    claimed.delete(bestKey);
+  }, [bestKey]);
   const onSentRef = useRef(onSent);
   useEffect(() => {
     onSentRef.current = onSent;
   }, [onSent]);
 
-  const post = useCallback(async (who: string) => {
+  // Post once, by itself, under the signed-in account (until it settles the panel reads "Posting…").
+  // A guest's run is not posted: its best waits on the device and goes up when they sign in.
+  useEffect(() => {
     if (busy.current) return;
+    if (blocked || !ocBoardsConfigured()) {
+      busy.current = true;
+      claimed.delete(bestKey);
+      return;
+    }
+    if (account === undefined) return;
+    if (account === null) {
+      claimed.delete(bestKey);
+      return;
+    }
     busy.current = true;
-    setStatus({ t: "posting" });
-    const result = await postOcRun(who, run);
-    setStatus({ t: "done", result });
-    if (result.ok) {
+    claimed.add(bestKey);
+    void postOcRun(run).then((result) => {
+      claimed.delete(bestKey);
+      setStatus({ t: "done", result });
+      if (!result.ok) return;
       onSentRef.current(heldScore(result));
       const improved = result.today.improved || result.all.improved;
       const first = (result.today.improved && result.today.rank === 1) || (result.all.improved && result.all.rank === 1);
       const top10 = (result.today.improved && (result.today.rank ?? 99) <= 10) || (result.all.improved && (result.all.rank ?? 99) <= 10);
       if (improved) setReaction(pickLine(first ? OC_SCORE_LINES.first : top10 ? OC_SCORE_LINES.top10 : undefined, cleared));
-    } else {
-      // Offline: let the player try again. A refusal stands.
-      busy.current = !result.offline;
-    }
-  }, [run, cleared]);
-
-  // Post once by itself when a name is already known.
-  const auto = useRef(false);
-  useEffect(() => {
-    if (auto.current) return;
-    auto.current = true;
-    if (!blocked && name && ocBoardsConfigured()) void post(name);
-  }, [blocked, name, post]);
+    });
+  }, [account, blocked, run, cleared, bestKey]);
 
   const raid = run.mode === "raid";
   return (
@@ -200,28 +324,14 @@ export function OcRunScore({ run, blocked, newBest, cleared, onSent }: {
       <span>{ocScoreText(run.mode, run)}{newBest ? " · new personal best" : ""}</span>
       <small className={sc.muted}>{OC_SCORE_RULES[run.mode]}</small>
       {reaction ? <AdvisorBubble compact line={reaction} /> : null}
-      {blocked ? <small className={sc.warn}>{blocked}</small> : !ocBoardsConfigured() ? (
-        <small className={sc.warn}>Board offline: no tally board is set up for this game server. Your best is kept on this device.</small>
-      ) : status.t === "posting" ? (
-        <small>Posting to the tally board…</small>
-      ) : status.t === "done" && status.result.ok ? (
+      {blocked ? <small className={sc.warn}>{blocked}</small> : status.t === "done" && status.result.ok ? (
         <small>Tally board: today {rankText(status.result.today.rank)} · all-time {rankText(status.result.all.rank)}{status.result.today.improved || status.result.all.improved ? "" : " (your earlier run still stands)"}</small>
+      ) : (status.t === "done" && !status.result.ok && status.result.signedOut) || account === null ? (
+        <SignInNote />
+      ) : status.t === "done" && !status.result.ok ? (
+        <small className={sc.warn}>{status.result.offline || status.result.busy ? "Board offline: the tally board can't be reached. Your best is kept on this device and goes up by itself once the board is back." : `Not posted: ${status.result.error}`}</small>
       ) : (
-        <>
-          {status.t === "done" && !status.result.ok ? (
-            <small className={sc.warn}>{status.result.offline ? "Board offline: the tally board can't be reached. Your best is kept on this device; post it later from the Tally Board." : `Not posted: ${status.result.error}`}</small>
-          ) : null}
-          {status.t === "idle" || (status.t === "done" && !status.result.ok && status.result.offline) ? (
-            <>
-              <NameField name={name} onSave={saveName} />
-              <div>
-                <button className={styles.primary} disabled={!name} onClick={() => void post(name)} type="button">
-                  {status.t === "done" ? "Try again" : "Post to the tally board"}
-                </button>
-              </div>
-            </>
-          ) : null}
-        </>
+        <small>{account ? "Posting to the tally board…" : "Checking your account…"}</small>
       )}
     </div>
   );
@@ -348,10 +458,11 @@ export function OcDailyScreen({ progress, cleared, onBack, onStart, onBoard, onT
 // ---------------------------------------------------------------------------
 // The Tally Board
 
-export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = "endless" }: {
+export function OcTallyBoard({ progress, cleared, onBack, initialMode = "endless" }: {
   progress: OcProgress;
   cleared: readonly string[];
-  update(change: (p: OcProgress) => OcProgress): void;
+  /** (Unused since posting became automatic; kept so callers need not change.) */
+  update?(change: (p: OcProgress) => OcProgress): void;
   onBack(): void;
   initialMode?: OcBoardMode;
 }) {
@@ -359,25 +470,44 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
   const [view, setView] = useState<OcBoardView>("today");
   const [raid, setRaid] = useState<string>(OC_RAIDS[0]?.id ?? "r1");
   const daily = useMemo(() => ocDaily(), []);
-  const me = useMemo(() => getOcPublicId(), []);
-  const [name, saveName] = useBoardName();
+  const account = useOcAccount();
+  const me = account?.pid ?? "";
   const [rows, setRows] = useState<OcBoardRow[] | null>(null);
   const [error, setError] = useState<{ text: string; offline: boolean } | null>(null);
   const [reload, setReload] = useState(0);
-  const [posting, setPosting] = useState<string | null>(null);
+  // The board refreshes itself: every little while it's on screen, and right after any post from here.
+  useEffect(() => {
+    const every = window.setInterval(() => {
+      if (!document.hidden) setReload((n) => n + 1);
+    }, BOARD_REFRESH_MS);
+    const unsubscribe = subscribeOcPosts(() => setReload((n) => n + 1));
+    return () => {
+      window.clearInterval(every);
+      unsubscribe();
+    };
+  }, []);
 
+  const shownRef = useRef("");
   useEffect(() => {
     let live = true;
-    setRows(null);
-    setError(null);
+    // A different board starts blank; a refresh of the same one keeps its rows until the new ones come.
+    const shown = `${mode}|${view}|${raid}`;
+    const refresh = shownRef.current === shown;
+    shownRef.current = shown;
+    if (!refresh) {
+      setRows(null);
+      setError(null);
+    }
     void fetchOcBoard({
       mode, view,
       ...(mode === "raid" ? { raid } : {}),
       ...(mode === "daily" ? { day: daily.day, setup: daily.setup } : {})
-    }, reload > 0).then((result) => {
+    }, refresh).then((result) => {
       if (!live) return;
-      if (result.ok) setRows(result.rows);
-      else setError({ text: result.error, offline: result.offline });
+      if (result.ok) {
+        setRows(result.rows);
+        setError(null);
+      } else if (!refresh) setError({ text: result.error, offline: result.offline });
     });
     return () => { live = false; };
   }, [mode, view, raid, daily, reload]);
@@ -387,26 +517,13 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
     ? (view === "today" ? `daily:${daily.day}` : Object.keys(progress.bests).filter((key) => key.startsWith("daily:")).sort((a, b) => (progress.bests[b]!.score - progress.bests[a]!.score))[0] ?? `daily:${daily.day}`)
     : "endless";
   const best = progress.bests[bestKey];
-  // The campaign board: this device's own progress (never with the testing unlock on), posted by hand.
+  // The campaign board: this device's own progress (never with the testing unlock on), posted by itself.
   const campaignLevels = OC_LEVELS.filter((level) => progress.cleared.includes(level.id)).length;
   const campaignRun = mode === "campaign" && campaignLevels > 0 && !progress.testAll
     ? ocCampaignSummary(campaignLevels, totalStars(progress.cleared, progress.stars), progress.hero)
     : null;
   const campaignPosted = campaignRun !== null && progress.campaignPosted >= ocScore(campaignRun);
-  const unsent = mode === "campaign" ? (campaignRun && !campaignPosted ? campaignRun : null) : best && !best.sent ? runFromBest(bestKey, best) : null;
-  const postBest = async () => {
-    if (!unsent || !name || posting) return;
-    setPosting("Posting…");
-    const result = await postOcRun(name, unsent);
-    if (result.ok) {
-      if (unsent.mode === "campaign") update((p) => ({ ...p, campaignPosted: Math.max(p.campaignPosted, heldScore(result)) }));
-      else update((p) => markOcBestSent(p, bestKey, heldScore(result)));
-      setPosting(null);
-      setReload((n) => n + 1);
-    } else {
-      setPosting(result.offline ? "Board offline: try again later." : `Not posted: ${result.error}`);
-    }
-  };
+  const pending = account ? " · going up to the board…" : " · kept on this device until you sign in";
 
   const raidName = OC_RAIDS.find((entry) => entry.id === raid)?.name ?? raid;
   return (
@@ -446,17 +563,13 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
         <p className={styles.note}>{OC_SCORE_RULES[mode]}{mode === "endless" ? " Endless runs use your own troops, training and artifacts; runs with the testing unlock on are never posted." : ""}</p>
         <div className={sc.mine}>
           {mode === "campaign" ? (
-            campaignRun ? <span>Your campaign: <b>{ocScoreText("campaign", campaignRun)}</b>{campaignPosted ? "" : " · not on the board yet"}</span>
+            campaignRun ? <span>Your campaign: <b>{ocScoreText("campaign", campaignRun)}</b>{campaignPosted ? "" : pending}</span>
               : <span>{progress.testAll ? "The testing unlock is on: campaign progress stays off the board." : "Clear a campaign level to join this board."}</span>
           ) : best ? (
-            <span>Your best{mode === "daily" && view === "all" ? ` (${best.day})` : ""}: <b>{ocScoreText(mode, best)}</b>{best.sent ? "" : " · not on the board yet"}</span>
+            <span>Your best{mode === "daily" && view === "all" ? ` (${best.day})` : ""}: <b>{ocScoreText(mode, best)}</b>{best.sent ? "" : pending}</span>
           ) : <span>No run of yours on this board yet.</span>}
-          {unsent ? (
-            <button className={styles.primary} disabled={!name || posting === "Posting…"} onClick={() => void postBest()} type="button">{mode === "campaign" ? "Post my progress" : "Post my best"}</button>
-          ) : null}
-          {posting && posting !== "Posting…" ? <small className={sc.warn}>{posting}</small> : null}
         </div>
-        <NameField name={name} onSave={saveName} />
+        <BoardIdentity account={account} />
         {rows ? (
           rows.length ? (
             <div className={sc.tableWrap}>
@@ -466,9 +579,9 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr className={row.pid === me ? sc.me : ""} key={`${row.pid}-${row.rank}`}>
+                    <tr className={me && row.pid === me ? sc.me : ""} key={`${row.pid}-${row.rank}`}>
                       <td className={sc.rank}>{row.rank}</td>
-                      <td>{row.name}{row.pid === me ? " (you)" : ""}</td>
+                      <td>{row.name}{me && row.pid === me ? " (you)" : ""}</td>
                       <td className={sc.score}>{mode === "raid" ? ocRunTime(row.ticks) : mode === "campaign" ? `${row.wave} · ★ ${row.kills}` : `Wave ${row.wave} · ${row.kills}`}</td>
                       <td>{row.hero ? OC_HEROES[row.hero as keyof typeof OC_HEROES]?.name ?? "" : ""}</td>
                       <td className={sc.muted}>{row.day}</td>
@@ -481,7 +594,7 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
         ) : error ? (
           <p className={sc.warn}>{error.offline ? "Board offline: " : ""}{error.text}{best ? " Your own best (above) is kept on this device." : ""}</p>
         ) : <p className={styles.note}>Reading the tally board…</p>}
-        {rows && !rows.some((row) => row.pid === me) && best?.sent ? <p className={styles.note}>Your best isn&apos;t in this board&apos;s top {OC_BOARD_SIZE}.</p> : null}
+        {rows && me && !rows.some((row) => row.pid === me) && best?.sent ? <p className={styles.note}>Your best isn&apos;t in this board&apos;s top {OC_BOARD_SIZE}.</p> : null}
       </section>
     </>
   );

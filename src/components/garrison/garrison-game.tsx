@@ -16,10 +16,14 @@ import {
 } from "@/engine/garrison/sim";
 import { OC_ITEMS, isOcItem } from "@/engine/garrison/order-chaos/treasury";
 import { assetUrl } from "@/lib/asset-url";
-import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, isMusicMuted, playCombatSting, setMusicHeld, setMusicMuted, subscribeMusic, useBackgroundMusic, type MusicScene } from "@/lib/music";
+import {
+  BOSS_ARRIVAL_BEAT_S, DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, bossEffectsDuck, isMusicMuted, playCombatSting, setBossApproach, setMusicHeld, setMusicMuted,
+  subscribeMusic, useBackgroundMusic, type MusicScene
+} from "@/lib/music";
 import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from "@/lib/sound";
 import { openSettings } from "@/lib/settings-dialog";
-import { cancelPendingBattleSounds, playEventSounds } from "./audio";
+import { cancelPendingBattleSounds, playEventSounds, setBattleDuck } from "./audio";
+import { BossOmen, bossApproachLeft, type BossArrival } from "./boss-omen";
 import { playFieldEventSounds, updateFieldAmbience } from "./field-audio";
 import { AdvisorBubble } from "./order-chaos/story-ui";
 import { FieldBadge, fieldQuip, fieldTipAt, fieldToast } from "./order-chaos/field-ui";
@@ -81,7 +85,11 @@ type Props = {
    * planning, battle opener + combat rotation once it runs, held while paused).
    * Default: the classic combat rotation.
    */
-  music?: "order-chaos";
+  /**
+   * Order & Chaos music: "-horde" puts Remnants of the Horde in the battle rotation;
+   * "-remnants" opens with it, then Grasswalk, the two taking turns.
+   */
+  music?: "order-chaos" | "order-chaos-horde" | "order-chaos-remnants";
   /** Order & Chaos: what Crag Hack says at a moment of the battle (null: nothing). */
   advisor?: (event: OcQuipEvent) => OcLine | null;
 };
@@ -191,12 +199,24 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   const localAtk = driver.local.includes("atk");
 
   // ---- Music ------------------------------------------------------------------
-  const ocMusic = music === "order-chaos";
-  // A world boss on the lawn (or the Dracolich): the warning sting, then the boss theme until it falls.
+  const ocMusic = music === "order-chaos" || music === "order-chaos-horde" || music === "order-chaos-remnants";
+  // A world boss on the lawn (or the Dracolich): the boss theme until it falls. An announced world
+  // boss brings it in early (the warning first, see the frame loop's setBossApproach) so it lands on the beat.
   const bossAlive = !s.outcome && (s.warbossId !== undefined || s.boss !== null)
     && s.enemies.some((e) => !e.dead && (e.id === s.warbossId || e.id === s.boss?.id));
-  const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : bossAlive ? "oc-boss" : "oc-battle") : "combat";
+  const bossLeft = bossApproachLeft(s, speed);
+  const bossTheme = bossAlive || (bossLeft !== null && bossLeft <= BOSS_ARRIVAL_BEAT_S);
+  const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : bossTheme ? "oc-boss" : music === "order-chaos-horde" ? "oc-battle-horde" : music === "order-chaos-remnants" ? "oc-battle-remnants" : "oc-battle") : "combat";
   useBackgroundMusic(musicScene);
+  const ocMusicRef = useRef(ocMusic);
+  useEffect(() => {
+    ocMusicRef.current = ocMusic;
+  }, [ocMusic]);
+  // (The lawn's sounds never stay hushed past this battle.)
+  useEffect(() => () => setBattleDuck(1), []);
+  const [bossArrival, setBossArrival] = useState<BossArrival | null>(null);
+  const arrivalTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(arrivalTimerRef.current), []);
   // Order & Chaos: a pause holds the track and resuming continues it where it stopped.
   // Declared after useBackgroundMusic so on unmount the scene stops before the hold lifts.
   const holdMusic = ocMusic && paused && !s.outcome;
@@ -469,6 +489,13 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
       }
       const halt = pausedRef.current || introHalt;
       const { events, alpha } = driver.pump(dt, halt, speedRef.current);
+      // Order & Chaos: a world boss is due — the music hushes, the warning plays, the boss theme
+      // swells in on its beat, and the lawn's own sounds step aside and come back with it.
+      if (ocMusicRef.current) {
+        const left = bossApproachLeft(driver.state(), speedRef.current);
+        setBossApproach(left);
+        setBattleDuck(bossEffectsDuck(left));
+      }
       let urgent = false;
       if (events.length) {
         onEventsRef.current?.(events);
@@ -489,7 +516,16 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           else if ((ev.e === "orb" || ev.e === "crown") && driver.local.includes("def")) sayQuip(ev.e);
           else if (ev.e === "charger" && laneChampionRode(driver.state(), ev.lane)) sayQuip("charger");
           else if (ev.e === "bossAction") sayQuip("boss");
-          if (ev.e === "hugeWave") {
+          if (ev.e === "bossEnter" && state.cfg.oc) {
+            const key = now;
+            setBossArrival({ kind: ev.kind, key });
+            window.clearTimeout(arrivalTimerRef.current);
+            arrivalTimerRef.current = window.setTimeout(() => setBossArrival((current) => (current?.key === key ? null : current)), 2300);
+          }
+          // (A world boss leading the assault has its own omen on screen: no second banner over it.)
+          if (ev.e === "hugeWave" && state.director.bossDue) {
+            // The omen names the boss and counts it down.
+          } else if (ev.e === "hugeWave") {
             announceNow("A huge wave is approaching!", "huge", 2600);
             if (ev.final) window.setTimeout(() => announceNow("Final wave!", "final", 2200), 2700);
           } else if (ev.e === "wave" && ev.wave === 1) showToast("The attack begins!", "info");
@@ -928,6 +964,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         ) : null}
         {toast ? <div className={`${styles.toast} ${styles[`toast_${toast.tone}`]}`} key={toast.id}>{toast.text}</div> : null}
         {quip ? <div aria-live="polite" className={styles.quip} key={quip.id}><AdvisorBubble compact line={quip.line} /></div> : null}
+        {s.cfg.oc ? <BossOmen arrival={bossArrival} kind={s.director.bossDue?.kind} left={bossLeft} /> : null}
         {announce ? <div aria-live="polite" className={`${styles.announce} ${styles[`announce_${announce.tone}`]}`} key={announce.key}>{announce.text}</div> : null}
         {hint ? <div className={styles.hint}>{hint}</div> : null}
         {status ? <div className={styles.netStatus}>{status}</div> : null}

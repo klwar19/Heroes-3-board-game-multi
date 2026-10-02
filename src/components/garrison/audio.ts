@@ -182,6 +182,8 @@ function startsInLastSecond(starts: number[], now: number): number {
  */
 function play(key: string | null, volume = 0.5, gap = 110, kind: GarrisonSoundKind = "routine"): boolean {
   if (!key || !LIBRARY[key]) return false;
+  // A world boss warning hushes the whole lawn (cues too); the sounds swell back with the boss theme.
+  if (duck <= 0.05) return false;
   const now = clock();
   if (now - (lastPlayed.get(key) ?? -1e9) < gap) return false;
   if (kind !== "cue") {
@@ -194,9 +196,20 @@ function play(key: string | null, volume = 0.5, gap = 110, kind: GarrisonSoundKi
     routineStarts.push(now);
   }
   lastPlayed.set(key, now);
-  if (kind === "cue") playLibrarySound(key, volume, SOUND_PRIORITY.cue);
-  else playLibrarySound(key, volume);
+  if (kind === "cue") playLibrarySound(key, volume * duck, SOUND_PRIORITY.cue);
+  else playLibrarySound(key, volume * duck);
   return true;
+}
+
+/** The lawn's sound level during an Order & Chaos boss approach (1 = normal; see music.ts bossEffectsDuck). */
+let duck = 1;
+
+export function setBattleDuck(level: number): void {
+  duck = Math.min(1, Math.max(0, level));
+}
+
+export function battleDuck(): number {
+  return duck;
 }
 
 export const playGarrisonSound = play;
@@ -289,7 +302,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
     switch (ev.e) {
       case "place": {
         if (ev.kind === "mine") play("spells/land-mine", 0.45, 110, "cue");
-        else playCardPlace();
+        else if (duck > 0.05) playCardPlace();
         // A character troop greets the field.
         const placed = DEFENDERS[ev.kind]?.sprite;
         if (placed) voice(placed, "move", 0.55, 2500, true);

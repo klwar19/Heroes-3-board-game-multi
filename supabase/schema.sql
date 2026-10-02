@@ -120,6 +120,28 @@ alter table public.homm3bg_ranked_replays
 create index if not exists homm3bg_ranked_replays_recorded_idx
   on public.homm3bg_ranked_replays (recorded_at);
 
+-- Order & Chaos tally boards: one best row per (account, board), like MMR.
+-- board_key is the engine's ocBoardKey (all:endless, all:raid:r3,
+-- day:<YYYY-MM-DD>:endless, day:<day>:daily:<setup>, ...). The app keeps only
+-- today's and yesterday's day rows. Reads use the account's current nickname.
+create table if not exists public.homm3bg_oc_scores (
+  account_id text not null references public.homm3bg_accounts (id) on delete cascade,
+  board_key text not null check (char_length(board_key) <= 64),
+  nickname text not null,
+  score integer not null check (score >= 0),
+  wave integer not null check (wave >= 0),
+  kills integer not null check (kills >= 0),
+  ticks integer not null check (ticks >= 0),
+  hero text,
+  day text not null,
+  posted_at bigint not null,
+  primary key (account_id, board_key)
+);
+create index if not exists homm3bg_oc_scores_board_idx
+  on public.homm3bg_oc_scores (board_key, score desc, posted_at asc);
+create index if not exists homm3bg_oc_scores_day_idx
+  on public.homm3bg_oc_scores (day);
+
 -- Lock everything down: RLS on, no policies ⇒ anon/authenticated see nothing;
 -- the server's service-role key bypasses RLS by design.
 alter table public.homm3bg_accounts enable row level security;
@@ -127,3 +149,4 @@ alter table public.homm3bg_sessions enable row level security;
 alter table public.homm3bg_email_tokens enable row level security;
 alter table public.homm3bg_matches enable row level security;
 alter table public.homm3bg_ranked_replays enable row level security;
+alter table public.homm3bg_oc_scores enable row level security;

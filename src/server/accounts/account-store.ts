@@ -44,6 +44,7 @@ import {
 } from "./types";
 import { normalizeEmail, normalizeNicknameKey, validateContact, validateEmail, validateNickname, validatePassword } from "./validation";
 import { parkDualClaim, PendingMatchClaimBoard, type MatchClaimOutcome } from "@/server/match-claim";
+import { OcScoreMemoryStore, type OcScoreRow } from "@/server/oc-scores/store";
 
 export type AccountStoreOptions = {
   /** Injectable clock (epoch ms). Defaults to Date.now. */
@@ -119,6 +120,14 @@ export class AccountStore implements AccountBackend {
   private readonly pendingMatchClaims = new PendingMatchClaimBoard();
   private readonly rateWindows = new Map<string, RateWindow>();
   private readonly lastResendAt = new Map<string, number>();
+  /**
+   * Order & Chaos tally-board bests, one per (account, board) — kept with the
+   * accounts like MMR (saved in the snapshot, dropped with a deleted account).
+   */
+  readonly ocScores = new OcScoreMemoryStore((accountId) => {
+    const record = this.accounts.get(accountId);
+    return record ? { nickname: record.nickname, banned: Boolean(record.bannedAt) } : null;
+  });
 
   private readonly now: () => number;
   private readonly mailer: Mailer;
@@ -614,6 +623,7 @@ export class AccountStore implements AccountBackend {
         this.tokens.delete(digest);
       }
     }
+    this.ocScores.forgetAccount(accountId);
   }
 
   // -------------------------------------------------------------------------
@@ -786,13 +796,15 @@ export class AccountStore implements AccountBackend {
 
   toJSON(): AccountStoreSnapshot {
     this.prune();
+    const ocScores = this.ocScores.toJSON();
     return {
       version: 1,
       accounts: [...this.accounts.values()],
       tokens: [...this.tokens.values()],
       sessions: [...this.sessions.values()],
       recordedMatches: [...this.recordedMatches],
-      pendingMatchClaims: this.pendingMatchClaims.toJSON()
+      pendingMatchClaims: this.pendingMatchClaims.toJSON(),
+      ...(ocScores.length ? { ocScores } : {})
     };
   }
 
@@ -827,6 +839,7 @@ export class AccountStore implements AccountBackend {
       this.recordedMatches.add(matchId);
     }
     this.pendingMatchClaims.loadJSON(snapshot.pendingMatchClaims ?? []);
+    this.ocScores.loadJSON(snapshot.ocScores ?? []);
   }
 
   // -------------------------------------------------------------------------
@@ -954,6 +967,8 @@ export type AccountStoreSnapshot = {
   sessions: SessionRecord[];
   recordedMatches?: string[];
   pendingMatchClaims?: ReturnType<PendingMatchClaimBoard["toJSON"]>;
+  /** Order & Chaos tally-board bests (absent when there are none). */
+  ocScores?: OcScoreRow[];
 };
 
 // A fixed scrypt hash of a random string, used to spend comparable CPU on a

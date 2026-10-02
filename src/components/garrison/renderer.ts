@@ -19,14 +19,18 @@ import {
   drawFieldGround, drawFieldStructure, drawLandmark, drawSleep, drawSwimmer, drawWading, drawWeather, fieldEntry, fieldEventFx, foeInFog, foeInWater, preloadField
 } from "./field-art";
 import {
-  boneChips, createHorror, drawDread, drawGlitch, drawWard, drawWisps, horrorGlitch, horrorTremble, horrorTremor, spawnWisps, updateHorror, type Horror
+  boneChips, createHorror, drawDread, drawGlitch, drawGrade, drawWard, drawWisps, horrorGlitch, horrorTremble, horrorTremor, spawnWisps, updateHorror, type Horror
 } from "./boss-horror";
 import { calmDown, createAntics, drawAngerMark, drawDizzy, motionPose, pruneAntics, restless, startMotion, type Antics } from "./antics";
+import { prefersReducedMotion } from "@/lib/display-preferences";
 import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, type ShotSheet } from "./art";
 import {
   KEEPS, KEEP_SRC, PROP, WORLD_W, burst, createScenery, keepFor, drawCoin, drawDecals, drawGlow, drawKeepFlags, drawParticles, sceneryLayer, setParticleBudget, spawnParticles,
   type Decal, type Particle, type Scenery
 } from "./scene";
+
+/** Codex-painted fusion emblem (the Hybrid Lab's "+"), flashed when two units fuse. */
+const FUSION_SIGIL = "/assets/order-chaos/ui/fusion-sigil.webp";
 
 export const BOARD = { W: 1400, H: 660, LAWN_X: 250, TILE: 110, TOP: 55, LANE_H: 120 } as const;
 const SPRITE_SCALE = 0.95;
@@ -54,6 +58,8 @@ type FxInstance =
   | { t: "bolt"; x: number; top: number; bottom: number; start: number }
   | { t: "ring"; x: number; y: number; color: string; start: number; radius: number }
   | { t: "pillar"; x: number; y: number; rgb: string; start: number }
+  /** The fusion sigil: two linked rings flaring over a freshly fused hybrid (`still`: reduced motion, no spin or swell). */
+  | { t: "sigil"; x: number; y: number; start: number; still: boolean }
   | { t: "tracer"; x0: number; y0: number; x1: number; y1: number; start: number; rgb: string }
   // Order & Chaos content pass: a blade's slash streak, a sweeping arc, a unit flying along an arc.
   | { t: "slash"; x0: number; y0: number; x1: number; y1: number; start: number; rgb: string; width: number }
@@ -118,6 +124,8 @@ export type View = {
 };
 
 export function createView(town: string, defColor = "#3f7fe0"): View {
+  // (Warm the fusion sigil so the first fusion of a battle shows it.)
+  if (typeof window !== "undefined") image(FUSION_SIGIL);
   return {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
@@ -673,6 +681,7 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
         } else {
           // A pillar of gold (upgrade) or violet (fusion) light, sparks rising through it.
           view.fx.push({ t: "pillar", x: p.x, y: p.y, rgb: ev.e === "fuse" ? "214,139,255" : "255,214,90", start: now });
+          if (ev.e === "fuse") view.fx.push({ t: "sigil", x: p.x, y: p.y - 70, start: now, still: prefersReducedMotion() });
           spawnParticles(view.particles, now, 16, (i) => ({
             kind: i % 3 === 0 ? "glint" : "spark", x: p.x + (Math.random() - 0.5) * 50, y: p.y - Math.random() * 30,
             vx: (Math.random() - 0.5) * 0.03, vy: -0.12 - Math.random() * 0.12, life: 700 + Math.random() * 500, size: 2.5,
@@ -1780,7 +1789,9 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
   drawAmbientAir(ctx, view.ambience, s.cfg.terrain, BOARD.W, BOARD.H, now, dt);
   // Order & Chaos weather and night (under the coins, so they stay easy to see).
   if (s.weather || s.cfg.oc?.night) drawWeather(ctx, s, view, now);
-  // While a boss lives: dark edges and a red heartbeat, ghost wisps glowing over them.
+  // While a boss lives: the world drains toward its tone under a fine grain, dark edges and a red
+  // heartbeat close in, ghost wisps glow over them (all easing back once it falls).
+  drawGrade(ctx, view.horror, now, view.camX);
   drawDread(ctx, view.horror, now, view.camX);
   drawWisps(ctx, view.horror, now);
   drawPickups(ctx, s, view, now, alpha);
@@ -2843,6 +2854,24 @@ function drawFxLayer(ctx: CanvasRenderingContext2D, view: View, now: number): vo
       ctx.fill();
       ctx.restore();
       keep.push(fx);
+    } else if (fx.t === "sigil") {
+      // Swells in turning, holds, then rises and fades (about 0.8 s); with reduced motion it just fades in and out.
+      const LIFE = 800;
+      if (elapsed > LIFE) continue;
+      const img = image(FUSION_SIGIL);
+      if (ready(img)) {
+        const t = elapsed / LIFE;
+        const a = t < 0.15 ? t / 0.15 : t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
+        const grow = Math.sin(Math.min(1, t / 0.3) * Math.PI * 0.5);
+        const size = fx.still ? 70 : 34 + 40 * grow + (t < 0.3 ? 8 * Math.sin((t / 0.3) * Math.PI) : 0);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, a);
+        ctx.translate(fx.x, fx.y - (fx.still ? 0 : 16 * Math.max(0, t - 0.4)));
+        if (!fx.still) ctx.rotate((1 - grow) * -0.6);
+        ctx.drawImage(img, -size / 2, -size / 2, size, size);
+        ctx.restore();
+      }
+      keep.push(fx);
     } else if (fx.t === "slash" || fx.t === "arc" || fx.t === "fly") {
       if (drawContentFx(ctx, fx, elapsed)) keep.push(fx);
     } else {
@@ -3455,9 +3484,9 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
     case "bossEnter": {
       const def = ENEMIES[ev.kind];
       view.floats.push({ text: `${def?.name ?? "The boss"} comes!`, x: BOARD.W / 2, y: BOARD.TOP + 70, color: "#ff8a6a", start: now });
-      view.shakeUntil = Math.max(view.shakeUntil, now + 600);
+      view.shakeUntil = Math.max(view.shakeUntil, now + 900);
       view.horror.phase = 0;
-      horrorGlitch(view.horror, now);
+      horrorGlitch(view.horror, now, true);
       break;
     }
     case "bossCue": {

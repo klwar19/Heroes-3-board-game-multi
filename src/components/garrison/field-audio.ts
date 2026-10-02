@@ -9,7 +9,7 @@
 
 import type { GarrisonEvent, GarrisonState } from "@/engine/garrison/sim";
 import { startLibraryLoop } from "@/lib/sound";
-import { playGarrisonSound, type GarrisonSoundKind } from "./audio";
+import { battleDuck, playGarrisonSound, type GarrisonSoundKind } from "./audio";
 
 function play(key: string, volume = 0.45, gap = 160, kind: GarrisonSoundKind = "routine"): void {
   playGarrisonSound(key, volume, gap, kind);
@@ -116,7 +116,8 @@ let loop: { key: string; handle: { stop(): void } } | null = null;
 
 /** Keeps the one battlefield ambience loop in step with the battle (null: stop it). Cheap to call every frame. */
 export function updateFieldAmbience(s: GarrisonState | null): void {
-  const want = s ? ambienceFor(s) : null;
+  // (A boss warning hushes the weather too; it fades back in once the lawn is half back.)
+  const want = s && battleDuck() >= 0.5 ? ambienceFor(s) : null;
   if ((want?.key ?? null) === (loop?.key ?? null)) return;
   loop?.handle.stop();
   loop = want ? { key: want.key, handle: startLibraryLoop(want.key, want.volume) } : null;

@@ -626,6 +626,11 @@ function playNoise(shape: NoiseShape, delayMs = 0): void {
 
 /** Card sliding off the deck (alternates two recorded deal sounds). */
 let dealAlternator = 0;
+/** A quiet burst of TV static (an Order & Chaos boss's picture breaking up), as long as the glitch it rides. */
+export function playStaticHiss(durationMs: number): void {
+  playNoise({ durationMs: Math.max(200, Math.min(900, durationMs)), from: 3600, to: 1800, q: 0.5, gain: 0.045, attackMs: 12 });
+}
+
 export function playCardSwish(delayMs = 0): void {
   dealAlternator = (dealAlternator + 1) % 2;
   const key = dealAlternator === 0 ? "cards/card-deal-1" : "cards/card-deal-2";

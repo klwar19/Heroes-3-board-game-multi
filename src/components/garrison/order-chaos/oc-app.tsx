@@ -32,7 +32,7 @@ import { GarrisonGame, type GameIntro, type GameResult } from "../garrison-game"
 import styles from "../garrison.module.css";
 import { AttackerArt, CARD_SCENES, CardArt, DefenderArt, cardScene, cardSceneSrc } from "../thumbs";
 import oc from "./oc.module.css";
-import { OcDailyScreen, OcRunScore, OcTallyBoard, isOcNewBest, markOcBestSent, ocBestKey, recordOcBest } from "./oc-scores-ui";
+import { OcDailyScreen, OcRunScore, OcTallyBoard, isOcNewBest, markOcBestSent, ocBestKey, recordOcBest, useOcScoreSync } from "./oc-scores-ui";
 import { AdvisorBubble, StoryScene } from "./story-ui";
 import { FieldAlmanac, FieldPanel, newFieldLines } from "./field-ui";
 import { ForgeScreen, GardenScreen, Materials, OreIcon } from "./forge-garden";
@@ -54,6 +54,7 @@ type Screen =
   | { s: "portal" }
   | { s: "satchel" }
   | { s: "almanac" }
+  | { s: "lab" }
   | { s: "journal" }
   | { s: "daily" }
   | { s: "tally"; mode?: OcBoardMode }
@@ -103,6 +104,8 @@ const ART = {
   satchel: "/assets/ui/menu/buttons/oc-satchel.webp",
   almanac: "/assets/ui/menu/buttons/oc-almanac.webp",
   versus: "/assets/ui/menu/buttons/gw-versus.webp",
+  hybrids: "/assets/ui/menu/buttons/oc-hybrids.webp",
+  sigil: "/assets/order-chaos/ui/fusion-sigil.webp",
   back: "/assets/ui/menu/buttons/back.webp",
   seal: "/assets/order-chaos/icons/seal.webp",
   star: "/assets/order-chaos/icons/star.webp",
@@ -287,6 +290,21 @@ function introFor(level: OcLevel, cleared: readonly string[]): GameIntro {
 }
 
 /** A starting hand: gold-makers first, then the most recently recruited troops. */
+/** Worlds whose battles carry Remnants of the Horde in the rotation after Grasswalk. */
+const HORDE_MUSIC_WORLDS: ReadonlySet<number> = new Set([3, 5, 7, 9]);
+
+/**
+ * A battle's music: Grasswalk then the combat rotation; Endless Siege, Chaos
+ * Raids and some worlds add Remnants of the Horde to the rotation; Krewlod
+ * opens with it, then Grasswalk, the two taking turns. (Daily Siege: plain.)
+ */
+function battleMusicFor(level: OcLevel, daily: boolean): "order-chaos" | "order-chaos-horde" | "order-chaos-remnants" {
+  if (level.kind === "endless" || level.kind === "raid") return "order-chaos-horde";
+  if (daily) return "order-chaos";
+  if (level.world === 8) return "order-chaos-remnants";
+  return HORDE_MUSIC_WORLDS.has(level.world) ? "order-chaos-horde" : "order-chaos";
+}
+
 function defaultHand(units: DefKind[], slots: number): DefKind[] {
   const econ = units.filter((kind) => DEFENDERS[kind]?.produce && DEFENDERS[kind]!.produce!.value > 0).slice(0, 1);
   const rest = units.filter((kind) => !econ.includes(kind) && !DEFENDERS[kind]?.instant).reverse();
@@ -444,7 +462,7 @@ export function OrderChaosApp() {
   // (preparation theme during Last Stand planning, then the battle score), so
   // this effect stays silent instead of fighting it; the battle's unmount stops
   // its track before this effect picks the menu scene back up.
-  const menuMusic: MusicScene | null = screen.s === "play" && session ? null : screen.s === "prep" ? "oc-prep" : "oc-menu";
+  const menuMusic: MusicScene | null = screen.s === "play" && session ? null : screen.s === "prep" ? "oc-prep" : screen.s === "home" ? "oc-home" : "oc-menu";
   useEffect(() => {
     if (menuMusic) setMusicScene(menuMusic);
   }, [menuMusic]);
@@ -473,6 +491,8 @@ export function OrderChaosApp() {
     dirtyRef.current = false;
     setSaveFailed(!saveOcProgress(progress));
   }, [progress]);
+  // Every best and the campaign tally go up to the tally boards by themselves.
+  useOcScoreSync(progress, update);
   // Another tab saved: adopt its progress so this tab never writes back a stale copy.
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -678,7 +698,7 @@ export function OrderChaosApp() {
         <GarrisonGame
           advisor={level.kind === "raid" ? undefined : battleQuip}
           defColor={OC_LAWFUL_COLOR}
-          music="order-chaos"
+          music={battleMusicFor(level, !!session.daily)}
           driver={session.driver}
           hotseat={false}
           intro={introFor(level, unlocks.cleared)}
@@ -760,6 +780,7 @@ export function OrderChaosApp() {
         {calendar && screen.s !== "play" ? <AttendanceDialog onClose={() => setCalendar(false)} progress={progress} update={update} /> : null}
         {screen.s === "camp" ? <Camp onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "almanac" ? <Almanac onBack={() => setScreen({ s: "home" })} unlocks={unlocks} /> : null}
+        {screen.s === "lab" ? <HybridLab onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} /> : null}
         {screen.s === "daily" ? (
           <OcDailyScreen
             cleared={unlocks.cleared}
@@ -813,6 +834,8 @@ function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: 
   const [code, setCode] = useState("");
   const [wrong, setWrong] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // The painted plank and ribbon the purse and the tile groups are framed with.
+  const homeArt = { ["--oc-tray" as string]: `url("${assetUrl(OC_UI.tray)}")`, ["--oc-banner" as string]: `url("${assetUrl(OC_UI.banner)}")` };
   const submitCode = () => {
     if (code === TEST_PASSWORD) {
       update((prev) => ({ ...prev, testAll: true }));
@@ -826,28 +849,38 @@ function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: 
   return (
     <>
       <HomeAmbience />
-      <div className={styles.menuHead}>
-        <div>
-          <h1>Order &amp; Chaos</h1>
-          <p className={oc.homeBlurb}>The Lawful hold the realm; the Chaos horde comes to break it. Raise troops, gather Surge orbs, earn Valor to Ascend your champions, recruit heroes, mercenaries and artifacts, and hold the line across ten worlds.</p>
+      <header className={oc.homeTop} style={homeArt}>
+        <div className={styles.menuHead}>
+          <div>
+            <h1>Order &amp; Chaos</h1>
+            <p className={oc.homeBlurb}>The Lawful hold the realm; the Chaos horde comes to break it. Raise troops, gather Surge orbs, earn Valor to Ascend your champions, recruit heroes, mercenaries and artifacts, and hold the line across ten worlds.</p>
+          </div>
         </div>
-        <button className={oc.storyButton} onClick={onStory} title="Hear Crag Hack's tale again" type="button">
-          <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
-          Crag&apos;s tale
-        </button>
-        <button className={oc.storyButton} onClick={() => onPick({ s: "journal" })} title="Reread every scene you have reached so far" type="button">
-          <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-grin.webp")} />
-          Story so far
-        </button>
-        <span className={oc.purse} title="Seals: spend them in the Barracks and the Mercenary Camp">
-          <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {p.seals}
-        </span>
-        <Materials progress={p} />
-        <CrystalPurse progress={p} />
-        <button className={oc.storyButton} onClick={onCalendar} title="The daily rewards calendar" type="button">
-          📅 Daily{attendanceOpen(p) ? " ★" : ""}
-        </button>
-      </div>
+        <div className={oc.homeSide}>
+          {/* Everything the player owns, on one plank. */}
+          <div aria-label="Your purse" className={oc.wallet} role="group">
+            <span className={oc.purse} title="Seals: spend them in the Barracks and the Mercenary Camp">
+              <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {p.seals}
+            </span>
+            <Materials progress={p} />
+            <CrystalPurse progress={p} />
+            <button className={`${oc.backButton} ${oc.walletDaily} ${attendanceOpen(p) ? oc.walletDailyReady : ""}`} onClick={onCalendar} title={attendanceOpen(p) ? "Today's daily reward is waiting: claim it" : "The daily rewards calendar"} type="button">
+              Daily rewards{attendanceOpen(p) ? <b className={oc.walletPing} title="A reward is waiting"> ★</b> : null}
+            </button>
+          </div>
+          <div aria-label="Story" className={oc.storyCluster} role="group">
+            <span className={oc.clusterLabel}>Story</span>
+            <button className={oc.storyButton} onClick={onStory} title="Hear Crag Hack's tale again" type="button">
+              <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-talk.webp")} />
+              Crag&apos;s tale
+            </button>
+            <button className={oc.storyButton} onClick={() => onPick({ s: "journal" })} title="Reread every scene you have reached so far" type="button">
+              <img alt="" className={oc.storyFace} src={assetUrl("/assets/order-chaos/story/crag-grin.webp")} />
+              Story so far
+            </button>
+          </div>
+        </div>
+      </header>
       {p.seen.includes(OC_PROLOGUE_ID) ? <Greeting cleared={u.cleared} place="home" /> : null}
       {next ? (
         <button className={`${oc.nextCard} ${oc.continueCard}`} onClick={() => onPick({ s: "prep", level: next })} type="button">
@@ -862,97 +895,118 @@ function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: 
           <span className={oc.playPill}>Play ▸</span>
         </button>
       ) : null}
-      <div className={styles.artModes}>
-        <button aria-label="Campaign" className={styles.artMode} onClick={() => onPick({ s: "campaign", world: lastWorld })} title="Ten worlds of the Chaos invasion. Every victory recruits new troops, heroes, artifacts or spells." type="button">
-          <ArtFace label="Campaign" src={ART.campaign} />
-          <small>★ {totalStarCount} / {OC_LEVELS.length * 3}</small>
-        </button>
-        <button
-          aria-label="Endless Siege"
-          className={styles.artMode}
-          disabled={!endless}
-          onClick={() => onPick({ s: "prep", level: OC_ENDLESS })}
-          title={endless ? "The horde never ends. Choose an artifact after every great assault." : "Opens after the first world."}
-          type="button"
-        >
-          <ArtFace label="Endless Siege" src={ART.endless} />
-          <small>{endless ? (p.bestEndless ? `Best: wave ${p.bestEndless}` : " ") : "Locked"}</small>
-        </button>
-        <button
-          aria-label="Daily Siege"
-          className={styles.artMode}
-          disabled={!endless}
-          onClick={() => onPick({ s: "daily" })}
-          title={endless ? "Today's orders, the same for every player: loaned troops, one road, one horde. Compare your score on the tally board." : "Opens after the first world."}
-          type="button"
-        >
-          <ArtFace label="Daily Siege" src={ART.daily} />
-          <small>{endless ? (dailyBest ? `Today: wave ${dailyBest.wave}` : "New orders every day") : "Locked"}</small>
-        </button>
-        <button aria-label="Tally Board" className={styles.artMode} onClick={() => onPick({ s: "tally" })} title="The tally boards: Endless Siege, Daily Siege and Chaos Raids, today and all-time." type="button">
-          <ArtFace label="Tally Board" src={ART.tally} />
-          <small>Tally board</small>
-        </button>
-        <button
-          aria-label="Chaos Raids"
-          className={styles.artMode}
-          disabled={!raids}
-          onClick={() => onPick({ s: "raids" })}
-          title={raids ? "Command the Chaos horde against a prepared Lawful line." : "Opens after the first world."}
-          type="button"
-        >
-          <ArtFace label="Chaos Raids" src={ART.raids} />
-          <small>{raids ? `${p.raids.length} / ${OC_RAIDS.length}` : "Locked"}</small>
-        </button>
-        <button aria-label="Barracks" className={styles.artMode} onClick={() => onPick({ s: "barracks" })} title="Train your troops with Seals — level 3 unlocks a unit's Ascension." type="button">
-          <ArtFace label="Barracks" src={ART.barracks} />
-          <small>{p.seals} Seals</small>
-        </button>
-        <button aria-label="Summoning Portal" className={styles.artMode} onClick={() => onPick({ s: "portal" })} title="Summon troops, Chaos raiders, artifacts, a hero and items with Crystals — R, SR, SSR and UR prizes." type="button">
-          <ArtFace label="Summoning Portal" src={ART.portal} />
-          <small><CrystalIcon /> {p.crystals}{p.items["summon-ticket"] ? ` · ${p.items["summon-ticket"]} ticket${p.items["summon-ticket"] === 1 ? "" : "s"}` : ""}</small>
-        </button>
-        <button aria-label="Satchel" className={styles.artMode} onClick={() => onPick({ s: "satchel" })} title="Your items: battle boosts, resources, potions, tickets." type="button">
-          <ArtFace label="Satchel" src={ART.satchel} />
-          <small>{satchelCount(p)} item{satchelCount(p) === 1 ? "" : "s"}</small>
-        </button>
-        <button
-          aria-label="The Forge"
-          className={styles.artMode}
-          disabled={heroRankCap(u.cleared) <= 1}
-          onClick={() => onPick({ s: "forge" })}
-          title={heroRankCap(u.cleared) > 1 ? "Forge your heroes' ranks with Ore and Gems: heat, hammer and quench the blade yourself." : "Opens after the first world."}
-          type="button"
-        >
-          <ArtFace label="The Forge" src={ART.forge} />
-          <small>{heroRankCap(u.cleared) > 1 ? `${OC_HERO_ORDER.filter((id) => u.heroes.includes(id) && heroRankOf(id, p.heroRanks) >= OC_HERO_MAX_RANK).length} / ${u.heroes.length} heroes at full rank` : "Locked"}</small>
-        </button>
-        <button
-          aria-label="Magic Garden"
-          className={styles.artMode}
-          disabled={!gardenOpen(u.cleared)}
-          onClick={() => onPick({ s: "garden" })}
-          title={gardenOpen(u.cleared) ? "Grow Gems in real time: sow, water every stage, harvest." : "Opens after the first world's third battle."}
-          type="button"
-        >
-          <ArtFace label="Magic Garden" src={ART.garden} />
-          <small>{gardenOpen(u.cleared) ? gardenStatus(p, u.cleared) : "Locked"}</small>
-        </button>
-        <button
-          aria-label="Mercenary Camp"
-          className={styles.artMode}
-          disabled={!u.camp}
-          onClick={() => onPick({ s: "camp" })}
-          title={u.camp ? "Hire troops from other towns — even Nighon's — with Seals." : "Opens after the second world."}
-          type="button"
-        >
-          <ArtFace label="Mercenaries" src={ART.camp} />
-          <small>{u.camp ? `${OC_MERCENARIES.filter((m) => u.units.includes(m.kind)).length} / ${OC_MERCENARIES.length}` : "Locked"}</small>
-        </button>
-        <button aria-label="Almanac" className={styles.artMode} onClick={() => onPick({ s: "almanac" })} title="Every Lawful unit, hybrid and Surge, every Chaos creature met, heroes, artifacts and spells." type="button">
-          <ArtFace label="Almanac" src={ART.almanac} />
-          <small>{" "}</small>
-        </button>
+      <div className={oc.homeGroups} style={homeArt}>
+        <section aria-labelledby="oc-home-battle" className={`${oc.homeGroup} ${oc.groupBattle}`}>
+          <h2 className={oc.groupHead} id="oc-home-battle"><span>Battle</span></h2>
+          <div className={oc.groupTiles}>
+            <button aria-label="Campaign" className={`${styles.artMode} ${oc.tilePrimary}`} onClick={() => onPick({ s: "campaign", world: lastWorld })} title="Ten worlds of the Chaos invasion. Every victory recruits new troops, heroes, artifacts or spells." type="button">
+              <ArtFace label="Campaign" src={ART.campaign} />
+              <small>★ {totalStarCount} / {OC_LEVELS.length * 3}</small>
+            </button>
+            <button
+              aria-label="Endless Siege"
+              className={styles.artMode}
+              disabled={!endless}
+              onClick={() => onPick({ s: "prep", level: OC_ENDLESS })}
+              title={endless ? "The horde never ends. Choose an artifact after every great assault." : "Opens after the first world."}
+              type="button"
+            >
+              <ArtFace label="Endless Siege" src={ART.endless} />
+              <small>{endless ? (p.bestEndless ? `Best: wave ${p.bestEndless}` : " ") : "Locked"}</small>
+            </button>
+            <button
+              aria-label="Daily Siege"
+              className={styles.artMode}
+              disabled={!endless}
+              onClick={() => onPick({ s: "daily" })}
+              title={endless ? "Today's orders, the same for every player: loaned troops, one road, one horde. Compare your score on the tally board." : "Opens after the first world."}
+              type="button"
+            >
+              <ArtFace label="Daily Siege" src={ART.daily} />
+              <small>{endless ? (dailyBest ? `Today: wave ${dailyBest.wave}` : "New orders every day") : "Locked"}</small>
+            </button>
+            <button
+              aria-label="Chaos Raids"
+              className={styles.artMode}
+              disabled={!raids}
+              onClick={() => onPick({ s: "raids" })}
+              title={raids ? "Command the Chaos horde against a prepared Lawful line." : "Opens after the first world."}
+              type="button"
+            >
+              <ArtFace label="Chaos Raids" src={ART.raids} />
+              <small>{raids ? `${p.raids.length} / ${OC_RAIDS.length}` : "Locked"}</small>
+            </button>
+            <button aria-label="Tally Board" className={styles.artMode} onClick={() => onPick({ s: "tally" })} title="The tally boards: Endless Siege, Daily Siege and Chaos Raids, today and all-time." type="button">
+              <ArtFace label="Tally Board" src={ART.tally} />
+              <small>Tally board</small>
+            </button>
+          </div>
+        </section>
+        <section aria-labelledby="oc-home-army" className={`${oc.homeGroup} ${oc.groupArmy}`}>
+          <h2 className={oc.groupHead} id="oc-home-army"><span>Your army</span></h2>
+          <div className={oc.groupTiles}>
+            <button aria-label="Barracks" className={styles.artMode} onClick={() => onPick({ s: "barracks" })} title="Train your troops with Seals — level 3 unlocks a unit's Ascension." type="button">
+              <ArtFace label="Barracks" src={ART.barracks} />
+              <small>{p.seals} Seals</small>
+            </button>
+            <button
+              aria-label="Mercenary Camp"
+              className={styles.artMode}
+              disabled={!u.camp}
+              onClick={() => onPick({ s: "camp" })}
+              title={u.camp ? "Hire troops from other towns — even Nighon's — with Seals." : "Opens after the second world."}
+              type="button"
+            >
+              <ArtFace label="Mercenaries" src={ART.camp} />
+              <small>{u.camp ? `${OC_MERCENARIES.filter((m) => u.units.includes(m.kind)).length} / ${OC_MERCENARIES.length}` : "Locked"}</small>
+            </button>
+            <button aria-label="Hybrid Lab" className={styles.artMode} onClick={() => onPick({ s: "lab" })} title="Every fusion recipe: which two troops fuse into which hybrid, which you can make now, and which are still to discover." type="button">
+              <ArtFace label="Hybrid Lab" src={ART.hybrids} />
+              <small>{HYBRIDS.filter((kind) => hybridKnown(kind, u.units)).length} / {HYBRIDS.length} known</small>
+            </button>
+            <button aria-label="Summoning Portal" className={styles.artMode} onClick={() => onPick({ s: "portal" })} title="Summon troops, Chaos raiders, artifacts, a hero and items with Crystals — R, SR, SSR and UR prizes." type="button">
+              <ArtFace label="Summoning Portal" src={ART.portal} />
+              <small><CrystalIcon /> {p.crystals}{p.items["summon-ticket"] ? ` · ${p.items["summon-ticket"]} ticket${p.items["summon-ticket"] === 1 ? "" : "s"}` : ""}</small>
+            </button>
+            <button aria-label="Satchel" className={styles.artMode} onClick={() => onPick({ s: "satchel" })} title="Your items: battle boosts, resources, potions, tickets." type="button">
+              <ArtFace label="Satchel" src={ART.satchel} />
+              <small>{satchelCount(p)} item{satchelCount(p) === 1 ? "" : "s"}</small>
+            </button>
+            <button aria-label="Almanac" className={styles.artMode} onClick={() => onPick({ s: "almanac" })} title="Every Lawful unit, hybrid and Surge, every Chaos creature met, heroes, artifacts and spells." type="button">
+              <ArtFace label="Almanac" src={ART.almanac} />
+              <small>{" "}</small>
+            </button>
+          </div>
+        </section>
+        <section aria-labelledby="oc-home-workshops" className={`${oc.homeGroup} ${oc.groupWorkshops}`}>
+          <h2 className={oc.groupHead} id="oc-home-workshops"><span>Workshops</span></h2>
+          <div className={oc.groupTiles}>
+            <button
+              aria-label="The Forge"
+              className={styles.artMode}
+              disabled={heroRankCap(u.cleared) <= 1}
+              onClick={() => onPick({ s: "forge" })}
+              title={heroRankCap(u.cleared) > 1 ? "Forge your heroes' ranks with Ore and Gems: heat, hammer and quench the blade yourself." : "Opens after the first world."}
+              type="button"
+            >
+              <ArtFace label="The Forge" src={ART.forge} />
+              <small>{heroRankCap(u.cleared) > 1 ? `${OC_HERO_ORDER.filter((id) => u.heroes.includes(id) && heroRankOf(id, p.heroRanks) >= OC_HERO_MAX_RANK).length} / ${u.heroes.length} heroes at full rank` : "Locked"}</small>
+            </button>
+            <button
+              aria-label="Magic Garden"
+              className={styles.artMode}
+              disabled={!gardenOpen(u.cleared)}
+              onClick={() => onPick({ s: "garden" })}
+              title={gardenOpen(u.cleared) ? "Grow Gems in real time: sow, water every stage, harvest." : "Opens after the first world's third battle."}
+              type="button"
+            >
+              <ArtFace label="Magic Garden" src={ART.garden} />
+              <small>{gardenOpen(u.cleared) ? gardenStatus(p, u.cleared) : "Locked"}</small>
+            </button>
+          </div>
+        </section>
+      </div>
+      <nav aria-label="Leave Order & Chaos" className={oc.homeFoot}>
         <Link aria-label="Garrison Wars" className={styles.artMode} href="/garrison" title="Garrison Wars, the faction duel: every town defends a castle or marches on one — against the computer, on one screen or online.">
           <ArtFace label="Garrison Wars" src={ART.versus} />
           <small>Faction duels</small>
@@ -961,7 +1015,7 @@ function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: 
           <ArtFace label="Back" src={ART.back} />
           <small>{" "}</small>
         </Link>
-      </div>
+      </nav>
       <div className={oc.testRow}>
         {resetting ? (
           <div aria-label="Start over" className={oc.testForm} role="alertdialog">
@@ -1242,6 +1296,10 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
   }, [warmKey]);
   const cleared = progress.cleared.includes(level.id);
   const met = progress.stars[level.id] ?? [];
+  // Hybrids the player can make, the ones whose two halves are both in the hand first.
+  const knownHybrids = HYBRIDS.filter((kind) => hybridKnown(kind, units))
+    .map((kind) => ({ kind, inHand: hybridKnown(kind, hand) }))
+    .sort((x, y) => Number(y.inHand) - Number(x.inHand));
   const toggle = (kind: DefKind) => setHand((current) => (current.includes(kind) ? current.filter((k) => k !== kind) : current.length < slots ? [...current, kind] : current));
   const toggleArtifact = (id: BlessingId) => update((p) => {
     const on = p.artifacts.filter((a) => artifacts.includes(a)).slice(0, artSlots);
@@ -1326,11 +1384,25 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
                     );
                   })}
                 </div>
-                <p className={styles.note}>
-                  Hybrids: drop one card on another unit on the field to fuse them — {HYBRIDS.filter((kind) => hybridKnown(kind, units)).map((kind) => `${recipeText(kind)} = ${DEFENDERS[kind]!.name}`).join("; ") || "recruit both halves of a pairing to learn one"}
-                  {HYBRIDS.some((kind) => !hybridKnown(kind, units)) ? ` (${HYBRIDS.filter((kind) => !hybridKnown(kind, units)).length} more to discover as you recruit)` : ""}.
-                  {" "}The same packet dropped on a Wood Elf Band grows the band instead.
-                </p>
+                <div className={oc.hybridBox}>
+                  <h3>Hybrids <small>drop one card on another unit on the field to fuse them</small></h3>
+                  {knownHybrids.length ? (
+                    <ul className={oc.hybridList}>
+                      {knownHybrids.map(({ kind, inHand }) => (
+                        <li className={inHand ? oc.hybridInHand : ""} key={kind} title={DEFENDERS[kind]!.blurb}>
+                          <span>{recipeText(kind)}</span>
+                          <Icon className={oc.hybridSigil} fallback="=" src={ART.sigil} />
+                          <b>{DEFENDERS[kind]!.name}</b>
+                          {inHand ? <em>both in your hand</em> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className={styles.note}>Recruit both halves of a pairing to learn one.</p>}
+                  <p className={styles.note}>
+                    {HYBRIDS.length > knownHybrids.length ? `${HYBRIDS.length - knownHybrids.length} more to discover as you recruit (every recipe is in the Hybrid Lab). ` : ""}
+                    The same packet dropped on a Wood Elf Band grows the band instead.
+                  </p>
+                </div>
               </>
             ) : null}
           </section>
@@ -1412,6 +1484,8 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
               {heroRankOf(hero.id, progress.heroRanks) < OC_HERO_MAX_RANK ? " Forge higher ranks at the Forge." : ""}
             </p>
             {level.kind === "raid" ? null : <PackItems progress={progress} update={update} />}
+          </section>
+          <section className={styles.panel}>
             <h2>Spellbook ({book.length} / {OC_SPELLBOOK_SIZE})</h2>
             {u.spells.length ? (
               <div className={oc.artifacts}>
@@ -1603,6 +1677,101 @@ function Camp({ progress, unlocks: u, update, onBack }: { progress: OcProgress; 
         </div>
       </section>
     </>
+  );
+}
+
+/** A recipe half as the Lab shows it: the troop card, greyed until recruited. */
+function LabHalf({ ids, units }: { ids: readonly string[]; units: readonly DefKind[] }) {
+  const id = ids.find((one) => units.includes(one)) ?? ids[0]!;
+  const have = ids.some((one) => units.includes(one));
+  const name = ids.map((one) => DEFENDERS[one]?.name ?? CARDS[one]?.name ?? one).join(" / ");
+  return (
+    <div className={`${oc.labHalf} ${have ? "" : oc.labMissing}`} title={have ? name : `${name}: not recruited yet — ${unlockSource(id)}`}>
+      <span className={oc.pk} data-scene={cardScene(id)}>
+        <span className={oc.pkArt}><CardArt card={id} size={50} /></span>
+        <b className={oc.pkCost}>{CARDS[id]?.cost ?? ""}</b>
+      </span>
+      <small>{name}</small>
+    </div>
+  );
+}
+
+/**
+ * The Hybrid Lab: every fusion recipe as cards, A + B into the hybrid. Ready
+ * ones (both halves recruited) first, then half-found, then undiscovered —
+ * whose hybrid stays a silhouette with no name, as in the Almanac.
+ */
+function HybridLab({ progress, unlocks: u, onBack }: { progress: OcProgress; unlocks: Unlocks; onBack(): void }) {
+  const art = (src: string) => `url("${assetUrl(src)}")`;
+  const sceneVars = Object.fromEntries(CARD_SCENES.map((scene) => [`--oc-scene-${scene}`, art(cardSceneSrc(scene))]));
+  const owned = (ids: readonly string[]) => ids.some((id) => u.units.includes(id));
+  const pick = (ids: readonly string[]) => ids.find((id) => u.units.includes(id)) ?? ids[0]!;
+  const names = (ids: readonly string[]) => ids.map((id) => DEFENDERS[id]?.name ?? CARDS[id]?.name ?? id).join(" / ");
+  const recipes = HYBRIDS.flatMap((kind) => {
+    const recipe = FUSIONS.find((entry) => entry.result === kind);
+    if (!recipe) return [];
+    const have = Number(owned(recipe.a)) + Number(owned(recipe.b));
+    const price = (CARDS[pick(recipe.a)]?.cost ?? 0) + (CARDS[pick(recipe.b)]?.cost ?? 0);
+    return [{ kind, recipe, have, price }];
+  });
+  const groups = [
+    { id: "ready", title: "Ready to fuse", hint: "both halves recruited — take them into battle together", items: recipes.filter((r) => r.have === 2).sort((x, y) => x.price - y.price) },
+    { id: "half", title: "One half to go", hint: "recruit the greyed card to learn the hybrid", items: recipes.filter((r) => r.have === 1) },
+    { id: "unknown", title: "Undiscovered", hint: "neither half recruited yet", items: recipes.filter((r) => r.have === 0) }
+  ];
+  return (
+    <div className={oc.prep} style={{ ["--oc-packet" as string]: art(OC_UI.packet), ...sceneVars }}>
+      <div className={oc.campHead}>
+        <button className={oc.backButton} onClick={onBack} type="button">‹ Back</button>
+        <h1 className={oc.titleBanner} style={{ ["--oc-banner" as string]: art(OC_UI.banner) }}><span>Hybrid Lab</span></h1>
+        <div className={oc.tally}><span>{groups[0]!.items.length} / {HYBRIDS.length} ready</span></div>
+      </div>
+      <p className={oc.prepBrief}>
+        Put one half on the field, then drop the other half&apos;s card on it: the two fuse into the hybrid where it stands, and you pay the dropped card&apos;s price.
+        {" "}A hybrid keeps the higher Barracks level of its halves. Hybrids and Ascended troops don&apos;t fuse again.
+      </p>
+      {groups.map((group) => group.items.length ? (
+        <section aria-labelledby={`oc-lab-${group.id}`} className={`${oc.troops} ${oc.labGroup}`} key={group.id}>
+          <h2 id={`oc-lab-${group.id}`}>{group.title} <small>({group.items.length}) · {group.hint}</small></h2>
+          <div className={oc.labGrid}>
+            {group.items.map(({ kind, recipe, have, price }) => {
+              const def = DEFENDERS[kind]!;
+              const known = have === 2;
+              const a = pick(recipe.a);
+              const b = pick(recipe.b);
+              // (Either order works when both halves are troops that stay on the field.)
+              const eitherWay = Boolean(CARDS[a]?.places && CARDS[b]?.places && !DEFENDERS[a]?.instant && !DEFENDERS[b]?.instant);
+              const missing = [owned(recipe.a) ? "" : names(recipe.a), owned(recipe.b) ? "" : names(recipe.b)].filter(Boolean).join(" and ");
+              return (
+                <article className={`${oc.labCard} ${known ? oc.labReady : ""}`} key={kind}>
+                  <div className={oc.labFormula}>
+                    <LabHalf ids={recipe.a} units={u.units} />
+                    <Icon className={oc.labSigil} fallback="+" src={ART.sigil} />
+                    <LabHalf ids={recipe.b} units={u.units} />
+                    <span aria-hidden className={oc.labArrow}>▸</span>
+                    <span className={`${oc.labResult} ${known ? "" : oc.labSilhouette}`} title={known ? def.name : "Undiscovered hybrid"}>
+                      <DefenderArt kind={kind} size={76} />
+                    </span>
+                  </div>
+                  <div className={oc.labText}>
+                    <strong>{known ? def.name : "???"}</strong>
+                    {known ? (
+                      <>
+                        <small>
+                          {Math.round(def.hp * levelPower(Math.max(progress.levels[a] ?? 1, progress.levels[b] ?? 1)))} HP · {price} gold for both cards · {eitherWay ? "drop either card on the other" : `drop ${names(recipe.b)} on ${names(recipe.a)}`}
+                        </small>
+                        <p>{def.blurb}</p>
+                        {def.surge ? <p className={oc.surge}>Surge: {surgeText(def)}</p> : null}
+                      </>
+                    ) : <p>Recruit {missing} to learn this hybrid.</p>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null)}
+    </div>
   );
 }
 

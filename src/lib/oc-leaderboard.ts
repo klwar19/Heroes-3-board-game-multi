@@ -1,15 +1,22 @@
 "use client";
 
 /**
- * Client for the Order & Chaos tally boards (the `ocscores` PartyKit party,
- * party/oc-scores.ts). Plain HTTP; every call resolves (never throws) and
- * reports `offline` when no PartyKit host is configured or the board can't be
- * reached, so a board being down never blocks play.
+ * Client for the Order & Chaos tally boards: the app's own API
+ * (/api/order-chaos/scores, src/server/oc-scores), where every row belongs to
+ * a Heroes 3 account and shows its nickname, kept like ranked MMR. Plain
+ * HTTP; every call resolves (never throws) and reports `offline` when the
+ * board can't be reached, so a board being down never blocks play.
+ *
+ * Reading is open to everyone. Posting needs a signed-in account (the session
+ * cookie rides along on these same-origin calls); guests keep their bests on
+ * the device until they sign in. The previous home of the boards, the
+ * `ocscores` PartyKit party, is no longer used.
  */
 
 import type { OcBoardEntry, OcBoardMode, OcBoardView, OcRunSummary } from "@/engine/garrison/order-chaos/scores";
-import { ocPublicId } from "@/engine/garrison/order-chaos/scores";
-import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
+import { useEffect, useSyncExternalStore } from "react";
+import { fetchSession } from "@/lib/auth-client";
+import { ocAccountPid } from "@/lib/oc-account-pid";
 
 export type OcBoardRow = OcBoardEntry & { rank: number };
 
@@ -19,54 +26,89 @@ export type OcBoardResult = { ok: true; rows: OcBoardRow[]; today: string } | { 
 
 export type OcPlacing = { rank: number | null; best: OcBoardRow | null; improved: boolean };
 
-export type OcPostResult = { ok: true; score: number; pid: string; today: OcPlacing; all: OcPlacing } | { ok: false; offline: boolean; error: string };
+/**
+ * `busy`: the board asked for a pause between posts (try again in a few seconds).
+ * `signedOut`: no signed-in account (nothing was posted; sign in and it goes up).
+ */
+export type OcPostResult =
+  | { ok: true; score: number; pid: string; today: OcPlacing; all: OcPlacing }
+  | { ok: false; offline: boolean; busy?: boolean; signedOut?: boolean; error: string };
 
-const SCORE_ID_KEY = "order-chaos:score-id:v1";
+const ENDPOINT = "/api/order-chaos/scores";
 const OFFLINE = "The tally board can't be reached right now.";
+const SIGNED_OUT = "Sign in to your Heroes 3 account to go on the tally board.";
 
-let sessionId: string | null = null;
+/** True: the boards are this app's own API, always there (a failed call reports `offline`). */
+export function ocBoardsConfigured(): boolean {
+  return true;
+}
 
-function freshId(): string {
-  const bytes = new Uint8Array(16);
-  try {
-    crypto.getRandomValues(bytes);
-  } catch {
-    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  return `oc_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+// ---------------------------------------------------------------------------
+// Who is posting: the signed-in account
+
+/** The signed-in account the boards know this player by (`pid`: the id its rows carry). */
+export type OcAccount = { id: string; nickname: string; pid: string };
+
+/** undefined: not checked yet; null: a guest (or the check failed). */
+let account: OcAccount | null | undefined;
+let checking: Promise<void> | null = null;
+const accountListeners = new Set<() => void>();
+
+function setAccount(next: OcAccount | null): void {
+  if (account === next || (account && next && account.id === next.id && account.nickname === next.nickname)) return;
+  account = next;
+  for (const listener of accountListeners) listener();
+}
+
+/** Ask the server who is signed in (deduplicated while one check is running). */
+export function refreshOcAccount(): Promise<void> {
+  checking ??= (async () => {
+    try {
+      const profile = await fetchSession();
+      setAccount(profile ? { id: profile.id, nickname: profile.nickname, pid: ocAccountPid(profile.id) } : null);
+    } catch {
+      // Can't tell: keep what an earlier check said; with none, post nothing until a later check says who this is.
+      if (account === undefined) setAccount(null);
+    } finally {
+      checking = null;
+    }
+  })();
+  return checking;
+}
+
+/** The account as last checked (undefined before the first check finishes). */
+export function getOcAccount(): OcAccount | null | undefined {
+  return account;
+}
+
+function subscribeAccount(listener: () => void): () => void {
+  accountListeners.add(listener);
+  return () => accountListeners.delete(listener);
 }
 
 /**
- * This browser's anonymous tally-board id (kept in localStorage so a player
- * keeps one row per board). With storage blocked it lasts for this visit.
+ * The signed-in account, kept current: checked when a component using it
+ * mounts (so coming back from the sign-in page is noticed) and whenever the
+ * window regains focus. undefined while the first check runs.
  */
-export function getOcScoreId(): string {
-  try {
-    const stored = window.localStorage.getItem(SCORE_ID_KEY);
-    if (stored && /^[A-Za-z0-9_-]{16,64}$/.test(stored)) return stored;
-    const id = freshId();
-    window.localStorage.setItem(SCORE_ID_KEY, id);
-    return id;
-  } catch {
-    sessionId ??= freshId();
-    return sessionId;
-  }
+export function useOcAccount(): OcAccount | null | undefined {
+  const value = useSyncExternalStore(subscribeAccount, getOcAccount, () => undefined);
+  useEffect(() => {
+    void refreshOcAccount();
+    const onFocus = () => void refreshOcAccount();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+  return value;
 }
 
-/** The public id the boards show for this browser (to highlight "you"). */
+/** The public id this player's rows carry (to highlight "you"); "" for a guest. */
 export function getOcPublicId(): string {
-  return ocPublicId(getOcScoreId());
+  return account?.pid ?? "";
 }
 
-function endpoint(): string | null {
-  const host = getPartyKitHost();
-  return host ? `${partyProtocol(host)}://${host}/parties/ocscores/global` : null;
-}
-
-/** True when a tally board is configured at all (else it's always offline). */
-export function ocBoardsConfigured(): boolean {
-  return endpoint() !== null;
-}
+// ---------------------------------------------------------------------------
+// Reading
 
 /** Boards fetched in the last few seconds (flipping tabs on the Tally Board doesn't refetch). */
 const BOARD_CACHE_MS = 20_000;
@@ -75,17 +117,16 @@ const boardCache = new Map<string, { at: number; result: OcBoardResult & { ok: t
 let postedAt = 0;
 
 /**
- * One board page. Called only while a tally screen is open (never polled); a
- * page fetched in the last BOARD_CACHE_MS is reused unless `fresh`.
+ * One board page. Called only while a tally screen is open (it refreshes
+ * itself then, see OcTallyBoard); a page fetched in the last BOARD_CACHE_MS is
+ * reused unless `fresh`.
  */
 export async function fetchOcBoard(query: OcBoardQuery, fresh = false): Promise<OcBoardResult> {
-  const base = endpoint();
-  if (!base) return { ok: false, offline: true, error: "No tally board is set up for this game server." };
   const params = new URLSearchParams({ mode: query.mode, view: query.view });
   if (query.raid) params.set("raid", query.raid);
   if (query.day) params.set("day", query.day);
   if (query.setup) params.set("setup", query.setup);
-  const url = `${base}?${params.toString()}`;
+  const url = `${ENDPOINT}?${params.toString()}`;
   const bypass = fresh || Date.now() - postedAt < 15_000;
   const hit = boardCache.get(url);
   if (!bypass && hit && Date.now() - hit.at < BOARD_CACHE_MS) return hit.result;
@@ -104,20 +145,57 @@ export async function fetchOcBoard(query: OcBoardQuery, fresh = false): Promise<
   }
 }
 
-export async function postOcRun(name: string, run: OcRunSummary): Promise<OcPostResult> {
-  const base = endpoint();
-  if (!base) return { ok: false, offline: true, error: "No tally board is set up for this game server." };
+// ---------------------------------------------------------------------------
+// Posting
+
+/** The board takes one post per account every 5 s: posts from this browser queue up this far apart. */
+const POST_GAP_MS = 5_300;
+let postQueue: Promise<unknown> = Promise.resolve();
+let lastPostStart = 0;
+const postListeners = new Set<() => void>();
+
+/** Called after any post the board accepted (an open Tally Board refreshes). */
+export function subscribeOcPosts(listener: () => void): () => void {
+  postListeners.add(listener);
+  return () => postListeners.delete(listener);
+}
+
+/**
+ * Post a run to its boards under the signed-in account (the server takes the
+ * name from the account). Posts are sent one at a time, spaced to the board's
+ * per-account limit, so the automatic sync and a finished run's panel never
+ * trip over each other.
+ */
+export function postOcRun(run: OcRunSummary): Promise<OcPostResult> {
+  const next = postQueue.then(async () => {
+    const wait = lastPostStart + POST_GAP_MS - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastPostStart = Date.now();
+    const result = await sendOcRun(run);
+    if (result.ok) for (const listener of postListeners) listener();
+    return result;
+  });
+  postQueue = next.catch(() => undefined);
+  return next;
+}
+
+async function sendOcRun(run: OcRunSummary): Promise<OcPostResult> {
   try {
-    const response = await fetch(base, {
+    const response = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cid: getOcScoreId(), name, run })
+      body: JSON.stringify({ run })
     });
     const data = (await response.json().catch(() => null)) as
-      | { ok?: boolean; score?: number; pid?: string; today?: OcPlacing; all?: OcPlacing; error?: string }
+      | { ok?: boolean; score?: number; pid?: string; today?: OcPlacing; all?: OcPlacing; error?: string; signedOut?: boolean }
       | null;
+    if (response.status === 401 || data?.signedOut) {
+      // The session is gone: this player is a guest now (their bests wait on the device).
+      setAccount(null);
+      return { ok: false, offline: false, signedOut: true, error: data?.error ?? SIGNED_OUT };
+    }
     if (!response.ok || !data?.ok || !data.today || !data.all) {
-      return { ok: false, offline: response.status >= 500 || !data, error: data?.error ?? OFFLINE };
+      return { ok: false, offline: response.status >= 500 || !data, busy: response.status === 429, error: data?.error ?? OFFLINE };
     }
     // The boards changed: the next look fetches them afresh.
     boardCache.clear();

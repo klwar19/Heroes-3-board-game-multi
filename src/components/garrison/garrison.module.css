@@ -1757,3 +1757,188 @@
     linear-gradient(180deg, #a2692f 0%, #7c4b1e 55%, #5b3411 100%);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
 }
+
+/* Order & Chaos: a world boss approaches (boss-omen.tsx). Under the announcer, over the board. */
+.omen {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.omenVignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 90px 30px rgba(190, 0, 10, 0.75), inset 0 0 220px 60px rgba(60, 0, 4, 0.55);
+  animation: omenPulse 1.75s ease-in-out infinite;
+}
+
+.omenNear .omenVignette {
+  animation-duration: 0.9s;
+}
+
+.omenTape {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: clamp(14px, 2.2cqw, 30px);
+  background: repeating-linear-gradient(-45deg, #f2c200 0 22px, #141008 22px 44px);
+  box-shadow: 0 0 18px rgba(255, 60, 20, 0.6);
+  opacity: 0.92;
+  animation: omenTape 1.2s linear infinite;
+}
+
+.omenTapeTop { top: 0; }
+.omenTapeBottom { bottom: 0; animation-direction: reverse; }
+
+.omenNear .omenTape {
+  opacity: 0.6;
+}
+
+.omenText {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-weight: bold;
+  text-align: center;
+  paint-order: stroke fill;
+}
+
+.omenWarn {
+  font-size: clamp(40px, 7cqw, 104px);
+  letter-spacing: 0.08em;
+  color: #ff2a1a;
+  -webkit-text-stroke: 3px #1a0200;
+  text-shadow: 0 0 30px rgba(255, 30, 10, 0.9), 0 5px 0 #1a0200;
+  animation: omenBlink 0.875s steps(1, end) infinite, omenShudder 0.35s linear infinite;
+}
+
+.omenName {
+  font-size: clamp(30px, 5cqw, 76px);
+  color: #ff6a3a;
+  -webkit-text-stroke: 3px #1a0200;
+  text-shadow: 0 0 26px rgba(255, 40, 10, 0.85), 0 5px 0 #1a0200;
+  animation: omenShudder 0.5s linear infinite;
+}
+
+.omenSub {
+  font-size: clamp(14px, 1.9cqw, 28px);
+  color: #ffe2c8;
+  -webkit-text-stroke: 1.5px #1a0200;
+  text-shadow: 0 2px 0 #1a0200;
+}
+
+.omenCount {
+  font-size: clamp(36px, 6cqw, 90px);
+  color: #fff4d6;
+  -webkit-text-stroke: 3px #3a0400;
+  text-shadow: 0 0 24px rgba(255, 60, 20, 0.9);
+  animation: omenTick 1s ease-out both;
+}
+
+.omenFlash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 250, 235, 0.95), rgba(255, 40, 20, 0.75) 55%, rgba(80, 0, 0, 0.85));
+  animation: omenFlash 0.9s ease-out both;
+}
+
+.omenSlam {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  font-weight: bold;
+  paint-order: stroke fill;
+  transform: translate(-50%, -50%);
+  animation: omenSlam 2.2s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.omenSlamName {
+  font-size: clamp(44px, 8cqw, 120px);
+  color: #ff3a1a;
+  -webkit-text-stroke: 3px #1a0200;
+  text-shadow: 0 0 40px rgba(255, 30, 10, 0.95), 0 7px 0 #1a0200;
+}
+
+.omenSlamSub {
+  font-size: clamp(18px, 2.6cqw, 38px);
+  color: #fff0dc;
+  -webkit-text-stroke: 2px #1a0200;
+}
+
+@keyframes omenPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+@keyframes omenTape {
+  from { background-position: 0 0; }
+  to { background-position: 62px 0; }
+}
+
+@keyframes omenBlink {
+  0% { opacity: 1; }
+  60% { opacity: 0.15; }
+}
+
+@keyframes omenShudder {
+  0%, 100% { translate: 0 0; }
+  25% { translate: -2px 1px; }
+  50% { translate: 2px -1px; }
+  75% { translate: -1px -1px; }
+}
+
+@keyframes omenTick {
+  0% { transform: scale(1.6); opacity: 0; }
+  20% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0.85; }
+}
+
+@keyframes omenFlash {
+  0% { opacity: 0; }
+  8% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes omenSlam {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.6); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(0.94); }
+  16%, 24%, 32% { transform: translate(calc(-50% - 6px), calc(-50% + 3px)) scale(1); }
+  20%, 28%, 36% { transform: translate(calc(-50% + 6px), calc(-50% - 3px)) scale(1); }
+  40% { transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.04); }
+}
+
+/* Reduced motion: the same words and colors, held still. */
+.omenCalm .omenVignette,
+.omenCalm .omenTape,
+.omenCalm .omenWarn,
+.omenCalm .omenName,
+.omenCalm .omenCount {
+  animation: none;
+}
+
+.omenCalm .omenSlam {
+  animation: omenFade 2.2s linear both;
+}
+
+.omenCalm .omenFlash {
+  display: none;
+}
+
+@keyframes omenFade {
+  0%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}

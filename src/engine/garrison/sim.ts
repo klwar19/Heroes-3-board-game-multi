@@ -651,6 +651,12 @@ export type GarrisonState = {
     done: boolean;
     blessPending: boolean;
     laneWeights: number[];
+    /**
+     * Order & Chaos: the world boss due next and the tick it steps onto the
+     * lawn, fixed when the wave before it comes (the warning and the boss
+     * music are timed to it); absent otherwise and in old snapshots.
+     */
+    bossDue?: { at: number; kind: EnemyKind };
   };
   /** The Dracolich (`phase`/`pieceAt`: Order & Chaos phase set pieces). */
   boss: { id: number; nextAt: number; last: string; phase?: number; pieceAt?: number } | null;
@@ -2167,8 +2173,29 @@ function spawnWave(s: GarrisonState, wave: number): void {
   d.waveHp = hp;
   d.lastWaveAt = s.tick;
   d.nextAt = s.tick + sec(25) + randInt(s, 0, sec(6));
+  // Order & Chaos: a world boss comes on a fixed beat after the wave before it
+  // (never early), so its warning and its music can be timed to the arrival.
+  delete d.bossDue;
+  const nextBoss = bossLeadingWave(s, wave + 1);
+  if (nextBoss) {
+    d.nextAt = s.tick + BOSS_LULL;
+    d.bossDue = { at: d.nextAt + (isFlagWave(s, wave + 1) ? HUGE_WAVE_DELAY : 0), kind: nextBoss };
+  }
   s.events.push({ e: "wave", wave, flag });
   if (s.cfg.endless && flag) d.blessPending = true;
+}
+
+/** The quiet before a world boss: from the wave before it to its call (the warning plays meanwhile). */
+const BOSS_LULL = sec(40);
+/** A great assault's call comes this long before it does. */
+const HUGE_WAVE_DELAY = sec(6);
+
+/** The world boss that would lead this wave if it came now (the same test spawnWave makes), or null. */
+function bossLeadingWave(s: GarrisonState, wave: number): EnemyKind | null {
+  if (s.warbossId !== undefined || (!s.cfg.endless && wave > s.cfg.waves)) return null;
+  const warboss = s.cfg.oc?.warboss;
+  const kind = warboss && warboss.wave === wave ? warboss.kind : endlessBossFor(s, wave)?.kind;
+  return kind && ENEMIES[kind]?.warboss ? kind : null;
 }
 
 function remainingWaveHp(s: GarrisonState, wave: number): number {
@@ -2193,7 +2220,7 @@ function director(s: GarrisonState): void {
     }
     return;
   }
-  const early = d.wave > 0 && s.tick - d.lastWaveAt >= sec(6) && remainingWaveHp(s, d.wave) <= d.waveHp * 0.5;
+  const early = d.wave > 0 && !d.bossDue && s.tick - d.lastWaveAt >= sec(6) && remainingWaveHp(s, d.wave) <= d.waveHp * 0.5;
   if (s.tick < d.nextAt && !early) return;
   const next = d.wave + 1;
   if (!s.cfg.endless && next > s.cfg.waves) {
@@ -2201,7 +2228,7 @@ function director(s: GarrisonState): void {
     return;
   }
   if (isFlagWave(s, next)) {
-    d.hugeAt = s.tick + sec(6);
+    d.hugeAt = s.tick + HUGE_WAVE_DELAY;
     d.nextAt = Number.MAX_SAFE_INTEGER;
     s.events.push({ e: "hugeWave", final: !s.cfg.endless && next === s.cfg.waves });
   } else {

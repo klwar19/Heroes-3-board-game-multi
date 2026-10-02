@@ -23,7 +23,7 @@ export type Role = "host" | "guest";
  * Bumped whenever the simulation changes in a way that would make two
  * browsers disagree: host and guest must run the same rules to stay in lockstep.
  */
-export const GARRISON_NET_VERSION = 8;
+export const GARRISON_NET_VERSION = 9;
 
 /** Frames between the two seats. */
 export type NetFrame =

@@ -9,12 +9,20 @@ import { musicGain, silencedInBackground, getAudioMix, subscribeAudioMix } from 
 /**
  * "oc-prep" / "oc-battle" are the Order & Chaos mode's own scenes: the
  * preparation theme (loadout screen + Last Stand planning, looping) and the
- * battle opener (plays once per battle, then hands over to the combat rotation).
- * "oc-boss" is an Order & Chaos boss fight: every other track stops, the
- * warning sting plays once, then the boss theme loops until the scene changes.
- * "oc-menu" is the Order & Chaos menus' own theme (the main game's menus keep "menu").
+ * battle opener, Grasswalk (plays once per battle, then hands over to the
+ * combat rotation). "oc-battle-horde" opens the same way, then its rotation
+ * also carries Remnants of the Horde (Endless Siege, Chaos Raids, some
+ * campaign worlds); "oc-battle-remnants" opens with Remnants of the Horde, then
+ * Grasswalk, the two taking turns from then on (Krewlod).
+ * "oc-boss" is an Order & Chaos boss fight: the boss theme loops until the
+ * scene changes. When the battle announces the boss ahead (setBossApproach),
+ * the music fades away, the warning plays alone in the wave before it, and the
+ * theme swells in so its first full accent lands as the boss arrives; a boss
+ * that comes unannounced gets the warning sting once, then the theme.
+ * "oc-menu" is the Order & Chaos menus' own theme (the main game's menus keep "menu");
+ * "oc-home" is the mode-select screen's own, The Orcish Hordes.
  */
-export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle" | "oc-boss" | "oc-menu";
+export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle" | "oc-battle-horde" | "oc-battle-remnants" | "oc-boss" | "oc-menu" | "oc-home";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
 export type MapMusicContext = {
   /** Drives a fresh faction opener when the relevant map turn changes. */
@@ -29,7 +37,7 @@ type MusicProfile =
   | "menu" | "combat" | "map-general" | "map-water" | "map-underground"
   | "town-necropolis" | "town-rampart" | "town-cove" | "town-castle"
   | "town-stronghold" | "town-tower" | "town-fortress"
-  | "oc-prep" | "oc-battle" | "oc-boss" | "oc-boss-loop" | "oc-menu";
+  | "oc-prep" | "oc-battle" | "oc-battle-horde" | "oc-battle-remnants" | "oc-horde" | "oc-pair" | "oc-boss" | "oc-boss-loop" | "oc-menu" | "oc-home";
 
 /** Multi-track profiles advance randomly and never immediately repeat. */
 export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
@@ -47,9 +55,15 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   "town-fortress": ["music/swamp"],
   "oc-prep": ["music/order-chaos/choose-your-seeds"],
   "oc-battle": ["music/order-chaos/grasswalk"],
+  "oc-battle-horde": ["music/order-chaos/grasswalk"],
+  "oc-battle-remnants": ["music/order-chaos/remnants-of-the-horde"],
+  // Two tracks that take turns (the pool never repeats the one just played).
+  "oc-pair": ["music/order-chaos/grasswalk", "music/order-chaos/remnants-of-the-horde"],
+  "oc-horde": ["music/combat-02", "music/combat-03", "music/combat-04", "music/order-chaos/remnants-of-the-horde"],
   "oc-boss": ["music/order-chaos/boss-warning"],
   "oc-boss-loop": ["music/order-chaos/flesh-and-metal"],
   "oc-menu": ["music/order-chaos/menu-casino"],
+  "oc-home": ["music/order-chaos/orcish-hordes"],
 };
 
 /**
@@ -57,7 +71,7 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
  * file is still loaded (a restarted battle opens with Grasswalk again instead
  * of resuming it mid-song).
  */
-const RESTART_ON_REQUEST: ReadonlySet<MusicProfile> = new Set<MusicProfile>(["oc-prep", "oc-battle", "oc-boss"]);
+const RESTART_ON_REQUEST: ReadonlySet<MusicProfile> = new Set<MusicProfile>(["oc-prep", "oc-battle", "oc-battle-horde", "oc-battle-remnants", "oc-boss"]);
 
 /** Representative track retained for scene/manifest audits. */
 export const SCENE_TRACK: Record<MusicScene, string> = {
@@ -66,11 +80,24 @@ export const SCENE_TRACK: Record<MusicScene, string> = {
   combat: MUSIC_TRACKS.combat[0]!,
   "oc-prep": MUSIC_TRACKS["oc-prep"][0]!,
   "oc-battle": MUSIC_TRACKS["oc-battle"][0]!,
+  "oc-battle-horde": MUSIC_TRACKS["oc-battle-horde"][0]!,
+  "oc-battle-remnants": MUSIC_TRACKS["oc-battle-remnants"][0]!,
   "oc-boss": MUSIC_TRACKS["oc-boss-loop"][0]!,
   "oc-menu": MUSIC_TRACKS["oc-menu"][0]!,
+  "oc-home": MUSIC_TRACKS["oc-home"][0]!,
 };
 
 export const MUSIC_VOLUME = 0.18;
+/** The boss theme sits a little above the other beds; the warning above it. */
+export const BOSS_MUSIC_VOLUME = 0.24;
+export const BOSS_WARNING_VOLUME = 0.3;
+
+/** The bed's own level (before the Options mix and any boss-approach fade). */
+function profileVolume(profile: MusicProfile | null): number {
+  if (profile === "oc-boss-loop") return BOSS_MUSIC_VOLUME;
+  if (profile === "oc-boss") return BOSS_WARNING_VOLUME;
+  return MUSIC_VOLUME;
+}
 const MUTE_STORAGE_KEY = "h3-music-muted";
 const soundLibrary = soundManifest as Record<string, { src?: string }>;
 
@@ -116,9 +143,10 @@ function hookUnlock(): void {
   if (unlockHooked || typeof window === "undefined") return;
   unlockHooked = true;
   const unlock = () => {
-    if (audio && currentScene && !muted && !held && !silencedInBackground() && !stingPlaying() && audio.paused) {
+    if (audio && currentScene && !muted && !held && !silencedInBackground() && !stingPlaying() && !bedHushed() && audio.paused) {
       audio.play().catch(() => undefined);
     }
+    if (approach) syncWarning();
   };
   window.addEventListener("pointerdown", unlock);
   window.addEventListener("keydown", unlock);
@@ -132,10 +160,11 @@ function hookUnlock(): void {
 let lastBackgroundSetting = getAudioMix().background;
 
 function resumeBedIfDue(): void {
-  if (audio && currentScene && currentProfile && !muted && !held && !silencedInBackground() && !stingPlaying() && audio.paused) {
+  if (audio && currentScene && currentProfile && !muted && !held && !silencedInBackground() && !stingPlaying() && !bedHushed() && audio.paused) {
     const playing = audio.play() as Promise<void> | undefined;
     playing?.catch?.(() => undefined);
   }
+  if (approach) syncWarning();
 }
 
 function syncBackgroundSilence(): void {
@@ -145,7 +174,8 @@ function syncBackgroundSilence(): void {
 
 if (typeof window !== "undefined") {
   subscribeAudioMix(() => {
-    if (audio) audio.volume = MUSIC_VOLUME * musicGain();
+    applyBedVolume();
+    if (warning) warning.volume = warningVolume();
     if (fanfare) fanfare.volume = VICTORY_FANFARE_VOLUME * musicGain();
     const background = getAudioMix().background;
     if (background !== lastBackgroundSetting) {
@@ -224,7 +254,7 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
           return;
         }
         audio.load();
-        if (!held && !silencedInBackground() && !stingPlaying()) audio.play().catch(() => undefined);
+        if (!held && !silencedInBackground() && !stingPlaying() && !bedHushed()) audio.play().catch(() => undefined);
       }, 1500 * bedFailures);
     });
   }
@@ -238,11 +268,11 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
   else if (chooseAnother && RESTART_ON_REQUEST.has(profile)) audio.currentTime = 0;
   currentTrack = nextTrack;
   audio.loop = tracks.length === 1 && currentContinuationProfile === null;
-  audio.volume = MUSIC_VOLUME * musicGain();
+  applyBedVolume();
   hookUnlock();
-  // Held by a game pause (or a hidden tab the player silenced in Options): the
-  // track is cued, releasing the hold starts it.
-  if (held || silencedInBackground()) return;
+  // Held by a game pause (or a hidden tab the player silenced in Options), or
+  // hushed for a boss warning: the track is cued, releasing the hold starts it.
+  if (held || silencedInBackground() || bedHushed()) return;
   audio.play().catch(() => undefined);
 }
 
@@ -263,16 +293,173 @@ export function setMusicHeld(next: boolean): void {
   if (typeof window === "undefined" || !audio) return;
   if (held) {
     audio.pause();
+    warning?.pause();
     return;
   }
-  if (!muted && currentScene && currentProfile && !silencedInBackground() && !stingPlaying()) {
+  if (!muted && currentScene && currentProfile && !silencedInBackground() && !stingPlaying() && !bedHushed()) {
     audio.play().catch(() => undefined);
   }
+  if (approach) syncWarning();
 }
 
 function stopAudio(): void {
   audio?.pause();
   fanfare?.pause();
+  warning?.pause();
+}
+
+// ---- Order & Chaos: a world boss approaches -----------------------------------
+
+/** Where the boss theme's first full accent falls: the world boss steps onto the lawn on it. */
+export const BOSS_ARRIVAL_BEAT_S = 12.95;
+/** The boss theme comes in as the warning decays, this far into the warning. */
+const BOSS_WARNING_HANDOFF_S = 16;
+/** The warning starts this long before the boss arrives. */
+export const BOSS_WARNING_LEAD_S = BOSS_ARRIVAL_BEAT_S + BOSS_WARNING_HANDOFF_S;
+/** Before the warning, the battle music (and the battle's sounds) fade away over this long. */
+export const BOSS_HUSH_S = 1.5;
+/** The boss theme swells in, and the warning fades out, over this long. */
+const BOSS_SWELL_S = 4;
+/** The battle's sounds come back to normal over this long once the boss theme starts. */
+const BOSS_EFFECTS_RETURN_S = 6;
+const BOSS_WARNING_TRACK = MUSIC_TRACKS["oc-boss"][0]!;
+
+type ApproachStage = "hush" | "warning" | "swell";
+const STAGE_ORDER: Record<ApproachStage, number> = { hush: 0, warning: 1, swell: 2 };
+/** The boss approach in progress (null: none): its stage and the seconds left before the boss arrives. */
+let approach: { stage: ApproachStage; left: number } | null = null;
+let warning: HTMLAudioElement | null = null;
+let warningStarted = false;
+
+function approachStage(left: number): ApproachStage | null {
+  if (left <= BOSS_ARRIVAL_BEAT_S) return "swell";
+  if (left <= BOSS_WARNING_LEAD_S) return "warning";
+  if (left <= BOSS_WARNING_LEAD_S + BOSS_HUSH_S) return "hush";
+  return null;
+}
+
+/** The bed stays silent while the warning plays alone. */
+function bedHushed(): boolean {
+  return approach?.stage === "warning";
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+/** The bed's fade during the approach: fading out before the warning, swelling in after it. */
+function approachBedFactor(): number {
+  if (!approach) return 1;
+  if (approach.stage === "hush") return clamp01((approach.left - BOSS_WARNING_LEAD_S) / BOSS_HUSH_S);
+  if (approach.stage === "swell") return clamp01((BOSS_ARRIVAL_BEAT_S - approach.left) / BOSS_SWELL_S);
+  return 0;
+}
+
+function applyBedVolume(): void {
+  if (audio) audio.volume = profileVolume(currentProfile) * musicGain() * approachBedFactor();
+}
+
+function warningVolume(): number {
+  const fade = approach?.stage === "swell" ? 1 - clamp01((BOSS_ARRIVAL_BEAT_S - approach.left) / BOSS_SWELL_S) : 1;
+  return BOSS_WARNING_VOLUME * musicGain() * fade;
+}
+
+/** Keeps the warning element playing exactly while the approach wants it heard. */
+function syncWarning(): void {
+  if (!warning) return;
+  warning.volume = warningVolume();
+  const audible = approach !== null && warningStarted && (approach.stage === "warning" || (approach.stage === "swell" && warning.volume > 0))
+    && !muted && !held && !silencedInBackground() && !stingPlaying() && !warning.ended;
+  if (!audible) {
+    if (!warning.paused) warning.pause();
+    return;
+  }
+  if (warning.paused) {
+    const playing = warning.play() as Promise<void> | undefined;
+    playing?.catch?.(() => undefined);
+  }
+}
+
+function startWarning(): void {
+  if (!warning) {
+    warning = new Audio();
+    warning.loop = false;
+  }
+  const src = trackSrc(BOSS_WARNING_TRACK);
+  if (!warning.src.endsWith(src)) warning.src = src;
+  else warning.currentTime = 0;
+  warningStarted = true;
+  hookUnlock();
+  syncWarning();
+}
+
+/** The boss theme takes the bed: from its top, or further in when the approach began late, so its accent still meets the boss. */
+function bossThemeIn(left: number): void {
+  currentScene = "oc-boss";
+  currentProfile = "oc-boss-loop";
+  currentContinuationProfile = null;
+  currentRequestKey = "oc-boss";
+  if (muted) return;
+  playProfile("oc-boss-loop", true);
+  // (Always set: a theme still cued from an earlier boss must not pick up mid-song.)
+  if (audio) audio.currentTime = Math.max(0, BOSS_ARRIVAL_BEAT_S - left);
+}
+
+/** Forget the approach and silence the warning (the caller decides what the bed does next). */
+function dropApproach(): void {
+  approach = null;
+  warningStarted = false;
+  warning?.pause();
+}
+
+/** The approach is over: the boss came (its theme plays on) or it was called off (the battle music comes back). */
+function endApproach(): void {
+  if (!approach) return;
+  dropApproach();
+  applyBedVolume();
+  resumeBedIfDue();
+}
+
+/**
+ * Order & Chaos: the seconds (real time, at the battle's speed) before a world
+ * boss arrives, every frame; null when none is due. The battle music fades
+ * away, the warning plays alone, then the boss theme swells in on the bed so
+ * its first full accent lands on the arrival. Stages only move forward (a
+ * speed change never replays the warning); null after the theme came in
+ * leaves the bed to the "oc-boss" scene, null before it calls the approach off.
+ */
+export function setBossApproach(left: number | null): void {
+  if (typeof window === "undefined") return;
+  const stage = left === null ? null : approachStage(left);
+  if (left === null || (stage === null && !approach)) {
+    endApproach();
+    return;
+  }
+  const next: ApproachStage = approach && (stage === null || STAGE_ORDER[approach.stage] > STAGE_ORDER[stage]) ? approach.stage : stage!;
+  const entered = approach?.stage !== next ? next : null;
+  approach = { stage: next, left };
+  if (entered === "warning") {
+    audio?.pause();
+    startWarning();
+  } else if (entered === "swell" && currentScene !== "oc-boss") {
+    // (A theme already on the bed came with the boss scene's own sting: no second warning.)
+    if (!warningStarted) startWarning();
+    bossThemeIn(left);
+  }
+  applyBedVolume();
+  syncWarning();
+}
+
+/**
+ * The battle's own sounds during a boss approach (0..1): they fade with the
+ * music, stay silent through the warning and come back as the boss theme
+ * starts. Always 1 while the music is muted (nothing would play in their place).
+ */
+export function bossEffectsDuck(left: number | null): number {
+  if (left === null || muted || silencedInBackground()) return 1;
+  if (left > BOSS_WARNING_LEAD_S) return clamp01((left - BOSS_WARNING_LEAD_S) / BOSS_HUSH_S);
+  if (left > BOSS_ARRIVAL_BEAT_S) return 0;
+  return clamp01((BOSS_ARRIVAL_BEAT_S - left) / BOSS_EFFECTS_RETURN_S);
 }
 
 /** The HoMM3 "Win Battle" fanfare (public/sounds/manifest.json key). */
@@ -304,6 +491,7 @@ function stingDone(): void {
 export function playCombatSting(track: CombatStingTrack): void {
   if (typeof window === "undefined" || muted || silencedInBackground()) return;
   audio?.pause();
+  warning?.pause();
   if (!fanfare) {
     fanfare = new Audio();
     fanfare.addEventListener("ended", stingDone);
@@ -312,6 +500,7 @@ export function playCombatSting(track: CombatStingTrack): void {
   }
   fanfareEnded = () => {
     if (!muted && currentProfile && currentScene) playProfile(currentProfile, false);
+    if (approach) syncWarning();
   };
   fanfare.src = trackSrc(track);
   fanfare.loop = false;
@@ -359,6 +548,9 @@ function continuationProfileFor(scene: MusicScene, profile: MusicProfile): Music
   // Order & Chaos battles open with their own theme, then rotate through the
   // game's combat tracks (random, never an immediate repeat) until the battle ends.
   if (scene === "oc-battle") return "combat";
+  // ...and the horde's fights (Endless Siege, Chaos Raids, Krewlod) also carry Remnants of the Horde.
+  if (scene === "oc-battle-horde") return "oc-horde";
+  if (scene === "oc-battle-remnants") return "oc-pair";
   // A boss fight: the warning sting once, then the boss theme on a loop.
   if (scene === "oc-boss") return "oc-boss-loop";
   if (scene !== "map" || !profile.startsWith("town-")) return null;
@@ -397,6 +589,7 @@ export function mapMusicContext(state: GameState, viewerPlayerId?: string): MapM
 export function setMusicScene(scene: MusicScene | null, mapContext?: MapMusicContext): void {
   if (typeof window === "undefined") return;
   if (!scene) {
+    dropApproach();
     if (currentScene === null) return;
     currentScene = null;
     currentProfile = null;
@@ -407,6 +600,17 @@ export function setMusicScene(scene: MusicScene | null, mapContext?: MapMusicCon
   }
   const request = requestFor(scene, mapContext);
   if (currentScene === scene && currentRequestKey === request.key) return;
+  // The boss came while its approach was still hushing or warning: the theme comes in now.
+  if (scene === "oc-boss" && approach) {
+    approach = { stage: "swell", left: Math.min(approach.left, BOSS_ARRIVAL_BEAT_S) };
+    if (!warningStarted) startWarning();
+    bossThemeIn(approach.left);
+    applyBedVolume();
+    syncWarning();
+    return;
+  }
+  // Any other scene calls an approach off (the new scene takes the bed).
+  dropApproach();
   if (scene === "map") {
     const nextGameKey = mapContext?.gameKey ?? "legacy";
     if (playlistGameKey !== nextGameKey) {
@@ -436,6 +640,7 @@ export function setMusicMuted(next: boolean): void {
   }
   if (muted) stopAudio();
   else if (currentProfile) playProfile(currentProfile, false);
+  if (approach) syncWarning();
   notify();
 }
 
@@ -456,6 +661,9 @@ export function useBackgroundMusic(scene: MusicScene | null, context?: MapMusicC
 export function __resetMusicForTests(): void {
   audio = null;
   fanfare = null;
+  warning = null;
+  warningStarted = false;
+  approach = null;
   fanfareEnded = null;
   currentScene = null;
   currentProfile = null;

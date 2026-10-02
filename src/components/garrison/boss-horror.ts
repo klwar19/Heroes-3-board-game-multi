@@ -1,17 +1,21 @@
 /**
  * Boss dread (drawing only): while a world boss (or the Dracolich) lives, the
- * board darkens at the edges with a faint red heartbeat, the ground trembles
- * under the boss's footsteps, the picture glitches for a fraction of a second
- * now and then, and ghost wisps / bone chips ride its moves. Nothing here
- * touches the simulation. One effect at a time, all of it small, and with
- * reduced motion the glitch, the tremble and the wisps' sway are skipped.
+ * world changes at once — colors drain toward the boss's own tone, a fine film
+ * grain settles over the lawn, the edges darken with a faint red heartbeat —
+ * and it eases back to normal over several seconds once the boss falls. The
+ * ground trembles under its footsteps, ghost wisps / bone chips ride its moves,
+ * and rarely (every half minute or so, and on its arrival) the picture breaks
+ * into heavy static for a moment, with a quiet hiss. Nothing here touches the
+ * simulation. With reduced motion the static, the tremble, the grain's crawl
+ * and the wisps' sway are skipped.
  */
 
 import { ENEMIES } from "@/engine/garrison/content";
 import type { Enemy, GarrisonState } from "@/engine/garrison/sim";
 import { prefersReducedMotion } from "@/lib/display-preferences";
+import { playStaticHiss } from "@/lib/sound";
 import { BOARD, feetY, tileX } from "./renderer";
-import { burst, drawGlow, type Particle } from "./scene";
+import { WORLD_W, burst, drawGlow, type Particle } from "./scene";
 
 type Wisp = { x: number; y: number; vx: number; vy: number; born: number; life: number; size: number; seed: number };
 type Slice = { y: number; h: number; dx: number };
@@ -23,6 +27,32 @@ const STILL_MS = 300;
 const STEP_MS = 2400;
 const STEP_SHAKE_MS = 240;
 const GLITCH_MIN_GAP_MS = 1200;
+/** The dread comes on this fast (a sudden change)... */
+const RISE_MS = 450;
+/** ...and the world eases back to normal this slowly once the boss falls. */
+const FALL_MS = 6000;
+/** Heavy static: rare (this far apart, plus up to STATIC_JITTER_MS), and brief. */
+const STATIC_GAP_MS = 28000;
+const STATIC_JITTER_MS = 17000;
+const GRAIN_PX = 128;
+const GRAIN_FRAMES = 3;
+
+/**
+ * Each boss's own tone (the hue the world drains toward while it lives).
+ * Unlisted bosses (the Dracolich) take a cold night blue.
+ */
+const BOSS_TONE: Record<string, string> = {
+  "oc-boss-abomination": "#8a1616",
+  "oc-boss-wyrm": "#2a5c92",
+  "oc-boss-lich": "#3c6e34",
+  "oc-boss-warchief": "#8a4a16",
+  "oc-boss-arachne": "#5a2a82",
+  "oc-boss-barrow-king": "#6e1438",
+  "oc-boss-gnawbone": "#7a6038",
+  "oc-boss-mastermind": "#6e2418",
+  "oc-boss-sphinx": "#6a447e"
+};
+const DEFAULT_TONE = "#2c3a5c";
 const BONE = ["#ece4cc", "#d8cdb0", "#bfb293", "#f6f0dc"] as const;
 
 export type Horror = {
@@ -41,7 +71,14 @@ export type Horror = {
   reducedAt: number;
   glitchStart: number;
   glitchEnd: number;
+  /** The glitch running is heavy static (the rare one), not a short flicker. */
+  glitchBig: boolean;
   nextGlitch: number;
+  /** The tone of the boss that brought the dread (kept while it fades). */
+  tone: string;
+  grain: HTMLCanvasElement[];
+  grainCtx: CanvasRenderingContext2D | null;
+  grainPats: CanvasPattern[];
   slicesAt: number;
   stepAt: number;
   nextStep: number;
@@ -61,7 +98,8 @@ export function createHorror(): Horror {
   for (let i = 0; i < SLICES; i += 1) slices.push({ y: 0, h: 0, dx: 0 });
   return {
     on: false, level: 0, phase: 0, x: BOARD.W / 2, y: BOARD.H / 2, lastTick: -1, tickAt: 0, reduced: false, reducedAt: -1e9,
-    glitchStart: 0, glitchEnd: 0, nextGlitch: 0, slicesAt: 0, stepAt: -1e9, nextStep: 0,
+    glitchStart: 0, glitchEnd: 0, glitchBig: false, nextGlitch: 0, slicesAt: 0, stepAt: -1e9, nextStep: 0,
+    tone: DEFAULT_TONE, grain: [], grainCtx: null, grainPats: [],
     wisps: [], slices, buf: null, red: null, gradCtx: null, shade: null, blood: null, scanCtx: null, scan: null
   };
 }
@@ -94,12 +132,13 @@ export function updateHorror(h: Horror, s: GarrisonState, now: number, dt: numbe
   const boss = liveBoss(s);
   const calm = reduced(h, now);
   if (boss && !h.on) {
-    h.nextGlitch = now + 9000 + Math.random() * 9000;
+    h.nextGlitch = now + STATIC_GAP_MS + Math.random() * STATIC_JITTER_MS;
     h.nextStep = now + 1200;
   }
   h.on = !!boss;
-  h.level = Math.max(0, Math.min(1, h.level + (boss ? dt : -dt) / 1000));
+  h.level = Math.max(0, Math.min(1, h.level + (boss ? dt / RISE_MS : -dt / FALL_MS)));
   if (!boss) return;
+  h.tone = BOSS_TONE[boss.kind] ?? DEFAULT_TONE;
   h.x = tileX(boss.x);
   h.y = feetY(boss.lane);
   if (still) {
@@ -121,21 +160,27 @@ export function updateHorror(h: Horror, s: GarrisonState, now: number, dt: numbe
   }
   if (!calm && now >= h.nextGlitch && now >= h.glitchEnd) {
     if (now < shakeUntil || now - h.stepAt < STEP_SHAKE_MS) h.nextGlitch = now + 1500;
-    else startGlitch(h, now);
+    else startGlitch(h, now, true);
   }
 }
 
-function startGlitch(h: Horror, now: number): void {
+function startGlitch(h: Horror, now: number, big: boolean): void {
   h.glitchStart = now;
-  h.glitchEnd = now + 120 + Math.random() * 100;
+  h.glitchBig = big;
+  h.glitchEnd = now + (big ? 480 + Math.random() * 240 : 120 + Math.random() * 100);
   h.slicesAt = -1e9;
-  h.nextGlitch = h.glitchEnd + 9000 + Math.random() * 9000;
+  h.nextGlitch = h.glitchEnd + STATIC_GAP_MS + Math.random() * STATIC_JITTER_MS;
+  if (big) playStaticHiss(h.glitchEnd - now);
 }
 
-/** A glitch on cue (the boss arrives, the boss changes phase): never overlapping, never back to back. */
-export function horrorGlitch(h: Horror, now: number): void {
+/**
+ * A glitch on cue: a short flicker (a phase's set piece), or the heavy static
+ * (the boss arrives). Never overlapping, never back to back, and the rare
+ * timed static waits its full gap again afterwards.
+ */
+export function horrorGlitch(h: Horror, now: number, big = false): void {
   if (reduced(h, now) || now < h.glitchEnd + GLITCH_MIN_GAP_MS) return;
-  startGlitch(h, now);
+  startGlitch(h, now, big);
 }
 
 /** The ground's tremble under a footstep (board px, vertical), 0 when still. */
@@ -242,6 +287,77 @@ export function drawDread(ctx: CanvasRenderingContext2D, h: Horror, now: number,
   ctx.restore();
 }
 
+/** A few frames of fine monochrome noise (built once), as patterns for this context. */
+function grainPatterns(ctx: CanvasRenderingContext2D, h: Horror): CanvasPattern[] {
+  if (h.grainCtx === ctx && h.grainPats.length === GRAIN_FRAMES) return h.grainPats;
+  if (!h.grain.length && typeof document !== "undefined") {
+    for (let f = 0; f < GRAIN_FRAMES; f += 1) {
+      const c = document.createElement("canvas");
+      c.width = GRAIN_PX;
+      c.height = GRAIN_PX;
+      const gctx = c.getContext("2d");
+      if (!gctx) return [];
+      const img = gctx.createImageData(GRAIN_PX, GRAIN_PX);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.floor(Math.random() * 256);
+        img.data[i] = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+      gctx.putImageData(img, 0, 0);
+      h.grain.push(c);
+    }
+  }
+  h.grainCtx = ctx;
+  h.grainPats = [];
+  for (const c of h.grain) {
+    const pat = ctx.createPattern(c, "repeat");
+    if (pat) h.grainPats.push(pat);
+  }
+  return h.grainPats;
+}
+
+/**
+ * The atmosphere while a boss lives (world space, under the coins, floats and
+ * boss bar so those stay crisp): the colors drain and lean toward the boss's
+ * tone, the light dims a little, and a fine grain crawls over it all.
+ */
+export function drawGrade(ctx: CanvasRenderingContext2D, h: Horror, now: number, camX: number): void {
+  const k = h.level;
+  if (k <= 0.01) return;
+  // Exactly the painted field in view (blend fills would tint any bare canvas a shake uncovers).
+  const x = Math.max(0, camX);
+  const y = 0;
+  const w = Math.min(WORLD_W, camX + BOARD.W) - x;
+  const hh = BOARD.H;
+  if (w <= 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "saturation";
+  ctx.globalAlpha = 0.45 * k;
+  ctx.fillStyle = "#808080";
+  ctx.fillRect(x, y, w, hh);
+  ctx.globalCompositeOperation = "color";
+  ctx.globalAlpha = 0.2 * k;
+  ctx.fillStyle = h.tone;
+  ctx.fillRect(x, y, w, hh);
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = 0.3 * k;
+  ctx.fillStyle = "#7c7a86";
+  ctx.fillRect(x, y, w, hh);
+  const pats = grainPatterns(ctx, h);
+  if (pats.length) {
+    const frame = h.reduced ? 0 : Math.floor(now / 70) % pats.length;
+    const ox = h.reduced ? 0 : Math.floor((now / 70) * 37) % GRAIN_PX;
+    ctx.globalCompositeOperation = "overlay";
+    ctx.globalAlpha = 0.07 * k;
+    ctx.fillStyle = pats[frame]!;
+    ctx.translate(x - ox, y);
+    ctx.fillRect(ox, 0, w, hh);
+  }
+  ctx.restore();
+}
+
 function sized(canvas: HTMLCanvasElement | null, w: number, hgt: number): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
   const c = canvas ?? document.createElement("canvas");
@@ -318,6 +434,27 @@ export function drawGlitch(ctx: CanvasRenderingContext2D, h: Horror, now: number
   ctx.fillStyle = "#e8e8f0";
   for (let i = 0; i < 7; i += 1) {
     ctx.fillRect(Math.random() * cw, Math.random() * ch, cw * (0.01 + Math.random() * 0.04), Math.max(1, ch * 0.003));
+  }
+  if (h.glitchBig) {
+    // Heavy static: the picture dims under a full field of snow, and a dark band rolls down it.
+    ctx.globalAlpha = 0.28 * env;
+    ctx.fillStyle = "#06040a";
+    ctx.fillRect(0, 0, cw, ch);
+    const pats = grainPatterns(ctx, h);
+    if (pats.length) {
+      ctx.globalAlpha = 0.42 * env;
+      ctx.fillStyle = pats[Math.floor(Math.random() * pats.length)]!;
+      const scale = Math.max(1, Math.round(cw / 900));
+      ctx.translate(-Math.random() * GRAIN_PX, -Math.random() * GRAIN_PX);
+      ctx.scale(scale, scale);
+      ctx.fillRect(0, 0, cw / scale + GRAIN_PX, ch / scale + GRAIN_PX);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    const band = ch * 0.12;
+    const by = ((t * 1.6) % 1) * (ch + band) - band;
+    ctx.globalAlpha = 0.35 * env;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, by, cw, band);
   }
   ctx.restore();
 }
