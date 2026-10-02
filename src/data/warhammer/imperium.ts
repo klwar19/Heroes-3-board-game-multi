@@ -115,7 +115,8 @@ export const imperiumHeroDefinitions: Record<string, HeroDefinition> = {
   emperor_of_mankind: hero("emperor_of_mankind", "The Emperor", "Master of Mankind", "magic", { attack: 2, defense: 1, power: 2, knowledge: 1 }, "ability.wisdom", "/assets/warhammer/heroes/emperor-of-mankind.webp"),
   roboute_guilliman: hero("roboute_guilliman", "Roboute Guilliman", "Avenging Son", "might", { attack: 2, defense: 2, power: 1, knowledge: 1 }, "ability.leadership", "/assets/warhammer/heroes/roboute-guilliman.webp"),
   rogal_dorn: hero("rogal_dorn", "Rogal Dorn", "Praetorian of Terra", "might", { attack: 1, defense: 3, power: 1, knowledge: 1 }, "ability.armorer", "/assets/warhammer/heroes/rogal-dorn.webp"),
-  sanguinius: hero("sanguinius", "Sanguinius", "The Great Angel", "magic", { attack: 1, defense: 1, power: 2, knowledge: 2 }, "ability.sorcery", "/assets/warhammer/heroes/sanguinius.webp")
+  sanguinius: hero("sanguinius", "Sanguinius", "The Great Angel", "magic", { attack: 1, defense: 1, power: 2, knowledge: 2 }, "ability.sorcery", "/assets/warhammer/heroes/sanguinius.webp"),
+  angron: hero("angron", "Angron", "The Red Angel", "might", { attack: 4, defense: 0, power: 1, knowledge: 1 }, "ability.offense", "/assets/warhammer/heroes/angron.webp")
 };
 
 export const imperiumFactionDefinition: FactionDefinition = {

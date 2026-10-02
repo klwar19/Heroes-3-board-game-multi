@@ -82,6 +82,14 @@ function describeModifier(modifier: ActiveEffectModifier): string | null {
       return `burns adjacent attackers for ${modifier.amount}`;
     case "UNIT_ABILITY_SUPPRESSED":
       return "cannot use special abilities";
+    case "CANNOT_RETALIATE":
+      return "cannot Retaliate";
+    case "ATTACK_DIE_POISON_CUBES":
+      return `its attacks poison on the die (0: ${modifier.onZero}, -1: ${modifier.onMinusOne}; max ${modifier.maxCubes} cubes)`;
+    case "ACTIVATION_START_HEAL":
+      return `heals ${modifier.amount} at the start of its activation`;
+    case "DEATH_POISON_ENEMY":
+      return `when removed, leaves ${modifier.cubes} poison cube${modifier.cubes === 1 ? "" : "s"} on an enemy`;
     default:
       return null;
   }

@@ -44,6 +44,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   roboute_guilliman: "/assets/warhammer/icons/specialty-codex-astartes.webp",
   rogal_dorn: "/assets/warhammer/icons/specialty-praetorian-bulwark.webp",
   sanguinius: "/assets/warhammer/icons/specialty-angelic-descent.webp",
+  angron: "/assets/warhammer/icons/specialty-butchers-nails.webp",
   mika_blue_archive: "/assets/anime/icons/blue-archive/mika-specialty.webp",
   yuuka_blue_archive: "/assets/anime/icons/blue-archive/yuuka-specialty.webp",
   seia_blue_archive: "/assets/anime/icons/blue-archive/seia-specialty.webp",

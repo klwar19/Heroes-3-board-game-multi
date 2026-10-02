@@ -9562,6 +9562,13 @@ function finishResolvedAttack(
       details.isRetaliation,
       forceAbilityRoll,
     );
+    applyActiveEffectAttackDiePoisonCubes(
+      state,
+      details.attacker,
+      details.defender,
+      attackResult.roll,
+      details.isRetaliation,
+    );
     // Dungeon Minotaurs: draw a card when this unit's OWN Attack die resolves
     // "-1" ([unit_attack] — never on a Retaliation Attack).
     applyOnAttackDieDraw(
@@ -11390,6 +11397,47 @@ function applyOnAttackDiePoisonCubes(
       targetUnitId: defender.id,
       message: `${attacker.cardName} leaves ${poison.count} burning poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`,
     });
+  }
+}
+
+/**
+ * Angron's Blood for the Blood God IV (ATTACK_DIE_POISON_CUBES on an ongoing
+ * unit effect): the buffed unit's own attack (never a Retaliation) poisons the
+ * still-living target by the resolved Attack die — "0" and "-1" each add their
+ * cubes, capped so the target never carries more than `maxCubes` in total.
+ */
+function applyActiveEffectAttackDiePoisonCubes(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  attackRoll: number,
+  isRetaliation: boolean,
+): void {
+  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+    return;
+  }
+  for (const effect of state.activeEffects) {
+    if (
+      effect.target?.type !== "unit" ||
+      effect.target.unitId !== attacker.id ||
+      !effectAppliesToUnit(effect, attacker)
+    ) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type !== "ATTACK_DIE_POISON_CUBES") continue;
+      const rolled = attackRoll === 0 ? modifier.onZero : attackRoll === -1 ? modifier.onMinusOne : 0;
+      const added = Math.max(0, Math.min(rolled, modifier.maxCubes - (defender.poisonCubes ?? 0)));
+      if (added <= 0) continue;
+      defender.poisonCubes = (defender.poisonCubes ?? 0) + added;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: effect.source.type === "card" ? effect.source.cardId : "attack-die-poison-cubes",
+        targetUnitId: defender.id,
+        message: `${effect.name}: ${attacker.cardName} leaves ${added} poison cube${added === 1 ? "" : "s"} on ${defender.cardName}.`,
+      });
+    }
   }
 }
 
@@ -15386,6 +15434,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
           effect.source,
           { type: "unit", unitId: activeUnit.id },
           modifier.healAtActivation,
+        );
+      }
+      // Angron's Khorne's Champion VI: heal at the start of the activation.
+      if (modifier.type === "ACTIVATION_START_HEAL" && activeUnit.damage > 0) {
+        healUnitDamage(
+          state,
+          effect.source,
+          { type: "unit", unitId: activeUnit.id },
+          modifier.amount,
         );
       }
     }
@@ -24969,6 +25026,18 @@ function applyReactionPlayCore(
         damageKind: "effect",
       });
       markUnitRemovedIfNeeded(state, affectedUnit);
+    }
+
+    // Angron's Butcher's Nails I (+2 side): the boosted unit poisons itself.
+    if (effect.selfPoisonCubes && affectedUnit && state.combat && isUnitAlive(affectedUnit)) {
+      affectedUnit.poisonCubes = (affectedUnit.poisonCubes ?? 0) + effect.selfPoisonCubes;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: affectedUnit.id,
+        abilityId: card.id,
+        targetUnitId: affectedUnit.id,
+        message: `${card.name} drives ${affectedUnit.cardName} on: it takes ${effect.selfPoisonCubes} poison cube${effect.selfPoisonCubes === 1 ? "" : "s"}.`,
+      });
     }
 
     // The Gnoll artifacts' stronger side: the boosted unit takes a lasting

@@ -1,6 +1,6 @@
 import { townNagaMend, townVeterancy } from "./town-veterancy";
 import { neutralTownVeterancy } from "./neutral-town-veterancy";
-import { unitsAdjacent } from "./hex-footprint";
+import { unitDistance, unitsAdjacent } from "./hex-footprint";
 import { effectAppliesToUnit, expireEffectsForCombatEnd, makeActiveEffect } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { combatFightingHasBegun } from "./combat-timing";
@@ -135,7 +135,9 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   if (unit.factionVeterancy) delete unit.factionVeterancy.lastDamage;
   const revenge = factionVeterancy(unit, "revenge");
   const spellMend = factionVeterancy(unit, "medusa-mend");
+  const killerId = unit.townVeterancy?.damageSourceId;
   finalizeUnitRemoval(state, unit, hit?.kind === "attack");
+  if (unit.damage >= unit.maxHealth) applyDeathPoisonEnemy(state, unit, killerId);
   if (unit.townVeterancy) delete unit.townVeterancy.damageSourceId;
   if (unit.townVeterancy) delete unit.townVeterancy.damageSourceWasOwnAttack;
   if (hit?.kind === "spell" && hit.amount > 0) townNagaMend(state, unit);
@@ -143,6 +145,43 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   if (hit && revenge && unit.damage >= unit.maxHealth && hit.source.type === "unit") {
     const killer = state.combat?.units[hit.source.unitId];
     if (killer && killer.controllerId !== unit.controllerId) veteranDamage(state, unit, killer, 2, "veteran-manticore-revenge");
+  }
+}
+
+/**
+ * Angron VI (Khorne's Champion, DEATH_POISON_ENEMY): once the buffed unit is
+ * removed, its poison cubes land on the living enemy unit that dealt the killing
+ * blow — or, when a Spell/effect killed it or that unit is gone, on the nearest
+ * living enemy unit. The effect ends with the trigger, so it fires only once.
+ */
+function applyDeathPoisonEnemy(state: GameState, unit: CombatUnitState, killerId: string | undefined): void {
+  const combat = state.combat;
+  if (!combat) return;
+  for (const effect of [...state.activeEffects]) {
+    if (effect.target?.type !== "unit" || effect.target.unitId !== unit.id) continue;
+    const modifier = effect.modifiers.find((entry) => entry.type === "DEATH_POISON_ENEMY");
+    if (modifier?.type !== "DEATH_POISON_ENEMY") continue;
+    state.activeEffects = state.activeEffects.filter((entry) => entry.id !== effect.id);
+    appendEvent(state, {
+      type: "ACTIVE_EFFECTS_REMOVED",
+      source: effect.source,
+      target: { type: "unit", unitId: unit.id },
+      effectIds: [effect.id],
+    });
+    const enemies = Object.values(combat.units).filter((other) =>
+      other.controllerId !== unit.controllerId && other.damage < other.maxHealth && !isArrowTowerUnit(other));
+    const killer = enemies.find((other) => other.id === killerId);
+    const target = killer ?? [...enemies].sort((left, right) =>
+      unitDistance(combat, unit, left) - unitDistance(combat, unit, right))[0];
+    if (!target || modifier.cubes <= 0) continue;
+    target.poisonCubes = (target.poisonCubes ?? 0) + modifier.cubes;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: effect.source.type === "card" ? effect.source.cardId : "death-poison-enemy",
+      targetUnitId: target.id,
+      message: `${effect.name}: falling, ${unit.cardName} leaves ${modifier.cubes} poison cube${modifier.cubes === 1 ? "" : "s"} on ${target.cardName}.`,
+    });
   }
 }
 

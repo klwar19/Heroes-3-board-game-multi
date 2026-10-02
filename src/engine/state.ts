@@ -1608,6 +1608,36 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Angron's Blood for the Blood God IV: after the unit's own attack (never a
+       * Retaliation) the still-living target gains poison cubes by the resolved
+       * Attack die — `onZero` on a "0", `onMinusOne` on a "-1" — but never
+       * past `maxCubes` poison cubes on that target.
+       */
+      type: "ATTACK_DIE_POISON_CUBES";
+      onZero: number;
+      onMinusOne: number;
+      maxCubes: number;
+    }
+  | {
+      /**
+       * Angron's Khorne's Champion VI: heal this much damage at the beginning of
+       * the unit's activation (once per activation — a Wait re-activation skips it).
+       */
+      type: "ACTIVATION_START_HEAL";
+      amount: number;
+    }
+  | {
+      /**
+       * Angron's Khorne's Champion VI: when the unit is removed (its Health
+       * reaches 0 — a Pack flip is not removal), `cubes` poison cubes land on the
+       * living enemy unit that dealt the killing blow, else on the nearest living
+       * enemy unit. The effect then ends (it fires once).
+       */
+      type: "DEATH_POISON_ENEMY";
+      cubes: number;
+    }
+  | {
+      /**
        * Orb of Vulnerability (option A): for the rest of the Combat every unit's
        * innate special ability "related to spells" is switched off — magic
        * resistance (the Dwarves' die roll), spell-damage reduction (Golems,
@@ -2056,6 +2086,11 @@ export type EffectDefinition =
       drawIfCostCardCastEnabler?: boolean;
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
+      /**
+       * Angron's Butcher's Nails I (the +2 side): the boosted unit itself takes
+       * this many poison cubes (they tick at its own activation starts).
+       */
+      selfPoisonCubes?: number;
       /**
        * The stronger side of the Gnoll artifacts: the boosted unit also takes a
        * lasting combat token until the end of the Combat, mirroring the bonus on

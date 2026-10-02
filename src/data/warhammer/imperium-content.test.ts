@@ -15,12 +15,13 @@ const publishedInfo = (url: string) => {
 };
 
 describe("Imperium component set", () => {
-  it("has exactly 4 Heroes and the requested 3/2/2 seven-unit progression", () => {
+  it("has exactly 5 Heroes and the requested 3/2/2 seven-unit progression", () => {
     expect(Object.keys(imperiumHeroDefinitions)).toEqual([
       "emperor_of_mankind",
       "roboute_guilliman",
       "rogal_dorn",
-      "sanguinius"
+      "sanguinius",
+      "angron"
     ]);
     expect(imperiumFactionDefinition.units).toHaveLength(7);
     expect(imperiumFactionDefinition.units.map((id) => imperiumUnitDefinitions[id].tier)).toEqual([
@@ -121,11 +122,11 @@ describe("Imperium component set", () => {
     expect(hasMediaFile(lion.cast.icon), lion.cast.icon).toBe(true);
   });
 
-  it("uses twelve original, mechanically distinct Imperium specialty cards", () => {
+  it("uses fifteen original, mechanically distinct Imperium specialty cards", () => {
     const cards = Object.values(imperiumSpecialtyCards);
-    expect(cards).toHaveLength(12);
-    expect(new Set(cards.map((card) => card.name)).size).toBe(12);
-    expect(new Set(cards.map((card) => JSON.stringify(card.effect))).size).toBe(12);
+    expect(cards).toHaveLength(15);
+    expect(new Set(cards.map((card) => card.name)).size).toBe(15);
+    expect(new Set(cards.map((card) => JSON.stringify(card.effect))).size).toBe(15);
     expect(cards.every((card) => card.implementationStatus === "implemented")).toBe(true);
     expect(cards.every((card) => card.source.credit.includes("Original specialty mechanics"))).toBe(true);
 
@@ -142,7 +143,7 @@ describe("Imperium component set", () => {
     for (const id of [
       "specialty.emperor_of_mankind.1", "specialty.emperor_of_mankind.4",
       "specialty.roboute_guilliman.4", "specialty.rogal_dorn.1",
-      "specialty.sanguinius.1", "specialty.sanguinius.6"
+      "specialty.sanguinius.1", "specialty.sanguinius.6", "specialty.angron.1"
     ]) {
       const card = imperiumSpecialtyCards[id]!;
       expect(card.timing, id).toBe("instant");

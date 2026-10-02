@@ -1720,7 +1720,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // windows as a joiner (not for a faction that ignores Morale); new neutrals
 // Clockwork Dwarves (after-attack steam burst + self-repair) and Mermaids
 // (enemy Retaliation Attack -1 aura, stack modifier retaliationAuraAnnounced).
-export const ENGINE_PROTOCOL_VERSION = 198;
+// v199: Imperium hero Angron (Butcher's Nails I self-poison +2 side, Blood for the
+// Blood God IV attack-die poison cubes capped at 2, Khorne's Champion VI activation
+// heal / no Retaliation / death poison on the killer) — new ActiveEffect modifiers
+// ATTACK_DIE_POISON_CUBES, ACTIVATION_START_HEAL, DEATH_POISON_ENEMY and the
+// selfPoisonCubes reaction rider; a v198 peer resolves these cards differently.
+export const ENGINE_PROTOCOL_VERSION = 199;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

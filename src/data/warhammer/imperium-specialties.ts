@@ -119,5 +119,35 @@ export const imperiumSpecialtyCards: CardLibrary = {
     tags: ["hero-specialty", "instant", "sanguinius", "Instant — When your unit attacks, it gains +1 Attack, ignores Retaliation, and heals damage equal to half the damage it deals (rounded up)."],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" }, target: { type: "friendly-unit" },
     effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, ignoresRetaliation: true, healHalfDamageDealt: true }, implementationStatus: "implemented", source
+  },
+
+  "specialty.angron.1": {
+    id: "specialty.angron.1", name: "Butcher's Nails I", kind: "hero-specialty",
+    timing: "instant", phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "angron", "Instant — When your unit attacks, choose one: it gains +1 Attack; OR it gains +2 Attack and takes 1 poison cube."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CHOOSE_ONE", options: [
+      { label: "Fury: +1 Attack", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" }, effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 } },
+      { label: "Frenzy: +2 Attack, take 1 poison cube", trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" }, effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, selfPoisonCubes: 1 } }
+    ] }, implementationStatus: "implemented", source
+  },
+  "specialty.angron.4": {
+    id: "specialty.angron.4", name: "Blood for the Blood God IV", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "ongoing", "angron", "Ongoing — Choose a friendly unit. For this Combat, whenever it attacks (not a Retaliation), an Attack die of \"0\" gives the target 1 poison cube and \"-1\" gives it 2, never raising the target above 2 poison cubes."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: { name: "Blood for the Blood God", scope: "unit", duration: { type: "combat" }, polarity: "positive", removable: true, modifiers: [
+      { type: "ATTACK_DIE_POISON_CUBES", onZero: 1, onMinusOne: 2, maxCubes: 2 }
+    ] } }, implementationStatus: "implemented", source
+  },
+  "specialty.angron.6": {
+    id: "specialty.angron.6", name: "Khorne's Champion VI", kind: "hero-specialty",
+    timing: "combat", phaseLimit: ["combat"],
+    tags: ["hero-specialty", "combat", "ongoing", "angron", "Ongoing — For this Combat, a friendly unit gains +2 Attack, +3 Initiative and -1 Defense, heals 1 damage at the start of each of its activations, and cannot Retaliate. When it is removed, place 1 poison cube on the enemy unit that removed it (otherwise the nearest enemy unit)."],
+    target: { type: "friendly-unit" },
+    effect: { type: "CREATE_ACTIVE_EFFECT", effect: { name: "Khorne's Champion", scope: "unit", duration: { type: "combat" }, polarity: "positive", removable: true, modifiers: [
+      { type: "ATTACK_BONUS", amount: 2 }, { type: "INITIATIVE_BONUS", amount: 3 }, { type: "DEFENSE_BONUS", amount: -1 },
+      { type: "ACTIVATION_START_HEAL", amount: 1 }, { type: "CANNOT_RETALIATE" }, { type: "DEATH_POISON_ENEMY", cubes: 1 }
+    ] } }, implementationStatus: "implemented", source
   }
 };

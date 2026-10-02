@@ -50,7 +50,7 @@ function dornDefenseBonus(adjacentAllyAlive: boolean): number | undefined {
 }
 
 describe("Imperium specialty mechanics", () => {
-  it("registers every option of all twelve cards as an implemented engine effect", () => {
+  it("registers every option of all fifteen cards as an implemented engine effect", () => {
     for (const card of Object.values(imperiumSpecialtyCards)) {
       expect(isImplementedCardEffect(card.effect), card.id).toBe(true);
     }

@@ -1365,6 +1365,19 @@ function scoreStatReaction(
         }
       }
     }
+    // Angron's Butcher's Nails I (+2 side): the extra Attack poisons our own
+    // attacker, so take it only when that extra point turns the median (die 0)
+    // hit into a removal and the cube cannot finish the attacker itself; the
+    // plain +1 side covers every other case.
+    if (stat === "attack" && effect.selfPoisonCubes) {
+      const pending = pendingAttackValues(observation);
+      if (!pending || pending.attacker.controllerId !== observation.playerId) return 1_020;
+      const ownLeft = unitRemainingHealth(pending.attacker) -
+        (pending.attacker.poisonCubes ?? 0) - effect.selfPoisonCubes;
+      const removal = unitRemovalHealth(pending.defender);
+      const turnsIntoKill = pending.damage + amount >= removal && pending.damage + amount - 1 < removal;
+      return ownLeft > 0 && turnsIntoKill ? 1_140 + modeBonus(mode) : 1_020;
+    }
     // Attack window for self / defense window for opponent — both are offered
     // only when useful. Prefer expert when crowns allow (already gated).
     if (stat === "attack" || stat === "defense") {
@@ -2242,6 +2255,17 @@ function scoreEffect(
         unitRemainingHealth(unit) > 0 && unit.controllerId === observation.playerId &&
         unitMatchesSpecialtyName(unit.name, "Ogres"));
       return ogres.length ? 700 + Math.min(40, ogres.length * 20) : 180;
+    }
+    // Angron IV (poisoning attacks) / VI (Khorne's Champion): one copy per
+    // unit — put it on the strongest living friendly body not holding it yet.
+    if (card.id === "specialty.angron.4" || card.id === "specialty.angron.6") {
+      const unit = combatUnitFromTarget(observation, target);
+      const held = unit && state.activeEffects.some((active) =>
+        active.target?.type === "unit" && active.target.unitId === unit.id &&
+        active.source.type === "card" && baseCardId(active.source.cardId) === card.id);
+      return unit && unit.controllerId === observation.playerId && unitRemainingHealth(unit) > 0 && !held
+        ? (card.id === "specialty.angron.6" ? 700 : 660) + Math.min(80, unitThreatValue(unit) / 2)
+        : 180;
     }
     if (card.id === "specialty.henrietta.6") {
       return observation.state.combat ? 735 : 180;
