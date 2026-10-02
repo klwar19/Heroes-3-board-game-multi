@@ -106,10 +106,19 @@ export function drawAtlas(
   /** Squash and stretch about the feet (1 = none). */
   stretch?: { x: number; y: number }
 ): boolean {
-  // The 2x HD sheet when there is one: its cells are the original's at twice the size.
-  const sheet = creatureSheet(atlas);
-  const img = image(sheet.image);
   const info = atlas.groups[String(group)] ?? atlas.groups[String(G.stand)];
+  // The 2x HD sheet when there is one: its cells are the original's at twice the size.
+  let sheet = creatureSheet(atlas);
+  let img = image(sheet.image);
+  if (!hdSprites && sheet.scale !== 1) {
+    // Slow frames: the original sheet (a quarter of the texture memory) once it has
+    // loaded; the HD sheet keeps drawing until then, so nothing blinks out.
+    const plain = image(atlas.image);
+    if (ready(plain)) {
+      sheet = { image: atlas.image, scale: 1 };
+      img = plain;
+    }
+  }
   if (!ready(img) || !info) return false;
   const k = sheet.scale;
   const offset = spriteFrameOffset(atlas, info, frame);
@@ -121,6 +130,9 @@ export function drawAtlas(
   const filter = ctx.filter;
   const tinted = filter && filter !== "none" && !SPATIAL_FILTER.test(filter) ? tintedFrame(img, atlas, k, sx, sy, filter) : null;
   ctx.save();
+  // Only the creature frames resample at "high" (they are drawn enlarged); the
+  // board's soft layers keep the cheaper default.
+  ctx.imageSmoothingQuality = "high";
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale((flip ? -scale : scale) * (stretch?.x ?? 1), scale * (stretch?.y ?? 1));
   if (tinted) {
@@ -133,6 +145,13 @@ export function drawAtlas(
   return true;
 }
 
+/** False while a battle's frames run slow: creatures then draw from their original sheets. */
+let hdSprites = true;
+
+export function setHdSprites(on: boolean): void {
+  hdSprites = on;
+}
+
 /** Filters that spread pixels (they must see the scaled draw, so they stay live). */
 const SPATIAL_FILTER = /blur|drop-shadow|url\(/;
 
@@ -141,7 +160,7 @@ const SPATIAL_FILTER = /blur|drop-shadow|url\(/;
  * The bound is in original-size frames: a frame cut from a 2x HD sheet counts as four.
  */
 const tintedFrames = new Map<string, { canvas: HTMLCanvasElement; weight: number }>();
-const TINTED_MAX = 256;
+const TINTED_MAX = 512;
 let tintedWeight = 0;
 
 /**

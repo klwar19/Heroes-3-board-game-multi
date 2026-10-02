@@ -23,7 +23,7 @@ import {
 } from "./boss-horror";
 import { calmDown, createAntics, drawAngerMark, drawDizzy, motionPose, pruneAntics, restless, startMotion, type Antics } from "./antics";
 import { prefersReducedMotion } from "@/lib/display-preferences";
-import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, type ShotSheet } from "./art";
+import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, setHdSprites, type ShotSheet } from "./art";
 import {
   KEEPS, KEEP_SRC, PROP, WORLD_W, burst, createScenery, keepFor, drawCoin, drawDecals, drawGlow, drawKeepFlags, drawParticles, sceneryLayer, setParticleBudget, spawnParticles,
   type Decal, type Particle, type Scenery
@@ -119,8 +119,13 @@ export type View = {
   /** Smoothed frame time (ms); a sustained slow frame rate trims the cosmetic particles. */
   frameMs: number;
   lite: boolean;
-  /** Set for the rest of the battle once frames ran slow: the board then renders at the plain device-pixel scale. */
+  /**
+   * Set for the rest of the battle once frames ran slow: the board then renders at the plain
+   * device-pixel scale and creatures draw from their original sheets instead of the 2x HD ones.
+   */
   sharpOff: boolean;
+  /** How long (ms) the smoothed frame time has stayed above SHARP_OFF_MS without a break. */
+  slowFor: number;
   /** Boss dread: vignette, footstep tremble, glitches, ghost wisps, the immune ward (drawing only). */
   horror: Horror;
 };
@@ -132,7 +137,7 @@ export function createView(town: string, defColor = "#3f7fe0"): View {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
     shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience(), antics: createAntics(),
-    defLanes: [], foeLanes: [], frameMs: 16, lite: false, sharpOff: false, horror: createHorror()
+    defLanes: [], foeLanes: [], frameMs: 16, lite: false, sharpOff: false, slowFor: 0, horror: createHorror()
   };
 }
 
@@ -146,6 +151,13 @@ function laneBuckets<T>(lists: T[][]): T[][] {
 /** Frame time (ms, smoothed) above which cosmetic particles are trimmed, and below which they come back. */
 const LITE_ON_MS = 25;
 const LITE_OFF_MS = 19;
+/**
+ * The sharp extras (a board above the device-pixel scale, HD creature sheets) go once the
+ * smoothed frame time stays above this for SHARP_OFF_AFTER_MS: under ~50 fps, well before
+ * the particle trim, and never for one stall (an image decode, a tab switch).
+ */
+const SHARP_OFF_MS = 20;
+const SHARP_OFF_AFTER_MS = 1500;
 
 /**
  * Graceful degradation under load: when frames stay slow, the purely cosmetic
@@ -155,7 +167,9 @@ const LITE_OFF_MS = 19;
 function paceFrame(view: View, dt: number): void {
   view.frameMs += (dt - view.frameMs) * 0.06;
   view.lite = view.lite ? view.frameMs > LITE_OFF_MS : view.frameMs > LITE_ON_MS;
-  if (view.lite) view.sharpOff = true;
+  view.slowFor = view.frameMs > SHARP_OFF_MS ? view.slowFor + dt : 0;
+  if (view.lite || view.slowFor > SHARP_OFF_AFTER_MS) view.sharpOff = true;
+  setHdSprites(!view.sharpOff);
   // (Set every frame: the budget is shared, and a new battle starts at full.)
   setParticleBudget(view.lite ? "lite" : "full");
 }
@@ -167,7 +181,7 @@ function paceFrame(view: View, dt: number): void {
  * softening every sprite and painted layer). Never below the device-pixel
  * ratio (the old scale), never above 2 (the old ceiling); stepped in eighths so
  * a window resize does not rebuild the cached layers for every pixel. After
- * frames ran slow in this battle it stays at the old device-pixel scale.
+ * frames ran slow in this battle (see paceFrame) it stays at the old device-pixel scale.
  */
 export function boardPixelScale(view: View, dpr: number, shownWidth: number): number {
   if (view.sharpOff || !(shownWidth > 0)) return dpr;

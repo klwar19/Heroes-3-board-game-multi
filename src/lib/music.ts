@@ -90,7 +90,7 @@ export const SCENE_TRACK: Record<MusicScene, string> = {
 
 export const MUSIC_VOLUME = 0.18;
 /** The boss theme sits a little above the other beds; the warning, heard alone, well above it. */
-export const BOSS_MUSIC_VOLUME = 0.24;
+export const BOSS_MUSIC_VOLUME = 0.3;
 export const BOSS_WARNING_VOLUME = 0.6;
 
 /** The bed's own level (before the Options mix and any boss-approach fade). */

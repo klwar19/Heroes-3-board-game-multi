@@ -589,8 +589,9 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.imageSmoothingEnabled = true;
-        // Creature frames are native Heroes III size and are drawn enlarged: resample them smoothly.
-        ctx.imageSmoothingQuality = "high";
+        // The soft layers (glows, fog, night, weather) upscale at the cheap default; drawAtlas
+        // switches to "high" for the creature frames alone (they are drawn enlarged).
+        ctx.imageSmoothingQuality = "low";
         const localDefender = driver.local.includes("def") && state.cfg.mode !== "raid";
         const overlay: Overlay = {
           ghost: computeGhost(state, selectionRef.current, hoverRef.current),
