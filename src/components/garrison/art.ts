@@ -4,7 +4,7 @@
  * a 2D canvas. Drawing only — no game rules here.
  */
 
-import { creatureSpriteForSlug, spriteFrameOffset, type CreatureSpriteAtlas } from "@/data/battle-hex/creature-sprites";
+import { creatureSheet, creatureSpriteForSlug, spriteFrameOffset, type CreatureSpriteAtlas } from "@/data/battle-hex/creature-sprites";
 import { getFxSheet, type FxSheet } from "@/data/fx";
 import garrisonAtlases from "@/data/garrison/sprite-atlases.json";
 import type { ProjectileKind } from "@/engine/garrison/content";
@@ -55,7 +55,7 @@ export function peekImage(path: string): HTMLImageElement | undefined {
 export function preloadSprites(slugs: Iterable<string>): void {
   for (const slug of slugs) {
     const atlas = atlasFor(slug);
-    if (atlas) image(atlas.image);
+    if (atlas) image(creatureSheet(atlas).image);
   }
 }
 
@@ -106,15 +106,20 @@ export function drawAtlas(
   /** Squash and stretch about the feet (1 = none). */
   stretch?: { x: number; y: number }
 ): boolean {
-  const img = image(atlas.image);
+  // The 2x HD sheet when there is one: its cells are the original's at twice the size.
+  const sheet = creatureSheet(atlas);
+  const img = image(sheet.image);
   const info = atlas.groups[String(group)] ?? atlas.groups[String(G.stand)];
   if (!ready(img) || !info) return false;
-  const { x: sx, y: sy } = spriteFrameOffset(atlas, info, frame);
+  const k = sheet.scale;
+  const offset = spriteFrameOffset(atlas, info, frame);
+  const sx = offset.x * k;
+  const sy = offset.y * k;
   // A status tint (chill, poison, a hit flash...) comes from a small cache of
   // pre-filtered frames: a canvas filter on every draw is the costliest thing a
   // crowded lawn does (a filtered layer per sprite per frame).
   const filter = ctx.filter;
-  const tinted = filter && filter !== "none" && !SPATIAL_FILTER.test(filter) ? tintedFrame(img, atlas, sx, sy, filter) : null;
+  const tinted = filter && filter !== "none" && !SPATIAL_FILTER.test(filter) ? tintedFrame(img, atlas, k, sx, sy, filter) : null;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale((flip ? -scale : scale) * (stretch?.x ?? 1), scale * (stretch?.y ?? 1));
@@ -122,7 +127,7 @@ export function drawAtlas(
     ctx.filter = "none";
     ctx.drawImage(tinted, -atlas.anchorX, -atlas.anchorY, atlas.frameWidth, atlas.frameHeight);
   } else {
-    ctx.drawImage(img, sx, sy, atlas.frameWidth, atlas.frameHeight, -atlas.anchorX, -atlas.anchorY, atlas.frameWidth, atlas.frameHeight);
+    ctx.drawImage(img, sx, sy, atlas.frameWidth * k, atlas.frameHeight * k, -atlas.anchorX, -atlas.anchorY, atlas.frameWidth, atlas.frameHeight);
   }
   ctx.restore();
   return true;
@@ -131,9 +136,13 @@ export function drawAtlas(
 /** Filters that spread pixels (they must see the scaled draw, so they stay live). */
 const SPATIAL_FILTER = /blur|drop-shadow|url\(/;
 
-/** Pre-filtered atlas frames, least recently used first (bounded; a typical frame is about 90 KB). */
-const tintedFrames = new Map<string, HTMLCanvasElement>();
+/**
+ * Pre-filtered atlas frames, least recently used first (bounded; a typical frame is about 90 KB).
+ * The bound is in original-size frames: a frame cut from a 2x HD sheet counts as four.
+ */
+const tintedFrames = new Map<string, { canvas: HTMLCanvasElement; weight: number }>();
 const TINTED_MAX = 256;
+let tintedWeight = 0;
 
 /**
  * One atlas frame with a canvas filter baked in. The filters the lawn uses are
@@ -141,30 +150,34 @@ const TINTED_MAX = 256;
  * grayscale, contrast), so filtering the frame once and scaling it afterwards
  * looks the same as filtering every scaled draw.
  */
-function tintedFrame(img: HTMLImageElement, atlas: CreatureSpriteAtlas, sx: number, sy: number, filter: string): HTMLCanvasElement | null {
+function tintedFrame(img: HTMLImageElement, atlas: CreatureSpriteAtlas, k: number, sx: number, sy: number, filter: string): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
-  const key = `${atlas.image}|${sx}|${sy}|${filter}`;
+  const key = `${img.src}|${sx}|${sy}|${filter}`;
   const hit = tintedFrames.get(key);
   if (hit) {
     tintedFrames.delete(key);
     tintedFrames.set(key, hit);
-    return hit;
+    return hit.canvas;
   }
+  const weight = k * k;
   let canvas: HTMLCanvasElement | undefined;
-  if (tintedFrames.size >= TINTED_MAX) {
+  while (tintedFrames.size && tintedWeight + weight > TINTED_MAX) {
     const oldest = tintedFrames.keys().next().value as string;
-    canvas = tintedFrames.get(oldest);
+    const gone = tintedFrames.get(oldest)!;
+    canvas = gone.canvas;
+    tintedWeight -= gone.weight;
     tintedFrames.delete(oldest);
   }
   canvas ??= document.createElement("canvas");
   // (Setting the size also clears the canvas and resets its context.)
-  canvas.width = atlas.frameWidth;
-  canvas.height = atlas.frameHeight;
+  canvas.width = atlas.frameWidth * k;
+  canvas.height = atlas.frameHeight * k;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
   ctx.filter = filter;
-  ctx.drawImage(img, sx, sy, atlas.frameWidth, atlas.frameHeight, 0, 0, atlas.frameWidth, atlas.frameHeight);
-  tintedFrames.set(key, canvas);
+  ctx.drawImage(img, sx, sy, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  tintedFrames.set(key, { canvas, weight });
+  tintedWeight += weight;
   return canvas;
 }
 

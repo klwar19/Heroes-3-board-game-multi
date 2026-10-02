@@ -1,0 +1,182 @@
+{
+  "/assets/battle-hex/creatures/archer.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/archer.webp",
+    "width": 927,
+    "height": 1456
+  },
+  "/assets/battle-hex/creatures/armadillo.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/armadillo.webp",
+    "width": 1904,
+    "height": 1376
+  },
+  "/assets/battle-hex/creatures/automaton.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/automaton.webp",
+    "width": 1752,
+    "height": 1442
+  },
+  "/assets/battle-hex/creatures/ba-yuuka.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/ba-yuuka.webp",
+    "width": 1260,
+    "height": 1378
+  },
+  "/assets/battle-hex/creatures/black-knight.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/black-knight.webp",
+    "width": 1650,
+    "height": 1599
+  },
+  "/assets/battle-hex/creatures/champion.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/champion.webp",
+    "width": 1610,
+    "height": 1742
+  },
+  "/assets/battle-hex/creatures/cyclops.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/cyclops.webp",
+    "width": 1751,
+    "height": 1904
+  },
+  "/assets/battle-hex/creatures/dragon-fly.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/dragon-fly.webp",
+    "width": 973,
+    "height": 1794
+  },
+  "/assets/battle-hex/creatures/fire-elemental.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/fire-elemental.webp",
+    "width": 1860,
+    "height": 1989
+  },
+  "/assets/battle-hex/creatures/ghost-dragon.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/ghost-dragon.webp",
+    "width": 2640,
+    "height": 2431
+  },
+  "/assets/battle-hex/creatures/gremlin.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/gremlin.webp",
+    "width": 2240,
+    "height": 1521
+  },
+  "/assets/battle-hex/creatures/hell-hound.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/hell-hound.webp",
+    "width": 1960,
+    "height": 2067
+  },
+  "/assets/battle-hex/creatures/imp.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/imp.webp",
+    "width": 1107,
+    "height": 1508
+  },
+  "/assets/battle-hex/creatures/infernal-troglodyte.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/infernal-troglodyte.webp",
+    "width": 1640,
+    "height": 1584
+  },
+  "/assets/battle-hex/creatures/iron-golem.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/iron-golem.webp",
+    "width": 864,
+    "height": 1235
+  },
+  "/assets/battle-hex/creatures/jotunn.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/jotunn.webp",
+    "width": 4053,
+    "height": 987
+  },
+  "/assets/battle-hex/creatures/kobold-foreman.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/kobold-foreman.webp",
+    "width": 1320,
+    "height": 1456
+  },
+  "/assets/battle-hex/creatures/kobold.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/kobold.webp",
+    "width": 1320,
+    "height": 1456
+  },
+  "/assets/battle-hex/creatures/lizard-warrior.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/lizard-warrior.webp",
+    "width": 1150,
+    "height": 1904
+  },
+  "/assets/battle-hex/creatures/mammoth.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/mammoth.webp",
+    "width": 1963,
+    "height": 1638
+  },
+  "/assets/battle-hex/creatures/mgq-sylph.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/mgq-sylph.webp",
+    "width": 684,
+    "height": 923
+  },
+  "/assets/battle-hex/creatures/peasant.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/peasant.webp",
+    "width": 1728,
+    "height": 1300
+  },
+  "/assets/battle-hex/creatures/pikeman.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/pikeman.webp",
+    "width": 1976,
+    "height": 1419
+  },
+  "/assets/battle-hex/creatures/snow-elf.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/snow-elf.webp",
+    "width": 1408,
+    "height": 1840
+  },
+  "/assets/battle-hex/creatures/stone-gargoyle.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/stone-gargoyle.webp",
+    "width": 2533,
+    "height": 1573
+  },
+  "/assets/battle-hex/creatures/storm-elemental.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/storm-elemental.webp",
+    "width": 1837,
+    "height": 3420
+  },
+  "/assets/battle-hex/creatures/walking-dead.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/walking-dead.webp",
+    "width": 1140,
+    "height": 1638
+  },
+  "/assets/battle-hex/creatures/wolf-rider.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/wolf-rider.webp",
+    "width": 1431,
+    "height": 1677
+  },
+  "/assets/battle-hex/creatures/wood-elf.webp": {
+    "hd": "/assets/battle-hex/creatures-hd/wood-elf.webp",
+    "width": 1248,
+    "height": 1696
+  },
+  "/assets/garrison/creatures/gw-abomination.webp": {
+    "hd": "/assets/garrison/creatures-hd/gw-abomination.webp",
+    "width": 1944,
+    "height": 1296
+  },
+  "/assets/garrison/creatures/oc-death-rider-bare.webp": {
+    "hd": "/assets/garrison/creatures-hd/oc-death-rider-bare.webp",
+    "width": 1176,
+    "height": 1071
+  },
+  "/assets/garrison/creatures/oc-satyr-pipes.webp": {
+    "hd": "/assets/garrison/creatures-hd/oc-satyr-pipes.webp",
+    "width": 1210,
+    "height": 1284
+  },
+  "/assets/garrison/creatures/oc-shieldbearer.webp": {
+    "hd": "/assets/garrison/creatures-hd/oc-shieldbearer.webp",
+    "width": 1392,
+    "height": 1188
+  },
+  "/assets/garrison/creatures/oc-shieldwall.webp": {
+    "hd": "/assets/garrison/creatures-hd/oc-shieldwall.webp",
+    "width": 888,
+    "height": 819
+  },
+  "/assets/garrison/creatures/oc-skeleton-bare.webp": {
+    "hd": "/assets/garrison/creatures-hd/oc-skeleton-bare.webp",
+    "width": 1448,
+    "height": 1152
+  },
+  "/assets/garrison/creatures/oc-trog-helm.webp": {
+    "hd": "/assets/garrison/creatures-hd/oc-trog-helm.webp",
+    "width": 1449,
+    "height": 891
+  }
+}

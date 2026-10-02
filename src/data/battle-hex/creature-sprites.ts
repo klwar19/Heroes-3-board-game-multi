@@ -1,5 +1,7 @@
 import atlases from "./creature-sprite-atlases.json";
 import animTimes from "./creature-anim-times.json";
+import hdSheets from "./creature-sprites-hd.json";
+import { assetBaseUrl, contentAddressedPath } from "@/lib/asset-url";
 import { getHexBattleSpeed } from "@/lib/hex-battle-speed";
 
 /**
@@ -50,6 +52,33 @@ export function spriteFrameOffset(
     x: (cell % atlas.columns) * atlas.frameWidth,
     y: Math.floor(cell / atlas.columns) * atlas.frameHeight
   };
+}
+
+/**
+ * The sheet a battlefield draws for an atlas: its 2x HD copy when there is one
+ * (scripts/build-hd-creature-sheets.mjs: Real-ESRGAN, exactly twice the size, so
+ * every frame cell and anchor is the original's times `scale`), else the
+ * original. The HD copy is used only once the CDN serves it (it is in the
+ * published media map, or assets come from this host) and not on a device that
+ * reports under 4 GB of memory (an HD sheet decodes to four times the bytes).
+ * `width`/`height` are the ORIGINAL sheet's pixels: CSS sprites size the HD
+ * background back onto that grid. Card thumbnails keep the original sheets.
+ */
+export type CreatureSheet = { image: string; scale: 1 | 2; width?: number; height?: number };
+
+const HD_SHEETS = hdSheets as Readonly<Record<string, { hd: string; width: number; height: number } | undefined>>;
+
+export function creatureSheet(atlas: Pick<CreatureSpriteAtlas, "image">): CreatureSheet {
+  const hd = HD_SHEETS[atlas.image];
+  if (!hd || !hdSheetsAllowed()) return { image: atlas.image, scale: 1 };
+  if (assetBaseUrl() && !contentAddressedPath(hd.hd)) return { image: atlas.image, scale: 1 };
+  return { image: hd.hd, scale: 2, width: hd.width, height: hd.height };
+}
+
+function hdSheetsAllowed(): boolean {
+  if (typeof navigator === "undefined") return true;
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  return memory === undefined || memory >= 4;
 }
 
 /** H3 creature animation group ids (CREATURE .def block ids). */

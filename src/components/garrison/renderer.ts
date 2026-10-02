@@ -119,6 +119,8 @@ export type View = {
   /** Smoothed frame time (ms); a sustained slow frame rate trims the cosmetic particles. */
   frameMs: number;
   lite: boolean;
+  /** Set for the rest of the battle once frames ran slow: the board then renders at the plain device-pixel scale. */
+  sharpOff: boolean;
   /** Boss dread: vignette, footstep tremble, glitches, ghost wisps, the immune ward (drawing only). */
   horror: Horror;
 };
@@ -130,7 +132,7 @@ export function createView(town: string, defColor = "#3f7fe0"): View {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
     shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience(), antics: createAntics(),
-    defLanes: [], foeLanes: [], frameMs: 16, lite: false, horror: createHorror()
+    defLanes: [], foeLanes: [], frameMs: 16, lite: false, sharpOff: false, horror: createHorror()
   };
 }
 
@@ -153,8 +155,24 @@ const LITE_OFF_MS = 19;
 function paceFrame(view: View, dt: number): void {
   view.frameMs += (dt - view.frameMs) * 0.06;
   view.lite = view.lite ? view.frameMs > LITE_OFF_MS : view.frameMs > LITE_ON_MS;
+  if (view.lite) view.sharpOff = true;
   // (Set every frame: the budget is shared, and a new battle starts at full.)
   setParticleBudget(view.lite ? "lite" : "full");
+}
+
+/**
+ * Backing-store pixels per board unit. The board is drawn at the size it is
+ * shown on screen (up to 2x), so the browser never stretches a finished frame
+ * (a 1080p/1440p window used to scale the 1400-wide board up after the fact,
+ * softening every sprite and painted layer). Never below the device-pixel
+ * ratio (the old scale), never above 2 (the old ceiling); stepped in eighths so
+ * a window resize does not rebuild the cached layers for every pixel. After
+ * frames ran slow in this battle it stays at the old device-pixel scale.
+ */
+export function boardPixelScale(view: View, dpr: number, shownWidth: number): number {
+  if (view.sharpOff || !(shownWidth > 0)) return dpr;
+  const fit = Math.ceil(((shownWidth * dpr) / BOARD.W) * 8) / 8;
+  return Math.min(2, Math.max(dpr, fit));
 }
 
 // ---------------------------------------------------------------------------

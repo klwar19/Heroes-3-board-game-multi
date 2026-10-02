@@ -47,6 +47,7 @@ import {
   creatureMissileOffsets,
   creatureShootFrameMs,
   creatureShotClimaxFrame,
+  creatureSheet,
   creatureSpriteForSlug,
   hexActionBeatMs,
   hexActionFrameMs,
@@ -230,12 +231,15 @@ function pointStyle(point: Point, zIndex: number): CSSProperties {
 // ---------------------------------------------------------------------------
 
 function spriteStyle(atlas: CreatureSpriteAtlas): CSSProperties {
+  // A 2x HD sheet is sized back onto the original's pixel grid, so frame offsets stay the same.
+  const sheet = creatureSheet(atlas);
   return {
     width: `${atlas.frameWidth}px`,
     height: `${atlas.frameHeight}px`,
     marginLeft: `${-atlas.anchorX}px`,
     marginTop: `${-atlas.anchorY}px`,
-    backgroundImage: `url("${assetUrl(atlas.image)}")`,
+    backgroundImage: `url("${assetUrl(sheet.image)}")`,
+    backgroundSize: sheet.width && sheet.height ? `${sheet.width}px ${sheet.height}px` : undefined,
     transformOrigin: `${atlas.anchorX}px ${atlas.anchorY}px`,
     transform: `scale(calc(var(--hex-scale, 1) * ${SPRITE_SCALE} * var(--face, 1)), calc(var(--hex-scale, 1) * ${SPRITE_SCALE}))`
   };
@@ -1368,7 +1372,10 @@ export const HexUnitsLayer = memo(function HexUnitsLayer({
   // strikes or appears (a summon, a resurrection) never waits on a multi-MB
   // download or a large image decode mid-animation.
   const atlasKey = Object.values(combat.units)
-    .map((unit) => unitCreatureSprite(unit)?.image)
+    .map((unit) => {
+      const atlas = unitCreatureSprite(unit);
+      return atlas ? creatureSheet(atlas).image : undefined;
+    })
     .filter((image): image is string => Boolean(image))
     .sort()
     .join("|");

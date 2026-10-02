@@ -30,7 +30,7 @@ import { FieldBadge, fieldQuip, fieldTipAt, fieldToast } from "./order-chaos/fie
 import { rosterQuip } from "./order-chaos/roster-ui";
 import type { GarrisonDriver } from "./driver";
 import styles from "./garrison.module.css";
-import { BOARD, boardCell, coinSize, createView, drawBoard, ingestEvents, laneTop, preloadForConfig, tileX, type Ghost, type Overlay } from "./renderer";
+import { BOARD, boardCell, boardPixelScale, coinSize, createView, drawBoard, ingestEvents, laneTop, preloadForConfig, tileX, type Ghost, type Overlay } from "./renderer";
 import { PROP, SURROUNDS, WORLD_W, drawCoinFlights, type CoinFlight } from "./scene";
 import { ATK_KEYS, ATK_SPELL_KEYS, AtkTray, DEF_KEYS, DEF_SPELL_KEYS, DefTray, IconOr, Progress, SatchelBar, SpellBar, formatTime, type Selection, type Tip } from "./hud";
 import { CARD_SCENES, cardSceneSrc } from "./thumbs";
@@ -130,6 +130,8 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   // (Created once: a plain useRef(createView(...)) would build and drop a fresh view on every HUD render.)
   const [initialView] = useState(() => createView(town, defColor));
   const viewRef = useRef(initialView);
+  /** The board canvas's on-screen width (CSS px), kept by a ResizeObserver so the frame loop reads no layout. */
+  const shownWidthRef = useRef(0);
   /** HUD overlay: coins flying to the counter (in page space, above the bars). */
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const gameRef = useRef<HTMLDivElement | null>(null);
@@ -464,6 +466,17 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     }
   }, []);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1]?.contentRect.width ?? 0;
+      if (width > 0) shownWidthRef.current = width;
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
   // ---- Main loop ------------------------------------------------------------
   useEffect(() => {
     let raf = 0;
@@ -568,7 +581,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (canvas && ctx) {
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const dpr = boardPixelScale(view, Math.min(2, window.devicePixelRatio || 1), shownWidthRef.current);
         const width = Math.round(BOARD.W * dpr);
         if (canvas.width !== width) {
           canvas.width = width;
@@ -576,6 +589,8 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
         }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.imageSmoothingEnabled = true;
+        // Creature frames are native Heroes III size and are drawn enlarged: resample them smoothly.
+        ctx.imageSmoothingQuality = "high";
         const localDefender = driver.local.includes("def") && state.cfg.mode !== "raid";
         const overlay: Overlay = {
           ghost: computeGhost(state, selectionRef.current, hoverRef.current),
