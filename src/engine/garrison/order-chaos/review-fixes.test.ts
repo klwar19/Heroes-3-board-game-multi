@@ -125,6 +125,8 @@ describe("Order & Chaos review fixes", () => {
       const boss = s.enemies.find((e) => e.id === s.warbossId)!;
       expect(boss).toBeDefined();
       boss.freezeUntil = NEVER;
+      // Its phase set pieces have already played (dropping it to 1 HP would otherwise start one): this test is about its fall.
+      boss.bossPhase = ENEMIES[boss.kind]!.warboss!.phases.length;
       // The rest of the horde: a Carmilla (rises once), a Hydra Spawn (splits), a Pain Elemental (bursts into Lost Souls).
       const others = [foeLike(s, boss, "oc-carmilla", 6), foeLike(s, boss, "oc-hydra-spawn", 6.5), foeLike(s, boss, "oc-pain", 7)];
       for (const o of others) o.freezeUntil = NEVER;

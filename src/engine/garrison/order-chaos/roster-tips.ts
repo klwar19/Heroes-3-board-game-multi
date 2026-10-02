@@ -51,11 +51,17 @@ export const OC_FUSION_TIPS: Readonly<Record<DefKind, OcLine>> = {
   "oc-zephyr": crag("grin", "Zephyr Archer: every arrow knocks its foe back a step. Two of these and the horde walks backwards."),
   "oc-siren": crag("sly", "A Siren. Three foes will fall in love with her before she's spent. That's two more than Cupi manages."),
   "oc-blazing-prefect": crag("grin", "Iori! Fire bullets: every one burns for double and scorches the foes beside the one it hits."),
-  "oc-tesla": crag("grin", "A Tesla Automaton: a wall that zaps! Lightning every three seconds, and it still bursts when it breaks.")
+  "oc-tesla": crag("grin", "A Tesla Automaton: a wall that zaps! Lightning every three seconds, and it still bursts when it breaks."),
+  "oc-paladin": crag("grin", "A Unicorn Paladin! Every kill makes that blade faster, and the troops right around it take less damage. Put it where the fighting is thickest."),
+  "oc-kyousuke": crag("grin", "Kyousuke! Bouncing softballs down the lane, and one of Rin's cats every nine seconds. The whole team in one tile."),
+  "oc-i19": crag("sly", "A submarine. Torpedoes under the shields, and a fresh Land Mine every twenty-four seconds, three at a time. Leave her some empty tiles ahead."),
+  "oc-engineer": crag("talk", "The Engineer strips a helm or shield every six seconds AND keeps the shooters around him loaded. Park him in the middle of your archers."),
+  "oc-unicorn-carrier": crag("grin", "Unicorn, the escort carrier: planes bombing anywhere on the field, and she patches up whoever's hurt beside her.")
 };
 
 /** The first time a troop with a not-so-obvious trick is planted (keyed by its base kind). */
 export const OC_PLACE_TIPS: Readonly<Record<DefKind, OcLine>> = {
+  "oc-psychic": crag("sly", "The Psychic Elemental doesn't hit anything. It stares. Every fourteen seconds the nearest small fry in its lane turns round and fights for us. Bosses and the big smashers don't listen, so keep a wall in front of it."),
   "oc-elf-band": crag("talk", "Tip: drop another Wood Elf Band packet on this one. Two elves make a Pack, three a Horde. Each elf adds an arrow to every volley, and costs a bit more."),
   "oc-couatl": crag("talk", "The Couatl makes you a Surge orb every forty seconds. Pick it up like any other orb."),
   "oc-gargoyle": crag("sly", "The Gargoyle just sits there looking ugly until something comes close. Then it drops on it like a ton of bricks. Because it IS a ton of bricks."),
@@ -63,5 +69,9 @@ export const OC_PLACE_TIPS: Readonly<Record<DefKind, OcLine>> = {
   "oc-rin": crag("grin", "Rin sends a cat down her lane every twelve seconds, while there's something to chase. They're braver than they look."),
   "oc-nix": crag("talk", "The Nix Warrior shield-bashes the first three biters two tiles back down the lane. Each bash comes back ten seconds after it's used."),
   "oc-armadillo": crag("grin", "A Rolling Armadillo! It curls up and rolls down the lane, bouncing from foe to foe. Aim it at a crowd."),
-  "oc-big-armadillo": crag("grin", "The Giant Armadillo rolls straight through everything in the lane. Everything.")
+  "oc-big-armadillo": crag("grin", "The Giant Armadillo rolls straight through everything in the lane. Everything."),
+  // Summoning Portal exclusives.
+  "oc-guardian-angel": crag("talk", "A Guardian Angel! When a troop right around her would fall, she catches it: half health back and a moment where nothing can touch it. Then she needs twenty seconds to be ready again. Put her in the middle of your line."),
+  "oc-astral-spirit": crag("sly", "The Astral Spirit's bolts don't hit hard. They mark. Anything it hits takes a quarter more damage from everything else for five seconds. Put your heavy hitters in the same lane."),
+  "oc-crystal-dragon": crag("grin", "A Crystal Dragon! Every ten seconds it locks the biggest foe near it in crystal, and four seconds later the crystal blows apart and takes the neighbours with it. Bosses won't fit in a crystal, so they just eat the shards.")
 };

@@ -10,8 +10,11 @@ import { musicGain, silencedInBackground, getAudioMix, subscribeAudioMix } from 
  * "oc-prep" / "oc-battle" are the Order & Chaos mode's own scenes: the
  * preparation theme (loadout screen + Last Stand planning, looping) and the
  * battle opener (plays once per battle, then hands over to the combat rotation).
+ * "oc-boss" is an Order & Chaos boss fight: every other track stops, the
+ * warning sting plays once, then the boss theme loops until the scene changes.
+ * "oc-menu" is the Order & Chaos menus' own theme (the main game's menus keep "menu").
  */
-export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle";
+export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle" | "oc-boss" | "oc-menu";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
 export type MapMusicContext = {
   /** Drives a fresh faction opener when the relevant map turn changes. */
@@ -26,7 +29,7 @@ type MusicProfile =
   | "menu" | "combat" | "map-general" | "map-water" | "map-underground"
   | "town-necropolis" | "town-rampart" | "town-cove" | "town-castle"
   | "town-stronghold" | "town-tower" | "town-fortress"
-  | "oc-prep" | "oc-battle";
+  | "oc-prep" | "oc-battle" | "oc-boss" | "oc-boss-loop" | "oc-menu";
 
 /** Multi-track profiles advance randomly and never immediately repeat. */
 export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
@@ -44,6 +47,9 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   "town-fortress": ["music/swamp"],
   "oc-prep": ["music/order-chaos/choose-your-seeds"],
   "oc-battle": ["music/order-chaos/grasswalk"],
+  "oc-boss": ["music/order-chaos/boss-warning"],
+  "oc-boss-loop": ["music/order-chaos/flesh-and-metal"],
+  "oc-menu": ["music/order-chaos/menu-casino"],
 };
 
 /**
@@ -51,7 +57,7 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
  * file is still loaded (a restarted battle opens with Grasswalk again instead
  * of resuming it mid-song).
  */
-const RESTART_ON_REQUEST: ReadonlySet<MusicProfile> = new Set<MusicProfile>(["oc-prep", "oc-battle"]);
+const RESTART_ON_REQUEST: ReadonlySet<MusicProfile> = new Set<MusicProfile>(["oc-prep", "oc-battle", "oc-boss"]);
 
 /** Representative track retained for scene/manifest audits. */
 export const SCENE_TRACK: Record<MusicScene, string> = {
@@ -60,6 +66,8 @@ export const SCENE_TRACK: Record<MusicScene, string> = {
   combat: MUSIC_TRACKS.combat[0]!,
   "oc-prep": MUSIC_TRACKS["oc-prep"][0]!,
   "oc-battle": MUSIC_TRACKS["oc-battle"][0]!,
+  "oc-boss": MUSIC_TRACKS["oc-boss-loop"][0]!,
+  "oc-menu": MUSIC_TRACKS["oc-menu"][0]!,
 };
 
 export const MUSIC_VOLUME = 0.18;
@@ -192,6 +200,9 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
       // finishes, fall through to the varied terrain playlist. Other profiles
       // (combat, water, underground, menu) continue within their own pool.
       currentProfile = currentContinuationProfile ?? currentProfile;
+      // Once there, the continuation is simply the scene's own pool (a lone
+      // track then loops natively, like the boss theme after its warning sting).
+      if (currentContinuationProfile === currentProfile) currentContinuationProfile = null;
       playProfile(currentProfile, true);
     });
     audio.addEventListener("playing", () => {
@@ -348,6 +359,8 @@ function continuationProfileFor(scene: MusicScene, profile: MusicProfile): Music
   // Order & Chaos battles open with their own theme, then rotate through the
   // game's combat tracks (random, never an immediate repeat) until the battle ends.
   if (scene === "oc-battle") return "combat";
+  // A boss fight: the warning sting once, then the boss theme on a loop.
+  if (scene === "oc-boss") return "oc-boss-loop";
   if (scene !== "map" || !profile.startsWith("town-")) return null;
   return "map-general";
 }

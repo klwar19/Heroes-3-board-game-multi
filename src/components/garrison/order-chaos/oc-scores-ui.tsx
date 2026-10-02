@@ -13,10 +13,10 @@
 /* eslint-disable @next/next/no-img-element */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BLESSINGS, CARDS, DEFENDERS, ENEMIES, SPELLS, TERRAINS } from "@/engine/garrison/content";
-import { OC_HEROES, OC_RAIDS } from "@/engine/garrison/order-chaos/campaign";
+import { OC_HEROES, OC_LEVELS, OC_RAIDS, totalStars } from "@/engine/garrison/order-chaos/campaign";
 import { OC_DAILY_TWISTS, ocDaily, type OcDaily } from "@/engine/garrison/order-chaos/daily";
 import {
-  OC_BOARD_SIZE, OC_NAME_MAX, OC_SCORE_RULES, cleanOcName, ocDayKey, ocPrevDay, ocRunTime, ocScore, ocScoreText,
+  OC_BOARD_SIZE, OC_NAME_MAX, OC_SCORE_RULES, cleanOcName, ocCampaignSummary, ocDayKey, ocPrevDay, ocRunTime, ocScore, ocScoreText,
   type OcBoardMode, type OcBoardView, type OcRunSummary
 } from "@/engine/garrison/order-chaos/scores";
 import { OC_SCORE_LINES, OC_SCREEN_LINES, unlockedLines, type OcGatedLine, type OcLine } from "@/engine/garrison/order-chaos/story";
@@ -36,7 +36,7 @@ const UI = {
   tray: "/assets/order-chaos/ui/tray.webp"
 } as const;
 
-const MODE_LABEL: Record<OcBoardMode, string> = { endless: "Endless Siege", daily: "Daily Siege", raid: "Chaos Raids" };
+const MODE_LABEL: Record<OcBoardMode, string> = { endless: "Endless Siege", daily: "Daily Siege", raid: "Chaos Raids", campaign: "Campaign" };
 
 // ---------------------------------------------------------------------------
 // Local bests
@@ -383,17 +383,24 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
   }, [mode, view, raid, daily, reload]);
 
   // This device's best for the board on show.
-  const bestKey = mode === "raid" ? `raid:${raid}` : mode === "daily"
+  const bestKey = mode === "campaign" ? "campaign" : mode === "raid" ? `raid:${raid}` : mode === "daily"
     ? (view === "today" ? `daily:${daily.day}` : Object.keys(progress.bests).filter((key) => key.startsWith("daily:")).sort((a, b) => (progress.bests[b]!.score - progress.bests[a]!.score))[0] ?? `daily:${daily.day}`)
     : "endless";
   const best = progress.bests[bestKey];
-  const unsent = best && !best.sent ? runFromBest(bestKey, best) : null;
+  // The campaign board: this device's own progress (never with the testing unlock on), posted by hand.
+  const campaignLevels = OC_LEVELS.filter((level) => progress.cleared.includes(level.id)).length;
+  const campaignRun = mode === "campaign" && campaignLevels > 0 && !progress.testAll
+    ? ocCampaignSummary(campaignLevels, totalStars(progress.cleared, progress.stars), progress.hero)
+    : null;
+  const campaignPosted = campaignRun !== null && progress.campaignPosted >= ocScore(campaignRun);
+  const unsent = mode === "campaign" ? (campaignRun && !campaignPosted ? campaignRun : null) : best && !best.sent ? runFromBest(bestKey, best) : null;
   const postBest = async () => {
     if (!unsent || !name || posting) return;
     setPosting("Posting…");
     const result = await postOcRun(name, unsent);
     if (result.ok) {
-      update((p) => markOcBestSent(p, bestKey, heldScore(result)));
+      if (unsent.mode === "campaign") update((p) => ({ ...p, campaignPosted: Math.max(p.campaignPosted, heldScore(result)) }));
+      else update((p) => markOcBestSent(p, bestKey, heldScore(result)));
       setPosting(null);
       setReload((n) => n + 1);
     } else {
@@ -411,7 +418,7 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
       </div>
       <Greeting cleared={cleared} place="tally" />
       <div aria-label="Board" className={styles.factions} role="tablist">
-        {(["endless", "daily", "raid"] as const).map((id) => (
+        {(["endless", "daily", "raid", "campaign"] as const).map((id) => (
           <button aria-selected={mode === id} className={`${styles.faction} ${mode === id ? styles.factionOn : ""}`} key={id} onClick={() => setMode(id)} role="tab" type="button">
             {MODE_LABEL[id]}
           </button>
@@ -438,11 +445,14 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
         </h2>
         <p className={styles.note}>{OC_SCORE_RULES[mode]}{mode === "endless" ? " Endless runs use your own troops, training and artifacts; runs with the testing unlock on are never posted." : ""}</p>
         <div className={sc.mine}>
-          {best ? (
+          {mode === "campaign" ? (
+            campaignRun ? <span>Your campaign: <b>{ocScoreText("campaign", campaignRun)}</b>{campaignPosted ? "" : " · not on the board yet"}</span>
+              : <span>{progress.testAll ? "The testing unlock is on: campaign progress stays off the board." : "Clear a campaign level to join this board."}</span>
+          ) : best ? (
             <span>Your best{mode === "daily" && view === "all" ? ` (${best.day})` : ""}: <b>{ocScoreText(mode, best)}</b>{best.sent ? "" : " · not on the board yet"}</span>
           ) : <span>No run of yours on this board yet.</span>}
           {unsent ? (
-            <button className={styles.primary} disabled={!name || posting === "Posting…"} onClick={() => void postBest()} type="button">Post my best</button>
+            <button className={styles.primary} disabled={!name || posting === "Posting…"} onClick={() => void postBest()} type="button">{mode === "campaign" ? "Post my progress" : "Post my best"}</button>
           ) : null}
           {posting && posting !== "Posting…" ? <small className={sc.warn}>{posting}</small> : null}
         </div>
@@ -452,14 +462,14 @@ export function OcTallyBoard({ progress, cleared, update, onBack, initialMode = 
             <div className={sc.tableWrap}>
               <table className={sc.board}>
                 <thead>
-                  <tr><th>#</th><th>Keeper</th><th>{mode === "raid" ? "Time" : "Wave · foes slain"}</th><th>Hero</th><th>{mode === "daily" && view === "all" ? "Orders of" : "Day"}</th></tr>
+                  <tr><th>#</th><th>Keeper</th><th>{mode === "raid" ? "Time" : mode === "campaign" ? "Levels · stars" : "Wave · foes slain"}</th><th>Hero</th><th>{mode === "daily" && view === "all" ? "Orders of" : "Day"}</th></tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
                     <tr className={row.pid === me ? sc.me : ""} key={`${row.pid}-${row.rank}`}>
                       <td className={sc.rank}>{row.rank}</td>
                       <td>{row.name}{row.pid === me ? " (you)" : ""}</td>
-                      <td className={sc.score}>{mode === "raid" ? ocRunTime(row.ticks) : `Wave ${row.wave} · ${row.kills}`}</td>
+                      <td className={sc.score}>{mode === "raid" ? ocRunTime(row.ticks) : mode === "campaign" ? `${row.wave} · ★ ${row.kills}` : `Wave ${row.wave} · ${row.kills}`}</td>
                       <td>{row.hero ? OC_HEROES[row.hero as keyof typeof OC_HEROES]?.name ?? "" : ""}</td>
                       <td className={sc.muted}>{row.day}</td>
                     </tr>

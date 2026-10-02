@@ -61,7 +61,7 @@ const IP_MAX_POSTS = 40;
 
 type Stored = OcBoardEntry & { cid: string };
 
-const MODES: readonly OcBoardMode[] = ["endless", "daily", "raid"];
+const MODES: readonly OcBoardMode[] = ["endless", "daily", "raid", "campaign"];
 
 function publicRow(entry: Stored, rank: number): OcBoardEntry & { rank: number } {
   const { cid: _cid, ...row } = entry;
@@ -186,7 +186,7 @@ export default class OcScoresServer implements Party.Server {
   }
 
   /**
-   * - GET  ?mode=endless|daily|raid&view=today|all[&raid=r3][&day=YYYY-MM-DD&setup=xxxxxxxx]
+   * - GET  ?mode=endless|daily|raid|campaign&view=today|all[&raid=r3][&day=YYYY-MM-DD&setup=xxxxxxxx]
    *        → `{ ok, key, today, rows }` (the top entries, ranked)
    * - POST `{ cid, name, run }` → `{ ok, score, today: {rank, best, improved}, all: {...} }`
    */

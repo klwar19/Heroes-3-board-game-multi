@@ -1,0 +1,921 @@
+/* Order & Chaos treasury: the Summoning Portal, the Satchel, the daily calendar (treasury-ui.tsx). */
+
+.icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  vertical-align: -4px;
+}
+
+.glyph {
+  color: #b9a2ff;
+  text-shadow: 0 0 6px rgba(160, 130, 255, 0.8);
+}
+
+.sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: #8a6a2a;
+}
+
+.warn {
+  color: #ff8a6a;
+  text-align: center;
+}
+
+.hint {
+  color: var(--gw-dim, #b9a47c);
+  font-size: 13px;
+}
+
+/* --- The portal ---------------------------------------------------------- */
+
+.portalStage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.portal,
+.altar {
+  position: relative;
+  width: min(340px, 70vw);
+  aspect-ratio: 1;
+}
+
+.portalArt,
+.portalFallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 1;
+}
+
+.portalFallback {
+  border-radius: 50% 50% 8px 8px;
+  border: 10px solid #5a4a3a;
+  background: #120b20;
+}
+
+.vortex {
+  position: absolute;
+  inset: 22% 26% 18%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #3a1a6a, #b07aff, #ffd36a, #3a1a6a, #7a4aff, #3a1a6a);
+  filter: blur(10px);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  animation: ocVortex 6s linear infinite;
+  z-index: 2;
+  pointer-events: none;
+}
+
+@keyframes ocVortex {
+  to { transform: rotate(360deg); }
+}
+
+/* The summoning circle on the floor under the portal (faint at rest, blazing while it summons). */
+.circleIdle,
+.circle {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: -30%;
+  width: 92%;
+  aspect-ratio: 1;
+  transform: perspective(500px) rotateX(68deg);
+  pointer-events: none;
+}
+
+.circleIdle {
+  opacity: 0.35;
+}
+
+.circle {
+  z-index: 0;
+  opacity: 0;
+  animation: ocCircleIn 0.6s ease-out forwards, ocCircleSpin 2.4s linear infinite;
+}
+
+@keyframes ocCircleIn {
+  to { opacity: 1; }
+}
+
+@keyframes ocCircleSpin {
+  from { transform: perspective(500px) rotateX(68deg) rotate(0deg); }
+  to { transform: perspective(500px) rotateX(68deg) rotate(360deg); }
+}
+
+.pity {
+  margin: 0;
+  color: #e8dcff;
+  text-align: center;
+}
+
+.pityBars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  width: min(560px, 100%);
+}
+
+.pityBar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+  color: #e8dcff;
+  font-size: 13px;
+}
+
+.pityBar small {
+  color: #b9a7e6;
+}
+
+.pityTrack {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid #6a4aa8;
+  border-radius: 6px;
+  background: rgba(20, 10, 40, 0.8);
+}
+
+.pityFill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #7a4aff, #d08aff, #ffd36a);
+}
+
+@media (max-width: 560px) {
+  .pityBars {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pullRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.pull {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 200px;
+  padding: 10px 20px;
+  font-size: 18px;
+}
+
+.pull small {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.pullTen {
+  background: linear-gradient(180deg, #8a5aff, #4a2a9a);
+  border-color: #c9b0ff;
+}
+
+@media (max-width: 480px) {
+  .pull {
+    min-width: 0;
+    flex: 1 1 140px;
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+}
+
+/* --- The summon (overlay) ---------------------------------------------------- */
+
+.summonOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 56px 12px 20px;
+  overflow-y: auto;
+  background: radial-gradient(circle at 50% 45%, rgba(60, 30, 110, 0.92), rgba(8, 4, 16, 0.96) 70%);
+  animation: ocFadeIn 0.3s ease both;
+}
+
+@keyframes ocFadeIn {
+  from { opacity: 0; }
+}
+
+.skip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+}
+
+.charging .vortex {
+  opacity: 1;
+  animation-duration: 0.8s;
+  filter: blur(6px) brightness(1.5);
+}
+
+.charging .portalArt {
+  animation: ocCharge 0.45s ease-in-out infinite alternate;
+}
+
+@keyframes ocCharge {
+  to { transform: scale(1.03); }
+}
+
+.signaling .vortex {
+  opacity: 1;
+  animation-duration: 0.5s;
+  filter: blur(4px) brightness(2);
+}
+
+/* The signal: a light rises from the portal. Every summon starts the same pale blue;
+   the colour then climbs as far as the best rarity really rolled (violet for SSR, gold for UR). */
+.orb {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  z-index: 3;
+  width: 34%;
+  aspect-ratio: 1;
+  margin: -17% 0 0 -17%;
+  pointer-events: none;
+  animation: ocOrb var(--sig, 900ms) ease-in forwards;
+}
+
+.orbCore,
+.orbBlue,
+.orbViolet,
+.orbGold {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.orbCore {
+  background: radial-gradient(circle, #fff 0%, #fff4dc 30%, rgba(255, 230, 190, 0.5) 55%, transparent 72%);
+}
+
+.orbBlue {
+  background: radial-gradient(circle, #fff 0%, #b8dcff 28%, rgba(90, 160, 255, 0.6) 55%, transparent 72%);
+  opacity: 0;
+}
+
+.orbViolet {
+  background: radial-gradient(circle, #fff 0%, #e8c4ff 26%, rgba(180, 90, 255, 0.7) 55%, transparent 74%);
+  opacity: 0;
+}
+
+.orbGold {
+  background: radial-gradient(circle, #fff 0%, #fff0a8 24%, rgba(255, 190, 60, 0.75) 52%, rgba(255, 120, 200, 0.4) 66%, transparent 76%);
+  opacity: 0;
+}
+
+@keyframes ocOrb {
+  0% { transform: translateY(30%) scale(0.2); opacity: 0; }
+  25% { transform: translateY(0) scale(0.7); opacity: 1; }
+  80% { transform: translateY(-8%) scale(1.15); opacity: 1; }
+  100% { transform: translateY(-10%) scale(2.6); opacity: 0; }
+}
+
+.sigSR .orbBlue,
+.sigSSR .orbBlue,
+.sigUR .orbBlue {
+  animation: ocOrbOn var(--sig, 900ms) linear forwards;
+}
+
+.sigSSR .orbViolet,
+.sigUR .orbViolet {
+  animation: ocOrbViolet var(--sig, 900ms) linear forwards;
+}
+
+.sigUR .orbGold {
+  animation: ocOrbGold var(--sig, 900ms) linear forwards;
+}
+
+@keyframes ocOrbOn {
+  0%, 15% { opacity: 0; }
+  30%, 100% { opacity: 1; }
+}
+
+@keyframes ocOrbViolet {
+  0%, 40% { opacity: 0; }
+  55%, 100% { opacity: 1; }
+}
+
+@keyframes ocOrbGold {
+  0%, 60% { opacity: 0; }
+  72%, 100% { opacity: 1; }
+}
+
+/* An SSR or UR ends its signal in a flash. */
+.flash {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  animation: ocFlash var(--sig, 900ms) ease-out forwards;
+}
+
+.sigUR .flash {
+  background: radial-gradient(circle at 50% 45%, #fff 0%, #fff3c4 35%, #ffc8ec 70%, #c8ecff 100%);
+}
+
+@keyframes ocFlash {
+  0%, 78% { opacity: 0; }
+  88% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
+/* UR: a prismatic burst of rays behind the light. */
+.rays {
+  position: absolute;
+  inset: -30%;
+  z-index: 0;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 230, 140, 0.55) 0deg 6deg, transparent 6deg 18deg, rgba(255, 150, 220, 0.4) 18deg 22deg, transparent 22deg 30deg);
+  -webkit-mask-image: radial-gradient(circle, #000 20%, transparent 68%);
+  mask-image: radial-gradient(circle, #000 20%, transparent 68%);
+  opacity: 0;
+  pointer-events: none;
+  animation: ocRays var(--sig, 1700ms) ease-out forwards;
+}
+
+@keyframes ocRays {
+  0%, 50% { opacity: 0; transform: rotate(0deg) scale(0.6); }
+  75% { opacity: 1; }
+  100% { opacity: 0.8; transform: rotate(60deg) scale(1.2); }
+}
+
+.revealing {
+  background: radial-gradient(circle at 50% 40%, rgba(50, 26, 90, 0.94), rgba(8, 4, 16, 0.97) 75%);
+}
+
+.revealing.sigUR {
+  background: radial-gradient(circle at 50% 40%, rgba(110, 80, 40, 0.9), rgba(40, 14, 50, 0.95) 45%, rgba(8, 4, 16, 0.97) 80%);
+}
+
+/* --- Prize cards ----------------------------------------------------------- */
+
+/* Five cards a row (four on a phone), an odd last row centred. */
+.deck {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 700px;
+  perspective: 900px;
+}
+
+.deck > .card {
+  width: calc((100% - 40px) / 5);
+  max-width: 128px;
+}
+
+.deckOne > .card {
+  width: min(190px, 62vw);
+  max-width: none;
+}
+
+@media (max-width: 600px) {
+  .deck {
+    gap: 6px;
+  }
+  .deck:not(.deckOne) > .card {
+    width: calc((100% - 18px) / 4);
+  }
+}
+
+.card {
+  position: relative;
+  display: block;
+  flex: none;
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  animation: ocCardIn 0.45s ease both;
+  animation-delay: var(--deal, 0ms);
+}
+
+.flipped {
+  cursor: default;
+}
+
+.card:focus-visible {
+  outline: 2px solid #ffd36a;
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+@keyframes ocCardIn {
+  from { opacity: 0; transform: translateY(40px) scale(0.7) rotate(-6deg); }
+  to { opacity: 1; transform: none; }
+}
+
+.cardInner {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.flipped .cardInner {
+  transform: rotateY(180deg);
+}
+
+.cardBack,
+.cardFace {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+
+.cardBack {
+  border: 2px solid #6a5a8a;
+  background: radial-gradient(circle at 50% 40%, #7a4aff 0%, #2a1550 60%, #120a24 100%);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.7);
+}
+
+.backArt {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Face down, an SR or better already glows its colour (it is what lies under it). */
+.hintGlow {
+  position: absolute;
+  inset: -8px;
+  border-radius: 16px;
+  opacity: 0;
+  pointer-events: none;
+  animation: ocHint 1.2s ease-in-out infinite alternate;
+  animation-delay: calc(var(--deal, 0ms) + 0.45s);
+}
+
+.rSR .hintGlow { background: radial-gradient(closest-side, rgba(110, 170, 255, 0.85), transparent); }
+.rSSR .hintGlow { background: radial-gradient(closest-side, rgba(200, 120, 255, 0.95), transparent); }
+.rUR .hintGlow { background: radial-gradient(closest-side, rgba(255, 220, 120, 1), rgba(255, 140, 220, 0.6) 60%, transparent); }
+
+@keyframes ocHint {
+  from { opacity: 0.35; transform: scale(0.98); }
+  to { opacity: 0.9; transform: scale(1.04); }
+}
+
+.flipped .hintGlow {
+  animation: ocHintOut 0.6s ease-out forwards;
+}
+
+@keyframes ocHintOut {
+  from { opacity: 0.9; transform: scale(1.04); }
+  to { opacity: 0.45; transform: scale(1.08); }
+}
+
+/* An SSR or UR turning over bursts. */
+.burst {
+  position: absolute;
+  inset: -45%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 255, 255, 0.7) 0deg 4deg, transparent 4deg 20deg);
+  -webkit-mask-image: radial-gradient(circle, #000 25%, transparent 66%);
+  mask-image: radial-gradient(circle, #000 25%, transparent 66%);
+  animation: ocBurst 0.9s ease-out forwards;
+}
+
+.rSSR .burst { filter: drop-shadow(0 0 6px #c88aff); }
+.rUR .burst { filter: drop-shadow(0 0 8px #ffd36a); }
+
+@keyframes ocBurst {
+  from { opacity: 1; transform: scale(0.3) rotate(0deg); }
+  to { opacity: 0; transform: scale(1.3) rotate(40deg); }
+}
+
+.cardFace {
+  transform: rotateY(180deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8% 6%;
+  background: linear-gradient(180deg, #2a2440, #140f20);
+  text-align: center;
+}
+
+.cardArt {
+  position: absolute;
+  inset: 9% 8% 27%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.rarityTag {
+  position: absolute;
+  top: 5%;
+  left: 7%;
+  z-index: 1;
+  font-size: 15px;
+  text-shadow: 0 1px 2px #000;
+}
+
+.newBadge {
+  position: absolute;
+  top: 5%;
+  right: 6%;
+  z-index: 2;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffe27a, #e09a2a);
+  color: #2a1400;
+  font-size: 11px;
+  box-shadow: 0 0 8px rgba(255, 214, 90, 0.9);
+}
+
+.flipped .newBadge {
+  animation: ocPop 0.4s 0.45s ease-out both;
+}
+
+@keyframes ocPop {
+  from { transform: scale(0); }
+  70% { transform: scale(1.25); }
+  to { transform: scale(1); }
+}
+
+.cardName {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1.15;
+  color: #fff4d0;
+  text-shadow: 0 1px 2px #000;
+}
+
+.cardKind {
+  position: relative;
+  z-index: 1;
+  font-size: 10px;
+  color: #cfc2a0;
+}
+
+.cardBig .cardName { font-size: 16px; }
+.cardBig .cardKind { font-size: 12px; }
+.cardBig .rarityTag { font-size: 20px; }
+
+@media (max-width: 600px) {
+  .card:not(.cardBig) .cardName { font-size: 10px; }
+  .card:not(.cardBig) .cardKind { font-size: 9px; }
+  .card:not(.cardBig) .rarityTag { font-size: 12px; }
+}
+
+/* A foil shine sweeps an SSR or UR once it is face up. */
+.shine {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 48%, rgba(255, 230, 250, 0.25) 54%, transparent 65%);
+  transform: translateX(-120%);
+}
+
+.flipped .shine {
+  animation: ocShine 1s 0.5s ease-in-out forwards;
+}
+
+.rUR.flipped .shine {
+  animation: ocShine 1.4s 0.5s ease-in-out infinite;
+}
+
+@keyframes ocShine {
+  to { transform: translateX(120%); }
+}
+
+.rR .rarityTag { color: #d9c7a0; }
+.rSR .rarityTag { color: #8ac4ff; }
+.rSSR .rarityTag { color: #e0a8ff; }
+.rUR .rarityTag { color: #ffe27a; }
+.rSR.flipped .cardFace { box-shadow: 0 0 14px rgba(110, 170, 255, 0.7); }
+.rSSR.flipped .cardFace { box-shadow: 0 0 18px rgba(200, 120, 255, 0.85); }
+.rUR.flipped .cardFace { box-shadow: 0 0 26px rgba(255, 220, 120, 1); }
+
+.itemArt {
+  width: 80%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.heroArt {
+  width: 90%;
+  max-height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #f2e8ff;
+  text-align: center;
+  animation: ocFadeIn 0.4s ease both;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tapHint {
+  margin: 0;
+  color: #b9a7e6;
+  font-size: 13px;
+}
+
+/* --- History ----------------------------------------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.historyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #4a3a6a;
+  border-radius: 8px;
+  background: rgba(20, 12, 34, 0.6);
+}
+
+.historyWhen {
+  color: #b9a7e6;
+}
+
+.historyItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.historyItem {
+  white-space: nowrap;
+}
+
+.newChip {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #ffd36a;
+  color: #2a1400;
+  font-size: 11px;
+}
+
+.chance {
+  min-width: 52px;
+  color: #e8dcff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Lists ----------------------------------------------------------------- */
+
+.rarityChip {
+  display: inline-block;
+  min-width: 34px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+  color: #140f08;
+}
+
+.cR { background: #c9b48a; }
+.cSR { background: #7ab4ff; }
+.cSSR { background: #d08aff; }
+.cUR { background: linear-gradient(90deg, #ffd36a, #ff9ad0, #9ad8ff); }
+
+.prizeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prizeRow {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.exchange,
+.satchel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.offer,
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px;
+  border: 2px solid #5a3a1e;
+  border-radius: 10px;
+  background: rgba(20, 12, 6, 0.85);
+  text-align: center;
+}
+
+.slot small {
+  color: var(--gw-dim, #b9a47c);
+}
+
+.bSR { border-color: #4a7ac0; }
+.bSSR { border-color: #9a5ad0; box-shadow: 0 0 10px rgba(180, 110, 255, 0.35); }
+.bUR { border-color: #e3b54a; box-shadow: 0 0 12px rgba(255, 214, 90, 0.45); }
+
+.offerArt,
+.slotArt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+}
+
+.qty {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #2a1a08;
+  border: 1px solid #b08a3a;
+  color: #ffe9a8;
+  font-size: 13px;
+}
+
+/* --- The daily calendar -------------------------------------------------- */
+
+.calendar {
+  max-width: 760px;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0;
+}
+
+@media (max-width: 640px) {
+  .days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 96px;
+  padding: 6px 4px;
+  border: 2px solid #5a3a1e;
+  border-radius: 10px;
+  background: rgba(30, 20, 10, 0.9);
+  font-size: 13px;
+}
+
+.dayNow {
+  border-color: #ffd65a;
+  box-shadow: 0 0 14px rgba(255, 214, 90, 0.6);
+  animation: ocDayPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ocDayPulse {
+  50% { transform: translateY(-3px); }
+}
+
+.dayBig {
+  background: linear-gradient(180deg, rgba(90, 50, 140, 0.9), rgba(30, 20, 10, 0.9));
+}
+
+.dayDone {
+  opacity: 0.6;
+}
+
+.dayItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dayIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.stamp {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7aff9a;
+  font-size: 40px;
+  font-style: normal;
+  text-shadow: 0 0 6px #000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* (The summon itself also skips straight to its final state: treasury-ui.tsx reducedMotion.) */
+  .vortex,
+  .dayNow,
+  .card,
+  .circle,
+  .charging .portalArt,
+  .summonOverlay,
+  .summary,
+  .orb,
+  .orbBlue,
+  .orbViolet,
+  .orbGold,
+  .flash,
+  .rays,
+  .hintGlow,
+  .flipped .hintGlow,
+  .burst,
+  .flipped .shine,
+  .rUR.flipped .shine,
+  .flipped .newBadge {
+    animation: none;
+  }
+  .burst,
+  .shine,
+  .flash,
+  .rays {
+    display: none;
+  }
+  .cardInner {
+    transition: none;
+  }
+}
+
+/* The calendar floats over whichever menu screen is open. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 4, 2, 0.72);
+  overflow-y: auto;
+}

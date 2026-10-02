@@ -9,8 +9,10 @@ import {
   OC_RAID_CHARGES, OC_RAIDS, OC_SPELLBOOK_SIZE, OC_SPELLS, OC_STAR_MILESTONES, OC_ULT_LEVEL, OC_WORLDS, OC_ARTIFACTS,
   altarOpen, artifactSlots, buildOcConfig, crownSlots, surgeSlots, endlessOpen, goalMet, goalText, isLevelOpen, levelPower, mercCampOpen, metEnemies, raidOpen, seedSlots,
   totalStars, unlockedArtifacts, unlockedHeroes, unlockedSpells, unlockedUltimates, unlockedUnits, worldCleared,
+  OC_HERO_MAX_RANK, OC_GACHA_HEROES, heroRankCap, heroRankOf, heroRankText,
   type OcHeroId, type OcLevel
 } from "@/engine/garrison/order-chaos/campaign";
+import { gardenOpen, gardenPlots, isRipe } from "@/engine/garrison/order-chaos/garden";
 import { OC_DAILY_ID, OC_DAILY_LEVEL, buildDailyConfig, type OcDaily } from "@/engine/garrison/order-chaos/daily";
 import { ASCEND_TICKS, VALOR_NEED } from "@/engine/garrison/order-chaos/forms";
 import { ocDayKey, ocRunSummary, type OcBoardMode, type OcRunSummary } from "@/engine/garrison/order-chaos/scores";
@@ -20,10 +22,10 @@ import {
   type OcLine, type OcQuipEvent, type OcSceneLine
 } from "@/engine/garrison/order-chaos/story";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
-import { STANDOFF_NERVE, type Side } from "@/engine/garrison/sim";
+import { STANDOFF_NERVE, type GarrisonEvent, type Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import { setMusicScene, type MusicScene } from "@/lib/music";
-import { emptyOcProgress, loadOcProgress, OC_PROGRESS_KEY, saveOcProgress, type OcProgress } from "@/lib/order-chaos-progress";
+import { emptyOcProgress, loadOcProgress, OC_PROGRESS_KEY, OC_REPLAY_ORE_DAILY, saveOcProgress, takingsToday, type OcProgress } from "@/lib/order-chaos-progress";
 import { preloadSprites } from "../art";
 import { createLocalDriver, type GarrisonDriver } from "../driver";
 import { GarrisonGame, type GameIntro, type GameResult } from "../garrison-game";
@@ -33,6 +35,11 @@ import oc from "./oc.module.css";
 import { OcDailyScreen, OcRunScore, OcTallyBoard, isOcNewBest, markOcBestSent, ocBestKey, recordOcBest } from "./oc-scores-ui";
 import { AdvisorBubble, StoryScene } from "./story-ui";
 import { FieldAlmanac, FieldPanel, newFieldLines } from "./field-ui";
+import { ForgeScreen, GardenScreen, Materials, OreIcon } from "./forge-garden";
+import { AttendanceDialog, CrystalIcon, CrystalPurse, PackItems, PortalScreen, SatchelScreen, attendanceOpen, satchelCount } from "./treasury-ui";
+import { OC_CRYSTALS, OC_ITEMS, battleDrop } from "@/engine/garrison/order-chaos/treasury";
+import { OC_GACHA_ARTIFACTS, OC_GACHA_CHAOS, OC_GACHA_UNITS } from "@/engine/garrison/order-chaos/gacha-content";
+import { addItems, packedSatchel, spendItem } from "@/lib/order-chaos-treasury";
 import { SettingsButton } from "@/components/settings/settings-dialog";
 
 type Screen =
@@ -42,6 +49,10 @@ type Screen =
   | { s: "raids" }
   | { s: "barracks" }
   | { s: "camp" }
+  | { s: "forge" }
+  | { s: "garden" }
+  | { s: "portal" }
+  | { s: "satchel" }
   | { s: "almanac" }
   | { s: "journal" }
   | { s: "daily" }
@@ -86,6 +97,10 @@ const ART = {
   tally: "/assets/ui/menu/buttons/oc-tally-board.webp",
   barracks: "/assets/ui/menu/buttons/oc-barracks.webp",
   camp: "/assets/ui/menu/buttons/oc-mercenaries.webp",
+  forge: "/assets/ui/menu/buttons/oc-forge.webp",
+  garden: "/assets/ui/menu/buttons/oc-garden.webp",
+  portal: "/assets/ui/menu/buttons/oc-portal.webp",
+  satchel: "/assets/ui/menu/buttons/oc-satchel.webp",
   almanac: "/assets/ui/menu/buttons/oc-almanac.webp",
   versus: "/assets/ui/menu/buttons/gw-versus.webp",
   back: "/assets/ui/menu/buttons/back.webp",
@@ -110,7 +125,10 @@ const OC_UI = {
   cursor: "/assets/order-chaos/ui/cursor.png",
   cursorHot: "/assets/order-chaos/ui/cursor-hot.png",
   home: "/assets/order-chaos/ui/bg-home.webp",
-  table: "/assets/order-chaos/ui/bg-table.webp"
+  table: "/assets/order-chaos/ui/bg-table.webp",
+  forge: "/assets/order-chaos/ui/bg-forge.webp",
+  garden: "/assets/order-chaos/ui/bg-garden.webp",
+  portal: "/assets/order-chaos/ui/bg-portal.webp"
 } as const;
 
 /**
@@ -134,20 +152,23 @@ type Unlocks = {
   ultimates: DefKind[];
   altar: boolean;
   camp: boolean;
+  /** Chaos raiders won at the Summoning Portal. */
+  raiders: string[];
 };
 
 function unlocksOf(p: OcProgress): Unlocks {
   const test = p.testAll;
   const cleared = test ? OC_ALL_CLEARED : p.cleared;
   const stars = test ? Number.MAX_SAFE_INTEGER : totalStars(p.cleared, p.stars);
-  const units = unlockedUnits(cleared, test ? OC_ALL_HIRED : p.hired);
+  // (Portal prizes are the player's own, testing unlock or not.)
+  const units = [...unlockedUnits(cleared, test ? OC_ALL_HIRED : p.hired), ...p.gacha.units.filter((kind) => DEFENDERS[kind] && OC_GACHA_UNITS.some((u) => u.kind === kind))];
   return {
     test,
     cleared,
     stars,
     units,
-    heroes: unlockedHeroes(cleared),
-    artifacts: unlockedArtifacts(cleared, stars),
+    heroes: [...unlockedHeroes(cleared), ...OC_GACHA_HEROES.filter((id) => p.gacha.heroes.includes(id))],
+    artifacts: [...unlockedArtifacts(cleared, stars), ...p.gacha.artifacts.filter((id): id is BlessingId => OC_GACHA_ARTIFACTS.some((a) => a.id === id) && !!BLESSINGS[id as BlessingId])],
     artSlots: artifactSlots(cleared, stars),
     seedSlots: seedSlots(cleared, stars),
     crowns: crownSlots(stars),
@@ -155,8 +176,19 @@ function unlocksOf(p: OcProgress): Unlocks {
     spells: unlockedSpells(cleared, stars),
     ultimates: unlockedUltimates(cleared, units, p.levels, test),
     altar: test || altarOpen(cleared),
-    camp: test || mercCampOpen(cleared)
+    camp: test || mercCampOpen(cleared),
+    raiders: p.gacha.chaos.filter((kind) => ENEMIES[kind])
   };
+}
+
+/** Ore a replayed battle may still pay today (OC_REPLAY_ORE_DAILY a UTC day), and the progress with it counted. */
+function replayOre(p: OcProgress, want: number): number {
+  return Math.max(0, Math.min(want, OC_REPLAY_ORE_DAILY - takingsToday(p, ocDayKey()).replayOre));
+}
+function countReplayOre(p: OcProgress, ore: number): OcProgress {
+  if (ore <= 0) return p;
+  const today = takingsToday(p, ocDayKey());
+  return { ...p, daily: { ...today, replayOre: today.replayOre + ore } };
 }
 
 /** The spellbook a battle takes: the chosen spells still unlocked, else the first ones found. */
@@ -264,6 +296,8 @@ function defaultHand(units: DefKind[], slots: number): DefKind[] {
 
 /** Where a Lawful unit is recruited (for locked entries). */
 function unlockSource(kind: DefKind): string {
+  const gacha = OC_GACHA_UNITS.find((entry) => entry.kind === kind);
+  if (gacha) return `Summoning Portal (${gacha.rarity}) or the Stardust Exchange`;
   const merc = OC_MERCENARIES.find((entry) => entry.kind === kind);
   if (merc) return `Mercenary Camp: ${merc.seals} Seals`;
   if (DEFENDERS[kind]?.conveyor) {
@@ -391,6 +425,11 @@ function ultimateLine(kind: DefKind): string | null {
 export function OrderChaosApp() {
   const [screen, setScreen] = useState<Screen>({ s: "home" });
   const [progress, setProgress] = useState<OcProgress>(loadOcProgress);
+  // The latest progress, for a battle's restart (its Satchel holds only what is still owned).
+  const progressRef = useRef(progress);
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
   const [session, setSession] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [note, setNote] = useState<ReactNode>(null);
@@ -405,7 +444,7 @@ export function OrderChaosApp() {
   // (preparation theme during Last Stand planning, then the battle score), so
   // this effect stays silent instead of fighting it; the battle's unmount stops
   // its track before this effect picks the menu scene back up.
-  const menuMusic: MusicScene | null = screen.s === "play" && session ? null : screen.s === "prep" ? "oc-prep" : "menu";
+  const menuMusic: MusicScene | null = screen.s === "play" && session ? null : screen.s === "prep" ? "oc-prep" : "oc-menu";
   useEffect(() => {
     if (menuMusic) setMusicScene(menuMusic);
   }, [menuMusic]);
@@ -444,6 +483,14 @@ export function OrderChaosApp() {
   }, []);
 
   const shownStory = story ?? (screen.s === "play" ? null : autoStory(screen, progress));
+  // The daily calendar opens by itself once a visit, on the home screen, when today's square is unclaimed (after the prologue).
+  const [calendar, setCalendar] = useState(false);
+  const calendarAsked = useRef(false);
+  useEffect(() => {
+    if (calendarAsked.current || screen.s !== "home" || shownStory || !progress.seen.includes(OC_PROLOGUE_ID) || !attendanceOpen(progress)) return;
+    calendarAsked.current = true;
+    setCalendar(true);
+  }, [screen.s, shownStory, progress]);
   const cursorVars = useMemo(() => ({
     ["--gw-cursor" as string]: `url("${assetUrl(OC_UI.cursor)}")`,
     ["--gw-cursor-hot" as string]: `url("${assetUrl(OC_UI.cursorHot)}")`
@@ -458,8 +505,12 @@ export function OrderChaosApp() {
     const p = progress;
     const u = unlocksOf(p);
     const launch = () => {
+      // The packed Satchel rides into the battle (never a raid): each item usable there up to its perMatch,
+      // one copy spent a use (onBattleEvents). A restart is a new battle: its uses start afresh, from what is still owned.
+      const satchel = level.kind === "raid" ? [] : packedSatchel(progressRef.current);
       const config = buildOcConfig(level, {
-        seed: seed(), cards, hero: u.heroes.includes(p.hero) ? p.hero : "catherine", artifacts: p.artifacts.filter((id) => u.artifacts.includes(id)).slice(0, u.artSlots),
+        satchel, chaos: p.gacha.chaos.filter((kind) => ENEMIES[kind]),
+        seed: seed(), cards, hero: u.heroes.includes(p.hero) ? p.hero : "catherine", heroRank: heroRankOf(u.heroes.includes(p.hero) ? p.hero : "catherine", p.heroRanks), artifacts: p.artifacts.filter((id) => u.artifacts.includes(id)).slice(0, u.artSlots),
         levels: p.levels, cleared: u.cleared, spells: spellbookOf(p, u), ultimates: u.ultimates, crowns: u.crowns, surges: u.surges
       });
       const local: Side[] = level.kind === "raid" ? ["atk"] : ["def"];
@@ -470,6 +521,11 @@ export function OrderChaosApp() {
     };
     launch();
   }, [progress, replaceSession]);
+
+  // A Satchel item used in battle spends its copy from the save at once.
+  const onBattleEvents = useCallback((events: readonly GarrisonEvent[]) => {
+    for (const ev of events) if (ev.e === "item") update((p) => spendItem(p, ev.id));
+  }, [update]);
 
   // The Daily Siege: today's orders, never the player's own unlocks.
   const startDaily = useCallback((daily: OcDaily) => {
@@ -497,35 +553,50 @@ export function OrderChaosApp() {
     if (daily) {
       const run = ocRunSummary(result.state, "daily", { day: daily.day, setup: daily.setup, hero: daily.hero });
       const words = pickUnlocked(isOcNewBest(progress, run) ? OC_SCORE_LINES.best : OC_SCORE_LINES.short, unlocksOf(progress).cleared);
-      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}{scorePanel(run, null)}</>);
+      // The day's first Daily Siege run pays Crystals.
+      const today = ocDayKey();
+      const paid = progress.dailyCrystalsDay !== today;
+      if (paid) update((p) => (p.dailyCrystalsDay === today ? p : { ...p, crystals: p.crystals + OC_CRYSTALS.daily, dailyCrystalsDay: today }));
+      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}{paid ? <p className={oc.reward}><CrystalIcon /> +{OC_CRYSTALS.daily} Crystals (today&apos;s first Daily Siege)</p> : null}{scorePanel(run, null)}</>);
       return;
     }
     const stats = {
       lost: result.state.stats.lost,
       goldSpent: result.state.stats.goldSpent,
-      chargersUsed: result.state.chargers.filter((c) => c.dmg === undefined && c.state !== "ready").length
+      // (A Champion a Phoenix Feather brought back to the gate still rode: it counts as used.)
+      chargersUsed: result.state.chargers.filter((c) => c.dmg === undefined && (c.state !== "ready" || c.reborn)).length
     };
     if (level.kind === "raid") {
       if (result.winner !== "atk") return;
       const first = !progress.raids.includes(level.id);
-      update((p) => ({ ...p, raids: p.raids.includes(level.id) ? p.raids : [...p.raids, level.id], seals: p.seals + (first ? 4 : 1) }));
+      const ore = first ? 3 : replayOre(progress, 1);
+      update((p) => {
+        const paid = first ? 3 : replayOre(p, 1);
+        const next = first ? p : countReplayOre(p, paid);
+        return { ...next, raids: p.raids.includes(level.id) ? p.raids : [...p.raids, level.id], seals: p.seals + (first ? 4 : 1), ore: p.ore + paid, crystals: p.crystals + (first ? OC_CRYSTALS.raidFirst : 0) };
+      });
       // The first win of a raid has its own words; later ones a cheer.
       const cheer = first ? OC_LEVEL_STORY[level.id]?.after ?? [] : [pickUnlocked(OC_BATTLE_QUIPS.victory, unlocksOf(progress).cleared)].filter((line): line is OcLine => line !== null);
-      // Raids are fixed puzzles (no unlocks, Barracks levels or heroes involved), so every broken raid may go on its board.
+      // Raids are fixed puzzles (no unlocks, Barracks levels or heroes involved), so a broken raid may go on its board —
+      // unless the player's Portal raiders joined it.
       const run = ocRunSummary(result.state, "raid", { raid: level.id });
-      setNote(<>{cheer.map((line, i) => <AdvisorBubble compact key={i} line={line} />)}<p className={oc.reward}>+{first ? 4 : 1} Seals</p>{scorePanel(run, null)}</>);
+      const raiders = result.state.cfg.atkCards.some((kind) => progress.gacha.chaos.includes(kind) && !(level.atkCards ?? []).includes(kind));
+      const raidBlocked = raiders ? "Your Summoning Portal raiders joined this raid, so it stays off the tally board (the boards compare the raid's own hand)." : null;
+      setNote(<>{cheer.map((line, i) => <AdvisorBubble compact key={i} line={line} />)}<p className={oc.reward}>+{first ? 4 : 1} Seals · <OreIcon /> +{ore} Ore{!first && !ore ? " (replay Ore spent for today)" : ""}{first ? <> · <CrystalIcon /> +{OC_CRYSTALS.raidFirst} Crystals</> : null}</p>{scorePanel(run, raidBlocked)}</>);
       return;
     }
     if (level.kind === "endless") {
       const waves = result.state.director.wave;
       const gained = Math.max(0, Math.floor(waves / 5) - Math.floor(progress.bestEndless / 5));
-      update((p) => ({ ...p, bestEndless: Math.max(p.bestEndless, waves), seals: p.seals + gained }));
+      // Crystals for every new best tenth wave.
+      const tens = Math.max(0, Math.floor(waves / 10) - Math.floor(progress.bestEndless / 10));
+      update((p) => ({ ...p, bestEndless: Math.max(p.bestEndless, waves), seals: p.seals + gained, ore: p.ore + gained, crystals: p.crystals + Math.max(0, Math.floor(waves / 10) - Math.floor(p.bestEndless / 10)) * OC_CRYSTALS.endlessTen }));
       const words = pickUnlocked(waves > progress.bestEndless ? OC_ENDLESS_LINES.best : OC_ENDLESS_LINES.short, unlocksOf(progress).cleared);
       const heroes = unlocksOf(progress).heroes;
       const run = ocRunSummary(result.state, "endless", { hero: heroes.includes(progress.hero) ? progress.hero : "catherine" });
       // Endless runs use the player's own unlocks: a run with the testing unlock on stays off the boards.
       const blocked = progress.testAll ? "The testing unlock is on, so this run stays off the tally board (turn it off on the home screen)." : null;
-      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}<p className={oc.reward}>{waves > progress.bestEndless ? `New best: wave ${waves}!` : `Best: wave ${progress.bestEndless}`}{gained ? ` · +${gained} Seals` : ""}</p>{scorePanel(run, blocked)}</>);
+      setNote(<>{words ? <AdvisorBubble compact line={words} /> : null}<p className={oc.reward}>{waves > progress.bestEndless ? `New best: wave ${waves}!` : `Best: wave ${progress.bestEndless}`}{gained ? ` · +${gained} Seals · +${gained} Ore` : ""}{tens ? ` · +${tens * OC_CRYSTALS.endlessTen} Crystals` : ""}</p>{scorePanel(run, blocked)}</>);
       return;
     }
     const goals = level.goals.map((goal, i) => ({ goal, i, met: result.winner === "def" && goalMet(goal, stats) }));
@@ -544,6 +615,13 @@ export function OrderChaosApp() {
     const before = progress.stars[level.id] ?? [];
     const fresh = goals.filter((g) => g.met && !before.includes(g.i)).map((g) => g.i);
     const seals = (first ? 3 : 1) + fresh.length * 2;
+    // Ore for the Forge: 3 for a first victory (5 over a world boss), 1 for a replay, 1 for every new star.
+    // (Replays pay at most OC_REPLAY_ORE_DAILY Ore a day between them.)
+    const replay = first ? 0 : replayOre(progress, 1);
+    const crystals = (first ? (level.kind === "boss" ? OC_CRYSTALS.bossClear : OC_CRYSTALS.firstClear) : 0) + fresh.length * OC_CRYSTALS.star;
+    // A won battle may leave an item: always on a first victory, sometimes on a replay (while today's replay Ore lasts).
+    const drop = first || replay > 0 ? battleDrop(Math.random(), Math.random(), { first, boss: level.kind === "boss" }) : null;
+    const ore = (first ? (level.kind === "boss" ? 5 : 3) : replay) + fresh.length;
     const starsBefore = totalStars(progress.cleared, progress.stars);
     const starsAfter = starsBefore + (first ? 1 : 0) + fresh.length;
     const milestones = OC_STAR_MILESTONES.filter((m) => m.stars > starsBefore && m.stars <= starsAfter);
@@ -551,7 +629,11 @@ export function OrderChaosApp() {
       ...p,
       cleared: p.cleared.includes(level.id) ? p.cleared : [...p.cleared, level.id],
       stars: { ...p.stars, [level.id]: [...new Set([...(p.stars[level.id] ?? []), ...fresh])].sort() },
-      seals: p.seals + seals
+      seals: p.seals + seals,
+      ore: p.ore + (first ? (level.kind === "boss" ? 5 : 3) : replayOre(p, 1)) + fresh.length,
+      daily: first ? p.daily : countReplayOre(p, replayOre(p, 1)).daily,
+      crystals: p.crystals + crystals,
+      items: drop ? addItems(p, [drop]).items : p.items
     }));
     const reward = first ? level.reward : {};
     const index = OC_LEVELS.findIndex((entry) => entry.id === level.id);
@@ -565,8 +647,10 @@ export function OrderChaosApp() {
           <span className={met ? oc.starOn : oc.starOff} key={i}>{met ? "★" : "☆"} {goalText(goal)}{fresh.includes(i) ? " — new!" : ""}</span>
         ))}
         <p className={oc.reward}>
-          <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> +{seals} Seals
+          <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> +{seals} Seals · <OreIcon /> +{ore} Ore{!first && !replay ? " (replay Ore spent for today)" : ""}
+          {crystals ? <> · <CrystalIcon /> +{crystals} Crystals</> : null}
         </p>
+        {drop ? <p className={oc.reward}>Found: {OC_ITEMS[drop.id].name} ({OC_ITEMS[drop.id].rarity}) — in your Satchel</p> : null}
         {milestones.map((m) => <p className={oc.reward} key={m.stars}>★ {m.stars} stars: {m.label}!</p>)}
         {reward.units?.length ? <RecruitReveal kinds={reward.units} /> : null}
         {reward.hero || reward.artifact || reward.spell || reward.altar ? (
@@ -600,6 +684,7 @@ export function OrderChaosApp() {
           intro={introFor(level, unlocks.cleared)}
           key={session.key}
           next={nextLevel ? { label: `Next: ${nextLevel.name}`, onNext: () => { replaceSession(null); setScreen({ s: "prep", level: nextLevel }); } } : null}
+          onEvents={onBattleEvents}
           onFinish={onFinish}
           onLeave={() => { replaceSession(null); setNote(null); setNextLevel(null); setScreen(back); }}
           onRestart={session.restart}
@@ -611,7 +696,7 @@ export function OrderChaosApp() {
   }
 
   // The title key art on the home screen, the war table everywhere else (the old backdrop underneath while they load).
-  const backdrop = screen.s === "home" ? OC_UI.home : OC_UI.table;
+  const backdrop = screen.s === "home" ? OC_UI.home : screen.s === "forge" ? OC_UI.forge : screen.s === "garden" ? OC_UI.garden : screen.s === "portal" ? OC_UI.portal : OC_UI.table;
   return (
     <div className={styles.shell} style={cursorVars}>
       <div className={`${styles.menu} ${oc.menu}`} style={{ backgroundImage: `url("${assetUrl(backdrop)}"), url("${assetUrl("/assets/tide/menu-backdrop.webp")}")` }}>
@@ -626,7 +711,7 @@ export function OrderChaosApp() {
             <span>Your browser refused to save Order &amp; Chaos progress (storage blocked or full). Progress made now lasts only until you close this tab.</span>
           </div>
         ) : null}
-        {screen.s === "home" ? <Home onPick={setScreen} onStory={() => setStory({ id: OC_PROLOGUE_ID, lines: OC_PROLOGUE })} progress={progress} unlocks={unlocks} update={update} /> : null}
+        {screen.s === "home" ? <Home onCalendar={() => setCalendar(true)} onPick={setScreen} onStory={() => setStory({ id: OC_PROLOGUE_ID, lines: OC_PROLOGUE })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "journal" ? <Journal onBack={() => setScreen({ s: "home" })} onPlay={(entry) => setStory({ id: entry.id, lines: entry.lines, letter: entry.letter })} progress={progress} /> : null}
         {screen.s === "campaign" ? (
           <Campaign
@@ -668,6 +753,11 @@ export function OrderChaosApp() {
           />
         ) : null}
         {screen.s === "barracks" ? <Barracks onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
+        {screen.s === "forge" ? <ForgeScreen cleared={unlocks.cleared} heroes={unlocks.heroes} onBack={() => setScreen({ s: "home" })} progress={progress} update={update} /> : null}
+        {screen.s === "garden" ? <GardenScreen cleared={unlocks.cleared} onBack={() => setScreen({ s: "home" })} progress={progress} update={update} /> : null}
+        {screen.s === "portal" ? <PortalScreen onBack={() => setScreen({ s: "home" })} progress={progress} update={update} /> : null}
+        {screen.s === "satchel" ? <SatchelScreen onBack={() => setScreen({ s: "home" })} onGarden={() => setScreen({ s: "garden" })} progress={progress} update={update} /> : null}
+        {calendar && screen.s !== "play" ? <AttendanceDialog onClose={() => setCalendar(false)} progress={progress} update={update} /> : null}
         {screen.s === "camp" ? <Camp onBack={() => setScreen({ s: "home" })} progress={progress} unlocks={unlocks} update={update} /> : null}
         {screen.s === "almanac" ? <Almanac onBack={() => setScreen({ s: "home" })} unlocks={unlocks} /> : null}
         {screen.s === "daily" ? (
@@ -705,8 +795,9 @@ function HomeAmbience() {
   );
 }
 
-function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
+function Home({ onPick, onStory, onCalendar, progress: p, unlocks: u, update }: {
   onPick(next: Screen): void;
+  onCalendar(): void;
   onStory(): void;
   progress: OcProgress;
   unlocks: Unlocks;
@@ -751,6 +842,11 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
         <span className={oc.purse} title="Seals: spend them in the Barracks and the Mercenary Camp">
           <Icon className={oc.inlineIcon} fallback="✦" src={ART.seal} /> {p.seals}
         </span>
+        <Materials progress={p} />
+        <CrystalPurse progress={p} />
+        <button className={oc.storyButton} onClick={onCalendar} title="The daily rewards calendar" type="button">
+          📅 Daily{attendanceOpen(p) ? " ★" : ""}
+        </button>
       </div>
       {p.seen.includes(OC_PROLOGUE_ID) ? <Greeting cleared={u.cleared} place="home" /> : null}
       {next ? (
@@ -812,6 +908,36 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
           <ArtFace label="Barracks" src={ART.barracks} />
           <small>{p.seals} Seals</small>
         </button>
+        <button aria-label="Summoning Portal" className={styles.artMode} onClick={() => onPick({ s: "portal" })} title="Summon troops, Chaos raiders, artifacts, a hero and items with Crystals — R, SR, SSR and UR prizes." type="button">
+          <ArtFace label="Summoning Portal" src={ART.portal} />
+          <small><CrystalIcon /> {p.crystals}{p.items["summon-ticket"] ? ` · ${p.items["summon-ticket"]} ticket${p.items["summon-ticket"] === 1 ? "" : "s"}` : ""}</small>
+        </button>
+        <button aria-label="Satchel" className={styles.artMode} onClick={() => onPick({ s: "satchel" })} title="Your items: battle boosts, resources, potions, tickets." type="button">
+          <ArtFace label="Satchel" src={ART.satchel} />
+          <small>{satchelCount(p)} item{satchelCount(p) === 1 ? "" : "s"}</small>
+        </button>
+        <button
+          aria-label="The Forge"
+          className={styles.artMode}
+          disabled={heroRankCap(u.cleared) <= 1}
+          onClick={() => onPick({ s: "forge" })}
+          title={heroRankCap(u.cleared) > 1 ? "Forge your heroes' ranks with Ore and Gems: heat, hammer and quench the blade yourself." : "Opens after the first world."}
+          type="button"
+        >
+          <ArtFace label="The Forge" src={ART.forge} />
+          <small>{heroRankCap(u.cleared) > 1 ? `${OC_HERO_ORDER.filter((id) => u.heroes.includes(id) && heroRankOf(id, p.heroRanks) >= OC_HERO_MAX_RANK).length} / ${u.heroes.length} heroes at full rank` : "Locked"}</small>
+        </button>
+        <button
+          aria-label="Magic Garden"
+          className={styles.artMode}
+          disabled={!gardenOpen(u.cleared)}
+          onClick={() => onPick({ s: "garden" })}
+          title={gardenOpen(u.cleared) ? "Grow Gems in real time: sow, water every stage, harvest." : "Opens after the first world's third battle."}
+          type="button"
+        >
+          <ArtFace label="Magic Garden" src={ART.garden} />
+          <small>{gardenOpen(u.cleared) ? gardenStatus(p, u.cleared) : "Locked"}</small>
+        </button>
         <button
           aria-label="Mercenary Camp"
           className={styles.artMode}
@@ -864,6 +990,15 @@ function Home({ onPick, onStory, progress: p, unlocks: u, update }: {
       ) : null}
     </>
   );
+}
+
+/** The Magic Garden tile's line: how many plots are ripe or still free. */
+function gardenStatus(p: OcProgress, cleared: readonly string[]): string {
+  const now = Date.now();
+  const plots = Array.from({ length: gardenPlots(cleared) }, (_, i) => p.garden[i] ?? null);
+  const ripe = plots.filter((plant) => plant && isRipe(plant, now)).length;
+  const free = plots.filter((plant) => !plant).length;
+  return ripe ? `${ripe} ready to harvest!` : free ? `${free} plot${free === 1 ? "" : "s"} free` : "Growing…";
 }
 
 /** What a level hands out on its first clear, in words ("" when nothing). */
@@ -1260,7 +1395,7 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
                     key={id}
                     onClick={() => update((p) => ({ ...p, hero: id }))}
                     role="radio"
-                    title={open ? h.blurb : "Recruited later in the campaign."}
+                    title={open ? `Rank ${heroRankOf(id, progress.heroRanks)}: ${heroRankText(id, heroRankOf(id, progress.heroRanks))}` : OC_GACHA_HEROES.includes(id) ? "Found only at the Summoning Portal (UR)." : "Recruited later in the campaign."}
                     type="button"
                   >
                     <img alt="" className={oc.portrait} src={assetUrl(h.portrait)} />
@@ -1272,7 +1407,11 @@ function Prep({ level, progress, unlocks: u, update, onStart, onBack, onTalk }: 
                 );
               })}
             </div>
-            <p className={styles.note}>{hero.blurb} Signature spell: {SPELLS[hero.spell].name}.</p>
+            <p className={styles.note}>
+              <b>Rank {heroRankOf(hero.id, progress.heroRanks)} / {OC_HERO_MAX_RANK}:</b> {heroRankText(hero.id, heroRankOf(hero.id, progress.heroRanks))}
+              {heroRankOf(hero.id, progress.heroRanks) < OC_HERO_MAX_RANK ? " Forge higher ranks at the Forge." : ""}
+            </p>
+            {level.kind === "raid" ? null : <PackItems progress={progress} update={update} />}
             <h2>Spellbook ({book.length} / {OC_SPELLBOOK_SIZE})</h2>
             {u.spells.length ? (
               <div className={oc.artifacts}>
@@ -1568,7 +1707,7 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
           }) : null}
           {tab === "chaos" ? CHAOS_KINDS.map((kind) => {
             const def = ENEMIES[kind]!;
-            const open = met.has(kind);
+            const open = met.has(kind) || u.raiders.includes(kind);
             return (
               <div className={`${oc.unit} ${open ? "" : oc.unitLocked}`} key={kind}>
                 {def.sprite ? <AttackerArt kind={kind} size={64} /> : <Icon className={oc.portrait} fallback="🪦" src={ART.grave} />}
@@ -1579,7 +1718,7 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
                       <small>{def.hp} HP{def.shield ? ` + ${def.shield} shield` : ""}{def.armor ? ` + ${def.armor} armour` : ""}{def.flying ? " · FLYING" : ""}{def.purse ? ` · pay ${def.purse} gold` : ""}</small>
                       <p>{def.blurb}</p>
                     </>
-                  ) : <small>Not yet met.</small>}
+                  ) : <small>{OC_GACHA_CHAOS.some((g) => g.kind === kind) ? "A Summoning Portal raider (SSR): once won, it joins your hand in every Chaos Raid." : "Not yet met."}</small>}
                 </div>
               </div>
             );
@@ -1596,8 +1735,9 @@ function Almanac({ unlocks: u, onBack }: { unlocks: Unlocks; onBack(): void }) {
                     <>
                       <p>{h.blurb}</p>
                       <p className={oc.surge}>{SPELLS[h.spell].name}: {SPELLS[h.spell].blurb} ({SPELLS[h.spell].mana} mana)</p>
+                      <small>These are the hero&apos;s numbers at full strength (rank {OC_HERO_MAX_RANK}). Heroes join weaker and grow at the Forge.</small>
                     </>
-                  ) : <small>Recruited later in the campaign.</small>}
+                  ) : <small>{OC_GACHA_HEROES.includes(id) ? "Found only at the Summoning Portal (UR)." : "Recruited later in the campaign."}</small>}
                 </div>
               </div>
             );

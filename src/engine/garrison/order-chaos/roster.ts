@@ -248,6 +248,10 @@ export const OC_DEFENDERS: DefDef[] = [
     devour: { reach: 1.3, cap: 1600, digest: sec(22), bite: 400 },
     surge: { kind: "feast", count: 3, reach: 3 },
     blurb: "Swallows the nearest foe up to 1.3 tiles ahead whole, then spends 22 s digesting. Tougher foes (over 1600) and bosses take a 400 bite instead (4 s to recover)." }),
+  lawful({ kind: "oc-psychic", name: "Psychic Elemental", sprite: "psychic-elemental", hp: 500, card: card(225, 25),
+    hypnosis: { every: sec(14), range: 5, maxCost: 6 },
+    surge: { kind: "charm", count: 3 },
+    blurb: "Every 14 s it hypnotizes the nearest foe ahead in its lane, up to 5 tiles away and costing 6 or less: the foe turns and fights the horde for Order. Bosses, smashers, flyers and structures resist. It has no attack of its own." }),
   lawful({ kind: "oc-cupi", name: "Cupi, Love Archer", sprite: "mgq-cupi", hp: 300, card: card(100, 30),
     charm: { mult: 1 },
     surge: { kind: "charm", count: 2 },
@@ -435,6 +439,42 @@ export const OC_DEFENDERS: DefDef[] = [
     chainLightning: { dmg: 90, every: sec(3), jumps: 3 },
     surge: { kind: "overload", dmg: 450 },
     blurb: "Automaton + Lightning Generator: a 3000 HP clockwork wall crackling with lightning — every 3 s it zaps the nearest foe in its lane (flyers too) and the charge leaps to three more. Destroyed, its boiler bursts (1200 in the 3×3)." }),
+  // Late-campaign pairings: both halves are recruited from the Nighon Depths onward.
+  lawful({ kind: "oc-paladin", name: "Unicorn Paladin", sprite: "commander-paladin", hp: 2000, fusion: true,
+    melee: { dmg: 65, every: sec(1.2), reach: 1.1, front: true }, zeal: { per: 0.15, max: 5 }, ward: 0.3,
+    surge: { kind: "charge", dmg: 800 },
+    blurb: "Crusader + War Unicorn: a 2000 HP holy knight. Blade of 65 every 1.2 s for the foes in front; every foe it slays makes it strike 15% faster (up to five times), and troops in its 3×3 (itself too) take 30% less damage." }),
+  lawful({ kind: "oc-kyousuke", name: "Kyousuke, Little Busters", sprite: "lb-kyousuke", hp: 600, fusion: true,
+    shot: shot("ball", 40, 1.8, { pierce: 4, hop: true, windup: 7 }), allies: { kind: "oc-cat", every: sec(9), count: 1 },
+    surge: { kind: "stampede", count: 8 },
+    blurb: "Rin + Softball Ace: the team captain. Bats a softball (40) that bounces on through up to four foes in his lane, and every 9 s while a foe is in his lane one of Rin's cats bolts down it to brawl the first Chaos creature it meets (300 HP, 40 a bite)." }),
+  lawful({ kind: "oc-i19", name: "I-19, Submarine", sprite: "al-i-19", hp: 600, fusion: true, aquatic: true,
+    shot: shot("spear", 55, 2.4, { pierce: 3, windup: 6, underShield: true }), mineLayer: { every: sec(24), reach: 3, max: 3 },
+    surge: { kind: "minefield" },
+    blurb: "Laffey + Azusa: a submarine (stands in open water). Torpedoes (55) that run beneath shields and through the first three foes in her lane, and every 24 s she buries a Land Mine (1800) on an empty tile up to 3 ahead — three of hers at most." }),
+  lawful({ kind: "oc-engineer", name: "Engineer", sprite: "engineer", hp: 1000, fusion: true,
+    magnet: { every: sec(6), range: 6 }, ammo: 1,
+    surge: { kind: "magnetize" },
+    blurb: "Mechanic's Lodestone + Ammo Cart: a 1000 HP field engineer. Every 6 s tears the helm, armour or shield off the nearest armoured foe within 6 tiles (three lanes), and keeps the shooters in its 3×3 loaded: one extra shot with every volley." }),
+  lawful({ kind: "oc-unicorn-carrier", name: "Unicorn, Escort Carrier", sprite: "al-unicorn", hp: 900, fusion: true, aquatic: true,
+    airstrike: { dmg: 100, every: sec(5), splash: 0.5 }, heal: { amount: 150, every: sec(4) },
+    surge: { kind: "radiance", dmg: 300, heal: 300 },
+    blurb: "Akagi + Belfast: a light carrier and fleet nurse (stands in open water). Every 5 s her planes bomb a random foe anywhere on the field (flyers too): 100, half to foes within a tile. Every 4 s she heals the most wounded troop around her (3×3) for 150." }),
+
+  // --- Summoning Portal exclusives (./gacha-content.ts): never a campaign reward or a mercenary ---
+  lawful({ kind: "oc-guardian-angel", name: "Guardian Angel", sprite: "angel", hp: 1500, card: card(275, 20),
+    melee: { dmg: 55, every: sec(1.2), reach: 1.1, front: true }, guardian: { every: sec(20), heal: 0.5, ward: sec(2) },
+    surge: { kind: "sanctuary", dur: sec(8) },
+    blurb: "Holy blade (55) for the foes in front. Once every 20 s, when a troop in her 3×3 (herself too) takes a killing blow — even a smasher's — she turns it aside: the troop is left at half health and can't be harmed for 2 s." }),
+  lawful({ kind: "oc-astral-spirit", name: "Astral Spirit", sprite: "commander-astral-spirit", hp: 450, card: card(225, 7.5),
+    shot: shot("bolt", 25, 1.5, { windup: 8, expose: sec(5) }),
+    surge: { kind: "chain", hops: 10, dmg: 300 },
+    blurb: "A spirit of the Conflux: astral bolts (25) down its lane, and every foe they strike is Exposed for 5 s — it takes 25% more damage from everything. (A shield takes the bolt instead.)" }),
+  lawful({ kind: "oc-crystal-dragon", name: "Crystal Dragon", sprite: "crystal-dragon", hp: 3600, card: card(550, 45), scale: 0.75, magicResist: 0.8,
+    melee: { dmg: 120, every: sec(2), reach: 2.2, front: true },
+    crystallize: { every: sec(10), range: 4, dur: sec(4), dmg: 900, splash: 0.5 },
+    surge: { kind: "hail", count: 6, dmg: 450, freeze: sec(5) },
+    blurb: "A dragon of living crystal (3600 HP; spells deal 80%). Breathes shards on everything 2.2 tiles ahead (120). Every 10 s it seals the toughest foe within 4 tiles ahead — its lane or the two beside it — in crystal for 4 s (it can't march, bite or shoot), then the crystal shatters: 900 to it and 450 to every foe within a tile. Bosses can't be sealed: the shards strike them at once. Flyers are out of its reach." }),
 
   // Summoned only (hero spells): no card.
   lawful({ kind: "oc-earthwall", name: "Earthen Wall", sprite: "stone-golem", hp: 2500, magicResist: 0.5,
@@ -662,78 +702,110 @@ export const OC_ENEMIES: EnemyDef[] = [
   chaos({ kind: "oc-kunoichi", name: "Kamuro, Shadow Fox", sprite: "mgq-kamuro", hp: 500, speed: WALK, bite: 0, cost: 4,
     ranged: { dmg: 30, every: sec(1.6), range: 4.5, projectile: "kunai" },
     blurb: "Stops 4.5 tiles out and throws spinning kunai (30) at the first troop in her lane." }),
+  // --- Summoning Portal exclusives (./gacha-content.ts): for the player's Chaos Raids hand only ---
+  chaos({ kind: "oc-rust-dragon", name: "Rust Dragon", sprite: "rust-dragon", hp: 2400, speed: WALK, bite: 0, cost: 9, might: 250, recharge: sec(25),
+    flying: true, scale: 0.8, skyAttack: { kind: "breath", dmg: 90, every: sec(5), acid: sec(8) },
+    blurb: "FLYING: a dragon of rust and acid (2400 HP) — only anti-air shots, gusts, lightning and spells reach it. Every 5 s it breathes acid on the troop beneath it and the one ahead (90): their water shells and stone skins melt away, and they are Corroded for 8 s — 50% more damage from everything." }),
+  chaos({ kind: "oc-revenant", name: "Revenant", sprite: "doom-revenant", hp: 1000, speed: WALK, bite: 50, cost: 8, might: 225, recharge: sec(22), undead: true, lastGasp: 0.35,
+    ranged: { dmg: 80, every: sec(3.5), range: 6, projectile: "rocket", lob: true, splash: true }, costliest: true,
+    blurb: "A skeletal hunter with shoulder rockets: it stops 6 tiles out and every 3.5 s lobs a rocket over your walls at the COSTLIEST troop in range — 80 to it and every troop in the 3×3 around it. The first killing blow (unless fire, a blast or a spell) leaves it going on at 35% health, slower." }),
   // --- World bosses: each leads its world's last assault (WarbossDef in ../content: telegraphed moves, phases) ---
-  chaos({ kind: "oc-boss-abomination", name: "The Kennel Abomination", sprite: "gw-abomination", hp: 3200, speed: pace(9), bite: 100, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
+  chaos({ kind: "oc-boss-abomination", name: "The Kennel Abomination", sprite: "gw-abomination", hp: 4600, speed: pace(9), bite: 120, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, undead: true, scale: 1.45,
-    warboss: { hold: 3.5, phases: [0.5], every: [sec(11), sec(8)], pace: [1, 1.2], warn: sec(1.8), moves: [
-      { kind: "slam", name: "Slam", fx: "land-mine-hit", dmg: 250, stun: sec(1.5), reach: 1.6 },
+    warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(9), sec(7), sec(5.5)], pace: [1, 1.15, 1.3], warn: sec(1.8), moves: [
+      { kind: "slam", name: "Slam", fx: "land-mine-hit", dmg: 300, stun: sec(1.5), reach: 1.6 },
       { kind: "summon", name: "Whistles up the Pack", fx: "fear", foe: "oc-hellhound", count: 1 },
-      { kind: "roar", name: "Roar", fx: "fear", stun: sec(2), reach: 2.2, from: 1 }
+      { kind: "roar", name: "Roar", fx: "fear", stun: sec(2), reach: 2.2, from: 1 },
+      { kind: "summon", name: "Unleashes the Kennel", fx: "fear", foe: "oc-hellhound", count: 2, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "summon", name: "The Kennel Breaks Loose", fx: "fear", foe: "oc-hellhound", count: 3, interlude: 1 },
+      { kind: "volley", name: "Rain of Bones", fx: "land-mine-hit", dmg: 150, count: 5, stun: sec(1), interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Stitched from a dozen dead and kept on a chain: it SLAMS the 3x3 around the troop in front of it and whistles up a Hell Hound. Wounded to half, it hurries and ROARS, stunning every troop near it. The marked tiles show where each blow will land." }),
-  chaos({ kind: "oc-boss-wyrm", name: "The Frost Wyrm", sprite: "ghost-dragon", hp: 7000, speed: pace(9), bite: 150, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Stitched from a dozen dead and kept on a chain: it SLAMS the 3x3 around the troop in front of it (300) and whistles up a Hell Hound. From 60% it hurries and ROARS, stunning every troop near it; from 30% it unleashes the whole kennel (two Hell Hounds at a time). The marked tiles show where each blow will land. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first the Kennel breaks loose (three Hell Hounds); then bones rain on your five costliest troops (150, stunned 1 s)." }),
+  chaos({ kind: "oc-boss-wyrm", name: "The Frost Wyrm", sprite: "ghost-dragon", hp: 8500, speed: pace(9), bite: 150, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, undead: true, frostImmune: true, scale: 1.3,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(9), sec(7), sec(5.5)], pace: [1, 1.1, 1.25], warn: sec(1.8), moves: [
       { kind: "breath", name: "Frost Breath", fx: "frost-ring", dmg: 120, len: 4, freeze: sec(4) },
       { kind: "summon", name: "Calls the Sledge Wolves", fx: "frost-ring", foe: "oc-sledders", count: 3 },
       { kind: "breath", name: "Frost Storm", fx: "frost-ring", dmg: 120, len: 3, wide: true, freeze: sec(4), from: 1 },
-      { kind: "stride", name: "Glides", fx: "frost-ring", from: 2 }
+      { kind: "stride", name: "Glides", fx: "frost-ring", from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "breath", name: "Glacier Breath", fx: "frost-ring", dmg: 100, len: 5, wide: true, freeze: sec(4), interlude: 1 },
+      { kind: "volley", name: "Hail of Ice", fx: "ice-bolt-hit", dmg: 220, count: 6, stun: sec(1.5), interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. A dead dragon of the glaciers: its FROST BREATH seals the four tiles ahead of it in ice (fire troops beside them stay warm), and it calls Sledge Wolves. From 60% its breath sweeps three lanes; from 30% it strides from lane to lane." }),
-  chaos({ kind: "oc-boss-lich", name: "The Mire Lich", sprite: "lich", hp: 8000, speed: pace(9), bite: 120, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. A dead dragon of the glaciers: its FROST BREATH seals the four tiles ahead of it in ice (fire troops beside them stay warm), and it calls Sledge Wolves. From 60% its breath sweeps three lanes; from 30% it strides from lane to lane. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first a glacier breath freezes the five tiles ahead in three lanes (100, 4 s); then hail strikes your six costliest troops (220, stunned 1.5 s)." }),
+  chaos({ kind: "oc-boss-lich", name: "The Mire Lich", sprite: "lich", hp: 9500, speed: pace(9), bite: 120, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, undead: true, scale: 1.5,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(8), sec(6.5), sec(5)], pace: [1, 1.1, 1.2], warn: sec(1.8), moves: [
       { kind: "volley", name: "Death Bolts", fx: "death-ripple", dmg: 200, count: 3 },
       { kind: "graves", name: "Raise the Graves", fx: "death-cloud", count: 3 },
       { kind: "summon", name: "Calls the Drowned", fx: "death-cloud", foe: "oc-drowned", count: 3, from: 1 },
-      { kind: "volley", name: "Storm of Bolts", fx: "death-ripple", dmg: 200, count: 5, from: 2 }
+      { kind: "volley", name: "Storm of Bolts", fx: "death-ripple", dmg: 200, count: 5, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "graves", name: "The Mire Gives Up Its Dead", fx: "death-cloud", count: 5, interlude: 1 },
+      { kind: "volley", name: "Rain of Death", fx: "death-ripple", dmg: 260, count: 7, interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The mire's master: DEATH BOLTS strike your three costliest troops, and he RAISES GRAVES on open ground. From 60% the drowned answer his call; from 30% five bolts fly at once." }),
-  chaos({ kind: "oc-boss-warchief", name: "Grogg the Warchief", sprite: "commander-ogre-leader", hp: 6500, speed: pace(8), bite: 200, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The mire's master: DEATH BOLTS strike your three costliest troops, and he RAISES GRAVES on open ground. From 60% the drowned answer his call; from 30% five bolts fly at once. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first the mire gives up five graves; then death rains on your seven costliest troops (260)." }),
+  chaos({ kind: "oc-boss-warchief", name: "Grogg the Warchief", sprite: "commander-ogre-leader", hp: 6800, speed: pace(8), bite: 200, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, scale: 1.5,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(9), sec(7.5), sec(6)], pace: [1, 1.15, 1.3], warn: sec(1.6), moves: [
       { kind: "drums", name: "War Drums", fx: "frenzy", dur: sec(4) },
       { kind: "volley", name: "Boulders", fx: "land-mine-hit", dmg: 150, count: 3, stun: sec(1) },
       { kind: "slam", name: "Slam", fx: "land-mine-hit", dmg: 300, stun: sec(1.5), reach: 1.6, from: 1 },
-      { kind: "summon", name: "Calls the Drummers", fx: "frenzy", foe: "oc-ogre-shaman", count: 1, from: 2 }
+      { kind: "summon", name: "Calls the Drummers", fx: "frenzy", foe: "oc-ogre-shaman", count: 1, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "summon", name: "The Hobgoblin Rabble", fx: "frenzy", foe: "oc-hobgoblin", count: 3, interlude: 1 },
+      { kind: "volley", name: "Boulder Rain", fx: "land-mine-hit", dmg: 150, count: 5, stun: sec(1), interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The ogre warchief: his WAR DRUMS drive the whole horde half as fast again for 4 s, and he hurls BOULDERS at your three costliest troops. From 60% he SLAMS what stands in front of him; from 30% he calls more drummers." }),
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The ogre warchief: his WAR DRUMS drive the whole horde half as fast again for 4 s, and he hurls BOULDERS at your three costliest troops. From 60% he SLAMS what stands in front of him; from 30% he calls more drummers. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first a rabble of three Hobgoblins charges; then boulders rain on your five costliest troops (150, stunned 1 s)." }),
   chaos({ kind: "oc-boss-arachne", name: "Arachne, the Web Queen", sprite: "mgq-spider-princess", hp: 10000, speed: pace(8), bite: 180, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, scale: 1.6,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(8), sec(6.5), sec(5)], pace: [1, 1.1, 1.25], warn: sec(1.8), moves: [
       { kind: "volley", name: "Webs", fx: "bind", dmg: 80, count: 4, stun: sec(4) },
       { kind: "summon", name: "Sends a Daughter", fx: "poison", foe: "oc-spider", count: 1 },
       { kind: "breath", name: "Venom Spit", fx: "acid-breath", dmg: 260, len: 3, from: 1 },
-      { kind: "stride", name: "Scuttles", fx: "bind", from: 2 }
+      { kind: "stride", name: "Scuttles", fx: "bind", from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "summon", name: "The Brood Hatches", fx: "poison", foe: "oc-spider", count: 2, interlude: 1 },
+      { kind: "volley", name: "Web Storm", fx: "bind", dmg: 90, count: 5, stun: sec(2), interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Mother of the Spider Princesses: she WEBS your four costliest troops (stuck 4 s) and sends a daughter in. From 60% she SPITS venom down the three tiles ahead; from 30% she scuttles from lane to lane." }),
-  chaos({ kind: "oc-boss-barrow-king", name: "The Barrow King", sprite: "vampire-lord", hp: 11000, speed: pace(8), bite: 200, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Mother of the Spider Princesses: she WEBS your four costliest troops (stuck 4 s) and sends a daughter in. From 60% she SPITS venom down the three tiles ahead; from 30% she scuttles from lane to lane. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first two daughters hatch; then a web storm hits your five costliest troops (90, stuck 2 s)." }),
+  chaos({ kind: "oc-boss-barrow-king", name: "The Barrow King", sprite: "vampire-lord", hp: 12000, speed: pace(8), bite: 200, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, undead: true, scale: 1.5,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(8), sec(6.5), sec(5)], pace: [1, 1.1, 1.25], warn: sec(1.8), moves: [
       { kind: "breath", name: "Blood Drain", fx: "vampire-life-drain", dmg: 220, len: 5, drain: 0.5 },
       { kind: "summon", name: "Raises the Dead", fx: "death-cloud", foe: "oc-shambler", count: 3 },
       { kind: "stride", name: "Mist Step", fx: "death-cloud", from: 1 },
-      { kind: "graves", name: "The Barrows Open", fx: "death-cloud", count: 3, from: 2 }
+      { kind: "graves", name: "The Barrows Open", fx: "death-cloud", count: 3, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "graves", name: "The Barrows Wake", fx: "death-cloud", count: 5, interlude: 1 },
+      { kind: "breath", name: "Crimson Tide", fx: "vampire-life-drain", dmg: 240, len: 5, wide: true, drain: 0.5, interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Lord of the barrows: his BLOOD DRAIN strikes the five tiles ahead of him and heals him by half the harm; he raises the dead (three Shamblers at the far edge). From 60% he melts into mist and strides to another lane; from 30% the barrows open around him." }),
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. Lord of the barrows: his BLOOD DRAIN strikes the five tiles ahead of him and heals him by half the harm; he raises the dead (three Shamblers at the far edge). From 60% he melts into mist and strides to another lane; from 30% the barrows open around him. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first five barrows wake; then a crimson tide drains the five tiles ahead in three lanes (240, heals him by half)." }),
   chaos({ kind: "oc-boss-gnawbone", name: "Old Gnawbone", sprite: "ancient-behemoth", hp: 13000, speed: pace(8), bite: 260, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, scale: 1.45,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(8), sec(6.5), sec(5)], pace: [1, 1.15, 1.3], warn: sec(1.6), moves: [
       { kind: "pounce", name: "Pounce", fx: "land-mine-hit", dmg: 1200, reach: 3.5 },
       { kind: "roar", name: "Roar", fx: "fear", stun: sec(2.5), reach: 2.5 },
       { kind: "summon", name: "Calls the Cerberi", fx: "fear", foe: "oc-cerberus", count: 2, from: 1 },
-      { kind: "slam", name: "Slam", fx: "land-mine-hit", dmg: 400, stun: sec(1.5), reach: 1.6, from: 2 }
+      { kind: "slam", name: "Slam", fx: "land-mine-hit", dmg: 400, stun: sec(1.5), reach: 1.6, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "roar", name: "Earthshaking Roar", fx: "fear", stun: sec(3), reach: 4, interlude: 1 },
+      { kind: "summon", name: "The Pack of the Pit", fx: "fear", foe: "oc-cerberus", count: 3, interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The oldest behemoth of the Badlands: it POUNCES over your wall onto the troop farthest back within 3.5 tiles (1200), and ROARS, stunning every troop near it. From 60% Cerberi run with it; from 30% it SLAMS too." }),
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The oldest behemoth of the Badlands: it POUNCES over your wall onto the troop farthest back within 3.5 tiles (1200), and ROARS, stunning every troop near it. From 60% Cerberi run with it; from 30% it SLAMS too. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first an earthshaking roar stuns every troop within 4 tiles (3 s); then three Cerberi run from the pit." }),
   chaos({ kind: "oc-boss-mastermind", name: "The Spider Mastermind", sprite: "doom-spider-mastermind", hp: 18000, speed: pace(8), bite: 260, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, magicResist: 0.6, scale: 1.3,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(8), sec(6.5), sec(5)], pace: [1, 1.1, 1.25], warn: sec(1.6), moves: [
       { kind: "breath", name: "Chaingun", fx: "lightning-sparks", dmg: 450, len: 6 },
       { kind: "volley", name: "Plasma Rain", fx: "implosion", dmg: 300, count: 5 },
       { kind: "summon", name: "Calls the Cyber Zombies", fx: "lightning-crackle", foe: "oc-cyber-zombie", count: 3, from: 1 },
-      { kind: "breath", name: "Chaingun Sweep", fx: "lightning-sparks", dmg: 350, len: 4, wide: true, from: 2 }
+      { kind: "breath", name: "Chaingun Sweep", fx: "lightning-sparks", dmg: 350, len: 4, wide: true, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "volley", name: "Plasma Barrage", fx: "implosion", dmg: 320, count: 7, interlude: 1 },
+      { kind: "summon", name: "The Cyber Legion", fx: "lightning-crackle", foe: "oc-cyber-zombie", count: 5, interlude: 2 }
     ] },
-    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. A brain on a chaingun: it SWEEPS the six tiles ahead of it with bullets and rains PLASMA on your five costliest troops; spells deal it 60%. From 60% it calls Cyber Zombies; from 30% its chaingun sweeps three lanes." }),
+    blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. A brain on a chaingun: it SWEEPS the six tiles ahead of it with bullets and rains PLASMA on your five costliest troops; spells deal it 60%. From 60% it calls Cyber Zombies; from 30% its chaingun sweeps three lanes. On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first plasma hits your seven costliest troops (320); then five Cyber Zombies march." }),
   chaos({ kind: "oc-boss-sphinx", name: "The Masked Sphinx", sprite: "mgq-sphinx", hp: 22000, speed: pace(8), bite: 280, biteEvery: sec(1.2), cost: 0, might: 0, recharge: 0,
     boss: true, scale: 1.35,
     warboss: { hold: 3.5, phases: [0.6, 0.3], every: [sec(7.5), sec(6), sec(4.5)], pace: [1, 1.15, 1.3], warn: sec(1.6), moves: [
@@ -741,7 +813,10 @@ export const OC_ENEMIES: EnemyDef[] = [
       { kind: "summon", name: "Calls the Phantoms", fx: "hypnotize", foe: "oc-phantom", count: 2 },
       { kind: "roar", name: "Riddle", fx: "paralyze", stun: sec(3), reach: 3 },
       { kind: "volley", name: "Flying Masks", fx: "magic-arrow-hit", dmg: 350, count: 4, from: 1 },
-      { kind: "breath", name: "Golden Glare", fx: "disrupting-ray", dmg: 300, len: 4, wide: true, from: 2 }
+      { kind: "breath", name: "Golden Glare", fx: "disrupting-ray", dmg: 300, len: 4, wide: true, from: 2 },
+      // Phase set pieces: it halts, can't be harmed, and winds these up in full view.
+      { kind: "roar", name: "Riddle of the Ages", fx: "paralyze", stun: sec(3.5), reach: 5, interlude: 1 },
+      { kind: "volley", name: "Meteor of Masks", fx: "meteor-shower", dmg: 360, count: 8, interlude: 2 }
     ] },
     blurb: "BOSS: it halts 3.5 tiles from your gate and fights from there. The carnival's queen behind a golden mask: she STRIDES from lane to lane, calls Phantoms, and her RIDDLE stuns every troop within 3 tiles. From 60% masks fly at your four costliest troops; from 30% her glare sweeps three lanes." })
 ];
@@ -753,11 +828,12 @@ export const OC_ENEMIES: EnemyDef[] = [
  */
 export const OC_ALLIES: EnemyDef[] = [
   { ...chaos({ kind: "oc-cat", name: "Rin's Cat", sprite: "lb-rins-cats", hp: 300, speed: FAST, bite: 40, cost: 0, might: 0, recharge: 0, scale: 0.9, ally: true,
-    blurb: "One of Rin's cats: dashes down her lane and brawls the first Chaos creature it meets (40 a bite)." }), faction: "lawful" }
+    blurb: "One of Rin's cats: dashes down her lane and brawls the first Chaos creature it meets (40 a bite). On reaching 60% and 30% it halts and can't be harmed for 4 s while it winds up a set piece: first her riddle stuns every troop within 5 tiles (3.5 s); then burning masks fall on your eight costliest troops (360)." }), faction: "lawful" }
 ];
 
 type OcBlessingId = "surge-chalice" | "crown-of-dragontooth" | "helm-of-enlightenment" | "ambassadors-sash" | "charm-of-mana" | "endless-purse" | "spirit-of-oppression"
-  | "pendant-second-sight" | "ring-of-sulfur" | "thunder-helmet" | "blackshard" | "dragon-wing-tabard" | "sandals-of-the-saint" | "dwarven-shield";
+  | "pendant-second-sight" | "ring-of-sulfur" | "thunder-helmet" | "blackshard" | "dragon-wing-tabard" | "sandals-of-the-saint" | "dwarven-shield"
+  | "luck" | "orb-of-vulnerability" | "tome-of-water";
 
 /** Order & Chaos artifacts on top of Garrison Wars' blessings (never offered there). */
 export const OC_BLESSINGS: Record<OcBlessingId, BlessingDef> = {
@@ -817,6 +893,19 @@ export const OC_BLESSINGS: Record<OcBlessingId, BlessingDef> = {
   "dwarven-shield": {
     id: "dwarven-shield", name: "Shield of the Dwarven Lords", icon: "/assets/artifacts_minor-shield_of_the_dwarven_lords.webp",
     blurb: "Walls — troops with no attack of their own — have 50% more health."
+  },
+  // Summoning Portal exclusives (./gacha-content.ts; never in OC_ARTIFACTS): the UR hero's passive and two artifacts.
+  luck: {
+    id: "luck", name: "Luck", icon: "/assets/abilities-luck.webp",
+    blurb: "Every attack your troops make (a shot, a melee strike, a lightning bolt, a beam, a bomb, a dash or a slam) has a 20% chance to be lucky: double damage."
+  },
+  "orb-of-vulnerability": {
+    id: "orb-of-vulnerability", name: "Orb of Vulnerability", icon: "/assets/artifacts_relic-orb_of_vulnerability.webp",
+    blurb: "Spell damage hits the horde 25% harder and ignores its spell resistance; even the spell-immune take half. (Spell damage: your hero's spells, most Surges, traps and mines, the blasts of instant troops, chain lightning and a Faerie Dragon's spells.)"
+  },
+  "tome-of-water": {
+    id: "tome-of-water", name: "Tome of Water Magic", icon: "/assets/artifacts_relic-tome_of_water.webp",
+    blurb: "Every chill and freeze you put on the horde lasts 50% longer."
   }
 };
 
@@ -839,7 +928,13 @@ export const OC_FUSIONS: readonly FusionRecipe[] = [
   { a: ["oc-longbow"], b: ["oc-sylph"], result: "oc-zephyr" },
   { a: ["oc-nymph"], b: ["oc-cupi"], result: "oc-siren" },
   { a: ["oc-hina"], b: ["oc-salamander"], result: "oc-blazing-prefect" },
-  { a: ["oc-automaton"], b: ["oc-lightning"], result: "oc-tesla" }
+  { a: ["oc-automaton"], b: ["oc-lightning"], result: "oc-tesla" },
+  // Late-campaign pairings (worlds 5-10).
+  { a: ["oc-crusader"], b: ["oc-unicorn"], result: "oc-paladin" },
+  { a: ["oc-rin"], b: ["oc-softball"], result: "oc-kyousuke" },
+  { a: ["oc-laffey"], b: ["oc-azusa"], result: "oc-i19" },
+  { a: ["oc-mechanic"], b: ["oc-ammo"], result: "oc-engineer" },
+  { a: ["oc-akagi"], b: ["oc-belfast"], result: "oc-unicorn-carrier" }
 ];
 
 /** A Lawful unit's Ascended form: its ultimate, while a Valor crown burns. */
@@ -963,6 +1058,8 @@ export const OC_ULTIMATES: Readonly<Record<DefKind, OcUltimate>> = {
     patch: (b) => ({ magnet: b.magnet && { every: sec(3), range: 9 } }) },
   "oc-serpent": { name: "Leviathan", sprite: "haspid", blurb: "Swallows foes up to 4000 toughness from 2 tiles away and digests in 5 s; bites for 800.",
     patch: (b) => ({ devour: b.devour && { reach: 2, cap: 4000, digest: sec(5), bite: 800 } }) },
+  "oc-psychic": { name: "Mind Lord", blurb: "Hypnotizes every 7 s, reaching foes that cost up to 10.",
+    patch: (b) => ({ hypnosis: b.hypnosis && { ...b.hypnosis, every: sec(7), maxCost: 10 } }) },
   "oc-cupi": { name: "Heartbreaker", blurb: "The foe she charms is healed in full and strikes twice as hard for Order.",
     patch: () => ({ charm: { mult: 2 } }) },
   "oc-aegis": { name: "Aegis Paragon", blurb: "Its dome spreads over the 5×5 around it.",
@@ -1011,5 +1108,12 @@ export const OC_ULTIMATES: Readonly<Record<DefKind, OcUltimate>> = {
   "oc-guardian": { name: "Grove Warden", blurb: "Two crescents at a time, sharper (32).",
     patch: (b) => shotWith(b, { volley: 1, dmg: 32 }) },
   "oc-softball": { name: "Clean-Up Hitter", blurb: "Bats a ball every 0.9 s, and it bounces on through six foes.",
-    patch: (b) => shotWith(b, { every: sec(0.9), pierce: 6 }) }
+    patch: (b) => shotWith(b, { every: sec(0.9), pierce: 6 }) },
+  // Summoning Portal exclusives.
+  "oc-guardian-angel": { name: "Angel of Mercy", blurb: "Ready to turn aside a killing blow every 6 s; the troop she saves is healed in full and untouchable for 3 s. A heavier blade (80).",
+    patch: (b) => ({ guardian: { every: sec(6), heal: 1, ward: sec(3) }, melee: b.melee && { ...b.melee, dmg: 80 } }) },
+  "oc-astral-spirit": { name: "Astral Avatar", blurb: "Bolts down its lane and both beside it every second; each Exposes for 8 s.",
+    patch: (b) => shotWith(b, { lanes: 3, every: sec(1), expose: sec(8) }) },
+  "oc-crystal-dragon": { name: "Crystal Wyrm", blurb: "Breathes on three lanes, and seals a foe in crystal every 5 s — the shatter strikes for 1400.",
+    patch: (b) => ({ melee: b.melee && { ...b.melee, lanes: 3 }, crystallize: b.crystallize && { ...b.crystallize, every: sec(5), dmg: 1400 } }) }
 };

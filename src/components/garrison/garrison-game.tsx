@@ -12,13 +12,14 @@ import type { OcLine, OcQuipEvent } from "@/engine/garrison/order-chaos/story";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
 import {
   checkAscend, checkCast, checkMuster, checkPlace, checkSurge, defenderAt,
-  type GarrisonState, type Side, type SidedCommand
+  type GarrisonEvent, type GarrisonState, type Side, type SidedCommand
 } from "@/engine/garrison/sim";
+import { OC_ITEMS, isOcItem } from "@/engine/garrison/order-chaos/treasury";
 import { assetUrl } from "@/lib/asset-url";
 import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, isMusicMuted, playCombatSting, setMusicHeld, setMusicMuted, subscribeMusic, useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from "@/lib/sound";
 import { openSettings } from "@/lib/settings-dialog";
-import { playEventSounds } from "./audio";
+import { cancelPendingBattleSounds, playEventSounds } from "./audio";
 import { playFieldEventSounds, updateFieldAmbience } from "./field-audio";
 import { AdvisorBubble } from "./order-chaos/story-ui";
 import { FieldBadge, fieldQuip, fieldTipAt, fieldToast } from "./order-chaos/field-ui";
@@ -27,7 +28,7 @@ import type { GarrisonDriver } from "./driver";
 import styles from "./garrison.module.css";
 import { BOARD, boardCell, coinSize, createView, drawBoard, ingestEvents, laneTop, preloadForConfig, tileX, type Ghost, type Overlay } from "./renderer";
 import { PROP, SURROUNDS, WORLD_W, drawCoinFlights, type CoinFlight } from "./scene";
-import { ATK_KEYS, ATK_SPELL_KEYS, AtkTray, DEF_KEYS, DEF_SPELL_KEYS, DefTray, IconOr, Progress, SpellBar, formatTime, type Selection, type Tip } from "./hud";
+import { ATK_KEYS, ATK_SPELL_KEYS, AtkTray, DEF_KEYS, DEF_SPELL_KEYS, DefTray, IconOr, Progress, SatchelBar, SpellBar, formatTime, type Selection, type Tip } from "./hud";
 import { CARD_SCENES, cardSceneSrc } from "./thumbs";
 
 export type GameResult = { winner: Side; reason: string; state: GarrisonState };
@@ -67,6 +68,8 @@ type Props = {
   onLeave(): void;
   onRestart?(): void;
   onFinish?(result: GameResult): void;
+  /** Every batch of simulation events as it happens (Order & Chaos: a Satchel item used spends its copy from the save). */
+  onEvents?(events: readonly GarrisonEvent[]): void;
   next?: { label: string; onNext(): void } | null;
   unlockNote?: React.ReactNode;
   /** Banner colour of the defending garrison. */
@@ -114,7 +117,7 @@ function laneChampionRode(s: GarrisonState, lane: number): boolean {
   return s.chargers.some((c) => c.lane === lane && c.dmg === undefined && c.state !== "ready");
 }
 
-export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, next, unlockNote, defColor, intro: introProp = null, music, advisor }: Props) {
+export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFinish, onEvents, next, unlockNote, defColor, intro: introProp = null, music, advisor }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // (Created once: a plain useRef(createView(...)) would build and drop a fresh view on every HUD render.)
   const [initialView] = useState(() => createView(town, defColor));
@@ -178,6 +181,10 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   useEffect(() => {
     onFinishRef.current = onFinish;
   }, [onFinish]);
+  const onEventsRef = useRef(onEvents);
+  useEffect(() => {
+    onEventsRef.current = onEvents;
+  }, [onEvents]);
 
   const s = driver.state();
   const localDef = driver.local.includes("def");
@@ -185,7 +192,10 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
 
   // ---- Music ------------------------------------------------------------------
   const ocMusic = music === "order-chaos";
-  const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : "oc-battle") : "combat";
+  // A world boss on the lawn (or the Dracolich): the warning sting, then the boss theme until it falls.
+  const bossAlive = !s.outcome && (s.warbossId !== undefined || s.boss !== null)
+    && s.enemies.some((e) => !e.dead && (e.id === s.warbossId || e.id === s.boss?.id));
+  const musicScene: MusicScene = ocMusic ? (s.planning ? "oc-prep" : bossAlive ? "oc-boss" : "oc-battle") : "combat";
   useBackgroundMusic(musicScene);
   // Order & Chaos: a pause holds the track and resuming continues it where it stopped.
   // Declared after useBackgroundMusic so on unmount the scene stops before the hold lifts.
@@ -461,6 +471,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
       const { events, alpha } = driver.pump(dt, halt, speedRef.current);
       let urgent = false;
       if (events.length) {
+        onEventsRef.current?.(events);
         ingestEvents(view, state, events, now);
         playEventSounds(state, events);
         if (state.cfg.oc) playFieldEventSounds(events);
@@ -484,6 +495,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
           } else if (ev.e === "wave" && ev.wave === 1) showToast("The attack begins!", "info");
           else if (ev.e === "collect" && !ev.surge && driver.local.includes("def")) launchCoin(ev.id, ev.value, now);
           else if (ev.e === "horn") announceNow("Here they come!", "go", 1400);
+          else if (ev.e === "item" && isOcItem(ev.id)) showToast(`${OC_ITEMS[ev.id].name} used from the Satchel.`, "info");
           else if (ev.e === "snatchDrop") {
             const d = state.defenders.find((unit) => unit.id === ev.target);
             showToast(`A Harpy is snatching your ${d ? DEFENDERS[d.kind]!.name : "troop"}! Slay her!`, "warn");
@@ -534,6 +546,8 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
       drawOverlay(now);
       if (state.outcome && !finishedRef.current) {
         finishedRef.current = true;
+        // (A boss laugh still waiting must not sound over the result.)
+        cancelPendingBattleSounds();
         const won = driver.local.includes(state.outcome.winner);
         const both = driver.local.length > 1;
         playCombatSting(both || won ? VICTORY_FANFARE_TRACK : DEFEAT_STING_TRACK);
@@ -553,6 +567,7 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
     return () => {
       cancelAnimationFrame(raf);
       updateFieldAmbience(null);
+      cancelPendingBattleSounds();
     };
   }, [announceNow, askCollect, drawOverlay, driver, hotseat, intro, launchCoin, sayQuip, showQuip, showToast]);
 
@@ -926,7 +941,10 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
 
       <footer className={styles.bottomBar}>
         {localDef ? (
-          <SpellBar keys={hotseat ? [] : DEF_SPELL_KEYS} onChoose={chooseOrClear} onTip={setTip} s={s} selection={selection} side="def" />
+          <>
+            <SpellBar keys={hotseat ? [] : DEF_SPELL_KEYS} onChoose={chooseOrClear} onTip={setTip} s={s} selection={selection} side="def" />
+            <SatchelBar onTip={setTip} onUse={(id) => submit({ t: "item", id, by: "def" })} s={s} />
+          </>
         ) : localAtk ? (
           <SpellBar keys={[]} onChoose={chooseOrClear} onTip={setTip} s={s} selection={selection} side="atk" />
         ) : null}

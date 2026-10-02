@@ -12,12 +12,15 @@ import {
   type CardId, type DefKind, type EnemyDef, type MeleeDef
 } from "@/engine/garrison/content";
 import { ASCEND_TICKS, ascendedKind, baseKind } from "@/engine/garrison/order-chaos/forms";
-import { CLIMB_TICKS, hidden, isFlat, isSheep, isStructure, type Defender, type Enemy, type GarrisonConfig, type GarrisonEvent, type GarrisonState } from "@/engine/garrison/sim";
+import { CLIMB_TICKS, canReact, hidden, isFlat, isSheep, isStructure, type Defender, type Enemy, type GarrisonConfig, type GarrisonEvent, type GarrisonState } from "@/engine/garrison/sim";
 import { OC_PROP, SHEEP_SRC, drawDome, drawLadder, drawScorch, drawSheep, drawWool } from "./oc-siege-art";
 import { createAmbience, drawAmbientAir, drawAmbientGround, type Ambience } from "./ambient";
 import {
   drawFieldGround, drawFieldStructure, drawLandmark, drawSleep, drawSwimmer, drawWading, drawWeather, fieldEntry, fieldEventFx, foeInFog, foeInWater, preloadField
 } from "./field-art";
+import {
+  boneChips, createHorror, drawDread, drawGlitch, drawWard, drawWisps, horrorGlitch, horrorTremble, horrorTremor, spawnWisps, updateHorror, type Horror
+} from "./boss-horror";
 import { calmDown, createAntics, drawAngerMark, drawDizzy, motionPose, pruneAntics, restless, startMotion, type Antics } from "./antics";
 import { G, SHOT_SHEETS, atlasFor, drawAtlas, drawFx, drawShot, fxSheet, groupFrames, image, pickGroup, preloadSprites, ready, type ShotSheet } from "./art";
 import {
@@ -110,6 +113,8 @@ export type View = {
   /** Smoothed frame time (ms); a sustained slow frame rate trims the cosmetic particles. */
   frameMs: number;
   lite: boolean;
+  /** Boss dread: vignette, footstep tremble, glitches, ghost wisps, the immune ward (drawing only). */
+  horror: Horror;
 };
 
 export function createView(town: string, defColor = "#3f7fe0"): View {
@@ -117,7 +122,7 @@ export function createView(town: string, defColor = "#3f7fe0"): View {
     scenery: createScenery(), particles: [], decals: [], stripped: new Set(), pop: new Map(), camX: 0, lineup: null, defColor, coinPos: new Map(), muzzled: new Set(), prunedAt: 0,
     phase: new Map(), anim: new Map(), flash: new Map(), swoop: new Map(), slide: new Map(), dive: new Map(), flinch: new Map(), corpses: [], fx: [], floats: [], aim: [],
     shakeUntil: 0, lastNow: 0, town, castle: null, castleReady: -1, banners: new Map(), ambience: createAmbience(), antics: createAntics(),
-    defLanes: [], foeLanes: [], frameMs: 16, lite: false
+    defLanes: [], foeLanes: [], frameMs: 16, lite: false, horror: createHorror()
   };
 }
 
@@ -1402,6 +1407,10 @@ function spellFx(view: View, s: GarrisonState, ev: Extract<GarrisonEvent, { e: "
       addSheet(view, "inferno", x, y, 320, now);
       view.shakeUntil = Math.max(view.shakeUntil, now + 500);
       break;
+    // Summoning Portal hero (Melodia): Fortune smiles on every troop that strikes or shoots.
+    case "fortune":
+      for (const d of s.defenders) if (!d.dead && !isFlat(d)) addSheet(view, "fortune", tileX(d.col + 0.5), feetY(d.lane) - 45, 90, now);
+      break;
   }
 }
 
@@ -1575,11 +1584,15 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
   view.lastNow = now;
   paceFrame(view, dt);
   pruneView(view, s, now);
+  updateHorror(view.horror, s, now, dt, view.shakeUntil, view.particles);
   const tick = s.tick;
   const lerp = (a: number, b: number) => a + (b - a) * alpha;
 
   ctx.save();
   if (now < view.shakeUntil) ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 6);
+  // A boss footstep: the ground trembles a couple of pixels.
+  const tremble = horrorTremble(view.horror, now);
+  if (tremble) ctx.translate(0, tremble);
   if (view.camX) ctx.translate(-view.camX, 0);
 
   // The painted field, the lawn and the keep: one pre-composed layer.
@@ -1688,6 +1701,8 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
   for (const list of defLanes) list.length = 0;
   for (const list of foeLanes) list.length = 0;
   if (s.cfg.oc) drawAegisDomes(ctx, s, view, now);
+  // A world boss winding up its set piece can't be harmed: its rune ward.
+  if (s.warbossId !== undefined) drawWard(ctx, s, view.horror, now);
   // Upgrades the purse can pay for now: a bobbing golden chevron.
   if (overlay.upgradeGold !== null) {
     for (const d of s.defenders) {
@@ -1765,10 +1780,15 @@ export function drawBoard(ctx: CanvasRenderingContext2D, s: GarrisonState, view:
   drawAmbientAir(ctx, view.ambience, s.cfg.terrain, BOARD.W, BOARD.H, now, dt);
   // Order & Chaos weather and night (under the coins, so they stay easy to see).
   if (s.weather || s.cfg.oc?.night) drawWeather(ctx, s, view, now);
+  // While a boss lives: dark edges and a red heartbeat, ghost wisps glowing over them.
+  drawDread(ctx, view.horror, now, view.camX);
+  drawWisps(ctx, view.horror, now);
   drawPickups(ctx, s, view, now, alpha);
   drawFloats(ctx, view, now);
   drawBossBar(ctx, s);
   ctx.restore();
+  // ...and now and then the picture glitches for a fraction of a second.
+  drawGlitch(ctx, view.horror, now);
 }
 
 /** A bullet: a short bright tracer (hitscan fire in the originals), the muzzle flashing once. */
@@ -2197,6 +2217,23 @@ function drawDefender(ctx: CanvasRenderingContext2D, s: GarrisonState, view: Vie
   }
   // Order & Chaos: sealed in a Frostcaller's ice; a Nix Warrior's shield-bashes left.
   if ((d.iceUntil ?? 0) > s.tick) drawIceBlock(ctx, x + dx, y, (def.tall ? 150 : 112) * (def.scale ?? 1), now);
+  // Summoning Portal: Corroded by a Rust Dragon's acid (green fumes); a Guardian Angel ready to intercede (a halo over her).
+  if ((d.corrodeUntil ?? 0) > s.tick) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    drawGlow(ctx, "rgba(140,200,40,0.4)", x, y - 40, 50 + 6 * Math.sin(now / 160 + d.id));
+    ctx.restore();
+    if (Math.random() < dt / 260) burst(view.particles, now, "smoke", x + (Math.random() - 0.5) * 40, y - 30, 1, { speed: 0.02, up: 0.06, life: 700, size: 5, colors: ["rgba(150,200,60,0.6)"] });
+  }
+  if (def.guardian && d.cd2 <= 0 && canReact(s, d)) {
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,236,160,${0.6 + 0.25 * Math.sin(now / 220 + d.id)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(x + dx, y - 118 * (def.scale ?? 1), 18, 6, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   if (def.repel) drawBashPips(ctx, x, y, def.repel.charges - d.stacks);
   if (d.shell > 0) {
     ctx.save();
@@ -2493,7 +2530,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, s: GarrisonState, view: View, 
   if (!unseen && rise === 0 && !phasing && !def.boss && !def.structure && !def.siege) {
     const head = y - lift - 100 * scale;
     // Stunned (a stone to the head, a lightning jolt): stars circle it.
-    if (e.stunUntil > s.tick && e.freezeUntil <= s.tick) drawDizzy(ctx, x, head - 8, now, e.id);
+    if (e.stunUntil > s.tick && e.freezeUntil <= s.tick && (e.crystalAt ?? 0) <= s.tick) drawDizzy(ctx, x, head - 8, now, e.id);
     // Fuming, or in a rage: the throbbing vein (on and off while the rage lasts), and steam.
     if (pose?.angry || (e.enraged && !frozen && Math.floor(now / 700 + e.id) % 3 === 0)) drawAngerMark(ctx, x - face * 16 * scale, head, now, e.id);
     if (e.enraged && !frozen && Math.random() < dt / 450) {
@@ -2960,9 +2997,11 @@ export function preloadForConfig(cfg: GarrisonConfig): void {
   if (cfg.herald) attackers.add(cfg.herald);
   if (cfg.oc) {
     for (const kind of cfg.oc.bossSummons ?? []) attackers.add(kind);
-    if (cfg.oc.warboss && ENEMIES[cfg.oc.warboss.kind]) {
-      attackers.add(cfg.oc.warboss.kind);
-      for (const move of ENEMIES[cfg.oc.warboss.kind]!.warboss?.moves ?? []) if (move.kind === "summon") attackers.add(move.foe);
+    // The level's world boss (or the Endless Siege's), and whatever it summons.
+    for (const boss of [cfg.oc.warboss?.kind, ...(cfg.oc.endlessBosses ?? [])]) {
+      if (!boss || !ENEMIES[boss]) continue;
+      attackers.add(boss);
+      for (const move of ENEMIES[boss]!.warboss?.moves ?? []) if (move.kind === "summon") attackers.add(move.foe);
     }
     if (cfg.oc.bossDragon) attackers.add(cfg.oc.bossDragon);
     for (const kind of cfg.enemies) {
@@ -3113,12 +3152,12 @@ function drawTroopCompanions(
 }
 
 /** A troop sealed in a Frostcaller's ice: a translucent block with frosted edges. */
-function drawIceBlock(ctx: CanvasRenderingContext2D, x: number, y: number, height: number, now: number): void {
+function drawIceBlock(ctx: CanvasRenderingContext2D, x: number, y: number, height: number, now: number, tint?: { fill: string; edge: string }): void {
   const w = 78;
   ctx.save();
   ctx.globalAlpha = 0.5 + 0.06 * Math.sin(now / 300 + x);
-  ctx.fillStyle = "rgba(170,220,255,0.55)";
-  ctx.strokeStyle = "rgba(235,250,255,0.9)";
+  ctx.fillStyle = tint?.fill ?? "rgba(170,220,255,0.55)";
+  ctx.strokeStyle = tint?.edge ?? "rgba(235,250,255,0.9)";
   ctx.lineWidth = 2;
   roundRect(ctx, x - w / 2, y - height, w, height + 4, 8);
   ctx.fill();
@@ -3198,6 +3237,35 @@ function drawFoeExtras(
     // Knighted by a Warlord: a borrowed helm on its head.
     const helm = image(PROP.helm);
     if (ready(helm)) ctx.drawImage(helm, x - 14 + face * 2, y - lift - 104 * scale, 28, 28);
+  }
+  // Summoning Portal: sealed in a Crystal Dragon's crystal (it flickers as it is about to shatter).
+  const crystalLeft = (e.crystalAt ?? 0) - s.tick;
+  if (crystalLeft > 0) {
+    const flicker = crystalLeft < 20 && Math.floor(now / 80) % 2 === 0;
+    drawIceBlock(ctx, x, y - lift, 118 * (scale / SPRITE_SCALE), now, flicker
+      ? { fill: "rgba(255,255,255,0.6)", edge: "rgba(255,255,255,1)" }
+      : { fill: "rgba(200,180,255,0.5)", edge: "rgba(240,230,255,0.95)" });
+  }
+  // Exposed by an Astral Spirit: a violet glow and a rune over its head.
+  if ((e.exposedUntil ?? 0) > s.tick) {
+    const head = y - lift - 112 * scale;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    drawGlow(ctx, "rgba(190,120,255,0.45)", x, y - lift - 55 * scale, 44 + 5 * Math.sin(now / 140 + e.id));
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = "rgba(225,190,255,0.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, head - 9);
+    ctx.lineTo(x + 7, head);
+    ctx.lineTo(x, head + 9);
+    ctx.lineTo(x - 7, head);
+    ctx.closePath();
+    ctx.moveTo(x, head - 4);
+    ctx.lineTo(x, head + 4);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
@@ -3388,6 +3456,8 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
       const def = ENEMIES[ev.kind];
       view.floats.push({ text: `${def?.name ?? "The boss"} comes!`, x: BOARD.W / 2, y: BOARD.TOP + 70, color: "#ff8a6a", start: now });
       view.shakeUntil = Math.max(view.shakeUntil, now + 600);
+      view.horror.phase = 0;
+      horrorGlitch(view.horror, now);
       break;
     }
     case "bossCue": {
@@ -3396,6 +3466,12 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
       const move = ENEMIES[e.kind]?.warboss?.moves[ev.index];
       playOnce(view, `e${e.id}`, enemySpriteOf(view, e), [G.cast, G.attack], now, 70);
       view.floats.push({ text: `${move?.name ?? ev.move}!`, x: tileX(e.x), y: feetY(e.lane) - 175, color: "#ffb08a", start: now });
+      // A phase's set piece: it halts and can't be harmed while it winds up (a glitch and a tremor mark it).
+      if (e.interlude) {
+        view.floats.push({ text: "IMMUNE", x: tileX(e.x), y: feetY(e.lane) - 215, color: "#ff6070", start: now });
+        horrorGlitch(view.horror, now);
+        horrorTremor(view.horror, now);
+      }
       break;
     }
     case "bossMove": {
@@ -3410,6 +3486,23 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
         view.fx.push({ t: "ring", x: tileX(ev.x), y: feetY(ev.lane) - 10, color: "#ff9a5a", start: now, radius: 140 });
         view.floats.push({ text: "The horde quickens!", x: tileX(ev.x), y: feetY(ev.lane) - 150, color: "#ffb070", start: now + 150 });
       }
+      // Boss dread: bones fly from its blows, ghosts rise where the dead are called (a few marks at most).
+      if (ev.move === "slam" || ev.move === "pounce") {
+        for (let i = 0; i < Math.min(3, ev.marks.length); i += 1) {
+          const m = ev.marks[i]!;
+          boneChips(view.horror, view.particles, now + 60, tileX(m.col + 0.5), feetY(m.lane) - 14, feetY(m.lane), 7);
+        }
+      } else if (ev.move === "roar" || ev.move === "volley") {
+        boneChips(view.horror, view.particles, now, tileX(ev.x), feetY(ev.lane) - 70, feetY(ev.lane), 8);
+      } else if (ev.move === "summon" || ev.move === "graves") {
+        for (let i = 0; i < Math.min(3, ev.marks.length); i += 1) {
+          const m = ev.marks[i]!;
+          spawnWisps(view.horror, now + i * 90, tileX(m.col + 0.5), feetY(m.lane) - 20, 1, 30);
+        }
+        if (ev.move === "graves") boneChips(view.horror, view.particles, now, tileX(ev.x) - 40, feetY(ev.lane) - 10, feetY(ev.lane), 5);
+      } else if (ev.move === "stride") {
+        spawnWisps(view.horror, now, tileX(ev.x), feetY(ev.lane) - 60, 2, 50);
+      }
       break;
     }
     case "bossPhase": {
@@ -3420,6 +3513,8 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
       addSheet(view, "berserk", x, y - 90, 170, now);
       view.fx.push({ t: "ring", x, y: y - 10, color: "#ff5a3a", start: now, radius: 120 });
       view.floats.push({ text: ev.phase >= 2 ? "Enraged!" : "Wounded — and angrier!", x, y: y - 190, color: "#ff6a4a", start: now });
+      view.horror.phase = ev.phase;
+      horrorGlitch(view.horror, now);
       break;
     }
     case "bossRepel": {
@@ -3433,6 +3528,9 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
     case "bossFall": {
       view.floats.push({ text: `${ENEMIES[ev.kind]?.name ?? "The boss"} falls!`, x: BOARD.W / 2, y: BOARD.TOP + 70, color: "#ffe08a", start: now });
       view.shakeUntil = Math.max(view.shakeUntil, now + 900);
+      // The souls it held escape its body.
+      const at = enemyPos(s, ev.id);
+      spawnWisps(view.horror, now + 150, at?.x ?? view.horror.x, (at?.y ?? view.horror.y) - 90, 8, 90, true);
       break;
     }
     case "unnerved": {
@@ -3525,6 +3623,63 @@ function contentEventFx(view: View, s: GarrisonState, ev: GarrisonEvent, now: nu
       view.fx.push({ t: "arc", x: x1, y: y - 50, r: 50, a0: -2.4, a1: 0.8, start: now + 170, rgb: "255,190,220" });
       burst(view.particles, now + 180, "spark", x1, y - 55, 10, { speed: 0.35, life: 300, size: 2.4, colors: ["#ffffff", "#ffc0e0"] });
       view.floats.push({ text: "Assassinated!", x: x1, y: y - 125, color: "#ffb0d8", start: now + 180 });
+      break;
+    }
+    // --- Summoning Portal exclusives ---
+    case "guardian": {
+      // A Guardian Angel turns a killing blow aside.
+      const angel = s.defenders.find((unit) => unit.id === ev.id);
+      if (angel) playOnce(view, `d${angel.id}`, defSprite(angel.kind), [G.cast, G.attack], now, 70);
+      const p = defenderPos(s, ev.target);
+      if (!p) break;
+      if (angel && angel.id !== ev.target) view.fx.push({ t: "tracer", x0: tileX(angel.col + 0.5), y0: feetY(angel.lane) - 80, x1: p.x, y1: p.y - 55, start: now, rgb: "255,236,170" });
+      addSheet(view, "resurrection", p.x, p.y - 45, 110, now + 60);
+      view.fx.push({ t: "ring", x: p.x, y: p.y - 8, color: "#ffe9a0", start: now + 60, radius: 70 });
+      burst(view.particles, now + 60, "glint", p.x, p.y - 60, 12, { speed: 0.25, life: 600, size: 2.8, colors: ["#fff8dc", "#ffe08a"] });
+      view.floats.push({ text: "Saved!", x: p.x, y: p.y - 125, color: "#ffe9a0", start: now + 60 });
+      break;
+    }
+    case "crystal": {
+      // A Crystal Dragon seals a foe in crystal (or, a boss, pelts it with shards).
+      const dragon = s.defenders.find((unit) => unit.id === ev.id);
+      if (dragon) playOnce(view, `d${dragon.id}`, defSprite(dragon.kind), [G.cast, G.shoot, G.attack], now, 70);
+      const p = enemyPos(s, ev.target);
+      if (!p) break;
+      if (dragon) view.fx.push({ t: "tracer", x0: tileX(dragon.col + 0.5), y0: feetY(dragon.lane) - 70, x1: p.x, y1: p.y - 50, start: now, rgb: "200,240,255" });
+      addSheet(view, "ice-bolt-hit", p.x, p.y - 45, 120, now + 80);
+      burst(view.particles, now + 80, "glint", p.x, p.y - 55, 12, { speed: 0.22, life: 550, size: 2.8, colors: ["#e8fbff", "#b8ecff", "#f4d8ff"] });
+      view.floats.push({ text: "Crystallized!", x: p.x, y: p.y - 125, color: "#bfefff", start: now + 80 });
+      break;
+    }
+    case "shatter": {
+      const x = tileX(ev.x);
+      const y = feetY(ev.lane);
+      addSheet(view, "frost-ring", x, y - 40, 260, now);
+      view.fx.push({ t: "ring", x, y: y - 6, color: "#c8f2ff", start: now, radius: 150 });
+      burst(view.particles, now, "chip", x, y - 50, 18, { speed: 0.5, up: 0.3, g: 0.0015, life: 800, size: 4, colors: ["#e8fbff", "#9fdcff", "#e0c8ff"], ground: y });
+      view.shakeUntil = Math.max(view.shakeUntil, now + 200);
+      break;
+    }
+    case "lucky": {
+      // Luck / Fortune: a lucky shot or strike (the word at most once a second per troop).
+      const p = defenderPos(s, ev.id);
+      if (!p) break;
+      burst(view.particles, now, "glint", p.x, p.y - 70, 6, { speed: 0.18, life: 450, size: 2.6, colors: ["#b8ff9a", "#fff3a0"] });
+      const key = `lucky${ev.id}`;
+      const last = view.flash.get(key);
+      if (last === undefined || now - last > 1000) {
+        view.flash.set(key, now);
+        view.floats.push({ text: "Lucky!", x: p.x, y: p.y - 112, color: "#b8ff9a", start: now });
+      }
+      break;
+    }
+    case "corrode": {
+      // A Rust Dragon's acid eats into a troop.
+      const p = defenderPos(s, ev.target);
+      if (!p) break;
+      addSheet(view, "acid-breath", p.x, p.y - 45, 110, now);
+      burst(view.particles, now, "smoke", p.x, p.y - 50, 8, { speed: 0.05, up: 0.07, life: 800, size: 8, colors: ["rgba(150,200,60,0.7)", "rgba(110,150,40,0.6)"] });
+      view.floats.push({ text: "Corroded!", x: p.x, y: p.y - 118, color: "#b8e060", start: now });
       break;
     }
     default:

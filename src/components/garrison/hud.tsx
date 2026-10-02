@@ -5,7 +5,9 @@ import { useState } from "react";
 import { BLESSINGS, CARDS, DEFENDERS, ENEMIES, FUSIONS, GW_TPS, SPELLS, type CardId, type EnemyKind, type SpellId } from "@/engine/garrison/content";
 import { surgeText } from "@/engine/garrison/order-chaos/surge-text";
 import { baseKind } from "@/engine/garrison/order-chaos/forms";
-import { cardCost, spellCooldown, spellsLeft, type GarrisonState, type Side } from "@/engine/garrison/sim";
+import { heroPassiveText, heroSpellText } from "@/engine/garrison/order-chaos/hero-ranks";
+import { OC_ITEMS, isOcItem } from "@/engine/garrison/order-chaos/treasury";
+import { cardCost, checkItem, itemsLeft, spellCooldown, spellsLeft, type GarrisonState, type Side } from "@/engine/garrison/sim";
 import { assetUrl } from "@/lib/asset-url";
 import styles from "./garrison.module.css";
 import { PROP } from "./scene";
@@ -157,13 +159,16 @@ export function SpellBar({ s, side, keys, selection, onChoose, onTip }: {
         const limited = Number.isFinite(left);
         const poor = book.mana < def.mana || left <= 0;
         const active = selection?.t === "spell" && selection.spell === spell;
+        // Order & Chaos: the hero's signature spell at the hero's rank.
+        const hero = side === "def" ? s.cfg.oc?.hero : undefined;
+        const blurb = (hero?.spell === spell && heroSpellText(spell, hero.rank)) || def.blurb;
         return (
           <button
             aria-label={`${def.name}, ${def.mana} mana${limited ? `, ${left} left` : ""}`}
             className={`${styles.spell} ${active ? styles.cardSelected : ""} ${poor || wait > 0 ? styles.cardDim : ""}`}
             key={spell}
             onClick={() => onChoose(side, spell)}
-            onMouseEnter={() => onTip({ title: def.name, lines: [`${def.mana} mana${limited ? ` · ${left} cast${left === 1 ? "" : "s"} left this battle` : ""}`, def.blurb] })}
+            onMouseEnter={() => onTip({ title: def.name, lines: [`${def.mana} mana${limited ? ` · ${left} cast${left === 1 ? "" : "s"} left this battle` : ""}`, blurb] })}
             onMouseLeave={() => onTip(null)}
             type="button"
           >
@@ -172,6 +177,42 @@ export function SpellBar({ s, side, keys, selection, onChoose, onTip }: {
             {limited ? <span className={styles.spellCharges}>×{left}</span> : null}
             {wait > 0 ? <span className={styles.recharge} style={{ height: `${Math.min(1, wait / spellCooldown(s, side, spell)) * 100}%` }} /> : null}
             {keys[index] ? <kbd className={styles.key}>{keys[index]!.toUpperCase()}</kbd> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Order & Chaos: the battle's Satchel — the packed items, each with the uses it has left in this
+ * battle; a click uses one (the simulation checks it: sim.ts checkItem; the app spends the copy).
+ */
+export function SatchelBar({ s, onUse, onTip }: { s: GarrisonState; onUse(id: string): void; onTip(tip: Tip): void }) {
+  const slots = s.cfg.mode === "raid" ? [] : s.cfg.oc?.satchel ?? [];
+  if (slots.length === 0) return null;
+  return (
+    <div aria-label="Satchel" className={styles.spellBar}>
+      {slots.map(({ id }) => {
+        const item = isOcItem(id) ? OC_ITEMS[id] : undefined;
+        if (!item) return null;
+        const left = itemsLeft(s, id);
+        const check = checkItem(s, id);
+        const lines = [`${left} use${left === 1 ? "" : "s"} left this battle (one ${item.name} spent a use)`, item.blurb, ...(check.ok ? [] : [check.reason])];
+        return (
+          <button
+            aria-disabled={!check.ok}
+            aria-label={`${item.name}, ${left} left this battle`}
+            className={`${styles.spell} ${check.ok ? "" : styles.cardDim}`}
+            key={id}
+            onClick={() => { if (check.ok) onUse(id); }}
+            onMouseEnter={() => onTip({ title: item.name, lines })}
+            onMouseLeave={() => onTip(null)}
+            title={`${item.name}: ${lines.join(" ")}`}
+            type="button"
+          >
+            <IconOr fallback="✦" src={item.icon} />
+            <span className={styles.spellCharges}>×{left}</span>
           </button>
         );
       })}
@@ -237,7 +278,7 @@ export function Progress({ s }: { s: GarrisonState }) {
       <div className={styles.progress}>
         <span>Wave <b>{s.director.wave}</b></span>
         <span className={styles.relics}>
-          {s.def.blessings.map((id) => <img alt={BLESSINGS[id].name} key={id} src={assetUrl(BLESSINGS[id].icon)} title={`${BLESSINGS[id].name}: ${BLESSINGS[id].blurb}`} />)}
+          {s.def.blessings.map((id) => <img alt={BLESSINGS[id].name} key={id} src={assetUrl(BLESSINGS[id].icon)} title={`${BLESSINGS[id].name}: ${(cfg.oc?.hero?.passive === id && heroPassiveText(id, cfg.oc.hero.rank)) || BLESSINGS[id].blurb}`} />)}
         </span>
       </div>
     );

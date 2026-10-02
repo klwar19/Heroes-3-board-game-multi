@@ -1,0 +1,273 @@
+/* Order & Chaos: the Forge and the Magic Garden (forge-garden.tsx). */
+
+.icon {
+  display: inline-block;
+  vertical-align: -3px;
+  flex: none;
+}
+
+.sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: #8a6a2a;
+}
+
+.pips {
+  display: inline-flex;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.pips i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid #8a6a2a;
+}
+
+.pipOn {
+  background: radial-gradient(circle at 35% 35%, #fff2b0, #e3b54a 60%, #8a5a1a);
+  box-shadow: 0 0 5px rgba(255, 214, 90, 0.7);
+}
+
+.pipOpen {
+  background: rgba(40, 26, 12, 0.9);
+}
+
+.pipLocked {
+  background: rgba(20, 14, 8, 0.6);
+  opacity: 0.45;
+}
+
+.forgeGrid {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  gap: 14px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+@media (max-width: 720px) {
+  .forgeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.heroList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.next {
+  color: #ffe9a8;
+}
+
+.cost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.cost small {
+  color: var(--gw-dim, #b9a47c);
+}
+
+.bench {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.scene {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 2px solid #5a3a1e;
+  border-radius: 10px;
+  background: #140c08;
+}
+
+.stepBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  text-align: center;
+}
+
+.stepBox p {
+  margin: 0;
+}
+
+.gauge {
+  position: relative;
+  width: min(100%, 560px);
+  height: 26px;
+  border: 2px solid #5a3a1e;
+  border-radius: 13px;
+  background: linear-gradient(90deg, #2a2420, #7a2a14 40%, #ff9a2a 70%, #fffbe8);
+  overflow: hidden;
+}
+
+.band,
+.good,
+.perfect,
+.quench {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.band {
+  background: rgba(255, 240, 160, 0.35);
+  box-shadow: inset 0 0 0 2px rgba(255, 240, 160, 0.9);
+}
+
+.scorch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.35) 0 4px, transparent 4px 8px);
+}
+
+.good {
+  background: rgba(255, 220, 120, 0.45);
+}
+
+.perfect {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.quench {
+  background: rgba(90, 170, 255, 0.55);
+}
+
+.needle {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 4px;
+  margin-left: -2px;
+  background: #111;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.meter {
+  width: min(100%, 560px);
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #e3b54a, #ffe9a8);
+}
+
+.big {
+  min-width: 200px;
+  padding: 10px 22px;
+  font-size: 18px;
+  touch-action: none;
+  user-select: none;
+}
+
+.warn {
+  color: #ff8a6a;
+}
+
+.gradePerfect {
+  color: #fff2b0;
+  text-shadow: 0 0 8px #ffd65a;
+}
+
+.gradeGood {
+  color: #ffd65a;
+}
+
+.gradeMiss {
+  color: #ff8a6a;
+}
+
+.verdict {
+  font-size: 22px;
+  font-weight: bold;
+  color: #ffe9a8;
+}
+
+.garden {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.plot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 2px solid #5a3a1e;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(60, 90, 40, 0.55), rgba(30, 20, 10, 0.9));
+  text-align: center;
+}
+
+.plot small {
+  color: var(--gw-dim, #b9a47c);
+}
+
+.plotRipe {
+  border-color: #e3b54a;
+  box-shadow: 0 0 14px rgba(255, 214, 90, 0.45);
+}
+
+.plant {
+  width: 120px;
+  height: 120px;
+}
+
+.ripe {
+  animation: ocGemGlow 1.4s ease-in-out infinite;
+}
+
+@keyframes ocGemGlow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 220, 140, 0.6)); }
+  50% { filter: drop-shadow(0 0 8px rgba(255, 220, 140, 1)); }
+}
+
+.seeds {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.thirsty {
+  animation: ocThirst 1.2s ease-in-out infinite;
+}
+
+@keyframes ocThirst {
+  0%, 100% { transform: none; }
+  50% { transform: translateY(-2px); }
+}
+
+.wet {
+  color: #9ad0ff;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ripe,
+  .thirsty {
+    animation: none;
+  }
+}

@@ -67,7 +67,9 @@ function scaleDef(base: DefDef, p: number): DefDef {
     dash: base.dash ? { ...base.dash, dmg: n(base.dash.dmg) } : undefined,
     slam: base.slam ? { ...base.slam, dmg: n(base.slam.dmg) } : undefined,
     deathBlast: base.deathBlast !== undefined ? n(base.deathBlast) : undefined,
-    retaliate: base.retaliate !== undefined ? n(base.retaliate) : undefined
+    retaliate: base.retaliate !== undefined ? n(base.retaliate) : undefined,
+    // Summoning Portal exclusives.
+    crystallize: base.crystallize ? { ...base.crystallize, dmg: n(base.crystallize.dmg) } : undefined
   };
 }
 

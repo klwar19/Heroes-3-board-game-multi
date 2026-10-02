@@ -57,7 +57,7 @@ export function surgeText(def: DefDef): string {
     case "scatter": return `Every foe in her lane wanders off into the lanes beside it, slowed for ${secs(s.dur)} s.`;
     case "magnetize": return "Tears every helm, suit of armour and shield on the field off its wearer.";
     case "feast": return `Gulps down up to ${s.count} foes within ${s.reach} tiles ahead in its lane (up to ${def.devour?.cap ?? 0} toughness each) and is hungry again at once.`;
-    case "charm": return `Charms the ${s.count} nearest foes ahead of her (her lane and both beside it): they turn and fight for Order.`;
+    case "charm": return `Charms the ${s.count} nearest foes ahead (its lane and both beside it): they turn and fight for Order.`;
     case "dome": return `For ${secs(s.dur)} s its dome spreads a tile further each way and turns aside straight shots too.`;
     case "herd": return `Rings its bell: every foe on the lawn in the lanes beside it is drawn into its lane, and it curls up in a ${n(s.shell)} HP shell.`;
     case "war-party": return `Calls a war party: lizard warriors charge down its lane and both beside it, ${n(s.dmg)} to every foe they trample.`;

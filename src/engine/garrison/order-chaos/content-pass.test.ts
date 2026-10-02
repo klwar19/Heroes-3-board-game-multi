@@ -365,6 +365,13 @@ describe("Order & Chaos content pass: troops", () => {
     expect(fusionFor("oc-snow-elf", "oc-immolate")).toBe("oc-frostfire");
     expect(fusionFor("oc-sylph", "oc-longbow")).toBe("oc-zephyr");
     expect(fusionFor("oc-automaton", "oc-lightning")).toBe("oc-tesla");
+    // Late-campaign pairings.
+    expect(fusionFor("oc-crusader", "oc-unicorn")).toBe("oc-paladin");
+    expect(fusionFor("oc-unicorn", "oc-crusader")).toBe("oc-paladin");
+    expect(fusionFor("oc-softball", "oc-rin")).toBe("oc-kyousuke");
+    expect(fusionFor("oc-laffey", "oc-azusa")).toBe("oc-i19");
+    expect(fusionFor("oc-ammo", "oc-mechanic")).toBe("oc-engineer");
+    expect(fusionFor("oc-belfast", "oc-akagi")).toBe("oc-unicorn-carrier");
     expect(fusionFor("oc-dwarf", "oc-longbow")).toBeNull();
   });
 });

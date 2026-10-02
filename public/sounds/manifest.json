@@ -1286,6 +1286,10 @@
     "loop": true,
     "note": "Plants vs. Zombies OST 04 Grasswalk (third-party, supplied by the user; re-encoded to LAME VBR -q:a 5 with the embedded cover art stripped, same duration). Order & Chaos battle opener: plays first every battle, then the combat rotation takes over (src/lib/music.ts oc-battle)"
   },
+  "music/order-chaos/menu-casino": { "src": "/sounds/music/order-chaos/menu-casino.mp3", "loop": true, "note": "1-35 Casino ~ Mu Continent (third-party, supplied by the user): full length, +5 dB with a limiter to -18.8 LUFS, LAME VBR -q:a 7 (~5.1 MB to ~3.9 MB), metadata stripped. Order & Chaos menu music (src/lib/music.ts oc-menu)" },
+  "music/order-chaos/boss-warning": { "src": "/sounds/music/order-chaos/boss-warning.mp3", "note": "arctsound horror sting (Pixabay, supplied by the user; loudness-normalized to -17 LUFS, LAME VBR -q:a 5, metadata stripped). Order & Chaos: plays alone (the music stopped) as a boss approaches, then the boss track starts (src/lib/music.ts playBossOverture)" },
+  "music/order-chaos/flesh-and-metal": { "src": "/sounds/music/order-chaos/flesh-and-metal.mp3", "loop": true, "note": "1-17 Flesh & Metal (third-party, supplied by the user): the first 4:04 cut to a seamless 4:00 loop (last 4 s crossfaded into the opening 4 s), -10 dB to -18 LUFS, LAME VBR -q:a 5. Order & Chaos boss-fight music (src/lib/music.ts oc-boss)" },
+  "effects/oc-evil-laugh": { "src": "/sounds/effects/oc-evil-laugh.mp3", "note": "freesound_community evil demonic laugh 6925 (Pixabay, supplied by the user; -16 LUFS, LAME VBR -q:a 5). Order & Chaos: a boss laughs now and then during its fight" },
   "spells/air-elemental": {
     "src": "/sounds/spells/air-elemental.mp3"
   },

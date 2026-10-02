@@ -1,6 +1,6 @@
 /**
- * Order & Chaos scoring: the Endless Siege, the Daily Siege and the Chaos
- * Raids each keep a tally board (the campaign has none). The score formula
+ * Order & Chaos scoring: the Endless Siege, the Daily Siege, the Chaos Raids
+ * and the campaign each keep a tally board. The score formula
  * lives here, once: the game shows it on the result screen and keeps local
  * bests with it, and the online tally board (party/oc-scores.ts) re-derives
  * every score from the submitted run summary and turns away implausible runs.
@@ -12,7 +12,7 @@
 import { GW_TPS, sec } from "../clock";
 import type { GarrisonState } from "../sim";
 
-export type OcBoardMode = "endless" | "daily" | "raid";
+export type OcBoardMode = "endless" | "daily" | "raid" | "campaign";
 export type OcBoardView = "today" | "all";
 
 /** What a finished run hands the tally board. Every number comes from the final simulation state. */
@@ -25,9 +25,9 @@ export type OcRunSummary = {
   setup?: string;
   /** Raids: every lane broken. Sieges never end in a win. */
   won: boolean;
-  /** Sieges: the wave reached when the gate fell (0 for raids). */
+  /** Sieges: the wave reached when the gate fell (0 for raids). The campaign: levels cleared. */
   wave: number;
-  /** Foes slain (in a raid: your own Chaos creatures lost). */
+  /** Foes slain (in a raid: your own Chaos creatures lost). The campaign: stars earned. */
   kills: number;
   /** Battle time in simulation ticks (pausing and fast-forward don't change it). */
   ticks: number;
@@ -68,6 +68,12 @@ const OC_MAX_RUN_TICKS = sec(6 * 3600);
 /** The first wave of a siege marches at 20 s; a wave can come at most every 6 s after the last. */
 const SIEGE_FIRST_WAVE = sec(20);
 const SIEGE_MIN_GAP = sec(6);
+/** The campaign board: levels cleared rank first (each worth this much), stars break ties. */
+export const OC_LEVEL_POINTS = 1000;
+/** More campaign levels than the game has (a bound for the board's checks). */
+export const OC_CAMPAIGN_MAX_LEVELS = 120;
+/** Stars a campaign level can give: 1 for the victory, 1 for each of its two goals. */
+export const OC_STARS_PER_LEVEL = 3;
 
 const RAID_ID = /^r\d{1,2}$/;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,6 +82,7 @@ const HERO_RE = /^[a-z][a-z-]{0,23}$/;
 
 /** The one score formula. Higher is always better. */
 export function ocScore(run: Pick<OcRunSummary, "mode" | "won" | "wave" | "kills" | "ticks">): number {
+  if (run.mode === "campaign") return Math.max(0, Math.floor(run.wave)) * OC_LEVEL_POINTS + Math.max(0, Math.min(OC_LEVEL_POINTS - 1, Math.floor(run.kills)));
   if (run.mode === "raid") {
     if (!run.won) return 0;
     return Math.max(1, OC_RAID_CLOCK - Math.max(0, Math.floor(run.ticks)));
@@ -87,7 +94,8 @@ export function ocScore(run: Pick<OcRunSummary, "mode" | "won" | "wave" | "kills
 export const OC_SCORE_RULES: Record<OcBoardMode, string> = {
   endless: "Score = the wave you reached × 10,000, plus 1 for every foe slain (up to 9,999). The furthest wave always ranks higher; foes slain only break ties.",
   daily: "Everyone gets the same orders today: same road, same loaned troops, same horde. Score = the wave you reached × 10,000, plus 1 for every foe slain (up to 9,999).",
-  raid: "Only a broken raid counts. The faster the horde breaks every lane, the higher you rank. Battle time is measured, so pausing or speeding up changes nothing."
+  raid: "Only a broken raid counts. The faster the horde breaks every lane, the higher you rank. Battle time is measured, so pausing or speeding up changes nothing.",
+  campaign: "Campaign progress: the most levels cleared ranks highest; stars (1 for each victory, 1 for each goal met) break ties, then whoever got there first."
 };
 
 /** "3:42" from simulation ticks. */
@@ -102,6 +110,7 @@ export function ocRunTime(ticks: number): string {
 /** A score in words: "Wave 23 · 412 foes slain" or "Broke every lane in 3:42". */
 export function ocScoreText(mode: OcBoardMode, run: Pick<OcBoardEntry, "wave" | "kills" | "ticks">): string {
   if (mode === "raid") return `Broke every lane in ${ocRunTime(run.ticks)}`;
+  if (mode === "campaign") return `${run.wave} level${run.wave === 1 ? "" : "s"} cleared · ${run.kills} star${run.kills === 1 ? "" : "s"}`;
   return `Wave ${run.wave} · ${run.kills} foe${run.kills === 1 ? "" : "s"} slain`;
 }
 
@@ -124,6 +133,11 @@ export function ocRunSummary(
     placed: state.stats.placed,
     ...(extra.hero ? { hero: extra.hero } : {})
   };
+}
+
+/** The campaign as a board entry: levels cleared and stars earned (no battle of its own, so no time). */
+export function ocCampaignSummary(cleared: number, stars: number, hero?: string): OcRunSummary {
+  return { mode: "campaign", won: false, wave: Math.max(0, Math.floor(cleared)), kills: Math.max(0, Math.floor(stars)), ticks: 0, lost: 0, placed: 0, ...(hero ? { hero } : {}) };
 }
 
 /** The earliest battle time a siege can reach wave `wave` (a second of slack). */
@@ -149,11 +163,17 @@ const isInt = (n: unknown, lo: number, hi: number): n is number => typeof n === 
 export function ocSummaryProblem(run: unknown, today: string): string | null {
   if (!run || typeof run !== "object") return "No run summary.";
   const r = run as Partial<OcRunSummary>;
-  if (r.mode !== "endless" && r.mode !== "daily" && r.mode !== "raid") return "Unknown board.";
+  if (r.mode !== "endless" && r.mode !== "daily" && r.mode !== "raid" && r.mode !== "campaign") return "Unknown board.";
   if (typeof r.won !== "boolean") return "Bad run summary.";
   if (!isInt(r.ticks, 0, OC_MAX_RUN_TICKS)) return "Run length out of range.";
   if (!isInt(r.kills, 0, 1_000_000) || !isInt(r.lost, 0, 100_000) || !isInt(r.placed, 0, 100_000)) return "Bad run numbers.";
   if (r.hero !== undefined && (typeof r.hero !== "string" || !HERO_RE.test(r.hero))) return "Bad hero.";
+  if (r.mode === "campaign") {
+    if (r.won || r.ticks !== 0 || r.raid !== undefined || r.day !== undefined) return "Bad campaign summary.";
+    if (!isInt(r.wave, 1, OC_CAMPAIGN_MAX_LEVELS)) return "Levels cleared out of range.";
+    if (!isInt(r.kills, r.wave, r.wave * OC_STARS_PER_LEVEL)) return "More stars than those levels give.";
+    return null;
+  }
   if (r.mode === "raid") {
     if (typeof r.raid !== "string" || !RAID_ID.test(r.raid)) return "Unknown raid.";
     if (!r.won) return "Only a broken raid goes on the board.";

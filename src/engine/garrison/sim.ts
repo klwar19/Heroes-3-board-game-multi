@@ -12,10 +12,13 @@ import {
   BLESSINGS, BLESSING_ORDER, CARDS, DEFENDERS, ENEMIES, FIREBALL_DELAY, FIREBALL_DMG, FIRE_WALL_DELAY,
   FIRE_WALL_DMG, GW_COLS, LAND_MINE_ARM, LAND_MINE_DMG, MANA_MAX, MANA_REGEN_EVERY, PASSIVE_MIGHT,
   FIRE_SHOTS, FUSIONS, SPELLS, STONE_SKIN_HP, TENT_INCOME, TERRAINS, fusionFor, sec,
+  CORRODE_MULT, EXPOSE_MULT, FORTUNE_GOLD, LUCK_CHANCE,
   type BlessingId, type CardId, type DefDef, type DefKind, type EnemyKind, type ProjectileKind, type SpellId, type SurgeDef, type Terrain,
   type WarbossDef, type WarbossMove
 } from "./content";
 import { ASCEND_TICKS, VALOR_NEED, ascendedKind, baseKind, kindLevel, leveledKind } from "./order-chaos/forms";
+import { heroPassivePower, heroSpellPower, type OcHeroRank } from "./order-chaos/hero-ranks";
+import { OC_ITEMS, isOcItem, itemPerMatch } from "./order-chaos/treasury";
 import {
   AQUATIC, FIELD, SWIMMERS, TILE, createFieldState, needsFooting, stopsShots, weatherStepAt,
   type BankSpot, type FieldSpot, type FieldState, type FieldTile, type OriginKind, type SpawnOrigin, type WeatherKind, type WeatherState, type WeatherStep
@@ -115,6 +118,17 @@ export type OcRules = {
   banks?: BankSpot[];
   /** Packets the field hands out on top of the chosen hand (Raft, Rooting Boar), for the HUD. */
   fieldCards?: CardId[];
+  /** Phoenix Feather in play from the start: each lane Champion rides back to the gate once after its charge (a Satchel feather sets `def.phoenix` when used). */
+  phoenix?: boolean;
+  /**
+   * The battle's Satchel: the packed boost items (order-chaos/treasury.ts) and how many times each may be
+   * used in this battle (never more than its `perMatch`). Used with the "item" command (checkItem).
+   */
+  satchel?: { id: string; uses: number }[];
+  /** Endless Siege: the world bosses met, in campaign order; one leads every OC_ENDLESS_BOSS_EVERY-th wave (cycling, tougher each time round). */
+  endlessBosses?: EnemyKind[];
+  /** The campaign hero's rank: its passive and signature spell are only that strong (unset: full strength, e.g. the Daily Siege). */
+  hero?: OcHeroRank;
 };
 
 /** A lawn tile a world boss has marked for its next blow. */
@@ -172,6 +186,8 @@ export type Defender = {
   members?: number;
   /** Order & Chaos: sealed in ice by a Jotunn Frostcaller until this tick (it cannot act; absent / 0: free). */
   iceUntil?: number;
+  /** Order & Chaos: Corroded by a Rust Dragon's acid until this tick — takes CORRODE_MULT damage (absent / 0: whole). */
+  corrodeUntil?: number;
   dead: boolean;
 };
 
@@ -268,7 +284,16 @@ export type Enemy = {
   /** Order & Chaos world boss: its phase (0 first), the move it is winding up, and the last one it made. */
   bossPhase?: number;
   cue?: BossCue;
+  /** Order & Chaos world boss: winding up a phase's set piece — halted, and nothing can harm it. */
+  interlude?: boolean;
   lastMove?: number;
+  /** Order & Chaos Astral Spirit: Exposed until this tick — takes EXPOSE_MULT damage from everything (absent / 0: not). */
+  exposedUntil?: number;
+  /** Order & Chaos Crystal Dragon: sealed in crystal — it shatters at this tick for `crystalDmg` (absent / 0: free). */
+  crystalAt?: number;
+  crystalDmg?: number;
+  /** ...and the share of it the shards deal to the foes within a tile. */
+  crystalSplash?: number;
   bites: number;
   wave: number;
   side: "wave" | "atk";
@@ -321,6 +346,8 @@ export type Projectile = {
   hop?: boolean;
   /** Order & Chaos: how long a freezing lob holds what it strikes (straight shots freeze for 2 s). */
   freezeFor?: number;
+  /** Order & Chaos Astral Spirit: the foe it strikes is Exposed this many ticks. */
+  expose?: number;
   dead: boolean;
 };
 
@@ -357,6 +384,8 @@ export type Blast = {
  */
 export type Charger = {
   lane: number; state: "ready" | "charging" | "gone"; x: number; px: number; dmg?: number; hits?: number[]; sprite?: string;
+  /** Order & Chaos Phoenix Feather: this lane Champion has already ridden back once. */
+  reborn?: boolean;
   bowl?: { bounces: number; zig: 1 | -1; speed: number; fromLane: number; laneAt: number; scale?: number };
 };
 export type CardSlot = { id: CardId; readyAt: number };
@@ -487,6 +516,12 @@ export type GarrisonEvent =
   | { e: "foeWhirl"; id: number; lane: number; col: number }
   | { e: "foeSlam"; id: number; lane: number; col: number }
   | { e: "assassinate"; id: number; target: number; lane: number; col: number }
+  // Order & Chaos Summoning Portal exclusives
+  | { e: "guardian"; id: number; target: number }
+  | { e: "crystal"; id: number; target: number }
+  | { e: "shatter"; id: number; lane: number; x: number }
+  | { e: "lucky"; id: number }
+  | { e: "corrode"; id: number; target: number }
   | { e: "unnerved"; id: number; lane: number; x: number }
   | { e: "bossEnter"; id: number; kind: EnemyKind }
   | { e: "bossCue"; id: number; move: WarbossMove["kind"]; index: number; marks: BossMark[] }
@@ -521,6 +556,8 @@ export type GarrisonEvent =
   | { e: "spell"; side: Side; spell: SpellId; lane: number; x: number }
   | { e: "blessingOffer" }
   | { e: "blessing"; id: BlessingId }
+  /** Order & Chaos: a Satchel item used (the app spends one copy from the save). */
+  | { e: "item"; id: string }
   | { e: "bossAction"; action: "summon" | "breath" | "dragon" | "shift"; lane: number }
   | { e: "raided"; lane: number }
   | { e: "overtime" }
@@ -569,6 +606,12 @@ export type GarrisonState = {
     crownMax: number;
     /** Order & Chaos Counterstrike: every troop strikes back at its biters until this tick (absent: never cast). */
     counterUntil?: number;
+    /** Order & Chaos Fortune: every shot and melee strike is lucky, and slain foes drop gold, until this tick (absent: never cast). */
+    fortuneUntil?: number;
+    /** Order & Chaos Satchel: uses of each packed item in this battle (absent: none yet). */
+    satchelUsed?: Record<string, number>;
+    /** Order & Chaos: a Phoenix Feather used from the Satchel (the lane Champions ride back once from then on). */
+    phoenix?: boolean;
   };
   atk: {
     might: number;
@@ -609,7 +652,8 @@ export type GarrisonState = {
     blessPending: boolean;
     laneWeights: number[];
   };
-  boss: { id: number; nextAt: number; last: string } | null;
+  /** The Dracolich (`phase`/`pieceAt`: Order & Chaos phase set pieces). */
+  boss: { id: number; nextAt: number; last: string; phase?: number; pieceAt?: number } | null;
   /** Order & Chaos: the world boss once it has come on (its id). */
   warbossId?: number;
   bannersDown: number;
@@ -635,6 +679,8 @@ export type GarrisonCommand =
   // Order & Chaos
   | { t: "surge"; id: number }
   | { t: "ascend"; id: number }
+  /** Use a packed Satchel item (checkItem). */
+  | { t: "item"; id: string }
   | { t: "begin" };
 
 /** Commands tagged with the side that issued them (online: validated per seat). */
@@ -794,6 +840,7 @@ function resetDefenderTimers(s: GarrisonState, d: Defender): void {
     // Order & Chaos abilities.
     : def.instant ? def.instant.delay
     : def.snipe ? sec(1.5)
+    : def.hypnosis ? sec(4)
     : def.airstrike ? sec(2)
     : def.beam ? def.beam.charge
     : def.pounce ? sec(1)
@@ -819,6 +866,8 @@ function resetDefenderTimers(s: GarrisonState, d: Defender): void {
     : def.shellGift ? sec(2)
     : def.mineLayer ? sec(8)
     : def.allies ? sec(4)
+    // Summoning Portal exclusives: a Crystal Dragon's first crystal comes a moment after it lands (a Guardian Angel starts ready).
+    : def.crystallize ? sec(3)
     : 0;
 }
 
@@ -899,7 +948,7 @@ export function isWall(def: DefDef): boolean {
     && !def.heal && !def.produce && !def.ignite && !def.aura && !def.flame && !def.resurrect
     && !def.trap && !def.spikes && !def.instant && !def.snipe && !def.airstrike && !def.beam && !def.pounce && !def.laneHeal
     && !def.caster && !def.burnAura && !def.gust && !def.shellGift && !def.ammo && !def.chainLightning && !def.luckyKills
-    && !def.magnet && !def.devour && !def.charm && !def.aegis
+    && !def.magnet && !def.devour && !def.charm && !def.aegis && !def.hypnosis
     // Order & Chaos content pass (a Nix's bash, an Iron Maiden's jaws and a Yeti Warden's frost are a wall's own).
     && !def.leap && !def.quickdraw && !def.gas && !def.allies && !def.dash && !def.slam && !def.bowl;
 }
@@ -1176,14 +1225,61 @@ export function checkCast(s: GarrisonState, side: Side, spell: SpellId, lane: nu
 
 /** A spell's recovery time (Charm of Mana: 40% faster for the defending hero). */
 export function spellCooldown(s: GarrisonState, side: Side, spell: SpellId): number {
-  const cooldown = SPELLS[spell].cooldown;
-  return side === "def" && s.def.blessings.includes("charm-of-mana") ? Math.round(cooldown / 1.4) : cooldown;
+  let cooldown = SPELLS[spell].cooldown;
+  if (side !== "def") return cooldown;
+  // Supply Drop has no number to weaken: a lower-ranked Sensei calls it in less often instead.
+  if (spell === "supply-drop") cooldown = Math.round(cooldown / heroSpell(s, spell));
+  const charm = blessingPower(s, "charm-of-mana");
+  return charm > 0 ? Math.round(cooldown / (1 + 0.4 * charm)) : cooldown;
 }
 
 /** Chaos spells left in this battle (unlimited unless the raid sets a limit). */
 export function spellsLeft(s: GarrisonState, spell: SpellId): number {
   const limit = s.cfg.oc?.atkCharges?.[spell];
   return limit === undefined ? Number.POSITIVE_INFINITY : Math.max(0, limit - (s.atk.casts?.[spell] ?? 0));
+}
+
+/** Order & Chaos Satchel: uses of a packed item left in this battle (0 when it wasn't packed; never more than its `perMatch`). */
+export function itemsLeft(s: GarrisonState, id: string): number {
+  if (!s.cfg.oc || s.cfg.mode === "raid") return 0;
+  const slot = s.cfg.oc.satchel?.find((entry) => entry.id === id);
+  if (!slot) return 0;
+  const uses = Math.min(Math.max(0, Math.floor(slot.uses)), itemPerMatch(id));
+  return Math.max(0, uses - (s.def.satchelUsed?.[id] ?? 0));
+}
+
+/** Order & Chaos: can this packed Satchel item be used now? (Refused when spent for this battle, or when it would do nothing.) */
+export function checkItem(s: GarrisonState, id: string): { ok: true; id: string } | { ok: false; reason: string } {
+  if (!s.cfg.oc || s.cfg.mode === "raid" || !isOcItem(id)) return { ok: false, reason: "No Satchel in this battle." };
+  if (s.outcome) return { ok: false, reason: "The battle is over." };
+  const effect = OC_ITEMS[id].effect;
+  if (effect.kind !== "boost" || !s.cfg.oc.satchel?.some((entry) => entry.id === id)) return { ok: false, reason: "Not packed for this battle." };
+  if (itemsLeft(s, id) <= 0) return { ok: false, reason: "No uses left in this battle." };
+  const gives = (effect.gold ?? 0) > 0
+    || ((effect.mana ?? 0) > 0 && s.def.mana < s.def.manaMax)
+    || ((effect.surges ?? 0) > 0 && s.def.surges < s.def.surgeMax)
+    || (effect.blessing !== undefined && !!BLESSINGS[effect.blessing as BlessingId] && !s.def.blessings.includes(effect.blessing as BlessingId))
+    || (effect.phoenix === true && !s.def.phoenix && !s.cfg.oc.phoenix);
+  if (!gives) {
+    const why = (effect.mana ?? 0) > 0 ? "Your mana is full." : (effect.surges ?? 0) > 0 ? "Your Surge orbs are full." : "Already in play.";
+    return { ok: false, reason: why };
+  }
+  return { ok: true, id };
+}
+
+/** Order & Chaos: a packed Satchel item takes effect (checked by checkItem) and one of this battle's uses is gone. */
+function useSatchelItem(s: GarrisonState, id: string): void {
+  const effect = isOcItem(id) ? OC_ITEMS[id].effect : undefined;
+  if (!effect || effect.kind !== "boost") return;
+  s.def.satchelUsed = { ...(s.def.satchelUsed ?? {}), [id]: (s.def.satchelUsed?.[id] ?? 0) + 1 };
+  if (effect.gold) s.def.gold += effect.gold;
+  if (effect.mana) s.def.mana = Math.min(s.def.manaMax, s.def.mana + effect.mana);
+  if (effect.surges) s.def.surges = Math.min(s.def.surgeMax, s.def.surges + effect.surges);
+  if (effect.blessing && BLESSINGS[effect.blessing as BlessingId] && !s.def.blessings.includes(effect.blessing as BlessingId)) {
+    grantBlessing(s, effect.blessing as BlessingId);
+  }
+  if (effect.phoenix) s.def.phoenix = true;
+  s.events.push({ e: "item", id });
 }
 
 function magicArrowTarget(s: GarrisonState, lane: number, x: number): Enemy | undefined {
@@ -1220,6 +1316,7 @@ export function stepGarrison(s: GarrisonState, commands: readonly SidedCommand[]
   director(s);
   bossAct(s);
   defendersAct(s);
+  if (s.cfg.oc) crystalAct(s);
   projectilesAct(s);
   enemiesAct(s);
   blastsAct(s);
@@ -1242,6 +1339,7 @@ function wellFormed(cmd: SidedCommand): boolean {
     case "cast": return typeof cmd.spell === "string" && whole(cmd.lane) && finite(cmd.x);
     case "muster": return typeof cmd.kind === "string" && whole(cmd.lane) && (cmd.x === undefined || finite(cmd.x));
     case "surge": case "ascend": return whole(cmd.id);
+    case "item": return typeof cmd.id === "string";
     case "begin": return true;
     default: return false;
   }
@@ -1327,6 +1425,13 @@ function applyCommand(s: GarrisonState, cmd: SidedCommand): void {
       ascend(s, check.target, check.form);
       return;
     }
+    case "item": {
+      if (cmd.by !== "def") return;
+      const check = checkItem(s, cmd.id);
+      if (!check.ok) return;
+      useSatchelItem(s, check.id);
+      return;
+    }
     case "begin": {
       if (cmd.by !== "def" || !s.planning) return;
       s.planning = false;
@@ -1379,6 +1484,8 @@ function applyCommand(s: GarrisonState, cmd: SidedCommand): void {
 /** Upgrade / fusion: a new unit in place, keeping its share of health. */
 function transform(s: GarrisonState, d: Defender, kind: DefKind, minShare: number): void {
   const ratio = d.hp / d.maxHp;
+  // (A Guardian Angel's intercession keeps recovering through a form change: no fresh one for free.)
+  const guarding = DEFENDERS[d.kind]!.guardian ? d.cd2 : 0;
   d.kind = kind;
   // (A band keeps its members through an Ascension.)
   d.maxHp = fullHp(s, kind, d.members);
@@ -1388,6 +1495,8 @@ function transform(s: GarrisonState, d: Defender, kind: DefKind, minShare: numbe
   d.busyUntil = 0;
   d.reborn = false;
   resetDefenderTimers(s, d);
+  const guardian = DEFENDERS[kind]!.guardian;
+  if (guardian) d.cd2 = Math.min(guarding, guardian.every);
 }
 
 /** Order & Chaos: the unit takes its Ascended form (fully healed) for a while. */
@@ -1467,11 +1576,16 @@ function fireMult(s: GarrisonState): number {
 /** Deals damage to an attacker; returns the damage taken. */
 function hurtEnemy(s: GarrisonState, e: Enemy, amount: number, hit: EnemyHit = {}): number {
   if (e.dead || amount <= 0) return 0;
+  // A world boss winding up its phase's set piece cannot be harmed.
+  if (e.interlude) return 0;
   const def = ENEMIES[e.kind]!;
   let dmg = amount;
   if (hit.spell) {
+    // Order & Chaos Orb of Vulnerability (Summoning Portal): spell damage 25% harder, through the horde's resistance (the immune take half).
+    const orb = s.cfg.oc !== undefined && has(s, "orb-of-vulnerability");
     if (hit.fire && def.fireImmune) dmg *= 0.5;
-    if (def.magicResist !== undefined) dmg *= def.magicResist;
+    if (orb) dmg *= def.magicResist === 0 ? 0.5 : 1.25;
+    else if (def.magicResist !== undefined) dmg *= def.magicResist;
     if (def.structure) dmg *= 0.5;
   }
   // Order & Chaos battlefield: rain and standing water douse fire (only the flames: a burning arrow keeps its point).
@@ -1486,6 +1600,8 @@ function hurtEnemy(s: GarrisonState, e: Enemy, amount: number, hit: EnemyHit = {
   }
   // Order & Chaos Dragon Wing Tabard: flyers take half as much again.
   if (def.flying && s.cfg.oc && has(s, "dragon-wing-tabard")) dmg *= 1.5;
+  // Order & Chaos Astral Spirit (Summoning Portal): an Exposed foe takes a quarter more from everything.
+  if ((e.exposedUntil ?? 0) > s.tick && s.cfg.oc) dmg *= EXPOSE_MULT;
   if (dmg <= 0) return 0;
   reveal(s, e);
   // A blow on a creature bank or one of its sleepers wakes them all.
@@ -1588,6 +1704,10 @@ function killEnemy(s: GarrisonState, e: Enemy, how: KillHow): void {
   if (s.def.blessings.includes("yawning-dead") && rand(s) < 0.2) {
     dropCoin(s, Math.min(8.6, Math.max(0.4, e.x)), e.lane + 0.35, e.lane + 0.75, 15);
   }
+  // Order & Chaos Fortune (the Summoning Portal hero's spell): every foe slain while it lasts drops gold.
+  if (s.cfg.oc && s.cfg.mode !== "raid" && (s.def.fortuneUntil ?? 0) > s.tick) {
+    dropCoin(s, Math.min(8.6, Math.max(0.4, e.x)), e.lane + 0.3, e.lane + 0.7, FORTUNE_GOLD);
+  }
   // Order & Chaos: a glowing foe drops its Surge orb; Leprechauns turn kills into gold.
   if (e.carrier) {
     e.carrier = false;
@@ -1616,9 +1736,14 @@ function killEnemy(s: GarrisonState, e: Enemy, how: KillHow): void {
     // Order & Chaos: the horde breaks at once — nothing rises again, crawls on, splits or bursts into more.
     // (Garrison Wars' Dracolich keeps its old sweep.)
     for (const other of s.enemies) if (!other.dead && other !== e && !isStructure(other)) killEnemy(s, other, s.cfg.oc ? "rout" : "normal");
-    // Order & Chaos: a world boss's fall breaks the horde for good (no more waves).
+    // Order & Chaos: a world boss's fall breaks the horde for good (no more waves) —
+    // except in the Endless Siege, where the waves march on and the next boss may come.
     if (def.warboss) {
-      s.director.done = true;
+      if (s.cfg.endless) {
+        if (s.warbossId === e.id) s.warbossId = undefined;
+      } else {
+        s.director.done = true;
+      }
       s.events.push({ e: "bossFall", id: e.id, kind: e.kind });
     }
   }
@@ -1627,7 +1752,7 @@ function killEnemy(s: GarrisonState, e: Enemy, how: KillHow): void {
 /** Order & Chaos: Valor toward the next Ascension crown (Crown of Dragontooth: half as much again). */
 function gainValor(s: GarrisonState, amount: number): void {
   if (s.def.crowns >= s.def.crownMax) return;
-  s.def.valor += amount * (has(s, "crown-of-dragontooth") ? 1.5 : 1);
+  s.def.valor += amount * (1 + 0.5 * blessingPower(s, "crown-of-dragontooth"));
   if (s.def.valor >= VALOR_NEED) {
     s.def.valor = 0;
     s.def.crowns += 1;
@@ -1678,13 +1803,15 @@ function hurtDefender(s: GarrisonState, d: Defender, amount: number, hit: DefHit
     d.hp = 0;
   } else {
     let dmg = amount;
-    if (hit.atk && s.def.blessings.includes("dragon-scale-shield")) dmg *= 0.75;
+    if (hit.atk) dmg *= 1 - 0.25 * blessingPower(s, "dragon-scale-shield");
     if (hit.magic && def.magicResist !== undefined) dmg *= def.magicResist;
     if (s.cfg.oc) dmg *= 1 - wardAt(s, d);
     // Order & Chaos rain: fire deals half (theirs too).
     if (hit.fire && s.weather && wetWeather(s)) dmg *= FIELD.rainFire;
     // Order & Chaos Eversmoking Ring of Sulfur: the troops shrug off half of any fire.
     if (hit.fire && s.cfg.oc && has(s, "ring-of-sulfur")) dmg *= 0.5;
+    // Order & Chaos Rust Dragon (Summoning Portal): a Corroded troop takes half again as much from everything.
+    if ((d.corrodeUntil ?? 0) > s.tick && s.cfg.oc) dmg *= CORRODE_MULT;
     dmg = Math.round(dmg);
     if (dmg <= 0) return;
     if (d.shell > 0) {
@@ -1705,6 +1832,8 @@ function hurtDefender(s: GarrisonState, d: Defender, amount: number, hit: DefHit
   }
   s.events.push({ e: "defHurt", id: d.id });
   if (d.hp > 0) return;
+  // Order & Chaos Guardian Angel (Summoning Portal): a ready angel beside it turns the killing blow aside.
+  if (s.cfg.oc && guardianSaves(s, d)) return;
   if (def.rebirth && !d.reborn) {
     d.reborn = true;
     d.hp = d.maxHp;
@@ -1737,12 +1866,79 @@ function hurtDefender(s: GarrisonState, d: Defender, amount: number, hit: DefHit
   }
 }
 
+/**
+ * Order & Chaos Guardian Angel (Summoning Portal): a troop in a ready angel's 3×3 (the angel too) that has
+ * just taken a killing blow is left at the angel's share of its health and warded for a moment; the angel
+ * then needs its `every` to be ready again (its second timer, counted down in orderAct). Not while the angel
+ * is a sheep, asleep, iced or stunned. Charges, mines and spikes lying flat and the field's landmarks aren't saved.
+ */
+function guardianSaves(s: GarrisonState, d: Defender): boolean {
+  if (isFlat(d) || DEFENDERS[d.kind]!.landmark) return false;
+  for (const a of s.defenders) {
+    const guard = a.dead ? undefined : DEFENDERS[a.kind]!.guardian;
+    if (!guard || a.cd2 > 0 || Math.abs(a.lane - d.lane) > 1 || Math.abs(a.col - d.col) > 1 || !canReact(s, a)) continue;
+    d.hp = Math.max(1, Math.round(d.maxHp * guard.heal));
+    d.invulnUntil = Math.max(d.invulnUntil, s.tick + guard.ward);
+    a.cd2 = guard.every;
+    s.events.push({ e: "guardian", id: a.id, target: d.id });
+    return true;
+  }
+  return false;
+}
+
+/** Order & Chaos Crystal Dragon (Summoning Portal): the crystals whose time is up shatter. */
+function crystalAct(s: GarrisonState): void {
+  for (const e of s.enemies) {
+    if (e.dead || !e.crystalAt || e.crystalAt > s.tick) continue;
+    const dmg = e.crystalDmg ?? 0;
+    const splash = e.crystalSplash ?? 0;
+    e.crystalAt = 0;
+    // (A foe charmed to fight for Order while sealed just steps out.)
+    if (!e.charmed) shatterCrystal(s, e, dmg, splash);
+  }
+}
+
+/** A crystal shatters on a foe: `dmg` to it and `splash` of that to every other foe within a tile (its lane and both beside it). */
+function shatterCrystal(s: GarrisonState, e: Enemy, dmg: number, splash: number): void {
+  const lane = e.lane;
+  const x = e.x;
+  s.events.push({ e: "shatter", id: e.id, lane, x });
+  hurtEnemy(s, e, dmg, {});
+  if (splash <= 0) return;
+  for (const o of [...s.enemies]) {
+    if (o === e || o.dead || o.charmed || isStructure(o) || !grounded(o) || isFlying(o) || Math.abs(o.lane - lane) > 1 || Math.abs(o.x - x) > 1) continue;
+    hurtEnemy(s, o, dmg * splash, {});
+  }
+}
+
+/**
+ * Order & Chaos Luck (the Summoning Portal hero's passive, at its rank) and Fortune (its spell): a troop's
+ * shot or melee strike is lucky — double damage. Returns the multiplier (and shows the lucky ones).
+ */
+function luckyStrike(s: GarrisonState, d: Defender): number {
+  if (!s.cfg.oc) return 1;
+  const fortune = (s.def.fortuneUntil ?? 0) > s.tick;
+  if (!fortune) {
+    const luck = blessingPower(s, "luck");
+    if (luck <= 0 || rand(s) >= LUCK_CHANCE * luck) return 1;
+  }
+  s.events.push({ e: "lucky", id: d.id });
+  return 2;
+}
+
+/** Order & Chaos Rust Dragon (Summoning Portal): acid melts a troop's shell away and Corrodes it. */
+function corrode(s: GarrisonState, e: Enemy, d: Defender, dur: number): void {
+  if (d.dead) return;
+  d.corrodeUntil = Math.max(d.corrodeUntil ?? 0, s.tick + dur);
+  s.events.push({ e: "corrode", id: e.id, target: d.id });
+}
+
 // ---------------------------------------------------------------------------
 // Economy
 
 function economy(s: GarrisonState): void {
   const { def, atk, cfg } = s;
-  const regen = def.blessings.includes("orb-of-mana") ? Math.round(MANA_REGEN_EVERY / 2) : MANA_REGEN_EVERY;
+  const regen = Math.round(MANA_REGEN_EVERY / (1 + blessingPower(s, "orb-of-mana")));
   if (cfg.spells.length > 0 && s.tick >= def.manaAt) {
     def.mana = Math.min(def.manaMax, def.mana + 1);
     def.manaAt = s.tick + regen;
@@ -1813,7 +2009,9 @@ function collectPickup(s: GarrisonState, p: Pickup): void {
 }
 
 function pickupsAct(s: GarrisonState): void {
-  const auto = s.def.blessings.includes("estates") ? sec(1) : -1;
+  // Estates: coins collect themselves 1 s after landing (a lower-ranked Sensei's take up to 3 s).
+  const estates = blessingPower(s, "estates");
+  const auto = estates > 0 ? Math.round(sec(1) + sec(4) * (1 - estates)) : -1;
   for (const p of s.pickups) {
     if (p.dead) continue;
     if (s.tick >= p.expireAt) p.dead = true;
@@ -1856,6 +2054,17 @@ function pickLane(s: GarrisonState): number {
   return chosen;
 }
 
+/** Endless Siege: a world boss leads every this many waves. */
+export const OC_ENDLESS_BOSS_EVERY = 10;
+
+/** The world boss leading an Endless Siege wave (null when none does): the met bosses in turn, half as tough again each time round. */
+function endlessBossFor(s: GarrisonState, wave: number): { kind: EnemyKind; toughness: number } | null {
+  const kinds = s.cfg.endless ? (s.cfg.oc?.endlessBosses ?? []).filter((kind) => ENEMIES[kind]?.warboss) : [];
+  if (kinds.length === 0 || wave < OC_ENDLESS_BOSS_EVERY || wave % OC_ENDLESS_BOSS_EVERY !== 0) return null;
+  const n = wave / OC_ENDLESS_BOSS_EVERY - 1;
+  return { kind: kinds[n % kinds.length]!, toughness: 1 + 0.5 * Math.floor(n / kinds.length) };
+}
+
 function spawnWave(s: GarrisonState, wave: number): void {
   const d = s.director;
   const flag = isFlagWave(s, wave);
@@ -1863,7 +2072,8 @@ function spawnWave(s: GarrisonState, wave: number): void {
   if (s.weather) advanceWeather(s, wave);
   let budget = waveBudget(s, wave);
   // Order & Chaos: the wave a world boss leads is its escort (the boss is the assault).
-  const bossWave = s.cfg.oc?.warboss?.wave === wave && !s.warbossId;
+  const endless = endlessBossFor(s, wave);
+  const bossWave = (s.cfg.oc?.warboss?.wave === wave || endless !== null) && !s.warbossId;
   if (bossWave) budget = Math.max(1, Math.round(budget * BOSS_ESCORT));
   const pool = s.cfg.enemies.filter((kind) => ENEMIES[kind]);
   const eligible = pool.filter((kind) => ENEMIES[kind]!.cost > 0 && ENEMIES[kind]!.cost <= 1 + wave * 0.9);
@@ -1908,10 +2118,13 @@ function spawnWave(s: GarrisonState, wave: number): void {
     hp += e.hp + e.shield + e.armor;
   }
   // Order & Chaos: the world boss leads its assault down the middle road.
+  // (Endless Siege: one leads every OC_ENDLESS_BOSS_EVERY-th wave, while none is still on the lawn.)
   const warboss = s.cfg.oc?.warboss;
-  if (warboss && wave === warboss.wave && !s.warbossId && ENEMIES[warboss.kind]?.warboss) {
+  const bossKind = warboss && wave === warboss.wave ? warboss.kind : endless?.kind;
+  if (bossKind && !s.warbossId && ENEMIES[bossKind]?.warboss) {
     const lanes = s.cfg.lanes;
-    const boss = spawnEnemy(s, warboss.kind, lanes.includes(2) ? 2 : lanes[Math.floor(lanes.length / 2)]!, SPAWN_X - 0.2, "wave", wave);
+    const boss = spawnEnemy(s, bossKind, lanes.includes(2) ? 2 : lanes[Math.floor(lanes.length / 2)]!, SPAWN_X - 0.2, "wave", wave);
+    if (endless && endless.toughness > 1) boss.hp = boss.maxHp = Math.round(boss.maxHp * endless.toughness);
     boss.cd2 = sec(4);
     s.warbossId = boss.id;
     hp += boss.hp + boss.shield + boss.armor;
@@ -2018,7 +2231,7 @@ function grantBlessing(s: GarrisonState, id: BlessingId): void {
       d.maxHp = maxHp;
     }
   }
-  if (id === "orb-of-mana") s.def.manaMax = MANA_MAX + 10;
+  if (id === "orb-of-mana") s.def.manaMax = MANA_MAX + Math.round(10 * blessingPower(s, id));
   if (id === "lions-shield") {
     for (const c of s.chargers) if (c.state === "gone" && c.dmg === undefined) Object.assign(c, { state: "ready", x: -0.45, px: -0.45 });
   }
@@ -2040,6 +2253,40 @@ function bossAct(s: GarrisonState): void {
   const boss = s.enemies.find((e) => e.id === b.id);
   if (!boss || boss.dead) return;
   if ((boss.state === "glide" || boss.state === "cast") && s.tick >= boss.stateUntil) setState(s, boss, "idle");
+  // Order & Chaos: at two thirds and one third of its health it halts, can't be harmed for 4 s,
+  // then unleashes a set piece (a horde and two dragons; then death breath down every lane).
+  if (s.cfg.oc && boss.state !== "glide") {
+    const phase = boss.hp <= boss.maxHp / 3 ? 2 : boss.hp <= (boss.maxHp * 2) / 3 ? 1 : 0;
+    if (phase > (b.phase ?? 0) && b.pieceAt === undefined) {
+      b.phase = phase;
+      b.pieceAt = s.tick + sec(4);
+      boss.interlude = true;
+      setState(s, boss, "cast", sec(4));
+      s.events.push({ e: "bossPhase", id: boss.id, phase });
+      return;
+    }
+    if (b.pieceAt !== undefined) {
+      if (s.tick < b.pieceAt) return;
+      b.pieceAt = undefined;
+      boss.interlude = false;
+      b.nextAt = s.tick + sec(6);
+      if (b.phase === 1) {
+        const summons = s.cfg.oc.bossSummons?.length ? s.cfg.oc.bossSummons : BOSS_SUMMONS;
+        for (const lane of s.cfg.lanes) spawnEnemy(s, summons[randInt(s, 0, Math.min(summons.length, 4) - 1)]!, lane, SPAWN_X + rand(s) * 0.6, "wave");
+        for (const lane of s.cfg.lanes.filter((l) => l !== boss.lane).slice(0, 2)) {
+          const dragon = spawnEnemy(s, s.cfg.oc.bossDragon ?? "bone-dragon", lane, 9.6, "wave");
+          dragon.from = 9.6;
+          dragon.to = 8.2;
+          setState(s, dragon, "flung", sec(1));
+        }
+        s.events.push({ e: "bossAction", action: "summon", lane: boss.lane });
+      } else {
+        for (const lane of s.cfg.lanes) s.blasts.push({ id: s.nextId++, kind: "death-breath", lane, x: boss.x, at: s.tick + sec(1.5), dmg: 150 });
+        s.events.push({ e: "bossAction", action: "breath", lane: boss.lane });
+      }
+      return;
+    }
+  }
   if (s.tick < b.nextAt || boss.state === "glide") return;
   const enraged = boss.hp < boss.maxHp / 2;
   const minutes = s.tick / sec(60);
@@ -2086,13 +2333,29 @@ function has(s: GarrisonState, id: BlessingId): boolean {
   return s.def.blessings.includes(id);
 }
 
+/**
+ * How strong a blessing in play is (0 when not in play): full, except the
+ * Order & Chaos hero's own passive, which grows with the hero's rank.
+ */
+function blessingPower(s: GarrisonState, id: BlessingId): number {
+  if (!s.def.blessings.includes(id)) return 0;
+  const hero = s.cfg.oc?.hero;
+  return hero && hero.passive === id ? heroPassivePower(hero.rank) : 1;
+}
+
+/** How strong a defending spell is: full, except the hero's signature spell, which grows with the hero's rank. */
+function heroSpell(s: GarrisonState, spell: SpellId): number {
+  const hero = s.cfg.oc?.hero;
+  return hero && hero.spell === spell ? heroSpellPower(hero.rank) : 1;
+}
+
 function actRate(s: GarrisonState, d: Defender, auras: readonly Defender[]): number {
   if (d.stunnedUntil > s.tick || isSheep(s, d) || d.asleep || (d.iceUntil ?? 0) > s.tick) return 0;
   let rate = 1;
   if (s.def.hasteUntil > s.tick) rate *= 1.5;
   if (s.def.prayerUntil > s.tick) rate *= 1.3;
   if (d.cursedUntil > s.tick) rate *= 0.5;
-  if (has(s, "necklace-of-swiftness")) rate *= 1.2;
+  rate *= 1 + 0.2 * blessingPower(s, "necklace-of-swiftness");
   // Order & Chaos battlefield: a blizzard slows the troops; the one on clover is lucky.
   if (s.weather?.kind === "blizzard") rate *= FIELD.blizzardTroops;
   if (s.field && tileCode(s, d.lane, d.col) === TILE.clover) rate *= FIELD.clover;
@@ -2132,7 +2395,9 @@ function canSlow(e: Enemy): boolean {
 }
 
 function defendersAct(s: GarrisonState): void {
-  const regen = has(s, "vial-of-lifeblood") && s.tick % 4 === 0;
+  // Vial of Lifeblood: 1 HP every 4 ticks (5 a second) at full strength, less often at a lower hero rank.
+  const vial = blessingPower(s, "vial-of-lifeblood");
+  const regen = vial > 0 && Math.floor((s.tick * vial) / 4) > Math.floor(((s.tick - 1) * vial) / 4);
   const auras = s.defenders.filter((d) => !d.dead && DEFENDERS[d.kind]!.aura);
   const second = s.tick % 20 === 0;
   for (const d of s.defenders) {
@@ -2274,7 +2539,7 @@ function defendersAct(s: GarrisonState): void {
         }
         if (target) {
           s.events.push({ e: "lightning", id: d.id, target: target.id, lane: target.lane, x: target.x });
-          shockEnemy(s, target, def.lightning.dmg * (has(s, "ogres-club") ? 1.5 : 1));
+          shockEnemy(s, target, def.lightning.dmg * (has(s, "ogres-club") ? 1.5 : 1) * luckyStrike(s, d));
           d.cd = def.lightning.every;
         } else {
           d.cd = 0;
@@ -2634,10 +2899,31 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
       const target = bulkiestFoes(s, 1, (e) => e.lane === d.lane && e.x <= SIGHT_X)[0];
       if (target) {
         s.events.push({ e: "snipe", id: d.id, target: target.id, lane: target.lane, x: target.x });
-        hurtEnemy(s, target, def.snipe.dmg, { pierce: true });
+        hurtEnemy(s, target, def.snipe.dmg * luckyStrike(s, d), { pierce: true });
         d.cd = def.snipe.every;
       } else {
         d.cd = 0;
+      }
+    }
+  }
+
+  // Order & Chaos Psychic Elemental: hypnotizes the nearest fitting foe ahead in its lane, then rests.
+  if (def.hypnosis && s.cfg.oc) {
+    d.cd -= rate;
+    if (d.cd <= 0) {
+      const { range, maxCost, every } = def.hypnosis;
+      let target: Enemy | undefined;
+      for (const e of s.enemies) {
+        const foe = ENEMIES[e.kind]!;
+        if (e.dead || e.charmed || e.lane !== d.lane || !grounded(e) || isStructure(e) || isFlying(e) || foe.boss || foe.smash || foe.cost > maxCost) continue;
+        if (!onLawn(e) || e.x > SIGHT_X || e.x < d.col + 0.2 || e.x > d.col + 0.5 + range) continue;
+        if (!target || e.x < target.x || (e.x === target.x && e.id < target.id)) target = e;
+      }
+      if (target) {
+        charmFoe(s, target, d.id, 1);
+        d.cd = every;
+      } else {
+        d.cd = sec(0.5);
       }
     }
   }
@@ -2650,10 +2936,11 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
         const target = pool[randInt(s, 0, pool.length - 1)]!;
         const { lane, x } = target;
         s.events.push({ e: "bomb", lane, x });
-        hurtEnemy(s, target, def.airstrike.dmg, {});
+        const lucky = luckyStrike(s, d);
+        hurtEnemy(s, target, def.airstrike.dmg * lucky, {});
         for (const e of [...s.enemies]) {
           if (e === target || e.dead || e.charmed || isStructure(e) || Math.abs(e.lane - lane) > 1 || Math.abs(e.x - x) > 1) continue;
-          hurtEnemy(s, e, def.airstrike.dmg * def.airstrike.splash, {});
+          hurtEnemy(s, e, def.airstrike.dmg * def.airstrike.splash * lucky, {});
         }
         d.cd = def.airstrike.every;
       } else {
@@ -2667,7 +2954,7 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
     if (firstAhead(s, d.lane, centre, 9.6, false)) {
       d.cd -= rate;
       if (d.cd <= 0) {
-        fireBeam(s, d, [d.lane], def.beam.dmg);
+        fireBeam(s, d, [d.lane], def.beam.dmg * luckyStrike(s, d));
         d.cd = def.beam.charge;
       }
     }
@@ -2685,7 +2972,7 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
       }
       if (target) {
         s.events.push({ e: "pounce", id: d.id, target: target.id });
-        hurtEnemy(s, target, def.pounce.dmg, { melee: true });
+        hurtEnemy(s, target, def.pounce.dmg * luckyStrike(s, d), { melee: true });
         d.cd = def.pounce.every;
       } else {
         d.cd = 0;
@@ -2715,16 +3002,17 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
         const tint = roll === 0 ? "frost" : roll === 1 ? "fire" : "lightning";
         s.events.push({ e: "zap", lane: d.lane, x: centre, toLane: target.lane, toX: target.x, tint });
         const x = target.x;
+        const lucky = luckyStrike(s, d);
         if (roll === 1) {
-          const dmg = def.caster.dmg * fireMult(s);
+          const dmg = def.caster.dmg * fireMult(s) * lucky;
           hurtEnemy(s, target, dmg, { spell: true, fire: true });
           for (const e of [...s.enemies]) {
             if (e === target || e.dead || e.charmed || e.lane !== d.lane || isStructure(e) || Math.abs(e.x - x) > 1) continue;
             hurtEnemy(s, e, dmg * 0.5, { spell: true, fire: true });
           }
         } else {
-          if (roll === 2) shockEnemy(s, target, def.caster.dmg, { spell: true });
-          else hurtEnemy(s, target, def.caster.dmg, { spell: true });
+          if (roll === 2) shockEnemy(s, target, def.caster.dmg * lucky, { spell: true });
+          else hurtEnemy(s, target, def.caster.dmg * lucky, { spell: true });
           if (!target.dead && roll === 0 && canChill(target)) target.chillUntil = Math.max(target.chillUntil, s.tick + frost(s, sec(6)));
           if (!target.dead && roll === 2 && canSlow(target) && !ENEMIES[target.kind]!.stunImmune) target.stunUntil = Math.max(target.stunUntil, s.tick + sec(1));
         }
@@ -2793,7 +3081,7 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
         if (!target || e.x < target.x) target = e;
       }
       if (target) {
-        chainHit(s, { lane: d.lane, x: centre }, target, def.chainLightning.dmg, def.chainLightning.jumps, 1, 1.6, "lightning");
+        chainHit(s, { lane: d.lane, x: centre }, target, def.chainLightning.dmg * luckyStrike(s, d), def.chainLightning.jumps, 1, 1.6, "lightning");
         d.cd = def.chainLightning.every;
       } else {
         d.cd = 0;
@@ -2952,7 +3240,7 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
         let far = 0;
         for (const e of struck) far = Math.max(far, e.x - centre);
         s.events.push({ e: "dash", id: d.id, reach: Math.min(dash.reach, far + 0.4) });
-        const club = (has(s, "ogres-club") ? 1.5 : 1) * (s.def.frenzyUntil > s.tick ? 2 : 1);
+        const club = (has(s, "ogres-club") ? 1.5 : 1) * (s.def.frenzyUntil > s.tick ? 2 : 1) * luckyStrike(s, d);
         for (const e of struck) meleeBlow(s, d, e, dash.dmg * club);
         d.cd = dash.every;
       } else {
@@ -2970,7 +3258,7 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
         && Math.abs(e.x - centre) <= slam.reach);
       if (struck.length > 0) {
         s.events.push({ e: "slam", id: d.id, reach: slam.reach });
-        const club = (has(s, "ogres-club") ? 1.5 : 1) * (s.def.frenzyUntil > s.tick ? 2 : 1);
+        const club = (has(s, "ogres-club") ? 1.5 : 1) * (s.def.frenzyUntil > s.tick ? 2 : 1) * luckyStrike(s, d);
         for (const e of struck) {
           meleeBlow(s, d, e, slam.dmg * club);
           if (!e.dead && canSlow(e) && !ENEMIES[e.kind]!.stunImmune) e.stunUntil = Math.max(e.stunUntil, s.tick + slam.stun);
@@ -2979,6 +3267,42 @@ function orderAct(s: GarrisonState, d: Defender, def: DefDef, rate: number): voi
         d.cd = slam.every;
       } else {
         d.cd = sec(0.25);
+      }
+    }
+  }
+
+  // --- Summoning Portal exclusives ---------------------------------------------------
+  // Guardian Angel: her intercession recovers (it is spent in guardianSaves).
+  if (def.guardian && d.cd2 > 0) d.cd2 -= rate;
+
+  // Crystal Dragon: seals the toughest foe in reach in crystal (crystalAct shatters it).
+  if (def.crystallize) {
+    d.cd2 -= rate;
+    if (d.cd2 <= 0) {
+      const c = def.crystallize;
+      let target: Enemy | undefined;
+      for (const e of s.enemies) {
+        if (Math.abs(e.lane - d.lane) > 1 || !shootable(s, e) || !grounded(e) || isStructure(e) || isFlying(e) || !onLawn(e) || e.x > SIGHT_X) continue;
+        if ((e.crystalAt ?? 0) > s.tick || (s.field && submerged(s, e))) continue;
+        const dx = e.x - centre;
+        if (dx < -0.3 || dx > c.range) continue;
+        if (!target || bulk(e) > bulk(target) || (bulk(e) === bulk(target) && e.id < target.id)) target = e;
+      }
+      if (target) {
+        s.events.push({ e: "crystal", id: d.id, target: target.id });
+        if (ENEMIES[target.kind]!.boss) {
+          // A boss is too great to seal: the shards strike it at once.
+          shatterCrystal(s, target, c.dmg, c.splash);
+        } else {
+          if (target.state === "raise") abortRaise(s, target, false);
+          target.crystalAt = s.tick + c.dur;
+          target.crystalDmg = c.dmg;
+          target.crystalSplash = c.splash;
+          target.stunUntil = Math.max(target.stunUntil, target.crystalAt);
+        }
+        d.cd2 = c.every;
+      } else {
+        d.cd2 = sec(0.5);
       }
     }
   }
@@ -3028,7 +3352,7 @@ function quickdrawAct(s: GarrisonState, d: Defender, qd: NonNullable<DefDef["qui
     const target = quickdrawTarget(s, d);
     if (target) {
       s.events.push({ e: "quickdraw", id: d.id, target: target.id, lane: target.lane, x: target.x });
-      hurtEnemy(s, target, qd.dmg, { straight: true, fromDir: target.x >= centre ? 1 : -1 });
+      hurtEnemy(s, target, qd.dmg * luckyStrike(s, d), { straight: true, fromDir: target.x >= centre ? 1 : -1 });
     }
     d.shotsLeft -= 1;
     d.shotAt = d.shotsLeft > 0 && target ? s.tick + 3 : -1;
@@ -3577,7 +3901,8 @@ function meleeAct(s: GarrisonState, d: Defender, rate: number): void {
   setTimer(zeal ? m.every / (1 + Math.min(zeal.max, d.stacks) * zeal.per) : m.every);
   s.events.push({ e: "defStrike", id: d.id, target: targets[0]!.id });
   const blow = m.blow && d.strikes % m.blow === 0 ? 3 : 1;
-  const club = (has(s, "ogres-club") ? 1.5 : 1) * (s.def.frenzyUntil > s.tick ? 2 : 1);
+  // (Order & Chaos Luck / Fortune: a lucky strike deals double.)
+  const club = (has(s, "ogres-club") ? 1.5 : 1) * (s.def.frenzyUntil > s.tick ? 2 : 1) * luckyStrike(s, d);
   for (const e of targets) {
     const def = ENEMIES[e.kind]!;
     if (m.dispel && e.shield > 0) {
@@ -3656,7 +3981,7 @@ function newProjectile(s: GarrisonState, init: Partial<Projectile> & Pick<Projec
 function releaseShot(s: GarrisonState, d: Defender): void {
   const shot = DEFENDERS[d.kind]!.shot!;
   const centre = d.col + 0.5;
-  const bow = (shot.projectile === "arrow" || shot.projectile === "frost" || shot.projectile === "spear") && has(s, "elven-bow") ? 1.3 : 1;
+  const bow = (shot.projectile === "arrow" || shot.projectile === "frost" || shot.projectile === "spear") ? 1 + 0.3 * blessingPower(s, "elven-bow") : 1;
   d.shots += 1;
   // Order & Chaos criticals (Longbowman).
   const crit = shot.crit && d.shots % shot.crit.every === 0 ? shot.crit.mult : 1;
@@ -3664,7 +3989,8 @@ function releaseShot(s: GarrisonState, d: Defender): void {
     const target = firstAhead(s, d.lane, centre, shot.range, true, isFlying);
     if (!target) return;
     const dist = Math.max(0.5, target.x - centre);
-    const fire = FIRE_SHOTS.has(shot.projectile) ? fireMult(s) : 1;
+    // (Order & Chaos Luck / Fortune: a lucky lob deals double, splash too.)
+    const fire = (FIRE_SHOTS.has(shot.projectile) ? fireMult(s) : 1) * luckyStrike(s, d);
     const stun = shot.stunEvery && d.shots % shot.stunEvery.every === 0 ? { chance: 1, dur: shot.stunEvery.dur } : null;
     // Order & Chaos frost lobs (Great Shaman, Frost Giant): chill all they catch; every Nth freezes its target solid.
     const lobFreeze = shot.freezeEvery !== undefined && d.shots % shot.freezeEvery === 0;
@@ -3678,8 +4004,10 @@ function releaseShot(s: GarrisonState, d: Defender): void {
   const lanes = shot.lanes === 3 ? [d.lane - 1, d.lane, d.lane + 1].filter((lane) => isActiveLane(s, lane)) : [d.lane];
   const freeze = shot.freezeEvery !== undefined && d.shots % shot.freezeEvery === 0;
   const pierce = (shot.pierce ?? 1) + (has(s, "golden-bow") ? 1 : 0);
+  // (Order & Chaos Luck / Fortune: rolled once the shot is sure to fly; a lucky one deals double.)
+  let luck = 1;
   const straight = (lane: number, dir: 1 | -1) => newProjectile(s, {
-    kind: shot.projectile, side: "def", lane, x: centre + 0.3 * dir, dir, dmg: shot.dmg * bow * crit, speed: SHOT_SPEED[shot.projectile],
+    kind: shot.projectile, side: "def", lane, x: centre + 0.3 * dir, dir, dmg: shot.dmg * bow * crit * luck, speed: SHOT_SPEED[shot.projectile],
     maxX: shot.range < 9 ? centre + shot.range + 0.3 : 10.4, pierce,
     chill: shot.chill === true, freeze, burn: shot.ignited === true, manaOnHit: shot.manaOnHit ?? 0,
     air: shot.air === true, chain: shot.chain ?? null,
@@ -3689,11 +4017,14 @@ function releaseShot(s: GarrisonState, d: Defender): void {
     // Order & Chaos: incendiary rounds scorch the foes beside the target; wind-arrows knock back; rune-hammers stun; a softball bounces on.
     burnSplash: shot.ignited ? shot.burnSplash ?? 0 : 0,
     push: shot.push, hop: shot.hop, stun: shot.stun ? { chance: 1, dur: shot.stun } : null,
+    // Order & Chaos Astral Spirit (Summoning Portal): the foe it strikes is Exposed.
+    expose: shot.expose,
   });
   // Order & Chaos Rearguard: the volley goes behind it when that is where the foes are.
   const behind = shot.back === true && foeBehind(s, d.lane, centre, shot.air === true) !== undefined;
   const reachIn = (lane: number) => (!s.field && !s.weather ? shot.range : straightReach(s, lane, centre, shot.range));
   const ahead = !behind || lanes.some((lane) => firstAhead(s, lane, centre, reachIn(lane), false, shot.air ? undefined : isFlying) !== undefined);
+  if (ahead || behind) luck = luckyStrike(s, d);
   if (ahead) for (const lane of lanes) s.projectiles.push(straight(lane, 1));
   if (behind) s.projectiles.push(straight(d.lane, -1));
 }
@@ -3818,7 +4149,8 @@ function reflectShot(s: GarrisonState, p: Projectile, e: Enemy): void {
   Object.assign(p, {
     side: "atk", dir: -1, x: e.x - 0.35, px: e.x - 0.35, dmg: Math.round(p.dmg * share), speed: Math.max(0.26, p.speed),
     pierce: 1, hit: [], chill: false, freeze: false, burn: false, burnSplash: 0, shatter: false, cloud: false, blast: 0, skipWalls: false,
-    stun: null, manaOnHit: 0, air: false, chain: null, curse: 0, holy: false, underShield: false, boomerang: null, passed: [], reflected: true
+    stun: null, manaOnHit: 0, air: false, chain: null, curse: 0, holy: false, underShield: false, boomerang: null, passed: [], reflected: true,
+    expose: undefined
   } satisfies Partial<Projectile>);
   s.events.push({ e: "reflect", id: e.id, kind: p.kind, lane: p.lane, x: e.x });
 }
@@ -3864,6 +4196,8 @@ function projectileHit(s: GarrisonState, p: Projectile, e: Enemy): void {
   }
   // Order & Chaos: a rune-hammer stuns what it smashes (a shield takes it); a wind-arrow knocks its foe back.
   if (p.stun && !e.dead && e.shield <= 0 && canSlow(e) && !def.stunImmune) e.stunUntil = Math.max(e.stunUntil, s.tick + p.stun.dur);
+  // Order & Chaos Astral Spirit (Summoning Portal): the bolt Exposes what it strikes (a shield takes it).
+  if (p.expose && s.cfg.oc && !e.dead && e.shield <= 0) e.exposedUntil = Math.max(e.exposedUntil ?? 0, s.tick + p.expose);
   if (p.push && !e.dead) knockBack(s, e, p.push);
   if (p.burn && p.burnSplash > 0 && dealt > 0) {
     for (const other of [...s.enemies]) {
@@ -4513,7 +4847,8 @@ function championStrikesBoss(s: GarrisonState, c: Charger, e: Enemy): void {
   hits.push(e.id);
   s.events.push({ e: "bossRepel", id: e.id, lane: c.lane });
   hurtEnemy(s, e, Math.round(e.maxHp * CHAMPION_BOSS_SHARE), { melee: true });
-  if (e.dead) return;
+  // (Winding up a phase set piece it stands immovable too: the charge neither pushes it back nor breaks the piece off.)
+  if (e.dead || e.interlude) return;
   e.x = e.px = Math.min(SPAWN_X - 0.3, e.x + CHAMPION_BOSS_PUSH);
   e.cue = undefined;
   setState(s, e, "walk");
@@ -4536,8 +4871,27 @@ function warbossAct(s: GarrisonState, e: Enemy, rate: number): boolean {
   let phase = 0;
   for (const at of wb.phases) if (share <= at) phase += 1;
   if (phase > (e.bossPhase ?? 0)) {
+    const skipped = e.bossPhase ?? 0;
     e.bossPhase = phase;
     s.events.push({ e: "bossPhase", id: e.id, phase });
+    // The phase's set piece (the deepest one reached, if a big blow skipped one): it halts,
+    // can't be harmed, and winds the move up in full view; whatever it was winding up is dropped.
+    let piece = -1;
+    let cue: BossCue | null = null;
+    for (let i = wb.moves.length - 1; i >= 0 && !cue; i -= 1) {
+      const move = wb.moves[i]!;
+      if (move.interlude === undefined || move.interlude <= skipped || move.interlude > phase) continue;
+      cue = planBossMove(s, e, move, i, wb.pause ?? sec(4));
+      if (cue) piece = i;
+    }
+    if (cue) {
+      e.cue = cue;
+      e.interlude = true;
+      e.lastMove = piece;
+      setState(s, e, "cast");
+      s.events.push({ e: "bossCue", id: e.id, move: wb.moves[piece]!.kind, index: piece, marks: cue.marks.map((m) => ({ ...m })) });
+      return true;
+    }
     // A new phase: its next move comes at once.
     if (!e.cue) e.cd2 = Math.min(e.cd2, sec(1));
   }
@@ -4549,6 +4903,7 @@ function warbossAct(s: GarrisonState, e: Enemy, rate: number): boolean {
     }
     const cue = e.cue;
     e.cue = undefined;
+    e.interlude = false;
     e.cd2 = wb.every[Math.min(phase, wb.every.length - 1)]!;
     setState(s, e, "walk");
     landBossMove(s, e, wb.moves[cue.move]!, cue);
@@ -4567,7 +4922,7 @@ function warbossAct(s: GarrisonState, e: Enemy, rate: number): boolean {
   }
   const ready: BossCue[] = [];
   wb.moves.forEach((move, index) => {
-    if ((move.from ?? 0) > phase) return;
+    if ((move.from ?? 0) > phase || move.interlude !== undefined) return;
     const cue = planBossMove(s, e, move, index, wb.warn);
     if (cue) ready.push(cue);
   });
@@ -5095,14 +5450,22 @@ function skyStrike(s: GarrisonState, e: Enemy): void {
     return;
   }
   s.events.push({ e: "skyAttack", id: e.id, kind: sky.kind, target: target.id, lane: target.lane, col: target.col });
-  hurtDefender(s, target, sky.dmg, { atk: true, magic: sky.kind !== "dive", fire: sky.kind === "breath" });
+  // Order & Chaos Rust Dragon (Summoning Portal): acid melts the shell away before it bites, then Corrodes the troop.
+  const acid = s.cfg.oc ? sky.acid ?? 0 : 0;
+  if (acid > 0) target.shell = 0;
+  hurtDefender(s, target, sky.dmg, { atk: true, magic: sky.kind !== "dive", fire: sky.kind === "breath" && acid <= 0 });
+  if (acid > 0) corrode(s, e, target, acid);
   if (!target.dead && sky.poison) {
     target.poisonDps = target.poisonUntil > s.tick ? Math.max(target.poisonDps, sky.poison.dps) : sky.poison.dps;
     target.poisonUntil = s.tick + sky.poison.dur;
   }
   if (sky.kind === "breath") {
     const ahead = defenderAt(s, e.lane, col + (e.dir < 0 ? -1 : 1));
-    if (ahead && !isFlat(ahead) && !aegisOver(s, ahead.lane, ahead.col)) hurtDefender(s, ahead, sky.dmg, { atk: true, magic: true, fire: true });
+    if (ahead && !isFlat(ahead) && !aegisOver(s, ahead.lane, ahead.col)) {
+      if (acid > 0) ahead.shell = 0;
+      hurtDefender(s, ahead, sky.dmg, { atk: true, magic: true, fire: acid <= 0 });
+      if (acid > 0) corrode(s, e, ahead, acid);
+    }
   }
 }
 
@@ -5834,23 +6197,23 @@ function castSpell(s: GarrisonState, side: Side, spell: SpellId, lane: number, x
       for (const body of raised) if (isActiveLane(s, body.lane) && !s.atk.raided.includes(body.lane)) spawnEnemy(s, body.kind, body.lane, x0, "atk");
       return;
     }
-    // Order & Chaos heroes' signature spells.
+    // Order & Chaos heroes' signature spells (weaker until the hero is forged to full rank: heroSpell).
     case "royal-charge":
-      s.chargers.push({ lane, state: "charging", x: -0.45, px: -0.45, dmg: 1200, hits: [] });
+      s.chargers.push({ lane, state: "charging", x: -0.45, px: -0.45, dmg: Math.round(1200 * heroSpell(s, spell)), hits: [] });
       s.events.push({ e: "charger", lane });
       return;
     case "rain-of-arrows":
-      for (let i = 0; i < 5; i += 1) s.blasts.push({ id: s.nextId++, kind: "arrows", lane, x, at: s.tick + 1 + i * 10, dmg: 90 });
+      for (let i = 0; i < 5; i += 1) s.blasts.push({ id: s.nextId++, kind: "arrows", lane, x, at: s.tick + 1 + i * 10, dmg: Math.round(90 * heroSpell(s, spell)) });
       return;
     case "chain-lightning": {
       const target = magicArrowTarget(s, lane, x);
-      if (target) chainHit(s, { lane, x: 0 }, target, 600, 4, 0.5, 2.5, "lightning");
+      if (target) chainHit(s, { lane, x: 0 }, target, Math.round(600 * heroSpell(s, spell)), 4, 0.5, 2.5, "lightning");
       return;
     }
     case "prayer":
       for (const d of s.defenders) {
         if (d.dead || isFlat(d) || d.hp >= d.maxHp) continue;
-        const amount = Math.min(300, d.maxHp - d.hp);
+        const amount = Math.min(Math.round(300 * heroSpell(s, spell)), d.maxHp - d.hp);
         d.hp += amount;
         s.events.push({ e: "heal", id: d.id, target: d.id, amount });
       }
@@ -5861,7 +6224,7 @@ function castSpell(s: GarrisonState, side: Side, spell: SpellId, lane: number, x
       for (const l of [lane - 1, lane, lane + 1]) {
         if (!canSummonAt(s, l, col)) continue;
         const wall = addDefender(s, "oc-earthwall", l, col);
-        wall.expireAt = s.tick + sec(30);
+        wall.expireAt = s.tick + Math.round(sec(30) * heroSpell(s, spell));
         s.events.push({ e: "place", id: wall.id, kind: wall.kind, lane: l, col });
       }
       return;
@@ -5872,11 +6235,11 @@ function castSpell(s: GarrisonState, side: Side, spell: SpellId, lane: number, x
       return;
     }
     case "frenzy":
-      s.def.frenzyUntil = s.tick + sec(10);
+      s.def.frenzyUntil = s.tick + Math.round(sec(10) * heroSpell(s, spell));
       return;
     case "inferno":
       for (const l of [lane - 1, lane, lane + 1]) {
-        if (isActiveLane(s, l)) s.blasts.push({ id: s.nextId++, kind: "fire-wall", lane: l, x, at: s.tick + FIRE_WALL_DELAY, dmg: 700 });
+        if (isActiveLane(s, l)) s.blasts.push({ id: s.nextId++, kind: "fire-wall", lane: l, x, at: s.tick + FIRE_WALL_DELAY, dmg: Math.round(700 * heroSpell(s, spell)) });
       }
       return;
     case "lightning-bolt": {
@@ -5966,6 +6329,10 @@ function castSpell(s: GarrisonState, side: Side, spell: SpellId, lane: number, x
     case "counterstrike":
       s.def.counterUntil = s.tick + sec(12);
       return;
+    // Order & Chaos Summoning Portal hero (Melodia): every shot and strike lucky for a while (shorter at a lower rank: heroSpell).
+    case "fortune":
+      s.def.fortuneUntil = s.tick + Math.round(sec(8) * heroSpell(s, spell));
+      return;
   }
 }
 
@@ -6042,7 +6409,14 @@ function chargersAct(s: GarrisonState): void {
         hurtEnemy(s, e, c.dmg, { melee: true });
       }
     }
-    if (c.x > 10.5) c.state = "gone";
+    if (c.x > 10.5) {
+      c.state = "gone";
+      // Order & Chaos Phoenix Feather: a lane Champion rides back to the gate once, ready to charge again.
+      if ((s.cfg.oc?.phoenix || s.def.phoenix) && c.dmg === undefined && !c.reborn) {
+        Object.assign(c, { state: "ready", x: -0.45, px: -0.45, reborn: true, hits: [] });
+        s.events.push({ e: "blessing", id: "lions-shield" });
+      }
+    }
   }
 }
 
@@ -6249,7 +6623,9 @@ function clearFog(s: GarrisonState, lanes: readonly number[]): void {
 
 /** Blizzard: chills and freezes last longer. */
 function frost(s: GarrisonState, ticks: number): number {
-  return s.weather?.kind === "blizzard" ? Math.round(ticks * FIELD.blizzardFrost) : ticks;
+  const held = s.weather?.kind === "blizzard" ? Math.round(ticks * FIELD.blizzardFrost) : ticks;
+  // Order & Chaos Tome of Water Magic (Summoning Portal): every chill and freeze on the horde holds half again as long.
+  return s.cfg.oc && has(s, "tome-of-water") ? Math.round(held * 1.5) : held;
 }
 
 /** Sandstorm: how far a straight shot or gunfire of this range carries. */

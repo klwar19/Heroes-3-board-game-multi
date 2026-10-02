@@ -14,14 +14,18 @@ import {
 import type { GarrisonConfig, GarrisonMode } from "../sim";
 import { OC_ULTIMATES } from "./roster";
 import { baseKind, leveledKind } from "./forms";
+import { OC_HERO_MAX_RANK, clampHeroRank, heroPassiveText, heroSpellText } from "./hero-ranks";
+import { OC_GACHA_ARTIFACTS, OC_GACHA_HERO } from "./gacha-content";
+import { itemPerMatch } from "./treasury";
 import { pool, river, rooftop, tileBlock, type BankSpot, type FieldSpot, type FieldTile, type SpawnOrigin, type WeatherStep } from "./field";
 
 export { OC_MAX_LEVEL, baseKind, leveledKind, levelPower } from "./forms";
+export { OC_HERO_MAX_RANK, OC_RANK_COST, heroPassivePower, heroSpellPower } from "./hero-ranks";
 
 // ---------------------------------------------------------------------------
 // Heroes
 
-export type OcHeroId = "catherine" | "gelu" | "solmyr" | "adelaide" | "tazar" | "sensei" | "dace" | "luna";
+export type OcHeroId = "catherine" | "gelu" | "solmyr" | "adelaide" | "tazar" | "sensei" | "dace" | "luna" | "melodia";
 
 export type OcHero = {
   id: OcHeroId;
@@ -51,10 +55,37 @@ export const OC_HEROES: Record<OcHeroId, OcHero> = {
   dace: { id: "dace", name: "Dace", title: "Minotaur Warlord", portrait: "/assets/hero_boardart-dace.webp",
     passive: "crown-of-dragontooth", spell: "frenzy", blurb: "A Nighon warlord sworn to Order. Valor: Ascension crowns build 50% faster. Labyrinth Frenzy doubles melee damage." },
   luna: { id: "luna", name: "Luna", title: "Fire Elementalist", portrait: "/assets/hero_boardart-luna.webp",
-    passive: "charm-of-mana", spell: "inferno", blurb: "Fire Magic: spells recover 40% faster. Inferno sweeps three lanes with walls of fire." }
+    passive: "charm-of-mana", spell: "inferno", blurb: "Fire Magic: spells recover 40% faster. Inferno sweeps three lanes with walls of fire." },
+  // The Summoning Portal's UR hero (./gacha-content): never a campaign reward.
+  melodia: { id: "melodia", name: OC_GACHA_HERO.name, title: OC_GACHA_HERO.title, portrait: OC_GACHA_HERO.portrait,
+    passive: OC_GACHA_HERO.passive, spell: OC_GACHA_HERO.spell, blurb: OC_GACHA_HERO.blurb }
 };
 
-export const OC_HERO_ORDER: readonly OcHeroId[] = ["catherine", "gelu", "solmyr", "adelaide", "tazar", "sensei", "dace", "luna"];
+/** Heroes only the Summoning Portal brings. */
+export const OC_GACHA_HEROES: readonly OcHeroId[] = ["melodia"];
+
+export const OC_HERO_ORDER: readonly OcHeroId[] = ["catherine", "gelu", "solmyr", "adelaide", "tazar", "sensei", "dace", "luna", "melodia"];
+
+/** The rank a hero joins at (heroes recruited later in the campaign arrive seasoned). */
+export const OC_HERO_JOIN_RANK: Readonly<Record<OcHeroId, number>> = {
+  catherine: 1, gelu: 1, solmyr: 1, adelaide: 2, tazar: 2, sensei: 2, dace: 3, luna: 3, melodia: 2
+};
+
+/** The hero's rank: the one forged, never below the rank it joined at. */
+export function heroRankOf(id: OcHeroId, forged: Readonly<Record<string, number>>): number {
+  return clampHeroRank(Math.max(OC_HERO_JOIN_RANK[id] ?? 1, forged[id] ?? 1));
+}
+
+/** The highest rank the Forge can reach yet: one more after each of worlds 1–4 (the levels from world 5 on assume a full-strength hero). */
+export function heroRankCap(cleared: readonly string[]): number {
+  return Math.min(OC_HERO_MAX_RANK, 1 + [1, 2, 3, 4].filter((world) => worldCleared(world, cleared)).length);
+}
+
+/** The hero at a rank, in words: the passive, then the signature spell, with this rank's numbers. */
+export function heroRankText(id: OcHeroId, rank: number): string {
+  const hero = OC_HEROES[id];
+  return `${heroPassiveText(hero.passive, rank)} ${SPELLS[hero.spell].name}: ${heroSpellText(hero.spell, rank)}`;
+}
 
 /** Artifacts the player can equip (the heroes' passives are theirs alone). */
 export const OC_ARTIFACTS: readonly BlessingId[] = [
@@ -242,7 +273,7 @@ export const OC_WORLDS: readonly OcWorld[] = [
       lvl({ id: "w4-3", world: 4, kind: "last-stand", name: "The Tower Holds", waves: 12, terrain: "magic", difficulty: 1.05, startGold: 3500,
         brief: "LAST STAND on the tower ROOF: 3500 gold and no more. Every troop needs a CRATE under it (a field packet, 25 gold), and straight shots fired from behind the ridge (the middle column) hit the slope — boulders and grenades fly over it. Goblin Siege Catapults lob boulders at your REARMOST troops; Aegis domes turn them aside. Plan the whole defence, then sound the horn.",
         enemies: ["oc-shieldbearer", "oc-trog-helm", "oc-berserker", "oc-satyr", "oc-medusa", "oc-death-rider", "oc-catapult"], featured: "oc-catapult", surgeChance: 0.18, startSurges: 1,
-        goals: [lost(4), noCharge], reward: { units: ["oc-genie"], spell: "meteor-shower" },
+        goals: [lost(4), noCharge], reward: { units: ["oc-genie", "oc-psychic"], spell: "meteor-shower" },
         tiles: rooftop(ALL, 4), fieldCards: ["oc-crate"] }),
       lvl({ id: "w4-4", world: 4, name: "Evil Eyes", waves: 15, terrain: "magic", difficulty: 1.05,
         brief: "On the rooftops again (Crates first; the ridge is the sixth column). Evil Eyes stare past walls to burn what stands behind them; Psychic Watchers' domes turn lobbed shots aside (arrows, blades and lightning go straight through). A SHRINE OF MAGIC drops a Surge orb every 40 s while it stands.",
@@ -348,7 +379,7 @@ export const OC_WORLDS: readonly OcWorld[] = [
         featured: "oc-cyberdemon", herald: "oc-cyberdemon", goals: [lost(5), noCharge], reward: { units: ["oc-gorgon"], spell: "forgetfulness" },
         weather: [{ kind: "clear" }, { kind: "fog", wave: 8 }], landmarks: [{ kind: "oc-pillar", lane: 2, col: 1 }] }),
       lvl({ id: "w7-6", world: 7, kind: "boss", name: "The Lord of the Hellgate", waves: 0, terrain: "hell", difficulty: 1, startGold: 300, surgeChance: 0,
-        brief: "BOSS: the Dracolich hovers at the far edge of one lane at a time, summoning Chaos. Only attacks that reach it — and spells — can hurt it.",
+        brief: "BOSS: the Dracolich hovers at the far edge of one lane at a time, summoning Chaos. Only attacks that reach it — and spells — can hurt it. At two thirds and one third of its health it halts and cannot be harmed for 4 s, then unleashes a set piece: first a foe in every lane and two dragons, then death breath down every lane (150).",
         enemies: [], boss: "dracolich", startSurges: 3, goals: [lost(6), noCharge], reward: { units: ["oc-titan", "oc-archangel"] } })
     ] },
   { id: 8, name: "Krewlod Badlands", terrain: "rough", art: "/assets/order-chaos/worlds/badlands.webp",
@@ -551,7 +582,7 @@ export const OC_RAID_CHARGES: Readonly<Partial<Record<SpellId, number>>> = { ear
 export const OC_ENDLESS: OcLevel = {
   id: "oc-endless", world: 0, kind: "endless", name: "Endless Siege", terrain: "grass", lanes: ALL, waves: 0, enemies: [],
   difficulty: 1, startGold: 150, surgeChance: 0.12, startSurges: 1, goals: [], reward: {},
-  brief: "The horde never ends. After every great assault, choose one of three artifacts. How long can you hold?"
+  brief: "The horde never ends. After every great assault, choose one of three artifacts. Every tenth wave, a world boss you have beaten leads the horde again (half as tough again each time they have all had a turn); its fall routs the lawn, but the waves march on. How long can you hold?"
 };
 
 // ---------------------------------------------------------------------------
@@ -668,6 +699,15 @@ export function metEnemies(cleared: readonly string[]): EnemyKind[] {
   return met;
 }
 
+/** World bosses met so far (their world's last level cleared), in campaign order. */
+export function metWarbosses(cleared: readonly string[]): EnemyKind[] {
+  const met: EnemyKind[] = [];
+  for (const level of OC_LEVELS) {
+    if (cleared.includes(level.id) && level.warboss && ENEMIES[level.warboss]?.warboss && !met.includes(level.warboss)) met.push(level.warboss);
+  }
+  return met;
+}
+
 /** A level is open once the one before it (in campaign order) is cleared. */
 export function isLevelOpen(id: string, cleared: readonly string[]): boolean {
   const index = OC_LEVELS.findIndex((level) => level.id === id);
@@ -759,6 +799,12 @@ export type OcBuildOptions = {
   crowns: number;
   /** Surge orbs the hero can carry (surgeSlots). */
   surges: number;
+  /** The hero's rank (heroRankOf); unset: full strength. */
+  heroRank?: number;
+  /** Satchel items packed for this battle and their uses there (treasury.ts satchelFor): used during the battle (sim.ts checkItem). Not in raids. */
+  satchel?: readonly { id: string; uses: number }[];
+  /** Raids: Chaos units won at the Summoning Portal join the raid's hand. */
+  chaos?: readonly EnemyKind[];
 };
 
 export function buildOcConfig(level: OcLevel, options: OcBuildOptions): GarrisonConfig {
@@ -768,9 +814,13 @@ export function buildOcConfig(level: OcLevel, options: OcBuildOptions): Garrison
   const mode: GarrisonMode = raid ? "raid" : endless ? "endless" : conveyor ? "conveyor" : "adventure";
   const hero = OC_HEROES[options.hero] ?? OC_HEROES.catherine;
   const lvlOf = (kind: DefKind) => options.levels[kind] ?? 1;
-  const artifacts = options.artifacts.filter((id) => OC_ARTIFACTS.includes(id) && id !== hero.passive);
+  const artifacts = options.artifacts.filter((id) => (OC_ARTIFACTS.includes(id) || OC_GACHA_ARTIFACTS.some((a) => a.id === id)) && id !== hero.passive);
   const general = options.spells.filter((id) => OC_SPELLS.includes(id) && id !== hero.spell).slice(0, OC_SPELLBOOK_SIZE);
   const spells: SpellId[] = [hero.spell, ...general].filter((id, i, all) => SPELLS[id] && all.indexOf(id) === i);
+  // The packed Satchel: boost items only, each once, its uses never above its perMatch (none in raids).
+  const satchel = raid ? [] : (options.satchel ?? [])
+    .map((slot) => ({ id: slot.id, uses: Math.min(itemPerMatch(slot.id), Math.max(0, Math.floor(slot.uses))) }))
+    .filter((slot, i, all) => slot.uses > 0 && all.findIndex((other) => other.id === slot.id) === i);
   const enemies = endless ? metEnemies(options.cleared).filter((kind) => ENEMIES[kind] && ENEMIES[kind]!.cost > 0) : [...level.enemies];
   // (Endless marches every foe met, not the level card's own list: a met Nightmare brings Wake-Up Brews there too.)
   const field = raid ? [] : fieldCardsFor({ ...level, enemies: [...level.enemies, ...enemies] }, options.cards);
@@ -783,7 +833,7 @@ export function buildOcConfig(level: OcLevel, options: OcBuildOptions): Garrison
     terrain: level.terrain,
     cards: raid || conveyor ? [] : [...options.cards.filter((kind) => CARDS[kind]).map((kind) => leveledKind(kind, lvlOf(kind))), ...field],
     spells: raid ? [] : spells,
-    atkCards: raid ? (level.atkCards ?? []).filter((kind) => ENEMIES[kind]) : [],
+    atkCards: raid ? [...(level.atkCards ?? []), ...(options.chaos ?? [])].filter((kind, i, all) => ENEMIES[kind] && all.indexOf(kind) === i) : [],
     atkSpells: raid ? [...ATK_SPELL_ORDER] : [],
     enemies: enemies.length > 0 ? enemies : ["oc-shambler"],
     featured: level.featured,
@@ -808,12 +858,16 @@ export function buildOcConfig(level: OcLevel, options: OcBuildOptions): Garrison
       surgeChance: raid ? 0 : level.surgeChance,
       startSurges: raid ? 0 : level.startSurges ?? 0,
       blessings: raid ? [] : [hero.passive, ...artifacts],
-      blessingPool: [...OC_ARTIFACTS, ...OC_HERO_ORDER.map((id) => OC_HEROES[id].passive), "lions-shield"],
+      satchel: satchel.length ? satchel : undefined,
+      // (The Portal's exclusive passive and artifacts never turn up in an Endless chest.)
+      blessingPool: [...OC_ARTIFACTS, ...OC_HERO_ORDER.filter((id) => !OC_GACHA_HEROES.includes(id)).map((id) => OC_HEROES[id].passive), "lions-shield"],
       lastStand: level.kind === "last-stand",
       protect: level.preset?.filter((unit) => unit.protect).map((unit) => ({ lane: unit.lane, col: unit.col })),
       graves: level.graves?.map((spot) => ({ ...spot })),
       bossSummons: level.boss ? ["oc-shambler", "oc-trog-helm", "oc-shieldbearer", "oc-death-rider", "oc-carmilla", "oc-dread-knight", "oc-hydra", "oc-jotunn"] : undefined,
       warboss: !raid && !endless && level.warboss && ENEMIES[level.warboss]?.warboss ? { kind: level.warboss, wave: level.waves } : undefined,
+      // The Endless Siege: the world bosses met so far take turns leading every tenth wave.
+      endlessBosses: endless ? metWarbosses(options.cleared) : undefined,
       bossDragon: level.boss ? "oc-cacodemon" : undefined,
       ultimates: raid ? [] : options.ultimates.map(baseKind).filter((kind) => OC_ULTIMATES[kind]),
       crownMax: Math.max(1, Math.floor(options.crowns)),
@@ -827,7 +881,8 @@ export function buildOcConfig(level: OcLevel, options: OcBuildOptions): Garrison
       landmarks: raid ? undefined : level.landmarks?.map((spot) => ({ ...spot })),
       structures: raid ? undefined : level.structures?.map((spot) => ({ ...spot })),
       banks: raid ? undefined : level.banks?.map((bank) => ({ ...bank, guards: [...bank.guards] })),
-      fieldCards: field.length ? field : undefined
+      fieldCards: field.length ? field : undefined,
+      hero: raid || options.heroRank === undefined ? undefined : { passive: hero.passive, spell: hero.spell, rank: clampHeroRank(options.heroRank) }
     }
   };
 }

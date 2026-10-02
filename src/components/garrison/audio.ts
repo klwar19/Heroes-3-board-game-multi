@@ -59,7 +59,10 @@ const SOUND_ALIAS: Record<string, string> = {
   "commander-bulwark": "battle-dwarf",
   "oc-bellwether": "armadillo",
   "bellwether-armadillo": "armadillo",
-  "oc-mechanic-lodestone": "mechanic"
+  "oc-mechanic-lodestone": "mechanic",
+  // Order & Chaos late hybrids.
+  engineer: "mechanic",
+  "commander-paladin": "champion"
 };
 
 /** Voice-pack folders whose name differs from the sprite's (mgq-<x> -> mgq/voices/<folder>). */
@@ -198,6 +201,58 @@ function play(key: string | null, volume = 0.5, gap = 110, kind: GarrisonSoundKi
 
 export const playGarrisonSound = play;
 
+/** Boss dread: the evil laugh (never twice within LAUGH_GAP_MS), the bones, the ghosts, the whispers. */
+const LAUGH = "effects/oc-evil-laugh";
+const LAUGH_GAP_MS = 8000;
+/** The delayed laugh waiting to sound (null: none), so leaving the battle can call it off. */
+let laughTimer: number | null = null;
+
+/** The boss laughs, now or after `delay` ms (rate-limited when it actually sounds). */
+function evilLaugh(delay = 0): void {
+  if (laughTimer !== null || clock() - (lastPlayed.get(LAUGH) ?? -1e9) < LAUGH_GAP_MS) return;
+  if (delay <= 0 || typeof window === "undefined") {
+    play(LAUGH, 0.55, LAUGH_GAP_MS, "cue");
+    return;
+  }
+  laughTimer = window.setTimeout(() => {
+    laughTimer = null;
+    play(LAUGH, 0.55, LAUGH_GAP_MS, "cue");
+  }, delay);
+}
+
+/** The battle is over or left: delayed battle sounds still waiting (the boss's laugh) never sound. */
+export function cancelPendingBattleSounds(): void {
+  if (laughTimer !== null && typeof window !== "undefined") window.clearTimeout(laughTimer);
+  laughTimer = null;
+}
+
+/** A boss is alive in a running battle (never the versus mode). */
+function bossAlive(s: GarrisonState): boolean {
+  if (s.cfg.mode === "versus" || s.outcome) return false;
+  const id = s.warbossId ?? s.boss?.id;
+  return id !== undefined && s.enemies.some((e) => e.id === id && !e.dead);
+}
+
+const WHISPERS = ["units/wraith-move", "units/wight-move"] as const;
+let nextWhisperAt = 0;
+let lastEventsAt = 0;
+
+/** Now and then, while a boss lives, a faint ghostly whisper (the timer waits out pauses: no events then). */
+function bossWhisper(s: GarrisonState): void {
+  const now = clock();
+  const gap = now - lastEventsAt;
+  lastEventsAt = now;
+  if (!bossAlive(s)) {
+    nextWhisperAt = 0;
+    return;
+  }
+  if (gap > 1000 && nextWhisperAt) nextWhisperAt += gap;
+  if (!nextWhisperAt) nextWhisperAt = now + 15000 + Math.random() * 10000;
+  if (now < nextWhisperAt) return;
+  nextWhisperAt = now + 15000 + Math.random() * 10000;
+  play(WHISPERS[Math.floor(Math.random() * WHISPERS.length)]!, 0.16, 12000);
+}
+
 const SPELL_SOUND: Record<SpellId, string> = {
   "magic-arrow": "spells/magic-arrow",
   "frost-ring": "spells/frost-ring",
@@ -224,10 +279,12 @@ const SPELL_SOUND: Record<SpellId, string> = {
   dispel: "spells/dispel",
   forgetfulness: "spells/forgetfulness",
   slayer: "spells/slayer",
-  counterstrike: "spells/counterstrike"
+  counterstrike: "spells/counterstrike",
+  fortune: "spells/fortune"
 };
 
 export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent[]): void {
+  bossWhisper(s);
   for (const ev of events) {
     switch (ev.e) {
       case "place": {
@@ -514,6 +571,8 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         if (ev.loot > 0) play("effects/bad-luck", 0.45, 300);
         break;
       case "skyAttack":
+        // (A Rust Dragon breathes acid, not fire: its "corrode" plays the acid.)
+        if (ev.kind === "breath" && s.enemies.some((e) => e.id === ev.id && ENEMIES[e.kind]?.skyAttack?.acid)) break;
         play(ev.kind === "breath" ? "effects/fire-storm" : ev.kind === "spit" ? "spells/lightning-bolt" : "mgq/effects/mon-tume", 0.4, 200);
         break;
       case "divert":
@@ -668,10 +727,15 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
       case "bossEnter":
         play("effects/horn-4", 0.5, 2000, "cue");
         play("spells/earthquake", 0.35, 2000, "cue");
+        evilLaugh(1100);
         break;
-      case "bossCue":
+      case "bossCue": {
         play(ev.move === "drums" ? "effects/horn-3" : "effects/fear", 0.35, 300, "cue");
+        // A phase's set piece (it can't be harmed while it winds up) always laughs; other moves now and then.
+        const boss = s.enemies.find((e) => e.id === ev.id);
+        if (boss?.interlude || Math.random() < 0.25) evilLaugh(boss?.interlude ? 250 : 0);
         break;
+      }
       case "bossMove":
         if (ev.move === "slam" || ev.move === "pounce" || ev.move === "roar") play("spells/earthquake", 0.45, 300, "cue");
         else if (ev.move === "breath") play("effects/acid-breath", 0.45, 300, "cue");
@@ -680,9 +744,15 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         else if (ev.move === "graves") play("spells/animate-dead", 0.4, 300, "cue");
         else if (ev.move === "drums") play("spells/bloodlust", 0.45, 300, "cue");
         else play("spells/teleport", 0.35, 300, "cue");
+        // Bones rattle under its blows; the dead it calls wail.
+        if (ev.move === "slam" || ev.move === "pounce") play("units/bone-dragon-defend", 0.38, 700, "cue");
+        else if (ev.move === "graves") play("units/skeleton-move", 0.4, 700, "cue");
+        else if (ev.move === "summon") play("units/wraith-attack", 0.32, 900, "cue");
+        else if (ev.move === "stride") play("units/ghost-dragon-move", 0.32, 900, "cue");
         break;
       case "bossPhase":
         play("spells/berserk", 0.5, 500, "cue");
+        evilLaugh(350);
         break;
       case "bossRepel":
         play("spells/earthquake", 0.4, 400, "cue");
@@ -697,6 +767,22 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
       case "assassinate":
         play("spells/teleport-in", 0.35, 200);
         play("mgq/effects/sword3", 0.5, 150);
+        break;
+      // Summoning Portal exclusives.
+      case "guardian":
+        play("spells/resurrection", 0.5, 300);
+        break;
+      case "crystal":
+        play("spells/ice-bolt", 0.45, 250);
+        break;
+      case "shatter":
+        play("spells/frost-ring", 0.5, 150);
+        break;
+      case "lucky":
+        play("effects/good-luck", 0.3, 1500);
+        break;
+      case "corrode":
+        play("effects/acid-breath", 0.4, 300);
         break;
       default:
         break;

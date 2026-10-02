@@ -124,7 +124,14 @@ export type ShotDef = {
   stun?: number;
   /** Order & Chaos: a shot that bounces from foe to foe along the lane (drawn hopping; `pierce` sets how many it strikes). */
   hop?: boolean;
+  /** Order & Chaos (Summoning Portal, Astral Spirit): straight shots leave each foe they strike Exposed this many ticks — it takes EXPOSE_MULT damage from everything (a shield takes it). */
+  expose?: number;
 };
+
+/** Order & Chaos: an Exposed foe (Astral Spirit) takes this much damage from everything. */
+export const EXPOSE_MULT = 1.25;
+/** Order & Chaos: a troop Corroded by a Rust Dragon's acid takes this much damage from everything. */
+export const CORRODE_MULT = 1.5;
 
 /**
  * Order & Chaos: what a unit does when the player drops a Surge orb on it
@@ -315,6 +322,8 @@ export type DefDef = {
   devour?: { reach: number; cap: number; digest: number; bite: number };
   /** Order & Chaos: the first foe to bite it is charmed and fights for Order (`mult`: its strikes, and it is healed in full when above 1). `uses`: how many biters it charms before it is spent (default 1). */
   charm?: { mult: number; uses?: number };
+  /** Order & Chaos Psychic Elemental: every `every` ticks it hypnotizes the nearest foe ahead in its lane within `range` tiles costing at most `maxCost` (no boss, smasher, structure or flyer): it turns and fights for Order (as a charm). */
+  hypnosis?: { every: number; range: number; maxCost: number };
   /** Order & Chaos: when a foe comes within `near` tiles in front, it falls back a tile (if free); `every` ticks between retreats. */
   kite?: { near: number; every: number };
   /** Order & Chaos umbrella: it and every troop within `reach` tiles (1 = its 3x3) are shielded from lobbed shots and from attacks out of the sky (dives, spits, breaths, snatches). */
@@ -362,6 +371,11 @@ export type DefDef = {
   dash?: { dmg: number; every: number; reach: number };
   /** Ground slam: every `every` ticks, when a foe is near, a shockwave hits every foe within `reach` tiles of it (its lane and both beside it, front and back) for `dmg` and stuns them `stun` ticks. */
   slam?: { dmg: number; every: number; reach: number; stun: number };
+  // --- Order & Chaos Summoning Portal exclusives (./order-chaos/gacha-content.ts) ---
+  /** Guardian Angel: when a troop in its 3×3 (itself too) takes a killing blow while this is ready, the blow is turned aside: the troop is left at `heal` of its health and can't be harmed for `ward` ticks; then it needs `every` ticks to be ready again (second timer). */
+  guardian?: { every: number; heal: number; ward: number };
+  /** Crystal Dragon: every `every` ticks seals the toughest foe within `range` tiles ahead (its lane and both beside it) in crystal for `dur` ticks — it cannot act — then the crystal shatters: `dmg` to it and `splash` of that to every other foe within a tile (second timer). Bosses aren't sealed: the shards strike them at once. */
+  crystallize?: { every: number; range: number; dur: number; dmg: number; splash: number };
   /** Order & Chaos ascended form: the unit it reverts to when the Ascension ends. */
   ascendedFrom?: DefKind;
   /** Order & Chaos unit level (Barracks). `power` scales its Surge. */
@@ -1012,8 +1026,8 @@ export type EnemyDef = {
   daze?: number;
   /** Order & Chaos: turns and runs off the field once it carries `loot` stolen gold, when below `below` of its health (escaping with its pay), or once it has come as far as x `at`. */
   flee?: { loot?: number; below?: number; at?: number };
-  /** Order & Chaos flyers: every `every` ticks strike the defender beneath them (`dmg`; a breath also scorches the tile ahead; a dive may poison). */
-  skyAttack?: { kind: "dive" | "spit" | "breath"; dmg: number; every: number; poison?: { dps: number; dur: number } };
+  /** Order & Chaos flyers: every `every` ticks strike the defender beneath them (`dmg`; a breath also scorches the tile ahead; a dive may poison). `acid` (Rust Dragon): each troop struck loses its shell and is Corroded this many ticks — it takes CORRODE_MULT damage from everything. */
+  skyAttack?: { kind: "dive" | "spit" | "breath"; dmg: number; every: number; poison?: { dps: number; dur: number }; acid?: number };
   /** Order & Chaos: its ranged attack picks the costliest defender in range, not the nearest. */
   costliest?: boolean;
   /** Order & Chaos battlefield (order-chaos/field.ts): dives through open water (unaimable while it swims, not slowed). See also field.ts SWIMMERS. */
@@ -1064,6 +1078,11 @@ export type WarbossMove = {
   /** What the player is shown as it winds the move up ("Frost Breath"), and the FX sheet its blow lands with. */
   name?: string;
   fx?: string;
+  /**
+   * A set piece: the move it makes on entering phase `interlude` (1, 2, ...), never part of its rotation.
+   * It halts and nothing can harm it while it winds the move up (WarbossDef.pause), then the move lands.
+   */
+  interlude?: number;
 } & (
   /** Smashes the 3x3 around the nearest troop up to `reach` tiles ahead in its lane: `dmg` to each troop there, stunned `stun` ticks. */
   | { kind: "slam"; dmg: number; stun: number; reach: number; from?: number }
@@ -1097,6 +1116,8 @@ export type WarbossDef = {
   moves: WarbossMove[];
   /** It marches no nearer the gate than this (x): there it stands and fights, biting only what is in front of it. */
   hold?: number;
+  /** Ticks a phase's set piece (WarbossMove.interlude) is wound up for (default 4 s). */
+  pause?: number;
 };
 
 type EnemyInput = Omit<EnemyDef, "might" | "recharge" | "biteEvery" | "sprite"> & { biteEvery?: number; sprite?: string; might?: number; recharge?: number };
@@ -1402,7 +1423,9 @@ export type SpellId =
   // Order & Chaos general spells (found in the campaign).
   | "lightning-bolt" | "ice-bolt" | "blind" | "implosion" | "cure" | "death-ripple"
   // Order & Chaos content pass (after the Polish Balance Pack reprints).
-  | "dispel" | "forgetfulness" | "slayer" | "counterstrike";
+  | "dispel" | "forgetfulness" | "slayer" | "counterstrike"
+  // Order & Chaos Summoning Portal hero's signature spell (./order-chaos/gacha-content.ts).
+  | "fortune";
 
 export type SpellDef = {
   id: SpellId;
@@ -1469,8 +1492,15 @@ export const SPELLS: Record<SpellId, SpellDef> = {
   slayer: { id: "slayer", name: "Slayer", side: "def", mana: 14, cooldown: sec(12), target: "enemy", stage: 99,
     icon: "/assets/spells-slayer.webp", blurb: "600 to one foe — 2500 if it's a giant (a boss, a smasher, or anything of 2400 HP or more)." },
   counterstrike: { id: "counterstrike", name: "Counterstrike", side: "def", mana: 10, cooldown: sec(20), target: "none", stage: 99,
-    icon: "/assets/spells-counterstrike.webp", blurb: "For 12 s every troop strikes back at each foe that bites it (60)." }
+    icon: "/assets/spells-counterstrike.webp", blurb: "For 12 s every troop strikes back at each foe that bites it (60)." },
+  fortune: { id: "fortune", name: "Fortune", side: "def", mana: 18, cooldown: sec(35), target: "none", stage: 99,
+    icon: "/assets/spells-fortune.webp", blurb: "For 8 s every attack your troops make (a shot, a melee strike, a lightning bolt, a beam, a bomb, a dash or a slam) is lucky (double damage), and every foe slain drops 10 gold." }
 };
+
+/** Fortune: gold each foe slain while it lasts drops. */
+export const FORTUNE_GOLD = 10;
+/** Luck (the Summoning Portal hero's passive): the chance at full rank that a troop's attack (shot, melee strike, lightning, beam, bomb, dash, slam) is lucky (double damage). */
+export const LUCK_CHANCE = 0.2;
 
 export const DEF_SPELL_ORDER: readonly SpellId[] = ["magic-arrow", "frost-ring", "haste", "meteor-shower", "armageddon"];
 export const ATK_SPELL_ORDER: readonly SpellId[] = ["earthquake", "war-cry", "resurrection"];
@@ -1487,7 +1517,9 @@ export type BlessingId =
   // Order & Chaos only.
   | "surge-chalice" | "crown-of-dragontooth" | "helm-of-enlightenment" | "ambassadors-sash" | "charm-of-mana" | "endless-purse"
   | "spirit-of-oppression"
-  | "pendant-second-sight" | "ring-of-sulfur" | "thunder-helmet" | "blackshard" | "dragon-wing-tabard" | "sandals-of-the-saint" | "dwarven-shield";
+  | "pendant-second-sight" | "ring-of-sulfur" | "thunder-helmet" | "blackshard" | "dragon-wing-tabard" | "sandals-of-the-saint" | "dwarven-shield"
+  // Order & Chaos Summoning Portal exclusives: the UR hero's passive and two artifacts (./order-chaos/gacha-content.ts).
+  | "luck" | "orb-of-vulnerability" | "tome-of-water";
 
 export type BlessingDef = { id: BlessingId; name: string; icon: string; blurb: string; repeatable?: boolean };
 

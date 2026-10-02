@@ -1,12 +1,15 @@
 /**
  * Order & Chaos progress: cleared levels, stars (goals met), Seals and unit
  * levels, the chosen hero and artifacts, last seed packets, best Endless run,
- * broken raids and tally-board bests. Browser storage only (the mode runs on the client); every
+ * broken raids and tally-board bests, Ore and Gems, forged hero ranks and the
+ * Magic Garden's plots. Browser storage only (the mode runs on the client); every
  * read and write tolerates blocked storage. Unlocks are derived from `cleared`.
  */
 
 import type { BlessingId, SpellId } from "@/engine/garrison/content";
-import { OC_ARTIFACTS, OC_HERO_ORDER, OC_MAX_LEVEL, OC_MERCENARIES, OC_SPELLS, OC_WORLDS, type OcHeroId } from "@/engine/garrison/order-chaos/campaign";
+import { OC_ARTIFACTS, OC_HERO_MAX_RANK, OC_HERO_ORDER, OC_LEVELS, OC_MAX_LEVEL, OC_MERCENARIES, OC_SPELLS, OC_WORLDS, type OcHeroId } from "@/engine/garrison/order-chaos/campaign";
+import { parsePlot, type OcPlot } from "@/engine/garrison/order-chaos/garden";
+import { OC_PACK_SLOTS, isOcItem, parseSummonLog, type OcAttendance, type OcItemId, type OcPity, type OcSummonRecord } from "@/engine/garrison/order-chaos/treasury";
 import { setItemMakingRoom } from "./storage-space";
 
 export type OcProgress = {
@@ -31,7 +34,43 @@ export type OcProgress = {
   seen: string[];
   /** Tally-board bests kept on this device: "endless", "daily:YYYY-MM-DD", "raid:r3" (boards: ../engine/garrison/order-chaos/scores). */
   bests: Record<string, OcLocalBest>;
+  /** Forge materials: Ore from battles, Gems from the Magic Garden. */
+  ore: number;
+  gems: number;
+  /** Hero ranks forged at the Forge (missing: the rank the hero joined at; campaign heroRankOf). */
+  heroRanks: Record<string, number>;
+  /** The Magic Garden's plots, by plot index (null: empty). */
+  garden: OcPlot[];
+  /** The campaign score last accepted by the online campaign board (0: never posted). */
+  campaignPosted: number;
+  /** Today's capped takings (UTC day): Gems harvested and Ore from replayed battles. */
+  daily: OcDailyTakings;
+  /** The treasury (engine/garrison/order-chaos/treasury.ts): Crystals, Stardust, the Satchel and the Portal. */
+  crystals: number;
+  stardust: number;
+  /** Satchel items by id (count). */
+  items: Partial<Record<OcItemId, number>>;
+  /** Boost items packed for the next battles (each used there up to its perMatch, one copy spent a use; stays packed while owned). */
+  packed: OcItemId[];
+  pity: OcPity;
+  /** The Portal's history: the latest summons, oldest first (at most OC_SUMMON_LOG_KEPT). */
+  summonLog: OcSummonRecord[];
+  /** Permanent Portal prizes owned: gacha-only units, Chaos raid units, artifacts, heroes. */
+  gacha: { units: string[]; chaos: string[]; artifacts: string[]; heroes: string[] };
+  attendance: OcAttendance;
+  /** The UTC day whose first Daily Siege run already paid its Crystals. */
+  dailyCrystalsDay: string;
 };
+
+export type OcDailyTakings = { day: string; gardenGems: number; replayOre: number };
+
+/** Ore from replayed (already won) battles stops after this much in a UTC day; first victories and new stars always pay. */
+export const OC_REPLAY_ORE_DAILY = 6;
+
+/** Today's takings ("YYYY-MM-DD", UTC): yesterday's count resets. */
+export function takingsToday(p: OcProgress, day: string): OcDailyTakings {
+  return p.daily.day === day ? p.daily : { day, gardenGems: 0, replayOre: 0 };
+}
 
 /** A personal best on one tally board; `sent` once the online board has it. */
 export type OcLocalBest = { score: number; wave: number; kills: number; ticks: number; day: string; at: number; sent: boolean; hero?: string; setup?: string };
@@ -43,7 +82,9 @@ export const OC_PROGRESS_KEY = "order-chaos:progress:v1";
 const KEY = OC_PROGRESS_KEY;
 
 export function emptyOcProgress(): OcProgress {
-  return { cleared: [], stars: {}, seals: 0, levels: {}, hero: "catherine", artifacts: [], loadouts: {}, bestEndless: 0, raids: [], hired: [], spellbook: [], testAll: false, seen: [], bests: {} };
+  return { cleared: [], stars: {}, seals: 0, levels: {}, hero: "catherine", artifacts: [], loadouts: {}, bestEndless: 0, raids: [], hired: [], spellbook: [], testAll: false, seen: [], bests: {}, ore: 0, gems: 0, heroRanks: {}, garden: [], campaignPosted: 0, daily: { day: "", gardenGems: 0, replayOre: 0 },
+    crystals: 0, stardust: 0, items: {}, packed: [], pity: { pulls: 0, sinceSsr: 0, sinceUr: 0 }, summonLog: [], gacha: { units: [], chaos: [], artifacts: [], heroes: [] },
+    attendance: { lastDay: "", claimed: 0 }, dailyCrystalsDay: "" };
 }
 
 /** Parse stored bests, keeping only well-formed ones and the last DAILY_BESTS_KEPT days of Daily Siege. */
@@ -90,6 +131,17 @@ function legacySeen(cleared: readonly string[]): string[] {
     .map((world) => `outro:${world.id}`);
 }
 
+/**
+ * A save from before the Forge: the Ore its battles would have earned (3 for
+ * every campaign level cleared and every raid broken, 1 for every goal star)
+ * and a first harvest of 2 Gems a level, so its heroes can be forged back up.
+ */
+function legacyForge(cleared: readonly string[], stars: Record<string, number[]>, raids: readonly string[]): { ore: number; gems: number } {
+  const levels = OC_LEVELS.filter((level) => cleared.includes(level.id)).length;
+  const goals = Object.values(stars).reduce((sum, list) => sum + list.length, 0);
+  return { ore: 3 * levels + goals + 3 * raids.length, gems: 2 * levels };
+}
+
 export function loadOcProgress(): OcProgress {
   try {
     const raw = window.localStorage.getItem(KEY);
@@ -106,6 +158,13 @@ export function loadOcProgress(): OcProgress {
     const cleared = strings(p.cleared);
     const loadouts: Record<string, string[]> = {};
     for (const [id, list] of Object.entries(p.loadouts ?? {})) loadouts[id] = strings(list);
+    const heroRanks: Record<string, number> = {};
+    for (const [id, rank] of Object.entries(p.heroRanks ?? {})) {
+      if (OC_HERO_ORDER.includes(id as OcHeroId) && Number.isInteger(rank)) heroRanks[id] = Math.max(1, Math.min(OC_HERO_MAX_RANK, rank as number));
+    }
+    const raids = strings(p.raids);
+    const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null);
+    const legacy = count(p.ore) === null ? legacyForge(cleared, stars, raids) : null;
     return {
       cleared,
       stars,
@@ -115,12 +174,30 @@ export function loadOcProgress(): OcProgress {
       artifacts: strings(p.artifacts).filter((id): id is BlessingId => OC_ARTIFACTS.includes(id as BlessingId)),
       loadouts,
       bestEndless: typeof p.bestEndless === "number" ? p.bestEndless : 0,
-      raids: strings(p.raids),
+      raids,
       hired: strings(p.hired).filter((kind) => OC_MERCENARIES.some((merc) => merc.kind === kind)),
       spellbook: strings(p.spellbook).filter((id): id is SpellId => OC_SPELLS.includes(id as SpellId)),
       testAll: p.testAll === true,
       seen: Array.isArray(p.seen) ? strings(p.seen) : legacySeen(cleared),
-      bests: parseBests(p.bests)
+      bests: parseBests(p.bests),
+      ore: legacy ? legacy.ore : count(p.ore)!,
+      gems: legacy ? legacy.gems : count(p.gems) ?? 0,
+      heroRanks,
+      garden: Array.isArray(p.garden) ? p.garden.slice(0, 8).map(parsePlot) : [],
+      campaignPosted: count(p.campaignPosted) ?? 0,
+      daily: p.daily && typeof p.daily === "object" && typeof p.daily.day === "string"
+        ? { day: p.daily.day, gardenGems: count(p.daily.gardenGems) ?? 0, replayOre: count(p.daily.replayOre) ?? 0 }
+        : { day: "", gardenGems: 0, replayOre: 0 },
+      // A save from before the treasury: Crystals for what its battles would have paid (20 a level, 10 a goal star).
+      crystals: count(p.crystals) ?? 20 * OC_LEVELS.filter((level) => cleared.includes(level.id)).length + 10 * Object.values(stars).reduce((n, list) => n + list.length, 0),
+      stardust: count(p.stardust) ?? 0,
+      items: Object.fromEntries(Object.entries(p.items ?? {}).filter(([id, n]) => isOcItem(id) && count(n)).map(([id, n]) => [id, count(n)!])),
+      packed: strings(p.packed).filter(isOcItem).slice(0, OC_PACK_SLOTS),
+      pity: { pulls: count(p.pity?.pulls) ?? 0, sinceSsr: count(p.pity?.sinceSsr) ?? 0, sinceUr: count(p.pity?.sinceUr) ?? 0 },
+      summonLog: parseSummonLog(p.summonLog),
+      gacha: { units: strings(p.gacha?.units), chaos: strings(p.gacha?.chaos), artifacts: strings(p.gacha?.artifacts), heroes: strings(p.gacha?.heroes) },
+      attendance: { lastDay: typeof p.attendance?.lastDay === "string" ? p.attendance.lastDay : "", claimed: count(p.attendance?.claimed) ?? 0 },
+      dailyCrystalsDay: typeof p.dailyCrystalsDay === "string" ? p.dailyCrystalsDay : ""
     };
   } catch {
     return emptyOcProgress();
