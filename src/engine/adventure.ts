@@ -20904,6 +20904,33 @@ export function migrateParallelEventRewards(state: GameState): void {
   }
 }
 
+/**
+ * Gelare's Gold IV — "After each Resource round ends, gain 5 gold (do not
+ * trigger if this card is replaced before then)." Runs once at the top of the
+ * round that follows a Resources round (same parity read as
+ * startAdventureRound's `kind`: the odd rounds after the first). Only a card
+ * still in its owner's permanent slot pays, so a permanent replaced or
+ * discarded during that Resources round pays nothing.
+ */
+function payResourceRoundEndIncome(state: GameState): void {
+  const endedRound = state.round - 1;
+  if (endedRound < 3 || endedRound % 2 !== 1) {
+    return;
+  }
+  for (const player of Object.values(state.players)) {
+    if (player.id === NEUTRAL_PLAYER_ID) {
+      continue;
+    }
+    const permanentIds = player.permanents ?? (player.permanent ? [player.permanent] : []);
+    for (const permanentId of permanentIds) {
+      const endGain = balanceCard(state, permanentId)?.permanentEffect?.resourceRoundEndGain;
+      if (endGain) {
+        gainResources(state, player.id, { [endGain.resource]: endGain.amount }, cardLibrary[permanentId]?.name ?? "permanent income");
+      }
+    }
+  }
+}
+
 export function startAdventureRound(state: GameState, resumeResourceRoundAfterBank = false): void {
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
@@ -20912,6 +20939,11 @@ export function startAdventureRound(state: GameState, resumeResourceRoundAfterBa
   // wrapper prevents that continuation from replaying round-start cleanup,
   // token refreshes, timed events, or every-round income.
   if (!resumeResourceRoundAfterBank) {
+  // The round that just ENDED was a Resources round: pay the "after each
+  // Resource round ends" permanents (Gelare's Gold IV) before anything of the
+  // new round — and before a round-limit game end scores the table.
+  payResourceRoundEndIncome(state);
+
   // Victory Points mode: the round limit is the HARD end trigger. Both round
   // wraps (ordered `endTurnAdventure`, parallel `endParallelTurn`) call this
   // right after `state.round += 1`, so when the counter passes the limit the

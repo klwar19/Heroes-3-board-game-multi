@@ -569,6 +569,7 @@ export function playEventSounds(s: GarrisonState, events: readonly GarrisonEvent
         play("little-busters/effects/bom", 0.55, 0);
         break;
       case "shove":
+      case "bossToss":
         play("mgq/effects/hammer", 0.45, 200);
         break;
       case "gasp":

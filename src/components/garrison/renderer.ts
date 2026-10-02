@@ -1077,6 +1077,20 @@ export function ingestEvents(view: View, s: GarrisonState, events: readonly Garr
         view.shakeUntil = Math.max(view.shakeUntil, now + 200);
         break;
       }
+      case "bossToss": {
+        // Order & Chaos: a boss threw the troop it struck 5 times out of its road.
+        const e = s.enemies.find((unit) => unit.id === ev.by);
+        if (e) playOnce(view, `e${e.id}`, enemySpriteOf(view, e), [G.attack], now, 45);
+        const fromX = tileX(ev.fromCol + 0.5);
+        const fromY = feetY(ev.fromLane);
+        burst(view.particles, now, "dust", fromX, fromY - 6, 10, { speed: 0.14, life: 700, size: 9, colors: ["rgba(140,120,90,0.8)"] });
+        const x = tileX(ev.col + 0.5);
+        const y = feetY(ev.lane);
+        burst(view.particles, now, "spark", x, y - 40, 12, { speed: 0.3, life: 320, size: 2.4, colors: ["#fff4c8", "#ffd070"] });
+        view.floats.push({ text: "Thrown aside!", x, y: y - 118, color: "#ffc27a", start: now });
+        view.shakeUntil = Math.max(view.shakeUntil, now + 260);
+        break;
+      }
       case "blink": {
         const e = s.enemies.find((unit) => unit.id === ev.id);
         if (!e) break;

@@ -441,7 +441,7 @@ const PLATE = { left: 64, top: 58, width: 614, height: 690 };
 const PLATE_STRIPS = [{ left: 74, top: 130, width: 30, height: 560 }, { left: 638, top: 130, width: 30, height: 560 }];
 let plateCards = null;
 /** Generated (non-scan) specialty faces: never stacked into a leather plate. */
-export const PLATE_EXCLUDE = new Set(["ignatius", "olema", "jabarkas", "cuthbert", "urftin", "uland", "kastore", "isra", "dace", "darkstorn", "korbac", "verdish", "vey"]);
+export const PLATE_EXCLUDE = new Set(["ignatius", "olema", "jabarkas", "cuthbert", "urftin", "uland", "kastore", "isra", "dace", "darkstorn", "korbac", "verdish", "vey", "thunar", "gelare"]);
 const MIN_SAMPLES = 10;
 async function leatherPlate(tplFile) {
   const pad = 8;

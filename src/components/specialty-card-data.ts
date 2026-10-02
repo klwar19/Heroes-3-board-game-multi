@@ -75,6 +75,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // baked scans (hero_specialties-<slug>-*.webp) that were never shipped — broken
   // <img> links; they are art-less now.
   erdamon: "/assets/units-magma_elemental-portrait.webp", // Magma Elementals
+  thunar: "/assets/units-magma_elemental-portrait.webp", // Magma Elementals
   monere: "/assets/units-magic_elemental-portrait.webp", // Magic Elementals
   pasis: "/assets/units-energy_elemental-portrait.webp", // Elementals (Energy)
   // Factory heroes use dedicated transparent, compressed card medallions rather
@@ -217,6 +218,7 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // shared leather resource tile to a transparent background
   // (scripts/make-octavia-gold-icon.py), not the generic Estates skill emblem.
   octavia: "/assets/specialty-card/icon-gold.webp", // Gold (gold-coins icon)
+  gelare: "/assets/specialty-card/icon-gold.webp", // Gold (gold-coins icon, as printed)
   // Ignatius / Olema (Gamefound preview): the Familiars imp picture cut from his
   // card art, and the Weakness SPELL SYMBOL (never the whole card), as printed.
   ignatius: "/assets/specialty-card/icon-ignatius-familiars.webp", // Familiars (imp)

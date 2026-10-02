@@ -33,6 +33,13 @@ const cuthbertPreviewSource = {
   url: "https://imgcdn.gamefound.com/productimage/projects/8492/f6676220-af26-4ed6-913c-346163d9ec91.png",
 };
 
+/** Thunar + Gelare (Conflux Stretch Goals preview, 2026-10-02). */
+const confluxPreviewHeroSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Stretch Goals preview)",
+  credit: "Archon Gamefound preview image; specialty wording clarified by the player.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/a9bd0da8-9286-4644-a2e0-dfb137899ac0.png",
+};
+
 function rampartPreviewHeroSource() {
   return {
     product: "Heroes of Might and Magic III: The Board Game",
@@ -4235,6 +4242,181 @@ export const adventureCards: CardLibrary = {
     1,
     "an Elementals unit",
   ),
+
+  // ---- Thunar (Conflux Planeswalker, Stretch Goals preview) ----------------
+  // Magma Elementals specialist; every bonus is an Instant. I = remove 1 damage
+  // from your unit (2 for Magma Elementals); IV = +1 Attack OR +1 Defense
+  // (doubled for Magma Elementals); VI = choose TWO of "draw 2 cards then
+  // discard 1" / "+2 Power" / "gain a positive Morale", encoded as the three
+  // 2-of-3 combinations (the Pandora "Twofold Boon" precedent) so every pair
+  // resolves BOTH halves in the window where both can apply:
+  //   - draw/discard + Morale: any instant moment (map turn, own activation,
+  //     off-turn combat moments);
+  //   - draw/discard + Power, Power + Morale: when you cast a Spell (combat
+  //     spell window or the map cast tray) the +2 empowers it (or pools into
+  //     your Spell instant on an attack). Chosen in any OTHER combat window the
+  //     +2 is held for your next Spell this Combat (bankForLaterSpell); on the
+  //     map the draw+Power pair banks it for the next map Spell (Sorcery).
+  "specialty.thunar.1": {
+    id: "specialty.thunar.1",
+    name: "Magma Elementals I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "thunar",
+      "heal",
+      "Remove 1 damage from your selected unit. The effect doubles for Magma Elementals.",
+    ],
+    target: { type: "friendly-unit", damagedOnly: true },
+    effect: { type: "HEAL_DAMAGE", amount: 1, doubleForUnitName: "Magma Elementals" },
+    assets: {
+      cardImage: specialtyCardImage("thunar", 1),
+      imageAlt: "Magma Elementals level I specialty card",
+    },
+    implementationStatus: "implemented",
+    source: confluxPreviewHeroSource,
+  },
+  "specialty.thunar.4": {
+    ...towerAttackOrDefenseSpecialty("thunar", "Magma Elementals", 4, "Magma Elementals"),
+    tags: [
+      "hero-specialty",
+      "instant",
+      "thunar",
+      "Your selected unit gains +1 Attack or +1 Defense. The effect doubles for Magma Elementals.",
+    ],
+    source: confluxPreviewHeroSource,
+  },
+  "specialty.thunar.6": {
+    id: "specialty.thunar.6",
+    name: "Magma Elementals VI",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "thunar",
+      "Choose two: Draw two cards then discard a card. / +2 Power. / Gain a positive Morale.",
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Draw 2 cards then discard 1 + gain positive Morale",
+          combatAnytime: true,
+          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1, gainMorale: 1 },
+        },
+        {
+          label: "Draw 2 cards then discard 1 + +2 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2, drawCards: 2, thenDiscard: 1, bankForLaterSpell: true },
+        },
+        {
+          label: "+2 Power + gain positive Morale",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 2, gainMorale: 1, bankForLaterSpell: true },
+        },
+      ],
+    },
+    assets: {
+      cardImage: specialtyCardImage("thunar", 6),
+      imageAlt: "Magma Elementals level VI specialty card",
+    },
+    implementationStatus: "implemented",
+    source: confluxPreviewHeroSource,
+  },
+
+  // ---- Gelare (Conflux Wizard, Stretch Goals preview) ---------------------
+  // Gold specialist. I = Instant: roll the Attack die (-1 → 3 gold, 0 → 2 gold,
+  // +1 → 1 building material); IV = PERMANENT: after each Resources round
+  // ends, gain 5 gold (nothing if the card was replaced before then); VI = map:
+  // discard any number of cards from hand, gain 3 gold for each.
+  "specialty.gelare.1": {
+    id: "specialty.gelare.1",
+    name: "Gold I",
+    kind: "hero-specialty",
+    timing: "instant",
+    tags: [
+      "hero-specialty",
+      "instant",
+      "gelare",
+      "gold",
+      "Roll the Attack die: -1 gain 3 gold; 0 gain 2 gold; +1 gain 1 building material.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "ROLL_ATTACK_DIE_FOR_RESOURCES",
+      onMinusOne: { gold: 3 },
+      onZero: { gold: 2 },
+      onPlusOne: { buildingMaterials: 1 },
+    },
+    assets: {
+      cardImage: specialtyCardImage("gelare", 1),
+      imageAlt: "Gold level I specialty card",
+    },
+    implementationStatus: "implemented",
+    source: confluxPreviewHeroSource,
+  },
+  "specialty.gelare.4": {
+    id: "specialty.gelare.4",
+    name: "Gold IV",
+    kind: "hero-specialty",
+    // A real PERMANENT (the printed infinity symbol): played like every
+    // permanent and held in the shared permanent slot; replacing or discarding
+    // it before a Resources round ends forfeits that round's payout
+    // (resourceRoundEndGain, paid in startAdventureRound).
+    timing: "ongoing",
+    permanent: true,
+    permanentEffect: { resourceRoundEndGain: { resource: "gold", amount: 5 } },
+    tags: [
+      "hero-specialty",
+      "permanent",
+      "gelare",
+      "gold",
+      "After each Resource round ends, gain 5 gold. (Do not trigger if this card is replaced before then.)",
+    ],
+    target: { type: "none" },
+    effect: { type: "ENTER_PLAY" },
+    assets: {
+      cardImage: specialtyCardImage("gelare", 4),
+      imageAlt: "Gold level IV specialty card",
+    },
+    implementationStatus: "implemented",
+    source: confluxPreviewHeroSource,
+  },
+  "specialty.gelare.6": {
+    id: "specialty.gelare.6",
+    name: "Gold VI",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "gelare",
+      "gold",
+      "You can discard any number of cards from your hand. For each, gain 3 gold.",
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Discard any number of cards: gain 3 gold for each",
+          mapOnly: true,
+          cost: { discardCardsUpTo: 10 },
+          effect: { type: "GAIN_RESOURCES", gain: {}, perCostCard: { gold: 3 } },
+        },
+      ],
+    },
+    assets: {
+      cardImage: specialtyCardImage("gelare", 6),
+      imageAlt: "Gold level VI specialty card",
+    },
+    implementationStatus: "implemented",
+    source: confluxPreviewHeroSource,
+  },
 
   // ---- Conflux Elementalist (Luna — the Fire Wall specialist) -------------
   // I/VI place a Fire Wall token (this card or a token) on an empty space for

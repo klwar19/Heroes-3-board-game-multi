@@ -164,6 +164,14 @@ function wikiBoardHeroSource(pageSlug: string) {
  * (scripts/fetch-hero-art-refresh.py) — the printed board scan, so the portrait is
  * the board-game art cropped from it (the older PC-portrait note was stale).
  */
+/** Thunar + Gelare: Archon's Conflux Stretch Goals preview (2026-10-02). */
+const confluxPreviewHeroSource = {
+  product: "Heroes of Might and Magic III: The Board Game (Stretch Goals preview)",
+  credit:
+    "Hero class, statistics, starting ability and specialty from Archon's Gamefound preview image (specialty wording clarified by the player); portrait and board art generated for this adaptation.",
+  url: "https://imgcdn.gamefound.com/productimage/projects/8492/a9bd0da8-9286-4644-a2e0-dfb137899ac0.png"
+};
+
 function confluxHeroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
@@ -2032,6 +2040,45 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     portrait: "/assets/hero_boardart-pasis.webp",
     boardScan: "/assets/heroes-conflux-might-pasis.webp",
     source: confluxHeroSource("pasis")
+  },
+  // Thunar — Conflux Planeswalker (Stretch Goals preview board: A3 D1 P1 K1,
+  // Tactics), the Magma Elementals specialist. I/IV/VI engine-wired; see
+  // specialty.thunar.* in cards/adventure.ts.
+  thunar: {
+    id: "thunar",
+    name: "Thunar",
+    faction: "conflux",
+    class: "Planeswalker",
+    type: "might",
+    startingStats: { attack: 3, defense: 1, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: {
+      1: "specialty.thunar.1",
+      4: "specialty.thunar.4",
+      6: "specialty.thunar.6"
+    },
+    portrait: "/assets/hero_boardart-thunar.webp",
+    boardScan: "/assets/heroes-conflux-might-thunar.webp",
+    source: confluxPreviewHeroSource
+  },
+  // Gelare — printed "Wizard" on the Stretch Goals preview board (A0 D0 P2 K3,
+  // Wisdom), the Gold specialist. I/IV/VI engine-wired; see specialty.gelare.*.
+  gelare: {
+    id: "gelare",
+    name: "Gelare",
+    faction: "conflux",
+    class: "Wizard",
+    type: "magic",
+    startingStats: { attack: 0, defense: 0, power: 2, knowledge: 3 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: {
+      1: "specialty.gelare.1",
+      4: "specialty.gelare.4",
+      6: "specialty.gelare.6"
+    },
+    portrait: "/assets/hero_boardart-gelare.webp",
+    boardScan: "/assets/heroes-conflux-magic-gelare.webp",
+    source: confluxPreviewHeroSource
   },
   // Luna — Conflux Elementalist, the Fire Wall specialist (wiki: A0 D0 P2 K3,
   // starting ability Basic Fire Magic). I/IV/VI all engine-wired (Fire Wall

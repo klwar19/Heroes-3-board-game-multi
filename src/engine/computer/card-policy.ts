@@ -205,6 +205,8 @@ const SAVE_EFFECTS = new Set<EffectDefinition["type"]>([
 
 const MAP_ECONOMY_EFFECTS = new Set<EffectDefinition["type"]>([
   "GAIN_RESOURCES",
+  // Gelare's Gold I: an Attack-die roll for 3/2 gold or 1 building material.
+  "ROLL_ATTACK_DIE_FOR_RESOURCES",
   "DRAW_CARDS",
   "DRAW_NEUTRAL_RECRUIT_OFFER",
   "NEUTRAL_DECK_UNIT_SEARCH",
@@ -406,6 +408,51 @@ export function moraleRedrawDiscards(observation: ComputerObservation): string[]
       cardLibrary[entry.cardId]?.effect.type !== "NECROMANCY_REINFORCE")
     .sort((a, b) => a.value - b.value || a.index - b.index);
   return ranked.slice(0, Math.max(0, Math.min(ranked.length, supply, 4))).map((entry) => entry.cardId);
+}
+
+/**
+ * True for a PLAY_CARD side that pays resources PER card discarded through an
+ * open "discard up to N" cost (Gelare's Gold VI). The legal offer is a bare
+ * template; the runner fills `costCardIds` with perCostDiscardJunk.
+ */
+export function isPerDiscardGainPlay(action: GameAction): boolean {
+  if (action.type !== "PLAY_CARD" || action.optionIndex === undefined) return false;
+  const card = cardLibrary[action.cardId];
+  if (card?.effect.type !== "CHOOSE_ONE") return false;
+  const option = card.effect.options[action.optionIndex];
+  return Boolean(
+    option?.cost?.discardCardsUpTo !== undefined &&
+      option.effect.type === "GAIN_RESOURCES" &&
+      option.effect.perCostCard,
+  );
+}
+
+/**
+ * The hand cards this seat would sell to a per-discard gain (Gelare's Gold VI):
+ * the same junk line the morale redraw uses (never Magic Arrow, Cast a Spell or
+ * the Necromancy engine), excluding one copy of the card being played, capped
+ * by the printed "up to" count. Nothing is drawn back, so the deck supply
+ * does not cap it.
+ */
+export function perCostDiscardJunk(observation: ComputerObservation, action: GameAction): string[] {
+  if (!isPerDiscardGainPlay(action) || action.type !== "PLAY_CARD") return [];
+  const player = observation.state.players[observation.playerId];
+  if (!player) return [];
+  const card = cardLibrary[action.cardId];
+  const option = card?.effect.type === "CHOOSE_ONE" ? card.effect.options[action.optionIndex ?? 0] : undefined;
+  const cap = option?.cost?.discardCardsUpTo ?? 0;
+  const hand = [...player.hand];
+  const selfIndex = hand.indexOf(action.cardId);
+  if (selfIndex >= 0) hand.splice(selfIndex, 1);
+  const ranked = hand
+    .map((cardId, index) => ({ cardId, index, value: cardHandValue(cardId, observation) }))
+    .filter((entry) =>
+      entry.value < MORALE_REDRAW_JUNK_THRESHOLD &&
+      baseCardId(entry.cardId) !== "spell.magic_arrow" &&
+      !isCastASpellCard(entry.cardId) &&
+      cardLibrary[entry.cardId]?.effect.type !== "NECROMANCY_REINFORCE")
+    .sort((a, b) => a.value - b.value || a.index - b.index);
+  return ranked.slice(0, cap).map((entry) => entry.cardId);
 }
 
 export function cardKeepValue(
@@ -1458,6 +1505,9 @@ function permanentUtility(observation: ComputerObservation, card: CardDefinition
     return wounded ? 130 : 80;
   }
   if (card.permanentEffect?.permanentLimitOverride) return 200;
+  // Gelare's Gold IV: 4 gold after every Resources round it stays in play —
+  // gold is always useful, so it is a strong keep in the permanent slot.
+  if (card.permanentEffect?.resourceRoundEndGain) return 125;
   return cardKeepValue(card.id, observation);
 }
 
@@ -1663,7 +1713,25 @@ function scoreMapEconomy(
     // Draw aggressively into a thin hand, but do not burn a useful draw effect
     // merely to overfill an already healthy hand. Draw-rider-only combat loops
     // are caught earlier by their dedicated low score.
-    return base + (handSize <= 2 ? 55 : handSize === 3 ? 30 : 10);
+    // Thunar's Magma Elementals VI pair: the draw also grants positive Morale.
+    const morale = effect.gainMorale ? 20 : 0;
+    return base + (handSize <= 2 ? 55 : handSize === 3 ? 30 : 10) + morale;
+  }
+  if (effect.type === "ROLL_ATTACK_DIE_FOR_RESOURCES") {
+    // Gelare's Gold I: score the expected payout of one Attack die (faces
+    // -1,-1,0,0,+1,+1) through the ordinary resource valuation.
+    const expected = (resource: "gold" | "buildingMaterials" | "valuables") =>
+      Math.round(
+        ((effect.onMinusOne[resource] ?? 0) + (effect.onZero[resource] ?? 0) + (effect.onPlusOne[resource] ?? 0)) / 3,
+      );
+    return scoreMapEconomy(
+      observation,
+      {
+        type: "GAIN_RESOURCES",
+        gain: { gold: expected("gold"), buildingMaterials: expected("buildingMaterials"), valuables: expected("valuables") },
+      },
+      base,
+    );
   }
   if (effect.type === "ADVANCE_EXPERIENCE") {
     return base + 25;
@@ -2061,6 +2129,28 @@ function scoreEffect(
   }
 
   if (MAP_ECONOMY_EFFECTS.has(effect.type)) {
+    // Gelare's Gold VI: worth exactly the junk the runner will sell for it.
+    if (effect.type === "GAIN_RESOURCES" && effect.perCostCard) {
+      const sold = perCostDiscardJunk(observation, {
+        type: "PLAY_CARD",
+        playerId: observation.playerId,
+        cardId: card.id,
+        optionIndex,
+      } as GameAction).length;
+      if (sold === 0) return 100;
+      return scoreMapEconomy(
+        observation,
+        {
+          type: "GAIN_RESOURCES",
+          gain: {
+            gold: (effect.gain.gold ?? 0) + (effect.perCostCard.gold ?? 0) * sold,
+            buildingMaterials: (effect.gain.buildingMaterials ?? 0) + (effect.perCostCard.buildingMaterials ?? 0) * sold,
+            valuables: (effect.gain.valuables ?? 0) + (effect.perCostCard.valuables ?? 0) * sold,
+          },
+        },
+        590 + modeBonus(mode),
+      );
+    }
     const resolvedEffect = effect.type === "GAIN_RESOURCES" && mode === "expert" && effect.expertGain
       ? { ...effect, gain: effect.expertGain } : effect;
     // Estates leads the economy band, but scoreMapEconomy's additive bonuses

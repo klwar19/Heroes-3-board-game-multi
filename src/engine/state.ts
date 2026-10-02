@@ -1925,6 +1925,12 @@ export type EffectDefinition =
        * clears the target's Paralysis token (a heal of 0 still clears it).
        */
       removeParalysis?: boolean;
+      /**
+       * Thunar's Magma Elementals I: "Remove 1 damage from your unit — the
+       * effect doubles for Magma Elementals." The heal amount is doubled when
+       * the healed unit matches this name (read at both HEAL_DAMAGE seams).
+       */
+      doubleForUnitName?: string;
     }
   | {
       type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS";
@@ -1981,6 +1987,12 @@ export type EffectDefinition =
        */
       thenDiscard?: number;
       thenDiscardDrawnOnly?: boolean;
+      /**
+       * Thunar's Magma Elementals VI (choose two): "Draw two cards then discard a
+       * card" AND "gain a positive Morale" — the owner also gains this much
+       * Morale when the draw resolves (every DRAW_CARDS resolution seam).
+       */
+      gainMorale?: number;
     }
   | {
       /**
@@ -2271,6 +2283,22 @@ export type EffectDefinition =
       perCostCard?: number;
       /** Elemental Magic abilities: only spells of this school qualify. */
       schoolOnly?: SpellSchool;
+      /**
+       * Thunar's Magma Elementals VI (choose two): "+2 Power" AND "gain a
+       * positive Morale" — the owner gains this much Morale when the Power
+       * lands on the cast (combat spell window and the map cast tray).
+       */
+      gainMorale?: number;
+      /**
+       * Thunar's Magma Elementals VI: the +Power chosen in combat OUTSIDE your
+       * own Spell cast (your activation, an attack window with no Spell instant
+       * of yours to feed, an enemy's cast or activation) is HELD in
+       * `combatStats.heldSpellPower` and added to your next Spell cast this
+       * Combat (any later round). In your own cast window it empowers that
+       * cast, and in an attack window it still pools into your Spell instant,
+       * exactly like every other Power card.
+       */
+      bankForLaterSpell?: boolean;
     }
   | {
       /**
@@ -2377,6 +2405,12 @@ export type EffectDefinition =
       type: "GAIN_RESOURCES";
       gain: ResourceCost;
       expertGain?: ResourceCost;
+      /**
+       * Gelare's Gold VI: "Discard any number of cards from your hand. For each,
+       * gain 3 gold." Added once per card paid through the option's
+       * `cost.discardCardsUpTo` (on top of `gain`).
+       */
+      perCostCard?: ResourceCost;
       /**
        * Sephinroth's Valuables I: "Pay `goldCost` gold to gain …". The player must
        * have the gold; it is spent before `gain` is granted (gated in legal-actions
@@ -2669,6 +2703,17 @@ export type EffectDefinition =
       /** Hourglass option 2: roll the Attack die; gain morale on the result. */
       type: "ROLL_FOR_MORALE";
       onRoll: number;
+    }
+  | {
+      /**
+       * Gelare's Gold I: "Roll the Attack die: -1 gain 3 gold, 0 gain 2 gold,
+       * +1 gain 1 building material." Rolls one seeded Attack die and pays the
+       * resources printed for the rolled face.
+       */
+      type: "ROLL_ATTACK_DIE_FOR_RESOURCES";
+      onMinusOne: ResourceCost;
+      onZero: ResourceCost;
+      onPlusOne: ResourceCost;
     }
   | {
       /**
@@ -4444,6 +4489,17 @@ export type PermanentEffectDefinition = {
     resource: ResourceKind;
     amount: number;
     requiresHeroInTown?: boolean;
+  };
+  /**
+   * Gelare's Gold IV: "After each Resource round ends, gain 5 gold. (Do not
+   * trigger if this card is replaced before then.)" Paid when a Resources round
+   * ENDS (at the top of the following round, before any new-round effect) to
+   * every owner still holding the card in play — a permanent replaced or
+   * discarded during that round pays nothing.
+   */
+  resourceRoundEndGain?: {
+    resource: ResourceKind;
+    amount: number;
   };
   /**
    * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): entering
@@ -10366,6 +10422,13 @@ export type PlayerState = {
      * out of the fight it was banked in.
      */
     pendingDrawRiderSpellPower?: number;
+    /**
+     * Thunar's Magma Elementals VI: +Power chosen outside a Spell cast in this
+     * Combat (ADD_SPELL_POWER.bankForLaterSpell). Unlike the Sorcery bank it
+     * survives combat-round ends; consumed by the next non-scroll Spell cast,
+     * cleared at the start of every combat.
+     */
+    heldSpellPower?: number;
     /**
      * Temple Guardian commander (Mana Magician): charges left this combat.
      * Seeded to 2 at combat start while the commander lives; each charge lets

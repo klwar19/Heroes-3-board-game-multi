@@ -4724,15 +4724,34 @@ function addPlayableCardActions(
       // resolves in the reaction path alone.
       if (ownActivationOpen) {
         for (const [optionIndex, option] of card.effect.options.entries()) {
+          const heldPower =
+            option.effect.type === "ADD_SPELL_POWER" &&
+            Boolean(option.effect.bankForLaterSpell);
           if (
             !option.trigger ||
             (option.effect.type !== "ADD_COMBAT_STAT" &&
               option.effect.type !== "ADD_SPELL_POWER") ||
-            !option.effect.drawCards
+            (!option.effect.drawCards && !heldPower)
           ) {
             continue;
           }
           if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
+            continue;
+          }
+          if (heldPower) {
+            // Thunar VI: the full pair resolves; the Power waits for the next
+            // Spell this Combat.
+            actions.push({
+              label: `${card.name}: ${option.label} (Power held for your next Spell this Combat)`,
+              action: {
+                type: "PLAY_CARD",
+                playerId,
+                cardId,
+                mode: "basic",
+                optionIndex,
+                target: { type: "none" },
+              },
+            });
             continue;
           }
           actions.push({
@@ -5191,6 +5210,8 @@ function isOptionEffectPlayable(
     case "GAIN_MORALE":
     case "ENEMY_MORALE_STRIP":
     case "ROLL_FOR_MORALE":
+    // Gelare's Gold I: roll the Attack die for gold / a building material.
+    case "ROLL_ATTACK_DIE_FOR_RESOURCES":
     case "RANDOM_ENEMY_DISCARD":
     case "GAIN_EXPERT_USE":
     case "CREATE_ACTIVE_EFFECT":
@@ -6534,6 +6555,8 @@ function isPlainPositiveMoraleGain(effect: ConcreteEffect): boolean {
 
 function isInstantReactionUtility(effect: ConcreteEffect): boolean {
   return (
+    // Thunar VI: Power held for a later Spell is useful in any combat window.
+    (effect.type === "ADD_SPELL_POWER" && Boolean(effect.bankForLaterSpell)) ||
     instantDrawOnlyRider(effect, "basic") > 0 ||
     instantDrawOnlyRider(effect, "expert") > 0 ||
     effect.type === "TAKE_FROM_DISCARD" ||
@@ -6596,6 +6619,7 @@ function isMapPlayableEffect(
     effect.type === "LEGION_TIER_REINFORCE" ||
     effect.type === "ENEMY_MORALE_STRIP" ||
     effect.type === "ROLL_FOR_MORALE" ||
+    effect.type === "ROLL_ATTACK_DIE_FOR_RESOURCES" ||
     effect.type === "RANDOM_ENEMY_DISCARD" ||
     effect.type === "GAIN_EXPERT_USE" ||
     // Gem's First Aid: grab the Tent from the supply (or draw) on the map.
@@ -12397,7 +12421,9 @@ function getLegalReactionsForTriggerCore(
         // stay out.
         const drawOnlyEligible =
           variant.effect.type !== "DRAW_CARDS" &&
-          variant.effect.type !== "RESHUFFLE_DISCARD_THEN_DRAW";
+          variant.effect.type !== "RESHUFFLE_DISCARD_THEN_DRAW" &&
+          // Thunar VI joins as its FULL pair (Power held), never draw-only.
+          !(variant.effect.type === "ADD_SPELL_POWER" && variant.effect.bankForLaterSpell);
         const basicDrawOnly =
           !matchesPrintedTrigger &&
           allowUtilityJoin &&

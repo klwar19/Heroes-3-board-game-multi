@@ -68,6 +68,7 @@ export const implementedCardEffectTypes = [
   "RANDOM_ENEMY_DISCARD",
   "ENEMY_MORALE_STRIP",
   "ROLL_FOR_MORALE",
+  "ROLL_ATTACK_DIE_FOR_RESOURCES",
   "EAGLE_EYE_DIG",
   "TELEPORT_HERO_TO_TOWN",
   "DIMENSION_DOOR",
@@ -1365,6 +1366,11 @@ export function describePermanentEffect(card: CardDefinition): string {
       `gain ${permanent.resourceRoundGain.amount} ${permanent.resourceRoundGain.resource} at the start of each Resources round`,
     );
   }
+  if (permanent.resourceRoundEndGain) {
+    parts.push(
+      `gain ${permanent.resourceRoundEndGain.amount} ${permanent.resourceRoundEndGain.resource} after each Resources round ends`,
+    );
+  }
   if (permanent.incomeTierDieOnEnter) {
     parts.push(
       "entering play rolls 1 Resource die; while in play, gain that resource's full income tier (+5 gold / +2 materials / +1 valuables) each Resources round",
@@ -1413,7 +1419,10 @@ export function describeCardEffect(card: CardDefinition): string {
     const thenDiscard = card.effect.thenDiscard
       ? `, then discard ${card.effect.thenDiscard}${card.effect.thenDiscardDrawnOnly ? " of them" : ""}`
       : "";
-    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}${thenDiscard}`;
+    const morale = card.effect.gainMorale
+      ? `, gain ${card.effect.gainMorale} morale`
+      : "";
+    return `draw ${card.effect.amount} card${card.effect.amount === 1 ? "" : "s"}${expert}${thenDiscard}${morale}`;
   }
 
   if (card.effect.type === "DEAL_DAMAGE") {
@@ -1501,7 +1510,10 @@ export function describeCardEffect(card: CardDefinition): string {
     const draw = card.effect.drawCards
       ? `, then draw ${card.effect.drawCards}`
       : "";
-    return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}${draw}`;
+    const morale = card.effect.gainMorale
+      ? `, gain ${card.effect.gainMorale} morale`
+      : "";
+    return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}${draw}${morale}`;
   }
 
   if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -1597,7 +1609,10 @@ export function describeCardEffect(card: CardDefinition): string {
     const expert = card.effect.expertGain
       ? `, expert ${list(card.effect.expertGain)}`
       : "";
-    return `gain ${list(card.effect.gain)}${expert}`;
+    const perCard = card.effect.perCostCard
+      ? `${list(card.effect.gain) ? " + " : ""}${list(card.effect.perCostCard)} per card discarded`
+      : "";
+    return `gain ${list(card.effect.gain)}${perCard}${expert}`;
   }
 
   if (card.effect.type === "GAIN_HERO_MOVEMENT") {
@@ -1656,6 +1671,15 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "ROLL_FOR_MORALE") {
     return `roll the Attack die: gain morale on ${card.effect.onRoll >= 0 ? "+" : ""}${card.effect.onRoll}`;
+  }
+
+  if (card.effect.type === "ROLL_ATTACK_DIE_FOR_RESOURCES") {
+    const list = (gain: Record<string, number | undefined>) =>
+      Object.entries(gain)
+        .filter(([, amount]) => amount)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ");
+    return `roll the Attack die: -1 gain ${list(card.effect.onMinusOne)}, 0 gain ${list(card.effect.onZero)}, +1 gain ${list(card.effect.onPlusOne)}`;
   }
 
   if (card.effect.type === "EAGLE_EYE_DIG") {

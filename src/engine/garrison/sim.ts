@@ -10,7 +10,7 @@
 
 import {
   BLESSINGS, BLESSING_ORDER, CARDS, DEFENDERS, ENEMIES, FIREBALL_DELAY, FIREBALL_DMG, FIRE_WALL_DELAY,
-  FIRE_WALL_DMG, GW_COLS, LAND_MINE_ARM, LAND_MINE_DMG, MANA_MAX, MANA_REGEN_EVERY, PASSIVE_MIGHT,
+  FIRE_WALL_DMG, GW_COLS, GW_LANES, LAND_MINE_ARM, LAND_MINE_DMG, MANA_MAX, MANA_REGEN_EVERY, PASSIVE_MIGHT,
   FIRE_SHOTS, FUSIONS, SPELLS, STONE_SKIN_HP, TENT_INCOME, TERRAINS, fusionFor, sec,
   CORRODE_MULT, EXPOSE_MULT, FORTUNE_GOLD, LUCK_CHANCE,
   type BlessingId, type CardId, type DefDef, type DefKind, type EnemyKind, type ProjectileKind, type SpellId, type SurgeDef, type Terrain,
@@ -295,6 +295,9 @@ export type Enemy = {
   /** ...and the share of it the shards deal to the foes within a tile. */
   crystalSplash?: number;
   bites: number;
+  /** Order & Chaos boss: the troop it is biting and how many blows it has landed on it (5 throws it aside). */
+  bossBiteTarget?: number;
+  bossBiteCount?: number;
   wave: number;
   side: "wave" | "atk";
   dead: boolean;
@@ -470,6 +473,8 @@ export type GarrisonEvent =
   | { e: "crush"; id: number; target: number }
   | { e: "pop"; id: number; lane: number; x: number }
   | { e: "shove"; id: number; by: number; from: number; to: number; lane: number }
+  /** Order & Chaos: a boss threw a troop it had struck 5 times out of its road, to an empty tile. */
+  | { e: "bossToss"; id: number; by: number; fromLane: number; fromCol: number; lane: number; col: number }
   | { e: "blink"; id: number; fromX: number }
   | { e: "gasp"; id: number }
   | { e: "daze"; id: number }
@@ -5432,6 +5437,42 @@ function hexAct(s: GarrisonState, e: Enemy): boolean {
   return true;
 }
 
+/** Order & Chaos: blows a boss lands on one troop before it throws that troop aside. */
+const BOSS_TOSS_AFTER_BITES = 5;
+
+/**
+ * Order & Chaos boss: throws the troop it has struck BOSS_TOSS_AFTER_BITES times
+ * out of its road — to the nearest empty tile in ANOTHER lane (nearest lane, then
+ * nearest column), so the boss walks on. Ignores health, shell, steadfast/tall and
+ * every other skill. With no empty tile anywhere the boss climbs over it instead.
+ */
+function bossTossDefender(s: GarrisonState, e: Enemy, d: Defender): void {
+  let best: { lane: number; col: number; cost: number } | undefined;
+  const [minCol, maxCol] = s.cfg.defCols;
+  for (let lane = 0; lane < GW_LANES; lane += 1) {
+    if (lane === d.lane) continue;
+    for (let col = minCol; col <= maxCol; col += 1) {
+      if (!canSummonAt(s, lane, col)) continue;
+      const cost = Math.abs(lane - d.lane) * 100 + Math.abs(col - d.col);
+      if (!best || cost < best.cost) best = { lane, col, cost };
+    }
+  }
+  if (!best) {
+    climbOver(s, e, d);
+    return;
+  }
+  const fromLane = d.lane;
+  const fromCol = d.col;
+  d.lane = best.lane;
+  d.col = best.col;
+  // A thrown troop drops the volley it was firing.
+  d.shotAt = -1;
+  d.shotsLeft = 0;
+  s.events.push({ e: "bossToss", id: d.id, by: e.id, fromLane, fromCol, lane: d.lane, col: d.col });
+  if (e.state === "eat") setState(s, e, "walk");
+  e.target = 0;
+}
+
 /** Knocks a struck defender a tile back (when the tile is free and it can be moved) and stuns it. */
 function shoveDefender(s: GarrisonState, e: Enemy, d: Defender): void {
   const shove = ENEMIES[e.kind]!.shove!;
@@ -5967,6 +6008,22 @@ function biteAct(s: GarrisonState, e: Enemy, block: Defender): void {
   }
   // Order & Chaos: rams and trolls knock the defender back; a Nymph bewilders her biter into the next lane.
   if (def.shove && !block.dead && !e.dead && (def.shove.every === 0 ? e.bites === 1 : e.bites % def.shove.every === 0)) shoveDefender(s, e, block);
+  // Order & Chaos (user rule 2026-10-02): a boss never stalls on one troop — its
+  // 5th blow on the same troop throws it out of the road, whatever its health,
+  // shell or skills.
+  if (s.cfg.oc && def.boss && !e.dead) {
+    if (e.bossBiteTarget === block.id) {
+      e.bossBiteCount = (e.bossBiteCount ?? 0) + 1;
+    } else {
+      e.bossBiteTarget = block.id;
+      e.bossBiteCount = 1;
+    }
+    if (!block.dead && e.bossBiteCount >= BOSS_TOSS_AFTER_BITES) {
+      e.bossBiteTarget = undefined;
+      e.bossBiteCount = 0;
+      bossTossDefender(s, e, block);
+    }
+  }
   if (blockDef.divert && s.cfg.oc && reacts && !e.dead && !e.charmed && !def.boss && !isFlying(e) && e.state === "eat") divertFoe(s, e, blockDef.divert.slow, block.id);
 }
 

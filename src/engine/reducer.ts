@@ -1370,7 +1370,12 @@ function assertBatchReactionLegal(
     }
     // A draw-only play resolves just its "then draw" rider — no Power lands,
     // so it never needs a Spell to feed (mirrors assertLonePowerEmpowerable).
-    if (effect.type === "ADD_SPELL_POWER" && !play.drawOnly) {
+    if (
+      effect.type === "ADD_SPELL_POWER" &&
+      !play.drawOnly &&
+      // Thunar VI held Power never feeds this attack, so it needs no Spell.
+      !(effect.bankForLaterSpell && play.utilityOnly)
+    ) {
       powerOnlyPlays += 1;
     }
 
@@ -21883,6 +21888,13 @@ function performSpellCast(
       stackItem.modifiers.spellPowerBonus += banked;
       caster.combatStats.pendingDrawRiderSpellPower = 0;
     }
+    // Thunar's Magma Elementals VI: Power chosen in an earlier window of this
+    // Combat lands on this cast.
+    const held = caster.combatStats.heldSpellPower ?? 0;
+    if (held > 0) {
+      stackItem.modifiers.spellPowerBonus += held;
+      caster.combatStats.heldSpellPower = 0;
+    }
 
     // Matching School basic Power and the Elemental tile bonus apply
     // automatically. Magic Arrow selects one school and never stacks schools.
@@ -24434,10 +24446,40 @@ function applyReactionPlayCore(
     return { windowEnded: true };
   }
 
+  // Thunar's Magma Elementals VI: outside this player's own Spell cast (and
+  // not pooled into one of their Spell instants on an attack) the +Power is
+  // held for their next Spell this Combat; the other chosen half still lands.
+  const ownCastWindow =
+    stackItem?.action.type === "CAST_SPELL" &&
+    stackItem.action.playerId === playerId;
+  if (
+    effect.type === "ADD_SPELL_POWER" &&
+    effect.bankForLaterSpell &&
+    state.combat &&
+    !ownCastWindow &&
+    (play.utilityOnly || !stackItem || !isAttackStackItem(stackItem))
+  ) {
+    const stats = state.players[playerId].combatStats;
+    stats.heldSpellPower = (stats.heldSpellPower ?? 0) + effectAmount;
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+    if (effect.drawCards) {
+      drawCardsForPlayer(
+        state,
+        playerId,
+        effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId),
+        { inFlightCardIds: reactionInFlightCardIds },
+      );
+    }
+    if (effect.gainMorale) {
+      changeMorale(state, playerId, effect.gainMorale);
+    }
+    applyDrawRiderThenDiscard(state, playerId, effect, card.name);
+  }
+
   // Empower: cast windows feed the pending spell; attack windows build the
   // Power pool a spell instant in the same declaration consumes. The
   // rulebook allows stacking several Empower plays to reach a threshold.
-  if (effect.type === "ADD_SPELL_POWER" && stackItem) {
+  else if (effect.type === "ADD_SPELL_POWER" && stackItem) {
     // School-restricted Power (Orbs, Basic-School Magic) on an attack may only
     // fuel a spell instant of the matching school already played into it — the
     // cast-window school gate above covers CAST_SPELL; this covers attacks.
@@ -24485,6 +24527,11 @@ function applyReactionPlayCore(
           inFlightCardIds: reactionInFlightCardIds,
         },
       );
+    }
+    // Thunar's Magma Elementals VI: "+2 Power" chosen together with "gain a
+    // positive Morale".
+    if (effect.gainMorale) {
+      changeMorale(state, playerId, effect.gainMorale);
     }
     // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "…, draw 1
     // card then discard 1 card" — the discard runs AFTER the draw, so the drawn
@@ -25461,6 +25508,10 @@ function applyReactionPlayCore(
     drawCardsForPlayer(state, playerId, effectAmount, {
       inFlightCardIds: reactionInFlightCardIds,
     });
+    // Thunar's Magma Elementals VI: the draw chosen together with Morale.
+    if (effect.gainMorale) {
+      changeMorale(state, playerId, effect.gainMorale);
+    }
     // Charm of Mana / Shackles of War: a plain DRAW_CARDS instant still owes
     // its printed post-draw discard while it is joining an attack/defense
     // window. Keep that obligation inside the parked reaction window; the
@@ -25795,11 +25846,15 @@ function applyReactionPlayCore(
         cardId: card.id,
         controllerId: playerId,
       };
+      const healAmount = getEffectDamageAmount(effect, healPower);
       healUnitDamage(
         state,
         source,
         play.target,
-        getEffectDamageAmount(effect, healPower),
+        // Thunar's Magma Elementals I: doubled when the healed unit is his unit.
+        effect.type === "HEAL_DAMAGE" && effect.doubleForUnitName
+          ? doubleAmountForUnitName(healAmount, unit, effect.doubleForUnitName)
+          : healAmount,
       );
       if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
         removeEffectsFromTarget(
@@ -29570,7 +29625,7 @@ function playCard(
   // Map Power tiers (View Air / Fly / Dimension Door, …) may also spend ONE
   // Book Spell toward the Power cost — same once-per-turn Book Power budget.
   const mapPaidCards: { cardId: CardId; fromBook: boolean }[] = [];
-  payOptionCardCost(
+  const playCostCardsPaid = payOptionCardCost(
     state,
     action.playerId,
     card,
@@ -29683,6 +29738,7 @@ function playCard(
   }
 
   if (effect.type === "HEAL_DAMAGE" && nonDamageTarget) {
+    const healAmount = getEffectDamageAmount(effect, card.power ?? 0);
     healUnitDamage(
       state,
       {
@@ -29691,7 +29747,14 @@ function playCard(
         controllerId: action.playerId,
       },
       nonDamageTarget,
-      getEffectDamageAmount(effect, card.power ?? 0),
+      // Thunar's Magma Elementals I: doubled when the healed unit is his unit.
+      effect.doubleForUnitName
+        ? doubleAmountForUnitName(
+            healAmount,
+            state.combat?.units[nonDamageTarget.unitId],
+            effect.doubleForUnitName,
+          )
+        : healAmount,
     );
     // Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — the
     // chosen unit also loses its Paralysis token.
@@ -30708,6 +30771,10 @@ function playCard(
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode), {
       inFlightCardIds: playInFlightCardIds,
     });
+    // Thunar's Magma Elementals VI: the draw chosen together with Morale.
+    if (effect.gainMorale) {
+      changeMorale(state, action.playerId, effect.gainMorale);
+    }
     // Charm of Mana / Shackles of War: "draw N, then discard M". The discard is
     // a follow-up choice; `thenDiscardDrawnOnly` limits it to the drawn cards.
     applyDrawRiderThenDiscard(
@@ -30726,6 +30793,32 @@ function playCard(
   // draw-only play) the same draw fires; Sorcery additionally banks Power for
   // the next spell when the active unit has not moved yet (wiki: play Sorcery
   // first to draw, then cast the drawn spell with the bonus).
+  // Thunar VI "+2 Power + Morale" (no draw rider) played on your own
+  // activation: hold the Power for your next Spell this Combat.
+  if (
+    effect.type === "ADD_SPELL_POWER" &&
+    effect.bankForLaterSpell &&
+    !effect.drawCards &&
+    state.combat &&
+    !state.reactionWindow &&
+    state.stack.length === 0
+  ) {
+    const bank = getEffectAmount(effect, mode);
+    if (bank > 0) {
+      const stats = state.players[action.playerId].combatStats;
+      stats.heldSpellPower = (stats.heldSpellPower ?? 0) + bank;
+    }
+  }
+  if (
+    effect.type === "ADD_SPELL_POWER" &&
+    effect.gainMorale &&
+    state.combat &&
+    !state.reactionWindow &&
+    state.stack.length === 0
+  ) {
+    changeMorale(state, action.playerId, effect.gainMorale);
+  }
+
   if (
     (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") &&
     effect.drawCards &&
@@ -30740,7 +30833,14 @@ function playCard(
         inFlightCardIds: playInFlightCardIds,
       },
     );
-    if (effect.type === "ADD_SPELL_POWER" && state.combat) {
+    if (effect.type === "ADD_SPELL_POWER" && state.combat && effect.bankForLaterSpell) {
+      // Thunar VI: held for the next Spell this Combat (any later round).
+      const bank = getEffectAmount(effect, mode);
+      if (bank > 0) {
+        const stats = state.players[action.playerId].combatStats;
+        stats.heldSpellPower = (stats.heldSpellPower ?? 0) + bank;
+      }
+    } else if (effect.type === "ADD_SPELL_POWER" && state.combat) {
       // Shared with the draw-only offer labels so the promised bank is real.
       if (drawRiderBanksSpellPower(state, action.playerId)) {
         const bank = getEffectAmount(effect, mode);
@@ -30885,7 +30985,25 @@ function playCard(
         : mode === "expert" && effect.expertGain
           ? effect.expertGain
           : effect.gain;
-    gainResources(state, action.playerId, gain, `played ${card.name}`);
+    // Gelare's Gold VI: "Discard any number of cards … For each, gain 3 gold."
+    // The discard IS the whole effect, so a zero-card play is refused instead
+    // of silently wasting the specialty.
+    const perCard = effect.perCostCard;
+    if (perCard && playCostCardsPaid === 0) {
+      throw new Error(`${card.name}: discard at least one card from your hand.`);
+    }
+    const baseGain: ResourceCost = gain;
+    const total: ResourceCost = perCard
+      ? {
+          gold: (baseGain.gold ?? 0) + (perCard.gold ?? 0) * playCostCardsPaid,
+          buildingMaterials:
+            (baseGain.buildingMaterials ?? 0) +
+            (perCard.buildingMaterials ?? 0) * playCostCardsPaid,
+          valuables:
+            (baseGain.valuables ?? 0) + (perCard.valuables ?? 0) * playCostCardsPaid,
+        }
+      : baseGain;
+    gainResources(state, action.playerId, total, `played ${card.name}`);
   }
 
   // Octavia's "Gold" and Melodia's "Fortune" economic map plays. Morale and the
@@ -31488,6 +31606,24 @@ function playCard(
     if (roll === effect.onRoll) {
       changeMorale(state, action.playerId, 1);
     }
+  }
+
+  if (effect.type === "ROLL_ATTACK_DIE_FOR_RESOURCES") {
+    const random = createSeededRandom(
+      `${state.seed}#roll-attack-die-resources#${eventSeedNumber(state)}`,
+    );
+    const faces = [-1, -1, 0, 0, 1, 1];
+    const roll = faces[random.nextInt(0, faces.length - 1)];
+    appendEvent(state, {
+      type: "ADVENTURE_DICE_ROLLED",
+      playerId: action.playerId,
+      dice: "attack",
+      results: [`${card.name} attack die: ${roll >= 0 ? "+" : ""}${roll}`],
+      attackRolls: [roll],
+    });
+    const payout =
+      roll < 0 ? effect.onMinusOne : roll === 0 ? effect.onZero : effect.onPlusOne;
+    gainResources(state, action.playerId, payout, `played ${card.name}`);
   }
 
   if (effect.type === "EAGLE_EYE_DIG") {

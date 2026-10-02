@@ -6,7 +6,7 @@ import {
   applyRecruitGoldDiscount, effectiveHandLimit, explorersHandStepActive, getUnitSide, isFieldGuarded, reinforceCostFor,
 } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
-import { cardHandValue, moraleRedrawDiscards, PREP_CYCLE_SCORE, scoreCardAction } from "./card-policy";
+import { cardHandValue, isPerDiscardGainPlay, moraleRedrawDiscards, perCostDiscardJunk, PREP_CYCLE_SCORE, scoreCardAction } from "./card-policy";
 import { upcomingFight } from "./card-planning";
 import { heroPickBias } from "./card-values";
 import { scoreChoiceAction } from "./choice-policy";
@@ -132,7 +132,21 @@ export function legalityMatchKey(action: GameAction): string {
   if (action.type === "SPEND_MORALE" && action.benefit === "redraw") {
     return canonicalActionKey({ ...action, discardCardIds: [] });
   }
+  // Gelare's Gold VI ("discard any number, gain per card") is offered as a
+  // bare template; the runner fills the sold cards, see withPerDiscardJunk.
+  if (action.type === "PLAY_CARD" && isPerDiscardGainPlay(action)) {
+    const template: Partial<typeof action> = { ...action };
+    delete template.costCardIds;
+    return canonicalActionKey(template);
+  }
   return canonicalActionKey(action);
+}
+
+/** PLAY_CARD per-discard gain template: sell the junk perCostDiscardJunk names. */
+function withPerDiscardJunk(observation: ComputerObservation, action: GameAction): GameAction {
+  if (action.type !== "PLAY_CARD" || !isPerDiscardGainPlay(action)) return action;
+  const sold = perCostDiscardJunk(observation, action);
+  return sold.length > 0 ? { ...action, costCardIds: sold } : action;
 }
 
 /**
@@ -490,7 +504,11 @@ function chooseComputerActionUncached(
       // redraw can be the window's ONLY morale option).
       !(legal.action.type === "SPEND_MORALE" &&
         legal.action.benefit === "redraw" &&
-        moraleRedrawDiscards(observation).length === 0),
+        moraleRedrawDiscards(observation).length === 0) &&
+      // Same for a per-discard gain (Gelare's Gold VI): the reducer refuses a
+      // zero-card play, so with no junk to sell it is off the table.
+      !(isPerDiscardGainPlay(legal.action) &&
+        perCostDiscardJunk(observation, legal.action).length === 0),
   );
   if (candidates.length === 0) {
     return null;
@@ -663,7 +681,7 @@ function chooseComputerActionUncached(
       ? withRefreshDiscards(observation, learnedSelected.legal.action)
       : learnedSelected.legal.action.type === "SPEND_MORALE"
         ? withMoraleRedrawDiscards(observation, learnedSelected.legal.action)
-        : learnedSelected.legal.action;
+        : withPerDiscardJunk(observation, learnedSelected.legal.action);
   const tacticalTypes = new Set<GameAction["type"]>([
     "ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT", "MOVE_UNIT", "DEFEND_UNIT",
     "PLAY_CARD", "CAST_SPELL", "PLAY_REACTION", "PASS_REACTION",

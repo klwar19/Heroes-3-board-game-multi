@@ -6323,6 +6323,8 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // fight is the everyday case) used to leave it standing — an invisible
       // phantom +1 on the FIRST cast of a LATER battle.
       player.combatStats.pendingDrawRiderSpellPower = 0;
+      // Thunar VI held Power is "this Combat" only.
+      player.combatStats.heldSpellPower = 0;
       // Anime Cultivation Core Formation reroll (§5.6): the one free Attack-die
       // reroll refreshes per COMBAT (not per round) — clear the spent flag here.
       player.combatStats.cultivationRerollUsed = false;
@@ -8984,6 +8986,11 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
         ? boostCard.effect.options[offer.optionIndex ?? 0]?.effect
         : boostCard?.effect;
     const thenDiscard = boostEffect?.type === "ADD_SPELL_POWER" ? (boostEffect.thenDiscard ?? 0) : 0;
+    // Thunar's Magma Elementals VI: "+2 Power" chosen together with "gain a
+    // positive Morale" — the Morale lands with the Power on this map cast too.
+    if (boostEffect?.type === "ADD_SPELL_POWER" && boostEffect.gainMorale) {
+      changeMorale(state, playerId, boostEffect.gainMorale);
+    }
     if (draws > 0) {
       nextFlags = { ...nextFlags, inFlightCardIds: resolving };
       drawCardsForPlayer(state, playerId, draws, { inFlightCardIds: resolving });

@@ -1864,7 +1864,9 @@ export const healFxPlans: Record<string, SpellFxPlan> = {
   // double cue.
   "specialty.uland.1": spellFxPlans["spell.cure"],
   "specialty.uland.4": spellFxPlans["spell.cure"],
-  "specialty.uland.6": spellFxPlans["spell.cure"]
+  "specialty.uland.6": spellFxPlans["spell.cure"],
+  // Thunar's Magma Elementals I is a plain "remove damage" heal, like First Aid.
+  "specialty.thunar.1": regenerationFxPlan
 };
 
 /**
