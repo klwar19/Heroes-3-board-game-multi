@@ -43,8 +43,8 @@ type MusicProfile =
 export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   menu: ["music/main-menu"],
   combat: ["music/combat-02", "music/combat-03", "music/combat-04"],
-  // (Remnants of the Horde, from Order & Chaos, takes its turn in the terrain playlist too.)
-  "map-general": ["music/rough", "music/sand", "music/snow", "music/grass", "music/order-chaos/remnants-of-the-horde"],
+  // (The Orcish Hordes, from Order & Chaos, takes its turn in the terrain playlist too.)
+  "map-general": ["music/rough", "music/sand", "music/snow", "music/grass", "music/order-chaos/orcish-hordes"],
   "map-water": ["music/water"],
   "map-underground": ["music/dirt"],
   "town-necropolis": ["music/necro-town"],
