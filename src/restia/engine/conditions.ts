@@ -1,6 +1,7 @@
 import type { Condition, RestiaState } from "./types";
 import { rankIndex } from "../data/progression";
 import { count, seasonOf } from "./core";
+import { skillLevel } from "./farm";
 import { hearts } from "./party";
 import { trait } from "./story";
 
@@ -47,6 +48,8 @@ export function check(state: RestiaState, cond: Condition | undefined): boolean 
       return (cond.monster ? state.stats.defeated[cond.monster] ?? 0 : state.stats.defeatedTotal) >= cond.n;
     case "level":
       return (state.members.bin?.level ?? 1) >= cond.n;
+    case "skill":
+      return skillLevel(state.skills[cond.skill]) >= cond.level;
     case "gold":
       return state.gold >= cond.n;
     case "tamed":

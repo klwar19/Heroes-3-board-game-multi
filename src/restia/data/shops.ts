@@ -1,4 +1,5 @@
 import type { BuildingId, Condition, ItemId, Season } from "../engine/types";
+import { CROPS } from "./crops";
 import { armorId, weaponId } from "./items";
 
 export type ShopEntry = { item: ItemId; when?: Condition };
@@ -8,21 +9,23 @@ const level = (id: BuildingId, n: number): Condition => ({ kind: "building", id,
 const all = (...of: Condition[]): Condition => ({ kind: "all", of });
 const any = (...of: Condition[]): Condition => ({ kind: "any", of });
 
+/** A crop's seeds, on sale in its growing seasons once the crop is unlocked (data/crops.ts). */
+function seed(crop: string): ShopEntry {
+  const def = CROPS[crop];
+  if (!def) throw new Error(`Unknown Restia crop ${crop}`);
+  const seasons = def.seasons.length === 1 ? season(def.seasons[0]!) : any(...def.seasons.map(season));
+  return { item: def.seed, when: def.unlock ? all(def.unlock, seasons) : seasons };
+}
+
 /** Stock per shop building. Tilde's trading post also buys anything (sell). */
 export const SHOPS: Partial<Record<BuildingId, ShopEntry[]>> = {
   store: [
-    { item: "seed-turnip", when: season("spring") },
-    { item: "seed-potato", when: season("spring") },
-    { item: "seed-strawberry", when: season("spring") },
-    { item: "seed-tomato", when: season("summer") },
-    { item: "seed-corn", when: any(season("summer"), season("autumn")) },
-    { item: "seed-melon", when: season("summer") },
-    { item: "seed-pumpkin", when: season("autumn") },
-    { item: "seed-eggplant", when: season("autumn") },
-    { item: "seed-sweetPotato", when: season("autumn") },
-    { item: "seed-snowRadish", when: season("winter") },
-    { item: "seed-manaBlossom", when: all(level("store", 2), any(season("spring"), season("summer"), season("autumn"))) },
-    { item: "seed-moonberry", when: all(level("store", 2), any(season("autumn"), season("winter"))) },
+    ...["turnip", "potato", "strawberry", "cabbage", "pinkCat", "toyherb"].map(seed),
+    ...["tomato", "corn", "melon", "onion", "greenPepper"].map(seed),
+    ...["pumpkin", "eggplant", "sweetPotato", "carrot", "spinach"].map(seed),
+    ...["snowRadish", "leek", "noelGrass"].map(seed),
+    // Rare and late seeds: Trading Post upgrades, the Ember Vaults, a master farmer's skill.
+    ...["manaBlossom", "moonberry", "pineapple", "hotHotFruit", "goldenTurnip"].map(seed),
     { item: "fertilizer" },
     { item: "wood" },
     { item: "stone" },
@@ -57,7 +60,8 @@ export const SHOPS: Partial<Record<BuildingId, ShopEntry[]>> = {
       { item: armorId(type, 1) },
       { item: armorId(type, 2), when: level("smithy", 2) }
     ]),
-    { item: "ironOre" }
+    { item: "ironOre" },
+    seed("ironleaf")
   ],
   atelier: [
     { item: "potion" },
@@ -68,7 +72,9 @@ export const SHOPS: Partial<Record<BuildingId, ShopEntry[]>> = {
     { item: "phoenixFeather", when: level("atelier", 2) },
     { item: "fireBomb", when: level("atelier", 2) },
     { item: "frostBomb", when: level("atelier", 2) },
-    { item: "thunderBomb", when: level("atelier", 2) }
+    { item: "thunderBomb", when: level("atelier", 2) },
+    // Mitia's alchemical flowers; crystal blooms once the matching vault depth is reached.
+    ...["lampGrass", "stonepetal", "frostglass", "emberbloom"].map(seed)
   ],
   inn: [
     { item: "bread" },
@@ -84,7 +90,8 @@ export const SHOPS: Partial<Record<BuildingId, ShopEntry[]>> = {
     { item: "monsterTreat" },
     { item: "returnScroll", when: { kind: "flag", key: "catacombsOpen" } },
     { item: "phoenixFeather", when: { kind: "rank", rank: "D" } },
-    { item: "ether", when: level("guild", 3) }
+    { item: "ether", when: level("guild", 3) },
+    seed("windbell")
   ]
 };
 

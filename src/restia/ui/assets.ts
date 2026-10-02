@@ -126,8 +126,10 @@ export const BUILDING_ART: Record<string, string> = {
 };
 
 export const SHEETS = {
-  icons: { a: `${R}/icons/a.webp`, b: `${R}/icons/b.webp`, c: `${R}/icons/c.webp` } as Record<IconRef["sheet"], string>,
+  icons: { a: `${R}/icons/a.webp`, b: `${R}/icons/b.webp`, c: `${R}/icons/c.webp`, d: `${R}/icons/d.webp` } as Record<IconRef["sheet"], string>,
   farm: `${R}/farm/sheet.webp`,
+  /** Second 6x6 crop sheet: farm sprite indexes 36-71 (data/crops.ts). */
+  farm2: `${R}/farm/sheet-2.webp`,
   soil: `${R}/farm/soil.webp`,
   dungeon: `${R}/dungeon/sheet.webp`
 };

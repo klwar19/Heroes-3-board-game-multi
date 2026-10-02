@@ -72,8 +72,8 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     closedDay: 6,
     levels: [
       { level: 1, gold: 0, items: {}, days: 0, effect: "Seasonal seeds and basic supplies." },
-      { level: 2, gold: 2000, items: { wood: 30 }, days: 2, effect: "Rare seeds (Mana Blossom, Moonberry), greater potions, return scrolls." },
-      { level: 3, gold: 6000, items: { hardwood: 15 }, days: 3, effect: "Growth elixirs, lucky charms and fine goods." }
+      { level: 2, gold: 2000, items: { wood: 30 }, days: 2, effect: "Rare seeds (Mana Blossom, Moonberry, Pineapple), greater potions, return scrolls." },
+      { level: 3, gold: 6000, items: { hardwood: 15 }, days: 3, effect: "Growth elixirs, lucky charms and fine goods; Golden Turnip seeds for master farmers (Farming 7)." }
     ]
   },
   shrine: {
@@ -99,7 +99,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     levels: [
       { level: 0, gold: 0, items: {}, days: 0, effect: "The roof caved in under the midwinter snow." },
       { level: 1, gold: 1200, items: { stone: 30, wood: 20, ironOre: 5 }, days: 2, effect: "Hilda is back at her anvil. Smelting, bronze & iron gear, tool upgrades to Iron.", requires: { kind: "flag", key: "metHilda" }, requiresText: "Talk to Hilda in her tent" },
-      { level: 2, gold: 4000, items: { ironIngot: 5, hardwood: 10 }, days: 3, effect: "Silver & mythril gear, tool upgrades to Silver, accessories." },
+      { level: 2, gold: 4000, items: { ironIngot: 5, hardwood: 10 }, days: 3, effect: "Silver & mythril gear, tool upgrades to Silver, accessories, Ironleaf seeds." },
       { level: 3, gold: 12000, items: { goldIngot: 3, mythrilOre: 3 }, days: 4, effect: "Starsteel gear.", requires: { kind: "rank", rank: "B" }, requiresText: "Guild rank B" }
     ]
   },
@@ -113,7 +113,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     levels: [
       { level: 0, gold: 0, items: {}, days: 0, effect: "Burned out last winter. Mitia brews in Garr's kitchen." },
       { level: 1, gold: 1000, items: { wood: 25, clay: 5, wildHerb: 5 }, days: 2, effect: "Mitia reopens the shop and joins the party. Potions, antidotes, fertilizer, bombs.", requires: { kind: "flag", key: "frostcapFound" }, requiresText: "Solve the frostcap shortage" },
-      { level: 2, gold: 3500, items: { manaCrystal: 3, hardwood: 10 }, days: 3, effect: "Advanced alchemy: greater potions, elixirs, phoenix feathers, growth elixirs." }
+      { level: 2, gold: 3500, items: { manaCrystal: 3, hardwood: 10 }, days: 3, effect: "Advanced alchemy: greater potions, elixirs, phoenix feathers, growth elixirs; Lamp Grass and crystal-bloom seeds." }
     ]
   },
   barn: {

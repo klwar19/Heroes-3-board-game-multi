@@ -117,6 +117,7 @@ const FORAGE_TABLE: Record<string, { item: string; weight: number }[]> = {
     { item: "glowcap", weight: 4 },
     { item: "dawnLily", weight: 2 },
     { item: "wildBerries", weight: 1 },
+    { item: "seed-toyherb", weight: 1 },
     { item: "wood", weight: 2 },
     { item: "stone", weight: 1 }
   ],
@@ -125,6 +126,7 @@ const FORAGE_TABLE: Record<string, { item: string; weight: number }[]> = {
     { item: "medicinalHerb", weight: 2 },
     { item: "wildBerries", weight: 3 },
     { item: "honey", weight: 1 },
+    { item: "seed-toyherb", weight: 1 },
     { item: "glowcap", weight: 3 },
     { item: "dawnLily", weight: 1 },
     { item: "wood", weight: 2 }

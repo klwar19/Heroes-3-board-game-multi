@@ -38,6 +38,7 @@ export type CastId =
   | "twins"
   | "guard"
   | "host"
+  | "mugRegular"
   | "tuli"
   | "rolf"
   | "stranger"
@@ -71,7 +72,7 @@ export type ArmorType = "light" | "heavy" | "robe";
 // Content definitions (src/restia/data)
 // ---------------------------------------------------------------------------
 
-export type IconRef = { sheet: "a" | "b" | "c"; index: number };
+export type IconRef = { sheet: "a" | "b" | "c" | "d"; index: number };
 
 export type ItemCategory =
   | "crop"
@@ -160,10 +161,12 @@ export type CropDef = {
   regrow?: number;
   /** Nine ripe plants in a 3x3 block may fuse into one giant crop overnight. */
   giant?: boolean;
+  /** When its seeds are on sale (shops add the season); guild requests only ask for unlocked crops. */
+  unlock?: Condition;
   /** Items per harvest [min, max]. */
   yield: [number, number];
   xp: number;
-  /** Farm sprite sheet cells (6x6): growing and ripe. */
+  /** Farm sprite cells: 0-35 = first 6x6 sheet, 36-71 = second sheet. Growing and ripe. */
   sprite: { growing: number; ripe: number };
 };
 
@@ -471,6 +474,8 @@ export type Condition =
   | { kind: "shipped"; n: number; item?: ItemId }
   | { kind: "defeated"; n: number; monster?: MonsterId }
   | { kind: "level"; n: number }
+  /** Life-skill level (engine/farm.ts skillLevel). */
+  | { kind: "skill"; skill: LifeSkill; level: number }
   | { kind: "gold"; n: number }
   | { kind: "tamed"; n: number }
   | { kind: "counter"; key: string; n: number }

@@ -120,7 +120,10 @@ function newRequest(state: RestiaState): RequestState | null {
   let gold = template.unit * amount;
   if (template.kind === "deliver") {
     const season = seasonOf(state.day);
-    const crops = Object.values(CROPS).filter((crop) => crop.seasons.includes(season));
+    // Only crops the player can grow by now: in season, seeds unlocked, and a real crop (not a crystal bloom).
+    const crops = Object.values(CROPS).filter(
+      (crop) => crop.seasons.includes(season) && check(state, crop.unlock) && itemDef(crop.produce).category === "crop"
+    );
     const crop = pick(state, crops);
     if (!crop) return null;
     target = crop.produce;

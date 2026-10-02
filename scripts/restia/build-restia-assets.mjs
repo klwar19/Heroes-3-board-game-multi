@@ -6,7 +6,7 @@
  * scripts/restia/codex-gen-batch.mjs from the prompts in scripts/restia/codex-jobs.json). This script turns them into the runtime webps under
  * public/assets/restia/ (gitignored; published to R2 with `npm run media:publish`):
  *
- *   node scripts/restia/build-restia-assets.mjs [--only tachie,bin,backdrops,buildings,sheets,battle,battleArt,feet]
+ *   node scripts/restia/build-restia-assets.mjs [--only tachie,bin,backdrops,buildings,sheets,cropSheets,battle,battleArt,feet]
  *     [--names hilda,bin]   (only those characters' tachie and battle sheets)
  *
  * Backgrounds are keyed by flood-filling from each cell's border over pixels
@@ -863,6 +863,78 @@ async function sheets() {
 }
 
 /**
+ * Codex doesn't always keep a sheet's rows on the even grid (tall plants poke
+ * above the line). Finds the emptiest background line near each nominal cell
+ * boundary and re-lays the cells out on an even grid (same background), so
+ * regrid() never slices a plant in two. Writes tmp/gen/restia/keyed/<name>.
+ */
+async function relayoutOnGutters(file, cols, rows, { tol = 30, reach = 0.3 } = {}) {
+  const img = await rgba(file);
+  const { data, width, height } = img;
+  const bg = [data[0], data[1], data[2]];
+  const busy = (x, y) => {
+    const i = (y * width + x) * 4;
+    return Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) > tol;
+  };
+  const cuts = (n, length, count) => {
+    const cell = length / n;
+    const at = [0];
+    for (let k = 1; k < n; k++) {
+      const nominal = Math.round(k * cell);
+      let best = nominal;
+      let bestCount = Infinity;
+      for (let p = Math.round(nominal - cell * reach); p <= Math.round(nominal + cell * reach); p++) {
+        const c = count(p);
+        if (c < bestCount || (c === bestCount && Math.abs(p - nominal) < Math.abs(best - nominal))) {
+          best = p;
+          bestCount = c;
+        }
+      }
+      at.push(best);
+    }
+    at.push(length);
+    return at;
+  };
+  const ys = cuts(rows, height, (y) => {
+    let c = 0;
+    for (let x = 0; x < width; x++) if (busy(x, y)) c++;
+    return c;
+  });
+  const cellW = Math.round(width / cols);
+  const cellH = Math.round(height / rows);
+  const composites = [];
+  for (let r = 0; r < rows; r++) {
+    // Columns are found per row band, so one row's wide plant can't move another row's cuts.
+    const xs = cuts(cols, width, (x) => {
+      let c = 0;
+      for (let y = ys[r]; y < ys[r + 1]; y++) if (busy(x, y)) c++;
+      return c;
+    });
+    for (let c = 0; c < cols; c++) {
+      const box = { left: xs[c], top: ys[r], width: xs[c + 1] - xs[c], height: ys[r + 1] - ys[r] };
+      const fit = await sharp(file).extract(box).resize(Math.min(box.width, cellW), Math.min(box.height, cellH), { fit: "inside" }).png().toBuffer();
+      const m = await sharp(fit).metadata();
+      composites.push({ input: fit, left: c * cellW + Math.round((cellW - m.width) / 2), top: r * cellH + Math.round((cellH - m.height) / 2) });
+    }
+  }
+  const target = path.join(ROOT, "tmp", "gen", "restia", "keyed", path.basename(file));
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  await sharp({ create: { width: cellW * cols, height: cellH * rows, channels: 3, background: { r: bg[0], g: bg[1], b: bg[2] } } })
+    .composite(composites)
+    .png()
+    .toFile(target);
+  return target;
+}
+
+/** hv14: second crop sheet (18 crops, growing + ripe) and its 6x3 produce/dish icons. */
+async function cropSheets() {
+  const farm2 = raw("hv14-farm-sheet-2");
+  if (farm2) await regrid(await relayoutOnGutters(farm2, 6, 6), 6, 6, 128, "farm/sheet-2.webp", { anchor: "bottom", keyOpts: { tol: 38, step: 20 } });
+  const iconsD = raw("hv14-icons-d");
+  if (iconsD) await regrid(await relayoutOnGutters(iconsD, 6, 3), 6, 3, 96, "icons/d.webp", { keyOpts: { tol: 38, step: 20 } });
+}
+
+/**
  * Battle v2 art (hv7-*): impact effects and projectiles are 4x4 frame sheets
  * flattened onto black (the game draws them with screen blending), board props
  * are keyed like other sheets, battlefields are cropped to the 800x556 board.
@@ -1134,6 +1206,7 @@ if (want("bin")) await binEarth();
 if (want("backdrops")) await backdrops();
 if (want("buildings")) await buildings();
 if (want("sheets")) await sheets();
+if (want("sheets") || want("cropSheets")) await cropSheets();
 if (want("battle")) await battle();
 if (want("battleArt")) await battleArt();
 if (want("terrain")) await terrain();

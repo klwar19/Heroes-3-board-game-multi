@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import creatureAtlases from "@/data/battle-hex/creature-sprite-atlases.json";
 import partyAtlases from "../data/battle-atlases.json";
 import type { Dir, IconRef } from "../engine/types";
+import { CROPS } from "../data/crops";
 import { ITEMS } from "../data/items";
 import { A, SHEETS, SPRINKLER_SHEET } from "./assets";
 import css from "./restia.module.css";
@@ -221,10 +222,10 @@ export function SpriteStill({ slug, height, className }: { slug: string; height:
   );
 }
 
-function gridCell(sheet: string, cells: number, index: number, size: number | string, className?: string, style?: CSSProperties) {
+function gridCell(sheet: string, cells: number, index: number, size: number | string, className?: string, style?: CSSProperties, rows = cells) {
   const col = index % cells;
   const row = Math.floor(index / cells);
-  const pct = (n: number) => (cells === 1 ? 0 : (n / (cells - 1)) * 100);
+  const pct = (n: number, count: number) => (count === 1 ? 0 : (n / (count - 1)) * 100);
   return (
     <span
       aria-hidden
@@ -234,8 +235,8 @@ function gridCell(sheet: string, cells: number, index: number, size: number | st
         width: size,
         height: size,
         backgroundImage: `url(${A(sheet)})`,
-        backgroundSize: `${cells * 100}% ${cells * 100}%`,
-        backgroundPosition: `${pct(col)}% ${pct(row)}%`,
+        backgroundSize: `${cells * 100}% ${rows * 100}%`,
+        backgroundPosition: `${pct(col, cells)}% ${pct(row, rows)}%`,
         backgroundRepeat: "no-repeat",
         ...style
       }}
@@ -243,11 +244,13 @@ function gridCell(sheet: string, cells: number, index: number, size: number | st
   );
 }
 
+/** Icon sheets are 6 columns; sheet d has 3 rows, the others 6. */
+const ICON_ROWS: Record<IconRef["sheet"], number> = { a: 6, b: 6, c: 6, d: 3 };
+
 export function IconSprite({ icon, size = 40, className }: { icon: IconRef; size?: number | string; className?: string }) {
-  return gridCell(SHEETS.icons[icon.sheet], 6, icon.index, size, className);
+  return gridCell(SHEETS.icons[icon.sheet], 6, icon.index, size, className, undefined, ICON_ROWS[icon.sheet]);
 }
 
-/** Item icon; seeds show a pouch with their crop badge. */
 /** A sprinkler of tier 1-3, standing (or spraying) on its patch of soil. */
 export function SprinklerSprite({ tier, size, spraying = false, className, style }: { tier: number; size: number; spraying?: boolean; className?: string; style?: CSSProperties }) {
   const col = Math.max(0, Math.min(2, tier - 1));
@@ -269,16 +272,18 @@ export function SprinklerSprite({ tier, size, spraying = false, className, style
   );
 }
 
+/** Item icon; seeds show a pouch with their harvest's badge (a crystal bloom shows its crystal). */
 export function ItemIcon({ id, size = 40, className }: { id: string; size?: number; className?: string }) {
   const def = ITEMS[id];
   if (!def) return null;
   if (def.sprinkler) return <SprinklerSprite className={className} size={size} tier={def.sprinkler} />;
-  if (def.seedOf && ITEMS[def.seedOf]) {
+  const harvest = def.seedOf ? ITEMS[CROPS[def.seedOf]?.produce ?? def.seedOf] : undefined;
+  if (harvest) {
     return (
       <span className={className} style={{ position: "relative", display: "inline-block", width: size, height: size }}>
         <IconSprite icon={def.icon} size={size} />
         <span style={{ position: "absolute", right: -2, bottom: -2 }}>
-          <IconSprite icon={ITEMS[def.seedOf]!.icon} size={Math.round(size * 0.5)} />
+          <IconSprite icon={harvest.icon} size={Math.round(size * 0.5)} />
         </span>
       </span>
     );
@@ -286,8 +291,9 @@ export function ItemIcon({ id, size = 40, className }: { id: string; size?: numb
   return <IconSprite icon={def.icon} size={size} className={className} />;
 }
 
+/** Farm cell 0-35 on the first sheet, 36-71 on the second. */
 export function FarmSprite({ index, size, className, style }: { index: number; size: number | string; className?: string; style?: CSSProperties }) {
-  return gridCell(SHEETS.farm, 6, index, size, className, style);
+  return gridCell(index < 36 ? SHEETS.farm : SHEETS.farm2, 6, index % 36, size, className, style);
 }
 
 export function DungeonSprite({ index, size, className, style }: { index: number; size: number | string; className?: string; style?: CSSProperties }) {

@@ -1,8 +1,9 @@
 import type { EquipDef, IconRef, ItemCategory, ItemDef, ItemUse } from "../engine/types";
 
 /**
- * Item catalog. Icons index the three 6x6 icon sheets (row-major):
- * a = farm & nature, b = materials & monster drops, c = crafted goods.
+ * Item catalog. Icons index the 6x6 icon sheets (row-major):
+ * a = farm & nature, b = materials & monster drops, c = crafted goods,
+ * plus the 6x3 sheet d = second-wave crops and their dishes.
  * `price` is what shipping/selling pays; shops charge `buy` (default 2x price).
  */
 
@@ -14,6 +15,9 @@ function b(index: number): IconRef {
 }
 function c(index: number): IconRef {
   return { sheet: "c", index };
+}
+function d(index: number): IconRef {
+  return { sheet: "d", index };
 }
 
 type Extra = Partial<Pick<ItemDef, "buy" | "tags" | "use" | "equip" | "seedOf" | "sprinkler">>;
@@ -58,7 +62,21 @@ const CROPS: ItemDef[] = [
   item("sweetPotato", "Sweet Potato", "crop", 150, a(8), "Sweet, warm, and perfect for a cold evening.", { tags: ["veg"] }),
   item("snowRadish", "Snow Radish", "crop", 140, a(9), "Grows even under frost.", { tags: ["veg"] }),
   item("manaBlossom", "Mana Blossom", "crop", 300, a(10), "An otherworld flower that hums with mana. Alchemists pay well.", { tags: ["flower", "mana"] }),
-  item("moonberry", "Moonberry", "crop", 190, a(11), "Silver-blue berries that glow at night. Regrows.", { tags: ["fruit", "mana"] })
+  item("moonberry", "Moonberry", "crop", 190, a(11), "Silver-blue berries that glow at night. Regrows.", { tags: ["fruit", "mana"] }),
+  item("cabbage", "Cabbage", "crop", 190, d(0), "A firm spring cabbage, crisp layer on layer.", { tags: ["veg"] }),
+  item("pinkCat", "Pink Cat", "crop", 110, d(1), "A fluffy pink flower whose petals look like cat ears. A popular gift.", { tags: ["flower"] }),
+  item("toyherb", "Toyherb", "crop", 35, d(2), "A curly little herb that seems to wiggle when nobody is looking.", { tags: ["herb"] }),
+  item("goldenTurnip", "Golden Turnip", "crop", 700, d(3), "A turnip that grew up rich. Only a seasoned farmer's soil can raise one.", { tags: ["veg"] }),
+  item("onion", "Onion", "crop", 95, d(4), "A golden summer onion. The base of half of Garr's recipes.", { tags: ["veg"] }),
+  item("greenPepper", "Green Pepper", "crop", 55, d(5), "Crunchy and a little bitter. Regrows.", { tags: ["veg"] }),
+  item("pineapple", "Pineapple", "crop", 360, d(6), "Takes most of the short northern summer to ripen. Regrows.", { tags: ["fruit"] }),
+  item("lampGrass", "Lamp Grass", "crop", 200, d(7), "Its lantern-shaped flowers glow all night. Mitia reads by them.", { tags: ["flower", "mana"] }),
+  item("hotHotFruit", "Hot-Hot Fruit", "crop", 140, d(8), "Seeds from the Ember Vaults grow a fruit that is warm to the touch. Regrows.", { tags: ["veg", "fruit"] }),
+  item("carrot", "Carrot", "crop", 90, d(9), "A sweet autumn carrot. Monsters love them.", { tags: ["veg"] }),
+  item("spinach", "Spinach", "crop", 80, d(10), "Dark, leafy and full of iron. Quick to grow.", { tags: ["veg"] }),
+  item("ironleaf", "Ironleaf", "crop", 25, d(11), "Metal-veined leaves. Hilda's forge smelts 4 into an iron ingot. Regrows.", { tags: ["ore"] }),
+  item("leek", "Leek", "crop", 120, d(12), "Grows through the frost. Sweeter after a cold night.", { tags: ["veg"] }),
+  item("noelGrass", "Noel Grass", "crop", 160, d(13), "Blooms in the dead of winter. Norheim folk hang it over their doors at midwinter.", { tags: ["flower"] })
 ];
 
 const SEEDS: ItemDef[] = [
@@ -73,7 +91,25 @@ const SEEDS: ItemDef[] = [
   ["sweetPotato", "Sweet Potato Seeds", 40, 80],
   ["snowRadish", "Snow Radish Seeds", 40, 80],
   ["manaBlossom", "Mana Blossom Seeds", 90, 180],
-  ["moonberry", "Moonberry Seeds", 110, 220]
+  ["moonberry", "Moonberry Seeds", 110, 220],
+  ["cabbage", "Cabbage Seeds", 35, 70],
+  ["pinkCat", "Pink Cat Seeds", 20, 40],
+  ["toyherb", "Toyherb Seeds", 8, 15],
+  ["windbell", "Windbell Seeds", 40, 100],
+  ["goldenTurnip", "Golden Turnip Seeds", 150, 350],
+  ["onion", "Onion Seeds", 25, 50],
+  ["greenPepper", "Green Pepper Seeds", 40, 80],
+  ["pineapple", "Pineapple Seeds", 140, 280],
+  ["lampGrass", "Lamp Grass Seeds", 50, 100],
+  ["hotHotFruit", "Hot-Hot Fruit Seeds", 80, 160],
+  ["emberbloom", "Emberbloom Seeds", 40, 100],
+  ["carrot", "Carrot Seeds", 25, 50],
+  ["spinach", "Spinach Seeds", 15, 30],
+  ["ironleaf", "Ironleaf Seeds", 30, 60],
+  ["stonepetal", "Stonepetal Seeds", 40, 100],
+  ["leek", "Leek Seeds", 35, 70],
+  ["noelGrass", "Noel Grass Seeds", 40, 80],
+  ["frostglass", "Frostglass Lily Seeds", 40, 100]
 ].map(([crop, name, price, buy]) =>
   item(`seed-${crop}`, name as string, "seed", price as number, a(24), `Plant on tilled soil in the right season.`, {
     buy: buy as number,
@@ -212,6 +248,26 @@ const FOODS: ItemDef[] = [
     stamina: 999,
     hpPct: 100,
     buff: { id: "feast", label: "Grand Feast (+3 ATK/DEF/MAG)", stats: { atk: 3, def: 3, mag: 3 } }
+  }),
+  food("hotHotCurry", "Hot-Hot Curry", 420, d(14), "Restores 70 stamina and 60 HP. Today: +3 ATK, +1 SPD.", {
+    stamina: 70,
+    hp: 60,
+    buff: { id: "hotHotCurry", label: "Hot-Hot Curry (+3 ATK, +1 SPD)", stats: { atk: 3, spd: 1 } }
+  }),
+  food("cabbageRolls", "Cabbage Rolls", 300, d(15), "Restores 55 stamina and 70 HP. Today: +2 RES.", {
+    stamina: 55,
+    hp: 70,
+    buff: { id: "cabbageRolls", label: "Cabbage Rolls (+2 RES)", stats: { res: 2 } }
+  }),
+  food("pineappleJuice", "Pineapple Juice", 220, d(16), "Restores 40 stamina and 30 MP. Today: +2 LUK.", {
+    stamina: 40,
+    mp: 30,
+    buff: { id: "pineappleJuice", label: "Pineapple Juice (+2 LUK)", stats: { luk: 2 } }
+  }),
+  food("spinachQuiche", "Spinach Quiche", 360, d(17), "Restores 60 stamina and 50 HP. Today: +2 DEF, +15 max stamina.", {
+    stamina: 60,
+    hp: 50,
+    buff: { id: "spinachQuiche", label: "Spinach Quiche (+2 DEF, +15 stamina)", stats: { def: 2 }, stamina: 15 }
   })
 ];
 

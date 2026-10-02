@@ -42,7 +42,8 @@ export const THEMES: ThemeDef[] = [
       { item: "ironOre", n: 3, weight: 3 },
       { item: "silverOre", n: 1, weight: 1 },
       { item: "manaCrystal", n: 1, weight: 1 },
-      { item: "returnScroll", n: 1, weight: 1 }
+      { item: "returnScroll", n: 1, weight: 1 },
+      { item: "seed-stonepetal", n: 2, weight: 1 }
     ],
     ore: [
       { item: "stone", weight: 3 },
@@ -81,7 +82,8 @@ export const THEMES: ThemeDef[] = [
       { item: "iceCrystal", n: 1, weight: 2 },
       { item: "manaCrystal", n: 1, weight: 2 },
       { item: "lightCrystal", n: 1, weight: 1 },
-      { item: "phoenixFeather", n: 1, weight: 1 }
+      { item: "phoenixFeather", n: 1, weight: 1 },
+      { item: "seed-frostglass", n: 2, weight: 1 }
     ],
     ore: [
       { item: "ironOre", weight: 3 },
@@ -118,7 +120,9 @@ export const THEMES: ThemeDef[] = [
       { item: "fireCrystal", n: 2, weight: 2 },
       { item: "mythrilOre", n: 1, weight: 1 },
       { item: "lightCrystal", n: 1, weight: 2 },
-      { item: "phoenixFeather", n: 1, weight: 1 }
+      { item: "phoenixFeather", n: 1, weight: 1 },
+      { item: "seed-hotHotFruit", n: 3, weight: 2 },
+      { item: "seed-emberbloom", n: 2, weight: 1 }
     ],
     ore: [
       { item: "silverOre", weight: 3 },
@@ -155,7 +159,8 @@ export const THEMES: ThemeDef[] = [
       { item: "mythrilOre", n: 2, weight: 2 },
       { item: "lightCrystal", n: 1, weight: 2 },
       { item: "darkCrystal", n: 1, weight: 2 },
-      { item: "dragonScale", n: 1, weight: 1 }
+      { item: "dragonScale", n: 1, weight: 1 },
+      { item: "seed-goldenTurnip", n: 1, weight: 1 }
     ],
     ore: [
       { item: "goldOre", weight: 3 },

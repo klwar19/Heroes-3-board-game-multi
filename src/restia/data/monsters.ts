@@ -119,7 +119,7 @@ const LIST: MonsterDef[] = [
   }),
   mon("sprite", "Snow Pixie", "sprite", s(18, 14, 5, 4, 9, 8, 8, 8), s(4, 2, 1, 0.9, 1.8, 1.6, 0.4, 0.6), {
     move: 5, range: 3, flying: true, magic: true, element: "wind", resist: { earth: 1.5, wind: 0.5 }, skills: ["windCutter", "mend", "sleepPowder", "blink"], exp: 10, gold: 8,
-    drops: [{ item: "wildBerries", chance: 0.4 }, { item: "windCrystal", chance: 0.1 }], tame: 0.45, farmJob: "water",
+    drops: [{ item: "wildBerries", chance: 0.4 }, { item: "windCrystal", chance: 0.1 }, { item: "seed-windbell", chance: 0.05 }], tame: 0.45, farmJob: "water",
     desc: "A mischievous snow fairy. Befriended pixies water crops.",
     passives: ["monEvasiveFlyer"],
     ai: {

@@ -61,6 +61,7 @@ const LIST: RecipeDef[] = [
   forge("smelt-iron", "Smelt Iron Ingot", "ironIngot", 1, [{ item: "ironOre", n: 3 }], 0, 1, 3),
   forge("smelt-silver", "Smelt Silver Ingot", "silverIngot", 1, [{ item: "silverOre", n: 3 }], 0, 1, 4),
   forge("smelt-gold", "Smelt Gold Ingot", "goldIngot", 1, [{ item: "goldOre", n: 3 }], 0, 2, 6),
+  forge("smelt-ironleaf", "Smelt Ironleaf", "ironIngot", 1, [{ item: "ironleaf", n: 4 }], 0, 2, 3),
   ...(["sword", "spear", "hammer", "bow", "staff"] as const).flatMap((type) =>
     TIER_INPUTS.map((tier, index) => forge(`w-${type}-${index}`, "", weaponId(type, index), 1, tier.metal, tier.gold, tier.level, 6 + index * 4))
   ),
@@ -118,7 +119,11 @@ const LIST: RecipeDef[] = [
   cook("moonberryTart", "", "moonberryTart", 1, [{ item: "moonberry", n: 2 }, { item: "egg", n: 1 }, { item: "honey", n: 1 }], 8),
   cook("pickles", "", "pickles", 2, [{ item: "turnip", n: 3 }]),
   cook("herbTea", "", "herbTea", 2, [{ item: "wildHerb", n: 2 }]),
-  cook("feast", "", "feast", 1, [{ item: "stew", n: 1 }, { item: "salad", n: 1 }, { item: "pumpkinPie", n: 1 }, { item: "melon", n: 1 }], 20)
+  cook("feast", "", "feast", 1, [{ item: "stew", n: 1 }, { item: "salad", n: 1 }, { item: "pumpkinPie", n: 1 }, { item: "melon", n: 1 }], 20),
+  cook("hotHotCurry", "", "hotHotCurry", 1, [{ item: "hotHotFruit", n: 1 }, { item: "carrot", n: 1 }, { item: "onion", n: 1 }, { item: "potato", n: 1 }], 10),
+  cook("cabbageRolls", "", "cabbageRolls", 1, [{ item: "cabbage", n: 1 }, { item: "onion", n: 1 }, { item: "egg", n: 1 }], 6),
+  cook("pineappleJuice", "", "pineappleJuice", 2, [{ item: "pineapple", n: 1 }], 5),
+  cook("spinachQuiche", "", "spinachQuiche", 1, [{ item: "spinach", n: 2 }, { item: "egg", n: 2 }, { item: "milk", n: 1 }], 7)
 ];
 
 export const RECIPES: Record<string, RecipeDef> = Object.fromEntries(LIST.map((recipe) => [recipe.id, recipe]));

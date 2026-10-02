@@ -1,12 +1,20 @@
-import type { CropDef, Debris, Season } from "../engine/types";
+import type { BuildingId, Condition, CropDef, Debris, Season } from "../engine/types";
 
 /** One single-harvest crop per season can fuse into a giant crop (engine/farm.ts). */
 const GIANT_CROPS = new Set(["potato", "melon", "pumpkin", "snowRadish"]);
 
+const building = (id: BuildingId, level: number): Condition => ({ kind: "building", id, level });
+const all = (...of: Condition[]): Condition => ({ kind: "all", of });
+
+/** Optional per-crop extras: a produce item other than the crop id, and when its seeds go on sale. */
+type Extra = { produce?: string; unlock?: Condition };
+
 /**
- * Crops. `sprite` indexes the 6x6 farm sheet (row-major): each crop has a
- * crop-specific "growing" and "ripe" cell; the first half of growth uses the
- * shared sprout / young-plant cells (FARM_SPRITE).
+ * Crops. `sprite` indexes the farm sheets (row-major 6x6; 0-35 = sheet 1,
+ * 36-71 = sheet 2): each crop has a crop-specific "growing" and "ripe" cell;
+ * the first half of growth uses the shared sprout / young-plant cells (FARM_SPRITE).
+ * `unlock` gates the seed shops (data/shops.ts) and guild delivery requests;
+ * some seeds also turn up earlier in dungeon chests, forage or monster drops.
  */
 export const CROPS: Record<string, CropDef> = Object.fromEntries(
   (
@@ -21,20 +29,40 @@ export const CROPS: Record<string, CropDef> = Object.fromEntries(
       ["eggplant", "Eggplant", ["autumn"], 7, 3, [1, 2], 5, 14],
       ["sweetPotato", "Sweet Potato", ["autumn"], 8, undefined, [1, 2], 7, 16],
       ["snowRadish", "Snow Radish", ["winter"], 7, undefined, [1, 2], 7, 18],
-      ["manaBlossom", "Mana Blossom", ["spring", "summer", "autumn"], 10, undefined, [1, 1], 10, 20],
-      ["moonberry", "Moonberry", ["autumn", "winter"], 12, 4, [1, 2], 9, 22]
-    ] as [string, string, Season[], number, number | undefined, [number, number], number, number][]
-  ).map(([id, name, seasons, days, regrow, yieldRange, xp, cell]) => [
+      ["manaBlossom", "Mana Blossom", ["spring", "summer", "autumn"], 10, undefined, [1, 1], 10, 20, { unlock: building("store", 2) }],
+      ["moonberry", "Moonberry", ["autumn", "winter"], 12, 4, [1, 2], 9, 22, { unlock: building("store", 2) }],
+      // Second sheet (hv14).
+      ["cabbage", "Cabbage", ["spring"], 9, undefined, [1, 1], 8, 36],
+      ["pinkCat", "Pink Cat", ["spring"], 6, undefined, [1, 1], 5, 38],
+      ["toyherb", "Toyherb", ["spring", "summer"], 4, undefined, [1, 2], 3, 40],
+      ["windbell", "Windbell", ["spring"], 12, undefined, [1, 2], 10, 42, { produce: "windCrystal", unlock: { kind: "rank", rank: "C" } }],
+      ["goldenTurnip", "Golden Turnip", ["spring"], 8, undefined, [1, 1], 20, 44, { unlock: all(building("store", 3), { kind: "skill", skill: "farming", level: 7 }) }],
+      ["onion", "Onion", ["summer"], 7, undefined, [1, 2], 5, 46],
+      ["greenPepper", "Green Pepper", ["summer"], 7, 3, [1, 2], 4, 48],
+      ["pineapple", "Pineapple", ["summer"], 15, 7, [1, 1], 12, 50, { unlock: building("store", 2) }],
+      ["lampGrass", "Lamp Grass", ["summer"], 8, undefined, [1, 1], 7, 52, { unlock: building("atelier", 2) }],
+      ["hotHotFruit", "Hot-Hot Fruit", ["summer"], 9, 4, [1, 2], 8, 54, { unlock: { kind: "floor", n: 11 } }],
+      ["emberbloom", "Emberbloom", ["summer"], 12, undefined, [1, 2], 10, 56, { produce: "fireCrystal", unlock: all(building("atelier", 2), { kind: "floor", n: 15 }) }],
+      ["carrot", "Carrot", ["autumn"], 7, undefined, [1, 2], 5, 58],
+      ["spinach", "Spinach", ["autumn"], 5, undefined, [1, 1], 4, 60],
+      ["ironleaf", "Ironleaf", ["autumn"], 6, 3, [2, 3], 5, 62, { unlock: building("smithy", 2) }],
+      ["stonepetal", "Stonepetal", ["autumn"], 12, undefined, [1, 2], 10, 64, { produce: "earthCrystal", unlock: all(building("atelier", 2), { kind: "floor", n: 5 }) }],
+      ["leek", "Leek", ["winter"], 8, undefined, [1, 2], 6, 66],
+      ["noelGrass", "Noel Grass", ["winter"], 7, undefined, [1, 1], 6, 68, { unlock: building("shrine", 1) }],
+      ["frostglass", "Frostglass Lily", ["winter"], 12, undefined, [1, 2], 10, 70, { produce: "iceCrystal", unlock: all(building("atelier", 2), { kind: "floor", n: 10 }) }]
+    ] as [string, string, Season[], number, number | undefined, [number, number], number, number, Extra?][]
+  ).map(([id, name, seasons, days, regrow, yieldRange, xp, cell, extra]) => [
     id,
     {
       id,
       name,
       seed: `seed-${id}`,
-      produce: id,
+      produce: extra?.produce ?? id,
       seasons,
       days,
       ...(regrow ? { regrow } : {}),
       ...(GIANT_CROPS.has(id) ? { giant: true } : {}),
+      ...(extra?.unlock ? { unlock: extra.unlock } : {}),
       yield: yieldRange,
       xp,
       sprite: { growing: cell, ripe: cell + 1 }

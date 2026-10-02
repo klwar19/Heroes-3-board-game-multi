@@ -59,6 +59,18 @@ Pocket Haven's field (`engine/farm.ts`, `engine/day.ts`, crops in `data/crops.ts
   a few days after each picking. Out-of-season crops wither when the season turns and
   must be cut (Sickle) before that soil takes seeds again. Dry, empty tilled soil may
   revert overnight; empty untilled plots may sprout weeds.
+- **Crops** (30): every season has cheap Trading Post staples plus gated ones. Each
+  crop's `unlock` condition gates its seeds in the shops (`seed()` in `data/shops.ts`
+  adds the season) and keeps guild delivery requests to crops the player can grow.
+  Pineapple / Mana Blossom / Moonberry need Trading Post 2; Golden Turnip needs
+  Trading Post 3 and Farming 7 (also a rare Rift chest); Noel Grass the restored
+  shrine; Ironleaf (smelts 4 -> iron ingot) Smithy 2; Lamp Grass Apothecary 2;
+  Hot-Hot Fruit the Ember Vaults (floor 11; chests there drop its seeds). Crystal
+  blooms harvest existing crystals: Stonepetal (earth, floor 5), Frostglass Lily (ice,
+  floor 10), Emberbloom (fire, floor 15) at the Apothecary 2, each also found in that
+  vault's chests; Windbell (wind) at the guild shop from rank C or from Snow Pixies.
+  Toyherb seeds also turn up while foraging in spring/summer. Sprites 36-71 live on
+  the second farm sheet (`farm/sheet-2.webp`), produce/dish icons on 6x3 sheet d.
 - **Rain** waters every tilled plot for the day, including soil tilled after it started.
 - **Sprinklers** (forged at the Smithy): Iron (4 neighbours), Silver (8 around),
   Mythril (5x5 square). Place one on a cleared, untilled field plot with hotbar slot 8;
