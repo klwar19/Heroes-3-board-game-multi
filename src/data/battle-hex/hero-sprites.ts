@@ -10,10 +10,10 @@ import type { CreatureSpriteAtlas } from "./creature-sprites";
  * sprite (Forge) are imported into the same atlas file with
  * `scripts/import-sprite-sheet.mjs --meta src/data/battle-hex/hero-sprite-atlases.json`.
  *
- * Blue Archive heroes ride as themselves (OWN_HERO_SPRITES, rotoscoped from
- * HotA riders). A hero whose town has no sprite (other anime / wuxia /
- * Warhammer towns, or a sheet not imported yet) gets NO figure — nothing is
- * invented.
+ * Blue Archive and wuxia (Azure Breeze / Heavenly Demon) heroes ride as
+ * themselves (OWN_HERO_SPRITES, rotoscoped from HotA / H3 riders). A hero whose
+ * town has no sprite (other anime / Warhammer towns, or a sheet not imported
+ * yet) gets NO figure — nothing is invented.
  */
 export type HeroSpriteAtlas = CreatureSpriteAtlas & {
   /**
@@ -94,7 +94,20 @@ const OWN_HERO_SPRITES: Readonly<Record<string, string>> = {
   yuuka_blue_archive: "hero-ba-yuuka",
   seia_blue_archive: "hero-ba-seia",
   chise_blue_archive: "hero-ba-chise",
-  kei_blue_archive: "hero-ba-kei"
+  kei_blue_archive: "hero-ba-kei",
+  // Azure Breeze Sect: their portraits on the Castle riders' white horses.
+  qingyun: "hero-wx-qingyun",
+  lingxi: "hero-wx-lingxi",
+  jianxu: "hero-wx-jianxu",
+  yulian: "hero-wx-yulian",
+  // Heavenly Demon Palace: their portraits on the Inferno riders' black horses.
+  xuedao: "hero-wx-xuedao",
+  guiyan: "hero-wx-guiyan",
+  xuanming: "hero-wx-xuanming",
+  yaoji: "hero-wx-yaoji",
+  molian: "hero-wx-molian",
+  luohun: "hero-wx-luohun",
+  shiyan: "hero-wx-shiyan"
 };
 
 /** Candidate atlas slugs for a hero, best first (none for towns without a PC hero). */

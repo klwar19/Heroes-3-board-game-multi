@@ -122,7 +122,9 @@ describe("permanent cards", () => {
     }
     const traps = state.combat!.battlefieldTokens?.filter((token) => token.kind === "factory_trap") ?? [];
     expect(traps).toHaveLength(expected);
-    expect(traps.every((token) => token.damage === 2 && token.armed === true)).toBe(true);
+    expect(traps.every((token) => token.armed === true)).toBe(true);
+    // USER RULING 2026-10-02: the LAST trap at Power 1/2 deals only 1.
+    expect(traps.map((token) => token.damage)).toEqual(expected === 1 ? [2] : expected === 2 ? [2, 1] : [2, 2, 1]);
     if (magic === 0) {
       expect(getPlayerView(state, "p1").combat!.battlefieldTokens?.filter((token) => token.kind === "factory_trap")).toHaveLength(1);
       const enemyView = getPlayerView(state, "p2");

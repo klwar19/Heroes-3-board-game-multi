@@ -4,7 +4,8 @@
  * the whole fortress, cut into the PC siege pieces. The same recipe paints the
  * other towns without a PC siege set (PAINTED_TOWNS below: Little Busters and
  * MGQ on the Castle's layout, Blue Archive on the Tower's, Azur Lane on the
- * Cove's).
+ * Cove's, the Azure Breeze Sect on the Rampart's, the Heavenly Demon Palace on
+ * the Inferno's).
  *
  * The Forge's fortress is laid out exactly like the Factory's (HotA) siege set:
  * Codex repainted a composite of the Factory pieces (intact, and a second
@@ -50,13 +51,21 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  - azur_lane: the Cove's layout (the Naval Base harbour: concrete and riveted
  *    steel, gun-turret bastions, the command tower as the keep, a sea-water
  *    channel moat); guard Honolulu, the cruiser gunner.
+ *  - azure_breeze: the Rampart's layout (a xianxia mountain sect: white stone,
+ *    jade-tiled roofs, pagoda towers, the sect pagoda as the keep, a spring-water
+ *    moat); guard the Golden Core Elder, the sect's shooter.
+ *  - heavenly_demon: the Inferno's layout (a demonic-cult palace: black basalt,
+ *    blood-red lacquer, black pagoda towers and keep, a blood-lava moat); guard
+ *    the Gu Witch, the palace's shooter.
  */
 const PAINTED_TOWNS = {
   forge: { layout: "factory", guard: "forge-grunt" },
   little_busters: { layout: "castle", guard: "lb-softball" },
   blue_archive: { layout: "tower", guard: "ba-miyo" },
   mgq: { layout: "castle", guard: "mgq-cupi" },
-  azur_lane: { layout: "cove", guard: "al-honolulu" }
+  azur_lane: { layout: "cove", guard: "al-honolulu" },
+  azure_breeze: { layout: "rampart", guard: "wx-core-elder" },
+  heavenly_demon: { layout: "inferno", guard: "wx-gu-witches" }
 };
 const TOWN = process.argv[2] ?? "forge";
 if (!PAINTED_TOWNS[TOWN]) throw new Error(`no painted siege set for ${TOWN} (${Object.keys(PAINTED_TOWNS).join(", ")})`);

@@ -545,6 +545,12 @@ export type UnitAbilityEffectDefinition =
       around?: "target";
       /** Splash ENEMY units only (the Chakra Burst hits friend AND foe). */
       enemiesOnly?: boolean;
+      /**
+       * Neutral Clockwork Dwarves: after the splash, remove ALL damage from
+       * this unit (it must still be on the board). Unconditional — it resolves
+       * even when no enemy stood adjacent to take the splash.
+       */
+      healSelfFully?: boolean;
     }
   | {
       /**
@@ -558,6 +564,19 @@ export type UnitAbilityEffectDefinition =
        * UNCLAMPED like Hatred, so an elemental attacker still receives it.
        */
       type: "ADJACENT_ALLY_ATTACK_AURA";
+      amount: number;
+    }
+  | {
+      /**
+       * Neutral Mermaids ([unit_passive]): "Enemy units have -1 Attack during
+       * Retaliation." While this unit is alive on the battlefield, EVERY
+       * Retaliation Attack made by a unit of another controller suffers
+       * `amount` less Attack — whichever of this unit's allies it strikes back
+       * at. Each living carrier applies its own penalty (two Mermaids = -2).
+       * Applied in the attack math beside the Dragon Flies' penalty (an innate
+       * modifier, unclamped like it).
+       */
+      type: "ENEMY_RETALIATION_ATTACK_AURA";
       amount: number;
     }
   | {
@@ -3050,6 +3069,27 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "RETALIATION_AGAINST_ATTACK_PENALTY", amount: 2 },
     implementationStatus: "implemented"
   },
+  // Neutral Mermaids (Stretch Goals card 101): "[unit_passive] Enemy units have
+  // -1 [attack] during [unit_retaliation]." A battlefield-wide aura while the
+  // Mermaids live — every enemy Retaliation Attack loses 1 Attack.
+  "mermaids-siren-song": {
+    id: "mermaids-siren-song",
+    name: "Siren Song",
+    text: "While this unit is on the battlefield, enemy units have -1 Attack during their Retaliation Attacks.",
+    effect: { type: "ENEMY_RETALIATION_ATTACK_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Neutral Clockwork Dwarves (Stretch Goals card 099): "[unit_attack] Deal 1
+  // [damage] to all adjacent enemy Units and remove all [damage] from this
+  // Unit." The AFTER_ATTACK_SPLASH seam (own declared attacks only, before the
+  // parked Retaliation) around self, enemies only, then a full self-repair.
+  "clockwork-dwarves-steam-burst": {
+    id: "clockwork-dwarves-steam-burst",
+    name: "Steam Burst",
+    text: "After this unit's attack, deal 1 damage to every adjacent enemy unit, then remove all damage from this unit.",
+    effect: { type: "AFTER_ATTACK_SPLASH", amount: 1, enemiesOnly: true, healSelfFully: true },
+    implementationStatus: "implemented"
+  },
   // ---- Creature Bank "while Stacked" / on-attack bank-card abilities --------
   // Each below is wired and engine-enforced; the `requiresStacked` ones apply
   // only while the bank defender still carries its Stack Token.
@@ -4463,7 +4503,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-gremlin-recover": { id: "town-gremlin-recover", name: "Salvaged Magic", text: "At the start of combat, you may take one Spell from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "gremlin-recover" }, implementationStatus: "implemented" },
   "town-golem-cap": { id: "town-golem-cap", name: "Tempered Iron", text: "In the first combat round, take at most 1 damage from each attack.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-cap" }, implementationStatus: "implemented" },
   "town-golem-shield": { id: "town-golem-shield", name: "Iron Guard", text: "Always treated as having a Defense token. Its Defense roll grants +1 Defense on 0 or +1.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-shield" }, implementationStatus: "implemented" },
-  "town-magi-recover": { id: "town-magi-recover", name: "Arcane Recovery", text: "After this unit's own Attack die resolves -1 or 0, take one card from your discard pile into your hand, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "magi-recover" }, implementationStatus: "implemented" },
+  "town-magi-recover": { id: "town-magi-recover", name: "Arcane Recovery", text: "In the first combat round, after this unit's own attack — later, only after its own Attack die resolves -1 — take one card from your discard pile into your hand, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "magi-recover" }, implementationStatus: "implemented" },
   "town-naga-mend": { id: "town-naga-mend", name: "Renewing Coils", text: "Once per combat round, after being attacked or damaged by a Spell, heal 1 HP if still alive.", effect: { type: "TOWN_VETERANCY", mechanic: "naga-mend" }, implementationStatus: "implemented" },
   "town-black-dragon-guard": { id: "town-black-dragon-guard", name: "Odd-Hour Guard", text: "On odd-numbered combat rounds, gain +1 Defense when attacked, but not against Retaliation Attacks.", effect: { type: "TOWN_VETERANCY", mechanic: "black-dragon-guard" }, implementationStatus: "implemented" },
   "town-titan-bolt": { id: "town-titan-bolt", name: "Thunderbolt", text: "After attacking or retaliating against an adjacent unit, roll an extra die: on -1 or 0, deal 2 additional damage.", effect: { type: "TOWN_VETERANCY", mechanic: "titan-bolt" }, implementationStatus: "implemented" },

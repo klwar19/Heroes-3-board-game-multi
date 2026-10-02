@@ -881,7 +881,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "mana-magician",
       name: "Mana Magician",
-      text: "Twice per combat, casting a Spell may exceed your per-round spell limit."
+      text: "Twice per combat (at most once per combat round), casting a Spell may exceed your per-round spell limit."
     },
     cardImage: "/assets/units-commander-temple_guardian.webp"
   },
@@ -1125,7 +1125,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "tinkerer",
       name: "Tinkerer",
-      text: "War machines cost you 5 less gold (to a minimum of 0). At the start of battle, place 1/2/3 Mechanical Traps at Power 0/1/2; each is spent when a unit steps on it and deals 2 damage. You may keep up to 2 war machines as permanents: 1 active and 1 in reserve. During your own combat turn, switch them any number of times: the first switch each Combat is free, then each switch costs 1 gold. Without gold, you cannot switch again. Other permanents still use the normal permanent limit, including Pandora's Box expansions."
+      text: "War machines cost you 5 less gold (to a minimum of 0). At the start of battle, place 1/2/3 Mechanical Traps at Power 0/1/2; each is spent when a unit steps on it and deals 2 damage, except the last one at Power 1/2 (the 2nd / the 3rd), which deals only 1. You may keep up to 2 war machines as permanents: 1 active and 1 in reserve. During your own combat turn, switch them any number of times: the first switch each Combat is free, then each switch costs 1 gold. Without gold, you cannot switch again. Other permanents still use the normal permanent limit, including Pandora's Box expansions."
     },
     cardImage: "/assets/units-commander-factory.webp"
   },

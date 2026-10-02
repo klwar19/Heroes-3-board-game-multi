@@ -9245,6 +9245,8 @@ export type ResolutionStackItem = {
      * reused when the attack resumes so the die is not rerolled.
      */
     rolledCandidate?: AttackRollCandidate;
+    /** Mermaids' Siren Song was announced for this Retaliation Attack (resume-safe). */
+    retaliationAuraAnnounced?: boolean;
     /** Set once the lethal-save window has been offered for this attack. */
     lethalSaveOffered?: boolean;
     damageTransfers?: Record<
@@ -10370,6 +10372,12 @@ export type PlayerState = {
      * one Spell cast exceed the per-round spell limit. NOT reset per round.
      */
     commanderManaCharges?: number;
+    /**
+     * Mana Magician: true once a charge was burned THIS combat round — at most
+     * one over-limit cast per round (USER NERF 2026-10-01). Cleared at every
+     * combat-round end and at combat start/end.
+     */
+    commanderManaUsedThisRound?: boolean;
     /**
      * Anime Cultivation Core Formation (realm 2, §5.6): true once this player
      * has spent their one free Attack-die reroll THIS COMBAT. Reset to false at

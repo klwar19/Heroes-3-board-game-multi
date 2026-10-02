@@ -21,7 +21,7 @@ import {
   getOrthogonalNeighbors,
   isHexPosition,
 } from "../battlefield";
-import { unitAdjacentToCell, unitAtCell, unitDistance, unitDistanceAt, unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
+import { unitAtCell, unitDistance, unitDistanceAt, unitsAdjacent, unitsAdjacentAt } from "../hex-footprint";
 import {
   hexAreaAimedTargets,
   hexAreaAttackOf,
@@ -1603,10 +1603,11 @@ function azureFormationBonus(state: GameState, unit: CombatUnitState, destinatio
   const allies = Object.values(combat.units).filter(
     (ally) => ally.id !== unit.id && ally.controllerId === unit.controllerId && unitRemainingHealth(ally) > 0,
   );
-  // Same footprint rule as the engine's Sect Qi link (gainSectQiAfterMove).
-  const adjacent = allies.filter((ally) => unitAdjacentToCell(combat, ally, destination));
+  // Same footprint rule as the engine's Sect Qi link (gainSectQiAfterMove):
+  // the mover's whole body (a double-wide tail too) at the destination.
+  const adjacent = allies.filter((ally) => unitsAdjacentAt(combat, unit, destination, ally));
   if (adjacent.length === 0) return 0;
-  const newLink = adjacent.some((ally) => !unitAdjacentToCell(combat, ally, unit.position));
+  const newLink = adjacent.some((ally) => !unitsAdjacentAt(combat, unit, unit.position, ally));
   const qi = currentSectQi(state, unit.controllerId);
   const room = sectQiCapacity(state, unit.controllerId) - qi;
   return (qi > 0 ? 10 : 0) + (newLink && room > 0 ? 8 : 0) + (adjacent.length >= 2 ? 4 : 0);

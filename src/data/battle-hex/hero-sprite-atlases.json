@@ -1212,5 +1212,357 @@
         "frames": 8
       }
     }
+  },
+  "hero-wx-qingyun": {
+    "image": "/assets/battle-hex/heroes/hero-wx-qingyun.webp",
+    "frameWidth": 81,
+    "frameHeight": 117,
+    "columns": 11,
+    "anchorX": 36,
+    "anchorY": 114,
+    "originX": 41,
+    "originY": 56,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-lingxi": {
+    "image": "/assets/battle-hex/heroes/hero-wx-lingxi.webp",
+    "frameWidth": 76,
+    "frameHeight": 115,
+    "columns": 11,
+    "anchorX": 32,
+    "anchorY": 111,
+    "originX": 37,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-jianxu": {
+    "image": "/assets/battle-hex/heroes/hero-wx-jianxu.webp",
+    "frameWidth": 83,
+    "frameHeight": 118,
+    "columns": 11,
+    "anchorX": 37,
+    "anchorY": 115,
+    "originX": 42,
+    "originY": 57,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-yulian": {
+    "image": "/assets/battle-hex/heroes/hero-wx-yulian.webp",
+    "frameWidth": 77,
+    "frameHeight": 115,
+    "columns": 11,
+    "anchorX": 31,
+    "anchorY": 112,
+    "originX": 36,
+    "originY": 54,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-xuedao": {
+    "image": "/assets/battle-hex/heroes/hero-wx-xuedao.webp",
+    "frameWidth": 82,
+    "frameHeight": 121,
+    "columns": 11,
+    "anchorX": 34,
+    "anchorY": 117,
+    "originX": 39,
+    "originY": 59,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-guiyan": {
+    "image": "/assets/battle-hex/heroes/hero-wx-guiyan.webp",
+    "frameWidth": 77,
+    "frameHeight": 115,
+    "columns": 11,
+    "anchorX": 31,
+    "anchorY": 111,
+    "originX": 36,
+    "originY": 53,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-xuanming": {
+    "image": "/assets/battle-hex/heroes/hero-wx-xuanming.webp",
+    "frameWidth": 78,
+    "frameHeight": 115,
+    "columns": 11,
+    "anchorX": 32,
+    "anchorY": 111,
+    "originX": 37,
+    "originY": 52,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-yaoji": {
+    "image": "/assets/battle-hex/heroes/hero-wx-yaoji.webp",
+    "frameWidth": 79,
+    "frameHeight": 117,
+    "columns": 11,
+    "anchorX": 34,
+    "anchorY": 113,
+    "originX": 39,
+    "originY": 55,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-molian": {
+    "image": "/assets/battle-hex/heroes/hero-wx-molian.webp",
+    "frameWidth": 80,
+    "frameHeight": 116,
+    "columns": 11,
+    "anchorX": 34,
+    "anchorY": 112,
+    "originX": 39,
+    "originY": 54,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-luohun": {
+    "image": "/assets/battle-hex/heroes/hero-wx-luohun.webp",
+    "frameWidth": 82,
+    "frameHeight": 116,
+    "columns": 11,
+    "anchorX": 32,
+    "anchorY": 112,
+    "originX": 37,
+    "originY": 55,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
+  },
+  "hero-wx-shiyan": {
+    "image": "/assets/battle-hex/heroes/hero-wx-shiyan.webp",
+    "frameWidth": 79,
+    "frameHeight": 121,
+    "columns": 11,
+    "anchorX": 33,
+    "anchorY": 117,
+    "originX": 38,
+    "originY": 59,
+    "groups": {
+      "0": {
+        "row": 1,
+        "frames": 1
+      },
+      "1": {
+        "row": 0,
+        "frames": 4
+      },
+      "2": {
+        "row": 2,
+        "frames": 11
+      },
+      "3": {
+        "row": 3,
+        "frames": 11
+      },
+      "4": {
+        "row": 4,
+        "frames": 8
+      }
+    }
   }
 }

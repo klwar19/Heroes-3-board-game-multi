@@ -1973,6 +1973,9 @@ export function finalizeCommandersAfterCombat(state: GameState): Set<PlayerId> {
     if (player?.combatStats.commanderManaCharges !== undefined) {
       delete player.combatStats.commanderManaCharges;
     }
+    if (player?.combatStats.commanderManaUsedThisRound !== undefined) {
+      delete player.combatStats.commanderManaUsedThisRound;
+    }
   }
 
   return survivors;

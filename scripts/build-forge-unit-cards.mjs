@@ -58,7 +58,7 @@ const units = [
     neutral: { stats: [4, 1, 6, 5], cost: [17], text: ["{unit_passive}", "At the start of each Combat round, roll the Attack die: on +1, this unit gains +3", "{initiative}", "this round."] } },
   { slug: "tanks", name: "Tanks", tier: "golden", type: "ranged", focus: "centre",
     few: { stats: [6, 2, 6, 4], cost: [14], upgrade: [23, 1], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 2."] },
-    pack: { stats: [6, 2, 8, 5], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 3."] },
+    pack: { stats: [6, 2, 7, 5], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 3."] },
     neutral: { stats: [5, 2, 6, 5], cost: [27], text: ["{unit_attack}", "You may also attack an enemy unit adjacent to the target. For the purpose of this attack,", "{attack}", "is 2."] } },
   { slug: "cyberbrutes", name: "Cyberbrutes", tier: "golden", type: "ground", focus: "centre",
     few: { stats: [8, 2, 7, 6], cost: [22, 1], upgrade: [35, 2], text: ["{unit_attack}", "Decrease the target's", "{defense}", "by half, rounded up (to a minimum of 0)."] },

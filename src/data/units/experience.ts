@@ -124,7 +124,8 @@ export const UNIT_RANK_STAT_BONUSES = {
   ]
 } as const;
 
-export const UNIT_XP_PVP_WIN = 2;
+/** USER RULING 2026-10-02: PvP battles train nobody (was 2). */
+export const UNIT_XP_PVP_WIN = 0;
 export const UNIT_XP_BANK_MIN = 2;
 export const DRILL_UNIT_XP = 1;
 

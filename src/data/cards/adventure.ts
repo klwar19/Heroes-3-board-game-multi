@@ -5311,10 +5311,12 @@ export const adventureCards: CardLibrary = {
     id: "specialty.tazar.6",
     name: "War Hero VI",
     kind: "hero-specialty",
-    timing: "instant",
+    // Printed with the MAP icon (USER RULING 2026-10-01, wiki War Hero VI):
+    // a map play, never an Instant — so never played in Combat.
+    timing: "map",
     tags: [
       "hero-specialty",
-      "instant",
+      "map",
       "tazar",
       "war-hero",
       "From your hand, remove 1 card OR discard 3 cards to draw the top card of the Artifact deck.",
@@ -5324,8 +5326,6 @@ export const adventureCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          // Printed Instant card-manipulation → playable on the map AND
-          // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`.
           label: "Remove 1 card: draw the top Artifact card",
           cost: { discardCards: 1, removeCostCards: true },
           effect: { type: "DRAW_TOP_ARTIFACT" },

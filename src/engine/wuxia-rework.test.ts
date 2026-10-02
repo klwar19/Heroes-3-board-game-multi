@@ -6,8 +6,11 @@ import { resolveAnimeOptions } from "./anime";
 import { applyCommanderCombatStart } from "./commanders";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { expireHeroGradeFamiliars } from "./hero-grade-combat";
-import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
+import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId, ResolutionStackItem } from "./state";
+import { getBattlefieldPositions, hexPosition, isAdjacent } from "./battlefield";
+import { unitCells, unitCellsAt } from "./hex-footprint";
 import {
+  applyCultivationAttackDeclaration,
   gainSectQiAfterMove,
   initializeCultivationFactionCombat,
   sectQiCapacity,
@@ -608,6 +611,36 @@ describe("wuxia hero specialty cards", () => {
     expect(record(state).bloodEssence).toBe(0);
   });
 
+  it("Shiyan IV paid side: spend 1 Essence for +2 Power on your own Spell (CONTROL: same cast without it; no offer at 0 Essence)", () => {
+    const cast = (essence: number, react: boolean) => {
+      let state = onTurn(combatState("heavenly_demon", "shiyan"));
+      state.players.p1.hand = ["spell.magic_arrow", "specialty.shiyan.4"];
+      record(state).bloodEssence = essence;
+      state = applyOk(state, {
+        type: "CAST_SPELL",
+        playerId: "p1",
+        cardId: "spell.magic_arrow",
+        target: { type: "unit", unitId: "unit_p2_vampires" }
+      });
+      const offered = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "specialty.shiyan.4" &&
+          (legal.action.optionIndex ?? 0) === 1
+      );
+      if (react && offered) state = applyOk(state, offered.action);
+      state = settle(state);
+      return { offered: Boolean(offered), damage: state.combat!.units.unit_p2_vampires.damage, essence: record(state).bloodEssence };
+    };
+    const paid = cast(1, true);
+    const plain = cast(1, false);
+    expect(paid.offered).toBe(true);
+    expect(paid.essence).toBe(0);
+    expect(plain.essence).toBe(1);
+    expect(paid.damage).toBeGreaterThan(plain.damage);
+    expect(cast(0, true).offered).toBe(false);
+  });
+
   it("Shiyan I gains 1 Essence and draws 1 card", () => {
     let state = onTurn(combatState("heavenly_demon", "shiyan"));
     state.players.p1.hand = ["specialty.shiyan.1"];
@@ -698,6 +731,65 @@ describe("wuxia commanders", () => {
     expect(record(state).bloodEssence).toBe(1);
     state = attack(state, "unit_p2_skeletons", ancestor.id);
     expect(record(state).bloodEssence).toBe(1);
+  });
+});
+
+describe("wuxia rework — hex footprints", () => {
+  // A double-wide body in an Azure army (a recruited neutral Azure Dragon): the
+  // formation is read off its WHOLE footprint, so an ally beside only its tail
+  // hex links it exactly like one beside its head.
+  function hexFormation(): { state: GameState; dragon: CombatUnitState } {
+    const state = combatState("azure_breeze", "lingxi");
+    state.combat!.geometry = "hex";
+    const corners = [hexPosition(12, 0), hexPosition(12, 8), hexPosition(0, 0), hexPosition(0, 8), hexPosition(12, 6), hexPosition(0, 6)];
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = corners[index] ?? hexPosition(6, 0)!;
+    });
+    const dragon = place(state, "unit_p1_marksmen", hexPosition(6, 4)!, { unitDefId: "neutral.azure_dragons", attack: 3 });
+    expect(unitCells(state.combat!, dragon), "double-wide on the hex board").toHaveLength(2);
+    return { state, dragon };
+  }
+  const hexes = getBattlefieldPositions("hex");
+  const touching = (cell: number, cells: number[]) => cells.some((own) => isAdjacent(own, cell));
+
+  it("Sword Formation spends Qi when the only ally touches the attacker's tail hex (CONTROL: an ally touching neither hex)", () => {
+    const run = (tailAlly: boolean) => {
+      const { state, dragon } = hexFormation();
+      const [head, tail] = unitCells(state.combat!, dragon);
+      const allyCell = hexes.find((cell) =>
+        cell !== head && cell !== tail &&
+        (tailAlly ? isAdjacent(cell, tail!) && !isAdjacent(cell, head!) : !touching(cell, [head!, tail!]) && Math.abs(((cell - 100) % 13) - 6) <= 3)
+      )!;
+      place(state, "unit_p1_griffins", allyCell);
+      const enemy = place(state, "unit_p2_skeletons", hexes.find((cell) => isAdjacent(cell, head!) && !touching(cell, [allyCell]) && cell !== tail)!);
+      record(state).sectQi = 1;
+      const stackItem = { modifiers: { playedCardIds: [] } } as unknown as ResolutionStackItem;
+      applyCultivationAttackDeclaration(state, stackItem, dragon, enemy, false);
+      return { bonus: stackItem.modifiers.cultivationAttackBonus ?? 0, qi: record(state).sectQi };
+    };
+    expect(run(true)).toEqual({ bonus: 1, qi: 0 });
+    expect(run(false)).toEqual({ bonus: 0, qi: 1 });
+  });
+
+  it("a move whose new TAIL hex closes the formation circulates Sect Qi (CONTROL: a landing that touches no ally)", () => {
+    const run = (tailLink: boolean) => {
+      const { state, dragon } = hexFormation();
+      const from = dragon.position;
+      const ally = place(state, "unit_p1_griffins", hexPosition(2, 4)!);
+      // Land with the tail beside the ally and the head clear of it — or further east, beside nobody.
+      const to = hexPosition(tailLink ? 4 : 8, 4)!;
+      const [head, tail] = unitCellsAt(state.combat!, dragon, to);
+      if (tailLink) {
+        expect(isAdjacent(tail!, ally.position)).toBe(true);
+        expect(isAdjacent(head!, ally.position)).toBe(false);
+      }
+      dragon.position = to;
+      record(state).sectQi = 0;
+      gainSectQiAfterMove(state, dragon, from, to);
+      return record(state).sectQi;
+    };
+    expect(run(true)).toBe(1);
+    expect(run(false)).toBe(0);
   });
 });
 

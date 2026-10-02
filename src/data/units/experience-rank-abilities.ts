@@ -215,7 +215,6 @@ const FLAT_DEFENSE_RANK_ONE_UNITS = new Set([
   "dungeon.minotaurs",
   "necropolis.wraiths",
   "inferno.demons",
-  "tower.genies",
   "rampart.dendroids",
   "castle.marksmen",
   "fortress.gnolls",
@@ -251,6 +250,9 @@ const RANK_ONE_PROFILES: Record<Flavour, readonly RankOneProfile[]> = {
 
 export function rankOneProfileFor(unitDefId: string): RankOneProfile {
   if (unitDefId === "fortress.gorgons") return "initiative";
+  // USER RULING 2026-10-01: Genies R1 is +1 Defense only when ATTACKED, never
+  // on a Retaliation (Guarded Stance), not a flat +1 Defense.
+  if (unitDefId === "tower.genies") return "guarded";
   if (FLAT_DEFENSE_RANK_ONE_UNITS.has(unitDefId)) return "defense";
   const profiles = RANK_ONE_PROFILES[inferFlavour(unitDefId)];
   return profiles[stableRankHash(unitDefId, 1) % profiles.length]!;

@@ -1,11 +1,11 @@
 import { EQUIPMENT_IDS } from "@/data/anime/equipment";
 import {
   battlefieldTokenCovers,
-  unitAdjacentToCell,
   unitCellDistance,
   unitCells,
   unitOccupiesCell,
   unitsAdjacent,
+  unitsAdjacentAt,
 } from "./hex-footprint";
 import type { WuxiaArtId } from "@/data/units/abilities";
 import { combatGeometry, getBattlefieldPositions } from "./battlefield";
@@ -158,6 +158,11 @@ function formationLinkGainsPerRound(state: GameState, playerId: PlayerId): numbe
   return heroHasWuxiaUpgrade(state, playerId, "xianxia-sword-domain") ? 2 : 1;
 }
 
+/**
+ * Living allies touching `unit` standing with its head on `at`: the WHOLE
+ * footprint on the hex board (a double-wide body's tail counts too, e.g. a
+ * recruited neutral dragon in the formation), the position on the 4×5 grid.
+ */
 function livingAdjacentAllies(
   combat: CombatState,
   unit: CombatUnitState,
@@ -168,7 +173,7 @@ function livingAdjacentAllies(
       candidate.id !== unit.id &&
       candidate.controllerId === unit.controllerId &&
       alive(candidate) &&
-      unitAdjacentToCell(combat, candidate, at)
+      unitsAdjacentAt(combat, unit, at, candidate)
   );
 }
 
@@ -310,8 +315,9 @@ export function gainSectQiAfterMove(
       candidate.controllerId === unit.controllerId &&
       alive(candidate)
   );
+  // Footprint-aware: a double-wide mover's tail forms (or already held) links too.
   const formedNewLink = allies.some(
-    (ally) => unitAdjacentToCell(combat, ally, to) && !unitAdjacentToCell(combat, ally, from)
+    (ally) => unitsAdjacentAt(combat, unit, to, ally) && !unitsAdjacentAt(combat, unit, from, ally)
   );
   const capacity = sectQiCapacity(state, unit.controllerId);
   if (!formedNewLink || (record.sectQi ?? 0) >= capacity) return;

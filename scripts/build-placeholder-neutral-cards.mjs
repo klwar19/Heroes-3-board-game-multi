@@ -80,6 +80,8 @@ const CARDS = [
     fontSize: 20,
     lines: [[g("unit_passive"), " Ignore all ", g("spell"), " and Specialty effects other"], ["than ", g("damage"), "."]]
   },
+  // Stretch Goals 2026 Clockwork Dwarves / Mermaids are NOT built here: they sit
+  // on the printed Stretch Goals frame (scripts/build-sg2026-neutral-cards.mjs).
   {
     slug: "oceanids", name: "Oceanids", family: "cove", tier: "bronze",
     source: "units-cove-bronze-oceanids-few.webp", stats: [2, 0, 3, 6], cost: 3,

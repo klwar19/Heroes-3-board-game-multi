@@ -15,7 +15,7 @@ import { houseRuleEnabled } from "../house-rules";
 import { HEX_DEFAULT_FREE_COMBAT_ROUNDS } from "../hex-battlefield";
 import { unitsAdjacentAt } from "../hex-footprint";
 import { getLegalMoveDestinations, resolvedSpellPowerForStackItem } from "../legal-actions";
-import { getDeathStareFollowUps, getUnitAbilityDefinitions, unitImmuneToSpellSchools, type DeathStareFollowUp } from "../unit-abilities";
+import { getDeathStareFollowUps, getEnemyRetaliationAuraPenalty, getUnitAbilityDefinitions, unitImmuneToSpellSchools, type DeathStareFollowUp } from "../unit-abilities";
 import type { CombatState, CombatUnitState, GameState, HeroState, MapFieldState, PlayerId } from "../state";
 import { plannedAttackFaces } from "./battlefield-conditions";
 import { isParalyzed, unitRemainingHealth, unitThreatValue } from "./score";
@@ -425,8 +425,13 @@ function forecastUncached(
     if (!faces) {
       const a = attacker.phases[attacker.phase];
       const d = defender.phases[defender.phase];
-      // A retaliation against a Dazzling Flight body suffers its printed -N Attack.
-      const penalty = retaliation ? defender.traits[defender.phase].retaliationPenalty : 0;
+      // A retaliation against a Dazzling Flight body suffers its printed -N Attack;
+      // enemy Mermaids (Siren Song) sap every retaliation too — read from the
+      // live board at forecast start (a carrier falling mid-sample is not
+      // replayed: the strike tables are cached per slot).
+      const penalty = retaliation
+        ? defender.traits[defender.phase].retaliationPenalty + getEnemyRetaliationAuraPenalty(combat, a)
+        : 0;
       const shared = options.faceCache ? `${strikeSignature(a)}>${strikeSignature(d)}:${retaliation ? 1 : 0}:${penalty}` : null;
       const cached = shared ? options.faceCache!.get(shared) : undefined;
       let dice: readonly number[];

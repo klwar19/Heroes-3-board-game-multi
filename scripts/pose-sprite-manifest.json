@@ -1273,6 +1273,222 @@
         "note": "scripts/merge-duo-sprite.mjs mgq-chrome-frederica mgq-chrome mgq-frederica --front -14,5 --back 7,-3"
       },
       "sheets": []
+    },
+    "wx-outer-disciples": {
+      "donor": "swordsman",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 78,
+      "sheets": [
+        "wx-outer-disciples",
+        "wx-outer-disciples.move"
+      ]
+    },
+    "wx-inner-swordsmen": {
+      "donor": "sea-dog",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 78,
+      "sheets": [
+        "wx-inner-swordsmen",
+        "wx-inner-swordsmen.move"
+      ]
+    },
+    "wx-spirit-crane": {
+      "donor": "stormbird",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "wx-spirit-crane",
+        "wx-spirit-crane.move"
+      ]
+    },
+    "wx-sect-protectors": {
+      "donor": "skeleton-warrior",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 86,
+      "sheets": [
+        "wx-sect-protectors",
+        "wx-sect-protectors.move"
+      ]
+    },
+    "wx-true-inheritors": {
+      "donor": "sorceress",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 84,
+      "sheets": [
+        "wx-true-inheritors",
+        "wx-true-inheritors.move"
+      ]
+    },
+    "wx-core-elder": {
+      "donor": "monk",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 84,
+      "sheets": [
+        "wx-core-elder",
+        "wx-core-elder.move"
+      ]
+    },
+    "wx-mountain-guardian": {
+      "donor": "stone-golem",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 104,
+      "sheets": [
+        "wx-mountain-guardian",
+        "wx-mountain-guardian.move"
+      ]
+    },
+    "wx-sword-saint": {
+      "donor": "crusader",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 86,
+      "sheets": [
+        "wx-sword-saint",
+        "wx-sword-saint.move"
+      ]
+    },
+    "wx-blood-disciples": {
+      "donor": "pirate",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "wx-blood-disciples",
+        "wx-blood-disciples.move"
+      ]
+    },
+    "wx-gu-witches": {
+      "donor": "sea-witch",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 84,
+      "sheets": [
+        "wx-gu-witches",
+        "wx-gu-witches.move"
+      ]
+    },
+    "wx-shadow-sabres": {
+      "donor": "rogue",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "wx-shadow-sabres",
+        "wx-shadow-sabres.move"
+      ]
+    },
+    "wx-corpse-puppets": {
+      "donor": "gold-golem",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 92,
+      "sheets": [
+        "wx-corpse-puppets",
+        "wx-corpse-puppets.move"
+      ]
+    },
+    "wx-bone-reavers": {
+      "donor": "halberdier",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 90,
+      "sheets": [
+        "wx-bone-reavers",
+        "wx-bone-reavers.move"
+      ]
+    },
+    "wx-ghost-king": {
+      "donor": "lich",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 92,
+      "sheets": [
+        "wx-ghost-king",
+        "wx-ghost-king.move"
+      ]
+    },
+    "wx-demon-avatar": {
+      "donor": "naga-queen",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 104,
+      "sheets": [
+        "wx-demon-avatar",
+        "wx-demon-avatar.move"
+      ]
+    },
+    "wx-demon-ancestor": {
+      "donor": "arch-mage",
+      "guide": {
+        "groups": "2,0,15,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 96,
+      "sheets": [
+        "wx-demon-ancestor",
+        "wx-demon-ancestor.move"
+      ]
+    },
+    "clockwork-dwarf": {
+      "donor": "battle-dwarf",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 72,
+      "sheets": [
+        "clockwork-dwarf",
+        "clockwork-dwarf.move"
+      ]
+    },
+    "mermaid": {
+      "donor": "medusa",
+      "guide": {
+        "groups": "2,0,12,3,4,5,7,8,20,21",
+        "move": "2,0,20,21,7,8 --grid auto --max-scale 2.4 --caps 2:10,0:12,20:4,21:4,7:2,8:2"
+      },
+      "height": 80,
+      "sheets": [
+        "mermaid",
+        "mermaid.move"
+      ]
     }
   }
 }

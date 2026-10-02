@@ -533,3 +533,32 @@ describe("Rune Keeper — Rune Ritual (user ruling 2026-09-30: ONLY +1 Rune per 
     expect(state.activeEffects.some((effect) => effect.name === "Rune Keeper's Rune Swiftness")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tower Magi R3 — Arcane Recovery (USER RULING 2026-10-01): combat round 1 =
+// ANY own attack recovers a discard card; from round 2 only a -1 Attack die.
+// ---------------------------------------------------------------------------
+
+describe("Magi R3 — Arcane Recovery", () => {
+  function magiShot(seed: string, round: number, face: number): GameState {
+    const state = fresh(seed);
+    place(state, ATTACKER, { controllerId: "p1", position: 1, type: "ranged", attack: 1, abilities: ["town-magi-recover"] });
+    place(state, DEFENDER, { controllerId: "p2", position: 17, defense: 0 });
+    state.players.p1.discard = ["stat.attack"];
+    state.combat!.round = round;
+    script(state, face);
+    return attack(state);
+  }
+  const offered = (state: GameState) => elementalRequest(state)?.request.kind === "town-recover";
+
+  it("round 1 recovers on a +1 die; later rounds only on -1, never on 0 (CONTROLS)", () => {
+    expect(offered(magiShot("magi-r1-plus", 1, 1)), "round 1: any own attack").toBe(true);
+    expect(offered(magiShot("magi-r2-plus", 2, 1)), "round 2: +1 never").toBe(false);
+    expect(offered(magiShot("magi-r2-zero", 2, 0)), "round 2: 0 no longer recovers").toBe(false);
+    expect(offered(magiShot("magi-r2-minus", 2, -1)), "round 2: -1 recovers").toBe(true);
+    // The pick moves the card from the discard into the hand.
+    const picked = choose(magiShot("magi-r1-pick", 1, 1), 0);
+    expect(picked.players.p1.hand).toContain("stat.attack");
+    expect(picked.players.p1.discard).not.toContain("stat.attack");
+  });
+});

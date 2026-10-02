@@ -2569,5 +2569,311 @@
       "y": -20
     },
     "guardSprite": "al-honolulu"
+  },
+  "heavenly_demon": {
+    "pieces": {
+      "back": {
+        "x": 0,
+        "y": 0,
+        "width": 800,
+        "height": 556
+      },
+      "moat": {
+        "x": 403,
+        "y": 68,
+        "width": 203,
+        "height": 488
+      },
+      "moat-bank": {
+        "x": 403,
+        "y": 68,
+        "width": 204,
+        "height": 488
+      },
+      "background-wall": {
+        "x": 606,
+        "y": 52,
+        "width": 194,
+        "height": 67
+      },
+      "keep": {
+        "x": 730,
+        "y": 179,
+        "width": 70,
+        "height": 281
+      },
+      "keep-ruin": {
+        "x": 730,
+        "y": 179,
+        "width": 70,
+        "height": 281
+      },
+      "keep-battlement": {
+        "x": 730,
+        "y": 179,
+        "width": 70,
+        "height": 281
+      },
+      "tower-upper": {
+        "x": 569,
+        "y": 27,
+        "width": 57,
+        "height": 99
+      },
+      "tower-upper-battlement": {
+        "x": 569,
+        "y": 27,
+        "width": 57,
+        "height": 97
+      },
+      "tower-bottom": {
+        "x": 595,
+        "y": 514,
+        "width": 62,
+        "height": 42
+      },
+      "tower-bottom-battlement": {
+        "x": 595,
+        "y": 514,
+        "width": 62,
+        "height": 42
+      },
+      "wall-upper": {
+        "x": 532,
+        "y": 71,
+        "width": 76,
+        "height": 129
+      },
+      "wall-upper-ruin": {
+        "x": 532,
+        "y": 71,
+        "width": 76,
+        "height": 129
+      },
+      "static-top": {
+        "x": 502,
+        "y": 92,
+        "width": 85,
+        "height": 150
+      },
+      "wall-over-gate": {
+        "x": 480,
+        "y": 151,
+        "width": 79,
+        "height": 138
+      },
+      "wall-over-gate-ruin": {
+        "x": 480,
+        "y": 151,
+        "width": 79,
+        "height": 138
+      },
+      "gate-arch": {
+        "x": 477,
+        "y": 221,
+        "width": 88,
+        "height": 258
+      },
+      "gate": {
+        "x": 408,
+        "y": 254,
+        "width": 82,
+        "height": 99
+      },
+      "gate-ruin": {
+        "x": 408,
+        "y": 254,
+        "width": 82,
+        "height": 99
+      },
+      "wall-below-gate": {
+        "x": 485,
+        "y": 316,
+        "width": 80,
+        "height": 163
+      },
+      "wall-below-gate-ruin": {
+        "x": 485,
+        "y": 316,
+        "width": 80,
+        "height": 163
+      },
+      "static-bottom": {
+        "x": 522,
+        "y": 376,
+        "width": 87,
+        "height": 180
+      },
+      "wall-bottom": {
+        "x": 561,
+        "y": 451,
+        "width": 74,
+        "height": 105
+      },
+      "wall-bottom-ruin": {
+        "x": 561,
+        "y": 451,
+        "width": 74,
+        "height": 105
+      }
+    },
+    "keepGuard": {
+      "x": 511,
+      "y": -37
+    },
+    "guardSprite": "wx-gu-witches"
+  },
+  "azure_breeze": {
+    "pieces": {
+      "back": {
+        "x": 0,
+        "y": 0,
+        "width": 800,
+        "height": 556
+      },
+      "moat": {
+        "x": 410,
+        "y": 77,
+        "width": 168,
+        "height": 479
+      },
+      "moat-bank": {
+        "x": 410,
+        "y": 97,
+        "width": 176,
+        "height": 459
+      },
+      "background-wall": {
+        "x": 608,
+        "y": 46,
+        "width": 192,
+        "height": 63
+      },
+      "keep": {
+        "x": 724,
+        "y": 189,
+        "width": 76,
+        "height": 265
+      },
+      "keep-ruin": {
+        "x": 724,
+        "y": 189,
+        "width": 76,
+        "height": 265
+      },
+      "keep-battlement": {
+        "x": 724,
+        "y": 189,
+        "width": 76,
+        "height": 265
+      },
+      "tower-upper": {
+        "x": 565,
+        "y": 31,
+        "width": 56,
+        "height": 97
+      },
+      "tower-upper-battlement": {
+        "x": 566,
+        "y": 31,
+        "width": 55,
+        "height": 88
+      },
+      "tower-bottom": {
+        "x": 594,
+        "y": 511,
+        "width": 56,
+        "height": 45
+      },
+      "tower-bottom-battlement": {
+        "x": 594,
+        "y": 511,
+        "width": 56,
+        "height": 45
+      },
+      "wall-upper": {
+        "x": 530,
+        "y": 57,
+        "width": 78,
+        "height": 137
+      },
+      "wall-upper-ruin": {
+        "x": 530,
+        "y": 57,
+        "width": 78,
+        "height": 137
+      },
+      "static-top": {
+        "x": 492,
+        "y": 103,
+        "width": 91,
+        "height": 151
+      },
+      "wall-over-gate": {
+        "x": 469,
+        "y": 186,
+        "width": 80,
+        "height": 130
+      },
+      "wall-over-gate-ruin": {
+        "x": 469,
+        "y": 186,
+        "width": 80,
+        "height": 130
+      },
+      "gate-arch": {
+        "x": 460,
+        "y": 220,
+        "width": 61,
+        "height": 180
+      },
+      "gate": {
+        "x": 403,
+        "y": 271,
+        "width": 71,
+        "height": 88
+      },
+      "gate-ruin": {
+        "x": 403,
+        "y": 271,
+        "width": 71,
+        "height": 88
+      },
+      "wall-below-gate": {
+        "x": 469,
+        "y": 309,
+        "width": 83,
+        "height": 163
+      },
+      "wall-below-gate-ruin": {
+        "x": 469,
+        "y": 309,
+        "width": 83,
+        "height": 163
+      },
+      "static-bottom": {
+        "x": 510,
+        "y": 364,
+        "width": 93,
+        "height": 192
+      },
+      "wall-bottom": {
+        "x": 549,
+        "y": 451,
+        "width": 73,
+        "height": 105
+      },
+      "wall-bottom-ruin": {
+        "x": 549,
+        "y": 451,
+        "width": 73,
+        "height": 105
+      }
+    },
+    "keepGuard": {
+      "x": 532,
+      "y": -27
+    },
+    "guardSprite": "wx-core-elder"
   }
 }

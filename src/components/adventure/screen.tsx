@@ -15770,7 +15770,7 @@ function GameOptionsPanel({
                   </div>
                   <small className="optionHint">
                     {unitExperienceOn
-                      ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP), plus +1 against Veteran neutral-owned guards or +2 against Elite. Player-controlled recruited Neutrals always use this XP system. Reinforcing halves XP; Stack layers cost 1 XP. Drill costs 1 gold for bronze or recruited Neutral, 2 for silver, and 3 for gold; heroes may Drill 1/2/3 times per round at levels I/IV/VII."
+                      ? "Survivors of won battles earn XP (guard difficulty / bank size; PvP battles give no XP), plus +1 against Veteran neutral-owned guards or +2 against Elite. In rounds 2-3, a guard field above your hero's level pays half. Player-controlled recruited Neutrals always use this XP system. Reinforcing halves XP; Stack layers cost 1 XP. Drill costs 1 gold for bronze or recruited Neutral, 2 for silver, and 3 for gold; heroes may Drill 1/2/3 times per round at levels I/IV/VII."
                       : "Off by default. Also available as a Wake of Gods module — units level up like in the WoG Unit Experience System, adapted to the board game."}
                   </small>
                 </div>

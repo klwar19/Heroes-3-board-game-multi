@@ -1694,7 +1694,33 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Offering casts + Sect Grandmaster / Ancestral Blood specialties, rank tracks,
 // and new serialized cultivation bookkeeping (link gains, harvests, art rounds).
 // A v196 peer resolves the wuxia towns differently.
-export const ENGINE_PROTOCOL_VERSION = 197;
+// v198: a "+Power, then draw" face (Scales of the Greater Basilisk, Sorcery,
+// Tunic of the Cyclops King) keeps its draw-only play in an attack window even
+// while the holder has a Spell to pair the Power with (the trap-twin dedupe no
+// longer removes it), and a PLAY_REACTIONS batch no longer counts a draw-only
+// play as Power that needs a Spell. A v197 worker withholds that offer and
+// rejects the lone draw-only batch. Tazar's War Hero VI is printed with the
+// MAP icon: `timing: "map"` (was "instant"), so it is never offered in Combat. Tower Magi rank-3 Arcane
+// Recovery triggers on ANY own attack in combat round 1, later only on a -1
+// Attack die (was -1 or 0 every round).
+// Tower Genies rank 1 is Guarded Stance (+1 Defense when attacked, not on a
+// Retaliation) instead of a flat +1 Defense.
+// Temple Guardian Mana Magician: still two over-limit Spell charges per combat,
+// but at most ONE per combat round (combatStats.commanderManaUsedThisRound).
+// PvP battles award no unit XP; in game rounds 2-3 a neutral Field above the
+// main hero's level pays half unit XP. Costs: Sieidi 5g/3m, Altar 6g/5m/1v,
+// Factory Bank 4g/2m (unchanged), Artifact Merchants 5g/4m. Forge Tanks Pack Health 7.
+// Factory commander Mechanical Traps: the last trap at Power 1/2 deals 1 (others 2).
+// Also v198: the coordinated Random Town garrison sallies out of its Walls when
+// the besieger out-shoots it (no garrison shooter with a target / Arrow Tower
+// down or outgunned): holding pays a round of the shooters' fire, so its
+// melee/flying units leave through the Gate. A v197 peer plans them differently.
+// Also v198: a trigger-free "gain +N Morale" face (Crest of Valor, Glyph of
+// Gallantry, Ladybird of Luck, Ambassador's Sash) is offered in Combat reaction
+// windows as a joiner (not for a faction that ignores Morale); new neutrals
+// Clockwork Dwarves (after-attack steam burst + self-repair) and Mermaids
+// (enemy Retaliation Attack -1 aura, stack modifier retaliationAuraAnnounced).
+export const ENGINE_PROTOCOL_VERSION = 198;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

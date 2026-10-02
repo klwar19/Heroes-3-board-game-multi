@@ -285,6 +285,17 @@ const animeMeleeFxByUnit: Record<string, MeleeFxKey> = {
   "mgq.lucifina_chan": "melee-starry-strike",
   "mgq.spider_princess": "melee-thrust-impact",
   "mgq.emily": "mgq-tentacle-lash-yellow",
+
+  // Azure Breeze Sect / Heavenly Demon Palace: matched to what each hex figure
+  // strikes with (the sword disciples keep the crescent slash by slug).
+  "azure_breeze.spirit_crane": "melee-thrust-impact",
+  "azure_breeze.mountain_guardian": "masato-muscle-punch",
+  "heavenly_demon.blood_disciples": "melee-crescent-slash",
+  "heavenly_demon.gu_witches": "melee-claw-rake-animated",
+  "heavenly_demon.corpse_puppets": "masato-muscle-punch",
+  "heavenly_demon.bone_reavers": "melee-crescent-slash",
+  "heavenly_demon.demon_avatar": "saya-multi-slash",
+  "commander:sword_saint": "melee-crescent-slash",
 };
 
 const azurLaneMeleeFxByUnit: Record<string, MeleeFxKey> = {
@@ -1506,6 +1517,15 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "automaton-detonate-cubes": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
   "automaton-detonate": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
   "automaton-detonate-1": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
+  // Neutral Clockwork Dwarves' Steam Burst: the boiler vents in a blast on every
+  // adjacent enemy it strikes (one event per struck unit) with the Automaton's
+  // mechanical blast, then the self-repair ("-repair") restores the dwarves
+  // with the Factory repair art and the native REPAIR clip.
+  "clockwork-dwarves-steam-burst": { affect: [{ key: "fireball" }], sound: "units/automaton-special" },
+  "clockwork-dwarves-steam-burst-repair": { affect: [{ key: "factory-emergency-repair" }], sound: "spells/repair" },
+  // Neutral Mermaids' Siren Song: the retaliating enemy is visibly sapped (the
+  // Weakness shimmer + cue) as its Retaliation Attack loses 1 Attack.
+  "mermaids-siren-song": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
   // Sandworm (Pack) faction cube: it "Devours" the unit it removed (a life-drain
   // over the corpse, banking a cube on the kill) and, when it spends a cube to
   // strike again, a "Feeding Frenzy" washes over it.

@@ -1120,9 +1120,10 @@ describe("WOG commanders — specialties", () => {
     ).toHaveLength(0);
   });
 
-  it("Undead (Demon Ancestor): a petrifying attack can never Paralyze the commander", () => {
-    // e4b8f4be (v171) gave the Soul Eater Soul Link; the `undead` specialty
-    // (Paralysis immunity) now lives on the Demon Ancestor.
+  it("Demon Ancestor (wuxia rework v197): no longer Undead, so a petrifying attack Paralyzes it (CONTROL: the specialty-keyed undead gate still blocks it)", () => {
+    // e4b8f4be (v171) moved the `undead` specialty (Paralysis immunity) from the
+    // Soul Eater (now Soul Link) onto the Demon Ancestor; the v197 wuxia rework
+    // replaced that with the Ancestral Blood Furnace, so no commander carries it.
     // A Stacked Medusa-style attacker (Petrifying Gaze) melees the commander.
     function petrify(slug: "demon_ancestor" | "paladin"): GameState {
       let state = sandboxWithCommander(slug, {}, 9);
@@ -1147,17 +1148,24 @@ describe("WOG commanders — specialties", () => {
       return state;
     }
 
-    const undead = petrify("demon_ancestor");
-    expect(
-      undead.combat!.units[commanderUnitId("p1")].tokens?.some((token) => token.kind === "paralysis") ?? false
-    ).toBe(false);
+    const paralyzed = (state: GameState) =>
+      state.combat!.units[commanderUnitId("p1")].tokens?.some((token) => token.kind === "paralysis") ?? false;
 
-    // CONTROL: the same gaze Paralyzes a non-undead commander (tokens are not
-    // ongoing effects, so the Magic-grade immunity does not cover them).
-    const paladin = petrify("paladin");
-    expect(
-      paladin.combat!.units[commanderUnitId("p1")].tokens?.some((token) => token.kind === "paralysis")
-    ).toBe(true);
+    // The reworked Demon Ancestor is petrified exactly like a non-Undead commander.
+    expect(paralyzed(petrify("demon_ancestor"))).toBe(true);
+    expect(paralyzed(petrify("paladin"))).toBe(true);
+
+    // CONTROL: restore the retired `undead` specialty on the same commander and
+    // the same gaze is shrugged off — so the paralysis above is the specialty
+    // change, not a broken immunity gate (commanders.ts keys it off specialty.id).
+    const definition = commanderDefinitions.demon_ancestor;
+    const reworked = definition.specialty;
+    try {
+      definition.specialty = { ...reworked, id: "undead" };
+      expect(paralyzed(petrify("demon_ancestor"))).toBe(false);
+    } finally {
+      definition.specialty = reworked;
+    }
   });
 
   it("Soul Reformer (Brute): +2 gold after a WON combat; no gold on a loss", () => {
@@ -1207,7 +1215,7 @@ describe("WOG commanders — specialties", () => {
     expect(fight.players.p1.resources.gold).toBe(before);
   });
 
-  it("Mana Magician (Temple Guardian): two per-combat charges let Spells exceed the round limit", () => {
+  it("Mana Magician (Temple Guardian): two per-combat charges, at most one over-limit Spell per round", () => {
     function arrowCast(state: GameState) {
       return getLegalActions(state, "p1").find(
         (legal) =>
@@ -1222,7 +1230,8 @@ describe("WOG commanders — specialties", () => {
     const player = state.players.p1;
     // Combat start seeds the charges (sandbox: seed manually like finalizeCombatStart does).
     player.combatStats.commanderManaCharges = 2;
-    expect(spellLimitFor(state, player)).toBe(3); // 1 + 2 charges
+    // USER NERF 2026-10-01: at most ONE charge per combat round.
+    expect(spellLimitFor(state, player)).toBe(2); // 1 + 1 (one charge per round)
 
     // Already at the base limit: an over-limit cast is OFFERED and burns a charge…
     player.combatStats.spellsCastThisRound = 1;
@@ -1235,12 +1244,21 @@ describe("WOG commanders — specialties", () => {
     expect(current.players.p1.combatStats.commanderManaCharges).toBe(1);
     expect(current.players.p1.combatStats.spellsCastThisRound).toBe(2);
 
-    // …the second over-limit cast burns the last charge…
+    // …a second over-limit cast in the SAME round is not offered, although a
+    // charge is left (the once-per-round cap)…
+    expect(arrowCast(current), "no second over-limit cast this round").toBeUndefined();
+
+    // …next round (round-end reset of the per-round counters) the last charge
+    // backs one more over-limit cast…
+    const stats = current.players.p1.combatStats;
+    stats.spellsCastThisRound = 1;
+    stats.spellLimitBonusThisRound = 0;
+    delete stats.commanderManaUsedThisRound;
     const second = arrowCast(current);
-    expect(second, "a second over-limit cast").toBeTruthy();
+    expect(second, "the next round's over-limit cast").toBeTruthy();
     current = settle(apply(current, second!.action));
     expect(current.players.p1.combatStats.commanderManaCharges).toBe(0);
-    expect(current.players.p1.combatStats.spellsCastThisRound).toBe(3);
+    expect(current.players.p1.combatStats.spellsCastThisRound).toBe(2);
 
     // …and with both charges spent a third over-limit cast is no longer offered.
     current.players.p1.hand = ["spell.magic_arrow"];
@@ -2309,12 +2327,22 @@ describe("WOG commanders — Demon Ancestor (Heavenly Demon Palace)", () => {
     expect(definition.specialty.name).toBe("Ancestral Blood Furnace");
   });
 
-  it("no longer carries the retired Undead Paralysis immunity (CONTROL: the Soul Eater still does)", () => {
-    expect(commanderDefinitions.demon_ancestor.specialty.id).not.toBe("undead");
+  it("no longer carries the retired Undead Paralysis immunity (CONTROL: the specialty-keyed undead gate still grants it)", () => {
+    expect(commanderDefinitions.demon_ancestor.specialty.id).toBe("ancestral-blood");
     expect(commanderAbilityIds(freshCommander("demon_ancestor"))).not.toContain("ignore-paralysis");
-    // CONTROL: the specialty-keyed `undead` gate is intact for its real owner.
-    expect(commanderDefinitions.soul_eater.specialty.id).toBe("undead");
-    expect(commanderAbilityIds(freshCommander("soul_eater"))).toContain("ignore-paralysis");
+    // The Soul Eater has been Soul Link since v171 (it keeps only the wog-undead
+    // identity, never the immunity), so no commander now owns `undead`.
+    expect(commanderDefinitions.soul_eater.specialty.id).toBe("soul-link");
+    expect(commanderAbilityIds(freshCommander("soul_eater"))).not.toContain("ignore-paralysis");
+    // CONTROL: the gate itself still works — an `undead` specialty grants it.
+    const definition = commanderDefinitions.demon_ancestor;
+    const reworked = definition.specialty;
+    try {
+      definition.specialty = { ...reworked, id: "undead" };
+      expect(commanderAbilityIds(freshCommander("demon_ancestor"))).toContain("ignore-paralysis");
+    } finally {
+      definition.specialty = reworked;
+    }
   });
 
   it("offers its own Blood Offering cast in its activation, never the Brute Bloodlust arm", () => {

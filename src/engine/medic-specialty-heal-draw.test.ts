@@ -768,7 +768,7 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
     expect(missing, "no draw-rider Instant is stranded outside an open reaction window").toEqual([]);
   });
 
-  it("a '+Power, then draw' Instant offers the DRAW alone with no spell to pay into — and no twin once there is one", () => {
+  it("a '+Power, then draw' Instant offers the DRAW alone — with or without a spell to pay into", () => {
     // Sorcery's Power half is withheld in an attack window unless the holder also
     // has a pairable spell instant, which used to hide its printed draw too.
     // p1 ATTACKS (Sorcery's Power is the attacker's), p2's Armorer opens the
@@ -814,17 +814,77 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
     alone = applyOk(alone, lonely[0].action);
     expect(alone.players.p1.hand, "the printed draw resolved").toEqual(["spell.haste"]);
 
-    // CONTROL: with a pairable spell instant in hand the REAL Power plays are
-    // back and the draw-only twin is deduped away — never two look-alike buttons.
-    const paired = sorceryOffers(board(["ability.sorcery", "spell.bloodlust"]));
-    expect(paired.map((legal) => legal.label).sort(), "real Power plays only").toEqual([
-      "Play Sorcery",
-      "Play Sorcery expert (expert)"
-    ]);
+    // USER RULING 2026-10-01 (Scales of the Greater Basilisk report): holding a
+    // pairable spell instant must NOT take the draw away. The REAL Power plays
+    // come back (they still need that Spell in the same declaration) AND the
+    // draw-only play stays, resolving alone without casting anything.
+    const isDrawOnly = (legal: { action: GameAction }) =>
+      Boolean((legal.action as Extract<GameAction, { type: "PLAY_REACTION" }>).drawOnly);
+    let paired = board(["ability.sorcery", "spell.bloodlust"]);
+    const pairedOffers = sorceryOffers(paired);
     expect(
-      paired.every((legal) => !(legal.action as Extract<GameAction, { type: "PLAY_REACTION" }>).drawOnly),
-      "no draw-only trap twin beside the real Power plays"
+      pairedOffers.filter((legal) => !isDrawOnly(legal)).map((legal) => legal.label).sort(),
+      "the real Power plays"
+    ).toEqual(["Play Sorcery", "Play Sorcery expert (expert)"]);
+    const drawOnlyBeside = pairedOffers.filter(isDrawOnly);
+    expect(drawOnlyBeside.length, "the draw-only play stays beside them").toBe(1);
+    paired = applyOk(paired, drawOnlyBeside[0].action);
+    expect([...paired.players.p1.hand].sort(), "drew without playing the Spell").toEqual([
+      "spell.bloodlust",
+      "spell.haste"
+    ]);
+
+    // The batch route (the reaction tray's PLAY_REACTIONS) accepts the lone
+    // draw-only play too — it is not a Power play that needs a Spell to feed.
+    const batched = applyOk(board(["ability.sorcery", "spell.bloodlust"]), {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [{ cardId: "ability.sorcery" as CardId, mode: "basic", drawOnly: true }]
+    });
+    expect([...batched.players.p1.hand].sort(), "the batched draw resolved alone").toEqual([
+      "spell.bloodlust",
+      "spell.haste"
+    ]);
+  });
+
+  it("Scales of the Greater Basilisk: the '+1 Power, then draw' option keeps its draw-only play while a Spell is held", () => {
+    // The user's report: holding a pairable Spell must not take the draw away.
+    const board = (hand: string[]): GameState => {
+      const state = createInitialGameState("scales-attacker");
+      state.players.p1.hand = [...hand] as CardId[];
+      state.players.p2.hand = ["ability.armorer" as CardId];
+      state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId];
+      const units = state.combat!.units;
+      units.unit_p1_crusaders.position = 14;
+      units.unit_p1_crusaders.damage = 0;
+      units.unit_p1_crusaders.maxHealth = 30;
+      units.unit_p1_crusaders.activatedThisRound = false;
+      units.unit_p1_crusaders.attackedThisActivation = false;
+      units.unit_p2_skeletons.position = 13;
+      units.unit_p2_skeletons.maxHealth = 40;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_crusaders";
+      state.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+      state.combat!.dice.rollCount = 0;
+      return applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons" });
+    };
+    const scales = "artifact.scales_of_the_greater_basilisk";
+    const drawOnly = (state: GameState) =>
+      getLegalActions(state, "p1").filter(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" && legal.action.cardId === scales && Boolean(legal.action.drawOnly)
+      );
+    let paired = board([scales, "spell.bloodlust"]);
+    const offers = drawOnly(paired);
+    expect(offers.map((legal) => (legal.action as { optionIndex?: number }).optionIndex), "one draw-only play, option 2").toEqual([1]);
+    expect(
+      getLegalActions(paired, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === scales && !legal.action.drawOnly
+      ),
+      "the real Power plays are offered beside it"
     ).toBe(true);
+    paired = applyOk(paired, offers[0].action);
+    expect([...paired.players.p1.hand].sort(), "drew without playing the Spell").toEqual(["spell.bloodlust", "spell.haste"]);
   });
 
   it("no library face hides a draw RIDER behind an up-front discard COST", () => {

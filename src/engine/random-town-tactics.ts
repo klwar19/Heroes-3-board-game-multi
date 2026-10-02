@@ -81,9 +81,10 @@ export function retaliationValue(state: GameState, attacker: CombatUnitState, de
 
 /** Current-round replies plus next-round enemies that act before this unit.
  * Tied initiative is conservatively treated as a possible enemy reply. */
-function incoming(state: GameState, unit: CombatUnitState, removedId?: string): number {
+function incoming(state: GameState, unit: CombatUnitState, removedId?: string, rangedOnly = false): number {
   const ascending = state.combat?.battlefieldCondition?.id === "fey-trickery";
   return living(state.combat!).filter(enemy => enemy.controllerId !== unit.controllerId && enemy.id !== removedId &&
+    (!rangedOnly || enemy.type === "ranged") &&
     !enemy.tokens?.some(token => token.kind === "paralysis") &&
     (!enemy.activatedThisRound || (ascending
       ? effectiveInitiative(enemy, state.activeEffects, state.combat) <= effectiveInitiative(unit, state.activeEffects, state.combat)
@@ -120,12 +121,38 @@ export function randomTownTokenValue(state: GameState, source: CombatUnitState, 
   return swing * turns * 15 + (swing > 0 ? Math.min(10, unitThreatValue(target) / 8) : 0);
 }
 
+function incomingWeight(unit: CombatUnitState): number {
+  return 2 + Math.min(4, unitThreatValue(unit) / 30);
+}
+
+/** One round of fire from `shooters` (each at its best reachable target). */
+function volley(state: GameState, shooters: CombatUnitState[], targets: CombatUnitState[]): number {
+  return shooters.filter(shooter => shooter.type === "ranged").reduce((sum, shooter) => {
+    const ready = { ...shooter, activatedThisRound: false, attackedThisActivation: false, movedThisActivation: false };
+    return sum + Math.max(0, ...targets.map(target => bestDamage(state, ready, target)));
+  }, 0);
+}
+
+/** Siege garrison behind its own Walls (user report 2026-10-01): staying
+ * inside pays only while the garrison can answer the besieger's shooters from
+ * there — its own shooters with a target, or the Arrow Tower. When the
+ * besieger out-shoots it (no shooter left, tower down, or simply outgunned),
+ * holding just feeds the shooters, so melee/flying defenders must go out. */
+function mustSallyAgainstShooters(state: GameState, unit: CombatUnitState): boolean {
+  const combat = state.combat!;
+  if (!combat.siege || unit.controllerId !== combat.siege.townPlayerId || unit.type === "ranged" || unit.position < 0) return false;
+  const ours = living(combat).filter(ally => ally.controllerId === unit.controllerId);
+  const theirs = living(combat).filter(enemy => enemy.controllerId !== unit.controllerId && enemy.position >= 0);
+  const pressure = volley(state, theirs, ours);
+  return pressure >= 1 && volley(state, ours, theirs) < pressure;
+}
+
 /** Whole-side position value: protect valuable cards but retain real attack
  * exits. A screen that acts later cannot be assumed to vacate in time. */
 function positionValue(state: GameState, unit: CombatUnitState): number {
   const combat = state.combat!;
   const friends = living(combat).filter(ally => ally.controllerId === unit.controllerId);
-  let score = -incoming(state, unit) * (2 + Math.min(4, unitThreatValue(unit) / 30));
+  let score = -incoming(state, unit) * incomingWeight(unit);
   for (const ally of friends) {
     if (ally.id === unit.id || unitThreatValue(ally) <= unitThreatValue(unit) * 1.25) continue;
     score -= incoming(state, ally) * Math.min(4, unitThreatValue(ally) / 25);
@@ -146,7 +173,11 @@ export function planRandomTownActivation(state: GameState, combat: CombatState, 
   const enemies = living(combat).filter(enemy => enemy.controllerId !== unit.controllerId);
   if (!enemies.length) return { kind: "pass" };
   const ownValue = unitThreatValue(unit);
-  let best: { intent: NeutralIntent; score: number } = { intent: { kind: "pass" }, score: positionValue(state, unit) };
+  // Outgunned siege garrison: holding (or shuffling without closing in) costs
+  // one more round of the shooters' fire, so a move out pays whenever that fire
+  // outweighs the melee it walks into — a lone body facing a big stack holds.
+  const holdCost = mustSallyAgainstShooters(state, unit) ? incoming(state, unit, undefined, true) * incomingWeight(unit) : 0;
+  let best: { intent: NeutralIntent; score: number } = { intent: { kind: "pass" }, score: positionValue(state, unit) - holdCost };
   const consider = (intent: NeutralIntent, score: number) => { if (score > best.score + 0.01) best = { intent, score }; };
   for (const enemy of enemies) {
     for (const position of attackPositions(state, combat, unit, enemy)) {
@@ -189,7 +220,7 @@ export function planRandomTownActivation(state: GameState, combat: CombatState, 
     const beforeDistance = Math.min(...distances.map((field, index) => field.get(unit.position) ?? 100 + unitDistance(combat, unit, enemies[index])));
     const afterDistance = Math.min(...distances.map((field, index) => field.get(destination) ?? 100 + unitDistanceAt(combat, unit, destination, enemies[index])));
     consider({ kind: "move", destination }, positionValue(projected, actor) + (opportunity - currentOpportunity) * 3 +
-      Math.max(-3, Math.min(3, beforeDistance - afterDistance)) * 2 - 3);
+      Math.max(-3, Math.min(3, beforeDistance - afterDistance)) * 2 - 3 - (afterDistance < beforeDistance ? 0 : holdCost));
   }
   return best.intent;
 }

@@ -279,7 +279,8 @@ describe("playable Anime Realms towns", () => {
       expect(card?.assets?.cardImage, id).toBeUndefined();
       expect(canRenderSpecialtyCard(id), id).toBe(true);
       const icon = specialtyIconSrc(id);
-      expect(icon).toBe("/assets/anime/icons/cultivation/specialty-lingxi-healing-arts.webp");
+      // The rework's own Formation Mending medallion (specialty-card-data.ts), not the retired Healing Arts one.
+      expect(icon).toBe("/assets/anime/icons/cultivation/specialty-lingxi-formation-mending.webp");
       expect(hasMediaFile(icon!), "run npm run media:publish").toBe(true);
     }
     // Portrait used by the native specialty frame is the hero's own art.

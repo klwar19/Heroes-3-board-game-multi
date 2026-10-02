@@ -1453,6 +1453,11 @@ export function ReactionTray({
     if (selection.asPowerBoost) {
       return true;
     }
+    // A draw-only play ("Scales: draw 1 only") resolves just the draw rider —
+    // no Power is declared, so it needs no Spell (engine: assertLonePowerEmpowerable).
+    if (selection.drawOnly) {
+      return false;
+    }
     const card = cardLibrary[selection.cardId];
     const effect = card ? getEffectiveCardEffect(card, selection.optionIndex) : null;
     return effect?.type === "ADD_SPELL_POWER";
@@ -2060,7 +2065,8 @@ export function ReactionTray({
                       selection.optionIndex === group.optionIndex &&
                       selection.dieIndex === group.dieIndex &&
                       selection.interferenceMode === group.interferenceMode &&
-                      Boolean(selection.asPowerBoost) === Boolean(group.asPowerBoost)
+                      Boolean(selection.asPowerBoost) === Boolean(group.asPowerBoost) &&
+                      Boolean(selection.drawOnly) === Boolean(group.drawOnly)
                   );
                   if (!group.batchable && !group.costCards) {
                     // Cost-free window-ending plays (Resistance, spell recall)

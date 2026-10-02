@@ -841,6 +841,8 @@ import {
   getPreAttackDamageAbility,
   getRetaliationAttackBonus,
   getRetaliationAgainstAttackPenalty,
+  getEnemyRetaliationAuraPenalty,
+  getEnemyRetaliationAuraSources,
   getRetaliationParalysis,
   getSameTargetAttackSequenceAbility,
   getSummonUnitOnAttackAbility,
@@ -1366,7 +1368,9 @@ function assertBatchReactionLegal(
       // exactly like a Spell does (USER RULE 2026-08-26).
       powerSinkPlays += 1;
     }
-    if (effect.type === "ADD_SPELL_POWER") {
+    // A draw-only play resolves just its "then draw" rider — no Power lands,
+    // so it never needs a Spell to feed (mirrors assertLonePowerEmpowerable).
+    if (effect.type === "ADD_SPELL_POWER" && !play.drawOnly) {
       powerOnlyPlays += 1;
     }
 
@@ -3073,17 +3077,20 @@ function noteSpellCast(
     // it just paid for stays covered (the limit must not shrink under the
     // count); the per-round bonus reset then naturally re-arms nothing — only
     // UNSPENT charges carry to later rounds.
+    // At most one charge per combat round (spellLimitFor adds +1 only while
+    // commanderManaUsedThisRound is unset).
     const charges = state.combat
       ? (player.combatStats.commanderManaCharges ?? 0)
       : 0;
-    if (charges > 0) {
+    if (charges > 0 && !player.combatStats.commanderManaUsedThisRound) {
       const limitWithCharges = spellLimitFor(state, player);
       if (
         Number.isFinite(limitWithCharges) &&
-        player.combatStats.spellsCastThisRound > limitWithCharges - charges
+        player.combatStats.spellsCastThisRound > limitWithCharges - 1
       ) {
         player.combatStats.commanderManaCharges = charges - 1;
         player.combatStats.spellLimitBonusThisRound += 1;
+        player.combatStats.commanderManaUsedThisRound = true;
       }
     }
   }
@@ -5552,7 +5559,8 @@ function applyAttackDamageFromCandidate(
     const armyUnit = state.players[attacker.controllerId]?.army.find(
       (unit) => unit.id === attacker.armyUnitId,
     );
-    if (xp > 0 && armyUnit && unitExperienceActive(state)) {
+    // PvP gives no unit XP (USER RULING 2026-10-02), this kill bonus included.
+    if (xp > 0 && armyUnit && unitExperienceActive(state) && state.combat.context.kind !== "player") {
       grantArmyUnitExperience(state, attacker.controllerId, armyUnit, xp);
     }
   }
@@ -6333,8 +6341,10 @@ function getAttackStackDetails(
   const retaliationDefenseBonus = isRetaliation
     ? getDefenseBonusWhenRetaliated(defender)
     : 0;
+  // Mermaids' Siren Song: every living enemy carrier saps the retaliator too.
   const retaliationAttackPenalty = isRetaliation
-    ? getRetaliationAgainstAttackPenalty(defender)
+    ? getRetaliationAgainstAttackPenalty(defender) +
+      getEnemyRetaliationAuraPenalty(combat, attacker)
     : 0;
   const retaliationAttackBonus = isRetaliation
     ? getRetaliationAttackBonus(attacker) + getActiveRetaliationAttackBonus(state, attacker)
@@ -12274,7 +12284,7 @@ function applyAfterAttackSplash(
     if (ability.effect?.type !== "AFTER_ATTACK_SPLASH") {
       continue;
     }
-    const { amount, around, enemiesOnly } = ability.effect;
+    const { amount, around, enemiesOnly, healSelfFully } = ability.effect;
     // Full Barrage anchors on the struck unit's cell; the anchor position stays
     // valid even when the attack just destroyed it (removal never clears
     // `position`). The target itself is excluded — it already took the attack.
@@ -12304,6 +12314,26 @@ function applyAfterAttackSplash(
         ability.name,
         amount,
       );
+    }
+    // Clockwork Dwarves: "...and remove all damage from this Unit." Resolves
+    // after the burst even when no enemy was adjacent; a chained removal the
+    // burst set off (an adjacent Automaton detonating) may have felled it.
+    if (healSelfFully && isUnitAlive(attacker) && attacker.damage > 0) {
+      const healed = attacker.damage;
+      attacker.damage = 0;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: `${ability.id}-repair`,
+        targetUnitId: attacker.id,
+        message: `${attacker.cardName}'s ${ability.name} removes all ${healed} damage from it.`,
+      });
+      appendEvent(state, {
+        type: "DAMAGE_HEALED",
+        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        target: { type: "unit", unitId: attacker.id },
+        amount: healed,
+      });
     }
   }
 }
@@ -18469,6 +18499,22 @@ function resolveAttackStackItem(
     }
     concludeAttackerActivation(state, details.attacker);
     return;
+  }
+
+  // Neutral Mermaids' Siren Song: announce each living enemy carrier sapping
+  // this Retaliation Attack (the -1 itself is in the attack math) once, before
+  // the blow resolves, so the log and the board FX show why it lost Attack.
+  if (details.isRetaliation && !stackItem.modifiers.retaliationAuraAnnounced) {
+    stackItem.modifiers.retaliationAuraAnnounced = true;
+    for (const aura of getEnemyRetaliationAuraSources(combat, details.attacker)) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: aura.source.id,
+        abilityId: aura.abilityId,
+        targetUnitId: details.attacker.id,
+        message: `${aura.source.cardName}'s ${aura.abilityName} gives ${details.attacker.cardName} -${aura.amount} Attack on its Retaliation Attack.`,
+      });
+    }
   }
 
   // Factory Bounty Hunters' Preemptive Shot: before this attack's blow lands,
@@ -25428,12 +25474,6 @@ function applyReactionPlayCore(
     );
   }
 
-  // Kriv (Bulwark)'s rune-synergy specialty played as a REACTION to an enemy
-  // attack: bank the Runes (and draw the bundled card on I/IV) right here, while
-  // the attack is still paused on the stack. gainRunes → syncRuneEffects applies
-  // any newly-crossed Rune Level's army-wide buff IMMEDIATELY, so a +Defense (or
-  // +Attack for the coming retaliation) is live before this very attack resolves —
-  // the "receive the buff earlier" play. No-op for a non-Bulwark reactor.
   // Wuxia attack-window arts (Jianxu's array strike on your own attack, Yulian's
   // jade guard on an enemy attack): latched onto this paused attack.
   if (effect.type === "WUXIA_ART_CARD" && stackItem) {
@@ -25446,6 +25486,12 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Kriv (Bulwark)'s rune-synergy specialty played as a REACTION to an enemy
+  // attack: bank the Runes (and draw the bundled card on I/IV) right here, while
+  // the attack is still paused on the stack. gainRunes → syncRuneEffects applies
+  // any newly-crossed Rune Level's army-wide buff IMMEDIATELY, so a +Defense (or
+  // +Attack for the coming retaliation) is live before this very attack resolves —
+  // the "receive the buff earlier" play. No-op for a non-Bulwark reactor.
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, playerId, effect.amount);
     if (effect.drawCards) {
@@ -31715,9 +31761,6 @@ function playCard(
     }
   }
 
-  // Kriv (Bulwark)'s rune-synergy specialty: bank Runes immediately, and (levels
-  // I/IV) draw the bundled card(s). gainRunes is a no-op for a non-Bulwark caster,
-  // so the option is harmless if mis-played; the draw still happens for anyone.
   // Wuxia hero specialty arts played as a combat action (channel, formation
   // mending, Legion of Bones, Bound Souls). Bound Souls rally beside the chosen
   // friendly unit (a Dwarf-negated target drops to undefined and the reducer
@@ -31736,6 +31779,9 @@ function playCard(
     }
   }
 
+  // Kriv (Bulwark)'s rune-synergy specialty: bank Runes immediately, and (levels
+  // I/IV) draw the bundled card(s). gainRunes is a no-op for a non-Bulwark caster,
+  // so the option is harmless if mis-played; the draw still happens for anyone.
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
     if (effect.drawCards) {
@@ -38305,6 +38351,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
+    delete player.combatStats.commanderManaUsedThisRound;
     // Spell Book (house rule): the +1-Power Book discard is ONE PER CAST — the
     // budget is reset at the start of every cast (performSpellCast), except
     // while an attack window is open. This round-start clear and the map-turn

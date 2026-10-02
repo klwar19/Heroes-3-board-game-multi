@@ -264,8 +264,11 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     // Since 64d90691 / f4662a61 most units carry a custom or explicit schedule
     // (custom-experience-overrides.ts; docs/unit-experience-balance-sheet.md)
     // whose R1 is its own design, so the pool applies to the generator-served
-    // units only — and these four are the generator's flat +1 Defense R1s.
-    const flatDefenseIds = new Set(["tower.genies", "wog.ghost", "doom.former_human", "doom.cacodemon"]);
+    // units only — and these three are the generator's flat +1 Defense R1s.
+    // (Genies left this list 2026-10-01: their R1 is Guarded Stance — +1
+    // Defense when attacked, never on a Retaliation.)
+    const flatDefenseIds = new Set(["wog.ghost", "doom.former_human", "doom.cacodemon"]);
+    expect(rankScheduleFor("tower.genies")[1]).toEqual({ kind: "ability", choices: ["veteran-guarded-stance"] });
     let generatorServed = 0;
     for (const def of Object.values(coreUnitDefinitions)) {
       const step = rankScheduleFor(def.id)[1];
@@ -791,7 +794,9 @@ describe("Unit Experience — XP awards after combat", () => {
       dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 }
     } as CombatState;
     awardUnitExperienceAfterCombat(pvp);
-    expect(pvp.players.p1.army[0].experience).toBe(UNIT_XP_PVP_WIN);
+    // USER RULING 2026-10-02: PvP trains nobody.
+    expect(UNIT_XP_PVP_WIN).toBe(0);
+    expect(pvp.players.p1.army[0].experience ?? 0).toBe(0);
     expect(pvp.players.p2.army[0].experience).toBeUndefined();
   });
 
@@ -1682,5 +1687,63 @@ describe("Unit Experience — a won Creature Bank card trains on the veteran tra
     expect(
       getLegalActions(maxed, "p1").filter((legal) => legal.action.type === "DRILL_UNIT")
     ).toEqual([]);
+  });
+});
+
+describe("Unit Experience — 2026-10-02 rulings (PvP / early over-level Field)", () => {
+  it("a PvP win trains nobody, bonuses included (CONTROL: the same Combat Scholar pays after a neutral win)", () => {
+    const pvp = makeAdventure("uxp-pvp-scholar", {
+      unitExperience: true,
+      anime: { enabled: true, unitExperience: true, heroGrades: true }
+    });
+    pvp.anime = { ...DEFAULT_ANIME_OPTIONS, ...pvp.anime, enabled: true, heroGrades: true };
+    getMainHero(pvp, "p1")!.gradeNodes = [HERO_GRADE_NODE_IDS.combatScholar];
+    pvp.players.p1.army = [{ ...MARKSMEN }];
+    pvp.players.p2.army = [{ id: "p2_zealots", unitDefId: "castle.zealots", side: "few" }];
+    const winner = makeCombatUnitFromArmy(pvp.players.p1.army[0], "p1", "u_pvp_s", 0, "legacy")!;
+    const loser = makeCombatUnitFromArmy(pvp.players.p2.army[0], "p2", "u_pvp_l", 1, "legacy")!;
+    loser.damage = loser.maxHealth;
+    pvp.combat = {
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+      units: { [winner.id]: winner, [loser.id]: loser },
+      setup: null,
+      awaitingContinue: false,
+      context: { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "f" },
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "p2", reason: "all-enemy-units-defeated" },
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 }
+    } as CombatState;
+    awardUnitExperienceAfterCombat(pvp);
+    expect(pvp.players.p1.army[0].experience ?? 0).toBe(0);
+
+    const neutral = makeAdventure("uxp-neutral-scholar", {
+      unitExperience: true,
+      anime: { enabled: true, unitExperience: true, heroGrades: true }
+    });
+    neutral.anime = { ...DEFAULT_ANIME_OPTIONS, ...neutral.anime, enabled: true, heroGrades: true };
+    getMainHero(neutral, "p1")!.gradeNodes = [HERO_GRADE_NODE_IDS.combatScholar];
+    neutral.players.p1.army = [{ ...MARKSMEN }];
+    const survivor = makeCombatUnitFromArmy(neutral.players.p1.army[0], "p1", "u_neu_s", 0, "legacy")!;
+    finishNeutralCombat(neutral, { [survivor.id]: survivor }, "p1", { difficulty: 3 });
+    expect(neutral.players.p1.army[0].experience).toBe(4);
+  });
+
+  function fieldWin(seed: string, round: number, context: Partial<Extract<CombatState["context"], { kind: "neutral" }>>, heroLevel: number): number | undefined {
+    const state = makeAdventure(seed, { unitExperience: true });
+    state.round = round;
+    state.players.p1.army = [{ ...MARKSMEN }];
+    const unit = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", `u_${seed}`, 0, "legacy")!;
+    finishNeutralCombat(state, { [unit.id]: unit }, "p1", context, heroLevel);
+    return state.players.p1.army[0].experience;
+  }
+
+  it("rounds 2-3: a Field above the main hero's level pays half (CONTROLS: round 1/4, level-matched Field, bank)", () => {
+    // Difficulty 5 vs a level-3 hero: base capped to 3, halved to 1.
+    expect(fieldWin("uxp-half-r2", 2, { difficulty: 5 }, 3)).toBe(1);
+    expect(fieldWin("uxp-half-r3", 3, { difficulty: 5 }, 3)).toBe(1);
+    expect(fieldWin("uxp-half-r1", 1, { difficulty: 5 }, 3)).toBe(3);
+    expect(fieldWin("uxp-half-r4", 4, { difficulty: 5 }, 3)).toBe(3);
+    expect(fieldWin("uxp-half-level", 2, { difficulty: 3 }, 3)).toBe(3);
+    expect(fieldWin("uxp-half-bank", 2, { difficulty: 5, bankId: "crypt", bankStackCount: 4 }, 3)).toBe(3);
   });
 });

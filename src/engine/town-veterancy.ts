@@ -447,8 +447,9 @@ export function townAfterAttack(
   if (alive(attacker)) {
     if (
       !retaliation &&
-      !dieCancelled &&
-      (roll === -1 || roll === 0) &&
+      // USER RULING 2026-10-01: in combat round 1 ANY own attack recovers;
+      // from round 2 on only a resolved -1 Attack die does (was -1 or 0).
+      (state.combat?.round === 1 || (!dieCancelled && roll === -1)) &&
       townVeterancy(attacker, "magi-recover") &&
       (attacker.townVeterancy?.magiRecoveryUses ?? 0) +
         (state.combat?.elementalChoices ?? []).filter((choice) =>

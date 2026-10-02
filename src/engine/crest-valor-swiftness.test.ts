@@ -352,3 +352,101 @@ describe("Necklace of Swiftness", () => {
     ).toBeFalsy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Trigger-free "Gain a positive morale token" faces in combat reaction windows
+// ---------------------------------------------------------------------------
+
+describe("Plain morale instants in combat reaction windows", () => {
+  /** p2's Skeletons declare an attack on p1's Crusaders; p1 (Castle — uses morale) holds `hand`. */
+  function declared(seed: string, hand: string[]): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p2.hand = [];
+    state.players.p1.hand = [...hand];
+    state.players.p1.morale = 0;
+    state.players.p2.morale = 0;
+    const units = state.combat!.units;
+    units.unit_p1_crusaders.position = 14;
+    units.unit_p2_skeletons.activatedThisRound = false;
+    units.unit_p2_skeletons.attackedThisActivation = false;
+    units.unit_p2_skeletons.position = 13;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    return applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+  }
+  const reactionsOf = (state: GameState, cardId: string) =>
+    getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+    );
+
+  it("Crest of Valor's morale side opens and joins an attack window, and gains the token", () => {
+    const state = declared("valor-window", ["artifact.crest_of_valor"]);
+    expect(state.reactionWindow, "a held Crest opens the attack declaration").toBeTruthy();
+    const offers = reactionsOf(state, "artifact.crest_of_valor");
+    expect(offers.map((legal) => (legal.action as { optionIndex?: number }).optionIndex)).toEqual([0]);
+    const played = applyOk(state, offers[0].action);
+    expect(played.players.p1.morale).toBe(1);
+    expect(played.players.p1.discard).toContain("artifact.crest_of_valor");
+  });
+
+  it("CONTROL: an empty hand opens no window on the same attack", () => {
+    expect(declared("valor-window-control", []).reactionWindow).toBeFalsy();
+  });
+
+  it("Glyph of Gallantry keeps its morale side beside the matching +1 defense side", () => {
+    const state = declared("glyph-window", ["artifact.glyph_of_gallantry"]);
+    const indices = reactionsOf(state, "artifact.glyph_of_gallantry")
+      .map((legal) => (legal.action as { optionIndex?: number }).optionIndex)
+      .sort();
+    expect(indices).toEqual([0, 1]);
+  });
+
+  it("a morale-ignoring Necropolis seat is never offered the moot token — no pause (CONTROL: Leadership's draw still is)", () => {
+    /** p1's Crusaders attack p2's (Necropolis) Skeletons; p2 holds `hand`. */
+    const necroDefends = (seed: string, hand: string[]): GameState => {
+      const state = createInitialGameState(seed);
+      state.players.p1.hand = [];
+      state.players.p2.hand = [...hand];
+      const units = state.combat!.units;
+      units.unit_p1_crusaders.position = 14;
+      units.unit_p1_crusaders.activatedThisRound = false;
+      units.unit_p1_crusaders.attackedThisActivation = false;
+      units.unit_p2_skeletons.position = 13;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_crusaders";
+      state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+      state.combat!.dice.rollCount = 0;
+      return applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons" });
+    };
+    expect(createInitialGameState("necro-check").players.p2.factionId, "p2 is the morale-ignoring Necropolis").toBe("necropolis");
+    expect(necroDefends("valor-necro", ["artifact.crest_of_valor"]).reactionWindow).toBeFalsy();
+    const leadership = necroDefends("valor-necro-leadership", ["ability.leadership"]);
+    expect(leadership.reactionWindow, "Leadership (expert draw) still opens the window").toBeTruthy();
+    expect(
+      getLegalActions(leadership, "p2").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.leadership"
+      )
+    ).toBe(true);
+  });
+
+  it("a held Crest does NOT pause a Spell cast by itself (join-only outside attack windows)", () => {
+    const state = createInitialGameState("valor-cast");
+    state.players.p2.hand = ["spell.magic_arrow"];
+    state.players.p1.hand = ["artifact.crest_of_valor"];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const cast = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast, "Magic Arrow is castable").toBeTruthy();
+    const after = applyOk(state, cast!.action);
+    expect(after.reactionWindow).toBeFalsy();
+  });
+});

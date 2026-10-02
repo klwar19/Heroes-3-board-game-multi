@@ -781,6 +781,13 @@
     "attack": 1,
     "idle": 100
   },
+  "clockwork-dwarf": {
+    "walk": 0.97,
+    "attack": 1,
+    "gait": "units/automaton-move",
+    "idle": 275,
+    "fidget": false
+  },
   "commander-astral-spirit": {
     "idle": 100
   },
@@ -2166,6 +2173,28 @@
     },
     "idle": 100
   },
+  "mermaid": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        71,
+        -74
+      ],
+      "straight": [
+        67,
+        -59
+      ],
+      "down": [
+        49,
+        -49
+      ]
+    },
+    "gait": "units/medusa-move",
+    "idle": 275,
+    "fidget": false
+  },
   "mgq-aria": {
     "walk": 1,
     "attack": 1,
@@ -3391,6 +3420,223 @@
     "walk": 1,
     "attack": 1,
     "idle": 188
+  },
+  "wx-blood-disciples": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        35,
+        -87
+      ],
+      "straight": [
+        42,
+        -60
+      ],
+      "down": [
+        20,
+        -33
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-bone-reavers": {
+    "walk": 0.9,
+    "attack": 1,
+    "gait": "units/halberdier-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-core-elder": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        41,
+        -102
+      ],
+      "straight": [
+        66,
+        -53
+      ],
+      "down": [
+        33,
+        12
+      ]
+    },
+    "gait": "units/monk-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "wx-corpse-puppets": {
+    "walk": 1.2,
+    "attack": 1,
+    "gait": "units/gold-golem-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-demon-ancestor": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        26,
+        -101
+      ],
+      "straight": [
+        40,
+        -93
+      ],
+      "down": [
+        17,
+        -87
+      ]
+    },
+    "gait": "units/arch-mage-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-demon-avatar": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/naga-queen-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-ghost-king": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 7,
+    "missile": {
+      "up": [
+        50,
+        -98
+      ],
+      "straight": [
+        66,
+        -83
+      ],
+      "down": [
+        33,
+        -12
+      ]
+    },
+    "gait": "units/lich-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-gu-witches": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 9,
+    "missile": {
+      "up": [
+        43,
+        -76
+      ],
+      "straight": [
+        57,
+        -79
+      ],
+      "down": [
+        30,
+        -15
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
+  },
+  "wx-inner-swordsmen": {
+    "walk": 0.9,
+    "attack": 1,
+    "climax": 6,
+    "missile": {
+      "up": [
+        34,
+        -82
+      ],
+      "straight": [
+        40,
+        -57
+      ],
+      "down": [
+        19,
+        -31
+      ]
+    },
+    "gait": "units/pirate-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-mountain-guardian": {
+    "walk": 1.2,
+    "attack": 1,
+    "gait": "units/stone-golem-move",
+    "idle": 188,
+    "fidget": false
+  },
+  "wx-outer-disciples": {
+    "walk": 0.87,
+    "attack": 1,
+    "gait": "units/swordsman-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-sect-protectors": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/skeleton-warrior-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-shadow-sabres": {
+    "walk": 1,
+    "attack": 1,
+    "gait": "units/rogue-move",
+    "idle": 220,
+    "fidget": false
+  },
+  "wx-spirit-crane": {
+    "walk": 0.72,
+    "attack": 1,
+    "gait": "units/stormbird-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-sword-saint": {
+    "walk": 0.95,
+    "attack": 1,
+    "gait": "units/crusader-move",
+    "idle": 275,
+    "fidget": false
+  },
+  "wx-true-inheritors": {
+    "walk": 1,
+    "attack": 1,
+    "climax": 8,
+    "missile": {
+      "up": [
+        39,
+        -69
+      ],
+      "straight": [
+        51,
+        -71
+      ],
+      "down": [
+        28,
+        -13
+      ]
+    },
+    "gait": "units/sea-witch-move",
+    "idle": 300,
+    "fidget": false
   },
   "wyvern": {
     "walk": 0.67,

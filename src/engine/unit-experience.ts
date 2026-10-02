@@ -644,7 +644,7 @@ function buildArmyUnitRankInfo(
 /**
  * XP a won combat awards the winner's surviving deployed units: neutral guard
  * fights pay the Field Difficulty, Creature Banks pay max(2, Stacked count),
- * PvP wins pay a flat 2. Exposed for the UI/tests.
+ * PvP wins pay nothing (USER RULING 2026-10-02). Exposed for the UI/tests.
  */
 export function unitExperienceForWonCombat(context: CombatContext): number {
   if (context.kind === "sandbox") {
@@ -727,7 +727,9 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
     });
   }
   const winnerId = combat.outcome.winnerPlayerId;
-  if (!winnerId || winnerId === NEUTRAL_PLAYER_ID) {
+  // USER RULING 2026-10-02: a PvP battle gives NO unit XP at all — neither the
+  // base award nor any bonus (Standard, Training Ground, Combat Scholar, …).
+  if (!winnerId || winnerId === NEUTRAL_PLAYER_ID || combat.context.kind === "player") {
     return;
   }
   const player = state.players[winnerId];
@@ -737,12 +739,20 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
   // USER RULE: the BASE XP of a neutral guard field / Creature Bank win can never
   // exceed the winner's main-hero level (bonuses below still stack on top).
   let base = unitExperienceForWonCombat(combat.context);
+  // USER RULING 2026-10-02: in game rounds 2 and 3, beating a neutral Field
+  // whose level (Field Difficulty) is above the main hero's level pays only
+  // HALF the unit XP (each unit's total, rounded down).
+  let halveForOverLevelField = false;
   if (combat.context.kind === "neutral") {
     const mainHero = Object.values(state.heroes).find(
       (hero) => hero.controllerId === winnerId && hero.kind === "main"
     );
     const heroLevel = Math.max(1, Math.trunc(mainHero?.level ?? 1));
     base = Math.min(base, heroLevel);
+    halveForOverLevelField =
+      (state.round === 2 || state.round === 3) &&
+      !combat.context.bankId &&
+      Math.trunc(combat.context.difficulty ?? 0) > heroLevel;
   }
   // Calamity Waves (USER RULE 2026-08-19): a repelled assault drills survivors a
   // flat +1 XP ON TOP of the (hero-level-capped) neutral base and the ranked-guard
@@ -784,7 +794,8 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
     if (!armyUnit) {
       continue;
     }
-    grantArmyUnitExperience(state, winnerId, armyUnit, gained + getBonusUnitExperience(unit));
+    const amount = gained + getBonusUnitExperience(unit);
+    grantArmyUnitExperience(state, winnerId, armyUnit, halveForOverLevelField ? Math.floor(amount / 2) : amount);
   }
 }
 

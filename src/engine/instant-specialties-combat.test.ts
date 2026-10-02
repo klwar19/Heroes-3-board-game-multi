@@ -143,30 +143,21 @@ describe("Miriam's Scouting I (REMOVE_HAND_CARD_THEN_SEARCH) mid-combat", () => 
   });
 });
 
-describe("Tazar's War Hero VI (DRAW_TOP_ARTIFACT) mid-combat", () => {
-  it("is offered in combat, discards the price, and draws the top Artifact to hand", () => {
+describe("Tazar's War Hero VI (DRAW_TOP_ARTIFACT) is a MAP effect", () => {
+  it("is NOT offered in combat (USER RULING 2026-10-01), and the resolver refuses a forged play", () => {
     const state = createInitialGameState();
-    // Option index 1: discard 3 cards to draw the top Artifact card.
     state.players.p1.hand = ["specialty.tazar.6", "stat.attack", "stat.defense", "stat.power"];
-
-    const play = findPlay(state, "p1", "specialty.tazar.6", 1);
-    expect(play, "War Hero VI should be offered during combat").toBeTruthy();
-    const played = applyOk(state, {
-      ...play!.action,
+    expect(findPlay(state, "p1", "specialty.tazar.6", 0), "remove-1 side stays off the combat menu").toBeFalsy();
+    expect(findPlay(state, "p1", "specialty.tazar.6", 1), "discard-3 side stays off the combat menu").toBeFalsy();
+    const forged = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.tazar.6",
+      mode: "basic",
+      optionIndex: 1,
+      target: { type: "none" },
       costCardIds: ["stat.attack", "stat.defense", "stat.power"]
     } as GameAction);
-
-    // The BINH Minor/Major/Relic split means the caster picks a deck, then the
-    // draw lands an Artifact in the hand — all inside the live combat.
-    const done = resolveChoices(played, "p1");
-    // A drawn Spell Scroll deck card becomes a live scroll, never a hand card
-    // (materializeArtifactScrolls, 21ae36de) — it counts as the drawn Artifact.
-    const gainedArtifact =
-      done.players.p1.hand.filter((cardId) => cardLibrary[cardId]?.kind === "artifact").length +
-      (done.players.p1.scrolls?.length ?? 0) -
-      (state.players.p1.scrolls?.length ?? 0);
-    expect(gainedArtifact, "the draw should have handed an Artifact to the player").toBeGreaterThan(0);
-    expect(done.phase).toBe("combat");
-    expect(done.combat?.outcome).toBeNull();
+    expect(forged.errors.length, "a forged combat play is rejected").toBeGreaterThan(0);
   });
 });

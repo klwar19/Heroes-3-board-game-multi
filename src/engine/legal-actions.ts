@@ -6517,6 +6517,21 @@ function isDeckGainReactionUtility(effect: ConcreteEffect): boolean {
   );
 }
 
+/**
+ * A printed trigger-free "Gain a positive morale token" instant face (Crest of
+ * Valor, Glyph of Gallantry, Ladybird of Luck, the balance-pack Ambassador's
+ * Sash): a morale token is usable at any instant moment, so it joins combat
+ * reaction windows. Previously only Leadership got in — through its expert
+ * draw rider — and a plain morale face was never offered at an attack
+ * declaration. A negative / all-players face (Spirit of Oppression's map side)
+ * is not a reaction utility: it is map-only and resolves in `playCard`.
+ */
+function isPlainPositiveMoraleGain(effect: ConcreteEffect): boolean {
+  return (
+    effect.type === "GAIN_MORALE" && effect.amount > 0 && !effect.allPlayers
+  );
+}
+
 function isInstantReactionUtility(effect: ConcreteEffect): boolean {
   return (
     instantDrawOnlyRider(effect, "basic") > 0 ||
@@ -6524,7 +6539,8 @@ function isInstantReactionUtility(effect: ConcreteEffect): boolean {
     effect.type === "TAKE_FROM_DISCARD" ||
     effect.type === "RESHUFFLE_DISCARD_THEN_DRAW" ||
     isDeckGainReactionUtility(effect) ||
-    effect.type === "GAIN_MORALE_AND_GOLD"
+    effect.type === "GAIN_MORALE_AND_GOLD" ||
+    isPlainPositiveMoraleGain(effect)
   );
 }
 
@@ -12341,17 +12357,32 @@ function getLegalReactionsForTriggerCore(
         const explicitDraw =
           variant.effect.type === "DRAW_CARDS" &&
           getEffectAmount(variant.effect, "basic") > 0;
+        // A trigger-free "Gain a positive morale token" face is likewise its
+        // own printed OR arm, never a trap twin of a sibling (Glyph of
+        // Gallantry's morale side stays playable on the enemy attack its
+        // "+1 defense" side answers). Instants only.
+        const explicitMorale =
+          allowTriggerlessUtility &&
+          !variant.trigger &&
+          isPlainPositiveMoraleGain(variant.effect);
         const allowUtilityJoin =
           explicitDraw ||
+          explicitMorale ||
           (allowTriggerlessUtility && !cardHasPrintedTriggerMatch);
         // GAIN_MORALE (Leadership) and TAKE_FROM_DISCARD (Scholar) are the
         // HISTORICAL trigger-free opt-ins: they keep their unflagged,
         // window-OPENING status (reactionOfferOpensWindow treats an unflagged
         // offer as opening), exactly as before this batch — a held Leadership
         // must still be playable on an attack with no other reaction at the
-        // table (pinned in unit-ability-interactions.test.ts).
+        // table (pinned in unit-ability-interactions.test.ts). Only a morale
+        // face WITH an expert draw rider (Leadership) was ever offered here, so
+        // only it keeps the any-window opener; a plain morale face (Crest of
+        // Valor, Glyph of Gallantry, …) joins as `utilityOnly` — it still OPENS
+        // an attack declaration (reactionOfferOpensWindow) but merely joins a
+        // cast / activation window, never pausing every one of them.
         const historicalWindowOpener =
-          variant.effect.type === "GAIN_MORALE" ||
+          (variant.effect.type === "GAIN_MORALE" &&
+            instantDrawOnlyRider(variant.effect, "expert") > 0) ||
           variant.effect.type === "TAKE_FROM_DISCARD";
         const utilityOnly =
           !matchesPrintedTrigger &&
@@ -12377,6 +12408,19 @@ function getLegalReactionsForTriggerCore(
           allowUtilityJoin &&
           instantDrawOnlyRider(variant.effect, "expert") > 0 &&
           drawOnlyEligible;
+        // A plain morale face is a no-op for a morale-ignoring faction
+        // (Necropolis: changeMorale short-circuits), so it must neither join nor
+        // OPEN a window there — otherwise a held Crest of Valor paused every
+        // attack declaration for a play that does nothing.
+        if (
+          explicitMorale &&
+          !matchesPrintedTrigger &&
+          // Leadership keeps its expert draw — only a bare token gain is moot.
+          instantDrawOnlyRider(variant.effect, "expert") === 0 &&
+          coreFactionDefinitions[player.factionId ?? ""]?.ignoresMorale
+        ) {
+          continue;
+        }
         // A printed map-only face is an ABSOLUTE bar here: utility joining must
         // never override a printed zone restriction (Shield of Naval Glory's
         // "On a Sea tile" side would otherwise become a combat reaction).
@@ -12611,10 +12655,10 @@ function getLegalReactionsForTriggerCore(
         // withheld unless this player also holds a pairable spell instant (the
         // powerReactions gate below), which used to hide the printed DRAW along
         // with it. Offer the draw as its OWN non-window-opening join, straight
-        // into `reactions` so the Power gate cannot swallow it. When the real
-        // Power play DOES land in this window the shared trap-twin dedupe (the
-        // `utilityOnly` sweep at the end of this function) removes this twin
-        // again, so the two are never both on the menu. Basic only — a fizzled
+        // into `reactions` so the Power gate cannot swallow it. It stays on the
+        // menu even when the real Power play is offered too (the trap-twin
+        // dedupe at the end of this function exempts it): that face needs a
+        // Spell in the same declaration, the draw never does. Basic only — a fizzled
         // Power must never cost a crown.
         if (
           isAttackWindow &&
@@ -13968,6 +14012,29 @@ function getLegalReactionsForTriggerCore(
     );
     result[playerId] = reactions.filter((legal) => {
       if (legal.action.type === "PLAY_REACTION" && legal.action.utilityOnly) {
+        // The DRAW-ONLY twin of a "+Power, then draw" face in an ATTACK window
+        // (Sorcery, Scales of the Greater Basilisk, Tunic of the Cyclops King)
+        // is NOT a trap twin: its real face is a Power play that may only be
+        // declared together with a Spell, so it cannot be played alone. USER
+        // RULING (2026-10-01): the draw may always be taken on its own, "not
+        // need to play any spell" — keep the twin even while the full face is
+        // on the menu.
+        if (
+          legal.action.drawOnly &&
+          triggerEvent.type === "UNIT_ATTACK_DECLARED"
+        ) {
+          const twinCard = cards[legal.action.cardId];
+          if (
+            twinCard &&
+            getEffectiveCardEffectForState(
+              state,
+              twinCard,
+              legal.action.optionIndex,
+            )?.type === "ADD_SPELL_POWER"
+          ) {
+            return true;
+          }
+        }
         return !realCardFaces.has(
           `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
         );
@@ -15118,10 +15185,6 @@ export function isEffectLegalForTrigger(
       return true;
     }
 
-    // Kriv (Bulwark): bank Runes in reaction to an enemy's attack so a crossed
-    // Rune-Level threshold's army-wide buff turns on BEFORE the attack resolves.
-    // Only a Bulwark reactor benefits (gainRunes is a no-op otherwise); the card's
-    // "opponent" trigger already keeps this off the attacker's own tray.
     // Jianxu's Seven-Star Sword Array (own attack, attacker beside an ally) and
     // Yulian's Jade Body Arts (an enemy attack on your unit).
     if (effect.type === "WUXIA_ART_CARD") {
@@ -15135,6 +15198,10 @@ export function isEffectLegalForTrigger(
       );
     }
 
+    // Kriv (Bulwark): bank Runes in reaction to an enemy's attack so a crossed
+    // Rune-Level threshold's army-wide buff turns on BEFORE the attack resolves.
+    // Only a Bulwark reactor benefits (gainRunes is a no-op otherwise); the card's
+    // "opponent" trigger already keeps this off the attacker's own tray.
     if (effect.type === "GAIN_RUNES") {
       return state.players[playerId]?.factionId === "bulwark" &&
         (runeTrackHasRoom(state, playerId) || Boolean(effect.drawCards));

@@ -6308,6 +6308,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.spellsCastThisRound = 0;
       player.combatStats.spellLimitBonusThisRound = 0;
       player.combatStats.anySpellCastThisRound = false;
+      delete player.combatStats.commanderManaUsedThisRound;
       // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
       // fresh combat.
       player.combatStats.tarnumOverlimitCards = [];
@@ -14034,6 +14035,15 @@ function factoryCommanderTrapLimit(state: GameState, playerId: PlayerId): number
   return Math.min(3, commanderPowerOf(commander) + 1);
 }
 
+/**
+ * Damage of the Mechanical Trap placed at `index` (0-based) out of `limit`
+ * (USER RULING 2026-10-02): every trap deals 2, except the LAST one at Power
+ * 1/2 (trap 2 of 2, trap 3 of 3), which deals only 1.
+ */
+function factoryTrapDamage(limit: number, index: number): number {
+  return limit >= 2 && index === limit - 1 ? 1 : 2;
+}
+
 function emptyFactoryTrapPositions(state: GameState): number[] {
   const combat = state.combat;
   if (!combat) return [];
@@ -14049,6 +14059,7 @@ function placeFactoryCommanderTrap(
   playerId: PlayerId,
   commanderUnitId: UnitId,
   position: number,
+  damage: number,
 ): void {
   const combat = state.combat;
   const commander = combat?.units[commanderUnitId];
@@ -14061,7 +14072,7 @@ function placeFactoryCommanderTrap(
     kind: "factory_trap" as const,
     position,
     controllerId: playerId,
-    damage: 2,
+    damage,
     armed: true,
     sourceUnitId: commander.id,
     sourceAbilityId: "commander-factory-mechanical-trap",
@@ -14093,7 +14104,7 @@ function openFactoryCommanderTrapChoice(
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Mechanical Traps: place trap ${placedCount + 1} of ${limit} on an empty space, or stop. Each deals 2 damage once.`,
+    prompt: `Mechanical Traps: place trap ${placedCount + 1} of ${limit} on an empty space, or stop. This trap deals ${factoryTrapDamage(limit, placedCount)} damage once.`,
     options: [
       ...positions.map((position) => ({ label: `Place at ${getBattlefieldLabel(position)}` })),
       { label: "Stop placing traps" },
@@ -14138,9 +14149,10 @@ export function maybeOpenFactoryCommanderTrapChoice(state: GameState): boolean {
           const rightAdjacent = enemies.some((enemy) => touches(enemy, right)) ? 0 : 1;
           return leftAdjacent - rightAdjacent || distanceFromBoardCentre(combat, left) - distanceFromBoardCentre(combat, right) || left - right;
         });
-        for (const position of candidates.slice(0, factoryCommanderTrapLimit(state, playerId))) {
-          placeFactoryCommanderTrap(state, playerId, commander.id, position);
-        }
+        const limit = factoryCommanderTrapLimit(state, playerId);
+        candidates.slice(0, limit).forEach((position, index) => {
+          placeFactoryCommanderTrap(state, playerId, commander.id, position, factoryTrapDamage(limit, index));
+        });
       }
       (combat.factoryCommanderTrapResolvedPlayerIds ??= []).push(playerId);
       combat.factoryCommanderTrapQueue.shift();
@@ -14166,7 +14178,7 @@ function resolveFactoryCommanderTrapChoice(state: GameState, playerId: PlayerId,
   state.phase = "combat";
   state.priorityPlayerId = null;
   if (position !== undefined) {
-    placeFactoryCommanderTrap(state, playerId, data.commanderUnitId, position);
+    placeFactoryCommanderTrap(state, playerId, data.commanderUnitId, position, factoryTrapDamage(data.limit, data.placedCount));
     if (openFactoryCommanderTrapChoice(state, playerId, data.placedCount + 1)) return;
   } else if (optionIndex !== data.positions.length) {
     throw new Error("Choose an empty battlefield space or stop placing traps.");

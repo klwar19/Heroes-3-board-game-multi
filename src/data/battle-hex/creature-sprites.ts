@@ -257,6 +257,23 @@ const CARD_SPRITES: Readonly<Record<string, readonly [few: string, pack: string 
   "mgq.spirit_gnome": ["mgq-gnome", "mgq-gnome"],
   "mgq.spirit_undine": ["mgq-undine", "mgq-undine"],
   "mgq.spirit_salamander": ["mgq-salamander", "mgq-salamander"],
+  // Azure Breeze Sect / Heavenly Demon Palace (wuxia, no PC original): each
+  // card's figure from its card art over a real H3/HotA animation
+  // (scripts/pose-sprite-manifest.json); one figure for both card sides.
+  "azure_breeze.outer_disciples": ["wx-outer-disciples", "wx-outer-disciples"],
+  "azure_breeze.inner_swordsmen": ["wx-inner-swordsmen", "wx-inner-swordsmen"],
+  "azure_breeze.spirit_crane": ["wx-spirit-crane", "wx-spirit-crane"],
+  "azure_breeze.sect_protectors": ["wx-sect-protectors", "wx-sect-protectors"],
+  "azure_breeze.true_inheritors": ["wx-true-inheritors", "wx-true-inheritors"],
+  "azure_breeze.core_master": ["wx-core-elder", "wx-core-elder"],
+  "azure_breeze.mountain_guardian": ["wx-mountain-guardian", "wx-mountain-guardian"],
+  "heavenly_demon.blood_disciples": ["wx-blood-disciples", "wx-blood-disciples"],
+  "heavenly_demon.gu_witches": ["wx-gu-witches", "wx-gu-witches"],
+  "heavenly_demon.shadow_wraiths": ["wx-shadow-sabres", "wx-shadow-sabres"],
+  "heavenly_demon.corpse_puppets": ["wx-corpse-puppets", "wx-corpse-puppets"],
+  "heavenly_demon.bone_reavers": ["wx-bone-reavers", "wx-bone-reavers"],
+  "heavenly_demon.ghost_king": ["wx-ghost-king", "wx-ghost-king"],
+  "heavenly_demon.demon_avatar": ["wx-demon-avatar", "wx-demon-avatar"],
   // Azur Lane: each shipgirl drawn from her official art (with her rigging) over
   // a real H3/HotA animation (scripts/pose-sprite-manifest.json); one figure for
   // both card sides.
@@ -296,6 +313,12 @@ const NEUTRAL_SPRITES: Readonly<Record<string, string>> = {
   "neutral.satyrs": "satyr",
   "neutral.fangarm": "fangarm",
   "neutral.steel_golems": "steel-golem",
+  // Stretch Goals 2026 neutrals with no PC creature: their card figures
+  // rotoscoped over a real H3 animation (scripts/pose-sprite-manifest.json) —
+  // the Clockwork Dwarf over the Battle Dwarf's hammer smash, the Mermaid over
+  // the Medusa's serpent-tail slither.
+  "neutral.clockwork_dwarves": "clockwork-dwarf",
+  "neutral.mermaids": "mermaid",
   "neutral.grenadiers": "halfling"
 };
 
@@ -367,7 +390,11 @@ const COMMANDER_SPRITES: Readonly<Record<string, string>> = {
   // Sonya (MGQ) and Belfast (Azur Lane): their card art over the Crusader's and
   // the Sea Witch's animations.
   sonya: "mgq-sonya",
-  belfast: "al-belfast"
+  belfast: "al-belfast",
+  // Sword Saint (Azure Breeze) and Demon Ancestor (Heavenly Demon): their card
+  // art over the Crusader's and the Arch Mage's animations.
+  sword_saint: "wx-sword-saint",
+  demon_ancestor: "wx-demon-ancestor"
 };
 
 /**

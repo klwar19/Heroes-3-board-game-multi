@@ -99,6 +99,11 @@ const creatureVoices: Record<string, string> = {
   leprechaun: "leprechaun",
   satyrs: "satyr",
   fangarm: "fangarm",
+  // Stretch Goals 2026: the Clockwork Dwarves speak with the Battle Dwarf
+  // (their clank and breakdown come from the Factory Automaton, below); the
+  // Mermaids sing with the Cove Nymph's water voice.
+  clockwork_dwarves: "battle-dwarf",
+  mermaids: "nymph",
   // Tower / Fortress / Conflux creatures that only appear as neutral guards.
   // Voices follow the original game's sound sets (docs/h3-sound-reference.csv):
   // Dragon Flies are the upgraded Serpent Fly, so they use the fire-dragon-fly set.
@@ -851,7 +856,9 @@ const moveSoundOverrides: Record<string, string> = {
   watchers: "units/doom-pain-elemental-move",
   jump_troopers: "doom/dsskeatk",
   tanks: "units/dreadnought-move",
-  cyberbrutes: "units/cyberbrute-move"
+  cyberbrutes: "units/cyberbrute-move",
+  // Clockwork Dwarves: geared armour clanks forward like the Automaton.
+  clockwork_dwarves: "units/automaton-move"
 };
 
 const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundAction, string>>>> = {
@@ -869,7 +876,10 @@ const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundActio
   cyber_zombies: { attack: "units/cyber-zombie-chainsaw-attack" },
   watchers: { attack: "units/doom-cacodemon-attack", hurt: "doom/dspepain", death: "doom/dspedth" },
   tanks: { hurt: "doom/dsvipain", death: "units/dreadnought-death" },
-  cyberbrutes: { attack: "units/behemoth-attack", death: "doom/dscybdth" }
+  cyberbrutes: { attack: "units/behemoth-attack", death: "doom/dscybdth" },
+  // Clockwork Dwarves break down like a clockwork machine (the Automaton's
+  // death), keeping the Battle Dwarf's grunt for attack / hurt / defend.
+  clockwork_dwarves: { death: "units/automaton-death" }
 };
 
 /**

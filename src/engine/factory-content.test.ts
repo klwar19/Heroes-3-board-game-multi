@@ -411,7 +411,7 @@ describe("Factory faction — art wired and playable (S10 starting tile)", () =>
       { payGold: 6, nextResourceGold: 10 },
       { payGold: 11, nextResourceGold: 18 }
     ]);
-    expect(b["factory.artifact_merchants"]).toMatchObject({ name: "Artifact Merchants", effect: { type: "ARTIFACT_SMITH", searchCost: 7, searchCount: 3, sellGold: 2 } });
+    expect(b["factory.artifact_merchants"]).toMatchObject({ name: "Artifact Merchants", cost: { gold: 5, buildingMaterials: 4 }, effect: { type: "ARTIFACT_SMITH", searchCost: 7, searchCount: 3, sellGold: 2 } });
     expect(b["factory.dwelling_bronze"]).toMatchObject({ name: "Halfling Ranch", cost: { gold: 5, buildingMaterials: 3, valuables: 1 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" } });
     expect(b["factory.dwelling_silver"]).toMatchObject({ name: "Catacomb Foundry", cost: { gold: 8, buildingMaterials: 5, valuables: 3 }, effect: { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, prerequisites: ["factory.dwelling_bronze"] });
     expect(b["factory.dwelling_gold"]).toMatchObject({ name: "Gantry under Serpent Hill", effect: { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, prerequisites: ["factory.dwelling_silver"] });

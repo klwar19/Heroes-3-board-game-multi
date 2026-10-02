@@ -595,7 +595,7 @@ function BattlefieldTokenMark({
       : token.kind === "force_field"
         ? `Force Field (${owner}) — an obstacle; blocks non-flying movement${token.expiresAtCombatRoundEnd === undefined ? " for this combat" : ` until the end of combat round ${token.expiresAtCombatRoundEnd}`}`
         : token.kind === "factory_trap"
-          ? `Mechanical Trap (${owner}) — deals 2 damage to the first unit that steps here, then is removed`
+          ? `Mechanical Trap (${owner}) — deals ${token.damage ?? 2} damage to the first unit that steps here, then is removed`
         : hideArmedState
           ? `${view.label} (${owner}) — an enemy trap; you cannot see whether it is armed or a decoy`
           : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "empty decoy"}`;

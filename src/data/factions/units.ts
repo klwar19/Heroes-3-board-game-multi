@@ -1600,7 +1600,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "ranged",
     few: { attack: 6, defense: 2, health: 6, initiative: 4, cost: { gold: 14 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-few.webp" },
-    pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 23, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 23, valuables: 1 }, abilities: ["forge-tank-cannon-3"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 3.", cardImage: "/assets/units-forge-golden-tanks-pack.webp" },
     neutral: { attack: 5, defense: 2, health: 6, initiative: 5, cost: { gold: 27 }, abilities: ["forge-tank-cannon-2"], abilityText: "[unit_attack] You may also attack an enemy unit adjacent to the target. For the purpose of this attack, [attack] is 2.", cardImage: "/assets/units-forge-golden-tanks-neutral.webp" },
     wikiUrl: "https://heroes.thelazy.net/index.php/Forge_(NWC)",
     source: {
@@ -2699,6 +2699,32 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
       product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
       credit: "Neutral unit. Stats and ability transcribed from the fan wiki; new card illustration references the Horn of the Abyss PC-game sprite and portrait.",
       url: "https://en.homm3bg.wiki/units/fangarm/"
+    }
+  },
+  "neutral.clockwork_dwarves": {
+    id: "neutral.clockwork_dwarves",
+    name: "Clockwork Dwarves",
+    faction: "neutral",
+    tier: "bronze",
+    type: "ground",
+    neutral: { attack: 1, defense: 1, health: 3, initiative: 3, cost: { gold: 4 }, abilities: ["clockwork-dwarves-steam-burst"], abilityText: "[unit_attack] Deal 1 [damage] to all adjacent enemy Units and remove all [damage] from this Unit.", cardImage: "/assets/units-neutral-bronze-clockwork_dwarves.webp" },
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stretch Goals 2026, card 099/227)",
+      credit: "Neutral unit. Stats and ability transcribed from the Archon Gamefound WIP card preview; card illustration is an HD rework of that preview art.",
+      url: "https://imgcdn.gamefound.com/productimage/projects/8492/6b8fcd15-b7a9-4303-b6af-dbcb079cf238.png"
+    }
+  },
+  "neutral.mermaids": {
+    id: "neutral.mermaids",
+    name: "Mermaids",
+    faction: "neutral",
+    tier: "silver",
+    type: "ground",
+    neutral: { attack: 3, defense: 1, health: 4, initiative: 5, cost: { gold: 8 }, abilities: ["mermaids-siren-song"], abilityText: "[unit_passive] Enemy units have -1 [attack] during [unit_retaliation].", cardImage: "/assets/units-neutral-silver-mermaids.webp" },
+    source: {
+      product: "Heroes of Might and Magic III: The Board Game (Stretch Goals 2026, card 101/228)",
+      credit: "Neutral unit. Stats and ability transcribed from the Archon Gamefound WIP card preview; card illustration is an HD rework of that preview art.",
+      url: "https://imgcdn.gamefound.com/productimage/projects/8492/0d41fa97-cf44-480a-9cdd-8d1a8194f690.png"
     }
   },
   "neutral.sprites": {

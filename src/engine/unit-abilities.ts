@@ -1210,6 +1210,40 @@ export function getRetaliationAgainstAttackPenalty(unit: CombatUnitState): numbe
   );
 }
 
+/**
+ * Neutral Mermaids' Siren Song (ENEMY_RETALIATION_ATTACK_AURA): every LIVING
+ * aura carrier controlled by someone other than the retaliator takes `amount`
+ * Attack off that Retaliation Attack, wherever on the battlefield it stands.
+ * Each carrier is listed with its own amount (callers sum, or announce each).
+ */
+export function getEnemyRetaliationAuraSources(
+  combat: CombatState | null | undefined,
+  retaliator: CombatUnitState,
+): { source: CombatUnitState; abilityId: string; abilityName: string; amount: number }[] {
+  const sources: { source: CombatUnitState; abilityId: string; abilityName: string; amount: number }[] = [];
+  for (const source of Object.values(combat?.units ?? {})) {
+    if (
+      source.id === retaliator.id ||
+      source.controllerId === retaliator.controllerId ||
+      !isAlive(source) ||
+      source.position < 0
+    ) continue;
+    for (const ability of getAbilitiesWithEffect(source, "ENEMY_RETALIATION_ATTACK_AURA")) {
+      if (ability.effect?.type !== "ENEMY_RETALIATION_ATTACK_AURA") continue;
+      sources.push({ source, abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount });
+    }
+  }
+  return sources;
+}
+
+/** Summed Siren Song penalty on a Retaliation Attack made by `retaliator`. */
+export function getEnemyRetaliationAuraPenalty(
+  combat: CombatState | null | undefined,
+  retaliator: CombatUnitState,
+): number {
+  return getEnemyRetaliationAuraSources(combat, retaliator).reduce((total, entry) => total + entry.amount, 0);
+}
+
 /** Necropolis Dread Knights (Few): the enemy's Retaliation Attack rolls at disadvantage. */
 export function hasRetaliationAgainstDisadvantage(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "RETALIATION_AGAINST_DISADVANTAGE");
