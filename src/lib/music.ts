@@ -20,7 +20,7 @@ import { musicGain, silencedInBackground, getAudioMix, subscribeAudioMix } from 
  * theme swells in so its first full accent lands as the boss arrives; a boss
  * that comes unannounced gets the warning sting once, then the theme.
  * "oc-menu" is the Order & Chaos menus' own theme (the main game's menus keep "menu");
- * "oc-home" is the mode-select screen's own (and the campaign map's), Remnants of the Horde.
+ * "oc-home" is the mode-select screen's own (and the campaign map's), The Orcish Hordes.
  */
 export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle" | "oc-battle-horde" | "oc-battle-remnants" | "oc-boss" | "oc-menu" | "oc-home";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
@@ -64,7 +64,7 @@ export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   "oc-boss": ["music/order-chaos/boss-warning"],
   "oc-boss-loop": ["music/order-chaos/flesh-and-metal"],
   "oc-menu": ["music/order-chaos/menu-casino"],
-  "oc-home": ["music/order-chaos/remnants-of-the-horde"],
+  "oc-home": ["music/order-chaos/orcish-hordes"],
 };
 
 /**
