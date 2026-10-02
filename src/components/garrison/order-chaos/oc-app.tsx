@@ -458,11 +458,12 @@ export function OrderChaosApp() {
   // Story: a replayed (or chained) scene, else the one this screen opens with the first time.
   const [story, setStory] = useState<StoryShow | null>(null);
   // Music: the preparation theme loops on the loadout screen, the menu theme on
-  // the other menus. While a battle is on screen GarrisonGame owns the music
+  // the other menus; the campaign map keeps the mode-select screen's own theme
+  // playing on, uninterrupted. While a battle is on screen GarrisonGame owns the music
   // (preparation theme during Last Stand planning, then the battle score), so
   // this effect stays silent instead of fighting it; the battle's unmount stops
   // its track before this effect picks the menu scene back up.
-  const menuMusic: MusicScene | null = screen.s === "play" && session ? null : screen.s === "prep" ? "oc-prep" : screen.s === "home" ? "oc-home" : "oc-menu";
+  const menuMusic: MusicScene | null = screen.s === "play" && session ? null : screen.s === "prep" ? "oc-prep" : screen.s === "home" || screen.s === "campaign" ? "oc-home" : "oc-menu";
   useEffect(() => {
     if (menuMusic) setMusicScene(menuMusic);
   }, [menuMusic]);

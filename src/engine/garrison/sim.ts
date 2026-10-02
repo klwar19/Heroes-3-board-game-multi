@@ -2076,11 +2076,10 @@ function spawnWave(s: GarrisonState, wave: number): void {
   const flag = isFlagWave(s, wave);
   // Order & Chaos: the weather turns as the wave that brings it comes.
   if (s.weather) advanceWeather(s, wave);
+  // (Order & Chaos: a world boss always leads a great assault — the last wave of a level, or
+  // every OC_ENDLESS_BOSS_EVERY-th in Endless, both flag waves — and its whole huge wave comes with it.)
   let budget = waveBudget(s, wave);
-  // Order & Chaos: the wave a world boss leads is its escort (the boss is the assault).
   const endless = endlessBossFor(s, wave);
-  const bossWave = (s.cfg.oc?.warboss?.wave === wave || endless !== null) && !s.warbossId;
-  if (bossWave) budget = Math.max(1, Math.round(budget * BOSS_ESCORT));
   const pool = s.cfg.enemies.filter((kind) => ENEMIES[kind]);
   const eligible = pool.filter((kind) => ENEMIES[kind]!.cost > 0 && ENEMIES[kind]!.cost <= 1 + wave * 0.9);
   const picks: EnemyKind[] = [];
@@ -4858,8 +4857,6 @@ function enemiesAct(s: GarrisonState): void {
 // move, shield or kill what is marked). Its phases (at falling health shares) bring
 // new moves and a quicker pace. A lane's Champion strikes it hard and throws it back.
 
-/** The share of its wave's usual strength that marches with a world boss. */
-const BOSS_ESCORT = 0.6;
 /** What a lane's Champion does to a world boss: this share of its health, and this far back. */
 export const CHAMPION_BOSS_SHARE = 0.15;
 const CHAMPION_BOSS_PUSH = 2.5;

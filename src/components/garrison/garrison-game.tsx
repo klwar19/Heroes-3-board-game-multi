@@ -17,7 +17,7 @@ import {
 import { OC_ITEMS, isOcItem } from "@/engine/garrison/order-chaos/treasury";
 import { assetUrl } from "@/lib/asset-url";
 import {
-  BOSS_ARRIVAL_BEAT_S, DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, bossEffectsDuck, isMusicMuted, playCombatSting, setBossApproach, setMusicHeld, setMusicMuted,
+  BOSS_ARRIVAL_BEAT_S, DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, bossEffectsDuck, isMusicMuted, playCombatSting, preloadBossWarning, setBossApproach, setMusicHeld, setMusicMuted,
   subscribeMusic, useBackgroundMusic, type MusicScene
 } from "@/lib/music";
 import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from "@/lib/sound";
@@ -214,6 +214,11 @@ export function GarrisonGame({ driver, town, hotseat, onLeave, onRestart, onFini
   }, [ocMusic]);
   // (The lawn's sounds never stay hushed past this battle.)
   useEffect(() => () => setBattleDuck(1), []);
+  // A world boss will come (a level's last wave, or Endless): its warning loads now.
+  const bossBattle = ocMusic && (s.cfg.oc?.warboss !== undefined || (s.cfg.endless === true && (s.cfg.oc?.endlessBosses?.length ?? 0) > 0));
+  useEffect(() => {
+    if (bossBattle) preloadBossWarning();
+  }, [bossBattle]);
   const [bossArrival, setBossArrival] = useState<BossArrival | null>(null);
   const arrivalTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(arrivalTimerRef.current), []);

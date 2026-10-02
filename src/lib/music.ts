@@ -20,7 +20,7 @@ import { musicGain, silencedInBackground, getAudioMix, subscribeAudioMix } from 
  * theme swells in so its first full accent lands as the boss arrives; a boss
  * that comes unannounced gets the warning sting once, then the theme.
  * "oc-menu" is the Order & Chaos menus' own theme (the main game's menus keep "menu");
- * "oc-home" is the mode-select screen's own, The Orcish Hordes.
+ * "oc-home" is the mode-select screen's own (and the campaign map's), The Orcish Hordes.
  */
 export type MusicScene = "menu" | "map" | "combat" | "oc-prep" | "oc-battle" | "oc-battle-horde" | "oc-battle-remnants" | "oc-boss" | "oc-menu" | "oc-home";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
@@ -43,7 +43,8 @@ type MusicProfile =
 export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   menu: ["music/main-menu"],
   combat: ["music/combat-02", "music/combat-03", "music/combat-04"],
-  "map-general": ["music/rough", "music/sand", "music/snow", "music/grass"],
+  // (Remnants of the Horde, from Order & Chaos, takes its turn in the terrain playlist too.)
+  "map-general": ["music/rough", "music/sand", "music/snow", "music/grass", "music/order-chaos/remnants-of-the-horde"],
   "map-water": ["music/water"],
   "map-underground": ["music/dirt"],
   "town-necropolis": ["music/necro-town"],
@@ -88,9 +89,9 @@ export const SCENE_TRACK: Record<MusicScene, string> = {
 };
 
 export const MUSIC_VOLUME = 0.18;
-/** The boss theme sits a little above the other beds; the warning above it. */
+/** The boss theme sits a little above the other beds; the warning, heard alone, well above it. */
 export const BOSS_MUSIC_VOLUME = 0.24;
-export const BOSS_WARNING_VOLUME = 0.3;
+export const BOSS_WARNING_VOLUME = 0.6;
 
 /** The bed's own level (before the Options mix and any boss-approach fade). */
 function profileVolume(profile: MusicProfile | null): number {
@@ -312,14 +313,18 @@ function stopAudio(): void {
 
 /** Where the boss theme's first full accent falls: the world boss steps onto the lawn on it. */
 export const BOSS_ARRIVAL_BEAT_S = 12.95;
-/** The boss theme comes in as the warning decays, this far into the warning. */
+/** The boss theme comes in as the warning ends, this far into the warning (the file is 16.5 s). */
 const BOSS_WARNING_HANDOFF_S = 16;
+/** The warning's own playback position (not the battle clock) where it starts to fade out. */
+const BOSS_WARNING_FADE_FROM_S = 14;
+/** ...and the length of that fade, reaching silence at its natural end. */
+const BOSS_WARNING_FADE_S = 2.4;
 /** The warning starts this long before the boss arrives. */
 export const BOSS_WARNING_LEAD_S = BOSS_ARRIVAL_BEAT_S + BOSS_WARNING_HANDOFF_S;
 /** Before the warning, the battle music (and the battle's sounds) fade away over this long. */
 export const BOSS_HUSH_S = 1.5;
-/** The boss theme swells in, and the warning fades out, over this long. */
-const BOSS_SWELL_S = 4;
+/** The boss theme swells in over this long (so it has played its full 13 s when the boss arrives). */
+const BOSS_SWELL_S = 1.5;
 /** The battle's sounds come back to normal over this long once the boss theme starts. */
 const BOSS_EFFECTS_RETURN_S = 6;
 const BOSS_WARNING_TRACK = MUSIC_TRACKS["oc-boss"][0]!;
@@ -330,6 +335,10 @@ const STAGE_ORDER: Record<ApproachStage, number> = { hush: 0, warning: 1, swell:
 let approach: { stage: ApproachStage; left: number } | null = null;
 let warning: HTMLAudioElement | null = null;
 let warningStarted = false;
+/** Loads the boss theme while the warning plays, so it starts on time (released once the theme is on the bed). */
+let themePreload: HTMLAudioElement | null = null;
+/** This announcement's tracks were asked for already. */
+let bossPreloaded = false;
 
 function approachStage(left: number): ApproachStage | null {
   if (left <= BOSS_ARRIVAL_BEAT_S) return "swell";
@@ -359,8 +368,14 @@ function applyBedVolume(): void {
   if (audio) audio.volume = profileVolume(currentProfile) * musicGain() * approachBedFactor();
 }
 
+/**
+ * The warning plays out on its own clock: at full level until near its end,
+ * even after the theme came in (at double speed the battle reaches the theme
+ * before the warning is over, and the warning is never cut short).
+ */
 function warningVolume(): number {
-  const fade = approach?.stage === "swell" ? 1 - clamp01((BOSS_ARRIVAL_BEAT_S - approach.left) / BOSS_SWELL_S) : 1;
+  const at = warning && warningStarted ? warning.currentTime : 0;
+  const fade = 1 - clamp01((at - BOSS_WARNING_FADE_FROM_S) / BOSS_WARNING_FADE_S);
   return BOSS_WARNING_VOLUME * musicGain() * fade;
 }
 
@@ -380,14 +395,49 @@ function syncWarning(): void {
   }
 }
 
-function startWarning(): void {
+/** The warning element, its file cued (and loading) without playing. */
+function cueWarning(): HTMLAudioElement {
   if (!warning) {
     warning = new Audio();
     warning.loop = false;
+    warning.preload = "auto";
   }
   const src = trackSrc(BOSS_WARNING_TRACK);
   if (!warning.src.endsWith(src)) warning.src = src;
-  else warning.currentTime = 0;
+  return warning;
+}
+
+/**
+ * A boss was announced: fetch the warning and the theme now, while the battle
+ * still runs, so neither starts late (or silent) on a cold load when its moment comes.
+ */
+function preloadBossAudio(): void {
+  if (muted || bossPreloaded) return;
+  bossPreloaded = true;
+  cueWarning();
+  const themeSrc = trackSrc(MUSIC_TRACKS["oc-boss-loop"][0]!);
+  if (themePreload?.src.endsWith(themeSrc) || audio?.src.endsWith(themeSrc)) return;
+  themePreload = new Audio();
+  themePreload.preload = "auto";
+  themePreload.src = themeSrc;
+}
+
+/** A battle with a world boss in it: the (small) warning loads now, so it can never start late. */
+export function preloadBossWarning(): void {
+  if (typeof window === "undefined" || muted) return;
+  cueWarning();
+}
+
+function releaseThemePreload(): void {
+  if (!themePreload) return;
+  themePreload.removeAttribute("src");
+  themePreload.load();
+  themePreload = null;
+}
+
+function startWarning(): void {
+  const element = cueWarning();
+  if (!warningStarted && element.currentTime > 0) element.currentTime = 0;
   warningStarted = true;
   hookUnlock();
   syncWarning();
@@ -401,6 +451,7 @@ function bossThemeIn(left: number): void {
   currentRequestKey = "oc-boss";
   if (muted) return;
   playProfile("oc-boss-loop", true);
+  releaseThemePreload();
   // (Always set: a theme still cued from an earlier boss must not pick up mid-song.)
   if (audio) audio.currentTime = Math.max(0, BOSS_ARRIVAL_BEAT_S - left);
 }
@@ -410,6 +461,7 @@ function dropApproach(): void {
   approach = null;
   warningStarted = false;
   warning?.pause();
+  releaseThemePreload();
 }
 
 /** The approach is over: the boss came (its theme plays on) or it was called off (the battle music comes back). */
@@ -431,6 +483,10 @@ function endApproach(): void {
 export function setBossApproach(left: number | null): void {
   if (typeof window === "undefined") return;
   const stage = left === null ? null : approachStage(left);
+  if (left === null) {
+    bossPreloaded = false;
+    releaseThemePreload();
+  } else preloadBossAudio();
   if (left === null || (stage === null && !approach)) {
     endApproach();
     return;
@@ -663,6 +719,8 @@ export function __resetMusicForTests(): void {
   fanfare = null;
   warning = null;
   warningStarted = false;
+  themePreload = null;
+  bossPreloaded = false;
   approach = null;
   fanfareEnded = null;
   currentScene = null;
